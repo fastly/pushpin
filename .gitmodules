@@ -1,3 +1,0 @@
-[submodule "pushpin-proxy/src/qzmq"]
-	path = pushpin-proxy/src/qzmq
-	url = git://github.com/jkarneges/qzmq
