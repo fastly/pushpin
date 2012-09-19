@@ -1,6 +1,6 @@
 <qconf>
  <name>pushpin-proxy</name>
- <profile>pushpin-proxy.pro</profile>
+ <profile>proxy.pro</profile>
  <moddir>qcm</moddir>
  <dep type='qt47'>
   <required/>

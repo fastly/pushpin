@@ -1360,7 +1360,7 @@ fi
 
 QC_COMMAND=$0
 export QC_COMMAND
-QC_PROFILE=pushpin-proxy.pro
+QC_PROFILE=proxy.pro
 export QC_PROFILE
 QC_QMAKE=$qm
 export QC_QMAKE
