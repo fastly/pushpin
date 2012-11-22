@@ -1,10 +1,10 @@
-#ifndef HTTPREQUESTPACKET_H
-#define HTTPREQUESTPACKET_H
+#ifndef M2REQUESTPACKET_H
+#define M2REQUESTPACKET_H
 
 #include <QVariant>
 #include "httpheaders.h"
 
-class HttpRequestPacket
+class M2RequestPacket
 {
 public:
 	QByteArray sender;
@@ -16,10 +16,12 @@ public:
 	HttpHeaders headers;
 	QByteArray body;
 
-	HttpRequestPacket();
+	QString uploadFile;
+	bool uploadDone;
 
-	bool fromM2ByteArray(const QByteArray &in);
-	bool fromVariant(const QVariant &in);
+	M2RequestPacket();
+
+	bool fromByteArray(const QByteArray &in);
 };
 
 #endif

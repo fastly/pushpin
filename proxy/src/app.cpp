@@ -4,10 +4,15 @@
 #include <QSettings>
 #include "qzmqsocket.h"
 #include "packet/tnetstring.h"
-#include "packet/httprequestpacket.h"
-#include "packet/httpresponsepacket.h"
+#include "packet/m2requestpacket.h"
+#include "packet/m2responsepacket.h"
 #include "packet/inspectrequestpacket.h"
 #include "packet/inspectresponsepacket.h"
+#include "packet/zurlrequestpacket.h"
+#include "packet/zurlresponsepacket.h"
+#include "requestsession.h"
+#include "proxysession.h"
+
 #include "app.h"
 
 #define VERSION "1.0"
@@ -23,8 +28,8 @@ public:
 	QZmq::Socket *m2_in_sock;
 	QZmq::Socket *m2https_in_sock;
 	QZmq::Socket *m2_out_sock;
-	QZmq::Socket *yurl_in_sock;
-	QZmq::Socket *yurl_out_sock;
+	QZmq::Socket *zurl_in_sock;
+	QZmq::Socket *zurl_out_sock;
 	QZmq::Socket *inspect_req_sock;
 	QZmq::Socket *retry_in_sock;
 	QZmq::Socket *accept_out_sock;
@@ -38,8 +43,8 @@ public:
 		m2_in_sock(0),
 		m2https_in_sock(0),
 		m2_out_sock(0),
-		yurl_in_sock(0),
-		yurl_out_sock(0),
+		zurl_in_sock(0),
+		zurl_out_sock(0),
 		inspect_req_sock(0),
 		retry_in_sock(0),
 		accept_out_sock(0),
@@ -156,8 +161,8 @@ public:
 		QStringList m2_in_specs = settings.value("proxy/m2_in_specs").toStringList();
 		QStringList m2https_in_specs = settings.value("proxy/m2https_in_specs").toStringList();
 		QStringList m2_out_specs = settings.value("proxy/m2_out_specs").toStringList();
-		QStringList yurl_out_specs = settings.value("proxy/yurl_out_specs").toStringList();
-		QStringList yurl_in_specs = settings.value("proxy/yurl_in_specs").toStringList();
+		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
+		QStringList zurl_in_specs = settings.value("proxy/zurl_in_specs").toStringList();
 		QString inspect_req_spec = settings.value("proxy/inspect_req_spec").toString();
 		QString retry_in_spec = settings.value("proxy/retry_in_spec").toString();
 		QString accept_out_spec = settings.value("proxy/accept_out_spec").toString();
@@ -170,9 +175,9 @@ public:
 			return;
 		}
 
-		if(m2_out_specs.isEmpty() || yurl_out_specs.isEmpty() || yurl_in_specs.isEmpty())
+		if(m2_out_specs.isEmpty() || zurl_out_specs.isEmpty() || zurl_in_specs.isEmpty())
 		{
-			log_error("must set m2_out_specs, yurl_out_specs, and yurl_in_specs");
+			log_error("must set m2_out_specs, zurl_out_specs, and zurl_in_specs");
 			emit q->quit();
 			return;
 		}
@@ -198,19 +203,19 @@ public:
 		foreach(const QString &url, m2_out_specs)
 			m2_out_sock->connectToAddress(url);
 
-		yurl_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
-		connect(yurl_out_sock, SIGNAL(messagesWritten(int)), SLOT(yurl_out_messagesWritten(int)));
-		foreach(const QString &url, yurl_out_specs)
-			yurl_out_sock->connectToAddress(url);
+		zurl_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
+		connect(zurl_out_sock, SIGNAL(messagesWritten(int)), SLOT(zurl_out_messagesWritten(int)));
+		foreach(const QString &url, zurl_out_specs)
+			zurl_out_sock->connectToAddress(url);
 
 		clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
 
-		yurl_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
-		connect(yurl_in_sock, SIGNAL(readyRead()), SLOT(yurl_in_readyRead()));
-		foreach(const QString &url, yurl_in_specs)
+		zurl_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
+		connect(zurl_in_sock, SIGNAL(readyRead()), SLOT(zurl_in_readyRead()));
+		foreach(const QString &url, zurl_in_specs)
 		{
-			yurl_in_sock->subscribe(clientId);
-			yurl_in_sock->connectToAddress(url);
+			zurl_in_sock->subscribe(clientId);
+			zurl_in_sock->connectToAddress(url);
 		}
 
 		if(!inspect_req_spec.isEmpty())
@@ -252,8 +257,8 @@ public:
 
 		log_info("IN m2 %s", qPrintable(TnetString::byteArrayToEscapedString(msg[0])));
 
-		HttpRequestPacket req;
-		if(!req.fromM2ByteArray(msg[0]))
+		M2RequestPacket req;
+		if(!req.fromByteArray(msg[0]))
 		{
 			log_warning("received message with invalid format, skipping");
 			return;
@@ -264,7 +269,7 @@ public:
 		handleIncomingRequest(req);
 	}
 
-	void handleIncomingRequest(const HttpRequestPacket &req)
+	void handleIncomingRequest(const M2RequestPacket &req)
 	{
 		printf("id=[%s] method=[%s], path=[%s]\n", req.id.data(), qPrintable(req.method), req.path.data());
 		printf("headers:\n");
@@ -272,14 +277,10 @@ public:
 			printf("  [%s] = [%s]\n", header.first.data(), header.second.data());
 		printf("body: [%s]\n", req.body.data());
 
-		HttpResponsePacket resp;
-		resp.sender = req.sender;
-		resp.id = req.id;
-		resp.data = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nok\n";
-
-		m2_out_sock->write(QList<QByteArray>() << resp.toM2ByteArray());
-		resp.data = QByteArray();
-		m2_out_sock->write(QList<QByteArray>() << resp.toM2ByteArray());
+		RequestSession *rs = new RequestSession(this);
+		connect(rs, SIGNAL(outgoingInspectRequest(const InspectRequestPacket &)), SLOT(rs_outgoingInspectRequest(const InspectRequestPacket &)));
+		connect(rs, SIGNAL(inspectFinished(const M2RequestPacket &, bool, const QByteArray &, const InspectResponsePacket *)), SLOT(rs_inspectFinished(const M2RequestPacket &, bool, const QByteArray &, const InspectResponsePacket *)));
+		rs->start(req);
 	}
 
 private slots:
@@ -299,13 +300,13 @@ private slots:
 		Q_UNUSED(count);
 	}
 
-	void yurl_out_messagesWritten(int count)
+	void zurl_out_messagesWritten(int count)
 	{
 		// TODO
 		Q_UNUSED(count);
 	}
 
-	void yurl_in_readyRead()
+	void zurl_in_readyRead()
 	{
 		// TODO
 	}
@@ -343,20 +344,73 @@ private slots:
 
 		log_info("IN retry %s", qPrintable(TnetString::variantToString(data)));
 
-		HttpRequestPacket req;
+		// FIXME: we should use our own internal (non-m2) format here
+		/*M2RequestPacket req;
 		if(!req.fromVariant(data))
 		{
 			log_warning("received message with invalid format, skipping");
 			return;
 		}
 
-		handleIncomingRequest(req);
+		handleIncomingRequest(req);*/
 	}
 
 	void accept_out_messagesWritten(int count)
 	{
 		// TODO
 		Q_UNUSED(count);
+	}
+
+	void rs_outgoingInspectRequest(const InspectRequestPacket &ireq)
+	{
+		// TODO
+		Q_UNUSED(ireq);
+
+		RequestSession *rs = (RequestSession *)sender();
+		rs->inspectError();
+	}
+
+	void rs_inspectFinished(const M2RequestPacket &hreq, bool doProxy, const QByteArray &sharingKey, const InspectResponsePacket *iresp)
+	{
+		// TODO
+		Q_UNUSED(sharingKey);
+		Q_UNUSED(iresp);
+
+		if(doProxy)
+		{
+			ProxySession *ps = new ProxySession(this);
+			connect(ps, SIGNAL(outgoingZurlRequest(const ZurlRequestPacket &)), SLOT(ps_outgoingZurlRequest(const ZurlRequestPacket &)));
+			connect(ps, SIGNAL(outgoingHttpResponse(const M2ResponsePacket &)), SLOT(ps_outgoingHttpResponse(const M2ResponsePacket &)));
+			connect(ps, SIGNAL(finishedForAccept(const InspectResponse &)), SLOT(ps_finishedForAccept(const InspectResponse &)));
+			ps->start(hreq);
+		}
+
+		/*HttpResponsePacket resp;
+		resp.sender = hreq.sender;
+		resp.id = hreq.id;
+		resp.data = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nok\n";
+
+		m2_out_sock->write(QList<QByteArray>() << resp.toByteArray());
+		resp.data = QByteArray();
+		m2_out_sock->write(QList<QByteArray>() << resp.toByteArray());*/
+	}
+
+	void ps_outgoingZurlRequest(const ZurlRequestPacket &zreq)
+	{
+		// TODO
+		zurl_out_sock->write(QList<QByteArray>() << TnetString::fromVariant(zreq.toVariant()));
+	}
+
+	void ps_outgoingHttpResponse(const M2ResponsePacket &hresp)
+	{
+		// TODO
+		Q_UNUSED(hresp);
+	}
+
+	void ps_finishedForAccept(const InspectResponse &iresp)
+	{
+		// TODO: if instructions were provided, then
+		Q_UNUSED(iresp);
 	}
 };
 

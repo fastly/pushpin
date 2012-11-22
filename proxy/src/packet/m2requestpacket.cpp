@@ -1,8 +1,8 @@
-#include "httprequestpacket.h"
+#include "m2requestpacket.h"
 
+#include <QSet>
 #include <qjson/parser.h>
 #include "tnetstring.h"
-#include <stdio.h>
 
 static bool isAllCaps(const QString &s)
 {
@@ -31,12 +31,13 @@ static QString makeMixedCaseHeader(const QString &s)
 	return out;
 }
 
-HttpRequestPacket::HttpRequestPacket() :
-	isHttps(false)
+M2RequestPacket::M2RequestPacket() :
+	isHttps(false),
+	uploadDone(false)
 {
 }
 
-bool HttpRequestPacket::fromM2ByteArray(const QByteArray &in)
+bool M2RequestPacket::fromByteArray(const QByteArray &in)
 {
 	int start = 0;
 	int end = in.indexOf(' ');
@@ -103,6 +104,27 @@ bool HttpRequestPacket::fromM2ByteArray(const QByteArray &in)
 	method = m2headers.value("METHOD");
 	path = m2headers.value("URI");
 
+	QByteArray uploadStartRaw = m2headers.value("x-mongrel2-upload-start");
+	QByteArray uploadDoneRaw = m2headers.value("x-mongrel2-upload-done");
+	if(!uploadDoneRaw.isEmpty())
+	{
+		// these headers much match for the packet to be valid. not
+		//   sure why mongrel2 can't enforce this for us but whatever
+		if(uploadStartRaw != uploadDoneRaw)
+			return false;
+
+		uploadFile = QString::fromUtf8(uploadDoneRaw);
+		uploadDone = true;
+	}
+	else if(!uploadStartRaw.isEmpty())
+	{
+		uploadFile = QString::fromUtf8(uploadStartRaw);
+	}
+
+	QSet<QString> skipHeaders;
+	skipHeaders += "x-mongrel2-upload-start";
+	skipHeaders += "x-mongrel2-upload-done";
+
 	headers.clear();
 	QMapIterator<QString, QByteArray> it(m2headers);
 	while(it.hasNext())
@@ -110,7 +132,7 @@ bool HttpRequestPacket::fromM2ByteArray(const QByteArray &in)
 		it.next();
 
 		QString key = it.key();
-		if(isAllCaps(key))
+		if(isAllCaps(key) || skipHeaders.contains(key))
 			continue;
 
 		headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), it.value());
@@ -130,13 +152,14 @@ bool HttpRequestPacket::fromM2ByteArray(const QByteArray &in)
 	return true;
 }
 
+#if 0
 bool HttpRequestPacket::fromVariant(const QVariant &in)
 {
 	if(in.type() != QVariant::Hash)
 		return false;
 
 	// TODO
-	/*QVariantHash obj = in.toHash();
+	QVariantHash obj = in.toHash();
 
 	if(!obj.contains("id") || obj["id"].type() != QVariant::ByteArray)
 		return false;
@@ -205,7 +228,8 @@ bool HttpRequestPacket::fromVariant(const QVariant &in)
 		connectHost = QString::fromUtf8(obj["connect-host"].toByteArray());
 	}
 
-	userData = obj["user-data"];*/
+	userData = obj["user-data"];
 
 	return true;
 }
+#endif

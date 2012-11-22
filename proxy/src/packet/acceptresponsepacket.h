@@ -2,7 +2,7 @@
 #define ACCEPTRESPONSEPACKET_H
 
 #include <QVariant>
-#include "httprequestpacket.h"
+#include "m2requestpacket.h"
 #include "inspectresponsepacket.h"
 
 class AcceptResponsePacket
@@ -22,11 +22,14 @@ public:
 		}
 	};
 
-	QList<HttpRequestPacket> requests;
+	QList<M2RequestPacket> requests;
 	InspectResponsePacket *inspectInfo;
 	Response *response;
 
 	AcceptResponsePacket();
+	AcceptResponsePacket(const AcceptResponsePacket &from);
+	~AcceptResponsePacket();
+	AcceptResponsePacket & operator=(const AcceptResponsePacket &from);
 
 	QVariant toVariant() const;
 };

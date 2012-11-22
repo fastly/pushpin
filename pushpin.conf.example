@@ -1,26 +1,26 @@
 [proxy]
-# list of mongrel2 to connect to for PULLing plain HTTP (non-HTTPS) requests
+# list of connect PULL for receiving mongrel2 plain HTTP requests
 m2_in_specs=tcp://127.0.0.1:9999,tcp://127.0.0.1:9997
 
-# list of mongrel2 to connect to for PULLing HTTPS requests
+# list of connect PULL for receiving mongrel2 HTTPS requests
 m2https_in_specs=tcp://127.0.0.1:9995
 
-# list of mongrel2 to connect to for PUBing HTTP responses
-m2_out_specs=tcp://127.0.0.1:9996
+# list of connect PUB for sending mongrel2 HTTP/HTTPS responses
+m2_out_specs=tcp://127.0.0.1:9998
 
-# list of yurl to connect to for PUSHing HTTP requests
-yurl_out_specs=tcp://127.0.0.1:5550
+# list of connect PUSH for sending zurl HTTP requests
+zurl_out_specs=tcp://127.0.0.1:5550
 
-# list of yurl to connect to for SUBing HTTP responses
-yurl_in_specs=tcp://127.0.0.1:5551
+# list of connect SUB for receiving zurl HTTP responses
+zurl_in_specs=tcp://127.0.0.1:5551
 
-# bind for REQing inspection info (internal, used with handler)
+# bind DEALER for requesting inspection info (internal, used with handler)
 handler_inspect_spec=ipc:///tmp/pushpin-inspect
 
-# bind for PULLing HTTP requests (internal, used with handler)
+# bind PULL for receiving HTTP requests (internal, used with handler)
 handler_retry_in_spec=ipc:///tmp/pushpin-retry
 
-# bind for PUSHing HTTP requests (internal, used with handler)
+# bind PUSH for sending HTTP requests (internal, used with handler)
 handler_accept_out_spec=ipc:///tmp/pushpin-accept
 
 # file of domain/origin mappings
@@ -28,16 +28,16 @@ domainsfile=domains.example
 
 
 [handler]
-# connect for REPing inspection info (internal, used with proxy)
+# connect REP for responding with inspection info (internal, used with proxy)
 proxy_inspect_spec=ipc:///tmp/pushpin-inspect
 
-# connect for PUSHing HTTP requests (internal, used with proxy)
+# connect PUSH for sending HTTP requests (internal, used with proxy)
 proxy_retry_out_spec=ipc:///tmp/pushpin-retry
 
-# connect for PULLing HTTP requests (internal, used with proxy)
+# connect PULL for receiving HTTP requests (internal, used with proxy)
 proxy_accept_in_spec=ipc:///tmp/pushpin-accept
 
-# list of mongrel2 to connect to for PUBing HTTP responses
+# list of connect PUB for sending mongrel2 HTTP/HTTPS responses
 m2_out_specs=tcp://127.0.0.1:9998
 
 # redis server to use for storing state
@@ -45,5 +45,5 @@ redis_host=127.0.0.1
 redis_port=6379
 redis_prefix=pushpin-
 
-# bind for PULLing publish requests
+# bind PULL for receiving publish requests
 push_in_spec=tcp://*:5560
