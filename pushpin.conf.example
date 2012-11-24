@@ -11,16 +11,19 @@ m2_out_specs=tcp://127.0.0.1:9998
 # list of connect PUSH for sending zurl HTTP requests
 zurl_out_specs=tcp://127.0.0.1:5550
 
+# list of connect ROUTER for continuing zurl HTTP requests
+zurl_out_stream_specs=tcp://127.0.0.1:5551
+
 # list of connect SUB for receiving zurl HTTP responses
-zurl_in_specs=tcp://127.0.0.1:5551
+zurl_in_specs=tcp://127.0.0.1:5552
 
 # bind DEALER for requesting inspection info (internal, used with handler)
 handler_inspect_spec=ipc:///tmp/pushpin-inspect
 
-# bind PULL for receiving HTTP requests (internal, used with handler)
+# bind PULL for receiving retry requests (internal, used with handler)
 handler_retry_in_spec=ipc:///tmp/pushpin-retry
 
-# bind PUSH for sending HTTP requests (internal, used with handler)
+# bind PUSH for passing off requests (internal, used with handler)
 handler_accept_out_spec=ipc:///tmp/pushpin-accept
 
 # file of domain/origin mappings
@@ -45,5 +48,8 @@ redis_host=127.0.0.1
 redis_port=6379
 redis_prefix=pushpin-
 
-# bind PULL for receiving publish requests
+# bind PULL for receiving publish commands
 push_in_spec=tcp://*:5560
+
+# port to listen on for receiving publish commands via HTTP
+push_in_http_port=5561
