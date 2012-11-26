@@ -32,7 +32,6 @@ static QString makeMixedCaseHeader(const QString &s)
 }
 
 M2RequestPacket::M2RequestPacket() :
-	isHttps(false),
 	uploadDone(false)
 {
 }
@@ -108,7 +107,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	QByteArray uploadDoneRaw = m2headers.value("x-mongrel2-upload-done");
 	if(!uploadDoneRaw.isEmpty())
 	{
-		// these headers much match for the packet to be valid. not
+		// these headers must match for the packet to be valid. not
 		//   sure why mongrel2 can't enforce this for us but whatever
 		if(uploadStartRaw != uploadDoneRaw)
 			return false;

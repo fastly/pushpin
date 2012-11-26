@@ -3,7 +3,7 @@
 m2_in_specs=tcp://127.0.0.1:9999,tcp://127.0.0.1:9997
 
 # list of connect PULL for receiving mongrel2 HTTPS requests
-m2https_in_specs=tcp://127.0.0.1:9995
+m2_inhttps_specs=tcp://127.0.0.1:9995
 
 # list of connect PUB for sending mongrel2 HTTP/HTTPS responses
 m2_out_specs=tcp://127.0.0.1:9998
