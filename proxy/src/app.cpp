@@ -13,6 +13,8 @@
 #include "m2manager.h"
 #include "m2request.h"
 #include "m2response.h"
+#include "zurlmanager.h"
+#include "zurlrequest.h"
 //#include "requestsession.h"
 //#include "proxysession.h"
 
@@ -29,8 +31,7 @@ public:
 	bool verbose;
 	QByteArray clientId;
 	M2Manager *m2;
-	QZmq::Socket *zurl_in_sock;
-	QZmq::Socket *zurl_out_sock;
+	ZurlManager *zurl;
 	QZmq::Socket *inspect_req_sock;
 	QZmq::Socket *retry_in_sock;
 	QZmq::Socket *accept_out_sock;
@@ -42,8 +43,7 @@ public:
 		q(_q),
 		verbose(false),
 		m2(0),
-		zurl_in_sock(0),
-		zurl_out_sock(0),
+		zurl(0),
 		inspect_req_sock(0),
 		retry_in_sock(0),
 		accept_out_sock(0),
@@ -161,6 +161,7 @@ public:
 		QStringList m2_inhttps_specs = settings.value("proxy/m2_inhttps_specs").toStringList();
 		QStringList m2_out_specs = settings.value("proxy/m2_out_specs").toStringList();
 		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
+		QStringList zurl_out_stream_specs = settings.value("proxy/zurl_out_stream_specs").toStringList();
 		QStringList zurl_in_specs = settings.value("proxy/zurl_in_specs").toStringList();
 		QString inspect_req_spec = settings.value("proxy/inspect_req_spec").toString();
 		QString retry_in_spec = settings.value("proxy/retry_in_spec").toString();
@@ -174,9 +175,9 @@ public:
 			return;
 		}
 
-		if(m2_out_specs.isEmpty() || zurl_out_specs.isEmpty() || zurl_in_specs.isEmpty())
+		if(m2_out_specs.isEmpty() || zurl_out_specs.isEmpty() || zurl_out_stream_specs.isEmpty() || zurl_in_specs.isEmpty())
 		{
-			log_error("must set m2_out_specs, zurl_out_specs, and zurl_in_specs");
+			log_error("must set m2_out_specs, zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
 			emit q->quit();
 			return;
 		}
@@ -192,20 +193,14 @@ public:
 
 		m2->setOutgoingSpecs(m2_out_specs);
 
-		zurl_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
-		connect(zurl_out_sock, SIGNAL(messagesWritten(int)), SLOT(zurl_out_messagesWritten(int)));
-		foreach(const QString &url, zurl_out_specs)
-			zurl_out_sock->connectToAddress(url);
-
 		clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
 
-		zurl_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
-		connect(zurl_in_sock, SIGNAL(readyRead()), SLOT(zurl_in_readyRead()));
-		foreach(const QString &url, zurl_in_specs)
-		{
-			zurl_in_sock->subscribe(clientId);
-			zurl_in_sock->connectToAddress(url);
-		}
+		zurl = new ZurlManager(this);
+		zurl->setClientId(clientId);
+
+		zurl->setOutgoingSpecs(zurl_out_specs);
+		zurl->setOutgoingStreamSpecs(zurl_out_stream_specs);
+		zurl->setIncomingSpecs(zurl_in_specs);
 
 		if(!inspect_req_spec.isEmpty())
 		{
@@ -272,33 +267,76 @@ public:
 		rs->start(req);
 	}*/
 
+	M2Request *req;
+	ZurlRequest *zr;
+	bool firstRead;
+
 private slots:
 	void m2_requestReady()
 	{
 		//handleM2Request(m2_in_sock, false);
-		M2Request *req = m2->takeNext();
+		req = m2->takeNext();
 		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
 		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+
+		zr = zurl->createRequest();
+		connect(zr, SIGNAL(readyRead()), SLOT(zr_readyRead()));
+		connect(zr, SIGNAL(bytesWritten(int)), SLOT(zr_bytesWritten(int)));
+		connect(zr, SIGNAL(error()), SLOT(zr_error()));
+		QUrl url(QByteArray("http://localhost:9000") + req->path());
+		zr->start(req->method(), url, req->headers());
 	}
 
 	void req_readyRead()
 	{
-		M2Request *req = (M2Request *)sender();
+		//M2Request *req = (M2Request *)sender();
 		QByteArray buf = req->read();
 		printf("got chunk: %d\n", buf.size());
+		zr->writeBody(buf);
 	}
 
 	void req_finished()
 	{
 		printf("finished\n");
-		M2Request *req = (M2Request *)sender();
+		//M2Request *req = (M2Request *)sender();
+		zr->endBody();
+		firstRead = true;
+	}
+
+	void zr_readyRead()
+	{
+		printf("zr_readyRead\n");
 		M2Response *resp = m2->createResponse(req->rid());
-		HttpHeaders headers;
-		QByteArray str = "body.size=" + QByteArray::number(req->actualContentLength()) + '\n';
-		delete req;
-		headers += HttpHeader("Content-Length", QByteArray::number(str.length()));
-		resp->write(200, "OK", headers, str);
+		if(firstRead)
+		{
+			//HttpHeaders headers;
+			//QByteArray str = "body.size=" + QByteArray::number(req->actualContentLength()) + '\n';
+			//delete req;
+			//headers += HttpHeader("Content-Length", QByteArray::number(str.length()));
+			//resp->write(200, "OK", headers, str);
+			//delete resp;
+			resp->write(zr->responseCode(), zr->responseStatus(), zr->responseHeaders(), zr->readResponseBody());
+		}
+		else
+			resp->write(zr->readResponseBody());
+
 		delete resp;
+
+		if(zr->isFinished())
+		{
+			delete req;
+			delete zr;
+		}
+	}
+
+	void zr_bytesWritten(int count)
+	{
+		printf("zr_bytesWritten\n");
+	}
+
+	void zr_error()
+	{
+		printf("zr_error\n");
 	}
 
 	void zurl_out_messagesWritten(int count)
@@ -403,7 +441,7 @@ private slots:
 	void ps_outgoingZurlRequest(const ZurlRequestPacket &zreq)
 	{
 		// TODO
-		zurl_out_sock->write(QList<QByteArray>() << TnetString::fromVariant(zreq.toVariant()));
+		//zurl_out_sock->write(QList<QByteArray>() << TnetString::fromVariant(zreq.toVariant()));
 	}
 
 	void ps_outgoingHttpResponse(const M2ResponsePacket &hresp)

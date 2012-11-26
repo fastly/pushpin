@@ -6,6 +6,7 @@
 
 class QUrl;
 
+class ZurlResponsePacket;
 class ZurlManager;
 
 class ZurlRequest : public QObject
@@ -22,7 +23,12 @@ public:
 			ErrorTimeout
 	};
 
+	// pair of sender + request id
+	typedef QPair<QByteArray, QByteArray> Rid;
+
 	~ZurlRequest();
+
+	Rid rid() const;
 
 	void setConnectHost(const QString &host);
 
@@ -55,9 +61,8 @@ private:
 
 	friend class ZurlManager;
 	ZurlRequest(QObject *parent = 0);
-	//bool handle(M2Manager *manager, const M2RequestPacket &packet, bool https);
-	//void activate();
-	//void uploadDone();
+	void setup(ZurlManager *manager);
+	void handle(const ZurlResponsePacket &packet);
 };
 
 #endif

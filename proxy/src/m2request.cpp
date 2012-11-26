@@ -185,7 +185,8 @@ QByteArray M2Request::read()
 {
 	QByteArray out = d->in;
 	d->in.clear();
-	QMetaObject::invokeMethod(d, "doRead", Qt::QueuedConnection);
+	if(d->file)
+		QMetaObject::invokeMethod(d, "doRead", Qt::QueuedConnection);
 	return out;
 }
 

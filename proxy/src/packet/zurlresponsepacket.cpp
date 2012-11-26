@@ -74,3 +74,7 @@ QVariant ZurlResponsePacket::toVariant() const
 
 	return obj;
 }
+
+bool ZurlResponsePacket::fromVariant(const QVariant &in)
+{
+}

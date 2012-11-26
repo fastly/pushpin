@@ -42,6 +42,7 @@ public:
 	ZurlResponsePacket();
 
 	QVariant toVariant() const;
+	bool fromVariant(const QVariant &in);
 };
 
 #endif

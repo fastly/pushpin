@@ -14,10 +14,11 @@ class M2Response : public QObject
 public:
 	~M2Response();
 
-	void write(int code, const QString &status, const HttpHeaders &headers, const QByteArray &body);
+	void write(int code, const QByteArray &status, const HttpHeaders &headers, const QByteArray &body);
+	void write(const QByteArray &body);
 
 signals:
-	void finished();
+	//void finished();
 	void error();
 
 private:

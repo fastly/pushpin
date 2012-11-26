@@ -3,6 +3,7 @@
 
 #include <QObject>
 
+class ZurlRequestPacket;
 class ZurlRequest;
 
 class ZurlManager : public QObject
@@ -13,6 +14,9 @@ public:
 	ZurlManager(QObject *parent = 0);
 	~ZurlManager();
 
+	QByteArray clientId() const;
+
+	void setClientId(const QByteArray &id);
 	bool setOutgoingSpecs(const QStringList &specs);
 	bool setOutgoingStreamSpecs(const QStringList &specs);
 	bool setIncomingSpecs(const QStringList &specs);
@@ -25,8 +29,10 @@ private:
 	Private *d;
 
 	friend class ZurlRequest;
-	//void unlink(M2Request *req);
-	//void writeResponse(const M2ResponsePacket &packet);
+	void link(ZurlRequest *req);
+	void unlink(ZurlRequest *req);
+	void write(const ZurlRequestPacket &packet);
+	void write(const ZurlRequestPacket &packet, const QByteArray &instanceAddress);
 };
 
 #endif
