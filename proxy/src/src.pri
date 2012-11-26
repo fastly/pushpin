@@ -24,12 +24,22 @@ SOURCES += \
 	$$PWD/packet/acceptresponsepacket.cpp
 
 HEADERS += \
-	$$PWD/requestsession.h \
-	$$PWD/proxysession.h \
+	$$PWD/m2manager.h \
+	$$PWD/m2request.h \
+	$$PWD/m2response.h \
+	$$PWD/zurlmanager.h \
+	$$PWD/zurlrequest.h \
+	#$$PWD/requestsession.h \
+	#$$PWD/proxysession.h \
 	$$PWD/app.h
 
 SOURCES += \
-	$$PWD/requestsession.cpp \
-	$$PWD/proxysession.cpp \
+	$$PWD/m2manager.cpp \
+	$$PWD/m2request.cpp \
+	$$PWD/m2response.cpp \
+	$$PWD/zurlmanager.cpp \
+	$$PWD/zurlrequest.cpp \
+	#$$PWD/requestsession.cpp \
+	#$$PWD/proxysession.cpp \
 	$$PWD/app.cpp \
 	$$PWD/main.cpp

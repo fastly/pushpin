@@ -9,7 +9,6 @@ class M2RequestPacket
 public:
 	QByteArray sender;
 	QByteArray id;
-	bool isHttps;
 
 	QString method;
 	QByteArray path;

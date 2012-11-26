@@ -10,8 +10,11 @@
 #include "packet/inspectresponsepacket.h"
 #include "packet/zurlrequestpacket.h"
 #include "packet/zurlresponsepacket.h"
-#include "requestsession.h"
-#include "proxysession.h"
+#include "m2manager.h"
+#include "m2request.h"
+#include "m2response.h"
+//#include "requestsession.h"
+//#include "proxysession.h"
 
 #include "app.h"
 
@@ -25,9 +28,7 @@ public:
 	App *q;
 	bool verbose;
 	QByteArray clientId;
-	QZmq::Socket *m2_in_sock;
-	QZmq::Socket *m2https_in_sock;
-	QZmq::Socket *m2_out_sock;
+	M2Manager *m2;
 	QZmq::Socket *zurl_in_sock;
 	QZmq::Socket *zurl_out_sock;
 	QZmq::Socket *inspect_req_sock;
@@ -40,9 +41,7 @@ public:
 		QObject(_q),
 		q(_q),
 		verbose(false),
-		m2_in_sock(0),
-		m2https_in_sock(0),
-		m2_out_sock(0),
+		m2(0),
 		zurl_in_sock(0),
 		zurl_out_sock(0),
 		inspect_req_sock(0),
@@ -159,7 +158,7 @@ public:
 		QSettings settings(configFile, QSettings::IniFormat);
 
 		QStringList m2_in_specs = settings.value("proxy/m2_in_specs").toStringList();
-		QStringList m2https_in_specs = settings.value("proxy/m2https_in_specs").toStringList();
+		QStringList m2_inhttps_specs = settings.value("proxy/m2_inhttps_specs").toStringList();
 		QStringList m2_out_specs = settings.value("proxy/m2_out_specs").toStringList();
 		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
 		QStringList zurl_in_specs = settings.value("proxy/zurl_in_specs").toStringList();
@@ -168,9 +167,9 @@ public:
 		QString accept_out_spec = settings.value("proxy/accept_out_spec").toString();
 		maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 
-		if(m2_in_specs.isEmpty() && m2https_in_specs.isEmpty())
+		if(m2_in_specs.isEmpty() && m2_inhttps_specs.isEmpty())
 		{
-			log_error("must set one of m2_in_specs or m2https_in_specs");
+			log_error("must set at least one of m2_in_specs and m2_inhttps_specs");
 			emit q->quit();
 			return;
 		}
@@ -182,26 +181,16 @@ public:
 			return;
 		}
 
+		m2 = new M2Manager(this);
+		connect(m2, SIGNAL(requestReady()), SLOT(m2_requestReady()));
+
 		if(!m2_in_specs.isEmpty())
-		{
-			m2_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
-			connect(m2_in_sock, SIGNAL(readyRead()), SLOT(m2_in_readyRead()));
-			foreach(const QString &url, m2_in_specs)
-				m2_in_sock->connectToAddress(url);
-		}
+			m2->setIncomingPlainSpecs(m2_in_specs);
 
-		if(!m2https_in_specs.isEmpty())
-		{
-			m2https_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
-			connect(m2https_in_sock, SIGNAL(readyRead()), SLOT(m2https_in_readyRead()));
-			foreach(const QString &url, m2https_in_specs)
-				m2https_in_sock->connectToAddress(url);
-		}
+		if(!m2_inhttps_specs.isEmpty())
+			m2->setIncomingHttpsSpecs(m2_inhttps_specs);
 
-		m2_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
-		connect(m2_out_sock, SIGNAL(messagesWritten(int)), SLOT(m2_out_messagesWritten(int)));
-		foreach(const QString &url, m2_out_specs)
-			m2_out_sock->connectToAddress(url);
+		m2->setOutgoingSpecs(m2_out_specs);
 
 		zurl_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 		connect(zurl_out_sock, SIGNAL(messagesWritten(int)), SLOT(zurl_out_messagesWritten(int)));
@@ -243,7 +232,7 @@ public:
 		log_info("started");
 	}
 
-	void handleM2Request(QZmq::Socket *sock, bool https)
+	/*void handleM2Request(QZmq::Socket *sock, bool https)
 	{
 		if(maxWorkers != -1 && workers >= maxWorkers)
 			return;
@@ -281,23 +270,35 @@ public:
 		connect(rs, SIGNAL(outgoingInspectRequest(const InspectRequestPacket &)), SLOT(rs_outgoingInspectRequest(const InspectRequestPacket &)));
 		connect(rs, SIGNAL(inspectFinished(const M2RequestPacket &, bool, const QByteArray &, const InspectResponsePacket *)), SLOT(rs_inspectFinished(const M2RequestPacket &, bool, const QByteArray &, const InspectResponsePacket *)));
 		rs->start(req);
-	}
+	}*/
 
 private slots:
-	void m2_in_readyRead()
+	void m2_requestReady()
 	{
-		handleM2Request(m2_in_sock, false);
+		//handleM2Request(m2_in_sock, false);
+		M2Request *req = m2->takeNext();
+		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
+		connect(req, SIGNAL(finished()), SLOT(req_finished()));
 	}
 
-	void m2https_in_readyRead()
+	void req_readyRead()
 	{
-		handleM2Request(m2https_in_sock, true);
+		M2Request *req = (M2Request *)sender();
+		QByteArray buf = req->read();
+		printf("got chunk: %d\n", buf.size());
 	}
 
-	void m2_out_messagesWritten(int count)
+	void req_finished()
 	{
-		// TODO
-		Q_UNUSED(count);
+		printf("finished\n");
+		M2Request *req = (M2Request *)sender();
+		M2Response *resp = m2->createResponse(req->rid());
+		HttpHeaders headers;
+		QByteArray str = "body.size=" + QByteArray::number(req->actualContentLength()) + '\n';
+		delete req;
+		headers += HttpHeader("Content-Length", QByteArray::number(str.length()));
+		resp->write(200, "OK", headers, str);
+		delete resp;
 	}
 
 	void zurl_out_messagesWritten(int count)
@@ -324,6 +325,7 @@ private slots:
 
 	void retry_in_readyRead()
 	{
+#if 0
 		if(maxWorkers != -1 && workers >= maxWorkers)
 			return;
 
@@ -353,6 +355,7 @@ private slots:
 		}
 
 		handleIncomingRequest(req);*/
+#endif
 	}
 
 	void accept_out_messagesWritten(int count)
@@ -366,10 +369,11 @@ private slots:
 		// TODO
 		Q_UNUSED(ireq);
 
-		RequestSession *rs = (RequestSession *)sender();
-		rs->inspectError();
+		//RequestSession *rs = (RequestSession *)sender();
+		//rs->inspectError();
 	}
 
+#if 0
 	void rs_inspectFinished(const M2RequestPacket &hreq, bool doProxy, const QByteArray &sharingKey, const InspectResponsePacket *iresp)
 	{
 		// TODO
@@ -394,6 +398,7 @@ private slots:
 		resp.data = QByteArray();
 		m2_out_sock->write(QList<QByteArray>() << resp.toByteArray());*/
 	}
+#endif
 
 	void ps_outgoingZurlRequest(const ZurlRequestPacket &zreq)
 	{
@@ -407,11 +412,11 @@ private slots:
 		Q_UNUSED(hresp);
 	}
 
-	void ps_finishedForAccept(const InspectResponse &iresp)
+	/*void ps_finishedForAccept(const InspectResponse &iresp)
 	{
 		// TODO: if instructions were provided, then
 		Q_UNUSED(iresp);
-	}
+	}*/
 };
 
 App::App(QObject *parent) :
