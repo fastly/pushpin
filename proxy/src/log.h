@@ -15,39 +15,21 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "httpheaders.h"
+#ifndef LOG_H
+#define LOG_H
 
-QByteArray HttpHeaders::get(const QByteArray &key) const
-{
-	for(int n = 0; n < count(); ++n)
-	{
-		const HttpHeader &h = at(n);
-		if(qstricmp(h.first.data(), key.data()) == 0)
-			return at(n).second;
-	}
+// really simply logging stuff
 
-	return QByteArray();
-}
+#define LOG_LEVEL_ERROR   0
+#define LOG_LEVEL_WARNING 1
+#define LOG_LEVEL_INFO    2
+#define LOG_LEVEL_DEBUG   3
 
-bool HttpHeaders::contains(const QByteArray &key) const
-{
-	for(int n = 0; n < count(); ++n)
-	{
-		if(qstricmp(at(n).first.data(), key.data()) == 0)
-			return true;
-	}
+void log_setOutputLevel(int level);
 
-	return false;
-}
+void log_error(const char *fmt, ...);
+void log_warning(const char *fmt, ...);
+void log_info(const char *fmt, ...);
+void log_debug(const char *fmt, ...);
 
-void HttpHeaders::removeAll(const QByteArray &key)
-{
-	for(int n = 0; n < count(); ++n)
-	{
-		if(qstricmp(at(n).first.data(), key.data()) == 0)
-		{
-			removeAt(n);
-			--n; // adjust position
-		}
-	}
-}
+#endif

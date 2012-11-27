@@ -1,24 +1,25 @@
+#include "app.h"
+
 #include <QCoreApplication>
 #include <QStringList>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
 #include <QSettings>
 #include "qzmqsocket.h"
 #include "packet/tnetstring.h"
-#include "packet/m2requestpacket.h"
-#include "packet/m2responsepacket.h"
-#include "packet/inspectrequestpacket.h"
-#include "packet/inspectresponsepacket.h"
-#include "packet/zurlrequestpacket.h"
-#include "packet/zurlresponsepacket.h"
+#include "log.h"
+#include "inspectdata.h"
+#include "acceptdata.h"
 #include "m2manager.h"
 #include "m2request.h"
 #include "m2response.h"
 #include "zurlmanager.h"
 #include "zurlrequest.h"
-//#include "requestsession.h"
-//#include "proxysession.h"
-
-#include "app.h"
+#include "inspectmanager.h"
+#include "domainmap.h"
+#include "requestsession.h"
+#include "proxysession.h"
 
 #define VERSION "1.0"
 
@@ -32,9 +33,10 @@ public:
 	QByteArray clientId;
 	M2Manager *m2;
 	ZurlManager *zurl;
-	QZmq::Socket *inspect_req_sock;
-	QZmq::Socket *retry_in_sock;
-	QZmq::Socket *accept_out_sock;
+	InspectManager *inspect;
+	DomainMap *domainMap;
+	QZmq::Socket *handler_retry_in_sock;
+	QZmq::Socket *handler_accept_out_sock;
 	int workers;
 	int maxWorkers;
 
@@ -44,56 +46,12 @@ public:
 		verbose(false),
 		m2(0),
 		zurl(0),
-		inspect_req_sock(0),
-		retry_in_sock(0),
-		accept_out_sock(0),
+		inspect(0),
+		domainMap(0),
+		handler_retry_in_sock(0),
+		handler_accept_out_sock(0),
 		workers(0)
 	{
-	}
-
-	void log(int level, const char *fmt, va_list ap) const
-	{
-		if(level <= 1 || verbose)
-		{
-			QString str;
-			str.vsprintf(fmt, ap);
-
-			const char *lstr;
-			switch(level)
-			{
-				case 0: lstr = "ERR"; break;
-				case 1: lstr = "WARN"; break;
-				case 2:
-				default:
-					lstr = "INFO"; break;
-			}
-
-			fprintf(stderr, "[%s] %s\n", lstr, qPrintable(str));
-		}
-	}
-
-	void log_info(const char *fmt, ...) const
-	{
-		va_list ap;
-		va_start(ap, fmt);
-		log(2, fmt, ap);
-		va_end(ap);
-	}
-
-	void log_warning(const char *fmt, ...) const
-	{
-		va_list ap;
-		va_start(ap, fmt);
-		log(1, fmt, ap);
-		va_end(ap);
-	}
-
-	void log_error(const char *fmt, ...) const
-	{
-		va_list ap;
-		va_start(ap, fmt);
-		log(0, fmt, ap);
-		va_end(ap);
 	}
 
 	void start()
@@ -138,7 +96,9 @@ public:
 		}
 
 		if(options.contains("verbose"))
-			verbose = true;
+			log_setOutputLevel(LOG_LEVEL_DEBUG);
+		else
+			log_setOutputLevel(LOG_LEVEL_WARNING);
 
 		QString configFile = options["config"];
 		if(configFile.isEmpty())
@@ -163,10 +123,21 @@ public:
 		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
 		QStringList zurl_out_stream_specs = settings.value("proxy/zurl_out_stream_specs").toStringList();
 		QStringList zurl_in_specs = settings.value("proxy/zurl_in_specs").toStringList();
-		QString inspect_req_spec = settings.value("proxy/inspect_req_spec").toString();
-		QString retry_in_spec = settings.value("proxy/retry_in_spec").toString();
-		QString accept_out_spec = settings.value("proxy/accept_out_spec").toString();
-		maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
+		QString handler_inspect_spec = settings.value("proxy/handler_inspect_spec").toString();
+		QString handler_retry_in_spec = settings.value("proxy/handler_retry_in_spec").toString();
+		QString handler_accept_out_spec = settings.value("proxy/handler_accept_out_spec").toString();
+		//maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
+		QString domainsfile = settings.value("proxy/domainsfile").toString();
+
+		// if domainsfile is a relative path, then use it relative to the config file location
+		QFileInfo fi(domainsfile);
+		if(fi.isRelative())
+		{
+			QString fname = fi.fileName();
+			domainsfile = QFileInfo(QDir(QFileInfo(configFile).absolutePath()), fname).filePath();
+		}
+
+		domainMap = new DomainMap(domainsfile);
 
 		if(m2_in_specs.isEmpty() && m2_inhttps_specs.isEmpty())
 		{
@@ -202,166 +173,132 @@ public:
 		zurl->setOutgoingStreamSpecs(zurl_out_stream_specs);
 		zurl->setIncomingSpecs(zurl_in_specs);
 
-		if(!inspect_req_spec.isEmpty())
+		if(!handler_inspect_spec.isEmpty())
 		{
-			inspect_req_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
-			connect(inspect_req_sock, SIGNAL(readyRead()), SLOT(inspect_req_readyRead()));
-			connect(inspect_req_sock, SIGNAL(messagesWritten(int)), SLOT(inspect_req_messagesWritten(int)));
-			inspect_req_sock->bind(inspect_req_spec);
+			inspect = new InspectManager(this);
+			if(!inspect->setSpec(handler_inspect_spec))
+			{
+				log_error("unable to bind to handler_inspect_spec: %s", qPrintable(handler_inspect_spec));
+				emit q->quit();
+				return;
+			}
 		}
 
-		if(!retry_in_spec.isEmpty())
+		if(!handler_retry_in_spec.isEmpty())
 		{
-			retry_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
-			connect(retry_in_sock, SIGNAL(readyRead()), SLOT(retry_in_readyRead()));
-			retry_in_sock->bind(retry_in_spec);
+			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			connect(handler_retry_in_sock, SIGNAL(readyRead()), SLOT(handler_retry_in_readyRead()));
+			if(!handler_retry_in_sock->bind(handler_retry_in_spec))
+			{
+				log_error("unable to bind to handler_retry_in_spec: %s", qPrintable(handler_retry_in_spec));
+				emit q->quit();
+				return;
+			}
 		}
 
-		if(!accept_out_spec.isEmpty())
+		if(!handler_accept_out_spec.isEmpty())
 		{
-			accept_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
-			connect(accept_out_sock, SIGNAL(messagesWritten(int)), SLOT(accept_out_messagesWritten(int)));
-			accept_out_sock->bind(accept_out_spec);
+			handler_accept_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
+			connect(handler_accept_out_sock, SIGNAL(messagesWritten(int)), SLOT(handler_accept_out_messagesWritten(int)));
+			if(!handler_accept_out_sock->bind(handler_accept_out_spec))
+			{
+				log_error("unable to bind to handler_accept_out_spec: %s", qPrintable(handler_accept_out_spec));
+				emit q->quit();
+				return;
+			}
 		}
 
 		log_info("started");
 	}
 
-	/*void handleM2Request(QZmq::Socket *sock, bool https)
-	{
-		if(maxWorkers != -1 && workers >= maxWorkers)
-			return;
-
-		QList<QByteArray> msg = sock->read();
-		if(msg.count() != 1)
-		{
-			log_warning("received message with parts != 1, skipping");
-			return;
-		}
-
-		log_info("IN m2 %s", qPrintable(TnetString::byteArrayToEscapedString(msg[0])));
-
-		M2RequestPacket req;
-		if(!req.fromByteArray(msg[0]))
-		{
-			log_warning("received message with invalid format, skipping");
-			return;
-		}
-
-		req.isHttps = https;
-
-		handleIncomingRequest(req);
-	}
-
-	void handleIncomingRequest(const M2RequestPacket &req)
-	{
-		printf("id=[%s] method=[%s], path=[%s]\n", req.id.data(), qPrintable(req.method), req.path.data());
-		printf("headers:\n");
-		foreach(const HttpHeader &header, req.headers)
-			printf("  [%s] = [%s]\n", header.first.data(), header.second.data());
-		printf("body: [%s]\n", req.body.data());
-
-		RequestSession *rs = new RequestSession(this);
-		connect(rs, SIGNAL(outgoingInspectRequest(const InspectRequestPacket &)), SLOT(rs_outgoingInspectRequest(const InspectRequestPacket &)));
-		connect(rs, SIGNAL(inspectFinished(const M2RequestPacket &, bool, const QByteArray &, const InspectResponsePacket *)), SLOT(rs_inspectFinished(const M2RequestPacket &, bool, const QByteArray &, const InspectResponsePacket *)));
-		rs->start(req);
-	}*/
-
-	M2Request *req;
-	ZurlRequest *zr;
-	bool firstRead;
-
 private slots:
 	void m2_requestReady()
 	{
-		//handleM2Request(m2_in_sock, false);
-		req = m2->takeNext();
-		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		M2Request *req = m2->takeNext();
 
-		zr = zurl->createRequest();
-		connect(zr, SIGNAL(readyRead()), SLOT(zr_readyRead()));
-		connect(zr, SIGNAL(bytesWritten(int)), SLOT(zr_bytesWritten(int)));
-		connect(zr, SIGNAL(error()), SLOT(zr_error()));
-		QUrl url(QByteArray("http://localhost:9000") + req->path());
-		zr->start(req->method(), url, req->headers());
-	}
-
-	void req_readyRead()
-	{
-		//M2Request *req = (M2Request *)sender();
-		QByteArray buf = req->read();
-		printf("got chunk: %d\n", buf.size());
-		zr->writeBody(buf);
-	}
-
-	void req_finished()
-	{
-		printf("finished\n");
-		//M2Request *req = (M2Request *)sender();
-		zr->endBody();
-		firstRead = true;
-	}
-
-	void zr_readyRead()
-	{
-		printf("zr_readyRead\n");
-		M2Response *resp = m2->createResponse(req->rid());
-		if(firstRead)
+		QByteArray host = req->headers().get("host");
+		if(host.isEmpty())
 		{
-			//HttpHeaders headers;
-			//QByteArray str = "body.size=" + QByteArray::number(req->actualContentLength()) + '\n';
-			//delete req;
-			//headers += HttpHeader("Content-Length", QByteArray::number(str.length()));
-			//resp->write(200, "OK", headers, str);
-			//delete resp;
-			resp->write(zr->responseCode(), zr->responseStatus(), zr->responseHeaders(), zr->readResponseBody());
+			// TODO: log warning, skip because of no host value
+			return;
+		}
+
+		QString shost = QString::fromUtf8(host);
+
+		QByteArray scheme;
+		if(req->isHttps())
+			scheme = "https";
+		else
+			scheme = "http";
+
+		int port;
+		int at = shost.lastIndexOf(':');
+		if(at != -1)
+		{
+			QString sport = shost.mid(at + 1);
+			bool ok;
+			port = sport.toInt(&ok);
+			if(!ok)
+			{
+				// TODO: log warning, invalid host
+				return;
+			}
+
+			shost = shost.mid(0, at);
 		}
 		else
-			resp->write(zr->readResponseBody());
-
-		delete resp;
-
-		if(zr->isFinished())
 		{
-			delete req;
-			delete zr;
+			if(req->isHttps())
+				port = 443;
+			else
+				port = 80;
+		}
+
+		QByteArray url = scheme + "://" + shost.toUtf8();
+		if((req->isHttps() && port != 443) || (!req->isHttps() && port != 80))
+			url += ':' + QByteArray::number(port);
+		url += req->path();
+
+		log_info("IN id=%d, %s %s", req->rid().second.data(), qPrintable(req->method()), qPrintable(url));
+
+		RequestSession *rs = new RequestSession(inspect, this);
+		connect(rs, SIGNAL(inspectFinished(const InspectData &)), SLOT(rs_inspectFinished(const InspectData &)));
+		rs->start(req);
+	}
+
+	void rs_inspectFinished(const InspectData &idata)
+	{
+		RequestSession *rs = (RequestSession *)sender();
+
+		if(idata.doProxy)
+		{
+			ProxySession *ps = new ProxySession(zurl, domainMap, this);
+			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
+			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
+			ps->add(rs);
+		}
+		else
+		{
+			delete rs;
 		}
 	}
 
-	void zr_bytesWritten(int count)
+	void ps_finishedByPassthrough()
 	{
-		printf("zr_bytesWritten\n");
+		ProxySession *ps = (ProxySession *)sender();
+
+		delete ps;
 	}
 
-	void zr_error()
+	void ps_finishedForAccept(const AcceptData &adata)
 	{
-		printf("zr_error\n");
+		ProxySession *ps = (ProxySession *)sender();
+
+		Q_UNUSED(adata);
+		delete ps;
 	}
 
-	void zurl_out_messagesWritten(int count)
-	{
-		// TODO
-		Q_UNUSED(count);
-	}
-
-	void zurl_in_readyRead()
-	{
-		// TODO
-	}
-
-	void inspect_req_readyRead()
-	{
-		// TODO
-	}
-
-	void inspect_req_messagesWritten(int count)
-	{
-		// TODO
-		Q_UNUSED(count);
-	}
-
-	void retry_in_readyRead()
+	void handler_retry_in_readyRead()
 	{
 #if 0
 		if(maxWorkers != -1 && workers >= maxWorkers)
@@ -396,65 +333,11 @@ private slots:
 #endif
 	}
 
-	void accept_out_messagesWritten(int count)
+	void handler_accept_out_messagesWritten(int count)
 	{
 		// TODO
 		Q_UNUSED(count);
 	}
-
-	void rs_outgoingInspectRequest(const InspectRequestPacket &ireq)
-	{
-		// TODO
-		Q_UNUSED(ireq);
-
-		//RequestSession *rs = (RequestSession *)sender();
-		//rs->inspectError();
-	}
-
-#if 0
-	void rs_inspectFinished(const M2RequestPacket &hreq, bool doProxy, const QByteArray &sharingKey, const InspectResponsePacket *iresp)
-	{
-		// TODO
-		Q_UNUSED(sharingKey);
-		Q_UNUSED(iresp);
-
-		if(doProxy)
-		{
-			ProxySession *ps = new ProxySession(this);
-			connect(ps, SIGNAL(outgoingZurlRequest(const ZurlRequestPacket &)), SLOT(ps_outgoingZurlRequest(const ZurlRequestPacket &)));
-			connect(ps, SIGNAL(outgoingHttpResponse(const M2ResponsePacket &)), SLOT(ps_outgoingHttpResponse(const M2ResponsePacket &)));
-			connect(ps, SIGNAL(finishedForAccept(const InspectResponse &)), SLOT(ps_finishedForAccept(const InspectResponse &)));
-			ps->start(hreq);
-		}
-
-		/*HttpResponsePacket resp;
-		resp.sender = hreq.sender;
-		resp.id = hreq.id;
-		resp.data = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nok\n";
-
-		m2_out_sock->write(QList<QByteArray>() << resp.toByteArray());
-		resp.data = QByteArray();
-		m2_out_sock->write(QList<QByteArray>() << resp.toByteArray());*/
-	}
-#endif
-
-	void ps_outgoingZurlRequest(const ZurlRequestPacket &zreq)
-	{
-		// TODO
-		//zurl_out_sock->write(QList<QByteArray>() << TnetString::fromVariant(zreq.toVariant()));
-	}
-
-	void ps_outgoingHttpResponse(const M2ResponsePacket &hresp)
-	{
-		// TODO
-		Q_UNUSED(hresp);
-	}
-
-	/*void ps_finishedForAccept(const InspectResponse &iresp)
-	{
-		// TODO: if instructions were provided, then
-		Q_UNUSED(iresp);
-	}*/
 };
 
 App::App(QObject *parent) :

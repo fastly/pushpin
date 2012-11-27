@@ -38,8 +38,8 @@ public:
 	bool stream;
 	int maxSize;
 	QString connectHost;
-	QVariant userData;
 	int credits;
+	QVariant userData;
 
 	ZurlRequestPacket();
 

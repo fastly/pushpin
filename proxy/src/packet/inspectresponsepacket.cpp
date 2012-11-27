@@ -12,6 +12,10 @@ bool InspectResponsePacket::fromVariant(const QVariant &in)
 
 	QVariantHash obj = in.toHash();
 
+	if(!obj.contains("id") || obj["id"].type() != QVariant::ByteArray)
+		return false;
+	id = obj["id"].toByteArray();
+
 	if(!obj.contains("no-proxy") || obj["no-proxy"].type() != QVariant::Bool)
 		return false;
 	noProxy = obj["no-proxy"].toBool();

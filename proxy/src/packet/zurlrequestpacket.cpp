@@ -146,7 +146,6 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 		if(obj["headers"].type() != QVariant::List)
 			return false;
 
-		headers.clear();
 		foreach(const QVariant &i, obj["headers"].toList())
 		{
 			QVariantList list = i.toList();
@@ -205,8 +204,6 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 		connectHost = QString::fromUtf8(obj["connect-host"].toByteArray());
 	}
 
-	userData = obj["user-data"];
-
 	credits = -1;
 	if(obj.contains("credits"))
 	{
@@ -215,6 +212,8 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 
 		credits = obj["credits"].toInt();
 	}
+
+	userData = obj["user-data"];
 
 	return true;
 }

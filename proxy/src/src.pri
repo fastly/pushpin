@@ -24,22 +24,33 @@ SOURCES += \
 	$$PWD/packet/acceptresponsepacket.cpp
 
 HEADERS += \
+	$$PWD/log.h \
 	$$PWD/m2manager.h \
 	$$PWD/m2request.h \
 	$$PWD/m2response.h \
 	$$PWD/zurlmanager.h \
 	$$PWD/zurlrequest.h \
-	#$$PWD/requestsession.h \
-	#$$PWD/proxysession.h \
+	$$PWD/httprequestdata.h \
+	$$PWD/inspectdata.h \
+	$$PWD/inspectmanager.h \
+	$$PWD/inspectrequest.h \
+	$$PWD/acceptdata.h \
+	$$PWD/domainmap.h \
+	$$PWD/requestsession.h \
+	$$PWD/proxysession.h \
 	$$PWD/app.h
 
 SOURCES += \
+	$$PWD/log.cpp \
 	$$PWD/m2manager.cpp \
 	$$PWD/m2request.cpp \
 	$$PWD/m2response.cpp \
 	$$PWD/zurlmanager.cpp \
 	$$PWD/zurlrequest.cpp \
-	#$$PWD/requestsession.cpp \
-	#$$PWD/proxysession.cpp \
+	$$PWD/inspectmanager.cpp \
+	$$PWD/inspectrequest.cpp \
+	$$PWD/domainmap.cpp \
+	$$PWD/requestsession.cpp \
+	$$PWD/proxysession.cpp \
 	$$PWD/app.cpp \
 	$$PWD/main.cpp

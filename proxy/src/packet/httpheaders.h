@@ -27,6 +27,7 @@ typedef QPair<QByteArray, QByteArray> HttpHeader;
 class HttpHeaders : public QList<HttpHeader>
 {
 public:
+	QByteArray get(const QByteArray &key) const;
 	bool contains(const QByteArray &key) const;
 	void removeAll(const QByteArray &key);
 };

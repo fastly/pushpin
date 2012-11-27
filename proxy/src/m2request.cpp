@@ -9,6 +9,46 @@
 
 #define BUFFER_SIZE (1024 * 64)
 
+	/*void handleM2Request(QZmq::Socket *sock, bool https)
+	{
+		if(maxWorkers != -1 && workers >= maxWorkers)
+			return;
+
+		QList<QByteArray> msg = sock->read();
+		if(msg.count() != 1)
+		{
+			log_warning("received message with parts != 1, skipping");
+			return;
+		}
+
+		log_info("IN m2 %s", qPrintable(TnetString::byteArrayToEscapedString(msg[0])));
+
+		M2RequestPacket req;
+		if(!req.fromByteArray(msg[0]))
+		{
+			log_warning("received message with invalid format, skipping");
+			return;
+		}
+
+		req.isHttps = https;
+
+		handleIncomingRequest(req);
+	}
+
+	void handleIncomingRequest(const M2RequestPacket &req)
+	{
+		printf("id=[%s] method=[%s], path=[%s]\n", req.id.data(), qPrintable(req.method), req.path.data());
+		printf("headers:\n");
+		foreach(const HttpHeader &header, req.headers)
+			printf("  [%s] = [%s]\n", header.first.data(), header.second.data());
+		printf("body: [%s]\n", req.body.data());
+
+		RequestSession *rs = new RequestSession(this);
+		connect(rs, SIGNAL(outgoingInspectRequest(const InspectRequestPacket &)), SLOT(rs_outgoingInspectRequest(const InspectRequestPacket &)));
+		connect(rs, SIGNAL(inspectFinished(const M2RequestPacket &, bool, const QByteArray &, const InspectResponsePacket *)), SLOT(rs_inspectFinished(const M2RequestPacket &, bool, const QByteArray &, const InspectResponsePacket *)));
+		rs->start(req);
+	}*/
+
 class M2Request::Private : public QObject
 {
 	Q_OBJECT
@@ -102,7 +142,7 @@ public:
 		if(active && !file)
 		{
 			manager->unlink(q);
-			manager = 0;
+			//manager = 0;
 			finished = true;
 			emit q->finished();
 		}
@@ -176,7 +216,7 @@ QByteArray M2Request::path() const
 	return d->p.path;
 }
 
-HttpHeaders M2Request::headers() const
+const HttpHeaders & M2Request::headers() const
 {
 	return d->p.headers;
 }
@@ -193,6 +233,11 @@ QByteArray M2Request::read()
 int M2Request::actualContentLength() const
 {
 	return d->rcount;
+}
+
+M2Response *M2Request::createResponse()
+{
+	return d->manager->createResponse(Rid(d->p.sender, d->p.id));
 }
 
 bool M2Request::handle(M2Manager *manager, const M2RequestPacket &packet, bool https)

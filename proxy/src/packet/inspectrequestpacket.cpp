@@ -9,6 +9,7 @@ InspectRequestPacket::InspectRequestPacket()
 QVariant InspectRequestPacket::toVariant() const
 {
 	QVariantHash obj;
+	obj["id"] = id;
 	obj["method"] = method.toLatin1();
 	obj["path"] = path;
 
@@ -23,5 +24,5 @@ QVariant InspectRequestPacket::toVariant() const
 
 	obj["headers"] = vheaders;
 
-	return TnetString::fromVariant(obj);
+	return obj;
 }

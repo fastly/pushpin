@@ -4,8 +4,9 @@
 #include <QObject>
 #include "packet/httpheaders.h"
 
-class M2Manager;
 class M2RequestPacket;
+class M2Manager;
+class M2Response;
 
 class M2Request : public QObject
 {
@@ -23,12 +24,15 @@ public:
 
 	QString method() const;
 	QByteArray path() const;
-	HttpHeaders headers() const;
+	const HttpHeaders & headers() const;
 
 	QByteArray read();
 
 	// for streamed input, this is updated as body data is received
 	int actualContentLength() const;
+
+	// make a response object using same manager and rid
+	M2Response *createResponse();
 
 signals:
 	void readyRead();

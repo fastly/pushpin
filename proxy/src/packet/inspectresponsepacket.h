@@ -7,6 +7,7 @@
 class InspectResponsePacket
 {
 public:
+	QByteArray id;
 	bool noProxy;
 	QByteArray sharingKey;
 	QVariant userData;

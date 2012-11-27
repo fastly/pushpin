@@ -1,5 +1,6 @@
 #include "zurlmanager.h"
 
+#include <stdio.h>
 #include <QStringList>
 #include <QHash>
 #include <QPointer>
@@ -112,18 +113,11 @@ public slots:
 			}
 
 			ZurlResponsePacket p;
-			p.id = data.toHash()["id"].toByteArray();
-			p.seq = 0;
-			p.code = 200;
-			p.status = "OK";
-			p.headers += HttpHeader("Content-Length", "11");
-			p.body = "fake reply\n";
-
-			/*if(!p.fromVariant(data))
+			if(!p.fromVariant(data))
 			{
 				// TODO: log warning, invalid
 				continue;
-			}*/
+			}
 
 			ZurlRequest *req = reqsByRid.value(ZurlRequest::Rid(clientId, p.id));
 			if(!req)

@@ -7,6 +7,7 @@
 class InspectRequestPacket
 {
 public:
+	QByteArray id;
 	QString method;
 	QByteArray path;
 	HttpHeaders headers;

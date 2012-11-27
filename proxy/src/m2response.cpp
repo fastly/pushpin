@@ -3,6 +3,15 @@
 #include "packet/m2responsepacket.h"
 #include "m2manager.h"
 
+static QByteArray makeChunk(const QByteArray &in)
+{
+	QByteArray out;
+	out += QByteArray::number(in.size(), 16).toUpper() + "\r\n";
+	out += in;
+	out += "\r\n";
+	return out;
+}
+
 class M2Response::Private
 {
 public:
@@ -35,7 +44,7 @@ void M2Response::write(int code, const QByteArray &status, const HttpHeaders &he
 	foreach(const HttpHeader &h, headers)
 		p.data += h.first + ": " + h.second + "\r\n";
 	p.data += "\r\n";
-	p.data += body;
+	p.data += makeChunk(body);
 	d->manager->writeResponse(p);
 
 	//QMetaObject::invokeMethod(this, "finished", Qt::QueuedConnection);
@@ -46,7 +55,7 @@ void M2Response::write(const QByteArray &body)
 	M2ResponsePacket p;
 	p.sender = d->rid.first;
 	p.id = d->rid.second;
-	p.data = body;
+	p.data = makeChunk(body);
 
 	d->manager->writeResponse(p);
 }

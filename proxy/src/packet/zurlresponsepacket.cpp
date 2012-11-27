@@ -77,4 +77,121 @@ QVariant ZurlResponsePacket::toVariant() const
 
 bool ZurlResponsePacket::fromVariant(const QVariant &in)
 {
+	if(in.type() != QVariant::Hash)
+		return false;
+
+	QVariantHash obj = in.toHash();
+
+	if(!obj.contains("id") || obj["id"].type() != QVariant::ByteArray)
+		return false;
+	id = obj["id"].toByteArray();
+
+	seq = -1;
+	if(obj.contains("seq"))
+	{
+		if(obj["seq"].type() != QVariant::Int)
+			return false;
+
+		seq = obj["seq"].toInt();
+	}
+
+	isError = false;
+	if(obj.contains("error"))
+	{
+		if(obj["error"].type() != QVariant::Bool)
+			return false;
+
+		isError = obj["error"].toBool();
+	}
+
+	if(isError)
+	{
+		condition.clear();
+		if(obj.contains("condition"))
+		{
+			if(obj["condition"].type() != QVariant::ByteArray)
+				return false;
+
+			condition = obj["condition"].toByteArray();
+		}
+	}
+	else
+	{
+		replyAddress.clear();
+		if(obj.contains("reply-address"))
+		{
+			if(obj["reply-address"].type() != QVariant::ByteArray)
+				return false;
+
+			replyAddress = obj["reply-address"].toByteArray();
+		}
+
+		code = -1;
+		if(obj.contains("code"))
+		{
+			if(obj["code"].type() != QVariant::Int)
+				return false;
+
+			code = obj["code"].toInt();
+		}
+
+		status.clear();
+		if(obj.contains("status"))
+		{
+			if(obj["status"].type() != QVariant::ByteArray)
+				return false;
+
+			status = obj["status"].toByteArray();
+		}
+
+		headers.clear();
+		if(obj.contains("headers"))
+		{
+			if(obj["headers"].type() != QVariant::List)
+				return false;
+
+			foreach(const QVariant &i, obj["headers"].toList())
+			{
+				QVariantList list = i.toList();
+				if(list.count() != 2)
+					return false;
+
+				if(list[0].type() != QVariant::ByteArray || list[1].type() != QVariant::ByteArray)
+					return false;
+
+				headers += QPair<QByteArray, QByteArray>(list[0].toByteArray(), list[1].toByteArray());
+			}
+		}
+
+		body.clear();
+		if(obj.contains("body"))
+		{
+			if(obj["body"].type() != QVariant::ByteArray)
+				return false;
+
+			body = obj["body"].toByteArray();
+		}
+
+		more = false;
+		if(obj.contains("more"))
+		{
+			if(obj["more"].type() != QVariant::Bool)
+				return false;
+
+			more = obj["more"].toBool();
+		}
+
+		credits = -1;
+		if(obj.contains("credits"))
+		{
+			if(obj["credits"].type() != QVariant::Int)
+				return false;
+
+			credits = obj["credits"].toInt();
+		}
+	}
+
+	userData = obj["user-data"];
+
+	return true;
 }
