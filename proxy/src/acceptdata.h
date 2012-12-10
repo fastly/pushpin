@@ -3,7 +3,9 @@
 
 #include <QList>
 #include "packet/httpheaders.h"
-#include "httprequestdata.h"
+#include "packet/httprequestdata.h"
+#include "packet/httpresponsedata.h"
+#include "inspectdata.h"
 #include "m2request.h"
 
 class AcceptData
@@ -16,15 +18,11 @@ public:
 	InspectData inspectData;
 
 	bool haveResponse;
-	int responseCode;
-	QByteArray responseStatus;
-	HttpHeaders responseHeaders;
-	QByteArray responseBody;
+	HttpResponseData response;
 
 	AcceptData() :
 		haveInspectData(false),
-		haveResponse(false),
-		responseCode(-1)
+		haveResponse(false)
 	{
 	}
 };

@@ -1,7 +1,7 @@
 #include "requestsession.h"
 
+#include "packet/httprequestdata.h"
 #include "m2request.h"
-#include "httprequestdata.h"
 #include "inspectdata.h"
 #include "inspectmanager.h"
 #include "inspectrequest.h"

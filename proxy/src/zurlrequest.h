@@ -16,11 +16,11 @@ class ZurlRequest : public QObject
 public:
 	enum ErrorCondition
 	{
-			ErrorGeneric,
-			ErrorPolicy,
-			ErrorConnect,
-			ErrorTls,
-			ErrorTimeout
+		ErrorGeneric,
+		ErrorPolicy,
+		ErrorConnect,
+		ErrorTls,
+		ErrorTimeout
 	};
 
 	// pair of sender + request id

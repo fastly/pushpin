@@ -2,34 +2,26 @@
 #define ACCEPTRESPONSEPACKET_H
 
 #include <QVariant>
-#include "m2requestpacket.h"
+#include <QPair>
+#include <QList>
+#include "httprequestdata.h"
 #include "inspectresponsepacket.h"
+#include "httpresponsedata.h"
 
 class AcceptResponsePacket
 {
 public:
-	class Response
-	{
-	public:
-		int code;
-		QByteArray status;
-		HttpHeaders headers;
-		QByteArray body;
+	typedef QPair<QByteArray, QByteArray> Rid;
+	QList<Rid> rids;
+	HttpRequestData request;
 
-		Response() :
-			code(-1)
-		{
-		}
-	};
+	bool haveInspectInfo;
+	InspectResponsePacket inspectInfo;
 
-	QList<M2RequestPacket> requests;
-	InspectResponsePacket *inspectInfo;
-	Response *response;
+	bool haveResponse;
+	HttpResponseData response;
 
 	AcceptResponsePacket();
-	AcceptResponsePacket(const AcceptResponsePacket &from);
-	~AcceptResponsePacket();
-	AcceptResponsePacket & operator=(const AcceptResponsePacket &from);
 
 	QVariant toVariant() const;
 };

@@ -1,7 +1,7 @@
 #ifndef HTTPREQUESTDATA_H
 #define HTTPREQUESTDATA_H
 
-#include "packet/httpheaders.h"
+#include "httpheaders.h"
 
 class HttpRequestData
 {

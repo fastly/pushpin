@@ -4,6 +4,8 @@ include(qzmq/src/src.pri)
 HEADERS += \
 	$$PWD/packet/tnetstring.h \
 	$$PWD/packet/httpheaders.h \
+	$$PWD/packet/httprequestdata.h \
+	$$PWD/packet/httpresponsedata.h \
 	$$PWD/packet/m2requestpacket.h \
 	$$PWD/packet/m2responsepacket.h \
 	$$PWD/packet/zurlrequestpacket.h \
@@ -30,7 +32,6 @@ HEADERS += \
 	$$PWD/m2response.h \
 	$$PWD/zurlmanager.h \
 	$$PWD/zurlrequest.h \
-	$$PWD/httprequestdata.h \
 	$$PWD/inspectdata.h \
 	$$PWD/inspectmanager.h \
 	$$PWD/inspectrequest.h \

@@ -3,7 +3,7 @@
 #include <QUuid>
 #include "packet/inspectrequestpacket.h"
 #include "packet/inspectresponsepacket.h"
-#include "httprequestdata.h"
+#include "packet/httprequestdata.h"
 #include "inspectdata.h"
 #include "inspectmanager.h"
 

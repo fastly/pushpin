@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <QUrl>
+#include "acceptdata.h"
 #include "m2request.h"
 #include "m2response.h"
 #include "zurlmanager.h"
@@ -56,10 +57,34 @@ public slots:
 			//resp->write(200, "OK", headers, str);
 			//delete resp;
 			HttpHeaders headers = zr->responseHeaders();
-			if(!headers.contains("Content-Length"))
-				headers += HttpHeader("Transfer-Encoding", "chunked");
-			resp->write(zr->responseCode(), zr->responseStatus(), headers, zr->readResponseBody());
-			resp->write(QByteArray());
+
+			if(headers.get("Content-Type") == "application/x-fo-instruct")
+			{
+				AcceptData ad;
+				ad.rids += mr->rid();
+				ad.request.method = mr->method();
+				ad.request.path = mr->path();
+
+				ad.haveResponse = true;
+				ad.response.code = zr->responseCode();
+				ad.response.status = zr->responseStatus();
+				ad.response.headers = headers;
+				ad.response.body = zr->readResponseBody(); // FIXME: need to keep reading until end
+
+				delete resp;
+				delete mr;
+				delete zr;
+
+				emit q->finishedForAccept(ad);
+				return;
+			}
+			else
+			{
+				if(!headers.contains("Content-Length"))
+					headers += HttpHeader("Transfer-Encoding", "chunked");
+				resp->write(zr->responseCode(), zr->responseStatus(), headers, zr->readResponseBody());
+				resp->write(QByteArray());
+			}
 		}
 		else
 			resp->write(zr->readResponseBody());

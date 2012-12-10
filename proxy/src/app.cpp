@@ -1,5 +1,6 @@
 #include "app.h"
 
+#include <assert.h>
 #include <QCoreApplication>
 #include <QStringList>
 #include <QFile>
@@ -8,6 +9,7 @@
 #include <QSettings>
 #include "qzmqsocket.h"
 #include "packet/tnetstring.h"
+#include "packet/acceptresponsepacket.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
@@ -102,7 +104,7 @@ public:
 
 		QString configFile = options["config"];
 		if(configFile.isEmpty())
-			configFile = "/etc/pushpin.conf";
+			configFile = "/etc/pushpin/pushpin.conf";
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{
@@ -294,8 +296,25 @@ private slots:
 	{
 		ProxySession *ps = (ProxySession *)sender();
 
-		Q_UNUSED(adata);
+		AcceptResponsePacket p;
+		foreach(const M2Request::Rid &rid, adata.rids)
+			p.rids += AcceptResponsePacket::Rid(rid.first, rid.second);
+
+		if(adata.haveInspectData)
+		{
+			// TODO
+		}
+
+		assert(adata.haveResponse);
+
+		p.haveResponse = true; // Accept from ProxySession always has a response
+		p.response = adata.response;
+
 		delete ps;
+
+		QList<QByteArray> msg;
+		msg += TnetString::fromVariant(p.toVariant());
+		handler_accept_out_sock->write(msg);
 	}
 
 	void handler_retry_in_readyRead()
