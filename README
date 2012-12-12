@@ -3,13 +3,13 @@ Pushpin
 Date: December 11th, 2012
 Author: Justin Karneges <justin@fanout.io>
 
-Pushpin is a server component for providing realtime data push over HTTP. Web
+Pushpin is a server component that provides realtime data push over HTTP. Web
 applications that need HTTP long-polling or HTTP streaming interfaces simply
-place Pushpin in front of them on the network path, in much the same way you
-might put a load balancer in front. Pushpin handles the long-lived connection
-wrangling and communicates with the application using normal request/response
-HTTP. This means the application can be written in any language and use any
-webserver.
+place Pushpin in front on the network path, in much the same way a load
+balancer might be placed in front. Pushpin takes care of wrangling the
+long-lived client connections, and it communicates with the application using
+normal request and response HTTP. This means the backend web application can
+be written in any language and use any webserver.
 
 Additionally, Pushpin does all of this without exposing a proprietary protocol
 to clients. The HTTP content between the client and your server is whatever
