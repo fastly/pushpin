@@ -27,6 +27,7 @@
 #define LOG_LEVEL_INFO    2
 #define LOG_LEVEL_DEBUG   3
 
+void log_startClock();
 void log_setOutputLevel(int level);
 
 void log_error(const char *fmt, ...);

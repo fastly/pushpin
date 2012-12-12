@@ -23,16 +23,20 @@
 #include <stdarg.h>
 #include <QString>
 #include <QTime>
+#include <QMutex>
 
+Q_GLOBAL_STATIC(QMutex, g_mutex)
 static int g_level = LOG_LEVEL_DEBUG;
 static QTime g_time;
 
 static void log(int level, const char *fmt, va_list ap)
 {
-	if(!g_time.isValid())
-		g_time.start();
+	g_mutex()->lock();
+	int current_level = g_level;
+	int elapsed = g_time.elapsed();
+	g_mutex()->unlock();
 
-	if(level <= g_level)
+	if(level <= current_level)
 	{
 		QString str;
 		str.vsprintf(fmt, ap);
@@ -49,13 +53,20 @@ static void log(int level, const char *fmt, va_list ap)
 		}
 
 		QTime t(0, 0);
-		t = t.addMSecs(g_time.elapsed());
+		t = t.addMSecs(elapsed);
 		fprintf(stderr, "[%s] %s %s\n", lstr, qPrintable(t.toString("HH:mm:ss.zzz")), qPrintable(str));
 	}
 }
 
+void log_startClock()
+{
+	QMutexLocker locker(g_mutex());
+	g_time.start();
+}
+
 void log_setOutputLevel(int level)
 {
+	QMutexLocker locker(g_mutex());
 	g_level = level;
 }
 
