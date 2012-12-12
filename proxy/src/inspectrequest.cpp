@@ -81,7 +81,7 @@ void InspectRequest::handle(const InspectResponsePacket &packet)
 	InspectData idata;
 	idata.doProxy = !packet.noProxy;
 	idata.sharingKey = packet.sharingKey;
-	// TODO: user data
+	idata.userData = packet.userData;
 	emit finished(idata);
 }
 

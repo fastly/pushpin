@@ -20,11 +20,15 @@
 #ifndef INSPECTDATA_H
 #define INSPECTDATA_H
 
+#include <QByteArray>
+#include <QVariant>
+
 class InspectData
 {
 public:
 	bool doProxy;
 	QByteArray sharingKey;
+	QVariant userData;
 
 	InspectData() :
 		doProxy(false)

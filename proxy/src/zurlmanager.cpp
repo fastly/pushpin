@@ -19,7 +19,6 @@
 
 #include "zurlmanager.h"
 
-#include <stdio.h>
 #include <QStringList>
 #include <QHash>
 #include <QPointer>
@@ -27,6 +26,7 @@
 #include "packet/tnetstring.h"
 #include "packet/zurlrequestpacket.h"
 #include "packet/zurlresponsepacket.h"
+#include "log.h"
 #include "zurlrequest.h"
 
 class ZurlManager::Private : public QObject

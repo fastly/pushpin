@@ -77,6 +77,8 @@ public:
 
 	void start()
 	{
+		log_startClock();
+
 		QStringList args = QCoreApplication::instance()->arguments();
 		args.removeFirst();
 
@@ -119,7 +121,7 @@ public:
 		if(options.contains("verbose"))
 			log_setOutputLevel(LOG_LEVEL_DEBUG);
 		else
-			log_setOutputLevel(LOG_LEVEL_WARNING);
+			log_setOutputLevel(LOG_LEVEL_INFO);
 
 		QString configFile = options["config"];
 		if(configFile.isEmpty())
