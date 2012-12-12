@@ -13,7 +13,7 @@ webserver.
 
 Additionally, Pushpin does all of this without exposing a proprietary protocol
 to clients. The HTTP content between the client and your server is whatever
-you want it to be. This makes it ideal for writing realtime HTTP APIs.
+you want it to be. This makes it ideal for writing APIs.
 
 License:
 
