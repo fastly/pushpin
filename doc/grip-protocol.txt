@@ -1,0 +1,31 @@
+HTTP Generic Realtime Intermediary Protocol (GRIP)
+--------------------------------------------------
+
+Instruct response:
+
+Content-Type: application/grip-instruct
+
+{
+  "hold": {
+    "mode": "response" or "stream",
+    "channels": [
+      {
+        "name": str,
+        "prev-id": str
+      },
+      ...
+    ]
+  }
+  "response": {
+    "code": int,
+    "status": str,
+    "headers": {
+      {
+        name: str,
+        ...
+      }
+    },
+    "body": str,
+    "body-bin": base64 str
+  }
+}
