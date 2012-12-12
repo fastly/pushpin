@@ -19,17 +19,16 @@
 
 #include "domainmap.h"
 
-#include <stdio.h>
 #include <QStringList>
 #include <QHash>
 #include <QTimer>
 #include <QThread>
 #include <QMutex>
+#include <QWaitCondition>
 #include <QFile>
 #include <QTextStream>
 #include <QFileSystemWatcher>
-
-// TODO: fix races around startup and shutdown
+#include "log.h"
 
 class DomainMap::Worker : public QObject
 {
@@ -53,27 +52,36 @@ public:
 		QFile file(fileName);
 		if(!file.open(QFile::ReadOnly))
 		{
-			// TODO: log warning
+			log_warning("unable to open domains file: %s", qPrintable(fileName));
 			return;
 		}
 
 		QHash< QString, QList<Target> > newmap;
 
 		QTextStream ts(&file);
-		while(!ts.atEnd())
+		for(int lineNum = 0; !ts.atEnd(); ++lineNum)
 		{
 			QString line = ts.readLine();
+
+			// strip comments
+			int at = line.indexOf('#');
+			if(at != -1)
+				line.truncate(at);
+
+			line = line.trimmed();
+			if(line.isEmpty())
+				continue;
 
 			QStringList parts = line.split(' ', QString::SkipEmptyParts);
 			if(parts.count() < 2)
 			{
-				// TODO: log warning
+				log_warning("%s:%d: must specify domain and at least one origin", qPrintable(fileName), lineNum);
 				continue;
 			}
 
 			if(newmap.contains(parts[0]))
 			{
-				// TODO: log warning
+				log_warning("%s:%d skipping duplicate entry", qPrintable(fileName), lineNum);
 				continue;
 			}
 
@@ -84,7 +92,7 @@ public:
 				int at = parts[n].lastIndexOf(':');
 				if(at == -1)
 				{
-					// TODO: log warning
+					log_warning("%s:%d: origin bad format", qPrintable(fileName), lineNum);
 					ok = false;
 					break;
 				}
@@ -93,7 +101,7 @@ public:
 				int port = sport.toInt(&ok);
 				if(!ok || port < 1 || port > 65535)
 				{
-					// TODO: log warning
+					log_warning("%s:%d: origin invalid port", qPrintable(fileName), lineNum);
 					ok = false;
 					break;
 				}
@@ -109,7 +117,7 @@ public:
 			newmap.insert(parts[0], targets);
 		}
 
-		printf("domain map:\n");
+		log_debug("domain map:");
 		QHashIterator< QString, QList<Target> > it(newmap);
 		while(it.hasNext())
 		{
@@ -119,13 +127,19 @@ public:
 			foreach(const Target &t, it.value())
 				tstr += t.first + ';' + QString::number(t.second);
 
-			printf("  %s: %s\n", qPrintable(it.key()), qPrintable(tstr.join(" ")));
+			log_debug("  %s: %s", qPrintable(it.key()), qPrintable(tstr.join(" ")));
 		}
 
+		// atomically replace the map
 		m.lock();
 		map = newmap;
 		m.unlock();
+
+		log_info("domain map loaded with %d entries", newmap.count());
 	}
+
+signals:
+	void started();
 
 public slots:
 	void start()
@@ -135,6 +149,8 @@ public slots:
 		watcher->addPath(fileName);
 
 		reload();
+
+		emit started();
 	}
 
 	void fileChanged(const QString &path)
@@ -149,7 +165,7 @@ public slots:
 
 	void doReload()
 	{
-		printf("reloading domains\n");
+		log_info("domains file changed, reloading");
 		reload();
 	}
 };
@@ -161,6 +177,8 @@ class DomainMap::Thread : public QThread
 public:
 	QString fileName;
 	Worker *worker;
+	QMutex m;
+	QWaitCondition w;
 
 	~Thread()
 	{
@@ -168,13 +186,28 @@ public:
 		wait();
 	}
 
+	void start()
+	{
+		QMutexLocker locker(&m);
+		QThread::start();
+		w.wait(&m);
+	}
+
 	virtual void run()
 	{
 		worker = new Worker;
 		worker->fileName = fileName;
+		connect(worker, SIGNAL(started()), SLOT(worker_started()), Qt::DirectConnection);
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
 		delete worker;
+	}
+
+public slots:
+	void worker_started()
+	{
+		QMutexLocker locker(&m);
+		w.wakeOne();
 	}
 };
 
