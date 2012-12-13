@@ -19,8 +19,9 @@
 
 #include "proxysession.h"
 
-#include <stdio.h>
+#include <QSet>
 #include <QUrl>
+#include "log.h"
 #include "acceptdata.h"
 #include "m2request.h"
 #include "m2response.h"
@@ -40,6 +41,10 @@ public:
 	M2Request *mr;
 	ZurlRequest *zr;
 	bool firstRead;
+	bool chunked;
+	bool instruct;
+	AcceptData ad;
+	QSet<QByteArray> instructTypes;
 
 	Private(ProxySession *_q, ZurlManager *_zurlManager, DomainMap *_domainMap) :
 		QObject(_q),
@@ -47,28 +52,36 @@ public:
 		zurlManager(_zurlManager),
 		domainMap(_domainMap)
 	{
+		chunked = false;
+		instruct = false;
+
+		instructTypes += "application/x-fo-instruct";
+		instructTypes += "application/fo-instruct";
+		instructTypes += "application/grip-instruct";
 	}
 
 public slots:
 	void mr_readyRead()
 	{
 		QByteArray buf = mr->read();
-		printf("got chunk: %d\n", buf.size());
+		log_debug("got chunk: %d", buf.size());
 		zr->writeBody(buf);
 	}
 
 	void mr_finished()
 	{
-		printf("finished\n");
+		log_debug("finished");
 		zr->endBody();
 	}
 
 	void zr_readyRead()
 	{
-		printf("zr_readyRead\n");
+		log_debug("zr_readyRead");
 		M2Response *resp = mr->createResponse();
 		if(firstRead)
 		{
+			firstRead = false;
+
 			//HttpHeaders headers;
 			//QByteArray str = "body.size=" + QByteArray::number(req->actualContentLength()) + '\n';
 			//delete req;
@@ -77,9 +90,8 @@ public slots:
 			//delete resp;
 			HttpHeaders headers = zr->responseHeaders();
 
-			if(headers.get("Content-Type") == "application/x-fo-instruct")
+			if(instructTypes.contains(headers.get("Content-Type")))
 			{
-				AcceptData ad;
 				ad.rids += mr->rid();
 				ad.request.method = mr->method();
 				ad.request.path = mr->path();
@@ -88,46 +100,69 @@ public slots:
 				ad.response.code = zr->responseCode();
 				ad.response.status = zr->responseStatus();
 				ad.response.headers = headers;
-				ad.response.body = zr->readResponseBody(); // FIXME: need to keep reading until end
+				ad.response.body = zr->readResponseBody();
 
-				delete resp;
-				delete mr;
-				delete zr;
-
-				emit q->finishedForAccept(ad);
-				return;
+				instruct = true;
 			}
 			else
 			{
-				if(!headers.contains("Content-Length"))
+				if(!headers.contains("Content-Length") && !headers.contains("Transfer-Encoding"))
+				{
 					headers += HttpHeader("Transfer-Encoding", "chunked");
-				resp->write(zr->responseCode(), zr->responseStatus(), headers, zr->readResponseBody());
-				resp->write(QByteArray());
+					chunked = true;
+				}
+
+				resp->write(zr->responseCode(), zr->responseStatus(), headers, zr->readResponseBody(), chunked);
 			}
 		}
 		else
-			resp->write(zr->readResponseBody());
-
-		delete resp;
+		{
+			QByteArray buf = zr->readResponseBody();
+			if(instruct)
+			{
+				ad.response.body += buf;
+			}
+			else
+			{
+				log_debug("writing %d", buf.size());
+				resp->write(buf, chunked);
+			}
+		}
 
 		if(zr->isFinished())
 		{
 			delete mr;
 			delete zr;
 
-			emit q->finishedByPassthrough();
+			log_debug("zr isFinished");
+
+			if(instruct)
+			{
+				delete resp;
+				emit q->finishedForAccept(ad);
+			}
+			else
+			{
+				resp->write(QByteArray(), chunked);
+				delete resp;
+				emit q->finishedByPassthrough();
+			}
+
+			return;
 		}
+		else
+			delete resp;
 	}
 
 	void zr_bytesWritten(int count)
 	{
 		Q_UNUSED(count);
-		printf("zr_bytesWritten\n");
+		log_debug("zr_bytesWritten");
 	}
 
 	void zr_error()
 	{
-		printf("zr_error\n");
+		log_debug("zr_error");
 	}
 };
 
@@ -157,12 +192,13 @@ void ProxySession::add(RequestSession *rs)
 	if(at != -1)
 		host = host.mid(0, at);
 	QList<DomainMap::Target> targets = d->domainMap->entry(host);
-	printf("%s has %d routes\n", qPrintable(host), targets.count());
+	log_debug("%s has %d routes", qPrintable(host), targets.count());
 	QByteArray str = "http://" + targets[0].first.toUtf8() + ':' + QByteArray::number(targets[0].second) + d->mr->path();
 	//QUrl url(QByteArray("http://localhost:80/static/chat.js") /*+ req->path()*/);
 	QUrl url(str);
 	d->firstRead = true;
 	d->zr->start(d->mr->method(), url, d->mr->headers());
+	d->zr->endBody();
 }
 
 #include "proxysession.moc"

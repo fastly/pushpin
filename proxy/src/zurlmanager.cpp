@@ -112,14 +112,14 @@ public slots:
 			QList<QByteArray> msg = in_sock->read();
 			if(msg.count() != 1)
 			{
-				// TODO: log warning, invalid
+				log_warning("received message with parts != 1, skipping");
 				continue;
 			}
 
 			int at = msg[0].indexOf(' ');
 			if(at == -1)
 			{
-				// TODO: log warning, invalid
+				log_warning("received message with invalid format, skipping");
 				continue;
 			}
 
@@ -127,21 +127,31 @@ public slots:
 			QVariant data = TnetString::toVariant(msg[0].mid(at + 1));
 			if(data.isNull())
 			{
-				// TODO: log warning, invalid
+				log_warning("received message with invalid format (tnetstring parse failed), skipping");
 				continue;
 			}
 
 			ZurlResponsePacket p;
 			if(!p.fromVariant(data))
 			{
-				// TODO: log warning, invalid
+				log_warning("received message with invalid format (zurl parse failed), skipping");
 				continue;
 			}
 
 			ZurlRequest *req = reqsByRid.value(ZurlRequest::Rid(clientId, p.id));
 			if(!req)
 			{
-				// TODO: log warning, unknown request id
+				log_warning("received message for unknown request id, canceling");
+
+				// if this was not an error packet, send cancel
+				if(p.condition.isEmpty() && !p.replyAddress.isEmpty())
+				{
+					ZurlRequestPacket out;
+					out.id = p.id;
+					out.cancel = true;
+					q->write(out, p.replyAddress);
+				}
+
 				continue;
 			}
 

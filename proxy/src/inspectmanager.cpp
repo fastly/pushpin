@@ -19,7 +19,6 @@
 
 #include "inspectmanager.h"
 
-#include <stdio.h>
 #include <assert.h>
 #include <QPointer>
 #include "qzmqsocket.h"

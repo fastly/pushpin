@@ -54,7 +54,7 @@ M2Response::~M2Response()
 	delete d;
 }
 
-void M2Response::write(int code, const QByteArray &status, const HttpHeaders &headers, const QByteArray &body)
+void M2Response::write(int code, const QByteArray &status, const HttpHeaders &headers, const QByteArray &body, bool chunked)
 {
 	M2ResponsePacket p;
 	p.sender = d->rid.first;
@@ -63,18 +63,24 @@ void M2Response::write(int code, const QByteArray &status, const HttpHeaders &he
 	foreach(const HttpHeader &h, headers)
 		p.data += h.first + ": " + h.second + "\r\n";
 	p.data += "\r\n";
-	p.data += makeChunk(body);
+	if(chunked)
+		p.data += makeChunk(body);
+	else
+		p.data += body;
 	d->manager->writeResponse(p);
 
 	//QMetaObject::invokeMethod(this, "finished", Qt::QueuedConnection);
 }
 
-void M2Response::write(const QByteArray &body)
+void M2Response::write(const QByteArray &body, bool chunked)
 {
 	M2ResponsePacket p;
 	p.sender = d->rid.first;
 	p.id = d->rid.second;
-	p.data = makeChunk(body);
+	if(chunked)
+		p.data = makeChunk(body);
+	else
+		p.data = body;
 
 	d->manager->writeResponse(p);
 }
