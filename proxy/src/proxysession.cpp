@@ -106,9 +106,10 @@ public slots:
 			}
 			else
 			{
-				if(!headers.contains("Content-Length") && !headers.contains("Transfer-Encoding"))
+				if(!headers.contains("Content-Length"))
 				{
-					headers += HttpHeader("Transfer-Encoding", "chunked");
+					if(!headers.contains("Transfer-Encoding"))
+						headers += HttpHeader("Transfer-Encoding", "chunked");
 					chunked = true;
 				}
 
