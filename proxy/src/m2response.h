@@ -33,12 +33,12 @@ class M2Response : public QObject
 public:
 	~M2Response();
 
-	void write(int code, const QByteArray &status, const HttpHeaders &headers, const QByteArray &body, bool chunked);
-	void write(const QByteArray &body, bool chunked);
+	void start(int code, const QByteArray &status, const HttpHeaders &headers);
+	void write(const QByteArray &body);
+	void close();
 
 signals:
-	//void finished();
-	void error();
+	void finished();
 
 private:
 	class Private;

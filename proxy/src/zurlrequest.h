@@ -39,7 +39,9 @@ public:
 		ErrorPolicy,
 		ErrorConnect,
 		ErrorTls,
-		ErrorTimeout
+		ErrorLengthRequired,
+		ErrorTimeout,
+		ErrorUnavailable
 	};
 
 	// pair of sender + request id

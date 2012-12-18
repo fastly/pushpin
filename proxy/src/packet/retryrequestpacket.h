@@ -17,39 +17,26 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PROXYSESSION_H
-#define PROXYSESSION_H
+#ifndef RETRYREQUESTPACKET_H
+#define RETRYREQUESTPACKET_H
 
-#include <QObject>
+#include <QVariant>
+#include "httprequestdata.h"
+#include "inspectresponsepacket.h"
 
-class InspectData;
-class AcceptData;
-class ZurlManager;
-class DomainMap;
-class RequestSession;
-
-class ProxySession : public QObject
+class RetryRequestPacket
 {
-	Q_OBJECT
-
 public:
-	ProxySession(ZurlManager *zurlManager, DomainMap *domainMap, QObject *parent = 0);
-	~ProxySession();
+	typedef QPair<QByteArray, QByteArray> Rid;
+	QList<Rid> rids;
+	HttpRequestData request;
 
-	void setInspectData(const InspectData &idata);
+	bool haveInspectInfo;
+	InspectResponsePacket inspectInfo;
 
-	// takes ownership
-	void add(RequestSession *rs);
+	RetryRequestPacket();
 
-signals:
-	void addNotPossible(); // emitted if response gets too big
-	void finishedByPassthrough();
-	void finishedForAccept(const AcceptData &adata);
-
-private:
-	class Private;
-	friend class Private;
-	Private *d;
+	bool fromVariant(const QVariant &in);
 };
 
 #endif

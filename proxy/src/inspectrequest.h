@@ -32,9 +32,17 @@ class InspectRequest : public QObject
 	Q_OBJECT
 
 public:
+	enum ErrorCondition
+	{
+		ErrorUnavailable,
+		ErrorTimeout
+	};
+
 	~InspectRequest();
 
 	void start(const HttpRequestData &hdata);
+
+	ErrorCondition errorCondition() const;
 
 signals:
 	void finished(const InspectData &idata);

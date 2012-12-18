@@ -264,6 +264,8 @@ public:
 				errorCondition = ErrorConnect;
 			else if(cond == "tls-error")
 				errorCondition = ErrorTls;
+			else if(cond == "length-required")
+				errorCondition = ErrorLengthRequired;
 			else if(cond == "connection-timeout")
 				errorCondition = ErrorTimeout;
 			else // bad-request, max-size-exceeded, cancel
@@ -334,6 +336,15 @@ public slots:
 
 		if(state == Starting)
 		{
+			if(!manager->canWriteImmediately())
+			{
+				state = Private::Stopped;
+				errorCondition = ZurlRequest::ErrorUnavailable;
+				emit q->error();
+				cleanup();
+				return;
+			}
+
 			ZurlRequestPacket p;
 			p.id = rid.second;
 			p.sender = rid.first;

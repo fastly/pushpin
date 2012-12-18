@@ -21,26 +21,40 @@
 #define REQUESTSESSION_H
 
 #include <QObject>
+#include "m2request.h"
 
-class M2Request;
-class InspectManager;
+class HttpRequestData;
 class InspectData;
+class AcceptData;
+class InspectManager;
+class InspectChecker;
 
 class RequestSession : public QObject
 {
 	Q_OBJECT
 
 public:
-	RequestSession(InspectManager *inspectManager, QObject *parent = 0);
+	RequestSession(InspectManager *inspectManager, InspectChecker *inspectChecker, QObject *parent = 0);
 	~RequestSession();
 
+	bool isRetry() const;
+
 	M2Request *request();
+
+	M2Request::Rid retryRid();
+	HttpRequestData retryData();
 
 	// takes ownership
 	void start(M2Request *req);
 
+	// creates an M2Request-less session
+	void setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, M2Manager *manager);
+
 signals:
-	void inspectFinished(const InspectData &idata);
+	void inspected(const InspectData &idata);
+	void inspectError();
+	void finished();
+	void finishedForAccept(const AcceptData &adata);
 
 private:
 	class Private;

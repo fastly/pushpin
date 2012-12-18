@@ -19,16 +19,20 @@
 
 #include "m2manager.h"
 
+#include "assert.h"
 #include <QObject>
 #include <QStringList>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "packet/m2requestpacket.h"
 #include "packet/m2responsepacket.h"
+#include "log.h"
 #include "m2request.h"
 #include "m2response.h"
 
-#define MAX_PENDING 20
+#define INCOMING_HWM 100
+#define DEFAULT_HWM 1000
+#define MAX_PENDING 100
 
 class M2Manager::Private : public QObject
 {
@@ -69,6 +73,9 @@ public:
 		}
 
 		in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+
+		in_sock->setHwm(INCOMING_HWM);
+
 		foreach(const QString &spec, in_specs)
 			in_sock->connectToAddress(spec);
 
@@ -91,6 +98,9 @@ public:
 		}
 
 		inhttps_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+
+		inhttps_sock->setHwm(INCOMING_HWM);
+
 		foreach(const QString &spec, inhttps_specs)
 			inhttps_sock->connectToAddress(spec);
 
@@ -111,6 +121,11 @@ public:
 		}
 
 		out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+		connect(out_sock, SIGNAL(messagesWritten(int)), SLOT(out_messagesWritten(int)));
+
+		out_sock->setWriteQueueEnabled(false);
+		out_sock->setHwm(DEFAULT_HWM);
+
 		foreach(const QString &spec, out_specs)
 			out_sock->connectToAddress(spec);
 
@@ -121,16 +136,14 @@ public:
 	{
 		if(message.count() != 1)
 		{
-			//log_warning("received message with parts != 1, skipping");
+			log_warning("m2manager: received message with parts != 1, skipping");
 			return;
 		}
-
-		//log_info("IN m2 %s", qPrintable(TnetString::byteArrayToEscapedString(msg[0])));
 
 		M2RequestPacket p;
 		if(!p.fromByteArray(message[0]))
 		{
-			//log_warning("received message with invalid format, skipping");
+			log_warning("m2manager: received message with invalid format, skipping");
 			return;
 		}
 
@@ -142,7 +155,7 @@ public:
 			req = reqsByRid.value(rid);
 			if(!req)
 			{
-				// TODO: log_warning, upload finished of unknown request
+				log_warning("m2manager: upload finished of unknown request, skipping");
 				return;
 			}
 
@@ -156,9 +169,9 @@ public:
 
 			if(!req->handle(q, p, https))
 			{
+				// we don't log anything here. req will have taken care of that
 				reqsByRid.remove(rid);
 				delete req;
-				// TODO: log warning
 				return;
 			}
 
@@ -185,6 +198,11 @@ private slots:
 	void inhttps_readyRead(const QList<QByteArray> &message)
 	{
 		handleIncoming(message, true);
+	}
+
+	void out_messagesWritten(int count)
+	{
+		Q_UNUSED(count);
 	}
 };
 
@@ -246,6 +264,8 @@ void M2Manager::unlink(M2Request *req)
 
 void M2Manager::writeResponse(const M2ResponsePacket &packet)
 {
+	assert(d->out_sock);
+
 	d->out_sock->write(QList<QByteArray>() << packet.toByteArray());
 }
 

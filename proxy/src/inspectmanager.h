@@ -42,6 +42,7 @@ private:
 	Private *d;
 
 	friend class InspectRequest;
+	bool canWriteImmediately() const;
 	void write(const InspectRequestPacket &packet);
 	void unlink(InspectRequest *req);
 };

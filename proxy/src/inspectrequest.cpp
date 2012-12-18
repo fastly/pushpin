@@ -19,12 +19,15 @@
 
 #include "inspectrequest.h"
 
+#include <QTimer>
 #include <QUuid>
 #include "packet/inspectrequestpacket.h"
 #include "packet/inspectresponsepacket.h"
 #include "packet/httprequestdata.h"
 #include "inspectdata.h"
 #include "inspectmanager.h"
+
+#define REQUEST_TIMEOUT 8
 
 class InspectRequest::Private : public QObject
 {
@@ -34,12 +37,80 @@ public:
 	InspectRequest *q;
 	InspectManager *manager;
 	QByteArray id;
+	HttpRequestData hdata;
+	InspectRequest::ErrorCondition condition;
+	QTimer *timer;
 
 	Private(InspectRequest *_q) :
 		QObject(_q),
 		q(_q),
-		manager(0)
+		manager(0),
+		timer(0)
 	{
+	}
+
+	~Private()
+	{
+		cleanup();
+	}
+
+	void cleanup()
+	{
+		if(timer)
+		{
+			timer->disconnect(this);
+			timer->setParent(0);
+			timer->deleteLater();
+			timer = 0;
+		}
+
+		if(manager)
+		{
+			manager->unlink(q);
+			manager = 0;
+		}
+	}
+
+	void handle(const InspectResponsePacket &packet)
+	{
+		InspectData idata;
+		idata.doProxy = !packet.noProxy;
+		idata.sharingKey = packet.sharingKey;
+		idata.userData = packet.userData;
+		cleanup();
+		emit q->finished(idata);
+	}
+
+public slots:
+	void doStart()
+	{
+		if(!manager->canWriteImmediately())
+		{
+			condition = InspectRequest::ErrorUnavailable;
+			cleanup();
+			emit q->error();
+			return;
+		}
+
+		InspectRequestPacket p;
+		p.id = id;
+		p.method = hdata.method;
+		p.path = hdata.path;
+		p.headers = hdata.headers;
+
+		timer = new QTimer(this);
+		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		timer->setSingleShot(true);
+		timer->start(REQUEST_TIMEOUT * 1000);
+
+		manager->write(p);
+	}
+
+	void timer_timeout()
+	{
+		condition = InspectRequest::ErrorTimeout;
+		cleanup();
+		emit q->error();
 	}
 };
 
@@ -54,15 +125,15 @@ InspectRequest::~InspectRequest()
 	delete d;
 }
 
+InspectRequest::ErrorCondition InspectRequest::errorCondition() const
+{
+	return d->condition;
+}
+
 void InspectRequest::start(const HttpRequestData &hdata)
 {
-	InspectRequestPacket p;
-	p.id = d->id;
-	p.method = hdata.method;
-	p.path = hdata.path;
-	p.headers = hdata.headers;
-
-	d->manager->write(p);
+	d->hdata = hdata;
+	QMetaObject::invokeMethod(d, "doStart", Qt::QueuedConnection);
 }
 
 QByteArray InspectRequest::id() const
@@ -78,11 +149,7 @@ void InspectRequest::setup(InspectManager *manager)
 
 void InspectRequest::handle(const InspectResponsePacket &packet)
 {
-	InspectData idata;
-	idata.doProxy = !packet.noProxy;
-	idata.sharingKey = packet.sharingKey;
-	idata.userData = packet.userData;
-	emit finished(idata);
+	d->handle(packet);
 }
 
 #include "inspectrequest.moc"

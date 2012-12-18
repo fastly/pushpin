@@ -20,6 +20,7 @@
 #include "m2response.h"
 
 #include "packet/m2responsepacket.h"
+#include "log.h"
 #include "m2manager.h"
 
 static QByteArray makeChunk(const QByteArray &in)
@@ -31,22 +32,136 @@ static QByteArray makeChunk(const QByteArray &in)
 	return out;
 }
 
-class M2Response::Private
+class M2Response::Private : public QObject
 {
+	Q_OBJECT
+
 public:
+	enum State
+	{
+		Stopped,
+		Starting,
+		SendingBody
+	};
+
+	M2Response *q;
 	M2Manager *manager;
 	M2Request::Rid rid;
+	State state;
+	bool pendingUpdate;
+	int code;
+	QByteArray status;
+	HttpHeaders headers;
+	QByteArray out;
+	bool outFinished;
+	bool chunked;
 
-	Private() :
-		manager(0)
+	Private(M2Response *_q) :
+		QObject(_q),
+		q(_q),
+		manager(0),
+		state(Stopped),
+		pendingUpdate(false),
+		outFinished(false),
+		chunked(false)
 	{
+	}
+
+	void update()
+	{
+		if(!pendingUpdate)
+		{
+			pendingUpdate = true;
+			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+		}
+	}
+
+	void writeBodyResponse(const QByteArray &body)
+	{
+		M2ResponsePacket p;
+		p.sender = rid.first;
+		p.id = rid.second;
+		if(chunked)
+			p.data = makeChunk(body);
+		else
+			p.data = body;
+
+		manager->writeResponse(p);
+	}
+
+	// for chunked mode, this will write a final chunk but leave
+	//   the connection alone. for non-chunked, this will instruct
+	//   mongrel2 to close the HTTP connection, which some clients
+	//   seem to need
+	void writeCloseResponse()
+	{
+		writeBodyResponse("");
+	}
+
+public slots:
+	void doUpdate()
+	{
+		pendingUpdate = false;
+
+		if(state == Starting)
+		{
+			if(headers.get("Transfer-Encoding") == "chunked")
+				chunked = true;
+
+			M2ResponsePacket p;
+
+			p.sender = rid.first;
+			p.id = rid.second;
+			p.data = "HTTP/1.1 " + QByteArray::number(code) + ' ' + status + "\r\n";
+			foreach(const HttpHeader &h, headers)
+				p.data += h.first + ": " + h.second + "\r\n";
+			p.data += "\r\n";
+
+			if(!out.isEmpty())
+			{
+				if(chunked)
+					p.data += makeChunk(out);
+				else
+					p.data += out;
+
+				out.clear();
+			}
+
+			manager->writeResponse(p);
+
+			if(outFinished)
+			{
+				writeCloseResponse();
+
+				state = Stopped;
+				emit q->finished();
+			}
+			else
+				state = SendingBody;
+		}
+		else if(state == SendingBody)
+		{
+			if(!out.isEmpty())
+			{
+				writeBodyResponse(out);
+				out.clear();
+			}
+
+			if(outFinished)
+			{
+				writeCloseResponse();
+
+				state = Stopped;
+				emit q->finished();
+			}
+		}
 	}
 };
 
 M2Response::M2Response(QObject *parent) :
 	QObject(parent)
 {
-	d = new Private;
+	d = new Private(this);
 }
 
 M2Response::~M2Response()
@@ -54,35 +169,28 @@ M2Response::~M2Response()
 	delete d;
 }
 
-void M2Response::write(int code, const QByteArray &status, const HttpHeaders &headers, const QByteArray &body, bool chunked)
+void M2Response::start(int code, const QByteArray &status, const HttpHeaders &headers)
 {
-	M2ResponsePacket p;
-	p.sender = d->rid.first;
-	p.id = d->rid.second;
-	p.data = "HTTP/1.1 " + QByteArray::number(code) + ' ' + status + "\r\n";
-	foreach(const HttpHeader &h, headers)
-		p.data += h.first + ": " + h.second + "\r\n";
-	p.data += "\r\n";
-	if(chunked)
-		p.data += makeChunk(body);
-	else
-		p.data += body;
-	d->manager->writeResponse(p);
+	d->state = Private::Starting;
+	d->code = code;
+	d->status = status;
+	d->headers = headers;
 
-	//QMetaObject::invokeMethod(this, "finished", Qt::QueuedConnection);
+	d->update();
 }
 
-void M2Response::write(const QByteArray &body, bool chunked)
+void M2Response::write(const QByteArray &body)
 {
-	M2ResponsePacket p;
-	p.sender = d->rid.first;
-	p.id = d->rid.second;
-	if(chunked)
-		p.data = makeChunk(body);
-	else
-		p.data = body;
+	d->out += body;
 
-	d->manager->writeResponse(p);
+	d->update();
+}
+
+void M2Response::close()
+{
+	d->outFinished = true;
+
+	d->update();
 }
 
 void M2Response::handle(M2Manager *manager, const M2Request::Rid &rid)
@@ -90,3 +198,5 @@ void M2Response::handle(M2Manager *manager, const M2Request::Rid &rid)
 	d->manager = manager;
 	d->rid = rid;
 }
+
+#include "m2response.moc"

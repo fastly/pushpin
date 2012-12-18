@@ -28,6 +28,8 @@
 #include "log.h"
 #include "inspectrequest.h"
 
+#define REQUEST_HWM 100
+
 class InspectManager::Private : public QObject
 {
 	Q_OBJECT
@@ -52,6 +54,9 @@ public:
 		req_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 		connect(req_sock, SIGNAL(readyRead()), SLOT(req_readyRead()));
 		connect(req_sock, SIGNAL(messagesWritten(int)), SLOT(req_messagesWritten(int)));
+
+		req_sock->setHwm(REQUEST_HWM);
+
 		if(!req_sock->bind(req_spec))
 		{
 			delete req_sock;
@@ -72,32 +77,28 @@ public slots:
 			QList<QByteArray> msg = req_sock->read();
 			if(msg.count() != 2 || !msg[0].isEmpty())
 			{
-				log_warning("1");
-				// TODO: log warning, invalid
+				log_warning("inspectmanager: received message with unexpected routing header, skipping");
 				continue;
 			}
 
 			QVariant data = TnetString::toVariant(msg[1]);
 			if(data.isNull())
 			{
-				log_warning("2");
-				// TODO: log warning, invalid
+				log_warning("inspectmanager: received message with invalid format (tnetstring parse failed), skipping");
 				continue;
 			}
 
 			InspectResponsePacket p;
 			if(!p.fromVariant(data))
 			{
-				log_warning("3");
-				// TODO: log warning, invalid
+				log_warning("inspectmanager: received message with invalid format (parse failed), skipping");
 				continue;
 			}
 
 			InspectRequest *req = reqsById.value(p.id);
 			if(!req)
 			{
-				log_warning("4");
-				// TODO: log warning, unknown request id
+				log_warning("inspectmanager: received message for unknown request id, skipping");
 				continue;
 			}
 
@@ -137,6 +138,13 @@ InspectRequest *InspectManager::createRequest()
 	req->setup(this);
 	d->reqsById.insert(req->id(), req);
 	return req;
+}
+
+bool InspectManager::canWriteImmediately() const
+{
+	assert(d->req_sock);
+
+	return d->req_sock->canWriteImmediately();
 }
 
 void InspectManager::write(const InspectRequestPacket &packet)

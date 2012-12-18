@@ -29,6 +29,7 @@
 #include "qzmqsocket.h"
 #include "packet/tnetstring.h"
 #include "packet/acceptresponsepacket.h"
+#include "packet/retryrequestpacket.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
@@ -39,6 +40,7 @@
 #include "zurlrequest.h"
 #include "inspectmanager.h"
 #include "domainmap.h"
+#include "inspectchecker.h"
 #include "requestsession.h"
 #include "proxysession.h"
 
@@ -49,6 +51,20 @@ class App::Private : public QObject
 	Q_OBJECT
 
 public:
+	class ProxyItem
+	{
+	public:
+		bool shared;
+		QByteArray key;
+		ProxySession *ps;
+
+		ProxyItem() :
+			shared(false),
+			ps(0)
+		{
+		}
+	};
+
 	App *q;
 	bool verbose;
 	QByteArray clientId;
@@ -56,8 +72,11 @@ public:
 	ZurlManager *zurl;
 	InspectManager *inspect;
 	DomainMap *domainMap;
+	InspectChecker *inspectChecker;
 	QZmq::Socket *handler_retry_in_sock;
 	QZmq::Socket *handler_accept_out_sock;
+	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
+	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	int workers;
 	int maxWorkers;
 
@@ -69,6 +88,7 @@ public:
 		zurl(0),
 		inspect(0),
 		domainMap(0),
+		inspectChecker(0),
 		handler_retry_in_sock(0),
 		handler_accept_out_sock(0),
 		workers(0)
@@ -205,6 +225,8 @@ public:
 				emit q->quit();
 				return;
 			}
+
+			inspectChecker = new InspectChecker(this);
 		}
 
 		if(!handler_retry_in_spec.isEmpty())
@@ -234,75 +256,128 @@ public:
 		log_info("started");
 	}
 
+	void doProxy(RequestSession *rs, const InspectData *idata = 0)
+	{
+		ProxySession *ps = 0;
+		if(idata && !idata->sharingKey.isEmpty())
+		{
+			ProxyItem *i = proxyItemsByKey.value(idata->sharingKey);
+			if(i)
+				ps = i->ps;
+		}
+
+		if(!ps)
+		{
+			ps = new ProxySession(zurl, domainMap, this);
+			connect(ps, SIGNAL(addNotPossible()), SLOT(ps_addNotPossible()));
+			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
+			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
+
+			if(idata)
+				ps->setInspectData(*idata);
+
+			ProxyItem *i = new ProxyItem;
+			i->ps = ps;
+			proxyItemsBySession.insert(i->ps, i);
+
+			if(!idata && idata->sharingKey.isEmpty())
+			{
+				i->shared = true;
+				i->key = idata->sharingKey;
+				proxyItemsByKey.insert(i->key, i);
+			}
+		}
+
+		// proxysession will take it from here
+		rs->disconnect(this);
+		ps->add(rs);
+	}
+
+	void sendAccept(const AcceptData &adata)
+	{
+		AcceptResponsePacket p;
+		foreach(const M2Request::Rid &rid, adata.rids)
+			p.rids += AcceptResponsePacket::Rid(rid.first, rid.second);
+
+		p.request = adata.request;
+
+		if(adata.haveInspectData)
+		{
+			p.haveInspectInfo = true;
+			p.inspectInfo.noProxy = !adata.inspectData.doProxy;
+			p.inspectInfo.sharingKey = adata.inspectData.sharingKey;
+			p.inspectInfo.userData = adata.inspectData.userData;
+		}
+
+		if(adata.haveResponse)
+		{
+			p.haveResponse = true;
+			p.response = adata.response;
+		}
+
+		QList<QByteArray> msg;
+		msg += TnetString::fromVariant(p.toVariant());
+		handler_accept_out_sock->write(msg);
+	}
+
 private slots:
 	void m2_requestReady()
 	{
 		M2Request *req = m2->takeNext();
 
-		QByteArray host = req->headers().get("host");
-		if(host.isEmpty())
-		{
-			// TODO: log warning, skip because of no host value
-			return;
-		}
-
-		QString shost = QString::fromUtf8(host);
-
-		QByteArray scheme;
-		if(req->isHttps())
-			scheme = "https";
-		else
-			scheme = "http";
-
-		int port;
-		int at = shost.lastIndexOf(':');
-		if(at != -1)
-		{
-			QString sport = shost.mid(at + 1);
-			bool ok;
-			port = sport.toInt(&ok);
-			if(!ok)
-			{
-				// TODO: log warning, invalid host
-				return;
-			}
-
-			shost = shost.mid(0, at);
-		}
-		else
-		{
-			if(req->isHttps())
-				port = 443;
-			else
-				port = 80;
-		}
-
-		QByteArray url = scheme + "://" + shost.toUtf8();
-		if((req->isHttps() && port != 443) || (!req->isHttps() && port != 80))
-			url += ':' + QByteArray::number(port);
-		url += req->path();
-
-		log_info("IN id=%d, %s %s", req->rid().second.data(), qPrintable(req->method()), qPrintable(url));
-
-		RequestSession *rs = new RequestSession(inspect, this);
-		connect(rs, SIGNAL(inspectFinished(const InspectData &)), SLOT(rs_inspectFinished(const InspectData &)));
+		RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
+		connect(rs, SIGNAL(inspected(const InspectData &)), SLOT(rs_inspected(const InspectData &)));
+		connect(rs, SIGNAL(inspectError()), SLOT(rs_inspectError()));
+		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
+		connect(rs, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(rs_finishedForAccept(const AcceptData &)));
 		rs->start(req);
 	}
 
-	void rs_inspectFinished(const InspectData &idata)
+	void rs_inspected(const InspectData &idata)
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
-		if(idata.doProxy)
+		// if we get here, then the request must be proxied. if it was to be directly
+		//   accepted, then finishedForAccept would have been emitted instead
+		assert(idata.doProxy);
+
+		doProxy(rs, &idata);
+	}
+
+	void rs_inspectError()
+	{
+		RequestSession *rs = (RequestSession *)sender();
+
+		// default action is to proxy without sharing
+		doProxy(rs);
+	}
+
+	void rs_finished()
+	{
+		RequestSession *rs = (RequestSession *)sender();
+		delete rs;
+	}
+
+	void rs_finishedForAccept(const AcceptData &adata)
+	{
+		RequestSession *rs = (RequestSession *)sender();
+		delete rs;
+
+		sendAccept(adata);
+	}
+
+	void ps_addNotPossible()
+	{
+		ProxySession *ps = (ProxySession *)sender();
+
+		ProxyItem *i = proxyItemsBySession.value(ps);
+		assert(i);
+
+		// no more sharing for this session
+		if(i->shared)
 		{
-			ProxySession *ps = new ProxySession(zurl, domainMap, this);
-			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
-			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
-			ps->add(rs);
-		}
-		else
-		{
-			delete rs;
+			i->shared = false;
+			proxyItemsByKey.remove(i->key);
 		}
 	}
 
@@ -310,6 +385,13 @@ private slots:
 	{
 		ProxySession *ps = (ProxySession *)sender();
 
+		ProxyItem *i = proxyItemsBySession.value(ps);
+		assert(i);
+
+		if(i->shared)
+			proxyItemsByKey.remove(i->key);
+		proxyItemsBySession.remove(i->ps);
+		delete i;
 		delete ps;
 	}
 
@@ -317,37 +399,27 @@ private slots:
 	{
 		ProxySession *ps = (ProxySession *)sender();
 
-		AcceptResponsePacket p;
-		foreach(const M2Request::Rid &rid, adata.rids)
-			p.rids += AcceptResponsePacket::Rid(rid.first, rid.second);
+		ProxyItem *i = proxyItemsBySession.value(ps);
+		assert(i);
 
-		if(adata.haveInspectData)
-		{
-			// TODO
-		}
-
-		assert(adata.haveResponse);
-
-		p.haveResponse = true; // Accept from ProxySession always has a response
-		p.response = adata.response;
-
+		if(i->shared)
+			proxyItemsByKey.remove(i->key);
+		proxyItemsBySession.remove(i->ps);
+		delete i;
 		delete ps;
 
-		QList<QByteArray> msg;
-		msg += TnetString::fromVariant(p.toVariant());
-		handler_accept_out_sock->write(msg);
+		// accept from ProxySession always has a response
+		assert(adata.haveResponse);
+
+		sendAccept(adata);
 	}
 
 	void handler_retry_in_readyRead()
 	{
-#if 0
-		if(maxWorkers != -1 && workers >= maxWorkers)
-			return;
-
-		QList<QByteArray> msg = retry_in_sock->read();
+		QList<QByteArray> msg = handler_retry_in_sock->read();
 		if(msg.count() != 1)
 		{
-			log_warning("received message with parts != 1, skipping");
+			log_warning("retry_in: received message with parts != 1, skipping");
 			return;
 		}
 
@@ -355,27 +427,40 @@ private slots:
 		QVariant data = TnetString::toVariant(msg[0], 0, &ok);
 		if(!ok)
 		{
-			log_warning("received message with invalid format (tnetstring parse failed), skipping");
+			log_warning("retry_in: received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
 
-		log_info("IN retry %s", qPrintable(TnetString::variantToString(data)));
-
-		// FIXME: we should use our own internal (non-m2) format here
-		/*M2RequestPacket req;
-		if(!req.fromVariant(data))
+		RetryRequestPacket p;
+		if(!p.fromVariant(data))
 		{
-			log_warning("received message with invalid format, skipping");
+			log_warning("retry_in: received message with invalid format (parse failed), skipping");
 			return;
 		}
 
-		handleIncomingRequest(req);*/
-#endif
+		log_info("IN retry %s %s", qPrintable(p.request.method), p.request.path.data());
+
+		InspectData idata;
+		if(p.haveInspectInfo)
+		{
+			idata.doProxy = !p.inspectInfo.noProxy;
+			idata.sharingKey = p.inspectInfo.sharingKey;
+			idata.userData = p.inspectInfo.userData;
+		}
+
+		foreach(const RetryRequestPacket::Rid &rid, p.rids)
+		{
+			M2Request::Rid mrid(rid.first, rid.second);
+
+			RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
+			rs->setupAsRetry(mrid, p.request, m2);
+
+			doProxy(rs, p.haveInspectInfo ? &idata : 0);
+		}
 	}
 
 	void handler_accept_out_messagesWritten(int count)
 	{
-		// TODO
 		Q_UNUSED(count);
 	}
 };

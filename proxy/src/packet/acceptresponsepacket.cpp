@@ -40,9 +40,39 @@ QVariant AcceptResponsePacket::toVariant() const
 
 	obj["rids"] = vrids;
 
+	{
+		QVariantHash vrequest;
+
+		vrequest["method"] = request.method.toLatin1();
+		vrequest["path"] = request.path;
+
+		QVariantList vheaders;
+		foreach(const HttpHeader &h, request.headers)
+		{
+			QVariantList vheader;
+			vheader += h.first;
+			vheader += h.second;
+			vheaders += QVariant(vheader);
+		}
+
+		vrequest["headers"] = vheaders;
+
+		vrequest["body"] = request.body;
+
+		obj["request"] = vrequest;
+	}
+
 	if(haveInspectInfo)
 	{
-		// TODO
+		QVariantHash vinspect;
+
+		vinspect["no-proxy"] = inspectInfo.noProxy;
+		vinspect["sharing-key"] = inspectInfo.sharingKey;
+
+		if(inspectInfo.userData.isValid())
+			vinspect["user-data"] = inspectInfo.userData;
+
+		obj["inspect"] = vinspect;
 	}
 
 	if(haveResponse)

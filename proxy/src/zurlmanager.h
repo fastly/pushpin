@@ -50,6 +50,7 @@ private:
 	friend class ZurlRequest;
 	void link(ZurlRequest *req);
 	void unlink(ZurlRequest *req);
+	bool canWriteImmediately() const;
 	void write(const ZurlRequestPacket &packet);
 	void write(const ZurlRequestPacket &packet, const QByteArray &instanceAddress);
 };

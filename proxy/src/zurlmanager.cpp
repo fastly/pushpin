@@ -19,6 +19,7 @@
 
 #include "zurlmanager.h"
 
+#include <assert.h>
 #include <QStringList>
 #include <QHash>
 #include <QPointer>
@@ -28,6 +29,9 @@
 #include "packet/zurlresponsepacket.h"
 #include "log.h"
 #include "zurlrequest.h"
+
+#define REQUEST_HWM 100
+#define DEFAULT_HWM 1000
 
 class ZurlManager::Private : public QObject
 {
@@ -59,6 +63,9 @@ public:
 
 		out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 		connect(out_sock, SIGNAL(messagesWritten(int)), SLOT(out_messagesWritten(int)));
+
+		out_sock->setHwm(REQUEST_HWM);
+
 		foreach(const QString &spec, out_specs)
 			out_sock->connectToAddress(spec);
 
@@ -71,6 +78,10 @@ public:
 
 		out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
 		connect(out_stream_sock, SIGNAL(messagesWritten(int)), SLOT(out_stream_messagesWritten(int)));
+
+		out_stream_sock->setWriteQueueEnabled(false);
+		out_stream_sock->setHwm(DEFAULT_HWM);
+
 		foreach(const QString &spec, out_stream_specs)
 			out_stream_sock->connectToAddress(spec);
 
@@ -83,6 +94,9 @@ public:
 
 		in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
 		connect(in_sock, SIGNAL(readyRead()), SLOT(in_readyRead()));
+
+		in_sock->setHwm(DEFAULT_HWM);
+
 		foreach(const QString &spec, in_specs)
 		{
 			in_sock->subscribe(clientId);
@@ -112,14 +126,14 @@ public slots:
 			QList<QByteArray> msg = in_sock->read();
 			if(msg.count() != 1)
 			{
-				log_warning("received message with parts != 1, skipping");
+				log_warning("zurlmanager: received message with parts != 1, skipping");
 				continue;
 			}
 
 			int at = msg[0].indexOf(' ');
 			if(at == -1)
 			{
-				log_warning("received message with invalid format, skipping");
+				log_warning("zurlmanager: received message with invalid format, skipping");
 				continue;
 			}
 
@@ -127,21 +141,21 @@ public slots:
 			QVariant data = TnetString::toVariant(msg[0].mid(at + 1));
 			if(data.isNull())
 			{
-				log_warning("received message with invalid format (tnetstring parse failed), skipping");
+				log_warning("zurlmanager: received message with invalid format (tnetstring parse failed), skipping");
 				continue;
 			}
 
 			ZurlResponsePacket p;
 			if(!p.fromVariant(data))
 			{
-				log_warning("received message with invalid format (zurl parse failed), skipping");
+				log_warning("zurlmanager: received message with invalid format (parse failed), skipping");
 				continue;
 			}
 
 			ZurlRequest *req = reqsByRid.value(ZurlRequest::Rid(clientId, p.id));
 			if(!req)
 			{
-				log_warning("received message for unknown request id, canceling");
+				log_warning("zurlmanager: received message for unknown request id, canceling");
 
 				// if this was not an error packet, send cancel
 				if(p.condition.isEmpty() && !p.replyAddress.isEmpty())
@@ -219,13 +233,24 @@ void ZurlManager::unlink(ZurlRequest *req)
 	d->reqsByRid.remove(req->rid());
 }
 
+bool ZurlManager::canWriteImmediately() const
+{
+	assert(d->out_sock);
+
+	return d->out_sock->canWriteImmediately();
+}
+
 void ZurlManager::write(const ZurlRequestPacket &packet)
 {
+	assert(d->out_sock);
+
 	d->out_sock->write(QList<QByteArray>() << TnetString::fromVariant(packet.toVariant()));
 }
 
 void ZurlManager::write(const ZurlRequestPacket &packet, const QByteArray &instanceAddress)
 {
+	assert(d->out_sock);
+
 	QList<QByteArray> msg;
 	msg += instanceAddress;
 	msg += QByteArray();
