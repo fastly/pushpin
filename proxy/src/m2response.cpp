@@ -27,7 +27,7 @@
 
 // 100k/second
 #define RATE_TIME 1000
-#define RATE_SIZE 50000
+#define RATE_SIZE 100000
 
 static QByteArray makeChunk(const QByteArray &in)
 {
