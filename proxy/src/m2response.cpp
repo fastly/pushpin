@@ -19,9 +19,15 @@
 
 #include "m2response.h"
 
+#include <QPointer>
+#include <QTimer>
 #include "packet/m2responsepacket.h"
 #include "log.h"
 #include "m2manager.h"
+
+// 100k/second
+#define RATE_TIME 1000
+#define RATE_SIZE 50000
 
 static QByteArray makeChunk(const QByteArray &in)
 {
@@ -55,6 +61,8 @@ public:
 	QByteArray out;
 	bool outFinished;
 	bool chunked;
+	QTimer *timer;
+	int outCredits;
 
 	Private(M2Response *_q) :
 		QObject(_q),
@@ -63,8 +71,27 @@ public:
 		state(Stopped),
 		pendingUpdate(false),
 		outFinished(false),
-		chunked(false)
+		chunked(false),
+		outCredits(0)
 	{
+		timer = new QTimer(this);
+		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+	}
+
+	~Private()
+	{
+		cleanup();
+	}
+
+	void cleanup()
+	{
+		if(timer)
+		{
+			timer->disconnect(this);
+			timer->setParent(0);
+			timer->deleteLater();
+			timer = 0;
+		}
 	}
 
 	void update()
@@ -101,10 +128,14 @@ public:
 public slots:
 	void doUpdate()
 	{
+		QPointer<QObject> self = this;
+
 		pendingUpdate = false;
 
 		if(state == Starting)
 		{
+			timer->start(RATE_TIME);
+
 			if(headers.get("Transfer-Encoding") == "chunked")
 				chunked = true;
 
@@ -117,17 +148,31 @@ public slots:
 				p.data += h.first + ": " + h.second + "\r\n";
 			p.data += "\r\n";
 
-			if(!out.isEmpty())
-			{
-				if(chunked)
-					p.data += makeChunk(out);
-				else
-					p.data += out;
+			outCredits = RATE_SIZE;
 
-				out.clear();
+			int bodySize = qMin(out.size(), outCredits);
+
+			if(bodySize > 0)
+			{
+				QByteArray buf = out.mid(0, bodySize);
+				out = out.mid(bodySize);
+
+				if(chunked)
+					p.data += makeChunk(buf);
+				else
+					p.data += buf;
+
+				outCredits -= bodySize;
 			}
 
 			manager->writeResponse(p);
+
+			if(bodySize > 0)
+			{
+				emit q->bytesWritten(bodySize);
+				if(!self)
+					return;
+			}
 
 			if(outFinished)
 			{
@@ -143,11 +188,26 @@ public slots:
 		{
 			if(!out.isEmpty())
 			{
-				writeBodyResponse(out);
-				out.clear();
+				if(!timer->isActive())
+					timer->start(RATE_TIME);
+
+				int bodySize = qMin(out.size(), outCredits);
+
+				if(bodySize > 0)
+				{
+					QByteArray buf = out.mid(0, bodySize);
+					out = out.mid(bodySize);
+
+					outCredits -= bodySize;
+					writeBodyResponse(buf);
+
+					emit q->bytesWritten(bodySize);
+					if(!self)
+						return;
+				}
 			}
 
-			if(outFinished)
+			if(out.isEmpty() && outFinished)
 			{
 				writeCloseResponse();
 
@@ -155,6 +215,16 @@ public slots:
 				emit q->finished();
 			}
 		}
+	}
+
+	void timer_timeout()
+	{
+		outCredits = RATE_SIZE;
+
+		if(!out.isEmpty())
+			doUpdate();
+		else
+			timer->stop();
 	}
 };
 

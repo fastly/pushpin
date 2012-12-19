@@ -51,6 +51,7 @@ public:
 		QObject(_q),
 		q(_q),
 		manager(0),
+		managerForResponse(0),
 		active(false),
 		isHttps(false),
 		finished(false),
@@ -239,6 +240,7 @@ int M2Request::actualContentLength() const
 
 M2Response *M2Request::createResponse()
 {
+	assert(d->managerForResponse);
 	return d->managerForResponse->createResponse(Rid(d->p.sender, d->p.id));
 }
 

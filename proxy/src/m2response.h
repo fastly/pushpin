@@ -38,6 +38,7 @@ public:
 	void close();
 
 signals:
+	void bytesWritten(int count);
 	void finished();
 
 private:
