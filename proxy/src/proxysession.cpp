@@ -19,8 +19,11 @@
 
 #include "proxysession.h"
 
+#include <assert.h>
 #include <QSet>
 #include <QUrl>
+#include "packet/httprequestdata.h"
+#include "packet/httpresponsedata.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
@@ -31,169 +34,331 @@
 #include "domainmap.h"
 #include "requestsession.h"
 
+#define MAX_ACCEPT_REQUEST_BODY 100000
+#define MAX_ACCEPT_RESPONSE_BODY 100000
+
 class ProxySession::Private : public QObject
 {
 	Q_OBJECT
 
 public:
+	enum State
+	{
+		Stopped,
+		Requesting,
+		Accepting,
+		Responding
+	};
+
 	ProxySession *q;
+	State state;
 	ZurlManager *zurlManager;
 	DomainMap *domainMap;
-	M2Request *mr;
-	ZurlRequest *zr;
-	bool firstRead;
-	bool instruct;
+	M2Request *m2Request;
+	QString host;
+	bool isHttps;
+	ZurlRequest *zurlRequest;
+	bool addAllowed;
 	bool haveInspectData;
 	InspectData idata;
-	AcceptData ad;
-	QSet<QByteArray> instructTypes;
-	M2Response *resp;
+	AcceptData adata;
+	QSet<QByteArray> acceptTypes;
+	QSet<RequestSession*> requestSessions;
+	HttpRequestData requestData;
+	HttpResponseData responseData;
+	QSet<M2Response*> m2Responses;
+	QHash<M2Response*, RequestSession*> sessionsByResponse;
+	int total;
 
 	Private(ProxySession *_q, ZurlManager *_zurlManager, DomainMap *_domainMap) :
 		QObject(_q),
 		q(_q),
+		state(Stopped),
 		zurlManager(_zurlManager),
 		domainMap(_domainMap),
+		m2Request(0),
+		isHttps(false),
+		zurlRequest(0),
+		addAllowed(true),
 		haveInspectData(false)
 	{
-		instruct = false;
+		total = 0;
+		acceptTypes += "application/x-fo-instruct";
+		acceptTypes += "application/fo-instruct";
+		acceptTypes += "application/grip-instruct";
+	}
 
-		instructTypes += "application/x-fo-instruct";
-		instructTypes += "application/fo-instruct";
-		instructTypes += "application/grip-instruct";
+	~Private()
+	{
+		cleanup();
+	}
+
+	void cleanup()
+	{
 	}
 
 	void add(RequestSession *rs)
 	{
-		mr = rs->request();
-		connect(mr, SIGNAL(readyRead()), SLOT(mr_readyRead()));
-		connect(mr, SIGNAL(finished()), SLOT(mr_finished()));
+		assert(addAllowed);
 
-		zr = zurlManager->createRequest();
-		connect(zr, SIGNAL(readyRead()), SLOT(zr_readyRead()));
-		connect(zr, SIGNAL(bytesWritten(int)), SLOT(zr_bytesWritten(int)));
-		connect(zr, SIGNAL(error()), SLOT(zr_error()));
-		QString host = QString::fromUtf8(mr->headers().get("host"));
-		int at = host.indexOf(':');
-		if(at != -1)
-			host = host.mid(0, at);
-		QList<DomainMap::Target> targets = domainMap->entry(host);
-		log_debug("%s has %d routes", qPrintable(host), targets.count());
-		QByteArray str = "http://" + targets[0].first.toUtf8() + ':' + QByteArray::number(targets[0].second) + mr->path();
-		//QUrl url(QByteArray("http://localhost:80/static/chat.js") /*+ req->path()*/);
-		QUrl url(str);
-		firstRead = true;
-		zr->start(mr->method(), url, mr->headers());
-		zr->endBody();
-	}
+		requestSessions += rs;
 
-public slots:
-	void mr_readyRead()
-	{
-		QByteArray buf = mr->read();
-		log_debug("got chunk: %d", buf.size());
-		zr->writeBody(buf);
-	}
-
-	void mr_finished()
-	{
-		log_debug("finished");
-		zr->endBody();
-	}
-
-	void zr_readyRead()
-	{
-		log_debug("zr_readyRead");
-
-		if(firstRead)
+		if(state == Stopped)
 		{
-			firstRead = false;
+			state = Requesting;
 
-			HttpHeaders headers = zr->responseHeaders();
+			host = rs->host();
+			isHttps = rs->isHttps();
 
-			if(instructTypes.contains(headers.get("Content-Type")))
+			if(rs->isRetry())
 			{
-				ad.rids += mr->rid();
-				ad.request.method = mr->method();
-				ad.request.path = mr->path();
-
-				ad.haveResponse = true;
-				ad.response.code = zr->responseCode();
-				ad.response.status = zr->responseStatus();
-				ad.response.headers = headers;
-				ad.response.body = zr->readResponseBody();
-
-				instruct = true;
+				requestData = rs->retryData();
 			}
 			else
 			{
-				resp = mr->createResponse();
-				connect(resp, SIGNAL(finished()), SLOT(resp_finished()));
+				m2Request = rs->request();
+				connect(m2Request, SIGNAL(readyRead()), SLOT(m2Request_readyRead()));
+				connect(m2Request, SIGNAL(finished()), SLOT(m2Request_finished()));
+				connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
 
-				if(!headers.contains("Content-Length"))
+				requestData.method = m2Request->method();
+				requestData.path = m2Request->path();
+				requestData.headers = m2Request->headers();
+				requestData.body = m2Request->read();
+			}
+
+			// TODO: support multiple targets
+
+			QList<DomainMap::Target> targets = domainMap->entry(host);
+			log_debug("%s has %d routes", qPrintable(host), targets.count());
+			QByteArray str = "http://" + targets[0].first.toUtf8() + ':' + QByteArray::number(targets[0].second) + requestData.path;
+			QUrl url(str);
+
+			zurlRequest = zurlManager->createRequest();
+			connect(zurlRequest, SIGNAL(readyRead()), SLOT(zurlRequest_readyRead()));
+			connect(zurlRequest, SIGNAL(bytesWritten(int)), SLOT(zurlRequest_bytesWritten(int)));
+			connect(zurlRequest, SIGNAL(error()), SLOT(zurlRequest_error()));
+
+			zurlRequest->start(requestData.method, url, requestData.headers);
+
+			if(!requestData.body.isEmpty())
+				zurlRequest->writeBody(requestData.body);
+
+			if(!m2Request || m2Request->isFinished())
+				zurlRequest->endBody();
+		}
+		else if(state == Requesting)
+		{
+			// nothing to do, just wait around until a response comes
+		}
+		else if(state == Responding)
+		{
+			// get the session caught up with where we're at
+
+			M2Response *resp = rs->createResponse();
+			connect(resp, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+			connect(resp, SIGNAL(finished()), SLOT(m2Response_finished()));
+
+			m2Responses += resp;
+			sessionsByResponse.insert(resp, rs);
+
+			resp->start(responseData.code, responseData.status, responseData.headers);
+
+			if(!responseData.body.isEmpty())
+				resp->write(responseData.body);
+		}
+	}
+
+public slots:
+	void m2Request_readyRead()
+	{
+		QByteArray buf = m2Request->read();
+		log_debug("proxysession: input chunk: %d", buf.size());
+
+		if(requestData.body.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
+		{
+			// TODO: reject all sessions
+		}
+
+		requestData.body += buf;
+		zurlRequest->writeBody(buf);
+	}
+
+	void m2Request_finished()
+	{
+		log_debug("proxysession: input finished");
+
+		zurlRequest->endBody();
+	}
+
+	void m2Request_error()
+	{
+		log_error("proxysession: input error");
+
+		cleanup();
+		emit q->finishedByPassthrough();
+	}
+
+	void zurlRequest_readyRead()
+	{
+		log_debug("zurlRequest_readyRead");
+
+		if(state == Requesting)
+		{
+			responseData.code = zurlRequest->responseCode();
+			responseData.status = zurlRequest->responseStatus();
+			responseData.headers = zurlRequest->responseHeaders();
+			responseData.body = zurlRequest->readResponseBody(); // initial body chunk
+
+			total += responseData.body.size();
+			log_debug("recv total: %d\n", total);
+
+			if(acceptTypes.contains(responseData.headers.get("Content-Type")))
+			{
+				state = Accepting;
+			}
+			else
+			{
+				state = Responding;
+
+				if(!responseData.headers.contains("Content-Length") && !responseData.headers.contains("Transfer-Encoding"))
+						responseData.headers += HttpHeader("Transfer-Encoding", "chunked");
+
+				foreach(RequestSession *rs, requestSessions)
 				{
-					if(!headers.contains("Transfer-Encoding"))
-						headers += HttpHeader("Transfer-Encoding", "chunked");
-				}
+					M2Response *resp = rs->createResponse();
+					connect(resp, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+					connect(resp, SIGNAL(finished()), SLOT(m2Response_finished()));
 
-				resp->start(zr->responseCode(), zr->responseStatus(), headers);
-				QByteArray buf = zr->readResponseBody();
-				if(!buf.isEmpty())
-					resp->write(buf);
+					m2Responses += resp;
+					sessionsByResponse.insert(resp, rs);
+
+					resp->start(responseData.code, responseData.status, responseData.headers);
+
+					if(!responseData.body.isEmpty())
+						resp->write(responseData.body);
+				}
 			}
 		}
 		else
 		{
-			QByteArray buf = zr->readResponseBody();
+			QByteArray buf = zurlRequest->readResponseBody();
+
+			total += buf.size();
+			log_debug("recv total: %d", total);
+
 			if(!buf.isEmpty())
 			{
-				if(instruct)
+				if(state == Accepting)
 				{
-					ad.response.body += buf;
+					if(responseData.body.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
+					{
+						// TODO: reject all sessions
+					}
+
+					responseData.body += buf;
 				}
-				else
+				else // Responding
 				{
+					bool wasAllowed = addAllowed;
+
+					if(addAllowed)
+					{
+						if(responseData.body.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
+						{
+							responseData.body.clear();
+							addAllowed = false;
+						}
+						else
+							responseData.body += buf;
+					}
+
 					log_debug("writing %d", buf.size());
-					resp->write(buf);
+					foreach(M2Response *resp, m2Responses)
+						resp->write(buf);
+
+					if(wasAllowed && !addAllowed)
+						emit q->addNotAllowed();
 				}
 			}
 		}
 
-		if(zr->isFinished())
+		if(zurlRequest->isFinished())
 		{
-			log_debug("zr isFinished");
+			log_debug("zurlRequest finished");
 
-			delete mr;
-			delete zr;
+			delete zurlRequest;
+			zurlRequest = 0;
 
-			if(instruct)
+			if(state == Accepting)
 			{
-				emit q->finishedForAccept(ad);
+				foreach(RequestSession *rs, requestSessions)
+				{
+					if(rs->isRetry())
+						adata.rids += rs->retryRid();
+					else
+						adata.rids += rs->request()->rid();
+				}
+
+				adata.request = requestData;
+
+				adata.https = isHttps;
+
+				adata.haveResponse = true;
+				adata.response = responseData;
+
+				emit q->finishedForAccept(adata);
 			}
-			else
+			else // Responding
 			{
-				resp->close();
+				foreach(M2Response *resp, m2Responses)
+					resp->close();
+
+				// once the entire reponse has been received, cut off any new adds
+				if(addAllowed)
+				{
+					addAllowed = false;
+					emit q->addNotAllowed();
+				}
 			}
 		}
 	}
 
-	void zr_bytesWritten(int count)
+	void zurlRequest_bytesWritten(int count)
 	{
+		// TODO: flow control
 		Q_UNUSED(count);
-		log_debug("zr_bytesWritten");
 	}
 
-	void zr_error()
+	void zurlRequest_error()
 	{
-		log_debug("zr_error");
+		log_debug("zurlRequest_error");
+
+		// TODO: reject all sessions
 	}
 
-	void resp_finished()
+	void m2Response_bytesWritten(int count)
 	{
-		log_debug("resp_finished");
+		// TODO: flow control
+		Q_UNUSED(count);
+	}
 
+	void m2Response_finished()
+	{
+		M2Response *resp = (M2Response *)sender();
+
+		log_debug("m2Response_finished");
+
+		RequestSession *rs = sessionsByResponse.value(resp);
+		assert(rs);
+
+		sessionsByResponse.remove(resp);
+		m2Responses.remove(resp);
 		delete resp;
-		emit q->finishedByPassthrough();
+		delete rs;
+
+		if(m2Responses.isEmpty())
+			emit q->finishedByPassthrough();
 	}
 };
 

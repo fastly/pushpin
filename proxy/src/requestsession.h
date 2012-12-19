@@ -28,6 +28,7 @@ class InspectData;
 class AcceptData;
 class InspectManager;
 class InspectChecker;
+class M2Response;
 
 class RequestSession : public QObject
 {
@@ -38,6 +39,8 @@ public:
 	~RequestSession();
 
 	bool isRetry() const;
+	bool isHttps() const;
+	QString host() const;
 
 	M2Request *request();
 
@@ -48,7 +51,9 @@ public:
 	void start(M2Request *req);
 
 	// creates an M2Request-less session
-	void setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, M2Manager *manager);
+	bool setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, M2Manager *manager);
+
+	M2Response *createResponse();
 
 signals:
 	void inspected(const InspectData &idata);

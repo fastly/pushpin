@@ -30,7 +30,39 @@
 #include "inspectrequest.h"
 #include "inspectchecker.h"
 
-#define MAX_ACCEPTBODY 100000
+#define MAX_ACCEPT_REQUEST_BODY 100000
+
+static bool parseHostHeader(bool https, const QByteArray &in, QString *_host, int *_port)
+{
+	QString host = QString::fromUtf8(in);
+
+	int port;
+	int at = host.lastIndexOf(':');
+	if(at != -1)
+	{
+		QString sport = host.mid(at + 1);
+		bool ok;
+		port = sport.toInt(&ok);
+		if(!ok)
+			return false;
+
+		host = host.mid(0, at);
+	}
+	else
+	{
+		if(https)
+			port = 443;
+		else
+			port = 80;
+	}
+
+	if(_host)
+		*_host = host;
+	if(_port)
+		*_port = port;
+
+	return true;
+}
 
 class RequestSession::Private : public QObject
 {
@@ -45,8 +77,10 @@ public:
 	M2Manager *m2Manager; // only used in retry mode, otherwise we get from m2Request
 	M2Request::Rid retryRid;
 	HttpRequestData *retryData;
+	bool retryIsHttps;
 	InspectRequest *inspectRequest;
 	InspectData idata;
+	QString host;
 	QByteArray in;
 
 	Private(RequestSession *_q, InspectManager *_inspectManager, InspectChecker *_inspectChecker) :
@@ -58,6 +92,7 @@ public:
 		m2Response(0),
 		m2Manager(0),
 		retryData(0),
+		retryIsHttps(false),
 		inspectRequest(0)
 	{
 	}
@@ -91,15 +126,23 @@ public:
 
 	void start(M2Request *req)
 	{
-		QByteArray host = req->headers().get("host");
-		if(host.isEmpty())
+		m2Request = req;
+
+		QByteArray rawHost = req->headers().get("host");
+		if(rawHost.isEmpty())
 		{
 			log_warning("requestsession: no host header, rejecting");
 			respondBadRequest("Host header required.");
 			return;
 		}
 
-		QString shost = QString::fromUtf8(host);
+		int port;
+		if(!parseHostHeader(req->isHttps(), rawHost, &host, &port))
+		{
+			log_warning("requestsession: invalid host header, rejecting");
+			respondBadRequest("Invalid host header.");
+			return;
+		}
 
 		QByteArray scheme;
 		if(req->isHttps())
@@ -107,38 +150,13 @@ public:
 		else
 			scheme = "http";
 
-		int port;
-		int at = shost.lastIndexOf(':');
-		if(at != -1)
-		{
-			QString sport = shost.mid(at + 1);
-			bool ok;
-			port = sport.toInt(&ok);
-			if(!ok)
-			{
-				log_warning("requestsession: invalid host header, rejecting");
-				respondBadRequest("Invalid host header.");
-				return;
-			}
-
-			shost = shost.mid(0, at);
-		}
-		else
-		{
-			if(req->isHttps())
-				port = 443;
-			else
-				port = 80;
-		}
-
-		QByteArray url = scheme + "://" + shost.toUtf8();
+		QByteArray url = scheme + "://" + host.toUtf8();
 		if((req->isHttps() && port != 443) || (!req->isHttps() && port != 80))
 			url += ':' + QByteArray::number(port);
 		url += req->path();
 
 		log_info("IN id=%d, %s %s", req->rid().second.data(), qPrintable(req->method()), qPrintable(url));
 
-		m2Request = req;
 		connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
 
 		inspectRequest = inspectManager->createRequest();
@@ -168,9 +186,9 @@ public:
 	void processIncomingRequest()
 	{
 		QByteArray buf = m2Request->read();
-		if(in.size() + buf.size() > MAX_ACCEPTBODY)
+		if(in.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
 		{
-			respondError(413, "Request Entity Too Large", QString("Body must not exceed %1 bytes").arg(MAX_ACCEPTBODY));
+			respondError(413, "Request Entity Too Large", QString("Body must not exceed %1 bytes").arg(MAX_ACCEPT_REQUEST_BODY));
 			return;
 		}
 
@@ -184,6 +202,8 @@ public:
 			adata.request.method = m2Request->method();
 			adata.request.path = m2Request->path();
 			adata.request.headers = m2Request->headers();
+
+			adata.https = m2Request->isHttps();
 
 			adata.haveInspectData = true;
 			adata.inspectData.doProxy = idata.doProxy;
@@ -214,6 +234,7 @@ public:
 
 		m2Response->start(code, status.toLatin1(), headers);
 		m2Response->write(body);
+		m2Response->close();
 	}
 
 	void respondBadRequest(const QString &errorString)
@@ -247,10 +268,10 @@ public slots:
 
 	void inspectRequest_finished(const InspectData &_idata)
 	{
+		idata = _idata;
+
 		delete inspectRequest;
 		inspectRequest = 0;
-
-		idata = _idata;
 
 		if(!idata.doProxy)
 		{
@@ -289,6 +310,19 @@ bool RequestSession::isRetry() const
 	return d->retryData;
 }
 
+bool RequestSession::isHttps() const
+{
+	if(d->m2Request)
+		return d->m2Request->isHttps();
+	else
+		return d->retryIsHttps;
+}
+
+QString RequestSession::host() const
+{
+	return d->host;
+}
+
 M2Request *RequestSession::request()
 {
 	return d->m2Request;
@@ -309,11 +343,25 @@ void RequestSession::start(M2Request *req)
 	d->start(req);
 }
 
-void RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, M2Manager *manager)
+bool RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, M2Manager *manager)
 {
 	d->retryRid = rid;
 	d->retryData = new HttpRequestData(hdata);
+	d->retryIsHttps = https;
 	d->m2Manager = manager;
+
+	if(!parseHostHeader(https, d->retryData->headers.get("host"), &d->host, 0))
+		return false;
+
+	return true;
+}
+
+M2Response *RequestSession::createResponse()
+{
+	if(d->m2Request)
+		return d->m2Request->createResponse();
+	else
+		return d->m2Manager->createResponse(d->retryRid);
 }
 
 #include "requestsession.moc"

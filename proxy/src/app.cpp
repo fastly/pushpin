@@ -30,6 +30,7 @@
 #include "packet/tnetstring.h"
 #include "packet/acceptresponsepacket.h"
 #include "packet/retryrequestpacket.h"
+#include "processquit.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
@@ -93,6 +94,11 @@ public:
 		handler_accept_out_sock(0),
 		workers(0)
 	{
+		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
+	}
+
+	~Private()
+	{
 	}
 
 	void start()
@@ -137,6 +143,8 @@ public:
 			emit q->quit();
 			return;
 		}
+
+		log_info("starting...");
 
 		if(options.contains("verbose"))
 			log_setOutputLevel(LOG_LEVEL_DEBUG);
@@ -261,6 +269,8 @@ public:
 		ProxySession *ps = 0;
 		if(idata && !idata->sharingKey.isEmpty())
 		{
+			log_info("need to proxy with sharing key: %s", idata->sharingKey.data());
+
 			ProxyItem *i = proxyItemsByKey.value(idata->sharingKey);
 			if(i)
 				ps = i->ps;
@@ -268,8 +278,10 @@ public:
 
 		if(!ps)
 		{
+			log_info("creating proxysession");
+
 			ps = new ProxySession(zurl, domainMap, this);
-			connect(ps, SIGNAL(addNotPossible()), SLOT(ps_addNotPossible()));
+			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
 			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
 			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
 
@@ -280,13 +292,15 @@ public:
 			i->ps = ps;
 			proxyItemsBySession.insert(i->ps, i);
 
-			if(!idata && idata->sharingKey.isEmpty())
+			if(idata && !idata->sharingKey.isEmpty())
 			{
 				i->shared = true;
 				i->key = idata->sharingKey;
 				proxyItemsByKey.insert(i->key, i);
 			}
 		}
+		else
+			log_info("reusing proxysession");
 
 		// proxysession will take it from here
 		rs->disconnect(this);
@@ -300,6 +314,8 @@ public:
 			p.rids += AcceptResponsePacket::Rid(rid.first, rid.second);
 
 		p.request = adata.request;
+
+		p.https = adata.https;
 
 		if(adata.haveInspectData)
 		{
@@ -366,7 +382,7 @@ private slots:
 		sendAccept(adata);
 	}
 
-	void ps_addNotPossible()
+	void ps_addNotAllowed()
 	{
 		ProxySession *ps = (ProxySession *)sender();
 
@@ -406,12 +422,13 @@ private slots:
 			proxyItemsByKey.remove(i->key);
 		proxyItemsBySession.remove(i->ps);
 		delete i;
-		delete ps;
 
 		// accept from ProxySession always has a response
 		assert(adata.haveResponse);
 
 		sendAccept(adata);
+
+		delete ps;
 	}
 
 	void handler_retry_in_readyRead()
@@ -453,7 +470,12 @@ private slots:
 			M2Request::Rid mrid(rid.first, rid.second);
 
 			RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
-			rs->setupAsRetry(mrid, p.request, m2);
+			if(!rs->setupAsRetry(mrid, p.request, p.https, m2))
+			{
+				delete rs;
+				log_error("retry_in: invalid host header");
+				continue;
+			}
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0);
 		}
@@ -462,6 +484,17 @@ private slots:
 	void handler_accept_out_messagesWritten(int count)
 	{
 		Q_UNUSED(count);
+	}
+
+	void doQuit()
+	{
+		log_info("stopping...");
+
+		// remove the handler, so if we get another signal then we crash out
+		ProcessQuit::cleanup();
+
+		log_info("stopped");
+		emit q->quit();
 	}
 };
 

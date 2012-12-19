@@ -42,7 +42,7 @@ public:
 	void add(RequestSession *rs);
 
 signals:
-	void addNotPossible(); // emitted if response gets too big
+	void addNotAllowed(); // no more sharing, for whatever reason
 	void finishedByPassthrough();
 	void finishedForAccept(const AcceptData &adata);
 
