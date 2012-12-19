@@ -20,6 +20,7 @@
 #include "retryrequestpacket.h"
 
 RetryRequestPacket::RetryRequestPacket() :
+	https(false),
 	haveInspectInfo(false)
 {
 }
@@ -88,6 +89,15 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 	if(!vrequest.contains("body") || vrequest["body"].type() != QVariant::ByteArray)
 		return false;
 	request.body = vrequest["body"].toByteArray();
+
+	https = false;
+	if(obj.contains("https"))
+	{
+		if(obj["https"].type() != QVariant::Bool)
+			return false;
+
+		https = obj["https"].toBool();
+	}
 
 	if(obj.contains("inspect"))
 	{

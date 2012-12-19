@@ -30,6 +30,7 @@ public:
 	typedef QPair<QByteArray, QByteArray> Rid;
 	QList<Rid> rids;
 	HttpRequestData request;
+	bool https;
 
 	bool haveInspectInfo;
 	InspectResponsePacket inspectInfo;

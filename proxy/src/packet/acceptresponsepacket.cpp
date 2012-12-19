@@ -20,6 +20,7 @@
 #include "acceptresponsepacket.h"
 
 AcceptResponsePacket::AcceptResponsePacket() :
+	https(false),
 	haveInspectInfo(false),
 	haveResponse(false)
 {
@@ -61,6 +62,9 @@ QVariant AcceptResponsePacket::toVariant() const
 
 		obj["request"] = vrequest;
 	}
+
+	if(https)
+		obj["https"] = true;
 
 	if(haveInspectInfo)
 	{
