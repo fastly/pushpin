@@ -45,7 +45,7 @@ public:
 	QByteArray path() const;
 	const HttpHeaders & headers() const;
 
-	QByteArray read();
+	QByteArray read(int size = -1);
 
 	// for streamed input, this is updated as body data is received
 	int actualContentLength() const;

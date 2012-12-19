@@ -88,6 +88,25 @@ public:
 		}
 	}
 
+	QByteArray read(int size)
+	{
+		if(size != -1)
+			size = qMin(size, in.size());
+		else
+			size = in.size();
+
+		if(size == 0)
+			return QByteArray();
+
+		QByteArray out = in.mid(0, size);
+		in = in.mid(size);
+
+		if(file)
+			QMetaObject::invokeMethod(this, "doRead", Qt::QueuedConnection);
+
+		return out;
+	}
+
 	bool tryReadFile()
 	{
 		int avail = BUFFER_SIZE - in.size();
@@ -224,13 +243,9 @@ const HttpHeaders & M2Request::headers() const
 	return d->p.headers;
 }
 
-QByteArray M2Request::read()
+QByteArray M2Request::read(int size)
 {
-	QByteArray out = d->in;
-	d->in.clear();
-	if(d->file)
-		QMetaObject::invokeMethod(d, "doRead", Qt::QueuedConnection);
-	return out;
+	return d->read(size);
 }
 
 int M2Request::actualContentLength() const
