@@ -139,10 +139,22 @@ public:
 
 	QByteArray readResponseBody(int size)
 	{
+		if(size != -1)
+			size = qMin(size, in.size());
+		else
+			size = in.size();
+
+		if(size == 0)
+			return QByteArray();
+
 		QByteArray out = in.mid(0, size);
-		in.clear();
+		in = in.mid(size);
+
+		pendingInCredits += size;
+
 		if(state == Receiving)
 			tryWrite(); // this should not emit signals in current state
+
 		return out;
 	}
 
@@ -307,13 +319,19 @@ public:
 				responseHeaders = packet.headers;
 			}
 
+			if(in.size() + packet.body.size() > IDEAL_CREDITS)
+			{
+				// TODO: cancel, error out
+				assert(0);
+			}
+
 			in += packet.body;
 
 			if(packet.more)
 			{
 				if(!packet.body.isEmpty())
 				{
-					pendingInCredits += packet.body.size();
+					//pendingInCredits += packet.body.size();
 					doReadyRead = true;
 				}
 			}

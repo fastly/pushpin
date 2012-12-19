@@ -37,6 +37,8 @@
 #define MAX_ACCEPT_REQUEST_BODY 100000
 #define MAX_ACCEPT_RESPONSE_BODY 100000
 
+#define BUFFER_SIZE 100000
+
 class ProxySession::Private : public QObject
 {
 	Q_OBJECT
@@ -48,6 +50,21 @@ public:
 		Requesting,
 		Accepting,
 		Responding
+	};
+
+	class SessionItem
+	{
+	public:
+		RequestSession *rs;
+		M2Response *resp;
+		int bytesToWrite;
+
+		SessionItem() :
+			rs(0),
+			resp(0),
+			bytesToWrite(0)
+		{
+		}
 	};
 
 	ProxySession *q;
@@ -63,11 +80,10 @@ public:
 	InspectData idata;
 	AcceptData adata;
 	QSet<QByteArray> acceptTypes;
-	QSet<RequestSession*> requestSessions;
+	QSet<SessionItem*> sessionItems;
 	HttpRequestData requestData;
 	HttpResponseData responseData;
-	QSet<M2Response*> m2Responses;
-	QHash<M2Response*, RequestSession*> sessionsByResponse;
+	QHash<M2Response*, SessionItem*> sessionItemsByResponse;
 	int total;
 
 	Private(ProxySession *_q, ZurlManager *_zurlManager, DomainMap *_domainMap) :
@@ -101,7 +117,9 @@ public:
 	{
 		assert(addAllowed);
 
-		requestSessions += rs;
+		SessionItem *si = new SessionItem;
+		si->rs = rs;
+		sessionItems += si;
 
 		if(state == Stopped)
 		{
@@ -155,18 +173,31 @@ public:
 		{
 			// get the session caught up with where we're at
 
-			M2Response *resp = rs->createResponse();
-			connect(resp, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
-			connect(resp, SIGNAL(finished()), SLOT(m2Response_finished()));
+			si->resp = rs->createResponse();
+			connect(si->resp, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+			connect(si->resp, SIGNAL(finished()), SLOT(m2Response_finished()));
 
-			m2Responses += resp;
-			sessionsByResponse.insert(resp, rs);
+			sessionItemsByResponse.insert(si->resp, si);
 
-			resp->start(responseData.code, responseData.status, responseData.headers);
+			si->resp->start(responseData.code, responseData.status, responseData.headers);
 
 			if(!responseData.body.isEmpty())
-				resp->write(responseData.body);
+			{
+				si->bytesToWrite += responseData.body.size();
+				si->resp->write(responseData.body);
+			}
 		}
+	}
+
+	bool pendingWrites()
+	{
+		foreach(SessionItem *si, sessionItems)
+		{
+			if(si->bytesToWrite > 0)
+				return true;
+		}
+
+		return false;
 	}
 
 public slots:
@@ -224,28 +255,33 @@ public slots:
 				if(!responseData.headers.contains("Content-Length") && !responseData.headers.contains("Transfer-Encoding"))
 						responseData.headers += HttpHeader("Transfer-Encoding", "chunked");
 
-				foreach(RequestSession *rs, requestSessions)
+				foreach(SessionItem *si, sessionItems)
 				{
-					M2Response *resp = rs->createResponse();
-					connect(resp, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
-					connect(resp, SIGNAL(finished()), SLOT(m2Response_finished()));
+					si->resp = si->rs->createResponse();
+					connect(si->resp, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+					connect(si->resp, SIGNAL(finished()), SLOT(m2Response_finished()));
 
-					m2Responses += resp;
-					sessionsByResponse.insert(resp, rs);
+					sessionItemsByResponse.insert(si->resp, si);
 
-					resp->start(responseData.code, responseData.status, responseData.headers);
+					si->resp->start(responseData.code, responseData.status, responseData.headers);
 
 					if(!responseData.body.isEmpty())
-						resp->write(responseData.body);
+					{
+						si->bytesToWrite += responseData.body.size();
+						si->resp->write(responseData.body);
+					}
 				}
 			}
 		}
 		else
 		{
-			QByteArray buf = zurlRequest->readResponseBody();
+			if(pendingWrites())
+				return;
+
+			QByteArray buf = zurlRequest->readResponseBody(BUFFER_SIZE);
 
 			total += buf.size();
-			log_debug("recv total: %d", total);
+			log_debug("recv=%d, total=%d", buf.size(), total);
 
 			if(!buf.isEmpty())
 			{
@@ -274,8 +310,11 @@ public slots:
 					}
 
 					log_debug("writing %d", buf.size());
-					foreach(M2Response *resp, m2Responses)
-						resp->write(buf);
+					foreach(SessionItem *si, sessionItems)
+					{
+						si->bytesToWrite += buf.size();
+						si->resp->write(buf);
+					}
 
 					if(wasAllowed && !addAllowed)
 						emit q->addNotAllowed();
@@ -287,17 +326,23 @@ public slots:
 		{
 			log_debug("zurlRequest finished");
 
+			if(pendingWrites())
+			{
+				log_debug("still stuff left to write, though. we'll wait.");
+				return;
+			}
+
 			delete zurlRequest;
 			zurlRequest = 0;
 
 			if(state == Accepting)
 			{
-				foreach(RequestSession *rs, requestSessions)
+				foreach(SessionItem *si, sessionItems)
 				{
-					if(rs->isRetry())
-						adata.rids += rs->retryRid();
+					if(si->rs->isRetry())
+						adata.rids += si->rs->retryRid();
 					else
-						adata.rids += rs->request()->rid();
+						adata.rids += si->rs->request()->rid();
 				}
 
 				adata.request = requestData;
@@ -311,8 +356,8 @@ public slots:
 			}
 			else // Responding
 			{
-				foreach(M2Response *resp, m2Responses)
-					resp->close();
+				foreach(SessionItem *si, sessionItems)
+					si->resp->close();
 
 				// once the entire reponse has been received, cut off any new adds
 				if(addAllowed)
@@ -339,8 +384,19 @@ public slots:
 
 	void m2Response_bytesWritten(int count)
 	{
-		// TODO: flow control
-		Q_UNUSED(count);
+		M2Response *resp = (M2Response *)sender();
+
+		log_debug("m2Response_bytesWritten: %d", count);
+
+		SessionItem *si = sessionItemsByResponse.value(resp);
+		assert(si);
+
+		si->bytesToWrite -= count;
+		assert(si->bytesToWrite >= 0);
+
+		// everyone caught up? read some more
+		if(zurlRequest && !pendingWrites())
+			zurlRequest_readyRead();
 	}
 
 	void m2Response_finished()
@@ -349,15 +405,16 @@ public slots:
 
 		log_debug("m2Response_finished");
 
-		RequestSession *rs = sessionsByResponse.value(resp);
-		assert(rs);
+		SessionItem *si = sessionItemsByResponse.value(resp);
+		assert(si);
 
-		sessionsByResponse.remove(resp);
-		m2Responses.remove(resp);
+		sessionItemsByResponse.remove(resp);
+		sessionItems.remove(si);
 		delete resp;
-		delete rs;
+		delete si->rs;
+		delete si;
 
-		if(m2Responses.isEmpty())
+		if(sessionItems.isEmpty())
 			emit q->finishedByPassthrough();
 	}
 };
