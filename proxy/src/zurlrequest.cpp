@@ -137,68 +137,79 @@ public:
 		}
 	}
 
+	QByteArray readResponseBody(int size)
+	{
+		QByteArray out = in.mid(0, size);
+		in.clear();
+		if(state == Receiving)
+			tryWrite(); // this should not emit signals in current state
+		return out;
+	}
+
 	void tryWrite()
 	{
-		// if still waiting for initial ack, do nothing
-		if(state != Requesting)
-			return;
-
-		// if all we have to send is EOF, we don't need credits for that
-		if(out.isEmpty() && outFinished)
+		if(state == Requesting)
 		{
-			ZurlRequestPacket p;
-			p.id = rid.second;
-			p.seq = outSeq++;
-			p.body = QByteArray(""); // need to set body to count as content packet
-
-			state = Receiving;
-			manager->write(p, replyAddress);
-			refreshTimeout();
-			return;
-		}
-
-		if(!out.isEmpty() && outCredits > 0)
-		{
-			// if we have data to send, and the credits to do so, then send data.
-			// also send credits if we need to.
-
-			int size = qMin(outCredits, out.size());
-
-			QByteArray buf = out.mid(0, size);
-			out = out.mid(size);
-
-			outCredits -= size;
-
-			ZurlRequestPacket p;
-			p.id = rid.second;
-			p.seq = outSeq++;
-			p.body = buf;
-			if(!out.isEmpty() || !outFinished)
-				p.more = true;
-			if(pendingInCredits > 0)
+			// if all we have to send is EOF, we don't need credits for that
+			if(out.isEmpty() && outFinished)
 			{
-				p.credits = pendingInCredits;
-				pendingInCredits = 0;
+				ZurlRequestPacket p;
+				p.id = rid.second;
+				p.seq = outSeq++;
+				p.body = QByteArray(""); // need to set body to count as content packet
+
+				state = Receiving;
+				manager->write(p, replyAddress);
+				refreshTimeout();
+				return;
 			}
 
-			if(!p.more)
-				state = Receiving;
+			if(!out.isEmpty() && outCredits > 0)
+			{
+				// if we have data to send, and the credits to do so, then send data.
+				// also send credits if we need to.
 
-			manager->write(p, replyAddress);
-			refreshTimeout();
-			emit q->bytesWritten(size);
+				int size = qMin(outCredits, out.size());
+
+				QByteArray buf = out.mid(0, size);
+				out = out.mid(size);
+
+				outCredits -= size;
+
+				ZurlRequestPacket p;
+				p.id = rid.second;
+				p.seq = outSeq++;
+				p.body = buf;
+				if(!out.isEmpty() || !outFinished)
+					p.more = true;
+				if(pendingInCredits > 0)
+				{
+					p.credits = pendingInCredits;
+					pendingInCredits = 0;
+				}
+
+				if(!p.more)
+					state = Receiving;
+
+				manager->write(p, replyAddress);
+				refreshTimeout();
+				emit q->bytesWritten(size);
+			}
 		}
-		else if(pendingInCredits > 0)
+		else if(state == Receiving)
 		{
-			// if we have no data to send but we need to send credits, do at least that
-			ZurlRequestPacket p;
-			p.id = rid.second;
-			p.seq = outSeq++;
-			p.credits = pendingInCredits;
-			pendingInCredits = 0;
+			if(pendingInCredits > 0)
+			{
+				// if we have no data to send but we need to send credits, do at least that
+				ZurlRequestPacket p;
+				p.id = rid.second;
+				p.seq = outSeq++;
+				p.credits = pendingInCredits;
+				pendingInCredits = 0;
 
-			manager->write(p, replyAddress);
-			refreshTimeout();
+				manager->write(p, replyAddress);
+				refreshTimeout();
+			}
 		}
 	}
 
@@ -221,30 +232,11 @@ public:
 			state = Requesting;
 		}
 		else if(state == RequestFinishWait)
-			state = Receiving;
-
-		if(packet.seq != inSeq)
 		{
-			log_warning("received message out of sequence, canceling");
+			replyAddress = packet.replyAddress;
 
-			// if this was not an error packet, send cancel
-			if(packet.condition.isEmpty())
-			{
-				ZurlRequestPacket p;
-				p.id = rid.second;
-				p.seq = outSeq++;
-				p.cancel = true;
-				manager->write(p, replyAddress);
-			}
-
-			state = Private::Stopped;
-			errorCondition = ErrorGeneric;
-			cleanup();
-			emit q->error();
-			return;
+			state = Receiving;
 		}
-
-		++inSeq;
 
 		if(packet.isError)
 		{
@@ -276,6 +268,29 @@ public:
 			emit q->error();
 			return;
 		}
+
+		if(packet.seq != inSeq)
+		{
+			log_warning("received message out of sequence, canceling");
+
+			// if this was not an error packet, send cancel
+			if(packet.condition.isEmpty())
+			{
+				ZurlRequestPacket p;
+				p.id = rid.second;
+				p.seq = outSeq++;
+				p.cancel = true;
+				manager->write(p, replyAddress);
+			}
+
+			state = Private::Stopped;
+			errorCondition = ErrorGeneric;
+			cleanup();
+			emit q->error();
+			return;
+		}
+
+		++inSeq;
 
 		refreshTimeout();
 
@@ -476,9 +491,7 @@ HttpHeaders ZurlRequest::responseHeaders() const
 
 QByteArray ZurlRequest::readResponseBody(int size)
 {
-	QByteArray out = d->in.mid(0, size);
-	d->in.clear();
-	return out;
+	return d->readResponseBody(size);
 }
 
 void ZurlRequest::setup(ZurlManager *manager)

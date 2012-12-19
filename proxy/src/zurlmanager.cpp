@@ -244,17 +244,23 @@ void ZurlManager::write(const ZurlRequestPacket &packet)
 {
 	assert(d->out_sock);
 
-	d->out_sock->write(QList<QByteArray>() << TnetString::fromVariant(packet.toVariant()));
+	QByteArray buf = TnetString::fromVariant(packet.toVariant());
+	log_debug("zurlmanager write: id=%s seq=%d", packet.id.data(), packet.seq);
+
+	d->out_sock->write(QList<QByteArray>() << buf);
 }
 
 void ZurlManager::write(const ZurlRequestPacket &packet, const QByteArray &instanceAddress)
 {
 	assert(d->out_sock);
 
+	QByteArray buf = TnetString::fromVariant(packet.toVariant());
+	log_debug("zurlmanager write: to=%s id=%s seq=%d", instanceAddress.data(), packet.id.data(), packet.seq);
+
 	QList<QByteArray> msg;
 	msg += instanceAddress;
 	msg += QByteArray();
-	msg += TnetString::fromVariant(packet.toVariant());
+	msg += buf;
 	d->out_stream_sock->write(msg);
 }
 
