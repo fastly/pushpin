@@ -25,6 +25,7 @@ ZurlRequestPacket::ZurlRequestPacket() :
 	more(false),
 	stream(false),
 	maxSize(-1),
+	ignorePolicies(false),
 	credits(-1)
 {
 }
@@ -74,6 +75,9 @@ QVariant ZurlRequestPacket::toVariant() const
 
 	if(!connectHost.isEmpty())
 		obj["connect-host"] = connectHost.toUtf8();
+
+	if(ignorePolicies)
+		obj["ignore-policies"] = true;
 
 	if(credits != -1)
 		obj["credits"] = credits;
@@ -202,6 +206,15 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 			return false;
 
 		connectHost = QString::fromUtf8(obj["connect-host"].toByteArray());
+	}
+
+	ignorePolicies = false;
+	if(obj.contains("ignore-policies"))
+	{
+		if(obj["ignore-policies"].type() != QVariant::Bool)
+			return false;
+
+		ignorePolicies = obj["ignore-policies"].toBool();
 	}
 
 	credits = -1;

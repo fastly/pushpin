@@ -38,6 +38,7 @@ public:
 	bool stream;
 	int maxSize;
 	QString connectHost;
+	bool ignorePolicies;
 	int credits;
 	QVariant userData;
 
