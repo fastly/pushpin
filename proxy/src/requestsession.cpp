@@ -138,7 +138,7 @@ public:
 	InspectChecker *inspectChecker;
 	M2Request *m2Request;
 	M2Response *m2Response;
-	M2Manager *m2Manager; // only used in retry mode, otherwise we get from m2Request
+	M2Manager *m2Manager; // used when we don't have m2Request
 	M2Request::Rid rid;
 	bool isHttps;
 	HttpRequestData requestData;
@@ -409,6 +409,8 @@ public:
 			adata.inspectData.sharingKey = idata.sharingKey;
 			adata.inspectData.userData = idata.userData;
 
+			m2Manager = m2Request->managerForResponse();
+
 			delete m2Request;
 			m2Request = 0;
 
@@ -418,7 +420,7 @@ public:
 
 	void respondError(int code, const QString &status, const QString &errorString)
 	{
-		m2Response = m2Request->createResponse();
+		m2Response = q->createResponse();
 		connect(m2Response, SIGNAL(finished()), SLOT(m2Response_finished()));
 
 		QByteArray body = errorString.toUtf8() + '\n';
@@ -598,6 +600,11 @@ M2Response *RequestSession::createResponse()
 		return d->m2Request->createResponse();
 	else
 		return d->m2Manager->createResponse(d->rid);
+}
+
+void RequestSession::cannotAccept()
+{
+	d->respondError(500, "Internal Server Error", "Accept service unavailable");
 }
 
 #include "requestsession.moc"

@@ -55,6 +55,8 @@ public:
 
 	M2Response *createResponse();
 
+	void cannotAccept();
+
 signals:
 	void inspected(const InspectData &idata);
 	void inspectError();

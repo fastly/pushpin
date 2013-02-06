@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QSet>
+#include <QPointer>
 #include <QUrl>
 #include <qjson/serializer.h>
 #include "packet/httprequestdata.h"
@@ -39,6 +40,10 @@
 #define MAX_ACCEPT_RESPONSE_BODY 100000
 
 #define BUFFER_SIZE 100000
+
+// TODO: read initial 100k or so from origin as fast as possible, then sync to slowest client
+// TODO: if response is instruct, but request body is too big, return error to client
+// TODO: if response is instruct, but response body is too big, return error to client
 
 class ProxySession::Private : public QObject
 {
@@ -99,7 +104,6 @@ public:
 		haveInspectData(false)
 	{
 		total = 0;
-		acceptTypes += "application/x-fo-instruct";
 		acceptTypes += "application/fo-instruct";
 		acceptTypes += "application/grip-instruct";
 	}
@@ -111,6 +115,9 @@ public:
 
 	void cleanup()
 	{
+		/*foreach(SessionItem *si, sessionItems)
+		{
+		}*/
 	}
 
 	void add(RequestSession *rs)
@@ -119,6 +126,7 @@ public:
 
 		SessionItem *si = new SessionItem;
 		si->rs = rs;
+		si->rs->setParent(this);
 		sessionItems += si;
 
 		if(state == Stopped)
@@ -129,6 +137,12 @@ public:
 			isHttps = rs->isHttps();
 
 			requestData = rs->requestData();
+
+			// don't relay these headers
+			requestData.headers.removeAll("connection");
+			requestData.headers.removeAll("accept-encoding");
+			requestData.headers.removeAll("content-encoding");
+			requestData.headers.removeAll("transfer-encoding");
 
 			if(!rs->isRetry())
 			{
@@ -322,6 +336,11 @@ public slots:
 			{
 				state = Responding;
 
+				// don't relay these headers. zurl deals with their meaning for us.
+				responseData.headers.removeAll("connection");
+				responseData.headers.removeAll("content-encoding");
+				responseData.headers.removeAll("transfer-encoding");
+
 				if(!responseData.headers.contains("Content-Length") && !responseData.headers.contains("Transfer-Encoding"))
 						responseData.headers += HttpHeader("Transfer-Encoding", "chunked");
 
@@ -492,10 +511,16 @@ public slots:
 		SessionItem *si = sessionItemsByResponse.value(resp);
 		assert(si);
 
+		QPointer<QObject> self = this;
+		emit q->requestSessionDestroyed(si->rs);
+		if(!self)
+			return;
+
 		sessionItemsByResponse.remove(resp);
 		sessionItems.remove(si);
 		delete resp;
 		delete si->rs;
+
 		delete si;
 
 		if(sessionItems.isEmpty())
@@ -523,6 +548,13 @@ void ProxySession::setInspectData(const InspectData &idata)
 void ProxySession::add(RequestSession *rs)
 {
 	d->add(rs);
+}
+
+void ProxySession::cannotAccept()
+{
+	// TODO
+	// reject all sessions
+	//d->respondError(500, "Internal Server Error", "Accept service unavailable");
 }
 
 #include "proxysession.moc"

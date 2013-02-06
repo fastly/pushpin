@@ -27,6 +27,7 @@
 #include <QDir>
 #include <QSettings>
 #include "qzmqsocket.h"
+#include "qzmqvalve.h"
 #include "packet/tnetstring.h"
 #include "packet/acceptresponsepacket.h"
 #include "packet/retryrequestpacket.h"
@@ -46,6 +47,8 @@
 #include "proxysession.h"
 
 #define VERSION "1.0"
+
+#define DEFAULT_HWM 1000
 
 class App::Private : public QObject
 {
@@ -76,9 +79,10 @@ public:
 	InspectChecker *inspectChecker;
 	QZmq::Socket *handler_retry_in_sock;
 	QZmq::Socket *handler_accept_out_sock;
+	QZmq::Valve *handler_retry_in_valve;
+	QSet<RequestSession*> requestSessions;
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
-	int workers;
 	int maxWorkers;
 
 	Private(App *_q) :
@@ -92,7 +96,7 @@ public:
 		inspectChecker(0),
 		handler_retry_in_sock(0),
 		handler_accept_out_sock(0),
-		workers(0)
+		handler_retry_in_valve(0)
 	{
 		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
 	}
@@ -177,7 +181,7 @@ public:
 		QString handler_inspect_spec = settings.value("proxy/handler_inspect_spec").toString();
 		QString handler_retry_in_spec = settings.value("proxy/handler_retry_in_spec").toString();
 		QString handler_accept_out_spec = settings.value("proxy/handler_accept_out_spec").toString();
-		//maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
+		maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 		QString domainsfile = settings.value("proxy/domainsfile").toString();
 
 		// if domainsfile is a relative path, then use it relative to the config file location
@@ -240,18 +244,26 @@ public:
 		if(!handler_retry_in_spec.isEmpty())
 		{
 			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
-			connect(handler_retry_in_sock, SIGNAL(readyRead()), SLOT(handler_retry_in_readyRead()));
+
+			handler_retry_in_sock->setHwm(DEFAULT_HWM);
+
 			if(!handler_retry_in_sock->bind(handler_retry_in_spec))
 			{
 				log_error("unable to bind to handler_retry_in_spec: %s", qPrintable(handler_retry_in_spec));
 				emit q->quit();
 				return;
 			}
+
+			handler_retry_in_valve = new QZmq::Valve(handler_retry_in_sock, this);
+			connect(handler_retry_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(handler_retry_in_readyRead(const QList<QByteArray> &)));
 		}
 
 		if(!handler_accept_out_spec.isEmpty())
 		{
 			handler_accept_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
+
+			handler_accept_out_sock->setHwm(DEFAULT_HWM);
+
 			connect(handler_accept_out_sock, SIGNAL(messagesWritten(int)), SLOT(handler_accept_out_messagesWritten(int)));
 			if(!handler_accept_out_sock->bind(handler_accept_out_spec))
 			{
@@ -260,6 +272,9 @@ public:
 				return;
 			}
 		}
+
+		if(handler_retry_in_valve)
+			handler_retry_in_valve->open();
 
 		log_info("started");
 	}
@@ -284,6 +299,7 @@ public:
 			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
 			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
 			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
+			connect(ps, SIGNAL(requestSessionDestroyed(RequestSession *)), SLOT(ps_requestSessionDestroyed(RequestSession *)));
 
 			if(idata)
 				ps->setInspectData(*idata);
@@ -304,6 +320,7 @@ public:
 
 		// proxysession will take it from here
 		rs->disconnect(this);
+
 		ps->add(rs);
 	}
 
@@ -340,17 +357,30 @@ public:
 		handler_accept_out_sock->write(msg);
 	}
 
-private slots:
-	void m2_requestReady()
+	void tryTakeRequest()
 	{
+		if(maxWorkers != -1 && requestSessions.count() >= maxWorkers)
+			return;
+
 		M2Request *req = m2->takeNext();
+		if(!req)
+			return;
 
 		RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
 		connect(rs, SIGNAL(inspected(const InspectData &)), SLOT(rs_inspected(const InspectData &)));
 		connect(rs, SIGNAL(inspectError()), SLOT(rs_inspectError()));
 		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
 		connect(rs, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(rs_finishedForAccept(const AcceptData &)));
+
+		requestSessions += rs;
+
 		rs->start(req);
+	}
+
+private slots:
+	void m2_requestReady()
+	{
+		tryTakeRequest();
 	}
 
 	void rs_inspected(const InspectData &idata)
@@ -375,15 +405,29 @@ private slots:
 	void rs_finished()
 	{
 		RequestSession *rs = (RequestSession *)sender();
+
+		requestSessions.remove(rs);
 		delete rs;
+
+		tryTakeRequest();
 	}
 
 	void rs_finishedForAccept(const AcceptData &adata)
 	{
 		RequestSession *rs = (RequestSession *)sender();
+
+		if(!handler_accept_out_sock->canWriteImmediately())
+		{
+			rs->cannotAccept();
+			return;
+		}
+
+		requestSessions.remove(rs);
 		delete rs;
 
 		sendAccept(adata);
+
+		tryTakeRequest();
 	}
 
 	void ps_addNotAllowed()
@@ -413,11 +457,19 @@ private slots:
 		proxyItemsBySession.remove(i->ps);
 		delete i;
 		delete ps;
+
+		tryTakeRequest();
 	}
 
 	void ps_finishedForAccept(const AcceptData &adata)
 	{
 		ProxySession *ps = (ProxySession *)sender();
+
+		if(!handler_accept_out_sock->canWriteImmediately())
+		{
+			ps->cannotAccept();
+			return;
+		}
 
 		ProxyItem *i = proxyItemsBySession.value(ps);
 		assert(i);
@@ -433,19 +485,27 @@ private slots:
 		sendAccept(adata);
 
 		delete ps;
+
+		tryTakeRequest();
 	}
 
-	void handler_retry_in_readyRead()
+	void ps_requestSessionDestroyed(RequestSession *rs)
 	{
-		QList<QByteArray> msg = handler_retry_in_sock->read();
-		if(msg.count() != 1)
+		requestSessions.remove(rs);
+
+		tryTakeRequest();
+	}
+
+	void handler_retry_in_readyRead(const QList<QByteArray> &message)
+	{
+		if(message.count() != 1)
 		{
 			log_warning("retry_in: received message with parts != 1, skipping");
 			return;
 		}
 
 		bool ok;
-		QVariant data = TnetString::toVariant(msg[0], 0, &ok);
+		QVariant data = TnetString::toVariant(message[0], 0, &ok);
 		if(!ok)
 		{
 			log_warning("retry_in: received message with invalid format (tnetstring parse failed), skipping");
@@ -480,6 +540,8 @@ private slots:
 				log_error("retry_in: invalid host header");
 				continue;
 			}
+
+			requestSessions += rs;
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0);
 		}

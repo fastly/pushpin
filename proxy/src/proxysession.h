@@ -41,10 +41,13 @@ public:
 	// takes ownership
 	void add(RequestSession *rs);
 
+	void cannotAccept();
+
 signals:
 	void addNotAllowed(); // no more sharing, for whatever reason
 	void finishedByPassthrough();
 	void finishedForAccept(const AcceptData &adata);
+	void requestSessionDestroyed(RequestSession *rs);
 
 private:
 	class Private;

@@ -25,12 +25,21 @@ class AppMain : public QObject
 {
 	Q_OBJECT
 
+public:
+	App *app;
+
 public slots:
 	void start()
 	{
-		App *app = new App(this);
-		connect(app, SIGNAL(quit()), SIGNAL(quit()));
+		app = new App(this);
+		connect(app, SIGNAL(quit()), SLOT(app_quit()));
 		app->start();
+	}
+
+	void app_quit()
+	{
+		delete app;
+		emit quit();
 	}
 
 signals:

@@ -259,6 +259,11 @@ M2Response *M2Request::createResponse()
 	return d->managerForResponse->createResponse(Rid(d->p.sender, d->p.id));
 }
 
+M2Manager *M2Request::managerForResponse()
+{
+	return d->managerForResponse;
+}
+
 bool M2Request::handle(M2Manager *manager, const M2RequestPacket &packet, bool https)
 {
 	d->manager = manager;

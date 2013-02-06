@@ -53,6 +53,8 @@ public:
 	// make a response object using same manager and rid
 	M2Response *createResponse();
 
+	M2Manager *managerForResponse();
+
 signals:
 	void readyRead();
 	void finished();
