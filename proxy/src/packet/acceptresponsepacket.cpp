@@ -20,7 +20,6 @@
 #include "acceptresponsepacket.h"
 
 AcceptResponsePacket::AcceptResponsePacket() :
-	https(false),
 	haveInspectInfo(false),
 	haveResponse(false)
 {
@@ -30,25 +29,38 @@ QVariant AcceptResponsePacket::toVariant() const
 {
 	QVariantHash obj;
 
-	QVariantList vrids;
-	foreach(const Rid &r, rids)
 	{
-		QVariantHash vrid;
-		vrid["sender"] = r.first;
-		vrid["id"] = r.second;
-		vrids += vrid;
+		QVariantList vrequests;
+		foreach(const Request &r, requests)
+		{
+			QVariantHash vrequest;
+
+			QVariantHash vrid;
+			vrid["sender"] = r.rid.first;
+			vrid["id"] = r.rid.second;
+
+			vrequest["rid"] = vrid;
+
+			if(r.https)
+				vrequest["https"] = true;
+
+			if(!r.jsonpCallback.isEmpty())
+				vrequest["jsonp-callback"] = r.jsonpCallback;
+
+			vrequests += vrequest;
+		}
+
+		obj["requests"] = vrequests;
 	}
 
-	obj["rids"] = vrids;
-
 	{
-		QVariantHash vrequest;
+		QVariantHash vrequestData;
 
-		vrequest["method"] = request.method.toLatin1();
-		vrequest["path"] = request.path;
+		vrequestData["method"] = requestData.method.toLatin1();
+		vrequestData["path"] = requestData.path;
 
 		QVariantList vheaders;
-		foreach(const HttpHeader &h, request.headers)
+		foreach(const HttpHeader &h, requestData.headers)
 		{
 			QVariantList vheader;
 			vheader += h.first;
@@ -56,15 +68,12 @@ QVariant AcceptResponsePacket::toVariant() const
 			vheaders += QVariant(vheader);
 		}
 
-		vrequest["headers"] = vheaders;
+		vrequestData["headers"] = vheaders;
 
-		vrequest["body"] = request.body;
+		vrequestData["body"] = requestData.body;
 
-		obj["request"] = vrequest;
+		obj["request-data"] = vrequestData;
 	}
-
-	if(https)
-		obj["https"] = true;
 
 	if(haveInspectInfo)
 	{

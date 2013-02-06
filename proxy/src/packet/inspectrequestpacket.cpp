@@ -21,7 +21,8 @@
 
 #include "tnetstring.h"
 
-InspectRequestPacket::InspectRequestPacket()
+InspectRequestPacket::InspectRequestPacket() :
+	https(false)
 {
 }
 
@@ -42,6 +43,9 @@ QVariant InspectRequestPacket::toVariant() const
 	}
 
 	obj["headers"] = vheaders;
+
+	if(https)
+		obj["https"] = true;
 
 	return obj;
 }

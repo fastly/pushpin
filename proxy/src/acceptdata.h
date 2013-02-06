@@ -30,9 +30,21 @@
 class AcceptData
 {
 public:
-	QList<M2Request::Rid> rids;
-	HttpRequestData request;
-	bool https;
+	class Request
+	{
+	public:
+		M2Request::Rid rid;
+		bool https;
+		QByteArray jsonpCallback;
+
+		Request() :
+			https(false)
+		{
+		}
+	};
+
+	QList<Request> requests;
+	HttpRequestData requestData;
 
 	bool haveInspectData;
 	InspectData inspectData;
@@ -41,7 +53,6 @@ public:
 	HttpResponseData response;
 
 	AcceptData() :
-		https(false),
 		haveInspectData(false),
 		haveResponse(false)
 	{

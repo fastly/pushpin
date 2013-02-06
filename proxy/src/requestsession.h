@@ -41,17 +41,17 @@ public:
 	bool isRetry() const;
 	bool isHttps() const;
 	QString host() const;
+	M2Request::Rid rid() const;
+	HttpRequestData requestData() const;
+	QByteArray jsonpCallback() const; // non-empty if JSON-P is used
 
-	M2Request *request();
-
-	M2Request::Rid retryRid();
-	HttpRequestData retryData();
+	M2Request *request(); // null if retry mode
 
 	// takes ownership
 	void start(M2Request *req);
 
 	// creates an M2Request-less session
-	bool setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, M2Manager *manager);
+	bool setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QByteArray &jsonpCallback, M2Manager *manager);
 
 	M2Response *createResponse();
 

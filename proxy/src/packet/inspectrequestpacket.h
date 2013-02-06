@@ -30,6 +30,7 @@ public:
 	QString method;
 	QByteArray path;
 	HttpHeaders headers;
+	bool https;
 
 	InspectRequestPacket();
 

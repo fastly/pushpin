@@ -310,12 +310,16 @@ public:
 	void sendAccept(const AcceptData &adata)
 	{
 		AcceptResponsePacket p;
-		foreach(const M2Request::Rid &rid, adata.rids)
-			p.rids += AcceptResponsePacket::Rid(rid.first, rid.second);
+		foreach(const AcceptData::Request &areq, adata.requests)
+		{
+			AcceptResponsePacket::Request req;
+			req.rid = AcceptResponsePacket::Rid(areq.rid.first, areq.rid.second);
+			req.https = areq.https;
+			req.jsonpCallback = areq.jsonpCallback;
+			p.requests += req;
+		}
 
-		p.request = adata.request;
-
-		p.https = adata.https;
+		p.requestData = adata.requestData;
 
 		if(adata.haveInspectData)
 		{
@@ -455,7 +459,7 @@ private slots:
 			return;
 		}
 
-		log_info("IN retry %s %s", qPrintable(p.request.method), p.request.path.data());
+		log_info("IN retry %s %s", qPrintable(p.requestData.method), p.requestData.path.data());
 
 		InspectData idata;
 		if(p.haveInspectInfo)
@@ -465,12 +469,12 @@ private slots:
 			idata.userData = p.inspectInfo.userData;
 		}
 
-		foreach(const RetryRequestPacket::Rid &rid, p.rids)
+		foreach(const RetryRequestPacket::Request &req, p.requests)
 		{
-			M2Request::Rid mrid(rid.first, rid.second);
+			M2Request::Rid rid(req.rid.first, req.rid.second);
 
 			RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
-			if(!rs->setupAsRetry(mrid, p.request, p.https, m2))
+			if(!rs->setupAsRetry(rid, p.requestData, req.https, req.jsonpCallback, m2))
 			{
 				delete rs;
 				log_error("retry_in: invalid host header");

@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <QSet>
 #include <QUrl>
+#include <qjson/serializer.h>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "log.h"
@@ -78,7 +79,6 @@ public:
 	bool addAllowed;
 	bool haveInspectData;
 	InspectData idata;
-	AcceptData adata;
 	QSet<QByteArray> acceptTypes;
 	QSet<SessionItem*> sessionItems;
 	HttpRequestData requestData;
@@ -128,21 +128,22 @@ public:
 			host = rs->host();
 			isHttps = rs->isHttps();
 
-			if(rs->isRetry())
-			{
-				requestData = rs->retryData();
-			}
-			else
+			requestData = rs->requestData();
+
+			if(!rs->isRetry())
 			{
 				m2Request = rs->request();
 				connect(m2Request, SIGNAL(readyRead()), SLOT(m2Request_readyRead()));
 				connect(m2Request, SIGNAL(finished()), SLOT(m2Request_finished()));
 				connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
 
-				requestData.method = m2Request->method();
-				requestData.path = m2Request->path();
-				requestData.headers = m2Request->headers();
-				requestData.body = m2Request->read();
+				QByteArray buf = m2Request->read();
+				if(requestData.body.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
+				{
+					// TODO: reject all sessions
+				}
+
+				requestData.body += buf;
 			}
 
 			// TODO: support multiple targets
@@ -151,6 +152,8 @@ public:
 			log_debug("%s has %d routes", qPrintable(host), targets.count());
 			QByteArray str = "http://" + targets[0].first.toUtf8() + ':' + QByteArray::number(targets[0].second) + requestData.path;
 			QUrl url(str);
+
+			log_debug("proxying to %s", qPrintable(url.toString()));
 
 			zurlRequest = zurlManager->createRequest();
 			connect(zurlRequest, SIGNAL(readyRead()), SLOT(zurlRequest_readyRead()));
@@ -179,13 +182,23 @@ public:
 
 			sessionItemsByResponse.insert(si->resp, si);
 
-			si->resp->start(responseData.code, responseData.status, responseData.headers);
+			QByteArray jsonpCallback = si->rs->jsonpCallback();
+			if(!jsonpCallback.isEmpty())
+			{
+				HttpHeaders headers;
+				headers.removeAll("Content-Length");
+				headers += HttpHeader("Content-Type", "application/javascript");
+				headers += HttpHeader("Transfer-Encoding", "chunked");
+
+				si->resp->start(200, "OK", headers);
+				// TODO: check return value
+				writeJsonpStart(si, jsonpCallback, responseData);
+			}
+			else
+				si->resp->start(responseData.code, responseData.status, responseData.headers);
 
 			if(!responseData.body.isEmpty())
-			{
-				si->bytesToWrite += responseData.body.size();
-				si->resp->write(responseData.body);
-			}
+				writeBody(si, responseData.body, !jsonpCallback.isEmpty()); // TODO: check return value
 		}
 	}
 
@@ -198,6 +211,63 @@ public:
 		}
 
 		return false;
+	}
+
+	static bool writeJsonpStart(SessionItem *si, const QByteArray &jsonpCallback, const HttpResponseData &responseData)
+	{
+		QJson::Serializer serializer;
+
+		QByteArray statusJson = serializer.serialize(responseData.status);
+		if(statusJson.isNull())
+			return false;
+
+		QVariantMap vheaders;
+		foreach(const HttpHeader h, responseData.headers)
+		{
+			if(!vheaders.contains(h.first))
+				vheaders[h.first] = h.second;
+		}
+
+		QByteArray headersJson = serializer.serialize(vheaders);
+		if(headersJson.isNull())
+			return false;
+
+		QByteArray buf = jsonpCallback + "({\"code\": " + QByteArray::number(responseData.code) + ", \"status\": " + statusJson + ", \"headers\": " + headersJson + ", \"body\": \"";
+		si->bytesToWrite += buf.size();
+		si->resp->write(buf);
+
+		return true;
+	}
+
+	static void writeJsonpEnd(SessionItem *si)
+	{
+		QByteArray buf = "\"});\n";
+		si->bytesToWrite += buf.size();
+		si->resp->write(buf);
+	}
+
+	// return false if not jsonp encode-able
+	static bool writeBody(SessionItem *si, const QByteArray &buf, bool jsonp)
+	{
+		if(jsonp)
+		{
+			QJson::Serializer serializer;
+
+			QByteArray bodyJson = serializer.serialize(buf);
+			if(bodyJson.isNull())
+				return false;
+
+			bodyJson = bodyJson.mid(1, bodyJson.size() - 2);
+			si->bytesToWrite += bodyJson.size();
+			si->resp->write(bodyJson);
+		}
+		else
+		{
+			si->bytesToWrite += buf.size();
+			si->resp->write(buf);
+		}
+
+		return true;
 	}
 
 public slots:
@@ -263,13 +333,23 @@ public slots:
 
 					sessionItemsByResponse.insert(si->resp, si);
 
-					si->resp->start(responseData.code, responseData.status, responseData.headers);
+					QByteArray jsonpCallback = si->rs->jsonpCallback();
+					if(!jsonpCallback.isEmpty())
+					{
+						HttpHeaders headers;
+						headers.removeAll("Content-Length");
+						headers += HttpHeader("Content-Type", "application/javascript");
+						headers += HttpHeader("Transfer-Encoding", "chunked");
+
+						si->resp->start(200, "OK", headers);
+						// TODO: check return value
+						writeJsonpStart(si, jsonpCallback, responseData);
+					}
+					else
+						si->resp->start(responseData.code, responseData.status, responseData.headers);
 
 					if(!responseData.body.isEmpty())
-					{
-						si->bytesToWrite += responseData.body.size();
-						si->resp->write(responseData.body);
-					}
+						writeBody(si, responseData.body, !jsonpCallback.isEmpty()); // TODO: check return value
 				}
 			}
 		}
@@ -311,10 +391,7 @@ public slots:
 
 					log_debug("writing %d", buf.size());
 					foreach(SessionItem *si, sessionItems)
-					{
-						si->bytesToWrite += buf.size();
-						si->resp->write(buf);
-					}
+						writeBody(si, buf, !si->rs->jsonpCallback().isEmpty()); // TODO: check return value
 
 					if(wasAllowed && !addAllowed)
 						emit q->addNotAllowed();
@@ -337,17 +414,18 @@ public slots:
 
 			if(state == Accepting)
 			{
+				AcceptData adata;
+
 				foreach(SessionItem *si, sessionItems)
 				{
-					if(si->rs->isRetry())
-						adata.rids += si->rs->retryRid();
-					else
-						adata.rids += si->rs->request()->rid();
+					AcceptData::Request areq;
+					areq.rid = si->rs->rid();
+					areq.https = si->rs->isHttps();
+					areq.jsonpCallback = si->rs->jsonpCallback();
+					adata.requests += areq;
 				}
 
-				adata.request = requestData;
-
-				adata.https = isHttps;
+				adata.requestData = requestData;
 
 				adata.haveResponse = true;
 				adata.response = responseData;
@@ -357,7 +435,12 @@ public slots:
 			else // Responding
 			{
 				foreach(SessionItem *si, sessionItems)
+				{
+					if(!si->rs->jsonpCallback().isEmpty())
+						writeJsonpEnd(si);
+
 					si->resp->close();
+				}
 
 				// once the entire reponse has been received, cut off any new adds
 				if(addAllowed)
@@ -379,6 +462,7 @@ public slots:
 	{
 		log_debug("zurlRequest_error");
 
+		// TODO: if zurl responds with ErrorLengthRequired, return code 411
 		// TODO: reject all sessions
 	}
 

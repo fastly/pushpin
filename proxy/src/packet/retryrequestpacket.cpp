@@ -20,7 +20,6 @@
 #include "retryrequestpacket.h"
 
 RetryRequestPacket::RetryRequestPacket() :
-	https(false),
 	haveInspectInfo(false)
 {
 }
@@ -32,48 +31,76 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 
 	QVariantHash obj = in.toHash();
 
-	if(!obj.contains("rids") || obj["rids"].type() != QVariant::List)
+	if(!obj.contains("requests") || obj["requests"].type() != QVariant::List)
 		return false;
 
-	rids.clear();
-	foreach(const QVariant &i, obj["rids"].toList())
+	requests.clear();
+	foreach(const QVariant &i, obj["requests"].toList())
 	{
 		if(i.type() != QVariant::Hash)
 			return false;
 
-		QVariantHash vrid = i.toHash();
+		QVariantHash vrequest = i.toHash();
+
+		Request r;
+
+		if(!vrequest.contains("rid") || vrequest["rid"].type() != QVariant::Hash)
+			return false;
+
+		QVariantHash vrid = vrequest["rid"].toHash();
+
 		QByteArray sender, id;
 
 		if(!vrid.contains("sender") || vrid["sender"].type() != QVariant::ByteArray)
 			return false;
+
 		sender = vrid["sender"].toByteArray();
 
 		if(!vrid.contains("id") || vrid["id"].type() != QVariant::ByteArray)
 			return false;
+
 		id = vrid["id"].toByteArray();
 
-		rids += Rid(sender, id);
+		r.rid = Rid(sender, id);
+
+		if(vrequest.contains("https"))
+		{
+			if(vrequest["https"].type() != QVariant::Bool)
+				return false;
+
+			r.https = vrequest["https"].toBool();
+		}
+
+		if(vrequest.contains("jsonp-callback"))
+		{
+			if(vrequest["jsonp-callback"].type() != QVariant::ByteArray)
+				return false;
+
+			r.jsonpCallback = vrequest["jsonp-callback"].toByteArray();
+		}
+
+		requests += r;
 	}
 
-	if(!obj.contains("request") || obj["request"].type() != QVariant::Hash)
+	if(!obj.contains("request-data") || obj["request-data"].type() != QVariant::Hash)
 		return false;
-	QVariantHash vrequest = obj["request"].toHash();
+	QVariantHash vrequestData = obj["request-data"].toHash();
 
-	if(!vrequest.contains("method") || vrequest["method"].type() != QVariant::ByteArray)
+	if(!vrequestData.contains("method") || vrequestData["method"].type() != QVariant::ByteArray)
 		return false;
-	request.method = QString::fromLatin1(vrequest["method"].toByteArray());
+	requestData.method = QString::fromLatin1(vrequestData["method"].toByteArray());
 
-	if(!vrequest.contains("path") || vrequest["path"].type() != QVariant::ByteArray)
+	if(!vrequestData.contains("path") || vrequestData["path"].type() != QVariant::ByteArray)
 		return false;
-	request.path = vrequest["path"].toByteArray();
+	requestData.path = vrequestData["path"].toByteArray();
 
-	request.headers.clear();
-	if(vrequest.contains("headers"))
+	requestData.headers.clear();
+	if(vrequestData.contains("headers"))
 	{
-		if(vrequest["headers"].type() != QVariant::List)
+		if(vrequestData["headers"].type() != QVariant::List)
 			return false;
 
-		foreach(const QVariant &i, vrequest["headers"].toList())
+		foreach(const QVariant &i, vrequestData["headers"].toList())
 		{
 			QVariantList list = i.toList();
 			if(list.count() != 2)
@@ -82,22 +109,13 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 			if(list[0].type() != QVariant::ByteArray || list[1].type() != QVariant::ByteArray)
 				return false;
 
-			request.headers += QPair<QByteArray, QByteArray>(list[0].toByteArray(), list[1].toByteArray());
+			requestData.headers += QPair<QByteArray, QByteArray>(list[0].toByteArray(), list[1].toByteArray());
 		}
 	}
 
-	if(!vrequest.contains("body") || vrequest["body"].type() != QVariant::ByteArray)
+	if(!vrequestData.contains("body") || vrequestData["body"].type() != QVariant::ByteArray)
 		return false;
-	request.body = vrequest["body"].toByteArray();
-
-	https = false;
-	if(obj.contains("https"))
-	{
-		if(obj["https"].type() != QVariant::Bool)
-			return false;
-
-		https = obj["https"].toBool();
-	}
+	requestData.body = vrequestData["body"].toByteArray();
 
 	if(obj.contains("inspect"))
 	{

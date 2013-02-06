@@ -19,6 +19,10 @@
 
 #include "requestsession.h"
 
+#include <assert.h>
+#include <QUrl>
+#include <qjson/parser.h>
+#include <qjson/serializer.h>
 #include "packet/httprequestdata.h"
 #include "log.h"
 #include "inspectdata.h"
@@ -64,6 +68,66 @@ static bool parseHostHeader(bool https, const QByteArray &in, QString *_host, in
 	return true;
 }
 
+static int fromHex(char c)
+{
+	if(c >= '0' && c <= '9')
+		return c - '0';
+	else if(c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	else if(c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	else
+		return -1;
+}
+
+static QByteArray parsePercentEncoding(const QByteArray &in)
+{
+	QByteArray out;
+
+	for(int n = 0; n < in.size(); ++n)
+	{
+		char c = in[n];
+
+		if(c == '%')
+		{
+			if(n + 2 >= in.size())
+				break;
+
+			int hi = fromHex(in[n + 1]);
+			if(hi == -1)
+				break;
+
+			int lo = fromHex(in[n + 2]);
+			if(lo == -1)
+				break;
+
+			unsigned char val = (hi << 4) + lo;
+			out += val;
+
+			n += 2; // adjust position
+		}
+		else
+			out += c;
+	}
+
+	return out;
+}
+
+static bool validMethod(const QByteArray &in)
+{
+	if(in.isEmpty())
+		return false;
+
+	for(int n = 0; n < in.size(); ++n)
+	{
+		unsigned char c = (unsigned char)in[n];
+		if(c <= 0x20)
+			return false;
+	}
+
+	return true;
+}
+
 class RequestSession::Private : public QObject
 {
 	Q_OBJECT
@@ -75,13 +139,14 @@ public:
 	M2Request *m2Request;
 	M2Response *m2Response;
 	M2Manager *m2Manager; // only used in retry mode, otherwise we get from m2Request
-	M2Request::Rid retryRid;
-	HttpRequestData *retryData;
-	bool retryIsHttps;
+	M2Request::Rid rid;
+	bool isHttps;
+	HttpRequestData requestData;
 	InspectRequest *inspectRequest;
 	InspectData idata;
 	QString host;
 	QByteArray in;
+	QByteArray jsonpCallback;
 
 	Private(RequestSession *_q, InspectManager *_inspectManager, InspectChecker *_inspectChecker) :
 		QObject(_q),
@@ -91,8 +156,7 @@ public:
 		m2Request(0),
 		m2Response(0),
 		m2Manager(0),
-		retryData(0),
-		retryIsHttps(false),
+		isHttps(false),
 		inspectRequest(0)
 	{
 	}
@@ -150,21 +214,153 @@ public:
 		else
 			scheme = "http";
 
-		QByteArray url = scheme + "://" + host.toUtf8();
+		QByteArray urlstr = scheme + "://" + host.toUtf8();
 		if((req->isHttps() && port != 443) || (!req->isHttps() && port != 80))
-			url += ':' + QByteArray::number(port);
-		url += req->path();
+			urlstr += ':' + QByteArray::number(port);
+		urlstr += req->path();
 
-		log_info("IN id=%d, %s %s", req->rid().second.data(), qPrintable(req->method()), qPrintable(url));
+		log_info("IN id=%d, %s %s", req->rid().second.data(), qPrintable(req->method()), qPrintable(urlstr));
 
 		connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
 
-		inspectRequest = inspectManager->createRequest();
-
+		QUrl url(urlstr);
 		HttpRequestData hdata;
-		hdata.method = req->method();
-		hdata.path = req->path();
-		hdata.headers = req->headers();
+
+		// JSON-P
+		if(url.hasQueryItem("_callback"))
+		{
+			bool callbackDone = false;
+			bool methodDone = false;
+			bool headersDone = false;
+			bool bodyDone = false;
+
+			QList< QPair<QByteArray, QByteArray> > encodedItems = url.encodedQueryItems();
+			for(int n = 0; n < encodedItems.count(); ++n)
+			{
+				const QPair<QByteArray, QByteArray> &i = encodedItems[n];
+
+				QByteArray name = parsePercentEncoding(i.first);
+				if(name == "_callback")
+				{
+					if(callbackDone)
+						continue;
+
+					callbackDone = true;
+
+					QByteArray callback = parsePercentEncoding(i.second);
+					if(callback.isEmpty())
+					{
+						log_warning("requestsession: invalid _callback parameter, rejecting");
+						respondBadRequest("Invalid _callback parameter.");
+						return;
+					}
+
+					jsonpCallback = callback;
+					url.removeAllQueryItems("_callback");
+				}
+				else if(name == "_method")
+				{
+					if(methodDone)
+						continue;
+
+					methodDone = true;
+					QByteArray method = parsePercentEncoding(i.second);
+
+					if(!validMethod(method))
+					{
+						log_warning("requestsession: invalid _method parameter, rejecting");
+						respondBadRequest("Invalid _method parameter.");
+						return;
+					}
+
+					hdata.method = method;
+					url.removeAllQueryItems("_method");
+				}
+				else if(name == "_headers")
+				{
+					if(headersDone)
+						continue;
+
+					headersDone = true;
+
+					QJson::Parser parser;
+					bool ok;
+					QVariant vheaders = parser.parse(parsePercentEncoding("_headers"), &ok);
+					if(!ok)
+					{
+						log_warning("requestsession: invalid _headers parameter, rejecting");
+						respondBadRequest("Invalid _headers parameter.");
+						return;
+					}
+
+					QVariantMap headersMap = vheaders.toMap();
+					HttpHeaders headers;
+					QMapIterator<QString, QVariant> vit(headersMap);
+					while(vit.hasNext())
+					{
+						vit.next();
+
+						if(vit.value().type() != QVariant::String)
+						{
+							log_warning("requestsession: invalid _headers parameter, rejecting");
+							respondBadRequest("Invalid _headers parameter.");
+							return;
+						}
+
+						QByteArray key = vit.key().toUtf8();
+
+						// ignore some headers that we explicitly set later on
+						if(qstricmp(key.data(), "host") == 0)
+							continue;
+						if(qstricmp(key.data(), "accept") == 0)
+							continue;
+
+						headers += HttpHeader(key, vit.value().toString().toUtf8());
+					}
+
+					hdata.headers = headers;
+					url.removeAllQueryItems("_headers");
+				}
+				else if(name == "_body")
+				{
+					if(bodyDone)
+						continue;
+
+					bodyDone = true;
+					hdata.body = parsePercentEncoding(i.second);
+					url.removeAllQueryItems("_body");
+				}
+			}
+
+			if(hdata.method.isEmpty())
+				hdata.method = "GET";
+
+			hdata.path = url.encodedPath();
+			if(url.hasQuery())
+				hdata.path += "?" + url.encodedQuery();
+
+			hdata.headers += HttpHeader("Host", host.toUtf8());
+			hdata.headers += HttpHeader("Accept", "*/*");
+
+			// carry over the rest of the headers
+			foreach(const HttpHeader &h, req->headers())
+			{
+				if(!hdata.headers.contains(h.first))
+					hdata.headers += h;
+			}
+		}
+		else
+		{
+			hdata.method = req->method();
+			hdata.path = req->path();
+			hdata.headers = req->headers();
+		}
+
+		rid = m2Request->rid();
+		isHttps = m2Request->isHttps();
+		requestData = hdata;
+
+		inspectRequest = inspectManager->createRequest();
 
 		if(inspectChecker->isInterfaceAvailable())
 		{
@@ -197,13 +393,16 @@ public:
 		if(m2Request->isFinished())
 		{
 			AcceptData adata;
-			adata.rids += m2Request->rid();
 
-			adata.request.method = m2Request->method();
-			adata.request.path = m2Request->path();
-			adata.request.headers = m2Request->headers();
+			AcceptData::Request areq;
+			areq.rid = m2Request->rid();
+			areq.https = isHttps;
+			areq.jsonpCallback = jsonpCallback;
+			adata.requests += areq;
 
-			adata.https = m2Request->isHttps();
+			adata.requestData.method = m2Request->method();
+			adata.requestData.path = m2Request->path();
+			adata.requestData.headers = m2Request->headers();
 
 			adata.haveInspectData = true;
 			adata.inspectData.doProxy = idata.doProxy;
@@ -226,15 +425,49 @@ public:
 
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
-		headers += HttpHeader("Content-Length", QByteArray::number(body.length()));
+		headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
 
 		// in case we were reading a request in progress, delete here to stop it
 		delete m2Request;
 		m2Request = 0;
 
-		m2Response->start(code, status.toLatin1(), headers);
-		m2Response->write(body);
-		m2Response->close();
+		if(!jsonpCallback.isEmpty())
+		{
+			QJson::Serializer serializer;
+
+			QVariantMap vheaders;
+			foreach(const HttpHeader h, headers)
+			{
+				if(!vheaders.contains(h.first))
+					vheaders[h.first] = h.second;
+			}
+
+			QVariantMap vresult;
+			vresult["code"] = code;
+			vresult["status"] = status.toUtf8();
+			vresult["headers"] = vheaders;
+			vresult["body"] = body;
+
+			QByteArray resultJson = serializer.serialize(vresult);
+			assert(!resultJson.isNull());
+
+			QByteArray body = jsonpCallback + '(' + resultJson + ");\n";
+
+			HttpHeaders jheaders;
+			jheaders.removeAll("Content-Length");
+			jheaders += HttpHeader("Content-Type", "application/javascript");
+			jheaders += HttpHeader("Content-Length", QByteArray::number(body.size()));
+
+			m2Response->start(200, "OK", jheaders);
+			m2Response->write(body);
+			m2Response->close();
+		}
+		else
+		{
+			m2Response->start(code, status.toLatin1(), headers);
+			m2Response->write(body);
+			m2Response->close();
+		}
 	}
 
 	void respondBadRequest(const QString &errorString)
@@ -307,15 +540,12 @@ RequestSession::~RequestSession()
 
 bool RequestSession::isRetry() const
 {
-	return d->retryData;
+	return d->m2Request ? false : true;
 }
 
 bool RequestSession::isHttps() const
 {
-	if(d->m2Request)
-		return d->m2Request->isHttps();
-	else
-		return d->retryIsHttps;
+	return d->isHttps;
 }
 
 QString RequestSession::host() const
@@ -323,19 +553,24 @@ QString RequestSession::host() const
 	return d->host;
 }
 
+M2Request::Rid RequestSession::rid() const
+{
+	return d->rid;
+}
+
+HttpRequestData RequestSession::requestData() const
+{
+	return d->requestData;
+}
+
+QByteArray RequestSession::jsonpCallback() const
+{
+	return d->jsonpCallback;
+}
+
 M2Request *RequestSession::request()
 {
 	return d->m2Request;
-}
-
-M2Request::Rid RequestSession::retryRid()
-{
-	return d->retryRid;
-}
-
-HttpRequestData RequestSession::retryData()
-{
-	return *d->retryData;
 }
 
 void RequestSession::start(M2Request *req)
@@ -343,14 +578,15 @@ void RequestSession::start(M2Request *req)
 	d->start(req);
 }
 
-bool RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, M2Manager *manager)
+bool RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QByteArray &jsonpCallback, M2Manager *manager)
 {
-	d->retryRid = rid;
-	d->retryData = new HttpRequestData(hdata);
-	d->retryIsHttps = https;
+	d->rid = rid;
+	d->requestData = hdata;
+	d->isHttps = https;
+	d->jsonpCallback = jsonpCallback;
 	d->m2Manager = manager;
 
-	if(!parseHostHeader(https, d->retryData->headers.get("host"), &d->host, 0))
+	if(!parseHostHeader(d->isHttps, d->requestData.headers.get("host"), &d->host, 0))
 		return false;
 
 	return true;
@@ -361,7 +597,7 @@ M2Response *RequestSession::createResponse()
 	if(d->m2Request)
 		return d->m2Request->createResponse();
 	else
-		return d->m2Manager->createResponse(d->retryRid);
+		return d->m2Manager->createResponse(d->rid);
 }
 
 #include "requestsession.moc"

@@ -31,9 +31,22 @@ class AcceptResponsePacket
 {
 public:
 	typedef QPair<QByteArray, QByteArray> Rid;
-	QList<Rid> rids;
-	HttpRequestData request;
-	bool https;
+
+	class Request
+	{
+	public:
+		Rid rid;
+		bool https;
+		QByteArray jsonpCallback;
+
+		Request() :
+			https(false)
+		{
+		}
+	};
+
+	QList<Request> requests;
+	HttpRequestData requestData;
 
 	bool haveInspectInfo;
 	InspectResponsePacket inspectInfo;

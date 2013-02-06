@@ -92,9 +92,11 @@ def inspect_worker():
 
 		# reply saying to always proxy
 		id = m["id"]
+		#path = m["path"]
 		m = dict()
 		m["id"] = id
 		m["no-proxy"] = False
+		#m["sharing-key"] = path
 
 		print "OUT: %s" % m
 		m_raw = tnetstring.dumps(m)
@@ -110,8 +112,9 @@ def accept_worker():
 		m_raw = sock.recv()
 		m = tnetstring.loads(m_raw)
 		print "IN: %s" % m
-		sender = m["rids"][0]["sender"]
-		id = m["rids"][0]["id"]
+		req = m["requests"][0]
+		sender = req["rid"]["sender"]
+		id = req["rid"]["id"]
 		instruct = json.loads(m["response"]["body"])
 		hold = instruct["hold"]
 		channel = hold["channels"][0]["name"]
@@ -120,7 +123,7 @@ def accept_worker():
 		if not hchannel:
 			hchannel = set()
 			channels[channel] = hchannel
-		hchannel.add((sender, id))
+		hchannel.add(((sender, id), req.get("jsonp-callback")))
 		lock.release()
 
 	sock.close()
@@ -209,13 +212,29 @@ def push_in_worker(c):
 		lock.acquire()
 		hchannel = channels.get(channel)
 		if hchannel:
-			rids = hchannel
+			reqs = hchannel
 			del channels[channel]
 		lock.release()
-		body = m["http-response"]["body"]
 		print "relaying to %d subscribers" % len(rids)
-		for rid in rids:
-			reply_http(out_sock, rid, 200, "OK", {}, body)
+		for req in reqs:
+			rid = req[0]
+			callback = req[1]
+
+			headers = dict()
+			body = m["http-response"]["body"]
+			if callback is not None:
+				result = dict()
+				result["code"] = 200
+				result["status"] = "OK"
+				result["headers"] = dict()
+				result["headers"]["Content-Length"] = len(body)
+				result["body"] = body
+
+				body = callback + "(" + json.dumps(result) + ");\n"
+				headers["Content-Type"] = "application/javascript"
+				headers["Content-Length"] = len(body)
+
+			reply_http(out_sock, rid, 200, "OK", headers, body)
 
 	in_sock.close()
 
