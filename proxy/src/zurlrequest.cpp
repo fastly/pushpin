@@ -320,20 +320,14 @@ public:
 			}
 
 			if(in.size() + packet.body.size() > IDEAL_CREDITS)
-			{
-				// TODO: cancel, error out
-				assert(0);
-			}
+				log_warning("zurl is sending too fast");
 
 			in += packet.body;
 
 			if(packet.more)
 			{
 				if(!packet.body.isEmpty())
-				{
-					//pendingInCredits += packet.body.size();
 					doReadyRead = true;
-				}
 			}
 			else
 			{
