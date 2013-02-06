@@ -99,7 +99,7 @@ public:
 
 		foreach(const QString &spec, in_specs)
 		{
-			in_sock->subscribe(clientId);
+			in_sock->subscribe(clientId + ' ');
 			in_sock->connectToAddress(spec);
 		}
 
