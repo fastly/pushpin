@@ -360,6 +360,30 @@ public:
 		isHttps = m2Request->isHttps();
 		requestData = hdata;
 
+		// NOTE: per the license, this functionality may not be removed as it
+		//   is the interface for the copyright notice
+		if(requestData.headers.contains("Pushpin-Check"))
+		{
+			QString str =
+			"Copyright (C) 2012-2013 Fan Out Networks, Inc.\n"
+			"\n"
+			"Pushpin is free software: you can redistribute it and/or modify it under\n"
+			"the terms of the GNU Affero General Public License as published by the Free\n"
+			"Software Foundation, either version 3 of the License, or (at your option)\n"
+			"any later version.\n"
+			"\n"
+			"Pushpin is distributed in the hope that it will be useful, but WITHOUT ANY\n"
+			"WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS\n"
+			"FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for\n"
+			"more details.\n"
+			"\n"
+			"You should have received a copy of the GNU Affero General Public License\n"
+			"along with this program. If not, see <http://www.gnu.org/licenses/>.\n";
+
+			QMetaObject::invokeMethod(this, "respondSuccess", Qt::QueuedConnection, Q_ARG(QString, str));
+			return;
+		}
+
 		inspectRequest = inspectManager->createRequest();
 
 		if(inspectChecker->isInterfaceAvailable())
@@ -418,12 +442,10 @@ public:
 		}
 	}
 
-	void respondError(int code, const QString &status, const QString &errorString)
+	void respond(int code, const QString &status, const QByteArray &body)
 	{
 		m2Response = q->createResponse();
 		connect(m2Response, SIGNAL(finished()), SLOT(m2Response_finished()));
-
-		QByteArray body = errorString.toUtf8() + '\n';
 
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
@@ -470,6 +492,11 @@ public:
 			m2Response->write(body);
 			m2Response->close();
 		}
+	}
+
+	void respondError(int code, const QString &status, const QString &errorString)
+	{
+		respond(code, status, errorString.toUtf8() + '\n');
 	}
 
 	void respondBadRequest(const QString &errorString)
@@ -526,6 +553,11 @@ public slots:
 		inspectRequest = 0;
 
 		emit q->inspectError();
+	}
+
+	void respondSuccess(const QString &message)
+	{
+		respond(200, "OK", message.toUtf8() + '\n');
 	}
 };
 
