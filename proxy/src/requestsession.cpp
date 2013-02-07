@@ -241,11 +241,11 @@ public:
 			urlstr += ':' + QByteArray::number(port);
 		urlstr += req->path();
 
-		log_info("IN id=%d, %s %s", req->rid().second.data(), qPrintable(req->method()), qPrintable(urlstr));
+		log_info("IN id=%d, %s %s", req->rid().second.data(), qPrintable(req->method()), urlstr.data());
 
 		connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
 
-		QUrl url(urlstr);
+		QUrl url = QUrl::fromEncoded(urlstr, QUrl::StrictMode);
 		HttpRequestData hdata;
 
 		// JSON-P

@@ -170,9 +170,9 @@ public:
 			QList<DomainMap::Target> targets = domainMap->entry(host);
 			log_debug("%s has %d routes", qPrintable(host), targets.count());
 			QByteArray str = "http://" + targets[0].first.toUtf8() + ':' + QByteArray::number(targets[0].second) + requestData.path;
-			QUrl url(str);
+			QUrl url = QUrl::fromEncoded(str, QUrl::StrictMode);
 
-			log_debug("proxying to %s", qPrintable(url.toString()));
+			log_debug("proxying to %s", url.toEncoded().data());
 
 			zurlRequest = zurlManager->createRequest();
 			zurlRequest->setParent(this);
