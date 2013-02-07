@@ -475,11 +475,6 @@ public:
 		headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
 
 		q->startResponse(code, status.toUtf8(), headers);
-
-		// in case we were reading a request in progress, delete here to stop it
-		delete m2Request;
-		m2Request = 0;
-
 		q->writeResponseBody(body);
 		q->endResponseBody();
 	}
@@ -622,15 +617,14 @@ public slots:
 
 	void doResponseUpdate()
 	{
-		log_debug("update");
+		log_debug("requestsession: update");
 		pendingResponseUpdate = false;
 
 		if(!m2Response)
 		{
-			if(m2Request)
-				m2Response = m2Request->createResponse();
-			else
-				m2Response = m2Manager->createResponse(rid);
+			assert(m2Manager);
+
+			m2Response = m2Manager->createResponse(rid);
 
 			connect(m2Response, SIGNAL(finished()), SLOT(m2Response_finished()));
 			connect(m2Response, SIGNAL(error()), SLOT(m2Response_error()));
@@ -832,6 +826,15 @@ bool RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestDa
 void RequestSession::startResponse(int code, const QByteArray &status, const HttpHeaders &headers)
 {
 	assert(d->state == Private::Accepting || d->state == Private::WaitingForResponse);
+
+	if(d->m2Request)
+	{
+		d->m2Manager = d->m2Request->managerForResponse();
+
+		// in case we were reading a request in progress, delete here to stop it
+		delete d->m2Request;
+		d->m2Request = 0;
+	}
 
 	d->state = Private::Responding;
 

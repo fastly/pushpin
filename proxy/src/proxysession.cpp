@@ -215,6 +215,7 @@ public:
 
 			if(!responseData.body.isEmpty())
 			{
+				si->state = SessionItem::Responding;
 				si->bytesToWrite += responseData.body.size();
 				rs->writeResponseBody(responseData.body);
 			}
@@ -373,6 +374,7 @@ public slots:
 
 					if(!responseData.body.isEmpty())
 					{
+						si->state = SessionItem::Responding;
 						si->bytesToWrite += responseData.body.size();
 						si->rs->writeResponseBody(responseData.body);
 					}
