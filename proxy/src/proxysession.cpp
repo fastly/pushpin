@@ -211,11 +211,11 @@ public:
 
 			sessionItemsBySession.insert(rs, si);
 
+			si->state = SessionItem::Responding;
 			rs->startResponse(responseData.code, responseData.status, responseData.headers);
 
 			if(!responseData.body.isEmpty())
 			{
-				si->state = SessionItem::Responding;
 				si->bytesToWrite += responseData.body.size();
 				rs->writeResponseBody(responseData.body);
 			}
@@ -370,11 +370,11 @@ public slots:
 
 					sessionItemsBySession.insert(si->rs, si);
 
+					si->state = SessionItem::Responding;
 					si->rs->startResponse(responseData.code, responseData.status, responseData.headers);
 
 					if(!responseData.body.isEmpty())
 					{
-						si->state = SessionItem::Responding;
 						si->bytesToWrite += responseData.body.size();
 						si->rs->writeResponseBody(responseData.body);
 					}
@@ -425,9 +425,10 @@ public slots:
 					log_debug("writing %d", buf.size());
 					foreach(SessionItem *si, sessionItems)
 					{
-						if(si->state == SessionItem::WaitingForResponse || si->state == SessionItem::Responding)
+						assert(si->state != SessionItem::WaitingForResponse);
+
+						if(si->state == SessionItem::Responding)
 						{
-							si->state = SessionItem::Responding;
 							si->bytesToWrite += buf.size();
 							si->rs->writeResponseBody(buf);
 						}
