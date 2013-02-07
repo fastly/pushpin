@@ -28,7 +28,10 @@ static bool isAllCaps(const QString &s)
 	for(int n = 0; n < s.length(); ++n)
 	{
 		QChar c = s[n];
-		if(!c.isUpper())
+
+		// non-letters are allowed, so what we really check against is
+		//   lowercase
+		if(c.isLower())
 			return false;
 	}
 
