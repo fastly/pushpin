@@ -51,6 +51,7 @@ static QString makeMixedCaseHeader(const QString &s)
 }
 
 M2RequestPacket::M2RequestPacket() :
+	isDisconnect(false),
 	uploadDone(false)
 {
 }
@@ -119,7 +120,42 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		m2headers[vit.key()] = vit.value().toString().toUtf8();
 	}
 
-	method = m2headers.value("METHOD");
+	start = offset + size + 1;
+	if(!TnetString::check(in, start, &type, &offset, &size))
+		return false;
+
+	if(type != TnetString::ByteArray)
+		return false;
+
+	body = TnetString::toByteArray(in, start, offset, size, &ok);
+	if(!ok)
+		return false;
+
+	QByteArray m2method = m2headers.value("METHOD");
+
+	if(m2method == "JSON")
+	{
+		QJson::Parser parser;
+		QVariant vdata = parser.parse(body, &ok);
+		if(!ok)
+			return false;
+
+		if(vdata.type() != QVariant::Map)
+			return false;
+
+		QVariantMap data = vdata.toMap();
+		if(!data.contains("type") || data["type"].type() != QVariant::String)
+			return false;
+
+		QString type = data["type"].toString();
+		if(type != "disconnect")
+			return false;
+
+		isDisconnect = true;
+		return true;
+	}
+
+	method = QString::fromLatin1(m2method);
 	path = m2headers.value("URI");
 
 	QByteArray uploadStartRaw = m2headers.value("x-mongrel2-upload-start");
@@ -155,17 +191,6 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 
 		headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), it.value());
 	}
-
-	start = offset + size + 1;
-	if(!TnetString::check(in, start, &type, &offset, &size))
-		return false;
-
-	if(type != TnetString::ByteArray)
-		return false;
-
-	body = TnetString::toByteArray(in, start, offset, size, &ok);
-	if(!ok)
-		return false;
 
 	return true;
 }

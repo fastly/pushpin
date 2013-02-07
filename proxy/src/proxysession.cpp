@@ -23,14 +23,12 @@
 #include <QSet>
 #include <QPointer>
 #include <QUrl>
-#include <qjson/serializer.h>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
 #include "m2request.h"
-#include "m2response.h"
 #include "zurlmanager.h"
 #include "zurlrequest.h"
 #include "domainmap.h"
@@ -39,11 +37,8 @@
 #define MAX_ACCEPT_REQUEST_BODY 100000
 #define MAX_ACCEPT_RESPONSE_BODY 100000
 
-#define BUFFER_SIZE 100000
-
-// TODO: read initial 100k or so from origin as fast as possible, then sync to slowest client
-// TODO: if response is instruct, but request body is too big, return error to client
-// TODO: if response is instruct, but response body is too big, return error to client
+#define MAX_INITIAL_BUFFER 100000
+#define MAX_STREAM_BUFFER 100000
 
 class ProxySession::Private : public QObject
 {
@@ -62,13 +57,15 @@ public:
 	{
 	public:
 		RequestSession *rs;
-		M2Response *resp;
 		int bytesToWrite;
+		bool responseSent;
+		bool errored;
 
 		SessionItem() :
 			rs(0),
-			resp(0),
-			bytesToWrite(0)
+			bytesToWrite(0),
+			responseSent(false),
+			errored(false)
 		{
 		}
 	};
@@ -88,8 +85,10 @@ public:
 	QSet<SessionItem*> sessionItems;
 	HttpRequestData requestData;
 	HttpResponseData responseData;
-	QHash<M2Response*, SessionItem*> sessionItemsByResponse;
+	QHash<RequestSession*, SessionItem*> sessionItemsBySession;
+	int requestBytesToWrite;
 	int total;
+	bool buffering;
 
 	Private(ProxySession *_q, ZurlManager *_zurlManager, DomainMap *_domainMap) :
 		QObject(_q),
@@ -101,9 +100,10 @@ public:
 		isHttps(false),
 		zurlRequest(0),
 		addAllowed(true),
-		haveInspectData(false)
+		haveInspectData(false),
+		requestBytesToWrite(0),
+		total(0)
 	{
-		total = 0;
 		acceptTypes += "application/fo-instruct";
 		acceptTypes += "application/grip-instruct";
 	}
@@ -115,9 +115,11 @@ public:
 
 	void cleanup()
 	{
-		/*foreach(SessionItem *si, sessionItems)
-		{
-		}*/
+		foreach(SessionItem *si, sessionItems)
+			delete si->rs;
+
+		sessionItems.clear();
+		sessionItemsBySession.clear();
 	}
 
 	void add(RequestSession *rs)
@@ -132,6 +134,7 @@ public:
 		if(state == Stopped)
 		{
 			state = Requesting;
+			buffering = true;
 
 			host = rs->host();
 			isHttps = rs->isHttps();
@@ -151,13 +154,15 @@ public:
 				connect(m2Request, SIGNAL(finished()), SLOT(m2Request_finished()));
 				connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
 
-				QByteArray buf = m2Request->read();
-				if(requestData.body.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
-				{
-					// TODO: reject all sessions
-				}
+				requestData.body += m2Request->read();
+			}
 
-				requestData.body += buf;
+			QByteArray buf = requestData.body;
+
+			if(requestData.body.size() > MAX_ACCEPT_REQUEST_BODY)
+			{
+				requestData.body.clear();
+				buffering = false;
 			}
 
 			// TODO: support multiple targets
@@ -170,6 +175,7 @@ public:
 			log_debug("proxying to %s", qPrintable(url.toString()));
 
 			zurlRequest = zurlManager->createRequest();
+			zurlRequest->setParent(this);
 			connect(zurlRequest, SIGNAL(readyRead()), SLOT(zurlRequest_readyRead()));
 			connect(zurlRequest, SIGNAL(bytesWritten(int)), SLOT(zurlRequest_bytesWritten(int)));
 			connect(zurlRequest, SIGNAL(error()), SLOT(zurlRequest_error()));
@@ -177,7 +183,10 @@ public:
 			zurlRequest->start(requestData.method, url, requestData.headers);
 
 			if(!requestData.body.isEmpty())
-				zurlRequest->writeBody(requestData.body);
+			{
+				requestBytesToWrite += buf.size();
+				zurlRequest->writeBody(buf);
+			}
 
 			if(!m2Request || m2Request->isFinished())
 				zurlRequest->endBody();
@@ -190,29 +199,19 @@ public:
 		{
 			// get the session caught up with where we're at
 
-			si->resp = rs->createResponse();
-			connect(si->resp, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
-			connect(si->resp, SIGNAL(finished()), SLOT(m2Response_finished()));
+			connect(rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
+			connect(rs, SIGNAL(errorResponding()), SLOT(rs_errorResponding()));
+			connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
 
-			sessionItemsByResponse.insert(si->resp, si);
+			sessionItemsBySession.insert(rs, si);
 
-			QByteArray jsonpCallback = si->rs->jsonpCallback();
-			if(!jsonpCallback.isEmpty())
-			{
-				HttpHeaders headers;
-				headers.removeAll("Content-Length");
-				headers += HttpHeader("Content-Type", "application/javascript");
-				headers += HttpHeader("Transfer-Encoding", "chunked");
-
-				si->resp->start(200, "OK", headers);
-				// TODO: check return value
-				writeJsonpStart(si, jsonpCallback, responseData);
-			}
-			else
-				si->resp->start(responseData.code, responseData.status, responseData.headers);
+			rs->startResponse(responseData.code, responseData.status, responseData.headers);
 
 			if(!responseData.body.isEmpty())
-				writeBody(si, responseData.body, !jsonpCallback.isEmpty()); // TODO: check return value
+			{
+				si->bytesToWrite += responseData.body.size();
+				rs->writeResponseBody(responseData.body);
+			}
 		}
 	}
 
@@ -220,116 +219,120 @@ public:
 	{
 		foreach(SessionItem *si, sessionItems)
 		{
-			if(si->bytesToWrite > 0)
+			if(si->bytesToWrite != -1 && si->bytesToWrite > 0)
 				return true;
 		}
 
 		return false;
 	}
 
-	static bool writeJsonpStart(SessionItem *si, const QByteArray &jsonpCallback, const HttpResponseData &responseData)
+	void tryRequestRead()
 	{
-		QJson::Serializer serializer;
+		QByteArray buf = m2Request->read();
+		if(buf.isEmpty())
+			return;
 
-		QByteArray statusJson = serializer.serialize(responseData.status);
-		if(statusJson.isNull())
-			return false;
+		log_debug("proxysession: input chunk: %d", buf.size());
 
-		QVariantMap vheaders;
-		foreach(const HttpHeader h, responseData.headers)
+		if(buffering)
 		{
-			if(!vheaders.contains(h.first))
-				vheaders[h.first] = h.second;
+			if(requestData.body.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
+			{
+				requestData.body.clear();
+				buffering = false;
+			}
+			else
+				requestData.body += buf;
 		}
 
-		QByteArray headersJson = serializer.serialize(vheaders);
-		if(headersJson.isNull())
-			return false;
-
-		QByteArray buf = jsonpCallback + "({\"code\": " + QByteArray::number(responseData.code) + ", \"status\": " + statusJson + ", \"headers\": " + headersJson + ", \"body\": \"";
-		si->bytesToWrite += buf.size();
-		si->resp->write(buf);
-
-		return true;
+		requestBytesToWrite += buf.size();
+		zurlRequest->writeBody(buf);
 	}
 
-	static void writeJsonpEnd(SessionItem *si)
+	void cannotAcceptAll()
 	{
-		QByteArray buf = "\"});\n";
-		si->bytesToWrite += buf.size();
-		si->resp->write(buf);
+		foreach(SessionItem *si, sessionItems)
+		{
+			if(!si->errored)
+			{
+				si->bytesToWrite = -1;
+				si->rs->respondCannotAccept();
+			}
+		}
 	}
 
-	// return false if not jsonp encode-able
-	static bool writeBody(SessionItem *si, const QByteArray &buf, bool jsonp)
+	void rejectAll(int code, const QString &status, const QString &errorMessage)
 	{
-		if(jsonp)
+		foreach(SessionItem *si, sessionItems)
 		{
-			QJson::Serializer serializer;
-
-			QByteArray bodyJson = serializer.serialize(buf);
-			if(bodyJson.isNull())
-				return false;
-
-			bodyJson = bodyJson.mid(1, bodyJson.size() - 2);
-			si->bytesToWrite += bodyJson.size();
-			si->resp->write(bodyJson);
+			if(!si->errored)
+			{
+				si->bytesToWrite = -1;
+				si->rs->respondError(code, status, errorMessage);
+			}
 		}
-		else
+	}
+
+	void destroyAll()
+	{
+		// this method is only to be called when we are in Responding state
+		assert(state == Responding);
+
+		foreach(SessionItem *si, sessionItems)
 		{
-			si->bytesToWrite += buf.size();
-			si->resp->write(buf);
+			if(!si->errored && !si->responseSent)
+			{
+				si->bytesToWrite = -1;
+				si->responseSent = true;
+				si->rs->endResponseBody();
+			}
 		}
-
-		return true;
 	}
 
 public slots:
 	void m2Request_readyRead()
 	{
-		QByteArray buf = m2Request->read();
-		log_debug("proxysession: input chunk: %d", buf.size());
-
-		if(requestData.body.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
-		{
-			// TODO: reject all sessions
-		}
-
-		requestData.body += buf;
-		zurlRequest->writeBody(buf);
+		tryRequestRead();
 	}
 
 	void m2Request_finished()
 	{
-		log_debug("proxysession: input finished");
+		log_debug("proxysession: finished reading request");
 
 		zurlRequest->endBody();
 	}
 
 	void m2Request_error()
 	{
-		log_error("proxysession: input error");
+		log_warning("proxysession: error reading request");
 
-		cleanup();
-		emit q->finishedByPassthrough();
+		rejectAll(500, "Internal Server Error", "Primary shared request failed.");
 	}
 
 	void zurlRequest_readyRead()
 	{
 		log_debug("zurlRequest_readyRead");
 
+		QPointer<QObject> self = this;
+
 		if(state == Requesting)
 		{
 			responseData.code = zurlRequest->responseCode();
 			responseData.status = zurlRequest->responseStatus();
 			responseData.headers = zurlRequest->responseHeaders();
-			responseData.body = zurlRequest->readResponseBody(); // initial body chunk
+			responseData.body = zurlRequest->readResponseBody(MAX_INITIAL_BUFFER);
 
 			total += responseData.body.size();
-			log_debug("recv total: %d\n", total);
+			log_debug("recv total: %d", total);
 
 			if(acceptTypes.contains(responseData.headers.get("Content-Type")))
 			{
+				if(!buffering)
+				{
+					rejectAll(502, "Bad Gateway", "Request too large to accept GRIP instruct.");
+					return;
+				}
+
 				state = Accepting;
 			}
 			else
@@ -342,42 +345,35 @@ public slots:
 				responseData.headers.removeAll("transfer-encoding");
 
 				if(!responseData.headers.contains("Content-Length") && !responseData.headers.contains("Transfer-Encoding"))
-						responseData.headers += HttpHeader("Transfer-Encoding", "chunked");
+					responseData.headers += HttpHeader("Transfer-Encoding", "chunked");
 
 				foreach(SessionItem *si, sessionItems)
 				{
-					si->resp = si->rs->createResponse();
-					connect(si->resp, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
-					connect(si->resp, SIGNAL(finished()), SLOT(m2Response_finished()));
+					connect(si->rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
+					connect(si->rs, SIGNAL(finished()), SLOT(rs_finished()));
+					connect(si->rs, SIGNAL(errorResponding()), SLOT(rs_errorResponding()));
 
-					sessionItemsByResponse.insert(si->resp, si);
+					sessionItemsBySession.insert(si->rs, si);
 
-					QByteArray jsonpCallback = si->rs->jsonpCallback();
-					if(!jsonpCallback.isEmpty())
-					{
-						HttpHeaders headers;
-						headers.removeAll("Content-Length");
-						headers += HttpHeader("Content-Type", "application/javascript");
-						headers += HttpHeader("Transfer-Encoding", "chunked");
-
-						si->resp->start(200, "OK", headers);
-						// TODO: check return value
-						writeJsonpStart(si, jsonpCallback, responseData);
-					}
-					else
-						si->resp->start(responseData.code, responseData.status, responseData.headers);
+					si->rs->startResponse(responseData.code, responseData.status, responseData.headers);
 
 					if(!responseData.body.isEmpty())
-						writeBody(si, responseData.body, !jsonpCallback.isEmpty()); // TODO: check return value
+					{
+						si->bytesToWrite += responseData.body.size();
+						si->rs->writeResponseBody(responseData.body);
+					}
 				}
 			}
 		}
 		else
 		{
-			if(pendingWrites())
+			assert(state == Accepting || state == Responding);
+
+			// if we're not buffering, then sync to slowest receiver
+			if(!buffering && pendingWrites())
 				return;
 
-			QByteArray buf = zurlRequest->readResponseBody(BUFFER_SIZE);
+			QByteArray buf = zurlRequest->readResponseBody(MAX_STREAM_BUFFER);
 
 			total += buf.size();
 			log_debug("recv=%d, total=%d", buf.size(), total);
@@ -388,7 +384,8 @@ public slots:
 				{
 					if(responseData.body.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
 					{
-						// TODO: reject all sessions
+						rejectAll(502, "Bad Gateway", "GRIP instruct response too large.");
+						return;
 					}
 
 					responseData.body += buf;
@@ -397,11 +394,12 @@ public slots:
 				{
 					bool wasAllowed = addAllowed;
 
-					if(addAllowed)
+					if(buffering)
 					{
-						if(responseData.body.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
+						if(responseData.body.size() + buf.size() > MAX_INITIAL_BUFFER)
 						{
 							responseData.body.clear();
+							buffering = false;
 							addAllowed = false;
 						}
 						else
@@ -410,10 +408,20 @@ public slots:
 
 					log_debug("writing %d", buf.size());
 					foreach(SessionItem *si, sessionItems)
-						writeBody(si, buf, !si->rs->jsonpCallback().isEmpty()); // TODO: check return value
+					{
+						if(!si->errored && !si->responseSent)
+						{
+							si->bytesToWrite += buf.size();
+							si->rs->writeResponseBody(buf);
+						}
+					}
 
 					if(wasAllowed && !addAllowed)
+					{
 						emit q->addNotAllowed();
+						if(!self)
+							return;
+					}
 				}
 			}
 		}
@@ -422,7 +430,7 @@ public slots:
 		{
 			log_debug("zurlRequest finished");
 
-			if(pendingWrites())
+			if(!buffering && pendingWrites())
 			{
 				log_debug("still stuff left to write, though. we'll wait.");
 				return;
@@ -449,19 +457,21 @@ public slots:
 				adata.haveResponse = true;
 				adata.response = responseData;
 
+				cleanup();
 				emit q->finishedForAccept(adata);
 			}
 			else // Responding
 			{
 				foreach(SessionItem *si, sessionItems)
 				{
-					if(!si->rs->jsonpCallback().isEmpty())
-						writeJsonpEnd(si);
-
-					si->resp->close();
+					if(!si->errored && !si->responseSent)
+					{
+						si->responseSent = true;
+						si->rs->endResponseBody();
+					}
 				}
 
-				// once the entire reponse has been received, cut off any new adds
+				// once the entire response has been received, cut off any new adds
 				if(addAllowed)
 				{
 					addAllowed = false;
@@ -473,42 +483,63 @@ public slots:
 
 	void zurlRequest_bytesWritten(int count)
 	{
-		// TODO: flow control
-		Q_UNUSED(count);
+		requestBytesToWrite -= count;
+		assert(requestBytesToWrite >= 0);
+
+		if(requestBytesToWrite == 0)
+			tryRequestRead();
 	}
 
 	void zurlRequest_error()
 	{
 		log_debug("zurlRequest_error");
 
-		// TODO: if zurl responds with ErrorLengthRequired, return code 411
-		// TODO: reject all sessions
+		if(state == Requesting || state == Accepting)
+		{
+			switch(zurlRequest->errorCondition())
+			{
+				case ZurlRequest::ErrorLengthRequired:
+					rejectAll(411, "Length Required", "Must provide Content-Length header.");
+					break;
+				default:
+					rejectAll(502, "Bad Gateway", "Error while proxying to origin.");
+					break;
+			}
+		}
+		else if(state == Responding)
+		{
+			// if we're already responding, then we can't reply with an error
+			destroyAll();
+		}
 	}
 
-	void m2Response_bytesWritten(int count)
+	void rs_bytesWritten(int count)
 	{
-		M2Response *resp = (M2Response *)sender();
+		RequestSession *rs = (RequestSession *)sender();
 
-		log_debug("m2Response_bytesWritten: %d", count);
+		log_debug("rs_bytesWritten: %d", count);
 
-		SessionItem *si = sessionItemsByResponse.value(resp);
+		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
-		si->bytesToWrite -= count;
-		assert(si->bytesToWrite >= 0);
+		if(si->bytesToWrite != -1)
+		{
+			si->bytesToWrite -= count;
+			assert(si->bytesToWrite >= 0);
+		}
 
-		// everyone caught up? read some more
-		if(zurlRequest && !pendingWrites())
+		// everyone caught up? try to read some more then
+		if(!buffering && zurlRequest && !pendingWrites())
 			zurlRequest_readyRead();
 	}
 
-	void m2Response_finished()
+	void rs_finished()
 	{
-		M2Response *resp = (M2Response *)sender();
+		RequestSession *rs = (RequestSession *)sender();
 
-		log_debug("m2Response_finished");
+		log_debug("rs_finished");
 
-		SessionItem *si = sessionItemsByResponse.value(resp);
+		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
 		QPointer<QObject> self = this;
@@ -516,15 +547,28 @@ public slots:
 		if(!self)
 			return;
 
-		sessionItemsByResponse.remove(resp);
+		sessionItemsBySession.remove(rs);
 		sessionItems.remove(si);
-		delete resp;
-		delete si->rs;
+		delete rs;
 
 		delete si;
 
 		if(sessionItems.isEmpty())
 			emit q->finishedByPassthrough();
+	}
+
+	void rs_errorResponding()
+	{
+		RequestSession *rs = (RequestSession *)sender();
+
+		log_debug("rs_errorResponding");
+
+		SessionItem *si = sessionItemsBySession.value(rs);
+		assert(si);
+
+		// flag that we should stop attempting to respond
+		si->errored = true;
+		si->bytesToWrite = -1;
 	}
 };
 
@@ -552,9 +596,7 @@ void ProxySession::add(RequestSession *rs)
 
 void ProxySession::cannotAccept()
 {
-	// TODO
-	// reject all sessions
-	//d->respondError(500, "Internal Server Error", "Accept service unavailable");
+	d->cannotAcceptAll();
 }
 
 #include "proxysession.moc"

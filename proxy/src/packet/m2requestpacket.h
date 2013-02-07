@@ -29,6 +29,8 @@ public:
 	QByteArray sender;
 	QByteArray id;
 
+	bool isDisconnect;
+
 	QString method;
 	QByteArray path;
 	HttpHeaders headers;

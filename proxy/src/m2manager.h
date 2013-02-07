@@ -52,6 +52,7 @@ private:
 	friend class M2Request;
 	friend class M2Response;
 	void unlink(M2Request *req);
+	void unlink(M2Response *resp);
 	void writeResponse(const M2ResponsePacket &packet);
 };
 

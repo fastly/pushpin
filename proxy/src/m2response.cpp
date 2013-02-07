@@ -92,6 +92,12 @@ public:
 			timer->deleteLater();
 			timer = 0;
 		}
+
+		if(manager)
+		{
+			manager->unlink(q);
+			manager = 0;
+		}
 	}
 
 	void update()
@@ -123,6 +129,12 @@ public:
 	void writeCloseResponse()
 	{
 		writeBodyResponse("");
+	}
+
+	void disconnected()
+	{
+		cleanup();
+		emit q->error();
 	}
 
 public slots:
@@ -239,6 +251,11 @@ M2Response::~M2Response()
 	delete d;
 }
 
+M2Request::Rid M2Response::rid() const
+{
+	return d->rid;
+}
+
 void M2Response::start(int code, const QByteArray &status, const HttpHeaders &headers)
 {
 	d->state = Private::Starting;
@@ -267,6 +284,11 @@ void M2Response::handle(M2Manager *manager, const M2Request::Rid &rid)
 {
 	d->manager = manager;
 	d->rid = rid;
+}
+
+void M2Response::disconnected()
+{
+	d->disconnected();
 }
 
 #include "m2response.moc"

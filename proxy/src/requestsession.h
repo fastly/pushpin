@@ -53,15 +53,25 @@ public:
 	// creates an M2Request-less session
 	bool setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QByteArray &jsonpCallback, M2Manager *manager);
 
-	M2Response *createResponse();
+	void startResponse(int code, const QByteArray &status, const HttpHeaders &headers);
+	void writeResponseBody(const QByteArray &body);
+	void endResponseBody();
 
-	void cannotAccept();
+	void respondError(int code, const QString &status, const QString &errorString);
+	void respondCannotAccept();
 
 signals:
 	void inspected(const InspectData &idata);
 	void inspectError();
 	void finished();
 	void finishedForAccept(const AcceptData &adata);
+	void bytesWritten(int count);
+
+	// this signal means some error was encountered while responding and
+	//   that you should not attempt to call further response-related
+	//   methods. the object remains in an active state though, and so you
+	//   should still wait for finished()
+	void errorResponding();
 
 private:
 	class Private;

@@ -24,7 +24,9 @@
 #include <qjson/parser.h>
 #include <qjson/serializer.h>
 #include "packet/httprequestdata.h"
+#include "packet/httpresponsedata.h"
 #include "log.h"
+#include "layertracker.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
 #include "m2request.h"
@@ -133,7 +135,18 @@ class RequestSession::Private : public QObject
 	Q_OBJECT
 
 public:
+	enum State
+	{
+		Stopped,
+		Inspecting,
+		Accepting,
+		WaitingForResponse,
+		Responding,
+		RespondingInternal
+	};
+
 	RequestSession *q;
+	State state;
 	InspectManager *inspectManager;
 	InspectChecker *inspectChecker;
 	M2Request *m2Request;
@@ -147,17 +160,24 @@ public:
 	QString host;
 	QByteArray in;
 	QByteArray jsonpCallback;
+	HttpResponseData responseData;
+	bool responseBodyFinished;
+	bool pendingResponseUpdate;
+	LayerTracker jsonpTracker;
 
 	Private(RequestSession *_q, InspectManager *_inspectManager, InspectChecker *_inspectChecker) :
 		QObject(_q),
 		q(_q),
+		state(Stopped),
 		inspectManager(_inspectManager),
 		inspectChecker(_inspectChecker),
 		m2Request(0),
 		m2Response(0),
 		m2Manager(0),
 		isHttps(false),
-		inspectRequest(0)
+		inspectRequest(0),
+		responseBodyFinished(false),
+		pendingResponseUpdate(false)
 	{
 	}
 
@@ -186,6 +206,8 @@ public:
 			inspectChecker->give(inspectRequest);
 			inspectChecker = 0;
 		}
+
+		state = Stopped;
 	}
 
 	void start(M2Request *req)
@@ -384,6 +406,8 @@ public:
 			return;
 		}
 
+		state = Inspecting;
+
 		inspectRequest = inspectManager->createRequest();
 
 		if(inspectChecker->isInterfaceAvailable())
@@ -438,60 +462,26 @@ public:
 			delete m2Request;
 			m2Request = 0;
 
+			state = Stopped;
+
 			emit q->finishedForAccept(adata);
 		}
 	}
 
 	void respond(int code, const QString &status, const QByteArray &body)
 	{
-		m2Response = q->createResponse();
-		connect(m2Response, SIGNAL(finished()), SLOT(m2Response_finished()));
-
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
 		headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
+
+		q->startResponse(code, status.toUtf8(), headers);
 
 		// in case we were reading a request in progress, delete here to stop it
 		delete m2Request;
 		m2Request = 0;
 
-		if(!jsonpCallback.isEmpty())
-		{
-			QJson::Serializer serializer;
-
-			QVariantMap vheaders;
-			foreach(const HttpHeader h, headers)
-			{
-				if(!vheaders.contains(h.first))
-					vheaders[h.first] = h.second;
-			}
-
-			QVariantMap vresult;
-			vresult["code"] = code;
-			vresult["status"] = status.toUtf8();
-			vresult["headers"] = vheaders;
-			vresult["body"] = body;
-
-			QByteArray resultJson = serializer.serialize(vresult);
-			assert(!resultJson.isNull());
-
-			QByteArray body = jsonpCallback + '(' + resultJson + ");\n";
-
-			HttpHeaders jheaders;
-			jheaders.removeAll("Content-Length");
-			jheaders += HttpHeader("Content-Type", "application/javascript");
-			jheaders += HttpHeader("Content-Length", QByteArray::number(body.size()));
-
-			m2Response->start(200, "OK", jheaders);
-			m2Response->write(body);
-			m2Response->close();
-		}
-		else
-		{
-			m2Response->start(code, status.toLatin1(), headers);
-			m2Response->write(body);
-			m2Response->close();
-		}
+		q->writeResponseBody(body);
+		q->endResponseBody();
 	}
 
 	void respondError(int code, const QString &status, const QString &errorString)
@@ -502,6 +492,56 @@ public:
 	void respondBadRequest(const QString &errorString)
 	{
 		respondError(400, "Bad Request", errorString);
+	}
+
+	void responseUpdate()
+	{
+		if(!pendingResponseUpdate)
+		{
+			pendingResponseUpdate = true;
+			QMetaObject::invokeMethod(this, "doResponseUpdate", Qt::QueuedConnection);
+		}
+	}
+
+	// returns null array on error
+	QByteArray makeJsonpStart(int code, const QByteArray &status, const HttpHeaders &headers)
+	{
+		QJson::Serializer serializer;
+
+		QByteArray statusJson = serializer.serialize(QString::fromUtf8(status));
+		if(statusJson.isNull())
+			return QByteArray();
+
+		QVariantMap vheaders;
+		foreach(const HttpHeader h, headers)
+		{
+			if(!vheaders.contains(h.first))
+				vheaders[h.first] = h.second;
+		}
+
+		QByteArray headersJson = serializer.serialize(vheaders);
+		if(headersJson.isNull())
+			return QByteArray();
+
+		return jsonpCallback + "({\"code\": " + QByteArray::number(code) + ", \"status\": " + statusJson + ", \"headers\": " + headersJson + ", \"body\": \"";
+	}
+
+	QByteArray makeJsonpBody(const QByteArray &buf)
+	{
+		QJson::Serializer serializer;
+
+		QByteArray bodyJson = serializer.serialize(buf);
+		if(bodyJson.isNull())
+			return QByteArray();
+
+		assert(bodyJson.size() >= 2);
+
+		return bodyJson.mid(1, bodyJson.size() - 2);
+	}
+
+	QByteArray makeJsonpEnd()
+	{
+		return QByteArray("\"});\n");
 	}
 
 public slots:
@@ -517,13 +557,32 @@ public slots:
 
 	void m2Request_error()
 	{
-		log_error("requestsession: request error: %d", m2Request->rid().second.data());
+		log_warning("requestsession: request error: %d", m2Request->rid().second.data());
 		cleanup();
 		emit q->finished();
 	}
 
+	void m2Response_bytesWritten(int count)
+	{
+		if(!jsonpCallback.isEmpty())
+		{
+			int actual = jsonpTracker.finished(count);
+			if(actual > 0)
+				emit q->bytesWritten(actual);
+		}
+		else
+			emit q->bytesWritten(count);
+	}
+
 	void m2Response_finished()
 	{
+		cleanup();
+		emit q->finished();
+	}
+
+	void m2Response_error()
+	{
+		log_warning("requestsession: response error: %d", m2Response->rid().second.data());
 		cleanup();
 		emit q->finished();
 	}
@@ -537,6 +596,8 @@ public slots:
 
 		if(!idata.doProxy)
 		{
+			state = Accepting;
+
 			// successful inspect indicated we should not proxy. in that case,
 			//   collect the body and accept
 			connect(m2Request, SIGNAL(readyRead()), SLOT(m2Request_readyRead()));
@@ -544,7 +605,10 @@ public slots:
 			processIncomingRequest();
 		}
 		else
+		{
+			state = WaitingForResponse;
 			emit q->inspected(idata);
+		}
 	}
 
 	void inspectRequest_error()
@@ -552,7 +616,146 @@ public slots:
 		delete inspectRequest;
 		inspectRequest = 0;
 
+		state = WaitingForResponse;
 		emit q->inspectError();
+	}
+
+	void doResponseUpdate()
+	{
+		log_debug("update");
+		pendingResponseUpdate = false;
+
+		if(!m2Response)
+		{
+			if(m2Request)
+				m2Response = m2Request->createResponse();
+			else
+				m2Response = m2Manager->createResponse(rid);
+
+			connect(m2Response, SIGNAL(finished()), SLOT(m2Response_finished()));
+			connect(m2Response, SIGNAL(error()), SLOT(m2Response_error()));
+
+			if(!jsonpCallback.isEmpty())
+			{
+				HttpHeaders headers;
+
+				if(responseBodyFinished)
+				{
+					QByteArray startBuf = makeJsonpStart(responseData.code, responseData.status, responseData.headers);
+					QByteArray bodyBuf;
+					QByteArray endBuf = makeJsonpEnd();
+					if(!startBuf.isNull())
+						bodyBuf = makeJsonpBody(responseData.body);
+
+					if(startBuf.isNull() || bodyBuf.isNull())
+					{
+						state = RespondingInternal;
+
+						QByteArray body = "Upstream response could not be JSON-P encoded.\n";
+						headers += HttpHeader("Content-Type", "text/plain");
+						headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
+						m2Response->start(500, "Internal Server Error", headers);
+						m2Response->write(body);
+						m2Response->close();
+						emit q->errorResponding();
+						return;
+					}
+
+					QByteArray buf = startBuf + bodyBuf + endBuf;
+
+					headers += HttpHeader("Content-Type", "application/javascript");
+					headers += HttpHeader("Content-Length", QByteArray::number(buf.size()));
+
+					connect(m2Response, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+
+					m2Response->start(200, "OK", headers);
+
+					jsonpTracker.addPlain(responseData.body.size());
+					jsonpTracker.specifyEncoded(buf.size(), responseData.body.size());
+
+					m2Response->write(buf);
+
+					responseData.body.clear();
+
+					m2Response->close();
+					return;
+				}
+
+				QByteArray buf = makeJsonpStart(responseData.code, responseData.status, responseData.headers);
+				if(buf.isNull())
+				{
+					state = RespondingInternal;
+
+					QByteArray body = "Upstream response could not be JSON-P encoded.\n";
+					headers += HttpHeader("Content-Type", "text/plain");
+					headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
+					m2Response->start(500, "Internal Server Error", headers);
+					m2Response->write(body);
+					m2Response->close();
+					emit q->errorResponding();
+					return;
+				}
+
+				headers += HttpHeader("Content-Type", "application/javascript");
+				headers += HttpHeader("Transfer-Encoding", "chunked");
+
+				connect(m2Response, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+
+				m2Response->start(200, "OK", headers);
+
+				jsonpTracker.specifyEncoded(buf.size(), 0);
+
+				m2Response->write(buf);
+			}
+			else
+			{
+				connect(m2Response, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+
+				m2Response->start(responseData.code, responseData.status, responseData.headers);
+			}
+		}
+
+		if(!responseData.body.isEmpty())
+		{
+			if(!jsonpCallback.isEmpty())
+			{
+				QByteArray buf = makeJsonpBody(responseData.body);
+				if(buf.isNull())
+				{
+					state = RespondingInternal;
+
+					log_warning("upstream response could not be JSON-P encoded");
+
+					// if we error while streaming, all we can do is give up
+					m2Response->close();
+					emit q->errorResponding();
+					return;
+				}
+
+				jsonpTracker.addPlain(responseData.body.size());
+				jsonpTracker.specifyEncoded(buf.size(), responseData.body.size());
+
+				m2Response->write(buf);
+			}
+			else
+			{
+				m2Response->write(responseData.body);
+			}
+
+			responseData.body.clear();
+		}
+
+		if(responseBodyFinished)
+		{
+			if(!jsonpCallback.isEmpty())
+			{
+				QByteArray buf = makeJsonpEnd();
+				jsonpTracker.specifyEncoded(buf.size(), 0);
+				m2Response->write(buf);
+			}
+
+			m2Response->close();
+		}
 	}
 
 	void respondSuccess(const QString &message)
@@ -626,17 +829,45 @@ bool RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestDa
 	return true;
 }
 
-M2Response *RequestSession::createResponse()
+void RequestSession::startResponse(int code, const QByteArray &status, const HttpHeaders &headers)
 {
-	if(d->m2Request)
-		return d->m2Request->createResponse();
-	else
-		return d->m2Manager->createResponse(d->rid);
+	assert(d->state == Private::Accepting || d->state == Private::WaitingForResponse);
+
+	d->state = Private::Responding;
+
+	d->responseData.code = code;
+	d->responseData.status = status;
+	d->responseData.headers = headers;
+
+	d->responseUpdate();
 }
 
-void RequestSession::cannotAccept()
+void RequestSession::writeResponseBody(const QByteArray &body)
 {
-	d->respondError(500, "Internal Server Error", "Accept service unavailable");
+	assert(d->state == Private::Responding);
+	assert(!d->responseBodyFinished);
+
+	d->responseData.body += body;
+	d->responseUpdate();
+}
+
+void RequestSession::endResponseBody()
+{
+	assert(d->state == Private::Responding);
+	assert(!d->responseBodyFinished);
+
+	d->responseBodyFinished = true;
+	d->responseUpdate();
+}
+
+void RequestSession::respondError(int code, const QString &status, const QString &errorString)
+{
+	d->respondError(code, status, errorString);
+}
+
+void RequestSession::respondCannotAccept()
+{
+	respondError(500, "Internal Server Error", "Accept service unavailable.");
 }
 
 #include "requestsession.moc"

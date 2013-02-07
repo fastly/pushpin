@@ -168,6 +168,12 @@ public:
 		}
 	}
 
+	void disconnected()
+	{
+		cleanup();
+		emit q->error();
+	}
+
 public slots:
 	void watcher_fileChanged(const QString &path)
 	{
@@ -326,6 +332,11 @@ void M2Request::uploadDone()
 
 		d->tryFinish();
 	}
+}
+
+void M2Request::disconnected()
+{
+	d->disconnected();
 }
 
 #include "m2request.moc"

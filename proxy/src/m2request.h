@@ -70,6 +70,7 @@ private:
 	bool handle(M2Manager *manager, const M2RequestPacket &packet, bool https);
 	void activate();
 	void uploadDone();
+	void disconnected();
 };
 
 #endif

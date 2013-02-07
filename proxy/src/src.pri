@@ -33,6 +33,7 @@ SOURCES += \
 
 HEADERS += \
 	$$PWD/log.h \
+	$$PWD/layertracker.h \
 	$$PWD/m2manager.h \
 	$$PWD/m2request.h \
 	$$PWD/m2response.h \
@@ -50,6 +51,7 @@ HEADERS += \
 
 SOURCES += \
 	$$PWD/log.cpp \
+	$$PWD/layertracker.cpp \
 	$$PWD/m2manager.cpp \
 	$$PWD/m2request.cpp \
 	$$PWD/m2response.cpp \

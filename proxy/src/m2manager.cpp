@@ -20,8 +20,10 @@
 #include "m2manager.h"
 
 #include "assert.h"
-#include <QObject>
+#include <QSet>
 #include <QStringList>
+#include <QObject>
+#include <QPointer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "packet/m2requestpacket.h"
@@ -49,6 +51,7 @@ public:
 	QZmq::Valve *in_valve;
 	QZmq::Valve *inhttps_valve;
 	QHash<M2Request::Rid, M2Request*> reqsByRid;
+	QHash<M2Request::Rid, QSet<M2Response*> > respsByRid;
 	QList<M2Request*> pendingReqs;
 
 	Private(M2Manager *_q) :
@@ -150,6 +153,28 @@ public:
 		M2Request::Rid rid(p.sender, p.id);
 		M2Request *req;
 
+		if(p.isDisconnect)
+		{
+			QPointer<QObject> self = this;
+
+			req = reqsByRid.value(rid);
+			if(req)
+			{
+				req->disconnected();
+				if(!self)
+					return;
+			}
+
+			foreach(M2Response *resp, respsByRid.value(rid))
+			{
+				resp->disconnected();
+				if(!self)
+					return;
+			}
+
+			return;
+		}
+
 		if(p.uploadDone)
 		{
 			req = reqsByRid.value(rid);
@@ -160,33 +185,32 @@ public:
 			}
 
 			req->uploadDone();
+			return;
 		}
-		else
+
+		req = new M2Request;
+
+		reqsByRid.insert(rid, req);
+
+		if(!req->handle(q, p, https))
 		{
-			req = new M2Request;
-
-			reqsByRid.insert(rid, req);
-
-			if(!req->handle(q, p, https))
-			{
-				// we don't log anything here. req will have taken care of that
-				reqsByRid.remove(rid);
-				delete req;
-				return;
-			}
-
-			pendingReqs += req;
-
-			if(pendingReqs.count() >= MAX_PENDING)
-			{
-				if(in_valve)
-					in_valve->close();
-				if(inhttps_valve)
-					inhttps_valve->close();
-			}
-
-			emit q->requestReady();
+			// we don't log anything here. req will have taken care of that
+			reqsByRid.remove(rid);
+			delete req;
+			return;
 		}
+
+		pendingReqs += req;
+
+		if(pendingReqs.count() >= MAX_PENDING)
+		{
+			if(in_valve)
+				in_valve->close();
+			if(inhttps_valve)
+				inhttps_valve->close();
+		}
+
+		emit q->requestReady();
 	}
 
 private slots:
@@ -253,6 +277,13 @@ M2Request *M2Manager::takeNext()
 M2Response *M2Manager::createResponse(const M2Request::Rid &rid)
 {
 	M2Response *resp = new M2Response;
+
+	if(!d->respsByRid.contains(resp->rid()))
+		d->respsByRid[rid] = QSet<M2Response*>();
+
+	QSet<M2Response*> &resps = d->respsByRid[rid];
+	resps += resp;
+
 	resp->handle(this, rid);
 	return resp;
 }
@@ -260,6 +291,18 @@ M2Response *M2Manager::createResponse(const M2Request::Rid &rid)
 void M2Manager::unlink(M2Request *req)
 {
 	d->reqsByRid.remove(req->rid());
+}
+
+void M2Manager::unlink(M2Response *resp)
+{
+	if(d->respsByRid.contains(resp->rid()))
+	{
+		QSet<M2Response*> &resps = d->respsByRid[resp->rid()];
+		resps.remove(resp);
+
+		if(resps.isEmpty())
+			d->respsByRid.remove(resp->rid());
+	}
 }
 
 void M2Manager::writeResponse(const M2ResponsePacket &packet)
