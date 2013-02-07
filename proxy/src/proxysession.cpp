@@ -56,16 +56,22 @@ public:
 	class SessionItem
 	{
 	public:
+		enum State
+		{
+			WaitingForResponse,
+			Responding,
+			Responded,
+			Errored
+		};
+
 		RequestSession *rs;
+		State state;
 		int bytesToWrite;
-		bool responseSent;
-		bool errored;
 
 		SessionItem() :
 			rs(0),
-			bytesToWrite(0),
-			responseSent(false),
-			errored(false)
+			state(WaitingForResponse),
+			bytesToWrite(0)
 		{
 		}
 	};
@@ -253,8 +259,11 @@ public:
 	{
 		foreach(SessionItem *si, sessionItems)
 		{
-			if(!si->errored)
+			if(si->state != SessionItem::Errored)
 			{
+				assert(si->state == SessionItem::WaitingForResponse);
+
+				si->state = SessionItem::Responded;
 				si->bytesToWrite = -1;
 				si->rs->respondCannotAccept();
 			}
@@ -265,8 +274,11 @@ public:
 	{
 		foreach(SessionItem *si, sessionItems)
 		{
-			if(!si->errored)
+			if(si->state != SessionItem::Errored)
 			{
+				assert(si->state == SessionItem::WaitingForResponse);
+
+				si->state = SessionItem::Responded;
 				si->bytesToWrite = -1;
 				si->rs->respondError(code, status, errorMessage);
 			}
@@ -280,10 +292,12 @@ public:
 
 		foreach(SessionItem *si, sessionItems)
 		{
-			if(!si->errored && !si->responseSent)
+			assert(si->state != SessionItem::WaitingForResponse);
+
+			if(si->state == SessionItem::Responding)
 			{
+				si->state = SessionItem::Responded;
 				si->bytesToWrite = -1;
-				si->responseSent = true;
 				si->rs->endResponseBody();
 			}
 		}
@@ -409,8 +423,9 @@ public slots:
 					log_debug("writing %d", buf.size());
 					foreach(SessionItem *si, sessionItems)
 					{
-						if(!si->errored && !si->responseSent)
+						if(si->state == SessionItem::WaitingForResponse || si->state == SessionItem::Responding)
 						{
+							si->state = SessionItem::Responding;
 							si->bytesToWrite += buf.size();
 							si->rs->writeResponseBody(buf);
 						}
@@ -464,9 +479,11 @@ public slots:
 			{
 				foreach(SessionItem *si, sessionItems)
 				{
-					if(!si->errored && !si->responseSent)
+					assert(si->state != SessionItem::WaitingForResponse);
+
+					if(si->state == SessionItem::Responding)
 					{
-						si->responseSent = true;
+						si->state = SessionItem::Responded;
 						si->rs->endResponseBody();
 					}
 				}
@@ -492,11 +509,12 @@ public slots:
 
 	void zurlRequest_error()
 	{
-		log_debug("zurlRequest_error");
+		ZurlRequest::ErrorCondition e = zurlRequest->errorCondition();
+		log_debug("zurlRequest_error: state=%d, condition=%d", (int)state, (int)e);
 
 		if(state == Requesting || state == Accepting)
 		{
-			switch(zurlRequest->errorCondition())
+			switch(e)
 			{
 				case ZurlRequest::ErrorLengthRequired:
 					rejectAll(411, "Length Required", "Must provide Content-Length header.");
@@ -566,8 +584,10 @@ public slots:
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
+		assert(si->state != SessionItem::Errored);
+
 		// flag that we should stop attempting to respond
-		si->errored = true;
+		si->state = SessionItem::Errored;
 		si->bytesToWrite = -1;
 	}
 };

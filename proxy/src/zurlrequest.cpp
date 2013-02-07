@@ -515,6 +515,8 @@ void ZurlRequest::setup(ZurlManager *manager)
 
 void ZurlRequest::handle(const ZurlResponsePacket &packet)
 {
+	assert(d->manager);
+
 	d->handle(packet);
 }
 
