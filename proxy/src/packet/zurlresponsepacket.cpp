@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Fan Out Networks, Inc.
+ * Copyright (C) 2012-2013 Fan Out Networks, Inc.
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@ QVariant ZurlResponsePacket::toVariant() const
 		if(code != -1)
 		{
 			obj["code"] = code;
-			obj["status"] = status;
+			obj["reason"] = reason;
 			QVariantList vheaders;
 			foreach(const HttpHeader &h, headers)
 			{
@@ -135,13 +135,13 @@ bool ZurlResponsePacket::fromVariant(const QVariant &in)
 			code = obj["code"].toInt();
 		}
 
-		status.clear();
-		if(obj.contains("status"))
+		reason.clear();
+		if(obj.contains("reason"))
 		{
-			if(obj["status"].type() != QVariant::ByteArray)
+			if(obj["reason"].type() != QVariant::ByteArray)
 				return false;
 
-			status = obj["status"].toByteArray();
+			reason = obj["reason"].toByteArray();
 		}
 
 		headers.clear();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Fan Out Networks, Inc.
+ * Copyright (C) 2012-2013 Fan Out Networks, Inc.
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ public:
 
 	QByteArray replyAddress;
 	int code;
-	QByteArray status;
+	QByteArray reason;
 	HttpHeaders headers;
 	QByteArray body;
 	bool more;

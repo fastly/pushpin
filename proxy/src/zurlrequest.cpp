@@ -315,7 +315,7 @@ public:
 				haveResponseValues = true;
 
 				responseCode = packet.code;
-				responseStatus = packet.status;
+				responseStatus = packet.reason;
 				responseHeaders = packet.headers;
 			}
 
@@ -377,7 +377,7 @@ public slots:
 			p.sender = rid.first;
 			p.seq = outSeq++;
 			p.method = method;
-			p.url = url;
+			p.uri = url;
 			p.headers = headers;
 			if(!out.isEmpty() || !outFinished)
 				p.more = true;

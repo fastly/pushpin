@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Fan Out Networks, Inc.
+ * Copyright (C) 2012-2013 Fan Out Networks, Inc.
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@ QVariant ZurlRequestPacket::toVariant() const
 	if(!method.isEmpty())
 	{
 		obj["method"] = method.toLatin1();
-		obj["url"] = url.toEncoded();
+		obj["uri"] = uri.toEncoded();
 
 		QVariantList vheaders;
 		foreach(const HttpHeader &h, headers)
@@ -135,13 +135,13 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 		method = QString::fromLatin1(obj["method"].toByteArray());
 	}
 
-	url.clear();
-	if(obj.contains("url"))
+	uri.clear();
+	if(obj.contains("uri"))
 	{
-		if(obj["url"].type() != QVariant::ByteArray)
+		if(obj["uri"].type() != QVariant::ByteArray)
 			return false;
 
-		url = QUrl::fromEncoded(obj["url"].toByteArray(), QUrl::StrictMode);
+		uri = QUrl::fromEncoded(obj["uri"].toByteArray(), QUrl::StrictMode);
 	}
 
 	headers.clear();
