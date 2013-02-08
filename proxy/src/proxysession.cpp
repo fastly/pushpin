@@ -110,7 +110,6 @@ public:
 		requestBytesToWrite(0),
 		total(0)
 	{
-		acceptTypes += "application/fo-instruct";
 		acceptTypes += "application/grip-instruct";
 	}
 
