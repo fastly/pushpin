@@ -249,7 +249,7 @@ public:
 		HttpRequestData hdata;
 
 		// JSON-P
-		if(url.hasQueryItem("_callback"))
+		if(url.hasQueryItem("callback"))
 		{
 			bool callbackDone = false;
 			bool methodDone = false;
@@ -262,7 +262,7 @@ public:
 				const QPair<QByteArray, QByteArray> &i = encodedItems[n];
 
 				QByteArray name = parsePercentEncoding(i.first);
-				if(name == "_callback")
+				if(name == "callback")
 				{
 					if(callbackDone)
 						continue;
@@ -272,13 +272,13 @@ public:
 					QByteArray callback = parsePercentEncoding(i.second);
 					if(callback.isEmpty())
 					{
-						log_warning("requestsession: invalid _callback parameter, rejecting");
-						respondBadRequest("Invalid _callback parameter.");
+						log_warning("requestsession: invalid callback parameter, rejecting");
+						respondBadRequest("Invalid callback parameter.");
 						return;
 					}
 
 					jsonpCallback = callback;
-					url.removeAllQueryItems("_callback");
+					url.removeAllQueryItems("callback");
 				}
 				else if(name == "_method")
 				{
@@ -499,12 +499,12 @@ public:
 	}
 
 	// returns null array on error
-	QByteArray makeJsonpStart(int code, const QByteArray &status, const HttpHeaders &headers)
+	QByteArray makeJsonpStart(int code, const QByteArray &reason, const HttpHeaders &headers)
 	{
 		QJson::Serializer serializer;
 
-		QByteArray statusJson = serializer.serialize(QString::fromUtf8(status));
-		if(statusJson.isNull())
+		QByteArray reasonJson = serializer.serialize(QString::fromUtf8(reason));
+		if(reasonJson.isNull())
 			return QByteArray();
 
 		QVariantMap vheaders;
@@ -518,7 +518,7 @@ public:
 		if(headersJson.isNull())
 			return QByteArray();
 
-		return jsonpCallback + "({\"code\": " + QByteArray::number(code) + ", \"status\": " + statusJson + ", \"headers\": " + headersJson + ", \"body\": \"";
+		return jsonpCallback + "({\"code\": " + QByteArray::number(code) + ", \"reason\": " + reasonJson + ", \"headers\": " + headersJson + ", \"body\": \"";
 	}
 
 	QByteArray makeJsonpBody(const QByteArray &buf)

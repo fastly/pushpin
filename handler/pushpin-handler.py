@@ -225,7 +225,7 @@ def push_in_worker(c):
 			if callback is not None:
 				result = dict()
 				result["code"] = 200
-				result["status"] = "OK"
+				result["reason"] = "OK"
 				result["headers"] = dict()
 				result["headers"]["Content-Length"] = len(body)
 				result["body"] = body
