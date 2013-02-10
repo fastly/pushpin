@@ -1,7 +1,9 @@
 Pushpin
 -------
-Date: December 11th, 2012
+Date: February 9th, 2013
 Author: Justin Karneges <justin@fanout.io>
+
+Read: http://blog.fanout.io/2013/02/10/http-grip-proxy-hold-technique/
 
 Pushpin is a server component that provides realtime data push over HTTP. Web
 applications that need HTTP long-polling or HTTP streaming interfaces simply
