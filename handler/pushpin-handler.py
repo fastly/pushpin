@@ -187,7 +187,7 @@ def push_in_http_worker():
 
 	context = dict()
 	context["out_sock"] = out_sock
-	httpinterface.run(int(config.get("handler", "push_in_http_port")), push_in_http_handler, context)
+	httpinterface.run(config.get("handler", "push_in_http_addr"), int(config.get("handler", "push_in_http_port")), push_in_http_handler, context)
 
 	out_sock.linger = 0
 	out_sock.close()

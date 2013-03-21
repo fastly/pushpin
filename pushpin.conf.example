@@ -26,7 +26,7 @@ handler_retry_in_spec=ipc:///tmp/pushpin-retry
 # bind PUSH for passing off requests (internal, used with handler)
 handler_accept_out_spec=ipc:///tmp/pushpin-accept
 
-# file of domain/origin mappings
+# file of domain/origin mappings (path relative to location of this file)
 domainsfile=domains.example
 
 
@@ -49,7 +49,19 @@ redis_port=6379
 redis_prefix=pushpin-
 
 # bind PULL for receiving publish commands
-push_in_spec=tcp://*:5560
+push_in_spec=tcp://127.0.0.1:5560
 
-# port to listen on for receiving publish commands via HTTP
+# addr/port to listen on for receiving publish commands via HTTP
+push_in_http_addr=127.0.0.1
 push_in_http_port=5561
+
+
+[runner]
+# directory of configs (path relative to location of this file)
+configdir=runner
+
+# directory to save log files (path relative to location of this file)
+logdir=runner
+
+# services to start
+services=mongrel2,zurl,pushpin-proxy,pushpin-handler

@@ -70,9 +70,9 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 		else:
 			self.send_reply(400, "Bad Request", "Bad Request: %s\n" % ret)
 
-def run(port, handler_func, context):
+def run(addr, port, handler_func, context):
 	global g_server
-	g_server = Server(("", port), RequestHandler)
+	g_server = Server((addr, port), RequestHandler)
 	g_server.handler_func = handler_func
 	g_server.context = context
 	g_server.serve_forever()
