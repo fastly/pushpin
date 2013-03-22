@@ -1,6 +1,6 @@
 Pushpin
 -------
-Date: February 9th, 2013
+Date: March 21st, 2013
 Author: Justin Karneges <justin@fanout.io>
 
 Read: http://blog.fanout.io/2013/02/10/http-grip-proxy-hold-technique/
@@ -53,13 +53,27 @@ Build:
 
 Run:
 
-  There are two processes.
+  python runner/pushpin-runner.py --config=pushpin.conf.example
+
+  Pushpin consists of 4 processes: mongrel2, zurl, pushpin-proxy, and
+  pushpin-handler. Pushpin-runner launches them all in one shot.
+
+  If you'd prefer to individually manage any of these processes yourself, then
+  adjust the "services" field in pushpin.conf. You can even choose to not use
+  the runner at all. In that case, pushpin's own processes can be launched
+  as follows:
 
   Proxy process:
     proxy/pushpin-proxy --verbose --config=pushpin.conf.example
 
   Handler process:
     python handler/pushpin-handler.py --config=pushpin.conf.example
+
+Test:
+
+  By default, Pushpin listens on port 7999 and forwards to localhost port 80.
+  If you've got a webserver running on port 80, you can confirm that proxying
+  works by browsing to http://localhost:7999/
 
 Architecture:
 
