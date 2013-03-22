@@ -1,21 +1,19 @@
 Pushpin
 -------
-Date: March 21st, 2013
+Date: March 22nd, 2013
 Author: Justin Karneges <justin@fanout.io>
 
 Read: http://blog.fanout.io/2013/02/10/http-grip-proxy-hold-technique/
 
-Pushpin is a server component that provides realtime data push over HTTP. Web
-applications that need HTTP long-polling or HTTP streaming interfaces simply
-place Pushpin in front on the network path, in much the same way a load
-balancer might be placed in front. Pushpin takes care of wrangling the
-long-lived client connections, and it communicates with the application using
-normal request and response HTTP. This means the backend web application can
-be written in any language and use any webserver.
+Pushpin is an HTTP reverse proxy server that makes it easy to implement
+streaming and long-polling services. It communicates with backend web
+applications using regular, short-lived HTTP requests (GRIP protocol). This
+allows the backend applications to be written in any language and use any
+webserver.
 
 Additionally, Pushpin does all of this without exposing a proprietary protocol
 to clients. The HTTP content between the client and your server is whatever
-you want it to be. This makes it ideal for writing APIs.
+you want it to be. This makes it ideal for implementing APIs.
 
 License:
 
