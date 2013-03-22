@@ -72,7 +72,7 @@ class Mongrel2Service(Service):
 
 		if path.startswith("."):
 			path = path[1:]
-		if not path.startswith("/"):
+		if len(path) > 0 and not path.startswith("/"):
 			path = "/" + path
 		self.rootdir = path
 
@@ -80,6 +80,11 @@ class Mongrel2Service(Service):
 		fname = os.path.basename(self.configpath)
 		path, ext = os.path.splitext(fname)
 		genconfigpath = os.path.join(self.rundir, path)
+
+		# mongrel2 will refuse to start if it sees a pidfile
+		pidfilename = super(Mongrel2Service, self).getpidfile()
+		if os.path.isfile(pidfilename):
+			os.remove(pidfilename)
 
 		vars = dict()
 		vars["port"] = str(self.port)
