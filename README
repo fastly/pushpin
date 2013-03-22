@@ -60,7 +60,7 @@ Run:
 
   If you'd prefer to individually manage any of these processes yourself, then
   adjust the "services" field in pushpin.conf. You can even choose to not use
-  the runner at all. In that case, pushpin's own processes can be launched
+  the runner at all. In that case, Pushpin's own processes can be launched
   as follows:
 
   Proxy process:
