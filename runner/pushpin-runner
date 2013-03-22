@@ -2,10 +2,9 @@
 
 import sys
 import os
-import time
-import signal
 import ConfigParser
 from setproctitle import setproctitle
+from processmanager import ProcessManager
 import services
 
 setproctitle("pushpin-runner")
@@ -58,45 +57,21 @@ for name in service_names:
 	elif name == "pushpin-handler":
 		service_objs.append(services.PushpinHandlerService(handlerbin, config_file, rundir, logdir))
 
-quit = False
+print "starting"
 
-def termfunc(signum, frame):
-	global quit
-	quit = True
-
-signal.signal(signal.SIGTERM, termfunc)
-signal.signal(signal.SIGINT, termfunc)
-
-print "starting..."
+p = ProcessManager()
+p.stopmessage = "stopping..."
 
 for s in service_objs:
-	print "starting %s" % s.name()
-	if not s.start():
-		print "error starting %s" % s.name()
+	s.pre_start()
+	pid = p.add(s.name(), s.getargs(), s.getlogfile())
+	s.post_start(pid)
 
 print "started"
 
-while not quit:
-	for s in service_objs:
-		if not s.process():
-			print "error processing %s" % s.name()
-	time.sleep(1)
-
-print "stopping..."
+p.wait()
 
 for s in service_objs:
-	print "stopping %s" % s.name()
-	s.stop()
-
-while True:
-	all_stopped = True
-	for s in service_objs:
-		if not s.process():
-			print "error processing %s" % s.name()
-		if not s.is_stopped():
-			all_stopped = False
-	if all_stopped:
-		break
-	time.sleep(1)
+	s.post_stop()
 
 print "stopped"

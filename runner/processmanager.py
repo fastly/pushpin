@@ -4,15 +4,6 @@ import atexit
 import signal
 import copy
 
-quit = False
-
-def termfunc(signum, frame):
-	global quit
-	quit = True
-
-signal.signal(signal.SIGTERM, termfunc)
-signal.signal(signal.SIGINT, termfunc)
-
 class Process(object):
 	Stopped, Started, Stopping = range(3)
 
@@ -44,12 +35,12 @@ class Process(object):
 		assert(self.state == Process.Started or self.state == Process.Stopping)
 		if self.proc.poll() is not None:
 			if self.state != Process.Stopping:
-				raise RuntimeError("process exited unexpectedly")
+				raise RuntimeError("process exited unexpectedly: %s" % self.name)
 			self.returncode = self.proc.returncode
 			self.state = Process.Stopped
 		elif self.state == Process.Stopping:
 			if self.timeleft <= 0:
-				print "warning: killing %s" % self.name
+				print "warning: %s taking too long, forcing quit" % self.name
 				self.proc.kill()
 				self.state = Service.Stopped
 				self.timeleft = None
@@ -63,26 +54,29 @@ class ProcessManager(object):
 	def __init__(self):
 		self.procs = list()
 		self.raw_procs = set()
+		self.quit = False
+		self.stopmessage = None
 		atexit.register(self.cleanup)
 
 	def add(self, name, args, logfile=None):
 		if len(self.procs) == 0:
-			print "starting..."
+			signal.signal(signal.SIGTERM, self.termfunc)
+			signal.signal(signal.SIGINT, self.termfunc)
 		p = Process(name)
 		p.start(args, logfile)
 		self.procs.append(p)
 		self.raw_procs.add(p.proc)
+		return p.proc.pid
 
 	def wait(self):
-		print "started"
-
 		# wait for ctrl-c or sigterm
-		while not quit:
+		while not self.quit:
 			for p in self.procs:
 				p.check()
 			time.sleep(1)
 
-		print "stopping..."
+		if self.stopmessage:
+			print self.stopmessage
 
 		# graceful terminate
 		for p in self.procs:
@@ -104,7 +98,10 @@ class ProcessManager(object):
 		assert(len(self.procs) == 0)
 		assert(len(self.raw_procs) == 0)
 
-		print "stopped"
+	def termfunc(self, signum, frame):
+		signal.signal(signal.SIGTERM, signal.SIG_DFL)
+		signal.signal(signal.SIGINT, signal.SIG_DFL)
+		self.quit = True
 
 	def cleanup(self):
 		for p in self.raw_procs:
