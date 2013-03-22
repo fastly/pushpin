@@ -1,6 +1,16 @@
 import os
 import subprocess
 
+def compile_template(infilename, outfilename, vars):
+	f = open(infilename, "r")
+	buf = f.read()
+	f.close()
+	buf = buf.replace("{{ port }}", vars["port"])
+	buf = buf.replace("{{ rootdir }}", vars["rootdir"])
+	f = open(outfilename, "w")
+	f.write(buf)
+	f.close()
+
 class Service(object):
 	Stopped, Started, Stopping = range(3)
 
@@ -24,8 +34,9 @@ class Service(object):
 		return self.state == Service.Stopped
 
 class SingleProcessService(Service):
-	def __init__(self, logdir):
+	def __init__(self, rundir, logdir):
 		super(SingleProcessService, self).__init__()
+		self.rundir = rundir
 		self.logdir = logdir
 		self.timeleft = None
 		self.returncode = None
@@ -36,12 +47,22 @@ class SingleProcessService(Service):
 	def getlogfile(self):
 		return self.name() + ".log"
 
+	def getpidfile(self):
+		return self.name() + ".pid"
+
 	def start(self):
 		assert(self.state == Service.Stopped)
 
 		try:
 			logfile = open(os.path.join(self.logdir, self.getlogfile()), "w")
 			self.proc = subprocess.Popen(self.getargs(), stdout=logfile, stderr=subprocess.STDOUT)
+
+			pidfilename = self.getpidfile()
+			if pidfilename:
+				pidfile = open(os.path.join(self.rundir, self.getpidfile()), "w")
+				pidfile.write(str(self.proc.pid) + "\n")
+				pidfile.close()
+
 			self.state = Service.Started
 			return True
 		except Exception as e:
@@ -87,32 +108,50 @@ class SingleProcessService(Service):
 			return False
 
 class Mongrel2Service(SingleProcessService):
-	def __init__(self, binpath, configpath, logdir):
-		super(Mongrel2Service, self).__init__(logdir)
+	def __init__(self, binpath, configpath, port, rootdir, rundir, logdir):
+		super(Mongrel2Service, self).__init__(rundir, logdir)
 		self.binpath = binpath
 		self.configpath = configpath
+		self.port = port
+		self.rootdir = rootdir
 
 	def name(self):
 		return "mongrel2"
 
+	def getpidfile(self):
+		# mongrel2 writes its own pid file
+		return None
+
 	def start(self):
-		path, ext = os.path.splitext(self.configpath)
+		assert(self.configpath.endswith(".template"))
+		fname = os.path.basename(self.configpath)
+		path, ext = os.path.splitext(fname)
+		genconfigpath = os.path.join(self.rundir, path)
+
+		vars = dict()
+		vars["port"] = str(self.port)
+		vars["rootdir"] = self.rootdir
+		#vars["logdir"] = self.logdir
+		compile_template(self.configpath, genconfigpath, vars)
+
+		path, ext = os.path.splitext(genconfigpath)
 		self.sqlconfigpath = path + ".sqlite"
 
+		# generate
 		# generate sqlite config
 		try:
-			subprocess.check_call(["m2sh", "load", "-config", self.configpath, "-db", self.sqlconfigpath])
+			subprocess.check_call(["m2sh", "load", "-config", genconfigpath, "-db", self.sqlconfigpath])
 		except:
 			return False
 
 		return super(Mongrel2Service, self).start()
 
 	def getargs(self):
-		return [self.binpath, self.sqlconfigpath, self.serverid]
+		return [self.binpath, self.sqlconfigpath, "default"]
 
 class ZurlService(SingleProcessService):
-	def __init__(self, binpath, configpath, logdir):
-		super(ZurlService, self).__init__(logdir)
+	def __init__(self, binpath, configpath, rundir, logdir):
+		super(ZurlService, self).__init__(rundir, logdir)
 		self.binpath = binpath
 		self.configpath = configpath
 
@@ -123,8 +162,8 @@ class ZurlService(SingleProcessService):
 		return [self.binpath, "--config=%s" % self.configpath]
 
 class PushpinProxyService(SingleProcessService):
-	def __init__(self, binpath, configpath, logdir):
-		super(PushpinProxyService, self).__init__(logdir)
+	def __init__(self, binpath, configpath, rundir, logdir):
+		super(PushpinProxyService, self).__init__(rundir, logdir)
 		self.binpath = binpath
 		self.configpath = configpath
 
@@ -135,8 +174,8 @@ class PushpinProxyService(SingleProcessService):
 		return [self.binpath, "--config=%s" % self.configpath]
 
 class PushpinHandlerService(SingleProcessService):
-	def __init__(self, binpath, configpath, logdir):
-		super(PushpinHandlerService, self).__init__(logdir)
+	def __init__(self, binpath, configpath, rundir, logdir):
+		super(PushpinHandlerService, self).__init__(rundir, logdir)
 		self.binpath = binpath
 		self.configpath = configpath
 

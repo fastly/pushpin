@@ -57,11 +57,17 @@ push_in_http_port=5561
 
 
 [runner]
+# services to start
+services=mongrel2,zurl,pushpin-proxy,pushpin-handler
+
+# port that mongrel2 should listen on
+http_port=7999
+
 # directory of configs (path relative to location of this file)
 configdir=runner
 
-# directory to save log files (path relative to location of this file)
-logdir=runner
+# directory to save pid files (path relative to location of this file)
+rundir=runner/run
 
-# services to start
-services=mongrel2,zurl,pushpin-proxy,pushpin-handler
+# directory to save log files (path relative to location of this file)
+logdir=runner/log
