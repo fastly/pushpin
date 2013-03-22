@@ -36,6 +36,7 @@ Requirements:
   mongrel2
   zurl
   python
+  python setproctitle
   python tnetstring
   python zmq
 
@@ -53,7 +54,7 @@ Build:
 
 Run:
 
-  python runner/pushpin-runner.py --config=pushpin.conf.example
+  runner/pushpin-runner --config=pushpin.conf.example
 
   Pushpin consists of 4 processes: mongrel2, zurl, pushpin-proxy, and
   pushpin-handler. Pushpin-runner launches them all in one shot.
@@ -67,7 +68,7 @@ Run:
     proxy/pushpin-proxy --verbose --config=pushpin.conf.example
 
   Handler process:
-    python handler/pushpin-handler.py --config=pushpin.conf.example
+    handler/pushpin-handler --config=pushpin.conf.example
 
 Test:
 

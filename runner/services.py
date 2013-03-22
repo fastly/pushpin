@@ -191,4 +191,4 @@ class PushpinHandlerService(SingleProcessService):
 		return "pushpin-handler"
 
 	def getargs(self):
-		return ["python", self.binpath, "--config=%s" % self.configpath]
+		return [self.binpath, "--config=%s" % self.configpath]

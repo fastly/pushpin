@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+#
 # Copyright (C) 2012-2013 Fan Out Networks, Inc.
 #
 # This file is part of Pushpin.
@@ -20,11 +22,14 @@ import time
 import threading
 import ConfigParser
 import json
+from setproctitle import setproctitle
 import zmq
 import tnetstring
 import httpinterface
 from validation import validate_publish, validate_http_publish, ValidationError
 from conversion import ensure_utf8, convert_json_transport
+
+setproctitle("pushpin-handler")
 
 config_file = "/etc/pushpin/pushpin.conf"
 for arg in sys.argv:
