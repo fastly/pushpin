@@ -9,10 +9,10 @@ host = Host(name="default", routes={ "/": handler })
 
 server = Server(
 	uuid="default",
-	chroot="{{ rootdir }}",
-	access_log="/log/access.log",
-	error_log="/log/error.log",
-	pid_file="/run/mongrel2.pid",
+	chroot="",
+	access_log="{{ rootdir }}/log/access.log",
+	error_log="{{ rootdir }}/log/error.log",
+	pid_file="{{ rootdir }}/run/mongrel2.pid",
 	default_host="default",
 	name="server",
 	port={{ port }},

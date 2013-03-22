@@ -84,10 +84,9 @@ class SingleProcessService(Service):
 	def process(self):
 		assert(self.state == Service.Started or self.state == Service.Stopping)
 
-		print "process"
 		try:
 			if self.proc.poll() is not None:
-				print self.proc.returncode
+				print "retcode: %d" % self.proc.returncode
 				if self.state != Service.Stopping:
 					print "finished but we didn't ask"
 					return False
@@ -123,6 +122,17 @@ class Mongrel2Service(SingleProcessService):
 		return None
 
 	def start(self):
+		# calculate mongrel2 relative rootdir
+		path = os.path.relpath(os.path.abspath(self.rootdir), os.getcwd())
+		if path.startswith(".."):
+			print "bad relpath: %s" % path
+			return False
+		if path.startswith("."):
+			path = path[1:]
+		if not path.startswith("/"):
+			path = "/" + path
+		self.rootdir = path
+
 		assert(self.configpath.endswith(".template"))
 		fname = os.path.basename(self.configpath)
 		path, ext = os.path.splitext(fname)
@@ -131,13 +141,11 @@ class Mongrel2Service(SingleProcessService):
 		vars = dict()
 		vars["port"] = str(self.port)
 		vars["rootdir"] = self.rootdir
-		#vars["logdir"] = self.logdir
 		compile_template(self.configpath, genconfigpath, vars)
 
 		path, ext = os.path.splitext(genconfigpath)
 		self.sqlconfigpath = path + ".sqlite"
 
-		# generate
 		# generate sqlite config
 		try:
 			subprocess.check_call(["m2sh", "load", "-config", genconfigpath, "-db", self.sqlconfigpath])
