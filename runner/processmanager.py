@@ -1,3 +1,4 @@
+import os
 import time
 import subprocess
 import atexit
@@ -28,21 +29,24 @@ class Process(object):
 		self.state = Process.Stopping
 		print "stopping %s" % self.name
 		self.proc.terminate()
-		self.timeleft = 10
+		self.timeleft = 16 # 8 seconds
 
-	# call once per second
+	# call every 0.5 seconds after stopping
 	def check(self):
 		assert(self.state == Process.Started or self.state == Process.Stopping)
 		if self.proc.poll() is not None:
 			if self.state != Process.Stopping:
 				raise RuntimeError("process exited unexpectedly: %s" % self.name)
 			self.returncode = self.proc.returncode
+			if self.returncode != 0 and self.returncode != -15:
+				print "warning: %s unexpected return code: %d" % (self.name, self.returncode)
 			self.state = Process.Stopped
 		elif self.state == Process.Stopping:
 			if self.timeleft <= 0:
 				print "warning: %s taking too long, forcing quit" % self.name
 				self.proc.kill()
-				self.state = Service.Stopped
+				self.proc.wait()
+				self.state = Process.Stopped
 				self.timeleft = None
 			else:
 				self.timeleft -= 1
@@ -60,6 +64,8 @@ class ProcessManager(object):
 
 	def add(self, name, args, logfile=None):
 		if len(self.procs) == 0:
+			self.prev_sigterm = signal.getsignal(signal.SIGTERM)
+			self.prev_sigint = signal.getsignal(signal.SIGINT)
 			signal.signal(signal.SIGTERM, self.termfunc)
 			signal.signal(signal.SIGINT, self.termfunc)
 		p = Process(name)
@@ -78,11 +84,13 @@ class ProcessManager(object):
 		if self.stopmessage:
 			print self.stopmessage
 
-		# graceful terminate
+		self.quit = False
+
+		# gracefully terminate
 		for p in self.procs:
 			p.stop()
 
-		while True:
+		while not self.quit:
 			all_stopped = True
 			for p in copy.copy(self.procs):
 				p.check()
@@ -93,17 +101,28 @@ class ProcessManager(object):
 					all_stopped = False
 			if all_stopped:
 				break
-			time.sleep(1)
+			time.sleep(0.5)
+
+		# if we quit early here, then kill remaining processes
+		for p in copy.copy(self.procs):
+			if p.proc.returncode is None:
+				p.proc.kill()
+				p.proc.wait()
+			self.procs.remove(p)
+			self.raw_procs.remove(p.proc)
 
 		assert(len(self.procs) == 0)
 		assert(len(self.raw_procs) == 0)
 
 	def termfunc(self, signum, frame):
-		signal.signal(signal.SIGTERM, signal.SIG_DFL)
-		signal.signal(signal.SIGINT, signal.SIG_DFL)
+		# we need to leave the signal handlers enabled so the user
+		#   can't abort during cleanup
+		#signal.signal(signal.SIGTERM, self.prev_sigterm)
+		#signal.signal(signal.SIGINT, self.prev_sigint)
 		self.quit = True
 
 	def cleanup(self):
 		for p in self.raw_procs:
 			if p.returncode is None:
 				p.kill()
+				p.wait()
