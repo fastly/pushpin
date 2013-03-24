@@ -30,14 +30,100 @@
 #include <QFileSystemWatcher>
 #include "log.h"
 
+// items are of the format: {value}(,propname=propval,...)
+static bool parseItem(const QString &item, QString *_value, QHash<QString, QString> *_props, QString *errmsg)
+{
+	// read value
+	int at = item.indexOf(',');
+	QString value;
+	if(at != -1)
+		value = item.mid(0, at);
+	else
+		value = item;
+
+	if(value.isEmpty())
+	{
+		*errmsg = "empty item value";
+		return false;
+	}
+
+	// read props
+	QHash<QString, QString> props;
+	int start = at + 1;
+	bool done = false;
+	while(!done)
+	{
+		at = item.indexOf(',', start);
+
+		QString attrib;
+		if(at != -1)
+		{
+			attrib = item.mid(start, at - start);
+			start = at + 1;
+		}
+		else
+		{
+			attrib = item.mid(start);
+			done = true;
+		}
+
+		at = attrib.indexOf('=');
+		QString var, val;
+		if(at != -1)
+		{
+			var = attrib.mid(0, at);
+			val = attrib.mid(at + 1);
+		}
+		else
+			var = attrib;
+
+		if(var.isEmpty())
+		{
+			*errmsg = "empty property name";
+			return false;
+		}
+
+		if(props.contains(var))
+		{
+			*errmsg = "duplicate property: " + var;
+			return false;
+		}
+
+		props[var] = val;
+	}
+
+	*_value = value;
+	*_props = props;
+	return true;
+}
+
 class DomainMap::Worker : public QObject
 {
 	Q_OBJECT
 
 public:
+	class Rule
+	{
+	public:
+		QByteArray pathBeg;
+		int ssl; // -1=unspecified, 0=no, 1=yes
+		QList<Target> targets;
+
+		Rule() :
+			ssl(-1)
+		{
+		}
+
+		// checks only the condition, not targets
+		bool compare(const Rule &other) const
+		{
+			return (ssl == other.ssl && pathBeg == other.pathBeg);
+		}
+	};
+
 	QMutex m;
 	QString fileName;
-	QHash< QString, QList<Target> > map;
+	QHash< QString, QList<Rule> > map;
 	QTimer t;
 
 	Worker() :
@@ -52,11 +138,11 @@ public:
 		QFile file(fileName);
 		if(!file.open(QFile::ReadOnly))
 		{
-			log_warning("unable to open domains file: %s", qPrintable(fileName));
+			log_warning("unable to open routes file: %s", qPrintable(fileName));
 			return;
 		}
 
-		QHash< QString, QList<Target> > newmap;
+		QHash< QString, QList<Rule> > newmap;
 
 		QTextStream ts(&file);
 		for(int lineNum = 0; !ts.atEnd(); ++lineNum)
@@ -75,59 +161,144 @@ public:
 			QStringList parts = line.split(' ', QString::SkipEmptyParts);
 			if(parts.count() < 2)
 			{
-				log_warning("%s:%d: must specify domain and at least one origin", qPrintable(fileName), lineNum);
+				log_warning("%s:%d: must specify rule and at least one target", qPrintable(fileName), lineNum);
 				continue;
 			}
 
-			if(newmap.contains(parts[0]))
+			QString val;
+			QHash<QString, QString> props;
+			QString errmsg;
+			if(!parseItem(parts[0], &val, &props, &errmsg))
 			{
-				log_warning("%s:%d skipping duplicate entry", qPrintable(fileName), lineNum);
+				log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
 				continue;
+			}
+
+			if(val == "*")
+				val = QString();
+
+			QString domain = val;
+
+			Rule r;
+
+			if(props.contains("ssl"))
+			{
+				val = props.value("ssl");
+				if(val == "yes")
+					r.ssl = 1;
+				else if(val == "no")
+					r.ssl = 0;
+				else
+				{
+					log_warning("%s:%d: ssl must be set to 'yes' or 'no'", qPrintable(fileName), lineNum);
+					continue;
+				}
+			}
+
+			if(props.contains("path_beg"))
+			{
+				QString pathBeg = props.value("path_beg");
+				if(pathBeg.isEmpty())
+				{
+					log_warning("%s:%d: path_beg cannot be empty", qPrintable(fileName), lineNum);
+					continue;
+				}
+
+				r.pathBeg = pathBeg.toUtf8();
+			}
+
+			QList<Rule> *rules = 0;
+			if(newmap.contains(domain))
+			{
+				rules = &newmap[domain];
+				bool found = false;
+				foreach(const Rule &b, *rules)
+				{
+					if(b.compare(r))
+					{
+						found = true;
+						break;
+					}
+				}
+
+				if(found)
+				{
+					log_warning("%s:%d skipping duplicate condition", qPrintable(fileName), lineNum);
+					continue;
+				}
 			}
 
 			bool ok = true;
-			QList<Target> targets;
 			for(int n = 1; n < parts.count(); ++n)
 			{
-				int at = parts[n].lastIndexOf(':');
-				if(at == -1)
+				if(!parseItem(parts[n], &val, &props, &errmsg))
 				{
-					log_warning("%s:%d: origin bad format", qPrintable(fileName), lineNum);
+					log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
 					ok = false;
 					break;
 				}
 
-				QString sport = parts[n].mid(at + 1);
+				int at = val.indexOf(':');
+				if(at == -1)
+				{
+					log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
+					ok = false;
+					break;
+				}
+
+				QString sport = val.mid(at + 1);
 				int port = sport.toInt(&ok);
 				if(!ok || port < 1 || port > 65535)
 				{
-					log_warning("%s:%d: origin invalid port", qPrintable(fileName), lineNum);
+					log_warning("%s:%d: target invalid port", qPrintable(fileName), lineNum);
 					ok = false;
 					break;
 				}
 
-				QString host = parts[n].mid(0, at);
+				Target target;
+				target.host = parts[n].mid(0, at);
+				target.port = port;
 
-				targets += Target(host, port);
+				if(props.contains("ssl"))
+					target.ssl = true;
+
+				if(props.contains("trusted"))
+					target.trusted = true;
+
+				r.targets += target;
 			}
 
 			if(!ok)
 				continue;
 
-			newmap.insert(parts[0], targets);
+			if(!rules)
+			{
+				newmap.insert(domain, QList<Rule>());
+				rules = &newmap[domain];
+			}
+
+			*rules += r;
 		}
 
-		log_debug("domain map:");
-		QHashIterator< QString, QList<Target> > it(newmap);
+		log_debug("routes map:");
+		QHashIterator< QString, QList<Rule> > it(newmap);
 		while(it.hasNext())
 		{
 			it.next();
 
-			QStringList tstr;
-			foreach(const Target &t, it.value())
-				tstr += t.first + ';' + QString::number(t.second);
+			const QString &domain = it.key();
+			const QList<Rule> &rules = it.value();
+			foreach(const Rule &r, rules)
+			{
+				QStringList tstr;
+				foreach(const Target &t, r.targets)
+					tstr += t.host + ';' + QString::number(t.port);
 
-			log_debug("  %s: %s", qPrintable(it.key()), qPrintable(tstr.join(" ")));
+				if(!domain.isEmpty())
+					log_debug("  %s: %s", qPrintable(domain), qPrintable(tstr.join(" ")));
+				else
+					log_debug("  (default): %s", qPrintable(tstr.join(" ")));
+			}
 		}
 
 		// atomically replace the map
@@ -135,7 +306,7 @@ public:
 		map = newmap;
 		m.unlock();
 
-		log_info("domain map loaded with %d entries", newmap.count());
+		log_info("routes map loaded with %d entries", newmap.count());
 	}
 
 signals:
@@ -165,7 +336,7 @@ public slots:
 
 	void doReload()
 	{
-		log_info("domains file changed, reloading");
+		log_info("routes file changed, reloading");
 		reload();
 	}
 };
@@ -245,10 +416,34 @@ DomainMap::~DomainMap()
 	delete d;
 }
 
-QList<DomainMap::Target> DomainMap::entry(const QString &domain) const
+QList<DomainMap::Target> DomainMap::entry(const QString &domain, const QByteArray &path, bool ssl) const
 {
 	QMutexLocker locker(&d->thread->worker->m);
-	return d->thread->worker->map.value(domain);
+
+	const QList<Worker::Rule> *rules;
+	QString empty("");
+	if(d->thread->worker->map.contains(domain))
+		rules = &d->thread->worker->map[domain];
+	else if(d->thread->worker->map.contains(empty))
+		rules = &d->thread->worker->map[empty];
+	else
+		return QList<DomainMap::Target>();
+
+	const Worker::Rule *best = 0;
+	foreach(const Worker::Rule &r, *rules)
+	{
+		if(!best ||
+			(r.ssl != -1 && ((r.ssl == 0 && !ssl) || (r.ssl == 1 && ssl))) ||
+			(!r.pathBeg.isEmpty() && path.startsWith(r.pathBeg)))
+		{
+			best = &r;
+		}
+	}
+
+	if(!best)
+		return QList<DomainMap::Target>();
+
+	return best->targets;
 }
 
 #include "domainmap.moc"

@@ -23,18 +23,32 @@
 #include <QPair>
 #include <QString>
 
-// this class offers fast access to the domains file. the table is maintained
+// this class offers fast access to the routes file. the table is maintained
 //   by a background thread so that file access doesn't cause blocking.
 
 class DomainMap
 {
 public:
-	typedef QPair<QString, int> Target;
+	class Target
+	{
+	public:
+		QString host;
+		int port;
+		bool ssl;
+		bool trusted;
+
+		Target() :
+			port(-1),
+			ssl(false),
+			trusted(false)
+		{
+		}
+	};
 
 	DomainMap(const QString &fileName);
 	~DomainMap();
 
-	QList<Target> entry(const QString &domain) const;
+	QList<Target> entry(const QString &domain, const QByteArray &path, bool ssl) const;
 
 private:
 	class Private;

@@ -182,17 +182,17 @@ public:
 		QString handler_retry_in_spec = settings.value("proxy/handler_retry_in_spec").toString();
 		QString handler_accept_out_spec = settings.value("proxy/handler_accept_out_spec").toString();
 		maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
-		QString domainsfile = settings.value("proxy/domainsfile").toString();
+		QString routesfile = settings.value("proxy/routesfile").toString();
 
-		// if domainsfile is a relative path, then use it relative to the config file location
-		QFileInfo fi(domainsfile);
+		// if routesfile is a relative path, then use it relative to the config file location
+		QFileInfo fi(routesfile);
 		if(fi.isRelative())
 		{
 			QString fname = fi.fileName();
-			domainsfile = QFileInfo(QDir(QFileInfo(configFile).absolutePath()), fname).filePath();
+			routesfile = QFileInfo(QDir(QFileInfo(configFile).absolutePath()), fname).filePath();
 		}
 
-		domainMap = new DomainMap(domainsfile);
+		domainMap = new DomainMap(routesfile);
 
 		if(m2_in_specs.isEmpty() && m2_inhttps_specs.isEmpty())
 		{

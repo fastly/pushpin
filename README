@@ -46,7 +46,8 @@ If accessing from Git, be sure to pull submodules:
 Build and run:
 
   make
-  cp pushpin.conf.example pushpin.conf
+  cp config/pushpin.conf.example pushpin.conf
+  cp config/routes.example routes
   ./pushpin
 
 Test:

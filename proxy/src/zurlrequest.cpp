@@ -53,6 +53,7 @@ public:
 	ZurlRequest::Rid rid;
 	QByteArray replyAddress;
 	QString connectHost;
+	bool ignorePolicies;
 	QString method;
 	QUrl url;
 	HttpHeaders headers;
@@ -76,6 +77,7 @@ public:
 		q(_q),
 		manager(0),
 		state(Stopped),
+		ignorePolicies(false),
 		inSeq(0),
 		outSeq(0),
 		outCredits(0),
@@ -383,6 +385,8 @@ public slots:
 				p.more = true;
 			p.stream = true;
 			p.connectHost = connectHost;
+			if(ignorePolicies)
+				p.ignorePolicies = true;
 			p.credits = IDEAL_CREDITS;
 			manager->write(p);
 
@@ -436,6 +440,11 @@ ZurlRequest::Rid ZurlRequest::rid() const
 void ZurlRequest::setConnectHost(const QString &host)
 {
 	d->connectHost = host;
+}
+
+void ZurlRequest::setIgnorePolicies(bool on)
+{
+	d->ignorePolicies = on;
 }
 
 void ZurlRequest::start(const QString &method, const QUrl &url, const HttpHeaders &headers)

@@ -172,9 +172,10 @@ public:
 
 			// TODO: support multiple targets
 
-			QList<DomainMap::Target> targets = domainMap->entry(host);
+			QList<DomainMap::Target> targets = domainMap->entry(host, requestData.path, isHttps);
 			log_debug("%s has %d routes", qPrintable(host), targets.count());
-			QByteArray str = "http://" + targets[0].first.toUtf8() + ':' + QByteArray::number(targets[0].second) + requestData.path;
+			QByteArray str = targets[0].ssl ? "https://" : "http://";
+			str += targets[0].host.toUtf8() + ':' + QByteArray::number(targets[0].port) + requestData.path;
 			QUrl url = QUrl::fromEncoded(str, QUrl::StrictMode);
 
 			log_debug("proxying to %s", url.toEncoded().data());
@@ -184,6 +185,9 @@ public:
 			connect(zurlRequest, SIGNAL(readyRead()), SLOT(zurlRequest_readyRead()));
 			connect(zurlRequest, SIGNAL(bytesWritten(int)), SLOT(zurlRequest_bytesWritten(int)));
 			connect(zurlRequest, SIGNAL(error()), SLOT(zurlRequest_error()));
+
+			if(targets[0].trusted)
+				zurlRequest->setIgnorePolicies(true);
 
 			zurlRequest->start(requestData.method, url, requestData.headers);
 
