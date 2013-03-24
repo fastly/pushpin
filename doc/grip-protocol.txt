@@ -31,45 +31,24 @@ Content-Type: application/grip-instruct
 
 Control service:
 
-A GRIP proxy may be controlled via a REST API available at a known base URI.
+A GRIP proxy may be controlled via the Extensible Pubsub Control Protocol
+(EPCP). GRIP requires support for the publish endpoint, which is used to
+send items over HTTP connections that have been bound to channels.
 
-For example, if the base URI of the service is http://localhost:9000/control,
-then method endpoints would be appended onto that. For example, the "publish"
-endpoint would be available at http://localhost:9000/control/publish/
+GRIP defines two item formats, http-response and http-stream:
 
-Publishing:
-
-POST {base-uri}/publish/{channel}/
-Content-Type: application/json
-
-{
-  "items": [
-    {
-      "id": str,
-      "prev-id": str,
-      "http-response": {
-        "code": int,
-        "status", str,
-        "headers": {
-          name: str,
-          ...
-        },
-        "body": str,
-        "body-bin": base64 str
-      }
-      "http-stream": {
-        "content": str,
-        "content-bin": base64 str
-      }
+  "http-response": {
+    "code": int,
+    "status", str,
+    "headers": {
+      name: str,
+      ...
     },
-    ...
-  ]
-}
+    "body": str,
+    "body-bin": base64 str
+  }
 
-More than one item may be published in a single request. Each item may contain
-an http-response or http-stream representation, or both.
-
-The GRIP control protocol is designed such that it could be reused by services
-that are not GRIP proxies, but require similar functionality. For example, if
-another kind of service needs a publishing interface, it would be easy to
-reuse the above protocol and define a new representation format.
+  "http-stream": {
+    "content": str,
+    "content-bin": base64 str
+  }

@@ -1,0 +1,34 @@
+HTTP Extensible Pubsub Control Protocol (EPCP)
+----------------------------------------------
+
+This protocol defines a generalized and extensible way of publishing data
+through a publish-subscribe service using HTTP. A pubsub service offering an
+EPCP interface make a REST API available at a known base URI.
+
+For example, if the base URI of the EPCP service is
+http://localhost:9000/epcp, then method endpoints would be appended onto
+that. For example, the "publish" endpoint would be available at
+http://localhost:9000/epcp/publish/
+
+Publishing:
+
+POST {base-uri}/publish/{channel}/
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "id": str,
+      "prev-id": str,
+      format_1: {},
+      format_2: {},
+      ...
+    },
+    ...
+  ]
+}
+
+More than one item may be published in a single request. Each item may contain
+one or more formats by providing field names for each format along with their
+values. Item formats may be specified in further specifications. EPCP alone
+does not define any item formats.
