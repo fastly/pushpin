@@ -1,7 +1,7 @@
 HTTP Generic Realtime Intermediary Protocol (GRIP)
 --------------------------------------------------
 
-Instruct response:
+Instructions may be sent in response to requests from a GRIP proxy:
 
 Content-Type: application/grip-instruct
 
@@ -20,12 +20,56 @@ Content-Type: application/grip-instruct
     "code": int,
     "status": str,
     "headers": {
-      {
-        name: str,
-        ...
-      }
+      name: str,
+      ...
     },
     "body": str,
     "body-bin": base64 str
   }
 }
+
+
+Control service:
+
+A GRIP proxy may be controlled via a REST API available at a known base URI.
+
+For example, if the base URI of the service is http://localhost:9000/control,
+then method endpoints would be appended onto that. For example, the "publish"
+endpoint would be available at http://localhost:9000/control/publish/
+
+Publishing:
+
+POST {base-uri}/publish/{channel}/
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "id": str,
+      "prev-id": str,
+      "http-response": {
+        "code": int,
+        "status", str,
+        "headers": {
+          name: str,
+          ...
+        },
+        "body": str,
+        "body-bin": base64 str
+      }
+      "http-stream": {
+        "content": str,
+        "content-bin": base64 str
+      }
+    },
+    ...
+  ]
+}
+
+More than one item may be published in a single request. Each item may contain
+an http-response or http-stream representation, or both.
+
+The GRIP control protocol is designed such that it could be reused by services
+that are not GRIP proxies, but require similar functionality. For example, if
+another kind of service needs a publishing interface, it would be easy to
+reuse the above protocol and define a new representation format.
