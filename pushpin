@@ -10,10 +10,14 @@ setproctitle("pushpin")
 exedir = os.path.dirname(os.path.realpath(__file__))
 
 config_file_list = list()
+verbose = False
+
 for arg in sys.argv:
 	if arg.startswith("--config="):
 		config_file_list.append(arg[9:])
 		break
+	elif arg == "--verbose":
+		verbose = True
 
 # config file in same dir as executable
 config_file_list.append(os.path.join(exedir, "pushpin.conf"))
@@ -31,4 +35,4 @@ if not config_file:
 	print "Error: no configuration file found. Tried %s" % ", ".join(config_file_list)
 	sys.exit(1)
 
-runner.run(exedir, config_file)
+runner.run(exedir, config_file, verbose)

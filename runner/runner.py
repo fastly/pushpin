@@ -4,7 +4,7 @@ import ConfigParser
 from processmanager import ProcessManager
 import services
 
-def run(exedir, config_file):
+def run(exedir, config_file, verbose):
 	config = ConfigParser.ConfigParser()
 	config.read([config_file])
 
@@ -39,9 +39,9 @@ def run(exedir, config_file):
 		if name == "mongrel2":
 			service_objs.append(services.Mongrel2Service("mongrel2", os.path.join(configdir, "mongrel2.conf.template"), http_port, configdir, rundir, logdir))
 		elif name == "zurl":
-			service_objs.append(services.ZurlService("zurl", os.path.join(configdir, "zurl.conf"), rundir, logdir))
+			service_objs.append(services.ZurlService("zurl", os.path.join(configdir, "zurl.conf"), verbose, rundir, logdir))
 		elif name == "pushpin-proxy":
-			service_objs.append(services.PushpinProxyService(proxybin, config_file, rundir, logdir))
+			service_objs.append(services.PushpinProxyService(proxybin, config_file, verbose, rundir, logdir))
 		elif name == "pushpin-handler":
 			service_objs.append(services.PushpinHandlerService(handlerbin, config_file, rundir, logdir))
 

@@ -98,28 +98,40 @@ class Mongrel2Service(Service):
 		subprocess.check_call(["m2sh", "load", "-config", genconfigpath, "-db", self.sqlconfigpath])
 
 class ZurlService(Service):
-	def __init__(self, binpath, configpath, rundir, logdir):
+	def __init__(self, binpath, configpath, verbose, rundir, logdir):
 		super(ZurlService, self).__init__(rundir, logdir)
 		self.binpath = binpath
 		self.configpath = configpath
+		self.verbose = verbose
 
 	def name(self):
 		return "zurl"
 
 	def getargs(self):
-		return [self.binpath, "--config=%s" % self.configpath]
+		args = list()
+		args.append(self.binpath)
+		if self.verbose:
+			args.append("--verbose")
+		args.append("--config=%s" % self.configpath)
+		return args
 
 class PushpinProxyService(Service):
-	def __init__(self, binpath, configpath, rundir, logdir):
+	def __init__(self, binpath, configpath, verbose, rundir, logdir):
 		super(PushpinProxyService, self).__init__(rundir, logdir)
 		self.binpath = binpath
 		self.configpath = configpath
+		self.verbose = verbose
 
 	def name(self):
 		return "pushpin-proxy"
 
 	def getargs(self):
-		return [self.binpath, "--config=%s" % self.configpath]
+		args = list()
+		args.append(self.binpath)
+		if self.verbose:
+			args.append("--verbose")
+		args.append("--config=%s" % self.configpath)
+		return args
 
 class PushpinHandlerService(Service):
 	def __init__(self, binpath, configpath, rundir, logdir):
