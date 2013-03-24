@@ -3,7 +3,7 @@ HTTP Extensible Pubsub Control Protocol (EPCP)
 
 This protocol defines a generalized and extensible way of publishing data
 through a publish-subscribe service using HTTP. A pubsub service offering an
-EPCP interface make a REST API available at a known base URI.
+EPCP interface must make a REST API available at a known base URI.
 
 For example, if the base URI of the EPCP service is
 http://localhost:9000/epcp, then method endpoints would be appended onto
