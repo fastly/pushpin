@@ -50,6 +50,18 @@
 
 #define DEFAULT_HWM 1000
 
+static void trimlist(QStringList *list)
+{
+	for(int n = 0; n < list->count(); ++n)
+	{
+		if((*list)[n].isEmpty())
+		{
+			list->removeAt(n);
+			--n; // adjust position
+		}
+	}
+}
+
 class App::Private : public QObject
 {
 	Q_OBJECT
@@ -173,11 +185,17 @@ public:
 		QSettings settings(configFile, QSettings::IniFormat);
 
 		QStringList m2_in_specs = settings.value("proxy/m2_in_specs").toStringList();
+		trimlist(&m2_in_specs);
 		QStringList m2_inhttps_specs = settings.value("proxy/m2_inhttps_specs").toStringList();
+		trimlist(&m2_inhttps_specs);
 		QStringList m2_out_specs = settings.value("proxy/m2_out_specs").toStringList();
+		trimlist(&m2_out_specs);
 		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
+		trimlist(&zurl_out_specs);
 		QStringList zurl_out_stream_specs = settings.value("proxy/zurl_out_stream_specs").toStringList();
+		trimlist(&zurl_out_stream_specs);
 		QStringList zurl_in_specs = settings.value("proxy/zurl_in_specs").toStringList();
+		trimlist(&zurl_in_specs);
 		QString handler_inspect_spec = settings.value("proxy/handler_inspect_spec").toString();
 		QString handler_retry_in_spec = settings.value("proxy/handler_retry_in_spec").toString();
 		QString handler_accept_out_spec = settings.value("proxy/handler_accept_out_spec").toString();

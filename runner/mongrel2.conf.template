@@ -1,7 +1,7 @@
 handler = Handler(
-	send_spec="tcp://127.0.0.1:9997",
+	send_spec="ipc:///tmp/pushpin-m2-out",
 	send_ident="default",
-	recv_spec="tcp://127.0.0.1:9998",
+	recv_spec="ipc:///tmp/pushpin-m2-in",
 	recv_ident=""
 )
 

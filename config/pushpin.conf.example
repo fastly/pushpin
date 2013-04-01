@@ -22,22 +22,22 @@ zurl_bin=zurl
 
 [proxy]
 # list of connect PULL for receiving mongrel2 plain HTTP requests
-m2_in_specs=tcp://127.0.0.1:9999,tcp://127.0.0.1:9997
+m2_in_specs=ipc:///tmp/pushpin-m2-out
 
 # list of connect PULL for receiving mongrel2 HTTPS requests
-m2_inhttps_specs=tcp://127.0.0.1:9995
+m2_inhttps_specs=
 
 # list of connect PUB for sending mongrel2 HTTP/HTTPS responses
-m2_out_specs=tcp://127.0.0.1:9998
+m2_out_specs=ipc:///tmp/pushpin-m2-in
 
 # list of connect PUSH for sending zurl HTTP requests
-zurl_out_specs=tcp://127.0.0.1:5550
+zurl_out_specs=ipc:///tmp/pushpin-zurl-in
 
 # list of connect ROUTER for continuing zurl HTTP requests
-zurl_out_stream_specs=tcp://127.0.0.1:5551
+zurl_out_stream_specs=ipc:///tmp/pushpin-zurl-in-stream
 
 # list of connect SUB for receiving zurl HTTP responses
-zurl_in_specs=tcp://127.0.0.1:5552
+zurl_in_specs=ipc:///tmp/pushpin-zurl-out
 
 # bind DEALER for requesting inspection info (internal, used with handler)
 handler_inspect_spec=ipc:///tmp/pushpin-inspect
@@ -63,7 +63,7 @@ proxy_retry_out_spec=ipc:///tmp/pushpin-retry
 proxy_accept_in_spec=ipc:///tmp/pushpin-accept
 
 # list of connect PUB for sending mongrel2 HTTP/HTTPS responses
-m2_out_specs=tcp://127.0.0.1:9998
+m2_out_specs=ipc:///tmp/pushpin-m2-in
 
 # redis server to use for storing state
 redis_host=127.0.0.1
