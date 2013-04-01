@@ -21,7 +21,7 @@ class Process(object):
 		if not logfile:
 			logfile = "/dev/null"
 		fp = open(logfile, "w")
-		self.proc = subprocess.Popen(args, stdout=fp, stderr=subprocess.STDOUT)
+		self.proc = subprocess.Popen(args, stdout=fp, stderr=subprocess.STDOUT, preexec_fn=self._preexec_fn)
 		self.state = Process.Started
 
 	def stop(self):
@@ -54,6 +54,9 @@ class Process(object):
 	def is_stopped(self):
 		return self.state == Process.Stopped
 
+	def _preexec_fn(self):
+		os.setpgrp()
+
 class ProcessManager(object):
 	def __init__(self):
 		self.procs = list()
@@ -64,10 +67,12 @@ class ProcessManager(object):
 
 	def add(self, name, args, logfile=None):
 		if len(self.procs) == 0:
-			self.prev_sigterm = signal.getsignal(signal.SIGTERM)
+			self.prev_sighup = signal.getsignal(signal.SIGHUP)
 			self.prev_sigint = signal.getsignal(signal.SIGINT)
-			signal.signal(signal.SIGTERM, self.termfunc)
+			self.prev_sigterm = signal.getsignal(signal.SIGTERM)
+			signal.signal(signal.SIGHUP, self.termfunc)
 			signal.signal(signal.SIGINT, self.termfunc)
+			signal.signal(signal.SIGTERM, self.termfunc)
 		p = Process(name)
 		p.start(args, logfile)
 		self.procs.append(p)
@@ -117,8 +122,9 @@ class ProcessManager(object):
 	def termfunc(self, signum, frame):
 		# we need to leave the signal handlers enabled so the user
 		#   can't abort during cleanup
-		#signal.signal(signal.SIGTERM, self.prev_sigterm)
+		#signal.signal(signal.SIGHUP, self.prev_sighup)
 		#signal.signal(signal.SIGINT, self.prev_sigint)
+		#signal.signal(signal.SIGTERM, self.prev_sigterm)
 		self.quit = True
 
 	def cleanup(self):
