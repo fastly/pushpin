@@ -56,7 +56,6 @@ def run(exedir, config_file, verbose):
 		s.post_start(pid)
 
 	print "started"
-	print "press ctrl-c to quit"
 
 	p.wait()
 
