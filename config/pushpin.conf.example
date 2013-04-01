@@ -14,6 +14,11 @@ rundir=runner/run
 # directory to save log files (path relative to location of this file)
 logdir=runner/log
 
+# paths
+mongrel2_bin=mongrel2
+m2sh_bin=m2sh
+zurl_bin=zurl
+
 
 [proxy]
 # list of connect PULL for receiving mongrel2 plain HTTP requests

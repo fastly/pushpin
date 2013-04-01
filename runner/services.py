@@ -44,9 +44,10 @@ class Service(object):
 			os.remove(pidfilename)
 
 class Mongrel2Service(Service):
-	def __init__(self, binpath, configpath, port, rootdir, rundir, logdir):
+	def __init__(self, binpath, shbinpath, configpath, port, rootdir, rundir, logdir):
 		super(Mongrel2Service, self).__init__(rundir, logdir)
 		self.binpath = binpath
+		self.shbinpath = shbinpath
 		self.configpath = configpath
 		self.port = port
 		self.rootdir = rootdir
@@ -95,7 +96,7 @@ class Mongrel2Service(Service):
 		self.sqlconfigpath = path + ".sqlite"
 
 		# generate sqlite config
-		subprocess.check_call(["m2sh", "load", "-config", genconfigpath, "-db", self.sqlconfigpath])
+		subprocess.check_call([self.shbinpath, "load", "-config", genconfigpath, "-db", self.sqlconfigpath])
 
 class ZurlService(Service):
 	def __init__(self, binpath, configpath, verbose, rundir, logdir):

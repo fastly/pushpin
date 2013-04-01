@@ -1,4 +1,3 @@
-import sys
 import os
 import ConfigParser
 from processmanager import ProcessManager
@@ -37,9 +36,18 @@ def run(exedir, config_file, verbose):
 	service_objs = list()
 	for name in service_names:
 		if name == "mongrel2":
-			service_objs.append(services.Mongrel2Service("mongrel2", os.path.join(configdir, "mongrel2.conf.template"), http_port, configdir, rundir, logdir))
+			mongrel2_bin = "mongrel2"
+			if config.has_option("runner", "mongrel2_bin"):
+				mongrel2_bin = config.get("runner", "mongrel2_bin")
+			m2sh_bin = "m2sh"
+			if config.has_option("runner", "m2sh_bin"):
+				m2sh_bin = config.get("runner", "m2sh_bin")
+			service_objs.append(services.Mongrel2Service(mongrel2_bin, m2sh_bin, os.path.join(configdir, "mongrel2.conf.template"), http_port, configdir, rundir, logdir))
 		elif name == "zurl":
-			service_objs.append(services.ZurlService("zurl", os.path.join(configdir, "zurl.conf"), verbose, rundir, logdir))
+			zurl_bin = "zurl"
+			if config.has_option("runner", "zurl_bin"):
+				zurl_bin = config.get("runner", "zurl_bin")
+			service_objs.append(services.ZurlService(zurl_bin, os.path.join(configdir, "zurl.conf"), verbose, rundir, logdir))
 		elif name == "pushpin-proxy":
 			service_objs.append(services.PushpinProxyService(proxybin, config_file, verbose, rundir, logdir))
 		elif name == "pushpin-handler":
