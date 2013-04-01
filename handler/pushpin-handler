@@ -159,7 +159,7 @@ def push_in_zmq_worker():
 	out_sock.close()
 
 # return None for success or string on error
-def push_in_http_handler(context, channel, m):
+def push_in_http_handler(context, m):
 	out_sock = context["out_sock"]
 
 	try:
@@ -170,7 +170,9 @@ def push_in_http_handler(context, channel, m):
 	for n, i in enumerate(m["items"]):
 		out = dict()
 
-		out["channel"] = ensure_utf8(channel)
+		channel = i.get("channel")
+		if channel is not None:
+			out["channel"] = ensure_utf8(channel)
 
 		id = i.get("id")
 		if id is not None:

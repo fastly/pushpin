@@ -5,19 +5,19 @@ This protocol defines a generalized and extensible way of publishing data
 through a publish-subscribe service using HTTP. A pubsub service offering an
 EPCP interface must make a REST API available at a known base URI.
 
-For example, if the base URI of the EPCP service is
-http://localhost:9000/epcp, then method endpoints would be appended onto
-that. For example, the "publish" endpoint would be available at
-http://localhost:9000/epcp/publish/
+If the base URI of the EPCP service is http://localhost:9000/epcp, then method
+endpoints would be appended onto that. For example, the "publish" endpoint
+would be available at http://localhost:9000/epcp/publish/
 
 Publishing:
 
-POST {base-uri}/publish/{channel}/
+POST {base-uri}/publish/
 Content-Type: application/json
 
 {
   "items": [
     {
+      "channel": str,
       "id": str,
       "prev-id": str,
       format_1: {},

@@ -20,17 +20,6 @@ import BaseHTTPServer
 
 g_server = None
 
-def get_channel(path):
-	if path[-1] == "/":
-		path = path[:-1]
-	parts = path[1:].split("/")
-	if len(parts) == 2 and parts[0] == "publish":
-		return parts[1]
-	elif len(parts) == 4 and parts[0] == "realm" and parts[2] == "publish":
-		return parts[3]
-	else:
-		return None
-
 class Server(BaseHTTPServer.HTTPServer):
 	handler_func = None
 	context = None
@@ -50,25 +39,27 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 			self.send_reply(411, "Length Required", "Missing or invalid Content-Length header.\n")
 			return
 
-		channel = get_channel(self.path)
-		if not channel:
-			self.send_reply(404, "Not Found", "Not Found\n")
-			return
+		path = self.path
+		if path[-1] == "/":
+			path = path[:-1]
 
-		body = self.rfile.read(content_length)
+		if path == "/publish":
+			body = self.rfile.read(content_length)
 
-		try:
-			m = json.loads(body)
-		except:
-			self.send_reply(400, "Bad Request", "Body is not valid JSON.\n");
-			return
+			try:
+				m = json.loads(body)
+			except:
+				self.send_reply(400, "Bad Request", "Body is not valid JSON.\n");
+				return
 
-		ret = self.server.handler_func(self.server.context, channel, m)
+			ret = self.server.handler_func(self.server.context, m)
 
-		if ret is None:
-			self.send_reply(200, "OK", "Published\n")
+			if ret is None:
+				self.send_reply(200, "OK", "Published\n")
+			else:
+				self.send_reply(400, "Bad Request", "Bad Request: %s\n" % ret)
 		else:
-			self.send_reply(400, "Bad Request", "Bad Request: %s\n" % ret)
+			self.send_reply(404, "Not Found", "Not Found\n")
 
 def run(addr, port, handler_func, context):
 	global g_server
