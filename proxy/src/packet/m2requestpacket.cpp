@@ -134,6 +134,8 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	if(!ok)
 		return false;
 
+	scheme = m2headers.value("URL_SCHEME");
+
 	QByteArray m2method = m2headers.value("METHOD");
 
 	if(m2method == "JSON")

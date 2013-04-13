@@ -190,6 +190,10 @@ public:
 			return;
 		}
 
+		// newer mongrel2's tell us this
+		if(p.scheme == "https")
+			https = true;
+
 		req = new M2Request;
 
 		reqsByRid.insert(rid, req);

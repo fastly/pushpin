@@ -31,6 +31,7 @@ public:
 
 	bool isDisconnect;
 
+	QByteArray scheme;
 	QString method;
 	QByteArray path;
 	HttpHeaders headers;
