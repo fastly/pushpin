@@ -115,6 +115,17 @@ public:
 
 	~Private()
 	{
+		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
+		while(it.hasNext())
+		{
+			it.next();
+			delete it.key();
+			delete it.value();
+		}
+
+		proxyItemsBySession.clear();
+		proxyItemsByKey.clear();
+		requestSessions.clear();
 	}
 
 	void start()
