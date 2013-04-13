@@ -2,7 +2,7 @@ handler = Handler(
 	send_spec="ipc:///tmp/pushpin-m2-out",
 	send_ident="default",
 	recv_spec="ipc:///tmp/pushpin-m2-in",
-	recv_ident=""
+	recv_ident="default " # trailing space needed
 )
 
 host = Host(name="default", routes={ "/": handler })
