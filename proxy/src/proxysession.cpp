@@ -173,12 +173,12 @@ public:
 			// TODO: support multiple targets
 
 			QList<DomainMap::Target> targets = domainMap->entry(host, requestData.path, isHttps);
-			log_debug("%s has %d routes", qPrintable(host), targets.count());
+			log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
 			QByteArray str = targets[0].ssl ? "https://" : "http://";
 			str += targets[0].host.toUtf8() + ':' + QByteArray::number(targets[0].port) + requestData.path;
 			QUrl url = QUrl::fromEncoded(str, QUrl::StrictMode);
 
-			log_debug("proxying to %s", url.toEncoded().data());
+			log_debug("proxysession: %p forwarding to %s", q, url.toEncoded().data());
 
 			zurlRequest = zurlManager->createRequest();
 			zurlRequest->setParent(this);
@@ -242,7 +242,7 @@ public:
 		if(buf.isEmpty())
 			return;
 
-		log_debug("proxysession: input chunk: %d", buf.size());
+		log_debug("proxysession: %p input chunk: %d", q, buf.size());
 
 		if(buffering)
 		{
@@ -307,6 +307,128 @@ public:
 		}
 	}
 
+	// this method emits signals
+	void tryResponseRead()
+	{
+		// if we're not buffering, then don't read (instead, sync to slowest
+		//   receiver before reading again)
+		if(!buffering && pendingWrites())
+			return;
+
+		QPointer<QObject> self = this;
+
+		QByteArray buf = zurlRequest->readResponseBody(MAX_STREAM_BUFFER);
+		if(!buf.isEmpty())
+		{
+			total += buf.size();
+			log_debug("proxysession: %p recv=%d, total=%d", q, buf.size(), total);
+
+			if(state == Accepting)
+			{
+				if(responseData.body.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
+				{
+					rejectAll(502, "Bad Gateway", "GRIP instruct response too large.");
+					return;
+				}
+
+				responseData.body += buf;
+			}
+			else // Responding
+			{
+				bool wasAllowed = addAllowed;
+
+				if(buffering)
+				{
+					if(responseData.body.size() + buf.size() > MAX_INITIAL_BUFFER)
+					{
+						responseData.body.clear();
+						buffering = false;
+						addAllowed = false;
+					}
+					else
+						responseData.body += buf;
+				}
+
+				log_debug("proxysession: %p writing %d to clients", q, buf.size());
+
+				foreach(SessionItem *si, sessionItems)
+				{
+					assert(si->state != SessionItem::WaitingForResponse);
+
+					if(si->state == SessionItem::Responding)
+					{
+						si->bytesToWrite += buf.size();
+						si->rs->writeResponseBody(buf);
+					}
+				}
+
+				if(wasAllowed && !addAllowed)
+				{
+					emit q->addNotAllowed();
+					if(!self)
+						return;
+				}
+			}
+		}
+
+		if(zurlRequest->isFinished())
+		{
+			log_debug("proxysession: %p response from target finished", q);
+
+			if(!buffering && pendingWrites())
+			{
+				log_debug("proxysession: %p still stuff left to write, though. we'll wait.", q);
+				return;
+			}
+
+			delete zurlRequest;
+			zurlRequest = 0;
+
+			if(state == Accepting)
+			{
+				AcceptData adata;
+
+				foreach(SessionItem *si, sessionItems)
+				{
+					AcceptData::Request areq;
+					areq.rid = si->rs->rid();
+					areq.https = si->rs->isHttps();
+					areq.jsonpCallback = si->rs->jsonpCallback();
+					adata.requests += areq;
+				}
+
+				adata.requestData = requestData;
+
+				adata.haveResponse = true;
+				adata.response = responseData;
+
+				log_debug("proxysession: %p finished for accept", q);
+				cleanup();
+				emit q->finishedForAccept(adata);
+			}
+			else // Responding
+			{
+				foreach(SessionItem *si, sessionItems)
+				{
+					assert(si->state != SessionItem::WaitingForResponse);
+
+					if(si->state == SessionItem::Responding)
+					{
+						si->state = SessionItem::Responded;
+						si->rs->endResponseBody();
+					}
+				}
+
+				// once the entire response has been received, cut off any new adds
+				if(addAllowed)
+				{
+					addAllowed = false;
+					emit q->addNotAllowed();
+				}
+			}
+		}
+	}
+
 public slots:
 	void m2Request_readyRead()
 	{
@@ -315,23 +437,21 @@ public slots:
 
 	void m2Request_finished()
 	{
-		log_debug("proxysession: finished reading request");
+		log_debug("proxysession: %p finished reading request", q);
 
 		zurlRequest->endBody();
 	}
 
 	void m2Request_error()
 	{
-		log_warning("proxysession: error reading request");
+		log_warning("proxysession: %p error reading request", q);
 
 		rejectAll(500, "Internal Server Error", "Primary shared request failed.");
 	}
 
 	void zurlRequest_readyRead()
 	{
-		log_debug("zurlRequest_readyRead");
-
-		QPointer<QObject> self = this;
+		log_debug("proxysession: %p data from target", q);
 
 		if(state == Requesting)
 		{
@@ -341,7 +461,7 @@ public slots:
 			responseData.body = zurlRequest->readResponseBody(MAX_INITIAL_BUFFER);
 
 			total += responseData.body.size();
-			log_debug("recv total: %d", total);
+			log_debug("proxysession: %p recv total: %d", q, total);
 
 			if(acceptTypes.contains(responseData.headers.get("Content-Type")))
 			{
@@ -388,119 +508,7 @@ public slots:
 		{
 			assert(state == Accepting || state == Responding);
 
-			// if we're not buffering, then sync to slowest receiver
-			if(!buffering && pendingWrites())
-				return;
-
-			QByteArray buf = zurlRequest->readResponseBody(MAX_STREAM_BUFFER);
-
-			total += buf.size();
-			log_debug("recv=%d, total=%d", buf.size(), total);
-
-			if(!buf.isEmpty())
-			{
-				if(state == Accepting)
-				{
-					if(responseData.body.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
-					{
-						rejectAll(502, "Bad Gateway", "GRIP instruct response too large.");
-						return;
-					}
-
-					responseData.body += buf;
-				}
-				else // Responding
-				{
-					bool wasAllowed = addAllowed;
-
-					if(buffering)
-					{
-						if(responseData.body.size() + buf.size() > MAX_INITIAL_BUFFER)
-						{
-							responseData.body.clear();
-							buffering = false;
-							addAllowed = false;
-						}
-						else
-							responseData.body += buf;
-					}
-
-					log_debug("writing %d", buf.size());
-					foreach(SessionItem *si, sessionItems)
-					{
-						assert(si->state != SessionItem::WaitingForResponse);
-
-						if(si->state == SessionItem::Responding)
-						{
-							si->bytesToWrite += buf.size();
-							si->rs->writeResponseBody(buf);
-						}
-					}
-
-					if(wasAllowed && !addAllowed)
-					{
-						emit q->addNotAllowed();
-						if(!self)
-							return;
-					}
-				}
-			}
-		}
-
-		if(zurlRequest->isFinished())
-		{
-			log_debug("zurlRequest finished");
-
-			if(!buffering && pendingWrites())
-			{
-				log_debug("still stuff left to write, though. we'll wait.");
-				return;
-			}
-
-			delete zurlRequest;
-			zurlRequest = 0;
-
-			if(state == Accepting)
-			{
-				AcceptData adata;
-
-				foreach(SessionItem *si, sessionItems)
-				{
-					AcceptData::Request areq;
-					areq.rid = si->rs->rid();
-					areq.https = si->rs->isHttps();
-					areq.jsonpCallback = si->rs->jsonpCallback();
-					adata.requests += areq;
-				}
-
-				adata.requestData = requestData;
-
-				adata.haveResponse = true;
-				adata.response = responseData;
-
-				cleanup();
-				emit q->finishedForAccept(adata);
-			}
-			else // Responding
-			{
-				foreach(SessionItem *si, sessionItems)
-				{
-					assert(si->state != SessionItem::WaitingForResponse);
-
-					if(si->state == SessionItem::Responding)
-					{
-						si->state = SessionItem::Responded;
-						si->rs->endResponseBody();
-					}
-				}
-
-				// once the entire response has been received, cut off any new adds
-				if(addAllowed)
-				{
-					addAllowed = false;
-					emit q->addNotAllowed();
-				}
-			}
+			tryResponseRead();
 		}
 	}
 
@@ -516,7 +524,7 @@ public slots:
 	void zurlRequest_error()
 	{
 		ZurlRequest::ErrorCondition e = zurlRequest->errorCondition();
-		log_debug("zurlRequest_error: state=%d, condition=%d", (int)state, (int)e);
+		log_debug("proxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
 
 		if(state == Requesting || state == Accepting)
 		{
@@ -541,7 +549,7 @@ public slots:
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
-		log_debug("rs_bytesWritten: %d", count);
+		log_debug("proxysession: %p response bytes written id=%s: %d", q, rs->rid().second.data(), count);
 
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
@@ -554,14 +562,14 @@ public slots:
 
 		// everyone caught up? try to read some more then
 		if(!buffering && zurlRequest && !pendingWrites())
-			zurlRequest_readyRead();
+			tryResponseRead();
 	}
 
 	void rs_finished()
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
-		log_debug("rs_finished");
+		log_debug("proxysession: %p response finished id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
@@ -578,14 +586,17 @@ public slots:
 		delete si;
 
 		if(sessionItems.isEmpty())
+		{
+			log_debug("proxysession: %p finished by passthrough", q);
 			emit q->finishedByPassthrough();
+		}
 	}
 
 	void rs_errorResponding()
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
-		log_debug("rs_errorResponding");
+		log_debug("proxysession: %p response error id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
@@ -595,6 +606,8 @@ public slots:
 		// flag that we should stop attempting to respond
 		si->state = SessionItem::Errored;
 		si->bytesToWrite = -1;
+
+		// don't destroy the RequestSession here. a finished signal will arrive next.
 	}
 };
 

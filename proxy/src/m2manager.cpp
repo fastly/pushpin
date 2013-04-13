@@ -157,6 +157,8 @@ public:
 		{
 			QPointer<QObject> self = this;
 
+			log_debug("m2manager: id=%s disconnected", rid.second.data());
+
 			req = reqsByRid.value(rid);
 			if(req)
 			{

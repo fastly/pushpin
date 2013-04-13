@@ -101,7 +101,7 @@ public:
 				p.id = rid.second;
 				p.seq = outSeq++;
 				p.cancel = true;
-				manager->write(p, replyAddress);
+				managerWrite(p, replyAddress);
 			}
 		}
 
@@ -173,7 +173,7 @@ public:
 				p.body = QByteArray(""); // need to set body to count as content packet
 
 				state = Receiving;
-				manager->write(p, replyAddress);
+				managerWrite(p, replyAddress);
 				refreshTimeout();
 				return;
 			}
@@ -205,7 +205,7 @@ public:
 				if(!p.more)
 					state = Receiving;
 
-				manager->write(p, replyAddress);
+				managerWrite(p, replyAddress);
 				refreshTimeout();
 				emit q->bytesWritten(size);
 			}
@@ -221,7 +221,7 @@ public:
 				p.credits = pendingInCredits;
 				pendingInCredits = 0;
 
-				manager->write(p, replyAddress);
+				managerWrite(p, replyAddress);
 				refreshTimeout();
 			}
 		}
@@ -229,6 +229,11 @@ public:
 
 	void handle(const ZurlResponsePacket &packet)
 	{
+		if(!packet.body.isNull())
+			log_debug("zurlrequest: read id=%s body=%d", packet.id.data(), packet.body.size());
+		else
+			log_debug("zurlrequest: read id=%s control", packet.id.data());
+
 		if(state == RequestStartWait)
 		{
 			if(packet.replyAddress.isEmpty())
@@ -236,7 +241,7 @@ public:
 				state = Private::Stopped;
 				errorCondition = ErrorGeneric;
 				cleanup();
-				log_warning("initial ack for streamed input request did not contain reply-address");
+				log_warning("zurlrequest: error id=%s initial ack for streamed input request did not contain reply-address", packet.id.data());
 				emit q->error();
 				return;
 			}
@@ -277,6 +282,8 @@ public:
 			else // bad-request, max-size-exceeded, cancel
 				errorCondition = ErrorGeneric;
 
+			log_debug("zurlrequest: error id=%s cond=%s", packet.id.data(), packet.condition.data());
+
 			state = Private::Stopped;
 			cleanup();
 			emit q->error();
@@ -285,7 +292,7 @@ public:
 
 		if(packet.seq != inSeq)
 		{
-			log_warning("received message out of sequence, canceling");
+			log_warning("zurlrequest: error id=%s received message out of sequence, canceling", packet.id.data());
 
 			// if this was not an error packet, send cancel
 			if(packet.condition.isEmpty())
@@ -294,7 +301,7 @@ public:
 				p.id = rid.second;
 				p.seq = outSeq++;
 				p.cancel = true;
-				manager->write(p, replyAddress);
+				managerWrite(p, replyAddress);
 			}
 
 			state = Private::Stopped;
@@ -322,7 +329,7 @@ public:
 			}
 
 			if(in.size() + packet.body.size() > IDEAL_CREDITS)
-				log_warning("zurl is sending too fast");
+				log_warning("zurlrequest: id=%s server is sending too fast", packet.id.data());
 
 			in += packet.body;
 
@@ -358,6 +365,26 @@ public:
 			emit q->readyRead();
 	}
 
+	void managerWrite(const ZurlRequestPacket &packet)
+	{
+		if(!packet.body.isNull())
+			log_debug("zurlrequest: write id=%s seq=%d body=%d", packet.id.data(), packet.seq, packet.body.size());
+		else
+			log_debug("zurlrequest: write id=%s seq=%d control", packet.id.data(), packet.seq);
+
+		manager->write(packet);
+	}
+
+	void managerWrite(const ZurlRequestPacket &packet, const QByteArray &instanceAddress)
+	{
+		if(!packet.body.isNull())
+			log_debug("zurlrequest: write to=%s id=%s seq=%d body=%d", instanceAddress.data(), packet.id.data(), packet.seq, packet.body.size());
+		else
+			log_debug("zurlrequest: write to=%s id=%s seq=%d control", instanceAddress.data(), packet.id.data(), packet.seq);
+
+		manager->write(packet, instanceAddress);
+	}
+
 public slots:
 	void doUpdate()
 	{
@@ -388,7 +415,7 @@ public slots:
 			if(ignorePolicies)
 				p.ignorePolicies = true;
 			p.credits = IDEAL_CREDITS;
-			manager->write(p);
+			managerWrite(p);
 
 			if(p.more)
 				state = RequestStartWait;
@@ -411,7 +438,7 @@ public slots:
 			p.id = rid.second;
 			p.seq = outSeq++;
 			p.cancel = true;
-			manager->write(p, replyAddress);
+			managerWrite(p, replyAddress);
 		}
 
 		state = Private::Stopped;

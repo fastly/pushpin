@@ -241,7 +241,7 @@ public:
 			urlstr += ':' + QByteArray::number(port);
 		urlstr += req->path();
 
-		log_info("IN id=%d, %s %s", req->rid().second.data(), qPrintable(req->method()), urlstr.data());
+		log_info("IN id=%s, %s %s", req->rid().second.data(), qPrintable(req->method()), urlstr.data());
 
 		connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
 
@@ -552,7 +552,7 @@ public slots:
 
 	void m2Request_error()
 	{
-		log_warning("requestsession: request error: %d", m2Request->rid().second.data());
+		log_warning("requestsession: request error: %s", m2Request->rid().second.data());
 		cleanup();
 		emit q->finished();
 	}
@@ -577,7 +577,7 @@ public slots:
 
 	void m2Response_error()
 	{
-		log_warning("requestsession: response error: %d", m2Response->rid().second.data());
+		log_warning("requestsession: response error: %s", m2Response->rid().second.data());
 		cleanup();
 		emit q->finished();
 	}
@@ -617,7 +617,6 @@ public slots:
 
 	void doResponseUpdate()
 	{
-		log_debug("requestsession: update");
 		pendingResponseUpdate = false;
 
 		if(!m2Response)
