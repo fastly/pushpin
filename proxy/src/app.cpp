@@ -313,7 +313,7 @@ public:
 		ProxySession *ps = 0;
 		if(idata && !idata->sharingKey.isEmpty())
 		{
-			log_info("need to proxy with sharing key: %s", idata->sharingKey.data());
+			log_debug("need to proxy with sharing key: %s", idata->sharingKey.data());
 
 			ProxyItem *i = proxyItemsByKey.value(idata->sharingKey);
 			if(i)
@@ -322,7 +322,7 @@ public:
 
 		if(!ps)
 		{
-			log_info("creating proxysession");
+			log_debug("creating proxysession");
 
 			ps = new ProxySession(zurl, domainMap, this);
 			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
@@ -345,7 +345,7 @@ public:
 			}
 		}
 		else
-			log_info("reusing proxysession");
+			log_debug("reusing proxysession");
 
 		// proxysession will take it from here
 		rs->disconnect(this);
