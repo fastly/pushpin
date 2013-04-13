@@ -262,7 +262,9 @@ public:
 				if(props.contains("ssl"))
 					target.ssl = true;
 
-				if(props.contains("trusted"))
+				if(props.contains("untrusted"))
+					target.trusted = false;
+				else
 					target.trusted = true;
 
 				r.targets += target;
