@@ -128,7 +128,7 @@ def accept_worker():
 		if not hchannel:
 			hchannel = set()
 			channels[channel] = hchannel
-		hchannel.add(((sender, id), req.get("jsonp-callback")))
+		hchannel.add(((sender, id), req.get("auto-cross-origin"), req.get("jsonp-callback")))
 		lock.release()
 
 	sock.close()
@@ -225,7 +225,8 @@ def push_in_worker(c):
 		print "relaying to %d subscribers" % len(rids)
 		for req in reqs:
 			rid = req[0]
-			callback = req[1]
+			auto_cross_origin = req[1]
+			callback = req[2]
 
 			headers = dict()
 			body = m["http-response"]["body"]
@@ -240,6 +241,9 @@ def push_in_worker(c):
 				body = callback + "(" + json.dumps(result) + ");\n"
 				headers["Content-Type"] = "application/javascript"
 				headers["Content-Length"] = len(body)
+			else:
+				if auto_cross_origin:
+					headers["Access-Control-Allow-Origin"] = "*"
 
 			reply_http(out_sock, rid, 200, "OK", headers, body)
 

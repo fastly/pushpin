@@ -47,6 +47,8 @@ public:
 
 	M2Request *request(); // null if retry mode
 
+	void setAutoCrossOrigin(bool enabled);
+
 	// takes ownership
 	void start(M2Request *req);
 

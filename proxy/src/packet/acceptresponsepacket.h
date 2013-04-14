@@ -37,10 +37,12 @@ public:
 	public:
 		Rid rid;
 		bool https;
+		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 
 		Request() :
-			https(false)
+			https(false),
+			autoCrossOrigin(false)
 		{
 		}
 	};

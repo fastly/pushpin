@@ -44,6 +44,9 @@ QVariant AcceptResponsePacket::toVariant() const
 			if(r.https)
 				vrequest["https"] = true;
 
+			if(r.autoCrossOrigin)
+				vrequest["auto-cross-origin"] = true;
+
 			if(!r.jsonpCallback.isEmpty())
 				vrequest["jsonp-callback"] = r.jsonpCallback;
 

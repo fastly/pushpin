@@ -51,6 +51,9 @@ handler_accept_out_spec=ipc:///tmp/pushpin-accept
 # routes config file (path relative to location of this file)
 routesfile=routes
 
+# whether to use automatic CORS and JSON-P wrapping
+auto_cross_origin=false
+
 
 [handler]
 # connect REP for responding with inspection info (internal, used with proxy)

@@ -155,6 +155,7 @@ public:
 	M2Request::Rid rid;
 	bool isHttps;
 	HttpRequestData requestData;
+	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
 	InspectData idata;
 	QString host;
@@ -175,6 +176,7 @@ public:
 		m2Response(0),
 		m2Manager(0),
 		isHttps(false),
+		autoCrossOrigin(false),
 		inspectRequest(0),
 		responseBodyFinished(false),
 		pendingResponseUpdate(false)
@@ -217,7 +219,7 @@ public:
 		QByteArray rawHost = req->headers().get("host");
 		if(rawHost.isEmpty())
 		{
-			log_warning("requestsession: no host header, rejecting");
+			log_warning("requestsession: id=%s no host header, rejecting", req->rid().second.data());
 			respondBadRequest("Host header required.");
 			return;
 		}
@@ -225,7 +227,7 @@ public:
 		int port;
 		if(!parseHostHeader(req->isHttps(), rawHost, &host, &port))
 		{
-			log_warning("requestsession: invalid host header, rejecting");
+			log_warning("requestsession: id=%s invalid host header, rejecting", req->rid().second.data());
 			respondBadRequest("Invalid host header.");
 			return;
 		}
@@ -249,7 +251,7 @@ public:
 		HttpRequestData hdata;
 
 		// JSON-P
-		if(url.hasQueryItem("callback"))
+		if(autoCrossOrigin && url.hasQueryItem("callback"))
 		{
 			bool callbackDone = false;
 			bool methodDone = false;
@@ -272,7 +274,7 @@ public:
 					QByteArray callback = parsePercentEncoding(i.second);
 					if(callback.isEmpty())
 					{
-						log_warning("requestsession: invalid callback parameter, rejecting");
+						log_warning("requestsession: id=%s invalid callback parameter, rejecting", req->rid().second.data());
 						respondBadRequest("Invalid callback parameter.");
 						return;
 					}
@@ -290,7 +292,7 @@ public:
 
 					if(!validMethod(method))
 					{
-						log_warning("requestsession: invalid _method parameter, rejecting");
+						log_warning("requestsession: id=%s invalid _method parameter, rejecting", req->rid().second.data());
 						respondBadRequest("Invalid _method parameter.");
 						return;
 					}
@@ -310,7 +312,7 @@ public:
 					QVariant vheaders = parser.parse(parsePercentEncoding("_headers"), &ok);
 					if(!ok)
 					{
-						log_warning("requestsession: invalid _headers parameter, rejecting");
+						log_warning("requestsession: id=%s invalid _headers parameter, rejecting", req->rid().second.data());
 						respondBadRequest("Invalid _headers parameter.");
 						return;
 					}
@@ -324,7 +326,7 @@ public:
 
 						if(vit.value().type() != QVariant::String)
 						{
-							log_warning("requestsession: invalid _headers parameter, rejecting");
+							log_warning("requestsession: id=%s invalid _headers parameter, rejecting", req->rid().second.data());
 							respondBadRequest("Invalid _headers parameter.");
 							return;
 						}
@@ -552,7 +554,7 @@ public slots:
 
 	void m2Request_error()
 	{
-		log_warning("requestsession: request error: %s", m2Request->rid().second.data());
+		log_warning("requestsession: request error id=%s", m2Request->rid().second.data());
 		cleanup();
 		emit q->finished();
 	}
@@ -577,7 +579,7 @@ public slots:
 
 	void m2Response_error()
 	{
-		log_warning("requestsession: response error: %s", m2Response->rid().second.data());
+		log_warning("requestsession: response error id=%s", m2Response->rid().second.data());
 		cleanup();
 		emit q->finished();
 	}
@@ -702,6 +704,12 @@ public slots:
 			}
 			else
 			{
+				if(autoCrossOrigin)
+				{
+					if(!responseData.headers.contains("Access-Control-Allow-Origin"))
+						responseData.headers += HttpHeader("Access-Control-Allow-Origin", "*");
+				}
+
 				connect(m2Response, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
 
 				m2Response->start(responseData.code, responseData.status, responseData.headers);
@@ -717,7 +725,7 @@ public slots:
 				{
 					state = RespondingInternal;
 
-					log_warning("upstream response could not be JSON-P encoded");
+					log_warning("requestsession: id=%s upstream response could not be JSON-P encoded", m2Response->rid().second.data());
 
 					// if we error while streaming, all we can do is give up
 					m2Response->close();
@@ -801,6 +809,11 @@ QByteArray RequestSession::jsonpCallback() const
 M2Request *RequestSession::request()
 {
 	return d->m2Request;
+}
+
+void RequestSession::setAutoCrossOrigin(bool enabled)
+{
+	d->autoCrossOrigin = enabled;
 }
 
 void RequestSession::start(M2Request *req)

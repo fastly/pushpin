@@ -96,6 +96,7 @@ public:
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	int maxWorkers;
+	bool autoCrossOrigin;
 
 	Private(App *_q) :
 		QObject(_q),
@@ -212,6 +213,7 @@ public:
 		QString handler_accept_out_spec = settings.value("proxy/handler_accept_out_spec").toString();
 		maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesfile = settings.value("proxy/routesfile").toString();
+		autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
 
 		// if routesfile is a relative path, then use it relative to the config file location
 		QFileInfo fi(routesfile);
@@ -361,6 +363,7 @@ public:
 			AcceptResponsePacket::Request req;
 			req.rid = AcceptResponsePacket::Rid(areq.rid.first, areq.rid.second);
 			req.https = areq.https;
+			req.autoCrossOrigin = autoCrossOrigin;
 			req.jsonpCallback = areq.jsonpCallback;
 			p.requests += req;
 		}
@@ -400,6 +403,8 @@ public:
 		connect(rs, SIGNAL(inspectError()), SLOT(rs_inspectError()));
 		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
 		connect(rs, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(rs_finishedForAccept(const AcceptData &)));
+
+		rs->setAutoCrossOrigin(autoCrossOrigin);
 
 		requestSessions += rs;
 
