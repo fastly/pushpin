@@ -105,6 +105,7 @@ public:
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	int maxWorkers;
 	bool autoCrossOrigin;
+	bool useXForwardedProtocol;
 	QByteArray sigIss;
 	QByteArray sigKey;
 	QByteArray upstreamIss;
@@ -226,6 +227,7 @@ public:
 		maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesfile = settings.value("proxy/routesfile").toString();
 		autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
+		useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
 		sigIss = settings.value("proxy/sig_iss").toString().toUtf8();
 		sigKey = parse_key(settings.value("proxy/sig_key").toString());
 		upstreamIss = settings.value("proxy/upstream_iss").toString().toUtf8();
@@ -350,6 +352,7 @@ public:
 
 			ps->setDefaultSigKey(sigIss, sigKey);
 			ps->setDefaultUpstreamKey(upstreamIss, upstreamKey);
+			ps->setUseXForwardedProtocol(useXForwardedProtocol);
 
 			if(idata)
 				ps->setInspectData(*idata);

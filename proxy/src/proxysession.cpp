@@ -62,7 +62,7 @@ static bool validate_token(const QByteArray &token, const QByteArray &iss, const
 		return false;
 
 	int exp = claim.value("exp").toInt();
-	if(exp <= 0 || exp >= (int)QDateTime::currentDateTimeUtc().toTime_t())
+	if(exp <= 0 || (int)QDateTime::currentDateTimeUtc().toTime_t() >= exp)
 		return false;
 
 	return true;
@@ -128,6 +128,7 @@ public:
 	QByteArray defaultUpstreamIss;
 	QByteArray defaultUpstreamKey;
 	bool passToUpstream;
+	bool useXForwardedProtocol;
 
 	Private(ProxySession *_q, ZurlManager *_zurlManager, DomainMap *_domainMap) :
 		QObject(_q),
@@ -142,7 +143,8 @@ public:
 		haveInspectData(false),
 		requestBytesToWrite(0),
 		total(0),
-		passToUpstream(false)
+		passToUpstream(false),
+		useXForwardedProtocol(false)
 	{
 		acceptTypes += "application/grip-instruct";
 	}
@@ -181,10 +183,10 @@ public:
 			requestData = rs->requestData();
 
 			// don't relay these headers
-			requestData.headers.removeAll("connection");
-			requestData.headers.removeAll("accept-encoding");
-			requestData.headers.removeAll("content-encoding");
-			requestData.headers.removeAll("transfer-encoding");
+			requestData.headers.removeAll("Connection");
+			requestData.headers.removeAll("Accept-Encoding");
+			requestData.headers.removeAll("Content-Encoding");
+			requestData.headers.removeAll("Transfer-Encoding");
 
 			if(!rs->isRetry())
 			{
@@ -242,6 +244,13 @@ public:
 					else
 						log_warning("proxysession: %p failed to sign request", q);
 				}
+			}
+
+			if(useXForwardedProtocol)
+			{
+				requestData.headers.removeAll("X-Forwarded-Protocol");
+				if(isHttps)
+					requestData.headers += HttpHeader("X-Forwarded-Protocol", "https");
 			}
 
 			zurlRequest = zurlManager->createRequest();
@@ -542,9 +551,9 @@ public slots:
 				state = Responding;
 
 				// don't relay these headers. zurl deals with their meaning for us.
-				responseData.headers.removeAll("connection");
-				responseData.headers.removeAll("content-encoding");
-				responseData.headers.removeAll("transfer-encoding");
+				responseData.headers.removeAll("Connection");
+				responseData.headers.removeAll("Content-Encoding");
+				responseData.headers.removeAll("Transfer-Encoding");
 
 				if(!responseData.headers.contains("Content-Length") && !responseData.headers.contains("Transfer-Encoding"))
 					responseData.headers += HttpHeader("Transfer-Encoding", "chunked");
@@ -696,6 +705,11 @@ void ProxySession::setDefaultUpstreamKey(const QByteArray &iss, const QByteArray
 {
 	d->defaultUpstreamIss = iss;
 	d->defaultUpstreamKey = key;
+}
+
+void ProxySession::setUseXForwardedProtocol(bool enabled)
+{
+	d->useXForwardedProtocol = enabled;
 }
 
 void ProxySession::setInspectData(const InspectData &idata)
