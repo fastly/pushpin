@@ -361,7 +361,11 @@ public:
 
 			hdata.path = url.encodedPath();
 			if(url.hasQuery())
-				hdata.path += "?" + url.encodedQuery();
+			{
+				QByteArray query = url.encodedQuery();
+				if(!query.isEmpty())
+					hdata.path += "?" + query;
+			}
 
 			hdata.headers += HttpHeader("Host", host.toUtf8());
 			hdata.headers += HttpHeader("Accept", "*/*");
