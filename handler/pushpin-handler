@@ -235,12 +235,12 @@ def push_in_worker(c):
 				result["code"] = 200
 				result["reason"] = "OK"
 				result["headers"] = dict()
-				result["headers"]["Content-Length"] = len(body)
+				result["headers"]["Content-Length"] = str(len(body))
 				result["body"] = body
 
 				body = callback + "(" + json.dumps(result) + ");\n"
 				headers["Content-Type"] = "application/javascript"
-				headers["Content-Length"] = len(body)
+				headers["Content-Length"] = str(len(body))
 			else:
 				if auto_cross_origin:
 					headers["Access-Control-Allow-Origin"] = "*"
