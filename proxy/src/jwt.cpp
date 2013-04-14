@@ -92,9 +92,12 @@ QByteArray encode(const QVariant &claim, const QByteArray &key)
 	if(claimJson.isNull())
 		return QByteArray();
 
-	QByteArray sig = jws_sign(headerJson, claimJson, key);
+	QByteArray headerPart = base64url(headerJson);
+	QByteArray claimPart = base64url(claimJson);
 
-	return base64url(headerJson) + '.' + base64url(claimJson) + '.' + sig;
+	QByteArray sig = jws_sign(headerPart, claimPart, key);
+
+	return headerPart + '.' + claimPart + '.' + sig;
 }
 
 QVariant decode(const QByteArray &token, const QByteArray &key)
