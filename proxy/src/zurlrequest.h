@@ -38,6 +38,7 @@ public:
 		ErrorGeneric,
 		ErrorPolicy,
 		ErrorConnect,
+		ErrorConnectTimeout,
 		ErrorTls,
 		ErrorLengthRequired,
 		ErrorTimeout,

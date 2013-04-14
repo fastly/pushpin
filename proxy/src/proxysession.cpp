@@ -111,6 +111,7 @@ public:
 	M2Request *m2Request;
 	QString host;
 	bool isHttps;
+	QList<DomainMap::Target> targets;
 	ZurlRequest *zurlRequest;
 	bool addAllowed;
 	bool haveInspectData;
@@ -120,6 +121,7 @@ public:
 	HttpRequestData requestData;
 	HttpResponseData responseData;
 	QHash<RequestSession*, SessionItem*> sessionItemsBySession;
+	QByteArray initialRequestBody;
 	int requestBytesToWrite;
 	int total;
 	bool buffering;
@@ -171,12 +173,13 @@ public:
 		si->rs = rs;
 		si->rs->setParent(this);
 		sessionItems += si;
+		sessionItemsBySession.insert(rs, si);
+		connect(rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
+		connect(rs, SIGNAL(errorResponding()), SLOT(rs_errorResponding()));
+		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
 
 		if(state == Stopped)
 		{
-			state = Requesting;
-			buffering = true;
-
 			host = rs->host();
 			isHttps = rs->isHttps();
 
@@ -188,33 +191,16 @@ public:
 			requestData.headers.removeAll("Content-Encoding");
 			requestData.headers.removeAll("Transfer-Encoding");
 
-			if(!rs->isRetry())
-			{
-				m2Request = rs->request();
-				connect(m2Request, SIGNAL(readyRead()), SLOT(m2Request_readyRead()));
-				connect(m2Request, SIGNAL(finished()), SLOT(m2Request_finished()));
-				connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
+			targets = domainMap->entry(host, requestData.path, isHttps);
 
-				requestData.body += m2Request->read();
+			if(targets.isEmpty())
+			{
+				log_warning("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
+				rejectAll(502, "Bad Gateway", QString("No route for host: %1").arg(host));
+				return;
 			}
 
-			QByteArray buf = requestData.body;
-
-			if(requestData.body.size() > MAX_ACCEPT_REQUEST_BODY)
-			{
-				requestData.body.clear();
-				buffering = false;
-			}
-
-			// TODO: support multiple targets
-
-			QList<DomainMap::Target> targets = domainMap->entry(host, requestData.path, isHttps);
 			log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
-			QByteArray str = targets[0].ssl ? "https://" : "http://";
-			str += targets[0].host.toUtf8() + ':' + QByteArray::number(targets[0].port) + requestData.path;
-			QUrl url = QUrl::fromEncoded(str, QUrl::StrictMode);
-
-			log_debug("proxysession: %p forwarding to %s", q, url.toEncoded().data());
 
 			// check if the request is coming from a grip proxy already
 			if(!defaultUpstreamIss.isEmpty() && !defaultUpstreamKey.isEmpty())
@@ -253,25 +239,28 @@ public:
 					requestData.headers += HttpHeader("X-Forwarded-Protocol", "https");
 			}
 
-			zurlRequest = zurlManager->createRequest();
-			zurlRequest->setParent(this);
-			connect(zurlRequest, SIGNAL(readyRead()), SLOT(zurlRequest_readyRead()));
-			connect(zurlRequest, SIGNAL(bytesWritten(int)), SLOT(zurlRequest_bytesWritten(int)));
-			connect(zurlRequest, SIGNAL(error()), SLOT(zurlRequest_error()));
+			state = Requesting;
+			buffering = true;
 
-			if(targets[0].trusted)
-				zurlRequest->setIgnorePolicies(true);
-
-			zurlRequest->start(requestData.method, url, requestData.headers);
-
-			if(!requestData.body.isEmpty())
+			if(!rs->isRetry())
 			{
-				requestBytesToWrite += buf.size();
-				zurlRequest->writeBody(buf);
+				m2Request = rs->request();
+				connect(m2Request, SIGNAL(readyRead()), SLOT(m2Request_readyRead()));
+				connect(m2Request, SIGNAL(finished()), SLOT(m2Request_finished()));
+				connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
+
+				requestData.body += m2Request->read();
 			}
 
-			if(!m2Request || m2Request->isFinished())
-				zurlRequest->endBody();
+			initialRequestBody = requestData.body;
+
+			if(requestData.body.size() > MAX_ACCEPT_REQUEST_BODY)
+			{
+				requestData.body.clear();
+				buffering = false;
+			}
+
+			tryNextTarget();
 		}
 		else if(state == Requesting)
 		{
@@ -280,12 +269,6 @@ public:
 		else if(state == Responding)
 		{
 			// get the session caught up with where we're at
-
-			connect(rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
-			connect(rs, SIGNAL(errorResponding()), SLOT(rs_errorResponding()));
-			connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
-
-			sessionItemsBySession.insert(rs, si);
 
 			si->state = SessionItem::Responding;
 			rs->startResponse(responseData.code, responseData.status, responseData.headers);
@@ -307,6 +290,43 @@ public:
 		}
 
 		return false;
+	}
+
+	void tryNextTarget()
+	{
+		if(targets.isEmpty())
+		{
+			rejectAll(502, "Bad Gateway", "Error while proxying to origin.");
+			return;
+		}
+
+		DomainMap::Target target = targets.takeFirst();
+
+		QByteArray str = target.ssl ? "https://" : "http://";
+		str += target.host.toUtf8() + ':' + QByteArray::number(target.port) + requestData.path;
+		QUrl url = QUrl::fromEncoded(str, QUrl::StrictMode);
+
+		log_debug("proxysession: %p forwarding to %s", q, url.toEncoded().data());
+
+		zurlRequest = zurlManager->createRequest();
+		zurlRequest->setParent(this);
+		connect(zurlRequest, SIGNAL(readyRead()), SLOT(zurlRequest_readyRead()));
+		connect(zurlRequest, SIGNAL(bytesWritten(int)), SLOT(zurlRequest_bytesWritten(int)));
+		connect(zurlRequest, SIGNAL(error()), SLOT(zurlRequest_error()));
+
+		if(target.trusted)
+			zurlRequest->setIgnorePolicies(true);
+
+		zurlRequest->start(requestData.method, url, requestData.headers);
+
+		if(!initialRequestBody.isEmpty())
+		{
+			requestBytesToWrite += initialRequestBody.size();
+			zurlRequest->writeBody(initialRequestBody);
+		}
+
+		if(!m2Request || m2Request->isFinished())
+			zurlRequest->endBody();
 	}
 
 	void tryRequestRead()
@@ -560,12 +580,6 @@ public slots:
 
 				foreach(SessionItem *si, sessionItems)
 				{
-					connect(si->rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
-					connect(si->rs, SIGNAL(finished()), SLOT(rs_finished()));
-					connect(si->rs, SIGNAL(errorResponding()), SLOT(rs_errorResponding()));
-
-					sessionItemsBySession.insert(si->rs, si);
-
 					si->state = SessionItem::Responding;
 					si->rs->startResponse(responseData.code, responseData.status, responseData.headers);
 
@@ -601,15 +615,27 @@ public slots:
 
 		if(state == Requesting || state == Accepting)
 		{
+			bool tryAgain = false;
+
 			switch(e)
 			{
 				case ZurlRequest::ErrorLengthRequired:
 					rejectAll(411, "Length Required", "Must provide Content-Length header.");
 					break;
+				case ZurlRequest::ErrorConnect:
+				case ZurlRequest::ErrorConnectTimeout:
+				case ZurlRequest::ErrorTls:
+					// it should not be possible to get one of these errors while accepting
+					assert(state == Requesting);
+					tryAgain = true;
+					break;
 				default:
 					rejectAll(502, "Bad Gateway", "Error while proxying to origin.");
 					break;
 			}
+
+			if(tryAgain)
+				tryNextTarget();
 		}
 		else if(state == Responding)
 		{

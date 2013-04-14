@@ -266,6 +266,7 @@ public:
 			//  bad-request
 			//  policy-violation
 			//  max-size-exceeded
+			//  session-timeout
 			//  cancel
 
 			QByteArray cond = packet.condition;
@@ -278,8 +279,8 @@ public:
 			else if(cond == "length-required")
 				errorCondition = ErrorLengthRequired;
 			else if(cond == "connection-timeout")
-				errorCondition = ErrorTimeout;
-			else // bad-request, max-size-exceeded, cancel
+				errorCondition = ErrorConnectTimeout;
+			else // lump the rest as generic
 				errorCondition = ErrorGeneric;
 
 			log_debug("zurlrequest: error id=%s cond=%s", packet.id.data(), packet.condition.data());
