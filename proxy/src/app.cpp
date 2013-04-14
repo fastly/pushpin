@@ -62,6 +62,14 @@ static void trimlist(QStringList *list)
 	}
 }
 
+static QByteArray parse_key(const QString &in)
+{
+	if(in.startsWith("base64:"))
+		return QByteArray::fromBase64(in.mid(7).toUtf8());
+	else
+		return in.toUtf8();
+}
+
 class App::Private : public QObject
 {
 	Q_OBJECT
@@ -97,6 +105,10 @@ public:
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	int maxWorkers;
 	bool autoCrossOrigin;
+	QByteArray sigIss;
+	QByteArray sigKey;
+	QByteArray upstreamIss;
+	QByteArray upstreamKey;
 
 	Private(App *_q) :
 		QObject(_q),
@@ -214,6 +226,10 @@ public:
 		maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesfile = settings.value("proxy/routesfile").toString();
 		autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
+		sigIss = settings.value("proxy/sig_iss").toString().toUtf8();
+		sigKey = parse_key(settings.value("proxy/sig_key").toString());
+		upstreamIss = settings.value("proxy/upstream_iss").toString().toUtf8();
+		upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
 
 		// if routesfile is a relative path, then use it relative to the config file location
 		QFileInfo fi(routesfile);
@@ -324,13 +340,16 @@ public:
 
 		if(!ps)
 		{
-			log_debug("creating proxysession");
+			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
 			ps = new ProxySession(zurl, domainMap, this);
 			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
 			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
 			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
 			connect(ps, SIGNAL(requestSessionDestroyed(RequestSession *)), SLOT(ps_requestSessionDestroyed(RequestSession *)));
+
+			ps->setDefaultSigKey(sigIss, sigKey);
+			ps->setDefaultUpstreamKey(upstreamIss, upstreamKey);
 
 			if(idata)
 				ps->setInspectData(*idata);

@@ -17,44 +17,16 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <QCoreApplication>
-#include <QTimer>
-#include <QtCrypto>
-#include "app.h"
+#ifndef JWT_H
+#define JWT_H
 
-class AppMain : public QObject
-{
-	Q_OBJECT
+#include <QVariant>
 
-public:
-	App *app;
+namespace Jwt {
 
-public slots:
-	void start()
-	{
-		app = new App(this);
-		connect(app, SIGNAL(quit()), SLOT(app_quit()));
-		app->start();
-	}
+QByteArray encode(const QVariant &claim, const QByteArray &key);
+QVariant decode(const QByteArray &token, const QByteArray &key);
 
-	void app_quit()
-	{
-		delete app;
-		emit quit();
-	}
-
-signals:
-	void quit();
-};
-
-int main(int argc, char **argv)
-{
-	QCA::Initializer qcaInit;
-	QCoreApplication qapp(argc, argv);
-	AppMain appMain;
-	QObject::connect(&appMain, SIGNAL(quit()), &qapp, SLOT(quit()));
-	QTimer::singleShot(0, &appMain, SLOT(start()));
-	return qapp.exec();
 }
 
-#include "main.moc"
+#endif

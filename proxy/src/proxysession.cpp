@@ -23,9 +23,11 @@
 #include <QSet>
 #include <QPointer>
 #include <QUrl>
+#include <QDateTime>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "log.h"
+#include "jwt.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
 #include "m2request.h"
@@ -39,6 +41,32 @@
 
 #define MAX_INITIAL_BUFFER 100000
 #define MAX_STREAM_BUFFER 100000
+
+static QByteArray make_token(const QByteArray &iss, const QByteArray &key)
+{
+	QVariantMap claim;
+	claim["iss"] = QString::fromUtf8(iss);
+	claim["exp"] = QDateTime::currentDateTimeUtc().toTime_t() + 3600;
+	return Jwt::encode(claim, key);
+}
+
+static bool validate_token(const QByteArray &token, const QByteArray &iss, const QByteArray &key)
+{
+	QVariant claimObj = Jwt::decode(token, key);
+	if(!claimObj.isValid() || claimObj.type() != QVariant::Map)
+		return false;
+
+	QVariantMap claim = claimObj.toMap();
+
+	if(claim.value("iss").toString().toUtf8() != iss)
+		return false;
+
+	int exp = claim.value("exp").toInt();
+	if(exp <= 0 || exp >= (int)QDateTime::currentDateTimeUtc().toTime_t())
+		return false;
+
+	return true;
+}
 
 class ProxySession::Private : public QObject
 {
@@ -95,6 +123,11 @@ public:
 	int requestBytesToWrite;
 	int total;
 	bool buffering;
+	QByteArray defaultSigIss;
+	QByteArray defaultSigKey;
+	QByteArray defaultUpstreamIss;
+	QByteArray defaultUpstreamKey;
+	bool passToUpstream;
 
 	Private(ProxySession *_q, ZurlManager *_zurlManager, DomainMap *_domainMap) :
 		QObject(_q),
@@ -108,7 +141,8 @@ public:
 		addAllowed(true),
 		haveInspectData(false),
 		requestBytesToWrite(0),
-		total(0)
+		total(0),
+		passToUpstream(false)
 	{
 		acceptTypes += "application/grip-instruct";
 	}
@@ -179,6 +213,36 @@ public:
 			QUrl url = QUrl::fromEncoded(str, QUrl::StrictMode);
 
 			log_debug("proxysession: %p forwarding to %s", q, url.toEncoded().data());
+
+			// check if the request is coming from a grip proxy already
+			if(!defaultUpstreamIss.isEmpty() && !defaultUpstreamKey.isEmpty())
+			{
+				QByteArray token = requestData.headers.get("Grip-Sig");
+				if(!token.isEmpty())
+				{
+					if(validate_token(token, defaultUpstreamIss, defaultUpstreamKey))
+					{
+						log_debug("proxysession: %p passing to upstream", q);
+						passToUpstream = true;
+					}
+					else
+						log_debug("proxysession: %p signature present but invalid", q);
+				}
+			}
+
+			if(!passToUpstream)
+			{
+				// remove/replace Grip-Sig
+				requestData.headers.removeAll("Grip-Sig");
+				if(!defaultSigIss.isEmpty() && !defaultSigKey.isEmpty())
+				{
+					QByteArray token = make_token(defaultSigIss, defaultSigKey);
+					if(!token.isEmpty())
+						requestData.headers += HttpHeader("Grip-Sig", token);
+					else
+						log_warning("proxysession: %p failed to sign request", q);
+				}
+			}
 
 			zurlRequest = zurlManager->createRequest();
 			zurlRequest->setParent(this);
@@ -463,7 +527,7 @@ public slots:
 			total += responseData.body.size();
 			log_debug("proxysession: %p recv total: %d", q, total);
 
-			if(acceptTypes.contains(responseData.headers.get("Content-Type")))
+			if(!passToUpstream && acceptTypes.contains(responseData.headers.get("Content-Type")))
 			{
 				if(!buffering)
 				{
@@ -620,6 +684,18 @@ ProxySession::ProxySession(ZurlManager *zurlManager, DomainMap *domainMap, QObje
 ProxySession::~ProxySession()
 {
 	delete d;
+}
+
+void ProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)
+{
+	d->defaultSigIss = iss;
+	d->defaultSigKey = key;
+}
+
+void ProxySession::setDefaultUpstreamKey(const QByteArray &iss, const QByteArray &key)
+{
+	d->defaultUpstreamIss = iss;
+	d->defaultUpstreamKey = key;
 }
 
 void ProxySession::setInspectData(const InspectData &idata)

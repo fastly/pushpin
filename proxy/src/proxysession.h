@@ -36,6 +36,9 @@ public:
 	ProxySession(ZurlManager *zurlManager, DomainMap *domainMap, QObject *parent = 0);
 	~ProxySession();
 
+	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
+	void setDefaultUpstreamKey(const QByteArray &iss, const QByteArray &key);
+
 	void setInspectData(const InspectData &idata);
 
 	// takes ownership

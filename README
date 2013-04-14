@@ -30,6 +30,7 @@ Features:
 Requirements:
 
   qt >= 4.7
+  qca >= 2.0 (and an hmac(sha256)-supporting plugin, like qca-ossl)
   libzmq >= 2.0
   qjson
   mongrel2
