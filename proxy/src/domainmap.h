@@ -45,10 +45,23 @@ public:
 		}
 	};
 
+	class Entry
+	{
+	public:
+		QByteArray sigIss;
+		QByteArray sigKey;
+		QList<Target> targets;
+
+		bool isNull() const
+		{
+			return targets.isEmpty();
+		}
+	};
+
 	DomainMap(const QString &fileName);
 	~DomainMap();
 
-	QList<Target> entry(const QString &domain, const QByteArray &path, bool ssl) const;
+	Entry entry(const QString &domain, const QByteArray &path, bool ssl) const;
 
 private:
 	class Private;

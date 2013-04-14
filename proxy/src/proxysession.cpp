@@ -50,16 +50,13 @@ static QByteArray make_token(const QByteArray &iss, const QByteArray &key)
 	return Jwt::encode(claim, key);
 }
 
-static bool validate_token(const QByteArray &token, const QByteArray &iss, const QByteArray &key)
+static bool validate_token(const QByteArray &token, const QByteArray &key)
 {
 	QVariant claimObj = Jwt::decode(token, key);
 	if(!claimObj.isValid() || claimObj.type() != QVariant::Map)
 		return false;
 
 	QVariantMap claim = claimObj.toMap();
-
-	if(claim.value("iss").toString().toUtf8() != iss)
-		return false;
 
 	int exp = claim.value("exp").toInt();
 	if(exp <= 0 || (int)QDateTime::currentDateTimeUtc().toTime_t() >= exp)
@@ -127,7 +124,6 @@ public:
 	bool buffering;
 	QByteArray defaultSigIss;
 	QByteArray defaultSigKey;
-	QByteArray defaultUpstreamIss;
 	QByteArray defaultUpstreamKey;
 	bool passToUpstream;
 	bool useXForwardedProtocol;
@@ -191,24 +187,38 @@ public:
 			requestData.headers.removeAll("Content-Encoding");
 			requestData.headers.removeAll("Transfer-Encoding");
 
-			targets = domainMap->entry(host, requestData.path, isHttps);
-
-			if(targets.isEmpty())
+			DomainMap::Entry entry = domainMap->entry(host, requestData.path, isHttps);
+			if(entry.isNull())
 			{
-				log_warning("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
+				log_warning("proxysession: %p %s has 0 routes", q, qPrintable(host));
 				rejectAll(502, "Bad Gateway", QString("No route for host: %1").arg(host));
 				return;
 			}
 
+			QByteArray sigIss;
+			QByteArray sigKey;
+			if(!entry.sigIss.isEmpty() && !entry.sigKey.isEmpty())
+			{
+				sigIss = entry.sigIss;
+				sigKey = entry.sigKey;
+			}
+			else
+			{
+				sigIss = defaultSigIss;
+				sigKey = defaultSigKey;
+			}
+
+			targets = entry.targets;
+
 			log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
 
 			// check if the request is coming from a grip proxy already
-			if(!defaultUpstreamIss.isEmpty() && !defaultUpstreamKey.isEmpty())
+			if(!defaultUpstreamKey.isEmpty())
 			{
 				QByteArray token = requestData.headers.get("Grip-Sig");
 				if(!token.isEmpty())
 				{
-					if(validate_token(token, defaultUpstreamIss, defaultUpstreamKey))
+					if(validate_token(token, defaultUpstreamKey))
 					{
 						log_debug("proxysession: %p passing to upstream", q);
 						passToUpstream = true;
@@ -222,9 +232,9 @@ public:
 			{
 				// remove/replace Grip-Sig
 				requestData.headers.removeAll("Grip-Sig");
-				if(!defaultSigIss.isEmpty() && !defaultSigKey.isEmpty())
+				if(!sigIss.isEmpty() && !sigKey.isEmpty())
 				{
-					QByteArray token = make_token(defaultSigIss, defaultSigKey);
+					QByteArray token = make_token(sigIss, sigKey);
 					if(!token.isEmpty())
 						requestData.headers += HttpHeader("Grip-Sig", token);
 					else
@@ -727,9 +737,8 @@ void ProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key
 	d->defaultSigKey = key;
 }
 
-void ProxySession::setDefaultUpstreamKey(const QByteArray &iss, const QByteArray &key)
+void ProxySession::setDefaultUpstreamKey(const QByteArray &key)
 {
-	d->defaultUpstreamIss = iss;
 	d->defaultUpstreamKey = key;
 }
 

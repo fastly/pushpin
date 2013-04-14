@@ -37,7 +37,7 @@ public:
 	~ProxySession();
 
 	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
-	void setDefaultUpstreamKey(const QByteArray &iss, const QByteArray &key);
+	void setDefaultUpstreamKey(const QByteArray &key);
 	void setUseXForwardedProtocol(bool enabled);
 
 	void setInspectData(const InspectData &idata);

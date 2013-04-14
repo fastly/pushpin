@@ -58,11 +58,9 @@ auto_cross_origin=false
 set_x_forwarded_protocol=true
 
 # for signing requests proxied by pushpin. use "base64:" prefix for binary key
-sig_iss=pushpin
 sig_key=changeme
 
 # use this to allow grip to be forwarded upstream (e.g. to fanout.io)
-upstream_iss=
 upstream_key=
 
 

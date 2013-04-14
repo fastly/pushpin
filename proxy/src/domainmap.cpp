@@ -19,6 +19,7 @@
 
 #include "domainmap.h"
 
+#include <assert.h>
 #include <QStringList>
 #include <QHash>
 #include <QTimer>
@@ -107,6 +108,9 @@ public:
 	public:
 		QByteArray pathBeg;
 		int ssl; // -1=unspecified, 0=no, 1=yes
+
+		QByteArray sigIss;
+		QByteArray sigKey;
 		QList<Target> targets;
 
 		Rule() :
@@ -114,7 +118,7 @@ public:
 		{
 		}
 
-		// checks only the condition, not targets
+		// checks only the condition, not sig/targets
 		bool compare(const Rule &other) const
 		{
 			return (ssl == other.ssl && pathBeg == other.pathBeg);
@@ -205,6 +209,16 @@ public:
 				}
 
 				r.pathBeg = pathBeg.toUtf8();
+			}
+
+			if(props.contains("sig_iss"))
+			{
+				r.sigIss = props.value("sig_iss").toUtf8();
+			}
+
+			if(props.contains("sig_key"))
+			{
+				r.sigKey = props.value("sig_key").toUtf8();
 			}
 
 			QList<Rule> *rules = 0;
@@ -418,7 +432,7 @@ DomainMap::~DomainMap()
 	delete d;
 }
 
-QList<DomainMap::Target> DomainMap::entry(const QString &domain, const QByteArray &path, bool ssl) const
+DomainMap::Entry DomainMap::entry(const QString &domain, const QByteArray &path, bool ssl) const
 {
 	QMutexLocker locker(&d->thread->worker->m);
 
@@ -429,7 +443,7 @@ QList<DomainMap::Target> DomainMap::entry(const QString &domain, const QByteArra
 	else if(d->thread->worker->map.contains(empty))
 		rules = &d->thread->worker->map[empty];
 	else
-		return QList<DomainMap::Target>();
+		return Entry();
 
 	const Worker::Rule *best = 0;
 	foreach(const Worker::Rule &r, *rules)
@@ -443,9 +457,16 @@ QList<DomainMap::Target> DomainMap::entry(const QString &domain, const QByteArra
 	}
 
 	if(!best)
-		return QList<DomainMap::Target>();
+		return Entry();
 
-	return best->targets;
+	assert(!best->targets.isEmpty());
+
+	Entry e;
+	e.sigIss = best->sigIss;
+	e.sigKey = best->sigKey;
+	e.targets = best->targets;
+
+	return e;
 }
 
 #include "domainmap.moc"

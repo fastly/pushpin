@@ -108,7 +108,6 @@ public:
 	bool useXForwardedProtocol;
 	QByteArray sigIss;
 	QByteArray sigKey;
-	QByteArray upstreamIss;
 	QByteArray upstreamKey;
 
 	Private(App *_q) :
@@ -228,10 +227,10 @@ public:
 		QString routesfile = settings.value("proxy/routesfile").toString();
 		autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
 		useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
-		sigIss = settings.value("proxy/sig_iss").toString().toUtf8();
 		sigKey = parse_key(settings.value("proxy/sig_key").toString());
-		upstreamIss = settings.value("proxy/upstream_iss").toString().toUtf8();
 		upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
+
+		sigIss = "pushpin";
 
 		// if routesfile is a relative path, then use it relative to the config file location
 		QFileInfo fi(routesfile);
@@ -351,7 +350,7 @@ public:
 			connect(ps, SIGNAL(requestSessionDestroyed(RequestSession *)), SLOT(ps_requestSessionDestroyed(RequestSession *)));
 
 			ps->setDefaultSigKey(sigIss, sigKey);
-			ps->setDefaultUpstreamKey(upstreamIss, upstreamKey);
+			ps->setDefaultUpstreamKey(upstreamKey);
 			ps->setUseXForwardedProtocol(useXForwardedProtocol);
 
 			if(idata)
