@@ -31,6 +31,14 @@
 #include <QFileSystemWatcher>
 #include "log.h"
 
+static QByteArray parse_key(const QString &in)
+{
+	if(in.startsWith("base64:"))
+		return QByteArray::fromBase64(in.mid(7).toUtf8());
+	else
+		return in.toUtf8();
+}
+
 // items are of the format: {value}(,propname=propval,...)
 static bool parseItem(const QString &item, QString *_value, QHash<QString, QString> *_props, QString *errmsg)
 {
@@ -218,7 +226,7 @@ public:
 
 			if(props.contains("sig_key"))
 			{
-				r.sigKey = props.value("sig_key").toUtf8();
+				r.sigKey = parse_key(props.value("sig_key"));
 			}
 
 			QList<Rule> *rules = 0;
