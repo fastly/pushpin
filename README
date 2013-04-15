@@ -39,6 +39,7 @@ Requirements:
   python setproctitle
   python tnetstring
   python zmq
+  python jinja2
 
 Install guide:
 
