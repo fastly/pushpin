@@ -119,7 +119,7 @@ public:
 		else
 			p.data = body;
 
-		managerWriteResponse(p, body.size());
+		managerWriteResponse(p, false, body.size());
 	}
 
 	// for chunked mode, this will write a final chunk but leave
@@ -137,9 +137,9 @@ public:
 		emit q->error();
 	}
 
-	void managerWriteResponse(const M2ResponsePacket &packet, int bodySize)
+	void managerWriteResponse(const M2ResponsePacket &packet, bool headers, int bodySize)
 	{
-		log_debug("m2response: write id=%s body=%d", packet.id.data(), bodySize);
+		log_debug("m2response: write id=%s %sbody=%d", packet.id.data(), headers ? "headers ": "", bodySize);
 
 		manager->writeResponse(packet);
 	}
@@ -184,7 +184,7 @@ public slots:
 				outCredits -= bodySize;
 			}
 
-			managerWriteResponse(p, bodySize);
+			managerWriteResponse(p, true, bodySize);
 
 			if(bodySize > 0)
 			{

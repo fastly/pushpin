@@ -181,8 +181,10 @@ public:
 
 			requestData = rs->requestData();
 
-			// don't relay these headers
+			// don't relay these headers. their meaning is handled by
+			//   mongrel2 and they only apply to the incoming hop.
 			requestData.headers.removeAll("Connection");
+			requestData.headers.removeAll("Keep-Alive");
 			requestData.headers.removeAll("Accept-Encoding");
 			requestData.headers.removeAll("Content-Encoding");
 			requestData.headers.removeAll("Transfer-Encoding");
@@ -474,6 +476,14 @@ public:
 			}
 		}
 
+		checkIncomingResponseFinished();
+	}
+
+	// this method emits signals
+	void checkIncomingResponseFinished()
+	{
+		QPointer<QObject> self = this;
+
 		if(zurlRequest->isFinished())
 		{
 			log_debug("proxysession: %p response from target finished", q);
@@ -580,8 +590,10 @@ public slots:
 			{
 				state = Responding;
 
-				// don't relay these headers. zurl deals with their meaning for us.
+				// don't relay these headers. their meaning is handled by
+				//   zurl and they only apply to the outgoing hop.
 				responseData.headers.removeAll("Connection");
+				responseData.headers.removeAll("Keep-Alive");
 				responseData.headers.removeAll("Content-Encoding");
 				responseData.headers.removeAll("Transfer-Encoding");
 
@@ -600,6 +612,8 @@ public slots:
 					}
 				}
 			}
+
+			checkIncomingResponseFinished();
 		}
 		else
 		{
