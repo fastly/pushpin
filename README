@@ -40,6 +40,10 @@ Requirements:
   python tnetstring
   python zmq
 
+Install guide:
+
+  https://github.com/fanout/pushpin/wiki/Install
+
 If accessing from Git, be sure to pull submodules:
 
   git submodule init
