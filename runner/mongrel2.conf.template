@@ -21,7 +21,7 @@
 )
 
 {% endfor %}settings = {
-	"certdir": "./certs/",
+	"certdir": ".{{ rootdir }}/certs/",
 	"upload.temp_store": "{{ rundir }}/upload.XXXXXX",
 	"upload.temp_store_mode": "0666",
 	"server.daemonize": 0
