@@ -1,15 +1,53 @@
 import os
 import subprocess
+import jinja2
 
 def compile_template(infilename, outfilename, vars):
+	e = jinja2.Environment()
 	f = open(infilename, "r")
-	buf = f.read()
+	t = e.from_string(f.read())
 	f.close()
-	buf = buf.replace("{{ port }}", vars["port"])
-	buf = buf.replace("{{ rootdir }}", vars["rootdir"])
+	out = t.render(vars)
 	f = open(outfilename, "w")
-	f.write(buf)
+	f.write(out)
 	f.close()
+
+# return path of sql config
+def write_mongrel2_config(rootdir, configpath, rundir, http_port, https_ports, shbinpath):
+	# calculate mongrel2 relative rootdir
+	absroot = os.path.abspath(rootdir)
+	path = os.path.relpath(absroot, os.getcwd())
+	if path.startswith(".."):
+		raise ValueError("cannot run from deeper than %s" % absroot)
+
+	if path.startswith("."):
+		path = path[1:]
+	if len(path) > 0 and not path.startswith("/"):
+		path = "/" + path
+	rootdir = path
+
+	assert(configpath.endswith(".template"))
+	fname = os.path.basename(configpath)
+	path, ext = os.path.splitext(fname)
+	genconfigpath = os.path.join(rundir, path)
+
+	ports = list()
+	ports.append({ "ssl": False, "value": http_port })
+	for p in https_ports:
+		ports.append({ "ssl": True, "value": p })
+
+	vars = dict()
+	vars["ports"] = ports
+	vars["rootdir"] = rootdir
+	compile_template(configpath, genconfigpath, vars)
+
+	path, ext = os.path.splitext(genconfigpath)
+	sqlconfigpath = path + ".sqlite"
+
+	# generate sqlite config
+	subprocess.check_call([shbinpath, "load", "-config", genconfigpath, "-db", sqlconfigpath])
+
+	return sqlconfigpath
 
 class Service(object):
 	def __init__(self, rundir, logdir):
@@ -44,59 +82,37 @@ class Service(object):
 			os.remove(pidfilename)
 
 class Mongrel2Service(Service):
-	def __init__(self, binpath, shbinpath, configpath, port, rootdir, rundir, logdir):
+	def __init__(self, binpath, sqlconfigpath, ssl, port, rundir, logdir):
 		super(Mongrel2Service, self).__init__(rundir, logdir)
 		self.binpath = binpath
-		self.shbinpath = shbinpath
-		self.configpath = configpath
+		self.sqlconfigpath = sqlconfigpath
+		self.ssl = ssl
 		self.port = port
-		self.rootdir = rootdir
 
 	def name(self):
-		return "mongrel2"
+		if self.ssl:
+			proto = "https"
+		else:
+			proto = "http"
+		return "mongrel2 (%s:%d)" % (proto, self.port)
+
+	def getlogfile(self):
+		return os.path.join(self.logdir, "mongrel2_%d.log" % self.port)
 
 	def getpidfile(self):
 		# mongrel2 writes its own pid file
 		return None
 
 	def getargs(self):
-		return [self.binpath, self.sqlconfigpath, "default"]
+		return [self.binpath, self.sqlconfigpath, "pushpin-m2-%d" % self.port]
 
 	def pre_start(self):
 		super(Mongrel2Service, self).pre_start()
 
-		# calculate mongrel2 relative rootdir
-		absroot = os.path.abspath(self.rootdir)
-		path = os.path.relpath(absroot, os.getcwd())
-		if path.startswith(".."):
-			raise ValueError("cannot run from deeper than %s" % absroot)
-
-		if path.startswith("."):
-			path = path[1:]
-		if len(path) > 0 and not path.startswith("/"):
-			path = "/" + path
-		self.rootdir = path
-
-		assert(self.configpath.endswith(".template"))
-		fname = os.path.basename(self.configpath)
-		path, ext = os.path.splitext(fname)
-		genconfigpath = os.path.join(self.rundir, path)
-
 		# mongrel2 will refuse to start if it sees a pidfile
-		pidfilename = super(Mongrel2Service, self).getpidfile()
+		pidfilename = os.path.join(self.rundir, "mongrel2_%d.pid" % self.port)
 		if os.path.isfile(pidfilename):
 			os.remove(pidfilename)
-
-		vars = dict()
-		vars["port"] = str(self.port)
-		vars["rootdir"] = self.rootdir
-		compile_template(self.configpath, genconfigpath, vars)
-
-		path, ext = os.path.splitext(genconfigpath)
-		self.sqlconfigpath = path + ".sqlite"
-
-		# generate sqlite config
-		subprocess.check_call([self.shbinpath, "load", "-config", genconfigpath, "-db", self.sqlconfigpath])
 
 class ZurlService(Service):
 	def __init__(self, binpath, configpath, verbose, rundir, logdir):

@@ -1,28 +1,31 @@
-handler = Handler(
-	send_spec="ipc:///tmp/pushpin-m2-out",
-	send_ident="default",
-	recv_spec="ipc:///tmp/pushpin-m2-in",
-	recv_ident="default " # trailing space needed
+{% for port in ports %}handler_{{ port.value }} = Handler(
+	send_spec="ipc:///tmp/pushpin-m2-out-{{ port.value }}",
+	send_ident="pushpin-m2-{{ port.value }}",
+	recv_spec="ipc:///tmp/pushpin-m2-in-{{ port.value }}",
+	recv_ident="pushpin-m2-{{ port.value }} " # trailing space needed
 )
 
-host = Host(name="default", routes={ "/": handler })
+{% endfor %}{% for port in ports %}host_{{ port.value }} = Host(name="default", routes={ "/": handler_{{ port.value }} })
 
-server = Server(
-	uuid="default",
+{% endfor %}{% for port in ports %}server_{{ port.value }} = Server(
+	uuid="pushpin-m2-{{ port.value }}",{% if port.ssl %}
+	use_ssl=1,{% endif %}
 	chroot="",
-	access_log="{{ rootdir }}/log/access.log",
-	error_log="{{ rootdir }}/log/error.log",
-	pid_file="{{ rootdir }}/run/mongrel2.pid",
+	access_log="{{ rootdir }}/log/access_{{ port.value }}.log",
+	error_log="{{ rootdir }}/log/error_{{ port.value }}.log",
+	pid_file="{{ rootdir }}/run/mongrel2_{{ port.value }}.pid",
 	default_host="default",
-	name="server",
-	port={{ port }},
-	hosts=[host]
+	name="server-{{ port.value }}",
+	port={{ port.value }},
+	hosts=[host_{{ port.value }}]
 )
 
-settings = {
+{% endfor %}settings = {
+	"certdir": "./certs/",
 	"upload.temp_store": "{{ rundir }}/upload.XXXXXX",
 	"upload.temp_store_mode": "0666",
 	"server.daemonize": 0
 }
 
-servers = [server]
+servers = [{% for port in ports %}server_{{ port.value }}{% if not loop.last %}, {% endif %}{% endfor %}]
+

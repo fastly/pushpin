@@ -242,6 +242,34 @@ public:
 
 		domainMap = new DomainMap(routesfile);
 
+		int runner_http_port = settings.value("runner/http_port").toInt();
+		QStringList runner_str_https_ports = settings.value("runner/https_ports").toStringList();
+		trimlist(&runner_str_https_ports);
+		QList<int> runner_https_ports;
+		foreach(const QString &str, runner_str_https_ports)
+			runner_https_ports += str.toInt();
+
+		if(m2_in_specs.count() == 1 && m2_in_specs[0] == "{dyn}")
+		{
+			m2_in_specs.clear();
+			m2_in_specs += "ipc:///tmp/pushpin-m2-out-" + QString::number(runner_http_port);
+		}
+
+		if(m2_inhttps_specs.count() == 1 && m2_inhttps_specs[0] == "{dyn}")
+		{
+			m2_inhttps_specs.clear();
+			foreach(int port, runner_https_ports)
+				m2_inhttps_specs += "ipc:///tmp/pushpin-m2-out-" + QString::number(port);
+		}
+
+		if(m2_out_specs.count() == 1 && m2_out_specs[0] == "{dyn}")
+		{
+			m2_out_specs.clear();
+			m2_out_specs += "ipc:///tmp/pushpin-m2-in-" + QString::number(runner_http_port);
+			foreach(int port, runner_https_ports)
+				m2_out_specs += "ipc:///tmp/pushpin-m2-in-" + QString::number(port);
+		}
+
 		if(m2_in_specs.isEmpty() && m2_inhttps_specs.isEmpty())
 		{
 			log_error("must set at least one of m2_in_specs and m2_inhttps_specs");

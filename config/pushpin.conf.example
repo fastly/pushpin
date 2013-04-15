@@ -2,8 +2,11 @@
 # services to start
 services=mongrel2,zurl,pushpin-proxy,pushpin-handler
 
-# port that mongrel2 should listen on
+# plain HTTP port that mongrel2 should listen on
 http_port=7999
+
+# list of HTTPS ports that mongrel2 should listen on (you must have certs set)
+#https_ports=443
 
 # directory of configs (path relative to location of this file)
 configdir=runner
@@ -22,13 +25,13 @@ zurl_bin=zurl
 
 [proxy]
 # list of connect PULL for receiving mongrel2 plain HTTP requests
-m2_in_specs=ipc:///tmp/pushpin-m2-out
+m2_in_specs={dyn}
 
 # list of connect PULL for receiving mongrel2 HTTPS requests
-m2_inhttps_specs=
+m2_inhttps_specs={dyn}
 
 # list of connect PUB for sending mongrel2 HTTP/HTTPS responses
-m2_out_specs=ipc:///tmp/pushpin-m2-in
+m2_out_specs={dyn}
 
 # list of connect PUSH for sending zurl HTTP requests
 zurl_out_specs=ipc:///tmp/pushpin-zurl-in
