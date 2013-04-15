@@ -16,10 +16,11 @@ def run(exedir, config_file, verbose):
 	http_port = int(config.get("runner", "http_port"))
 
 	https_ports = list()
-	for p in config.get("runner", "https_ports").split(","):
-		if not p:
-			continue
-		https_ports.append(int(p))
+	if config.has_option("runner", "https_ports"):
+		for p in config.get("runner", "https_ports").split(","):
+			if not p:
+				continue
+			https_ports.append(int(p))
 
 	rundir = config.get("runner", "rundir")
 	if not os.path.isabs(rundir):
