@@ -206,8 +206,26 @@ def push_in_worker(c):
 	c.notify()
 	c.release()
 
+	http_port = None
+	if config.has_option("runner", "http_port"):
+		http_port = int(config.get("runner", "http_port"))
+
+	https_ports = list()
+	if config.has_option("runner", "https_ports"):
+		for portstr in config.get("runner", "https_ports").split(","):
+			https_ports.append(int(portstr))
+
+	m2_out_specs = config.get("handler", "m2_out_specs").split(",")
+	if len(m2_out_specs) == 1 and m2_out_specs[0] == "{dyn}":
+		m2_out_specs = list()
+		ports = list()
+		ports.append(http_port)
+		ports.extend(https_ports)
+		for port in ports:
+			m2_out_specs.append("ipc:///tmp/pushpin-m2-in-%d" % port)
+
 	out_sock = ctx.socket(zmq.PUB)
-	for spec in config.get("handler", "m2_out_specs").split(","):
+	for spec in m2_out_specs:
 		out_sock.connect(spec)
 
 	while True:

@@ -78,7 +78,7 @@ proxy_retry_out_spec=ipc:///tmp/pushpin-retry
 proxy_accept_in_spec=ipc:///tmp/pushpin-accept
 
 # list of connect PUB for sending mongrel2 HTTP/HTTPS responses
-m2_out_specs=ipc:///tmp/pushpin-m2-in
+m2_out_specs={dyn}
 
 # redis server to use for storing state
 redis_host=127.0.0.1
