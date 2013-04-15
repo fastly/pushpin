@@ -33,7 +33,7 @@ Requirements:
   qca >= 2.0 (and an hmac(sha256)-supporting plugin, like qca-ossl)
   libzmq >= 2.0
   qjson
-  mongrel2
+  mongrel2 (develop branch)
   zurl
   python
   python setproctitle
