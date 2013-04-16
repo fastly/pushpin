@@ -711,7 +711,14 @@ public slots:
 				if(autoCrossOrigin)
 				{
 					if(!responseData.headers.contains("Access-Control-Allow-Origin"))
-						responseData.headers += HttpHeader("Access-Control-Allow-Origin", "*");
+					{
+						QByteArray origin = requestData.headers.get("Origin");
+
+						if(origin.isEmpty())
+							origin = "*";
+
+						responseData.headers += HttpHeader("Access-Control-Allow-Origin", origin);
+					}
 				}
 
 				connect(m2Response, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
