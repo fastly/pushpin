@@ -576,7 +576,12 @@ public slots:
 			total += responseData.body.size();
 			log_debug("proxysession: %p recv total: %d", q, total);
 
-			if(!passToUpstream && acceptTypes.contains(responseData.headers.get("Content-Type")))
+			QByteArray contentType = responseData.headers.get("Content-Type");
+			int at = contentType.indexOf(';');
+			if(at != -1)
+				contentType = contentType.mid(0, at);
+
+			if(!passToUpstream && acceptTypes.contains(contentType))
 			{
 				if(!buffering)
 				{
