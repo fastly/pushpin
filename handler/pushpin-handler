@@ -18,6 +18,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import sys
+import os
 import time
 import threading
 import ConfigParser
@@ -31,6 +32,10 @@ from conversion import ensure_utf8, convert_json_transport
 
 setproctitle("pushpin-handler")
 
+# reopen stdout file descriptor with write mode
+# and 0 as the buffer size (unbuffered)
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+
 config_file = "/etc/pushpin/pushpin.conf"
 for arg in sys.argv:
 	if arg.startswith("--config="):
@@ -40,10 +45,37 @@ for arg in sys.argv:
 config = ConfigParser.ConfigParser()
 config.read([config_file])
 
+http_port = None
+if config.has_option("runner", "http_port"):
+	http_port = int(config.get("runner", "http_port"))
+
+https_ports = list()
+if config.has_option("runner", "https_ports"):
+	for portstr in config.get("runner", "https_ports").split(","):
+		https_ports.append(int(portstr))
+
+m2_out_specs = config.get("handler", "m2_out_specs").split(",")
+if len(m2_out_specs) == 1 and m2_out_specs[0] == "{dyn}":
+	m2_out_specs = list()
+	ports = list()
+	ports.append(http_port)
+	ports.extend(https_ports)
+	for port in ports:
+		m2_out_specs.append("ipc:///tmp/pushpin-m2-in-%d" % port)
+
 ctx = zmq.Context()
 
+class Hold(object):
+	def __init__(self, rid, mode, response, auto_cross_origin, jsonp_callback):
+		self.rid = rid
+		self.mode = mode
+		self.response = response
+		self.auto_cross_origin = auto_cross_origin
+		self.jsonp_callback = jsonp_callback
+
 lock = threading.Lock()
-channels = dict()
+response_channels = dict()
+stream_channels = dict()
 
 def header_remove(headers, name):
 	for k in headers.keys():
@@ -53,6 +85,7 @@ def header_remove(headers, name):
 
 
 HTTP_FORMAT = "HTTP/1.1 %(code)s %(status)s\r\n%(headers)s\r\n\r\n%(body)s"
+HTTP_FORMAT_NOHEADERS = "HTTP/1.1 %(code)s %(status)s\r\n\r\n%(body)s"
 
 def http_response(body, code, status, headers):
 	payload = {"code": code, "status": status, "body": body}
@@ -63,7 +96,19 @@ def http_response(body, code, status, headers):
 
 	return HTTP_FORMAT % payload
 
-def reply_http(sock, rid, code, status, headers, body):
+def http_response_nolen(body, code, status, headers):
+	payload = {"code": code, "status": status, "body": body}
+	header_remove(headers, "content-length")
+
+	if len(headers) > 0:
+		payload["headers"] = "\r\n".join("%s: %s" % (k, v) for k, v in
+			headers.items())
+
+		return HTTP_FORMAT % payload
+	else:
+		return HTTP_FORMAT_NOHEADERS % payload
+
+def reply_http(sock, rid, code, status, headers, body, nolen=False):
 	header = "%s %d:%s," % (rid[0], len(rid[1]), rid[1])
 
 	if isinstance(status, unicode):
@@ -82,8 +127,16 @@ def reply_http(sock, rid, code, status, headers, body):
 	if isinstance(body, unicode):
 		body = body.encode("utf-8")
 
-	msg = http_response(body, code, status, headers)
+	if nolen:
+		msg = http_response_nolen(body, code, status, headers)
+	else:
+		msg = http_response(body, code, status, headers)
 	m_raw = header + " " + msg
+	sock.send(m_raw)
+
+def reply_http_chunk(sock, rid, content):
+	header = "%s %d:%s," % (rid[0], len(rid[1]), rid[1])
+	m_raw = header + " " + content
 	sock.send(m_raw)
 
 def inspect_worker():
@@ -113,23 +166,51 @@ def accept_worker():
 	sock = ctx.socket(zmq.PULL)
 	sock.connect(config.get("handler", "proxy_accept_in_spec"))
 
+	out_sock = ctx.socket(zmq.PUB)
+	for spec in m2_out_specs:
+		out_sock.connect(spec)
+
 	while True:
 		m_raw = sock.recv()
 		m = tnetstring.loads(m_raw)
 		print "IN: %s" % m
+
 		req = m["requests"][0]
-		sender = req["rid"]["sender"]
-		id = req["rid"]["id"]
-		instruct = json.loads(m["response"]["body"])
-		hold = instruct["hold"]
-		channel = hold["channels"][0]["name"]
-		lock.acquire()
-		hchannel = channels.get(channel)
-		if not hchannel:
-			hchannel = set()
-			channels[channel] = hchannel
-		hchannel.add(((sender, id), req.get("auto-cross-origin"), req.get("jsonp-callback")))
-		lock.release()
+
+		try:
+			rid = (req["rid"]["sender"], req["rid"]["id"])
+			instruct = json.loads(m["response"]["body"])
+			hold = instruct["hold"]
+			mode = hold["mode"]
+			if mode != "response" and mode != "stream":
+				raise ValueError("bad mode")
+			channel = hold["channels"][0]["name"]
+			response = instruct["response"]
+		except:
+			continue
+
+		h = Hold(rid, mode, response, req.get("auto-cross-origin"), req.get("jsonp-callback"))
+
+		if mode == "response":
+			lock.acquire()
+			hchannel = response_channels.get(channel)
+			if not hchannel:
+				hchannel = dict()
+				response_channels[channel] = hchannel
+			hchannel[rid] = h
+			lock.release()
+		else: # stream
+			# initial reply
+			reply_http(out_sock, rid, 200, "OK", {}, response.get("body"), True)
+
+			# bind channel
+			lock.acquire()
+			hchannel = stream_channels.get(channel)
+			if not hchannel:
+				hchannel = dict()
+				stream_channels[channel] = hchannel
+			hchannel[rid] = h
+			lock.release()
 
 	sock.close()
 
@@ -206,24 +287,6 @@ def push_in_worker(c):
 	c.notify()
 	c.release()
 
-	http_port = None
-	if config.has_option("runner", "http_port"):
-		http_port = int(config.get("runner", "http_port"))
-
-	https_ports = list()
-	if config.has_option("runner", "https_ports"):
-		for portstr in config.get("runner", "https_ports").split(","):
-			https_ports.append(int(portstr))
-
-	m2_out_specs = config.get("handler", "m2_out_specs").split(",")
-	if len(m2_out_specs) == 1 and m2_out_specs[0] == "{dyn}":
-		m2_out_specs = list()
-		ports = list()
-		ports.append(http_port)
-		ports.extend(https_ports)
-		for port in ports:
-			m2_out_specs.append("ipc:///tmp/pushpin-m2-in-%d" % port)
-
 	out_sock = ctx.socket(zmq.PUB)
 	for spec in m2_out_specs:
 		out_sock.connect(spec)
@@ -233,37 +296,49 @@ def push_in_worker(c):
 		m = tnetstring.loads(m_raw)
 		print "IN: %s" % m
 		channel = m["channel"]
-		rids = set()
-		lock.acquire()
-		hchannel = channels.get(channel)
-		if hchannel:
-			reqs = hchannel
-			del channels[channel]
-		lock.release()
-		print "relaying to %d subscribers" % len(rids)
-		for req in reqs:
-			rid = req[0]
-			auto_cross_origin = req[1]
-			callback = req[2]
 
-			headers = dict()
-			body = m["http-response"]["body"]
-			if callback is not None:
-				result = dict()
-				result["code"] = 200
-				result["reason"] = "OK"
-				result["headers"] = dict()
-				result["headers"]["Content-Length"] = str(len(body))
-				result["body"] = body
-
-				body = callback + "(" + json.dumps(result) + ");\n"
-				headers["Content-Type"] = "application/javascript"
-				headers["Content-Length"] = str(len(body))
+		if "http-response" in m:
+			lock.acquire()
+			hchannel = response_channels.get(channel)
+			if hchannel:
+				holds = hchannel.values()
+				del response_channels[channel]
 			else:
-				if auto_cross_origin:
-					headers["Access-Control-Allow-Origin"] = "*"
+				holds = list()
+			lock.release()
+			print "relaying to %d subscribers" % len(holds)
+			for h in holds:
+				headers = dict()
+				body = m["http-response"]["body"]
+				if h.jsonp_callback:
+					result = dict()
+					result["code"] = 200
+					result["reason"] = "OK"
+					result["headers"] = dict()
+					result["headers"]["Content-Length"] = str(len(body))
+					result["body"] = body
 
-			reply_http(out_sock, rid, 200, "OK", headers, body)
+					body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
+					headers["Content-Type"] = "application/javascript"
+					headers["Content-Length"] = str(len(body))
+				else:
+					if h.auto_cross_origin:
+						headers["Access-Control-Allow-Origin"] = "*"
+				reply_http(out_sock, h.rid, 200, "OK", headers, body)
+
+		if "http-stream" in m:
+			lock.acquire()
+			hchannel = stream_channels.get(channel)
+			if hchannel:
+				holds = hchannel.values()
+			else:
+				holds = list()
+			lock.release()
+			print "relaying to %d subscribers" % len(holds)
+			for h in holds:
+				content = m["http-stream"]["content"]
+				if content:
+					reply_http_chunk(out_sock, h.rid, content)
 
 	in_sock.close()
 
