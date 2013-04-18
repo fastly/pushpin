@@ -117,7 +117,7 @@ QVariant decode(const QByteArray &token, const QByteArray &key)
 	if(at == -1)
 		return QVariant();
 
-	QByteArray claimPart = token.mid(start, start - at);
+	QByteArray claimPart = token.mid(start, at - start);
 	QByteArray sig = token.mid(at + 1);
 
 	bool ok;
