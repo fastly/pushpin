@@ -226,7 +226,7 @@ public:
 						passToUpstream = true;
 					}
 					else
-						log_debug("proxysession: %p signature present but invalid", q);
+						log_debug("proxysession: %p signature present but invalid: %s", q, token.data());
 				}
 			}
 

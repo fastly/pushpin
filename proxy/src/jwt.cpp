@@ -117,8 +117,8 @@ QVariant decode(const QByteArray &token, const QByteArray &key)
 	if(at == -1)
 		return QVariant();
 
-	QByteArray claimPart = token.mid(start, at);
-	QByteArray sigPart = token.mid(at + 1);
+	QByteArray claimPart = token.mid(start, start - at);
+	QByteArray sig = token.mid(at + 1);
 
 	bool ok;
 	QJson::Parser parser;
@@ -143,9 +143,7 @@ QVariant decode(const QByteArray &token, const QByteArray &key)
 	if(!ok)
 		return QVariant();
 
-	QByteArray sig = unbase64url(sigPart);
-
-	if(jws_sign(headerJson, claimJson, key) != sig)
+	if(jws_sign(headerPart, claimPart, key) != sig)
 		return QVariant();
 
 	return claim;
