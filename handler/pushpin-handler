@@ -29,6 +29,7 @@ import tnetstring
 import httpinterface
 from validation import validate_publish, validate_http_publish, ValidationError
 from conversion import ensure_utf8, convert_json_transport
+from statusreasons import get_reason
 
 setproctitle("pushpin-handler")
 
@@ -337,24 +338,45 @@ def push_in_worker(c):
 				holds = list()
 			lock.release()
 			print "relaying to %d subscribers" % len(holds)
+			http_response = m["http-response"]
+
+			if "code" in http_response:
+				pcode = http_response["code"]
+			else:
+				pcode = 200
+
+			if "reason" in http_response:
+				preason = http_response["reason"]
+			else:
+				preason = get_reason(pcode)
+
+			if "headers" in http_response:
+				pheaders = http_response["headers"]
+			else:
+				pheaders = dict()
+
+			if "body" in http_response:
+				pbody = http_response["body"]
+			else:
+				pbody = ""
+
 			for h in holds:
-				pheaders = m["http-response"].get("headers")
 				headers = dict()
-				body = m["http-response"]["body"]
 				if h.jsonp_callback:
 					result = dict()
-					result["code"] = 200
-					result["reason"] = "OK"
+					result["code"] = pcode
+					result["reason"] = preason
 					result["headers"] = dict()
-					result["headers"]["Content-Length"] = str(len(body))
 					if pheaders:
 						for k, v in pheaders.iteritems():
 							result["headers"][k] = v
-					result["body"] = body
+					result["headers"]["Content-Length"] = str(len(pbody))
+					result["body"] = pbody
 
 					body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
 					headers["Content-Type"] = "application/javascript"
 					headers["Content-Length"] = str(len(body))
+					reply_http(out_sock, h.rid, 200, "OK", headers, body)
 				else:
 					if pheaders:
 						for k, v in pheaders.iteritems():
@@ -381,7 +403,7 @@ def push_in_worker(c):
 						headers["Access-Control-Allow-Credentials"] = "true"
 						headers["Access-Control-Allow-Origin"] = h.origin
 
-				reply_http(out_sock, h.rid, 200, "OK", headers, body)
+					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
 
 		if "http-stream" in m:
 			lock.acquire()
