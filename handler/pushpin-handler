@@ -82,6 +82,7 @@ class Hold(object):
 		self.auto_cross_origin = auto_cross_origin
 		self.origin = origin
 		self.jsonp_callback = jsonp_callback
+		self.expire_time = None
 
 lock = threading.Lock()
 response_channels = dict()
@@ -210,6 +211,10 @@ def accept_worker():
 			if mode != "response" and mode != "stream":
 				raise ValueError("bad mode")
 			channel = hold["channels"][0]["name"]
+			if "timeout" in hold:
+				timeout = int(hold["timeout"])
+			else:
+				timeout = 55
 			response = instruct.get("response")
 			if response is None:
 				response = dict()
@@ -221,6 +226,7 @@ def accept_worker():
 
 		if mode == "response":
 			print "adding response hold on %s" % channel
+			h.expire_time = int(time.time()) + timeout
 			lock.acquire()
 			hchannel = response_channels.get(channel)
 			if not hchannel:
@@ -421,6 +427,98 @@ def push_in_worker(c):
 
 	in_sock.close()
 
+def timeout_worker():
+	out_sock = ctx.socket(zmq.PUB)
+	for spec in m2_out_specs:
+		out_sock.connect(spec)
+
+	while True:
+		now = int(time.time())
+		lock.acquire()
+		holds = list()
+		channels = set()
+		for channel, hchannels in response_channels.iteritems():
+			channels.add(channel)
+			for h in hchannels.values():
+				if h.expire_time and now >= h.expire_time:
+					holds.append(h)
+			for h in holds:
+				del hchannels[h.rid]
+		for channel in channels:
+			if channel in response_channels and len(response_channels[channel]) == 0:
+				del response_channels[channel]
+		lock.release()
+
+		if len(holds) > 0:
+			print "timing out %d subscribers" % len(holds)
+
+			for h in holds:
+				if "code" in h.response:
+					pcode = h.response["code"]
+				else:
+					pcode = 200
+
+				if "reason" in h.response:
+					preason = h.response["reason"]
+				else:
+					preason = get_reason(pcode)
+
+				if "headers" in h.response:
+					pheaders = h.response["headers"]
+				else:
+					pheaders = dict()
+
+				if "body" in h.response:
+					pbody = h.response["body"]
+				else:
+					pbody = ""
+
+				headers = dict()
+				if h.jsonp_callback:
+					result = dict()
+					result["code"] = pcode
+					result["reason"] = preason
+					result["headers"] = dict()
+					if pheaders:
+						for k, v in pheaders.iteritems():
+							result["headers"][k] = v
+					result["headers"]["Content-Length"] = str(len(pbody))
+					result["body"] = pbody
+
+					body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
+					headers["Content-Type"] = "application/javascript"
+					headers["Content-Length"] = str(len(body))
+					reply_http(out_sock, h.rid, 200, "OK", headers, body)
+				else:
+					if pheaders:
+						for k, v in pheaders.iteritems():
+							headers[k] = v
+					if h.auto_cross_origin:
+						acr_headers = headers.get("Access-Control-Request-Headers")
+						ace_headers = list();
+						if acr_headers:
+							for name in acr_headers.split(","):
+								name = name.strip()
+								if name:
+									ace_headers.append(name)
+
+						expose_headers = list()
+						for name in headers.keys():
+							if name not in simple_headers and not name.startswith("Access-Control-"):
+								expose_headers.append(name)
+
+						headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE"
+						if len(ace_headers) > 0:
+							headers["Access-Control-Allow-Headers"] = ", ".join(ace_headers)
+						if len(expose_headers) > 0:
+							headers["Access-Control-Expose-Headers"] = ", ".join(expose_headers)
+						headers["Access-Control-Allow-Credentials"] = "true"
+						headers["Access-Control-Allow-Origin"] = h.origin
+
+					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
+
+		time.sleep(1)
+
 inspect_thread = threading.Thread(target=inspect_worker)
 inspect_thread.start()
 
@@ -440,6 +538,10 @@ push_in_zmq_thread.start()
 
 push_in_http_thread = threading.Thread(target=push_in_http_worker)
 push_in_http_thread.start()
+
+timeout_thread = threading.Thread(target=timeout_worker)
+timeout_thread.daemon = True
+timeout_thread.start()
 
 try:
 	while True:
