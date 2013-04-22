@@ -439,11 +439,13 @@ def timeout_worker():
 		channels = set()
 		for channel, hchannels in response_channels.iteritems():
 			channels.add(channel)
+			channel_holds = list()
 			for h in hchannels.values():
 				if h.expire_time and now >= h.expire_time:
-					holds.append(h)
-			for h in holds:
+					channel_holds.append(h)
+			for h in channel_holds:
 				del hchannels[h.rid]
+			holds.extend(channel_holds)
 		for channel in channels:
 			if channel in response_channels and len(response_channels[channel]) == 0:
 				del response_channels[channel]
