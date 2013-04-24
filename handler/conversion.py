@@ -24,6 +24,10 @@ def ensure_utf8(s):
 # convert json-style transport to tnetstring-style
 def convert_json_transport(t):
 	out = dict()
+	if "code" in t:
+		out["code"] = t["code"]
+	if "reason" in t:
+		out["reason"] = ensure_utf8(t["reason"])
 	if "headers" in t:
 		headers = dict()
 		for k, v in t["headers"].iteritems():
@@ -31,6 +35,8 @@ def convert_json_transport(t):
 		out["headers"] = headers
 	if "body" in t:
 		out["body"] = ensure_utf8(t["body"])
+	if "action" in t:
+		out["action"] = ensure_utf8(t["action"])
 	if "content" in t:
 		out["content"] = ensure_utf8(t["content"])
 	return out
