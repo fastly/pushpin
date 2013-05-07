@@ -26,6 +26,7 @@ ZurlRequestPacket::ZurlRequestPacket() :
 	stream(false),
 	maxSize(-1),
 	ignorePolicies(false),
+	ignoreTlsErrors(false),
 	credits(-1)
 {
 }
@@ -78,6 +79,9 @@ QVariant ZurlRequestPacket::toVariant() const
 
 	if(ignorePolicies)
 		obj["ignore-policies"] = true;
+
+	if(ignoreTlsErrors)
+		obj["ignore-tls-errors"] = true;
 
 	if(credits != -1)
 		obj["credits"] = credits;
@@ -215,6 +219,15 @@ bool ZurlRequestPacket::fromVariant(const QVariant &in)
 			return false;
 
 		ignorePolicies = obj["ignore-policies"].toBool();
+	}
+
+	ignoreTlsErrors = false;
+	if(obj.contains("ignore-tls-errors"))
+	{
+		if(obj["ignore-tls-errors"].type() != QVariant::Bool)
+			return false;
+
+		ignoreTlsErrors = obj["ignore-tls-errors"].toBool();
 	}
 
 	credits = -1;

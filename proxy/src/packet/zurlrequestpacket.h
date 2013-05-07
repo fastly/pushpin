@@ -39,6 +39,7 @@ public:
 	int maxSize;
 	QString connectHost;
 	bool ignorePolicies;
+	bool ignoreTlsErrors;
 	int credits;
 	QVariant userData;
 
