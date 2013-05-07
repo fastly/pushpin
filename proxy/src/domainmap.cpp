@@ -289,6 +289,9 @@ public:
 				else
 					target.trusted = true;
 
+				if(props.contains("insecure"))
+					target.insecure = true;
+
 				r.targets += target;
 			}
 

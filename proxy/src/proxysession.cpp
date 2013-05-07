@@ -329,6 +329,9 @@ public:
 		if(target.trusted)
 			zurlRequest->setIgnorePolicies(true);
 
+		if(target.insecure)
+			zurlRequest->setIgnoreTlsErrors(true);
+
 		zurlRequest->start(requestData.method, url, requestData.headers);
 
 		if(!initialRequestBody.isEmpty())

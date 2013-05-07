@@ -54,6 +54,7 @@ public:
 	QByteArray replyAddress;
 	QString connectHost;
 	bool ignorePolicies;
+	bool ignoreTlsErrors;
 	QString method;
 	QUrl url;
 	HttpHeaders headers;
@@ -78,6 +79,7 @@ public:
 		manager(0),
 		state(Stopped),
 		ignorePolicies(false),
+		ignoreTlsErrors(false),
 		inSeq(0),
 		outSeq(0),
 		outCredits(0),
@@ -415,6 +417,8 @@ public slots:
 			p.connectHost = connectHost;
 			if(ignorePolicies)
 				p.ignorePolicies = true;
+			if(ignoreTlsErrors)
+				p.ignoreTlsErrors = true;
 			p.credits = IDEAL_CREDITS;
 			managerWrite(p);
 
@@ -473,6 +477,11 @@ void ZurlRequest::setConnectHost(const QString &host)
 void ZurlRequest::setIgnorePolicies(bool on)
 {
 	d->ignorePolicies = on;
+}
+
+void ZurlRequest::setIgnoreTlsErrors(bool on)
+{
+	d->ignoreTlsErrors = on;
 }
 
 void ZurlRequest::start(const QString &method, const QUrl &url, const HttpHeaders &headers)

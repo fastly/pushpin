@@ -54,6 +54,7 @@ public:
 
 	void setConnectHost(const QString &host);
 	void setIgnorePolicies(bool on);
+	void setIgnoreTlsErrors(bool on);
 
 	void start(const QString &method, const QUrl &url, const HttpHeaders &headers);
 

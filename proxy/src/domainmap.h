@@ -34,13 +34,15 @@ public:
 	public:
 		QString host;
 		int port;
-		bool ssl;
-		bool trusted;
+		bool ssl; // use https
+		bool trusted; // bypass zurl access policies
+		bool insecure; // ignore server certificate validity
 
 		Target() :
 			port(-1),
 			ssl(false),
-			trusted(false)
+			trusted(false),
+			insecure(false)
 		{
 		}
 	};
