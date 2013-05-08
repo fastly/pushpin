@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fan Out Networks, Inc.
+ * Copyright (C) 2012-2013 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -393,7 +393,7 @@ public:
 		if(requestData.headers.contains("Pushpin-Check"))
 		{
 			QString str =
-			"Copyright (C) 2012-2013 Fan Out Networks, Inc.\n"
+			"Copyright (C) 2012-2013 Fanout, Inc.\n"
 			"\n"
 			"Pushpin is free software: you can redistribute it and/or modify it under\n"
 			"the terms of the GNU Affero General Public License as published by the Free\n"

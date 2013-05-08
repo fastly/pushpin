@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Fan Out Networks, Inc.
+ * Copyright (C) 2012-2013 Fanout, Inc.
  * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

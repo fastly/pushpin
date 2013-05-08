@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fan Out Networks, Inc.
+ * Copyright (C) 2012-2013 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
