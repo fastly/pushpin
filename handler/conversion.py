@@ -15,6 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+from base64 import b64decode
+
 def ensure_utf8(s):
 	if isinstance(s, unicode):
 		return s.encode("utf-8")
@@ -33,10 +35,14 @@ def convert_json_transport(t):
 		for k, v in t["headers"].iteritems():
 			headers[ensure_utf8(k)] = ensure_utf8(v)
 		out["headers"] = headers
-	if "body" in t:
+	if "body-bin" in t:
+		out["body"] = ensure_utf8(b64decode(t["body-bin"]))
+	elif "body" in t:
 		out["body"] = ensure_utf8(t["body"])
 	if "action" in t:
 		out["action"] = ensure_utf8(t["action"])
-	if "content" in t:
+	if "content-bin" in t:
+		out["content"] = ensure_utf8(b64decode(t["content-bin"]))
+	elif "content" in t:
 		out["content"] = ensure_utf8(t["content"])
 	return out
