@@ -23,6 +23,7 @@ import time
 import threading
 import ConfigParser
 import json
+from base64 import b64decode
 from setproctitle import setproctitle
 import zmq
 import tnetstring
@@ -219,6 +220,11 @@ def accept_worker():
 			if response is None:
 				response = dict()
 				response["body"] = ""
+			if "body-bin" in response:
+				response["body"] = b64decode(response["body-bin"])
+				del response["body-bin"]
+			else:
+				response["body"] = response["body"].encode("utf-8")
 		except:
 			continue
 
