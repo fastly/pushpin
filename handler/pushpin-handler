@@ -242,7 +242,22 @@ def accept_worker():
 			lock.release()
 		else: # stream
 			# initial reply
-			reply_http(out_sock, rid, 200, "OK", {}, response.get("body"), True)
+			if "code" in response:
+				rcode = response["code"]
+			else:
+				rcode = 200
+
+			if "reason" in response:
+				rreason = response["reason"]
+			else:
+				rreason = get_reason(rcode)
+
+			if "headers" in response:
+				rheaders = response["headers"]
+			else:
+				rheaders = dict()
+
+			reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True)
 
 			print "adding stream hold on %s" % channel
 
