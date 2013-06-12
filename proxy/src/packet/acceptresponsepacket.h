@@ -23,6 +23,7 @@
 #include <QVariant>
 #include <QPair>
 #include <QList>
+#include <QHostAddress>
 #include "httprequestdata.h"
 #include "inspectresponsepacket.h"
 #include "httpresponsedata.h"
@@ -37,6 +38,7 @@ public:
 	public:
 		Rid rid;
 		bool https;
+		QHostAddress peerAddress;
 		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 

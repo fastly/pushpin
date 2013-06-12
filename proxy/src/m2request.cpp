@@ -229,6 +229,11 @@ bool M2Request::isHttps() const
 	return d->isHttps;
 }
 
+QHostAddress M2Request::peerAddress() const
+{
+	return d->p.remoteAddress;
+}
+
 bool M2Request::isFinished() const
 {
 	return d->finished;

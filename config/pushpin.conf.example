@@ -60,6 +60,12 @@ auto_cross_origin=false
 # whether to assert x-forwarded-protocol
 set_x_forwarded_protocol=true
 
+# how to treat x-forwarded-for. example: "truncate:0,append"
+x_forwarded_for=
+
+# how to treat x-forwarded-for if grip-signed
+x_forwarded_for_trusted=
+
 # for signing requests proxied by pushpin. use "base64:" prefix for binary key
 sig_key=changeme
 

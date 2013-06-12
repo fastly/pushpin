@@ -71,6 +71,14 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 			r.https = vrequest["https"].toBool();
 		}
 
+		if(vrequest.contains("peer-address"))
+		{
+			if(vrequest["peer-address"].type() != QVariant::ByteArray)
+				return false;
+
+			r.peerAddress = QHostAddress(QString::fromUtf8(vrequest["peer-address"].toByteArray()));
+		}
+
 		if(vrequest.contains("jsonp-callback"))
 		{
 			if(vrequest["jsonp-callback"].type() != QVariant::ByteArray)

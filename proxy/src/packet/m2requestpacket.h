@@ -21,6 +21,7 @@
 #define M2REQUESTPACKET_H
 
 #include <QVariant>
+#include <QHostAddress>
 #include "httpheaders.h"
 
 class M2RequestPacket
@@ -31,6 +32,7 @@ public:
 
 	bool isDisconnect;
 
+	QHostAddress remoteAddress;
 	QByteArray scheme;
 	QString method;
 	QByteArray path;

@@ -21,6 +21,7 @@
 #define RETRYREQUESTPACKET_H
 
 #include <QVariant>
+#include <QHostAddress>
 #include "httprequestdata.h"
 #include "inspectresponsepacket.h"
 
@@ -34,6 +35,7 @@ public:
 	public:
 		Rid rid;
 		bool https;
+		QHostAddress peerAddress;
 		QByteArray jsonpCallback;
 
 		Request() :

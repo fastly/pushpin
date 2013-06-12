@@ -35,6 +35,7 @@ public:
 	public:
 		M2Request::Rid rid;
 		bool https;
+		QHostAddress peerAddress;
 		QByteArray jsonpCallback;
 
 		Request() :

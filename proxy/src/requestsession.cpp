@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QUrl>
+#include <QHostAddress>
 #include <qjson/parser.h>
 #include <qjson/serializer.h>
 #include "packet/httprequestdata.h"
@@ -154,6 +155,7 @@ public:
 	M2Manager *m2Manager; // used when we don't have m2Request
 	M2Request::Rid rid;
 	bool isHttps;
+	QHostAddress peerAddress;
 	HttpRequestData requestData;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
@@ -386,6 +388,7 @@ public:
 
 		rid = m2Request->rid();
 		isHttps = m2Request->isHttps();
+		peerAddress = m2Request->peerAddress();
 		requestData = hdata;
 
 		// NOTE: per the license, this functionality may not be removed as it
@@ -453,6 +456,7 @@ public:
 			AcceptData::Request areq;
 			areq.rid = m2Request->rid();
 			areq.https = isHttps;
+			areq.peerAddress = peerAddress;
 			areq.jsonpCallback = jsonpCallback;
 			adata.requests += areq;
 
@@ -799,6 +803,11 @@ bool RequestSession::isHttps() const
 	return d->isHttps;
 }
 
+QHostAddress RequestSession::peerAddress() const
+{
+	return d->peerAddress;
+}
+
 QString RequestSession::host() const
 {
 	return d->host;
@@ -834,11 +843,12 @@ void RequestSession::start(M2Request *req)
 	d->start(req);
 }
 
-bool RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QByteArray &jsonpCallback, M2Manager *manager)
+bool RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QHostAddress &peerAddress, const QByteArray &jsonpCallback, M2Manager *manager)
 {
 	d->rid = rid;
 	d->requestData = hdata;
 	d->isHttps = https;
+	d->peerAddress = peerAddress;
 	d->jsonpCallback = jsonpCallback;
 	d->m2Manager = manager;
 

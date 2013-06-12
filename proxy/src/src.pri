@@ -45,6 +45,7 @@ HEADERS += \
 	$$PWD/inspectrequest.h \
 	$$PWD/acceptdata.h \
 	$$PWD/domainmap.h \
+	$$PWD/xffrule.h \
 	$$PWD/inspectchecker.h \
 	$$PWD/requestsession.h \
 	$$PWD/proxysession.h \

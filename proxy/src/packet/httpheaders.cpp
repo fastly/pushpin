@@ -17,16 +17,12 @@
 
 #include "httpheaders.h"
 
-QByteArray HttpHeaders::get(const QByteArray &key) const
+static QList<QByteArray> header_split(const QByteArray &in)
 {
-	for(int n = 0; n < count(); ++n)
-	{
-		const HttpHeader &h = at(n);
-		if(qstricmp(h.first.data(), key.data()) == 0)
-			return at(n).second;
-	}
-
-	return QByteArray();
+	QList<QByteArray> parts = in.split(',');
+	for(int n = 0; n < parts.count(); ++n)
+		parts[n] = parts[n].trimmed();
+	return parts;
 }
 
 bool HttpHeaders::contains(const QByteArray &key) const
@@ -40,6 +36,59 @@ bool HttpHeaders::contains(const QByteArray &key) const
 	return false;
 }
 
+QByteArray HttpHeaders::get(const QByteArray &key) const
+{
+	for(int n = 0; n < count(); ++n)
+	{
+		const HttpHeader &h = at(n);
+		if(qstricmp(h.first.data(), key.data()) == 0)
+			return h.second;
+	}
+
+	return QByteArray();
+}
+
+QList<QByteArray> HttpHeaders::getAll(const QByteArray &key, bool split) const
+{
+	QList<QByteArray> out;
+
+	for(int n = 0; n < count(); ++n)
+	{
+		const HttpHeader &h = at(n);
+		if(qstricmp(h.first.data(), key.data()) == 0)
+		{
+			if(split)
+				out += header_split(h.second);
+			else
+				out += h.second;
+		}
+	}
+
+	return out;
+}
+
+QList<QByteArray> HttpHeaders::takeAll(const QByteArray &key, bool split)
+{
+	QList<QByteArray> out;
+
+	for(int n = 0; n < count(); ++n)
+	{
+		const HttpHeader &h = at(n);
+		if(qstricmp(h.first.data(), key.data()) == 0)
+		{
+			if(split)
+				out += header_split(h.second);
+			else
+				out += h.second;
+
+			removeAt(n);
+			--n; // adjust position
+		}
+	}
+
+	return out;
+}
+
 void HttpHeaders::removeAll(const QByteArray &key)
 {
 	for(int n = 0; n < count(); ++n)
@@ -50,4 +99,21 @@ void HttpHeaders::removeAll(const QByteArray &key)
 			--n; // adjust position
 		}
 	}
+}
+
+QByteArray HttpHeaders::join(const QList<QByteArray> &values)
+{
+	QByteArray out;
+
+	bool first = true;
+	foreach(const QByteArray &val, values)
+	{
+		if(!first)
+			out += ", ";
+
+		out += val;
+		first = false;
+	}
+
+	return out;
 }

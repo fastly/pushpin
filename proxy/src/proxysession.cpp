@@ -24,6 +24,7 @@
 #include <QPointer>
 #include <QUrl>
 #include <QDateTime>
+#include <QHostAddress>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "log.h"
@@ -34,6 +35,7 @@
 #include "zurlmanager.h"
 #include "zurlrequest.h"
 #include "domainmap.h"
+#include "xffrule.h"
 #include "requestsession.h"
 
 #define MAX_ACCEPT_REQUEST_BODY 100000
@@ -127,6 +129,8 @@ public:
 	QByteArray defaultUpstreamKey;
 	bool passToUpstream;
 	bool useXForwardedProtocol;
+	XffRule xffRule;
+	XffRule xffTrustedRule;
 
 	Private(ProxySession *_q, ZurlManager *_zurlManager, DomainMap *_domainMap) :
 		QObject(_q),
@@ -250,6 +254,20 @@ public:
 				if(isHttps)
 					requestData.headers += HttpHeader("X-Forwarded-Protocol", "https");
 			}
+
+			XffRule *xr;
+			if(passToUpstream)
+				xr = &xffTrustedRule;
+			else
+				xr = &xffRule;
+
+			QList<QByteArray> xffValues = requestData.headers.takeAll("X-Forwarded-For");
+			if(xr->truncate >= 0)
+				xffValues = xffValues.mid(qMax(xffValues.count() - xr->truncate, 0));
+			if(xr->append)
+				xffValues += rs->peerAddress().toString().toUtf8();
+			if(!xffValues.isEmpty())
+				requestData.headers += HttpHeader("X-Forwarded-For", HttpHeaders::join(xffValues));
 
 			state = Requesting;
 			buffering = true;
@@ -509,6 +527,7 @@ public:
 					AcceptData::Request areq;
 					areq.rid = si->rs->rid();
 					areq.https = si->rs->isHttps();
+					areq.peerAddress = si->rs->peerAddress();
 					areq.jsonpCallback = si->rs->jsonpCallback();
 					adata.requests += areq;
 				}
@@ -767,6 +786,12 @@ void ProxySession::setDefaultUpstreamKey(const QByteArray &key)
 void ProxySession::setUseXForwardedProtocol(bool enabled)
 {
 	d->useXForwardedProtocol = enabled;
+}
+
+void ProxySession::setXffRules(const XffRule &untrusted, const XffRule &trusted)
+{
+	d->xffRule = untrusted;
+	d->xffTrustedRule = trusted;
 }
 
 void ProxySession::setInspectData(const InspectData &idata)

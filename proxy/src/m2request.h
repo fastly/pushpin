@@ -23,6 +23,8 @@
 #include <QObject>
 #include "packet/httpheaders.h"
 
+class QHostAddress;
+
 class M2RequestPacket;
 class M2Manager;
 class M2Response;
@@ -39,6 +41,7 @@ public:
 
 	Rid rid() const;
 	bool isHttps() const;
+	QHostAddress peerAddress() const;
 	bool isFinished() const;
 
 	QString method() const;

@@ -160,8 +160,14 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		return true;
 	}
 
+	QByteArray m2RemoteAddr = m2headers.value("REMOTE_ADDR");
+
 	method = QString::fromLatin1(m2method);
 	path = m2headers.value("URI");
+
+	remoteAddress = QHostAddress();
+	if(!m2RemoteAddr.isEmpty())
+		remoteAddress = QHostAddress(QString::fromLatin1(m2RemoteAddr));
 
 	QByteArray uploadStartRaw = m2headers.value("x-mongrel2-upload-start");
 	QByteArray uploadDoneRaw = m2headers.value("x-mongrel2-upload-done");

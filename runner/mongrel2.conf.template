@@ -24,7 +24,8 @@
 	"certdir": ".{{ rootdir }}/certs/",
 	"upload.temp_store": "{{ rundir }}/upload.XXXXXX",
 	"upload.temp_store_mode": "0666",
-	"server.daemonize": 0
+	"server.daemonize": 0,
+	"no_clobber_xff": 1
 }
 
 servers = [{% for port in ports %}server_{{ port.value }}{% if not loop.last %}, {% endif %}{% endfor %}]

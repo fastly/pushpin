@@ -40,8 +40,9 @@
 #include "m2response.h"
 #include "zurlmanager.h"
 #include "zurlrequest.h"
-#include "inspectmanager.h"
 #include "domainmap.h"
+#include "xffrule.h"
+#include "inspectmanager.h"
 #include "inspectchecker.h"
 #include "requestsession.h"
 #include "proxysession.h"
@@ -68,6 +69,27 @@ static QByteArray parse_key(const QString &in)
 		return QByteArray::fromBase64(in.mid(7).toUtf8());
 	else
 		return in.toUtf8();
+}
+
+static XffRule parse_xffRule(const QString &in)
+{
+	XffRule out;
+	QStringList parts = in.split(',');
+	foreach(const QString &s, parts)
+	{
+		if(s.startsWith("truncate:"))
+		{
+			bool ok;
+			int x = s.mid(9).toInt(&ok);
+			if(!ok)
+				return out;
+
+			out.truncate = x;
+		}
+		else if(s == "append")
+			out.append = true;
+	}
+	return out;
 }
 
 class App::Private : public QObject
@@ -106,6 +128,8 @@ public:
 	int maxWorkers;
 	bool autoCrossOrigin;
 	bool useXForwardedProtocol;
+	XffRule xffRule;
+	XffRule xffTrustedRule;
 	QByteArray sigIss;
 	QByteArray sigKey;
 	QByteArray upstreamKey;
@@ -227,6 +251,8 @@ public:
 		QString routesfile = settings.value("proxy/routesfile").toString();
 		autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
 		useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
+		xffRule = parse_xffRule(settings.value("proxy/x_forwarded_for").toString());
+		xffTrustedRule = parse_xffRule(settings.value("proxy/x_forwarded_for_trusted").toString());
 		sigKey = parse_key(settings.value("proxy/sig_key").toString());
 		upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
 
@@ -380,6 +406,7 @@ public:
 			ps->setDefaultSigKey(sigIss, sigKey);
 			ps->setDefaultUpstreamKey(upstreamKey);
 			ps->setUseXForwardedProtocol(useXForwardedProtocol);
+			ps->setXffRules(xffRule, xffTrustedRule);
 
 			if(idata)
 				ps->setInspectData(*idata);
@@ -412,6 +439,7 @@ public:
 			AcceptResponsePacket::Request req;
 			req.rid = AcceptResponsePacket::Rid(areq.rid.first, areq.rid.second);
 			req.https = areq.https;
+			req.peerAddress = areq.peerAddress;
 			req.autoCrossOrigin = autoCrossOrigin;
 			req.jsonpCallback = areq.jsonpCallback;
 			p.requests += req;
@@ -617,7 +645,7 @@ private slots:
 			M2Request::Rid rid(req.rid.first, req.rid.second);
 
 			RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
-			if(!rs->setupAsRetry(rid, p.requestData, req.https, req.jsonpCallback, m2))
+			if(!rs->setupAsRetry(rid, p.requestData, req.https, req.peerAddress, req.jsonpCallback, m2))
 			{
 				delete rs;
 				log_error("retry_in: invalid host header");

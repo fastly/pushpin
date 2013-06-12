@@ -26,6 +26,7 @@ class InspectData;
 class AcceptData;
 class ZurlManager;
 class DomainMap;
+class XffRule;
 class RequestSession;
 
 class ProxySession : public QObject
@@ -39,6 +40,7 @@ public:
 	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
 	void setDefaultUpstreamKey(const QByteArray &key);
 	void setUseXForwardedProtocol(bool enabled);
+	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
 
 	void setInspectData(const InspectData &idata);
 

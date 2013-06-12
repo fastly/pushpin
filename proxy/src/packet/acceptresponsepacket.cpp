@@ -44,6 +44,9 @@ QVariant AcceptResponsePacket::toVariant() const
 			if(r.https)
 				vrequest["https"] = true;
 
+			if(!r.peerAddress.isNull())
+				vrequest["peer-address"] = r.peerAddress.toString().toUtf8();
+
 			if(r.autoCrossOrigin)
 				vrequest["auto-cross-origin"] = true;
 

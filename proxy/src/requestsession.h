@@ -23,6 +23,8 @@
 #include <QObject>
 #include "m2request.h"
 
+class QHostAddress;
+
 class HttpRequestData;
 class InspectData;
 class AcceptData;
@@ -40,6 +42,7 @@ public:
 
 	bool isRetry() const;
 	bool isHttps() const;
+	QHostAddress peerAddress() const;
 	QString host() const;
 	M2Request::Rid rid() const;
 	HttpRequestData requestData() const;
@@ -53,7 +56,7 @@ public:
 	void start(M2Request *req);
 
 	// creates an M2Request-less session
-	bool setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QByteArray &jsonpCallback, M2Manager *manager);
+	bool setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QHostAddress &peerAddress, const QByteArray &jsonpCallback, M2Manager *manager);
 
 	void startResponse(int code, const QByteArray &status, const HttpHeaders &headers);
 	void writeResponseBody(const QByteArray &body);
