@@ -246,7 +246,7 @@ QString M2Request::method() const
 
 QByteArray M2Request::path() const
 {
-	return d->p.path;
+	return d->p.uri;
 }
 
 const HttpHeaders & M2Request::headers() const

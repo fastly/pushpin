@@ -1,0 +1,24 @@
+[General]
+# mongrel2 handler send_spec
+m2_in_spec=
+
+# mongrel2 handler recv_spec
+m2_out_spec=
+
+# mongrel2 handler recv_ident (without trailing space)
+m2_out_ident=
+
+# mongrel2 control spec
+m2_control_spec=
+
+# set to true if zhttp specs should connect. else, bind.
+zhttp_connect=
+
+# zhttp in spec
+zhttp_in_spec=
+
+# zhttp out spec
+zhttp_out_spec=
+
+# zhttp out stream spec
+zhttp_out_stream_spec=

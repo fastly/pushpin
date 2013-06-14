@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2013 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,35 +17,42 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef M2REQUESTPACKET_H
-#define M2REQUESTPACKET_H
+#include <QCoreApplication>
+#include <QTimer>
+#include "app.h"
 
-#include <QVariant>
-#include <QHostAddress>
-#include "httpheaders.h"
-
-class M2RequestPacket
+class AppMain : public QObject
 {
+	Q_OBJECT
+
 public:
-	QByteArray sender;
-	QByteArray id;
+	App *app;
 
-	bool isDisconnect;
+public slots:
+	void start()
+	{
+		app = new App(this);
+		connect(app, SIGNAL(quit()), SLOT(app_quit()));
+		app->start();
+	}
 
-	QHostAddress remoteAddress;
-	QByteArray scheme;
-	QByteArray version;
-	QString method;
-	QByteArray uri;
-	HttpHeaders headers;
-	QByteArray body;
+	void app_quit()
+	{
+		delete app;
+		emit quit();
+	}
 
-	QString uploadFile;
-	bool uploadDone;
-
-	M2RequestPacket();
-
-	bool fromByteArray(const QByteArray &in);
+signals:
+	void quit();
 };
 
-#endif
+int main(int argc, char **argv)
+{
+	QCoreApplication qapp(argc, argv);
+	AppMain appMain;
+	QObject::connect(&appMain, SIGNAL(quit()), &qapp, SLOT(quit()));
+	QTimer::singleShot(0, &appMain, SLOT(start()));
+	return qapp.exec();
+}
+
+#include "main.moc"

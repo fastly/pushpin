@@ -1,0 +1,83 @@
+zmq-http
+
+requests:
+
+from     - id of initiator
+id       - id of request unique to initiator
+
+seq      - sequence number of request stream starting at 0
+cancel   - means to cancel this request
+credits  - offer credits
+pause    - pause request
+paused   - pause ack
+
+method   - http method
+uri      - full uri. e.g. scheme://domain.com/path/?query
+headers  - list of items, where each item is a list of two strings: name, value
+body     - binary body content
+
+more     - means there are more packets after this one
+stream   - prefer stream mode. if false, server should reply with a single message
+max-size - don't accept a response larger than this value (useful in non-stream mode)
+
+user-data - echoed back in every packet
+
+
+inbound-only fields:
+
+peer-address
+peer-port
+
+outbound-only flags:
+
+connect-host      - override host to connect to
+connect-port      - override port to connect to
+ignore-policies   - ignore any rules about what requests are allowed
+ignore-tls-errors - ignore cert of http server
+
+
+
+responses:
+
+from     - id of responder
+id       - id of request
+
+seq      - sequence number of response stream starting at 0
+cancel   - means to cancel this request
+credits  - offer credits
+pause    - pause request
+paused   - pause ack
+
+code
+reason
+headers
+body
+
+user-data
+
+more     - means there are more packets after this one
+
+
+interfaces:
+
+basic:
+
+DEALER -> request  -> ROUTER (bidi) route responses by envelope
+       <- response <-
+
+(basic does not need from, seq, cancel, credits, more, or stream fields)
+
+advanced:
+
+PUSH   -> request  -> PULL
+ROUTER -> request  -> DEALER (recv only)  route by responder from
+SUB    <- response <- PUB                 pub by initiator from
+
+
+hand-off:
+
+it is possible for either side to hand off their state to another worker.
+initiator can send "pause", wait for "paused", transfer state, the new
+  worker then resumes by sending a non-pause/paused packet with new
+  from address. responder records the new from address and unpauses.
+responder can do the same.

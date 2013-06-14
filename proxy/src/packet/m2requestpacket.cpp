@@ -80,7 +80,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	if(end == -1)
 		return false;
 
-	QByteArray path_only = in.mid(start, end - start);
+	//QByteArray path_only = in.mid(start, end - start);
 
 	start = end + 1;
 	TnetString::Type type;
@@ -135,6 +135,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		return false;
 
 	scheme = m2headers.value("URL_SCHEME");
+	version = m2headers.value("VERSION");
 
 	QByteArray m2method = m2headers.value("METHOD");
 
@@ -163,7 +164,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	QByteArray m2RemoteAddr = m2headers.value("REMOTE_ADDR");
 
 	method = QString::fromLatin1(m2method);
-	path = m2headers.value("URI");
+	uri = m2headers.value("URI");
 
 	remoteAddress = QHostAddress();
 	if(!m2RemoteAddr.isEmpty())
