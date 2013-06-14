@@ -39,6 +39,8 @@ def write_mongrel2_config(rootdir, configpath, rundir, http_port, https_ports, s
 	vars = dict()
 	vars["ports"] = ports
 	vars["rootdir"] = rootdir
+	vars["rundir"] = rundir
+	vars["rundirabs"] = os.path.abspath(rundir)
 	compile_template(configpath, genconfigpath, vars)
 
 	path, ext = os.path.splitext(genconfigpath)

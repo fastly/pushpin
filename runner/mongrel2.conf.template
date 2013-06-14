@@ -22,6 +22,7 @@
 
 {% endfor %}settings = {
 	"certdir": ".{{ rootdir }}/certs/",
+	"control_port": "ipc://{{ rundirabs }}/control",
 	"upload.temp_store": "{{ rundir }}/upload.XXXXXX",
 	"upload.temp_store_mode": "0666",
 	"server.daemonize": 0,
