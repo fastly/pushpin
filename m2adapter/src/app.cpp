@@ -77,6 +77,7 @@ public:
 		QByteArray replyAddress;
 		int outSeq;
 		int inSeq;
+		int credits;
 
 		Session() :
 			persistent(false),
@@ -87,7 +88,8 @@ public:
 			offset(0),
 			written(0),
 			outSeq(0),
-			inSeq(0)
+			inSeq(0),
+			credits(0)
 		{
 		}
 	};
