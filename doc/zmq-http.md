@@ -38,6 +38,9 @@ Basic HTTP response contains the following fields:
 
     id        - id of request
 
+    type      - "data" or "error"
+    condition - error condition
+
     code      - http status code
     reason    - http status reason
     headers   - same format as request headers
@@ -53,6 +56,7 @@ Advanced HTTP request contains the following fields:
     id        - unique id among requests sent by initiator
 
     type      - "data", "credit", "cancel", "handoff-start", or "handoff-proceed"
+    condition - error condition
     seq       - sequence number of request stream starting at 0
 
     credits   - offer credits to responder
@@ -75,6 +79,7 @@ Advanced HTTP response contains the following fields:
     id        - id of request
 
     type      - "data", "credits", "cancel", "handoff-start", or "handoff-proceed"
+    condition - error condition
     seq       - sequence number of response stream starting at 0
 
     credits   - offer credits to initiator
@@ -117,6 +122,8 @@ Outbound-only flags, to be sent to an http client worker:
     connect-port      - override port to connect to
     ignore-policies   - ignore any rules about what requests are allowed
     ignore-tls-errors - ignore cert of http server
+
+These additional fields only have meaning in the first request message.
 
 Handoff:
 
