@@ -2,8 +2,8 @@ DEFINES += NO_IRISNET
 HEADERS += $$PWD/processquit.h
 SOURCES += $$PWD/processquit.cpp
 
-INCLUDEPATH += $$PWD/qzmq/src
-include(qzmq/src/src.pri)
+INCLUDEPATH += $$PWD/../../qzmq/src
+include(../../qzmq/src/src.pri)
 
 HEADERS += \
 	$$PWD/packet/tnetstring.h \
