@@ -1,3 +1,3 @@
-[submodule "proxy/src/qzmq"]
-	path = proxy/src/qzmq
-	url = git://github.com/jkarneges/qzmq
+[submodule "common"]
+	path = common
+	url = git://github.com/fanout/common.git
