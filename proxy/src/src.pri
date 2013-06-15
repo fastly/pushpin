@@ -1,13 +1,25 @@
-DEFINES += NO_IRISNET
-HEADERS += $$PWD/processquit.h
-SOURCES += $$PWD/processquit.cpp
+QZMQ_DIR = $$PWD/../../qzmq
+COMMON_DIR = $$PWD/../../common
 
 INCLUDEPATH += $$PWD/../../qzmq/src
 include(../../qzmq/src/src.pri)
 
+INCLUDEPATH += $$COMMON_DIR
+DEFINES += NO_IRISNET
+HEADERS += $$COMMON_DIR/processquit.h
+SOURCES += $$COMMON_DIR/processquit.cpp
+
 HEADERS += \
-	$$PWD/packet/tnetstring.h \
-	$$PWD/packet/httpheaders.h \
+	$$COMMON_DIR/tnetstring.h \
+	$$COMMON_DIR/httpheaders.h \
+	$$COMMON_DIR/log.h
+
+SOURCES += \
+	$$COMMON_DIR/tnetstring.cpp \
+	$$COMMON_DIR/httpheaders.cpp \
+	$$COMMON_DIR/log.cpp
+
+HEADERS += \
 	$$PWD/packet/httprequestdata.h \
 	$$PWD/packet/httpresponsedata.h \
 	$$PWD/packet/m2requestpacket.h \
@@ -20,8 +32,6 @@ HEADERS += \
 	$$PWD/packet/retryrequestpacket.h
 
 SOURCES += \
-	$$PWD/packet/tnetstring.cpp \
-	$$PWD/packet/httpheaders.cpp \
 	$$PWD/packet/m2requestpacket.cpp \
 	$$PWD/packet/m2responsepacket.cpp \
 	$$PWD/packet/zurlrequestpacket.cpp \
@@ -32,7 +42,6 @@ SOURCES += \
 	$$PWD/packet/retryrequestpacket.cpp
 
 HEADERS += \
-	$$PWD/log.h \
 	$$PWD/jwt.h \
 	$$PWD/layertracker.h \
 	$$PWD/m2manager.h \
@@ -52,7 +61,6 @@ HEADERS += \
 	$$PWD/app.h
 
 SOURCES += \
-	$$PWD/log.cpp \
 	$$PWD/jwt.cpp \
 	$$PWD/layertracker.cpp \
 	$$PWD/m2manager.cpp \

@@ -21,7 +21,7 @@
 #define M2REQUEST_H
 
 #include <QObject>
-#include "packet/httpheaders.h"
+#include "httpheaders.h"
 
 class QHostAddress;
 

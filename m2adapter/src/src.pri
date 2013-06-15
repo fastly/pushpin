@@ -1,35 +1,35 @@
+QZMQ_DIR = $$PWD/../../qzmq
+COMMON_DIR = $$PWD/../../common
+
+INCLUDEPATH += $$QZMQ_DIR/src
+include($$QZMQ_DIR/src/src.pri)
+
+INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
-HEADERS += $$PWD/../../proxy/src/processquit.h
-SOURCES += $$PWD/../../proxy/src/processquit.cpp
-
-INCLUDEPATH += $$PWD/../../proxy/src/qzmq/src
-include(../../proxy/src/qzmq/src/src.pri)
-
-INCLUDEPATH += $$PWD/../../proxy/src
+HEADERS += $$COMMON_DIR/processquit.h
+SOURCES += $$COMMON_DIR/processquit.cpp
 
 HEADERS += \
-	$$PWD/../../proxy/src/packet/tnetstring.h \
-	$$PWD/../../proxy/src/packet/httpheaders.h \
-	#$$PWD/packet/httprequestdata.h \
-	#$$PWD/packet/httpresponsedata.h \
-	$$PWD/../../proxy/src/packet/m2requestpacket.h \
-	$$PWD/../../proxy/src/packet/m2responsepacket.h \
-	$$PWD/../../proxy/src/packet/zurlrequestpacket.h \
-	$$PWD/../../proxy/src/packet/zurlresponsepacket.h \
+	$$COMMON_DIR/tnetstring.h \
+	$$COMMON_DIR/httpheaders.h \
+	$$COMMON_DIR/zhttprequestpacket.h \
+	$$COMMON_DIR/zhttpresponsepacket.h \
+	$$COMMON_DIR/log.h
 
 SOURCES += \
-	$$PWD/../../proxy/src/packet/tnetstring.cpp \
-	$$PWD/../../proxy/src/packet/httpheaders.cpp \
-	$$PWD/../../proxy/src/packet/m2requestpacket.cpp \
-	$$PWD/../../proxy/src/packet/m2responsepacket.cpp \
-	$$PWD/../../proxy/src/packet/zurlrequestpacket.cpp \
-	$$PWD/../../proxy/src/packet/zurlresponsepacket.cpp \
+	$$COMMON_DIR/tnetstring.cpp \
+	$$COMMON_DIR/httpheaders.cpp \
+	$$COMMON_DIR/zhttprequestpacket.cpp \
+	$$COMMON_DIR/zhttpresponsepacket.cpp \
+	$$COMMON_DIR/log.cpp
 
 HEADERS += \
-	$$PWD/../../proxy/src/log.h \
+	$$PWD/m2requestpacket.h \
+	$$PWD/m2responsepacket.h \
 	$$PWD/app.h
 
 SOURCES += \
-	$$PWD/../../proxy/src/log.cpp \
+	$$PWD/m2requestpacket.cpp \
+	$$PWD/m2responsepacket.cpp \
 	$$PWD/app.cpp \
 	$$PWD/main.cpp

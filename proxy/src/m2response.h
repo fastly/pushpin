@@ -21,7 +21,7 @@
 #define M2RESPONSE_H
 
 #include <QObject>
-#include "packet/httpheaders.h"
+#include "httpheaders.h"
 #include "m2request.h"
 
 class M2Manager;

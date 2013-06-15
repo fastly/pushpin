@@ -21,7 +21,7 @@
 #define ZURLREQUEST_H
 
 #include <QObject>
-#include "packet/httpheaders.h"
+#include "httpheaders.h"
 
 class QUrl;
 

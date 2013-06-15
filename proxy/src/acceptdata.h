@@ -21,7 +21,7 @@
 #define ACCEPTDATA_H
 
 #include <QList>
-#include "packet/httpheaders.h"
+#include "httpheaders.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "inspectdata.h"

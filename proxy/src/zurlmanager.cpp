@@ -24,7 +24,7 @@
 #include <QHash>
 #include <QPointer>
 #include "qzmqsocket.h"
-#include "packet/tnetstring.h"
+#include "tnetstring.h"
 #include "packet/zurlrequestpacket.h"
 #include "packet/zurlresponsepacket.h"
 #include "log.h"

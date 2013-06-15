@@ -22,7 +22,7 @@
 #include <assert.h>
 #include <QPointer>
 #include "qzmqsocket.h"
-#include "packet/tnetstring.h"
+#include "tnetstring.h"
 #include "packet/inspectrequestpacket.h"
 #include "packet/inspectresponsepacket.h"
 #include "log.h"

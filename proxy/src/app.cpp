@@ -28,7 +28,7 @@
 #include <QSettings>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
-#include "packet/tnetstring.h"
+#include "tnetstring.h"
 #include "packet/acceptresponsepacket.h"
 #include "packet/retryrequestpacket.h"
 #include "processquit.h"

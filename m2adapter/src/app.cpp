@@ -25,11 +25,11 @@
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "processquit.h"
-#include "packet/tnetstring.h"
-#include "packet/m2requestpacket.h"
-#include "packet/m2responsepacket.h"
-#include "packet/zurlrequestpacket.h"
-#include "packet/zurlresponsepacket.h"
+#include "tnetstring.h"
+#include "m2requestpacket.h"
+#include "m2responsepacket.h"
+#include "zhttprequestpacket.h"
+#include "zhttpresponsepacket.h"
 #include "log.h"
 
 #define VERSION "1.0.0"
@@ -74,7 +74,7 @@ public:
 		int written;
 
 		// zhttp stuff
-		QByteArray replyAddress;
+		QByteArray zhttpAddress;
 		int outSeq;
 		int inSeq;
 		int credits;
@@ -277,7 +277,7 @@ public:
 		m2_out_sock->write(QList<QByteArray>() << buf);
 	}
 
-	void zhttp_out_write(const ZurlRequestPacket &packet)
+	void zhttp_out_write(const ZhttpRequestPacket &packet)
 	{
 		QByteArray buf = TnetString::fromVariant(packet.toVariant());
 
@@ -286,7 +286,7 @@ public:
 		zhttp_out_sock->write(QList<QByteArray>() << buf);
 	}
 
-	void zhttp_out_write(const ZurlRequestPacket &packet, const QByteArray &instanceAddress)
+	void zhttp_out_write(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress)
 	{
 		QByteArray buf = TnetString::fromVariant(packet.toVariant());
 
@@ -323,14 +323,14 @@ private slots:
 			if(s)
 			{
 				// if a worker had ack'd this session, then send cancel
-				if(!s->replyAddress.isEmpty())
+				if(!s->zhttpAddress.isEmpty())
 				{
-					ZurlRequestPacket zreq;
-					zreq.sender = m2_out_ident;
+					ZhttpRequestPacket zreq;
+					zreq.from = m2_out_ident;
 					zreq.id = s->id;
 					zreq.seq = (s->outSeq)++;
-					zreq.cancel = true;
-					zhttp_out_write(zreq, s->replyAddress);
+					zreq.type = ZhttpRequestPacket::Cancel;
+					zhttp_out_write(zreq, s->zhttpAddress);
 				}
 
 				sessionsById.remove(mreq.id);
@@ -412,10 +412,11 @@ private slots:
 
 			log_info("m2: id=%s request %s", s->id.data(), uri.data());
 
-			ZurlRequestPacket zreq;
-			zreq.sender = m2_out_ident;
+			ZhttpRequestPacket zreq;
+			zreq.from = m2_out_ident;
 			zreq.id = s->id;
 			zreq.seq = (s->outSeq)++;
+			zreq.type = ZhttpRequestPacket::Data;
 			zreq.credits = ZHTTP_IDEAL_CREDITS;
 			zreq.stream = true;
 			zreq.method = mreq.method;
@@ -450,7 +451,7 @@ private slots:
 
 		log_debug("zhttp: IN %s", dataRaw.data());
 
-		ZurlResponsePacket zresp;
+		ZhttpResponsePacket zresp;
 		if(!zresp.fromVariant(data))
 		{
 			log_warning("zhttp: received message with invalid format (parse failed), skipping");
@@ -463,29 +464,29 @@ private slots:
 			log_debug("zhttp: received message for unknown request id, canceling");
 
 			// if this was not an error packet, send cancel
-			if(zresp.condition.isEmpty() && !zresp.replyAddress.isEmpty())
+			if(zresp.type != ZhttpResponsePacket::Error && zresp.type != ZhttpResponsePacket::Cancel && !zresp.from.isEmpty())
 			{
-				ZurlRequestPacket zreq;
-				zreq.sender = m2_out_ident;
+				ZhttpRequestPacket zreq;
+				zreq.from = m2_out_ident;
 				zreq.id = zresp.id;
 				zreq.seq = (s->outSeq)++;
-				zreq.cancel = true;
-				zhttp_out_write(zreq, zresp.replyAddress);
+				zreq.type = ZhttpRequestPacket::Cancel;
+				zhttp_out_write(zreq, zresp.from);
 			}
 
 			return;
 		}
 
-		if(s->replyAddress.isEmpty() && zresp.replyAddress.isEmpty())
+		if(s->zhttpAddress.isEmpty() && zresp.from.isEmpty())
 		{
-			log_warning("zhttp: received first response with no reply address, canceling");
+			log_warning("zhttp: received first response with no from address, canceling");
 			sessionsById.remove(s->id);
 			delete s;
 			return;
 		}
 
-		if(!zresp.replyAddress.isEmpty())
-			s->replyAddress = zresp.replyAddress;
+		if(!zresp.from.isEmpty())
+			s->zhttpAddress = zresp.from;
 
 		if(!zresp.body.isNull())
 		{
@@ -548,12 +549,13 @@ private slots:
 				// give credits
 				if(!zresp.body.isEmpty())
 				{
-					ZurlRequestPacket zreq;
-					zreq.sender = m2_out_ident;
+					ZhttpRequestPacket zreq;
+					zreq.from = m2_out_ident;
 					zreq.id = s->id;
 					zreq.seq = (s->outSeq)++;
+					zreq.type = ZhttpRequestPacket::Credit;
 					zreq.credits = zresp.body.size();
-					zhttp_out_write(zreq, s->replyAddress);
+					zhttp_out_write(zreq, s->zhttpAddress);
 				}
 			}
 		}
