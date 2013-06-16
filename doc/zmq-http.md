@@ -38,7 +38,7 @@ Basic HTTP response contains the following fields:
 
     id        - id of request
 
-    type      - "data" or "error"
+    type      - data (omitted) or "error"
     condition - error condition
 
     code      - http status code
@@ -55,7 +55,7 @@ Advanced HTTP request contains the following fields:
     from      - address of initiator
     id        - unique id among requests sent by initiator
 
-    type      - "data", "credit", "cancel", "handoff-start", or "handoff-proceed"
+    type      - data (omitted), "credit", "cancel", "handoff-start", or "handoff-proceed"
     condition - error condition
     seq       - sequence number of request stream starting at 0
 
@@ -78,7 +78,7 @@ Advanced HTTP response contains the following fields:
     from      - address of responder
     id        - id of request
 
-    type      - "data", "credits", "cancel", "handoff-start", or "handoff-proceed"
+    type      - data (omitted), "credits", "cancel", "handoff-start", or "handoff-proceed"
     condition - error condition
     seq       - sequence number of response stream starting at 0
 
