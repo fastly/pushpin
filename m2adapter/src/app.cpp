@@ -72,6 +72,7 @@ public:
 		bool chunked;
 		int offset;
 		int written;
+		bool inFinished;
 
 		// zhttp stuff
 		QByteArray zhttpAddress;
@@ -87,6 +88,7 @@ public:
 			chunked(false),
 			offset(0),
 			written(0),
+			inFinished(false),
 			outSeq(0),
 			inSeq(0),
 			credits(0)
@@ -273,7 +275,7 @@ public:
 	void m2_out_write(const M2ResponsePacket &packet)
 	{
 		QByteArray buf = packet.toByteArray();
-		//log_debug("writing: [%s]", buf.data());
+		log_debug("writing: [%s]", buf.data());
 		m2_out_sock->write(QList<QByteArray>() << buf);
 	}
 
@@ -408,6 +410,9 @@ private slots:
 					s->persistent = true;
 			}
 
+			// TODO: if input is streamed, then we wouldn't set this yet
+			s->inFinished = true;
+
 			sessionsById.insert(mreq.id, s);
 
 			log_info("m2: id=%s request %s", s->id.data(), uri.data());
@@ -477,7 +482,8 @@ private slots:
 			return;
 		}
 
-		if(s->zhttpAddress.isEmpty() && zresp.from.isEmpty())
+		// no from address is okay as long as we'd never need to communicate back, not even to give credits
+		if(s->zhttpAddress.isEmpty() && zresp.from.isEmpty() && (!s->inFinished || zresp.more))
 		{
 			log_warning("zhttp: received first response with no from address, canceling");
 			sessionsById.remove(s->id);
@@ -509,6 +515,7 @@ private slots:
 				if(s->respondClose)
 					mresp.data += "Connection: close\r\n";
 				mresp.data += "Content-Type: " + zresp.headers.get("Content-Type") + "\r\n";
+				//mresp.data += "Content-Length: " + zresp.headers.get("Content-Length") + "\r\n";
 				//mresp.data += "Content-Length: " + QByteArray::number(zresp.body.size()) + "\r\n";
 				mresp.data += "\r\n";
 				mresp.data += zresp.body;
