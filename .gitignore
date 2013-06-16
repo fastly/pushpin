@@ -7,3 +7,15 @@ qrc_*
 ui_*
 moc_*
 *.pyc
+m2adapter/Makefile
+m2adapter/conf.log
+m2adapter/conf.pri
+m2adapter/m2adapter
+m2adapter/src/Makefile
+proxy/Makefile
+proxy/conf.log
+proxy/conf.pri
+proxy/pushpin-proxy
+proxy/src/Makefile
+runner/run
+runner/log
