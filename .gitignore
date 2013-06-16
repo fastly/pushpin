@@ -1,0 +1,9 @@
+*.swp
+*~
+qrc_*
+*.moc
+*.o
+*.pdb
+ui_*
+moc_*
+*.pyc
