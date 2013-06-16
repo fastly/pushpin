@@ -12,7 +12,7 @@ m2_out_ident=
 m2_control_spec=
 
 # set to true if zhttp specs should connect. else, bind.
-zhttp_connect=
+#zhttp_connect=true
 
 # zhttp in spec
 zhttp_in_spec=
@@ -22,3 +22,9 @@ zhttp_out_spec=
 
 # zhttp out stream spec
 zhttp_out_stream_spec=
+
+# useful for testing with zurl
+#zhttp_ignore_policies=true
+
+# don't send more than this to mongrel2
+m2_client_buffer=200000

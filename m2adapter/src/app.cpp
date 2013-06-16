@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <QPair>
 #include <QHash>
+#include <QTime>
 #include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
@@ -36,7 +37,11 @@
 #define VERSION "1.0.0"
 
 #define DEFAULT_HWM 1000
-#define ZHTTP_IDEAL_CREDITS 200000
+#define EXPIRE_INTERVAL 1000
+#define STATUS_INTERVAL 250
+#define SESSION_EXPIRE 60000
+
+//#define CONTROL_PORT_DEBUG
 
 static bool validateHost(const QByteArray &in)
 {
@@ -48,6 +53,33 @@ static bool validateHost(const QByteArray &in)
 
 	return true;
 }
+
+static QByteArray createResponseHeader(int code, const QByteArray &reason, const HttpHeaders &headers)
+{
+	QByteArray out = "HTTP/1.1 " + QByteArray::number(code) + ' ' + reason + "\r\n";
+	foreach(const HttpHeader &h, headers)
+		out += h.first + ": " + h.second + "\r\n";
+	out += "\r\n";
+	return out;
+}
+
+static QByteArray makeChunkHeader(int size)
+{
+	return QByteArray::number(size, 16).toUpper() + "\r\n";
+}
+
+static QByteArray makeChunkFooter()
+{
+	return "\r\n";
+}
+
+/*static QByteArray createResponse(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body)
+{
+	HttpHeaders headers = _headers;
+	if(!headers.contains("Content-Length"))
+		headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
+	return createResponseHeader(code, reason, headers) + body;
+}*/
 
 class App::Private : public QObject
 {
@@ -67,11 +99,12 @@ public:
 		//   m2 provides a unique request id for its instance
 		//   zhttp expects a request id unique to our instance to reply to
 		QByteArray id;
+		int lastActive;
 
 		// m2 stuff
 		QByteArray httpVersion;
 		bool persistent;
-		bool noChunked;
+		bool allowChunked;
 		bool respondKeepAlive;
 		bool respondClose;
 		bool chunked;
@@ -87,8 +120,9 @@ public:
 		int credits;
 
 		Session() :
+			lastActive(-1),
 			persistent(false),
-			noChunked(false),
+			allowChunked(false),
 			respondKeepAlive(false),
 			respondClose(false),
 			chunked(false),
@@ -114,7 +148,11 @@ public:
 	QZmq::Valve *zhttp_in_valve;
 	QHash<QByteArray, Session*> sessionsById;
 	QByteArray m2_out_ident;
+	int m2_client_buffer;
+	bool ignorePolicies;
 	ControlState controlState;
+	QTime time;
+	QTimer *expireTimer;
 	QTimer *statusTimer;
 
 	Private(App *_q) :
@@ -131,12 +169,23 @@ public:
 	{
 		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
 
+		time.start();
+
+		expireTimer = new QTimer(this);
+		connect(expireTimer, SIGNAL(timeout()), SLOT(expire_timeout()));
+
 		statusTimer = new QTimer(this);
 		connect(statusTimer, SIGNAL(timeout()), SLOT(status_timeout()));
 	}
 
 	~Private()
 	{
+		QHashIterator<QByteArray, Session*> it(sessionsById);
+		while(it.hasNext())
+		{
+			it.next();
+			delete it.value();
+		}
 	}
 
 	void start()
@@ -214,6 +263,10 @@ public:
 		QString zhttp_in_spec = settings.value("zhttp_in_spec").toString();
 		QString zhttp_out_spec = settings.value("zhttp_out_spec").toString();
 		QString zhttp_out_stream_spec = settings.value("zhttp_out_stream_spec").toString();
+		m2_client_buffer = settings.value("m2_client_buffer").toInt();
+		if(m2_client_buffer <= 0)
+			m2_client_buffer = 200000;
+		ignorePolicies = settings.value("zhttp_ignore_policies").toBool();
 
 		m2_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
 		m2_in_sock->setHwm(DEFAULT_HWM);
@@ -228,6 +281,7 @@ public:
 		m2_out_sock->connectToAddress(m2_out_spec);
 
 		m2_control_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
+		m2_control_sock->setShutdownWaitTime(0);
 		m2_control_sock->setHwm(DEFAULT_HWM);
 		connect(m2_control_sock, SIGNAL(readyRead()), SLOT(m2_control_readyRead()));
 		m2_control_sock->connectToAddress(m2_control_spec);
@@ -253,6 +307,7 @@ public:
 		connect(zhttp_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttp_in_readyRead(const QList<QByteArray> &)));
 
 		zhttp_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
+		zhttp_out_sock->setShutdownWaitTime(0);
 		zhttp_out_sock->setHwm(DEFAULT_HWM);
 		if(zhttp_connect)
 		{
@@ -287,7 +342,10 @@ public:
 		m2_in_valve->open();
 		zhttp_in_valve->open();
 
-		statusTimer->setInterval(250);
+		expireTimer->setInterval(EXPIRE_INTERVAL);
+		expireTimer->start();
+
+		statusTimer->setInterval(STATUS_INTERVAL);
 		statusTimer->start();
 
 		log_info("started");
@@ -297,7 +355,7 @@ public:
 	{
 		QByteArray buf = packet.toByteArray();
 
-		log_debug("writing: [%s]", buf.data());
+		log_debug("m2: OUT [%s]", buf.data());
 
 		m2_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -310,7 +368,9 @@ public:
 
 		QByteArray buf = TnetString::fromVariant(vlist);
 
-		//log_debug("m2: OUT control %s", buf.data());
+#ifdef CONTROL_PORT_DEBUG
+		log_debug("m2: OUT control %s", buf.data());
+#endif
 
 		controlState = ControlExpectingResponse;
 
@@ -318,6 +378,15 @@ public:
 		message += QByteArray();
 		message += buf;
 		m2_control_sock->write(message);
+	}
+
+	void m2_writeErrorClose(Session *s)
+	{
+		M2ResponsePacket mresp;
+		mresp.sender = m2_out_ident;
+		mresp.id = s->id;
+		mresp.data = "";
+		m2_out_write(mresp);
 	}
 
 	void zhttp_out_write(const ZhttpRequestPacket &packet)
@@ -344,7 +413,9 @@ public:
 
 	void handleControlResponse(const QVariant &data)
 	{
-		//log_debug("m2: IN control %s", qPrintable(TnetString::variantToString(data)));
+#ifdef CONTROL_PORT_DEBUG
+		log_debug("m2: IN control %s", qPrintable(TnetString::variantToString(data)));
+#endif
 
 		QVariantHash vhash = data.toHash();
 		QVariant rows = vhash["rows"];
@@ -370,6 +441,8 @@ public:
 	void handleResponseWritten(Session *s, int written)
 	{
 		log_debug("request id=%s written %d/%d", s->id.data(), s->confirmedWritten, s->written);
+
+		s->lastActive = time.elapsed();
 
 		if(!s->zhttpAddress.isEmpty())
 		{
@@ -412,8 +485,8 @@ private slots:
 					ZhttpRequestPacket zreq;
 					zreq.from = m2_out_ident;
 					zreq.id = s->id;
-					zreq.seq = (s->outSeq)++;
 					zreq.type = ZhttpRequestPacket::Cancel;
+					zreq.seq = (s->outSeq)++;
 					zhttp_out_write(zreq, s->zhttpAddress);
 				}
 
@@ -472,6 +545,7 @@ private slots:
 
 			s = new Session;
 			s->id = mreq.id;
+			s->lastActive = time.elapsed();
 			s->httpVersion = mreq.version;
 
 			if(mreq.version == "HTTP/1.0")
@@ -481,11 +555,11 @@ private slots:
 					s->persistent = true;
 					s->respondKeepAlive = true;
 				}
-
-				s->noChunked = true;
 			}
 			else if(mreq.version == "HTTP/1.1")
 			{
+				s->allowChunked = true;
+
 				if(mreq.headers.getAll("Connection").contains("close"))
 					s->respondClose = true;
 				else
@@ -502,13 +576,14 @@ private slots:
 			ZhttpRequestPacket zreq;
 			zreq.from = m2_out_ident;
 			zreq.id = s->id;
-			zreq.seq = (s->outSeq)++;
 			zreq.type = ZhttpRequestPacket::Data;
-			zreq.credits = ZHTTP_IDEAL_CREDITS;
+			zreq.seq = (s->outSeq)++;
+			zreq.credits = m2_client_buffer;
 			zreq.stream = true;
 			zreq.method = mreq.method;
-			zreq.ignorePolicies = true;
 			zreq.uri = QUrl::fromEncoded(uri, QUrl::StrictMode);
+			if(ignorePolicies)
+				zreq.ignorePolicies = true;
 			zhttp_out_write(zreq);
 		}
 	}
@@ -521,11 +596,9 @@ private slots:
 
 			if(message.count() != 2)
 			{
-				log_warning("m2: received control response with parts != 3, skipping");
+				log_warning("m2: received control response with parts != 2, skipping");
 				continue;
 			}
-
-			//log_debug("[%s], [%s]", message[0].data(), message[1].data());
 
 			QVariant data = TnetString::toVariant(message[1]);
 			if(data.isNull())
@@ -609,51 +682,93 @@ private slots:
 		if(!zresp.from.isEmpty())
 			s->zhttpAddress = zresp.from;
 
-		if(!zresp.body.isNull())
+		s->lastActive = time.elapsed();
+
+		if(zresp.type == ZhttpResponsePacket::Data)
 		{
 			log_debug("zhttp: id=%s response data size=%d%s", s->id.data(), zresp.body.size(), zresp.more ? " M" : "");
 
+			M2ResponsePacket mresp;
+			mresp.sender = m2_out_ident;
+			mresp.id = s->id;
+
+			int overhead = 0;
+
+			// for the first response message, we need to include http headers
 			if(s->written == 0)
 			{
-				// TODO: if response has no fixed-length and s->noChunked then disable persistence
-				// TODO: if response has no fixed-length and !s->noChunked then use chunking
+				if(zresp.more && !zresp.headers.contains("Content-Length"))
+				{
+					if(s->allowChunked)
+					{
+						s->chunked = true;
+					}
+					else
+					{
+						// disable persistence
+						s->persistent = false;
+						s->respondKeepAlive = false;
+					}
+				}
 
-				s->persistent = false;
-				s->respondKeepAlive = false;
+				HttpHeaders headers = zresp.headers;
+				QList<QByteArray> connHeaders = headers.takeAll("Connection");
+				foreach(const QByteArray &h, connHeaders)
+					headers.removeAll(h);
 
-				M2ResponsePacket mresp;
-				mresp.sender = m2_out_ident;
-				mresp.id = s->id;
-				mresp.data = "HTTP/1.1 200 OK\r\n";
+				connHeaders.clear();
 				if(s->respondKeepAlive)
-					mresp.data += "Connection: Keep-Alive\r\n";
+					connHeaders += "Keep-Alive";
 				if(s->respondClose)
-					mresp.data += "Connection: close\r\n";
-				mresp.data += "Content-Type: " + zresp.headers.get("Content-Type") + "\r\n";
-				if(zresp.headers.contains("Content-Length"))
-					mresp.data += "Content-Length: " + zresp.headers.get("Content-Length") + "\r\n";
-				//mresp.data += "Content-Length: " + QByteArray::number(zresp.body.size()) + "\r\n";
-				mresp.data += "\r\n";
+					connHeaders += "close";
+
+				if(s->chunked)
+				{
+					connHeaders += "Transfer-Encoding";
+					headers += HttpHeader("Transfer-Encoding", "chunked");
+				}
+				else if(!zresp.more && !headers.contains("Content-Length"))
+				{
+					headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
+				}
+
+				if(!connHeaders.isEmpty())
+					headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
+
+				mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
+
+				overhead += mresp.data.size();
+			}
+
+			if(s->chunked)
+			{
+				QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
+				QByteArray chunkFooter = makeChunkFooter();
+
+				mresp.data += chunkHeader + zresp.body + chunkFooter;
+
+				overhead += chunkHeader.size() + chunkFooter.size();
+			}
+			else
 				mresp.data += zresp.body;
 
-				m2_out_write(mresp);
+			m2_out_write(mresp);
 
-				s->written += mresp.data.size();
-				s->confirmedWritten = mresp.data.size() - zresp.body.size();
-			}
-			else if(!zresp.body.isEmpty())
-			{
-				M2ResponsePacket mresp;
-				mresp.sender = m2_out_ident;
-				mresp.id = s->id;
-				mresp.data = zresp.body;
-				m2_out_write(mresp);
-
-				s->written += mresp.data.size();
-			}
+			s->written += overhead + zresp.body.size();
+			s->confirmedWritten += overhead;
 
 			if(!zresp.more)
 			{
+				if(s->chunked)
+				{
+					// send closing chunk
+					M2ResponsePacket mresp;
+					mresp.sender = m2_out_ident;
+					mresp.id = s->id;
+					mresp.data = makeChunkHeader(0) + makeChunkFooter();
+					m2_out_write(mresp);
+				}
+
 				if(!s->persistent)
 				{
 					// close
@@ -667,30 +782,62 @@ private slots:
 				sessionsById.remove(s->id);
 				delete s;
 			}
-			else
-			{
-				// FIXME: m2 flow control instead of giving credits immediately
-				// give credits
-				/*if(!zresp.body.isEmpty())
-				{
-					ZhttpRequestPacket zreq;
-					zreq.from = m2_out_ident;
-					zreq.id = s->id;
-					zreq.seq = (s->outSeq)++;
-					zreq.type = ZhttpRequestPacket::Credit;
-					zreq.credits = zresp.body.size();
-					zhttp_out_write(zreq, s->zhttpAddress);
-				}*/
-			}
+		}
+		else if(zresp.type == ZhttpResponsePacket::Error)
+		{
+			log_warning("zhttp: id=%s error condition=%s", s->id.data(), zresp.condition.data());
+			m2_writeErrorClose(s);
+			sessionsById.remove(s->id);
+			delete s;
+		}
+		else if(zresp.type == ZhttpResponsePacket::Credit)
+		{
+			// TODO: care about this once we have streaming input
+		}
+		else if(zresp.type == ZhttpResponsePacket::Cancel)
+		{
+			m2_writeErrorClose(s);
+			sessionsById.remove(s->id);
+			delete s;
+		}
+		else
+		{
+			log_warning("zhttp: id=%s unsupported type: %d", s->id.data(), (int)zresp.type);
+		}
+	}
+
+	void expire_timeout()
+	{
+		int now = time.elapsed();
+		QList<Session*> toDelete;
+		QHashIterator<QByteArray, Session*> it(sessionsById);
+		while(it.hasNext())
+		{
+			it.next();
+			Session *s = it.value();
+			if(s->lastActive + SESSION_EXPIRE <= now)
+				toDelete += s;
+		}
+		for(int n = 0; n < toDelete.count(); ++n)
+		{
+			Session *s = toDelete[n];
+			log_warning("timing out request %s", s->id.data());
+			m2_writeErrorClose(s);
+			sessionsById.remove(s->id);
+			delete s;
 		}
 	}
 
 	void status_timeout()
 	{
-		QVariantHash cmdArgs;
-		cmdArgs["what"] = QByteArray("net");
-		controlState = ControlExpectingResponse;
-		m2_control_write("status", cmdArgs);
+		if(controlState == ControlIdle)
+		{
+			// query m2 for connection info (to track bytes written)
+			QVariantHash cmdArgs;
+			cmdArgs["what"] = QByteArray("net");
+			controlState = ControlExpectingResponse;
+			m2_control_write("status", cmdArgs);
+		}
 	}
 
 	void doQuit()
