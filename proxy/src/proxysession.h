@@ -24,7 +24,7 @@
 
 class InspectData;
 class AcceptData;
-class ZurlManager;
+class ZhttpManager;
 class DomainMap;
 class XffRule;
 class RequestSession;
@@ -34,7 +34,7 @@ class ProxySession : public QObject
 	Q_OBJECT
 
 public:
-	ProxySession(ZurlManager *zurlManager, DomainMap *domainMap, QObject *parent = 0);
+	ProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, QObject *parent = 0);
 	~ProxySession();
 
 	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);

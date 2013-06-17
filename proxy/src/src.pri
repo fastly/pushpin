@@ -12,11 +12,15 @@ SOURCES += $$COMMON_DIR/processquit.cpp
 HEADERS += \
 	$$COMMON_DIR/tnetstring.h \
 	$$COMMON_DIR/httpheaders.h \
+	$$COMMON_DIR/zhttprequestpacket.h \
+	$$COMMON_DIR/zhttpresponsepacket.h \
 	$$COMMON_DIR/log.h
 
 SOURCES += \
 	$$COMMON_DIR/tnetstring.cpp \
 	$$COMMON_DIR/httpheaders.cpp \
+	$$COMMON_DIR/zhttprequestpacket.cpp \
+	$$COMMON_DIR/zhttpresponsepacket.cpp \
 	$$COMMON_DIR/log.cpp
 
 HEADERS += \
@@ -24,8 +28,6 @@ HEADERS += \
 	$$PWD/packet/httpresponsedata.h \
 	$$PWD/packet/m2requestpacket.h \
 	$$PWD/packet/m2responsepacket.h \
-	$$PWD/packet/zurlrequestpacket.h \
-	$$PWD/packet/zurlresponsepacket.h \
 	$$PWD/packet/inspectrequestpacket.h \
 	$$PWD/packet/inspectresponsepacket.h \
 	$$PWD/packet/acceptresponsepacket.h \
@@ -34,8 +36,6 @@ HEADERS += \
 SOURCES += \
 	$$PWD/packet/m2requestpacket.cpp \
 	$$PWD/packet/m2responsepacket.cpp \
-	$$PWD/packet/zurlrequestpacket.cpp \
-	$$PWD/packet/zurlresponsepacket.cpp \
 	$$PWD/packet/inspectrequestpacket.cpp \
 	$$PWD/packet/inspectresponsepacket.cpp \
 	$$PWD/packet/acceptresponsepacket.cpp \
@@ -47,8 +47,8 @@ HEADERS += \
 	$$PWD/m2manager.h \
 	$$PWD/m2request.h \
 	$$PWD/m2response.h \
-	$$PWD/zurlmanager.h \
-	$$PWD/zurlrequest.h \
+	$$PWD/zhttpmanager.h \
+	$$PWD/zhttprequest.h \
 	$$PWD/inspectdata.h \
 	$$PWD/inspectmanager.h \
 	$$PWD/inspectrequest.h \
@@ -66,8 +66,8 @@ SOURCES += \
 	$$PWD/m2manager.cpp \
 	$$PWD/m2request.cpp \
 	$$PWD/m2response.cpp \
-	$$PWD/zurlmanager.cpp \
-	$$PWD/zurlrequest.cpp \
+	$$PWD/zhttpmanager.cpp \
+	$$PWD/zhttprequest.cpp \
 	$$PWD/inspectmanager.cpp \
 	$$PWD/inspectrequest.cpp \
 	$$PWD/domainmap.cpp \

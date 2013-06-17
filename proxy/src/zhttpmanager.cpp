@@ -17,7 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "zurlmanager.h"
+#include "zhttpmanager.h"
 
 #include <assert.h>
 #include <QStringList>
@@ -25,20 +25,20 @@
 #include <QPointer>
 #include "qzmqsocket.h"
 #include "tnetstring.h"
-#include "packet/zurlrequestpacket.h"
-#include "packet/zurlresponsepacket.h"
+#include "zhttprequestpacket.h"
+#include "zhttpresponsepacket.h"
 #include "log.h"
-#include "zurlrequest.h"
+#include "zhttprequest.h"
 
 #define REQUEST_HWM 100
 #define DEFAULT_HWM 1000
 
-class ZurlManager::Private : public QObject
+class ZhttpManager::Private : public QObject
 {
 	Q_OBJECT
 
 public:
-	ZurlManager *q;
+	ZhttpManager *q;
 	QStringList out_specs;
 	QStringList out_stream_specs;
 	QStringList in_specs;
@@ -46,9 +46,9 @@ public:
 	QZmq::Socket *out_stream_sock;
 	QZmq::Socket *in_sock;
 	QByteArray clientId;
-	QHash<ZurlRequest::Rid, ZurlRequest*> reqsByRid;
+	QHash<ZhttpRequest::Rid, ZhttpRequest*> reqsByRid;
 
-	Private(ZurlManager *_q) :
+	Private(ZhttpManager *_q) :
 		QObject(_q),
 		q(_q),
 		out_sock(0),
@@ -126,14 +126,14 @@ public slots:
 			QList<QByteArray> msg = in_sock->read();
 			if(msg.count() != 1)
 			{
-				log_warning("zurlmanager: received message with parts != 1, skipping");
+				log_warning("zhttp client: received message with parts != 1, skipping");
 				continue;
 			}
 
 			int at = msg[0].indexOf(' ');
 			if(at == -1)
 			{
-				log_warning("zurlmanager: received message with invalid format, skipping");
+				log_warning("zhttp client: received message with invalid format, skipping");
 				continue;
 			}
 
@@ -141,29 +141,30 @@ public slots:
 			QVariant data = TnetString::toVariant(msg[0].mid(at + 1));
 			if(data.isNull())
 			{
-				log_warning("zurlmanager: received message with invalid format (tnetstring parse failed), skipping");
+				log_warning("zhttp client: received message with invalid format (tnetstring parse failed), skipping");
 				continue;
 			}
 
-			ZurlResponsePacket p;
+			ZhttpResponsePacket p;
 			if(!p.fromVariant(data))
 			{
-				log_warning("zurlmanager: received message with invalid format (parse failed), skipping");
+				log_warning("zhttp client: received message with invalid format (parse failed), skipping");
 				continue;
 			}
 
-			ZurlRequest *req = reqsByRid.value(ZurlRequest::Rid(clientId, p.id));
+			ZhttpRequest *req = reqsByRid.value(ZhttpRequest::Rid(clientId, p.id));
 			if(!req)
 			{
-				log_warning("zurlmanager: received message for unknown request id, canceling");
+				log_warning("zhttp client: received message for unknown request id, canceling");
 
 				// if this was not an error packet, send cancel
-				if(p.condition.isEmpty() && !p.replyAddress.isEmpty())
+				if(p.type != ZhttpResponsePacket::Error && p.type != ZhttpResponsePacket::Cancel && !p.from.isEmpty())
 				{
-					ZurlRequestPacket out;
+					ZhttpRequestPacket out;
+					out.from = clientId;
 					out.id = p.id;
-					out.cancel = true;
-					q->write(out, p.replyAddress);
+					out.type = ZhttpRequestPacket::Cancel;
+					q->write(out, p.from);
 				}
 
 				continue;
@@ -177,70 +178,70 @@ public slots:
 	}
 };
 
-ZurlManager::ZurlManager(QObject *parent) :
+ZhttpManager::ZhttpManager(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
 }
 
-ZurlManager::~ZurlManager()
+ZhttpManager::~ZhttpManager()
 {
 	delete d;
 }
 
-QByteArray ZurlManager::clientId() const
+QByteArray ZhttpManager::clientId() const
 {
 	return d->clientId;
 }
 
-void ZurlManager::setClientId(const QByteArray &id)
+void ZhttpManager::setClientId(const QByteArray &id)
 {
 	d->clientId = id;
 }
 
-bool ZurlManager::setOutgoingSpecs(const QStringList &specs)
+bool ZhttpManager::setOutgoingSpecs(const QStringList &specs)
 {
 	d->out_specs = specs;
 	return d->setupOutgoing();
 }
 
-bool ZurlManager::setOutgoingStreamSpecs(const QStringList &specs)
+bool ZhttpManager::setOutgoingStreamSpecs(const QStringList &specs)
 {
 	d->out_stream_specs = specs;
 	return d->setupOutgoingStream();
 }
 
-bool ZurlManager::setIncomingSpecs(const QStringList &specs)
+bool ZhttpManager::setIncomingSpecs(const QStringList &specs)
 {
 	d->in_specs = specs;
 	return d->setupIncoming();
 }
 
-ZurlRequest *ZurlManager::createRequest()
+ZhttpRequest *ZhttpManager::createRequest()
 {
-	ZurlRequest *req = new ZurlRequest;
+	ZhttpRequest *req = new ZhttpRequest;
 	req->setup(this);
 	return req;
 }
 
-void ZurlManager::link(ZurlRequest *req)
+void ZhttpManager::link(ZhttpRequest *req)
 {
 	d->reqsByRid.insert(req->rid(), req);
 }
 
-void ZurlManager::unlink(ZurlRequest *req)
+void ZhttpManager::unlink(ZhttpRequest *req)
 {
 	d->reqsByRid.remove(req->rid());
 }
 
-bool ZurlManager::canWriteImmediately() const
+bool ZhttpManager::canWriteImmediately() const
 {
 	assert(d->out_sock);
 
 	return d->out_sock->canWriteImmediately();
 }
 
-void ZurlManager::write(const ZurlRequestPacket &packet)
+void ZhttpManager::write(const ZhttpRequestPacket &packet)
 {
 	assert(d->out_sock);
 
@@ -249,7 +250,7 @@ void ZurlManager::write(const ZurlRequestPacket &packet)
 	d->out_sock->write(QList<QByteArray>() << buf);
 }
 
-void ZurlManager::write(const ZurlRequestPacket &packet, const QByteArray &instanceAddress)
+void ZhttpManager::write(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress)
 {
 	assert(d->out_sock);
 
@@ -262,4 +263,4 @@ void ZurlManager::write(const ZurlRequestPacket &packet, const QByteArray &insta
 	d->out_stream_sock->write(msg);
 }
 
-#include "zurlmanager.moc"
+#include "zhttpmanager.moc"

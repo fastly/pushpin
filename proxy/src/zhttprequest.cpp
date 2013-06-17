@@ -17,22 +17,22 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "zurlrequest.h"
+#include "zhttprequest.h"
 
 #include <assert.h>
 #include <QTimer>
 #include <QPointer>
 #include <QUuid>
 #include <QUrl>
-#include "packet/zurlrequestpacket.h"
-#include "packet/zurlresponsepacket.h"
+#include "zhttprequestpacket.h"
+#include "zhttpresponsepacket.h"
 #include "log.h"
-#include "zurlmanager.h"
+#include "zhttpmanager.h"
 
 #define IDEAL_CREDITS 200000
 #define REQUEST_TIMEOUT 600
 
-class ZurlRequest::Private : public QObject
+class ZhttpRequest::Private : public QObject
 {
 	Q_OBJECT
 
@@ -47,10 +47,10 @@ public:
 		Receiving          // we've completed sending the request, waiting on response
 	};
 
-	ZurlRequest *q;
-	ZurlManager *manager;
+	ZhttpRequest *q;
+	ZhttpManager *manager;
 	State state;
-	ZurlRequest::Rid rid;
+	ZhttpRequest::Rid rid;
 	QByteArray replyAddress;
 	QString connectHost;
 	bool ignorePolicies;
@@ -70,10 +70,10 @@ public:
 	HttpHeaders responseHeaders;
 	QByteArray in;
 	bool pendingUpdate;
-	ZurlRequest::ErrorCondition errorCondition;
+	ZhttpRequest::ErrorCondition errorCondition;
 	QTimer *timer;
 
-	Private(ZurlRequest *_q) :
+	Private(ZhttpRequest *_q) :
 		QObject(_q),
 		q(_q),
 		manager(0),
@@ -99,10 +99,11 @@ public:
 			//   then cancel the request
 			if(state == Requesting || state == Receiving)
 			{
-				ZurlRequestPacket p;
+				ZhttpRequestPacket p;
+				p.from = rid.first;
 				p.id = rid.second;
+				p.type = ZhttpRequestPacket::Cancel;
 				p.seq = outSeq++;
-				p.cancel = true;
 				managerWrite(p, replyAddress);
 			}
 		}
@@ -169,8 +170,10 @@ public:
 			// if all we have to send is EOF, we don't need credits for that
 			if(out.isEmpty() && outFinished)
 			{
-				ZurlRequestPacket p;
+				ZhttpRequestPacket p;
+				p.from = rid.first;
 				p.id = rid.second;
+				p.type = ZhttpRequestPacket::Data;
 				p.seq = outSeq++;
 				p.body = QByteArray(""); // need to set body to count as content packet
 
@@ -192,8 +195,10 @@ public:
 
 				outCredits -= size;
 
-				ZurlRequestPacket p;
+				ZhttpRequestPacket p;
+				p.from = rid.first;
 				p.id = rid.second;
+				p.type = ZhttpRequestPacket::Data;
 				p.seq = outSeq++;
 				p.body = buf;
 				if(!out.isEmpty() || !outFinished)
@@ -217,8 +222,10 @@ public:
 			if(pendingInCredits > 0)
 			{
 				// if we have no data to send but we need to send credits, do at least that
-				ZurlRequestPacket p;
+				ZhttpRequestPacket p;
+				p.from = rid.first;
 				p.id = rid.second;
+				p.type = ZhttpRequestPacket::Data;
 				p.seq = outSeq++;
 				p.credits = pendingInCredits;
 				pendingInCredits = 0;
@@ -229,39 +236,39 @@ public:
 		}
 	}
 
-	void handle(const ZurlResponsePacket &packet)
+	void handle(const ZhttpResponsePacket &packet)
 	{
 		if(!packet.body.isNull())
-			log_debug("zurlrequest: read id=%s body=%d", packet.id.data(), packet.body.size());
+			log_debug("zhttp client: read id=%s body=%d", packet.id.data(), packet.body.size());
 		else
-			log_debug("zurlrequest: read id=%s control", packet.id.data());
+			log_debug("zhttp client: read id=%s control", packet.id.data());
 
 		if(state == RequestStartWait)
 		{
-			if(packet.replyAddress.isEmpty())
+			if(packet.from.isEmpty())
 			{
 				state = Private::Stopped;
 				errorCondition = ErrorGeneric;
 				cleanup();
-				log_warning("zurlrequest: error id=%s initial ack for streamed input request did not contain reply-address", packet.id.data());
+				log_warning("zhttp client: error id=%s initial ack for streamed input request did not contain from field", packet.id.data());
 				emit q->error();
 				return;
 			}
 
-			replyAddress = packet.replyAddress;
+			replyAddress = packet.from;
 
 			state = Requesting;
 		}
 		else if(state == RequestFinishWait)
 		{
-			replyAddress = packet.replyAddress;
+			replyAddress = packet.from;
 
 			state = Receiving;
 		}
 
-		if(packet.isError)
+		if(packet.type == ZhttpResponsePacket::Error)
 		{
-			// zurl conditions:
+			// zhttp conditions:
 			//  remote-connection-failed
 			//  connection-timeout
 			//  tls-error
@@ -285,7 +292,7 @@ public:
 			else // lump the rest as generic
 				errorCondition = ErrorGeneric;
 
-			log_debug("zurlrequest: error id=%s cond=%s", packet.id.data(), packet.condition.data());
+			log_debug("zhttp client: error id=%s cond=%s", packet.id.data(), packet.condition.data());
 
 			state = Private::Stopped;
 			cleanup();
@@ -295,15 +302,16 @@ public:
 
 		if(packet.seq != inSeq)
 		{
-			log_warning("zurlrequest: error id=%s received message out of sequence, canceling", packet.id.data());
+			log_warning("zhttp client: error id=%s received message out of sequence, canceling", packet.id.data());
 
 			// if this was not an error packet, send cancel
-			if(packet.condition.isEmpty())
+			if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
 			{
-				ZurlRequestPacket p;
+				ZhttpRequestPacket p;
+				p.from = rid.first;
 				p.id = rid.second;
+				p.type = ZhttpRequestPacket::Cancel;
 				p.seq = outSeq++;
-				p.cancel = true;
 				managerWrite(p, replyAddress);
 			}
 
@@ -320,7 +328,7 @@ public:
 
 		bool doReadyRead = false;
 
-		if(!packet.body.isNull())
+		if(packet.type == ZhttpResponsePacket::Data)
 		{
 			if(!haveResponseValues)
 			{
@@ -332,7 +340,7 @@ public:
 			}
 
 			if(in.size() + packet.body.size() > IDEAL_CREDITS)
-				log_warning("zurlrequest: id=%s server is sending too fast", packet.id.data());
+				log_warning("zhttp client: id=%s server is sending too fast", packet.id.data());
 
 			in += packet.body;
 
@@ -368,22 +376,22 @@ public:
 			emit q->readyRead();
 	}
 
-	void managerWrite(const ZurlRequestPacket &packet)
+	void managerWrite(const ZhttpRequestPacket &packet)
 	{
 		if(!packet.body.isNull())
-			log_debug("zurlrequest: write id=%s seq=%d body=%d", packet.id.data(), packet.seq, packet.body.size());
+			log_debug("zhttp client: write id=%s seq=%d body=%d", packet.id.data(), packet.seq, packet.body.size());
 		else
-			log_debug("zurlrequest: write id=%s seq=%d control", packet.id.data(), packet.seq);
+			log_debug("zhttp client: write id=%s seq=%d control", packet.id.data(), packet.seq);
 
 		manager->write(packet);
 	}
 
-	void managerWrite(const ZurlRequestPacket &packet, const QByteArray &instanceAddress)
+	void managerWrite(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress)
 	{
 		if(!packet.body.isNull())
-			log_debug("zurlrequest: write to=%s id=%s seq=%d body=%d", instanceAddress.data(), packet.id.data(), packet.seq, packet.body.size());
+			log_debug("zhttp client: write to=%s id=%s seq=%d body=%d", instanceAddress.data(), packet.id.data(), packet.seq, packet.body.size());
 		else
-			log_debug("zurlrequest: write to=%s id=%s seq=%d control", instanceAddress.data(), packet.id.data(), packet.seq);
+			log_debug("zhttp client: write to=%s id=%s seq=%d control", instanceAddress.data(), packet.id.data(), packet.seq);
 
 		manager->write(packet, instanceAddress);
 	}
@@ -398,15 +406,16 @@ public slots:
 			if(!manager->canWriteImmediately())
 			{
 				state = Private::Stopped;
-				errorCondition = ZurlRequest::ErrorUnavailable;
+				errorCondition = ZhttpRequest::ErrorUnavailable;
 				emit q->error();
 				cleanup();
 				return;
 			}
 
-			ZurlRequestPacket p;
+			ZhttpRequestPacket p;
+			p.from = rid.first;
 			p.id = rid.second;
-			p.sender = rid.first;
+			p.type = ZhttpRequestPacket::Data;
 			p.seq = outSeq++;
 			p.method = method;
 			p.uri = url;
@@ -439,52 +448,53 @@ public slots:
 		//   then cancel the request
 		if(state == Requesting || state == Receiving)
 		{
-			ZurlRequestPacket p;
+			ZhttpRequestPacket p;
+			p.from = rid.first;
 			p.id = rid.second;
+			p.type = ZhttpRequestPacket::Cancel;
 			p.seq = outSeq++;
-			p.cancel = true;
 			managerWrite(p, replyAddress);
 		}
 
 		state = Private::Stopped;
-		errorCondition = ZurlRequest::ErrorTimeout;
+		errorCondition = ZhttpRequest::ErrorTimeout;
 		cleanup();
 		emit q->error();
 	}
 };
 
-ZurlRequest::ZurlRequest(QObject *parent) :
+ZhttpRequest::ZhttpRequest(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
 }
 
-ZurlRequest::~ZurlRequest()
+ZhttpRequest::~ZhttpRequest()
 {
 	delete d;
 }
 
-ZurlRequest::Rid ZurlRequest::rid() const
+ZhttpRequest::Rid ZhttpRequest::rid() const
 {
 	return d->rid;
 }
 
-void ZurlRequest::setConnectHost(const QString &host)
+void ZhttpRequest::setConnectHost(const QString &host)
 {
 	d->connectHost = host;
 }
 
-void ZurlRequest::setIgnorePolicies(bool on)
+void ZhttpRequest::setIgnorePolicies(bool on)
 {
 	d->ignorePolicies = on;
 }
 
-void ZurlRequest::setIgnoreTlsErrors(bool on)
+void ZhttpRequest::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
 }
 
-void ZurlRequest::start(const QString &method, const QUrl &url, const HttpHeaders &headers)
+void ZhttpRequest::start(const QString &method, const QUrl &url, const HttpHeaders &headers)
 {
 	d->state = Private::Starting;
 	d->method = method;
@@ -499,7 +509,7 @@ void ZurlRequest::start(const QString &method, const QUrl &url, const HttpHeader
 	d->update();
 }
 
-void ZurlRequest::writeBody(const QByteArray &body)
+void ZhttpRequest::writeBody(const QByteArray &body)
 {
 	assert(!d->outFinished);
 
@@ -508,7 +518,7 @@ void ZurlRequest::writeBody(const QByteArray &body)
 	d->update();
 }
 
-void ZurlRequest::endBody()
+void ZhttpRequest::endBody()
 {
 	assert(!d->outFinished);
 
@@ -517,53 +527,53 @@ void ZurlRequest::endBody()
 	d->update();
 }
 
-int ZurlRequest::bytesAvailable() const
+int ZhttpRequest::bytesAvailable() const
 {
 	return d->in.size();
 }
 
-bool ZurlRequest::isFinished() const
+bool ZhttpRequest::isFinished() const
 {
 	return d->state == Private::Stopped;
 }
 
-ZurlRequest::ErrorCondition ZurlRequest::errorCondition() const
+ZhttpRequest::ErrorCondition ZhttpRequest::errorCondition() const
 {
 	return d->errorCondition;
 }
 
-int ZurlRequest::responseCode() const
+int ZhttpRequest::responseCode() const
 {
 	return d->responseCode;
 }
 
-QByteArray ZurlRequest::responseStatus() const
+QByteArray ZhttpRequest::responseStatus() const
 {
 	return d->responseStatus;
 }
 
-HttpHeaders ZurlRequest::responseHeaders() const
+HttpHeaders ZhttpRequest::responseHeaders() const
 {
 	return d->responseHeaders;
 }
 
-QByteArray ZurlRequest::readResponseBody(int size)
+QByteArray ZhttpRequest::readResponseBody(int size)
 {
 	return d->readResponseBody(size);
 }
 
-void ZurlRequest::setup(ZurlManager *manager)
+void ZhttpRequest::setup(ZhttpManager *manager)
 {
 	d->manager = manager;
 	d->rid = Rid(manager->clientId(), QUuid::createUuid().toString().toLatin1());
 	d->manager->link(this);
 }
 
-void ZurlRequest::handle(const ZurlResponsePacket &packet)
+void ZhttpRequest::handle(const ZhttpResponsePacket &packet)
 {
 	assert(d->manager);
 
 	d->handle(packet);
 }
 
-#include "zurlrequest.moc"
+#include "zhttprequest.moc"

@@ -38,8 +38,8 @@
 #include "m2manager.h"
 #include "m2request.h"
 #include "m2response.h"
-#include "zurlmanager.h"
-#include "zurlrequest.h"
+#include "zhttpmanager.h"
+#include "zhttprequest.h"
 #include "domainmap.h"
 #include "xffrule.h"
 #include "inspectmanager.h"
@@ -115,7 +115,7 @@ public:
 	bool verbose;
 	QByteArray clientId;
 	M2Manager *m2;
-	ZurlManager *zurl;
+	ZhttpManager *zhttp;
 	InspectManager *inspect;
 	DomainMap *domainMap;
 	InspectChecker *inspectChecker;
@@ -139,7 +139,7 @@ public:
 		q(_q),
 		verbose(false),
 		m2(0),
-		zurl(0),
+		zhttp(0),
 		inspect(0),
 		domainMap(0),
 		inspectChecker(0),
@@ -323,12 +323,12 @@ public:
 
 		clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
 
-		zurl = new ZurlManager(this);
-		zurl->setClientId(clientId);
+		zhttp = new ZhttpManager(this);
+		zhttp->setClientId(clientId);
 
-		zurl->setOutgoingSpecs(zurl_out_specs);
-		zurl->setOutgoingStreamSpecs(zurl_out_stream_specs);
-		zurl->setIncomingSpecs(zurl_in_specs);
+		zhttp->setOutgoingSpecs(zurl_out_specs);
+		zhttp->setOutgoingStreamSpecs(zurl_out_stream_specs);
+		zhttp->setIncomingSpecs(zurl_in_specs);
 
 		if(!handler_inspect_spec.isEmpty())
 		{
@@ -397,7 +397,7 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zurl, domainMap, this);
+			ps = new ProxySession(zhttp, domainMap, this);
 			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
 			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
 			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));

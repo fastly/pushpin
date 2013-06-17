@@ -17,18 +17,18 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ZURLREQUEST_H
-#define ZURLREQUEST_H
+#ifndef ZHTTPREQUEST_H
+#define ZHTTPREQUEST_H
 
 #include <QObject>
 #include "httpheaders.h"
 
 class QUrl;
 
-class ZurlResponsePacket;
-class ZurlManager;
+class ZhttpResponsePacket;
+class ZhttpManager;
 
-class ZurlRequest : public QObject
+class ZhttpRequest : public QObject
 {
 	Q_OBJECT
 
@@ -48,7 +48,7 @@ public:
 	// pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
 
-	~ZurlRequest();
+	~ZhttpRequest();
 
 	Rid rid() const;
 
@@ -83,10 +83,10 @@ private:
 	friend class Private;
 	Private *d;
 
-	friend class ZurlManager;
-	ZurlRequest(QObject *parent = 0);
-	void setup(ZurlManager *manager);
-	void handle(const ZurlResponsePacket &packet);
+	friend class ZhttpManager;
+	ZhttpRequest(QObject *parent = 0);
+	void setup(ZhttpManager *manager);
+	void handle(const ZhttpResponsePacket &packet);
 };
 
 #endif

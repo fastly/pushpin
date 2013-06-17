@@ -32,8 +32,8 @@
 #include "inspectdata.h"
 #include "acceptdata.h"
 #include "m2request.h"
-#include "zurlmanager.h"
-#include "zurlrequest.h"
+#include "zhttpmanager.h"
+#include "zhttprequest.h"
 #include "domainmap.h"
 #include "xffrule.h"
 #include "requestsession.h"
@@ -105,13 +105,13 @@ public:
 
 	ProxySession *q;
 	State state;
-	ZurlManager *zurlManager;
+	ZhttpManager *zhttpManager;
 	DomainMap *domainMap;
 	M2Request *m2Request;
 	QString host;
 	bool isHttps;
 	QList<DomainMap::Target> targets;
-	ZurlRequest *zurlRequest;
+	ZhttpRequest *zhttpRequest;
 	bool addAllowed;
 	bool haveInspectData;
 	InspectData idata;
@@ -132,15 +132,15 @@ public:
 	XffRule xffRule;
 	XffRule xffTrustedRule;
 
-	Private(ProxySession *_q, ZurlManager *_zurlManager, DomainMap *_domainMap) :
+	Private(ProxySession *_q, ZhttpManager *_zhttpManager, DomainMap *_domainMap) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
-		zurlManager(_zurlManager),
+		zhttpManager(_zhttpManager),
 		domainMap(_domainMap),
 		m2Request(0),
 		isHttps(false),
-		zurlRequest(0),
+		zhttpRequest(0),
 		addAllowed(true),
 		haveInspectData(false),
 		requestBytesToWrite(0),
@@ -338,28 +338,28 @@ public:
 
 		log_debug("proxysession: %p forwarding to %s", q, url.toEncoded().data());
 
-		zurlRequest = zurlManager->createRequest();
-		zurlRequest->setParent(this);
-		connect(zurlRequest, SIGNAL(readyRead()), SLOT(zurlRequest_readyRead()));
-		connect(zurlRequest, SIGNAL(bytesWritten(int)), SLOT(zurlRequest_bytesWritten(int)));
-		connect(zurlRequest, SIGNAL(error()), SLOT(zurlRequest_error()));
+		zhttpRequest = zhttpManager->createRequest();
+		zhttpRequest->setParent(this);
+		connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
+		connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
+		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
 
 		if(target.trusted)
-			zurlRequest->setIgnorePolicies(true);
+			zhttpRequest->setIgnorePolicies(true);
 
 		if(target.insecure)
-			zurlRequest->setIgnoreTlsErrors(true);
+			zhttpRequest->setIgnoreTlsErrors(true);
 
-		zurlRequest->start(requestData.method, url, requestData.headers);
+		zhttpRequest->start(requestData.method, url, requestData.headers);
 
 		if(!initialRequestBody.isEmpty())
 		{
 			requestBytesToWrite += initialRequestBody.size();
-			zurlRequest->writeBody(initialRequestBody);
+			zhttpRequest->writeBody(initialRequestBody);
 		}
 
 		if(!m2Request || m2Request->isFinished())
-			zurlRequest->endBody();
+			zhttpRequest->endBody();
 	}
 
 	void tryRequestRead()
@@ -382,7 +382,7 @@ public:
 		}
 
 		requestBytesToWrite += buf.size();
-		zurlRequest->writeBody(buf);
+		zhttpRequest->writeBody(buf);
 	}
 
 	void cannotAcceptAll()
@@ -443,7 +443,7 @@ public:
 
 		QPointer<QObject> self = this;
 
-		QByteArray buf = zurlRequest->readResponseBody(MAX_STREAM_BUFFER);
+		QByteArray buf = zhttpRequest->readResponseBody(MAX_STREAM_BUFFER);
 		if(!buf.isEmpty())
 		{
 			total += buf.size();
@@ -505,7 +505,7 @@ public:
 	{
 		QPointer<QObject> self = this;
 
-		if(zurlRequest->isFinished())
+		if(zhttpRequest->isFinished())
 		{
 			log_debug("proxysession: %p response from target finished", q);
 
@@ -515,8 +515,8 @@ public:
 				return;
 			}
 
-			delete zurlRequest;
-			zurlRequest = 0;
+			delete zhttpRequest;
+			zhttpRequest = 0;
 
 			if(state == Accepting)
 			{
@@ -574,7 +574,7 @@ public slots:
 	{
 		log_debug("proxysession: %p finished reading request", q);
 
-		zurlRequest->endBody();
+		zhttpRequest->endBody();
 	}
 
 	void m2Request_error()
@@ -584,16 +584,16 @@ public slots:
 		rejectAll(500, "Internal Server Error", "Primary shared request failed.");
 	}
 
-	void zurlRequest_readyRead()
+	void zhttpRequest_readyRead()
 	{
 		log_debug("proxysession: %p data from target", q);
 
 		if(state == Requesting)
 		{
-			responseData.code = zurlRequest->responseCode();
-			responseData.status = zurlRequest->responseStatus();
-			responseData.headers = zurlRequest->responseHeaders();
-			responseData.body = zurlRequest->readResponseBody(MAX_INITIAL_BUFFER);
+			responseData.code = zhttpRequest->responseCode();
+			responseData.status = zhttpRequest->responseStatus();
+			responseData.headers = zhttpRequest->responseHeaders();
+			responseData.body = zhttpRequest->readResponseBody(MAX_INITIAL_BUFFER);
 
 			total += responseData.body.size();
 			log_debug("proxysession: %p recv total: %d", q, total);
@@ -650,7 +650,7 @@ public slots:
 		}
 	}
 
-	void zurlRequest_bytesWritten(int count)
+	void zhttpRequest_bytesWritten(int count)
 	{
 		requestBytesToWrite -= count;
 		assert(requestBytesToWrite >= 0);
@@ -659,9 +659,9 @@ public slots:
 			tryRequestRead();
 	}
 
-	void zurlRequest_error()
+	void zhttpRequest_error()
 	{
-		ZurlRequest::ErrorCondition e = zurlRequest->errorCondition();
+		ZhttpRequest::ErrorCondition e = zhttpRequest->errorCondition();
 		log_debug("proxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
 
 		if(state == Requesting || state == Accepting)
@@ -670,12 +670,12 @@ public slots:
 
 			switch(e)
 			{
-				case ZurlRequest::ErrorLengthRequired:
+				case ZhttpRequest::ErrorLengthRequired:
 					rejectAll(411, "Length Required", "Must provide Content-Length header.");
 					break;
-				case ZurlRequest::ErrorConnect:
-				case ZurlRequest::ErrorConnectTimeout:
-				case ZurlRequest::ErrorTls:
+				case ZhttpRequest::ErrorConnect:
+				case ZhttpRequest::ErrorConnectTimeout:
+				case ZhttpRequest::ErrorTls:
 					// it should not be possible to get one of these errors while accepting
 					assert(state == Requesting);
 					tryAgain = true;
@@ -711,7 +711,7 @@ public slots:
 		}
 
 		// everyone caught up? try to read some more then
-		if(!buffering && zurlRequest && !pendingWrites())
+		if(!buffering && zhttpRequest && !pendingWrites())
 			tryResponseRead();
 	}
 
@@ -761,10 +761,10 @@ public slots:
 	}
 };
 
-ProxySession::ProxySession(ZurlManager *zurlManager, DomainMap *domainMap, QObject *parent) :
+ProxySession::ProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zurlManager, domainMap);
+	d = new Private(this, zhttpManager, domainMap);
 }
 
 ProxySession::~ProxySession()

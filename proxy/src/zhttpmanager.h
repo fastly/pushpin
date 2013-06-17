@@ -17,21 +17,21 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ZURLMANAGER_H
-#define ZURLMANAGER_H
+#ifndef ZHTTPMANAGER_H
+#define ZHTTPMANAGER_H
 
 #include <QObject>
 
-class ZurlRequestPacket;
-class ZurlRequest;
+class ZhttpRequestPacket;
+class ZhttpRequest;
 
-class ZurlManager : public QObject
+class ZhttpManager : public QObject
 {
 	Q_OBJECT
 
 public:
-	ZurlManager(QObject *parent = 0);
-	~ZurlManager();
+	ZhttpManager(QObject *parent = 0);
+	~ZhttpManager();
 
 	QByteArray clientId() const;
 
@@ -40,19 +40,19 @@ public:
 	bool setOutgoingStreamSpecs(const QStringList &specs);
 	bool setIncomingSpecs(const QStringList &specs);
 
-	ZurlRequest *createRequest();
+	ZhttpRequest *createRequest();
 
 private:
 	class Private;
 	friend class Private;
 	Private *d;
 
-	friend class ZurlRequest;
-	void link(ZurlRequest *req);
-	void unlink(ZurlRequest *req);
+	friend class ZhttpRequest;
+	void link(ZhttpRequest *req);
+	void unlink(ZhttpRequest *req);
 	bool canWriteImmediately() const;
-	void write(const ZurlRequestPacket &packet);
-	void write(const ZurlRequestPacket &packet, const QByteArray &instanceAddress);
+	void write(const ZhttpRequestPacket &packet);
+	void write(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
 };
 
 #endif
