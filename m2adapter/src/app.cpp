@@ -688,74 +688,78 @@ private slots:
 		{
 			log_debug("zhttp: id=%s response data size=%d%s", s->id.data(), zresp.body.size(), zresp.more ? " M" : "");
 
-			M2ResponsePacket mresp;
-			mresp.sender = m2_out_ident;
-			mresp.id = s->id;
-
-			int overhead = 0;
-
-			// for the first response message, we need to include http headers
-			if(s->written == 0)
+			// respond with data if we have body data or this is the first packet
+			if(!zresp.body.isEmpty() || s->written == 0)
 			{
-				if(zresp.more && !zresp.headers.contains("Content-Length"))
+				M2ResponsePacket mresp;
+				mresp.sender = m2_out_ident;
+				mresp.id = s->id;
+
+				int overhead = 0;
+
+				// for the first response message, we need to include http headers
+				if(s->written == 0)
 				{
-					if(s->allowChunked)
+					if(zresp.more && !zresp.headers.contains("Content-Length"))
 					{
-						s->chunked = true;
+						if(s->allowChunked)
+						{
+							s->chunked = true;
+						}
+						else
+						{
+							// disable persistence
+							s->persistent = false;
+							s->respondKeepAlive = false;
+						}
 					}
-					else
+
+					HttpHeaders headers = zresp.headers;
+					QList<QByteArray> connHeaders = headers.takeAll("Connection");
+					foreach(const QByteArray &h, connHeaders)
+						headers.removeAll(h);
+
+					connHeaders.clear();
+					if(s->respondKeepAlive)
+						connHeaders += "Keep-Alive";
+					if(s->respondClose)
+						connHeaders += "close";
+
+					if(s->chunked)
 					{
-						// disable persistence
-						s->persistent = false;
-						s->respondKeepAlive = false;
+						connHeaders += "Transfer-Encoding";
+						headers += HttpHeader("Transfer-Encoding", "chunked");
 					}
+					else if(!zresp.more && !headers.contains("Content-Length"))
+					{
+						headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
+					}
+
+					if(!connHeaders.isEmpty())
+						headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
+
+					mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
+
+					overhead += mresp.data.size();
 				}
-
-				HttpHeaders headers = zresp.headers;
-				QList<QByteArray> connHeaders = headers.takeAll("Connection");
-				foreach(const QByteArray &h, connHeaders)
-					headers.removeAll(h);
-
-				connHeaders.clear();
-				if(s->respondKeepAlive)
-					connHeaders += "Keep-Alive";
-				if(s->respondClose)
-					connHeaders += "close";
 
 				if(s->chunked)
 				{
-					connHeaders += "Transfer-Encoding";
-					headers += HttpHeader("Transfer-Encoding", "chunked");
+					QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
+					QByteArray chunkFooter = makeChunkFooter();
+
+					mresp.data += chunkHeader + zresp.body + chunkFooter;
+
+					overhead += chunkHeader.size() + chunkFooter.size();
 				}
-				else if(!zresp.more && !headers.contains("Content-Length"))
-				{
-					headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
-				}
+				else
+					mresp.data += zresp.body;
 
-				if(!connHeaders.isEmpty())
-					headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
+				m2_out_write(mresp);
 
-				mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
-
-				overhead += mresp.data.size();
+				s->written += overhead + zresp.body.size();
+				s->confirmedWritten += overhead;
 			}
-
-			if(s->chunked)
-			{
-				QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
-				QByteArray chunkFooter = makeChunkFooter();
-
-				mresp.data += chunkHeader + zresp.body + chunkFooter;
-
-				overhead += chunkHeader.size() + chunkFooter.size();
-			}
-			else
-				mresp.data += zresp.body;
-
-			m2_out_write(mresp);
-
-			s->written += overhead + zresp.body.size();
-			s->confirmedWritten += overhead;
 
 			if(!zresp.more)
 			{
