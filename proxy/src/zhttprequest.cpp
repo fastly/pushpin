@@ -562,11 +562,28 @@ QByteArray ZhttpRequest::readResponseBody(int size)
 	return d->readResponseBody(size);
 }
 
-void ZhttpRequest::setup(ZhttpManager *manager)
+void ZhttpRequest::setupClient(ZhttpManager *manager)
 {
 	d->manager = manager;
-	d->rid = Rid(manager->clientId(), QUuid::createUuid().toString().toLatin1());
+	d->rid = Rid(manager->instanceId(), QUuid::createUuid().toString().toLatin1());
 	d->manager->link(this);
+}
+
+void ZhttpRequest::setupServer(ZhttpManager *manager)
+{
+	Q_UNUSED(manager);
+	// TODO
+}
+
+void ZhttpRequest::startServer()
+{
+	// TODO
+}
+
+void ZhttpRequest::handle(const ZhttpRequestPacket &packet)
+{
+	// TODO
+	Q_UNUSED(packet);
 }
 
 void ZhttpRequest::handle(const ZhttpResponsePacket &packet)

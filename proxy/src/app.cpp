@@ -324,11 +324,11 @@ public:
 		clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
 
 		zhttp = new ZhttpManager(this);
-		zhttp->setClientId(clientId);
+		zhttp->setInstanceId(clientId);
 
-		zhttp->setOutgoingSpecs(zurl_out_specs);
-		zhttp->setOutgoingStreamSpecs(zurl_out_stream_specs);
-		zhttp->setIncomingSpecs(zurl_in_specs);
+		zhttp->setClientOutSpecs(zurl_out_specs);
+		zhttp->setClientOutStreamSpecs(zurl_out_stream_specs);
+		zhttp->setClientInSpecs(zurl_in_specs);
 
 		if(!handler_inspect_spec.isEmpty())
 		{

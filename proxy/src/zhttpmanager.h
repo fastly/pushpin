@@ -23,6 +23,7 @@
 #include <QObject>
 
 class ZhttpRequestPacket;
+class ZhttpResponsePacket;
 class ZhttpRequest;
 
 class ZhttpManager : public QObject
@@ -33,14 +34,22 @@ public:
 	ZhttpManager(QObject *parent = 0);
 	~ZhttpManager();
 
-	QByteArray clientId() const;
+	QByteArray instanceId() const;
+	void setInstanceId(const QByteArray &id);
 
-	void setClientId(const QByteArray &id);
-	bool setOutgoingSpecs(const QStringList &specs);
-	bool setOutgoingStreamSpecs(const QStringList &specs);
-	bool setIncomingSpecs(const QStringList &specs);
+	bool setClientOutSpecs(const QStringList &specs);
+	bool setClientOutStreamSpecs(const QStringList &specs);
+	bool setClientInSpecs(const QStringList &specs);
+
+	bool setServerInSpecs(const QStringList &specs);
+	bool setServerInStreamSpecs(const QStringList &specs);
+	bool setServerOutSpecs(const QStringList &specs);
 
 	ZhttpRequest *createRequest();
+	ZhttpRequest *takeNext();
+
+signals:
+	void incomingRequestReady();
 
 private:
 	class Private;

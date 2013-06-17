@@ -25,6 +25,7 @@
 
 class QUrl;
 
+class ZhttpRequestPacket;
 class ZhttpResponsePacket;
 class ZhttpManager;
 
@@ -85,7 +86,10 @@ private:
 
 	friend class ZhttpManager;
 	ZhttpRequest(QObject *parent = 0);
-	void setup(ZhttpManager *manager);
+	void setupClient(ZhttpManager *manager);
+	void setupServer(ZhttpManager *manager);
+	void startServer();
+	void handle(const ZhttpRequestPacket &packet);
 	void handle(const ZhttpResponsePacket &packet);
 };
 
