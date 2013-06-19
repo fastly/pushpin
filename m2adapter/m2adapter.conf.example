@@ -1,27 +1,27 @@
 [General]
-# mongrel2 handler send_spec
-m2_in_spec=
+# list of mongrel2 handler send_spec
+m2_in_specs=
 
-# mongrel2 handler recv_spec
-m2_out_spec=
+# list of mongrel2 handler recv_spec
+m2_out_specs=
 
-# mongrel2 handler recv_ident (without trailing space)
-m2_out_ident=
+# list of mongrel2 send_ident (per send_spec)
+m2_send_idents=
 
-# mongrel2 control spec
-m2_control_spec=
+# list of mongrel2 control specs (per send_ident)
+m2_control_specs=
 
 # set to true if zhttp specs should connect. else, bind.
 #zhttp_connect=true
 
-# zhttp in spec
-zhttp_in_spec=
+# zhttp in specs
+zhttp_in_specs=
 
-# zhttp out spec
-zhttp_out_spec=
+# zhttp out specs
+zhttp_out_specs=
 
-# zhttp out stream spec
-zhttp_out_stream_spec=
+# zhttp out stream specs
+zhttp_out_stream_specs=
 
 # useful for testing with zurl
 #zhttp_ignore_policies=true

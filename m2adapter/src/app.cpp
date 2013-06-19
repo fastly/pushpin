@@ -43,6 +43,18 @@
 
 //#define CONTROL_PORT_DEBUG
 
+static void trimlist(QStringList *list)
+{
+	for(int n = 0; n < list->count(); ++n)
+	{
+		if((*list)[n].isEmpty())
+		{
+			list->removeAt(n);
+			--n; // adjust position
+		}
+	}
+}
+
 static bool validateHost(const QByteArray &in)
 {
 	for(int n = 0; n < in.count(); ++n)
@@ -73,14 +85,6 @@ static QByteArray makeChunkFooter()
 	return "\r\n";
 }
 
-/*static QByteArray createResponse(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body)
-{
-	HttpHeaders headers = _headers;
-	if(!headers.contains("Content-Length"))
-		headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
-	return createResponseHeader(code, reason, headers) + body;
-}*/
-
 class App::Private : public QObject
 {
 	Q_OBJECT
@@ -92,6 +96,9 @@ public:
 		ControlExpectingResponse
 	};
 
+	// can be used for either m2 or zhttp
+	typedef QPair<QByteArray, QByteArray> Rid;
+
 	class Session
 	{
 	public:
@@ -102,6 +109,7 @@ public:
 		int lastActive;
 
 		// m2 stuff
+		int identIndex;
 		QByteArray httpVersion;
 		bool persistent;
 		bool allowChunked;
@@ -138,19 +146,21 @@ public:
 	};
 
 	App *q;
+	QByteArray instanceId;
 	QZmq::Socket *m2_in_sock;
 	QZmq::Socket *m2_out_sock;
-	QZmq::Socket *m2_control_sock;
+	QList<QZmq::Socket*> m2_control_socks;
 	QZmq::Socket *zhttp_in_sock;
 	QZmq::Socket *zhttp_out_sock;
 	QZmq::Socket *zhttp_out_stream_sock;
 	QZmq::Valve *m2_in_valve;
 	QZmq::Valve *zhttp_in_valve;
-	QHash<QByteArray, Session*> sessionsById;
-	QByteArray m2_out_ident;
+	QList<QByteArray> m2_send_idents;
+	QHash<Rid, Session*> sessionsByM2Rid;
+	QHash<Rid, Session*> sessionsByZhttpRid;
 	int m2_client_buffer;
 	bool ignorePolicies;
-	ControlState controlState;
+	QList<ControlState> controlStates;
 	QTime time;
 	QTimer *expireTimer;
 	QTimer *statusTimer;
@@ -160,12 +170,10 @@ public:
 		q(_q),
 		m2_in_sock(0),
 		m2_out_sock(0),
-		m2_control_sock(0),
 		zhttp_in_sock(0),
 		zhttp_out_sock(0),
 		zhttp_out_stream_sock(0),
-		m2_in_valve(0),
-		controlState(ControlIdle)
+		m2_in_valve(0)
 	{
 		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
 
@@ -180,7 +188,7 @@ public:
 
 	~Private()
 	{
-		QHashIterator<QByteArray, Session*> it(sessionsById);
+		QHashIterator<Rid, Session*> it(sessionsByM2Rid);
 		while(it.hasNext())
 		{
 			it.next();
@@ -255,22 +263,60 @@ public:
 
 		QSettings settings(configFile, QSettings::IniFormat);
 
-		QString m2_in_spec = settings.value("m2_in_spec").toString();
-		QString m2_out_spec = settings.value("m2_out_spec").toString();
-		m2_out_ident = settings.value("m2_out_ident").toString().toUtf8();
-		QString m2_control_spec = settings.value("m2_control_spec").toString();
+		QStringList m2_in_specs = settings.value("m2_in_specs").toStringList();
+		trimlist(&m2_in_specs);
+		QStringList m2_out_specs = settings.value("m2_out_specs").toStringList();
+		trimlist(&m2_out_specs);
+		QStringList str_m2_send_idents = settings.value("m2_send_idents").toStringList();
+		trimlist(&str_m2_send_idents);
+		QStringList m2_control_specs = settings.value("m2_control_specs").toStringList();
+		trimlist(&m2_control_specs);
 		bool zhttp_connect = settings.value("zhttp_connect").toBool();
-		QString zhttp_in_spec = settings.value("zhttp_in_spec").toString();
-		QString zhttp_out_spec = settings.value("zhttp_out_spec").toString();
-		QString zhttp_out_stream_spec = settings.value("zhttp_out_stream_spec").toString();
+		QStringList zhttp_in_specs = settings.value("zhttp_in_specs").toStringList();
+		trimlist(&zhttp_in_specs);
+		QStringList zhttp_out_specs = settings.value("zhttp_out_specs").toStringList();
+		trimlist(&zhttp_out_specs);
+		QStringList zhttp_out_stream_specs = settings.value("zhttp_out_stream_specs").toStringList();
+		trimlist(&zhttp_out_stream_specs);	
 		m2_client_buffer = settings.value("m2_client_buffer").toInt();
 		if(m2_client_buffer <= 0)
 			m2_client_buffer = 200000;
 		ignorePolicies = settings.value("zhttp_ignore_policies").toBool();
 
+		m2_send_idents.clear();
+		foreach(const QString &s, str_m2_send_idents)
+			m2_send_idents += s.toUtf8();
+
+		if(m2_in_specs.isEmpty() || m2_out_specs.isEmpty() || m2_control_specs.isEmpty())
+		{
+			log_error("must set m2_in_specs, m2_out_specs, and m2_control_specs");
+			emit q->quit();
+			return;
+		}
+
+		if(m2_send_idents.count() != m2_control_specs.count())
+		{
+			log_error("m2_control_specs must have the same count as m2_send_idents");
+			emit q->quit();
+			return;
+		}
+
+		if(zhttp_in_specs.isEmpty() || zhttp_out_specs.isEmpty() || zhttp_out_stream_specs.isEmpty())
+		{
+			log_error("must set zhttp_in_specs, zhttp_out_specs, and zhttp_out_stream_specs");
+			emit q->quit();
+			return;
+		}
+
+		instanceId = "m2adapter_" + QByteArray::number(QCoreApplication::applicationPid());
+
 		m2_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
 		m2_in_sock->setHwm(DEFAULT_HWM);
-		m2_in_sock->connectToAddress(m2_in_spec);
+		foreach(const QString &spec, m2_in_specs)
+		{
+			log_info("m2_in connect %s", qPrintable(spec));
+			m2_in_sock->connectToAddress(spec);
+		}
 
 		m2_in_valve = new QZmq::Valve(m2_in_sock, this);
 		connect(m2_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(m2_in_readyRead(const QList<QByteArray> &)));
@@ -278,26 +324,45 @@ public:
 		m2_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
 		m2_out_sock->setHwm(DEFAULT_HWM);
 		m2_out_sock->setWriteQueueEnabled(false);
-		m2_out_sock->connectToAddress(m2_out_spec);
+		foreach(const QString &spec, m2_out_specs)
+		{
+			log_info("m2_out connect %s", qPrintable(spec));
+			m2_out_sock->connectToAddress(spec);
+		}
 
-		m2_control_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
-		m2_control_sock->setShutdownWaitTime(0);
-		m2_control_sock->setHwm(DEFAULT_HWM);
-		connect(m2_control_sock, SIGNAL(readyRead()), SLOT(m2_control_readyRead()));
-		m2_control_sock->connectToAddress(m2_control_spec);
+		for(int n = 0; n < m2_control_specs.count(); ++n)
+		{
+			const QString &spec = m2_control_specs[n];
+
+			controlStates += ControlIdle;
+
+			QZmq::Socket *sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
+			m2_control_socks += sock;
+			sock->setShutdownWaitTime(0);
+			sock->setHwm(DEFAULT_HWM);
+			connect(sock, SIGNAL(readyRead()), SLOT(m2_control_readyRead()));
+
+			log_info("m2_control connect %s:%s", m2_send_idents[n].data(), qPrintable(spec));
+			sock->connectToAddress(spec);
+		}
 
 		zhttp_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
 		zhttp_in_sock->setHwm(DEFAULT_HWM);
-		zhttp_in_sock->subscribe(m2_out_ident + ' ');
+		zhttp_in_sock->subscribe(instanceId + ' ');
 		if(zhttp_connect)
 		{
-			zhttp_in_sock->connectToAddress(zhttp_in_spec);
+			foreach(const QString &spec, zhttp_in_specs)
+			{
+				log_info("zhttp_in connect %s", qPrintable(spec));
+				zhttp_in_sock->connectToAddress(spec);
+			}
 		}
 		else
 		{
-			if(!zhttp_in_sock->bind(zhttp_in_spec))
+			log_info("zhttp_in bind %s", qPrintable(zhttp_in_specs[0]));
+			if(!zhttp_in_sock->bind(zhttp_in_specs[0]))
 			{
-				log_error("unable to bind to zhttp_in_spec: %s", qPrintable(zhttp_in_spec));
+				log_error("unable to bind to zhttp_in spec: %s", qPrintable(zhttp_in_specs[0]));
 				emit q->quit();
 				return;
 			}
@@ -311,13 +376,18 @@ public:
 		zhttp_out_sock->setHwm(DEFAULT_HWM);
 		if(zhttp_connect)
 		{
-			zhttp_out_sock->connectToAddress(zhttp_out_spec);
+			foreach(const QString &spec, zhttp_out_specs)
+			{
+				log_info("zhttp_out connect %s", qPrintable(spec));
+				zhttp_out_sock->connectToAddress(spec);
+			}
 		}
 		else
 		{
-			if(!zhttp_out_sock->bind(zhttp_out_spec))
+			log_info("zhttp_out bind %s", qPrintable(zhttp_out_specs[0]));
+			if(!zhttp_out_sock->bind(zhttp_out_specs[0]))
 			{
-				log_error("unable to bind to zhttp_out_spec: %s", qPrintable(zhttp_out_spec));
+				log_error("unable to bind to zhttp_out spec: %s", qPrintable(zhttp_out_specs[0]));
 				emit q->quit();
 				return;
 			}
@@ -327,13 +397,18 @@ public:
 		zhttp_out_stream_sock->setHwm(DEFAULT_HWM);
 		if(zhttp_connect)
 		{
-			zhttp_out_stream_sock->connectToAddress(zhttp_out_stream_spec);
+			foreach(const QString &spec, zhttp_out_stream_specs)
+			{
+				log_info("zhttp_out_stream connect %s", qPrintable(spec));
+				zhttp_out_stream_sock->connectToAddress(spec);
+			}
 		}
 		else
 		{
-			if(!zhttp_out_stream_sock->bind(zhttp_out_stream_spec))
+			log_info("zhttp_out_stream bind %s", qPrintable(zhttp_out_stream_specs[0]));
+			if(!zhttp_out_stream_sock->bind(zhttp_out_stream_specs[0]))
 			{
-				log_error("unable to bind to zhttp_out_stream_spec: %s", qPrintable(zhttp_out_stream_spec));
+				log_error("unable to bind to zhttp_out_stream spec: %s", qPrintable(zhttp_out_stream_specs[0]));
 				emit q->quit();
 				return;
 			}
@@ -351,6 +426,13 @@ public:
 		log_info("started");
 	}
 
+	void destroySession(Session *s)
+	{
+		sessionsByM2Rid.remove(Rid(m2_send_idents[s->identIndex], s->id));
+		sessionsByZhttpRid.remove(Rid(instanceId, s->id));
+		delete s;
+	}
+
 	void m2_out_write(const M2ResponsePacket &packet)
 	{
 		QByteArray buf = packet.toByteArray();
@@ -360,7 +442,7 @@ public:
 		m2_out_sock->write(QList<QByteArray>() << buf);
 	}
 
-	void m2_control_write(const QByteArray &cmd, const QVariantHash &args)
+	void m2_control_write(int index, const QByteArray &cmd, const QVariantHash &args)
 	{
 		QVariantList vlist;
 		vlist += cmd;
@@ -369,21 +451,19 @@ public:
 		QByteArray buf = TnetString::fromVariant(vlist);
 
 #ifdef CONTROL_PORT_DEBUG
-		log_debug("m2: OUT control %s", buf.data());
+		log_debug("m2: OUT control %s %s", m2_send_idents[index].data(), buf.data());
 #endif
-
-		controlState = ControlExpectingResponse;
 
 		QList<QByteArray> message;
 		message += QByteArray();
 		message += buf;
-		m2_control_sock->write(message);
+		m2_control_socks[index]->write(message);
 	}
 
 	void m2_writeErrorClose(Session *s)
 	{
 		M2ResponsePacket mresp;
-		mresp.sender = m2_out_ident;
+		mresp.sender = m2_send_idents[s->identIndex];
 		mresp.id = s->id;
 		mresp.data = "";
 		m2_out_write(mresp);
@@ -411,10 +491,10 @@ public:
 		zhttp_out_stream_sock->write(message);
 	}
 
-	void handleControlResponse(const QVariant &data)
+	void handleControlResponse(int index, const QVariant &data)
 	{
 #ifdef CONTROL_PORT_DEBUG
-		log_debug("m2: IN control %s", qPrintable(TnetString::variantToString(data)));
+		log_debug("m2: IN control %s %s", m2_send_idents[index].data(), qPrintable(TnetString::variantToString(data)));
 #endif
 
 		QVariantHash vhash = data.toHash();
@@ -425,7 +505,7 @@ public:
 			QByteArray id = vlist[0].toByteArray();
 			int written = vlist[7].toInt();
 
-			Session *s = sessionsById.value(id);
+			Session *s = sessionsByM2Rid.value(Rid(m2_send_idents[index], id));
 			if(!s)
 				continue;
 
@@ -447,7 +527,7 @@ public:
 		if(!s->zhttpAddress.isEmpty())
 		{
 			ZhttpRequestPacket zreq;
-			zreq.from = m2_out_ident;
+			zreq.from = instanceId;
 			zreq.id = s->id;
 			zreq.seq = (s->outSeq)++;
 			zreq.type = ZhttpRequestPacket::Credit;
@@ -476,22 +556,21 @@ private slots:
 		{
 			log_debug("m2: id=%s disconnected", mreq.id.data());
 
-			Session *s = sessionsById.value(mreq.id);
+			Session *s = sessionsByM2Rid.value(Rid(mreq.sender, mreq.id));
 			if(s)
 			{
 				// if a worker had ack'd this session, then send cancel
 				if(!s->zhttpAddress.isEmpty())
 				{
 					ZhttpRequestPacket zreq;
-					zreq.from = m2_out_ident;
+					zreq.from = instanceId;
 					zreq.id = s->id;
 					zreq.type = ZhttpRequestPacket::Cancel;
 					zreq.seq = (s->outSeq)++;
 					zhttp_out_write(zreq, s->zhttpAddress);
 				}
 
-				sessionsById.remove(mreq.id);
-				delete s;
+				destroySession(s);
 			}
 
 			return;
@@ -529,7 +608,7 @@ private slots:
 		uri += host;
 		uri += mreq.uri;
 
-		Session *s = sessionsById.value(mreq.id);
+		Session *s = sessionsByM2Rid.value(Rid(mreq.sender, mreq.id));
 		if(s)
 		{
 			log_warning("m2: received duplicate request id=%s, skipping", mreq.id.data());
@@ -539,13 +618,30 @@ private slots:
 		{
 			if(mreq.version != "HTTP/1.0" && mreq.version != "HTTP/1.1")
 			{
-				log_warning("m2: id=%s skipping unknown version: %s", mreq.id.data(), mreq.version.data());
+				log_error("m2: id=%s skipping unknown version: %s", mreq.id.data(), mreq.version.data());
+				return;
+			}
+
+			int index = -1;
+			for(int n = 0; n < m2_send_idents.count(); ++n)
+			{
+				if(m2_send_idents[n] == mreq.sender)
+				{
+					index = n;
+					break;
+				}
+			}
+
+			if(index == -1)
+			{
+				log_error("m2: id=%s unknown send_ident [%s]", mreq.id.data(), mreq.sender.data());
 				return;
 			}
 
 			s = new Session;
 			s->id = mreq.id;
 			s->lastActive = time.elapsed();
+			s->identIndex = index;
 			s->httpVersion = mreq.version;
 
 			if(mreq.version == "HTTP/1.0")
@@ -569,12 +665,13 @@ private slots:
 			// TODO: if input is streamed, then we wouldn't set this yet
 			s->inFinished = true;
 
-			sessionsById.insert(mreq.id, s);
+			sessionsByM2Rid.insert(Rid(mreq.sender, mreq.id), s);
+			sessionsByZhttpRid.insert(Rid(instanceId, mreq.id), s);
 
 			log_info("m2: id=%s request %s", s->id.data(), uri.data());
 
 			ZhttpRequestPacket zreq;
-			zreq.from = m2_out_ident;
+			zreq.from = instanceId;
 			zreq.id = s->id;
 			zreq.type = ZhttpRequestPacket::Data;
 			zreq.seq = (s->outSeq)++;
@@ -582,6 +679,7 @@ private slots:
 			zreq.stream = true;
 			zreq.method = mreq.method;
 			zreq.uri = QUrl::fromEncoded(uri, QUrl::StrictMode);
+			zreq.headers = mreq.headers;
 			if(ignorePolicies)
 				zreq.ignorePolicies = true;
 			zhttp_out_write(zreq);
@@ -590,9 +688,22 @@ private slots:
 
 	void m2_control_readyRead()
 	{
-		while(m2_control_sock->canRead())
+		QZmq::Socket *sock = (QZmq::Socket *)sender();
+		int index = -1;
+		for(int n = 0; n < m2_control_socks.count(); ++n)
 		{
-			QList<QByteArray> message = m2_control_sock->read();
+			if(m2_control_socks[n] == sock)
+			{
+				index = n;
+				break;
+			}
+		}
+
+		assert(index != -1);
+
+		while(sock->canRead())
+		{
+			QList<QByteArray> message = sock->read();
 
 			if(message.count() != 2)
 			{
@@ -607,15 +718,15 @@ private slots:
 				continue;
 			}
 
-			if(controlState != ControlExpectingResponse)
+			if(controlStates[index] != ControlExpectingResponse)
 			{
 				log_warning("m2: received unexpected control response, skipping");
 				continue;
 			}
 
-			handleControlResponse(data);
+			handleControlResponse(index, data);
 
-			controlState = ControlIdle;
+			controlStates[index] = ControlIdle;
 		}
 	}
 
@@ -651,7 +762,7 @@ private slots:
 			return;
 		}
 
-		Session *s = sessionsById.value(zresp.id);
+		Session *s = sessionsByZhttpRid.value(Rid(instanceId, zresp.id));
 		if(!s)
 		{
 			log_debug("zhttp: received message for unknown request id, canceling");
@@ -660,7 +771,7 @@ private slots:
 			if(zresp.type != ZhttpResponsePacket::Error && zresp.type != ZhttpResponsePacket::Cancel && !zresp.from.isEmpty())
 			{
 				ZhttpRequestPacket zreq;
-				zreq.from = m2_out_ident;
+				zreq.from = instanceId;
 				zreq.id = zresp.id;
 				zreq.seq = (s->outSeq)++;
 				zreq.type = ZhttpRequestPacket::Cancel;
@@ -674,8 +785,7 @@ private slots:
 		if(s->zhttpAddress.isEmpty() && zresp.from.isEmpty() && (!s->inFinished || zresp.more))
 		{
 			log_warning("zhttp: received first response with no from address, canceling");
-			sessionsById.remove(s->id);
-			delete s;
+			destroySession(s);
 			return;
 		}
 
@@ -692,7 +802,7 @@ private slots:
 			if(!zresp.body.isEmpty() || s->written == 0)
 			{
 				M2ResponsePacket mresp;
-				mresp.sender = m2_out_ident;
+				mresp.sender = m2_send_idents[s->identIndex];
 				mresp.id = s->id;
 
 				int overhead = 0;
@@ -767,7 +877,7 @@ private slots:
 				{
 					// send closing chunk
 					M2ResponsePacket mresp;
-					mresp.sender = m2_out_ident;
+					mresp.sender = m2_send_idents[s->identIndex];
 					mresp.id = s->id;
 					mresp.data = makeChunkHeader(0) + makeChunkFooter();
 					m2_out_write(mresp);
@@ -777,22 +887,20 @@ private slots:
 				{
 					// close
 					M2ResponsePacket mresp;
-					mresp.sender = m2_out_ident;
+					mresp.sender = m2_send_idents[s->identIndex];
 					mresp.id = s->id;
 					mresp.data = "";
 					m2_out_write(mresp);
 				}
 
-				sessionsById.remove(s->id);
-				delete s;
+				destroySession(s);
 			}
 		}
 		else if(zresp.type == ZhttpResponsePacket::Error)
 		{
 			log_warning("zhttp: id=%s error condition=%s", s->id.data(), zresp.condition.data());
 			m2_writeErrorClose(s);
-			sessionsById.remove(s->id);
-			delete s;
+			destroySession(s);
 		}
 		else if(zresp.type == ZhttpResponsePacket::Credit)
 		{
@@ -801,8 +909,7 @@ private slots:
 		else if(zresp.type == ZhttpResponsePacket::Cancel)
 		{
 			m2_writeErrorClose(s);
-			sessionsById.remove(s->id);
-			delete s;
+			destroySession(s);
 		}
 		else
 		{
@@ -814,7 +921,7 @@ private slots:
 	{
 		int now = time.elapsed();
 		QList<Session*> toDelete;
-		QHashIterator<QByteArray, Session*> it(sessionsById);
+		QHashIterator<Rid, Session*> it(sessionsByM2Rid);
 		while(it.hasNext())
 		{
 			it.next();
@@ -827,20 +934,22 @@ private slots:
 			Session *s = toDelete[n];
 			log_warning("timing out request %s", s->id.data());
 			m2_writeErrorClose(s);
-			sessionsById.remove(s->id);
-			delete s;
+			destroySession(s);
 		}
 	}
 
 	void status_timeout()
 	{
-		if(controlState == ControlIdle)
+		for(int n = 0; n < m2_control_socks.count(); ++n)
 		{
-			// query m2 for connection info (to track bytes written)
-			QVariantHash cmdArgs;
-			cmdArgs["what"] = QByteArray("net");
-			controlState = ControlExpectingResponse;
-			m2_control_write("status", cmdArgs);
+			if(controlStates[n] == ControlIdle)
+			{
+				// query m2 for connection info (to track bytes written)
+				QVariantHash cmdArgs;
+				cmdArgs["what"] = QByteArray("net");
+				controlStates[n] = ControlExpectingResponse;
+				m2_control_write(n, "status", cmdArgs);
+			}
 		}
 	}
 
