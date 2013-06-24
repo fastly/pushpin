@@ -19,12 +19,12 @@ client_id = 'zhttp-test'
 
 ctx = zmq.Context()
 in_sock = ctx.socket(zmq.PULL)
-in_sock.bind('ipc:///tmp/zhttp-test-in')
+in_sock.connect('ipc:///tmp/zhttp-test-out')
 in_stream_sock = ctx.socket(zmq.DEALER)
 in_stream_sock.setsockopt(zmq.IDENTITY, client_id)
-in_stream_sock.bind('ipc:///tmp/zhttp-test-in-stream')
+in_stream_sock.connect('ipc:///tmp/zhttp-test-out-stream')
 out_sock = ctx.socket(zmq.PUB)
-out_sock.bind('ipc:///tmp/zhttp-test-out')
+out_sock.connect('ipc:///tmp/zhttp-test-in')
 
 poller = zmq.core.poll.Poller()
 poller.register(in_sock, zmq.POLLIN)

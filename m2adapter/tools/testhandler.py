@@ -5,9 +5,9 @@ import zmq
 
 ctx = zmq.Context()
 in_sock = ctx.socket(zmq.PULL)
-in_sock.bind("ipc:///tmp/zhttp-test-in")
+in_sock.connect("ipc:///tmp/zhttp-test-out")
 out_sock = ctx.socket(zmq.PUB)
-out_sock.bind("ipc:///tmp/zhttp-test-out")
+out_sock.connect("ipc:///tmp/zhttp-test-in")
 
 while True:
 	m_raw = in_sock.recv()
