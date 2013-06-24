@@ -14,6 +14,7 @@
 	access_log="{{ rootdir }}/log/access_{{ port.value }}.log",
 	error_log="{{ rootdir }}/log/error_{{ port.value }}.log",
 	pid_file="{{ rootdir }}/run/mongrel2_{{ port.value }}.pid",
+	control_port="ipc:///tmp/pushpin-m2-control-{{ port.value }}",
 	default_host="default",
 	name="server-{{ port.value }}",
 	port={{ port.value }},
@@ -22,7 +23,6 @@
 
 {% endfor %}settings = {
 	"certdir": ".{{ rootdir }}/certs/",
-	"control_port": "ipc://{{ rundirabs }}/control",
 	"upload.temp_store": "{{ rundir }}/upload.XXXXXX",
 	"upload.temp_store_mode": "0666",
 	"server.daemonize": 0,
