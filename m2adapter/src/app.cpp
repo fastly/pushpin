@@ -591,7 +591,7 @@ public:
 					conn->session->lastActive = time.elapsed();
 
 					// note: if the session finishes for any reason before
-					handleResponseWritten(conn->session, written, true);
+					handleResponseWritten(conn->session, written, true, true);
 				}
 			}
 		}
@@ -629,7 +629,7 @@ public:
 		}
 	}
 
-	void handleResponseWritten(Session *s, int written, bool flowControl)
+	void handleResponseWritten(Session *s, int written, bool flowControl, bool giveCredits)
 	{
 		s->pendingInCredits += written;
 
@@ -639,7 +639,7 @@ public:
 			return;
 
 		// address could be empty here if we're handling write of non-sequenced response
-		if(!s->zhttpAddress.isEmpty())
+		if(giveCredits && !s->zhttpAddress.isEmpty())
 		{
 			ZhttpRequestPacket zreq;
 			zreq.type = ZhttpRequestPacket::Credit;
@@ -1085,7 +1085,7 @@ private slots:
 					int written = zresp.body.size();
 					s->conn->confirmedWritten += written;
 
-					handleResponseWritten(s, written, false);
+					handleResponseWritten(s, written, false, zresp.more);
 				}
 			}
 			else
