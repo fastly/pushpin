@@ -98,7 +98,9 @@ while True:
 
 		id = req['id']
 
-		s = sessions[id]
+		s = sessions.get(id)
+		if s is None:
+			continue
 
 		if 'credits' in req:
 			s.credits += req['credits']
