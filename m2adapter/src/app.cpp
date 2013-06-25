@@ -39,6 +39,7 @@
 #define DEFAULT_HWM 1000
 #define EXPIRE_INTERVAL 1000
 #define STATUS_INTERVAL 250
+#define KEEPALIVE_INTERVAL 90000
 #define SESSION_EXPIRE 60000
 
 //#define CONTROL_PORT_DEBUG
@@ -199,6 +200,7 @@ public:
 	QTime time;
 	QTimer *expireTimer;
 	QTimer *statusTimer;
+	QTimer *keepAliveTimer;
 
 	Private(App *_q) :
 		QObject(_q),
@@ -219,6 +221,9 @@ public:
 
 		statusTimer = new QTimer(this);
 		connect(statusTimer, SIGNAL(timeout()), SLOT(status_timeout()));
+
+		keepAliveTimer = new QTimer(this);
+		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAlive_timeout()));
 	}
 
 	~Private()
@@ -455,6 +460,9 @@ public:
 		statusTimer->setInterval(STATUS_INTERVAL);
 		statusTimer->start();
 
+		keepAliveTimer->setInterval(KEEPALIVE_INTERVAL);
+		keepAliveTimer->start();
+
 		log_info("started");
 	}
 
@@ -495,13 +503,28 @@ public:
 		controlPorts[index].sock->write(message);
 	}
 
-	void m2_writeErrorClose(Session *s)
+	void m2_writeCtl(M2Connection *conn, const QVariant &args)
 	{
 		M2ResponsePacket mresp;
-		mresp.sender = m2_send_idents[s->conn->identIndex];
-		mresp.id = s->conn->id;
+		mresp.sender = m2_send_idents[conn->identIndex];
+		mresp.id = "X " + conn->id;
+		QVariantList parts;
+		parts += QByteArray("ctl");
+		parts += args;
+		mresp.data = TnetString::fromVariant(parts);
+		m2_out_write(mresp);
+	}
+
+	void m2_writeErrorClose(M2Connection *conn)
+	{
+		M2ResponsePacket mresp;
+		mresp.sender = m2_send_idents[conn->identIndex];
+		mresp.id = conn->id;
 		mresp.data = "";
 		m2_out_write(mresp);
+
+		m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
+		delete conn;
 	}
 
 	void zhttp_out_write(const ZhttpRequestPacket &packet)
@@ -669,19 +692,27 @@ private slots:
 		{
 			log_debug("m2: id=%s disconnected", mreq.id.data());
 
-			Session *s = sessionsByM2Rid.value(Rid(mreq.sender, mreq.id));
-			if(s)
+			Rid rid(mreq.sender, mreq.id);
+
+			M2Connection *conn = m2ConnectionsByRid.value(rid);
+			if(!conn)
+				return;
+
+			if(conn->session)
 			{
 				// if a worker had ack'd this session, then send cancel
-				if(!s->zhttpAddress.isEmpty())
+				if(!conn->session->zhttpAddress.isEmpty())
 				{
 					ZhttpRequestPacket zreq;
 					zreq.type = ZhttpRequestPacket::Cancel;
-					zhttp_out_write(s, zreq);
+					zhttp_out_write(conn->session, zreq);
 				}
 
-				destroySession(s);
+				destroySession(conn->session);
 			}
+
+			m2ConnectionsByRid.remove(rid);
+			delete conn;
 
 			return;
 		}
@@ -1119,8 +1150,9 @@ private slots:
 		else if(zresp.type == ZhttpResponsePacket::Error)
 		{
 			log_warning("zhttp: id=%s error condition=%s", s->conn->id.data(), zresp.condition.data());
-			m2_writeErrorClose(s);
+			M2Connection *conn = s->conn;
 			destroySession(s);
+			m2_writeErrorClose(conn);
 		}
 		else if(zresp.type == ZhttpResponsePacket::Credit)
 		{
@@ -1128,8 +1160,9 @@ private slots:
 		}
 		else if(zresp.type == ZhttpResponsePacket::Cancel)
 		{
-			m2_writeErrorClose(s);
+			M2Connection *conn = s->conn;
 			destroySession(s);
+			m2_writeErrorClose(conn);
 		}
 		else if(zresp.type == ZhttpResponsePacket::HandoffStart)
 		{
@@ -1160,8 +1193,9 @@ private slots:
 		foreach(Session *s, toDelete)
 		{
 			log_warning("timing out request %s", s->conn->id.data());
-			m2_writeErrorClose(s);
+			M2Connection *conn = s->conn;
 			destroySession(s);
+			m2_writeErrorClose(conn);
 		}
 	}
 
@@ -1177,6 +1211,20 @@ private slots:
 				controlPorts[n].state = ControlPort::ExpectingResponse;
 				m2_control_write(n, "status", cmdArgs);
 			}
+		}
+	}
+
+	void keepAlive_timeout()
+	{
+		QHashIterator<Rid, Session*> it(sessionsByM2Rid);
+		while(it.hasNext())
+		{
+			it.next();
+			Session *s = it.value();
+
+			QVariantHash args;
+			args["keep-alive"] = true;
+			m2_writeCtl(s->conn, args);
 		}
 	}
 
