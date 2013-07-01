@@ -533,7 +533,7 @@ public:
 		m2_out_write(mresp);
 	}
 
-	void m2_writeErrorClose(M2Connection *conn)
+	void m2_writeClose(M2Connection *conn)
 	{
 		M2ResponsePacket mresp;
 		mresp.sender = m2_send_idents[conn->identIndex];
@@ -543,6 +543,12 @@ public:
 
 		m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
 		delete conn;
+	}
+
+	void m2_writeErrorClose(M2Connection *conn)
+	{
+		// same as closing. in the future we may want to send something interesting first.
+		m2_writeClose(conn);
 	}
 
 	void zhttp_out_write(const ZhttpRequestPacket &packet)
@@ -649,7 +655,7 @@ public:
 		}
 		foreach(M2Connection *conn, gone)
 		{
-			log_warning("request id=%s disconnected", conn->id.data());
+			log_debug("request id=%s disconnected", conn->id.data());
 
 			if(conn->session)
 			{
@@ -1235,17 +1241,11 @@ private slots:
 
 			if(!zresp.more)
 			{
-				if(!s->persistent)
-				{
-					// close
-					M2ResponsePacket mresp;
-					mresp.sender = m2_send_idents[s->conn->identIndex];
-					mresp.id = s->conn->id;
-					mresp.data = "";
-					m2_out_write(mresp);
-				}
-
+				bool persistent = s->persistent;
+				M2Connection *conn = s->conn;
 				destroySession(s);
+				if(!persistent)
+					m2_writeClose(conn);
 			}
 		}
 		else if(zresp.type == ZhttpResponsePacket::Error)
