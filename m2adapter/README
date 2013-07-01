@@ -1,0 +1,6 @@
+M2Adapter
+---------
+
+Put behind mongrel2 to convert its protocol to zmq-http. More than one
+mongrel2 can be linked to the same m2adapter. However, a mongrel2 may not be
+linked to more than one m2adapter!
