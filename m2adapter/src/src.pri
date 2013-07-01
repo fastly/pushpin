@@ -13,6 +13,7 @@ HEADERS += \
 	$$COMMON_DIR/httpheaders.h \
 	$$COMMON_DIR/zhttprequestpacket.h \
 	$$COMMON_DIR/zhttpresponsepacket.h \
+	$$COMMON_DIR/bufferlist.h \
 	$$COMMON_DIR/log.h
 
 SOURCES += \
@@ -21,6 +22,7 @@ SOURCES += \
 	$$COMMON_DIR/httpheaders.cpp \
 	$$COMMON_DIR/zhttprequestpacket.cpp \
 	$$COMMON_DIR/zhttpresponsepacket.cpp \
+	$$COMMON_DIR/bufferlist.cpp \
 	$$COMMON_DIR/log.cpp
 
 HEADERS += \

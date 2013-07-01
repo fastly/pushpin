@@ -43,6 +43,9 @@ public:
 	QString uploadFile;
 	bool uploadDone;
 
+	int uploadStreamOffset;
+	bool uploadStreamDone;
+
 	M2RequestPacket();
 
 	bool fromByteArray(const QByteArray &in);

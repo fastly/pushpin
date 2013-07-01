@@ -55,7 +55,9 @@ static QString makeMixedCaseHeader(const QString &s)
 
 M2RequestPacket::M2RequestPacket() :
 	isDisconnect(false),
-	uploadDone(false)
+	uploadDone(false),
+	uploadStreamOffset(-1),
+	uploadStreamDone(false)
 {
 }
 
@@ -79,8 +81,6 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	end = in.indexOf(' ', start);
 	if(end == -1)
 		return false;
-
-	//QByteArray path_only = in.mid(start, end - start);
 
 	start = end + 1;
 	TnetString::Type type;
@@ -186,6 +186,13 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	{
 		uploadFile = QString::fromUtf8(uploadStartRaw);
 	}
+
+	QByteArray uploadStreamRaw = m2headers.value("UPLOAD_STREAM");
+	QByteArray uploadStreamDoneRaw = m2headers.value("UPLOAD_STREAM_DONE");
+	if(!uploadStreamRaw.isEmpty())
+		uploadStreamOffset = uploadStreamRaw.toInt();
+	if(!uploadStreamDoneRaw.isEmpty() && uploadStreamDoneRaw != "0")
+		uploadStreamDone = true;
 
 	QSet<QString> skipHeaders;
 	skipHeaders += "x-mongrel2-upload-start";

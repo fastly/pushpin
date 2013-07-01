@@ -32,6 +32,7 @@
 #include "m2responsepacket.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
+#include "bufferlist.h"
 #include "log.h"
 
 #define VERSION "1.0.0"
@@ -152,6 +153,8 @@ public:
 		bool respondKeepAlive;
 		bool respondClose;
 		bool chunked;
+		int readCount;
+		BufferList pendingIn;
 		bool inFinished;
 
 		// zhttp stuff
@@ -170,6 +173,7 @@ public:
 			respondKeepAlive(false),
 			respondClose(false),
 			chunked(false),
+			readCount(0),
 			inFinished(false),
 			sentResponseHeader(false),
 			outSeq(0),
@@ -515,6 +519,20 @@ public:
 		m2_out_write(mresp);
 	}
 
+	void m2_writeCtlCancel(const QByteArray &sender, const QByteArray &id)
+	{
+		M2ResponsePacket mresp;
+		mresp.sender = sender;
+		mresp.id = "X " + id;
+		QVariantHash args;
+		args["cancel"] = true;
+		QVariantList parts;
+		parts += QByteArray("ctl");
+		parts += args;
+		mresp.data = TnetString::fromVariant(parts);
+		m2_out_write(mresp);
+	}
+
 	void m2_writeErrorClose(M2Connection *conn)
 	{
 		M2ResponsePacket mresp;
@@ -531,7 +549,7 @@ public:
 	{
 		QByteArray buf = TnetString::fromVariant(packet.toVariant());
 
-		log_debug("zhttp: OUT %s", buf.data());
+		log_debug("zhttp: OUT %s", buf.mid(0, 600).data());
 
 		zhttp_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -540,7 +558,7 @@ public:
 	{
 		QByteArray buf = TnetString::fromVariant(packet.toVariant());
 
-		log_debug("zhttp: OUT %s", buf.data());
+		log_debug("zhttp: OUT %s", buf.mid(0, 600).data());
 
 		QList<QByteArray> message;
 		message += instanceAddress;
@@ -681,6 +699,8 @@ private slots:
 			return;
 		}
 
+		log_debug("m2: IN %s", message[0].mid(0, 600).data());
+
 		M2RequestPacket mreq;
 		if(!mreq.fromByteArray(message[0]))
 		{
@@ -717,39 +737,13 @@ private slots:
 			return;
 		}
 
-		// TODO: handle upload stream packets. respect inHandoff
-
-		QByteArray uri;
-
-		if(mreq.scheme == "https")
-			uri += "https://";
-		else
-			uri += "http://";
-
-		QByteArray host = mreq.headers.get("Host");
-		if(host.isEmpty())
-			host = "localhost";
-
-		int at = host.indexOf(':');
-		if(at != -1)
-			host = host.mid(0, at);
-
-		if(!validateHost(host))
-		{
-			log_warning("m2: invalid host [%s], skipping", host.data());
-			return;
-		}
-
-		if(!mreq.uri.startsWith('/'))
-		{
-			log_warning("m2: invalid uri [%s], skipping", mreq.uri.data());
-			return;
-		}
-
-		uri += host;
-		uri += mreq.uri;
+		bool more = false;
+		if(mreq.uploadStreamOffset >= 0 && !mreq.uploadStreamDone)
+			more = true;
 
 		Rid m2Rid(mreq.sender, mreq.id);
+
+		Session *s = 0;
 
 		M2Connection *conn = m2ConnectionsByRid.value(m2Rid);
 		if(!conn)
@@ -776,21 +770,70 @@ private slots:
 				return;
 			}
 
+			if(mreq.uploadStreamOffset > 0)
+			{
+				log_warning("m2: id=%s stream offset > 0 but session unknown", mreq.id.data());
+				m2_writeCtlCancel(mreq.sender, mreq.id);
+				return;
+			}
+
+			if(sessionsByM2Rid.contains(m2Rid))
+			{
+				log_warning("m2: received duplicate request id=%s, skipping", mreq.id.data());
+				return;
+			}
+
 			conn = new M2Connection;
 			conn->identIndex = index;
 			conn->id = mreq.id;
 
 			m2ConnectionsByRid.insert(m2Rid, conn);
 		}
-
-		Session *s = sessionsByM2Rid.value(m2Rid);
-		if(s)
-		{
-			log_warning("m2: received duplicate request id=%s, skipping", mreq.id.data());
-			return;
-		}
 		else
 		{
+			s = sessionsByM2Rid.value(m2Rid);
+
+			if(!s && mreq.uploadStreamOffset > 0)
+			{
+				log_warning("m2: id=%s stream offset > 0 but session unknown", mreq.id.data());
+				m2_writeCtlCancel(mreq.sender, mreq.id);
+				destroySession(s);
+				return;
+			}
+		}
+
+		if(!s)
+		{
+			QByteArray uri;
+
+			if(mreq.scheme == "https")
+				uri += "https://";
+			else
+				uri += "http://";
+
+			QByteArray host = mreq.headers.get("Host");
+			if(host.isEmpty())
+				host = "localhost";
+
+			int at = host.indexOf(':');
+			if(at != -1)
+				host = host.mid(0, at);
+
+			if(!validateHost(host))
+			{
+				log_warning("m2: invalid host [%s], skipping", host.data());
+				return;
+			}
+
+			if(!mreq.uri.startsWith('/'))
+			{
+				log_warning("m2: invalid uri [%s], skipping", mreq.uri.data());
+				return;
+			}
+
+			uri += host;
+			uri += mreq.uri;
+
 			s = new Session;
 			s->conn = conn;
 			s->conn->session = s;
@@ -814,8 +857,10 @@ private slots:
 					s->persistent = true;
 			}
 
-			// TODO: if input is streamed, then we wouldn't set this yet
-			s->inFinished = true;
+			s->readCount += mreq.body.size();
+
+			if(!more)
+				s->inFinished = true;
 
 			sessionsByM2Rid.insert(m2Rid, s);
 			sessionsByZhttpRid.insert(Rid(instanceId, mreq.id), s);
@@ -829,9 +874,51 @@ private slots:
 			zreq.method = mreq.method;
 			zreq.uri = QUrl::fromEncoded(uri, QUrl::StrictMode);
 			zreq.headers = mreq.headers;
+			zreq.body = mreq.body;
+			zreq.more = !s->inFinished;
 			if(ignorePolicies)
 				zreq.ignorePolicies = true;
 			zhttp_out_writeFirst(s, zreq);
+		}
+		else
+		{
+			int offset = 0;
+			if(mreq.uploadStreamOffset > 0)
+				offset = mreq.uploadStreamOffset;
+
+			if(offset != s->readCount)
+			{
+				log_warning("m2: id=%s unexpected stream offset (got=%d, expected=%d)", mreq.id.data(), offset, s->readCount);
+				m2_writeCtlCancel(mreq.sender, mreq.id);
+				destroySession(s);
+				return;
+			}
+
+			if(s->zhttpAddress.isEmpty())
+			{
+				log_error("m2: id=%s multiple packets from m2 before response from zhttp", mreq.id.data());
+				m2_writeCtlCancel(mreq.sender, mreq.id);
+				destroySession(s);
+				return;
+			}
+
+			s->readCount += mreq.body.size();
+
+			if(!more)
+				s->inFinished = true;
+
+			if(s->inHandoff)
+			{
+				s->pendingIn += mreq.body;
+			}
+			else
+			{
+				ZhttpRequestPacket zreq;
+				zreq.type = ZhttpRequestPacket::Data;
+				zreq.body = mreq.body;
+				zreq.more = !s->inFinished;
+				zhttp_out_write(s, zreq);
+			}
 		}
 	}
 
@@ -1006,14 +1093,28 @@ private slots:
 			// receiving any message means handoff is complete
 			s->inHandoff = false;
 
-			// TODO: if there was buffered streaming input, send it now
+			// in order to have been in a handoff state, we would have
+			//   had to receive a from address sometime earlier
+			assert(!s->zhttpAddress.isEmpty());
 
-			if(s->pendingInCredits > 0)
+			if(!s->pendingIn.isEmpty())
 			{
-				// in order to have been in a handoff state, we would have
-				//   had to receive a from address sometime earlier
-				assert(!s->zhttpAddress.isEmpty());
+				ZhttpRequestPacket zreq;
+				zreq.type = ZhttpRequestPacket::Data;
 
+				// send credits too, if needed (though this probably can't happen?)
+				if(s->pendingInCredits > 0)
+				{
+					zreq.credits = s->pendingInCredits;
+					s->pendingInCredits = 0;
+				}
+
+				zreq.body = s->pendingIn.take();
+				zreq.more = !s->inFinished;
+				zhttp_out_write(s, zreq);
+			}
+			else if(s->pendingInCredits > 0)
+			{
 				ZhttpRequestPacket zreq;
 				zreq.type = ZhttpRequestPacket::Credit;
 				zreq.credits = s->pendingInCredits;
@@ -1156,7 +1257,12 @@ private slots:
 		}
 		else if(zresp.type == ZhttpResponsePacket::Credit)
 		{
-			// TODO: care about this once we have streaming input
+			if(zresp.credits > 0)
+			{
+				QVariantHash args;
+				args["credits"] = zresp.credits;
+				m2_writeCtl(s->conn, args);
+			}
 		}
 		else if(zresp.type == ZhttpResponsePacket::Cancel)
 		{
