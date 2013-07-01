@@ -40,7 +40,7 @@
 #define DEFAULT_HWM 1000
 #define EXPIRE_INTERVAL 1000
 #define STATUS_INTERVAL 250
-#define KEEPALIVE_INTERVAL 90000
+#define M2_KEEPALIVE_INTERVAL 90000
 #define SESSION_EXPIRE 60000
 
 //#define CONTROL_PORT_DEBUG
@@ -205,6 +205,7 @@ public:
 	QTimer *expireTimer;
 	QTimer *statusTimer;
 	QTimer *keepAliveTimer;
+	QTimer *m2KeepAliveTimer;
 
 	Private(App *_q) :
 		QObject(_q),
@@ -228,6 +229,9 @@ public:
 
 		keepAliveTimer = new QTimer(this);
 		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAlive_timeout()));
+
+		m2KeepAliveTimer = new QTimer(this);
+		connect(m2KeepAliveTimer, SIGNAL(timeout()), SLOT(m2KeepAlive_timeout()));
 	}
 
 	~Private()
@@ -464,8 +468,11 @@ public:
 		statusTimer->setInterval(STATUS_INTERVAL);
 		statusTimer->start();
 
-		keepAliveTimer->setInterval(KEEPALIVE_INTERVAL);
+		keepAliveTimer->setInterval(SESSION_EXPIRE / 2);
 		keepAliveTimer->start();
+
+		m2KeepAliveTimer->setInterval(M2_KEEPALIVE_INTERVAL);
+		m2KeepAliveTimer->start();
 
 		log_info("started");
 	}
@@ -1264,6 +1271,10 @@ private slots:
 				m2_writeCtl(s->conn, args);
 			}
 		}
+		else if(zresp.type == ZhttpResponsePacket::KeepAlive)
+		{
+			// nothing to do
+		}
 		else if(zresp.type == ZhttpResponsePacket::Cancel)
 		{
 			M2Connection *conn = s->conn;
@@ -1321,6 +1332,23 @@ private slots:
 	}
 
 	void keepAlive_timeout()
+	{
+		QHashIterator<Rid, Session*> it(sessionsByZhttpRid);
+		while(it.hasNext())
+		{
+			it.next();
+			Session *s = it.value();
+
+			if(!s->zhttpAddress.isEmpty())
+			{
+				ZhttpRequestPacket zreq;
+				zreq.type = ZhttpRequestPacket::KeepAlive;
+				zhttp_out_write(s, zreq);
+			}
+		}
+	}
+
+	void m2KeepAlive_timeout()
 	{
 		QHashIterator<Rid, Session*> it(sessionsByM2Rid);
 		while(it.hasNext())
