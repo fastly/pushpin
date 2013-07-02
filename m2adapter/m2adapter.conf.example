@@ -24,6 +24,7 @@ zhttp_out_specs=
 zhttp_out_stream_specs=
 
 # useful for testing with zurl
+#zhttp_connect_port=8080
 #zhttp_ignore_policies=true
 
 # don't send more than this to mongrel2

@@ -199,6 +199,7 @@ public:
 	QHash<Rid, Session*> sessionsByM2Rid;
 	QHash<Rid, Session*> sessionsByZhttpRid;
 	int m2_client_buffer;
+	int connectPort;
 	bool ignorePolicies;
 	QList<ControlPort> controlPorts;
 	QTime time;
@@ -325,6 +326,7 @@ public:
 		m2_client_buffer = settings.value("m2_client_buffer").toInt();
 		if(m2_client_buffer <= 0)
 			m2_client_buffer = 200000;
+		connectPort = settings.value("zhttp_connect_port", -1).toInt();
 		ignorePolicies = settings.value("zhttp_ignore_policies").toBool();
 
 		m2_send_idents.clear();
@@ -889,6 +891,8 @@ private slots:
 			zreq.headers = mreq.headers;
 			zreq.body = mreq.body;
 			zreq.more = !s->inFinished;
+			if(connectPort != -1)
+				zreq.connectPort = connectPort;
 			if(ignorePolicies)
 				zreq.ignorePolicies = true;
 			zhttp_out_writeFirst(s, zreq);
