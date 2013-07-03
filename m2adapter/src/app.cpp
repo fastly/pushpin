@@ -140,7 +140,6 @@ public:
 		}
 	};
 
-	// note: we use the same id on both sides of the adapter
 	class Session
 	{
 	public:
@@ -158,6 +157,7 @@ public:
 		bool inFinished;
 
 		// zhttp stuff
+		QByteArray id;
 		QByteArray zhttpAddress;
 		bool sentResponseHeader;
 		int outSeq;
@@ -485,7 +485,7 @@ public:
 		s->conn->confirmedWritten = s->conn->written; // don't notify about existing writes
 
 		sessionsByM2Rid.remove(Rid(m2_send_idents[s->conn->identIndex], s->conn->id));
-		sessionsByZhttpRid.remove(Rid(instanceId, s->conn->id));
+		sessionsByZhttpRid.remove(Rid(instanceId, s->id));
 		delete s;
 	}
 
@@ -586,7 +586,7 @@ public:
 	{
 		ZhttpRequestPacket out = packet;
 		out.from = instanceId;
-		out.id = s->conn->id;
+		out.id = s->id;
 		out.seq = (s->outSeq)++;
 		zhttp_out_write(out);
 	}
@@ -597,7 +597,7 @@ public:
 
 		ZhttpRequestPacket out = packet;
 		out.from = instanceId;
-		out.id = s->conn->id;
+		out.id = s->id;
 		out.seq = (s->outSeq)++;
 		zhttp_out_write(out, s->zhttpAddress);
 	}
@@ -659,12 +659,12 @@ public:
 		{
 			it.next();
 			M2Connection *conn = it.value();
-			if(!ids.contains(conn->id))
+			if(conn->identIndex == index && !ids.contains(conn->id))
 				gone += conn;
 		}
 		foreach(M2Connection *conn, gone)
 		{
-			log_debug("request id=%s disconnected", conn->id.data());
+			log_debug("m2: %s id=%s disconnected", m2_send_idents[conn->identIndex].data(), conn->id.data());
 
 			if(conn->session)
 			{
@@ -689,7 +689,7 @@ public:
 	{
 		s->pendingInCredits += written;
 
-		log_debug("request id=%s written %d%s", s->conn->id.data(), written, flowControl ? "" : " (no flow control)");
+		log_debug("request id=%s written %d%s", s->id.data(), written, flowControl ? "" : " (no flow control)");
 
 		if(s->inHandoff)
 			return;
@@ -725,7 +725,7 @@ private slots:
 
 		if(mreq.isDisconnect)
 		{
-			log_debug("m2: id=%s disconnected", mreq.id.data());
+			log_debug("m2: %s id=%s disconnected", mreq.sender.data(), mreq.id.data());
 
 			Rid rid(mreq.sender, mreq.id);
 
@@ -853,6 +853,7 @@ private slots:
 			s->conn = conn;
 			s->conn->session = s;
 			s->lastActive = time.elapsed();
+			s->id = m2_send_idents[conn->identIndex] + '_' + conn->id;
 
 			if(mreq.version == "HTTP/1.0")
 			{
@@ -878,9 +879,9 @@ private slots:
 				s->inFinished = true;
 
 			sessionsByM2Rid.insert(m2Rid, s);
-			sessionsByZhttpRid.insert(Rid(instanceId, mreq.id), s);
+			sessionsByZhttpRid.insert(Rid(instanceId, s->id), s);
 
-			log_info("m2: id=%s request %s", s->conn->id.data(), uri.data());
+			log_info("m2: %s id=%s request %s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), uri.data());
 
 			ZhttpRequestPacket zreq;
 			zreq.type = ZhttpRequestPacket::Data;
@@ -905,7 +906,7 @@ private slots:
 
 			if(offset != s->readCount)
 			{
-				log_warning("m2: id=%s unexpected stream offset (got=%d, expected=%d)", mreq.id.data(), offset, s->readCount);
+				log_warning("m2: %s id=%s unexpected stream offset (got=%d, expected=%d)", m2_send_idents[s->conn->identIndex].data(), mreq.id.data(), offset, s->readCount);
 				m2_writeCtlCancel(mreq.sender, mreq.id);
 				destroySession(s);
 				return;
@@ -913,7 +914,7 @@ private slots:
 
 			if(s->zhttpAddress.isEmpty())
 			{
-				log_error("m2: id=%s multiple packets from m2 before response from zhttp", mreq.id.data());
+				log_error("m2: %s id=%s multiple packets from m2 before response from zhttp", m2_send_idents[s->conn->identIndex].data(), mreq.id.data());
 				m2_writeCtlCancel(mreq.sender, mreq.id);
 				destroySession(s);
 				return;
@@ -1142,7 +1143,7 @@ private slots:
 
 		if(zresp.type == ZhttpResponsePacket::Data)
 		{
-			log_debug("zhttp: id=%s response data size=%d%s", s->conn->id.data(), zresp.body.size(), zresp.more ? " M" : "");
+			log_debug("zhttp: id=%s response data size=%d%s", s->id.data(), zresp.body.size(), zresp.more ? " M" : "");
 
 			bool firstDataPacket = !s->sentResponseHeader;
 
@@ -1261,7 +1262,7 @@ private slots:
 		}
 		else if(zresp.type == ZhttpResponsePacket::Error)
 		{
-			log_warning("zhttp: id=%s error condition=%s", s->conn->id.data(), zresp.condition.data());
+			log_warning("zhttp: id=%s error condition=%s", s->id.data(), zresp.condition.data());
 			M2Connection *conn = s->conn;
 			destroySession(s);
 			m2_writeErrorClose(conn);
@@ -1295,7 +1296,7 @@ private slots:
 		}
 		else
 		{
-			log_warning("zhttp: id=%s unsupported type: %d", s->conn->id.data(), (int)zresp.type);
+			log_warning("zhttp: id=%s unsupported type: %d", s->id.data(), (int)zresp.type);
 		}
 	}
 
@@ -1313,7 +1314,7 @@ private slots:
 		}
 		foreach(Session *s, toDelete)
 		{
-			log_warning("timing out request %s", s->conn->id.data());
+			log_warning("timing out request %s", s->id.data());
 			M2Connection *conn = s->conn;
 			destroySession(s);
 			m2_writeErrorClose(conn);
