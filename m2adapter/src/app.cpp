@@ -865,7 +865,7 @@ private slots:
 				return;
 			}
 
-			QByteArray uriRaw = scheme + "//" + host + mreq.uri;
+			QByteArray uriRaw = scheme + "://" + host + mreq.uri;
 			QUrl uri = QUrl::fromEncoded(uriRaw, QUrl::StrictMode);
 			if(!uri.isValid())
 			{
