@@ -542,16 +542,33 @@ public:
 		m2_out_write(mresp);
 	}
 
-	void m2_writeClose(M2Connection *conn)
+	void m2_writeCtlCancel(M2Connection *conn)
 	{
-		M2ResponsePacket mresp;
-		mresp.sender = m2_send_idents[conn->identIndex];
-		mresp.id = conn->id;
-		mresp.data = "";
-		m2_out_write(mresp);
-
+		m2_writeCtlCancel(m2_send_idents[conn->identIndex], conn->id);
 		m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
 		delete conn;
+	}
+
+	void m2_writeClose(const QByteArray &sender, const QByteArray &id)
+	{
+		M2ResponsePacket mresp;
+		mresp.sender = sender;
+		mresp.id = id;
+		mresp.data = "";
+		m2_out_write(mresp);
+	}
+
+	void m2_writeClose(M2Connection *conn)
+	{
+		m2_writeClose(m2_send_idents[conn->identIndex], conn->id);
+		m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
+		delete conn;
+	}
+
+	void m2_writeErrorClose(const QByteArray &sender, const QByteArray &id)
+	{
+		// same as closing. in the future we may want to send something interesting first.
+		m2_writeClose(sender, id);
 	}
 
 	void m2_writeErrorClose(M2Connection *conn)
@@ -795,6 +812,7 @@ private slots:
 			if(sessionsByM2Rid.contains(m2Rid))
 			{
 				log_warning("m2: received duplicate request id=%s, skipping", mreq.id.data());
+				m2_writeErrorClose(mreq.sender, mreq.id);
 				return;
 			}
 
@@ -811,20 +829,19 @@ private slots:
 			if(!s && mreq.uploadStreamOffset > 0)
 			{
 				log_warning("m2: id=%s stream offset > 0 but session unknown", mreq.id.data());
-				m2_writeCtlCancel(mreq.sender, mreq.id);
 				destroySession(s);
+				m2_writeCtlCancel(conn);
 				return;
 			}
 		}
 
 		if(!s)
 		{
-			QByteArray uri;
-
+			QByteArray scheme;
 			if(mreq.scheme == "https")
-				uri += "https://";
+				scheme = "https";
 			else
-				uri += "http://";
+				scheme = "http";
 
 			QByteArray host = mreq.headers.get("Host");
 			if(host.isEmpty())
@@ -836,18 +853,26 @@ private slots:
 
 			if(!validateHost(host))
 			{
-				log_warning("m2: invalid host [%s], skipping", host.data());
+				log_warning("m2: invalid host [%s]", host.data());
+				m2_writeErrorClose(conn);
 				return;
 			}
 
 			if(!mreq.uri.startsWith('/'))
 			{
-				log_warning("m2: invalid uri [%s], skipping", mreq.uri.data());
+				log_warning("m2: invalid uri [%s]", mreq.uri.data());
+				m2_writeErrorClose(conn);
 				return;
 			}
 
-			uri += host;
-			uri += mreq.uri;
+			QByteArray uriRaw = scheme + "//" + host + mreq.uri;
+			QUrl uri = QUrl::fromEncoded(uriRaw, QUrl::StrictMode);
+			if(!uri.isValid())
+			{
+				log_warning("m2: invalid constructed uri: [%s]", uriRaw.data());
+				m2_writeErrorClose(conn);
+				return;
+			}
 
 			s = new Session;
 			s->conn = conn;
@@ -881,14 +906,14 @@ private slots:
 			sessionsByM2Rid.insert(m2Rid, s);
 			sessionsByZhttpRid.insert(Rid(instanceId, s->id), s);
 
-			log_info("m2: %s id=%s request %s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), uri.data());
+			log_info("m2: %s id=%s request %s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), uri.toEncoded().data());
 
 			ZhttpRequestPacket zreq;
 			zreq.type = ZhttpRequestPacket::Data;
 			zreq.credits = m2_client_buffer;
 			zreq.stream = true;
 			zreq.method = mreq.method;
-			zreq.uri = QUrl::fromEncoded(uri, QUrl::StrictMode);
+			zreq.uri = uri;
 			zreq.headers = mreq.headers;
 			zreq.body = mreq.body;
 			zreq.more = !s->inFinished;
@@ -907,16 +932,18 @@ private slots:
 			if(offset != s->readCount)
 			{
 				log_warning("m2: %s id=%s unexpected stream offset (got=%d, expected=%d)", m2_send_idents[s->conn->identIndex].data(), mreq.id.data(), offset, s->readCount);
-				m2_writeCtlCancel(mreq.sender, mreq.id);
+				M2Connection *conn = s->conn;
 				destroySession(s);
+				m2_writeCtlCancel(conn);
 				return;
 			}
 
 			if(s->zhttpAddress.isEmpty())
 			{
 				log_error("m2: %s id=%s multiple packets from m2 before response from zhttp", m2_send_idents[s->conn->identIndex].data(), mreq.id.data());
-				m2_writeCtlCancel(mreq.sender, mreq.id);
+				M2Connection *conn = s->conn;
 				destroySession(s);
+				m2_writeCtlCancel(conn);
 				return;
 			}
 
