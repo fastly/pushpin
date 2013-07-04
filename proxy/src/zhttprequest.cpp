@@ -355,7 +355,7 @@ public:
 			{
 				// if we have no data to send but we need to send credits, do at least that
 				ZhttpRequestPacket p;
-				p.type = ZhttpRequestPacket::Data;
+				p.type = ZhttpRequestPacket::Credit;
 				p.credits = pendingInCredits;
 				pendingInCredits = 0;
 
