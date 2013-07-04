@@ -658,6 +658,7 @@ public slots:
 							origin = "*";
 
 						responseData.headers += HttpHeader("Access-Control-Allow-Origin", origin);
+						responseData.headers += HttpHeader("Access-Control-Allow-Methods", "OPTIONS, HEAD, GET, POST, PUT, DELETE");
 					}
 				}
 
