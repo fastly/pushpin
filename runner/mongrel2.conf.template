@@ -8,12 +8,11 @@
 {% endfor %}{% for port in ports %}host_{{ port.value }} = Host(name="default", routes={ "/": handler_{{ port.value }} })
 
 {% endfor %}{% for port in ports %}server_{{ port.value }} = Server(
-	uuid="pushpin-m2-{{ port.value }}",{% if port.ssl %}
+	uuid="default_{{ port.value }}",{% if port.ssl %}
 	use_ssl=1,{% endif %}
-	chroot="",
-	access_log="{{ rootdir }}/log/access_{{ port.value }}.log",
-	error_log="{{ rootdir }}/log/error_{{ port.value }}.log",
-	pid_file="{{ rootdir }}/run/mongrel2_{{ port.value }}.pid",
+	access_log="{{ logdir }}/access_{{ port.value }}.log",
+	error_log="{{ logdir }}/error_{{ port.value }}.log",
+	pid_file="{{ rundir }}/mongrel2_{{ port.value }}.pid",
 	control_port="ipc:///tmp/pushpin-m2-control-{{ port.value }}",
 	default_host="default",
 	name="server-{{ port.value }}",
@@ -22,9 +21,8 @@
 )
 
 {% endfor %}settings = {
-	"certdir": ".{{ rootdir }}/certs/",
-	"upload.temp_store": "{{ rundir }}/upload.XXXXXX",
-	"upload.temp_store_mode": "0666",
+	"certdir": "{{ rootdir }}/certs/",
+	"upload.stream": 1,
 	"server.daemonize": 0,
 	"no_clobber_xff": 1
 }

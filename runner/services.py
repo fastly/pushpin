@@ -13,19 +13,7 @@ def compile_template(infilename, outfilename, vars):
 	f.close()
 
 # return path of sql config
-def write_mongrel2_config(rootdir, configpath, rundir, http_port, https_ports, shbinpath):
-	# calculate mongrel2 relative rootdir
-	absroot = os.path.abspath(rootdir)
-	path = os.path.relpath(absroot, os.getcwd())
-	if path.startswith(".."):
-		raise ValueError("cannot run from deeper than %s" % absroot)
-
-	if path.startswith("."):
-		path = path[1:]
-	if len(path) > 0 and not path.startswith("/"):
-		path = "/" + path
-	rootdir = path
-
+def write_mongrel2_config(rootdir, configpath, rundir, logdir, http_port, https_ports, shbinpath):
 	assert(configpath.endswith(".template"))
 	fname = os.path.basename(configpath)
 	path, ext = os.path.splitext(fname)
@@ -36,11 +24,13 @@ def write_mongrel2_config(rootdir, configpath, rundir, http_port, https_ports, s
 	for p in https_ports:
 		ports.append({ "ssl": True, "value": p })
 
+	cwd = os.getcwd()
+
 	vars = dict()
 	vars["ports"] = ports
-	vars["rootdir"] = rootdir
-	vars["rundir"] = rundir
-	vars["rundirabs"] = os.path.abspath(rundir)
+	vars["rootdir"] = os.path.relpath(rootdir, cwd)
+	vars["rundir"] = os.path.relpath(rundir, cwd)
+	vars["logdir"] = os.path.relpath(logdir, cwd)
 	compile_template(configpath, genconfigpath, vars)
 
 	path, ext = os.path.splitext(genconfigpath)
@@ -50,6 +40,25 @@ def write_mongrel2_config(rootdir, configpath, rundir, http_port, https_ports, s
 	subprocess.check_call([shbinpath, "load", "-config", genconfigpath, "-db", sqlconfigpath])
 
 	return sqlconfigpath
+
+def write_m2adapter_config(configpath, rundir, ports):
+	assert(configpath.endswith(".template"))
+	fname = os.path.basename(configpath)
+	path, ext = os.path.splitext(fname)
+	genconfigpath = os.path.join(rundir, path)
+
+	instances = list()
+	for port in ports:
+		i = dict()
+		i["send_spec"] = "ipc:///tmp/pushpin-m2-out-" + str(port)
+		i["recv_spec"] = "ipc:///tmp/pushpin-m2-in-" + str(port)
+		i["send_ident"] = "pushpin-m2-" + str(port)
+		i["control_spec"] = "ipc:///tmp/pushpin-m2-control-" + str(port)
+		instances.append(i)
+
+	vars = dict()
+	vars["instances"] = instances
+	compile_template(configpath, genconfigpath, vars)
 
 class Service(object):
 	def __init__(self, rundir, logdir):
@@ -106,7 +115,7 @@ class Mongrel2Service(Service):
 		return None
 
 	def getargs(self):
-		return [self.binpath, self.sqlconfigpath, "pushpin-m2-%d" % self.port]
+		return [self.binpath, self.sqlconfigpath, "default_%d" % self.port]
 
 	def pre_start(self):
 		super(Mongrel2Service, self).pre_start()
@@ -125,6 +134,24 @@ class ZurlService(Service):
 
 	def name(self):
 		return "zurl"
+
+	def getargs(self):
+		args = list()
+		args.append(self.binpath)
+		if self.verbose:
+			args.append("--verbose")
+		args.append("--config=%s" % self.configpath)
+		return args
+
+class M2AdapterService(Service):
+	def __init__(self, binpath, configpath, verbose, rundir, logdir):
+		super(M2AdapterService, self).__init__(rundir, logdir)
+		self.binpath = binpath
+		self.configpath = configpath
+		self.verbose = verbose
+
+	def name(self):
+		return "m2adapter"
 
 	def getargs(self):
 		args = list()

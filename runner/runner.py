@@ -30,6 +30,11 @@ def run(exedir, config_file, verbose):
 	if not os.path.isabs(logdir):
 		logdir = os.path.join(os.path.dirname(config_file), logdir)
 
+	m2abin = "m2adapter"
+	path = os.path.normpath(os.path.join(exedir, "m2adapter/m2adapter"))
+	if os.path.isfile(path):
+		m2abin = path
+
 	proxybin = "pushpin-proxy"
 	path = os.path.normpath(os.path.join(exedir, "proxy/pushpin-proxy"))
 	if os.path.isfile(path):
@@ -50,11 +55,18 @@ def run(exedir, config_file, verbose):
 		if config.has_option("runner", "m2sh_bin"):
 			m2sh_bin = config.get("runner", "m2sh_bin")
 
-		m2sqlpath = services.write_mongrel2_config(configdir, os.path.join(configdir, "mongrel2.conf.template"), rundir, http_port, https_ports, m2sh_bin)
+		m2sqlpath = services.write_mongrel2_config(configdir, os.path.join(configdir, "mongrel2.conf.template"), rundir, logdir, http_port, https_ports, m2sh_bin)
 
 		service_objs.append(services.Mongrel2Service(mongrel2_bin, m2sqlpath, False, http_port, rundir, logdir))
 		for port in https_ports:
 			service_objs.append(services.Mongrel2Service(mongrel2_bin, m2sqlpath, True, port, rundir, logdir))
+
+	if "m2adapter" in service_names:
+		ports = list()
+		ports.append(http_port)
+		ports.extend(https_ports)
+		services.write_m2adapter_config(os.path.join(configdir, "m2adapter.conf.template"), rundir, ports)
+		service_objs.append(services.M2AdapterService(m2abin, os.path.join(rundir, "m2adapter.conf"), verbose, rundir, logdir))
 
 	if "zurl" in service_names:
 		zurl_bin = "zurl"
