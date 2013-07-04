@@ -189,6 +189,8 @@ public:
 			isHttps = rs->isHttps();
 
 			requestData = rs->requestData();
+			requestBody += requestData.body;
+			requestData.body.clear();
 
 			// don't relay these headers. their meaning is handled by
 			//   mongrel2 and they only apply to the incoming hop.
@@ -303,8 +305,6 @@ public:
 		else if(state == Responding)
 		{
 			// get the session caught up with where we're at
-
-			// TODO: the session might have data to read first before responding
 
 			si->state = SessionItem::Responding;
 			rs->startResponse(responseData.code, responseData.reason, responseData.headers);

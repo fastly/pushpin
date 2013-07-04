@@ -338,8 +338,10 @@ public:
 
 	void doProxy(RequestSession *rs, const InspectData *idata = 0)
 	{
+		bool sharable = (idata && !idata->sharingKey.isEmpty() && rs->haveCompleteRequestBody());
+
 		ProxySession *ps = 0;
-		if(idata && !idata->sharingKey.isEmpty())
+		if(sharable)
 		{
 			log_debug("need to proxy with sharing key: %s", idata->sharingKey.data());
 
@@ -370,7 +372,7 @@ public:
 			i->ps = ps;
 			proxyItemsBySession.insert(i->ps, i);
 
-			if(idata && !idata->sharingKey.isEmpty())
+			if(sharable)
 			{
 				i->shared = true;
 				i->key = idata->sharingKey;

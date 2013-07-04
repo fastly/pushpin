@@ -36,6 +36,7 @@
 #include "inspectrequest.h"
 #include "inspectchecker.h"
 
+#define REQUEST_BODY_BUFSIZE 100000
 #define MAX_ACCEPT_REQUEST_BODY 100000
 
 static int fromHex(char c)
@@ -107,6 +108,7 @@ public:
 	{
 		Stopped,
 		Inspecting,
+		Receiving,
 		Accepting,
 		WaitingForResponse,
 		RespondingStart,
@@ -309,6 +311,9 @@ public:
 
 				hdata.headers += h;
 			}
+
+			in += hdata.body;
+			hdata.body.clear();
 		}
 		else
 		{
@@ -374,17 +379,33 @@ public:
 
 	void processIncomingRequest()
 	{
-		QByteArray buf = zhttpRequest->readBody();
-		if(in.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
+		if(state == Receiving)
 		{
-			respondError(413, "Request Entity Too Large", QString("Body must not exceed %1 bytes").arg(MAX_ACCEPT_REQUEST_BODY));
-			return;
+			in += zhttpRequest->readBody(REQUEST_BODY_BUFSIZE - in.size());
+
+			if(in.size() >= REQUEST_BODY_BUFSIZE || zhttpRequest->isInputFinished())
+			{
+				disconnect(zhttpRequest, SIGNAL(readyRead()), this, SLOT(zhttpRequest_readyRead()));
+
+				state = WaitingForResponse;
+				requestData.body = in.take();
+				emit q->inspected(idata);
+			}
 		}
+		else if(state == Accepting)
+		{
+			QByteArray buf = zhttpRequest->readBody();
+			if(in.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
+			{
+				respondError(413, "Request Entity Too Large", QString("Body must not exceed %1 bytes").arg(MAX_ACCEPT_REQUEST_BODY));
+				return;
+			}
 
-		in += buf;
+			in += buf;
 
-		if(zhttpRequest->isInputFinished())
-			zhttpRequest->pause();
+			if(zhttpRequest->isInputFinished())
+				zhttpRequest->pause();
+		}
 	}
 
 	void respond(int code, const QString &status, const QByteArray &body)
@@ -554,8 +575,20 @@ public slots:
 		}
 		else
 		{
-			state = WaitingForResponse;
-			emit q->inspected(idata);
+			if(!idata.sharingKey.isEmpty())
+			{
+				// if this is a sharable request, try buffering some of the request body
+				state = Receiving;
+
+				connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
+				processIncomingRequest();
+			}
+			else
+			{
+				state = WaitingForResponse;
+				requestData.body = in.take();
+				emit q->inspected(idata);
+			}
 		}
 	}
 
@@ -760,6 +793,11 @@ bool RequestSession::autoCrossOrigin() const
 QByteArray RequestSession::jsonpCallback() const
 {
 	return d->jsonpCallback;
+}
+
+bool RequestSession::haveCompleteRequestBody() const
+{
+	return (d->zhttpRequest->isInputFinished() && d->zhttpRequest->bytesAvailable() == 0);
 }
 
 ZhttpRequest *RequestSession::request()

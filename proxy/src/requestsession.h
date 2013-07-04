@@ -46,6 +46,7 @@ public:
 	HttpRequestData requestData() const;
 	bool autoCrossOrigin() const;
 	QByteArray jsonpCallback() const; // non-empty if JSON-P is used
+	bool haveCompleteRequestBody() const;
 
 	ZhttpRequest *request();
 
