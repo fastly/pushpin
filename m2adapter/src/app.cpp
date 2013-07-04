@@ -1113,7 +1113,12 @@ private slots:
 		}
 		else
 		{
-			if(zresp.seq != s->inSeq)
+			if(zresp.seq == -1)
+			{
+				// sender is trying his luck
+				zresp.seq = s->inSeq;
+			}
+			else if(zresp.seq != s->inSeq)
 			{
 				log_warning("zhttp: received response out of sequence (got=%d, expected=%d), canceling", zresp.seq, s->inSeq);
 				ZhttpRequestPacket zreq;
@@ -1371,7 +1376,7 @@ private slots:
 			it.next();
 			Session *s = it.value();
 
-			if(!s->zhttpAddress.isEmpty())
+			if(!s->inHandoff && !s->zhttpAddress.isEmpty())
 			{
 				ZhttpRequestPacket zreq;
 				zreq.type = ZhttpRequestPacket::KeepAlive;
