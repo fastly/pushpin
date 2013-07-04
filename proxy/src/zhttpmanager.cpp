@@ -29,7 +29,6 @@
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "log.h"
-#include "zhttprequest.h"
 
 #define OUT_HWM 100
 #define IN_HWM 100
@@ -137,6 +136,7 @@ public:
 
 		server_in_valve->open();
 
+		log_info("server in connecting to %s", qPrintable(server_in_specs.join(", ")));
 		return true;
 	}
 
@@ -147,6 +147,7 @@ public:
 		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 		connect(server_in_stream_sock, SIGNAL(readyRead()), SLOT(server_in_stream_readyRead()));
 
+		server_in_stream_sock->setIdentity(instanceId);
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
 
 		foreach(const QString &spec, server_in_stream_specs)
@@ -169,6 +170,21 @@ public:
 			server_out_sock->connectToAddress(spec);
 
 		return true;
+	}
+
+	void tryRespondCancel(const ZhttpRequestPacket &packet)
+	{
+		assert(!packet.from.isEmpty());
+
+		// if this was not an error packet, send cancel
+		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+		{
+			ZhttpResponsePacket out;
+			out.from = instanceId;
+			out.id = packet.id;
+			out.type = ZhttpResponsePacket::Cancel;
+			q->write(out, packet.from);
+		}
 	}
 
 public slots:
@@ -195,6 +211,8 @@ public slots:
 				continue;
 			}
 
+			log_debug("zhttp client: IN %s", msg[0].data());
+
 			int at = msg[0].indexOf(' ');
 			if(at == -1)
 			{
@@ -220,7 +238,7 @@ public slots:
 			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, p.id));
 			if(!req)
 			{
-				log_warning("zhttp client: received message for unknown request id, canceling");
+				log_debug("zhttp client: received message for unknown request id, canceling");
 
 				// if this was not an error packet, send cancel
 				if(p.type != ZhttpResponsePacket::Error && p.type != ZhttpResponsePacket::Cancel && !p.from.isEmpty())
@@ -250,6 +268,8 @@ public slots:
 			return;
 		}
 
+		log_debug("zhttp server: IN %s", msg[0].data());
+
 		QVariant data = TnetString::toVariant(msg[0]);
 		if(data.isNull())
 		{
@@ -264,32 +284,33 @@ public slots:
 			return;
 		}
 
-		ZhttpRequest::Rid rid(instanceId, p.id);
+		if(p.from.isEmpty())
+		{
+			log_warning("zhttp server: received message without from address, skipping");
+			return;
+		}
+
+		ZhttpRequest::Rid rid(p.from, p.id);
 
 		ZhttpRequest *req = serverReqsByRid.value(rid);
 		if(req)
 		{
 			log_warning("zhttp server: received message for existing request id, canceling");
-
-			// if this was not an error packet, send cancel
-			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel && !p.from.isEmpty())
-			{
-				ZhttpResponsePacket out;
-				out.from = instanceId;
-				out.id = p.id;
-				out.type = ZhttpResponsePacket::Cancel;
-				// TODO q->write(out, p.from);
-			}
-
+			tryRespondCancel(p);
 			return;
 		}
 
 		req = new ZhttpRequest;
-		req->setupServer(q);
+		if(!req->setupServer(q, p))
+		{
+			delete req;
+			return;
+		}
+
 		serverReqsByRid.insert(rid, req);
 		serverPendingReqs += req;
 
-		emit q->incomingRequestReady();
+		emit q->requestReady();
 	}
 
 	void server_in_stream_readyRead()
@@ -305,6 +326,8 @@ public slots:
 				continue;
 			}
 
+			log_debug("zhttp server: IN stream %s", msg[1].data());
+
 			QVariant data = TnetString::toVariant(msg[1]);
 			if(data.isNull())
 			{
@@ -319,7 +342,9 @@ public slots:
 				continue;
 			}
 
-			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(instanceId, p.id));
+			ZhttpRequest::Rid rid(p.from, p.id);
+
+			ZhttpRequest *req = serverReqsByRid.value(rid);
 			if(!req)
 			{
 				log_warning("zhttp server: received message for unknown request id, canceling");
@@ -331,7 +356,7 @@ public slots:
 					out.from = instanceId;
 					out.id = p.id;
 					out.type = ZhttpResponsePacket::Cancel;
-					// TODO q->write(out, p.from);
+					q->write(out, p.from);
 				}
 
 				continue;
@@ -416,22 +441,48 @@ ZhttpRequest *ZhttpManager::createRequest()
 
 ZhttpRequest *ZhttpManager::takeNext()
 {
-	if(d->serverPendingReqs.isEmpty())
-		return 0;
+	ZhttpRequest *req = 0;
 
-	ZhttpRequest *req = d->serverPendingReqs.takeFirst();
+	while(!req)
+	{
+		if(d->serverPendingReqs.isEmpty())
+			return 0;
+
+		req = d->serverPendingReqs.takeFirst();
+		if(!d->serverReqsByRid.contains(req->rid()))
+		{
+			// this means the object was a zombie. clean up and take next
+			delete req;
+			req = 0;
+			continue;
+		}
+	}
+
 	req->startServer();
+	return req;
+}
+
+ZhttpRequest *ZhttpManager::createFromState(const ZhttpRequest::ServerState &state)
+{
+	ZhttpRequest *req = new ZhttpRequest;
+	req->setupServer(this, state);
 	return req;
 }
 
 void ZhttpManager::link(ZhttpRequest *req)
 {
-	d->clientReqsByRid.insert(req->rid(), req);
+	if(req->isServer())
+		d->serverReqsByRid.insert(req->rid(), req);
+	else
+		d->clientReqsByRid.insert(req->rid(), req);
 }
 
 void ZhttpManager::unlink(ZhttpRequest *req)
 {
-	d->clientReqsByRid.remove(req->rid());
+	if(req->isServer())
+		d->serverReqsByRid.remove(req->rid());
+	else
+		d->clientReqsByRid.remove(req->rid());
 }
 
 bool ZhttpManager::canWriteImmediately() const
@@ -447,6 +498,8 @@ void ZhttpManager::write(const ZhttpRequestPacket &packet)
 
 	QByteArray buf = TnetString::fromVariant(packet.toVariant());
 
+	log_debug("zhttp client: OUT %s", buf.data());
+
 	d->client_out_sock->write(QList<QByteArray>() << buf);
 }
 
@@ -456,11 +509,24 @@ void ZhttpManager::write(const ZhttpRequestPacket &packet, const QByteArray &ins
 
 	QByteArray buf = TnetString::fromVariant(packet.toVariant());
 
+	log_debug("zhttp client: OUT %s %s", instanceAddress.data(), buf.data());
+
 	QList<QByteArray> msg;
 	msg += instanceAddress;
 	msg += QByteArray();
 	msg += buf;
 	d->client_out_stream_sock->write(msg);
+}
+
+void ZhttpManager::write(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
+{
+	assert(d->server_out_sock);
+
+	QByteArray buf = instanceAddress + ' ' + TnetString::fromVariant(packet.toVariant());
+
+	log_debug("zhttp server: OUT %s", buf.data());
+
+	d->server_out_sock->write(QList<QByteArray>() << buf);
 }
 
 #include "zhttpmanager.moc"

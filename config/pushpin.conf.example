@@ -1,6 +1,6 @@
 [runner]
 # services to start
-services=mongrel2,zurl,pushpin-proxy,pushpin-handler
+services=mongrel2,m2adapter,zurl,pushpin-proxy,pushpin-handler
 
 # plain HTTP port that mongrel2 should listen on
 http_port=7999
@@ -24,14 +24,14 @@ zurl_bin=zurl
 
 
 [proxy]
-# list of connect PULL for receiving mongrel2 plain HTTP requests
-m2_in_specs={dyn}
+# list of connect PULL for receiving mongrel2 HTTP requests
+m2a_in_specs=ipc:///tmp/pushpin-m2a-out
 
-# list of connect PULL for receiving mongrel2 HTTPS requests
-m2_inhttps_specs={dyn}
+# list of connect DEALER for continuing mongrel2 HTTP requests
+m2a_in_stream_specs=ipc:///tmp/pushpin-m2a-out-stream
 
-# list of connect PUB for sending mongrel2 HTTP/HTTPS responses
-m2_out_specs={dyn}
+# list of connect PUB for sending mongrel2 HTTP responses
+m2a_out_specs=ipc:///tmp/pushpin-m2a-in
 
 # list of connect PUSH for sending zurl HTTP requests
 zurl_out_specs=ipc:///tmp/pushpin-zurl-in
@@ -83,8 +83,8 @@ proxy_retry_out_spec=ipc:///tmp/pushpin-retry
 # connect PULL for receiving HTTP requests (internal, used with proxy)
 proxy_accept_in_spec=ipc:///tmp/pushpin-accept
 
-# list of connect PUB for sending mongrel2 HTTP/HTTPS responses
-m2_out_specs={dyn}
+# list of connect PUB for sending mongrel2 HTTP responses
+m2a_out_specs=ipc:///tmp/pushpin-m2a-in
 
 # redis server to use for storing state
 redis_host=127.0.0.1

@@ -20,56 +20,23 @@
 #include "requestsession.h"
 
 #include <assert.h>
+#include <QPointer>
 #include <QUrl>
 #include <QHostAddress>
 #include <qjson/parser.h>
 #include <qjson/serializer.h>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "bufferlist.h"
 #include "log.h"
 #include "layertracker.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
-#include "m2request.h"
-#include "m2response.h"
-#include "m2manager.h"
 #include "inspectmanager.h"
 #include "inspectrequest.h"
 #include "inspectchecker.h"
 
 #define MAX_ACCEPT_REQUEST_BODY 100000
-
-static bool parseHostHeader(bool https, const QByteArray &in, QString *_host, int *_port)
-{
-	QString host = QString::fromUtf8(in);
-
-	int port;
-	int at = host.lastIndexOf(':');
-	if(at != -1)
-	{
-		QString sport = host.mid(at + 1);
-		bool ok;
-		port = sport.toInt(&ok);
-		if(!ok)
-			return false;
-
-		host = host.mid(0, at);
-	}
-	else
-	{
-		if(https)
-			port = 443;
-		else
-			port = 80;
-	}
-
-	if(_host)
-		*_host = host;
-	if(_port)
-		*_port = port;
-
-	return true;
-}
 
 static int fromHex(char c)
 {
@@ -142,31 +109,29 @@ public:
 		Inspecting,
 		Accepting,
 		WaitingForResponse,
+		RespondingStart,
 		Responding,
 		RespondingInternal
 	};
 
 	RequestSession *q;
 	State state;
+	ZhttpRequest::Rid rid;
 	InspectManager *inspectManager;
 	InspectChecker *inspectChecker;
-	M2Request *m2Request;
-	M2Response *m2Response;
-	M2Manager *m2Manager; // used when we don't have m2Request
-	M2Request::Rid rid;
-	bool isHttps;
-	QHostAddress peerAddress;
+	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
 	InspectData idata;
-	QString host;
-	QByteArray in;
+	BufferList in;
 	QByteArray jsonpCallback;
 	HttpResponseData responseData;
+	BufferList out;
 	bool responseBodyFinished;
 	bool pendingResponseUpdate;
 	LayerTracker jsonpTracker;
+	bool isRetry;
 
 	Private(RequestSession *_q, InspectManager *_inspectManager, InspectChecker *_inspectChecker) :
 		QObject(_q),
@@ -174,14 +139,12 @@ public:
 		state(Stopped),
 		inspectManager(_inspectManager),
 		inspectChecker(_inspectChecker),
-		m2Request(0),
-		m2Response(0),
-		m2Manager(0),
-		isHttps(false),
+		zhttpRequest(0),
 		autoCrossOrigin(false),
 		inspectRequest(0),
 		responseBodyFinished(false),
-		pendingResponseUpdate(false)
+		pendingResponseUpdate(false),
+		isRetry(false)
 	{
 	}
 
@@ -192,16 +155,10 @@ public:
 
 	void cleanup()
 	{
-		if(m2Request)
+		if(zhttpRequest)
 		{
-			delete m2Request;
-			m2Request = 0;
-		}
-
-		if(m2Response)
-		{
-			delete m2Response;
-			m2Response = 0;
+			delete zhttpRequest;
+			zhttpRequest = 0;
 		}
 
 		if(inspectRequest)
@@ -214,53 +171,29 @@ public:
 		state = Stopped;
 	}
 
-	void start(M2Request *req)
+	void start(ZhttpRequest *req)
 	{
-		m2Request = req;
+		zhttpRequest = req;
+		rid = req->rid();
 
-		QByteArray rawHost = req->headers().get("host");
-		if(rawHost.isEmpty())
-		{
-			log_warning("requestsession: id=%s no host header, rejecting", req->rid().second.data());
-			respondBadRequest("Host header required.");
-			return;
-		}
+		QUrl uri = req->requestUri();
 
-		int port;
-		if(!parseHostHeader(req->isHttps(), rawHost, &host, &port))
-		{
-			log_warning("requestsession: id=%s invalid host header, rejecting", req->rid().second.data());
-			respondBadRequest("Invalid host header.");
-			return;
-		}
+		log_info("IN id=%s, %s %s", rid.second.data(), qPrintable(req->requestMethod()), uri.toEncoded().data());
 
-		QByteArray scheme;
-		if(req->isHttps())
-			scheme = "https";
-		else
-			scheme = "http";
+		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
+		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
 
-		QByteArray urlstr = scheme + "://" + host.toUtf8();
-		if((req->isHttps() && port != 443) || (!req->isHttps() && port != 80))
-			urlstr += ':' + QByteArray::number(port);
-		urlstr += req->path();
-
-		log_info("IN id=%s, %s %s", req->rid().second.data(), qPrintable(req->method()), urlstr.data());
-
-		connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
-
-		QUrl url = QUrl::fromEncoded(urlstr, QUrl::StrictMode);
 		HttpRequestData hdata;
 
 		// JSON-P
-		if(autoCrossOrigin && url.hasQueryItem("callback"))
+		if(autoCrossOrigin && uri.hasQueryItem("callback"))
 		{
 			bool callbackDone = false;
 			bool methodDone = false;
 			bool headersDone = false;
 			bool bodyDone = false;
 
-			QList< QPair<QByteArray, QByteArray> > encodedItems = url.encodedQueryItems();
+			QList< QPair<QByteArray, QByteArray> > encodedItems = uri.encodedQueryItems();
 			for(int n = 0; n < encodedItems.count(); ++n)
 			{
 				const QPair<QByteArray, QByteArray> &i = encodedItems[n];
@@ -276,13 +209,13 @@ public:
 					QByteArray callback = parsePercentEncoding(i.second);
 					if(callback.isEmpty())
 					{
-						log_warning("requestsession: id=%s invalid callback parameter, rejecting", req->rid().second.data());
+						log_warning("requestsession: id=%s invalid callback parameter, rejecting", rid.second.data());
 						respondBadRequest("Invalid callback parameter.");
 						return;
 					}
 
 					jsonpCallback = callback;
-					url.removeAllQueryItems("callback");
+					uri.removeAllQueryItems("callback");
 				}
 				else if(name == "_method")
 				{
@@ -294,13 +227,13 @@ public:
 
 					if(!validMethod(method))
 					{
-						log_warning("requestsession: id=%s invalid _method parameter, rejecting", req->rid().second.data());
+						log_warning("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
 						respondBadRequest("Invalid _method parameter.");
 						return;
 					}
 
 					hdata.method = method;
-					url.removeAllQueryItems("_method");
+					uri.removeAllQueryItems("_method");
 				}
 				else if(name == "_headers")
 				{
@@ -314,7 +247,7 @@ public:
 					QVariant vheaders = parser.parse(parsePercentEncoding("_headers"), &ok);
 					if(!ok)
 					{
-						log_warning("requestsession: id=%s invalid _headers parameter, rejecting", req->rid().second.data());
+						log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 						respondBadRequest("Invalid _headers parameter.");
 						return;
 					}
@@ -328,7 +261,7 @@ public:
 
 						if(vit.value().type() != QVariant::String)
 						{
-							log_warning("requestsession: id=%s invalid _headers parameter, rejecting", req->rid().second.data());
+							log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 							respondBadRequest("Invalid _headers parameter.");
 							return;
 						}
@@ -345,7 +278,7 @@ public:
 					}
 
 					hdata.headers = headers;
-					url.removeAllQueryItems("_headers");
+					uri.removeAllQueryItems("_headers");
 				}
 				else if(name == "_body")
 				{
@@ -354,41 +287,36 @@ public:
 
 					bodyDone = true;
 					hdata.body = parsePercentEncoding(i.second);
-					url.removeAllQueryItems("_body");
+					uri.removeAllQueryItems("_body");
 				}
 			}
 
 			if(hdata.method.isEmpty())
 				hdata.method = "GET";
 
-			hdata.path = url.encodedPath();
-			if(url.hasQuery())
-			{
-				QByteArray query = url.encodedQuery();
-				if(!query.isEmpty())
-					hdata.path += "?" + query;
-			}
+			hdata.uri = uri;
 
-			hdata.headers += HttpHeader("Host", host.toUtf8());
+			hdata.headers += HttpHeader("Host", uri.host().toUtf8());
 			hdata.headers += HttpHeader("Accept", "*/*");
 
 			// carry over the rest of the headers
-			foreach(const HttpHeader &h, req->headers())
+			foreach(const HttpHeader &h, req->requestHeaders())
 			{
-				if(!hdata.headers.contains(h.first))
-					hdata.headers += h;
+				if(qstricmp(h.first.data(), "host") == 0)
+					continue;
+				if(qstricmp(h.first.data(), "accept") == 0)
+					continue;
+
+				hdata.headers += h;
 			}
 		}
 		else
 		{
-			hdata.method = req->method();
-			hdata.path = req->path();
-			hdata.headers = req->headers();
+			hdata.method = req->requestMethod();
+			hdata.uri = uri;
+			hdata.headers = req->requestHeaders();
 		}
 
-		rid = m2Request->rid();
-		isHttps = m2Request->isHttps();
-		peerAddress = m2Request->peerAddress();
 		requestData = hdata;
 
 		// NOTE: per the license, this functionality may not be removed as it
@@ -438,9 +366,15 @@ public:
 		}
 	}
 
+	void startRetry()
+	{
+		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
+		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
+	}
+
 	void processIncomingRequest()
 	{
-		QByteArray buf = m2Request->read();
+		QByteArray buf = zhttpRequest->readBody();
 		if(in.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
 		{
 			respondError(413, "Request Entity Too Large", QString("Body must not exceed %1 bytes").arg(MAX_ACCEPT_REQUEST_BODY));
@@ -449,35 +383,8 @@ public:
 
 		in += buf;
 
-		if(m2Request->isFinished())
-		{
-			AcceptData adata;
-
-			AcceptData::Request areq;
-			areq.rid = m2Request->rid();
-			areq.https = isHttps;
-			areq.peerAddress = peerAddress;
-			areq.jsonpCallback = jsonpCallback;
-			adata.requests += areq;
-
-			adata.requestData.method = m2Request->method();
-			adata.requestData.path = m2Request->path();
-			adata.requestData.headers = m2Request->headers();
-
-			adata.haveInspectData = true;
-			adata.inspectData.doProxy = idata.doProxy;
-			adata.inspectData.sharingKey = idata.sharingKey;
-			adata.inspectData.userData = idata.userData;
-
-			m2Manager = m2Request->managerForResponse();
-
-			delete m2Request;
-			m2Request = 0;
-
-			state = Stopped;
-
-			emit q->finishedForAccept(adata);
-		}
+		if(zhttpRequest->isInputFinished())
+			zhttpRequest->pause();
 	}
 
 	void respond(int code, const QString &status, const QByteArray &body)
@@ -552,25 +459,15 @@ public:
 	}
 
 public slots:
-	void m2Request_readyRead()
+	void zhttpRequest_readyRead()
 	{
 		processIncomingRequest();
 	}
 
-	void m2Request_finished()
+	void zhttpRequest_bytesWritten(int count)
 	{
-		processIncomingRequest();
-	}
+		QPointer<QObject> self = this;
 
-	void m2Request_error()
-	{
-		log_warning("requestsession: request error id=%s", m2Request->rid().second.data());
-		cleanup();
-		emit q->finished();
-	}
-
-	void m2Response_bytesWritten(int count)
-	{
 		if(!jsonpCallback.isEmpty())
 		{
 			int actual = jsonpTracker.finished(count);
@@ -579,17 +476,62 @@ public slots:
 		}
 		else
 			emit q->bytesWritten(count);
+
+		if(!self)
+			return;
+
+		if(zhttpRequest->isFinished())
+		{
+			cleanup();
+			emit q->finished();
+		}
 	}
 
-	void m2Response_finished()
+	void zhttpRequest_paused()
 	{
-		cleanup();
-		emit q->finished();
+		if(state == Accepting)
+		{
+			ZhttpRequest::ServerState ss = zhttpRequest->serverState();
+
+			AcceptData adata;
+
+			AcceptData::Request areq;
+			areq.rid = rid;
+			areq.https = zhttpRequest->requestUri().scheme() == "https";
+			areq.peerAddress = zhttpRequest->peerAddress();
+			areq.autoCrossOrigin = autoCrossOrigin;
+			areq.jsonpCallback = jsonpCallback;
+			areq.inSeq = ss.inSeq;
+			areq.outSeq = ss.outSeq;
+			areq.outCredits = ss.outCredits;
+			areq.userData = ss.userData;
+			adata.requests += areq;
+
+			adata.requestData = requestData;
+			adata.requestData.body = in.take();
+
+			adata.haveInspectData = true;
+			adata.inspectData.doProxy = idata.doProxy;
+			adata.inspectData.sharingKey = idata.sharingKey;
+			adata.inspectData.userData = idata.userData;
+
+			// the request was paused, so deleting it will leave the peer session active
+			delete zhttpRequest;
+			zhttpRequest = 0;
+
+			state = Stopped;
+
+			emit q->finishedForAccept(adata);
+		}
+		else
+		{
+			emit q->paused();
+		}
 	}
 
-	void m2Response_error()
+	void zhttpRequest_error()
 	{
-		log_warning("requestsession: response error id=%s", m2Response->rid().second.data());
+		log_warning("requestsession: request error id=%s", rid.second.data());
 		cleanup();
 		emit q->finished();
 	}
@@ -607,8 +549,7 @@ public slots:
 
 			// successful inspect indicated we should not proxy. in that case,
 			//   collect the body and accept
-			connect(m2Request, SIGNAL(readyRead()), SLOT(m2Request_readyRead()));
-			connect(m2Request, SIGNAL(finished()), SLOT(m2Request_finished()));
+			connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
 			processIncomingRequest();
 		}
 		else
@@ -631,14 +572,9 @@ public slots:
 	{
 		pendingResponseUpdate = false;
 
-		if(!m2Response)
+		if(state == RespondingStart)
 		{
-			assert(m2Manager);
-
-			m2Response = m2Manager->createResponse(rid);
-
-			connect(m2Response, SIGNAL(finished()), SLOT(m2Response_finished()));
-			connect(m2Response, SIGNAL(error()), SLOT(m2Response_error()));
+			state = Responding;
 
 			if(!jsonpCallback.isEmpty())
 			{
@@ -646,11 +582,12 @@ public slots:
 
 				if(responseBodyFinished)
 				{
-					QByteArray startBuf = makeJsonpStart(responseData.code, responseData.status, responseData.headers);
+					QByteArray bodyRawBuf = out.take();
+					QByteArray startBuf = makeJsonpStart(responseData.code, responseData.reason, responseData.headers);
 					QByteArray bodyBuf;
 					QByteArray endBuf = makeJsonpEnd();
 					if(!startBuf.isNull())
-						bodyBuf = makeJsonpBody(responseData.body);
+						bodyBuf = makeJsonpBody(bodyRawBuf);
 
 					if(startBuf.isNull() || bodyBuf.isNull())
 					{
@@ -659,9 +596,9 @@ public slots:
 						QByteArray body = "Upstream response could not be JSON-P encoded.\n";
 						headers += HttpHeader("Content-Type", "text/plain");
 						headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
-						m2Response->start(500, "Internal Server Error", headers);
-						m2Response->write(body);
-						m2Response->close();
+						zhttpRequest->beginResponse(500, "Internal Server Error", headers);
+						zhttpRequest->writeBody(body);
+						zhttpRequest->endBody();
 						emit q->errorResponding();
 						return;
 					}
@@ -671,22 +608,19 @@ public slots:
 					headers += HttpHeader("Content-Type", "application/javascript");
 					headers += HttpHeader("Content-Length", QByteArray::number(buf.size()));
 
-					connect(m2Response, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+					connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
 
-					m2Response->start(200, "OK", headers);
+					zhttpRequest->beginResponse(200, "OK", headers);
 
-					jsonpTracker.addPlain(responseData.body.size());
-					jsonpTracker.specifyEncoded(buf.size(), responseData.body.size());
+					jsonpTracker.addPlain(bodyRawBuf.size());
+					jsonpTracker.specifyEncoded(buf.size(), bodyRawBuf.size());
 
-					m2Response->write(buf);
-
-					responseData.body.clear();
-
-					m2Response->close();
+					zhttpRequest->writeBody(buf);
+					zhttpRequest->endBody();
 					return;
 				}
 
-				QByteArray buf = makeJsonpStart(responseData.code, responseData.status, responseData.headers);
+				QByteArray buf = makeJsonpStart(responseData.code, responseData.reason, responseData.headers);
 				if(buf.isNull())
 				{
 					state = RespondingInternal;
@@ -694,9 +628,9 @@ public slots:
 					QByteArray body = "Upstream response could not be JSON-P encoded.\n";
 					headers += HttpHeader("Content-Type", "text/plain");
 					headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
-					m2Response->start(500, "Internal Server Error", headers);
-					m2Response->write(body);
-					m2Response->close();
+					zhttpRequest->beginResponse(500, "Internal Server Error", headers);
+					zhttpRequest->writeBody(body);
+					zhttpRequest->endBody();
 					emit q->errorResponding();
 					return;
 				}
@@ -704,13 +638,13 @@ public slots:
 				headers += HttpHeader("Content-Type", "application/javascript");
 				headers += HttpHeader("Transfer-Encoding", "chunked");
 
-				connect(m2Response, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+				connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
 
-				m2Response->start(200, "OK", headers);
+				zhttpRequest->beginResponse(200, "OK", headers);
 
 				jsonpTracker.specifyEncoded(buf.size(), 0);
 
-				m2Response->write(buf);
+				zhttpRequest->writeBody(buf);
 			}
 			else
 			{
@@ -727,40 +661,39 @@ public slots:
 					}
 				}
 
-				connect(m2Response, SIGNAL(bytesWritten(int)), SLOT(m2Response_bytesWritten(int)));
+				connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
 
-				m2Response->start(responseData.code, responseData.status, responseData.headers);
+				zhttpRequest->beginResponse(responseData.code, responseData.reason, responseData.headers);
 			}
 		}
 
-		if(!responseData.body.isEmpty())
+		if(!out.isEmpty())
 		{
 			if(!jsonpCallback.isEmpty())
 			{
-				QByteArray buf = makeJsonpBody(responseData.body);
+				QByteArray bodyRawBuf = out.take();
+				QByteArray buf = makeJsonpBody(bodyRawBuf);
 				if(buf.isNull())
 				{
 					state = RespondingInternal;
 
-					log_warning("requestsession: id=%s upstream response could not be JSON-P encoded", m2Response->rid().second.data());
+					log_warning("requestsession: id=%s upstream response could not be JSON-P encoded", rid.second.data());
 
 					// if we error while streaming, all we can do is give up
-					m2Response->close();
+					zhttpRequest->endBody();
 					emit q->errorResponding();
 					return;
 				}
 
-				jsonpTracker.addPlain(responseData.body.size());
-				jsonpTracker.specifyEncoded(buf.size(), responseData.body.size());
+				jsonpTracker.addPlain(bodyRawBuf.size());
+				jsonpTracker.specifyEncoded(buf.size(), bodyRawBuf.size());
 
-				m2Response->write(buf);
+				zhttpRequest->writeBody(buf);
 			}
 			else
 			{
-				m2Response->write(responseData.body);
+				zhttpRequest->writeBody(out.take());
 			}
-
-			responseData.body.clear();
 		}
 
 		if(responseBodyFinished)
@@ -769,10 +702,10 @@ public slots:
 			{
 				QByteArray buf = makeJsonpEnd();
 				jsonpTracker.specifyEncoded(buf.size(), 0);
-				m2Response->write(buf);
+				zhttpRequest->writeBody(buf);
 			}
 
-			m2Response->close();
+			zhttpRequest->endBody();
 		}
 	}
 
@@ -795,25 +728,20 @@ RequestSession::~RequestSession()
 
 bool RequestSession::isRetry() const
 {
-	return d->m2Request ? false : true;
+	return d->isRetry;
 }
 
 bool RequestSession::isHttps() const
 {
-	return d->isHttps;
+	return d->zhttpRequest->requestUri().scheme() == "https";
 }
 
 QHostAddress RequestSession::peerAddress() const
 {
-	return d->peerAddress;
+	return d->zhttpRequest->peerAddress();
 }
 
-QString RequestSession::host() const
-{
-	return d->host;
-}
-
-M2Request::Rid RequestSession::rid() const
+ZhttpRequest::Rid RequestSession::rid() const
 {
 	return d->rid;
 }
@@ -823,14 +751,19 @@ HttpRequestData RequestSession::requestData() const
 	return d->requestData;
 }
 
+bool RequestSession::autoCrossOrigin() const
+{
+	return d->autoCrossOrigin;
+}
+
 QByteArray RequestSession::jsonpCallback() const
 {
 	return d->jsonpCallback;
 }
 
-M2Request *RequestSession::request()
+ZhttpRequest *RequestSession::request()
 {
-	return d->m2Request;
+	return d->zhttpRequest;
 }
 
 void RequestSession::setAutoCrossOrigin(bool enabled)
@@ -838,43 +771,39 @@ void RequestSession::setAutoCrossOrigin(bool enabled)
 	d->autoCrossOrigin = enabled;
 }
 
-void RequestSession::start(M2Request *req)
+void RequestSession::start(ZhttpRequest *req)
 {
 	d->start(req);
 }
 
-bool RequestSession::setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QHostAddress &peerAddress, const QByteArray &jsonpCallback, M2Manager *manager)
+void RequestSession::startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback)
 {
-	d->rid = rid;
-	d->requestData = hdata;
-	d->isHttps = https;
-	d->peerAddress = peerAddress;
+	d->isRetry = true;
+	d->zhttpRequest = req;
+	d->rid = req->rid();
+	d->autoCrossOrigin = autoCrossOrigin;
 	d->jsonpCallback = jsonpCallback;
-	d->m2Manager = manager;
+	d->requestData.method = req->requestMethod();
+	d->requestData.uri = req->requestUri();
+	d->requestData.headers = req->requestHeaders();
 
-	if(!parseHostHeader(d->isHttps, d->requestData.headers.get("host"), &d->host, 0))
-		return false;
-
-	return true;
+	d->startRetry();
 }
 
-void RequestSession::startResponse(int code, const QByteArray &status, const HttpHeaders &headers)
+void RequestSession::pause()
+{
+	assert(d->state == Private::WaitingForResponse);
+
+	d->zhttpRequest->pause();
+}
+
+void RequestSession::startResponse(int code, const QByteArray &reason, const HttpHeaders &headers)
 {
 	assert(d->state == Private::Accepting || d->state == Private::WaitingForResponse);
 
-	if(d->m2Request)
-	{
-		d->m2Manager = d->m2Request->managerForResponse();
-
-		// in case we were reading a request in progress, delete here to stop it
-		delete d->m2Request;
-		d->m2Request = 0;
-	}
-
-	d->state = Private::Responding;
-
+	d->state = Private::RespondingStart;
 	d->responseData.code = code;
-	d->responseData.status = status;
+	d->responseData.reason = reason;
 	d->responseData.headers = headers;
 
 	d->responseUpdate();
@@ -882,25 +811,25 @@ void RequestSession::startResponse(int code, const QByteArray &status, const Htt
 
 void RequestSession::writeResponseBody(const QByteArray &body)
 {
-	assert(d->state == Private::Responding);
+	assert(d->state == Private::RespondingStart || d->state == Private::Responding);
 	assert(!d->responseBodyFinished);
 
-	d->responseData.body += body;
+	d->out += body;
 	d->responseUpdate();
 }
 
 void RequestSession::endResponseBody()
 {
-	assert(d->state == Private::Responding);
+	assert(d->state == Private::RespondingStart || d->state == Private::Responding);
 	assert(!d->responseBodyFinished);
 
 	d->responseBodyFinished = true;
 	d->responseUpdate();
 }
 
-void RequestSession::respondError(int code, const QString &status, const QString &errorString)
+void RequestSession::respondError(int code, const QString &reason, const QString &errorString)
 {
-	d->respondError(code, status, errorString);
+	d->respondError(code, reason, errorString);
 }
 
 void RequestSession::respondCannotAccept()

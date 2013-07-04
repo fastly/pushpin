@@ -33,8 +33,8 @@ Requirements:
   qca >= 2.0 (and an hmac(sha256)-supporting plugin, like qca-ossl)
   libzmq >= 2.0
   qjson
-  mongrel2 (develop branch)
-  zurl
+  mongrel2 (**fanout develop branch**)
+  zurl (**master branch**)
   python
   python setproctitle
   python tnetstring
@@ -43,6 +43,8 @@ Requirements:
 
 Install guide:
 
+  (**Note: binary dependency packages mentioned in the wiki are likely not new
+     enough. install from source where necessary.)
   https://github.com/fanout/pushpin/wiki/Install
 
 If accessing from Git, be sure to pull submodules:

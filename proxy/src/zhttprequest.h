@@ -21,9 +21,9 @@
 #define ZHTTPREQUEST_H
 
 #include <QObject>
+#include <QUrl>
+#include <QHostAddress>
 #include "httpheaders.h"
-
-class QUrl;
 
 class ZhttpRequestPacket;
 class ZhttpResponsePacket;
@@ -49,34 +49,72 @@ public:
 	// pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
 
+	class ServerState
+	{
+	public:
+		Rid rid;
+		QHostAddress peerAddress;
+		QString requestMethod;
+		QUrl requestUri;
+		HttpHeaders requestHeaders;
+		int inSeq;
+		int outSeq;
+		int outCredits;
+		QVariant userData;
+
+		ServerState() :
+			inSeq(-1),
+			outSeq(-1),
+			outCredits(-1)
+		{
+		}
+	};
+
 	~ZhttpRequest();
 
 	Rid rid() const;
 
+	QHostAddress peerAddress() const;
+
 	void setConnectHost(const QString &host);
+	void setConnectPort(int port);
 	void setIgnorePolicies(bool on);
 	void setIgnoreTlsErrors(bool on);
 
-	void start(const QString &method, const QUrl &url, const HttpHeaders &headers);
+	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
+	void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
 
 	// may call this multiple times
 	void writeBody(const QByteArray &body);
 
 	void endBody();
 
+	// for server requests only
+	void pause();
+	ServerState serverState() const;
+
 	int bytesAvailable() const;
 	bool isFinished() const;
+	bool isInputFinished() const;
+	bool isOutputFinished() const;
 	ErrorCondition errorCondition() const;
 
+	QString requestMethod() const;
+	QUrl requestUri() const;
+	HttpHeaders requestHeaders() const;
+
 	int responseCode() const;
-	QByteArray responseStatus() const;
+	QByteArray responseReason() const;
 	HttpHeaders responseHeaders() const;
 
-	QByteArray readResponseBody(int size = -1); // takes from the buffer
+	QByteArray readBody(int size = -1); // takes from the buffer
 
 signals:
+	// indicates input data and/or input finished
 	void readyRead();
+	// indicates output data written and/or output finished
 	void bytesWritten(int count);
+	void paused();
 	void error();
 
 private:
@@ -87,8 +125,10 @@ private:
 	friend class ZhttpManager;
 	ZhttpRequest(QObject *parent = 0);
 	void setupClient(ZhttpManager *manager);
-	void setupServer(ZhttpManager *manager);
+	bool setupServer(ZhttpManager *manager, const ZhttpRequestPacket &packet);
+	void setupServer(ZhttpManager *manager, const ServerState &state);
 	void startServer();
+	bool isServer() const;
 	void handle(const ZhttpRequestPacket &packet);
 	void handle(const ZhttpResponsePacket &packet);
 };

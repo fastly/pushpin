@@ -53,6 +53,12 @@ QVariant AcceptResponsePacket::toVariant() const
 			if(!r.jsonpCallback.isEmpty())
 				vrequest["jsonp-callback"] = r.jsonpCallback;
 
+			vrequest["in-seq"] = r.inSeq;
+			vrequest["out-seq"] = r.outSeq;
+			vrequest["out-credits"] = r.outCredits;
+			if(r.userData.isValid())
+				vrequest["user-data"] = r.userData;
+
 			vrequests += vrequest;
 		}
 
@@ -63,7 +69,7 @@ QVariant AcceptResponsePacket::toVariant() const
 		QVariantHash vrequestData;
 
 		vrequestData["method"] = requestData.method.toLatin1();
-		vrequestData["path"] = requestData.path;
+		vrequestData["uri"] = requestData.uri.toEncoded();
 
 		QVariantList vheaders;
 		foreach(const HttpHeader &h, requestData.headers)
@@ -99,7 +105,7 @@ QVariant AcceptResponsePacket::toVariant() const
 		QVariantHash vresponse;
 
 		vresponse["code"] = response.code;
-		vresponse["status"] = response.status;
+		vresponse["reason"] = response.reason;
 
 		QVariantList vheaders;
 		foreach(const HttpHeader &h, response.headers)

@@ -35,9 +35,6 @@
 #include "log.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
-#include "m2manager.h"
-#include "m2request.h"
-#include "m2response.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 #include "domainmap.h"
@@ -114,7 +111,6 @@ public:
 	App *q;
 	bool verbose;
 	QByteArray clientId;
-	M2Manager *m2;
 	ZhttpManager *zhttp;
 	InspectManager *inspect;
 	DomainMap *domainMap;
@@ -138,7 +134,6 @@ public:
 		QObject(_q),
 		q(_q),
 		verbose(false),
-		m2(0),
 		zhttp(0),
 		inspect(0),
 		domainMap(0),
@@ -232,12 +227,12 @@ public:
 
 		QSettings settings(configFile, QSettings::IniFormat);
 
-		QStringList m2_in_specs = settings.value("proxy/m2_in_specs").toStringList();
-		trimlist(&m2_in_specs);
-		QStringList m2_inhttps_specs = settings.value("proxy/m2_inhttps_specs").toStringList();
-		trimlist(&m2_inhttps_specs);
-		QStringList m2_out_specs = settings.value("proxy/m2_out_specs").toStringList();
-		trimlist(&m2_out_specs);
+		QStringList m2a_in_specs = settings.value("proxy/m2a_in_specs").toStringList();
+		trimlist(&m2a_in_specs);
+		QStringList m2a_in_stream_specs = settings.value("proxy/m2a_in_stream_specs").toStringList();
+		trimlist(&m2a_in_stream_specs);
+		QStringList m2a_out_specs = settings.value("proxy/m2a_out_specs").toStringList();
+		trimlist(&m2a_out_specs);
 		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
 		trimlist(&zurl_out_specs);
 		QStringList zurl_out_stream_specs = settings.value("proxy/zurl_out_stream_specs").toStringList();
@@ -268,63 +263,23 @@ public:
 
 		domainMap = new DomainMap(routesfile);
 
-		int runner_http_port = settings.value("runner/http_port").toInt();
-		QStringList runner_str_https_ports = settings.value("runner/https_ports").toStringList();
-		trimlist(&runner_str_https_ports);
-		QList<int> runner_https_ports;
-		foreach(const QString &str, runner_str_https_ports)
-			runner_https_ports += str.toInt();
-
-		if(m2_in_specs.count() == 1 && m2_in_specs[0] == "{dyn}")
+		if(m2a_in_specs.isEmpty() || m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty() || zurl_out_specs.isEmpty() || zurl_out_stream_specs.isEmpty() || zurl_in_specs.isEmpty())
 		{
-			m2_in_specs.clear();
-			m2_in_specs += "ipc:///tmp/pushpin-m2-out-" + QString::number(runner_http_port);
-		}
-
-		if(m2_inhttps_specs.count() == 1 && m2_inhttps_specs[0] == "{dyn}")
-		{
-			m2_inhttps_specs.clear();
-			foreach(int port, runner_https_ports)
-				m2_inhttps_specs += "ipc:///tmp/pushpin-m2-out-" + QString::number(port);
-		}
-
-		if(m2_out_specs.count() == 1 && m2_out_specs[0] == "{dyn}")
-		{
-			m2_out_specs.clear();
-			m2_out_specs += "ipc:///tmp/pushpin-m2-in-" + QString::number(runner_http_port);
-			foreach(int port, runner_https_ports)
-				m2_out_specs += "ipc:///tmp/pushpin-m2-in-" + QString::number(port);
-		}
-
-		if(m2_in_specs.isEmpty() && m2_inhttps_specs.isEmpty())
-		{
-			log_error("must set at least one of m2_in_specs and m2_inhttps_specs");
+			log_error("must set m2a_in_specs, m2a_in_stream_specs, m2a_out_specs, zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
 			emit q->quit();
 			return;
 		}
-
-		if(m2_out_specs.isEmpty() || zurl_out_specs.isEmpty() || zurl_out_stream_specs.isEmpty() || zurl_in_specs.isEmpty())
-		{
-			log_error("must set m2_out_specs, zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
-			emit q->quit();
-			return;
-		}
-
-		m2 = new M2Manager(this);
-		connect(m2, SIGNAL(requestReady()), SLOT(m2_requestReady()));
-
-		if(!m2_in_specs.isEmpty())
-			m2->setIncomingPlainSpecs(m2_in_specs);
-
-		if(!m2_inhttps_specs.isEmpty())
-			m2->setIncomingHttpsSpecs(m2_inhttps_specs);
-
-		m2->setOutgoingSpecs(m2_out_specs);
 
 		clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
 
 		zhttp = new ZhttpManager(this);
+		connect(zhttp, SIGNAL(requestReady()), SLOT(zhttp_requestReady()));
+
 		zhttp->setInstanceId(clientId);
+
+		zhttp->setServerInSpecs(m2a_in_specs);
+		zhttp->setServerInStreamSpecs(m2a_in_stream_specs);
+		zhttp->setServerOutSpecs(m2a_out_specs);
 
 		zhttp->setClientOutSpecs(zurl_out_specs);
 		zhttp->setClientOutStreamSpecs(zurl_out_stream_specs);
@@ -440,8 +395,12 @@ public:
 			req.rid = AcceptResponsePacket::Rid(areq.rid.first, areq.rid.second);
 			req.https = areq.https;
 			req.peerAddress = areq.peerAddress;
-			req.autoCrossOrigin = autoCrossOrigin;
+			req.autoCrossOrigin = areq.autoCrossOrigin;
 			req.jsonpCallback = areq.jsonpCallback;
+			req.inSeq = areq.inSeq;
+			req.outSeq = areq.outSeq;
+			req.outCredits = areq.outCredits;
+			req.userData = areq.userData;
 			p.requests += req;
 		}
 
@@ -471,7 +430,7 @@ public:
 		if(maxWorkers != -1 && requestSessions.count() >= maxWorkers)
 			return;
 
-		M2Request *req = m2->takeNext();
+		ZhttpRequest *req = zhttp->takeNext();
 		if(!req)
 			return;
 
@@ -490,6 +449,11 @@ public:
 
 private slots:
 	void m2_requestReady()
+	{
+		tryTakeRequest();
+	}
+
+	void zhttp_requestReady()
 	{
 		tryTakeRequest();
 	}
@@ -611,7 +575,7 @@ private slots:
 	{
 		if(message.count() != 1)
 		{
-			log_warning("retry_in: received message with parts != 1, skipping");
+			log_warning("retry: received message with parts != 1, skipping");
 			return;
 		}
 
@@ -619,18 +583,18 @@ private slots:
 		QVariant data = TnetString::toVariant(message[0], 0, &ok);
 		if(!ok)
 		{
-			log_warning("retry_in: received message with invalid format (tnetstring parse failed), skipping");
+			log_warning("retry: received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
 
 		RetryRequestPacket p;
 		if(!p.fromVariant(data))
 		{
-			log_warning("retry_in: received message with invalid format (parse failed), skipping");
+			log_warning("retry: received message with invalid format (parse failed), skipping");
 			return;
 		}
 
-		log_info("IN retry %s %s", qPrintable(p.requestData.method), p.requestData.path.data());
+		log_info("retry: IN %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
 
 		InspectData idata;
 		if(p.haveInspectInfo)
@@ -642,15 +606,23 @@ private slots:
 
 		foreach(const RetryRequestPacket::Request &req, p.requests)
 		{
-			M2Request::Rid rid(req.rid.first, req.rid.second);
+			ZhttpRequest::ServerState ss;
+			ss.rid = ZhttpRequest::Rid(req.rid.first, req.rid.second);
+			ss.peerAddress = req.peerAddress;
+			ss.requestMethod = p.requestData.method;
+			ss.requestUri = p.requestData.uri;
+			if(req.https)
+				ss.requestUri.setScheme("https");
+			ss.requestHeaders = p.requestData.headers;
+			ss.inSeq = req.inSeq;
+			ss.outSeq = req.outSeq;
+			ss.outCredits = req.outCredits;
+			ss.userData = req.userData;
+
+			ZhttpRequest *zhttpRequest = zhttp->createFromState(ss);
 
 			RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
-			if(!rs->setupAsRetry(rid, p.requestData, req.https, req.peerAddress, req.jsonpCallback, m2))
-			{
-				delete rs;
-				log_error("retry_in: invalid host header");
-				continue;
-			}
+			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback);
 
 			requestSessions += rs;
 

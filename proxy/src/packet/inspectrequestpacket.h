@@ -21,6 +21,7 @@
 #define INSPECTREQUESTPACKET_H
 
 #include <QVariant>
+#include <QUrl>
 #include "httpheaders.h"
 
 class InspectRequestPacket
@@ -28,7 +29,7 @@ class InspectRequestPacket
 public:
 	QByteArray id;
 	QString method;
-	QByteArray path;
+	QUrl uri;
 	HttpHeaders headers;
 	bool https;
 

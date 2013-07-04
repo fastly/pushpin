@@ -79,6 +79,14 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 			r.peerAddress = QHostAddress(QString::fromUtf8(vrequest["peer-address"].toByteArray()));
 		}
 
+		if(vrequest.contains("auto-cross-origin"))
+		{
+			if(vrequest["auto-cross-origin"].type() != QVariant::Bool)
+				return false;
+
+			r.autoCrossOrigin = vrequest["auto-cross-origin"].toBool();
+		}
+
 		if(vrequest.contains("jsonp-callback"))
 		{
 			if(vrequest["jsonp-callback"].type() != QVariant::ByteArray)
@@ -86,6 +94,21 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 
 			r.jsonpCallback = vrequest["jsonp-callback"].toByteArray();
 		}
+
+		if(!vrid.contains("in-seq") || vrid["in-seq"].type() != QVariant::Int)
+			return false;
+		r.inSeq = vrid["in-seq"].toInt();
+
+		if(!vrid.contains("out-seq") || vrid["out-seq"].type() != QVariant::Int)
+			return false;
+		r.outSeq = vrid["out-seq"].toInt();
+
+		if(!vrid.contains("out-credits") || vrid["out-credits"].type() != QVariant::Int)
+			return false;
+		r.outCredits = vrid["out-credits"].toInt();
+
+		if(vrequest.contains("user-data"))
+			r.userData = vrequest["user-data"];
 
 		requests += r;
 	}
@@ -98,9 +121,9 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 		return false;
 	requestData.method = QString::fromLatin1(vrequestData["method"].toByteArray());
 
-	if(!vrequestData.contains("path") || vrequestData["path"].type() != QVariant::ByteArray)
+	if(!vrequestData.contains("uri") || vrequestData["uri"].type() != QVariant::ByteArray)
 		return false;
-	requestData.path = vrequestData["path"].toByteArray();
+	requestData.uri = QUrl::fromEncoded(vrequestData["uri"].toByteArray(), QUrl::StrictMode);
 
 	requestData.headers.clear();
 	if(vrequestData.contains("headers"))

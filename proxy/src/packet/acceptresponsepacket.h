@@ -42,9 +42,18 @@ public:
 		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 
+		// zhttp
+		int inSeq;
+		int outSeq;
+		int outCredits;
+		QVariant userData;
+
 		Request() :
 			https(false),
-			autoCrossOrigin(false)
+			autoCrossOrigin(false),
+			inSeq(-1),
+			outSeq(-1),
+			outCredits(-1)
 		{
 		}
 	};

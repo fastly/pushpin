@@ -36,10 +36,21 @@ public:
 		Rid rid;
 		bool https;
 		QHostAddress peerAddress;
+		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 
+		// zhttp
+		int inSeq;
+		int outSeq;
+		int outCredits;
+		QVariant userData;
+
 		Request() :
-			https(false)
+			https(false),
+			autoCrossOrigin(false),
+			inSeq(-1),
+			outSeq(-1),
+			outCredits(-1)
 		{
 		}
 	};

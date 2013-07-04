@@ -95,7 +95,7 @@ public slots:
 		InspectRequestPacket p;
 		p.id = id;
 		p.method = hdata.method;
-		p.path = hdata.path;
+		p.uri = hdata.uri;
 		p.headers = hdata.headers;
 
 		timer = new QTimer(this);

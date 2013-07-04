@@ -21,10 +21,10 @@
 #define ZHTTPMANAGER_H
 
 #include <QObject>
+#include "zhttprequest.h"
 
 class ZhttpRequestPacket;
 class ZhttpResponsePacket;
-class ZhttpRequest;
 
 class ZhttpManager : public QObject
 {
@@ -48,8 +48,11 @@ public:
 	ZhttpRequest *createRequest();
 	ZhttpRequest *takeNext();
 
+	// for server mode, jump directly to responding state
+	ZhttpRequest *createFromState(const ZhttpRequest::ServerState &state);
+
 signals:
-	void incomingRequestReady();
+	void requestReady();
 
 private:
 	class Private;
@@ -62,6 +65,7 @@ private:
 	bool canWriteImmediately() const;
 	void write(const ZhttpRequestPacket &packet);
 	void write(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
+	void write(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
 };
 
 #endif

@@ -26,7 +26,7 @@ class HttpResponseData
 {
 public:
 	int code;
-	QByteArray status;
+	QByteArray reason;
 	HttpHeaders headers;
 	QByteArray body;
 

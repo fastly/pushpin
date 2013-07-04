@@ -27,11 +27,11 @@
 #include <QHostAddress>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "bufferlist.h"
 #include "log.h"
 #include "jwt.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
-#include "m2request.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 #include "domainmap.h"
@@ -88,7 +88,9 @@ public:
 			WaitingForResponse,
 			Responding,
 			Responded,
-			Errored
+			Errored,
+			Pausing,
+			Paused
 		};
 
 		RequestSession *rs;
@@ -107,7 +109,7 @@ public:
 	State state;
 	ZhttpManager *zhttpManager;
 	DomainMap *domainMap;
-	M2Request *m2Request;
+	ZhttpRequest *inRequest;
 	QString host;
 	bool isHttps;
 	QList<DomainMap::Target> targets;
@@ -119,6 +121,8 @@ public:
 	QSet<SessionItem*> sessionItems;
 	HttpRequestData requestData;
 	HttpResponseData responseData;
+	BufferList requestBody;
+	BufferList responseBody;
 	QHash<RequestSession*, SessionItem*> sessionItemsBySession;
 	QByteArray initialRequestBody;
 	int requestBytesToWrite;
@@ -138,7 +142,7 @@ public:
 		state(Stopped),
 		zhttpManager(_zhttpManager),
 		domainMap(_domainMap),
-		m2Request(0),
+		inRequest(0),
 		isHttps(false),
 		zhttpRequest(0),
 		addAllowed(true),
@@ -177,10 +181,11 @@ public:
 		connect(rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
 		connect(rs, SIGNAL(errorResponding()), SLOT(rs_errorResponding()));
 		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
+		connect(rs, SIGNAL(paused()), SLOT(rs_paused()));
 
 		if(state == Stopped)
 		{
-			host = rs->host();
+			host = rs->requestData().uri.host();
 			isHttps = rs->isHttps();
 
 			requestData = rs->requestData();
@@ -193,7 +198,7 @@ public:
 			requestData.headers.removeAll("Content-Encoding");
 			requestData.headers.removeAll("Transfer-Encoding");
 
-			DomainMap::Entry entry = domainMap->entry(host, requestData.path, isHttps);
+			DomainMap::Entry entry = domainMap->entry(host, requestData.uri.encodedPath(), isHttps);
 			if(entry.isNull())
 			{
 				log_warning("proxysession: %p %s has 0 routes", q, qPrintable(host));
@@ -274,19 +279,18 @@ public:
 
 			if(!rs->isRetry())
 			{
-				m2Request = rs->request();
-				connect(m2Request, SIGNAL(readyRead()), SLOT(m2Request_readyRead()));
-				connect(m2Request, SIGNAL(finished()), SLOT(m2Request_finished()));
-				connect(m2Request, SIGNAL(error()), SLOT(m2Request_error()));
+				inRequest = rs->request();
+				connect(inRequest, SIGNAL(readyRead()), SLOT(inRequest_readyRead()));
+				connect(inRequest, SIGNAL(error()), SLOT(inRequest_error()));
 
-				requestData.body += m2Request->read();
+				requestBody += inRequest->readBody();
 			}
 
-			initialRequestBody = requestData.body;
+			initialRequestBody = requestBody.toByteArray();
 
-			if(requestData.body.size() > MAX_ACCEPT_REQUEST_BODY)
+			if(requestBody.size() > MAX_ACCEPT_REQUEST_BODY)
 			{
-				requestData.body.clear();
+				requestBody.clear();
 				buffering = false;
 			}
 
@@ -300,13 +304,15 @@ public:
 		{
 			// get the session caught up with where we're at
 
-			si->state = SessionItem::Responding;
-			rs->startResponse(responseData.code, responseData.status, responseData.headers);
+			// TODO: the session might have data to read first before responding
 
-			if(!responseData.body.isEmpty())
+			si->state = SessionItem::Responding;
+			rs->startResponse(responseData.code, responseData.reason, responseData.headers);
+
+			if(!responseBody.isEmpty())
 			{
-				si->bytesToWrite += responseData.body.size();
-				rs->writeResponseBody(responseData.body);
+				si->bytesToWrite += responseBody.size();
+				rs->writeResponseBody(responseBody.toByteArray());
 			}
 		}
 	}
@@ -332,11 +338,13 @@ public:
 
 		DomainMap::Target target = targets.takeFirst();
 
-		QByteArray str = target.ssl ? "https://" : "http://";
-		str += target.host.toUtf8() + ':' + QByteArray::number(target.port) + requestData.path;
-		QUrl url = QUrl::fromEncoded(str, QUrl::StrictMode);
+		QUrl uri = requestData.uri;
+		if(target.ssl)
+			uri.setScheme("https");
+		else
+			uri.setScheme("http");
 
-		log_debug("proxysession: %p forwarding to %s", q, url.toEncoded().data());
+		log_debug("proxysession: %p forwarding to %s:%d", q, qPrintable(target.host), target.port);
 
 		zhttpRequest = zhttpManager->createRequest();
 		zhttpRequest->setParent(this);
@@ -350,7 +358,10 @@ public:
 		if(target.insecure)
 			zhttpRequest->setIgnoreTlsErrors(true);
 
-		zhttpRequest->start(requestData.method, url, requestData.headers);
+		zhttpRequest->setConnectHost(target.host);
+		zhttpRequest->setConnectPort(target.port);
+
+		zhttpRequest->start(requestData.method, uri, requestData.headers);
 
 		if(!initialRequestBody.isEmpty())
 		{
@@ -358,13 +369,13 @@ public:
 			zhttpRequest->writeBody(initialRequestBody);
 		}
 
-		if(!m2Request || m2Request->isFinished())
+		if(!inRequest || inRequest->isInputFinished())
 			zhttpRequest->endBody();
 	}
 
 	void tryRequestRead()
 	{
-		QByteArray buf = m2Request->read();
+		QByteArray buf = inRequest->readBody();
 		if(buf.isEmpty())
 			return;
 
@@ -372,13 +383,13 @@ public:
 
 		if(buffering)
 		{
-			if(requestData.body.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
+			if(requestBody.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
 			{
-				requestData.body.clear();
+				requestBody.clear();
 				buffering = false;
 			}
 			else
-				requestData.body += buf;
+				requestBody += buf;
 		}
 
 		requestBytesToWrite += buf.size();
@@ -400,7 +411,7 @@ public:
 		}
 	}
 
-	void rejectAll(int code, const QString &status, const QString &errorMessage)
+	void rejectAll(int code, const QString &reason, const QString &errorMessage)
 	{
 		foreach(SessionItem *si, sessionItems)
 		{
@@ -410,7 +421,7 @@ public:
 
 				si->state = SessionItem::Responded;
 				si->bytesToWrite = -1;
-				si->rs->respondError(code, status, errorMessage);
+				si->rs->respondError(code, reason, errorMessage);
 			}
 		}
 	}
@@ -443,7 +454,7 @@ public:
 
 		QPointer<QObject> self = this;
 
-		QByteArray buf = zhttpRequest->readResponseBody(MAX_STREAM_BUFFER);
+		QByteArray buf = zhttpRequest->readBody(MAX_STREAM_BUFFER);
 		if(!buf.isEmpty())
 		{
 			total += buf.size();
@@ -451,13 +462,13 @@ public:
 
 			if(state == Accepting)
 			{
-				if(responseData.body.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
+				if(responseBody.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
 				{
 					rejectAll(502, "Bad Gateway", "GRIP instruct response too large.");
 					return;
 				}
 
-				responseData.body += buf;
+				responseBody += buf;
 			}
 			else // Responding
 			{
@@ -465,14 +476,14 @@ public:
 
 				if(buffering)
 				{
-					if(responseData.body.size() + buf.size() > MAX_INITIAL_BUFFER)
+					if(responseBody.size() + buf.size() > MAX_INITIAL_BUFFER)
 					{
-						responseData.body.clear();
+						responseBody.clear();
 						buffering = false;
 						addAllowed = false;
 					}
 					else
-						responseData.body += buf;
+						responseBody += buf;
 				}
 
 				log_debug("proxysession: %p writing %d to clients", q, buf.size());
@@ -520,26 +531,11 @@ public:
 
 			if(state == Accepting)
 			{
-				AcceptData adata;
-
 				foreach(SessionItem *si, sessionItems)
 				{
-					AcceptData::Request areq;
-					areq.rid = si->rs->rid();
-					areq.https = si->rs->isHttps();
-					areq.peerAddress = si->rs->peerAddress();
-					areq.jsonpCallback = si->rs->jsonpCallback();
-					adata.requests += areq;
+					si->state = SessionItem::Pausing;
+					si->rs->pause();
 				}
-
-				adata.requestData = requestData;
-
-				adata.haveResponse = true;
-				adata.response = responseData;
-
-				log_debug("proxysession: %p finished for accept", q);
-				cleanup();
-				emit q->finishedForAccept(adata);
 			}
 			else // Responding
 			{
@@ -565,19 +561,15 @@ public:
 	}
 
 public slots:
-	void m2Request_readyRead()
+	void inRequest_readyRead()
 	{
 		tryRequestRead();
+
+		if(inRequest->isInputFinished())
+			zhttpRequest->endBody();
 	}
 
-	void m2Request_finished()
-	{
-		log_debug("proxysession: %p finished reading request", q);
-
-		zhttpRequest->endBody();
-	}
-
-	void m2Request_error()
+	void inRequest_error()
 	{
 		log_warning("proxysession: %p error reading request", q);
 
@@ -591,11 +583,11 @@ public slots:
 		if(state == Requesting)
 		{
 			responseData.code = zhttpRequest->responseCode();
-			responseData.status = zhttpRequest->responseStatus();
+			responseData.reason = zhttpRequest->responseReason();
 			responseData.headers = zhttpRequest->responseHeaders();
-			responseData.body = zhttpRequest->readResponseBody(MAX_INITIAL_BUFFER);
+			responseBody += zhttpRequest->readBody(MAX_INITIAL_BUFFER);
 
-			total += responseData.body.size();
+			total += responseBody.size();
 			log_debug("proxysession: %p recv total: %d", q, total);
 
 			QByteArray contentType = responseData.headers.get("Content-Type");
@@ -630,12 +622,12 @@ public slots:
 				foreach(SessionItem *si, sessionItems)
 				{
 					si->state = SessionItem::Responding;
-					si->rs->startResponse(responseData.code, responseData.status, responseData.headers);
+					si->rs->startResponse(responseData.code, responseData.reason, responseData.headers);
 
-					if(!responseData.body.isEmpty())
+					if(!responseBody.isEmpty())
 					{
-						si->bytesToWrite += responseData.body.size();
-						si->rs->writeResponseBody(responseData.body);
+						si->bytesToWrite += responseBody.size();
+						si->rs->writeResponseBody(responseBody.toByteArray());
 					}
 				}
 			}
@@ -739,6 +731,62 @@ public slots:
 		{
 			log_debug("proxysession: %p finished by passthrough", q);
 			emit q->finishedByPassthrough();
+		}
+	}
+
+	void rs_paused()
+	{
+		RequestSession *rs = (RequestSession *)sender();
+
+		log_debug("proxysession: %p response paused id=%s", q, rs->rid().second.data());
+
+		SessionItem *si = sessionItemsBySession.value(rs);
+		assert(si);
+
+		assert(si->state == SessionItem::Pausing);
+		si->state = SessionItem::Paused;
+
+		bool allPaused = true;
+		foreach(SessionItem *si, sessionItems)
+		{
+			if(si->state != SessionItem::Paused)
+			{
+				allPaused = false;
+				break;
+			}
+		}
+
+		if(allPaused)
+		{
+			AcceptData adata;
+
+			foreach(SessionItem *si, sessionItems)
+			{
+				ZhttpRequest::ServerState ss = si->rs->request()->serverState();
+
+				AcceptData::Request areq;
+				areq.rid = si->rs->rid();
+				areq.https = si->rs->isHttps();
+				areq.peerAddress = si->rs->peerAddress();
+				areq.autoCrossOrigin = si->rs->autoCrossOrigin();
+				areq.jsonpCallback = si->rs->jsonpCallback();
+				areq.inSeq = ss.inSeq;
+				areq.outSeq = ss.outSeq;
+				areq.outCredits = ss.outCredits;
+				areq.userData = ss.userData;
+				adata.requests += areq;
+			}
+
+			adata.requestData = requestData;
+			adata.requestData.body = requestBody.take();
+
+			adata.haveResponse = true;
+			adata.response = responseData;
+			adata.response.body = responseBody.take();
+
+			log_debug("proxysession: %p finished for accept", q);
+			cleanup();
+			emit q->finishedForAccept(adata);
 		}
 	}
 

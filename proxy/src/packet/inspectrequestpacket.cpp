@@ -31,7 +31,7 @@ QVariant InspectRequestPacket::toVariant() const
 	QVariantHash obj;
 	obj["id"] = id;
 	obj["method"] = method.toLatin1();
-	obj["path"] = path;
+	obj["uri"] = uri.toEncoded();
 
 	QVariantList vheaders;
 	foreach(const HttpHeader &h, headers)

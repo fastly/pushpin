@@ -21,7 +21,7 @@
 #define REQUESTSESSION_H
 
 #include <QObject>
-#include "m2request.h"
+#include "zhttprequest.h"
 
 class QHostAddress;
 
@@ -30,7 +30,6 @@ class InspectData;
 class AcceptData;
 class InspectManager;
 class InspectChecker;
-class M2Response;
 
 class RequestSession : public QObject
 {
@@ -43,26 +42,26 @@ public:
 	bool isRetry() const;
 	bool isHttps() const;
 	QHostAddress peerAddress() const;
-	QString host() const;
-	M2Request::Rid rid() const;
+	ZhttpRequest::Rid rid() const;
 	HttpRequestData requestData() const;
+	bool autoCrossOrigin() const;
 	QByteArray jsonpCallback() const; // non-empty if JSON-P is used
 
-	M2Request *request(); // null if retry mode
+	ZhttpRequest *request();
 
 	void setAutoCrossOrigin(bool enabled);
 
 	// takes ownership
-	void start(M2Request *req);
+	void start(ZhttpRequest *req);
+	void startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback);
 
-	// creates an M2Request-less session
-	bool setupAsRetry(const M2Request::Rid &rid, const HttpRequestData &hdata, bool https, const QHostAddress &peerAddress, const QByteArray &jsonpCallback, M2Manager *manager);
+	void pause();
 
-	void startResponse(int code, const QByteArray &status, const HttpHeaders &headers);
+	void startResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
 	void writeResponseBody(const QByteArray &body);
 	void endResponseBody();
 
-	void respondError(int code, const QString &status, const QString &errorString);
+	void respondError(int code, const QString &reason, const QString &errorString);
 	void respondCannotAccept();
 
 signals:
@@ -71,6 +70,7 @@ signals:
 	void finished();
 	void finishedForAccept(const AcceptData &adata);
 	void bytesWritten(int count);
+	void paused();
 
 	// this signal means some error was encountered while responding and
 	//   that you should not attempt to call further response-related
