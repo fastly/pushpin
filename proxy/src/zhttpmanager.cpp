@@ -136,7 +136,6 @@ public:
 
 		server_in_valve->open();
 
-		log_info("server in connecting to %s", qPrintable(server_in_specs.join(", ")));
 		return true;
 	}
 
