@@ -23,6 +23,7 @@
 #include <QObject>
 #include <QUrl>
 #include <QHostAddress>
+#include <QVariant>
 #include "httpheaders.h"
 
 class ZhttpRequestPacket;
