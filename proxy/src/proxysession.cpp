@@ -110,8 +110,8 @@ public:
 	ZhttpManager *zhttpManager;
 	DomainMap *domainMap;
 	ZhttpRequest *inRequest;
-	QString host;
 	bool isHttps;
+	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
 	ZhttpRequest *zhttpRequest;
 	bool addAllowed;
@@ -185,7 +185,7 @@ public:
 
 		if(state == Stopped)
 		{
-			host = rs->requestData().uri.host();
+			QString host = rs->requestData().uri.host();
 			isHttps = rs->isHttps();
 
 			requestData = rs->requestData();
@@ -221,6 +221,7 @@ public:
 				sigKey = defaultSigKey;
 			}
 
+			channelPrefix = entry.prefix;
 			targets = entry.targets;
 
 			log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
@@ -783,6 +784,8 @@ public slots:
 			adata.haveResponse = true;
 			adata.response = responseData;
 			adata.response.body = responseBody.take();
+
+			adata.channelPrefix = channelPrefix;
 
 			log_debug("proxysession: %p finished for accept", q);
 			cleanup();

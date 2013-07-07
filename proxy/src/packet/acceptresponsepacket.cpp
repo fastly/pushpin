@@ -122,5 +122,8 @@ QVariant AcceptResponsePacket::toVariant() const
 		obj["response"] = vresponse;
 	}
 
+	if(!channelPrefix.isEmpty())
+		obj["channel-prefix"] = channelPrefix;
+
         return obj;
 }

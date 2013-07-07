@@ -52,6 +52,7 @@ public:
 	public:
 		QByteArray sigIss;
 		QByteArray sigKey;
+		QByteArray prefix;
 		QList<Target> targets;
 
 		bool isNull() const

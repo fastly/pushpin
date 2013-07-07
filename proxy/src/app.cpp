@@ -422,6 +422,8 @@ public:
 			p.response = adata.response;
 		}
 
+		p.channelPrefix = adata.channelPrefix;
+
 		QList<QByteArray> msg;
 		msg += TnetString::fromVariant(p.toVariant());
 		handler_accept_out_sock->write(msg);

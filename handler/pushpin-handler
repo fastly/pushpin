@@ -248,6 +248,8 @@ def accept_worker():
 			if mode != "response" and mode != "stream":
 				raise ValueError("bad mode")
 			channel = hold["channels"][0]["name"]
+			if "channel-prefix" in m:
+				channel = m["channel-prefix"] + channel
 			if "timeout" in hold:
 				timeout = int(hold["timeout"])
 			else:

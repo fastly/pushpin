@@ -64,6 +64,8 @@ public:
 	bool haveResponse;
 	HttpResponseData response;
 
+	QByteArray channelPrefix;
+
 	AcceptData() :
 		haveInspectData(false),
 		haveResponse(false)

@@ -119,6 +119,7 @@ public:
 
 		QByteArray sigIss;
 		QByteArray sigKey;
+		QByteArray prefix;
 		QList<Target> targets;
 
 		Rule() :
@@ -227,6 +228,11 @@ public:
 			if(props.contains("sig_key"))
 			{
 				r.sigKey = parse_key(props.value("sig_key"));
+			}
+
+			if(props.contains("prefix"))
+			{
+				r.prefix = props.value("prefix").toUtf8();
 			}
 
 			QList<Rule> *rules = 0;
@@ -475,6 +481,7 @@ DomainMap::Entry DomainMap::entry(const QString &domain, const QByteArray &path,
 	Entry e;
 	e.sigIss = best->sigIss;
 	e.sigKey = best->sigKey;
+	e.prefix = best->prefix;
 	e.targets = best->targets;
 
 	return e;

@@ -67,6 +67,8 @@ public:
 	bool haveResponse;
 	HttpResponseData response;
 
+	QByteArray channelPrefix;
+
 	AcceptResponsePacket();
 
 	QVariant toVariant() const;
