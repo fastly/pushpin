@@ -247,7 +247,9 @@ def accept_worker():
 			rid = (req["rid"]["sender"], req["rid"]["id"])
 			instruct = json.loads(m["response"]["body"])
 			hold = instruct["hold"]
-			mode = hold["mode"]
+			mode = hold.get("mode")
+			if mode is None:
+				mode = "response"
 			if mode != "response" and mode != "stream":
 				raise ValueError("bad mode")
 			channel = hold["channels"][0]["name"]
