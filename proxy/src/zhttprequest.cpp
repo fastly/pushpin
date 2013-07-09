@@ -192,6 +192,7 @@ public:
 		requestBodyBuf += packet.body;
 
 		userData = packet.userData;
+		peerAddress = packet.peerAddress;
 
 		if(!packet.more)
 			haveRequestBody = true;
