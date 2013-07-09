@@ -68,11 +68,10 @@ static QByteArray parse_key(const QString &in)
 		return in.toUtf8();
 }
 
-static XffRule parse_xffRule(const QString &in)
+static XffRule parse_xffRule(const QStringList &in)
 {
 	XffRule out;
-	QStringList parts = in.split(',');
-	foreach(const QString &s, parts)
+	foreach(const QString &s, in)
 	{
 		if(s.startsWith("truncate:"))
 		{
@@ -246,8 +245,8 @@ public:
 		QString routesfile = settings.value("proxy/routesfile").toString();
 		autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
 		useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
-		xffRule = parse_xffRule(settings.value("proxy/x_forwarded_for").toString());
-		xffTrustedRule = parse_xffRule(settings.value("proxy/x_forwarded_for_trusted").toString());
+		xffRule = parse_xffRule(settings.value("proxy/x_forwarded_for").toStringList());
+		xffTrustedRule = parse_xffRule(settings.value("proxy/x_forwarded_for_trusted").toStringList());
 		sigKey = parse_key(settings.value("proxy/sig_key").toString());
 		upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
 
