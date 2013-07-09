@@ -917,6 +917,7 @@ private slots:
 			zreq.headers = mreq.headers;
 			zreq.body = mreq.body;
 			zreq.more = !s->inFinished;
+			zreq.peerAddress = mreq.remoteAddress;
 			if(connectPort != -1)
 				zreq.connectPort = connectPort;
 			if(ignorePolicies)
