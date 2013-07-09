@@ -581,7 +581,7 @@ public:
 	{
 		QByteArray buf = TnetString::fromVariant(packet.toVariant());
 
-		log_debug("zhttp: OUT %s", buf.mid(0, 600).data());
+		log_debug("zhttp: OUT %s", buf.mid(0, 1000).data());
 
 		zhttp_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -590,7 +590,7 @@ public:
 	{
 		QByteArray buf = TnetString::fromVariant(packet.toVariant());
 
-		log_debug("zhttp: OUT %s", buf.mid(0, 600).data());
+		log_debug("zhttp: OUT %s", buf.mid(0, 1000).data());
 
 		QList<QByteArray> message;
 		message += instanceAddress;
@@ -731,7 +731,7 @@ private slots:
 			return;
 		}
 
-		log_debug("m2: IN %s", message[0].mid(0, 600).data());
+		log_debug("m2: IN %s", message[0].mid(0, 1000).data());
 
 		M2RequestPacket mreq;
 		if(!mreq.fromByteArray(message[0]))
