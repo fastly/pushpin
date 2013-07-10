@@ -18,13 +18,27 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import sys
-
-sys.path.insert(0, "/usr/local/lib/pushpin/handler")
-
 import os
+import ConfigParser
+
+config_file = "/etc/pushpin/pushpin.conf"
+for arg in sys.argv:
+	if arg.startswith("--config="):
+		config_file = arg[9:]
+		break
+
+config = ConfigParser.ConfigParser()
+config.read([config_file])
+
+libdir = None
+if config.has_option("global", "libdir"):
+	libdir = config.get("global", "libdir")
+
+if libdir:
+	sys.path.insert(0, os.path.join(libdir, "handler"))
+
 import time
 import threading
-import ConfigParser
 import json
 from base64 import b64decode
 from setproctitle import setproctitle
@@ -42,15 +56,6 @@ instance_id = "pushpin-handler"
 # reopen stdout file descriptor with write mode
 # and 0 as the buffer size (unbuffered)
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
-
-config_file = "/etc/pushpin/pushpin.conf"
-for arg in sys.argv:
-	if arg.startswith("--config="):
-		config_file = arg[9:]
-		break
-
-config = ConfigParser.ConfigParser()
-config.read([config_file])
 
 m2a_out_specs = config.get("handler", "m2a_out_specs").split(",")
 

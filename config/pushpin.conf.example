@@ -1,3 +1,7 @@
+[global]
+libdir=
+
+
 [runner]
 # services to start
 services=mongrel2,m2adapter,zurl,pushpin-proxy,pushpin-handler

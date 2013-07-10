@@ -28,7 +28,7 @@ def write_mongrel2_config(rootdir, configpath, rundir, logdir, http_port, https_
 
 	vars = dict()
 	vars["ports"] = ports
-	vars["rootdir"] = os.path.relpath(rootdir, cwd)
+	vars["certdir"] = os.path.join(os.path.relpath(rootdir, cwd), "certs")
 	vars["rundir"] = os.path.relpath(rundir, cwd)
 	vars["logdir"] = os.path.relpath(logdir, cwd)
 	compile_template(configpath, genconfigpath, vars)

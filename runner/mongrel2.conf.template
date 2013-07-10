@@ -21,7 +21,7 @@
 )
 
 {% endfor %}settings = {
-	"certdir": "{{ rootdir }}/certs/",
+	"certdir": "{{ certdir }}/",
 	"upload.stream": 1,
 	"server.daemonize": 0,
 	"no_clobber_xff": 1

@@ -1,3 +1,11 @@
+prefix = /usr/local
+varprefix = /var/local
+configdir = $(prefix)/etc/pushpin
+bindir = $(prefix)/bin
+libdir = $(prefix)/lib/pushpin
+rundir = $(varprefix)/run/pushpin
+logdir = $(varprefix)/log/pushpin
+
 all: make-m2adapter make-pushpin-proxy
 
 clean:
@@ -21,3 +29,22 @@ m2adapter/conf.pri:
 
 proxy/conf.pri:
 	cd proxy && ./configure
+
+install:
+	mkdir -p $(bindir)
+	mkdir -p $(configdir)
+	mkdir -p $(configdir)/runner
+	mkdir -p $(configdir)/runner/certs
+	mkdir -p $(libdir)/handler
+	mkdir -p $(libdir)/runner
+	mkdir -p $(rundir)
+	mkdir -p $(logdir)
+	cp m2adapter/m2adapter $(bindir)
+	cp proxy/pushpin-proxy $(bindir)
+	cp handler/pushpin-handler $(bindir)
+	cp handler/*.py $(libdir)/handler
+	cp -a runner/*.py $(libdir)/runner
+	cp -a runner/*.conf runner/*.template $(configdir)/runner
+	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin > $(bindir)/pushpin
+	sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf.example > $(configdir)/pushpin.conf
+	cp config/routes.example $(configdir)/routes
