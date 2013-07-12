@@ -81,6 +81,7 @@ class Hold(object):
 
 lock = threading.Lock()
 response_channels = dict()
+response_lastids = dict()
 stream_channels = dict()
 
 def header_get(headers, name):
@@ -233,6 +234,9 @@ def accept_worker():
 	for spec in m2a_out_specs:
 		out_sock.connect(spec)
 
+	retry_sock = ctx.socket(zmq.PUSH)
+	retry_sock.connect(config.get("handler", "proxy_retry_out_spec"))
+
 	while True:
 		m_raw = sock.recv()
 		m = tnetstring.loads(m_raw)
@@ -258,6 +262,7 @@ def accept_worker():
 			if mode != "response" and mode != "stream":
 				raise ValueError("bad mode")
 			channel = hold["channels"][0]["name"]
+			prev_id = hold["channels"][0].get("prev-id")
 			if "channel-prefix" in m:
 				channel = m["channel-prefix"] + channel
 			if "timeout" in hold:
@@ -282,6 +287,21 @@ def accept_worker():
 			print "adding response hold on %s" % channel
 			h.expire_time = int(time.time()) + timeout
 			lock.acquire()
+			if prev_id is not None:
+				last_id = response_lastids.get(channel)
+				if last_id is not None and last_id != prev_id:
+					del response_lastids[channel]
+					lock.release()
+					print "lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id)
+					r = dict()
+					r["requests"] = m["requests"]
+					r["request-data"] = m["request-data"]
+					if "inspect" in m:
+						r["inspect"] = m["inspect"]
+					print "OUT retry: %s" % r
+					r_raw = tnetstring.dumps(r)
+					retry_sock.send(r_raw)
+					continue
 			hchannel = response_channels.get(channel)
 			if not hchannel:
 				hchannel = dict()
@@ -411,6 +431,9 @@ def push_in_worker(c):
 				del response_channels[channel]
 			else:
 				holds = list()
+			item_id = m.get("id")
+			if item_id is not None:
+				response_lastids[channel] = item_id
 			lock.release()
 			print "relaying to %d subscribers" % len(holds)
 			http_response = m["http-response"]

@@ -818,6 +818,7 @@ void RequestSession::start(ZhttpRequest *req)
 void RequestSession::startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback)
 {
 	d->isRetry = true;
+	d->state = Private::WaitingForResponse;
 	d->zhttpRequest = req;
 	d->rid = req->rid();
 	d->autoCrossOrigin = autoCrossOrigin;

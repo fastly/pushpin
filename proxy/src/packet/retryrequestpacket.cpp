@@ -95,17 +95,17 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 			r.jsonpCallback = vrequest["jsonp-callback"].toByteArray();
 		}
 
-		if(!vrid.contains("in-seq") || vrid["in-seq"].type() != QVariant::Int)
+		if(!vrequest.contains("in-seq") || vrequest["in-seq"].type() != QVariant::Int)
 			return false;
-		r.inSeq = vrid["in-seq"].toInt();
+		r.inSeq = vrequest["in-seq"].toInt();
 
-		if(!vrid.contains("out-seq") || vrid["out-seq"].type() != QVariant::Int)
+		if(!vrequest.contains("out-seq") || vrequest["out-seq"].type() != QVariant::Int)
 			return false;
-		r.outSeq = vrid["out-seq"].toInt();
+		r.outSeq = vrequest["out-seq"].toInt();
 
-		if(!vrid.contains("out-credits") || vrid["out-credits"].type() != QVariant::Int)
+		if(!vrequest.contains("out-credits") || vrequest["out-credits"].type() != QVariant::Int)
 			return false;
-		r.outCredits = vrid["out-credits"].toInt();
+		r.outCredits = vrequest["out-credits"].toInt();
 
 		if(vrequest.contains("user-data"))
 			r.userData = vrequest["user-data"];
