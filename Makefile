@@ -43,8 +43,8 @@ install:
 	cp proxy/pushpin-proxy $(bindir)
 	cp handler/pushpin-handler $(bindir)
 	cp handler/*.py $(libdir)/handler
-	cp -a runner/*.py $(libdir)/runner
-	cp -a runner/*.conf runner/*.template $(configdir)/runner
+	cp runner/*.py $(libdir)/runner
+	cp runner/*.conf runner/*.template $(configdir)/runner
 	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin > $(bindir)/pushpin
-	sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf.example > $(configdir)/pushpin.conf
-	cp config/routes.example $(configdir)/routes
+	test -e $(configdir)/pushpin.conf || sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf.example > $(configdir)/pushpin.conf
+	test -e $(configdir)/routes || cp config/routes.example $(configdir)/routes
