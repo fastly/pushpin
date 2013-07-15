@@ -45,6 +45,6 @@ install:
 	cp handler/*.py $(libdir)/handler
 	cp runner/*.py $(libdir)/runner
 	cp runner/*.conf runner/*.template $(configdir)/runner
-	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin > $(bindir)/pushpin
+	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin > $(bindir)/pushpin && chmod a+x $(bindir)/pushpin
 	test -e $(configdir)/pushpin.conf || sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf.example > $(configdir)/pushpin.conf
 	test -e $(configdir)/routes || cp config/routes.example $(configdir)/routes
