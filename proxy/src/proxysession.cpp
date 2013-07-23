@@ -199,6 +199,7 @@ public:
 			requestData.headers.removeAll("Accept-Encoding");
 			requestData.headers.removeAll("Content-Encoding");
 			requestData.headers.removeAll("Transfer-Encoding");
+			requestData.headers.removeAll("Expect");
 
 			DomainMap::Entry entry = domainMap->entry(host, requestData.uri.encodedPath(), isHttps);
 			if(entry.isNull())
