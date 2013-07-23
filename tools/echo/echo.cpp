@@ -2,8 +2,10 @@
 #include <QSet>
 #include <QCoreApplication>
 #include <QTimer>
+#include <QFile>
 #include <QTcpSocket>
 #include <QTcpServer>
+#include <QUrl>
 
 class Handler : public QObject
 {
@@ -19,6 +21,8 @@ private:
 
 	QTcpSocket *sock;
 	State state;
+	QString method;
+	QByteArray uri;
 	QByteArray headerData;
 	QByteArray body;
 	int contentLength;
@@ -73,6 +77,15 @@ private:
 			lines += line;
 		}
 
+		method = "GET";
+		at = lines[0].indexOf(' ');
+		method = QString::fromLatin1(lines[0].mid(0, at));
+		++at;
+		int end = lines[0].indexOf(' ', at);
+		uri = lines[0].mid(at, end - at);
+
+		printf("%s %s\n", qPrintable(method), uri.data());
+
 		for(int n = 1; n < lines.count(); ++n)
 		{
 			const QByteArray &line = lines[n];
@@ -107,7 +120,23 @@ private:
 				headerData += buf.mid(0, at);
 				body = buf.mid(at + 4);
 				processHeaderData();
-				state = ReadBody;
+
+				if(method == "GET")
+				{
+					QUrl u = QUrl::fromEncoded(uri, QUrl::StrictMode);
+					QFile file(u.path());
+					file.open(QFile::ReadOnly);
+					body = file.readAll();
+					contentLength = body.size();
+					state = WriteBody;
+					QByteArray rheaderData = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: " + QByteArray::number(contentLength) + "\r\n\r\n";
+					confirmedWritten += rheaderData.size();
+					sock->write(rheaderData);
+					sock->write(body);
+				}
+				else
+					state = ReadBody;
+
 				processIn();
 			}
 			else
@@ -123,6 +152,7 @@ private:
 				return;
 			}
 
+			printf("%d/%d\n", body.size(), contentLength);
 			if(body.size() == contentLength)
 			{
 				state = WriteBody;
@@ -150,6 +180,7 @@ private slots:
 			bodyWritten += written;
 			if(bodyWritten == contentLength)
 			{
+				printf("closing\n");
 				sock->close();
 				emit finished();
 			}
