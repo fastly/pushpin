@@ -70,6 +70,9 @@ x_forwarded_for=
 # how to treat x-forwarded-for if grip-signed
 x_forwarded_for_trusted=
 
+# the following headers must be marked in order to qualify as orig
+orig_headers_need_mark=
+
 # for signing requests proxied by pushpin. use "base64:" prefix for binary key
 sig_key=changeme
 

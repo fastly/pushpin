@@ -135,6 +135,7 @@ public:
 	bool useXForwardedProtocol;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
+	QList<QByteArray> origHeadersNeedMark;
 
 	Private(ProxySession *_q, ZhttpManager *_zhttpManager, DomainMap *_domainMap) :
 		QObject(_q),
@@ -242,13 +243,6 @@ public:
 				//   headers may be recovered later. if the client is trusted,
 				//   then we assume this has been done already.
 
-				QList<QByteArray> origAlready;
-				foreach(const HttpHeader &h, requestData.headers)
-				{
-					if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
-						origAlready += h.first.mid(9);
-				}
-
 				HttpHeaders origHeaders;
 				for(int n = 0; n < requestData.headers.count(); ++n)
 				{
@@ -256,6 +250,7 @@ public:
 
 					if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
 					{
+						// if it's already marked, take it
 						origHeaders += h;
 
 						// remove where it lives now. we'll put it back later
@@ -264,8 +259,9 @@ public:
 					}
 					else
 					{
+						// see if we require it to be marked already
 						bool found = false;
-						foreach(const QByteArray &i, origAlready)
+						foreach(const QByteArray &i, origHeadersNeedMark)
 						{
 							if(qstricmp(h.first.data(), i.data()) == 0)
 							{
@@ -274,6 +270,7 @@ public:
 							}
 						}
 
+						// if not, then add as marked
 						if(!found)
 							origHeaders += HttpHeader("eb9bf0f5-" + h.first, h.second);
 					}
@@ -909,6 +906,11 @@ void ProxySession::setXffRules(const XffRule &untrusted, const XffRule &trusted)
 {
 	d->xffRule = untrusted;
 	d->xffTrustedRule = trusted;
+}
+
+void ProxySession::setOrigHeadersNeedMark(const QList<QByteArray> &names)
+{
+	d->origHeadersNeedMark = names;
 }
 
 void ProxySession::setInspectData(const InspectData &idata)

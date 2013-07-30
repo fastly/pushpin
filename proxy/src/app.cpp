@@ -125,6 +125,7 @@ public:
 	bool useXForwardedProtocol;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
+	QList<QByteArray> origHeadersNeedMark;
 	QByteArray sigIss;
 	QByteArray sigKey;
 	QByteArray upstreamKey;
@@ -247,8 +248,14 @@ public:
 		useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
 		xffRule = parse_xffRule(settings.value("proxy/x_forwarded_for").toStringList());
 		xffTrustedRule = parse_xffRule(settings.value("proxy/x_forwarded_for_trusted").toStringList());
+		QStringList origHeadersNeedMarkStr = settings.value("proxy/orig_headers_need_mark").toStringList();
+		trimlist(&origHeadersNeedMarkStr);
 		sigKey = parse_key(settings.value("proxy/sig_key").toString());
 		upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
+
+		origHeadersNeedMark.clear();
+		foreach(const QString &s, origHeadersNeedMarkStr)
+			origHeadersNeedMark += s.toUtf8();
 
 		sigIss = "pushpin";
 
@@ -363,6 +370,7 @@ public:
 			ps->setDefaultUpstreamKey(upstreamKey);
 			ps->setUseXForwardedProtocol(useXForwardedProtocol);
 			ps->setXffRules(xffRule, xffTrustedRule);
+			ps->setOrigHeadersNeedMark(origHeadersNeedMark);
 
 			if(idata)
 				ps->setInspectData(*idata);
