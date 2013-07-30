@@ -96,10 +96,59 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	if(!ok)
 		return false;
 
-	QVariantMap headersMap;
+	QSet<QString> skipHeaders;
+	skipHeaders += "x-mongrel2-upload-start";
+	skipHeaders += "x-mongrel2-upload-done";
+
+	headers.clear(); // will store full headers
+	QMap<QString, QByteArray> m2headers; // single-value map for easy processing
 	if(type == TnetString::Hash)
 	{
-		headersMap = vheaders.toMap();
+		QVariantMap headersMap = vheaders.toMap();
+		QMapIterator<QString, QVariant> vit(headersMap);
+		while(vit.hasNext())
+		{
+			vit.next();
+
+			QString key = vit.key();
+			QVariant val = vit.value();
+
+			if(val.type() == QVariant::ByteArray)
+			{
+				QByteArray ba = val.toByteArray();
+
+				m2headers[key] = ba;
+
+				if(!isAllCaps(key) && !skipHeaders.contains(key))
+					headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
+			}
+			else if(val.type() == QVariant::List)
+			{
+				QVariantList vl = val.toList();
+				if(vl.isEmpty())
+					return false;
+
+				if(vl[0].type() != QVariant::ByteArray)
+					return false;
+
+				m2headers[key] = vl[0].toByteArray();
+
+				if(!isAllCaps(key) && !skipHeaders.contains(key))
+				{
+					QByteArray name = makeMixedCaseHeader(key).toLatin1();
+
+					foreach(const QVariant &v, vl)
+					{
+						if(v.type() != QVariant::ByteArray)
+							return false;
+
+						headers += HttpHeader(name, v.toByteArray());
+					}
+				}
+			}
+			else
+				return false;
+		}
 	}
 	else // ByteArray
 	{
@@ -108,19 +157,51 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		if(!ok)
 			return false;
 
-		headersMap = vheaders.toMap();
-	}
+		QVariantMap headersMap = vheaders.toMap();
+		QMapIterator<QString, QVariant> vit(headersMap);
+		while(vit.hasNext())
+		{
+			vit.next();
 
-	QMap<QString, QByteArray> m2headers;
-	QMapIterator<QString, QVariant> vit(headersMap);
-	while(vit.hasNext())
-	{
-		vit.next();
+			QString key = vit.key();
+			QVariant val = vit.value();
 
-		if(vit.value().type() != QVariant::String)
-			return false;
+			if(val.type() == QVariant::String)
+			{
+				QByteArray ba = val.toString().toUtf8();
 
-		m2headers[vit.key()] = vit.value().toString().toUtf8();
+				m2headers[key] = ba;
+
+				if(!isAllCaps(key) && !skipHeaders.contains(key))
+					headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
+			}
+			else if(val.type() == QVariant::List)
+			{
+				QVariantList vl = val.toList();
+				if(vl.isEmpty())
+					return false;
+
+				if(vl[0].type() != QVariant::String)
+					return false;
+
+				m2headers[key] = vl[0].toString().toUtf8();
+
+				if(!isAllCaps(key) && !skipHeaders.contains(key))
+				{
+					QByteArray name = makeMixedCaseHeader(key).toLatin1();
+
+					foreach(const QVariant &v, vl)
+					{
+						if(v.type() != QVariant::String)
+							return false;
+
+						headers += HttpHeader(name, v.toString().toUtf8());
+					}
+				}
+			}
+			else
+				return false;
+		}
 	}
 
 	start = offset + size + 1;
@@ -193,23 +274,6 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		uploadStreamOffset = uploadStreamRaw.toInt();
 	if(!uploadStreamDoneRaw.isEmpty() && uploadStreamDoneRaw != "0")
 		uploadStreamDone = true;
-
-	QSet<QString> skipHeaders;
-	skipHeaders += "x-mongrel2-upload-start";
-	skipHeaders += "x-mongrel2-upload-done";
-
-	headers.clear();
-	QMapIterator<QString, QByteArray> it(m2headers);
-	while(it.hasNext())
-	{
-		it.next();
-
-		QString key = it.key();
-		if(isAllCaps(key) || skipHeaders.contains(key))
-			continue;
-
-		headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), it.value());
-	}
 
 	return true;
 }
