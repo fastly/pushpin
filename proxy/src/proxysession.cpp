@@ -283,6 +283,21 @@ public:
 				foreach(const HttpHeader &h, origHeaders)
 					requestData.headers += h;
 			}
+			else if(!entry.origHeaders)
+			{
+				// if we don't want original headers, then filter them out
+				//   before proxying
+				for(int n = 0; n < requestData.headers.count(); ++n)
+				{
+					const HttpHeader &h = requestData.headers[n];
+
+					if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
+					{
+						requestData.headers.removeAt(n);
+						--n; // adjust position
+					}
+				}
+			}
 
 			// don't relay these headers. their meaning is handled by
 			//   mongrel2 and they only apply to the incoming hop.
