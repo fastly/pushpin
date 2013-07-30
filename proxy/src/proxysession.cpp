@@ -200,10 +200,47 @@ public:
 				return;
 			}
 
-			if(entry.origHeaders)
+			QByteArray sigIss;
+			QByteArray sigKey;
+			if(!entry.sigIss.isEmpty() && !entry.sigKey.isEmpty())
+			{
+				sigIss = entry.sigIss;
+				sigKey = entry.sigKey;
+			}
+			else
+			{
+				sigIss = defaultSigIss;
+				sigKey = defaultSigKey;
+			}
+
+			channelPrefix = entry.prefix;
+			targets = entry.targets;
+
+			log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
+
+			// check if the request is coming from a grip proxy already
+			bool trustedClient = false;
+			if(!defaultUpstreamKey.isEmpty())
+			{
+				QByteArray token = requestData.headers.get("Grip-Sig");
+				if(!token.isEmpty())
+				{
+					if(validate_token(token, defaultUpstreamKey))
+					{
+						log_debug("proxysession: %p passing to upstream", q);
+						trustedClient = true;
+						passToUpstream = true;
+					}
+					else
+						log_debug("proxysession: %p signature present but invalid: %s", q, token.data());
+				}
+			}
+
+			if(!trustedClient && entry.origHeaders)
 			{
 				// copy headers to include magic prefix, so that the original
-				//   headers may be recovered later
+				//   headers may be recovered later. if the client is trusted,
+				//   then we assume this has been done already.
 
 				QList<QByteArray> origAlready;
 				foreach(const HttpHeader &h, requestData.headers)
@@ -256,41 +293,7 @@ public:
 			requestData.headers.removeAll("Transfer-Encoding");
 			requestData.headers.removeAll("Expect");
 
-			QByteArray sigIss;
-			QByteArray sigKey;
-			if(!entry.sigIss.isEmpty() && !entry.sigKey.isEmpty())
-			{
-				sigIss = entry.sigIss;
-				sigKey = entry.sigKey;
-			}
-			else
-			{
-				sigIss = defaultSigIss;
-				sigKey = defaultSigKey;
-			}
-
-			channelPrefix = entry.prefix;
-			targets = entry.targets;
-
-			log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
-
-			// check if the request is coming from a grip proxy already
-			if(!defaultUpstreamKey.isEmpty())
-			{
-				QByteArray token = requestData.headers.get("Grip-Sig");
-				if(!token.isEmpty())
-				{
-					if(validate_token(token, defaultUpstreamKey))
-					{
-						log_debug("proxysession: %p passing to upstream", q);
-						passToUpstream = true;
-					}
-					else
-						log_debug("proxysession: %p signature present but invalid: %s", q, token.data());
-				}
-			}
-
-			if(!passToUpstream)
+			if(!trustedClient)
 			{
 				// remove/replace Grip-Sig
 				requestData.headers.removeAll("Grip-Sig");
@@ -312,7 +315,7 @@ public:
 			}
 
 			XffRule *xr;
-			if(passToUpstream)
+			if(trustedClient)
 				xr = &xffTrustedRule;
 			else
 				xr = &xffRule;
