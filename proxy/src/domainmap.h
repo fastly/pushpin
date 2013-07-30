@@ -53,11 +53,17 @@ public:
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray prefix;
+		bool origHeaders;
 		QList<Target> targets;
 
 		bool isNull() const
 		{
 			return targets.isEmpty();
+		}
+
+		Entry() :
+			origHeaders(false)
+		{
 		}
 	};
 

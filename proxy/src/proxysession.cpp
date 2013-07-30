@@ -192,6 +192,61 @@ public:
 			requestBody += requestData.body;
 			requestData.body.clear();
 
+			DomainMap::Entry entry = domainMap->entry(host, requestData.uri.encodedPath(), isHttps);
+			if(entry.isNull())
+			{
+				log_warning("proxysession: %p %s has 0 routes", q, qPrintable(host));
+				rejectAll(502, "Bad Gateway", QString("No route for host: %1").arg(host));
+				return;
+			}
+
+			if(entry.origHeaders)
+			{
+				// copy headers to include magic prefix, so that the original
+				//   headers may be recovered later
+
+				QList<QByteArray> origAlready;
+				foreach(const HttpHeader &h, requestData.headers)
+				{
+					if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
+						origAlready += h.first.mid(9);
+				}
+
+				HttpHeaders origHeaders;
+				for(int n = 0; n < requestData.headers.count(); ++n)
+				{
+					const HttpHeader &h = requestData.headers[n];
+
+					if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
+					{
+						origHeaders += h;
+
+						// remove where it lives now. we'll put it back later
+						requestData.headers.removeAt(n);
+						--n; // adjust position
+					}
+					else
+					{
+						bool found = false;
+						foreach(const QByteArray &i, origAlready)
+						{
+							if(qstricmp(h.first.data(), i.data()) == 0)
+							{
+								found = true;
+								break;
+							}
+						}
+
+						if(!found)
+							origHeaders += HttpHeader("eb9bf0f5-" + h.first, h.second);
+					}
+				}
+
+				// now append all the orig headers to the end
+				foreach(const HttpHeader &h, origHeaders)
+					requestData.headers += h;
+			}
+
 			// don't relay these headers. their meaning is handled by
 			//   mongrel2 and they only apply to the incoming hop.
 			requestData.headers.removeAll("Connection");
@@ -200,14 +255,6 @@ public:
 			requestData.headers.removeAll("Content-Encoding");
 			requestData.headers.removeAll("Transfer-Encoding");
 			requestData.headers.removeAll("Expect");
-
-			DomainMap::Entry entry = domainMap->entry(host, requestData.uri.encodedPath(), isHttps);
-			if(entry.isNull())
-			{
-				log_warning("proxysession: %p %s has 0 routes", q, qPrintable(host));
-				rejectAll(502, "Bad Gateway", QString("No route for host: %1").arg(host));
-				return;
-			}
 
 			QByteArray sigIss;
 			QByteArray sigKey;

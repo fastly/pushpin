@@ -120,10 +120,12 @@ public:
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray prefix;
+		bool origHeaders;
 		QList<Target> targets;
 
 		Rule() :
-			ssl(-1)
+			ssl(-1),
+			origHeaders(false)
 		{
 		}
 
@@ -233,6 +235,11 @@ public:
 			if(props.contains("prefix"))
 			{
 				r.prefix = props.value("prefix").toUtf8();
+			}
+
+			if(props.contains("orig_headers"))
+			{
+				r.origHeaders = true;
 			}
 
 			QList<Rule> *rules = 0;
@@ -482,6 +489,7 @@ DomainMap::Entry DomainMap::entry(const QString &domain, const QByteArray &path,
 	e.sigIss = best->sigIss;
 	e.sigKey = best->sigKey;
 	e.prefix = best->prefix;
+	e.origHeaders = best->origHeaders;
 	e.targets = best->targets;
 
 	return e;
