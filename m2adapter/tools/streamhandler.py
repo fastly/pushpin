@@ -34,7 +34,7 @@ while True:
 	socks = dict(poller.poll())
 	if socks.get(in_sock) == zmq.POLLIN:
 		m_raw = in_sock.recv()
-		req = tnetstring.loads(m_raw)
+		req = tnetstring.loads(m_raw[1:])
 		print 'IN %s' % req
 
 		id = req['id']
@@ -85,10 +85,10 @@ while True:
 			del sessions[id]
 
 		print 'OUT %s' % resp
-		out_sock.send(req['from'] + ' ' + tnetstring.dumps(resp))
+		out_sock.send(req['from'] + ' T' + tnetstring.dumps(resp))
 	elif socks.get(in_stream_sock) == zmq.POLLIN:
 		parts = in_stream_sock.recv_multipart()
-		req = tnetstring.loads(parts[1])
+		req = tnetstring.loads(parts[1][1:])
 		print 'IN stream %s' % req
 
 		# we are only streaming output, so subsequent input messages must be credits
@@ -131,4 +131,4 @@ while True:
 			del sessions[id]
 
 		print 'OUT %s' % resp
-		out_sock.send(req['from'] + ' ' + tnetstring.dumps(resp))
+		out_sock.send(req['from'] + ' T' + tnetstring.dumps(resp))

@@ -188,7 +188,7 @@ def reply_http(sock, rid, code, reason, headers, body, nolen=False):
 	if nolen:
 		out["more"] = True
 
-	m_raw = rid[0] + " " + tnetstring.dumps(out)
+	m_raw = rid[0] + " T" + tnetstring.dumps(out)
 	print "OUT publish: %s" % m_raw
 	sock.send(m_raw)
 
@@ -199,7 +199,7 @@ def reply_http_chunk(sock, rid, content):
 	out["body"] = content
 	out["more"] = True
 
-	m_raw = rid[0] + " " + tnetstring.dumps(out)
+	m_raw = rid[0] + " T" + tnetstring.dumps(out)
 	print "OUT publish: %s" % m_raw
 	sock.send(m_raw)
 

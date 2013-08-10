@@ -579,7 +579,7 @@ public:
 
 	void zhttp_out_write(const ZhttpRequestPacket &packet)
 	{
-		QByteArray buf = TnetString::fromVariant(packet.toVariant());
+		QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
 
 		log_debug("zhttp: OUT %s", buf.mid(0, 1000).data());
 
@@ -588,7 +588,7 @@ public:
 
 	void zhttp_out_write(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress)
 	{
-		QByteArray buf = TnetString::fromVariant(packet.toVariant());
+		QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
 
 		log_debug("zhttp: OUT %s", buf.mid(0, 1000).data());
 
@@ -1028,7 +1028,13 @@ private slots:
 		}
 
 		QByteArray dataRaw = message[0].mid(at + 1);
-		QVariant data = TnetString::toVariant(dataRaw);
+		if(dataRaw.length() < 1 || dataRaw[0] != 'T')
+		{
+			log_warning("zhttp: received message with invalid format (missing type), skipping");
+			return;
+		}
+
+		QVariant data = TnetString::toVariant(dataRaw.mid(1));
 		if(data.isNull())
 		{
 			log_warning("zhttp: received message with invalid format (tnetstring parse failed), skipping");

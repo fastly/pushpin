@@ -10,11 +10,11 @@ addr = sys.argv[1]
   
 ctl = CTX.socket(zmq.REQ)
   
-print "CONNECTING"
+print 'CONNECTING'
 ctl.connect(addr)
   
 while True:
-	cmd = raw_input("> ")
+	cmd = raw_input('> ')
 	# will only work with simple commands that have no arguments
 	ctl.send(tnetstring.dumps([cmd, {}]))
 

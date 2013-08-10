@@ -17,9 +17,9 @@ client_id = 'zhttp-test'
 
 ctx = zmq.Context()
 in_sock = ctx.socket(zmq.PULL)
-in_sock.connect("ipc:///tmp/zhttp-test-out")
+in_sock.connect('ipc:///tmp/zhttp-test-out')
 out_sock = ctx.socket(zmq.PUB)
-out_sock.connect("ipc:///tmp/zhttp-test-in")
+out_sock.connect('ipc:///tmp/zhttp-test-in')
 
 def keepalive_worker():
 	lock.acquire()
@@ -32,8 +32,8 @@ def keepalive_worker():
 		resp['type'] = 'credit'
 		resp['credits'] = 0
 
-		print "OUT %s" % resp
-		out_sock.send(s.to_address + ' ' + tnetstring.dumps(resp))
+		print 'OUT %s' % resp
+		out_sock.send(s.to_address + ' T' + tnetstring.dumps(resp))
 	lock.release()
 
 class KeepAliveThread(threading.Thread):
@@ -48,8 +48,8 @@ keepalive_thread.start()
 
 while True:
 	m_raw = in_sock.recv()
-	req = tnetstring.loads(m_raw)
-	print "IN %s" % req
+	req = tnetstring.loads(m_raw[1:])
+	print 'IN %s' % req
 
 	id = req['id']
 	if id in sessions:

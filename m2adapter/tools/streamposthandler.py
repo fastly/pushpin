@@ -47,7 +47,7 @@ while True:
 	socks = dict(poller.poll())
 	if socks.get(in_sock) == zmq.POLLIN:
 		m_raw = in_sock.recv()
-		req = tnetstring.loads(m_raw)
+		req = tnetstring.loads(m_raw[1:])
 		print 'IN %s' % req
 
 		id = req['id']
@@ -60,14 +60,14 @@ while True:
 		headers = req.get('headers')
 		if headers:
 			for h in headers:
-				if h[0].lower() == "content-type":
+				if h[0].lower() == 'content-type':
 					s.content_type = h[1]
 					break
 		sessions[id] = s
 
 	elif socks.get(in_stream_sock) == zmq.POLLIN:
 		parts = in_stream_sock.recv_multipart()
-		req = tnetstring.loads(parts[1])
+		req = tnetstring.loads(parts[1][1:])
 		print 'IN stream %s' % req
 
 		s = sessions.get(id)
@@ -110,7 +110,7 @@ while True:
 				del sessions[s.id]
 
 			print 'OUT %s' % resp
-			out_sock.send(req['from'] + ' ' + tnetstring.dumps(resp))
+			out_sock.send(req['from'] + ' T' + tnetstring.dumps(resp))
 		else:
 			if len(body) > 0:
 				# send credits
@@ -127,7 +127,7 @@ while True:
 					resp['credits'] = len(body)
 
 				print 'OUT %s' % resp
-				out_sock.send(req['from'] + ' ' + tnetstring.dumps(resp))
+				out_sock.send(req['from'] + ' T' + tnetstring.dumps(resp))
 	elif ptype is not None and ptype == 'credit':
 		if s.state == 1 and s.credits > 0:
 			resp = dict()
@@ -142,4 +142,4 @@ while True:
 				del sessions[s.id]
 
 			print 'OUT %s' % resp
-			out_sock.send(req['from'] + ' ' + tnetstring.dumps(resp))
+			out_sock.send(req['from'] + ' T' + tnetstring.dumps(resp))

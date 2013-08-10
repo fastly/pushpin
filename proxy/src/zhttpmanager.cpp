@@ -220,7 +220,14 @@ public slots:
 			}
 
 			QByteArray receiver = msg[0].mid(0, at);
-			QVariant data = TnetString::toVariant(msg[0].mid(at + 1));
+			QByteArray dataRaw = msg[0].mid(at + 1);
+			if(dataRaw.length() < 1 || dataRaw[0] != 'T')
+			{
+				log_warning("zhttp client: received message with invalid format (missing type), skipping");
+				continue;
+			}
+
+			QVariant data = TnetString::toVariant(dataRaw.mid(1));
 			if(data.isNull())
 			{
 				log_warning("zhttp client: received message with invalid format (tnetstring parse failed), skipping");
@@ -269,7 +276,13 @@ public slots:
 
 		log_debug("zhttp server: IN %s", msg[0].data());
 
-		QVariant data = TnetString::toVariant(msg[0]);
+		if(msg[0].length() < 1 || msg[0][0] != 'T')
+		{
+			log_warning("zhttp server: received message with invalid format (missing type), skipping");
+			return;
+		}
+
+		QVariant data = TnetString::toVariant(msg[0].mid(1));
 		if(data.isNull())
 		{
 			log_warning("zhttp server: received message with invalid format (tnetstring parse failed), skipping");
@@ -327,7 +340,13 @@ public slots:
 
 			log_debug("zhttp server: IN stream %s", msg[1].data());
 
-			QVariant data = TnetString::toVariant(msg[1]);
+			if(msg[1].length() < 1 || msg[1][0] != 'T')
+			{
+				log_warning("zhttp server: received message with invalid format (missing type), skipping");
+				continue;
+			}
+
+			QVariant data = TnetString::toVariant(msg[1].mid(1));
 			if(data.isNull())
 			{
 				log_warning("zhttp server: received message with invalid format (tnetstring parse failed), skipping");
@@ -495,7 +514,7 @@ void ZhttpManager::write(const ZhttpRequestPacket &packet)
 {
 	assert(d->client_out_sock);
 
-	QByteArray buf = TnetString::fromVariant(packet.toVariant());
+	QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
 
 	log_debug("zhttp client: OUT %s", buf.data());
 
@@ -506,7 +525,7 @@ void ZhttpManager::write(const ZhttpRequestPacket &packet, const QByteArray &ins
 {
 	assert(d->client_out_stream_sock);
 
-	QByteArray buf = TnetString::fromVariant(packet.toVariant());
+	QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
 
 	log_debug("zhttp client: OUT %s %s", instanceAddress.data(), buf.data());
 
@@ -521,7 +540,7 @@ void ZhttpManager::write(const ZhttpResponsePacket &packet, const QByteArray &in
 {
 	assert(d->server_out_sock);
 
-	QByteArray buf = instanceAddress + ' ' + TnetString::fromVariant(packet.toVariant());
+	QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(packet.toVariant());
 
 	log_debug("zhttp server: OUT %s", buf.data());
 
