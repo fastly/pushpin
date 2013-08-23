@@ -143,6 +143,7 @@ public:
 		handler_retry_in_valve(0)
 	{
 		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
+		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
 	}
 
 	~Private()
@@ -162,8 +163,6 @@ public:
 
 	void start()
 	{
-		log_startClock();
-
 		QStringList args = QCoreApplication::instance()->arguments();
 		args.removeFirst();
 
@@ -203,14 +202,25 @@ public:
 			return;
 		}
 
-		log_info("starting...");
-
 		if(options.contains("verbose"))
 			log_setOutputLevel(LOG_LEVEL_DEBUG);
 		else
 			log_setOutputLevel(LOG_LEVEL_INFO);
 
-		QString configFile = options["config"];
+		QString logFile = options.value("logfile");
+		if(!logFile.isEmpty())
+		{
+			if(!log_setFile(logFile))
+			{
+				log_error("failed to open log file: %s", qPrintable(logFile));
+				emit q->quit();
+				return;
+			}
+		}
+
+		log_info("starting...");
+
+		QString configFile = options.value("config");
 		if(configFile.isEmpty())
 			configFile = "/etc/pushpin/pushpin.conf";
 
@@ -644,6 +654,13 @@ private slots:
 	void handler_accept_out_messagesWritten(int count)
 	{
 		Q_UNUSED(count);
+	}
+
+	void reload()
+	{
+		log_info("reloading");
+		log_rotate();
+		domainMap->reload();
 	}
 
 	void doQuit()

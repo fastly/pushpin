@@ -456,6 +456,11 @@ DomainMap::~DomainMap()
 	delete d;
 }
 
+void DomainMap::reload()
+{
+	QMetaObject::invokeMethod(d->thread->worker, "fileChanged", Qt::QueuedConnection, Q_ARG(QString, QString()));
+}
+
 DomainMap::Entry DomainMap::entry(const QString &domain, const QByteArray &path, bool ssl) const
 {
 	QMutexLocker locker(&d->thread->worker->m);

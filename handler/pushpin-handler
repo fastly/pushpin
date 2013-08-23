@@ -22,10 +22,15 @@ import os
 import ConfigParser
 
 config_file = "/etc/pushpin/pushpin.conf"
+log_file = None
+verbose = False
 for arg in sys.argv:
 	if arg.startswith("--config="):
 		config_file = arg[9:]
-		break
+	elif arg.startswith("--logfile="):
+		log_file = arg[10:]
+	elif arg.startswith("--verbose"):
+		verbose = True
 
 config = ConfigParser.ConfigParser()
 config.read([config_file])
@@ -40,6 +45,8 @@ if libdir:
 import time
 import threading
 import json
+import logging
+from logging.handlers import WatchedFileHandler
 from base64 import b64decode
 from setproctitle import setproctitle
 import zmq
@@ -50,6 +57,21 @@ from conversion import ensure_utf8, convert_json_transport
 from statusreasons import get_reason
 
 setproctitle("pushpin-handler")
+
+logger = logging.getLogger('handler')
+if log_file:
+	logger_handler = WatchedFileHandler(log_file)
+else:
+	logger_handler = logging.StreamHandler(stream=sys.stdout)
+if verbose:
+	logger.setLevel(logging.DEBUG)
+	logger_handler.setLevel(logging.DEBUG)
+else:
+	logger.setLevel(logging.INFO)
+	logger_handler.setLevel(logging.INFO)
+formatter = logging.Formatter(fmt='%(levelname)s %(asctime)s.%(msecs)03d %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+logger_handler.setFormatter(formatter)
+logger.addHandler(logger_handler)
 
 instance_id = "pushpin-handler"
 
@@ -145,7 +167,7 @@ def reply_http_old(sock, rid, code, status, headers, body, nolen=False):
 	else:
 		msg = http_response(body, code, status, headers)
 	m_raw = header + " " + msg
-	print "OUT publish: %s" % m_raw
+	logger.debug("OUT publish: %s" % m_raw)
 	sock.send(m_raw)
 
 def reply_http_chunk_old(sock, rid, content):
@@ -189,7 +211,7 @@ def reply_http(sock, rid, code, reason, headers, body, nolen=False):
 		out["more"] = True
 
 	m_raw = rid[0] + " T" + tnetstring.dumps(out)
-	print "OUT publish: %s" % m_raw
+	logger.debug("OUT publish: %s" % m_raw)
 	sock.send(m_raw)
 
 def reply_http_chunk(sock, rid, content):
@@ -200,7 +222,7 @@ def reply_http_chunk(sock, rid, content):
 	out["more"] = True
 
 	m_raw = rid[0] + " T" + tnetstring.dumps(out)
-	print "OUT publish: %s" % m_raw
+	logger.debug("OUT publish: %s" % m_raw)
 	sock.send(m_raw)
 
 def inspect_worker():
@@ -210,7 +232,7 @@ def inspect_worker():
 	while True:
 		m_raw = sock.recv()
 		m = tnetstring.loads(m_raw)
-		print "IN inspect: %s" % m
+		logger.debug("IN inspect: %s" % m)
 
 		# reply saying to always proxy
 		id = m["id"]
@@ -220,7 +242,7 @@ def inspect_worker():
 		m["no-proxy"] = False
 		#m["sharing-key"] = uri
 
-		print "OUT inspect: %s" % m
+		logger.debug("OUT inspect: %s" % m)
 		m_raw = tnetstring.dumps(m)
 		sock.send(m_raw)
 
@@ -240,7 +262,7 @@ def accept_worker():
 	while True:
 		m_raw = sock.recv()
 		m = tnetstring.loads(m_raw)
-		print "IN accept: %s" % m
+		logger.debug("IN accept: %s" % m)
 
 		req = m["requests"][0]
 
@@ -284,7 +306,7 @@ def accept_worker():
 		h = Hold(rid, mode, response, req.get("auto-cross-origin"), origin, req.get("jsonp-callback"))
 
 		if mode == "response":
-			print "adding response hold on %s" % channel
+			logger.debug("adding response hold on %s" % channel)
 			h.expire_time = int(time.time()) + timeout
 			lock.acquire()
 			if prev_id is not None:
@@ -292,13 +314,13 @@ def accept_worker():
 				if last_id is not None and last_id != prev_id:
 					del response_lastids[channel]
 					lock.release()
-					print "lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id)
+					logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
 					r = dict()
 					r["requests"] = m["requests"]
 					r["request-data"] = m["request-data"]
 					if "inspect" in m:
 						r["inspect"] = m["inspect"]
-					print "OUT retry: %s" % r
+					logger.debug("OUT retry: %s" % r)
 					r_raw = tnetstring.dumps(r)
 					retry_sock.send(r_raw)
 					continue
@@ -327,7 +349,7 @@ def accept_worker():
 
 			reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True)
 
-			print "adding stream hold on %s" % channel
+			logger.debug("adding stream hold on %s" % channel)
 
 			# bind channel
 			lock.acquire()
@@ -358,7 +380,7 @@ def push_in_zmq_worker():
 			m = validate_publish(m)
 
 		except ValidationError as e:
-			print "warning: %s, dropping" % e
+			logger.debug("warning: %s, dropping" % e)
 
 		out_sock.send(tnetstring.dumps(m))
 
@@ -420,7 +442,7 @@ def push_in_worker(c):
 	while True:
 		m_raw = in_sock.recv()
 		m = tnetstring.loads(m_raw)
-		print "IN publish: %s" % m
+		logger.debug("IN publish: %s" % m)
 		channel = m["channel"]
 
 		if "http-response" in m:
@@ -435,7 +457,7 @@ def push_in_worker(c):
 			if item_id is not None:
 				response_lastids[channel] = item_id
 			lock.release()
-			print "relaying to %d subscribers" % len(holds)
+			logger.debug("relaying to %d subscribers" % len(holds))
 			http_response = m["http-response"]
 
 			if "code" in http_response:
@@ -511,7 +533,7 @@ def push_in_worker(c):
 			else:
 				holds = list()
 			lock.release()
-			print "relaying to %d subscribers" % len(holds)
+			logger.debug("relaying to %d subscribers" % len(holds))
 			for h in holds:
 				content = m["http-stream"]["content"]
 				if content:
@@ -544,7 +566,7 @@ def timeout_worker():
 		lock.release()
 
 		if len(holds) > 0:
-			print "timing out %d subscribers" % len(holds)
+			logger.debug("timing out %d subscribers" % len(holds))
 
 			for h in holds:
 				if "code" in h.response:

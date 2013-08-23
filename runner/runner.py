@@ -78,7 +78,7 @@ def run(exedir, config_file, verbose):
 		service_objs.append(services.PushpinProxyService(proxybin, config_file, verbose, rundir, logdir))
 
 	if "pushpin-handler" in service_names:
-		service_objs.append(services.PushpinHandlerService(handlerbin, config_file, rundir, logdir))
+		service_objs.append(services.PushpinHandlerService(handlerbin, config_file, verbose, rundir, logdir))
 
 	print "starting..."
 

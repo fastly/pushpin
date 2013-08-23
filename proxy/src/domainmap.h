@@ -70,6 +70,10 @@ public:
 	DomainMap(const QString &fileName);
 	~DomainMap();
 
+	// shouldn't really ever need to call this, but sometimes the
+	//   underlying file watching doesn't work
+	void reload();
+
 	Entry entry(const QString &domain, const QByteArray &path, bool ssl) const;
 
 private:
