@@ -14,9 +14,11 @@ class Process(object):
 		self.timeleft = None
 		self.returncode = None
 		self.name = name
+		self.accept_sighup = False
 
-	def start(self, args, logfile=None):
+	def start(self, args, logfile=None, accept_sighup=False):
 		assert(self.state == Process.Stopped)
+		self.accept_sighup = accept_sighup
 		print "starting %s" % self.name
 		if not logfile:
 			logfile = "/dev/null"
@@ -62,10 +64,12 @@ class ProcessManager(object):
 		self.procs = list()
 		self.raw_procs = set()
 		self.quit = False
+		self.send_hup = False
+		self.reloadmessage = None
 		self.stopmessage = None
 		atexit.register(self.cleanup)
 
-	def add(self, name, args, logfile=None):
+	def add(self, name, args, logfile=None, accept_sighup=False):
 		if len(self.procs) == 0:
 			self.prev_sighup = signal.getsignal(signal.SIGHUP)
 			self.prev_sigint = signal.getsignal(signal.SIGINT)
@@ -74,7 +78,7 @@ class ProcessManager(object):
 			signal.signal(signal.SIGINT, self.termfunc)
 			signal.signal(signal.SIGTERM, self.termfunc)
 		p = Process(name)
-		p.start(args, logfile)
+		p.start(args, logfile, accept_sighup)
 		self.procs.append(p)
 		self.raw_procs.add(p.proc)
 		return p.proc.pid
@@ -84,6 +88,11 @@ class ProcessManager(object):
 		while not self.quit:
 			for p in self.procs:
 				p.check()
+			if self.send_hup:
+				self.send_hup = False
+				for p in self.procs:
+					if p.accept_sighup:
+						p.proc.send_signal(signal.SIGHUP)
 			time.sleep(1)
 
 		if self.stopmessage:
@@ -125,7 +134,12 @@ class ProcessManager(object):
 		#signal.signal(signal.SIGHUP, self.prev_sighup)
 		#signal.signal(signal.SIGINT, self.prev_sigint)
 		#signal.signal(signal.SIGTERM, self.prev_sigterm)
-		self.quit = True
+		if signum == signal.SIGHUP:
+			self.send_hup = True
+			if self.reloadmessage:
+				print self.reloadmessage
+		else:
+			self.quit = True
 
 	def cleanup(self):
 		for p in self.raw_procs:

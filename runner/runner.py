@@ -83,11 +83,12 @@ def run(exedir, config_file, verbose):
 	print "starting..."
 
 	p = ProcessManager()
+	p.reloadmessage = "reloading"
 	p.stopmessage = "stopping..."
 
 	for s in service_objs:
 		s.pre_start()
-		pid = p.add(s.name(), s.getargs(), s.getlogfile())
+		pid = p.add(s.name(), s.getargs(), s.getlogfile(), s.accept_sighup())
 		s.post_start(pid)
 
 	print "started"

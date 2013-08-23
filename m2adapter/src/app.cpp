@@ -219,6 +219,7 @@ public:
 		m2_in_valve(0)
 	{
 		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
+		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
 
 		time.start();
 
@@ -1413,6 +1414,12 @@ private slots:
 			args["keep-alive"] = true;
 			m2_writeCtl(s->conn, args);
 		}
+	}
+
+	void reload()
+	{
+		log_info("reloading");
+		log_rotate();
 	}
 
 	void doQuit()
