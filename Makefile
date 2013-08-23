@@ -6,7 +6,16 @@ libdir = $(prefix)/lib/pushpin
 rundir = $(varprefix)/run/pushpin
 logdir = $(varprefix)/log/pushpin
 
-all: make-m2adapter make-pushpin-proxy
+CHK_DIR_EXISTS  = test -d
+COPY            = cp -f
+COPY_DIR        = $(COPY) -r
+INSTALL_FILE    = install -m 644 -p
+INSTALL_DIR     = $(COPY_DIR)
+INSTALL_PROGRAM = install -m 755 -p
+MKDIR           = mkdir -p
+STRIP           = strip
+
+all: make-m2adapter make-pushpin-proxy pushpin.inst
 
 clean:
 	if [ -f m2adapter/Makefile ]; then cd m2adapter && make clean; fi
@@ -30,21 +39,26 @@ m2adapter/conf.pri:
 proxy/conf.pri:
 	cd proxy && ./configure
 
+pushpin.inst: pushpin
+	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin > pushpin.inst && chmod 755 pushpin.inst
+
 install:
-	mkdir -p $(bindir)
-	mkdir -p $(configdir)
-	mkdir -p $(configdir)/runner
-	mkdir -p $(configdir)/runner/certs
-	mkdir -p $(libdir)/handler
-	mkdir -p $(libdir)/runner
-	mkdir -p $(rundir)
-	mkdir -p $(logdir)
-	cp m2adapter/m2adapter $(bindir)
-	cp proxy/pushpin-proxy $(bindir)
-	cp handler/pushpin-handler $(bindir)
-	cp handler/*.py $(libdir)/handler
-	cp runner/*.py $(libdir)/runner
-	cp runner/*.conf runner/*.template $(configdir)/runner
-	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin > $(bindir)/pushpin && chmod a+x $(bindir)/pushpin
-	test -e $(configdir)/pushpin.conf || sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf.example > $(configdir)/pushpin.conf
-	test -e $(configdir)/routes || cp config/routes.example $(configdir)/routes
+	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(bindir) || $(MKDIR) $(INSTALL_ROOT)$(bindir)
+	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(configdir) || $(MKDIR) $(INSTALL_ROOT)$(configdir)
+	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(configdir)/runner || $(MKDIR) $(INSTALL_ROOT)$(configdir)/runner
+	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(configdir)/runner/certs || $(MKDIR) $(INSTALL_ROOT)$(configdir)/runner/certs
+	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(libdir)/handler || $(MKDIR) $(INSTALL_ROOT)$(libdir)/handler
+	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(libdir)/runner || $(MKDIR) $(INSTALL_ROOT)$(libdir)/runner
+	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(rundir) || $(MKDIR) $(INSTALL_ROOT)$(rundir)
+	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(logdir) || $(MKDIR) $(INSTALL_ROOT)$(logdir)
+	-$(INSTALL_PROGRAM) m2adapter/m2adapter "$(INSTALL_ROOT)$(bindir)/m2adapter"
+	-$(STRIP) "$(INSTALL_ROOT)$(bindir)/m2adapter"
+	-$(INSTALL_PROGRAM) proxy/pushpin-proxy "$(INSTALL_ROOT)$(bindir)/pushpin-proxy"
+	-$(STRIP) "$(INSTALL_ROOT)$(bindir)/pushpin-proxy"
+	-$(INSTALL_PROGRAM) handler/pushpin-handler "$(INSTALL_ROOT)$(bindir)/pushpin-handler"
+	-$(INSTALL_PROGRAM) pushpin.inst $(INSTALL_ROOT)$(bindir)/pushpin
+	$(COPY) handler/*.py $(INSTALL_ROOT)$(libdir)/handler
+	$(COPY) runner/*.py $(INSTALL_ROOT)$(libdir)/runner
+	$(COPY) runner/*.conf runner/*.template $(INSTALL_ROOT)$(configdir)/runner
+	test -e $(INSTALL_ROOT)$(configdir)/pushpin.conf || sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf.example > $(INSTALL_ROOT)$(configdir)/pushpin.conf
+	test -e $(INSTALL_ROOT)$(configdir)/routes || cp config/routes.example $(INSTALL_ROOT)$(configdir)/routes
