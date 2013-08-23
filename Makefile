@@ -26,6 +26,7 @@ distclean:
 	rm -f m2adapter/conf.pri m2adapter/conf.log
 	if [ -f proxy/Makefile ]; then cd proxy && make distclean; fi
 	rm -f proxy/conf.pri proxy/conf.log
+	rm -f pushpin.inst
 
 make-m2adapter: m2adapter/conf.pri
 	cd m2adapter && make
