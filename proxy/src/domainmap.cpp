@@ -134,6 +134,35 @@ public:
 		{
 			return (ssl == other.ssl && pathBeg == other.pathBeg);
 		}
+
+		inline bool matchSsl(bool reqSsl) const
+		{
+			return ((ssl == 0 && !reqSsl) || (ssl == 1 && reqSsl));
+		}
+
+		bool isMatch(bool reqSsl, const QByteArray &reqPath) const
+		{
+			return ((ssl == -1 || matchSsl(reqSsl)) && (pathBeg.isEmpty() || reqPath.startsWith(pathBeg)));
+		}
+
+		bool isMoreSpecificMatch(const Rule &other, bool reqSsl, const QByteArray &reqPath) const
+		{
+			// have to at least be a match
+			if(!isMatch(reqSsl, reqPath))
+				return false;
+
+			// now let's see if we're a better match
+
+			if(other.ssl == -1 && ssl != -1)
+				return true;
+			else if(other.ssl != -1 && ssl == -1)
+				return false;
+
+			if(pathBeg.size() > other.pathBeg.size() && reqPath.startsWith(pathBeg))
+				return true;
+
+			return false;
+		}
 	};
 
 	QMutex m;
@@ -477,9 +506,7 @@ DomainMap::Entry DomainMap::entry(const QString &domain, const QByteArray &path,
 	const Worker::Rule *best = 0;
 	foreach(const Worker::Rule &r, *rules)
 	{
-		if(!best ||
-			(r.ssl != -1 && ((r.ssl == 0 && !ssl) || (r.ssl == 1 && ssl))) ||
-			(!r.pathBeg.isEmpty() && path.startsWith(r.pathBeg)))
+		if((!best && r.isMatch(ssl, path)) || (best && r.isMoreSpecificMatch(*best, ssl, path)))
 		{
 			best = &r;
 		}
