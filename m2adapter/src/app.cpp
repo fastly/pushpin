@@ -131,11 +131,13 @@ public:
 		int written;
 		int confirmedWritten;
 		Session *session;
+		bool isNew;
 
 		M2Connection() :
 			written(0),
 			confirmedWritten(0),
-			session(0)
+			session(0),
+			isNew(false)
 		{
 		}
 	};
@@ -686,8 +688,20 @@ public:
 		{
 			it.next();
 			M2Connection *conn = it.value();
-			if(conn->identIndex == index && !ids.contains(conn->id))
-				gone += conn;
+			if(conn->identIndex == index)
+			{
+				// only check for missing connections that aren't flagged
+				if(!conn->isNew)
+				{
+					if(!ids.contains(conn->id))
+						gone += conn;
+				}
+				else
+				{
+					// clear the flag so the connection gets processed next time
+					conn->isNew = false;
+				}
+			}
 		}
 		foreach(M2Connection *conn, gone)
 		{
@@ -829,6 +843,17 @@ private slots:
 			conn = new M2Connection;
 			conn->identIndex = index;
 			conn->id = mreq.id;
+
+			// if we were in the middle of requesting control info when this
+			//   http request arrived, then there's a chance the control
+			//   response won't account for this request (for example if the
+			//   control response was generated and was in the middle of being
+			//   delivered when this http request arrived). we'll flag the
+			//   connection as "new" in this case, so in the control response
+			//   handler we know to skip over it until the next control
+			//   request.
+			if(controlPorts[index].state == ControlPort::ExpectingResponse)
+				conn->isNew = true;
 
 			m2ConnectionsByRid.insert(m2Rid, conn);
 		}
