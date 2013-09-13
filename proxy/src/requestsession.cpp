@@ -62,15 +62,15 @@ static QByteArray parsePercentEncoding(const QByteArray &in)
 		if(c == '%')
 		{
 			if(n + 2 >= in.size())
-				break;
+				return QByteArray();
 
 			int hi = fromHex(in[n + 1]);
 			if(hi == -1)
-				break;
+				return QByteArray();
 
 			int lo = fromHex(in[n + 2]);
 			if(lo == -1)
-				break;
+				return QByteArray();
 
 			unsigned char val = (hi << 4) + lo;
 			out += val;
@@ -212,6 +212,7 @@ public:
 					if(callback.isEmpty())
 					{
 						log_warning("requestsession: id=%s invalid callback parameter, rejecting", rid.second.data());
+						state = WaitingForResponse;
 						respondBadRequest("Invalid callback parameter.");
 						return;
 					}
@@ -230,6 +231,7 @@ public:
 					if(!validMethod(method))
 					{
 						log_warning("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
+						state = WaitingForResponse;
 						respondBadRequest("Invalid _method parameter.");
 						return;
 					}
@@ -250,6 +252,7 @@ public:
 					if(!ok || vheaders.type() != QVariant::Map)
 					{
 						log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
+						state = WaitingForResponse;
 						respondBadRequest("Invalid _headers parameter.");
 						return;
 					}
@@ -264,6 +267,7 @@ public:
 						if(vit.value().type() != QVariant::String)
 						{
 							log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
+							state = WaitingForResponse;
 							respondBadRequest("Invalid _headers parameter.");
 							return;
 						}
@@ -287,8 +291,17 @@ public:
 					if(bodyDone)
 						continue;
 
+					QByteArray buf = parsePercentEncoding(i.second);
+					if(buf.isNull())
+					{
+						log_warning("requestsession: id=%s invalid _body parameter, rejecting", rid.second.data());
+						state = WaitingForResponse;
+						respondBadRequest("Invalid _body parameter.");
+						return;
+					}
+
 					bodyDone = true;
-					hdata.body = parsePercentEncoding(i.second);
+					hdata.body = buf;
 					uri.removeAllQueryItems("_body");
 				}
 			}
