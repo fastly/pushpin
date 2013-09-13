@@ -246,8 +246,8 @@ public:
 
 					QJson::Parser parser;
 					bool ok;
-					QVariant vheaders = parser.parse(parsePercentEncoding("_headers"), &ok);
-					if(!ok)
+					QVariant vheaders = parser.parse(parsePercentEncoding(i.second), &ok);
+					if(!ok || vheaders.type() != QVariant::Map)
 					{
 						log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 						respondBadRequest("Invalid _headers parameter.");
@@ -293,8 +293,21 @@ public:
 				}
 			}
 
+			assert(callbackDone);
+
 			if(hdata.method.isEmpty())
 				hdata.method = "GET";
+
+			// if we have no query items anymore, strip the '?'
+			if(uri.encodedQueryItems().isEmpty())
+			{
+				QByteArray tmp = uri.toEncoded();
+				if(tmp.length() > 0 && tmp[tmp.length() - 1] == '?')
+				{
+					tmp.truncate(tmp.length() - 1);
+					uri = QUrl(tmp, QUrl::StrictMode);
+				}
+			}
 
 			hdata.uri = uri;
 

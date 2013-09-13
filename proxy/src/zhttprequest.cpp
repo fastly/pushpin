@@ -750,11 +750,17 @@ public slots:
 				return;
 			}
 
+			// even though we don't have credits yet, we can act
+			//   like we do on the first packet. we'll still cap
+			//   our potential size though.
+			QByteArray buf = requestBodyBuf.take(IDEAL_CREDITS);
+
 			ZhttpRequestPacket p;
 			p.type = ZhttpRequestPacket::Data;
 			p.method = requestMethod;
 			p.uri = requestUri;
 			p.headers = requestHeaders;
+			p.body = buf;
 			if(!requestBodyBuf.isEmpty() || !bodyFinished)
 				p.more = true;
 			p.stream = true;
