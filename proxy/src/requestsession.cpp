@@ -134,6 +134,7 @@ public:
 	bool pendingResponseUpdate;
 	LayerTracker jsonpTracker;
 	bool isRetry;
+	QList<QByteArray> jsonpExtractableHeaders;
 
 	Private(RequestSession *_q, InspectManager *_inspectManager, InspectChecker *_inspectChecker) :
 		QObject(_q),
@@ -148,6 +149,7 @@ public:
 		pendingResponseUpdate(false),
 		isRetry(false)
 	{
+		jsonpExtractableHeaders += "Cache-Control";
 	}
 
 	~Private()
@@ -666,6 +668,19 @@ public slots:
 
 					headers += HttpHeader("Content-Type", "application/javascript");
 					headers += HttpHeader("Content-Length", QByteArray::number(buf.size()));
+
+					// mirror headers in the wrapping response
+					foreach(const HttpHeader &h, responseData.headers)
+					{
+						foreach(const QByteArray &eh, jsonpExtractableHeaders)
+						{
+							if(qstricmp(h.first.data(), eh.data()) == 0)
+							{
+								headers += h;
+								break;
+							}
+						}
+					}
 
 					connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
 
