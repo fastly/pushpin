@@ -22,6 +22,8 @@
 
 {% endfor %}settings = {
 	"certdir": "{{ certdir }}/",
+	# we explicitly set this list to workaround an issue with Chrome on Linux
+	"ssl_ciphers": "SSL_EDH_RSA_AES_256_SHA SSL_EDH_RSA_AES_128_SHA SSL_EDH_RSA_CAMELLIA_256_SHA SSL_EDH_RSA_CAMELLIA_128_SHA SSL_EDH_RSA_DES_168_SHA SSL_RSA_AES_256_SHA SSL_RSA_CAMELLIA_256_SHA SSL_RSA_AES_128_SHA SSL_RSA_CAMELLIA_128_SHA SSL_RSA_DES_168_SHA SSL_RSA_RC4_128_SHA SSL_RSA_RC4_128_MD5",
 	"upload.stream": 1,
 	"server.daemonize": 0,
 	"no_clobber_xff": 1
