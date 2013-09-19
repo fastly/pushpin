@@ -58,6 +58,10 @@ from statusreasons import get_reason
 
 setproctitle("pushpin-handler")
 
+# reopen stdout file descriptor with write mode
+# and 0 as the buffer size (unbuffered)
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+
 logger = logging.getLogger('handler')
 if log_file:
 	logger_handler = WatchedFileHandler(log_file)
@@ -75,11 +79,12 @@ logger.addHandler(logger_handler)
 
 instance_id = "pushpin-handler"
 
-# reopen stdout file descriptor with write mode
-# and 0 as the buffer size (unbuffered)
-sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
-
 m2a_out_specs = config.get("handler", "m2a_out_specs").split(",")
+
+if config.has_option("handler", "share_all") and config.get("handler", "share_all") == "true":
+	share_all = True
+else:
+	share_all = False
 
 simple_headers = set()
 simple_headers.add("Cache-Control")
@@ -236,11 +241,14 @@ def inspect_worker():
 
 		# reply saying to always proxy
 		id = m["id"]
-		#uri = m["uri"]
+		method = m["method"]
+		uri = m["uri"]
 		m = dict()
 		m["id"] = id
 		m["no-proxy"] = False
-		#m["sharing-key"] = uri
+
+		if share_all:
+			m["sharing-key"] = method + '|' + uri
 
 		logger.debug("OUT inspect: %s" % m)
 		m_raw = tnetstring.dumps(m)
@@ -264,8 +272,6 @@ def accept_worker():
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN accept: %s" % m)
 
-		req = m["requests"][0]
-
 		lheaders = m["request-data"]["headers"]
 		headers = dict()
 		for l in lheaders:
@@ -275,7 +281,6 @@ def accept_worker():
 			origin = "*"
 
 		try:
-			rid = (req["rid"]["sender"], req["rid"]["id"])
 			instruct = json.loads(m["response"]["body"])
 			hold = instruct["hold"]
 			mode = hold.get("mode")
@@ -301,64 +306,71 @@ def accept_worker():
 			else:
 				response["body"] = response["body"].encode("utf-8")
 		except:
+			logger.debug("failed to parse accept instructions")
 			continue
 
-		h = Hold(rid, mode, response, req.get("auto-cross-origin"), origin, req.get("jsonp-callback"))
+		reqs = m["requests"]
+		logger.debug("accepting %d requests" % len(reqs))
+		
+		for req in reqs:
+			rid = (req["rid"]["sender"], req["rid"]["id"])
 
-		if mode == "response":
-			logger.debug("adding response hold on %s" % channel)
-			h.expire_time = int(time.time()) + timeout
-			lock.acquire()
-			if prev_id is not None:
-				last_id = response_lastids.get(channel)
-				if last_id is not None and last_id != prev_id:
-					del response_lastids[channel]
-					lock.release()
-					logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
-					r = dict()
-					r["requests"] = m["requests"]
-					r["request-data"] = m["request-data"]
-					if "inspect" in m:
-						r["inspect"] = m["inspect"]
-					logger.debug("OUT retry: %s" % r)
-					r_raw = tnetstring.dumps(r)
-					retry_sock.send(r_raw)
-					continue
-			hchannel = response_channels.get(channel)
-			if not hchannel:
-				hchannel = dict()
-				response_channels[channel] = hchannel
-			hchannel[rid] = h
-			lock.release()
-		else: # stream
-			# initial reply
-			if "code" in response:
-				rcode = response["code"]
-			else:
-				rcode = 200
+			h = Hold(rid, mode, response, req.get("auto-cross-origin"), origin, req.get("jsonp-callback"))
 
-			if "reason" in response:
-				rreason = response["reason"]
-			else:
-				rreason = get_reason(rcode)
+			if mode == "response":
+				logger.debug("adding response hold on %s" % channel)
+				h.expire_time = int(time.time()) + timeout
+				lock.acquire()
+				if prev_id is not None:
+					last_id = response_lastids.get(channel)
+					if last_id is not None and last_id != prev_id:
+						del response_lastids[channel]
+						lock.release()
+						logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
+						r = dict()
+						r["requests"] = m["requests"]
+						r["request-data"] = m["request-data"]
+						if "inspect" in m:
+							r["inspect"] = m["inspect"]
+						logger.debug("OUT retry: %s" % r)
+						r_raw = tnetstring.dumps(r)
+						retry_sock.send(r_raw)
+						continue
+				hchannel = response_channels.get(channel)
+				if not hchannel:
+					hchannel = dict()
+					response_channels[channel] = hchannel
+				hchannel[rid] = h
+				lock.release()
+			else: # stream
+				# initial reply
+				if "code" in response:
+					rcode = response["code"]
+				else:
+					rcode = 200
 
-			if "headers" in response:
-				rheaders = response["headers"]
-			else:
-				rheaders = dict()
+				if "reason" in response:
+					rreason = response["reason"]
+				else:
+					rreason = get_reason(rcode)
 
-			reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True)
+				if "headers" in response:
+					rheaders = response["headers"]
+				else:
+					rheaders = dict()
 
-			logger.debug("adding stream hold on %s" % channel)
+				reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True)
 
-			# bind channel
-			lock.acquire()
-			hchannel = stream_channels.get(channel)
-			if not hchannel:
-				hchannel = dict()
-				stream_channels[channel] = hchannel
-			hchannel[rid] = h
-			lock.release()
+				logger.debug("adding stream hold on %s" % channel)
+
+				# bind channel
+				lock.acquire()
+				hchannel = stream_channels.get(channel)
+				if not hchannel:
+					hchannel = dict()
+					stream_channels[channel] = hchannel
+				hchannel[rid] = h
+				lock.release()
 
 	sock.close()
 
