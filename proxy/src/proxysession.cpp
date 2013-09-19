@@ -593,6 +593,15 @@ public:
 			delete zhttpRequest;
 			zhttpRequest = 0;
 
+			// once the entire response has been received, cut off any new adds
+			if(addAllowed)
+			{
+				addAllowed = false;
+				emit q->addNotAllowed();
+				if(!self)
+					return;
+			}
+
 			if(state == Accepting)
 			{
 				foreach(SessionItem *si, sessionItems)
@@ -612,13 +621,6 @@ public:
 						si->state = SessionItem::Responded;
 						si->rs->endResponseBody();
 					}
-				}
-
-				// once the entire response has been received, cut off any new adds
-				if(addAllowed)
-				{
-					addAllowed = false;
-					emit q->addNotAllowed();
 				}
 			}
 		}
