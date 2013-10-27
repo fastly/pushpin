@@ -45,7 +45,7 @@ Requirements
 Install guide
 -------------
 
-https://github.com/fanout/pushpin/wiki/Install
+READ: https://github.com/fanout/pushpin/wiki/Install
 
 If accessing from Git, be sure to pull submodules:
 
