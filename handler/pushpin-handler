@@ -492,7 +492,7 @@ def push_in_worker(c):
 			else:
 				pbody = ""
 
-			for h in holds:
+			for n, h in enumerate(holds):
 				headers = dict()
 				if h.jsonp_callback:
 					result = dict()
@@ -536,6 +536,8 @@ def push_in_worker(c):
 						headers["Access-Control-Allow-Origin"] = h.origin
 
 					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
+				if n % 10 == 0:
+					time.sleep(0.0005)
 
 		if "http-stream" in m:
 			lock.acquire()
