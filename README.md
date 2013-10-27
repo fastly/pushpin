@@ -70,8 +70,8 @@ If you'd prefer to individually manage any of these processes yourself, then adj
 
 Proxy process:
 
-    proxy/pushpin-proxy --config=/path/to/pushpin.conf
+    pushpin-proxy --config=/path/to/pushpin.conf
 
 Handler process:
 
-    handler/pushpin-handler --config=/path/to/pushpin.conf
+    pushpin-handler --config=/path/to/pushpin.conf
