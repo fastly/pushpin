@@ -17,5 +17,7 @@ proxy/conf.log
 proxy/conf.pri
 proxy/pushpin-proxy
 proxy/src/Makefile
+proxy/src/libpushpin-proxy.a
 runner/run
 runner/log
+pushpin.inst

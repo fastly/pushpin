@@ -3,13 +3,15 @@ CONFIG -= app_bundle
 QT -= gui
 QT += network
 TARGET = pushpin-proxy
-DESTDIR = ..
+DESTDIR = ../../..
 
 MOC_DIR = $$OUT_PWD/_moc
 OBJECTS_DIR = $$OUT_PWD/_obj
 
-include($$OUT_PWD/../conf.pri)
-include(src.pri)
+LIBS += -L$$PWD/../.. -lpushpin-proxy
+
+include($$OUT_PWD/../../../conf.pri)
+include(pushpin-proxy.pri)
 
 unix:!isEmpty(BINDIR) {
 	target.path = $$BINDIR
