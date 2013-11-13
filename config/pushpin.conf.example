@@ -90,6 +90,9 @@ proxy_retry_out_spec=ipc:///tmp/pushpin-retry
 # connect PULL for receiving HTTP requests (internal, used with proxy)
 proxy_accept_in_spec=ipc:///tmp/pushpin-accept
 
+# list of connect DEALER for continuing mongrel2 HTTP requests
+m2a_in_stream_specs=ipc:///tmp/pushpin-m2a-out-stream
+
 # list of connect PUB for sending mongrel2 HTTP responses
 m2a_out_specs=ipc:///tmp/pushpin-m2a-in
 
