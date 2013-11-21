@@ -120,7 +120,7 @@ public:
 
 	~Private()
 	{
-		if(manager && !paused)
+		if(manager && !paused && state != Stopped)
 			tryCancel();
 
 		cleanup();
@@ -164,6 +164,7 @@ public:
 		{
 			log_warning("zhttp server: error, received request with non-zero seq field");
 			writeError("bad-request");
+			state = Stopped;
 			return false;
 		}
 
@@ -171,6 +172,7 @@ public:
 		{
 			log_warning("zhttp server: error, received request for non-stream response");
 			writeError("bad-request");
+			state = Stopped;
 			return false;
 		}
 
@@ -178,6 +180,7 @@ public:
 		{
 			log_warning("zhttp server: error, received stream request with no seq field");
 			writeError("bad-request");
+			state = Stopped;
 			return false;
 		}
 
@@ -689,12 +692,16 @@ public:
 	{
 		if(state == ClientRequesting || state == ClientReceiving)
 		{
+			state = Stopped;
+
 			ZhttpRequestPacket p;
 			p.type = ZhttpRequestPacket::Cancel;
 			writePacket(p);
 		}
 		else if(server)
 		{
+			state = Stopped;
+
 			ZhttpResponsePacket p;
 			p.type = ZhttpResponsePacket::Cancel;
 			writePacket(p);
@@ -710,28 +717,28 @@ public:
 
 	static ErrorCondition convertError(const QByteArray &cond)
 	{
-			// zhttp conditions:
-			//  remote-connection-failed
-			//  connection-timeout
-			//  tls-error
-			//  bad-request
-			//  policy-violation
-			//  max-size-exceeded
-			//  session-timeout
-			//  cancel
+		// zhttp conditions:
+		//  remote-connection-failed
+		//  connection-timeout
+		//  tls-error
+		//  bad-request
+		//  policy-violation
+		//  max-size-exceeded
+		//  session-timeout
+		//  cancel
 
-			if(cond == "policy-violation")
-				return ErrorPolicy;
-			else if(cond == "remote-connection-failed")
-				return ErrorConnect;
-			else if(cond == "tls-error")
-				return ErrorTls;
-			else if(cond == "length-required")
-				return ErrorLengthRequired;
-			else if(cond == "connection-timeout")
-				return ErrorConnectTimeout;
-			else // lump the rest as generic
-				return ErrorGeneric;
+		if(cond == "policy-violation")
+			return ErrorPolicy;
+		else if(cond == "remote-connection-failed")
+			return ErrorConnect;
+		else if(cond == "tls-error")
+			return ErrorTls;
+		else if(cond == "length-required")
+			return ErrorLengthRequired;
+		else if(cond == "connection-timeout")
+			return ErrorConnectTimeout;
+		else // lump the rest as generic
+			return ErrorGeneric;
 	}
 
 public slots:

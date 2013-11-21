@@ -27,8 +27,6 @@
 #include "inspectdata.h"
 #include "inspectmanager.h"
 
-#define REQUEST_TIMEOUT 8
-
 class InspectRequest::Private : public QObject
 {
 	Q_OBJECT
@@ -98,10 +96,13 @@ public slots:
 		p.uri = hdata.uri;
 		p.headers = hdata.headers;
 
-		timer = new QTimer(this);
-		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
-		timer->setSingleShot(true);
-		timer->start(REQUEST_TIMEOUT * 1000);
+		if(manager->timeout() >= 0)
+		{
+			timer = new QTimer(this);
+			connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+			timer->setSingleShot(true);
+			timer->start(manager->timeout());
+		}
 
 		manager->write(p);
 	}

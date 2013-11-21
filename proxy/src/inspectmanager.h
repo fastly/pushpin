@@ -33,7 +33,10 @@ public:
 	InspectManager(QObject *parent = 0);
 	~InspectManager();
 
+	int timeout() const;
+
 	bool setSpec(const QString &spec);
+	void setTimeout(int ms);
 
 	InspectRequest *createRequest();
 

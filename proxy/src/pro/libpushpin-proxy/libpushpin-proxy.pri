@@ -55,7 +55,8 @@ HEADERS += \
 	$$SRC_DIR/xffrule.h \
 	$$SRC_DIR/inspectchecker.h \
 	$$SRC_DIR/requestsession.h \
-	$$SRC_DIR/proxysession.h
+	$$SRC_DIR/proxysession.h \
+	$$SRC_DIR/engine.h
 
 SOURCES += \
 	$$SRC_DIR/jwt.cpp \
@@ -67,4 +68,5 @@ SOURCES += \
 	$$SRC_DIR/domainmap.cpp \
 	$$SRC_DIR/inspectchecker.cpp \
 	$$SRC_DIR/requestsession.cpp \
-	$$SRC_DIR/proxysession.cpp
+	$$SRC_DIR/proxysession.cpp \
+	$$SRC_DIR/engine.cpp

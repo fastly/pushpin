@@ -1,4 +1,5 @@
 TEMPLATE = subdirs
 
 SUBDIRS += \
-	pro/jwttest
+	pro/jwttest \
+	pro/enginetest
