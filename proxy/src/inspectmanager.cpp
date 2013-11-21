@@ -44,8 +44,8 @@ public:
 	Private(InspectManager *_q) :
 		QObject(_q),
 		q(_q),
-		req_sock(0),
-		timeout(-1)
+		timeout(-1),
+		req_sock(0)
 	{
 	}
 
