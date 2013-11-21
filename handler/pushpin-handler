@@ -79,6 +79,7 @@ logger.addHandler(logger_handler)
 
 instance_id = "pushpin-handler"
 
+m2a_in_stream_specs = config.get("handler", "m2a_in_stream_specs").split(",")
 m2a_out_specs = config.get("handler", "m2a_out_specs").split(",")
 
 if config.has_option("handler", "share_all") and config.get("handler", "share_all") == "true":
@@ -105,6 +106,7 @@ class Hold(object):
 		self.origin = origin
 		self.jsonp_callback = jsonp_callback
 		self.expire_time = None
+		self.last_keepalive = None
 
 lock = threading.Lock()
 response_channels = dict()
@@ -316,6 +318,7 @@ def accept_worker():
 			rid = (req["rid"]["sender"], req["rid"]["id"])
 
 			h = Hold(rid, mode, response, req.get("auto-cross-origin"), origin, req.get("jsonp-callback"))
+			h.last_keepalive = int(time.time())
 
 			if mode == "response":
 				logger.debug("adding response hold on %s" % channel)
@@ -555,6 +558,39 @@ def push_in_worker(c):
 
 	in_sock.close()
 
+def session_worker():
+	in_sock = ctx.socket(zmq.DEALER)
+	in_sock.identity = instance_id
+	for spec in m2a_in_stream_specs:
+		in_sock.connect(spec)
+
+	while True:
+		m_list = in_sock.recv_multipart()
+		m = tnetstring.loads(m_list[1][1:])
+		logger.debug('IN session: %s' % m)
+		mtype = m.get('type')
+		if mtype is not None and (mtype == 'error' or mtype == 'cancel'):
+			rid = (m['from'], m['id'])
+			logger.debug('cleaning up subscriber %s' % repr(rid))
+			lock.acquire()
+			channels = set()
+			for channel, hchannels in response_channels.iteritems():
+				channels.add(channel)
+				if rid in hchannels:
+					del hchannels[rid]
+			for channel in channels:
+				if channel in response_channels and len(response_channels[channel]) == 0:
+					del response_channels[channel]
+			channels = set()
+			for channel, hchannels in stream_channels.iteritems():
+				channels.add(channel)
+				if rid in hchannels:
+					del hchannels[rid]
+			for channel in channels:
+				if channel in stream_channels and len(stream_channels[channel]) == 0:
+					del stream_channels[channel]
+			lock.release()
+
 def timeout_worker():
 	out_sock = ctx.socket(zmq.PUB)
 	for spec in m2a_out_specs:
@@ -647,6 +683,34 @@ def timeout_worker():
 
 					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
 
+		now = int(time.time())
+		rids = set()
+		lock.acquire()
+		for channel, hchannels in response_channels.iteritems():
+			for h in hchannels.values():
+				if h.last_keepalive is None or h.last_keepalive + 30 < now:
+					if h.rid not in rids:
+						h.last_keepalive = now
+						rids.add(h.rid)
+		for channel, hchannels in stream_channels.iteritems():
+			for h in hchannels.values():
+				if h.last_keepalive is None or h.last_keepalive + 30 < now:
+					if h.rid not in rids:
+						h.last_keepalive = now
+						rids.add(h.rid)
+		lock.release()
+
+		if len(rids) > 0:
+			logger.debug("keep-aliving %d subscribers" % len(rids))
+			for rid in rids:
+				out = dict()
+				out['from'] = instance_id
+				out['id'] = rid[1]
+				out['type'] = 'keep-alive'
+				m_raw = rid[0] + ' T' + tnetstring.dumps(out)
+				logger.debug('OUT publish: %s' % m_raw)
+				out_sock.send(m_raw)
+
 		time.sleep(1)
 
 inspect_thread = threading.Thread(target=inspect_worker)
@@ -668,6 +732,10 @@ push_in_zmq_thread.start()
 
 push_in_http_thread = threading.Thread(target=push_in_http_worker)
 push_in_http_thread.start()
+
+session_thread = threading.Thread(target=session_worker)
+session_thread.daemon = True
+session_thread.start()
 
 timeout_thread = threading.Thread(target=timeout_worker)
 timeout_thread.daemon = True

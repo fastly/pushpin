@@ -602,7 +602,7 @@ public:
 	{
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
 
-		log_debug("zhttp: OUT %s", buf.mid(0, 1000).data());
+		log_debug("zhttp: OUT instance=%s %s", instanceAddress.data(), buf.mid(0, 1000).data());
 
 		QList<QByteArray> message;
 		message += instanceAddress;
