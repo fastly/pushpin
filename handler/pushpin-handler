@@ -302,6 +302,11 @@ def accept_worker():
 			if response is None:
 				response = dict()
 				response["body"] = ""
+			if "headers" in response and isinstance(response["headers"], list):
+				d = dict()
+				for i in response["headers"]:
+					d[i[0]] = i[1]
+				response["headers"] = d
 			if "body-bin" in response:
 				response["body"] = b64decode(response["body-bin"])
 				del response["body-bin"]
@@ -359,11 +364,6 @@ def accept_worker():
 
 				if "headers" in response:
 					rheaders = response["headers"]
-					if isinstance(rheaders, list):
-						d = dict()
-						for i in rheaders:
-							d[i[0]] = i[1]
-						rheaders = d
 				else:
 					rheaders = dict()
 
