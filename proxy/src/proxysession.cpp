@@ -305,6 +305,12 @@ public:
 			requestData.headers.removeAll("Transfer-Encoding");
 			requestData.headers.removeAll("Expect");
 
+			// rewrite the Host header to match the hostname of the destination URL.
+			//   in practice, the only time the value should ever be different is
+			//   if the original Host header had a port specified
+			requestData.headers.removeAll("Host");
+			requestData.headers += HttpHeader("Host", requestData.uri.host().toUtf8());
+
 			if(!trustedClient)
 			{
 				// remove/replace Grip-Sig
