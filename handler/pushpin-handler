@@ -359,6 +359,11 @@ def accept_worker():
 
 				if "headers" in response:
 					rheaders = response["headers"]
+					if isinstance(rheaders, list):
+						d = dict()
+						for i in rheaders:
+							d[i[0]] = i[1]
+						rheaders = d
 				else:
 					rheaders = dict()
 
@@ -487,6 +492,11 @@ def push_in_worker(c):
 
 			if "headers" in http_response:
 				pheaders = http_response["headers"]
+				if isinstance(pheaders, list):
+					d = dict()
+					for i in pheaders:
+						d[i[0]] = i[1]
+					pheaders = d
 			else:
 				pheaders = dict()
 
