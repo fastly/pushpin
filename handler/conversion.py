@@ -31,9 +31,13 @@ def convert_json_transport(t):
 	if "reason" in t:
 		out["reason"] = ensure_utf8(t["reason"])
 	if "headers" in t:
-		headers = dict()
-		for k, v in t["headers"].iteritems():
-			headers[ensure_utf8(k)] = ensure_utf8(v)
+		headers = list()
+		if isinstance(t["headers"], list):
+			for i in t["headers"]:
+				headers.append([ensure_utf8(i[0]), ensure_utf8(i[1])])
+		else:
+			for k, v in t["headers"].iteritems():
+				headers.append([ensure_utf8(k), ensure_utf8(v)])
 		out["headers"] = headers
 	if "body-bin" in t:
 		out["body"] = ensure_utf8(b64decode(t["body-bin"]))
