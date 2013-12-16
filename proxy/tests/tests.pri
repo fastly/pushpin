@@ -10,6 +10,7 @@ COMMON_DIR = $$PWD/../../common
 DESTDIR = $$TESTS_DIR
 
 LIBS += -L$$SRC_DIR -lpushpin-proxy
+PRE_TARGETDEPS += $$PWD/../src/libpushpin-proxy.a
 include($$PWD/../conf.pri)
 
 INCLUDEPATH += $$SRC_DIR
