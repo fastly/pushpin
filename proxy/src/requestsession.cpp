@@ -99,6 +99,85 @@ static bool validMethod(const QByteArray &in)
 	return true;
 }
 
+static bool isSimpleHeader(const QByteArray &in)
+{
+	return (qstricmp(in.data(), "Cache-Control") == 0 ||
+		qstricmp(in.data(), "Content-Language") == 0 ||
+		qstricmp(in.data(), "Content-Length") == 0 ||
+		qstricmp(in.data(), "Content-Type") == 0 ||
+		qstricmp(in.data(), "Expires") == 0 ||
+		qstricmp(in.data(), "Last-Modified") == 0 ||
+		qstricmp(in.data(), "Pragma") == 0);
+}
+
+static bool headerNamesContains(const QList<QByteArray> &names, const QByteArray &name)
+{
+	foreach(const QByteArray &i, names)
+	{
+		if(qstricmp(name.data(), i.data()) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+static bool headerNameStartsWith(const QByteArray &name, const char *value)
+{
+	return (qstrnicmp(name.data(), value, qstrlen(value)) == 0);
+}
+
+static void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHeaders)
+{
+	if(!responseHeaders->contains("Access-Control-Allow-Methods"))
+	{
+		QByteArray method = requestHeaders.get("Access-Control-Request-Method");
+
+		if(!method.isEmpty())
+			*responseHeaders += HttpHeader("Access-Control-Allow-Method", method);
+		else
+			*responseHeaders += HttpHeader("Access-Control-Allow-Methods", "OPTIONS, HEAD, GET, POST, PUT, DELETE");
+	}
+
+	if(!responseHeaders->contains("Access-Control-Allow-Headers"))
+	{
+		QList<QByteArray> allowHeaders;
+		foreach(const QByteArray &h, requestHeaders.getAll("Access-Control-Request-Headers", true))
+		{
+			if(!h.isEmpty())
+				allowHeaders += h;
+		}
+
+		if(!allowHeaders.isEmpty())
+			*responseHeaders += HttpHeader("Access-Control-Allow-Headers", HttpHeaders::join(allowHeaders));
+	}
+
+	if(!responseHeaders->contains("Access-Control-Expose-Headers"))
+	{
+		QList<QByteArray> exposeHeaders;
+		foreach(const HttpHeader &h, *responseHeaders)
+		{
+			if(!isSimpleHeader(h.first) && !headerNameStartsWith(h.first, "Access-Control-") && !headerNamesContains(exposeHeaders, h.first))
+				exposeHeaders += h.first;
+		}
+
+		if(!exposeHeaders.isEmpty())
+			*responseHeaders += HttpHeader("Access-Control-Expose-Headers", HttpHeaders::join(exposeHeaders));
+	}
+
+	if(!responseHeaders->contains("Access-Control-Allow-Credentials"))
+		*responseHeaders += HttpHeader("Access-Control-Allow-Credentials", "true");
+
+	if(!responseHeaders->contains("Access-Control-Allow-Origin"))
+	{
+		QByteArray origin = requestHeaders.get("Origin");
+
+		if(origin.isEmpty())
+			origin = "*";
+
+		*responseHeaders += HttpHeader("Access-Control-Allow-Origin", origin);
+	}
+}
+
 class RequestSession::Private : public QObject
 {
 	Q_OBJECT
@@ -723,18 +802,7 @@ public slots:
 			else
 			{
 				if(autoCrossOrigin)
-				{
-					if(!responseData.headers.contains("Access-Control-Allow-Origin"))
-					{
-						QByteArray origin = requestData.headers.get("Origin");
-
-						if(origin.isEmpty())
-							origin = "*";
-
-						responseData.headers += HttpHeader("Access-Control-Allow-Origin", origin);
-						responseData.headers += HttpHeader("Access-Control-Allow-Methods", "OPTIONS, HEAD, GET, POST, PUT, DELETE");
-					}
-				}
+					applyCorsHeaders(requestData.headers, &responseData.headers);
 
 				connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
 

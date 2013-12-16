@@ -87,23 +87,15 @@ if config.has_option("handler", "share_all") and config.get("handler", "share_al
 else:
 	share_all = False
 
-simple_headers = set()
-simple_headers.add("Cache-Control")
-simple_headers.add("Content-Language")
-simple_headers.add("Content-Type")
-simple_headers.add("Expires")
-simple_headers.add("Last-Modified")
-simple_headers.add("Pragma")
-
 ctx = zmq.Context()
 
 class Hold(object):
-	def __init__(self, rid, mode, response, auto_cross_origin, origin, jsonp_callback):
+	def __init__(self, rid, request, mode, response, auto_cross_origin, jsonp_callback):
 		self.rid = rid
+		self.request = request
 		self.mode = mode
 		self.response = response
 		self.auto_cross_origin = auto_cross_origin
-		self.origin = origin
 		self.jsonp_callback = jsonp_callback
 		self.expire_time = None
 		self.last_keepalive = None
@@ -115,24 +107,46 @@ stream_channels = dict()
 
 def header_get(headers, name):
 	lname = name.lower()
-	for k, v in headers.iteritems():
-		if k.lower() == lname:
-			return v
+	if isinstance(headers, list):
+		for i in headers:
+			if i[0].lower() == lname:
+				return i[1]
+	else:
+		for k, v in headers.iteritems():
+			if k.lower() == lname:
+				return v
 	return None
 
 def header_remove(headers, name):
-	for k in headers.keys():
-		if k.lower() == name:
-			del headers[k]
-			return
+	lname = name.lower()
+	if isinstance(headers, list):
+		for n, i in enumerate(headers):
+			if i[0].lower() == lname:
+				del headers[n]
+				break
+	else:
+		for k in headers.keys():
+			if k.lower() == lname:
+				del headers[k]
+				break
+
+def header_set(headers, name, value):
+	header_remove(headers, name)
+	headers[name] = value
+
+def header_names_contains(header_names, name):
+	lname = name.lower()
+	for i in header_names:
+		if i.lower() == lname:
+			return True
+	return False
 
 HTTP_FORMAT = "HTTP/1.1 %(code)s %(status)s\r\n%(headers)s\r\n\r\n%(body)s"
 HTTP_FORMAT_NOHEADERS = "HTTP/1.1 %(code)s %(status)s\r\n\r\n%(body)s"
 
 def http_response(body, code, status, headers):
 	payload = {"code": code, "status": status, "body": body}
-	header_remove(headers, "content-length")
-	headers["Content-Length"] = len(body)
+	header_set(headers, "Content-Length", str(len(body)))
 	payload["headers"] = "\r\n".join("%s: %s" % (k, v) for k, v in
 		headers.items())
 
@@ -140,7 +154,7 @@ def http_response(body, code, status, headers):
 
 def http_response_nolen(body, code, status, headers):
 	payload = {"code": code, "status": status, "body": body}
-	header_remove(headers, "content-length")
+	header_remove(headers, "Content-Length")
 
 	if len(headers) > 0:
 		payload["headers"] = "\r\n".join("%s: %s" % (k, v) for k, v in
@@ -199,9 +213,10 @@ def reply_http(sock, rid, code, reason, headers, body, nolen=False):
 	if isinstance(body, unicode):
 		body = body.encode("utf-8")
 
-	header_remove(headers, "content-length")
-	if not nolen:
-		headers["Content-Length"] = str(len(body))
+	if nolen:
+		header_remove(headers, "Content-Length")
+	else:
+		header_set(headers, "Content-Length", str(len(body)))
 
 	out = dict()
 	out["from"] = instance_id
@@ -231,6 +246,53 @@ def reply_http_chunk(sock, rid, content):
 	m_raw = rid[0] + " T" + tnetstring.dumps(out)
 	logger.debug("OUT publish: %s" % m_raw)
 	sock.send(m_raw)
+
+simple_headers = set()
+simple_headers.add("Cache-control")
+simple_headers.add("Content-Language")
+simple_headers.add("Content-Length")
+simple_headers.add("Content-Type")
+simple_headers.add("Expires")
+simple_headers.add("Last-Modified")
+simple_headers.add("Pragma")
+
+# modifies response_headers as needed
+def apply_cors_headers(request_headers, response_headers):
+	if not header_get(response_headers, "Access-Control-Allow-Methods"):
+		acr_method = header_get(request_headers, "Access-Control-Request-Method")
+		if acr_method:
+			header_set(response_headers, "Access-Control-Allow-Methods", acr_method)
+		else:
+			header_set(response_headers, "Access-Control-Allow-Methods", "OPTIONS, HEAD, GET, POST, PUT, DELETE")
+
+	if not header_get(response_headers, "Access-Control-Allow-Headers"):
+		acr_headers = header_get(request_headers, "Access-Control-Request-Headers")
+		allow_headers = list();
+		if acr_headers:
+			for name in acr_headers.split(","):
+				name = name.strip()
+				if name:
+					allow_headers.append(name)
+		if len(allow_headers) > 0:
+			header_set(response_headers, "Access-Control-Allow-Headers", ", ".join(allow_headers))
+
+	if not header_get(response_headers, "Access-Control-Expose-Headers"):
+		expose_headers = list()
+		for name in response_headers.keys():
+			lname = name.lower()
+			if not header_names_contains(simple_headers, name) and not lname.startswith("access-control-") and not header_names_contains(expose_headers, name):
+				expose_headers.append(name)
+		if len(expose_headers) > 0:
+			header_set(response_headers, "Access-Control-Expose-Headers", ", ".join(expose_headers))
+
+	if not header_get(response_headers, "Access-Control-Allow-Credentials"):
+		header_set(response_headers, "Access-Control-Allow-Credentials", "true")
+
+	if not header_get(response_headers, "Access-Control-Allow-Origin"):
+		origin = header_get(request_headers, "Origin")
+		if not origin:
+			origin = "*"
+		header_set(response_headers, "Access-Control-Allow-Origin", origin)
 
 def inspect_worker():
 	sock = ctx.socket(zmq.REP)
@@ -274,14 +336,6 @@ def accept_worker():
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN accept: %s" % m)
 
-		lheaders = m["request-data"]["headers"]
-		headers = dict()
-		for l in lheaders:
-			headers[l[0]] = l[1]
-		origin = header_get(headers, "Origin")
-		if not origin:
-			origin = "*"
-
 		try:
 			instruct = json.loads(m["response"]["body"])
 			hold = instruct["hold"]
@@ -318,11 +372,11 @@ def accept_worker():
 
 		reqs = m["requests"]
 		logger.debug("accepting %d requests" % len(reqs))
-		
+
 		for req in reqs:
 			rid = (req["rid"]["sender"], req["rid"]["id"])
 
-			h = Hold(rid, mode, response, req.get("auto-cross-origin"), origin, req.get("jsonp-callback"))
+			h = Hold(rid, m["request-data"], mode, response, req.get("auto-cross-origin"), req.get("jsonp-callback"))
 			h.last_keepalive = int(time.time())
 
 			if mode == "response":
@@ -515,40 +569,23 @@ def push_in_worker(c):
 					if pheaders:
 						for k, v in pheaders.iteritems():
 							result["headers"][k] = v
-					result["headers"]["Content-Length"] = str(len(pbody))
+					header_set(result["headers"], "Content-Length", str(len(pbody)))
 					result["body"] = pbody
 
 					body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
-					headers["Content-Type"] = "application/javascript"
-					headers["Content-Length"] = str(len(body))
+					header_set(headers, "Content-Type", "application/javascript")
+					header_set(headers, "Content-Length", str(len(body)))
 					reply_http(out_sock, h.rid, 200, "OK", headers, body)
 				else:
 					if pheaders:
 						for k, v in pheaders.iteritems():
 							headers[k] = v
+
 					if h.auto_cross_origin:
-						acr_headers = headers.get("Access-Control-Request-Headers")
-						ace_headers = list();
-						if acr_headers:
-							for name in acr_headers.split(","):
-								name = name.strip()
-								if name:
-									ace_headers.append(name)
-
-						expose_headers = list()
-						for name in headers.keys():
-							if name not in simple_headers and not name.startswith("Access-Control-"):
-								expose_headers.append(name)
-
-						headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE"
-						if len(ace_headers) > 0:
-							headers["Access-Control-Allow-Headers"] = ", ".join(ace_headers)
-						if len(expose_headers) > 0:
-							headers["Access-Control-Expose-Headers"] = ", ".join(expose_headers)
-						headers["Access-Control-Allow-Credentials"] = "true"
-						headers["Access-Control-Allow-Origin"] = h.origin
+						apply_cors_headers(h.request["headers"], headers)
 
 					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
+
 				if n % 10 == 0:
 					time.sleep(0.0005)
 
@@ -658,38 +695,20 @@ def timeout_worker():
 					if pheaders:
 						for k, v in pheaders.iteritems():
 							result["headers"][k] = v
-					result["headers"]["Content-Length"] = str(len(pbody))
+					header_set(result["headers"], "Content-Length", str(len(pbody)))
 					result["body"] = pbody
 
 					body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
-					headers["Content-Type"] = "application/javascript"
-					headers["Content-Length"] = str(len(body))
+					header_set(headers, "Content-Type", "application/javascript")
+					header_set(headers, "Content-Length", str(len(body)))
 					reply_http(out_sock, h.rid, 200, "OK", headers, body)
 				else:
 					if pheaders:
 						for k, v in pheaders.iteritems():
 							headers[k] = v
+
 					if h.auto_cross_origin:
-						acr_headers = headers.get("Access-Control-Request-Headers")
-						ace_headers = list();
-						if acr_headers:
-							for name in acr_headers.split(","):
-								name = name.strip()
-								if name:
-									ace_headers.append(name)
-
-						expose_headers = list()
-						for name in headers.keys():
-							if name not in simple_headers and not name.startswith("Access-Control-"):
-								expose_headers.append(name)
-
-						headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE"
-						if len(ace_headers) > 0:
-							headers["Access-Control-Allow-Headers"] = ", ".join(ace_headers)
-						if len(expose_headers) > 0:
-							headers["Access-Control-Expose-Headers"] = ", ".join(expose_headers)
-						headers["Access-Control-Allow-Credentials"] = "true"
-						headers["Access-Control-Allow-Origin"] = h.origin
+						apply_cors_headers(h.request["headers"], headers)
 
 					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
 
