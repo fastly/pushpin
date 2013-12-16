@@ -133,7 +133,7 @@ static void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *res
 		QByteArray method = requestHeaders.get("Access-Control-Request-Method");
 
 		if(!method.isEmpty())
-			*responseHeaders += HttpHeader("Access-Control-Allow-Method", method);
+			*responseHeaders += HttpHeader("Access-Control-Allow-Methods", method);
 		else
 			*responseHeaders += HttpHeader("Access-Control-Allow-Methods", "OPTIONS, HEAD, GET, POST, PUT, DELETE");
 	}
