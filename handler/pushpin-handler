@@ -364,8 +364,10 @@ def accept_worker():
 			if "body-bin" in response:
 				response["body"] = b64decode(response["body-bin"])
 				del response["body-bin"]
-			else:
+			elif "body" in response:
 				response["body"] = response["body"].encode("utf-8")
+			else:
+				response["body"] = ""
 		except:
 			logger.debug("failed to parse accept instructions")
 			continue
