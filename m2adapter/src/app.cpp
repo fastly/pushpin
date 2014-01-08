@@ -1279,24 +1279,28 @@ private slots:
 					overhead += mresp.data.size();
 				}
 
-				if(s->chunked)
+				if(!zresp.body.isEmpty())
 				{
-					QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
-					QByteArray chunkFooter = makeChunkFooter();
-
-					mresp.data += chunkHeader + zresp.body + chunkFooter;
-					overhead += chunkHeader.size() + chunkFooter.size();
-
-					if(!zresp.more)
+					if(s->chunked)
 					{
-						chunkHeader = makeChunkHeader(0);
+						QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
+						QByteArray chunkFooter = makeChunkFooter();
 
-						mresp.data += chunkHeader + chunkFooter;
+						mresp.data += chunkHeader + zresp.body + chunkFooter;
 						overhead += chunkHeader.size() + chunkFooter.size();
 					}
+					else
+						mresp.data += zresp.body;
 				}
-				else
-					mresp.data += zresp.body;
+
+				if(!zresp.more && s->chunked)
+				{
+					QByteArray chunkHeader = makeChunkHeader(0);
+					QByteArray chunkFooter = makeChunkFooter();
+
+					mresp.data += chunkHeader + chunkFooter;
+					overhead += chunkHeader.size() + chunkFooter.size();
+				}
 
 				m2_out_write(mresp);
 
