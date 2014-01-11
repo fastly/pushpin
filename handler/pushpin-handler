@@ -77,7 +77,7 @@ formatter = logging.Formatter(fmt='%(levelname)s %(asctime)s.%(msecs)03d %(messa
 logger_handler.setFormatter(formatter)
 logger.addHandler(logger_handler)
 
-instance_id = "pushpin-handler"
+instance_id = "pushpin-handler_%d" % os.getpid()
 
 m2a_in_stream_specs = config.get("handler", "m2a_in_stream_specs").split(",")
 m2a_out_specs = config.get("handler", "m2a_out_specs").split(",")
@@ -86,6 +86,11 @@ if config.has_option("handler", "share_all") and config.get("handler", "share_al
 	share_all = True
 else:
 	share_all = False
+
+if config.has_option("handler", "stats_spec"):
+	stats_spec = config.get("handler", "stats_spec")
+else:
+	stats_spec = None
 
 ctx = zmq.Context()
 
@@ -100,10 +105,20 @@ class Hold(object):
 		self.expire_time = None
 		self.last_keepalive = None
 
+class Subscription(object):
+	def __init__(self, mode, channel):
+		self.mode = mode
+		self.channel = channel
+		self.expire_time = None
+		self.last_keepalive = None
+
 lock = threading.Lock()
 response_channels = dict()
 response_lastids = dict()
 stream_channels = dict()
+
+# key=(type, channel)
+subs = dict()
 
 def header_get(headers, name):
 	lname = name.lower()
@@ -331,6 +346,9 @@ def accept_worker():
 	retry_sock = ctx.socket(zmq.PUSH)
 	retry_sock.connect(config.get("handler", "proxy_retry_out_spec"))
 
+	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.connect('inproc://stats_in')
+
 	while True:
 		m_raw = sock.recv()
 		m = tnetstring.loads(m_raw)
@@ -379,8 +397,10 @@ def accept_worker():
 			rid = (req["rid"]["sender"], req["rid"]["id"])
 
 			h = Hold(rid, m["request-data"], mode, response, req.get("auto-cross-origin"), req.get("jsonp-callback"))
-			h.last_keepalive = int(time.time())
+			now = int(time.time())
+			h.last_keepalive = now
 
+			notify_sub = False
 			if mode == "response":
 				logger.debug("adding response hold on %s" % channel)
 				h.expire_time = int(time.time()) + timeout
@@ -405,6 +425,14 @@ def accept_worker():
 					hchannel = dict()
 					response_channels[channel] = hchannel
 				hchannel[rid] = h
+				sub_key = (mode, channel)
+				sub = subs.get(sub_key)
+				if not sub:
+					sub = Subscription(mode, channel)
+					sub.last_keepalive = now
+					subs[sub_key] = sub
+					notify_sub = True
+				sub.expire_time = None
 				lock.release()
 			else: # stream
 				# initial reply
@@ -434,7 +462,23 @@ def accept_worker():
 					hchannel = dict()
 					stream_channels[channel] = hchannel
 				hchannel[rid] = h
+				sub_key = (mode, channel)
+				sub = subs.get(sub_key)
+				if not sub:
+					sub = Subscription(mode, channel)
+					sub.last_keepalive = now
+					subs[sub_key] = sub
+					notify_sub = True
+				sub.expire_time = None
 				lock.release()
+
+			if notify_sub:
+				out = dict()
+				out['from'] = instance_id
+				out['mode'] = ensure_utf8(mode)
+				out['channel'] = ensure_utf8(channel)
+				out['ttl'] = 60
+				stats_sock.send(tnetstring.dumps(out))
 
 	sock.close()
 
@@ -529,6 +573,11 @@ def push_in_worker(c):
 				del response_channels[channel]
 			else:
 				holds = list()
+			sub_key = ('response', channel)
+			sub = subs.get(sub_key)
+			if sub and sub.expire_time is None:
+				# flag for deletion soon
+				sub.expire_time = int(time.time()) + 60
 			item_id = m.get("id")
 			if item_id is not None:
 				response_lastids[channel] = item_id
@@ -592,6 +641,7 @@ def push_in_worker(c):
 					time.sleep(0.0005)
 
 		if "http-stream" in m:
+			# TODO: support close action and report immediate unsubscribe via stats
 			lock.acquire()
 			hchannel = stream_channels.get(channel)
 			if hchannel:
@@ -613,14 +663,19 @@ def session_worker():
 	for spec in m2a_in_stream_specs:
 		in_sock.connect(spec)
 
+	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.connect('inproc://stats_in')
+
 	while True:
 		m_list = in_sock.recv_multipart()
 		m = tnetstring.loads(m_list[1][1:])
 		logger.debug('IN session: %s' % m)
 		mtype = m.get('type')
+		notify_unsubs = set()
 		if mtype is not None and (mtype == 'error' or mtype == 'cancel'):
 			rid = (m['from'], m['id'])
 			logger.debug('cleaning up subscriber %s' % repr(rid))
+			now = int(time.time())
 			lock.acquire()
 			channels = set()
 			for channel, hchannels in response_channels.iteritems():
@@ -630,6 +685,11 @@ def session_worker():
 			for channel in channels:
 				if channel in response_channels and len(response_channels[channel]) == 0:
 					del response_channels[channel]
+					sub_key = ('response', channel)
+					sub = subs.get(sub_key)
+					if sub and sub.expire_time is None:
+						# flag for deletion soon
+						sub.expire_time = now + 60
 			channels = set()
 			for channel, hchannels in stream_channels.iteritems():
 				channels.add(channel)
@@ -638,12 +698,28 @@ def session_worker():
 			for channel in channels:
 				if channel in stream_channels and len(stream_channels[channel]) == 0:
 					del stream_channels[channel]
+					sub_key = ('stream', channel)
+					sub = subs.get(sub_key)
+					if sub:
+						del subs[sub_key]
+						notify_unsubs.add(sub_key)
 			lock.release()
+
+		for sub_key in notify_unsubs:
+			out = dict()
+			out['from'] = instance_id
+			out['mode'] = ensure_utf8(sub_key[0])
+			out['channel'] = ensure_utf8(sub_key[1])
+			out['unavailable'] = True
+			stats_sock.send(tnetstring.dumps(out))
 
 def timeout_worker():
 	out_sock = ctx.socket(zmq.PUB)
 	for spec in m2a_out_specs:
 		out_sock.connect(spec)
+
+	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.connect('inproc://stats_in')
 
 	while True:
 		now = int(time.time())
@@ -662,6 +738,11 @@ def timeout_worker():
 		for channel in channels:
 			if channel in response_channels and len(response_channels[channel]) == 0:
 				del response_channels[channel]
+				sub_key = ('response', channel)
+				sub = subs.get(sub_key)
+				if sub and sub.expire_time is None:
+					# flag for deletion soon
+					sub.expire_time = now + 60
 		lock.release()
 
 		if len(holds) > 0:
@@ -742,10 +823,70 @@ def timeout_worker():
 				logger.debug('OUT publish: %s' % m_raw)
 				out_sock.send(m_raw)
 
+		notify_subs = set()
+		notify_unsubs = set()
+		lock.acquire()
+		for sub_key, sub in subs.iteritems():
+			if sub.expire_time is not None and now >= sub.expire_time:
+				notify_unsubs.add(sub_key)
+			elif sub.last_keepalive is None or sub.last_keepalive + 30 < now:
+				sub.last_keepalive = now
+				notify_subs.add(sub_key)
+		for sub_key in notify_unsubs:
+			del subs[sub_key]
+		lock.release()
+
+		for sub_key in notify_unsubs:
+			out = dict()
+			out['from'] = instance_id
+			out['mode'] = ensure_utf8(sub_key[0])
+			out['channel'] = ensure_utf8(sub_key[1])
+			out['unavailable'] = True
+			stats_sock.send(tnetstring.dumps(out))
+
+		if len(notify_subs) > 0:
+			logger.debug('keep-aliving %d subscriptions' % len(notify_subs))
+			for sub_key in notify_subs:
+				out = dict()
+				out['from'] = instance_id
+				out['mode'] = ensure_utf8(sub_key[0])
+				out['channel'] = ensure_utf8(sub_key[1])
+				out['ttl'] = 60
+				stats_sock.send(tnetstring.dumps(out))
+
 		time.sleep(1)
+
+def stats_worker(c):
+	in_sock = ctx.socket(zmq.PULL)
+	in_sock.bind('inproc://stats_in')
+	c.acquire()
+	c.notify()
+	c.release()
+
+	if stats_spec:
+		out_sock = ctx.socket(zmq.PUB)
+		out_sock.bind(stats_spec)
+	else:
+		out_sock = None
+
+	while True:
+		m = tnetstring.loads(in_sock.recv())
+		if out_sock:
+			m_raw = 'sub T' + tnetstring.dumps(m)
+			logger.debug('OUT stats: %s' % m_raw)
+			out_sock.send(m_raw)
 
 inspect_thread = threading.Thread(target=inspect_worker)
 inspect_thread.start()
+
+# we use a condition here to ensure the inproc bind succeeds before progressing
+c = threading.Condition()
+c.acquire()
+stats_thread = threading.Thread(target=stats_worker, args=(c,))
+stats_thread.daemon = True
+stats_thread.start()
+c.wait()
+c.release()
 
 accept_thread = threading.Thread(target=accept_worker)
 accept_thread.start()

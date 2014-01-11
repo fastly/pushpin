@@ -107,3 +107,6 @@ push_in_spec=tcp://127.0.0.1:5560
 # addr/port to listen on for receiving publish commands via HTTP
 push_in_http_addr=127.0.0.1
 push_in_http_port=5561
+
+# bind PUB for sending stats (metrics, subscription info, etc)
+stats_spec=ipc:///tmp/pushpin-stats
