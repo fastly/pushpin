@@ -410,6 +410,7 @@ def accept_worker():
 					if last_id is not None and last_id != prev_id:
 						del response_lastids[channel]
 						lock.release()
+						# FIXME: we need to do a handoff confirmation with m2adapter before passing this off
 						logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
 						r = dict()
 						r["requests"] = m["requests"]
@@ -434,6 +435,15 @@ def accept_worker():
 					notify_sub = True
 				sub.expire_time = None
 				lock.release()
+
+				# ack
+				out = dict()
+				out['from'] = instance_id
+				out['id'] = rid[1]
+				out['type'] = 'keep-alive'
+				m_raw = rid[0] + ' T' + tnetstring.dumps(out)
+				logger.debug('OUT publish (ack response accept): %s' % m_raw)
+				out_sock.send(m_raw)
 			else: # stream
 				# initial reply
 				if "code" in response:
