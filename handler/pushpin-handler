@@ -410,7 +410,7 @@ def accept_worker():
 					if last_id is not None and last_id != prev_id:
 						del response_lastids[channel]
 						lock.release()
-						# FIXME: we need to do a handoff confirmation with m2adapter before passing this off
+						# note: we don't need to do a handoff here because we didn't ack to take over yet
 						logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
 						r = dict()
 						r["requests"] = m["requests"]

@@ -221,6 +221,11 @@ public:
 
 		refreshTimeout();
 		startKeepAlive();
+
+		// send a keep-alive right away to accept after handoff
+		ZhttpResponsePacket p;
+		p.type = ZhttpResponsePacket::KeepAlive;
+		writePacket(p);
 	}
 
 	void startClient()
