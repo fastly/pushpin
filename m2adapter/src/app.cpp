@@ -42,6 +42,7 @@
 #define STATUS_INTERVAL 250
 #define M2_KEEPALIVE_INTERVAL 90000
 #define SESSION_EXPIRE 60000
+#define CONTROL_REQUEST_EXPIRE 30000
 
 //#define CONTROL_PORT_DEBUG
 
@@ -109,11 +110,13 @@ public:
 		QZmq::Socket *sock;
 		State state;
 		bool active;
+		int reqStartTime;
 
 		ControlPort() :
 			sock(0),
 			state(Idle),
-			active(false)
+			active(false),
+			reqStartTime(-1)
 		{
 		}
 	};
@@ -146,6 +149,7 @@ public:
 	{
 	public:
 		int lastActive;
+		QByteArray errorCondition;
 
 		// m2 stuff
 		M2Connection *conn;
@@ -394,7 +398,8 @@ public:
 
 			QZmq::Socket *sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 			sock->setShutdownWaitTime(0);
-			sock->setHwm(DEFAULT_HWM);
+			sock->setHwm(1); // queue up 1 outstanding request at most
+			sock->setWriteQueueEnabled(false);
 			connect(sock, SIGNAL(readyRead()), SLOT(m2_control_readyRead()));
 
 			log_info("m2_control connect %s:%s", m2_send_idents[n].data(), qPrintable(spec));
@@ -491,12 +496,20 @@ public:
 		log_info("started");
 	}
 
+	void unlinkConnection(Session *s)
+	{
+		if(s->conn)
+		{
+			s->conn->session = 0; // unlink the M2Connection so that it may be reused
+			s->conn->confirmedWritten = s->conn->written; // don't notify about existing writes
+			sessionsByM2Rid.remove(Rid(m2_send_idents[s->conn->identIndex], s->conn->id));
+			s->conn = 0;
+		}
+	}
+
 	void destroySession(Session *s)
 	{
-		s->conn->session = 0; // unlink the M2Connection so that it may be reused
-		s->conn->confirmedWritten = s->conn->written; // don't notify about existing writes
-
-		sessionsByM2Rid.remove(Rid(m2_send_idents[s->conn->identIndex], s->conn->id));
+		unlinkConnection(s);
 		sessionsByZhttpRid.remove(Rid(instanceId, s->id));
 		delete s;
 	}
@@ -709,16 +722,25 @@ public:
 
 			if(conn->session)
 			{
-				// if a worker had ack'd this session, then send error
-				if(!conn->session->zhttpAddress.isEmpty())
+				Session *s = conn->session;
+
+				// if we are in handoff or haven't received a worker ack, then queue the state
+				if(s->inHandoff || s->zhttpAddress.isEmpty())
+				{
+					s->errorCondition = "disconnected";
+
+					// keep the session around
+					unlinkConnection(s);
+				}
+				else
 				{
 					ZhttpRequestPacket zreq;
 					zreq.type = ZhttpRequestPacket::Error;
 					zreq.condition = "disconnected";
-					zhttp_out_write(conn->session, zreq);
-				}
+					zhttp_out_write(s, zreq);
 
-				destroySession(conn->session);
+					destroySession(s);
+				}
 			}
 
 			m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
@@ -776,15 +798,22 @@ private slots:
 
 			if(conn->session)
 			{
-				// if a worker had ack'd this session, then send cancel
-				if(!conn->session->zhttpAddress.isEmpty())
+				Session *s = conn->session;
+
+				// if we are in handoff or haven't received a worker ack, then queue the state
+				if(s->inHandoff || s->zhttpAddress.isEmpty())
+				{
+					// keep the session around
+					unlinkConnection(s);
+				}
+				else
 				{
 					ZhttpRequestPacket zreq;
 					zreq.type = ZhttpRequestPacket::Cancel;
-					zhttp_out_write(conn->session, zreq);
+					zhttp_out_write(s, zreq);
 				}
 
-				destroySession(conn->session);
+				destroySession(s);
 			}
 
 			m2ConnectionsByRid.remove(rid);
@@ -1017,6 +1046,7 @@ private slots:
 		}
 
 		assert(index != -1);
+		ControlPort &c = controlPorts[index];
 
 		while(sock->canRead())
 		{
@@ -1035,7 +1065,7 @@ private slots:
 				continue;
 			}
 
-			if(controlPorts[index].state != ControlPort::ExpectingResponse)
+			if(c.state != ControlPort::ExpectingResponse)
 			{
 				log_warning("m2: received unexpected control response, skipping");
 				continue;
@@ -1043,7 +1073,8 @@ private slots:
 
 			handleControlResponse(index, data);
 
-			controlPorts[index].state = ControlPort::Idle;
+			c.state = ControlPort::Idle;
+			c.reqStartTime = -1;
 		}
 	}
 
@@ -1180,14 +1211,36 @@ private slots:
 
 		s->lastActive = time.elapsed();
 
+		// a session without a connection is just waiting to report error
+		if(!s->conn)
+		{
+			// if we were in handoff, it's okay to send right now since we'd
+			//   be clearing the handoff state later on in this method anyway
+			if(!s->zhttpAddress.isEmpty())
+			{
+				ZhttpRequestPacket zreq;
+				if(!s->errorCondition.isEmpty())
+				{
+					zreq.type = ZhttpRequestPacket::Error;
+					zreq.condition = s->errorCondition;
+				}
+				else
+					zreq.type = ZhttpRequestPacket::Cancel;
+				zhttp_out_write(s, zreq);
+			}
+
+			destroySession(s);
+			return;
+		}
+
 		if(s->inHandoff)
 		{
 			// receiving any message means handoff is complete
 			s->inHandoff = false;
 
 			// in order to have been in a handoff state, we would have
-			//   had to receive a from address sometime earlier
-			assert(!s->zhttpAddress.isEmpty());
+			//   had to receive a from address sometime earlier, so it
+			//   should be safe to call zhttp_out_write with session.
 
 			if(!s->pendingIn.isEmpty())
 			{
@@ -1395,20 +1448,27 @@ private slots:
 			log_warning("timing out request %s", s->id.data());
 			M2Connection *conn = s->conn;
 			destroySession(s);
-			m2_writeErrorClose(conn);
+			if(conn)
+				m2_writeErrorClose(conn);
 		}
 	}
 
 	void status_timeout()
 	{
+		int now = time.elapsed();
+
 		for(int n = 0; n < controlPorts.count(); ++n)
 		{
-			if(controlPorts[n].state == ControlPort::Idle)
+			ControlPort &c = controlPorts[n];
+
+			// if idle or expired, make request
+			if(c.state == ControlPort::Idle || (c.state == ControlPort::ExpectingResponse && c.reqStartTime + CONTROL_REQUEST_EXPIRE <= now))
 			{
 				// query m2 for connection info (to track bytes written)
 				QVariantHash cmdArgs;
 				cmdArgs["what"] = QByteArray("net");
-				controlPorts[n].state = ControlPort::ExpectingResponse;
+				c.state = ControlPort::ExpectingResponse;
+				c.reqStartTime = now;
 				m2_control_write(n, "status", cmdArgs);
 			}
 		}
