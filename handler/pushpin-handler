@@ -673,6 +673,10 @@ def session_worker():
 	for spec in m2a_in_stream_specs:
 		in_sock.connect(spec)
 
+	out_sock = ctx.socket(zmq.PUB)
+	for spec in m2a_out_specs:
+		out_sock.connect(spec)
+
 	stats_sock = ctx.socket(zmq.PUSH)
 	stats_sock.connect('inproc://stats_in')
 
@@ -714,6 +718,32 @@ def session_worker():
 						del subs[sub_key]
 						notify_unsubs.add(sub_key)
 			lock.release()
+		elif mtype is not None:
+			# is this a known session?
+			rid = (m['from'], m['id'])
+
+			lock.acquire()
+			found = False
+			for hchannels in response_channels.itervalues():
+				if rid in hchannels:
+					found = True
+					break
+			if not found:
+				for hchannels in stream_channels.itervalues():
+					if rid in hchannels:
+						found = True
+						break
+			lock.release()
+
+			if not found:
+				# no such session, send cancel
+				out = dict()
+				out['from'] = instance_id
+				out['id'] = m['id']
+				out['type'] = 'cancel'
+				m_raw = m['from'] + ' T' + tnetstring.dumps(out)
+				logger.debug('OUT publish: %s' % m_raw)
+				out_sock.send(m_raw)
 
 		for sub_key in notify_unsubs:
 			out = dict()
