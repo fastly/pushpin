@@ -302,6 +302,13 @@ public slots:
 			return;
 		}
 
+		if(p.uri.scheme() != "http" && p.uri.scheme() != "https")
+		{
+			log_debug("rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
+			tryRespondCancel(p);
+			return;
+		}
+
 		ZhttpRequest::Rid rid(p.from, p.id);
 
 		ZhttpRequest *req = serverReqsByRid.value(rid);
