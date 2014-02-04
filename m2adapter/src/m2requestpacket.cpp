@@ -54,10 +54,11 @@ static QString makeMixedCaseHeader(const QString &s)
 }
 
 M2RequestPacket::M2RequestPacket() :
-	isDisconnect(false),
+	type((Type)-1),
 	uploadDone(false),
 	uploadStreamOffset(-1),
-	uploadStreamDone(false)
+	uploadStreamDone(false),
+	frameFlags(0)
 {
 }
 
@@ -83,16 +84,16 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		return false;
 
 	start = end + 1;
-	TnetString::Type type;
+	TnetString::Type htype;
 	int offset, size;
-	if(!TnetString::check(in, start, &type, &offset, &size))
+	if(!TnetString::check(in, start, &htype, &offset, &size))
 		return false;
 
-	if(type != TnetString::Hash && type != TnetString::ByteArray)
+	if(htype != TnetString::Hash && htype != TnetString::ByteArray)
 		return false;
 
 	bool ok;
-	QVariant vheaders = TnetString::toVariant(in, start, type, offset, size, &ok);
+	QVariant vheaders = TnetString::toVariant(in, start, htype, offset, size, &ok);
 	if(!ok)
 		return false;
 
@@ -102,7 +103,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 
 	headers.clear(); // will store full headers
 	QMap<QString, QByteArray> m2headers; // single-value map for easy processing
-	if(type == TnetString::Hash)
+	if(htype == TnetString::Hash)
 	{
 		QVariantMap headersMap = vheaders.toMap();
 		QMapIterator<QString, QVariant> vit(headersMap);
@@ -205,10 +206,11 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	}
 
 	start = offset + size + 1;
-	if(!TnetString::check(in, start, &type, &offset, &size))
+	TnetString::Type btype;
+	if(!TnetString::check(in, start, &btype, &offset, &size))
 		return false;
 
-	if(type != TnetString::ByteArray)
+	if(btype != TnetString::ByteArray)
 		return false;
 
 	body = TnetString::toByteArray(in, start, offset, size, &ok);
@@ -234,11 +236,11 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 		if(!data.contains("type") || data["type"].type() != QVariant::String)
 			return false;
 
-		QString type = data["type"].toString();
-		if(type != "disconnect")
+		QString jtype = data["type"].toString();
+		if(jtype != "disconnect")
 			return false;
 
-		isDisconnect = true;
+		type = Disconnect;
 		return true;
 	}
 
@@ -250,6 +252,22 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	remoteAddress = QHostAddress();
 	if(!m2RemoteAddr.isEmpty())
 		remoteAddress = QHostAddress(QString::fromLatin1(m2RemoteAddr));
+
+	if(m2method == "WEBSOCKET_HANDSHAKE")
+	{
+		type = WebSocketHandshake;
+		return true;
+	}
+	else if(m2method == "WEBSOCKET")
+	{
+		type = WebSocketFrame;
+
+		QByteArray flagsStr = m2headers.value("FLAGS");
+		frameFlags = flagsStr.toInt(&ok, 16);
+		return ok;
+	}
+
+	type = HttpRequest;
 
 	QByteArray uploadStartRaw = m2headers.value("x-mongrel2-upload-start");
 	QByteArray uploadDoneRaw = m2headers.value("x-mongrel2-upload-done");

@@ -39,7 +39,7 @@ in_stream_sock.connect('ipc:///tmp/zhttp-test-out-stream')
 out_sock = ctx.socket(zmq.PUB)
 out_sock.connect('ipc:///tmp/zhttp-test-in')
 
-poller = zmq.core.poll.Poller()
+poller = zmq.Poller()
 poller.register(in_sock, zmq.POLLIN)
 poller.register(in_stream_sock, zmq.POLLIN)
 

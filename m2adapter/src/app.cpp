@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Fanout, Inc.
+ * Copyright (C) 2013-2014 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -93,11 +93,55 @@ static bool isErrorPacket(const ZhttpResponsePacket &packet)
 	return (packet.type == ZhttpResponsePacket::Error || packet.type == ZhttpResponsePacket::Cancel);
 }
 
+static void writeBigEndian(char *dest, quint64 value, int bytes)
+{
+	for(int n = 0; n < bytes; ++n)
+		dest[n] = (char)((value >> ((bytes - 1 - n) * 8)) & 0xff);
+}
+
+static QByteArray makeWsHeader(bool fin, int opcode, quint64 size)
+{
+	quint8 b1 = 0;
+	if(fin)
+		b1 |= 0x80;
+	b1 |= (opcode & 0x0f);
+
+	if(size < 126)
+	{
+		QByteArray out(2, 0);
+		out[0] = (char)b1;
+		out[1] = (char)size;
+		return out;
+	}
+	else if(size < 65536)
+	{
+		QByteArray out(4, 0);
+		out[0] = (char)b1;
+		out[1] = (char)126;
+		writeBigEndian(out.data() + 2, size, 2);
+		return out;
+	}
+	else
+	{
+		QByteArray out(10, 0);
+		out[0] = (char)b1;
+		out[1] = (char)127;
+		writeBigEndian(out.data() + 2, size, 8);
+		return out;
+	}
+}
+
 class App::Private : public QObject
 {
 	Q_OBJECT
 
 public:
+	enum Mode
+	{
+		Http,
+		WebSocket
+	};
+
 	class ControlPort
 	{
 	public:
@@ -148,8 +192,12 @@ public:
 	class Session
 	{
 	public:
+		Mode mode;
 		int lastActive;
 		QByteArray errorCondition;
+		QByteArray acceptToken; // for websocket
+		bool downClosed; // for websocket
+		bool upClosed; // for websockets
 
 		// m2 stuff
 		M2Connection *conn;
@@ -160,6 +208,7 @@ public:
 		bool chunked;
 		int readCount;
 		BufferList pendingIn;
+		QList<ZhttpRequestPacket> pendingInPackets;
 		bool inFinished;
 
 		// zhttp stuff
@@ -168,12 +217,13 @@ public:
 		bool sentResponseHeader;
 		int outSeq;
 		int inSeq;
-		int credits;
 		int pendingInCredits;
 		bool inHandoff;
 
 		Session() :
 			lastActive(-1),
+			downClosed(false),
+			upClosed(false),
 			persistent(false),
 			allowChunked(false),
 			respondKeepAlive(false),
@@ -184,7 +234,6 @@ public:
 			sentResponseHeader(false),
 			outSeq(0),
 			inSeq(0),
-			credits(0),
 			pendingInCredits(0),
 			inHandoff(false)
 		{
@@ -721,27 +770,7 @@ public:
 			log_debug("m2: %s id=%s disconnected", m2_send_idents[conn->identIndex].data(), conn->id.data());
 
 			if(conn->session)
-			{
-				Session *s = conn->session;
-
-				// if we are in handoff or haven't received a worker ack, then queue the state
-				if(s->inHandoff || s->zhttpAddress.isEmpty())
-				{
-					s->errorCondition = "disconnected";
-
-					// keep the session around
-					unlinkConnection(s);
-				}
-				else
-				{
-					ZhttpRequestPacket zreq;
-					zreq.type = ZhttpRequestPacket::Error;
-					zreq.condition = "disconnected";
-					zhttp_out_write(s, zreq);
-
-					destroySession(s);
-				}
-			}
+				endSession(conn->session, "disconnected");
 
 			m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
 			delete conn;
@@ -768,6 +797,35 @@ public:
 		}
 	}
 
+	void endSession(Session *s, const QByteArray &errorCondition = QByteArray())
+	{
+		// if we are in handoff or haven't received a worker ack, then queue the state
+		if(s->inHandoff || s->zhttpAddress.isEmpty())
+		{
+			if(!errorCondition.isEmpty())
+				s->errorCondition = errorCondition;
+
+			// keep the session around
+			unlinkConnection(s);
+		}
+		else
+		{
+			ZhttpRequestPacket zreq;
+
+			if(!errorCondition.isEmpty())
+			{
+				zreq.type = ZhttpRequestPacket::Error;
+				zreq.condition = "disconnected";
+			}
+			else
+				zreq.type = ZhttpRequestPacket::Cancel;
+
+			zhttp_out_write(s, zreq);
+
+			destroySession(s);
+		}
+	}
+
 private slots:
 	void m2_in_readyRead(const QList<QByteArray> &message)
 	{
@@ -786,7 +844,7 @@ private slots:
 			return;
 		}
 
-		if(mreq.isDisconnect)
+		if(mreq.type == M2RequestPacket::Disconnect)
 		{
 			log_debug("m2: %s id=%s disconnected", mreq.sender.data(), mreq.id.data());
 
@@ -797,34 +855,13 @@ private slots:
 				return;
 
 			if(conn->session)
-			{
-				Session *s = conn->session;
-
-				// if we are in handoff or haven't received a worker ack, then queue the state
-				if(s->inHandoff || s->zhttpAddress.isEmpty())
-				{
-					// keep the session around
-					unlinkConnection(s);
-				}
-				else
-				{
-					ZhttpRequestPacket zreq;
-					zreq.type = ZhttpRequestPacket::Cancel;
-					zhttp_out_write(s, zreq);
-				}
-
-				destroySession(s);
-			}
+				endSession(conn->session);
 
 			m2ConnectionsByRid.remove(rid);
 			delete conn;
 
 			return;
 		}
-
-		bool more = false;
-		if(mreq.uploadStreamOffset >= 0 && !mreq.uploadStreamDone)
-			more = true;
 
 		Rid m2Rid(mreq.sender, mreq.id);
 
@@ -855,7 +892,7 @@ private slots:
 				return;
 			}
 
-			if(mreq.uploadStreamOffset > 0)
+			if(mreq.type == M2RequestPacket::HttpRequest && mreq.uploadStreamOffset > 0)
 			{
 				log_warning("m2: id=%s stream offset > 0 but session unknown", mreq.id.data());
 				m2_writeCtlCancel(mreq.sender, mreq.id);
@@ -865,7 +902,7 @@ private slots:
 			if(sessionsByM2Rid.contains(m2Rid))
 			{
 				log_warning("m2: received duplicate request id=%s, skipping", mreq.id.data());
-				m2_writeErrorClose(mreq.sender, mreq.id);
+				m2_writeCtlCancel(mreq.sender, mreq.id);
 				return;
 			}
 
@@ -890,22 +927,45 @@ private slots:
 		{
 			s = sessionsByM2Rid.value(m2Rid);
 
-			if(!s && mreq.uploadStreamOffset > 0)
+			if(mreq.type == M2RequestPacket::HttpRequest && !s && mreq.uploadStreamOffset > 0)
 			{
 				log_warning("m2: id=%s stream offset > 0 but session unknown", mreq.id.data());
-				destroySession(s);
+				endSession(s);
 				m2_writeCtlCancel(conn);
 				return;
 			}
 		}
 
+		// if we get here, then we have an m2 connection but may or may not have a session yet
+
+		bool requestBodyMore = false;
+		if(mreq.type == M2RequestPacket::HttpRequest && mreq.uploadStreamOffset >= 0 && !mreq.uploadStreamDone)
+			requestBodyMore = true;
+
 		if(!s)
 		{
+			if(mreq.type != M2RequestPacket::HttpRequest && mreq.type != M2RequestPacket::WebSocketHandshake)
+			{
+				log_warning("m2: received unexpected starting packet type: %d", (int)mreq.type);
+				m2_writeCtlCancel(conn);
+				return;
+			}
+
 			QByteArray scheme;
-			if(mreq.scheme == "https")
-				scheme = "https";
-			else
-				scheme = "http";
+			if(mreq.type == M2RequestPacket::HttpRequest)
+			{
+				if(mreq.scheme == "https")
+					scheme = "https";
+				else
+					scheme = "http";
+			}
+			else // WebSocketHandshake
+			{
+				if(mreq.scheme == "https" || mreq.scheme == "wss")
+					scheme = "wss";
+				else
+					scheme = "ws";
+			}
 
 			QByteArray host = mreq.headers.get("Host");
 			if(host.isEmpty())
@@ -944,28 +1004,38 @@ private slots:
 			s->lastActive = time.elapsed();
 			s->id = m2_send_idents[conn->identIndex] + '_' + conn->id;
 
-			if(mreq.version == "HTTP/1.0")
+			if(mreq.type == M2RequestPacket::HttpRequest)
 			{
-				if(mreq.headers.getAll("Connection").contains("Keep-Alive"))
+				s->mode = Http;
+
+				if(mreq.version == "HTTP/1.0")
 				{
-					s->persistent = true;
-					s->respondKeepAlive = true;
+					if(mreq.headers.getAll("Connection").contains("Keep-Alive"))
+					{
+						s->persistent = true;
+						s->respondKeepAlive = true;
+					}
 				}
+				else if(mreq.version == "HTTP/1.1")
+				{
+					s->allowChunked = true;
+
+					if(mreq.headers.getAll("Connection").contains("close"))
+						s->respondClose = true;
+					else
+						s->persistent = true;
+				}
+
+				s->readCount += mreq.body.size();
+
+				if(!requestBodyMore)
+					s->inFinished = true;
 			}
-			else if(mreq.version == "HTTP/1.1")
+			else // WebSocketHandshake
 			{
-				s->allowChunked = true;
-
-				if(mreq.headers.getAll("Connection").contains("close"))
-					s->respondClose = true;
-				else
-					s->persistent = true;
+				s->mode = WebSocket;
+				s->acceptToken = mreq.body;
 			}
-
-			s->readCount += mreq.body.size();
-
-			if(!more)
-				s->inFinished = true;
 
 			sessionsByM2Rid.insert(m2Rid, s);
 			sessionsByZhttpRid.insert(Rid(instanceId, s->id), s);
@@ -973,61 +1043,138 @@ private slots:
 			log_info("m2: %s id=%s request %s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), uri.toEncoded().data());
 
 			ZhttpRequestPacket zreq;
+
 			zreq.type = ZhttpRequestPacket::Data;
 			zreq.credits = m2_client_buffer;
-			zreq.stream = true;
-			zreq.method = mreq.method;
 			zreq.uri = uri;
 			zreq.headers = mreq.headers;
-			zreq.body = mreq.body;
-			zreq.more = !s->inFinished;
 			zreq.peerAddress = mreq.remoteAddress;
 			if(connectPort != -1)
 				zreq.connectPort = connectPort;
 			if(ignorePolicies)
 				zreq.ignorePolicies = true;
+
+			if(mreq.type == M2RequestPacket::HttpRequest)
+			{
+				zreq.stream = true;
+				zreq.method = mreq.method;
+				zreq.body = mreq.body;
+				zreq.more = !s->inFinished;
+			}
+
 			zhttp_out_writeFirst(s, zreq);
 		}
 		else
 		{
-			int offset = 0;
-			if(mreq.uploadStreamOffset > 0)
-				offset = mreq.uploadStreamOffset;
-
-			if(offset != s->readCount)
+			if(mreq.type != M2RequestPacket::HttpRequest && mreq.type != M2RequestPacket::WebSocketFrame)
 			{
-				log_warning("m2: %s id=%s unexpected stream offset (got=%d, expected=%d)", m2_send_idents[s->conn->identIndex].data(), mreq.id.data(), offset, s->readCount);
-				M2Connection *conn = s->conn;
-				destroySession(s);
+				log_warning("m2: received unexpected subsequent packet type: %d", (int)mreq.type);
 				m2_writeCtlCancel(conn);
 				return;
+			}
+
+			if(mreq.type == M2RequestPacket::HttpRequest)
+			{
+				int offset = 0;
+				if(mreq.uploadStreamOffset > 0)
+					offset = mreq.uploadStreamOffset;
+
+				if(offset != s->readCount)
+				{
+					log_warning("m2: %s id=%s unexpected stream offset (got=%d, expected=%d)", m2_send_idents[s->conn->identIndex].data(), mreq.id.data(), offset, s->readCount);
+					M2Connection *conn = s->conn;
+					endSession(s);
+					m2_writeCtlCancel(conn);
+					return;
+				}
+
+				s->readCount += mreq.body.size();
+
+				if(!requestBodyMore)
+					s->inFinished = true;
 			}
 
 			if(s->zhttpAddress.isEmpty())
 			{
 				log_error("m2: %s id=%s multiple packets from m2 before response from zhttp", m2_send_idents[s->conn->identIndex].data(), mreq.id.data());
 				M2Connection *conn = s->conn;
-				destroySession(s);
+				endSession(s);
 				m2_writeCtlCancel(conn);
 				return;
 			}
 
-			s->readCount += mreq.body.size();
-
-			if(!more)
-				s->inFinished = true;
-
-			if(s->inHandoff)
+			if(mreq.type == M2RequestPacket::HttpRequest)
 			{
-				s->pendingIn += mreq.body;
+				if(s->inHandoff)
+				{
+					s->pendingIn += mreq.body;
+				}
+				else
+				{
+					ZhttpRequestPacket zreq;
+					zreq.type = ZhttpRequestPacket::Data;
+					zreq.body = mreq.body;
+					zreq.more = !s->inFinished;
+					zhttp_out_write(s, zreq);
+				}
 			}
-			else
+			else // WebSocketFrame
 			{
+				int opcode = mreq.frameFlags & 0x0f;
+				if(opcode != 1 && opcode != 2 && opcode != 8 && opcode != 9 && opcode != 10)
+				{
+					log_warning("m2: %s id=%s unsupported ws opcode: %d", m2_send_idents[s->conn->identIndex].data(), mreq.id.data(), opcode);
+					M2Connection *conn = s->conn;
+					endSession(s);
+					m2_writeCtlCancel(conn);
+					return;
+				}
+
 				ZhttpRequestPacket zreq;
-				zreq.type = ZhttpRequestPacket::Data;
-				zreq.body = mreq.body;
-				zreq.more = !s->inFinished;
-				zhttp_out_write(s, zreq);
+
+				if(opcode == 1 || opcode == 2)
+				{
+					zreq.type = ZhttpRequestPacket::Data;
+					if(opcode == 2)
+						zreq.contentType = "binary";
+					zreq.body = mreq.body;
+				}
+				else if(opcode == 8)
+				{
+					zreq.type = ZhttpRequestPacket::Close;
+					if(mreq.body.size() == 2)
+					{
+						int hi = (unsigned char)zreq.body[0];
+						int lo = (unsigned char)zreq.body[1];
+						zreq.code = (hi << 8) + lo;
+					}
+
+					s->downClosed = true;
+				}
+				else if(opcode == 9)
+				{
+					zreq.type = ZhttpRequestPacket::Ping;
+				}
+				else // 10
+				{
+					zreq.type = ZhttpRequestPacket::Pong;
+				}
+
+				if(s->inHandoff)
+				{
+					s->pendingInPackets += zreq;
+				}
+				else
+				{
+					zhttp_out_write(s, zreq);
+
+					if(s->downClosed && s->upClosed)
+					{
+						M2Connection *conn = s->conn;
+						destroySession(s); // we aren't in handoff so this is safe
+						m2_writeClose(conn);
+					}
+				}
 			}
 		}
 	}
@@ -1242,23 +1389,47 @@ private slots:
 			//   had to receive a from address sometime earlier, so it
 			//   should be safe to call zhttp_out_write with session.
 
-			if(!s->pendingIn.isEmpty())
+			if(s->mode == Http)
 			{
-				ZhttpRequestPacket zreq;
-				zreq.type = ZhttpRequestPacket::Data;
-
-				// send credits too, if needed (though this probably can't happen?)
-				if(s->pendingInCredits > 0)
+				if(!s->pendingIn.isEmpty())
 				{
-					zreq.credits = s->pendingInCredits;
-					s->pendingInCredits = 0;
-				}
+					ZhttpRequestPacket zreq;
+					zreq.type = ZhttpRequestPacket::Data;
 
-				zreq.body = s->pendingIn.take();
-				zreq.more = !s->inFinished;
-				zhttp_out_write(s, zreq);
+					// send credits too, if needed (though this probably can't happen,
+					//   since http data flows only in one direction at a time. we
+					//   can't have pending request body data while at the same
+					//   time be acking received response body data).
+					if(s->pendingInCredits > 0)
+					{
+						zreq.credits = s->pendingInCredits;
+						s->pendingInCredits = 0;
+					}
+
+					zreq.body = s->pendingIn.take();
+					zreq.more = !s->inFinished;
+					zhttp_out_write(s, zreq);
+				}
 			}
-			else if(s->pendingInCredits > 0)
+			else // WebSocket
+			{
+				while(!s->pendingInPackets.isEmpty())
+				{
+					ZhttpRequestPacket zreq = s->pendingInPackets.takeFirst();
+
+					// send credits too, if needed
+					if(zreq.type == ZhttpRequestPacket::Data && s->pendingInCredits > 0)
+					{
+						zreq.credits = s->pendingInCredits;
+						s->pendingInCredits = 0;
+					}
+
+					zhttp_out_write(s, zreq);
+				}
+			}
+
+			// if we didn't send credits as part of a data packet, we'll do them now
+			if(s->pendingInCredits > 0)
 			{
 				ZhttpRequestPacket zreq;
 				zreq.type = ZhttpRequestPacket::Credit;
@@ -1272,123 +1443,187 @@ private slots:
 		{
 			log_debug("zhttp: id=%s response data size=%d%s", s->id.data(), zresp.body.size(), zresp.more ? " M" : "");
 
-			bool firstDataPacket = !s->sentResponseHeader;
+			// data packet may have credits
+			if(zresp.credits > 0)
+			{
+				QVariantHash args;
+				args["credits"] = zresp.credits;
+				m2_writeCtl(s->conn, args);
+			}
 
-			// respond with data if we have body data or this is the first packet
-			if(!zresp.body.isEmpty() || firstDataPacket)
+			if(s->mode == Http)
+			{
+				bool firstDataPacket = !s->sentResponseHeader;
+
+				// respond with data if we have body data or this is the first packet
+				if(!zresp.body.isEmpty() || firstDataPacket)
+				{
+					M2ResponsePacket mresp;
+					mresp.sender = m2_send_idents[s->conn->identIndex];
+					mresp.id = s->conn->id;
+
+					int overhead = 0;
+
+					if(firstDataPacket)
+					{
+						s->sentResponseHeader = true;
+
+						if(zresp.more && !zresp.headers.contains("Content-Length"))
+						{
+							if(s->allowChunked)
+							{
+								s->chunked = true;
+							}
+							else
+							{
+								// disable persistence
+								s->persistent = false;
+								s->respondKeepAlive = false;
+							}
+						}
+
+						HttpHeaders headers = zresp.headers;
+						QList<QByteArray> connHeaders = headers.takeAll("Connection");
+						foreach(const QByteArray &h, connHeaders)
+							headers.removeAll(h);
+
+						headers.removeAll("Transfer-Encoding");
+
+						connHeaders.clear();
+						if(s->respondKeepAlive)
+							connHeaders += "Keep-Alive";
+						if(s->respondClose)
+							connHeaders += "close";
+
+						if(s->chunked)
+						{
+							connHeaders += "Transfer-Encoding";
+							headers += HttpHeader("Transfer-Encoding", "chunked");
+						}
+						else if(!zresp.more && !headers.contains("Content-Length"))
+						{
+							headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
+						}
+
+						if(!connHeaders.isEmpty())
+							headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
+
+						mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
+
+						overhead += mresp.data.size();
+					}
+
+					if(!zresp.body.isEmpty())
+					{
+						if(s->chunked)
+						{
+							QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
+							QByteArray chunkFooter = makeChunkFooter();
+
+							mresp.data += chunkHeader + zresp.body + chunkFooter;
+							overhead += chunkHeader.size() + chunkFooter.size();
+						}
+						else
+							mresp.data += zresp.body;
+					}
+
+					if(!zresp.more && s->chunked)
+					{
+						QByteArray chunkHeader = makeChunkHeader(0);
+						QByteArray chunkFooter = makeChunkFooter();
+
+						mresp.data += chunkHeader + chunkFooter;
+						overhead += chunkHeader.size() + chunkFooter.size();
+					}
+
+					m2_out_write(mresp);
+
+					s->conn->written += overhead + zresp.body.size();
+					s->conn->confirmedWritten += overhead;
+
+					if((firstDataPacket && !zresp.more) || (!controlPorts[s->conn->identIndex].active && zresp.body.size() > 0))
+					{
+						// no outbound flow control
+						int written = zresp.body.size();
+						s->conn->confirmedWritten += written;
+
+						handleResponseWritten(s, written, false, zresp.more);
+					}
+				}
+				else
+				{
+					if(!zresp.more && s->chunked)
+					{
+						// send closing chunk
+						M2ResponsePacket mresp;
+						mresp.sender = m2_send_idents[s->conn->identIndex];
+						mresp.id = s->conn->id;
+						mresp.data = makeChunkHeader(0) + makeChunkFooter();
+						m2_out_write(mresp);
+					}
+				}
+
+				if(!zresp.more)
+				{
+					bool persistent = s->persistent;
+					M2Connection *conn = s->conn;
+					destroySession(s);
+					if(!persistent)
+						m2_writeClose(conn);
+				}
+			}
+			else // WebSocket
 			{
 				M2ResponsePacket mresp;
 				mresp.sender = m2_send_idents[s->conn->identIndex];
 				mresp.id = s->conn->id;
 
-				int overhead = 0;
+				int payloadSize = 0;
 
-				if(firstDataPacket)
+				if(!s->sentResponseHeader)
 				{
 					s->sentResponseHeader = true;
-
-					if(zresp.more && !zresp.headers.contains("Content-Length"))
-					{
-						if(s->allowChunked)
-						{
-							s->chunked = true;
-						}
-						else
-						{
-							// disable persistence
-							s->persistent = false;
-							s->respondKeepAlive = false;
-						}
-					}
 
 					HttpHeaders headers = zresp.headers;
 					QList<QByteArray> connHeaders = headers.takeAll("Connection");
 					foreach(const QByteArray &h, connHeaders)
 						headers.removeAll(h);
-
 					headers.removeAll("Transfer-Encoding");
+					headers.removeAll("Upgrade");
+					headers.removeAll("Sec-Websocket-Accept");
 
-					connHeaders.clear();
-					if(s->respondKeepAlive)
-						connHeaders += "Keep-Alive";
-					if(s->respondClose)
-						connHeaders += "close";
+					headers += HttpHeader("Upgrade", "websocket");
+					headers += HttpHeader("Connection", "Upgrade");
+					headers += HttpHeader("Sec-Websocket-Accept", s->acceptToken);
 
-					if(s->chunked)
-					{
-						connHeaders += "Transfer-Encoding";
-						headers += HttpHeader("Transfer-Encoding", "chunked");
-					}
-					else if(!zresp.more && !headers.contains("Content-Length"))
-					{
-						headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
-					}
-
-					if(!connHeaders.isEmpty())
-						headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
-
-					mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
-
-					overhead += mresp.data.size();
+					mresp.data = createResponseHeader(101, "Switching Protocols", headers);
 				}
-
-				if(!zresp.body.isEmpty())
+				else
 				{
-					if(s->chunked)
-					{
-						QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
-						QByteArray chunkFooter = makeChunkFooter();
+					int opcode;
+					if(zresp.contentType == "binary")
+						opcode = 2;
+					else // text
+						opcode = 1;
 
-						mresp.data += chunkHeader + zresp.body + chunkFooter;
-						overhead += chunkHeader.size() + chunkFooter.size();
-					}
-					else
-						mresp.data += zresp.body;
+					mresp.data = makeWsHeader(!zresp.more, opcode, zresp.body.size()) + zresp.body;
+
+					payloadSize = zresp.body.size();
 				}
 
-				if(!zresp.more && s->chunked)
-				{
-					QByteArray chunkHeader = makeChunkHeader(0);
-					QByteArray chunkFooter = makeChunkFooter();
-
-					mresp.data += chunkHeader + chunkFooter;
-					overhead += chunkHeader.size() + chunkFooter.size();
-				}
+				s->conn->written += mresp.data.size();
+				s->conn->confirmedWritten += mresp.data.size() - payloadSize;
 
 				m2_out_write(mresp);
 
-				s->conn->written += overhead + zresp.body.size();
-				s->conn->confirmedWritten += overhead;
-
-				if((firstDataPacket && !zresp.more) || (!controlPorts[s->conn->identIndex].active && zresp.body.size() > 0))
+				if(!controlPorts[s->conn->identIndex].active && payloadSize > 0)
 				{
 					// no outbound flow control
-					int written = zresp.body.size();
+					int written = payloadSize;
 					s->conn->confirmedWritten += written;
 
-					handleResponseWritten(s, written, false, zresp.more);
+					handleResponseWritten(s, written, false, true);
 				}
-			}
-			else
-			{
-				if(!zresp.more && s->chunked)
-				{
-					// send closing chunk
-					M2ResponsePacket mresp;
-					mresp.sender = m2_send_idents[s->conn->identIndex];
-					mresp.id = s->conn->id;
-					mresp.data = makeChunkHeader(0) + makeChunkFooter();
-					m2_out_write(mresp);
-				}
-			}
-
-			if(!zresp.more)
-			{
-				bool persistent = s->persistent;
-				M2Connection *conn = s->conn;
-				destroySession(s);
-				if(!persistent)
-					m2_writeClose(conn);
 			}
 		}
 		else if(zresp.type == ZhttpResponsePacket::Error)
@@ -1424,6 +1659,42 @@ private slots:
 			ZhttpRequestPacket zreq;
 			zreq.type = ZhttpRequestPacket::HandoffProceed;
 			zhttp_out_write(s, zreq);
+		}
+		else if(zresp.type == ZhttpResponsePacket::Close || zresp.type == ZhttpResponsePacket::Ping || zresp.type == ZhttpResponsePacket::Pong)
+		{
+			int opcode;
+			if(zresp.type == ZhttpResponsePacket::Close)
+			{
+				opcode = 8;
+				s->upClosed = true;
+			}
+			else if(zresp.type == ZhttpResponsePacket::Ping)
+				opcode = 9;
+			else // Pong
+				opcode = 10;
+
+			M2ResponsePacket mresp;
+			mresp.sender = m2_send_idents[s->conn->identIndex];
+			mresp.id = s->conn->id;
+			mresp.data = makeWsHeader(true, opcode, 0);
+			if(zresp.type == ZhttpResponsePacket::Close)
+			{
+				QByteArray buf(2, 0);
+				writeBigEndian(buf.data(), zresp.code != -1 ? zresp.code : 1000, 2);
+				mresp.data += buf;
+			}
+
+			s->conn->written += mresp.data.size();
+			s->conn->confirmedWritten += mresp.data.size();
+
+			m2_out_write(mresp);
+
+			if(s->downClosed && s->upClosed)
+			{
+				M2Connection *conn = s->conn;
+				destroySession(s);
+				m2_writeClose(conn);
+			}
 		}
 		else
 		{

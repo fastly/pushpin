@@ -27,10 +27,18 @@
 class M2RequestPacket
 {
 public:
+	enum Type
+	{
+		HttpRequest,
+		WebSocketHandshake, // body will contain accept token
+		WebSocketFrame,
+		Disconnect
+	};
+
 	QByteArray sender;
 	QByteArray id;
 
-	bool isDisconnect;
+	Type type;
 
 	QHostAddress remoteAddress;
 	QByteArray scheme;
@@ -45,6 +53,8 @@ public:
 
 	int uploadStreamOffset;
 	bool uploadStreamDone;
+
+	int frameFlags;
 
 	M2RequestPacket();
 
