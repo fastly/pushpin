@@ -1596,7 +1596,13 @@ private slots:
 					headers += HttpHeader("Connection", "Upgrade");
 					headers += HttpHeader("Sec-Websocket-Accept", s->acceptToken);
 
-					mresp.data = createResponseHeader(101, "Switching Protocols", headers);
+					QByteArray reason;
+					if(!zresp.reason.isEmpty())
+						reason = zresp.reason;
+					else
+						reason = "Switching Protocols";
+
+					mresp.data = createResponseHeader(101, reason, headers);
 				}
 				else
 				{
