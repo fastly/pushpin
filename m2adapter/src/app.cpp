@@ -1635,9 +1635,49 @@ private slots:
 		else if(zresp.type == ZhttpResponsePacket::Error)
 		{
 			log_warning("zhttp: id=%s error condition=%s", s->id.data(), zresp.condition.data());
-			M2Connection *conn = s->conn;
-			destroySession(s);
-			m2_writeErrorClose(conn);
+
+			if(s->mode == WebSocket && zresp.condition == "rejected")
+			{
+				M2ResponsePacket mresp;
+				mresp.sender = m2_send_idents[s->conn->identIndex];
+				mresp.id = s->conn->id;
+
+				HttpHeaders headers = zresp.headers;
+				QList<QByteArray> connHeaders = headers.takeAll("Connection");
+				foreach(const QByteArray &h, connHeaders)
+					headers.removeAll(h);
+
+				headers.removeAll("Transfer-Encoding");
+
+				if(headers.contains("Content-Length"))
+				{
+					headers.removeAll("Content-Length");
+					headers += HttpHeader("Content-Length", "0");
+				}
+
+				connHeaders.clear();
+
+				// if HTTP/1.1, include "Connection: close"
+				if(s->allowChunked)
+					connHeaders += "close";
+
+				if(!connHeaders.isEmpty())
+					headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
+
+				mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
+
+				m2_out_write(mresp);
+
+				M2Connection *conn = s->conn;
+				destroySession(s);
+				m2_writeClose(conn);
+			}
+			else
+			{
+				M2Connection *conn = s->conn;
+				destroySession(s);
+				m2_writeErrorClose(conn);
+			}
 		}
 		else if(zresp.type == ZhttpResponsePacket::Credit)
 		{
