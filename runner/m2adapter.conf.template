@@ -11,21 +11,23 @@ m2_send_idents={% for i in instances %}{% if not loop.first %},{% endif %}{{ i.s
 # list of mongrel2 control specs (per send_ident)
 m2_control_specs={% for i in instances %}{% if not loop.first %},{% endif %}{{ i.control_spec }}{% endfor %}
 
-# set to true if zhttp specs should connect. else, bind.
-#zhttp_connect=true
-
 # zhttp in specs
-zhttp_in_specs=ipc:///tmp/pushpin-m2a-in
+zhttp_in_specs=ipc:///tmp/pushpin-m2zhttp-in
 
 # zhttp out specs
-zhttp_out_specs=ipc:///tmp/pushpin-m2a-out
+zhttp_out_specs=ipc:///tmp/pushpin-m2zhttp-out
 
 # zhttp out stream specs
-zhttp_out_stream_specs=ipc:///tmp/pushpin-m2a-out-stream
+zhttp_out_stream_specs=ipc:///tmp/pushpin-m2zhttp-out-stream
 
-# useful for testing with zurl
-#zhttp_ignore_policies=true
+# zws in specs
+zws_in_specs=ipc:///tmp/pushpin-m2zws-in
+
+# zws out specs
+zws_out_specs=ipc:///tmp/pushpin-m2zws-out
+
+# zws out stream specs
+zws_out_stream_specs=ipc:///tmp/pushpin-m2zws-out-stream
 
 # don't send more than this to mongrel2
 m2_client_buffer=200000
-

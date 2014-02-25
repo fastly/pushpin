@@ -28,22 +28,22 @@ zurl_bin=zurl
 
 
 [proxy]
-# list of connect PULL for receiving mongrel2 HTTP requests
-m2a_in_specs=ipc:///tmp/pushpin-m2a-out
+# list of connect PULL for receiving mongrel2 HTTP/WS requests
+m2a_in_specs=ipc:///tmp/pushpin-m2zhttp-out,ipc:///tmp/pushpin-m2zws-out
 
-# list of connect DEALER for continuing mongrel2 HTTP requests
-m2a_in_stream_specs=ipc:///tmp/pushpin-m2a-out-stream
+# list of connect DEALER for continuing mongrel2 HTTP/WS requests
+m2a_in_stream_specs=ipc:///tmp/pushpin-m2zhttp-out-stream,ipc:///tmp/pushpin-m2zws-out-stream
 
-# list of connect PUB for sending mongrel2 HTTP responses
-m2a_out_specs=ipc:///tmp/pushpin-m2a-in
+# list of connect PUB for sending mongrel2 HTTP/WS responses
+m2a_out_specs=ipc:///tmp/pushpin-m2zhttp-in,ipc:///tmp/pushpin-m2zws-in
 
-# list of connect PUSH for sending zurl HTTP requests
+# list of connect PUSH for sending zurl HTTP/WS requests
 zurl_out_specs=ipc:///tmp/pushpin-zurl-in
 
-# list of connect ROUTER for continuing zurl HTTP requests
+# list of connect ROUTER for continuing zurl HTTP/WS requests
 zurl_out_stream_specs=ipc:///tmp/pushpin-zurl-in-stream
 
-# list of connect SUB for receiving zurl HTTP responses
+# list of connect SUB for receiving zurl HTTP/WS responses
 zurl_in_specs=ipc:///tmp/pushpin-zurl-out
 
 # bind DEALER for requesting inspection info (internal, used with handler)
@@ -90,11 +90,11 @@ proxy_retry_out_spec=ipc:///tmp/pushpin-retry
 # connect PULL for receiving HTTP requests (internal, used with proxy)
 proxy_accept_in_spec=ipc:///tmp/pushpin-accept
 
-# list of connect DEALER for continuing mongrel2 HTTP requests
-m2a_in_stream_specs=ipc:///tmp/pushpin-m2a-out-stream
+# list of connect DEALER for continuing mongrel2 HTTP/WS requests
+m2a_in_stream_specs=ipc:///tmp/pushpin-m2zhttp-out-stream,ipc:///tmp/pushpin-m2zws-out-stream
 
-# list of connect PUB for sending mongrel2 HTTP responses
-m2a_out_specs=ipc:///tmp/pushpin-m2a-in
+# list of connect PUB for sending mongrel2 HTTP/WS responses
+m2a_out_specs=ipc:///tmp/pushpin-m2zhttp-in,ipc:///tmp/pushpin-m2zws-in
 
 # redis server to use for storing state
 redis_host=127.0.0.1

@@ -23,9 +23,22 @@ zhttp_out_specs=
 # zhttp out stream specs
 zhttp_out_stream_specs=
 
+# set to true if zws specs should connect. else, bind.
+#zws_connect=true
+
+# zws in specs
+zws_in_specs=
+
+# zws out specs
+zws_out_specs=
+
+# zws out stream specs
+zws_out_stream_specs=
+
 # useful for testing with zurl
 #zhttp_connect_port=8080
-#zhttp_ignore_policies=true
+#zws_connect_port=8080
+#ignore_policies=true
 
 # don't send more than this to mongrel2
 m2_client_buffer=200000
