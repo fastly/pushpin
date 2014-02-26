@@ -241,7 +241,8 @@ public:
 	};
 
 	App *q;
-	QByteArray instanceId;
+	QByteArray zhttpInstanceId;
+	QByteArray zwsInstanceId;
 	QZmq::Socket *m2_in_sock;
 	QZmq::Socket *m2_out_sock;
 	QZmq::Socket *zhttp_in_sock;
@@ -477,7 +478,9 @@ public:
 			return false;
 		}
 
-		instanceId = "m2adapter_" + QByteArray::number(QCoreApplication::applicationPid());
+		QByteArray pidStr = QByteArray::number(QCoreApplication::applicationPid());
+		zhttpInstanceId = "m2zhttp_" + pidStr;
+		zwsInstanceId = "m2zws_" + pidStr;
 
 		m2_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
 		m2_in_sock->setHwm(DEFAULT_HWM);
@@ -521,7 +524,7 @@ public:
 		{
 			zhttp_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			zhttp_in_sock->setHwm(DEFAULT_HWM);
-			zhttp_in_sock->subscribe(instanceId + ' ');
+			zhttp_in_sock->subscribe(zhttpInstanceId + ' ');
 			if(zhttp_connect)
 			{
 				foreach(const QString &spec, zhttp_in_specs)
@@ -589,7 +592,7 @@ public:
 		{
 			zws_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			zws_in_sock->setHwm(DEFAULT_HWM);
-			zws_in_sock->subscribe(instanceId + ' ');
+			zws_in_sock->subscribe(zwsInstanceId + ' ');
 			if(zws_connect)
 			{
 				foreach(const QString &spec, zws_in_specs)
@@ -671,9 +674,9 @@ public:
 	{
 		unlinkConnection(s);
 		if(s->mode == Http)
-			sessionsByZhttpRid.remove(Rid(instanceId, s->id));
+			sessionsByZhttpRid.remove(Rid(zhttpInstanceId, s->id));
 		else // WebSocket
-			sessionsByZwsRid.remove(Rid(instanceId, s->id));
+			sessionsByZwsRid.remove(Rid(zwsInstanceId, s->id));
 		delete s;
 	}
 
@@ -801,7 +804,7 @@ public:
 	void zhttp_out_writeFirst(Session *s, const ZhttpRequestPacket &packet)
 	{
 		ZhttpRequestPacket out = packet;
-		out.from = instanceId;
+		out.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 		out.id = s->id;
 		out.seq = (s->outSeq)++;
 		zhttp_out_write(s->mode, out);
@@ -812,7 +815,7 @@ public:
 		assert(!s->zhttpAddress.isEmpty());
 
 		ZhttpRequestPacket out = packet;
-		out.from = instanceId;
+		out.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 		out.id = s->id;
 		out.seq = (s->outSeq)++;
 		zhttp_out_write(s->mode, out, s->zhttpAddress);
@@ -993,9 +996,9 @@ public:
 
 		Session *s;
 		if(mode == Http)
-			s = sessionsByZhttpRid.value(Rid(instanceId, zresp.id));
+			s = sessionsByZhttpRid.value(Rid(zhttpInstanceId, zresp.id));
 		else // WebSocket
-			s = sessionsByZwsRid.value(Rid(instanceId, zresp.id));
+			s = sessionsByZwsRid.value(Rid(zwsInstanceId, zresp.id));
 
 		if(!s)
 		{
@@ -1005,7 +1008,7 @@ public:
 			if(!isErrorPacket(zresp) && !zresp.from.isEmpty())
 			{
 				ZhttpRequestPacket zreq;
-				zreq.from = instanceId;
+				zreq.from = (mode == Http ? zhttpInstanceId : zwsInstanceId);
 				zreq.id = zresp.id;
 				zreq.type = ZhttpRequestPacket::Cancel;
 				zhttp_out_write(mode, zreq, zresp.from);
@@ -1698,9 +1701,9 @@ private slots:
 			sessionsByM2Rid.insert(m2Rid, s);
 
 			if(mreq.type == M2RequestPacket::HttpRequest)
-				sessionsByZhttpRid.insert(Rid(instanceId, s->id), s);
+				sessionsByZhttpRid.insert(Rid(zhttpInstanceId, s->id), s);
 			else // WebSocketHandshake
-				sessionsByZwsRid.insert(Rid(instanceId, s->id), s);
+				sessionsByZwsRid.insert(Rid(zwsInstanceId, s->id), s);
 
 			log_info("m2: %s id=%s request %s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), uri.toEncoded().data());
 
