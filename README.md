@@ -64,9 +64,13 @@ By default, Pushpin listens on port 7999 and forwards to localhost port 80. If y
 Multiprocess design
 -------------------
 
-Pushpin consists of five processes: mongrel2, zurl, pushpin-proxy, pushpin-handler, and pushpin (the "runner"). In a basic setup you don't really need to think about this. Just run pushpin to start everything up, and terminate the process (or ctrl-c) to shut everything down.
+Pushpin consists of six processes: mongrel2, zurl, m2adapter, pushpin-proxy, pushpin-handler, and pushpin (the "runner"). In a basic setup you don't really need to think about this. Just run pushpin to start everything up, and terminate the process (or ctrl-c) to shut everything down.
 
 If you'd prefer to individually manage any of these processes yourself, then adjust the "services" field in pushpin.conf. You can even choose to not use the runner at all. In that case, Pushpin's own processes can be launched as follows:
+
+M2adapter process:
+
+    m2adapter --config=/path/to/m2adapter.conf
 
 Proxy process:
 
