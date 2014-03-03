@@ -1388,11 +1388,8 @@ public:
 
 				headers.removeAll("Transfer-Encoding");
 
-				if(headers.contains("Content-Length"))
-				{
-					headers.removeAll("Content-Length");
-					headers += HttpHeader("Content-Length", "0");
-				}
+				if(!headers.contains("Content-Length"))
+					headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
 
 				connHeaders.clear();
 
@@ -1404,6 +1401,7 @@ public:
 					headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
 
 				mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
+				mresp.data += zresp.body;
 
 				m2_out_write(mresp);
 
