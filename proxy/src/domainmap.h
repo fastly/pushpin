@@ -29,6 +29,12 @@
 class DomainMap
 {
 public:
+	enum Protocol
+	{
+		Http,
+		WebSocket
+	};
+
 	class Target
 	{
 	public:
@@ -70,11 +76,11 @@ public:
 	DomainMap(const QString &fileName);
 	~DomainMap();
 
-	// shouldn't really ever need to call this, but sometimes the
+	// shouldn't really ever need to call this, but it's here in case the
 	//   underlying file watching doesn't work
 	void reload();
 
-	Entry entry(const QString &domain, const QByteArray &path, bool ssl) const;
+	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
 
 private:
 	class Private;

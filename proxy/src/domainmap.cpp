@@ -114,6 +114,7 @@ public:
 	class Rule
 	{
 	public:
+		int proto; // -1=unspecified, 0=http, 1=websocket
 		QByteArray pathBeg;
 		int ssl; // -1=unspecified, 0=no, 1=yes
 
@@ -124,6 +125,7 @@ public:
 		QList<Target> targets;
 
 		Rule() :
+			proto(-1),
 			ssl(-1),
 			origHeaders(false)
 		{
@@ -132,7 +134,12 @@ public:
 		// checks only the condition, not sig/targets
 		bool compare(const Rule &other) const
 		{
-			return (ssl == other.ssl && pathBeg == other.pathBeg);
+			return (proto == other.proto && ssl == other.ssl && pathBeg == other.pathBeg);
+		}
+
+		inline bool matchProto(Protocol reqProto) const
+		{
+			return ((proto == 0 && reqProto == Http) || (proto == 1 && reqProto == WebSocket));
 		}
 
 		inline bool matchSsl(bool reqSsl) const
@@ -140,18 +147,23 @@ public:
 			return ((ssl == 0 && !reqSsl) || (ssl == 1 && reqSsl));
 		}
 
-		bool isMatch(bool reqSsl, const QByteArray &reqPath) const
+		bool isMatch(Protocol reqProto, bool reqSsl, const QByteArray &reqPath) const
 		{
-			return ((ssl == -1 || matchSsl(reqSsl)) && (pathBeg.isEmpty() || reqPath.startsWith(pathBeg)));
+			return ((proto == -1 || matchProto(reqProto)) && (ssl == -1 || matchSsl(reqSsl)) && (pathBeg.isEmpty() || reqPath.startsWith(pathBeg)));
 		}
 
-		bool isMoreSpecificMatch(const Rule &other, bool reqSsl, const QByteArray &reqPath) const
+		bool isMoreSpecificMatch(const Rule &other, Protocol reqProto, bool reqSsl, const QByteArray &reqPath) const
 		{
 			// have to at least be a match
-			if(!isMatch(reqSsl, reqPath))
+			if(!isMatch(reqProto, reqSsl, reqPath))
 				return false;
 
 			// now let's see if we're a better match
+
+			if(other.proto == -1 && proto != -1)
+				return true;
+			else if(other.proto != -1 && proto == -1)
+				return false;
 
 			if(other.ssl == -1 && ssl != -1)
 				return true;
@@ -224,6 +236,20 @@ public:
 			QString domain = val;
 
 			Rule r;
+
+			if(props.contains("proto"))
+			{
+				val = props.value("proto");
+				if(val == "http")
+					r.proto = 0;
+				else if(val == "ws")
+					r.proto = 1;
+				else
+				{
+					log_warning("%s:%d: proto must be set to 'http' or 'ws'", qPrintable(fileName), lineNum);
+					continue;
+				}
+			}
 
 			if(props.contains("ssl"))
 			{
@@ -490,7 +516,7 @@ void DomainMap::reload()
 	QMetaObject::invokeMethod(d->thread->worker, "fileChanged", Qt::QueuedConnection, Q_ARG(QString, QString()));
 }
 
-DomainMap::Entry DomainMap::entry(const QString &domain, const QByteArray &path, bool ssl) const
+DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const
 {
 	QMutexLocker locker(&d->thread->worker->m);
 
@@ -506,7 +532,7 @@ DomainMap::Entry DomainMap::entry(const QString &domain, const QByteArray &path,
 	const Worker::Rule *best = 0;
 	foreach(const Worker::Rule &r, *rules)
 	{
-		if((!best && r.isMatch(ssl, path)) || (best && r.isMoreSpecificMatch(*best, ssl, path)))
+		if((!best && r.isMatch(proto, ssl, path)) || (best && r.isMoreSpecificMatch(*best, proto, ssl, path)))
 		{
 			best = &r;
 		}
