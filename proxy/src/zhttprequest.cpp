@@ -619,7 +619,7 @@ public:
 		}
 		else
 		{
-			log_debug("zhttp server: unsupported packet type id=%s type=%d", packet.id.data(), (int)packet.type);
+			log_debug("zhttp client: unsupported packet type id=%s type=%d", packet.id.data(), (int)packet.type);
 		}
 	}
 
@@ -656,12 +656,12 @@ public:
 		
 		if(out.seq == 0)
 		{
-			manager->write(out);
+			manager->writeHttp(out);
 		}
 		else
 		{
 			assert(!toAddress.isEmpty());
-			manager->write(out, toAddress);
+			manager->writeHttp(out, toAddress);
 		}
 	}
 
@@ -675,7 +675,7 @@ public:
 		out.seq = outSeq++;
 		out.userData = userData;
 		
-		manager->write(out, rid.first);
+		manager->writeHttp(out, rid.first);
 	}
 
 	void writeCancel()
@@ -730,7 +730,6 @@ public:
 		//  policy-violation
 		//  max-size-exceeded
 		//  session-timeout
-		//  cancel
 
 		if(cond == "policy-violation")
 			return ErrorPolicy;

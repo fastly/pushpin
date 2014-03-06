@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2014 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,11 +30,13 @@
 #include "acceptdata.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
+#include "zwebsocket.h"
 #include "domainmap.h"
 #include "inspectmanager.h"
 #include "inspectchecker.h"
 #include "requestsession.h"
 #include "proxysession.h"
+#include "wsproxysession.h"
 
 #define DEFAULT_HWM 1000
 
@@ -57,6 +59,17 @@ public:
 		}
 	};
 
+	class WsProxyItem
+	{
+	public:
+		WsProxySession *ps;
+
+		WsProxyItem() :
+			ps(0)
+		{
+		}
+	};
+
 	Engine *q;
 	Configuration config;
 	ZhttpManager *zhttp;
@@ -69,6 +82,7 @@ public:
 	QSet<RequestSession*> requestSessions;
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
+	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -96,6 +110,16 @@ public:
 		proxyItemsBySession.clear();
 		proxyItemsByKey.clear();
 		requestSessions.clear();
+
+		QHashIterator<WsProxySession*, WsProxyItem*> wit(wsProxyItemsBySession);
+		while(wit.hasNext())
+		{
+			wit.next();
+			delete wit.key();
+			delete wit.value();
+		}
+
+		wsProxyItemsBySession.clear();
 	}
 
 	bool start(const Configuration &_config)
@@ -106,6 +130,7 @@ public:
 
 		zhttp = new ZhttpManager(this);
 		connect(zhttp, SIGNAL(requestReady()), SLOT(zhttp_requestReady()));
+		connect(zhttp, SIGNAL(socketReady()), SLOT(zhttp_socketReady()));
 
 		zhttp->setInstanceId(config.clientId);
 
@@ -266,12 +291,17 @@ public:
 		handler_accept_out_sock->write(msg);
 	}
 
+	bool canTake()
+	{
+		return (config.maxWorkers == -1 || (requestSessions.count() + wsProxyItemsBySession.count()) < config.maxWorkers);
+	}
+
 	void tryTakeRequest()
 	{
-		if(config.maxWorkers != -1 && requestSessions.count() >= config.maxWorkers)
+		if(!canTake())
 			return;
 
-		ZhttpRequest *req = zhttp->takeNext();
+		ZhttpRequest *req = zhttp->takeNextRequest();
 		if(!req)
 			return;
 
@@ -288,15 +318,48 @@ public:
 		rs->start(req);
 	}
 
-private slots:
-	void m2_requestReady()
+	void tryTakeSocket()
 	{
-		tryTakeRequest();
+		if(!canTake())
+			return;
+
+		ZWebSocket *sock = zhttp->takeNextSocket();
+		if(!sock)
+			return;
+
+		log_debug("creating wsproxysession for id=%s", sock->rid().second.data());
+
+		WsProxySession *ps = new WsProxySession(zhttp, domainMap, this);
+		connect(ps, SIGNAL(finishedByPassthrough()), SLOT(wsps_finishedByPassthrough()));
+
+		ps->setDefaultSigKey(config.sigIss, config.sigKey);
+		ps->setDefaultUpstreamKey(config.upstreamKey);
+		ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
+		ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+		ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
+
+		WsProxyItem *i = new WsProxyItem;
+		i->ps = ps;
+		wsProxyItemsBySession.insert(i->ps, i);
+
+		ps->start(sock);
 	}
 
-	void zhttp_requestReady()
+	void tryTakeNext()
 	{
 		tryTakeRequest();
+		tryTakeSocket();
+	}
+
+private slots:
+	void zhttp_requestReady()
+	{
+		tryTakeNext();
+	}
+
+	void zhttp_socketReady()
+	{
+		tryTakeNext();
 	}
 
 	void rs_inspected(const InspectData &idata)
@@ -325,7 +388,7 @@ private slots:
 		requestSessions.remove(rs);
 		delete rs;
 
-		tryTakeRequest();
+		tryTakeNext();
 	}
 
 	void rs_finishedForAccept(const AcceptData &adata)
@@ -343,7 +406,7 @@ private slots:
 
 		sendAccept(adata);
 
-		tryTakeRequest();
+		tryTakeNext();
 	}
 
 	void ps_addNotAllowed()
@@ -374,7 +437,7 @@ private slots:
 		delete i;
 		delete ps;
 
-		tryTakeRequest();
+		tryTakeNext();
 	}
 
 	void ps_finishedForAccept(const AcceptData &adata)
@@ -402,14 +465,28 @@ private slots:
 
 		delete ps;
 
-		tryTakeRequest();
+		tryTakeNext();
 	}
 
 	void ps_requestSessionDestroyed(RequestSession *rs)
 	{
 		requestSessions.remove(rs);
 
-		tryTakeRequest();
+		tryTakeNext();
+	}
+
+	void wsps_finishedByPassthrough()
+	{
+		WsProxySession *ps = (WsProxySession *)sender();
+
+		WsProxyItem *i = wsProxyItemsBySession.value(ps);
+		assert(i);
+
+		wsProxyItemsBySession.remove(i->ps);
+		delete i;
+		delete ps;
+
+		tryTakeNext();
 	}
 
 	void handler_retry_in_readyRead(const QList<QByteArray> &message)
@@ -460,7 +537,7 @@ private slots:
 			ss.outCredits = req.outCredits;
 			ss.userData = req.userData;
 
-			ZhttpRequest *zhttpRequest = zhttp->createFromState(ss);
+			ZhttpRequest *zhttpRequest = zhttp->createRequestFromState(ss);
 
 			RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
 			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback);

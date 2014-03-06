@@ -22,6 +22,7 @@
 
 #include <QObject>
 #include "zhttprequest.h"
+#include "zwebsocket.h"
 
 class ZhttpRequestPacket;
 class ZhttpResponsePacket;
@@ -46,13 +47,17 @@ public:
 	bool setServerOutSpecs(const QStringList &specs);
 
 	ZhttpRequest *createRequest();
-	ZhttpRequest *takeNext();
+	ZhttpRequest *takeNextRequest();
+
+	ZWebSocket *createSocket();
+	ZWebSocket *takeNextSocket();
 
 	// for server mode, jump directly to responding state
-	ZhttpRequest *createFromState(const ZhttpRequest::ServerState &state);
+	ZhttpRequest *createRequestFromState(const ZhttpRequest::ServerState &state);
 
 signals:
 	void requestReady();
+	void socketReady();
 
 private:
 	class Private;
@@ -60,12 +65,18 @@ private:
 	Private *d;
 
 	friend class ZhttpRequest;
+	friend class ZWebSocket;
 	void link(ZhttpRequest *req);
 	void unlink(ZhttpRequest *req);
+	void link(ZWebSocket *sock);
+	void unlink(ZWebSocket *sock);
 	bool canWriteImmediately() const;
-	void write(const ZhttpRequestPacket &packet);
-	void write(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
-	void write(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
+	void writeHttp(const ZhttpRequestPacket &packet);
+	void writeHttp(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
+	void writeHttp(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
+	void writeWs(const ZhttpRequestPacket &packet);
+	void writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
+	void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
 };
 
 #endif

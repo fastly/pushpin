@@ -23,13 +23,11 @@
 #include <QSet>
 #include <QPointer>
 #include <QUrl>
-#include <QDateTime>
 #include <QHostAddress>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "bufferlist.h"
 #include "log.h"
-#include "jwt.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
 #include "zhttpmanager.h"
@@ -37,35 +35,13 @@
 #include "domainmap.h"
 #include "xffrule.h"
 #include "requestsession.h"
+#include "proxyutil.h"
 
 #define MAX_ACCEPT_REQUEST_BODY 100000
 #define MAX_ACCEPT_RESPONSE_BODY 100000
 
 #define MAX_INITIAL_BUFFER 100000
 #define MAX_STREAM_BUFFER 100000
-
-static QByteArray make_token(const QByteArray &iss, const QByteArray &key)
-{
-	QVariantMap claim;
-	claim["iss"] = QString::fromUtf8(iss);
-	claim["exp"] = QDateTime::currentDateTimeUtc().toTime_t() + 3600;
-	return Jwt::encode(claim, key);
-}
-
-static bool validate_token(const QByteArray &token, const QByteArray &key)
-{
-	QVariant claimObj = Jwt::decode(token, key);
-	if(!claimObj.isValid() || claimObj.type() != QVariant::Map)
-		return false;
-
-	QVariantMap claim = claimObj.toMap();
-
-	int exp = claim.value("exp").toInt();
-	if(exp <= 0 || (int)QDateTime::currentDateTimeUtc().toTime_t() >= exp)
-		return false;
-
-	return true;
-}
 
 class ProxySession::Private : public QObject
 {
@@ -193,7 +169,7 @@ public:
 			requestBody += requestData.body;
 			requestData.body.clear();
 
-			DomainMap::Entry entry = domainMap->entry(host, requestData.uri.encodedPath(), isHttps);
+			DomainMap::Entry entry = domainMap->entry(DomainMap::Http, isHttps, host, requestData.uri.encodedPath());
 			if(entry.isNull())
 			{
 				log_warning("proxysession: %p %s has 0 routes", q, qPrintable(host));
@@ -219,132 +195,10 @@ public:
 
 			log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
 
-			// check if the request is coming from a grip proxy already
-			bool trustedClient = false;
-			if(!defaultUpstreamKey.isEmpty())
-			{
-				QByteArray token = requestData.headers.get("Grip-Sig");
-				if(!token.isEmpty())
-				{
-					if(validate_token(token, defaultUpstreamKey))
-					{
-						log_debug("proxysession: %p passing to upstream", q);
-						trustedClient = true;
-						passToUpstream = true;
-					}
-					else
-						log_debug("proxysession: %p signature present but invalid: %s", q, token.data());
-				}
-			}
+			bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, entry, sigIss, sigKey, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress());
 
-			if(!trustedClient && entry.origHeaders)
-			{
-				// copy headers to include magic prefix, so that the original
-				//   headers may be recovered later. if the client is trusted,
-				//   then we assume this has been done already.
-
-				HttpHeaders origHeaders;
-				for(int n = 0; n < requestData.headers.count(); ++n)
-				{
-					const HttpHeader &h = requestData.headers[n];
-
-					if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
-					{
-						// if it's already marked, take it
-						origHeaders += h;
-
-						// remove where it lives now. we'll put it back later
-						requestData.headers.removeAt(n);
-						--n; // adjust position
-					}
-					else
-					{
-						// see if we require it to be marked already
-						bool found = false;
-						foreach(const QByteArray &i, origHeadersNeedMark)
-						{
-							if(qstricmp(h.first.data(), i.data()) == 0)
-							{
-								found = true;
-								break;
-							}
-						}
-
-						// if not, then add as marked
-						if(!found)
-							origHeaders += HttpHeader("eb9bf0f5-" + h.first, h.second);
-					}
-				}
-
-				// now append all the orig headers to the end
-				foreach(const HttpHeader &h, origHeaders)
-					requestData.headers += h;
-			}
-			else if(!entry.origHeaders)
-			{
-				// if we don't want original headers, then filter them out
-				//   before proxying
-				for(int n = 0; n < requestData.headers.count(); ++n)
-				{
-					const HttpHeader &h = requestData.headers[n];
-
-					if(qstrnicmp(h.first.data(), "eb9bf0f5-", 9) == 0)
-					{
-						requestData.headers.removeAt(n);
-						--n; // adjust position
-					}
-				}
-			}
-
-			// don't relay these headers. their meaning is handled by
-			//   mongrel2 and they only apply to the incoming hop.
-			requestData.headers.removeAll("Connection");
-			requestData.headers.removeAll("Keep-Alive");
-			requestData.headers.removeAll("Accept-Encoding");
-			requestData.headers.removeAll("Content-Encoding");
-			requestData.headers.removeAll("Transfer-Encoding");
-			requestData.headers.removeAll("Expect");
-
-			// rewrite the Host header to match the hostname of the destination URL.
-			//   in practice, the only time the value should ever be different is
-			//   if the original Host header had a port specified
-			requestData.headers.removeAll("Host");
-			requestData.headers += HttpHeader("Host", requestData.uri.host().toUtf8());
-
-			if(!trustedClient)
-			{
-				// remove/replace Grip-Sig
-				requestData.headers.removeAll("Grip-Sig");
-				if(!sigIss.isEmpty() && !sigKey.isEmpty())
-				{
-					QByteArray token = make_token(sigIss, sigKey);
-					if(!token.isEmpty())
-						requestData.headers += HttpHeader("Grip-Sig", token);
-					else
-						log_warning("proxysession: %p failed to sign request", q);
-				}
-			}
-
-			if(useXForwardedProtocol)
-			{
-				requestData.headers.removeAll("X-Forwarded-Protocol");
-				if(isHttps)
-					requestData.headers += HttpHeader("X-Forwarded-Protocol", "https");
-			}
-
-			XffRule *xr;
 			if(trustedClient)
-				xr = &xffTrustedRule;
-			else
-				xr = &xffRule;
-
-			QList<QByteArray> xffValues = requestData.headers.takeAll("X-Forwarded-For");
-			if(xr->truncate >= 0)
-				xffValues = xffValues.mid(qMax(xffValues.count() - xr->truncate, 0));
-			if(xr->append)
-				xffValues += rs->peerAddress().toString().toUtf8();
-			if(!xffValues.isEmpty())
-				requestData.headers += HttpHeader("X-Forwarded-For", HttpHeaders::join(xffValues));
+				passToUpstream = true;
 
 			state = Requesting;
 			buffering = true;
