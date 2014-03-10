@@ -79,6 +79,8 @@ public:
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int inSize;
+	int inContentType;
+	int outContentType;
 
 	Private(ZWebSocket *_q) :
 		QObject(_q),
@@ -101,7 +103,9 @@ public:
 		pendingUpdate(false),
 		expireTimer(0),
 		keepAliveTimer(0),
-		inSize(0)
+		inSize(0),
+		inContentType(-1),
+		outContentType((int)Frame::Text)
 	{
 		expireTimer = new QTimer(this);
 		connect(expireTimer, SIGNAL(timeout()), this, SLOT(expire_timeout()));
@@ -344,6 +348,30 @@ public:
 		}
 	}
 
+	void handleIncomingDataPacket(const QByteArray &contentType, const QByteArray &data, bool more)
+	{
+		Frame::Type ftype;
+		if(inContentType != -1)
+		{
+			ftype = Frame::Continuation;
+		}
+		else
+		{
+			if(contentType == "binary")
+				ftype = Frame::Binary;
+			else
+				ftype = Frame::Text;
+
+			inContentType = (int)ftype;
+		}
+
+		inFrames += Frame(ftype, data, more);
+		inSize += data.size();
+
+		if(!more)
+			inContentType = -1;
+	}
+
 	void handle(const ZhttpRequestPacket &packet)
 	{
 		if(packet.type == ZhttpRequestPacket::Error)
@@ -390,9 +418,7 @@ public:
 			if(inSize + packet.body.size() > IDEAL_CREDITS)
 				log_warning("zws client: id=%s server is sending too fast", packet.id.data());
 
-			// FIXME: content type
-			inFrames += Frame(Frame::Text, packet.body, packet.more);
-			inSize += packet.body.size();
+			handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
 
 			if(packet.credits > 0)
 			{
@@ -515,9 +541,7 @@ public:
 				if(inSize + packet.body.size() > IDEAL_CREDITS)
 					log_warning("zws client: id=%s server is sending too fast", packet.id.data());
 
-				// FIXME: content type
-				inFrames += Frame(Frame::Text, packet.body, packet.more);
-				inSize += packet.body.size();
+				handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
 
 				if(packet.credits > 0)
 				{
@@ -617,11 +641,32 @@ public:
 
 	void writeFrameInternal(const Frame &frame, int credits = -1)
 	{
+		// for content frames, set the type
+		QByteArray contentType;
+		if(frame.type == Frame::Binary || frame.type == Frame::Text || frame.type == Frame::Continuation)
+		{
+			Frame::Type ftype;
+			if(frame.type == Frame::Binary || frame.type == Frame::Text)
+			{
+				ftype = frame.type;
+				outContentType = (int)frame.type;
+			}
+			else if(frame.type == Frame::Continuation)
+			{
+				ftype = (Frame::Type)outContentType;
+			}
+
+			if(ftype == Frame::Binary)
+				contentType = "binary";
+			else // Text
+				contentType = "text";
+		}
+
 		if(server)
 		{
-			// FIXME: content type
 			ZhttpResponsePacket p;
 			p.type = ZhttpResponsePacket::Data;
+			p.contentType = contentType;
 			p.body = frame.data;
 			p.more = frame.more;
 			p.credits = credits;
@@ -629,9 +674,9 @@ public:
 		}
 		else
 		{
-			// FIXME: content type
 			ZhttpRequestPacket p;
 			p.type = ZhttpRequestPacket::Data;
+			p.contentType = contentType;
 			p.body = frame.data;
 			p.more = frame.more;
 			p.credits = credits;
@@ -793,14 +838,6 @@ public slots:
 				tryWrite();
 			}
 		}
-		// FIXME
-		if(state != Idle && state != ConnectedPeerClosed && pendingInCredits > 0)
-		{
-			int credits = pendingInCredits;
-			pendingInCredits = 0;
-			writeCredits(credits);
-		}
-
 	}
 
 	void expire_timeout()
