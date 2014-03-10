@@ -81,6 +81,7 @@ public:
 		outSock = new QZmq::Socket(QZmq::Socket::Push, this);
 
 		outSock->setHwm(DEFAULT_HWM);
+		outSock->setShutdownWaitTime(0);
 
 		if(!outSock->bind(outSpec))
 			return false;
