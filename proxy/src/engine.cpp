@@ -34,6 +34,7 @@
 #include "domainmap.h"
 #include "inspectmanager.h"
 #include "inspectchecker.h"
+#include "wscontrolmanager.h"
 #include "requestsession.h"
 #include "proxysession.h"
 #include "wsproxysession.h"
@@ -74,6 +75,7 @@ public:
 	Configuration config;
 	ZhttpManager *zhttp;
 	InspectManager *inspect;
+	WsControlManager *wsControl;
 	DomainMap *domainMap;
 	InspectChecker *inspectChecker;
 	QZmq::Socket *handler_retry_in_sock;
@@ -89,6 +91,7 @@ public:
 		q(_q),
 		zhttp(0),
 		inspect(0),
+		wsControl(0),
 		domainMap(0),
 		inspectChecker(0),
 		handler_retry_in_sock(0),
@@ -188,6 +191,23 @@ public:
 
 		if(handler_retry_in_valve)
 			handler_retry_in_valve->open();
+
+		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
+		{
+			wsControl = new WsControlManager(this);
+
+			if(!wsControl->setInSpec(config.wsControlInSpec))
+			{
+				log_error("unable to bind to handler_ws_control_in_spec: %s", qPrintable(config.wsControlInSpec));
+				return false;
+			}
+
+			if(!wsControl->setOutSpec(config.wsControlOutSpec))
+			{
+				log_error("unable to bind to handler_ws_control_out_spec: %s", qPrintable(config.wsControlOutSpec));
+				return false;
+			}
+		}
 
 		return true;
 	}
@@ -329,7 +349,7 @@ public:
 
 		log_debug("creating wsproxysession for id=%s", sock->rid().second.data());
 
-		WsProxySession *ps = new WsProxySession(zhttp, domainMap, this);
+		WsProxySession *ps = new WsProxySession(zhttp, domainMap, wsControl, this);
 		connect(ps, SIGNAL(finishedByPassthrough()), SLOT(wsps_finishedByPassthrough()));
 
 		ps->setDefaultSigKey(config.sigIss, config.sigKey);

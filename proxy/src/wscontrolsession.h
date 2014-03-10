@@ -17,41 +17,38 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef WSPROXYSESSION_H
-#define WSPROXYSESSION_H
+#ifndef WSCONTROLSESSION_H
+#define WSCONTROLSESSION_H
 
+#include <QByteArray>
 #include <QObject>
+#include "packet/wscontrolpacket.h"
 
-class ZhttpManager;
-class ZWebSocket;
 class WsControlManager;
-class DomainMap;
-class XffRule;
 
-class WsProxySession : public QObject
+class WsControlSession : public QObject
 {
 	Q_OBJECT
 
 public:
-	WsProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, WsControlManager *wsControlManager = 0, QObject *parent = 0);
-	~WsProxySession();
+	~WsControlSession();
 
-	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
-	void setDefaultUpstreamKey(const QByteArray &key);
-	void setUseXForwardedProtocol(bool enabled);
-	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
-	void setOrigHeadersNeedMark(const QList<QByteArray> &names);
-
-	// takes ownership
-	void start(ZWebSocket *sock);
+	void start();
+	void sendGripMessage(const QByteArray &message);
 
 signals:
-	void finishedByPassthrough();
+	void sendEventReceived(const QByteArray &contentType, const QByteArray &message);
+	void detachEventReceived();
 
 private:
 	class Private;
 	friend class Private;
 	Private *d;
+
+	friend class WsControlManager;
+	WsControlSession(QObject *parent = 0);
+	void setup(WsControlManager *manager);
+	void handle(const WsControlPacket::Item &item);
 };
 
 #endif

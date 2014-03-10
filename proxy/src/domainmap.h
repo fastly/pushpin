@@ -38,14 +38,16 @@ public:
 	class Target
 	{
 	public:
-		QString host;
-		int port;
+		QString connectHost;
+		int connectPort;
 		bool ssl; // use https
 		bool trusted; // bypass zurl access policies
 		bool insecure; // ignore server certificate validity
+		QString host; // override input host
+		QString subChannel; // force subscription for websocket test
 
 		Target() :
-			port(-1),
+			connectPort(-1),
 			ssl(false),
 			trusted(false),
 			insecure(false)

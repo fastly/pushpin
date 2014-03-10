@@ -268,7 +268,10 @@ public:
 		else
 			uri.setScheme("http");
 
-		log_debug("proxysession: %p forwarding to %s:%d", q, qPrintable(target.host), target.port);
+		if(!target.host.isEmpty())
+			uri.setHost(target.host);
+
+		log_debug("proxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
 
 		zhttpRequest = zhttpManager->createRequest();
 		zhttpRequest->setParent(this);
@@ -282,8 +285,8 @@ public:
 		if(target.insecure)
 			zhttpRequest->setIgnoreTlsErrors(true);
 
-		zhttpRequest->setConnectHost(target.host);
-		zhttpRequest->setConnectPort(target.port);
+		zhttpRequest->setConnectHost(target.connectHost);
+		zhttpRequest->setConnectPort(target.connectPort);
 
 		zhttpRequest->start(requestData.method, uri, requestData.headers);
 

@@ -17,41 +17,36 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef WSPROXYSESSION_H
-#define WSPROXYSESSION_H
+#ifndef WSCONTROLMANAGER_H
+#define WSCONTROLMANAGER_H
 
 #include <QObject>
+#include "packet/wscontrolpacket.h"
 
-class ZhttpManager;
-class ZWebSocket;
-class WsControlManager;
-class DomainMap;
-class XffRule;
+class WsControlSession;
 
-class WsProxySession : public QObject
+class WsControlManager : public QObject
 {
 	Q_OBJECT
 
 public:
-	WsProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, WsControlManager *wsControlManager = 0, QObject *parent = 0);
-	~WsProxySession();
+	WsControlManager(QObject *parent = 0);
+	~WsControlManager();
 
-	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
-	void setDefaultUpstreamKey(const QByteArray &key);
-	void setUseXForwardedProtocol(bool enabled);
-	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
-	void setOrigHeadersNeedMark(const QList<QByteArray> &names);
+	bool setInSpec(const QString &spec);
+	bool setOutSpec(const QString &spec);
 
-	// takes ownership
-	void start(ZWebSocket *sock);
-
-signals:
-	void finishedByPassthrough();
+	WsControlSession *createSession();
 
 private:
 	class Private;
-	friend class Private;
 	Private *d;
+
+	friend class WsControlSession;
+	void link(WsControlSession *s, const QByteArray &cid);
+	void unlink(const QByteArray &cid);
+	bool canWriteImmediately() const;
+	void write(const WsControlPacket::Item &item);
 };
 
 #endif

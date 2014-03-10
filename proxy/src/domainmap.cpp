@@ -346,8 +346,8 @@ public:
 				}
 
 				Target target;
-				target.host = parts[n].mid(0, at);
-				target.port = port;
+				target.connectHost = parts[n].mid(0, at);
+				target.connectPort = port;
 
 				if(props.contains("ssl"))
 					target.ssl = true;
@@ -359,6 +359,12 @@ public:
 
 				if(props.contains("insecure"))
 					target.insecure = true;
+
+				if(props.contains("host"))
+					target.host = props.value("host");
+
+				if(props.contains("sub"))
+					target.subChannel = props.value("sub");
 
 				r.targets += target;
 			}
@@ -387,7 +393,7 @@ public:
 			{
 				QStringList tstr;
 				foreach(const Target &t, r.targets)
-					tstr += t.host + ';' + QString::number(t.port);
+					tstr += t.connectHost + ';' + QString::number(t.connectPort);
 
 				if(!domain.isEmpty())
 					log_debug("  %s: %s", qPrintable(domain), qPrintable(tstr.join(" ")));

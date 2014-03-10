@@ -34,13 +34,15 @@ HEADERS += \
 	$$SRC_DIR/packet/inspectrequestpacket.h \
 	$$SRC_DIR/packet/inspectresponsepacket.h \
 	$$SRC_DIR/packet/acceptresponsepacket.h \
-	$$SRC_DIR/packet/retryrequestpacket.h
+	$$SRC_DIR/packet/retryrequestpacket.h \
+	$$SRC_DIR/packet/wscontrolpacket.h
 
 SOURCES += \
 	$$SRC_DIR/packet/inspectrequestpacket.cpp \
 	$$SRC_DIR/packet/inspectresponsepacket.cpp \
 	$$SRC_DIR/packet/acceptresponsepacket.cpp \
-	$$SRC_DIR/packet/retryrequestpacket.cpp
+	$$SRC_DIR/packet/retryrequestpacket.cpp \
+	$$SRC_DIR/packet/wscontrolpacket.cpp
 
 HEADERS += \
 	$$SRC_DIR/jwt.h \
@@ -51,6 +53,8 @@ HEADERS += \
 	$$SRC_DIR/inspectdata.h \
 	$$SRC_DIR/inspectmanager.h \
 	$$SRC_DIR/inspectrequest.h \
+	$$SRC_DIR/wscontrolmanager.h \
+	$$SRC_DIR/wscontrolsession.h \
 	$$SRC_DIR/acceptdata.h \
 	$$SRC_DIR/domainmap.h \
 	$$SRC_DIR/xffrule.h \
@@ -69,6 +73,8 @@ SOURCES += \
 	$$SRC_DIR/zwebsocket.cpp \
 	$$SRC_DIR/inspectmanager.cpp \
 	$$SRC_DIR/inspectrequest.cpp \
+	$$SRC_DIR/wscontrolmanager.cpp \
+	$$SRC_DIR/wscontrolsession.cpp \
 	$$SRC_DIR/domainmap.cpp \
 	$$SRC_DIR/inspectchecker.cpp \
 	$$SRC_DIR/requestsession.cpp \
