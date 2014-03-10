@@ -268,6 +268,9 @@ public:
 
 		delete outSock;
 		outSock = 0;
+
+		delete wsControl;
+		wsControl = 0;
 	}
 
 	void start(ZWebSocket *sock)
