@@ -233,6 +233,7 @@ public:
 	int outReadInProgress; // frame type or -1
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
+	bool acceptGripMessages;
 	QByteArray messagePrefix;
 	bool detached;
 	QString subChannel;
@@ -252,6 +253,7 @@ public:
 		inPending(0),
 		outPending(0),
 		outReadInProgress(-1),
+		acceptGripMessages(false),
 		detached(false)
 	{
 	}
@@ -422,7 +424,7 @@ public:
 				if(f.type != ZWebSocket::Frame::Continuation)
 					outReadInProgress = (int)f.type;
 
-				if(wsControl)
+				if(wsControl && acceptGripMessages)
 				{
 					if(f.type == ZWebSocket::Frame::Text && f.data.startsWith("c:"))
 					{
@@ -538,9 +540,10 @@ private slots:
 					messagePrefix = grip.params.value("message-prefix");
 				else
 					messagePrefix = "m:";
-			}
 
-			log_debug("grip enabled, message-prefix=[%s]", messagePrefix.data());
+				acceptGripMessages = true;
+				log_debug("wsproxysession: %p grip enabled, message-prefix=[%s]", q, messagePrefix.data());
+			}
 
 			if(wsControlManager)
 			{
@@ -551,7 +554,7 @@ private slots:
 
 				if(!subChannel.isEmpty())
 				{
-					log_debug("forcing subscription to [%s]", qPrintable(subChannel));
+					log_debug("wsproxysession: %p implicit subscription to [%s]", q, qPrintable(subChannel));
 
 					QJson::Serializer serializer;
 					QVariantMap msg;
