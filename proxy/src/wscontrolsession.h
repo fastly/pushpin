@@ -33,7 +33,7 @@ class WsControlSession : public QObject
 public:
 	~WsControlSession();
 
-	void start();
+	void start(const QByteArray &channelPrefix);
 	void sendGripMessage(const QByteArray &message);
 
 signals:

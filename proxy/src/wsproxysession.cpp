@@ -550,7 +550,7 @@ private slots:
 				wsControl = wsControlManager->createSession();
 				connect(wsControl, SIGNAL(sendEventReceived(const QByteArray &, const QByteArray &)), SLOT(wsControl_sendEventReceived(const QByteArray &, const QByteArray &)));
 				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
-				wsControl->start();
+				wsControl->start(channelPrefix);
 
 				if(!subChannel.isEmpty())
 				{

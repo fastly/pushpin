@@ -52,6 +52,9 @@ QVariant WsControlPacket::toVariant() const
 		if(!item.message.isNull())
 			vitem["message"] = item.message;
 
+		if(!item.channelPrefix.isEmpty())
+			vitem["channel-prefix"] = item.channelPrefix;
+
 		vitems += vitem;
 	}
 
@@ -119,6 +122,16 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 				return false;
 
 			item.message = vitem["message"].toByteArray();
+		}
+
+		if(vitem.contains("channel-prefix"))
+		{
+			if(vitem["channel-prefix"].type() != QVariant::ByteArray)
+				return false;
+
+			QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
+			if(!channelPrefix.isEmpty())
+				item.channelPrefix = channelPrefix;
 		}
 
 		items += item;

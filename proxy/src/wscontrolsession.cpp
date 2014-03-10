@@ -35,6 +35,7 @@ public:
 	WsControlManager *manager;
 	QByteArray cid;
 	QTimer *keepAliveTimer;
+	QByteArray channelPrefix;
 
 	Private(WsControlSession *_q) :
 		QObject(_q),
@@ -77,6 +78,7 @@ public:
 
 		WsControlPacket::Item i;
 		i.type = WsControlPacket::Item::Here;
+		i.channelPrefix = channelPrefix;
 		write(i);
 	}
 
@@ -133,8 +135,9 @@ WsControlSession::~WsControlSession()
 	delete d;
 }
 
-void WsControlSession::start()
+void WsControlSession::start(const QByteArray &channelPrefix)
 {
+	d->channelPrefix = channelPrefix;
 	d->start();
 }
 

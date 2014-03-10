@@ -119,6 +119,7 @@ class WsSession(object):
 	def __init__(self, cid):
 		self.cid = cid
 		self.expire_time = None
+		self.channel_prefix = None
 
 class Subscription(object):
 	def __init__(self, mode, channel):
@@ -825,10 +826,12 @@ def ws_control_worker():
 			mtype = item.get('type')
 			if mtype == 'here':
 				cid = item['cid']
+				channel_prefix = item.get('channel-prefix')
 				lock.acquire()
 				s = ws_sessions.get(cid)
 				if not s:
 					s = WsSession(cid)
+					s.channel_prefix = channel_prefix
 					ws_sessions[cid] = s
 					logger.debug('added ws session: %s' % cid)
 				s.expire_time = now + 60
@@ -873,6 +876,8 @@ def ws_control_worker():
 					gtype = gm['type']
 					if gtype == 'subscribe' or gtype == 'unsubscribe':
 						channel = gm['channel']
+					else:
+						channel = None
 				except:
 					gm = None
 
@@ -884,6 +889,8 @@ def ws_control_worker():
 					lock.acquire()
 					s = ws_sessions.get(cid)
 					if s:
+						if channel is not None and s.channel_prefix:
+							channel = s.channel_prefix + channel
 						if gtype == 'subscribe':
 							hchannel = ws_channels.get(channel)
 							if not hchannel:

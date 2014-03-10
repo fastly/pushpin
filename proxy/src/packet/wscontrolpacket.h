@@ -44,6 +44,7 @@ public:
 		Type type;
 		QByteArray contentType;
 		QByteArray message;
+		QByteArray channelPrefix;
 
 		Item() :
 			type((Type)-1)
