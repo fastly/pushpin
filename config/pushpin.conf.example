@@ -55,6 +55,12 @@ handler_retry_in_spec=ipc:///tmp/pushpin-retry
 # bind PUSH for passing off requests (internal, used with handler)
 handler_accept_out_spec=ipc:///tmp/pushpin-accept
 
+# bind PULL for reading handler WS control messages
+handler_ws_control_in_spec=ipc:///tmp/pushpin-ws-control-in
+
+# bind PUSH for writing handler WS control messages
+handler_ws_control_out_spec=ipc:///tmp/pushpin-ws-control-out
+
 # routes config file (path relative to location of this file)
 routesfile=routes
 
@@ -89,6 +95,12 @@ proxy_retry_out_spec=ipc:///tmp/pushpin-retry
 
 # connect PULL for receiving HTTP requests (internal, used with proxy)
 proxy_accept_in_spec=ipc:///tmp/pushpin-accept
+
+# bind PULL for reading proxy WS control messages
+proxy_ws_control_in_spec=ipc:///tmp/pushpin-ws-control-out
+
+# bind PUSH for writing proxy WS control messages
+proxy_ws_control_out_spec=ipc:///tmp/pushpin-ws-control-in
 
 # list of connect DEALER for continuing mongrel2 HTTP/WS requests
 m2a_in_stream_specs=ipc:///tmp/pushpin-m2zhttp-out-stream,ipc:///tmp/pushpin-m2zws-out-stream
