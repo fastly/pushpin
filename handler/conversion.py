@@ -1,4 +1,4 @@
-# Copyright (C) 2012-2013 Fanout, Inc.
+# Copyright (C) 2012-2014 Fanout, Inc.
 #
 # This file is part of Pushpin.
 #
@@ -24,7 +24,7 @@ def ensure_utf8(s):
 		return s # assume it is already utf-8
 
 # convert json-style transport to tnetstring-style
-def convert_json_transport(t):
+def convert_json_transport(ttype, t):
 	out = dict()
 	if "code" in t:
 		out["code"] = t["code"]
@@ -45,8 +45,17 @@ def convert_json_transport(t):
 		out["body"] = ensure_utf8(t["body"])
 	if "action" in t:
 		out["action"] = ensure_utf8(t["action"])
-	if "content-bin" in t:
-		out["content"] = ensure_utf8(b64decode(t["content-bin"]))
-	elif "content" in t:
-		out["content"] = ensure_utf8(t["content"])
+
+	if ttype == "ws-message":
+		# for ws-message, don't rename content-bin to content
+		if "content-bin" in t:
+			out["content-bin"] = ensure_utf8(b64decode(t["content-bin"]))
+		elif "content" in t:
+			out["content"] = ensure_utf8(t["content"])
+	else:
+		if "content-bin" in t:
+			out["content"] = ensure_utf8(b64decode(t["content-bin"]))
+		elif "content" in t:
+			out["content"] = ensure_utf8(t["content"])
+
 	return out

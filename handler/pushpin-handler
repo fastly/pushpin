@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2012-2013 Fanout, Inc.
+# Copyright (C) 2012-2014 Fanout, Inc.
 #
 # This file is part of Pushpin.
 #
@@ -92,6 +92,16 @@ if config.has_option("handler", "stats_spec"):
 else:
 	stats_spec = None
 
+if config.has_option("handler", "proxy_ws_control_in_spec"):
+	ws_control_in_spec = config.get("handler", "proxy_ws_control_in_spec")
+else:
+	ws_control_in_spec = None
+
+if config.has_option("handler", "proxy_ws_control_out_spec"):
+	ws_control_out_spec = config.get("handler", "proxy_ws_control_out_spec")
+else:
+	ws_control_out_spec = None
+
 ctx = zmq.Context()
 
 class Hold(object):
@@ -105,6 +115,11 @@ class Hold(object):
 		self.expire_time = None
 		self.last_keepalive = None
 
+class WsSession(object):
+	def __init__(self, cid):
+		self.cid = cid
+		self.expire_time = None
+
 class Subscription(object):
 	def __init__(self, mode, channel):
 		self.mode = mode
@@ -116,6 +131,8 @@ lock = threading.Lock()
 response_channels = dict()
 response_lastids = dict()
 stream_channels = dict()
+ws_sessions = dict()
+ws_channels = dict()
 
 # key=(type, channel)
 subs = dict()
@@ -541,9 +558,9 @@ def push_in_http_handler(context, m):
 		if prev_id is not None:
 			out["prev-id"] = ensure_utf8(prev_id)
 
-		for transport in ("http-response", "http-stream"):
+		for transport in ("http-response", "http-stream", "ws-message"):
 			if transport in i:
-				out[transport] = convert_json_transport(i[transport])
+				out[transport] = convert_json_transport(transport, i[transport])
 
 		out_sock.send(tnetstring.dumps(out))
 
@@ -568,6 +585,9 @@ def push_in_worker(c):
 	out_sock = ctx.socket(zmq.PUB)
 	for spec in m2a_out_specs:
 		out_sock.connect(spec)
+
+	ws_control_out_sock = ctx.socket(zmq.PUSH)
+	ws_control_out_sock.connect(ws_control_out_spec)
 
 	while True:
 		m_raw = in_sock.recv()
@@ -665,6 +685,37 @@ def push_in_worker(c):
 				if content:
 					reply_http_chunk(out_sock, h.rid, content)
 
+		if "ws-message" in m:
+			lock.acquire()
+			hchannel = ws_channels.get(channel)
+			if hchannel:
+				cids = hchannel.keys()
+			else:
+				cids = list()
+			lock.release()
+			logger.debug("relaying to %d subscribers" % len(cids))
+			for cid in cids:
+				t = m['ws-message']
+				if 'content-bin' in t:
+					content_type = 'binary'
+					content = t['content']
+				elif "content" in t:
+					content_type = 'text'
+					content = t['content']
+				else:
+					content = None
+
+				if content is not None:
+					item = dict()
+					item['cid'] = cid
+					item['type'] = 'send'
+					item['content-type'] = content_type
+					item['message'] = content
+					out = dict()
+					out['items'] = [item]
+					logger.debug('OUT wscontrol: %s' % out)
+					ws_control_out_sock.send(tnetstring.dumps(out))
+
 	in_sock.close()
 
 def session_worker():
@@ -752,6 +803,142 @@ def session_worker():
 			out['channel'] = ensure_utf8(sub_key[1])
 			out['unavailable'] = True
 			stats_sock.send(tnetstring.dumps(out))
+
+def ws_control_worker():
+	in_sock = ctx.socket(zmq.PULL)
+	in_sock.connect(ws_control_in_spec)
+
+	out_sock = ctx.socket(zmq.PUSH)
+	out_sock.connect(ws_control_out_spec)
+
+	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.connect('inproc://stats_in')
+
+	while True:
+		m_raw = in_sock.recv()
+		m = tnetstring.loads(m_raw)
+		logger.debug('IN wscontrol: %s' % m)
+
+		now = int(time.time())
+
+		for item in m['items']:
+			mtype = item.get('type')
+			if mtype == 'here':
+				cid = item['cid']
+				lock.acquire()
+				s = ws_sessions.get(cid)
+				if not s:
+					s = WsSession(cid)
+					ws_sessions[cid] = s
+					logger.debug('added ws session: %s' % cid)
+				s.expire_time = now + 60
+				lock.release()
+			elif mtype == 'gone' or mtype == 'cancel':
+				cid = item['cid']
+
+				notify_unsubs = set()
+
+				lock.acquire()
+				s = ws_sessions.get(cid)
+				if s:
+					del ws_sessions[cid]
+					channels = set()
+					for channel, hchannels in ws_channels.iteritems():
+						channels.add(channel)
+						if cid in hchannels:
+							del hchannels[cid]
+					for channel in channels:
+						if channel in ws_channels and len(ws_channels[channel]) == 0:
+							del ws_channels[channel]
+							sub_key = ('ws', channel)
+							sub = subs.get(sub_key)
+							if sub:
+								del subs[sub_key]
+								notify_unsubs.add(sub_key)
+					logger.debug('removed ws session: %s' % cid)
+				lock.release()
+
+				for sub_key in notify_unsubs:
+					out = dict()
+					out['from'] = instance_id
+					out['mode'] = ensure_utf8(sub_key[0])
+					out['channel'] = ensure_utf8(sub_key[1])
+					out['unavailable'] = True
+					stats_sock.send(tnetstring.dumps(out))
+			elif mtype == 'grip':
+				cid = item['cid']
+
+				try:
+					gm = json.loads(item['message'])
+					gtype = gm['type']
+					if gtype == 'subscribe' or gtype == 'unsubscribe':
+						channel = gm['channel']
+				except:
+					gm = None
+
+				notify_sub = False
+				notify_unsub = False
+				notify_detach = False
+
+				if gm:
+					lock.acquire()
+					s = ws_sessions.get(cid)
+					if s:
+						if gtype == 'subscribe':
+							hchannel = ws_channels.get(channel)
+							if not hchannel:
+								hchannel = dict()
+								ws_channels[channel] = hchannel
+							hchannel[cid] = s
+							sub_key = ('ws', channel)
+							sub = subs.get(sub_key)
+							if not sub:
+								sub = Subscription('ws', channel)
+								sub.last_keepalive = now
+								subs[sub_key] = sub
+								notify_sub = True
+							sub.expire_time = None
+						elif gtype == 'unsubscribe':
+							hchannel = ws_channels.get(channel)
+							if hchannel:
+								if cid in hchannel:
+									del hchannel[cid]
+									if len(hchannel) == 0:
+										del ws_channels[channel]
+									sub_key = ('ws', channel)
+									sub = subs.get(sub_key)
+									if sub:
+										del subs[sub_key]
+										notify_unsub = True
+						elif gtype == 'detach':
+							notify_detach = True
+					lock.release()
+
+				if notify_sub:
+					logger.debug('ws session %s subscribed to %s' % (cid, channel))
+					out = dict()
+					out['from'] = instance_id
+					out['mode'] = 'ws'
+					out['channel'] = ensure_utf8(channel)
+					out['ttl'] = 60
+					stats_sock.send(tnetstring.dumps(out))
+
+				if notify_unsub:
+					out = dict()
+					out['from'] = instance_id
+					out['mode'] = 'ws'
+					out['channel'] = ensure_utf8(channel)
+					out['unavailable'] = True
+					stats_sock.send(tnetstring.dumps(out))
+
+				if notify_detach:
+					item = dict()
+					item['cid'] = cid
+					item['type'] = 'detach'
+					out = dict()
+					out['items'] = [item]
+					logger.debug('OUT wscontrol: %s' % out)
+					out_sock.send(tnetstring.dumps(out))
 
 def timeout_worker():
 	out_sock = ctx.socket(zmq.PUB)
@@ -863,6 +1050,31 @@ def timeout_worker():
 				logger.debug('OUT publish: %s' % m_raw)
 				out_sock.send(m_raw)
 
+		now = int(time.time())
+		cids = set()
+		lock.acquire()
+		for cid, s in ws_sessions.iteritems():
+			if s.expire_time and now >= s.expire_time:
+				cids.add(cid)
+		for cid in cids:
+			del ws_sessions[cid]
+			channels = set()
+			for channel, hchannels in ws_channels.iteritems():
+				channels.add(channel)
+				if cid in hchannels:
+					del hchannels[cid]
+			for channel in channels:
+				if channel in ws_channels and len(ws_channels[channel]) == 0:
+					del ws_channels[channel]
+					sub_key = ('ws', channel)
+					sub = subs.get(sub_key)
+					if sub:
+						# use expire_time to flag for removal
+						sub.expire_time = now
+		lock.release()
+		if len(cids) > 0:
+			logger.debug("timing out %d ws sessions" % len(cids))
+
 		notify_subs = set()
 		notify_unsubs = set()
 		lock.acquire()
@@ -948,6 +1160,11 @@ push_in_http_thread.start()
 session_thread = threading.Thread(target=session_worker)
 session_thread.daemon = True
 session_thread.start()
+
+if ws_control_in_spec and ws_control_out_spec:
+	ws_control_thread = threading.Thread(target=ws_control_worker)
+	ws_control_thread.daemon = True
+	ws_control_thread.start()
 
 timeout_thread = threading.Thread(target=timeout_worker)
 timeout_thread.daemon = True
