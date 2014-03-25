@@ -177,6 +177,16 @@ public:
 				return;
 			}
 
+			if(!entry.asHost.isEmpty())
+				requestData.uri.setHost(entry.asHost);
+
+			if(entry.pathRemove > 0)
+			{
+				QByteArray path = requestData.uri.encodedPath();
+				path = path.mid(entry.pathRemove);
+				requestData.uri.setEncodedPath(path);
+			}
+
 			QByteArray sigIss;
 			QByteArray sigKey;
 			if(!entry.sigIss.isEmpty() && !entry.sigKey.isEmpty())

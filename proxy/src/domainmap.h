@@ -62,6 +62,8 @@ public:
 		QByteArray sigKey;
 		QByteArray prefix;
 		bool origHeaders;
+		QString asHost;
+		int pathRemove;
 		QList<Target> targets;
 
 		bool isNull() const
@@ -70,7 +72,8 @@ public:
 		}
 
 		Entry() :
-			origHeaders(false)
+			origHeaders(false),
+			pathRemove(0)
 		{
 		}
 	};
