@@ -132,11 +132,41 @@ lock = threading.Lock()
 response_channels = dict()
 response_lastids = dict()
 stream_channels = dict()
+channels_by_req = dict()
 ws_sessions = dict()
 ws_channels = dict()
 
 # key=(type, channel)
 subs = dict()
+
+# assumes state is locked
+def remove_from_req_channels(rid, response=True, stream=True):
+	req_channels = channels_by_req.get(rid)
+	if req_channels is not None:
+		to_remove = set()
+		for mode, channel in req_channels:
+			if response and mode == 'response':
+				hchannels = response_channels.get(channel)
+				if hchannels is not None and rid in hchannels:
+					del hchannels[rid]
+					if len(hchannels) == 0:
+						del response_channels[channel]
+				to_remove.add((mode, channel))
+			elif stream and mode == 'stream':
+				hchannels = stream_channels.get(channel)
+				if hchannels is not None and rid in hchannels:
+					del hchannels[rid]
+					if len(hchannels) == 0:
+						del stream_channels[channel]
+				to_remove.add((mode, channel))
+		for mode, channel in to_remove:
+			req_channels.remove((mode, channel))
+		if len(req_channels) == 0:
+			del channels_by_req[rid]
+
+# assumes state is locked
+def remove_from_response_channels(rid):
+	remove_from_req_channels(rid, response=True, stream=False)
 
 def header_get(headers, name):
 	lname = name.lower()
@@ -380,10 +410,15 @@ def accept_worker():
 				mode = "response"
 			if mode != "response" and mode != "stream":
 				raise ValueError("bad mode")
-			channel = hold["channels"][0]["name"]
-			prev_id = hold["channels"][0].get("prev-id")
 			if "channel-prefix" in m:
-				channel = m["channel-prefix"] + channel
+				channel_prefix = m["channel-prefix"]
+			else:
+				channel_prefix = ""
+			channels = list()
+			for hc in hold["channels"]:
+				name = channel_prefix + hc["name"]
+				prev_id = hc.get("prev-id")
+				channels.append((name, prev_id))
 			if "timeout" in hold:
 				timeout = int(hold["timeout"])
 			else:
@@ -420,38 +455,50 @@ def accept_worker():
 
 			notify_sub = False
 			if mode == "response":
-				logger.debug("adding response hold on %s" % channel)
-				h.expire_time = int(time.time()) + timeout
+				# bind channels
+				quit = False
 				lock.acquire()
-				if prev_id is not None:
-					last_id = response_lastids.get(channel)
-					if last_id is not None and last_id != prev_id:
-						del response_lastids[channel]
-						lock.release()
-						# note: we don't need to do a handoff here because we didn't ack to take over yet
-						logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
-						r = dict()
-						r["requests"] = m["requests"]
-						r["request-data"] = m["request-data"]
-						if "inspect" in m:
-							r["inspect"] = m["inspect"]
-						logger.debug("OUT retry: %s" % r)
-						r_raw = tnetstring.dumps(r)
-						retry_sock.send(r_raw)
-						continue
-				hchannel = response_channels.get(channel)
-				if not hchannel:
-					hchannel = dict()
-					response_channels[channel] = hchannel
-				hchannel[rid] = h
-				sub_key = (mode, channel)
-				sub = subs.get(sub_key)
-				if not sub:
-					sub = Subscription(mode, channel)
-					sub.last_keepalive = now
-					subs[sub_key] = sub
-					notify_sub = True
-				sub.expire_time = None
+				for channel, prev_id in channels:
+					logger.debug("adding response hold on %s" % channel)
+					h.expire_time = int(time.time()) + timeout
+					if prev_id is not None:
+						last_id = response_lastids.get(channel)
+						if last_id is not None and last_id != prev_id:
+							del response_lastids[channel]
+							lock.release()
+							# note: we don't need to do a handoff here because we didn't ack to take over yet
+							logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
+							r = dict()
+							r["requests"] = m["requests"]
+							r["request-data"] = m["request-data"]
+							if "inspect" in m:
+								r["inspect"] = m["inspect"]
+							logger.debug("OUT retry: %s" % r)
+							r_raw = tnetstring.dumps(r)
+							retry_sock.send(r_raw)
+							quit = True
+							break
+					hchannel = response_channels.get(channel)
+					if not hchannel:
+						hchannel = dict()
+						response_channels[channel] = hchannel
+					hchannel[rid] = h
+					req_channels = channels_by_req.get(rid)
+					if not req_channels:
+						req_channels = set()
+						channels_by_req[rid] = req_channels
+					req_channels.add((mode, channel))
+					sub_key = (mode, channel)
+					sub = subs.get(sub_key)
+					if not sub:
+						sub = Subscription(mode, channel)
+						sub.last_keepalive = now
+						subs[sub_key] = sub
+						notify_sub = True
+					sub.expire_time = None
+				if quit:
+					# we already unlocked if this is set
+					continue
 				lock.release()
 
 				# ack
@@ -481,23 +528,28 @@ def accept_worker():
 
 				reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True)
 
-				logger.debug("adding stream hold on %s" % channel)
-
-				# bind channel
+				# bind channels
 				lock.acquire()
-				hchannel = stream_channels.get(channel)
-				if not hchannel:
-					hchannel = dict()
-					stream_channels[channel] = hchannel
-				hchannel[rid] = h
-				sub_key = (mode, channel)
-				sub = subs.get(sub_key)
-				if not sub:
-					sub = Subscription(mode, channel)
-					sub.last_keepalive = now
-					subs[sub_key] = sub
-					notify_sub = True
-				sub.expire_time = None
+				for channel, prev_id in channels:
+					logger.debug("adding stream hold on %s" % channel)
+					hchannel = stream_channels.get(channel)
+					if not hchannel:
+						hchannel = dict()
+						stream_channels[channel] = hchannel
+					hchannel[rid] = h
+					req_channels = channels_by_req.get(rid)
+					if not req_channels:
+						req_channels = set()
+						channels_by_req[rid] = req_channels
+					req_channels.add((mode, channel))
+					sub_key = (mode, channel)
+					sub = subs.get(sub_key)
+					if not sub:
+						sub = Subscription(mode, channel)
+						sub.last_keepalive = now
+						subs[sub_key] = sub
+						notify_sub = True
+					sub.expire_time = None
 				lock.release()
 
 			if notify_sub:
@@ -602,6 +654,10 @@ def push_in_worker(c):
 			if hchannel:
 				holds = hchannel.values()
 				del response_channels[channel]
+				for h in holds:
+					req_channels = channels_by_req[h.rid]
+					req_channels.remove(('response', channel))
+					remove_from_response_channels(h.rid)
 			else:
 				holds = list()
 			sub_key = ('response', channel)
@@ -743,6 +799,7 @@ def session_worker():
 			logger.debug('cleaning up subscriber %s' % repr(rid))
 			now = int(time.time())
 			lock.acquire()
+			# FIXME: use channels_by_req for lookup
 			channels = set()
 			for channel, hchannels in response_channels.iteritems():
 				channels.add(channel)
@@ -769,6 +826,7 @@ def session_worker():
 					if sub:
 						del subs[sub_key]
 						notify_unsubs.add(sub_key)
+			remove_from_req_channels(rid)
 			lock.release()
 		elif mtype is not None:
 			# is this a known session?
@@ -958,6 +1016,7 @@ def timeout_worker():
 	while True:
 		now = int(time.time())
 		lock.acquire()
+		# FIXME: use channels_by_req for lookup
 		holds = list()
 		channels = set()
 		for channel, hchannels in response_channels.iteritems():
@@ -977,6 +1036,8 @@ def timeout_worker():
 				if sub and sub.expire_time is None:
 					# flag for deletion soon
 					sub.expire_time = now + 60
+		for h in holds:
+			remove_from_response_channels(h.rid)
 		lock.release()
 
 		if len(holds) > 0:
