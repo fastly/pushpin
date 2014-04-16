@@ -36,7 +36,9 @@ HEADERS += \
 	$$SRC_DIR/packet/acceptresponsepacket.h \
 	$$SRC_DIR/packet/retryrequestpacket.h \
 	$$SRC_DIR/packet/wscontrolpacket.h \
-	$$SRC_DIR/packet/statspacket.h
+	$$SRC_DIR/packet/statspacket.h \
+	$$SRC_DIR/packet/zrpcrequestpacket.h \
+	$$SRC_DIR/packet/zrpcresponsepacket.h
 
 SOURCES += \
 	$$SRC_DIR/packet/inspectrequestpacket.cpp \
@@ -44,7 +46,9 @@ SOURCES += \
 	$$SRC_DIR/packet/acceptresponsepacket.cpp \
 	$$SRC_DIR/packet/retryrequestpacket.cpp \
 	$$SRC_DIR/packet/wscontrolpacket.cpp \
-	$$SRC_DIR/packet/statspacket.cpp
+	$$SRC_DIR/packet/statspacket.cpp \
+	$$SRC_DIR/packet/zrpcrequestpacket.cpp \
+	$$SRC_DIR/packet/zrpcresponsepacket.cpp
 
 HEADERS += \
 	$$SRC_DIR/jwt.h \
@@ -66,6 +70,8 @@ HEADERS += \
 	$$SRC_DIR/proxysession.h \
 	$$SRC_DIR/wsproxysession.h \
 	$$SRC_DIR/statsmanager.h \
+	$$SRC_DIR/zrpcmanager.h \
+	$$SRC_DIR/zrpcrequest.h \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
@@ -85,4 +91,6 @@ SOURCES += \
 	$$SRC_DIR/proxysession.cpp \
 	$$SRC_DIR/wsproxysession.cpp \
 	$$SRC_DIR/statsmanager.cpp \
+	$$SRC_DIR/zrpcmanager.cpp \
+	$$SRC_DIR/zrpcrequest.cpp \
 	$$SRC_DIR/engine.cpp

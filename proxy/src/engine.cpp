@@ -39,6 +39,8 @@
 #include "proxysession.h"
 #include "wsproxysession.h"
 #include "statsmanager.h"
+#include "zrpcmanager.h"
+#include "zrpcrequest.h"
 
 #define DEFAULT_HWM 1000
 
@@ -85,6 +87,7 @@ public:
 	DomainMap *domainMap;
 	InspectChecker *inspectChecker;
 	StatsManager *stats;
+	ZrpcManager *rpc;
 	QZmq::Socket *handler_retry_in_sock;
 	QZmq::Socket *handler_accept_out_sock;
 	QZmq::Valve *handler_retry_in_valve;
@@ -102,6 +105,7 @@ public:
 		domainMap(0),
 		inspectChecker(0),
 		stats(0),
+		rpc(0),
 		handler_retry_in_sock(0),
 		handler_accept_out_sock(0),
 		handler_retry_in_valve(0)
@@ -230,6 +234,18 @@ public:
 			}
 		}
 
+		if(!config.commandSpec.isEmpty())
+		{
+			rpc = new ZrpcManager(this);
+			connect(rpc, SIGNAL(requestReady()), SLOT(rpc_requestReady()));
+
+			if(!rpc->setInSpec(config.commandSpec))
+			{
+				log_error("unable to bind to command_spec: %s", qPrintable(config.commandSpec));
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -238,7 +254,7 @@ public:
 		domainMap->reload();
 	}
 
-	void doProxy(RequestSession *rs, const InspectData *idata = 0)
+	void doProxy(RequestSession *rs, const InspectData *idata = 0, bool isRetry = false)
 	{
 		bool sharable = (idata && !idata->sharingKey.isEmpty() && rs->haveCompleteRequestBody());
 
@@ -292,7 +308,7 @@ public:
 
 		if(stats)
 		{
-			stats->addConnection(ridToString(rs->rid()), ps->routeId(), StatsManager::Http, rs->peerAddress(), rs->isHttps());
+			stats->addConnection(ridToString(rs->rid()), ps->routeId(), StatsManager::Http, rs->peerAddress(), rs->isHttps(), isRetry);
 			stats->addActivity(ps->routeId());
 		}
 	}
@@ -393,7 +409,7 @@ public:
 
 		if(stats)
 		{
-			stats->addConnection(ridToString(sock->rid()), ps->routeId(), StatsManager::WebSocket, sock->peerAddress(), sock->requestUri().scheme() == "wss");
+			stats->addConnection(ridToString(sock->rid()), ps->routeId(), StatsManager::WebSocket, sock->peerAddress(), sock->requestUri().scheme() == "wss", false);
 			stats->addActivity(ps->routeId());
 		}
 	}
@@ -460,7 +476,7 @@ private slots:
 		if(stats)
 		{
 			// add connection so that it becomes lingerable
-			stats->addConnection(ridToString(rs->rid()), QByteArray(), StatsManager::Http, rs->peerAddress(), rs->isHttps());
+			stats->addConnection(ridToString(rs->rid()), QByteArray(), StatsManager::Http, rs->peerAddress(), rs->isHttps(), false);
 			stats->addActivity(QByteArray());
 
 			// immediately remove since we're accepting
@@ -616,13 +632,75 @@ private slots:
 
 			requestSessions += rs;
 
-			doProxy(rs, p.haveInspectInfo ? &idata : 0);
+			// note: if the routing table was changed, there's a chance the request
+			//   might get a different route id this time around. this could confuse
+			//   stats processors tracking route+connection mappings.
+
+			doProxy(rs, p.haveInspectInfo ? &idata : 0, true);
 		}
 	}
 
 	void handler_accept_out_messagesWritten(int count)
 	{
 		Q_UNUSED(count);
+	}
+
+	void rpc_requestReady()
+	{
+		ZrpcRequest *req = rpc->takeNext();
+		if(req->method() == "conncheck")
+		{
+			if(!stats)
+			{
+				req->respondError("service-unavailable");
+				delete req;
+				return;
+			}
+
+			QVariantHash args = req->args();
+			if(!args.contains("ids") || args["ids"].type() != QVariant::List)
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			QVariantList vids = args["ids"].toList();
+
+			bool ok = true;
+			QList<QByteArray> ids;
+			foreach(const QVariant &vid, vids)
+			{
+				if(vid.type() != QVariant::ByteArray)
+				{
+					ok = false;
+					break;
+				}
+
+				ids += vid.toByteArray();
+			}
+			if(!ok)
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			QVariantList out;
+			foreach(const QByteArray &id, ids)
+			{
+				if(stats->checkConnection(id))
+					out += id;
+			}
+
+			req->respond(out);
+		}
+		else
+		{
+			req->respondError("method-not-found");
+		}
+
+		delete req;
 	}
 };
 

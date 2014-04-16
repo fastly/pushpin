@@ -61,6 +61,12 @@ handler_ws_control_in_spec=ipc:///tmp/pushpin-ws-control-in
 # bind PUSH for writing handler WS control messages
 handler_ws_control_out_spec=ipc:///tmp/pushpin-ws-control-out
 
+# bind PUB for sending stats
+stats_spec=ipc:///tmp/pushpin-proxy-stats
+
+# bind REP for responding to commands
+command_spec=ipc:///tmp/pushpin-proxy-command
+
 # routes config file (path relative to location of this file)
 routesfile=routes
 

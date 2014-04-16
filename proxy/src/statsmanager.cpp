@@ -210,7 +210,7 @@ void StatsManager::addActivity(const QByteArray &routeId)
 	Q_UNUSED(routeId);
 }
 
-void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl)
+void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet)
 {
 	// if we already had an entry, silently overwrite it. this can
 	//   happen if we sent an accepted connection off to the handler,
@@ -232,7 +232,9 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 	d->connectionInfoById[c->id] = c;
 
 	c->nextRefresh = QDateTime::currentDateTime().addSecs(CONNECTION_REFRESH);
-	d->sendConnected(c);
+
+	if(!quiet)
+		d->sendConnected(c);
 }
 
 void StatsManager::removeConnection(const QByteArray &id, bool linger)

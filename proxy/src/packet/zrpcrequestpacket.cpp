@@ -17,42 +17,37 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef STATSMANAGER_H
-#define STATSMANAGER_H
+#include "zrpcrequestpacket.h"
 
-#include <QObject>
-
-class QHostAddress;
-
-class StatsManager : public QObject
+QVariant ZrpcRequestPacket::toVariant() const
 {
-	Q_OBJECT
+	QVariantHash obj;
 
-public:
-	enum ConnectionType
-	{
-		Http,
-		WebSocket
-	};
+	obj["id"] = id;
+	obj["method"] = method.toUtf8();
+	obj["args"] = args;
 
-	StatsManager(QObject *parent = 0);
-	~StatsManager();
+	return obj;
+}
 
-	void setInstanceId(const QByteArray &instanceId);
-	bool setSpec(const QString &spec);
+bool ZrpcRequestPacket::fromVariant(const QVariant &in)
+{
+	if(in.type() != QVariant::Hash)
+		return false;
 
-	// routeId may be empty for non-identified route
+	QVariantHash obj = in.toHash();
 
-	void addActivity(const QByteArray &routeId);
+	if(!obj.contains("id") || obj["id"].type() != QVariant::ByteArray)
+		return false;
+	id = obj["id"].toByteArray();
 
-	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet);
-	void removeConnection(const QByteArray &id, bool linger);
+	if(!obj.contains("method") || obj["method"].type() != QVariant::ByteArray)
+		return false;
+	method = QString::fromUtf8(obj["method"].toByteArray());
 
-	bool checkConnection(const QByteArray &id);
+	if(!obj.contains("args") || obj["args"].type() != QVariant::Hash)
+		return false;
+	args = obj["args"].toHash();
 
-private:
-	class Private;
-	Private *d;
-};
-
-#endif
+	return true;
+}

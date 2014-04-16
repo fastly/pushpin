@@ -17,42 +17,36 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef STATSMANAGER_H
-#define STATSMANAGER_H
+#ifndef ZRPCREQUEST_H
+#define ZRPCREQUEST_H
 
 #include <QObject>
+#include <QVariant>
 
-class QHostAddress;
+class ZrpcRequestPacket;
+class ZrpcManager;
 
-class StatsManager : public QObject
+class ZrpcRequest : public QObject
 {
 	Q_OBJECT
 
 public:
-	enum ConnectionType
-	{
-		Http,
-		WebSocket
-	};
+	~ZrpcRequest();
 
-	StatsManager(QObject *parent = 0);
-	~StatsManager();
+	QString method() const;
+	QVariantHash args() const;
 
-	void setInstanceId(const QByteArray &instanceId);
-	bool setSpec(const QString &spec);
-
-	// routeId may be empty for non-identified route
-
-	void addActivity(const QByteArray &routeId);
-
-	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet);
-	void removeConnection(const QByteArray &id, bool linger);
-
-	bool checkConnection(const QByteArray &id);
+	void respond(const QVariant &value = QVariant());
+	void respondError(const QByteArray &condition);
 
 private:
 	class Private;
 	Private *d;
+
+	friend class ZrpcManager;
+	ZrpcRequest(QObject *parent = 0);
+	void setup(ZrpcManager *manager);
+	void handle(const ZrpcRequestPacket &packet);
 };
 
 #endif

@@ -67,6 +67,7 @@ public:
 	bool haveResponse;
 	HttpResponseData response;
 
+	QByteArray route;
 	QByteArray channelPrefix;
 
 	AcceptResponsePacket();

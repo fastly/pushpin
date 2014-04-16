@@ -122,6 +122,9 @@ QVariant AcceptResponsePacket::toVariant() const
 		obj["response"] = vresponse;
 	}
 
+	if(!route.isEmpty())
+		obj["route"] = route;
+
 	if(!channelPrefix.isEmpty())
 		obj["channel-prefix"] = channelPrefix;
 
