@@ -30,9 +30,14 @@
 
 // make this somewhat big since PUB is lossy
 #define OUT_HWM 200000
+
+#define ACTIVITY_TIMEOUT 100
 #define CONNECTION_TTL 600
 #define CONNECTION_REFRESH 540
 #define CONNECTION_LINGER 60
+#define REFRESH_TIMEOUT 30000
+
+// FIXME: trickle connection refreshes rather than all at once on an interval
 
 class StatsManager::Private : public QObject
 {
@@ -61,7 +66,9 @@ public:
 	QByteArray instanceId;
 	QString spec;
 	QZmq::Socket *sock;
+	QHash<QByteArray, int> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
+	QTimer *activityTimer;
 	QTimer *refreshTimer;
 
 	Private(StatsManager *_q) :
@@ -69,13 +76,25 @@ public:
 		q(_q),
 		sock(0)
 	{
+		activityTimer = new QTimer(this);
+		connect(activityTimer, SIGNAL(timeout()), SLOT(activity_timeout()));
+		activityTimer->setSingleShot(true);
+
 		refreshTimer = new QTimer(this);
 		connect(refreshTimer, SIGNAL(timeout()), SLOT(refresh_timeout()));
-		refreshTimer->start(30000);
+		refreshTimer->start(REFRESH_TIMEOUT);
 	}
 
 	~Private()
 	{
+		if(activityTimer)
+		{
+			activityTimer->setParent(0);
+			activityTimer->disconnect(this);
+			activityTimer->deleteLater();
+			activityTimer = 0;
+		}
+
 		if(refreshTimer)
 		{
 			refreshTimer->setParent(0);
@@ -118,6 +137,16 @@ public:
 		sock->write(QList<QByteArray>() << buf);
 	}
 
+	void sendActivity(const QByteArray &routeId, int count)
+	{
+		StatsPacket p;
+		p.type = StatsPacket::Activity;
+		p.from = instanceId;
+		p.route = routeId;
+		p.count = count;
+		write(p);
+	}
+
 	void sendConnected(ConnectionInfo *c)
 	{
 		StatsPacket p;
@@ -146,6 +175,18 @@ public:
 	}
 
 private slots:
+	void activity_timeout()
+	{
+		QHashIterator<QByteArray, int> it(routeActivity);
+		while(it.hasNext())
+		{
+			it.next();
+			sendActivity(it.key(), it.value());
+		}
+
+		routeActivity.clear();
+	}
+
 	void refresh_timeout()
 	{
 		QDateTime now = QDateTime::currentDateTime();
@@ -206,8 +247,13 @@ bool StatsManager::setSpec(const QString &spec)
 
 void StatsManager::addActivity(const QByteArray &routeId)
 {
-	// TODO
-	Q_UNUSED(routeId);
+	if(d->routeActivity.contains(routeId))
+		++(d->routeActivity[routeId]);
+	else
+		d->routeActivity[routeId] = 1;
+
+	if(!d->activityTimer->isActive())
+		d->activityTimer->start(ACTIVITY_TIMEOUT);
 }
 
 void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet)
