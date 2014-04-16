@@ -87,6 +87,7 @@ public:
 	DomainMap *domainMap;
 	ZhttpRequest *inRequest;
 	bool isHttps;
+	QByteArray routeId;
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
 	ZhttpRequest *zhttpRequest;
@@ -200,6 +201,7 @@ public:
 				sigKey = defaultSigKey;
 			}
 
+			routeId = entry.id;
 			channelPrefix = entry.prefix;
 			targets = entry.targets;
 
@@ -656,7 +658,7 @@ public slots:
 		assert(si);
 
 		QPointer<QObject> self = this;
-		emit q->requestSessionDestroyed(si->rs);
+		emit q->requestSessionDestroyed(si->rs, false);
 		if(!self)
 			return;
 
@@ -699,6 +701,8 @@ public slots:
 		{
 			AcceptData adata;
 
+			QList<RequestSession*> toDestroy;
+
 			foreach(SessionItem *si, sessionItems)
 			{
 				ZhttpRequest::ServerState ss = si->rs->request()->serverState();
@@ -714,7 +718,22 @@ public slots:
 				areq.outCredits = ss.outCredits;
 				areq.userData = ss.userData;
 				adata.requests += areq;
+
+				toDestroy += si->rs;
 			}
+
+			sessionItems.clear();
+			sessionItemsBySession.clear();
+
+			QPointer<QObject> self = this;
+			foreach(RequestSession *rs, toDestroy)
+			{
+				if(self) // <-- weird!
+					emit q->requestSessionDestroyed(rs, true);
+				delete rs;
+			}
+			if(!self)
+				return;
 
 			adata.requestData = requestData;
 			adata.requestData.body = requestBody.take();
@@ -759,6 +778,11 @@ ProxySession::ProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, QOb
 ProxySession::~ProxySession()
 {
 	delete d;
+}
+
+QByteArray ProxySession::routeId() const
+{
+	return d->routeId;
 }
 
 void ProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)

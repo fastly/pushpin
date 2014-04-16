@@ -118,6 +118,7 @@ public:
 		QByteArray pathBeg;
 		int ssl; // -1=unspecified, 0=no, 1=yes
 
+		QByteArray id;
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray prefix;
@@ -177,6 +178,20 @@ public:
 				return true;
 
 			return false;
+		}
+
+		Entry toEntry() const
+		{
+			Entry e;
+			e.id = id;
+			e.sigIss = sigIss;
+			e.sigKey = sigKey;
+			e.prefix = prefix;
+			e.origHeaders = origHeaders;
+			e.asHost = asHost;
+			e.pathRemove = pathRemove;
+			e.targets = targets;
+			return e;
 		}
 	};
 
@@ -266,6 +281,11 @@ public:
 					log_warning("%s:%d: ssl must be set to 'yes' or 'no'", qPrintable(fileName), lineNum);
 					continue;
 				}
+			}
+
+			if(props.contains("id"))
+			{
+				r.id = props.value("id").toUtf8();
 			}
 
 			if(props.contains("path_beg"))
@@ -562,16 +582,7 @@ DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domai
 
 	assert(!best->targets.isEmpty());
 
-	Entry e;
-	e.sigIss = best->sigIss;
-	e.sigKey = best->sigKey;
-	e.prefix = best->prefix;
-	e.origHeaders = best->origHeaders;
-	e.asHost = best->asHost;
-	e.pathRemove = best->pathRemove;
-	e.targets = best->targets;
-
-	return e;
+	return best->toEntry();
 }
 
 #include "domainmap.moc"

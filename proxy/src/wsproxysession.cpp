@@ -20,6 +20,7 @@
 #include "wsproxysession.h"
 
 #include <assert.h>
+#include <QTimer>
 #include <QUrl>
 #include <QHostAddress>
 #include <qjson/serializer.h>
@@ -32,8 +33,10 @@
 #include "wscontrolsession.h"
 #include "xffrule.h"
 #include "proxyutil.h"
+#include "statsmanager.h"
 
 #define PENDING_FRAMES_MAX 100
+#define ACTIVITY_TIMEOUT 60000
 
 class HttpExtension
 {
@@ -215,6 +218,7 @@ public:
 	State state;
 	ZhttpManager *zhttpManager;
 	DomainMap *domainMap;
+	StatsManager *statsManager;
 	WsControlManager *wsControlManager;
 	WsControlSession *wsControl;
 	QByteArray defaultSigIss;
@@ -226,24 +230,28 @@ public:
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
 	HttpRequestData requestData;
+	ZWebSocket::Rid rid;
 	ZWebSocket *inSock;
 	ZWebSocket *outSock;
 	int inPending;
 	int outPending;
 	int outReadInProgress; // frame type or -1
+	QByteArray routeId;
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
 	bool acceptGripMessages;
 	QByteArray messagePrefix;
 	bool detached;
 	QString subChannel;
+	QTimer *activityTimer;
 
-	Private(WsProxySession *_q, ZhttpManager *_zhttpManager, DomainMap *_domainMap, WsControlManager *_wsControlManager) :
+	Private(WsProxySession *_q, ZhttpManager *_zhttpManager, DomainMap *_domainMap, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
 		q(_q),
 		state(Idle),
 		zhttpManager(_zhttpManager),
 		domainMap(_domainMap),
+		statsManager(_statsManager),
 		wsControlManager(_wsControlManager),
 		wsControl(0),
 		passToUpstream(false),
@@ -256,6 +264,9 @@ public:
 		acceptGripMessages(false),
 		detached(false)
 	{
+		activityTimer = new QTimer(this);
+		connect(activityTimer, SIGNAL(timeout()), SLOT(activity_timeout()));
+		activityTimer->setSingleShot(true);
 	}
 
 	~Private()
@@ -273,6 +284,14 @@ public:
 
 		delete wsControl;
 		wsControl = 0;
+
+		if(activityTimer)
+		{
+			activityTimer->setParent(0);
+			activityTimer->disconnect(this);
+			activityTimer->deleteLater();
+			activityTimer = 0;
+		}
 	}
 
 	void start(ZWebSocket *sock)
@@ -280,6 +299,11 @@ public:
 		assert(!inSock);
 
 		state = Connecting;
+
+		rid = sock->rid();
+
+		if(statsManager)
+			activityTimer->start(ACTIVITY_TIMEOUT);
 
 		inSock = sock;
 		inSock->setParent(this);
@@ -316,6 +340,7 @@ public:
 			sigKey = defaultSigKey;
 		}
 
+		routeId = entry.id;
 		channelPrefix = entry.prefix;
 		targets = entry.targets;
 
@@ -398,6 +423,8 @@ public:
 		{
 			ZWebSocket::Frame f = inSock->readFrame();
 
+			tryLogActivity();
+
 			if(detached)
 				continue;
 
@@ -411,6 +438,8 @@ public:
 		while(outSock->framesAvailable() > 0 && inPending < PENDING_FRAMES_MAX)
 		{
 			ZWebSocket::Frame f = outSock->readFrame();
+
+			tryLogActivity();
 
 			if(detached)
 				continue;
@@ -471,6 +500,16 @@ public:
 		{
 			cleanup();
 			emit q->finishedByPassthrough();
+		}
+	}
+
+	void tryLogActivity()
+	{
+		if(statsManager && !activityTimer->isActive())
+		{
+			statsManager->addActivity(routeId);
+
+			activityTimer->start(ACTIVITY_TIMEOUT);
 		}
 	}
 
@@ -675,17 +714,32 @@ private slots:
 		if(outSock && outSock->state() != ZWebSocket::Closing)
 			outSock->close();
 	}
+
+	void activity_timeout()
+	{
+		// nothing to do
+	}
 };
 
-WsProxySession::WsProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, WsControlManager *wsControlManager, QObject *parent) :
+WsProxySession::WsProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zhttpManager, domainMap, wsControlManager);
+	d = new Private(this, zhttpManager, domainMap, statsManager, wsControlManager);
 }
 
 WsProxySession::~WsProxySession()
 {
 	delete d;
+}
+
+QByteArray WsProxySession::routeId() const
+{
+	return d->routeId;
+}
+
+ZWebSocket::Rid WsProxySession::rid() const
+{
+	return d->rid;
 }
 
 void WsProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)

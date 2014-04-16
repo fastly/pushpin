@@ -21,10 +21,11 @@
 #define WSPROXYSESSION_H
 
 #include <QObject>
+#include "zwebsocket.h"
 
 class ZhttpManager;
-class ZWebSocket;
 class WsControlManager;
+class StatsManager;
 class DomainMap;
 class XffRule;
 
@@ -33,8 +34,11 @@ class WsProxySession : public QObject
 	Q_OBJECT
 
 public:
-	WsProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, WsControlManager *wsControlManager = 0, QObject *parent = 0);
+	WsProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, StatsManager *stats = 0, WsControlManager *wsControlManager = 0, QObject *parent = 0);
 	~WsProxySession();
+
+	QByteArray routeId() const;
+	ZWebSocket::Rid rid() const;
 
 	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
 	void setDefaultUpstreamKey(const QByteArray &key);

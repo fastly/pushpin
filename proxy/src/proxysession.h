@@ -37,6 +37,8 @@ public:
 	ProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, QObject *parent = 0);
 	~ProxySession();
 
+	QByteArray routeId() const;
+
 	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
 	void setDefaultUpstreamKey(const QByteArray &key);
 	void setUseXForwardedProtocol(bool enabled);
@@ -54,7 +56,7 @@ signals:
 	void addNotAllowed(); // no more sharing, for whatever reason
 	void finishedByPassthrough();
 	void finishedForAccept(const AcceptData &adata);
-	void requestSessionDestroyed(RequestSession *rs);
+	void requestSessionDestroyed(RequestSession *rs, bool accept);
 
 private:
 	class Private;

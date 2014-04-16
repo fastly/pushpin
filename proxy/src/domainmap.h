@@ -58,6 +58,7 @@ public:
 	class Entry
 	{
 	public:
+		QByteArray id;
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray prefix;

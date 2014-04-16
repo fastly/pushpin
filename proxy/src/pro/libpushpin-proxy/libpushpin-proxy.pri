@@ -35,14 +35,16 @@ HEADERS += \
 	$$SRC_DIR/packet/inspectresponsepacket.h \
 	$$SRC_DIR/packet/acceptresponsepacket.h \
 	$$SRC_DIR/packet/retryrequestpacket.h \
-	$$SRC_DIR/packet/wscontrolpacket.h
+	$$SRC_DIR/packet/wscontrolpacket.h \
+	$$SRC_DIR/packet/statspacket.h
 
 SOURCES += \
 	$$SRC_DIR/packet/inspectrequestpacket.cpp \
 	$$SRC_DIR/packet/inspectresponsepacket.cpp \
 	$$SRC_DIR/packet/acceptresponsepacket.cpp \
 	$$SRC_DIR/packet/retryrequestpacket.cpp \
-	$$SRC_DIR/packet/wscontrolpacket.cpp
+	$$SRC_DIR/packet/wscontrolpacket.cpp \
+	$$SRC_DIR/packet/statspacket.cpp
 
 HEADERS += \
 	$$SRC_DIR/jwt.h \
@@ -63,6 +65,7 @@ HEADERS += \
 	$$SRC_DIR/proxyutil.h \
 	$$SRC_DIR/proxysession.h \
 	$$SRC_DIR/wsproxysession.h \
+	$$SRC_DIR/statsmanager.h \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
@@ -81,4 +84,5 @@ SOURCES += \
 	$$SRC_DIR/proxyutil.cpp \
 	$$SRC_DIR/proxysession.cpp \
 	$$SRC_DIR/wsproxysession.cpp \
+	$$SRC_DIR/statsmanager.cpp \
 	$$SRC_DIR/engine.cpp

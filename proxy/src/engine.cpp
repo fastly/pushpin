@@ -38,8 +38,14 @@
 #include "requestsession.h"
 #include "proxysession.h"
 #include "wsproxysession.h"
+#include "statsmanager.h"
 
 #define DEFAULT_HWM 1000
+
+static QByteArray ridToString(const QPair<QByteArray, QByteArray> &rid)
+{
+	return rid.first + ':' + rid.second;
+}
 
 class Engine::Private : public QObject
 {
@@ -78,6 +84,7 @@ public:
 	WsControlManager *wsControl;
 	DomainMap *domainMap;
 	InspectChecker *inspectChecker;
+	StatsManager *stats;
 	QZmq::Socket *handler_retry_in_sock;
 	QZmq::Socket *handler_accept_out_sock;
 	QZmq::Valve *handler_retry_in_valve;
@@ -94,6 +101,7 @@ public:
 		wsControl(0),
 		domainMap(0),
 		inspectChecker(0),
+		stats(0),
 		handler_retry_in_sock(0),
 		handler_accept_out_sock(0),
 		handler_retry_in_valve(0)
@@ -209,6 +217,19 @@ public:
 			}
 		}
 
+		if(!config.statsSpec.isEmpty())
+		{
+			stats = new StatsManager(this);
+
+			stats->setInstanceId(config.clientId);
+
+			if(!stats->setSpec(config.statsSpec))
+			{
+				log_error("unable to bind to stats_spec: %s", qPrintable(config.statsSpec));
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -239,7 +260,7 @@ public:
 			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
 			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
 			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
-			connect(ps, SIGNAL(requestSessionDestroyed(RequestSession *)), SLOT(ps_requestSessionDestroyed(RequestSession *)));
+			connect(ps, SIGNAL(requestSessionDestroyed(RequestSession *, bool)), SLOT(ps_requestSessionDestroyed(RequestSession *, bool)));
 
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
 			ps->setDefaultUpstreamKey(config.upstreamKey);
@@ -268,6 +289,12 @@ public:
 		rs->disconnect(this);
 
 		ps->add(rs);
+
+		if(stats)
+		{
+			stats->addConnection(ridToString(rs->rid()), ps->routeId(), StatsManager::Http, rs->peerAddress(), rs->isHttps());
+			stats->addActivity(ps->routeId());
+		}
 	}
 
 	void sendAccept(const AcceptData &adata)
@@ -349,7 +376,7 @@ public:
 
 		log_debug("creating wsproxysession for id=%s", sock->rid().second.data());
 
-		WsProxySession *ps = new WsProxySession(zhttp, domainMap, wsControl, this);
+		WsProxySession *ps = new WsProxySession(zhttp, domainMap, stats, wsControl, this);
 		connect(ps, SIGNAL(finishedByPassthrough()), SLOT(wsps_finishedByPassthrough()));
 
 		ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -363,6 +390,12 @@ public:
 		wsProxyItemsBySession.insert(i->ps, i);
 
 		ps->start(sock);
+
+		if(stats)
+		{
+			stats->addConnection(ridToString(sock->rid()), ps->routeId(), StatsManager::WebSocket, sock->peerAddress(), sock->requestUri().scheme() == "wss");
+			stats->addActivity(ps->routeId());
+		}
 	}
 
 	void tryTakeNext()
@@ -405,6 +438,9 @@ private slots:
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
+		if(stats)
+			stats->removeConnection(ridToString(rs->rid()), false);
+
 		requestSessions.remove(rs);
 		delete rs;
 
@@ -419,6 +455,16 @@ private slots:
 		{
 			rs->respondCannotAccept();
 			return;
+		}
+
+		if(stats)
+		{
+			// add connection so that it becomes lingerable
+			stats->addConnection(ridToString(rs->rid()), QByteArray(), StatsManager::Http, rs->peerAddress(), rs->isHttps());
+			stats->addActivity(QByteArray());
+
+			// immediately remove since we're accepting
+			stats->removeConnection(ridToString(rs->rid()), true);
 		}
 
 		requestSessions.remove(rs);
@@ -488,9 +534,12 @@ private slots:
 		tryTakeNext();
 	}
 
-	void ps_requestSessionDestroyed(RequestSession *rs)
+	void ps_requestSessionDestroyed(RequestSession *rs, bool accept)
 	{
 		requestSessions.remove(rs);
+
+		if(stats)
+			stats->removeConnection(ridToString(rs->rid()), accept);
 
 		tryTakeNext();
 	}
@@ -501,6 +550,9 @@ private slots:
 
 		WsProxyItem *i = wsProxyItemsBySession.value(ps);
 		assert(i);
+
+		if(stats)
+			stats->removeConnection(ridToString(ps->rid()), false);
 
 		wsProxyItemsBySession.remove(i->ps);
 		delete i;
