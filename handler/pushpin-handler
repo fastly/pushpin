@@ -486,8 +486,10 @@ def accept_worker():
 		logger.debug("accepting %d requests" % len(reqs))
 
 		for req in reqs:
+			rid = (req["rid"]["sender"], req["rid"]["id"])
+
 			stats_lock.acquire()
-			ci = ConnectionInfo("%s:%s" % (req["rid"]["sender"], req["rid"]["id"]), "http")
+			ci = ConnectionInfo("%s:%s" % (rid[0], rid[1]), "http")
 			ci.route = route
 			if "peer-address" in req:
 				ci.peer_address = req["peer-address"]
@@ -497,8 +499,6 @@ def accept_worker():
 			# note: if we had a lingering connection, this will replace it
 			conns[ci.id] = ci
 			stats_lock.release()
-
-			rid = (req["rid"]["sender"], req["rid"]["id"])
 
 			h = Hold(rid, m["request-data"], mode, response, req.get("auto-cross-origin"), req.get("jsonp-callback"))
 			now = int(time.time())
@@ -789,7 +789,7 @@ def push_in_worker(c):
 				# report request done
 
 				stats_lock.acquire()
-				ci = conns.get("%s:%s" % (h.rid["sender"], h.rid["id"]))
+				ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
 				if ci is not None:
 					ci = copy.deepcopy(ci)
 					del conns[ci.id]
