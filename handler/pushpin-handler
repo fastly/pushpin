@@ -1332,7 +1332,8 @@ def timeout_worker():
 		for i in send_activity:
 			out = dict()
 			out['from'] = instance_id
-			out['route'] = i[0]
+			if i[0]:
+				out['route'] = i[0]
 			out['count'] = i[1]
 			stats_sock.send('activity ' + tnetstring.dumps(out))
 
