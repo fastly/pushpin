@@ -108,6 +108,12 @@ proxy_ws_control_in_spec=ipc:///tmp/pushpin-ws-control-out
 # bind PUSH for writing proxy WS control messages
 proxy_ws_control_out_spec=ipc:///tmp/pushpin-ws-control-in
 
+# connect SUB for receiving stats from proxy
+proxy_stats_spec=ipc:///tmp/pushpin-proxy-stats
+
+# connect DEALER for sending commands to proxy
+proxy_command_spec=ipc:///tmp/pushpin-proxy-command
+
 # list of connect DEALER for continuing mongrel2 HTTP/WS requests
 m2a_in_stream_specs=ipc:///tmp/pushpin-m2zhttp-out-stream,ipc:///tmp/pushpin-m2zws-out-stream
 
@@ -128,3 +134,6 @@ push_in_http_port=5561
 
 # bind PUB for sending stats (metrics, subscription info, etc)
 stats_spec=ipc:///tmp/pushpin-stats
+
+# bind REP for responding to commands
+command_spec=ipc:///tmp/pushpin-command

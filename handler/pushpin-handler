@@ -45,6 +45,7 @@ if libdir:
 import time
 import threading
 import json
+import copy
 import logging
 from logging.handlers import WatchedFileHandler
 from base64 import b64decode
@@ -55,6 +56,7 @@ import httpinterface
 from validation import validate_publish, validate_http_publish, ValidationError
 from conversion import ensure_utf8, convert_json_transport
 from statusreasons import get_reason
+import rpc
 
 setproctitle("pushpin-handler")
 
@@ -77,6 +79,10 @@ formatter = logging.Formatter(fmt='%(levelname)s %(asctime)s.%(msecs)03d %(messa
 logger_handler.setFormatter(formatter)
 logger.addHandler(logger_handler)
 
+CONNECTION_TTL = 600
+CONNECTION_REFRESH = 540
+CONNECTION_LINGER = 60
+
 instance_id = "pushpin-handler_%d" % os.getpid()
 
 m2a_in_stream_specs = config.get("handler", "m2a_in_stream_specs").split(",")
@@ -92,6 +98,11 @@ if config.has_option("handler", "stats_spec"):
 else:
 	stats_spec = None
 
+if config.has_option("handler", "command_spec"):
+	command_spec = config.get("handler", "command_spec")
+else:
+	command_spec = None
+
 if config.has_option("handler", "proxy_ws_control_in_spec"):
 	ws_control_in_spec = config.get("handler", "proxy_ws_control_in_spec")
 else:
@@ -101,6 +112,16 @@ if config.has_option("handler", "proxy_ws_control_out_spec"):
 	ws_control_out_spec = config.get("handler", "proxy_ws_control_out_spec")
 else:
 	ws_control_out_spec = None
+
+if config.has_option("handler", "proxy_stats_spec"):
+	proxy_stats_spec = config.get("handler", "proxy_stats_spec")
+else:
+	proxy_stats_spec = None
+
+if config.has_option("handler", "proxy_command_spec"):
+	proxy_command_spec = config.get("handler", "proxy_command_spec")
+else:
+	proxy_command_spec = None
 
 ctx = zmq.Context()
 
@@ -128,6 +149,16 @@ class Subscription(object):
 		self.expire_time = None
 		self.last_keepalive = None
 
+class ConnectionInfo(object):
+	def __init__(self, id, type):
+		self.id = id
+		self.type = type
+		self.route = None
+		self.peer_address = None
+		self.ssl = False
+		self.linger = False
+		self.last_keepalive = None
+
 lock = threading.Lock()
 response_channels = dict()
 response_lastids = dict()
@@ -138,6 +169,10 @@ ws_channels = dict()
 
 # key=(type, channel)
 subs = dict()
+
+stats_lock = threading.Lock()
+stats_activity = dict() # route, count
+conns = dict() # conn id, ConnectionInfo
 
 # assumes state is locked
 def remove_from_req_channels(rid, response=True, stream=True):
@@ -410,6 +445,10 @@ def accept_worker():
 				mode = "response"
 			if mode != "response" and mode != "stream":
 				raise ValueError("bad mode")
+			if "route" in m:
+				route = m["route"]
+			else:
+				route = ""
 			if "channel-prefix" in m:
 				channel_prefix = m["channel-prefix"]
 			else:
@@ -447,6 +486,18 @@ def accept_worker():
 		logger.debug("accepting %d requests" % len(reqs))
 
 		for req in reqs:
+			stats_lock.acquire()
+			ci = ConnectionInfo("%s:%s" % (req["rid"]["sender"], req["rid"]["id"]), "http")
+			ci.route = route
+			if "peer-address" in req:
+				ci.peer_address = req["peer-address"]
+			if "https" in req:
+				ci.ssl = req["https"]
+			ci.last_keepalive = int(time.time())
+			# note: if we had a lingering connection, this will replace it
+			conns[ci.id] = ci
+			stats_lock.release()
+
 			rid = (req["rid"]["sender"], req["rid"]["id"])
 
 			h = Hold(rid, m["request-data"], mode, response, req.get("auto-cross-origin"), req.get("jsonp-callback"))
@@ -466,6 +517,10 @@ def accept_worker():
 						if last_id is not None and last_id != prev_id:
 							del response_lastids[channel]
 							lock.release()
+							stats_lock.acquire()
+							ci.linger = True
+							ci.last_keepalive = int(time.time())
+							stats_lock.release()
 							# note: we don't need to do a handoff here because we didn't ack to take over yet
 							logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
 							r = dict()
@@ -558,7 +613,7 @@ def accept_worker():
 				out['mode'] = ensure_utf8(mode)
 				out['channel'] = ensure_utf8(channel)
 				out['ttl'] = 60
-				stats_sock.send(tnetstring.dumps(out))
+				stats_sock.send('sub ' + tnetstring.dumps(out))
 
 	sock.close()
 
@@ -642,12 +697,16 @@ def push_in_worker(c):
 	ws_control_out_sock = ctx.socket(zmq.PUSH)
 	ws_control_out_sock.connect(ws_control_out_spec)
 
+	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.connect('inproc://stats_in')
+
 	while True:
 		m_raw = in_sock.recv()
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN publish: %s" % m)
 		channel = m["channel"]
 
+		rcount = 0
 		if "http-response" in m:
 			lock.acquire()
 			hchannel = response_channels.get(channel)
@@ -727,6 +786,26 @@ def push_in_worker(c):
 				if n % 10 == 0:
 					time.sleep(0.0005)
 
+				# report request done
+
+				stats_lock.acquire()
+				ci = conns.get("%s:%s" % (h.rid["sender"], h.rid["id"]))
+				if ci is not None:
+					ci = copy.deepcopy(ci)
+					del conns[ci.id]
+				stats_lock.release()
+
+				if ci is not None:
+					out = dict()
+					out['from'] = instance_id
+					if ci.route:
+						out['route'] = ci.route
+					out['id'] = ci.id
+					out['unavailable'] = True
+					stats_sock.send('conn ' + tnetstring.dumps(out))
+
+			rcount = len(holds)
+
 		if "http-stream" in m:
 			# TODO: support close action and report immediate unsubscribe via stats
 			lock.acquire()
@@ -741,6 +820,7 @@ def push_in_worker(c):
 				content = m["http-stream"]["content"]
 				if content:
 					reply_http_chunk(out_sock, h.rid, content)
+			rcount = len(holds)
 
 		if "ws-message" in m:
 			lock.acquire()
@@ -772,6 +852,16 @@ def push_in_worker(c):
 					out['items'] = [item]
 					logger.debug('OUT wscontrol: %s' % out)
 					ws_control_out_sock.send(tnetstring.dumps(out))
+			rcount = len(cids)
+
+		if rcount > 0:
+			out = dict()
+			out['from'] = instance_id
+			out['channel'] = ensure_utf8(channel)
+			if 'id' in m:
+				out['item-id'] = ensure_utf8(m['id'])
+			out['count'] = rcount
+			stats_sock.send('message ' + tnetstring.dumps(out))
 
 	in_sock.close()
 
@@ -828,6 +918,23 @@ def session_worker():
 						notify_unsubs.add(sub_key)
 			remove_from_req_channels(rid)
 			lock.release()
+
+			stats_lock.acquire()
+			ci = conns.get("%s:%s" % (rid[0], rid[1]))
+			if ci is not None:
+				ci = copy.deepcopy(ci)
+				del conns[ci.id]
+			stats_lock.release()
+
+			if ci is not None:
+				out = dict()
+				out['from'] = instance_id
+				if ci.route:
+					out['route'] = ci.route
+				out['id'] = ci.id
+				out['unavailable'] = True
+				stats_sock.send('conn ' + tnetstring.dumps(out))
+
 		elif mtype is not None:
 			# is this a known session?
 			rid = (m['from'], m['id'])
@@ -861,7 +968,7 @@ def session_worker():
 			out['mode'] = ensure_utf8(sub_key[0])
 			out['channel'] = ensure_utf8(sub_key[1])
 			out['unavailable'] = True
-			stats_sock.send(tnetstring.dumps(out))
+			stats_sock.send('sub ' + tnetstring.dumps(out))
 
 def ws_control_worker():
 	in_sock = ctx.socket(zmq.PULL)
@@ -925,7 +1032,7 @@ def ws_control_worker():
 					out['mode'] = ensure_utf8(sub_key[0])
 					out['channel'] = ensure_utf8(sub_key[1])
 					out['unavailable'] = True
-					stats_sock.send(tnetstring.dumps(out))
+					stats_sock.send('sub ' + tnetstring.dumps(out))
 			elif mtype == 'grip':
 				cid = item['cid']
 
@@ -986,7 +1093,7 @@ def ws_control_worker():
 					out['mode'] = 'ws'
 					out['channel'] = ensure_utf8(channel)
 					out['ttl'] = 60
-					stats_sock.send(tnetstring.dumps(out))
+					stats_sock.send('sub ' + tnetstring.dumps(out))
 
 				if notify_unsub:
 					out = dict()
@@ -994,7 +1101,7 @@ def ws_control_worker():
 					out['mode'] = 'ws'
 					out['channel'] = ensure_utf8(channel)
 					out['unavailable'] = True
-					stats_sock.send(tnetstring.dumps(out))
+					stats_sock.send('sub ' + tnetstring.dumps(out))
 
 				if notify_detach:
 					item = dict()
@@ -1090,6 +1197,22 @@ def timeout_worker():
 
 					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
 
+				stats_lock.acquire()
+				ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
+				if ci is not None:
+					ci = copy.deepcopy(ci)
+					del conns[ci.id]
+				stats_lock.release()
+
+				if ci is not None:
+					out = dict()
+					out['from'] = instance_id
+					if ci.route:
+						out['route'] = ci.route
+					out['id'] = ci.id
+					out['unavailable'] = True
+					stats_sock.send('conn ' + tnetstring.dumps(out))
+
 		now = int(time.time())
 		rids = set()
 		lock.acquire()
@@ -1162,7 +1285,7 @@ def timeout_worker():
 			out['mode'] = ensure_utf8(sub_key[0])
 			out['channel'] = ensure_utf8(sub_key[1])
 			out['unavailable'] = True
-			stats_sock.send(tnetstring.dumps(out))
+			stats_sock.send('sub ' + tnetstring.dumps(out))
 
 		if len(notify_subs) > 0:
 			logger.debug('keep-aliving %d subscriptions' % len(notify_subs))
@@ -1172,9 +1295,118 @@ def timeout_worker():
 				out['mode'] = ensure_utf8(sub_key[0])
 				out['channel'] = ensure_utf8(sub_key[1])
 				out['ttl'] = 60
-				stats_sock.send(tnetstring.dumps(out))
+				stats_sock.send('sub ' + tnetstring.dumps(out))
+
+		refresh_conns = list()
+		send_activity = list()
+		stats_lock.acquire()
+		remove_cids = set()
+		for cid, ci in conns.iteritems():
+			if ci.last_keepalive is None or (not ci.linger and ci.last_keepalive + CONNECTION_REFRESH < now) or (ci.linger and ci.last_keepalive + CONNECTION_LINGER < now):
+				if ci.linger:
+					remove_cids.add(cid)
+				else:
+					ci.last_keepalive = now
+					refresh_conns.append(copy.deepcopy(ci))
+		for cid in remove_cids:
+			del conns[cid]
+		for route, activity in stats_activity.iteritems():
+			send_activity.append((route, activity))
+		stats_activity.clear()
+		stats_lock.release()
+
+		for ci in refresh_conns:
+			out = dict()
+			out['from'] = instance_id
+			if ci.route:
+				out['route'] = ci.route
+			out['id'] = ci.id
+			out['type'] = ci.type
+			if ci.peer_address:
+				out['peer-address'] = ci.peer_address
+			if ci.ssl:
+				out['ssl'] = True
+			out['ttl'] = CONNECTION_TTL
+			stats_sock.send('conn ' + tnetstring.dumps(out))
+
+		for i in send_activity:
+			out = dict()
+			out['from'] = instance_id
+			out['route'] = i[0]
+			out['count'] = i[1]
+			stats_sock.send('activity ' + tnetstring.dumps(out))
 
 		time.sleep(1)
+
+def command_handler(method, args, data):
+	proxy_client = data.get('proxy_client')
+
+	logger.debug('IN command: %s args=%s' % (method, args))
+
+	if method == 'conncheck':
+		if 'ids' not in args or not isinstance(args['ids'], list):
+			raise rpc.CallError('bad-format')
+		cids = set(args['ids'])
+
+		stats_lock.acquire()
+		missing = set()
+		for cid in cids:
+			if cid not in conns:
+				missing.add(cid)
+		stats_lock.release()
+
+		if len(missing) > 0:
+			try:
+				found = proxy_client.call('conncheck', {'ids': list(missing)})
+			except:
+				raise rpc.CallError('proxy-request-failed')
+			for cid in found:
+				missing.remove(cid)
+
+		for cid in missing:
+			cids.remove(cid)
+
+		return list(cids)
+	else:
+		raise rpc.CallError('method-not-found')
+
+command_server = None
+
+def command_worker():
+	data = dict()
+	if proxy_command_spec:
+		data['proxy_client'] = rpc.RpcClient([proxy_command_spec])
+	command_server = rpc.RpcServer(command_spec, context=ctx)
+	command_server.run(command_handler, data)
+
+def proxy_stats_worker():
+	in_sock = ctx.socket(zmq.SUB)
+	in_sock.setsockopt(zmq.SUBSCRIBE, '')
+	in_sock.connect(proxy_stats_spec)
+
+	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.connect('inproc://stats_in')
+
+	while True:
+		m_raw = in_sock.recv()
+		at = m_raw.find(' ')
+		mtype = m_raw[:at]
+		m = tnetstring.loads(m_raw[at + 1:])
+		if mtype == 'activity':
+			route = m.get('route')
+			if not route:
+				route = ''
+			count = m['count']
+			stats_lock.acquire()
+			if route in stats_activity:
+				stats_activity[route] += count
+			else:
+				stats_activity[route] = count
+			stats_lock.release()
+		elif mtype == 'conn':
+			# relay
+			m['from'] = instance_id
+			stats_sock.send(mtype + ' ' + tnetstring.dumps(m))
 
 def stats_worker(c):
 	in_sock = ctx.socket(zmq.PULL)
@@ -1190,9 +1422,12 @@ def stats_worker(c):
 		out_sock = None
 
 	while True:
-		m = tnetstring.loads(in_sock.recv())
+		m_raw = in_sock.recv()
+		at = m_raw.find(' ')
+		mtype = m_raw[:at]
+		mdata = m_raw[at + 1:]
 		if out_sock:
-			m_raw = 'sub T' + tnetstring.dumps(m)
+			m_raw = mtype + ' T' + mdata
 			logger.debug('OUT stats: %s' % m_raw)
 			out_sock.send(m_raw)
 
@@ -1234,6 +1469,16 @@ if ws_control_in_spec and ws_control_out_spec:
 	ws_control_thread.daemon = True
 	ws_control_thread.start()
 
+if proxy_stats_spec:
+	proxy_stats_thread = threading.Thread(target=proxy_stats_worker)
+	proxy_stats_thread.daemon = True
+	proxy_stats_thread.start()
+
+if command_spec:
+	command_thread = threading.Thread(target=command_worker)
+	command_thread.daemon = True
+	command_thread.start()
+
 timeout_thread = threading.Thread(target=timeout_worker)
 timeout_thread.daemon = True
 timeout_thread.start()
@@ -1243,6 +1488,9 @@ try:
 		time.sleep(60)
 except KeyboardInterrupt:
 	pass
+
+if command_server:
+	command_server.stop()
 
 httpinterface.stop()
 ctx.term()

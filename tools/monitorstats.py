@@ -11,5 +11,9 @@ while True:
 	m_raw = sock.recv()
 	at = m_raw.find(' ')
 	mtype = m_raw[:at]
-	m = tnetstring.loads(m_raw[at + 1:])
+	mdata = m_raw[at + 1:]
+	if mdata[0] == 'T':
+		m = tnetstring.loads(mdata[1:])
+	else:
+		m = tnetstring.loads(mdata)
 	print '%s %s' % (mtype, m)
