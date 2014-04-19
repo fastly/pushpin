@@ -706,7 +706,6 @@ def push_in_worker(c):
 		logger.debug("IN publish: %s" % m)
 		channel = m["channel"]
 
-		rcount = 0
 		if "http-response" in m:
 			lock.acquire()
 			hchannel = response_channels.get(channel)
@@ -805,6 +804,15 @@ def push_in_worker(c):
 					stats_sock.send('conn ' + tnetstring.dumps(out))
 
 			rcount = len(holds)
+			if rcount > 0:
+				out = dict()
+				out['from'] = instance_id
+				out['channel'] = ensure_utf8(channel)
+				if 'id' in m:
+					out['item-id'] = ensure_utf8(m['id'])
+				out['count'] = rcount
+				out['transport'] = 'http-response'
+				stats_sock.send('message ' + tnetstring.dumps(out))
 
 		if "http-stream" in m:
 			# TODO: support close action and report immediate unsubscribe via stats
@@ -821,6 +829,15 @@ def push_in_worker(c):
 				if content:
 					reply_http_chunk(out_sock, h.rid, content)
 			rcount = len(holds)
+			if rcount > 0:
+				out = dict()
+				out['from'] = instance_id
+				out['channel'] = ensure_utf8(channel)
+				if 'id' in m:
+					out['item-id'] = ensure_utf8(m['id'])
+				out['count'] = rcount
+				out['transport'] = 'http-stream'
+				stats_sock.send('message ' + tnetstring.dumps(out))
 
 		if "ws-message" in m:
 			lock.acquire()
@@ -853,15 +870,15 @@ def push_in_worker(c):
 					logger.debug('OUT wscontrol: %s' % out)
 					ws_control_out_sock.send(tnetstring.dumps(out))
 			rcount = len(cids)
-
-		if rcount > 0:
-			out = dict()
-			out['from'] = instance_id
-			out['channel'] = ensure_utf8(channel)
-			if 'id' in m:
-				out['item-id'] = ensure_utf8(m['id'])
-			out['count'] = rcount
-			stats_sock.send('message ' + tnetstring.dumps(out))
+			if rcount > 0:
+				out = dict()
+				out['from'] = instance_id
+				out['channel'] = ensure_utf8(channel)
+				if 'id' in m:
+					out['item-id'] = ensure_utf8(m['id'])
+				out['count'] = rcount
+				out['transport'] = 'ws-message'
+				stats_sock.send('message ' + tnetstring.dumps(out))
 
 	in_sock.close()
 
