@@ -347,6 +347,7 @@ public:
 			p.response = adata.response;
 		}
 
+		p.route = adata.route;
 		p.channelPrefix = adata.channelPrefix;
 
 		QList<QByteArray> msg;
