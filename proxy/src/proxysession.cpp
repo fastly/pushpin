@@ -742,6 +742,7 @@ public slots:
 			adata.response = responseData;
 			adata.response.body = responseBody.take();
 
+			adata.route = routeId;
 			adata.channelPrefix = channelPrefix;
 
 			log_debug("proxysession: %p finished for accept", q);
