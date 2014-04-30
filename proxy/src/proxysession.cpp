@@ -455,7 +455,7 @@ public:
 	{
 		QPointer<QObject> self = this;
 
-		if(zhttpRequest->isFinished())
+		if(zhttpRequest->isFinished() && zhttpRequest->bytesAvailable() == 0)
 		{
 			log_debug("proxysession: %p response from target finished", q);
 
