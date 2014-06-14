@@ -327,6 +327,9 @@ public:
 			return;
 		}
 
+		if(!entry.asHost.isEmpty())
+			requestData.uri.setHost(entry.asHost);
+
 		QByteArray sigIss;
 		QByteArray sigKey;
 		if(!entry.sigIss.isEmpty() && !entry.sigKey.isEmpty())
