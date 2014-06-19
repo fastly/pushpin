@@ -1169,17 +1169,10 @@ public:
 					return;
 				}
 			}
-
-			zresp.seq = 0;
 		}
 		else
 		{
-			if(zresp.seq == -1)
-			{
-				// sender is trying his luck
-				zresp.seq = s->inSeq;
-			}
-			else if(zresp.seq != s->inSeq)
+			if(zresp.seq != -1 && zresp.seq != s->inSeq)
 			{
 				log_warning("%s: received response out of sequence (got=%d, expected=%d), canceling", logprefix, zresp.seq, s->inSeq);
 				ZhttpRequestPacket zreq;
@@ -1194,8 +1187,9 @@ public:
 				s->zhttpAddress = zresp.from;
 		}
 
-		assert(zresp.seq >= 0);
-		++(s->inSeq);
+		// only bump sequence if seq was provided
+		if(zresp.seq != -1)
+			++(s->inSeq);
 
 		s->lastActive = time.elapsed();
 
