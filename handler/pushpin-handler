@@ -294,7 +294,8 @@ def reply_http_chunk_old(sock, rid, content):
 	m_raw = header + " " + content
 	sock.send(m_raw)
 
-def reply_http(sock, rid, code, reason, headers, body, nolen=False):
+# return body size sent
+def reply_http(sock, rid, code, reason, headers, body, nolen=False, seq=None):
 	if isinstance(reason, unicode):
 		reason = reason.encode("utf-8")
 
@@ -319,6 +320,8 @@ def reply_http(sock, rid, code, reason, headers, body, nolen=False):
 	out = dict()
 	out["from"] = instance_id
 	out["id"] = rid[1]
+	if seq is not None:
+		out["seq"] = seq
 	out["code"] = code
 	out["reason"] = reason
 	headers_list = list()
@@ -333,11 +336,14 @@ def reply_http(sock, rid, code, reason, headers, body, nolen=False):
 	m_raw = rid[0] + " T" + tnetstring.dumps(out)
 	logger.debug("OUT publish: %s" % m_raw)
 	sock.send(m_raw)
+	return len(body)
 
-def reply_http_chunk(sock, rid, content):
+def reply_http_chunk(sock, rid, content, seq=None):
 	out = dict()
 	out["from"] = instance_id
 	out["id"] = rid[1]
+	if seq is not None:
+		out["seq"] = seq
 	out["body"] = content
 	out["more"] = True
 
@@ -503,6 +509,8 @@ def accept_worker():
 			h = Hold(rid, m["request-data"], mode, response, req.get("auto-cross-origin"), req.get("jsonp-callback"))
 			now = int(time.time())
 			h.last_keepalive = now
+			h.out_seq = req["out-seq"]
+			h.out_credits = req["out-credits"]
 
 			notify_sub = False
 			if mode == "response":
@@ -581,10 +589,12 @@ def accept_worker():
 				else:
 					rheaders = dict()
 
-				reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True)
+				body_size = reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True, h.out_seq)
 
 				# bind channels
 				lock.acquire()
+				h.out_credits -= body_size
+				h.out_seq += 1
 				for channel, prev_id in channels:
 					logger.debug("adding stream hold on %s" % channel)
 					hchannel = stream_channels.get(channel)
@@ -827,7 +837,14 @@ def push_in_worker(c):
 			for h in holds:
 				content = m["http-stream"]["content"]
 				if content:
-					reply_http_chunk(out_sock, h.rid, content)
+					if h.out_credits < len(content):
+						logger.debug('not enough send credits, dropping')
+						continue
+					reply_http_chunk(out_sock, h.rid, content, h.out_seq)
+					lock.acquire()
+					h.out_credits -= len(content)
+					h.out_seq += 1
+					lock.release()
 			rcount = len(holds)
 			if rcount > 0:
 				out = dict()
@@ -956,20 +973,27 @@ def session_worker():
 			# is this a known session?
 			rid = (m['from'], m['id'])
 
+			h = None
 			lock.acquire()
-			found = False
 			for hchannels in response_channels.itervalues():
 				if rid in hchannels:
-					found = True
+					h = hchannels[rid]
 					break
-			if not found:
+			if h is None:
 				for hchannels in stream_channels.itervalues():
 					if rid in hchannels:
-						found = True
+						h = hchannels[rid]
 						break
 			lock.release()
 
-			if not found:
+			if h is not None:
+				if mtype == 'credit':
+					credits = m['credits']
+					lock.acquire()
+					h.out_credits += credits
+					lock.release()
+					logger.debug('received %d credits, now %d' % (credits, h.out_credits))
+			else:
 				# no such session, send cancel
 				out = dict()
 				out['from'] = instance_id
