@@ -34,6 +34,7 @@
 #include "zhttpresponsepacket.h"
 #include "bufferlist.h"
 #include "log.h"
+#include "layertracker.h"
 
 #define VERSION "1.0.0"
 
@@ -43,6 +44,9 @@
 #define M2_KEEPALIVE_INTERVAL 90000
 #define SESSION_EXPIRE 60000
 #define CONTROL_REQUEST_EXPIRE 30000
+
+// make sure this is not larger than Mongrel2's DELIVER_OUTSTANDING_MSGS
+#define M2_PENDING_MAX 16
 
 //#define CONTROL_PORT_DEBUG
 
@@ -170,22 +174,50 @@ public:
 
 	class Session;
 
+	class M2PendingOutItem
+	{
+	public:
+		QByteArray sender;
+		QByteArray id;
+		BufferList data;
+		int bodySize;
+
+		M2PendingOutItem(const QByteArray &_sender, const QByteArray &_id) :
+			sender(_sender),
+			id(_id),
+			bodySize(0)
+		{
+		}
+	};
+
 	class M2Connection
 	{
 	public:
 		int identIndex;
 		QByteArray id;
-		int written;
-		int confirmedWritten;
+		int confirmedBytesWritten;
+		int packetsPending;
 		Session *session;
 		bool isNew;
+		LayerTracker bodyTracker;
+		LayerTracker packetTracker;
+		QList<M2PendingOutItem> pendingOutItems;
+		bool flowControl;
+		bool waitForAllWritten;
 
 		M2Connection() :
-			written(0),
-			confirmedWritten(0),
+			confirmedBytesWritten(0),
+			packetsPending(0),
 			session(0),
-			isNew(false)
+			isNew(false),
+			flowControl(false),
+			waitForAllWritten(false)
 		{
+		}
+
+		bool canWrite() const
+		{
+			return (!flowControl || packetsPending < M2_PENDING_MAX);
 		}
 	};
 
@@ -664,7 +696,8 @@ public:
 		if(s->conn)
 		{
 			s->conn->session = 0; // unlink the M2Connection so that it may be reused
-			s->conn->confirmedWritten = s->conn->written; // don't notify about existing writes
+			if(s->conn->packetsPending > 0 || !s->conn->pendingOutItems.isEmpty())
+				s->conn->waitForAllWritten = true;
 			sessionsByM2Rid.remove(Rid(m2_send_idents[s->conn->identIndex], s->conn->id));
 			s->conn = 0;
 		}
@@ -738,6 +771,61 @@ public:
 		m2_writeCtlCancel(m2_send_idents[conn->identIndex], conn->id);
 		m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
 		delete conn;
+	}
+
+	// bodySize = packet.data.size() - framing overhead
+	void m2_writeData(M2Connection *conn, const M2ResponsePacket &packet, int bodySize)
+	{
+		if(conn->flowControl)
+		{
+			conn->bodyTracker.addPlain(bodySize);
+			conn->bodyTracker.specifyEncoded(packet.data.size(), bodySize);
+
+			++(conn->packetsPending);
+			conn->packetTracker.addPlain(1);
+			conn->packetTracker.specifyEncoded(packet.data.size(), 1);
+		}
+
+		m2_out_write(packet);
+	}
+
+	void m2_writeOrQueueData(M2Connection *conn, const M2ResponsePacket &packet, int bodySize)
+	{
+		if(conn->canWrite() && !conn->waitForAllWritten)
+		{
+			m2_writeData(conn, packet, bodySize);
+		}
+		else
+		{
+			M2PendingOutItem *item = 0;
+			if(!conn->pendingOutItems.isEmpty())
+			{
+				M2PendingOutItem &last = conn->pendingOutItems.last();
+				if(last.sender == packet.sender && last.id == packet.id)
+					item = &last;
+			}
+			if(!item)
+			{
+				conn->pendingOutItems += M2PendingOutItem(packet.sender, packet.id);
+				item = &(conn->pendingOutItems.last());
+			}
+
+			item->data += packet.data;
+			item->bodySize += bodySize;
+		}
+	}
+
+	void m2_tryWriteQueued(M2Connection *conn)
+	{
+		while(!conn->pendingOutItems.isEmpty() && conn->canWrite())
+		{
+			M2PendingOutItem item = conn->pendingOutItems.takeFirst();
+			M2ResponsePacket packet;
+			packet.sender = item.sender;
+			packet.id = item.id;
+			packet.data = item.data.take();
+			m2_writeData(conn, packet, item.bodySize);
+		}
 	}
 
 	void m2_writeClose(const QByteArray &sender, const QByteArray &id)
@@ -853,21 +941,15 @@ public:
 			ids += id;
 
 			M2Connection *conn = m2ConnectionsByRid.value(Rid(m2_send_idents[index], id));
-			if(!conn)
+			if(!conn || !conn->flowControl)
 				continue;
 
-			if(bytes_written > conn->confirmedWritten)
+			if(bytes_written > conn->confirmedBytesWritten)
 			{
-				int written = bytes_written - conn->confirmedWritten;
-				conn->confirmedWritten = bytes_written;
+				int written = bytes_written - conn->confirmedBytesWritten;
+				conn->confirmedBytesWritten = bytes_written;
 
-				if(conn->session)
-				{
-					conn->session->lastActive = time.elapsed();
-
-					// note: if the session finishes for any reason before
-					handleResponseWritten(conn->session, written, true, true);
-				}
+				handleConnectionBytesWritten(conn, written, true);
 			}
 		}
 
@@ -905,11 +987,31 @@ public:
 		}
 	}
 
-	void handleResponseWritten(Session *s, int written, bool flowControl, bool giveCredits)
+	void handleConnectionBytesWritten(M2Connection *conn, int written, bool giveCredits)
+	{
+		int bodyWritten = conn->bodyTracker.finished(written);
+		int packetsWritten = conn->packetTracker.finished(written);
+
+		conn->packetsPending -= packetsWritten;
+
+		if(conn->waitForAllWritten && conn->packetsPending == 0 && conn->pendingOutItems.isEmpty())
+			conn->waitForAllWritten = false;
+
+		// if we had any pending writes to make, now's the time
+		m2_tryWriteQueued(conn);
+
+		if(conn->session && bodyWritten > 0)
+		{
+			conn->session->lastActive = time.elapsed();
+			handleSessionBodyWritten(conn->session, bodyWritten, giveCredits);
+		}
+	}
+
+	void handleSessionBodyWritten(Session *s, int written, bool giveCredits)
 	{
 		s->pendingInCredits += written;
 
-		log_debug("request id=%s written %d%s", s->id.data(), written, flowControl ? "" : " (no flow control)");
+		log_debug("request id=%s written %d%s", s->id.data(), written, s->conn->flowControl ? "" : " (no flow control)");
 
 		if(s->inHandoff)
 			return;
@@ -1201,10 +1303,14 @@ public:
 					mresp.sender = m2_send_idents[s->conn->identIndex];
 					mresp.id = s->conn->id;
 
-					int overhead = 0;
-
 					if(firstDataPacket)
 					{
+						// use flow control if the control port works and the response is more than one packet
+						if(controlPorts[s->conn->identIndex].active && zresp.more)
+							s->conn->flowControl = true;
+						else
+							s->conn->flowControl = false;
+
 						s->sentResponseHeader = true;
 
 						if(zresp.more && !zresp.headers.contains("Content-Length"))
@@ -1248,8 +1354,6 @@ public:
 							headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
 
 						mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
-
-						overhead += mresp.data.size();
 					}
 
 					if(!zresp.body.isEmpty())
@@ -1260,7 +1364,6 @@ public:
 							QByteArray chunkFooter = makeChunkFooter();
 
 							mresp.data += chunkHeader + zresp.body + chunkFooter;
-							overhead += chunkHeader.size() + chunkFooter.size();
 						}
 						else
 							mresp.data += zresp.body;
@@ -1272,22 +1375,12 @@ public:
 						QByteArray chunkFooter = makeChunkFooter();
 
 						mresp.data += chunkHeader + chunkFooter;
-						overhead += chunkHeader.size() + chunkFooter.size();
 					}
 
-					m2_out_write(mresp);
+					m2_writeOrQueueData(s->conn, mresp, zresp.body.size());
 
-					s->conn->written += overhead + zresp.body.size();
-					s->conn->confirmedWritten += overhead;
-
-					if((firstDataPacket && !zresp.more) || (!controlPorts[s->conn->identIndex].active && zresp.body.size() > 0))
-					{
-						// no outbound flow control
-						int written = zresp.body.size();
-						s->conn->confirmedWritten += written;
-
-						handleResponseWritten(s, written, false, zresp.more);
-					}
+					if(!s->conn->flowControl)
+						handleConnectionBytesWritten(s->conn, mresp.data.size(), zresp.more);
 				}
 				else
 				{
@@ -1298,7 +1391,7 @@ public:
 						mresp.sender = m2_send_idents[s->conn->identIndex];
 						mresp.id = s->conn->id;
 						mresp.data = makeChunkHeader(0) + makeChunkFooter();
-						m2_out_write(mresp);
+						m2_writeOrQueueData(s->conn, mresp, 0);
 					}
 				}
 
@@ -1322,6 +1415,7 @@ public:
 				if(!s->sentResponseHeader)
 				{
 					s->sentResponseHeader = true;
+					s->conn->flowControl = controlPorts[s->conn->identIndex].active;
 
 					HttpHeaders headers = zresp.headers;
 					QList<QByteArray> connHeaders = headers.takeAll("Connection");
@@ -1356,19 +1450,10 @@ public:
 					payloadSize = zresp.body.size();
 				}
 
-				s->conn->written += mresp.data.size();
-				s->conn->confirmedWritten += mresp.data.size() - payloadSize;
+				m2_writeOrQueueData(s->conn, mresp, payloadSize);
 
-				m2_out_write(mresp);
-
-				if(!controlPorts[s->conn->identIndex].active && payloadSize > 0)
-				{
-					// no outbound flow control
-					int written = payloadSize;
-					s->conn->confirmedWritten += written;
-
-					handleResponseWritten(s, written, false, true);
-				}
+				if(!s->conn->flowControl)
+					handleConnectionBytesWritten(s->conn, mresp.data.size(), true);
 			}
 		}
 		else if(zresp.type == ZhttpResponsePacket::Error)
@@ -1403,7 +1488,7 @@ public:
 				mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
 				mresp.data += zresp.body;
 
-				m2_out_write(mresp);
+				m2_writeOrQueueData(s->conn, mresp, zresp.body.size());
 
 				M2Connection *conn = s->conn;
 				destroySession(s);
@@ -1467,10 +1552,7 @@ public:
 				mresp.data += buf;
 			}
 
-			s->conn->written += mresp.data.size();
-			s->conn->confirmedWritten += mresp.data.size();
-
-			m2_out_write(mresp);
+			m2_writeOrQueueData(s->conn, mresp, mresp.data.size());
 
 			if(s->downClosed && s->upClosed)
 			{

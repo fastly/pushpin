@@ -14,7 +14,8 @@ HEADERS += \
 	$$COMMON_DIR/zhttprequestpacket.h \
 	$$COMMON_DIR/zhttpresponsepacket.h \
 	$$COMMON_DIR/bufferlist.h \
-	$$COMMON_DIR/log.h
+	$$COMMON_DIR/log.h \
+	$$COMMON_DIR/layertracker.h
 
 SOURCES += \
 	$$COMMON_DIR/processquit.cpp \
@@ -23,7 +24,8 @@ SOURCES += \
 	$$COMMON_DIR/zhttprequestpacket.cpp \
 	$$COMMON_DIR/zhttpresponsepacket.cpp \
 	$$COMMON_DIR/bufferlist.cpp \
-	$$COMMON_DIR/log.cpp
+	$$COMMON_DIR/log.cpp \
+	$$COMMON_DIR/layertracker.cpp
 
 HEADERS += \
 	$$PWD/m2requestpacket.h \
