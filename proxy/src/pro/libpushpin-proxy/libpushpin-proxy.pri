@@ -18,7 +18,8 @@ HEADERS += \
 	$$COMMON_DIR/zhttprequestpacket.h \
 	$$COMMON_DIR/zhttpresponsepacket.h \
 	$$COMMON_DIR/log.h \
-	$$COMMON_DIR/bufferlist.h
+	$$COMMON_DIR/bufferlist.h \
+	$$COMMON_DIR/layertracker.h
 
 SOURCES += \
 	$$COMMON_DIR/tnetstring.cpp \
@@ -26,7 +27,8 @@ SOURCES += \
 	$$COMMON_DIR/zhttprequestpacket.cpp \
 	$$COMMON_DIR/zhttpresponsepacket.cpp \
 	$$COMMON_DIR/log.cpp \
-	$$COMMON_DIR/bufferlist.cpp
+	$$COMMON_DIR/bufferlist.cpp \
+	$$COMMON_DIR/layertracker.cpp
 
 HEADERS += \
 	$$SRC_DIR/packet/httprequestdata.h \
@@ -52,7 +54,6 @@ SOURCES += \
 
 HEADERS += \
 	$$SRC_DIR/jwt.h \
-	$$SRC_DIR/layertracker.h \
 	$$SRC_DIR/zhttpmanager.h \
 	$$SRC_DIR/zhttprequest.h \
 	$$SRC_DIR/zwebsocket.h \
@@ -76,7 +77,6 @@ HEADERS += \
 
 SOURCES += \
 	$$SRC_DIR/jwt.cpp \
-	$$SRC_DIR/layertracker.cpp \
 	$$SRC_DIR/zhttpmanager.cpp \
 	$$SRC_DIR/zhttprequest.cpp \
 	$$SRC_DIR/zwebsocket.cpp \
