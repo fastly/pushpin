@@ -106,6 +106,8 @@ public:
 	HttpHeaders responseHeaders() const;
 	QByteArray responseBody() const;
 	int framesAvailable() const;
+	bool canWrite() const;
+	int writeBytesAvailable() const;
 	int peerCloseCode() const;
 	ErrorCondition errorCondition() const;
 
@@ -116,7 +118,7 @@ public:
 signals:
 	void connected();
 	void readyRead();
-	void framesWritten(int count);
+	void framesWritten(int count, int contentBytes);
 	void peerClosed(); // emitted only if peer closes before we do
 	void closed(); // emitted after peer acks our close, or immediately if we were acking
 	void error();

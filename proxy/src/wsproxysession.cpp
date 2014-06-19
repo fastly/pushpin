@@ -35,7 +35,6 @@
 #include "proxyutil.h"
 #include "statsmanager.h"
 
-#define PENDING_FRAMES_MAX 100
 #define ACTIVITY_TIMEOUT 60000
 
 class HttpExtension
@@ -233,8 +232,8 @@ public:
 	ZWebSocket::Rid rid;
 	ZWebSocket *inSock;
 	ZWebSocket *outSock;
-	int inPending;
-	int outPending;
+	int inPendingBytes;
+	int outPendingBytes;
 	int outReadInProgress; // frame type or -1
 	QByteArray routeId;
 	QByteArray channelPrefix;
@@ -258,8 +257,8 @@ public:
 		useXForwardedProtocol(false),
 		inSock(0),
 		outSock(0),
-		inPending(0),
-		outPending(0),
+		inPendingBytes(0),
+		outPendingBytes(0),
 		outReadInProgress(-1),
 		acceptGripMessages(false),
 		detached(false)
@@ -308,7 +307,7 @@ public:
 		inSock = sock;
 		inSock->setParent(this);
 		connect(inSock, SIGNAL(readyRead()), SLOT(in_readyRead()));
-		connect(inSock, SIGNAL(framesWritten(int)), SLOT(in_framesWritten(int)));
+		connect(inSock, SIGNAL(framesWritten(int, int)), SLOT(in_framesWritten(int, int)));
 		connect(inSock, SIGNAL(peerClosed()), SLOT(in_peerClosed()));
 		connect(inSock, SIGNAL(closed()), SLOT(in_closed()));
 		connect(inSock, SIGNAL(error()), SLOT(in_error()));
@@ -390,7 +389,7 @@ public:
 		outSock->setParent(this);
 		connect(outSock, SIGNAL(connected()), SLOT(out_connected()));
 		connect(outSock, SIGNAL(readyRead()), SLOT(out_readyRead()));
-		connect(outSock, SIGNAL(framesWritten(int)), SLOT(out_framesWritten(int)));
+		connect(outSock, SIGNAL(framesWritten(int, int)), SLOT(out_framesWritten(int, int)));
 		connect(outSock, SIGNAL(peerClosed()), SLOT(out_peerClosed()));
 		connect(outSock, SIGNAL(closed()), SLOT(out_closed()));
 		connect(outSock, SIGNAL(error()), SLOT(out_error()));
@@ -422,7 +421,7 @@ public:
 
 	void tryReadIn()
 	{
-		while(inSock->framesAvailable() > 0 && outPending < PENDING_FRAMES_MAX)
+		while(inSock->framesAvailable() > 0 && outSock->canWrite())
 		{
 			ZWebSocket::Frame f = inSock->readFrame();
 
@@ -432,13 +431,13 @@ public:
 				continue;
 
 			outSock->writeFrame(f);
-			++outPending;
+			outPendingBytes += f.data.size();
 		}
 	}
 
 	void tryReadOut()
 	{
-		while(outSock->framesAvailable() > 0 && inPending < PENDING_FRAMES_MAX)
+		while(outSock->framesAvailable() > 0 && inSock->canWrite())
 		{
 			ZWebSocket::Frame f = outSock->readFrame();
 
@@ -468,21 +467,22 @@ public:
 					}
 					else if(f.type != ZWebSocket::Frame::Continuation && f.data.startsWith(messagePrefix))
 					{
+						f.data = f.data.mid(messagePrefix.size());
 						inSock->writeFrame(f);
-						++inPending;
+						inPendingBytes += f.data.size();
 					}
 					else if(f.type == ZWebSocket::Frame::Continuation)
 					{
 						assert(outReadInProgress != -1);
 
 						inSock->writeFrame(f);
-						++inPending;
+						inPendingBytes += f.data.size();
 					}
 				}
 				else
 				{
 					inSock->writeFrame(f);
-					++inPending;
+					inPendingBytes += f.data.size();
 				}
 
 				if(!f.more)
@@ -492,7 +492,7 @@ public:
 			{
 				// always relay non-content frames
 				inSock->writeFrame(f);
-				++inPending;
+				inPendingBytes += f.data.size();
 			}
 		}
 	}
@@ -523,9 +523,11 @@ private slots:
 			tryReadIn();
 	}
 
-	void in_framesWritten(int count)
+	void in_framesWritten(int count, int contentBytes)
 	{
-		inPending -= count;
+		Q_UNUSED(count);
+
+		inPendingBytes -= contentBytes;
 
 		if(!detached)
 			tryReadOut();
@@ -618,9 +620,11 @@ private slots:
 		tryReadOut();
 	}
 
-	void out_framesWritten(int count)
+	void out_framesWritten(int count, int contentBytes)
 	{
-		outPending -= count;
+		Q_UNUSED(count);
+
+		outPendingBytes -= contentBytes;
 
 		if(!detached)
 			tryReadIn();
@@ -695,14 +699,15 @@ private slots:
 
 	void wsControl_sendEventReceived(const QByteArray &contentType, const QByteArray &message)
 	{
-		if(inSock && inSock->state() != ZWebSocket::Closing)
+		// only send if we can, otherwise drop
+		if(inSock && inSock->state() != ZWebSocket::Closing && inSock->canWrite())
 		{
 			if(contentType == "binary")
 				inSock->writeFrame(ZWebSocket::Frame(ZWebSocket::Frame::Binary, message, false));
 			else
 				inSock->writeFrame(ZWebSocket::Frame(ZWebSocket::Frame::Text, message, false));
 
-			++inPending;
+			inPendingBytes += message.size();
 		}
 	}
 

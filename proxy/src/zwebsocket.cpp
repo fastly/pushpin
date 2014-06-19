@@ -292,6 +292,7 @@ public:
 		if(state == Connected || state == ConnectedPeerClosed)
 		{
 			int written = 0;
+			int contentBytesWritten = 0;
 
 			while(!outFrames.isEmpty() && outCredits >= outFrames.first().data.size())
 			{
@@ -310,11 +311,12 @@ public:
 
 				writeFrameInternal(f, credits);
 				++written;
+				contentBytesWritten += f.data.size();
 			}
 
 			if(written > 0)
 			{
-				emit q->framesWritten(written);
+				emit q->framesWritten(written, contentBytesWritten);
 				if(!self)
 					return;
 			}
@@ -996,6 +998,25 @@ QByteArray ZWebSocket::responseBody() const
 int ZWebSocket::framesAvailable() const
 {
 	return d->inFrames.count();
+}
+
+bool ZWebSocket::canWrite() const
+{
+	return (writeBytesAvailable() > 0);
+}
+
+int ZWebSocket::writeBytesAvailable() const
+{
+	int avail = d->outCredits;
+	foreach(const Frame &f, d->outFrames)
+	{
+		if(f.data.size() >= avail)
+			return 0;
+
+		avail -= f.data.size();
+	}
+
+	return avail;
 }
 
 int ZWebSocket::peerCloseCode() const
