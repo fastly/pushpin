@@ -643,8 +643,7 @@ public slots:
 			assert(si->bytesToWrite >= 0);
 		}
 
-		// everyone caught up? try to read some more then
-		if(!buffering && zhttpRequest && !pendingWrites())
+		if(zhttpRequest)
 			tryResponseRead();
 	}
 
