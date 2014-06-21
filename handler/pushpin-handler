@@ -32,8 +32,35 @@ for arg in sys.argv:
 	elif arg.startswith("--verbose"):
 		verbose = True
 
-config = ConfigParser.ConfigParser()
-config.read([config_file])
+class ConfigWithInclude(object):
+	def __init__(self, fname):
+		self.config_dir = os.path.dirname(fname)
+		self.main = ConfigParser.ConfigParser()
+		self.main.read([fname])
+
+		self.include = None
+		if self.main.has_option('global', 'include'):
+			include_fname = self.main.get('global', 'include')
+			if not os.path.isabs(include_fname):
+				include_fname = os.path.join(self.config_dir, include_fname)
+			self.include = ConfigParser.ConfigParser()
+			self.include.read([include_fname])
+
+	def has_option(self, section, key):
+		if self.main.has_option(section, key):
+			return True
+		elif self.include is not None and self.include.has_option(section, key):
+			return True
+		return False
+
+	def get(self, section, key):
+		if self.main.has_option(section, key):
+			return self.main.get(section, key)
+		elif self.include is not None and self.include.has_option(section, key):
+			return self.include.get(section, key)
+		raise ConfigParser.NoOptionError(key, section)
+
+config = ConfigWithInclude(config_file)
 
 libdir = None
 if config.has_option("global", "libdir"):

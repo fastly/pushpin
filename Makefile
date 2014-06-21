@@ -64,5 +64,6 @@ install:
 	$(COPY) handler/*.py $(INSTALL_ROOT)$(libdir)/handler
 	$(COPY) runner/*.py $(INSTALL_ROOT)$(libdir)/runner
 	$(COPY) runner/*.conf runner/*.template $(INSTALL_ROOT)$(configdir)/runner
-	test -e $(INSTALL_ROOT)$(configdir)/pushpin.conf || sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf.example > $(INSTALL_ROOT)$(configdir)/pushpin.conf
-	test -e $(INSTALL_ROOT)$(configdir)/routes || cp config/routes.example $(INSTALL_ROOT)$(configdir)/routes
+	sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/internal.conf > $(INSTALL_ROOT)$(configdir)/internal.conf
+	test -e $(INSTALL_ROOT)$(configdir)/pushpin.conf || sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf > $(INSTALL_ROOT)$(configdir)/pushpin.conf
+	test -e $(INSTALL_ROOT)$(configdir)/routes || cp config/routes $(INSTALL_ROOT)$(configdir)/routes

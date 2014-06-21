@@ -73,6 +73,50 @@ static XffRule parse_xffRule(const QStringList &in)
 	return out;
 }
 
+class Settings
+{
+private:
+	QSettings *main;
+	QSettings *include;
+
+public:
+	Settings(const QString &fileName) :
+		include(0)
+	{
+		main = new QSettings(fileName, QSettings::IniFormat);
+
+		QString includeFile = main->value("global/include").toString();
+		if(!includeFile.isEmpty())
+		{
+			// if include is a relative path, then use it relative to the config file location
+			QFileInfo fi(includeFile);
+			if(fi.isRelative())
+				includeFile = QFileInfo(QFileInfo(fileName).absoluteDir(), includeFile).filePath();
+
+			include = new QSettings(includeFile, QSettings::IniFormat);
+		}
+	}
+
+	~Settings()
+	{
+		delete include;
+		delete main;
+	}
+
+	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const
+	{
+		if(include)
+		{
+			if(main->contains(key))
+				return main->value(key);
+			else
+				return include->value(key, defaultValue);
+		}
+		else
+			return main->value(key, defaultValue);
+	}
+};
+
 class App::Private : public QObject
 {
 	Q_OBJECT
@@ -164,7 +208,7 @@ public:
 			}
 		}
 
-		QSettings settings(configFile, QSettings::IniFormat);
+		Settings settings(configFile);
 
 		QStringList m2a_in_specs = settings.value("proxy/m2a_in_specs").toStringList();
 		trimlist(&m2a_in_specs);
@@ -203,10 +247,7 @@ public:
 		// if routesfile is a relative path, then use it relative to the config file location
 		QFileInfo fi(routesFile);
 		if(fi.isRelative())
-		{
-			QString fname = fi.fileName();
-			routesFile = QFileInfo(QDir(QFileInfo(configFile).absolutePath()), fname).filePath();
-		}
+			routesFile = QFileInfo(QFileInfo(configFile).absoluteDir(), routesFile).filePath();
 
 		if(m2a_in_specs.isEmpty() || m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty() || zurl_out_specs.isEmpty() || zurl_out_stream_specs.isEmpty() || zurl_in_specs.isEmpty())
 		{
