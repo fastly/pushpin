@@ -470,6 +470,8 @@ def accept_worker():
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN accept: %s" % m)
 
+		reqs = m["requests"]
+
 		try:
 			instruct = json.loads(m["response"]["body"])
 			hold = instruct["hold"]
@@ -513,9 +515,13 @@ def accept_worker():
 				response["body"] = ""
 		except:
 			logger.debug("failed to parse accept instructions")
+			for req in reqs:
+				rid = (req["rid"]["sender"], req["rid"]["id"])
+				rheaders = dict()
+				rheaders['Content-Type'] = 'text/plain'
+				reply_http(out_sock, rid, 502, 'Bad Gateway', rheaders, 'Error while proxying to origin.\n')
 			continue
 
-		reqs = m["requests"]
 		logger.debug("accepting %d requests" % len(reqs))
 
 		for req in reqs:
