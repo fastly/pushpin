@@ -1,6 +1,6 @@
 Pushpin
 -------
-Date: June 20th, 2014
+Date: August 5th, 2014
 
 Author: Justin Karneges <justin@fanout.io>
 
