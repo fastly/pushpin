@@ -536,7 +536,7 @@ public slots:
 			if(at != -1)
 				contentType = contentType.mid(0, at);
 
-			if(!passToUpstream && acceptTypes.contains(contentType))
+			if(!passToUpstream && (responseData.headers.contains("Grip-Hold") || acceptTypes.contains(contentType)))
 			{
 				if(!buffering)
 				{

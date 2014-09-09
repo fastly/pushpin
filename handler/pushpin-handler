@@ -242,6 +242,25 @@ def header_get(headers, name):
 				return v
 	return None
 
+# return list of strings
+def header_get_all(headers, name):
+	lname = name.lower()
+	hvals = list()
+	if isinstance(headers, list):
+		for i in headers:
+			if i[0].lower() == lname:
+				hvals.append(i[1])
+	else:
+		for k, v in headers.iteritems():
+			if k.lower() == lname:
+				hvals.append(v)
+	out = list()
+	for hval in hvals:
+		parts = hval.split(',')
+		for p in parts:
+			out.append(p.strip())
+	return out
+
 def header_remove(headers, name):
 	lname = name.lower()
 	if isinstance(headers, list):
@@ -265,6 +284,38 @@ def header_names_contains(header_names, name):
 		if i.lower() == lname:
 			return True
 	return False
+
+# return (initial value, params dict)
+def _parse_header_params(value):
+	parts = value.split(';')
+	v = parts[0].strip()
+	params = dict()
+	for n in range(1, len(parts)):
+		part = parts[n].strip()
+		at = part.find('=')
+		if at != -1:
+			pname = part[:at]
+			pval = part[at + 1:]
+		else:
+			pname = part
+			pval = None
+		params[pname] = pval
+	return (v, params)
+
+# return (initial value, params dict) or None
+def header_get_parsed(headers, name):
+	h = header_get(headers, name)
+	if h is None:
+		return None
+	return _parse_header_params(h)
+
+# return list of (initial value, params dict)
+def header_get_all_parsed(headers, name):
+	out = list()
+	hlist = header_get_all(headers, name)
+	for h in hlist:
+		out.append(_parse_header_params(h))
+	return out
 
 HTTP_FORMAT = "HTTP/1.1 %(code)s %(status)s\r\n%(headers)s\r\n\r\n%(body)s"
 HTTP_FORMAT_NOHEADERS = "HTTP/1.1 %(code)s %(status)s\r\n\r\n%(body)s"
@@ -398,7 +449,7 @@ def apply_cors_headers(request_headers, response_headers):
 
 	if not header_get(response_headers, "Access-Control-Allow-Headers"):
 		acr_headers = header_get(request_headers, "Access-Control-Request-Headers")
-		allow_headers = list();
+		allow_headers = list()
 		if acr_headers:
 			for name in acr_headers.split(","):
 				name = name.strip()
@@ -473,13 +524,6 @@ def accept_worker():
 		reqs = m["requests"]
 
 		try:
-			instruct = json.loads(m["response"]["body"])
-			hold = instruct["hold"]
-			mode = hold.get("mode")
-			if mode is None:
-				mode = "response"
-			if mode != "response" and mode != "stream":
-				raise ValueError("bad mode")
 			if "route" in m:
 				route = m["route"]
 			else:
@@ -488,31 +532,69 @@ def accept_worker():
 				channel_prefix = m["channel-prefix"]
 			else:
 				channel_prefix = ""
+
+			mode = None
 			channels = list()
-			for hc in hold["channels"]:
-				name = channel_prefix + hc["name"]
-				prev_id = hc.get("prev-id")
-				channels.append((name, prev_id))
-			if "timeout" in hold:
-				timeout = int(hold["timeout"])
+			timeout = 55
+			resp_headers = m['response'].get('headers') or {}
+
+			# headers-based grip
+			grip_hold = header_get_parsed(resp_headers, 'Grip-Hold')
+			if grip_hold:
+				mode = grip_hold[0]
+			grip_channels = header_get_all_parsed(resp_headers, 'Grip-Channel')
+			if grip_channels:
+				for c in grip_channels:
+					name = channel_prefix + c[0]
+					prev_id = c[1].get('prev-id')
+					channels.append((name, prev_id))
+			grip_timeout = header_get_parsed(resp_headers, 'Grip-Timeout')
+			if grip_timeout:
+				timeout = int(grip_timeout[0])
+
+			instruct = None
+			ctype = header_get_parsed(resp_headers, 'Content-Type')
+			if ctype[0] == 'application/grip-instruct':
+				instruct = json.loads(m['response']['body'])
+				hold = instruct['hold']
+				mode = hold.get('mode')
+				if mode is None:
+					mode = 'response'
+				for hc in hold['channels']:
+					name = channel_prefix + hc['name']
+					prev_id = hc.get('prev-id')
+					channels.append((name, prev_id))
+				if 'timeout' in hold:
+					timeout = int(hold['timeout'])
+				response = instruct.get('response')
+				if response is None:
+					response = dict()
+					response['body'] = ''
+				if "headers" in response and isinstance(response["headers"], list):
+					d = dict()
+					for i in response["headers"]:
+						d[i[0]] = i[1]
+					response["headers"] = d
+				if "body-bin" in response:
+					response["body"] = b64decode(response["body-bin"])
+					del response["body-bin"]
+				elif "body" in response:
+					response["body"] = response["body"].encode("utf-8")
+				else:
+					response["body"] = ""
 			else:
-				timeout = 55
-			response = instruct.get("response")
-			if response is None:
-				response = dict()
-				response["body"] = ""
-			if "headers" in response and isinstance(response["headers"], list):
-				d = dict()
-				for i in response["headers"]:
-					d[i[0]] = i[1]
-				response["headers"] = d
-			if "body-bin" in response:
-				response["body"] = b64decode(response["body-bin"])
-				del response["body-bin"]
-			elif "body" in response:
-				response["body"] = response["body"].encode("utf-8")
-			else:
-				response["body"] = ""
+				response = m['response']
+				if "headers" in response and isinstance(response["headers"], list):
+					d = dict()
+					for i in response["headers"]:
+						if not i[0].lower().startswith('grip-'):
+							d[i[0]] = i[1]
+					response["headers"] = d
+				if 'body' not in response:
+					response['body'] = ''
+
+			if mode != 'response' and mode != 'stream':
+				raise ValueError('bad mode')
 		except:
 			logger.debug("failed to parse accept instructions")
 			for req in reqs:
