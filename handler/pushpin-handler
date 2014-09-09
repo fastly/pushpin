@@ -230,6 +230,13 @@ def remove_from_req_channels(rid, response=True, stream=True):
 def remove_from_response_channels(rid):
 	remove_from_req_channels(rid, response=True, stream=False)
 
+def headernames_contains(headers, name):
+	lname = name.lower()
+	for i in headers:
+		if i.lower() == lname:
+			return True
+	return False
+
 def header_get(headers, name):
 	lname = name.lower()
 	if isinstance(headers, list):
@@ -258,7 +265,9 @@ def header_get_all(headers, name):
 	for hval in hvals:
 		parts = hval.split(',')
 		for p in parts:
-			out.append(p.strip())
+			p = p.strip()
+			if p:
+				out.append(p)
 	return out
 
 def header_remove(headers, name):
@@ -299,7 +308,8 @@ def _parse_header_params(value):
 		else:
 			pname = part
 			pval = None
-		params[pname] = pval
+		if pname:
+			params[pname] = pval
 	return (v, params)
 
 # return (initial value, params dict) or None
@@ -551,10 +561,13 @@ def accept_worker():
 			grip_timeout = header_get_parsed(resp_headers, 'Grip-Timeout')
 			if grip_timeout:
 				timeout = int(grip_timeout[0])
+			grip_expose_headers = header_get_all(resp_headers, 'Grip-Expose-Headers')
 
 			instruct = None
 			ctype = header_get_parsed(resp_headers, 'Content-Type')
 			if ctype[0] == 'application/grip-instruct':
+				if m['response']['code'] != 200:
+					raise ValueError('response code for grip-instruct must be 200')
 				instruct = json.loads(m['response']['body'])
 				hold = instruct['hold']
 				mode = hold.get('mode')
@@ -587,8 +600,11 @@ def accept_worker():
 				if "headers" in response and isinstance(response["headers"], list):
 					d = dict()
 					for i in response["headers"]:
-						if not i[0].lower().startswith('grip-'):
-							d[i[0]] = i[1]
+						if i[0].lower().startswith('grip-'):
+							continue
+						if grip_expose_headers and not headernames_contains(grip_expose_headers, i[0]):
+							continue
+						d[i[0]] = i[1]
 					response["headers"] = d
 				if 'body' not in response:
 					response['body'] = ''
@@ -880,15 +896,35 @@ def push_in_worker(c):
 			else:
 				pbody = ""
 
+			grip_expose_headers = header_get_all(pheaders, 'Grip-Expose-Headers')
+			header_remove(pheaders, 'Grip-Expose-Headers')
+
 			for n, h in enumerate(holds):
+				# inherit any headers from the timeout response
+				if 'headers' in h.response:
+					rheaders = copy.deepcopy(h.response['headers'])
+				else:
+					rheaders = dict()
+
+				# apply the headers from the pushed message
+				for k, v in pheaders.iteritems():
+					rheaders[k] = v
+
+				# if Grip-Expose-Headers was provided in the pushed message, filter the results
+				if grip_expose_headers:
+					rkeys = rheaders.keys()
+					for k in rkeys:
+						if not headernames_contains(grip_expose_headers, k):
+							del rheaders[k]
+
 				headers = dict()
 				if h.jsonp_callback:
 					result = dict()
 					result["code"] = pcode
 					result["reason"] = preason
 					result["headers"] = dict()
-					if pheaders:
-						for k, v in pheaders.iteritems():
+					if rheaders:
+						for k, v in rheaders.iteritems():
 							result["headers"][k] = v
 					header_set(result["headers"], "Content-Length", str(len(pbody)))
 					result["body"] = pbody
@@ -898,8 +934,8 @@ def push_in_worker(c):
 					header_set(headers, "Content-Length", str(len(body)))
 					reply_http(out_sock, h.rid, 200, "OK", headers, body)
 				else:
-					if pheaders:
-						for k, v in pheaders.iteritems():
+					if rheaders:
+						for k, v in rheaders.iteritems():
 							headers[k] = v
 
 					if h.auto_cross_origin:
