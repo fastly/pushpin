@@ -10,11 +10,13 @@ GRIP (Generic Realtime Intermediary Protocol, used by Pushpin and Fanout.io) ena
 
     Client <--WS--> GRIP Proxy <--WS--> Server
 
-In this scenario, published messages are usually delivered to the proxy via HTTP POST, which the proxy then relays to any subscribed clients. The server does not push messages to clients using the WebSocket connection between the proxy and the server. This means that the WebSocket connection between the proxy and the server is used almost exclusively for servicing request/response interactions initiated by the client. If the communication path between the proxy and the server only needs to handle request/response interactions, then HTTP becomes a viable alternative to a WebSocket:
+The GRIP Proxy is a publish/subscribe service. When the server has data to send spontaneously, it does not use its WebSocket connection to send the data. Rather, it uses an out-of-band publish command to the proxy (usually via HTTP POST). This means that the WebSocket connection between the proxy and the server is used almost exclusively for servicing incoming requests from the client.
+
+If the communication path between the proxy and the server only needs to handle request/response interactions, then HTTP becomes a viable alternative to a WebSocket:
 
     Client <--WS--> GRIP Proxy <--HTTP--> Server
 
-Using HTTP for communication between the proxy and server may be easier to maintain and scale since HTTP server tools are well established. Plus, if the server is merely doing stateless RPC processing, then HTTP is actually a respectable choice for this tier in the service.
+Using HTTP for communication between the proxy and server may be easier to maintain and scale since HTTP server tools are well established. Plus, if the server is merely doing stateless RPC processing, then HTTP is arguably a respectable choice for this tier in the service.
 
 Of course, the usefulness of this gatewaying is entirely dependent on the server having a way to send data to clients out-of-band. As such, it is recommended that the WebSocket-Over-HTTP protocol be used in combination with GRIP. Note, however, that the WebSocket-Over-HTTP protocol does not explicitly depend on GRIP.
 
