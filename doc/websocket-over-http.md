@@ -1,18 +1,22 @@
 WebSocket-Over-HTTP Protocol
 ============================
 
-This is a simple text-based protocol for gatewaying between a WebSocket client and a conventional HTTP server.
+The WebSocket-Over-HTTP protocol is a simple, text-based protocol for gatewaying between a WebSocket client and a conventional HTTP server.
 
 Why??
 -----
 
-WebSocket applications designed around request/response and publish/subscribe messaging patterns tend to require very little session state. In many cases, a WebSocket's primary value is to act as an efficient downstream channel for publish/subscribe events.
+GRIP (Generic Realtime Intermediary Protocol, used by Pushpin and Fanout.io) enables out-of-band message injection into WebSocket connections. Normally, using GRIP with WebSockets requires a WebSocket connection on both sides of the proxy:
 
-GRIP (Generic Realtime Intermediary Protocol), used by Pushpin and Fanout.io, enables out-of-band message injection into WebSocket connections. Normally, using GRIP with WebSockets requires a WebSocket connection on both sides of the proxy: Client <--WS--> Grip Proxy <--WS--> Server. However, if published messages bypass the Proxy->Server connection, such that the Proxy->Server connection is only ever used for request/response interactions, then it becomes interesting to consider using HTTP for this hop instead.
+    Client <--WS--> GRIP Proxy <--WS--> Server
 
-Note that the WebSocket-Over-HTTP protocol does not explicitly depend on GRIP. However, you'll almost certainly want to pair this protocol with GRIP, or something like it. Without some kind of out-of-band delivery mechanism, the server will have no way to send data spontaneously to the client, which is the whole reason you'd use WebSockets in the first place.
+In this scenario, published messages are usually delivered to the proxy via HTTP POST, which the proxy then relays to any subscribed clients. The server does not push messages to clients using the WebSocket connection between the proxy and the server. This means that the WebSocket connection between the proxy and the server is used almost exclusively for servicing request/response interactions initiated by the client. If the communication path between the proxy and the server only needs to handle request/response interactions, then HTTP becomes a viable alternative to a WebSocket:
 
-Yes, there is overhead in using HTTP instead of WebSockets. This only replaces the Proxy->Server communication though, where latency and bandwidth are less of a concern. The last mile (Client->Proxy) continues to use a WebSocket.
+    Client <--WS--> GRIP Proxy <--HTTP--> Server
+
+Using HTTP for communication between the proxy and server may be easier to maintain and scale since HTTP server tools are well established. Plus, if the server is merely doing stateless RPC processing, then HTTP is actually a respectable choice for this tier in the service.
+
+Of course, the usefulness of this gatewaying is entirely dependent on the server having a way to send data to clients out-of-band. As such, it is recommended that the WebSocket-Over-HTTP protocol be used in combination with GRIP. Note, however, that the WebSocket-Over-HTTP protocol does not explicitly depend on GRIP.
 
 Protocol
 --------
@@ -106,13 +110,13 @@ Server sends a close message back:
 State Management
 ----------------
 
-Headers of the initial WebSocket negotiation request MUST be replayed with every request made by the gateway. This means that if you use Cookies or other headers for authentication purposes, you'll receive this data with every message.
+Headers of the initial WebSocket negotiation request MUST be replayed with every request made by the gateway. This means that if the client uses cookies or other headers for authentication purposes, the server will receive this data with every message.
 
-The gateway also includes a `Connection-Id` header which uniquely identifies a particular connection. Unless you're doing something fancy and tracking connections (presence?), though, you shouldn't need this.
+The gateway includes a `Connection-Id` header which uniquely identifies a particular client connection. Servers that need to track connections can use this. In most cases, though, servers should not have to care about connections.
 
-It is possible to bind metadata to the connection via a `Meta-Set-*` header. This works similar to a cookie. The server can set a header name and value that the gateway should echo back on all subsequent requests.
+It is possible to bind metadata to the connection via a `Set-Meta-*` header. This works similar to a cookie. The server can set a field that the gateway should echo back on all subsequent requests.
 
-For example, client supplies a cookie which the gateway relays across during connect:
+For example, a client supplies a cookie which the gateway relays across during connect:
 
     POST /target HTTP/1.1
     Connection-Id: b5ea0e11
@@ -122,26 +126,26 @@ For example, client supplies a cookie which the gateway relays across during con
     OPEN\r\n
     \r\n
 
-Server accepts connection and binds a User header based on the cookie:
+The server accepts the connection and binds a User field based on the cookie:
 
     HTTP/1.1 200 OK
     Content-Type: application/websocket-events
-    Meta-Set-User: alice
+    Set-Meta-User: alice
 
     OPEN\r\n
     \r\n
 
-Now, any further requests from the gateway will include this header:
+Now, any further requests from the gateway will include a Meta-User header:
 
     POST /target HTTP/1.1
     Connection-Id: b5ea0e11
-    User: alice
+    Meta-User: alice
     Content-Type: application/websocket-events
 
     TEXT 5\r\n
     hello\r\n
 
-Security note: the server will need to ensure that the request originated from the gateway before trusting such headers.
+Security note: gateways MUST NOT relay any headers from the client that are prefixed with `Meta-`. This prevents the client from spoofing metadata bindings. Additionally, the server needs to ensure that an incoming request came from a gateway before trusting its `Meta-*` headers.
 
 Notes
 -----
