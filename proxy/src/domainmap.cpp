@@ -399,6 +399,9 @@ public:
 				if(props.contains("sub"))
 					target.subChannel = props.value("sub");
 
+				if(props.contains("over_http"))
+					target.overHttp = true;
+
 				r.targets += target;
 			}
 

@@ -28,6 +28,7 @@
 #include "log.h"
 #include "zhttpmanager.h"
 #include "zwebsocket.h"
+#include "websocketoverhttp.h"
 #include "domainmap.h"
 #include "wscontrolmanager.h"
 #include "wscontrolsession.h"
@@ -231,7 +232,7 @@ public:
 	HttpRequestData requestData;
 	ZWebSocket::Rid rid;
 	ZWebSocket *inSock;
-	ZWebSocket *outSock;
+	WebSocket *outSock;
 	int inPendingBytes;
 	int outPendingBytes;
 	int outReadInProgress; // frame type or -1
@@ -385,8 +386,16 @@ public:
 
 		log_debug("wsproxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
 
-		outSock = zhttpManager->createSocket();
-		outSock->setParent(this);
+		if(target.overHttp)
+		{
+			outSock = new WebSocketOverHttp(zhttpManager, this);
+		}
+		else
+		{
+			outSock = zhttpManager->createSocket();
+			outSock->setParent(this);
+		}
+
 		connect(outSock, SIGNAL(connected()), SLOT(out_connected()));
 		connect(outSock, SIGNAL(readyRead()), SLOT(out_readyRead()));
 		connect(outSock, SIGNAL(framesWritten(int, int)), SLOT(out_framesWritten(int, int)));
@@ -423,7 +432,7 @@ public:
 	{
 		while(inSock->framesAvailable() > 0 && outSock->canWrite())
 		{
-			ZWebSocket::Frame f = inSock->readFrame();
+			WebSocket::Frame f = inSock->readFrame();
 
 			tryLogActivity();
 
@@ -439,25 +448,25 @@ public:
 	{
 		while(outSock->framesAvailable() > 0 && inSock->canWrite())
 		{
-			ZWebSocket::Frame f = outSock->readFrame();
+			WebSocket::Frame f = outSock->readFrame();
 
 			tryLogActivity();
 
 			if(detached)
 				continue;
 
-			if(f.type == ZWebSocket::Frame::Text || f.type == ZWebSocket::Frame::Binary || f.type == ZWebSocket::Frame::Continuation)
+			if(f.type == WebSocket::Frame::Text || f.type == WebSocket::Frame::Binary || f.type == WebSocket::Frame::Continuation)
 			{
 				// we are skipping the rest of this message
-				if(f.type == ZWebSocket::Frame::Continuation && outReadInProgress == -1)
+				if(f.type == WebSocket::Frame::Continuation && outReadInProgress == -1)
 					continue;
 
-				if(f.type != ZWebSocket::Frame::Continuation)
+				if(f.type != WebSocket::Frame::Continuation)
 					outReadInProgress = (int)f.type;
 
 				if(wsControl && acceptGripMessages)
 				{
-					if(f.type == ZWebSocket::Frame::Text && f.data.startsWith("c:"))
+					if(f.type == WebSocket::Frame::Text && f.data.startsWith("c:"))
 					{
 						// grip messages must only be one frame
 						if(!f.more)
@@ -465,13 +474,13 @@ public:
 						else
 							outReadInProgress = -1; // ignore rest of message
 					}
-					else if(f.type != ZWebSocket::Frame::Continuation && f.data.startsWith(messagePrefix))
+					else if(f.type != WebSocket::Frame::Continuation && f.data.startsWith(messagePrefix))
 					{
 						f.data = f.data.mid(messagePrefix.size());
 						inSock->writeFrame(f);
 						inPendingBytes += f.data.size();
 					}
-					else if(f.type == ZWebSocket::Frame::Continuation)
+					else if(f.type == WebSocket::Frame::Continuation)
 					{
 						assert(outReadInProgress != -1);
 
@@ -519,7 +528,7 @@ public:
 private slots:
 	void in_readyRead()
 	{
-		if(!detached && outSock && outSock->state() == ZWebSocket::Connected)
+		if(!detached && outSock && outSock->state() == WebSocket::Connected)
 			tryReadIn();
 	}
 
@@ -535,7 +544,7 @@ private slots:
 
 	void in_peerClosed()
 	{
-		if(!detached && outSock && outSock->state() != ZWebSocket::Closing)
+		if(!detached && outSock && outSock->state() != WebSocket::Closing)
 			outSock->close();
 	}
 
@@ -544,7 +553,7 @@ private slots:
 		delete inSock;
 		inSock = 0;
 
-		if(!detached && outSock && outSock->state() != ZWebSocket::Closing)
+		if(!detached && outSock && outSock->state() != WebSocket::Closing)
 			outSock->close();
 
 		tryFinish();
@@ -632,7 +641,7 @@ private slots:
 
 	void out_peerClosed()
 	{
-		if(!detached && inSock && inSock->state() != ZWebSocket::Closing)
+		if(!detached && inSock && inSock->state() != WebSocket::Closing)
 			inSock->close();
 	}
 
@@ -641,7 +650,7 @@ private slots:
 		delete outSock;
 		outSock = 0;
 
-		if(!detached && inSock && inSock->state() != ZWebSocket::Closing)
+		if(!detached && inSock && inSock->state() != WebSocket::Closing)
 			inSock->close();
 
 		tryFinish();
@@ -649,7 +658,7 @@ private slots:
 
 	void out_error()
 	{
-		ZWebSocket::ErrorCondition e = outSock->errorCondition();
+		WebSocket::ErrorCondition e = outSock->errorCondition();
 		log_debug("wsproxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
 
 		if(detached)
@@ -667,12 +676,12 @@ private slots:
 
 			switch(e)
 			{
-				case ZWebSocket::ErrorConnect:
-				case ZWebSocket::ErrorConnectTimeout:
-				case ZWebSocket::ErrorTls:
+				case WebSocket::ErrorConnect:
+				case WebSocket::ErrorConnectTimeout:
+				case WebSocket::ErrorTls:
 					tryAgain = true;
 					break;
-				case ZWebSocket::ErrorRejected:
+				case WebSocket::ErrorRejected:
 					reject(outSock->responseCode(), outSock->responseReason(), outSock->responseHeaders(), outSock->responseBody());
 					break;
 				default:
@@ -700,12 +709,12 @@ private slots:
 	void wsControl_sendEventReceived(const QByteArray &contentType, const QByteArray &message)
 	{
 		// only send if we can, otherwise drop
-		if(inSock && inSock->state() != ZWebSocket::Closing && inSock->canWrite())
+		if(inSock && inSock->state() != WebSocket::Closing && inSock->canWrite())
 		{
 			if(contentType == "binary")
-				inSock->writeFrame(ZWebSocket::Frame(ZWebSocket::Frame::Binary, message, false));
+				inSock->writeFrame(WebSocket::Frame(WebSocket::Frame::Binary, message, false));
 			else
-				inSock->writeFrame(ZWebSocket::Frame(ZWebSocket::Frame::Text, message, false));
+				inSock->writeFrame(WebSocket::Frame(WebSocket::Frame::Text, message, false));
 
 			inPendingBytes += message.size();
 		}
@@ -719,7 +728,7 @@ private slots:
 
 		detached = true;
 
-		if(outSock && outSock->state() != ZWebSocket::Closing)
+		if(outSock && outSock->state() != WebSocket::Closing)
 			outSock->close();
 	}
 

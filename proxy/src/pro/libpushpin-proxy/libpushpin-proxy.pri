@@ -54,9 +54,11 @@ SOURCES += \
 
 HEADERS += \
 	$$SRC_DIR/jwt.h \
+	$$SRC_DIR/websocket.h \
 	$$SRC_DIR/zhttpmanager.h \
 	$$SRC_DIR/zhttprequest.h \
 	$$SRC_DIR/zwebsocket.h \
+	$$SRC_DIR/websocketoverhttp.h \
 	$$SRC_DIR/inspectdata.h \
 	$$SRC_DIR/inspectmanager.h \
 	$$SRC_DIR/inspectrequest.h \
@@ -80,6 +82,7 @@ SOURCES += \
 	$$SRC_DIR/zhttpmanager.cpp \
 	$$SRC_DIR/zhttprequest.cpp \
 	$$SRC_DIR/zwebsocket.cpp \
+	$$SRC_DIR/websocketoverhttp.cpp \
 	$$SRC_DIR/inspectmanager.cpp \
 	$$SRC_DIR/inspectrequest.cpp \
 	$$SRC_DIR/wscontrolmanager.cpp \
