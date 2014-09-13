@@ -45,12 +45,14 @@ public:
 		bool insecure; // ignore server certificate validity
 		QString host; // override input host
 		QString subChannel; // force subscription for websocket test
+		bool overHttp; // use websocket-over-http protocol
 
 		Target() :
 			connectPort(-1),
 			ssl(false),
 			trusted(false),
-			insecure(false)
+			insecure(false),
+			overHttp(false)
 		{
 		}
 	};

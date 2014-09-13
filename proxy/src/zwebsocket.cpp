@@ -73,7 +73,7 @@ public:
 	int peerCloseCode;
 	QVariant userData;
 	bool pendingUpdate;
-	ZWebSocket::ErrorCondition errorCondition;
+	WebSocket::ErrorCondition errorCondition;
 	QTimer *expireTimer;
 	QTimer *keepAliveTimer;
 	QList<Frame> inFrames;
@@ -870,7 +870,7 @@ public slots:
 };
 
 ZWebSocket::ZWebSocket(QObject *parent) :
-	QObject(parent)
+	WebSocket(parent)
 {
 	d = new Private(this);
 }
@@ -942,7 +942,7 @@ void ZWebSocket::respondError(int code, const QByteArray &reason, const HttpHead
 	d->reject();
 }
 
-ZWebSocket::State ZWebSocket::state() const
+WebSocket::State ZWebSocket::state() const
 {
 	switch(d->state)
 	{
@@ -1024,7 +1024,7 @@ int ZWebSocket::peerCloseCode() const
 	return d->peerCloseCode;
 }
 
-ZWebSocket::ErrorCondition ZWebSocket::errorCondition() const
+WebSocket::ErrorCondition ZWebSocket::errorCondition() const
 {
 	return d->errorCondition;
 }
@@ -1034,7 +1034,7 @@ void ZWebSocket::writeFrame(const Frame &frame)
 	d->writeFrame(frame);
 }
 
-ZWebSocket::Frame ZWebSocket::readFrame()
+WebSocket::Frame ZWebSocket::readFrame()
 {
 	return d->readFrame();
 }

@@ -17,8 +17,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ZWEBSOCKET_H
-#define ZWEBSOCKET_H
+#ifndef WEBSOCKETOVERHTTP_H
+#define WEBSOCKETOVERHTTP_H
 
 #include <QObject>
 #include <QUrl>
@@ -26,21 +26,15 @@
 #include "httpheaders.h"
 #include "websocket.h"
 
-class ZhttpRequestPacket;
-class ZhttpResponsePacket;
 class ZhttpManager;
 
-class ZWebSocket : public WebSocket
+class WebSocketOverHttp : public WebSocket
 {
 	Q_OBJECT
 
 public:
-	// pair of sender + request id
-	typedef QPair<QByteArray, QByteArray> Rid;
-
-	~ZWebSocket();
-
-	Rid rid() const;
+	WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent = 0);
+	~WebSocketOverHttp();
 
 	// reimplemented
 
@@ -85,15 +79,6 @@ private:
 	class Private;
 	friend class Private;
 	Private *d;
-
-	friend class ZhttpManager;
-	ZWebSocket(QObject *parent = 0);
-	void setupClient(ZhttpManager *manager);
-	bool setupServer(ZhttpManager *manager, const ZhttpRequestPacket &packet);
-	void startServer();
-	bool isServer() const;
-	void handle(const ZhttpRequestPacket &packet);
-	void handle(const ZhttpResponsePacket &packet);
 };
 
 #endif
