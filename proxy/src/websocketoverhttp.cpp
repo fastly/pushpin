@@ -126,6 +126,9 @@ public:
 	HttpRequestData requestData;
 	HttpResponseData responseData;
 	ErrorCondition errorCondition;
+	int keepAliveInterval;
+	HttpHeaders meta;
+	bool updating;
 	ZhttpRequest *req;
 	int reqFrames;
 	int reqContentSize;
@@ -134,8 +137,10 @@ public:
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int closeCode;
+	bool closeSent;
 	bool peerClosing;
 	int peerCloseCode;
+	QTimer *keepAliveTimer;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -145,19 +150,46 @@ public:
 		ignoreTlsErrors(false),
 		state(WebSocket::Idle),
 		errorCondition(WebSocket::ErrorGeneric),
+		keepAliveInterval(-1),
+		updating(false),
 		req(0),
 		reqFrames(0),
 		reqContentSize(0),
 		reqClose(false),
 		closeCode(-1),
+		closeSent(false),
 		peerClosing(false),
 		peerCloseCode(-1)
 	{
+		keepAliveTimer = new QTimer(this);
+		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
+		keepAliveTimer->setSingleShot(true);
+	}
+
+	~Private()
+	{
+		keepAliveTimer->disconnect(this);
+		keepAliveTimer->setParent(0);
+		keepAliveTimer->deleteLater();
 	}
 
 	void start()
 	{
 		state = Connecting;
+
+		// don't forward the Upgrade header
+		requestData.headers.removeAll("Upgrade");
+
+		// don't forward headers starting with Meta-*
+		for(int n = 0; n < requestData.headers.count(); ++n)
+		{
+			const HttpHeader &h = requestData.headers[n];
+			if(qstrnicmp(h.first.data(), "Meta-", 5) == 0)
+			{
+				requestData.headers.removeAt(n);
+				--n; // adjust position
+			}
+		}
 
 		if(requestData.uri.scheme() == "wss")
 			requestData.uri.setScheme("https");
@@ -195,10 +227,12 @@ private:
 	void update()
 	{
 		// only one request allowed at a time
-		if(req)
+		if(updating)
 			return;
 
-		requestData.headers.removeAll("Upgrade");
+		updating = true;
+
+		keepAliveTimer->stop();
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
@@ -213,7 +247,11 @@ private:
 		req->setIgnorePolicies(ignorePolicies);
 		req->setIgnoreTlsErrors(ignoreTlsErrors);
 
-		req->start("POST", requestData.uri, requestData.headers);
+		HttpHeaders headers = requestData.headers;
+		foreach(const HttpHeader &h, meta)
+			headers += HttpHeader("Meta-" + h.first, h.second);
+
+		req->start("POST", requestData.uri, headers);
 
 		reqFrames = 0;
 		reqContentSize = 0;
@@ -254,95 +292,201 @@ private:
 			}
 		}
 
-		req->writeBody(encodeEvents(events));
+		if(!events.isEmpty())
+			req->writeBody(encodeEvents(events));
+
 		req->endBody();
 	}
 
 private slots:
-	// FIXME: DOR-SS
 	void req_readyRead()
 	{
 		inBuf += req->readBody();
-		if(req->isFinished())
+
+		if(!req->isFinished())
 		{
-			// TODO: Keep-Alive-Interval
-			// TODO: Meta-Set stuff
-			if(state == Connecting)
+			updating = false;
+			return;
+		}
+
+		int responseCode = req->responseCode();
+		HttpHeaders responseHeaders = req->responseHeaders();
+
+		if(state == Connecting)
+		{
+			// save the initial response
+			responseData.code = responseCode;
+			responseData.reason = req->responseReason();
+			responseData.headers = responseHeaders;
+		}
+
+		delete req;
+		req = 0;
+
+		if(responseCode != 200)
+		{
+			updating = false;
+
+			emit q->error();
+			return;
+		}
+
+		if(responseHeaders.contains("Keep-Alive-Interval"))
+		{
+			bool ok;
+			int x = responseHeaders.get("Keep-Alive-Interval").toInt(&ok);
+			if(ok && x > 0)
 			{
-				responseData.code = req->responseCode();
-				responseData.reason = req->responseReason();
-				responseData.headers = req->responseHeaders();
+				if(x < 20)
+					x = 20;
+
+				keepAliveInterval = x;
 			}
+			else
+				keepAliveInterval = -1;
+		}
 
-			delete req;
-			req = 0;
-
-			// TODO: check for error
-			QList<WsEvent> events = decodeEvents(inBuf.take());
-
-			foreach(const WsEvent &e, events)
+		foreach(const HttpHeader &h, responseHeaders)
+		{
+			if(h.first.size() >= 10 && qstrnicmp(h.first.data(), "Set-Meta-", 9) == 0)
 			{
-				if(e.type == "OPEN")
-				{
-					state = Connected;
-					emit q->connected();
-				}
-				else if(e.type == "TEXT")
-				{
-					inFrames += Frame(Frame::Text, e.content, false);
-					emit q->readyRead();
-				}
-				else if(e.type == "BINARY")
-				{
-					inFrames += Frame(Frame::Binary, e.content, false);
-					emit q->readyRead();
-				}
-				else if(e.type == "PING")
-				{
-					inFrames += Frame(Frame::Ping, QByteArray(), false);
-					emit q->readyRead();
-				}
-				else if(e.type == "PONG")
-				{
-					inFrames += Frame(Frame::Pong, QByteArray(), false);
-					emit q->readyRead();
-				}
-				else if(e.type == "CLOSE")
-				{
-					if(state == Closing)
-					{
-						state = Idle;
-						emit q->closed();
-						return;
-					}
-					else
-					{
-						peerClosing = true;
-						if(e.content.size() == 2)
-							peerCloseCode = ((quint16)e.content[0] << 8) + (quint16)e.content[1];
-
-						emit q->peerClosed();
-					}
-				}
-				else if(e.type == "DISCONNECT")
-				{
-					emit q->error();
-					return;
-				}
+				QByteArray name = h.first.mid(9);
+				if(meta.contains(name))
+					meta.removeAll(name);
+				meta += HttpHeader(name, h.second);
 			}
+		}
 
-			if(peerClosing && reqClose)
+		bool ok;
+		QList<WsEvent> events = decodeEvents(inBuf.take(), &ok);
+		if(!ok)
+		{
+			updating = false;
+
+			emit q->error();
+			return;
+		}
+
+		QPointer<QObject> self = this;
+
+		bool emitConnected = false;
+		bool emitReadyRead = false;
+		bool closed = false;
+		bool disconnected = false;
+
+		foreach(const WsEvent &e, events)
+		{
+			if(e.type == "OPEN")
 			{
+				state = Connected;
+				emitConnected = true;
+			}
+			else if(e.type == "TEXT")
+			{
+				inFrames += Frame(Frame::Text, e.content, false);
+				emitReadyRead = true;
+			}
+			else if(e.type == "BINARY")
+			{
+				inFrames += Frame(Frame::Binary, e.content, false);
+				emitReadyRead = true;
+			}
+			else if(e.type == "PING")
+			{
+				inFrames += Frame(Frame::Ping, QByteArray(), false);
+				emitReadyRead = true;
+			}
+			else if(e.type == "PONG")
+			{
+				inFrames += Frame(Frame::Pong, QByteArray(), false);
+				emitReadyRead = true;
+			}
+			else if(e.type == "CLOSE")
+			{
+				peerClosing = true;
+				if(e.content.size() == 2)
+					peerCloseCode = ((quint16)e.content[0] << 8) + (quint16)e.content[1];
+
+				closed = true;
+				break;
+			}
+			else if(e.type == "DISCONNECT")
+			{
+				disconnected = true;
+				break;
+			}
+		}
+
+		if(emitConnected)
+		{
+			emit q->connected();
+			if(!self)
+				return;
+		}
+
+		if(emitReadyRead)
+		{
+			emit q->readyRead();
+			if(!self)
+				return;
+		}
+
+		if(reqFrames > 0)
+		{
+			emit q->framesWritten(reqFrames, reqContentSize);
+			if(!self)
+				return;
+		}
+
+		if(reqClose)
+			closeSent = true;
+
+		if(closed)
+		{
+			if(closeSent)
+			{
+				updating = false;
+
 				state = Idle;
 				emit q->closed();
 				return;
 			}
-
-			emit q->framesWritten(reqFrames, reqContentSize);
-
-			if(!outFrames.isEmpty())
-				update();
+			else
+			{
+				emit q->peerClosed();
+			}
 		}
+		else if(closeSent && keepAliveInterval == -1)
+		{
+			// if there are no keep alives, then the server has only one
+			//   chance to respond to a close. if it doesn't, then
+			//   consider the connection uncleanly disconnected.
+			disconnected = true;
+		}
+
+		if(disconnected)
+		{
+			updating = false;
+
+			emit q->error();
+			return;
+		}
+
+		if(reqClose && peerClosing)
+		{
+			updating = false;
+
+			state = Idle;
+			emit q->closed();
+			return;
+		}
+
+		updating = false;
+
+		if(!outFrames.isEmpty() || (state == Closing && !closeSent))
+			update();
+		else if(keepAliveInterval != -1)
+			keepAliveTimer->start(keepAliveInterval * 1000);
 	}
 
 	void req_bytesWritten(int count)
@@ -354,8 +498,15 @@ private slots:
 
 	void req_error()
 	{
-		// TODO
+		delete req;
+		req = 0;
+
 		emit q->error();
+	}
+
+	void keepAliveTimer_timeout()
+	{
+		update();
 	}
 };
 
