@@ -310,15 +310,9 @@ private slots:
 		}
 
 		int responseCode = req->responseCode();
+		QByteArray responseReason = req->responseReason();
 		HttpHeaders responseHeaders = req->responseHeaders();
-
-		if(state == Connecting)
-		{
-			// save the initial response
-			responseData.code = responseCode;
-			responseData.reason = req->responseReason();
-			responseData.headers = responseHeaders;
-		}
+		QByteArray responseBody = req->readBody();
 
 		delete req;
 		req = 0;
@@ -367,6 +361,27 @@ private slots:
 			return;
 		}
 
+		if(state == Connecting)
+		{
+			// server must respond with events or enable keep alive
+			if(events.isEmpty() && keepAliveInterval == -1)
+			{
+				updating = false;
+
+				emit q->error();
+				return;
+			}
+
+			// first event must be OPEN
+			if(!events.isEmpty() && events.first().type != "OPEN")
+			{
+				updating = false;
+
+				emit q->error();
+				return;
+			}
+		}
+
 		QPointer<QObject> self = this;
 
 		bool emitConnected = false;
@@ -378,6 +393,18 @@ private slots:
 		{
 			if(e.type == "OPEN")
 			{
+				if(state != Connecting)
+				{
+					disconnected = true;
+					break;
+				}
+
+				// save the initial response
+				responseData.code = responseCode;
+				responseData.reason = responseReason;
+				responseData.headers = responseHeaders;
+				responseData.body = responseBody;
+
 				state = Connected;
 				emitConnected = true;
 			}
