@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 default_config_dir = "/etc/pushpin"
+version = '1.0.0'
 
 import sys
 import os
@@ -19,6 +20,9 @@ for arg in sys.argv:
 		break
 	elif arg == "--verbose":
 		verbose = True
+	elif arg == "--version":
+		print 'pushpin %s' % version
+		sys.exit(0)
 
 # config file in same dir as executable
 config_file_list.append(os.path.join(exedir, "pushpin.conf"))

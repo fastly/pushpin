@@ -21,6 +21,8 @@ import sys
 import os
 import ConfigParser
 
+version = '1.0.0'
+
 config_file = "/etc/pushpin/pushpin.conf"
 log_file = None
 verbose = False
@@ -29,8 +31,11 @@ for arg in sys.argv:
 		config_file = arg[9:]
 	elif arg.startswith("--logfile="):
 		log_file = arg[10:]
-	elif arg.startswith("--verbose"):
+	elif arg == "--verbose":
 		verbose = True
+	elif arg == "--version":
+		print 'pushpin-handler %s' % version
+		sys.exit(1)
 
 class ConfigWithInclude(object):
 	def __init__(self, fname):
