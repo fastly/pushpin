@@ -430,7 +430,7 @@ public:
 
 	void tryReadIn()
 	{
-		while(inSock->framesAvailable() > 0 && outSock->canWrite())
+		while(inSock->framesAvailable() > 0 && ((outSock && outSock->canWrite()) || detached))
 		{
 			WebSocket::Frame f = inSock->readFrame();
 
@@ -446,7 +446,7 @@ public:
 
 	void tryReadOut()
 	{
-		while(outSock->framesAvailable() > 0 && inSock->canWrite())
+		while(outSock->framesAvailable() > 0 && ((inSock && inSock->canWrite()) || detached))
 		{
 			WebSocket::Frame f = outSock->readFrame();
 
@@ -528,7 +528,7 @@ public:
 private slots:
 	void in_readyRead()
 	{
-		if(!detached && outSock && outSock->state() == WebSocket::Connected)
+		if((outSock && outSock->state() == WebSocket::Connected) || detached)
 			tryReadIn();
 	}
 
@@ -544,8 +544,15 @@ private slots:
 
 	void in_peerClosed()
 	{
-		if(!detached && outSock && outSock->state() != WebSocket::Closing)
-			outSock->close();
+		if(detached)
+		{
+			inSock->close();
+		}
+		else
+		{
+			if(outSock && outSock->state() != WebSocket::Closing)
+				outSock->close();
+		}
 	}
 
 	void in_closed()

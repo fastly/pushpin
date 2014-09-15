@@ -123,6 +123,7 @@ public:
 	bool ignorePolicies;
 	bool ignoreTlsErrors;
 	State state;
+	QByteArray cid;
 	HttpRequestData requestData;
 	HttpResponseData responseData;
 	ErrorCondition errorCondition;
@@ -177,8 +178,12 @@ public:
 	{
 		state = Connecting;
 
-		// don't forward the Upgrade header
+		cid = QUuid::createUuid().toString().toLatin1();
+
+		// don't forward certain headers
 		requestData.headers.removeAll("Upgrade");
+		requestData.headers.removeAll("Accept");
+		requestData.headers.removeAll("Connection-Id");
 
 		// don't forward headers starting with Meta-*
 		for(int n = 0; n < requestData.headers.count(); ++n)
@@ -248,6 +253,10 @@ private:
 		req->setIgnoreTlsErrors(ignoreTlsErrors);
 
 		HttpHeaders headers = requestData.headers;
+
+		headers += HttpHeader("Accept", "application/websocket-events");
+		headers += HttpHeader("Connection-Id", cid);
+
 		foreach(const HttpHeader &h, meta)
 			headers += HttpHeader("Meta-" + h.first, h.second);
 
@@ -310,20 +319,23 @@ private slots:
 		}
 
 		int responseCode = req->responseCode();
+		QByteArray responseReason = req->responseReason();
 		HttpHeaders responseHeaders = req->responseHeaders();
-
-		if(state == Connecting)
-		{
-			// save the initial response
-			responseData.code = responseCode;
-			responseData.reason = req->responseReason();
-			responseData.headers = responseHeaders;
-		}
+		QByteArray responseBody = req->readBody();
 
 		delete req;
 		req = 0;
 
 		if(responseCode != 200)
+		{
+			updating = false;
+
+			emit q->error();
+			return;
+		}
+
+		QByteArray contentType = responseHeaders.get("Content-Type");
+		if(contentType != "application/websocket-events")
 		{
 			updating = false;
 
@@ -367,6 +379,27 @@ private slots:
 			return;
 		}
 
+		if(state == Connecting)
+		{
+			// server must respond with events or enable keep alive
+			if(events.isEmpty() && keepAliveInterval == -1)
+			{
+				updating = false;
+
+				emit q->error();
+				return;
+			}
+
+			// first event must be OPEN
+			if(!events.isEmpty() && events.first().type != "OPEN")
+			{
+				updating = false;
+
+				emit q->error();
+				return;
+			}
+		}
+
 		QPointer<QObject> self = this;
 
 		bool emitConnected = false;
@@ -378,6 +411,18 @@ private slots:
 		{
 			if(e.type == "OPEN")
 			{
+				if(state != Connecting)
+				{
+					disconnected = true;
+					break;
+				}
+
+				// save the initial response
+				responseData.code = responseCode;
+				responseData.reason = responseReason;
+				responseData.headers = responseHeaders;
+				responseData.body = responseBody;
+
 				state = Connected;
 				emitConnected = true;
 			}
