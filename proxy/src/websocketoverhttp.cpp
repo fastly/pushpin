@@ -256,6 +256,7 @@ private:
 
 		headers += HttpHeader("Accept", "application/websocket-events");
 		headers += HttpHeader("Connection-Id", cid);
+		headers += HttpHeader("Content-Type", "application/websocket-events");
 
 		foreach(const HttpHeader &h, meta)
 			headers += HttpHeader("Meta-" + h.first, h.second);
