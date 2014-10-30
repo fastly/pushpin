@@ -570,7 +570,7 @@ def accept_worker():
 
 			instruct = None
 			ctype = header_get_parsed(resp_headers, 'Content-Type')
-			if ctype[0] == 'application/grip-instruct':
+			if ctype and ctype[0] == 'application/grip-instruct':
 				if m['response']['code'] != 200:
 					raise ValueError('response code for grip-instruct must be 200')
 				instruct = json.loads(m['response']['body'])
@@ -724,6 +724,9 @@ def accept_worker():
 					rheaders = response["headers"]
 				else:
 					rheaders = dict()
+
+				if h.auto_cross_origin:
+					apply_cors_headers(h.request["headers"], rheaders)
 
 				body_size = reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True, h.out_seq)
 
