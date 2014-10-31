@@ -62,7 +62,6 @@ Gateway opens connection:
     [... any headers included by the client WebSocket handshake ...]
 
     OPEN\r\n
-    \r\n
 
 Server accepts connection:
 
@@ -71,7 +70,6 @@ Server accepts connection:
     [... any headers to include in the WebSocket negotiation response ...]
 
     OPEN\r\n
-    \r\n
 
 Gateway relays message from client:
 
@@ -126,7 +124,6 @@ For example, a client supplies a cookie which the gateway relays across during c
     Cookie: [... auth info ...]
 
     OPEN\r\n
-    \r\n
 
 The server accepts the connection and binds a User field based on the cookie:
 
@@ -135,7 +132,6 @@ The server accepts the connection and binds a User field based on the cookie:
     Set-Meta-User: alice
 
     OPEN\r\n
-    \r\n
 
 Now, any further requests from the gateway will include a Meta-User header:
 
