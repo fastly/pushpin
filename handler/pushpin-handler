@@ -916,7 +916,7 @@ def push_in_worker(c):
 
 				# apply the headers from the pushed message
 				for k, v in pheaders.iteritems():
-					rheaders[k] = v
+					header_set(rheaders, k, v)
 
 				# if Grip-Expose-Headers was provided in the pushed message, filter the results
 				if grip_expose_headers:
