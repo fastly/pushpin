@@ -7,9 +7,9 @@ Read:
   * http://blog.fanout.io/2013/02/10/http-grip-proxy-hold-technique/
   * http://blog.fanout.io/2013/04/09/an-http-reverse-proxy-for-realtime/
 
-Pushpin is an HTTP reverse proxy server that makes it easy to implement streaming and long-polling services. It communicates with backend web applications using regular, short-lived HTTP requests (GRIP protocol). This allows the backend applications to be written in any language and use any webserver.
+Pushpin is a reverse proxy server that makes it easy to implement WebSocket, HTTP streaming, and HTTP long-polling services. It communicates with backend web applications using regular, short-lived HTTP requests (GRIP protocol). This allows the backend applications to be written in any language and use any webserver.
 
-Additionally, Pushpin does all of this without exposing a proprietary protocol to clients. The HTTP content between the client and your server is whatever you want it to be. This makes it ideal for implementing APIs.
+Additionally, Pushpin does all of this without exposing a proprietary protocol to clients. The HTTP/WebSocket content between the client and your server is whatever you want it to be. This makes it ideal for implementing APIs.
 
 License
 -------
@@ -19,7 +19,7 @@ Pushpin is offered under the GNU AGPL. See the COPYING file.
 Features
 --------
 
-  * Implement any realtime HTTP API using any webserver for the logic
+  * Implement any realtime HTTP/WebSocket API using any webserver for the logic
   * Proxied requests are streamed, so non-realtime requests remain unhindered
   * Fault tolerant multiprocess design reduces risk if things go wrong
   * Handle thousands of simultaneous connections
