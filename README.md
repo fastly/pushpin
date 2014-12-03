@@ -31,8 +31,8 @@ Requirements
   * qca >= 2.0 (and an hmac(sha256)-supporting plugin, like qca-ossl)
   * libzmq >= 2.0
   * qjson
-  * mongrel2 (git release/1.9.0 or develop branch)
-  * zurl (git v1.0.0 tag)
+  * mongrel2 >= 1.9.0
+  * zurl >= 1.0.0
   * python
   * python setproctitle
   * python tnetstring
