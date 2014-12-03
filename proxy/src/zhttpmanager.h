@@ -35,12 +35,19 @@ public:
 	ZhttpManager(QObject *parent = 0);
 	~ZhttpManager();
 
+	int connectionCount() const;
+
 	QByteArray instanceId() const;
 	void setInstanceId(const QByteArray &id);
+
+	void setIpcFileMode(int mode);
+	void setBind(bool enable);
 
 	bool setClientOutSpecs(const QStringList &specs);
 	bool setClientOutStreamSpecs(const QStringList &specs);
 	bool setClientInSpecs(const QStringList &specs);
+
+	bool setClientReqSpecs(const QStringList &specs);
 
 	bool setServerInSpecs(const QStringList &specs);
 	bool setServerInStreamSpecs(const QStringList &specs);

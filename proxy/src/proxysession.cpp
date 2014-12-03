@@ -33,6 +33,7 @@
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 #include "domainmap.h"
+#include "zroutes.h"
 #include "xffrule.h"
 #include "requestsession.h"
 #include "proxyutil.h"
@@ -83,6 +84,7 @@ public:
 
 	ProxySession *q;
 	State state;
+	ZRoutes *zroutes;
 	ZhttpManager *zhttpManager;
 	DomainMap *domainMap;
 	ZhttpRequest *inRequest;
@@ -114,11 +116,12 @@ public:
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
 
-	Private(ProxySession *_q, ZhttpManager *_zhttpManager, DomainMap *_domainMap) :
+	Private(ProxySession *_q, ZRoutes *_zroutes, DomainMap *_domainMap) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
-		zhttpManager(_zhttpManager),
+		zroutes(_zroutes),
+		zhttpManager(0),
 		domainMap(_domainMap),
 		inRequest(0),
 		isHttps(false),
@@ -145,6 +148,12 @@ public:
 
 		sessionItems.clear();
 		sessionItemsBySession.clear();
+
+		if(zhttpManager)
+		{
+			zroutes->removeRef(zhttpManager);
+			zhttpManager = 0;
+		}
 	}
 
 	void add(RequestSession *rs)
@@ -283,7 +292,18 @@ public:
 		if(!target.host.isEmpty())
 			uri.setHost(target.host);
 
-		log_debug("proxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
+		if(target.type == DomainMap::Target::Custom)
+		{
+			zhttpManager = zroutes->managerForRoute(target.zhttpRoute);
+			log_debug("proxysession: %p forwarding to %s", q, qPrintable(target.zhttpRoute.baseSpec));
+		}
+		else // Default
+		{
+			zhttpManager = zroutes->defaultManager();
+			log_debug("proxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
+		}
+
+		zroutes->addRef(zhttpManager);
 
 		zhttpRequest = zhttpManager->createRequest();
 		zhttpRequest->setParent(this);
@@ -297,8 +317,11 @@ public:
 		if(target.insecure)
 			zhttpRequest->setIgnoreTlsErrors(true);
 
-		zhttpRequest->setConnectHost(target.connectHost);
-		zhttpRequest->setConnectPort(target.connectPort);
+		if(target.type == DomainMap::Target::Default)
+		{
+			zhttpRequest->setConnectHost(target.connectHost);
+			zhttpRequest->setConnectPort(target.connectPort);
+		}
 
 		zhttpRequest->start(requestData.method, uri, requestData.headers);
 
@@ -769,10 +792,10 @@ public slots:
 	}
 };
 
-ProxySession::ProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, QObject *parent) :
+ProxySession::ProxySession(ZRoutes *zroutes, DomainMap *domainMap, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zhttpManager, domainMap);
+	d = new Private(this, zroutes, domainMap);
 }
 
 ProxySession::~ProxySession()

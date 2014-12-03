@@ -30,6 +30,7 @@
 #include "zwebsocket.h"
 #include "websocketoverhttp.h"
 #include "domainmap.h"
+#include "zroutes.h"
 #include "wscontrolmanager.h"
 #include "wscontrolsession.h"
 #include "xffrule.h"
@@ -216,6 +217,7 @@ public:
 
 	WsProxySession *q;
 	State state;
+	ZRoutes *zroutes;
 	ZhttpManager *zhttpManager;
 	DomainMap *domainMap;
 	StatsManager *statsManager;
@@ -245,11 +247,12 @@ public:
 	QString subChannel;
 	QTimer *activityTimer;
 
-	Private(WsProxySession *_q, ZhttpManager *_zhttpManager, DomainMap *_domainMap, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
+	Private(WsProxySession *_q, ZRoutes *_zroutes, DomainMap *_domainMap, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
 		q(_q),
 		state(Idle),
-		zhttpManager(_zhttpManager),
+		zroutes(_zroutes),
+		zhttpManager(0),
 		domainMap(_domainMap),
 		statsManager(_statsManager),
 		wsControlManager(_wsControlManager),
@@ -291,6 +294,12 @@ public:
 			activityTimer->disconnect(this);
 			activityTimer->deleteLater();
 			activityTimer = 0;
+		}
+
+		if(zhttpManager)
+		{
+			zroutes->removeRef(zhttpManager);
+			zhttpManager = 0;
 		}
 	}
 
@@ -384,7 +393,18 @@ public:
 
 		subChannel = target.subChannel;
 
-		log_debug("wsproxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
+		if(target.type == DomainMap::Target::Custom)
+		{
+			zhttpManager = zroutes->managerForRoute(target.zhttpRoute);
+			log_debug("wsproxysession: %p forwarding to %s", q, qPrintable(target.zhttpRoute.baseSpec));
+		}
+		else // Default
+		{
+			zhttpManager = zroutes->defaultManager();
+			log_debug("wsproxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
+		}
+
+		zroutes->addRef(zhttpManager);
 
 		if(target.overHttp)
 		{
@@ -409,8 +429,11 @@ public:
 		if(target.insecure)
 			outSock->setIgnoreTlsErrors(true);
 
-		outSock->setConnectHost(target.connectHost);
-		outSock->setConnectPort(target.connectPort);
+		if(target.type == DomainMap::Target::Default)
+		{
+			outSock->setConnectHost(target.connectHost);
+			outSock->setConnectPort(target.connectPort);
+		}
 
 		outSock->start(uri, requestData.headers);
 	}
@@ -745,10 +768,10 @@ private slots:
 	}
 };
 
-WsProxySession::WsProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
+WsProxySession::WsProxySession(ZRoutes *zroutes, DomainMap *domainMap, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zhttpManager, domainMap, statsManager, wsControlManager);
+	d = new Private(this, zroutes, domainMap, statsManager, wsControlManager);
 }
 
 WsProxySession::~WsProxySession()

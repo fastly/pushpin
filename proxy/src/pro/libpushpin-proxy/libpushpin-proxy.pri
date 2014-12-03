@@ -66,6 +66,7 @@ HEADERS += \
 	$$SRC_DIR/wscontrolsession.h \
 	$$SRC_DIR/acceptdata.h \
 	$$SRC_DIR/domainmap.h \
+	$$SRC_DIR/zroutes.h \
 	$$SRC_DIR/xffrule.h \
 	$$SRC_DIR/inspectchecker.h \
 	$$SRC_DIR/requestsession.h \
@@ -88,6 +89,7 @@ SOURCES += \
 	$$SRC_DIR/wscontrolmanager.cpp \
 	$$SRC_DIR/wscontrolsession.cpp \
 	$$SRC_DIR/domainmap.cpp \
+	$$SRC_DIR/zroutes.cpp \
 	$$SRC_DIR/inspectchecker.cpp \
 	$$SRC_DIR/requestsession.cpp \
 	$$SRC_DIR/proxyutil.cpp \

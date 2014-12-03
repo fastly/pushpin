@@ -361,26 +361,45 @@ public:
 					break;
 				}
 
-				int at = val.indexOf(':');
-				if(at == -1)
-				{
-					log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
-					ok = false;
-					break;
-				}
-
-				QString sport = val.mid(at + 1);
-				int port = sport.toInt(&ok);
-				if(!ok || port < 1 || port > 65535)
-				{
-					log_warning("%s:%d: target invalid port", qPrintable(fileName), lineNum);
-					ok = false;
-					break;
-				}
-
 				Target target;
-				target.connectHost = parts[n].mid(0, at);
-				target.connectPort = port;
+
+				if(val.startsWith("zhttp/"))
+				{
+					target.type = Target::Custom;
+
+					target.zhttpRoute.baseSpec = val.mid(6);
+				}
+				else if(val.startsWith("zhttpreq/"))
+				{
+					target.type = Target::Custom;
+
+					target.zhttpRoute.baseSpec = val.mid(9);
+					target.zhttpRoute.req = true;
+				}
+				else
+				{
+					target.type = Target::Default;
+
+					int at = val.indexOf(':');
+					if(at == -1)
+					{
+						log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
+						ok = false;
+						break;
+					}
+
+					QString sport = val.mid(at + 1);
+					int port = sport.toInt(&ok);
+					if(!ok || port < 1 || port > 65535)
+					{
+						log_warning("%s:%d: target invalid port", qPrintable(fileName), lineNum);
+						ok = false;
+						break;
+					}
+
+					target.connectHost = parts[n].mid(0, at);
+					target.connectPort = port;
+				}
 
 				if(props.contains("ssl"))
 					target.ssl = true;
@@ -401,6 +420,14 @@ public:
 
 				if(props.contains("over_http"))
 					target.overHttp = true;
+
+				if(props.contains("ipc_file_mode"))
+				{
+					bool ok;
+					int x = props.value("ipc_file_mode").toInt(&ok, 8);
+					if(ok && x >= 0)
+						target.zhttpRoute.ipcFileMode = x;
+				}
 
 				r.targets += target;
 			}
@@ -429,7 +456,12 @@ public:
 			{
 				QStringList tstr;
 				foreach(const Target &t, r.targets)
-					tstr += t.connectHost + ';' + QString::number(t.connectPort);
+				{
+					if(!t.zhttpRoute.isNull())
+						tstr += t.zhttpRoute.baseSpec;
+					else
+						tstr += t.connectHost + ';' + QString::number(t.connectPort);
+				}
 
 				if(!domain.isEmpty())
 					log_debug("  %s: %s", qPrintable(domain), qPrintable(tstr.join(" ")));
@@ -444,10 +476,13 @@ public:
 		m.unlock();
 
 		log_info("routes map loaded with %d entries", newmap.count());
+
+		QMetaObject::invokeMethod(this, "changed", Qt::QueuedConnection);
 	}
 
 signals:
 	void started();
+	void changed();
 
 public slots:
 	void start()
@@ -521,10 +556,15 @@ public slots:
 
 class DomainMap::Private : public QObject
 {
+	Q_OBJECT
+
 public:
+	DomainMap *q;
 	Thread *thread;
 
-	Private() :
+	Private(DomainMap *_q) :
+		QObject(_q),
+		q(_q),
 		thread(0)
 	{
 	}
@@ -539,12 +579,22 @@ public:
 		thread = new Thread;
 		thread->fileName = fileName;
 		thread->start();
+
+		// worker guaranteed to exist after starting
+		connect(thread->worker, SIGNAL(changed()), SLOT(doChanged()));
+	}
+
+public slots:
+	void doChanged()
+	{
+		emit q->changed();
 	}
 };
 
-DomainMap::DomainMap(const QString &fileName)
+DomainMap::DomainMap(const QString &fileName, QObject *parent) :
+	QObject(parent)
 {
-	d = new Private;
+	d = new Private(this);
 	d->start(fileName);
 }
 
@@ -586,6 +636,30 @@ DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domai
 	assert(!best->targets.isEmpty());
 
 	return best->toEntry();
+}
+
+QList<DomainMap::ZhttpRoute> DomainMap::zhttpRoutes() const
+{
+	QMutexLocker locker(&d->thread->worker->m);
+
+	QList<ZhttpRoute> out;
+
+	QHashIterator< QString, QList<Worker::Rule> > it(d->thread->worker->map);
+	while(it.hasNext())
+	{
+		it.next();
+		const QList<Worker::Rule> &rules = it.value();
+		foreach(const Worker::Rule &r, rules)
+		{
+			foreach(const Target &t, r.targets)
+			{
+				if(!t.zhttpRoute.isNull() && !out.contains(t.zhttpRoute))
+					out += t.zhttpRoute;
+			}
+		}
+	}
+
+	return out;
 }
 
 #include "domainmap.moc"

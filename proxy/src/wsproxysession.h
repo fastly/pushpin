@@ -23,7 +23,7 @@
 #include <QObject>
 #include "zwebsocket.h"
 
-class ZhttpManager;
+class ZRoutes;
 class WsControlManager;
 class StatsManager;
 class DomainMap;
@@ -34,7 +34,7 @@ class WsProxySession : public QObject
 	Q_OBJECT
 
 public:
-	WsProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, StatsManager *stats = 0, WsControlManager *wsControlManager = 0, QObject *parent = 0);
+	WsProxySession(ZRoutes *zroutes, DomainMap *domainMap, StatsManager *stats = 0, WsControlManager *wsControlManager = 0, QObject *parent = 0);
 	~WsProxySession();
 
 	QByteArray routeId() const;

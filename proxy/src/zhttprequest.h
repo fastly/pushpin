@@ -44,7 +44,8 @@ public:
 		ErrorTls,
 		ErrorLengthRequired,
 		ErrorTimeout,
-		ErrorUnavailable
+		ErrorUnavailable,
+		ErrorRequestTooLarge
 	};
 
 	// pair of sender + request id
@@ -125,7 +126,7 @@ private:
 
 	friend class ZhttpManager;
 	ZhttpRequest(QObject *parent = 0);
-	void setupClient(ZhttpManager *manager);
+	void setupClient(ZhttpManager *manager, bool req);
 	bool setupServer(ZhttpManager *manager, const ZhttpRequestPacket &packet);
 	void setupServer(ZhttpManager *manager, const ServerState &state);
 	void startServer();

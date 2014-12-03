@@ -24,7 +24,7 @@
 
 class InspectData;
 class AcceptData;
-class ZhttpManager;
+class ZRoutes;
 class DomainMap;
 class XffRule;
 class RequestSession;
@@ -34,7 +34,7 @@ class ProxySession : public QObject
 	Q_OBJECT
 
 public:
-	ProxySession(ZhttpManager *zhttpManager, DomainMap *domainMap, QObject *parent = 0);
+	ProxySession(ZRoutes *zroutes, DomainMap *domainMap, QObject *parent = 0);
 	~ProxySession();
 
 	QByteArray routeId() const;

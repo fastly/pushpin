@@ -31,6 +31,7 @@
 
 #define IDEAL_CREDITS 200000
 #define SESSION_EXPIRE 60000
+#define REQ_BUF_MAX 1000000
 
 class ZhttpRequest::Private : public QObject
 {
@@ -59,6 +60,7 @@ public:
 	bool server;
 	State state;
 	ZhttpRequest::Rid rid;
+	bool doReq;
 	QByteArray toAddress;
 	QHostAddress peerAddress;
 	QString connectHost;
@@ -94,6 +96,7 @@ public:
 		manager(0),
 		server(false),
 		state(Stopped),
+		doReq(false),
 		connectPort(-1),
 		ignorePolicies(false),
 		ignoreTlsErrors(false),
@@ -247,6 +250,7 @@ public:
 
 	void pause()
 	{
+		assert(!doReq);
 		pausing = true;
 
 		ZhttpResponsePacket p;
@@ -514,7 +518,8 @@ public:
 
 			state = ClientReceiving;
 
-			startKeepAlive();
+			if(!doReq)
+				startKeepAlive();
 		}
 
 		if(packet.type == ZhttpResponsePacket::Error)
@@ -539,7 +544,8 @@ public:
 			return;
 		}
 
-		if(packet.seq != inSeq)
+		// if non-req mode, check sequencing
+		if(!doReq && packet.seq != inSeq)
 		{
 			log_warning("zhttp client: error id=%s received message out of sequence, canceling", packet.id.data());
 
@@ -562,6 +568,17 @@ public:
 
 		refreshTimeout();
 
+		if(doReq && (packet.type != ZhttpResponsePacket::Data || packet.more))
+		{
+			log_warning("zhttp/zws client req: received invalid req response");
+
+			state = Stopped;
+			errorCondition = ErrorGeneric;
+			cleanup();
+			emit q->error();
+			return;
+		}
+
 		if(packet.type == ZhttpResponsePacket::Data)
 		{
 			if(!haveResponseValues)
@@ -573,12 +590,20 @@ public:
 				responseHeaders = packet.headers;
 			}
 
-			if(responseBodyBuf.size() + packet.body.size() > IDEAL_CREDITS)
-				log_warning("zhttp client: id=%s server is sending too fast", packet.id.data());
+			if(doReq)
+			{
+				if(responseBodyBuf.size() + packet.body.size() > REQ_BUF_MAX)
+					log_warning("zhttp client req: id=%s server response too large", packet.id.data());
+			}
+			else
+			{
+				if(responseBodyBuf.size() + packet.body.size() > IDEAL_CREDITS)
+					log_warning("zhttp client: id=%s server is sending too fast", packet.id.data());
+			}
 
 			responseBodyBuf += packet.body;
 
-			if(packet.credits > 0)
+			if(!doReq && packet.credits > 0)
 			{
 				outCredits += packet.credits;
 				if(outCredits > 0)
@@ -652,16 +677,24 @@ public:
 		ZhttpRequestPacket out = packet;
 		out.from = rid.first;
 		out.id = rid.second;
-		out.seq = outSeq++;
-		
-		if(out.seq == 0)
+
+		if(doReq)
 		{
 			manager->writeHttp(out);
 		}
 		else
 		{
-			assert(!toAddress.isEmpty());
-			manager->writeHttp(out, toAddress);
+			out.seq = outSeq++;
+
+			if(out.seq == 0)
+			{
+				manager->writeHttp(out);
+			}
+			else
+			{
+				assert(!toAddress.isEmpty());
+				manager->writeHttp(out, toAddress);
+			}
 		}
 	}
 
@@ -699,9 +732,12 @@ public:
 		{
 			state = Stopped;
 
-			ZhttpRequestPacket p;
-			p.type = ZhttpRequestPacket::Cancel;
-			writePacket(p);
+			if(!doReq)
+			{
+				ZhttpRequestPacket p;
+				p.type = ZhttpRequestPacket::Cancel;
+				writePacket(p);
+			}
 		}
 		else if(server)
 		{
@@ -752,42 +788,79 @@ public slots:
 
 		if(state == ClientStarting)
 		{
-			if(!manager->canWriteImmediately())
+			if(doReq)
 			{
-				state = Stopped;
-				errorCondition = ZhttpRequest::ErrorUnavailable;
-				emit q->error();
-				cleanup();
-				return;
+				if(requestBodyBuf.size() > REQ_BUF_MAX)
+				{
+					state = Stopped;
+					errorCondition = ZhttpRequest::ErrorRequestTooLarge;
+					emit q->error();
+					cleanup();
+					return;
+				}
+
+				// for req mode, wait until request is fully supplied then send in one packet
+				if(bodyFinished)
+				{
+					ZhttpRequestPacket p;
+					p.type = ZhttpRequestPacket::Data;
+					p.method = requestMethod;
+					p.uri = requestUri;
+					p.headers = requestHeaders;
+					p.body = requestBodyBuf.take();
+					p.maxSize = REQ_BUF_MAX;
+					p.connectHost = connectHost;
+					p.connectPort = connectPort;
+					if(ignorePolicies)
+						p.ignorePolicies = true;
+					if(ignoreTlsErrors)
+						p.ignoreTlsErrors = true;
+					writePacket(p);
+
+					state = ClientRequestFinishWait;
+				}
 			}
-
-			// even though we don't have credits yet, we can act
-			//   like we do on the first packet. we'll still cap
-			//   our potential size though.
-			QByteArray buf = requestBodyBuf.take(IDEAL_CREDITS);
-
-			ZhttpRequestPacket p;
-			p.type = ZhttpRequestPacket::Data;
-			p.method = requestMethod;
-			p.uri = requestUri;
-			p.headers = requestHeaders;
-			p.body = buf;
-			if(!requestBodyBuf.isEmpty() || !bodyFinished)
-				p.more = true;
-			p.stream = true;
-			p.connectHost = connectHost;
-			p.connectPort = connectPort;
-			if(ignorePolicies)
-				p.ignorePolicies = true;
-			if(ignoreTlsErrors)
-				p.ignoreTlsErrors = true;
-			p.credits = IDEAL_CREDITS;
-			writePacket(p);
-
-			if(p.more)
-				state = ClientRequestStartWait;
 			else
-				state = ClientRequestFinishWait;
+			{
+				// NOTE: not quite sure why we do this. maybe to avoid a
+				//   zhttp PUSH/SUB race?
+				if(!manager->canWriteImmediately())
+				{
+					state = Stopped;
+					errorCondition = ZhttpRequest::ErrorUnavailable;
+					emit q->error();
+					cleanup();
+					return;
+				}
+
+				// even though we don't have credits yet, we can act
+				//   like we do on the first packet. we'll still cap
+				//   our potential size though.
+				QByteArray buf = requestBodyBuf.take(IDEAL_CREDITS);
+
+				ZhttpRequestPacket p;
+				p.type = ZhttpRequestPacket::Data;
+				p.method = requestMethod;
+				p.uri = requestUri;
+				p.headers = requestHeaders;
+				p.body = buf;
+				if(!requestBodyBuf.isEmpty() || !bodyFinished)
+					p.more = true;
+				p.stream = true;
+				p.connectHost = connectHost;
+				p.connectPort = connectPort;
+				if(ignorePolicies)
+					p.ignorePolicies = true;
+				if(ignoreTlsErrors)
+					p.ignoreTlsErrors = true;
+				p.credits = IDEAL_CREDITS;
+				writePacket(p);
+
+				if(p.more)
+					state = ClientRequestStartWait;
+				else
+					state = ClientRequestFinishWait;
+			}
 		}
 		else if(state == ClientRequesting)
 		{
@@ -1020,10 +1093,11 @@ QByteArray ZhttpRequest::readBody(int size)
 	return d->readBody(size);
 }
 
-void ZhttpRequest::setupClient(ZhttpManager *manager)
+void ZhttpRequest::setupClient(ZhttpManager *manager, bool req)
 {
 	d->manager = manager;
 	d->rid = Rid(manager->instanceId(), QUuid::createUuid().toString().toLatin1());
+	d->doReq = req;
 	d->manager->link(this);
 }
 

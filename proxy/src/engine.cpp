@@ -32,6 +32,7 @@
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "domainmap.h"
+#include "zroutes.h"
 #include "inspectmanager.h"
 #include "inspectchecker.h"
 #include "wscontrolmanager.h"
@@ -81,7 +82,8 @@ public:
 
 	Engine *q;
 	Configuration config;
-	ZhttpManager *zhttp;
+	ZhttpManager *zhttpIn;
+	ZRoutes *zroutes;
 	InspectManager *inspect;
 	WsControlManager *wsControl;
 	DomainMap *domainMap;
@@ -99,7 +101,8 @@ public:
 	Private(Engine *_q) :
 		QObject(_q),
 		q(_q),
-		zhttp(0),
+		zhttpIn(0),
+		zroutes(0),
 		inspect(0),
 		wsControl(0),
 		domainMap(0),
@@ -142,20 +145,22 @@ public:
 		config = _config;
 
 		domainMap = new DomainMap(config.routesFile);
+		connect(domainMap, SIGNAL(changed()), SLOT(domainMap_changed()));
 
-		zhttp = new ZhttpManager(this);
-		connect(zhttp, SIGNAL(requestReady()), SLOT(zhttp_requestReady()));
-		connect(zhttp, SIGNAL(socketReady()), SLOT(zhttp_socketReady()));
+		zhttpIn = new ZhttpManager(this);
+		connect(zhttpIn, SIGNAL(requestReady()), SLOT(zhttpIn_requestReady()));
+		connect(zhttpIn, SIGNAL(socketReady()), SLOT(zhttpIn_socketReady()));
 
-		zhttp->setInstanceId(config.clientId);
+		zhttpIn->setInstanceId(config.clientId);
+		zhttpIn->setServerInSpecs(config.serverInSpecs);
+		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
+		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
 
-		zhttp->setServerInSpecs(config.serverInSpecs);
-		zhttp->setServerInStreamSpecs(config.serverInStreamSpecs);
-		zhttp->setServerOutSpecs(config.serverOutSpecs);
-
-		zhttp->setClientOutSpecs(config.clientOutSpecs);
-		zhttp->setClientOutStreamSpecs(config.clientOutStreamSpecs);
-		zhttp->setClientInSpecs(config.clientInSpecs);
+		zroutes = new ZRoutes(this);
+		zroutes->setInstanceId(config.clientId);
+		zroutes->setDefaultOutSpecs(config.clientOutSpecs);
+		zroutes->setDefaultOutStreamSpecs(config.clientOutStreamSpecs);
+		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
 		if(!config.inspectSpec.isEmpty())
 		{
@@ -246,6 +251,9 @@ public:
 			}
 		}
 
+		// init zroutes
+		domainMap_changed();
+
 		return true;
 	}
 
@@ -272,7 +280,7 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zhttp, domainMap, this);
+			ps = new ProxySession(zroutes, domainMap, this);
 			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
 			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
 			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
@@ -365,7 +373,7 @@ public:
 		if(!canTake())
 			return;
 
-		ZhttpRequest *req = zhttp->takeNextRequest();
+		ZhttpRequest *req = zhttpIn->takeNextRequest();
 		if(!req)
 			return;
 
@@ -387,13 +395,13 @@ public:
 		if(!canTake())
 			return;
 
-		ZWebSocket *sock = zhttp->takeNextSocket();
+		ZWebSocket *sock = zhttpIn->takeNextSocket();
 		if(!sock)
 			return;
 
 		log_debug("creating wsproxysession for id=%s", sock->rid().second.data());
 
-		WsProxySession *ps = new WsProxySession(zhttp, domainMap, stats, wsControl, this);
+		WsProxySession *ps = new WsProxySession(zroutes, domainMap, stats, wsControl, this);
 		connect(ps, SIGNAL(finishedByPassthrough()), SLOT(wsps_finishedByPassthrough()));
 
 		ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -422,12 +430,12 @@ public:
 	}
 
 private slots:
-	void zhttp_requestReady()
+	void zhttpIn_requestReady()
 	{
 		tryTakeNext();
 	}
 
-	void zhttp_socketReady()
+	void zhttpIn_socketReady()
 	{
 		tryTakeNext();
 	}
@@ -626,7 +634,7 @@ private slots:
 			ss.outCredits = req.outCredits;
 			ss.userData = req.userData;
 
-			ZhttpRequest *zhttpRequest = zhttp->createRequestFromState(ss);
+			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
 			RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
 			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback);
@@ -702,6 +710,12 @@ private slots:
 		}
 
 		delete req;
+	}
+
+	void domainMap_changed()
+	{
+		// connect to new zhttp targets, disconnect from old
+		zroutes->setup(domainMap->zhttpRoutes());
 	}
 };
 
