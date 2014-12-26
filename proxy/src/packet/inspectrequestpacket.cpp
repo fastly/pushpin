@@ -22,7 +22,8 @@
 #include "tnetstring.h"
 
 InspectRequestPacket::InspectRequestPacket() :
-	https(false)
+	https(false),
+	truncated(false)
 {
 }
 
@@ -30,6 +31,8 @@ QVariant InspectRequestPacket::toVariant() const
 {
 	QVariantHash obj;
 	obj["id"] = id;
+	if(https)
+		obj["https"] = true;
 	obj["method"] = method.toLatin1();
 	obj["uri"] = uri.toEncoded();
 
@@ -43,9 +46,10 @@ QVariant InspectRequestPacket::toVariant() const
 	}
 
 	obj["headers"] = vheaders;
+	obj["body"] = body;
 
-	if(https)
-		obj["https"] = true;
+	if(truncated)
+		obj["truncated"] = true;
 
 	return obj;
 }

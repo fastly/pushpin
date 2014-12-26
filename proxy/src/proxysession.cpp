@@ -32,7 +32,6 @@
 #include "acceptdata.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
-#include "domainmap.h"
 #include "zroutes.h"
 #include "xffrule.h"
 #include "requestsession.h"
@@ -86,11 +85,9 @@ public:
 	State state;
 	ZRoutes *zroutes;
 	ZhttpManager *zhttpManager;
-	DomainMap *domainMap;
 	ZhttpRequest *inRequest;
 	bool isHttps;
-	QByteArray routeId;
-	QByteArray channelPrefix;
+	DomainMap::Entry route;
 	QList<DomainMap::Target> targets;
 	ZhttpRequest *zhttpRequest;
 	bool addAllowed;
@@ -116,13 +113,12 @@ public:
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
 
-	Private(ProxySession *_q, ZRoutes *_zroutes, DomainMap *_domainMap) :
+	Private(ProxySession *_q, ZRoutes *_zroutes) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
 		zroutes(_zroutes),
 		zhttpManager(0),
-		domainMap(_domainMap),
 		inRequest(0),
 		isHttps(false),
 		zhttpRequest(0),
@@ -159,6 +155,7 @@ public:
 	void add(RequestSession *rs)
 	{
 		assert(addAllowed);
+		assert(!route.isNull());
 
 		SessionItem *si = new SessionItem;
 		si->rs = rs;
@@ -179,30 +176,22 @@ public:
 			requestBody += requestData.body;
 			requestData.body.clear();
 
-			DomainMap::Entry entry = domainMap->entry(DomainMap::Http, isHttps, host, requestData.uri.encodedPath());
-			if(entry.isNull())
-			{
-				log_warning("proxysession: %p %s has 0 routes", q, qPrintable(host));
-				rejectAll(502, "Bad Gateway", QString("No route for host: %1").arg(host));
-				return;
-			}
+			if(!route.asHost.isEmpty())
+				requestData.uri.setHost(route.asHost);
 
-			if(!entry.asHost.isEmpty())
-				requestData.uri.setHost(entry.asHost);
-
-			if(entry.pathRemove > 0)
+			if(route.pathRemove > 0)
 			{
 				QByteArray path = requestData.uri.encodedPath();
-				path = path.mid(entry.pathRemove);
+				path = path.mid(route.pathRemove);
 				requestData.uri.setEncodedPath(path);
 			}
 
 			QByteArray sigIss;
 			QByteArray sigKey;
-			if(!entry.sigIss.isEmpty() && !entry.sigKey.isEmpty())
+			if(!route.sigIss.isEmpty() && !route.sigKey.isEmpty())
 			{
-				sigIss = entry.sigIss;
-				sigKey = entry.sigKey;
+				sigIss = route.sigIss;
+				sigKey = route.sigKey;
 			}
 			else
 			{
@@ -210,13 +199,9 @@ public:
 				sigKey = defaultSigKey;
 			}
 
-			routeId = entry.id;
-			channelPrefix = entry.prefix;
-			targets = entry.targets;
+			targets = route.targets;
 
-			log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
-
-			bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, entry, sigIss, sigKey, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress());
+			bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress());
 
 			if(trustedClient)
 				passToUpstream = true;
@@ -735,6 +720,7 @@ public slots:
 				areq.peerAddress = si->rs->peerAddress();
 				areq.autoCrossOrigin = si->rs->autoCrossOrigin();
 				areq.jsonpCallback = si->rs->jsonpCallback();
+				areq.jsonpExtendedResponse = si->rs->jsonpExtendedResponse();
 				areq.inSeq = ss.inSeq;
 				areq.outSeq = ss.outSeq;
 				areq.outCredits = ss.outCredits;
@@ -764,8 +750,8 @@ public slots:
 			adata.response = responseData;
 			adata.response.body = responseBody.take();
 
-			adata.route = routeId;
-			adata.channelPrefix = channelPrefix;
+			adata.route = route.id;
+			adata.channelPrefix = route.prefix;
 
 			log_debug("proxysession: %p finished for accept", q);
 			cleanup();
@@ -792,10 +778,10 @@ public slots:
 	}
 };
 
-ProxySession::ProxySession(ZRoutes *zroutes, DomainMap *domainMap, QObject *parent) :
+ProxySession::ProxySession(ZRoutes *zroutes, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes, domainMap);
+	d = new Private(this, zroutes);
 }
 
 ProxySession::~ProxySession()
@@ -803,9 +789,9 @@ ProxySession::~ProxySession()
 	delete d;
 }
 
-QByteArray ProxySession::routeId() const
+void ProxySession::setRoute(const DomainMap::Entry &route)
 {
-	return d->routeId;
+	d->route = route;
 }
 
 void ProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)

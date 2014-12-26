@@ -93,6 +93,14 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 				return false;
 
 			r.jsonpCallback = vrequest["jsonp-callback"].toByteArray();
+
+			if(vrequest.contains("jsonp-extended-response"))
+			{
+				if(vrequest["jsonp-extended-response"].type() != QVariant::Bool)
+					return false;
+
+				r.jsonpExtendedResponse = vrequest["jsonp-extended-response"].toBool();
+			}
 		}
 
 		if(!vrequest.contains("in-seq") || vrequest["in-seq"].type() != QVariant::Int)

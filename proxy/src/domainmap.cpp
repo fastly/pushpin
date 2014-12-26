@@ -125,13 +125,16 @@ public:
 		bool origHeaders;
 		QString asHost;
 		int pathRemove;
+		bool autoCrossOrigin;
+		JsonpConfig jsonpConfig;
 		QList<Target> targets;
 
 		Rule() :
 			proto(-1),
 			ssl(-1),
 			origHeaders(false),
-			pathRemove(0)
+			pathRemove(0),
+			autoCrossOrigin(false)
 		{
 		}
 
@@ -190,6 +193,8 @@ public:
 			e.origHeaders = origHeaders;
 			e.asHost = asHost;
 			e.pathRemove = pathRemove;
+			e.autoCrossOrigin = autoCrossOrigin;
+			e.jsonpConfig = jsonpConfig;
 			e.targets = targets;
 			return e;
 		}
@@ -254,6 +259,8 @@ public:
 			QString domain = val;
 
 			Rule r;
+
+			r.jsonpConfig.mode = JsonpConfig::Extended;
 
 			if(props.contains("proto"))
 			{
@@ -328,6 +335,38 @@ public:
 			if(props.contains("path_rem"))
 			{
 				r.pathRemove = props.value("path_rem").toInt();
+			}
+
+			if(props.contains("aco"))
+				r.autoCrossOrigin = true;
+
+			if(props.contains("jsonp_mode"))
+			{
+				val = props.value("jsonp_mode");
+				if(val == "basic")
+					r.jsonpConfig.mode = JsonpConfig::Basic;
+				else if(val == "extended")
+					r.jsonpConfig.mode = JsonpConfig::Extended;
+				else
+				{
+					log_warning("%s:%d: jsonp_mode must be set to 'basic' or 'extended'", qPrintable(fileName), lineNum);
+					continue;
+				}
+			}
+
+			if(props.contains("jsonp_cb"))
+			{
+				r.jsonpConfig.callbackParam = props.value("jsonp_cb").toUtf8();
+			}
+
+			if(props.contains("jsonp_body"))
+			{
+				r.jsonpConfig.bodyParam = props.value("jsonp_body").toUtf8();
+			}
+
+			if(props.contains("jsonp_defcb"))
+			{
+				r.jsonpConfig.defaultCallback = props.value("jsonp_defcb").toUtf8();
 			}
 
 			QList<Rule> *rules = 0;

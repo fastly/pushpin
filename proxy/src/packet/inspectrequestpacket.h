@@ -28,13 +28,14 @@ class InspectRequestPacket
 {
 public:
 	QByteArray id;
+	bool https;
 	QString method;
 	QUrl uri;
 	HttpHeaders headers;
-	bool https;
+	QByteArray body;
+	bool truncated;
 
 	InspectRequestPacket();
-
 	QVariant toVariant() const;
 };
 

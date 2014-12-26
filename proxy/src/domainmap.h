@@ -32,6 +32,26 @@ class DomainMap : public QObject
 	Q_OBJECT
 
 public:
+	class JsonpConfig
+	{
+	public:
+		enum Mode
+		{
+			Basic,
+			Extended
+		};
+
+		Mode mode;
+		QByteArray callbackParam;
+		QByteArray bodyParam;
+		QByteArray defaultCallback;
+
+		JsonpConfig() :
+			mode(Extended)
+		{
+		}
+	};
+
 	enum Protocol
 	{
 		Http,
@@ -104,6 +124,8 @@ public:
 		bool origHeaders;
 		QString asHost;
 		int pathRemove;
+		bool autoCrossOrigin;
+		JsonpConfig jsonpConfig;
 		QList<Target> targets;
 
 		bool isNull() const
@@ -113,7 +135,8 @@ public:
 
 		Entry() :
 			origHeaders(false),
-			pathRemove(0)
+			pathRemove(0),
+			autoCrossOrigin(false)
 		{
 		}
 	};

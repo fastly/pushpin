@@ -36,7 +36,8 @@
 #include "inspectrequest.h"
 #include "inspectchecker.h"
 
-#define REQUEST_BODY_BUFSIZE 100000
+#define MAX_PREFETCH_REQUEST_BODY 10000
+#define MAX_SHARED_REQUEST_BODY 100000
 #define MAX_ACCEPT_REQUEST_BODY 100000
 
 static int fromHex(char c)
@@ -186,6 +187,7 @@ public:
 	enum State
 	{
 		Stopped,
+		Prefetching,
 		Inspecting,
 		Receiving,
 		Accepting,
@@ -198,15 +200,18 @@ public:
 	RequestSession *q;
 	State state;
 	ZhttpRequest::Rid rid;
+	DomainMap *domainMap;
 	InspectManager *inspectManager;
 	InspectChecker *inspectChecker;
 	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
+	DomainMap::Entry route;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
 	InspectData idata;
 	BufferList in;
 	QByteArray jsonpCallback;
+	bool jsonpExtendedResponse;
 	HttpResponseData responseData;
 	BufferList out;
 	bool responseBodyFinished;
@@ -215,15 +220,17 @@ public:
 	bool isRetry;
 	QList<QByteArray> jsonpExtractableHeaders;
 
-	Private(RequestSession *_q, InspectManager *_inspectManager, InspectChecker *_inspectChecker) :
+	Private(RequestSession *_q, DomainMap *_domainMap, InspectManager *_inspectManager, InspectChecker *_inspectChecker) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
+		domainMap(_domainMap),
 		inspectManager(_inspectManager),
 		inspectChecker(_inspectChecker),
 		zhttpRequest(0),
 		autoCrossOrigin(false),
 		inspectRequest(0),
+		jsonpExtendedResponse(false),
 		responseBodyFinished(false),
 		pendingResponseUpdate(false),
 		isRetry(false)
@@ -259,184 +266,44 @@ public:
 		zhttpRequest = req;
 		rid = req->rid();
 
-		QUrl uri = req->requestUri();
+		requestData.method = req->requestMethod();
+		requestData.uri = req->requestUri();
+		requestData.headers = req->requestHeaders();
 
-		log_info("IN id=%s, %s %s", rid.second.data(), qPrintable(req->requestMethod()), uri.toEncoded().data());
+		log_info("IN id=%s, %s %s", rid.second.data(), qPrintable(requestData.method), requestData.uri.toEncoded().data());
 
 		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
 		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
 
-		HttpRequestData hdata;
+		bool isHttps = (requestData.uri.scheme() == "https");
+		QString host = requestData.uri.host();
 
-		// JSON-P
-		if(autoCrossOrigin && uri.hasQueryItem("callback"))
+		// look up the route
+		route = domainMap->entry(DomainMap::Http, isHttps, host, requestData.uri.encodedPath());
+
+		if(autoCrossOrigin || (!route.isNull() && route.autoCrossOrigin))
 		{
-			bool callbackDone = false;
-			bool methodDone = false;
-			bool headersDone = false;
-			bool bodyDone = false;
+			DomainMap::JsonpConfig config;
+			if(!route.isNull())
+				config = route.jsonpConfig;
 
-			QList< QPair<QByteArray, QByteArray> > encodedItems = uri.encodedQueryItems();
-			for(int n = 0; n < encodedItems.count(); ++n)
+			bool ok = false;
+			QString str;
+			tryApplyJsonp(config, &ok, &str);
+			if(!ok)
 			{
-				const QPair<QByteArray, QByteArray> &i = encodedItems[n];
-
-				QByteArray name = parsePercentEncoding(i.first);
-				if(name == "callback")
-				{
-					if(callbackDone)
-						continue;
-
-					callbackDone = true;
-
-					QByteArray callback = parsePercentEncoding(i.second);
-					if(callback.isEmpty())
-					{
-						log_warning("requestsession: id=%s invalid callback parameter, rejecting", rid.second.data());
-						state = WaitingForResponse;
-						respondBadRequest("Invalid callback parameter.");
-						return;
-					}
-
-					jsonpCallback = callback;
-					uri.removeAllQueryItems("callback");
-				}
-				else if(name == "_method")
-				{
-					if(methodDone)
-						continue;
-
-					methodDone = true;
-					QByteArray method = parsePercentEncoding(i.second);
-
-					if(!validMethod(method))
-					{
-						log_warning("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
-						state = WaitingForResponse;
-						respondBadRequest("Invalid _method parameter.");
-						return;
-					}
-
-					hdata.method = method;
-					uri.removeAllQueryItems("_method");
-				}
-				else if(name == "_headers")
-				{
-					if(headersDone)
-						continue;
-
-					headersDone = true;
-
-					QJson::Parser parser;
-					bool ok;
-					QVariant vheaders = parser.parse(parsePercentEncoding(i.second), &ok);
-					if(!ok || vheaders.type() != QVariant::Map)
-					{
-						log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
-						state = WaitingForResponse;
-						respondBadRequest("Invalid _headers parameter.");
-						return;
-					}
-
-					QVariantMap headersMap = vheaders.toMap();
-					HttpHeaders headers;
-					QMapIterator<QString, QVariant> vit(headersMap);
-					while(vit.hasNext())
-					{
-						vit.next();
-
-						if(vit.value().type() != QVariant::String)
-						{
-							log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
-							state = WaitingForResponse;
-							respondBadRequest("Invalid _headers parameter.");
-							return;
-						}
-
-						QByteArray key = vit.key().toUtf8();
-
-						// ignore some headers that we explicitly set later on
-						if(qstricmp(key.data(), "host") == 0)
-							continue;
-						if(qstricmp(key.data(), "accept") == 0)
-							continue;
-
-						headers += HttpHeader(key, vit.value().toString().toUtf8());
-					}
-
-					hdata.headers = headers;
-					uri.removeAllQueryItems("_headers");
-				}
-				else if(name == "_body")
-				{
-					if(bodyDone)
-						continue;
-
-					QByteArray buf = parsePercentEncoding(i.second);
-					if(buf.isNull())
-					{
-						log_warning("requestsession: id=%s invalid _body parameter, rejecting", rid.second.data());
-						state = WaitingForResponse;
-						respondBadRequest("Invalid _body parameter.");
-						return;
-					}
-
-					bodyDone = true;
-					hdata.body = buf;
-					uri.removeAllQueryItems("_body");
-				}
+				state = WaitingForResponse;
+				respondBadRequest(str);
+				return;
 			}
-
-			assert(callbackDone);
-
-			if(hdata.method.isEmpty())
-				hdata.method = "GET";
-
-			// if we have no query items anymore, strip the '?'
-			if(uri.encodedQueryItems().isEmpty())
-			{
-				QByteArray tmp = uri.toEncoded();
-				if(tmp.length() > 0 && tmp[tmp.length() - 1] == '?')
-				{
-					tmp.truncate(tmp.length() - 1);
-					uri = QUrl(tmp, QUrl::StrictMode);
-				}
-			}
-
-			hdata.uri = uri;
-
-			hdata.headers += HttpHeader("Host", uri.host().toUtf8());
-			hdata.headers += HttpHeader("Accept", "*/*");
-
-			// carry over the rest of the headers
-			foreach(const HttpHeader &h, req->requestHeaders())
-			{
-				if(qstricmp(h.first.data(), "host") == 0)
-					continue;
-				if(qstricmp(h.first.data(), "accept") == 0)
-					continue;
-
-				hdata.headers += h;
-			}
-
-			in += hdata.body;
-			hdata.body.clear();
 		}
-		else
-		{
-			hdata.method = req->requestMethod();
-			hdata.uri = uri;
-			hdata.headers = req->requestHeaders();
-		}
-
-		requestData = hdata;
 
 		// NOTE: per the license, this functionality may not be removed as it
 		//   is the interface for the copyright notice
 		if(requestData.headers.contains("Pushpin-Check"))
 		{
 			QString str =
-			"Copyright (C) 2012-2013 Fanout, Inc.\n"
+			"Copyright (C) 2012-2014 Fanout, Inc.\n"
 			"\n"
 			"Pushpin is free software: you can redistribute it and/or modify it under\n"
 			"the terms of the GNU Affero General Public License as published by the Free\n"
@@ -452,46 +319,97 @@ public:
 			"along with this program. If not, see <http://www.gnu.org/licenses/>.\n";
 
 			state = WaitingForResponse;
-
-			QMetaObject::invokeMethod(this, "respondSuccess", Qt::QueuedConnection, Q_ARG(QString, str));
+			respondSuccess(str);
 			return;
 		}
 
-		state = Inspecting;
-
-		inspectRequest = inspectManager->createRequest();
-
-		if(inspectChecker->isInterfaceAvailable())
+		if(route.isNull())
 		{
-			connect(inspectRequest, SIGNAL(finished(const InspectData &)), SLOT(inspectRequest_finished(const InspectData &)));
-			connect(inspectRequest, SIGNAL(error()), SLOT(inspectRequest_error()));
-			inspectChecker->watch(inspectRequest);
-			inspectRequest->start(hdata);
+			log_warning("requestsession: %p %s has 0 routes", q, qPrintable(host));
+
+			state = WaitingForResponse;
+			respondError(502, "Bad Gateway", QString("No route for host: %1").arg(host));
+			return;
 		}
-		else
-		{
-			inspectChecker->watch(inspectRequest);
-			inspectChecker->give(inspectRequest);
-			inspectRequest->start(hdata);
-			inspectRequest = 0;
-			QMetaObject::invokeMethod(this, "inspectRequest_error", Qt::QueuedConnection);
-		}
+
+		log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), route.targets.count());
+
+		state = Prefetching;
+
+		connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
+		processIncomingRequest();
 	}
 
 	void startRetry()
 	{
 		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
 		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
+
+		state = WaitingForResponse;
+
+		bool isHttps = (requestData.uri.scheme() == "https");
+		QString host = requestData.uri.host();
+
+		// look up the route
+		route = domainMap->entry(DomainMap::Http, isHttps, host, requestData.uri.encodedPath());
+		if(route.isNull())
+		{
+			log_warning("requestsession: %p %s has 0 routes", q, qPrintable(host));
+
+			state = WaitingForResponse;
+			respondError(502, "Bad Gateway", QString("No route for host: %1").arg(host));
+			return;
+		}
+
+		log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), route.targets.count());
 	}
 
 	void processIncomingRequest()
 	{
-		if(state == Receiving)
+		if(state == Prefetching)
 		{
-			in += zhttpRequest->readBody(REQUEST_BODY_BUFSIZE - in.size());
+			in += zhttpRequest->readBody(MAX_PREFETCH_REQUEST_BODY - in.size());
 
-			if(in.size() >= REQUEST_BODY_BUFSIZE || zhttpRequest->isInputFinished())
+			if(in.size() >= MAX_PREFETCH_REQUEST_BODY || zhttpRequest->isInputFinished())
 			{
+				// we've read enough body to start inspection
+
+				disconnect(zhttpRequest, SIGNAL(readyRead()), this, SLOT(zhttpRequest_readyRead()));
+
+				state = Inspecting;
+				requestData.body = in.toByteArray();
+				bool truncated = (!zhttpRequest->isInputFinished() || zhttpRequest->bytesAvailable() > 0);
+
+				inspectRequest = inspectManager->createRequest();
+
+				if(inspectChecker->isInterfaceAvailable())
+				{
+					connect(inspectRequest, SIGNAL(finished(const InspectData &)), SLOT(inspectRequest_finished(const InspectData &)));
+					connect(inspectRequest, SIGNAL(error()), SLOT(inspectRequest_error()));
+					inspectChecker->watch(inspectRequest);
+					inspectRequest->start(requestData, truncated);
+				}
+				else
+				{
+					inspectChecker->watch(inspectRequest);
+					inspectChecker->give(inspectRequest);
+					inspectRequest->start(requestData, truncated);
+					inspectRequest = 0;
+					QMetaObject::invokeMethod(this, "inspectRequest_error", Qt::QueuedConnection);
+				}
+			}
+		}
+		else if(state == Receiving)
+		{
+			in += zhttpRequest->readBody(MAX_SHARED_REQUEST_BODY - in.size());
+
+			if(in.size() >= MAX_SHARED_REQUEST_BODY || zhttpRequest->isInputFinished())
+			{
+				// we've read as much as we can for now. if there is still
+				//   more to read, then the engine will notice this and
+				//   disallow sharing before passing to proxysession. at that
+				//   point, proxysession will read the remainder of the data
+
 				disconnect(zhttpRequest, SIGNAL(readyRead()), this, SLOT(zhttpRequest_readyRead()));
 
 				state = WaitingForResponse;
@@ -548,42 +466,233 @@ public:
 	// returns null array on error
 	QByteArray makeJsonpStart(int code, const QByteArray &reason, const HttpHeaders &headers)
 	{
-		QJson::Serializer serializer;
+		QByteArray out = "/**/" + jsonpCallback + "(";
 
-		QByteArray reasonJson = serializer.serialize(QString::fromUtf8(reason));
-		if(reasonJson.isNull())
-			return QByteArray();
-
-		QVariantMap vheaders;
-		foreach(const HttpHeader h, headers)
+		if(jsonpExtendedResponse)
 		{
-			if(!vheaders.contains(h.first))
-				vheaders[h.first] = h.second;
+			QJson::Serializer serializer;
+
+			QByteArray reasonJson = serializer.serialize(QString::fromUtf8(reason));
+			if(reasonJson.isNull())
+				return QByteArray();
+
+			QVariantMap vheaders;
+			foreach(const HttpHeader h, headers)
+			{
+				if(!vheaders.contains(h.first))
+					vheaders[h.first] = h.second;
+			}
+
+			QByteArray headersJson = serializer.serialize(vheaders);
+			if(headersJson.isNull())
+				return QByteArray();
+
+			out += "{\"code\": " + QByteArray::number(code) + ", \"reason\": " + reasonJson + ", \"headers\": " + headersJson + ", \"body\": \"";
 		}
 
-		QByteArray headersJson = serializer.serialize(vheaders);
-		if(headersJson.isNull())
-			return QByteArray();
-
-		return jsonpCallback + "({\"code\": " + QByteArray::number(code) + ", \"reason\": " + reasonJson + ", \"headers\": " + headersJson + ", \"body\": \"";
+		return out;
 	}
 
 	QByteArray makeJsonpBody(const QByteArray &buf)
 	{
-		QJson::Serializer serializer;
+		if(jsonpExtendedResponse)
+		{
+			QJson::Serializer serializer;
 
-		QByteArray bodyJson = serializer.serialize(buf);
-		if(bodyJson.isNull())
-			return QByteArray();
+			QByteArray bodyJson = serializer.serialize(buf);
+			if(bodyJson.isNull())
+				return QByteArray();
 
-		assert(bodyJson.size() >= 2);
+			assert(bodyJson.size() >= 2);
 
-		return bodyJson.mid(1, bodyJson.size() - 2);
+			return bodyJson.mid(1, bodyJson.size() - 2);
+		}
+		else
+			return buf;
 	}
 
 	QByteArray makeJsonpEnd()
 	{
-		return QByteArray("\"});\n");
+		if(jsonpExtendedResponse)
+			return QByteArray("\"});\n");
+		else
+			return QByteArray(");\n");
+	}
+
+	// return true if jsonp applied
+	bool tryApplyJsonp(const DomainMap::JsonpConfig &config, bool *ok, QString *errorMessage)
+	{
+		*ok = true;
+
+		// must be a GET
+		if(requestData.method != "GET")
+			return false;
+
+		QByteArray callbackParam = config.callbackParam;
+		if(callbackParam.isEmpty())
+			callbackParam = "callback";
+
+		// two ways to activate JSON-P:
+		//   1) callback param present
+		//   2) default callback specified in configuration and body param present
+		if(!requestData.uri.hasEncodedQueryItem(callbackParam) &&
+			(config.defaultCallback.isEmpty() || config.bodyParam.isEmpty() || !requestData.uri.hasEncodedQueryItem(config.bodyParam)))
+		{
+			return false;
+		}
+
+		QUrl uri = requestData.uri;
+
+		QByteArray callback;
+		if(uri.hasEncodedQueryItem(callbackParam))
+		{
+			callback = parsePercentEncoding(uri.encodedQueryItemValue(callbackParam));
+			if(callback.isEmpty())
+			{
+				log_warning("requestsession: id=%s invalid callback parameter, rejecting", rid.second.data());
+				*ok = false;
+				*errorMessage = "Invalid callback parameter.";
+				return false;
+			}
+
+			uri.removeAllEncodedQueryItems(callbackParam);
+		}
+		else
+			callback = config.defaultCallback;
+
+		QByteArray method;
+		if(uri.hasEncodedQueryItem("_method"))
+		{
+			method = parsePercentEncoding(uri.encodedQueryItemValue("_method"));
+			if(!validMethod(method))
+			{
+				log_warning("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
+				*ok = false;
+				*errorMessage = "Invalid _method parameter.";
+				return false;
+			}
+
+			uri.removeAllEncodedQueryItems("_method");
+		}
+
+		HttpHeaders headers;
+		if(uri.hasEncodedQueryItem("_headers"))
+		{
+			QJson::Parser parser;
+			bool parserOk;
+			QVariant vheaders = parser.parse(parsePercentEncoding(uri.encodedQueryItemValue("_headers")), &parserOk);
+			if(!parserOk || vheaders.type() != QVariant::Map)
+			{
+				log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
+				*ok = false;
+				*errorMessage = "Invalid _headers parameter.";
+				return false;
+			}
+
+			QVariantMap headersMap = vheaders.toMap();
+			QMapIterator<QString, QVariant> vit(headersMap);
+			while(vit.hasNext())
+			{
+				vit.next();
+
+				if(vit.value().type() != QVariant::String)
+				{
+					log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
+					*ok = false;
+					*errorMessage = "Invalid _headers parameter.";
+					return false;
+				}
+
+				QByteArray key = vit.key().toUtf8();
+
+				// ignore some headers that we explicitly set later on
+				if(qstricmp(key.data(), "host") == 0)
+					continue;
+				if(qstricmp(key.data(), "accept") == 0)
+					continue;
+
+				headers += HttpHeader(key, vit.value().toString().toUtf8());
+			}
+
+			uri.removeAllEncodedQueryItems("_headers");
+		}
+
+		QByteArray body;
+		if(!config.bodyParam.isEmpty())
+		{
+			if(uri.hasEncodedQueryItem(config.bodyParam))
+			{
+				body = parsePercentEncoding(uri.encodedQueryItemValue(config.bodyParam));
+				if(body.isNull())
+				{
+					log_warning("requestsession: id=%s invalid body parameter, rejecting", rid.second.data());
+					*ok = false;
+					*errorMessage = "Invalid body parameter.";
+					return false;
+				}
+
+				headers.removeAll("Content-Type");
+				headers += HttpHeader("Content-Type", "application/json");
+
+				uri.removeAllEncodedQueryItems(config.bodyParam);
+			}
+		}
+		else
+		{
+			if(uri.hasEncodedQueryItem("_body"))
+			{
+				body = parsePercentEncoding(uri.encodedQueryItemValue("_body"));
+				if(body.isNull())
+				{
+					log_warning("requestsession: id=%s invalid _body parameter, rejecting", rid.second.data());
+					*ok = false;
+					*errorMessage = "Invalid _body parameter.";
+					return false;
+				}
+
+				uri.removeAllEncodedQueryItems("_body");
+			}
+		}
+
+		// if we have no query items anymore, strip the '?'
+		if(uri.encodedQueryItems().isEmpty())
+		{
+			QByteArray tmp = uri.toEncoded();
+			if(tmp.length() > 0 && tmp[tmp.length() - 1] == '?')
+			{
+				tmp.truncate(tmp.length() - 1);
+				uri = QUrl(tmp, QUrl::StrictMode);
+			}
+		}
+
+		if(method.isEmpty())
+			method = "POST";
+
+		requestData.method = method;
+
+		requestData.uri = uri;
+
+		headers += HttpHeader("Host", uri.host().toUtf8());
+		headers += HttpHeader("Accept", "*/*");
+
+		// carry over the rest of the headers
+		foreach(const HttpHeader &h, requestData.headers)
+		{
+			if(qstricmp(h.first.data(), "host") == 0)
+				continue;
+			if(qstricmp(h.first.data(), "accept") == 0)
+				continue;
+
+			headers += h;
+		}
+
+		requestData.headers = headers;
+		in += body;
+
+		jsonpCallback = callback;
+		jsonpExtendedResponse = (config.mode == DomainMap::JsonpConfig::Extended);
+
+		return true;
 	}
 
 public slots:
@@ -629,6 +738,7 @@ public slots:
 			areq.peerAddress = zhttpRequest->peerAddress();
 			areq.autoCrossOrigin = autoCrossOrigin;
 			areq.jsonpCallback = jsonpCallback;
+			areq.jsonpExtendedResponse = jsonpExtendedResponse;
 			areq.inSeq = ss.inSeq;
 			areq.outSeq = ss.outSeq;
 			areq.outCredits = ss.outCredits;
@@ -684,7 +794,8 @@ public slots:
 		{
 			if(!idata.sharingKey.isEmpty())
 			{
-				// if this is a sharable request, try buffering some of the request body
+				// a request can only be shared if we've read the entire
+				//   request body, so let's try to read it now
 				state = Receiving;
 
 				connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
@@ -858,10 +969,10 @@ public slots:
 	}
 };
 
-RequestSession::RequestSession(InspectManager *inspectManager, InspectChecker *inspectChecker, QObject *parent) :
+RequestSession::RequestSession(DomainMap *domainMap, InspectManager *inspectManager, InspectChecker *inspectChecker, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, inspectManager, inspectChecker);
+	d = new Private(this, domainMap, inspectManager, inspectChecker);
 }
 
 RequestSession::~RequestSession()
@@ -904,9 +1015,19 @@ QByteArray RequestSession::jsonpCallback() const
 	return d->jsonpCallback;
 }
 
+bool RequestSession::jsonpExtendedResponse() const
+{
+	return d->jsonpExtendedResponse;
+}
+
 bool RequestSession::haveCompleteRequestBody() const
 {
 	return (d->zhttpRequest->isInputFinished() && d->zhttpRequest->bytesAvailable() == 0);
+}
+
+DomainMap::Entry RequestSession::route() const
+{
+	return d->route;
 }
 
 ZhttpRequest *RequestSession::request()
@@ -924,14 +1045,14 @@ void RequestSession::start(ZhttpRequest *req)
 	d->start(req);
 }
 
-void RequestSession::startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback)
+void RequestSession::startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse)
 {
 	d->isRetry = true;
-	d->state = Private::WaitingForResponse;
 	d->zhttpRequest = req;
 	d->rid = req->rid();
 	d->autoCrossOrigin = autoCrossOrigin;
 	d->jsonpCallback = jsonpCallback;
+	d->jsonpExtendedResponse = jsonpExtendedResponse;
 	d->requestData.method = req->requestMethod();
 	d->requestData.uri = req->requestUri();
 	d->requestData.headers = req->requestHeaders();

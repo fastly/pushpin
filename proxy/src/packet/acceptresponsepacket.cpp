@@ -51,7 +51,12 @@ QVariant AcceptResponsePacket::toVariant() const
 				vrequest["auto-cross-origin"] = true;
 
 			if(!r.jsonpCallback.isEmpty())
+			{
 				vrequest["jsonp-callback"] = r.jsonpCallback;
+
+				if(r.jsonpExtendedResponse)
+					vrequest["jsonp-extended-response"] = true;
+			}
 
 			vrequest["in-seq"] = r.inSeq;
 			vrequest["out-seq"] = r.outSeq;

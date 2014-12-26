@@ -36,6 +36,7 @@ public:
 	InspectManager *manager;
 	QByteArray id;
 	HttpRequestData hdata;
+	bool truncated;
 	InspectRequest::ErrorCondition condition;
 	QTimer *timer;
 
@@ -95,6 +96,8 @@ public slots:
 		p.method = hdata.method;
 		p.uri = hdata.uri;
 		p.headers = hdata.headers;
+		p.body = hdata.body;
+		p.truncated = truncated;
 
 		if(manager->timeout() >= 0)
 		{
@@ -131,9 +134,10 @@ InspectRequest::ErrorCondition InspectRequest::errorCondition() const
 	return d->condition;
 }
 
-void InspectRequest::start(const HttpRequestData &hdata)
+void InspectRequest::start(const HttpRequestData &hdata, bool truncated)
 {
 	d->hdata = hdata;
+	d->truncated = truncated;
 	QMetaObject::invokeMethod(d, "doStart", Qt::QueuedConnection);
 }
 

@@ -40,7 +40,7 @@ public:
 
 	~InspectRequest();
 
-	void start(const HttpRequestData &hdata);
+	void start(const HttpRequestData &hdata, bool truncated);
 
 	ErrorCondition errorCondition() const;
 

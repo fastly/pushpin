@@ -165,6 +165,7 @@ class Hold(object):
 		self.response = response
 		self.auto_cross_origin = auto_cross_origin
 		self.jsonp_callback = jsonp_callback
+		self.jsonp_extended_response = False
 		self.expire_time = None
 		self.last_keepalive = None
 
@@ -647,6 +648,7 @@ def accept_worker():
 			h.last_keepalive = now
 			h.out_seq = req["out-seq"]
 			h.out_credits = req["out-credits"]
+			h.jsonp_extended_response = req.get("jsonp-extended-response", False)
 
 			notify_sub = False
 			if mode == "response":
@@ -927,17 +929,21 @@ def push_in_worker(c):
 
 				headers = dict()
 				if h.jsonp_callback:
-					result = dict()
-					result["code"] = pcode
-					result["reason"] = preason
-					result["headers"] = dict()
-					if rheaders:
-						for k, v in rheaders.iteritems():
-							result["headers"][k] = v
-					header_set(result["headers"], "Content-Length", str(len(pbody)))
-					result["body"] = pbody
+					if h.jsonp_extended_response:
+						result = dict()
+						result["code"] = pcode
+						result["reason"] = preason
+						result["headers"] = dict()
+						if rheaders:
+							for k, v in rheaders.iteritems():
+								result["headers"][k] = v
+						header_set(result["headers"], "Content-Length", str(len(pbody)))
+						result["body"] = pbody
 
-					body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
+						body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
+					else:
+						body = h.jsonp_callback + "(" + pbody + ");\n"
+
 					header_set(headers, "Content-Type", "application/javascript")
 					header_set(headers, "Content-Length", str(len(body)))
 					reply_http(out_sock, h.rid, 200, "OK", headers, body)
@@ -1373,17 +1379,21 @@ def timeout_worker():
 
 				headers = dict()
 				if h.jsonp_callback:
-					result = dict()
-					result["code"] = pcode
-					result["reason"] = preason
-					result["headers"] = dict()
-					if pheaders:
-						for k, v in pheaders.iteritems():
-							result["headers"][k] = v
-					header_set(result["headers"], "Content-Length", str(len(pbody)))
-					result["body"] = pbody
+					if h.jsonp_extended_response:
+						result = dict()
+						result["code"] = pcode
+						result["reason"] = preason
+						result["headers"] = dict()
+						if pheaders:
+							for k, v in pheaders.iteritems():
+								result["headers"][k] = v
+						header_set(result["headers"], "Content-Length", str(len(pbody)))
+						result["body"] = pbody
 
-					body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
+						body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
+					else:
+						body = h.jsonp_callback + "(" + pbody + ");\n"
+
 					header_set(headers, "Content-Type", "application/javascript")
 					header_set(headers, "Content-Length", str(len(body)))
 					reply_http(out_sock, h.rid, 200, "OK", headers, body)

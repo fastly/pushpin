@@ -264,6 +264,11 @@ public:
 
 	void doProxy(RequestSession *rs, const InspectData *idata = 0, bool isRetry = false)
 	{
+		DomainMap::Entry route = rs->route();
+
+		// we'll always have a route
+		assert(!route.isNull());
+
 		bool sharable = (idata && !idata->sharingKey.isEmpty() && rs->haveCompleteRequestBody());
 
 		ProxySession *ps = 0;
@@ -280,12 +285,13 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, domainMap, this);
+			ps = new ProxySession(zroutes, this);
 			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
 			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
 			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
 			connect(ps, SIGNAL(requestSessionDestroyed(RequestSession *, bool)), SLOT(ps_requestSessionDestroyed(RequestSession *, bool)));
 
+			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
 			ps->setDefaultUpstreamKey(config.upstreamKey);
 			ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
@@ -316,8 +322,8 @@ public:
 
 		if(stats)
 		{
-			stats->addConnection(ridToString(rs->rid()), ps->routeId(), StatsManager::Http, rs->peerAddress(), rs->isHttps(), isRetry);
-			stats->addActivity(ps->routeId());
+			stats->addConnection(ridToString(rs->rid()), route.id, StatsManager::Http, rs->peerAddress(), rs->isHttps(), isRetry);
+			stats->addActivity(route.id);
 		}
 	}
 
@@ -332,6 +338,7 @@ public:
 			req.peerAddress = areq.peerAddress;
 			req.autoCrossOrigin = areq.autoCrossOrigin;
 			req.jsonpCallback = areq.jsonpCallback;
+			req.jsonpExtendedResponse = areq.jsonpExtendedResponse;
 			req.inSeq = areq.inSeq;
 			req.outSeq = areq.outSeq;
 			req.outCredits = areq.outCredits;
@@ -377,7 +384,7 @@ public:
 		if(!req)
 			return;
 
-		RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
+		RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, this);
 		connect(rs, SIGNAL(inspected(const InspectData &)), SLOT(rs_inspected(const InspectData &)));
 		connect(rs, SIGNAL(inspectError()), SLOT(rs_inspectError()));
 		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
@@ -636,8 +643,8 @@ private slots:
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(inspect, inspectChecker, this);
-			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback);
+			RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, this);
+			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
 
 			requestSessions += rs;
 

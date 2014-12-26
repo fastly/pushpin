@@ -22,6 +22,7 @@
 
 #include <QObject>
 #include "zhttprequest.h"
+#include "domainmap.h"
 
 class QHostAddress;
 
@@ -36,7 +37,7 @@ class RequestSession : public QObject
 	Q_OBJECT
 
 public:
-	RequestSession(InspectManager *inspectManager, InspectChecker *inspectChecker, QObject *parent = 0);
+	RequestSession(DomainMap *domainMap, InspectManager *inspectManager, InspectChecker *inspectChecker, QObject *parent = 0);
 	~RequestSession();
 
 	bool isRetry() const;
@@ -46,7 +47,9 @@ public:
 	HttpRequestData requestData() const;
 	bool autoCrossOrigin() const;
 	QByteArray jsonpCallback() const; // non-empty if JSON-P is used
+	bool jsonpExtendedResponse() const;
 	bool haveCompleteRequestBody() const;
+	DomainMap::Entry route() const;
 
 	ZhttpRequest *request();
 
@@ -54,7 +57,7 @@ public:
 
 	// takes ownership
 	void start(ZhttpRequest *req);
-	void startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback);
+	void startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse);
 
 	void pause();
 
