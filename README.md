@@ -42,7 +42,7 @@ Requirements
 Install
 -------
 
-See [the Install guide](/fanout/pushpin/wiki/Install), which covers how to install Pushpin and its dependencies. If you already have the dependencies installed, then below are brief instructions for Pushpin itself.
+See [the Install guide](https://github.com/fanout/pushpin/wiki/Install), which covers how to install Pushpin and its dependencies. If you already have the dependencies installed, then below are brief instructions for Pushpin itself.
 
 If accessing from Git, be sure to pull submodules:
 
@@ -60,4 +60,4 @@ By default, Pushpin listens on port 7999 and forwards to localhost port 80. If y
 Configuration
 -------------
 
-See [Configuration](/fanout/pushpin/wiki/Configuration).
+See [Configuration](https://github.com/fanout/pushpin/wiki/Configuration).
