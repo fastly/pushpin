@@ -277,6 +277,9 @@ public:
 		if(!target.host.isEmpty())
 			uri.setHost(target.host);
 
+		if(zhttpManager)
+			zroutes->removeRef(zhttpManager);
+
 		if(target.type == DomainMap::Target::Custom)
 		{
 			zhttpManager = zroutes->managerForRoute(target.zhttpRoute);

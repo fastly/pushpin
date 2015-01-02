@@ -393,6 +393,9 @@ public:
 
 		subChannel = target.subChannel;
 
+		if(zhttpManager)
+			zroutes->removeRef(zhttpManager);
+
 		if(target.type == DomainMap::Target::Custom)
 		{
 			zhttpManager = zroutes->managerForRoute(target.zhttpRoute);
