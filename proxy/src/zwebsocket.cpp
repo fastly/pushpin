@@ -488,6 +488,9 @@ public:
 			return;
 		}
 
+		if(!packet.from.isEmpty())
+			toAddress = packet.from;
+
 		if(packet.seq != inSeq)
 		{
 			log_warning("zws client: error id=%s received message out of sequence, canceling", packet.id.data());
@@ -501,13 +504,8 @@ public:
 			return;
 		}
 
-		if(!packet.from.isEmpty())
-		{
-			toAddress = packet.from;
-
-			if(!keepAliveTimer->isActive())
-				startKeepAlive();
-		}
+		if(!toAddress.isEmpty() && !keepAliveTimer->isActive())
+			startKeepAlive();
 
 		++inSeq;
 
@@ -770,7 +768,7 @@ public:
 	void tryRespondCancel(const ZhttpResponsePacket &packet)
 	{
 		// if this was not an error packet, send cancel
-		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
+		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel && !toAddress.isEmpty())
 			writeCancel();
 	}
 
