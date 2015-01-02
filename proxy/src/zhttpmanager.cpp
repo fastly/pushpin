@@ -703,6 +703,11 @@ int ZhttpManager::connectionCount() const
 	return total;
 }
 
+bool ZhttpManager::clientUsesReq() const
+{
+	return (!d->client_out_sock && d->client_req_sock);
+}
+
 QByteArray ZhttpManager::instanceId() const
 {
 	return d->instanceId;

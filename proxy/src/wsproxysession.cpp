@@ -415,6 +415,13 @@ public:
 		}
 		else
 		{
+			// websockets don't work with zhttp req mode
+			if(zhttpManager->clientUsesReq())
+			{
+				reject(502, "Bad Gateway", "Error while proxying to origin.");
+				return;
+			}
+
 			outSock = zhttpManager->createSocket();
 			outSock->setParent(this);
 		}

@@ -36,6 +36,7 @@ public:
 	~ZhttpManager();
 
 	int connectionCount() const;
+	bool clientUsesReq() const;
 
 	QByteArray instanceId() const;
 	void setInstanceId(const QByteArray &id);

@@ -751,6 +751,11 @@ public:
 		if(state != Idle)
 		{
 			state = Idle;
+
+			// can't send cancel in client mode without address
+			if(!server && toAddress.isEmpty())
+				return;
+
 			writeCancel();
 		}
 	}
