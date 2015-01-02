@@ -22,13 +22,13 @@
 #include <assert.h>
 #include <QTimer>
 #include <QPointer>
-#include <QUuid>
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "zhttprequest.h"
 #include "zhttpmanager.h"
+#include "uuidutil.h"
 
 #define BUFFER_SIZE 200000
 
@@ -178,7 +178,7 @@ public:
 	{
 		state = Connecting;
 
-		cid = QUuid::createUuid().toString().toLatin1();
+		cid = UuidUtil::createUuid();
 
 		// don't forward certain headers
 		requestData.headers.removeAll("Upgrade");

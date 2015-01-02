@@ -20,12 +20,12 @@
 #include "inspectrequest.h"
 
 #include <QTimer>
-#include <QUuid>
 #include "packet/inspectrequestpacket.h"
 #include "packet/inspectresponsepacket.h"
 #include "packet/httprequestdata.h"
 #include "inspectdata.h"
 #include "inspectmanager.h"
+#include "uuidutil.h"
 
 class InspectRequest::Private : public QObject
 {
@@ -148,7 +148,7 @@ QByteArray InspectRequest::id() const
 
 void InspectRequest::setup(InspectManager *manager)
 {
-	d->id = QUuid::createUuid().toString().toLatin1();
+	d->id = UuidUtil::createUuid();
 	d->manager = manager;
 }
 

@@ -22,12 +22,12 @@
 #include <assert.h>
 #include <QTimer>
 #include <QPointer>
-#include <QUuid>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "zhttpmanager.h"
+#include "uuidutil.h"
 
 #define IDEAL_CREDITS 200000
 #define SESSION_EXPIRE 60000
@@ -1096,7 +1096,7 @@ QByteArray ZhttpRequest::readBody(int size)
 void ZhttpRequest::setupClient(ZhttpManager *manager, bool req)
 {
 	d->manager = manager;
-	d->rid = Rid(manager->instanceId(), QUuid::createUuid().toString().toLatin1());
+	d->rid = Rid(manager->instanceId(), UuidUtil::createUuid());
 	d->doReq = req;
 	d->manager->link(this);
 }

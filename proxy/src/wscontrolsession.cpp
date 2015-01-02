@@ -20,9 +20,9 @@
 #include "wscontrolsession.h"
 
 #include <assert.h>
-#include <QUuid>
 #include <QTimer>
 #include "wscontrolmanager.h"
+#include "uuidutil.h"
 
 #define KEEPALIVE_TIMEOUT 30000
 
@@ -149,7 +149,7 @@ void WsControlSession::sendGripMessage(const QByteArray &message)
 void WsControlSession::setup(WsControlManager *manager)
 {
 	d->manager = manager;
-	d->cid = QUuid::createUuid().toString().toLatin1();
+	d->cid = UuidUtil::createUuid();
 	d->manager->link(this, d->cid);
 }
 

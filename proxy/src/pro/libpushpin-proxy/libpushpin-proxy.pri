@@ -53,6 +53,7 @@ SOURCES += \
 	$$SRC_DIR/packet/zrpcresponsepacket.cpp
 
 HEADERS += \
+	$$SRC_DIR/uuidutil.h \
 	$$SRC_DIR/jwt.h \
 	$$SRC_DIR/websocket.h \
 	$$SRC_DIR/zhttpmanager.h \
@@ -79,6 +80,7 @@ HEADERS += \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
+	$$SRC_DIR/uuidutil.cpp \
 	$$SRC_DIR/jwt.cpp \
 	$$SRC_DIR/zhttpmanager.cpp \
 	$$SRC_DIR/zhttprequest.cpp \

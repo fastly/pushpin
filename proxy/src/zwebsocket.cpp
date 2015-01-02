@@ -22,11 +22,11 @@
 #include <assert.h>
 #include <QTimer>
 #include <QPointer>
-#include <QUuid>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "log.h"
 #include "zhttpmanager.h"
+#include "uuidutil.h"
 
 #define IDEAL_CREDITS 200000
 #define SESSION_EXPIRE 60000
@@ -1047,7 +1047,7 @@ void ZWebSocket::close(int code)
 void ZWebSocket::setupClient(ZhttpManager *manager)
 {
 	d->manager = manager;
-	d->rid = Rid(manager->instanceId(), QUuid::createUuid().toString().toLatin1());
+	d->rid = Rid(manager->instanceId(), UuidUtil::createUuid());
 	d->manager->link(this);
 }
 
