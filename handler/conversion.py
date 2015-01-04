@@ -17,11 +17,22 @@
 
 from base64 import b64decode
 
-def ensure_utf8(s):
-	if isinstance(s, unicode):
-		return s.encode("utf-8")
+# this converts any unicode to utf8 in a data structure tree
+def ensure_utf8(i):
+	if isinstance(i, dict):
+		out = dict()
+		for k, v in i.iteritems():
+			out[ensure_utf8(k)] = ensure_utf8(v)
+		return out
+	elif isinstance(i, list):
+		out = list()
+		for v in i:
+			out.append(ensure_utf8(v))
+		return out
+	elif isinstance(i, unicode):
+		return i.encode("utf-8")
 	else:
-		return s # assume it is already utf-8
+		return i
 
 # convert json-style transport to tnetstring-style
 def convert_json_transport(ttype, t):
@@ -43,6 +54,8 @@ def convert_json_transport(ttype, t):
 		out["body"] = ensure_utf8(b64decode(t["body-bin"]))
 	elif "body" in t:
 		out["body"] = ensure_utf8(t["body"])
+	elif "body-patch" in t:
+		out["body-patch"] = ensure_utf8(t["body-patch"])
 	if "action" in t:
 		out["action"] = ensure_utf8(t["action"])
 

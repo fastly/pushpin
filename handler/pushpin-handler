@@ -492,6 +492,74 @@ def apply_cors_headers(request_headers, response_headers):
 			origin = "*"
 		header_set(response_headers, "Access-Control-Allow-Origin", origin)
 
+class JsonPointer(object):
+	obj = None
+	child_name = None
+	child_index = None
+
+def resolve_json_pointer(data, p):
+	if not p.startswith('/'):
+		raise ValueError('pointer must start with /')
+
+	ptr = JsonPointer()
+	ptr.obj = data
+
+	# root
+	if len(p) == 1:
+		return ptr
+
+	parts = p.split('/')[1:]
+	for part in parts:
+		if len(part) == 0:
+			raise ValueError('reference cannot be empty')
+
+		part = part.replace('~1', '/')
+		part = part.replace('~0', '~')
+
+		if ptr.child_name is not None or ptr.child_index is not None:
+			raise ValueError('cannot step into undefined reference')
+
+		if isinstance(ptr.obj, dict):
+			if part in ptr.obj:
+				ptr.obj = ptr.obj[part]
+			else:
+				ptr.child_name = part
+		elif isinstance(ptr.obj, list):
+			if part == '-':
+				ptr.child_index = -1
+			else:
+				index = int(part)
+				if index >= len(ptr.obj):
+					raise ValueError('index out of range')
+				ptr.obj = ptr.obj[index]
+		else:
+			raise ValueError('non-container value cannot have child reference')
+
+	return ptr
+
+def json_patch(data, ops):
+	out = copy.deepcopy(data)
+	for op in ops:
+		otype = op['op']
+		if otype == 'add':
+			ptr = resolve_json_pointer(out, op['path'])
+			value = op['value']
+			if ptr.child_name is not None:
+				ptr.obj[ptr.child_name] = value
+			elif ptr.child_index is not None:
+				if ptr.child_index != -1:
+					ptr.obj[ptr.child_index] = value
+				else:
+					ptr.obj.append(value)
+			else:
+				if ptr.obj is out:
+					out = value
+				else:
+					ptr.obj = value
+		else:
+			raise ValueError('unsupported op: %s' % otype)
+	return out
+
 def inspect_worker():
 	sock = ctx.socket(zmq.REP)
 	sock.connect(config.get("handler", "proxy_inspect_spec"))
@@ -906,6 +974,11 @@ def push_in_worker(c):
 			else:
 				pbody = ""
 
+			if "body-patch" in http_response:
+				pbody_patch = http_response["body-patch"]
+			else:
+				pbody_patch = None
+
 			grip_expose_headers = header_get_all(pheaders, 'Grip-Expose-Headers')
 			header_remove(pheaders, 'Grip-Expose-Headers')
 
@@ -927,6 +1000,18 @@ def push_in_worker(c):
 						if not headernames_contains(grip_expose_headers, k):
 							del rheaders[k]
 
+				# if body patch specified, inherit body from timeout response
+				if pbody_patch:
+					try:
+						rbody = json.loads(h.response['body'])
+						rbody = json_patch(rbody, pbody_patch)
+						rbody = json.dumps(rbody)
+					except Exception as e:
+						logger.debug("failed to parse json patch: %s", e.message)
+						rbody = ''
+				else:
+					rbody = pbody
+
 				headers = dict()
 				if h.jsonp_callback:
 					if h.jsonp_extended_response:
@@ -938,11 +1023,11 @@ def push_in_worker(c):
 							for k, v in rheaders.iteritems():
 								result["headers"][k] = v
 						header_set(result["headers"], "Content-Length", str(len(pbody)))
-						result["body"] = pbody
+						result["body"] = rbody
 
 						body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
 					else:
-						body = h.jsonp_callback + "(" + pbody + ");\n"
+						body = h.jsonp_callback + "(" + rbody + ");\n"
 
 					header_set(headers, "Content-Type", "application/javascript")
 					header_set(headers, "Content-Length", str(len(body)))
@@ -955,7 +1040,7 @@ def push_in_worker(c):
 					if h.auto_cross_origin:
 						apply_cors_headers(h.request["headers"], headers)
 
-					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
+					reply_http(out_sock, h.rid, pcode, preason, headers, rbody)
 
 				if n % 10 == 0:
 					time.sleep(0.0005)
