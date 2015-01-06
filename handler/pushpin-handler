@@ -871,33 +871,39 @@ def push_in_http_handler(context, m):
 		return e.message
 
 	for n, i in enumerate(m["items"]):
-		out = dict()
+		try:
+			out = dict()
 
-		channel = i.get("channel")
-		if channel is not None:
-			out["channel"] = ensure_utf8(channel)
+			channel = i.get("channel")
+			if channel is not None:
+				out["channel"] = ensure_utf8(channel)
 
-		id = i.get("id")
-		if id is not None:
-			out["id"] = ensure_utf8(id)
+			id = i.get("id")
+			if id is not None:
+				out["id"] = ensure_utf8(id)
 
-		prev_id = i.get("prev-id")
-		if prev_id is not None:
-			out["prev-id"] = ensure_utf8(prev_id)
+			prev_id = i.get("prev-id")
+			if prev_id is not None:
+				out["prev-id"] = ensure_utf8(prev_id)
 
-		formats = i.get("formats")
-		if formats is None:
-			formats = dict()
-			for f in ("http-response", "http-stream", "ws-message"):
-				if f in i:
-					formats[f] = i[f]
+			formats = i.get("formats")
+			if formats is None:
+				formats = dict()
+				for f in ("http-response", "http-stream", "ws-message"):
+					if f in i:
+						formats[f] = i[f]
 
-		for f in ("http-response", "http-stream", "ws-message"):
-			if f in formats:
-				formats[f] = convert_json_transport(f, formats[f])
-		out["formats"] = formats
+			convformats = dict()
+			for k, v in formats.iteritems():
+				if k in ("http-response", "http-stream", "ws-message"):
+					convformats[ensure_utf8(k)] = convert_json_transport(k, v)
 
-		out_sock.send(tnetstring.dumps(out))
+			out["formats"] = convformats
+
+			out_sock.send(tnetstring.dumps(out))
+		except Exception as e:
+			logger.debug("failed to process item: %s", e.message)
+			continue
 
 def push_in_http_worker():
 	out_sock = ctx.socket(zmq.PUSH)

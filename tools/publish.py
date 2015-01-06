@@ -19,11 +19,13 @@ hs = dict()
 hs['content'] = content + '\n'
 ws = dict()
 ws['content'] = content + '\n'
+formats = dict()
+formats['http-response'] = hr
+formats['http-stream'] = hs
+formats['ws-message'] = ws
 item = dict()
 item['channel'] = channel
-item['http-response'] = hr
-item['http-stream'] = hs
-item['ws-message'] = ws
+item['formats'] = formats
 
 sock.send(tnetstring.dumps(item))
 
