@@ -885,9 +885,17 @@ def push_in_http_handler(context, m):
 		if prev_id is not None:
 			out["prev-id"] = ensure_utf8(prev_id)
 
-		for transport in ("http-response", "http-stream", "ws-message"):
-			if transport in i:
-				out[transport] = convert_json_transport(transport, i[transport])
+		formats = i.get("formats")
+		if formats is None:
+			formats = dict()
+			for f in ("http-response", "http-stream", "ws-message"):
+				if f in i:
+					formats[f] = i[f]
+
+		for f in ("http-response", "http-stream", "ws-message"):
+			if f in formats:
+				formats[f] = convert_json_transport(f, formats[f])
+		out["formats"] = formats
 
 		out_sock.send(tnetstring.dumps(out))
 
@@ -924,8 +932,9 @@ def push_in_worker(c):
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN publish: %s" % m)
 		channel = m["channel"]
+		formats = m["formats"]
 
-		if "http-response" in m:
+		if "http-response" in formats:
 			lock.acquire()
 			hchannel = response_channels.get(channel)
 			if hchannel:
@@ -947,7 +956,7 @@ def push_in_worker(c):
 				response_lastids[channel] = item_id
 			lock.release()
 			logger.debug("relaying to %d subscribers" % len(holds))
-			http_response = m["http-response"]
+			http_response = formats["http-response"]
 
 			if "code" in http_response:
 				pcode = http_response["code"]
@@ -1074,7 +1083,7 @@ def push_in_worker(c):
 				out['transport'] = 'http-response'
 				stats_sock.send('message ' + tnetstring.dumps(out))
 
-		if "http-stream" in m:
+		if "http-stream" in formats:
 			# TODO: support close action and report immediate unsubscribe via stats
 			lock.acquire()
 			hchannel = stream_channels.get(channel)
@@ -1085,7 +1094,7 @@ def push_in_worker(c):
 			lock.release()
 			logger.debug("relaying to %d subscribers" % len(holds))
 			for h in holds:
-				content = m["http-stream"]["content"]
+				content = formats["http-stream"]["content"]
 				if content:
 					if h.out_credits < len(content):
 						logger.debug('not enough send credits, dropping')
@@ -1106,7 +1115,7 @@ def push_in_worker(c):
 				out['transport'] = 'http-stream'
 				stats_sock.send('message ' + tnetstring.dumps(out))
 
-		if "ws-message" in m:
+		if "ws-message" in formats:
 			lock.acquire()
 			hchannel = ws_channels.get(channel)
 			if hchannel:
@@ -1116,7 +1125,7 @@ def push_in_worker(c):
 			lock.release()
 			logger.debug("relaying to %d subscribers" % len(cids))
 			for cid in cids:
-				t = m['ws-message']
+				t = formats['ws-message']
 				if 'content-bin' in t:
 					content_type = 'binary'
 					content = t['content']
