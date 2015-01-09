@@ -571,7 +571,7 @@ private slots:
 
 		inPendingBytes -= contentBytes;
 
-		if(!detached)
+		if(!detached && outSock)
 			tryReadOut();
 	}
 
@@ -675,7 +675,7 @@ private slots:
 
 		outPendingBytes -= contentBytes;
 
-		if(!detached)
+		if(!detached && inSock)
 			tryReadIn();
 	}
 
