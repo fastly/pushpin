@@ -28,16 +28,16 @@ distclean:
 	rm -f proxy/conf.pri proxy/conf.log
 	rm -f pushpin.inst
 
-make-m2adapter: m2adapter/conf.pri
+make-m2adapter: m2adapter/Makefile
 	cd m2adapter && make
 
-make-pushpin-proxy: proxy/conf.pri
+make-pushpin-proxy: proxy/Makefile
 	cd proxy && make
 
-m2adapter/conf.pri:
+m2adapter/Makefile:
 	cd m2adapter && ./configure
 
-proxy/conf.pri:
+proxy/Makefile:
 	cd proxy && ./configure
 
 pushpin.inst: pushpin
