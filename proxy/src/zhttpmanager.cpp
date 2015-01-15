@@ -89,15 +89,15 @@ public:
 	{
 	}
 
-	bool bindSpec(QZmq::Socket *sock, const QString &specName, const QString &specValue)
+	bool bindSpec(QZmq::Socket *sock, const QString &spec)
 	{
-		if(!sock->bind(specValue))
+		if(!sock->bind(spec))
 		{
-			log_error("unable to bind to %s: %s", qPrintable(specName), qPrintable(specValue));
+			log_error("unable to bind to %s", qPrintable(spec));
 			return false;
 		}
 
-		if(specValue.startsWith("ipc://") && ipcFileMode != -1)
+		if(spec.startsWith("ipc://") && ipcFileMode != -1)
 		{
 			QFile::Permissions perms;
 			if(ipcFileMode & 0400)
@@ -118,7 +118,7 @@ public:
 				perms |= QFile::WriteOther;
 			if(ipcFileMode & 0001)
 				perms |= QFile::ExeOther;
-			QFile::setPermissions(specValue.mid(6), perms);
+			QFile::setPermissions(spec.mid(6), perms);
 		}
 
 		return true;
@@ -136,7 +136,7 @@ public:
 
 		if(doBind)
 		{
-			if(!bindSpec(client_out_sock, "client_out_sock", client_out_specs[0]))
+			if(!bindSpec(client_out_sock, client_out_specs[0]))
 				return false;
 		}
 		else
@@ -161,7 +161,7 @@ public:
 
 		if(doBind)
 		{
-			if(!bindSpec(client_out_stream_sock, "client_out_stream_sock", client_out_stream_specs[0]))
+			if(!bindSpec(client_out_stream_sock, client_out_stream_specs[0]))
 				return false;
 		}
 		else
@@ -186,7 +186,7 @@ public:
 
 		if(doBind)
 		{
-			if(!bindSpec(client_in_sock, "client_in_sock", client_in_specs[0]))
+			if(!bindSpec(client_in_sock, client_in_specs[0]))
 				return false;
 		}
 		else
@@ -211,7 +211,7 @@ public:
 
 		if(doBind)
 		{
-			if(!bindSpec(client_req_sock, "client_req_sock", client_req_specs[0]))
+			if(!bindSpec(client_req_sock, client_req_specs[0]))
 				return false;
 		}
 		else
@@ -233,7 +233,7 @@ public:
 
 		if(doBind)
 		{
-			if(!bindSpec(server_in_sock, "server_in_sock", server_in_specs[0]))
+			if(!bindSpec(server_in_sock, server_in_specs[0]))
 				return false;
 		}
 		else
@@ -262,7 +262,7 @@ public:
 
 		if(doBind)
 		{
-			if(!bindSpec(server_in_stream_sock, "server_in_stream_sock", server_in_stream_specs[0]))
+			if(!bindSpec(server_in_stream_sock, server_in_stream_specs[0]))
 				return false;
 		}
 		else
@@ -286,7 +286,7 @@ public:
 
 		if(doBind)
 		{
-			if(!bindSpec(server_out_sock, "server_out_sock", server_out_specs[0]))
+			if(!bindSpec(server_out_sock, server_out_specs[0]))
 				return false;
 		}
 		else

@@ -167,8 +167,7 @@ public:
 			inspect->setBind(true);
 			if(!inspect->setClientSpecs(QStringList() << config.inspectSpec))
 			{
-				// FIXME: zrpcmanager logs error
-				//log_error("unable to bind to handler_inspect_spec: %s", qPrintable(config.inspectSpec));
+				// zrpcmanager logs error
 				return false;
 			}
 
@@ -248,8 +247,7 @@ public:
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
-				// FIXME: zrpcmanager logs error
-				//log_error("unable to bind to command_spec: %s", qPrintable(config.commandSpec));
+				// zrpcmanager logs error
 				return false;
 			}
 		}
