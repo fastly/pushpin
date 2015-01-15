@@ -23,7 +23,6 @@
 #include <QVariant>
 #include <QHostAddress>
 #include "httprequestdata.h"
-#include "inspectresponsepacket.h"
 
 class RetryRequestPacket
 {
@@ -57,11 +56,19 @@ public:
 		}
 	};
 
+	class InspectInfo
+	{
+	public:
+		bool noProxy;
+		QByteArray sharingKey;
+		QVariant userData;
+	};
+
 	QList<Request> requests;
 	HttpRequestData requestData;
 
 	bool haveInspectInfo;
-	InspectResponsePacket inspectInfo;
+	InspectInfo inspectInfo;
 
 	RetryRequestPacket();
 

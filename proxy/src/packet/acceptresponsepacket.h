@@ -25,7 +25,6 @@
 #include <QList>
 #include <QHostAddress>
 #include "httprequestdata.h"
-#include "inspectresponsepacket.h"
 #include "httpresponsedata.h"
 
 class AcceptResponsePacket
@@ -60,11 +59,19 @@ public:
 		}
 	};
 
+	class InspectInfo
+	{
+	public:
+		bool noProxy;
+		QByteArray sharingKey;
+		QVariant userData;
+	};
+
 	QList<Request> requests;
 	HttpRequestData requestData;
 
 	bool haveInspectInfo;
-	InspectResponsePacket inspectInfo;
+	InspectInfo inspectInfo;
 
 	bool haveResponse;
 	HttpResponseData response;

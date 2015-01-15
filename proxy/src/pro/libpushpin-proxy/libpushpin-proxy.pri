@@ -33,8 +33,6 @@ SOURCES += \
 HEADERS += \
 	$$SRC_DIR/packet/httprequestdata.h \
 	$$SRC_DIR/packet/httpresponsedata.h \
-	#$$SRC_DIR/packet/inspectrequestpacket.h \
-	$$SRC_DIR/packet/inspectresponsepacket.h \
 	$$SRC_DIR/packet/acceptresponsepacket.h \
 	$$SRC_DIR/packet/retryrequestpacket.h \
 	$$SRC_DIR/packet/wscontrolpacket.h \
@@ -43,8 +41,6 @@ HEADERS += \
 	$$SRC_DIR/packet/zrpcresponsepacket.h
 
 SOURCES += \
-	#$$SRC_DIR/packet/inspectrequestpacket.cpp \
-	$$SRC_DIR/packet/inspectresponsepacket.cpp \
 	$$SRC_DIR/packet/acceptresponsepacket.cpp \
 	$$SRC_DIR/packet/retryrequestpacket.cpp \
 	$$SRC_DIR/packet/wscontrolpacket.cpp \
