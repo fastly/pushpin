@@ -230,11 +230,15 @@ private slots:
 		if(inspectEnabled)
 		{
 			QVariantHash vreq = v.toHash();
+			QVariantHash args = vreq["args"].toHash();
+			QVariantHash respValue;
+			respValue["no-proxy"] = false;
+			if(!sharingKey.isEmpty())
+				respValue["sharing-key"] = sharingKey;
 			QVariantHash vresp;
 			vresp["id"] = vreq["id"];
-			vresp["no-proxy"] = false;
-			if(!sharingKey.isEmpty())
-				vresp["sharing-key"] = sharingKey;
+			vresp["success"] = true;
+			vresp["value"] = respValue;
 			log_debug("inspect response: %s", qPrintable(TnetString::variantToString(vresp, -1)));
 			handlerInspectSock->write(message.createReply(QList<QByteArray>() << TnetString::fromVariant(vresp)).toRawMessage());
 		}
@@ -284,8 +288,8 @@ private slots:
 		qcaInit = new QCA::Initializer;
 		QVERIFY(QCA::isSupported("hmac(sha256)"));
 
-		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 		log_setOutputLevel(LOG_LEVEL_WARNING);
+		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
 		wrapper = new Wrapper(this);
 		wrapper->startHttp();

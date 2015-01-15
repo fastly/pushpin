@@ -869,9 +869,25 @@ public slots:
 		else if(state == ServerStarting)
 		{
 			if(haveRequestBody)
+			{
 				state = ServerResponseWait;
+
+				// send ack
+				ZhttpResponsePacket p;
+				p.type = ZhttpResponsePacket::KeepAlive;
+				writePacket(p);
+			}
 			else
+			{
 				state = ServerReceiving;
+
+				// send credits ack
+				ZhttpResponsePacket p;
+				p.type = ZhttpResponsePacket::Credit;
+				p.credits = IDEAL_CREDITS - responseBodyBuf.size();
+				writePacket(p);
+			}
+
 			emit q->readyRead();
 		}
 		else if(state == ServerResponseStarting)

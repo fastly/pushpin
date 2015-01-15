@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,37 +17,34 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef INSPECTMANAGER_H
-#define INSPECTMANAGER_H
+#ifndef ZRPCCHECKER_H
+#define ZRPCCHECKER_H
 
 #include <QObject>
 
-class InspectRequestPacket;
-class InspectRequest;
+class ZrpcRequest;
 
-class InspectManager : public QObject
+// all requests should be passed to this class for monitoring. use
+//   watch() to have it monitor a request, but not own it. use give() to have
+//   this class take ownership of an already-watched request.
+
+class ZrpcChecker : public QObject
 {
 	Q_OBJECT
 
 public:
-	InspectManager(QObject *parent = 0);
-	~InspectManager();
+	ZrpcChecker(QObject *parent = 0);
+	~ZrpcChecker();
 
-	int timeout() const;
+	bool isInterfaceAvailable() const;
+	void setInterfaceAvailable(bool available);
 
-	bool setSpec(const QString &spec);
-	void setTimeout(int ms);
-
-	InspectRequest *createRequest();
+	void watch(ZrpcRequest *req);
+	void give(ZrpcRequest *req);
 
 private:
 	class Private;
 	Private *d;
-
-	friend class InspectRequest;
-	bool canWriteImmediately() const;
-	void write(const InspectRequestPacket &packet);
-	void unlink(InspectRequest *req);
 };
 
 #endif

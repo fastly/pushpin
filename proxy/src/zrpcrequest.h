@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,6 +24,7 @@
 #include <QVariant>
 
 class ZrpcRequestPacket;
+class ZrpcResponsePacket;
 class ZrpcManager;
 
 class ZrpcRequest : public QObject
@@ -31,13 +32,36 @@ class ZrpcRequest : public QObject
 	Q_OBJECT
 
 public:
+	enum ErrorCondition
+	{
+		ErrorGeneric,
+		ErrorFormat,
+		ErrorUnavailable,
+		ErrorTimeout
+	};
+
+	ZrpcRequest(ZrpcManager *manager, QObject *parent = 0);
 	~ZrpcRequest();
 
+	QByteArray id() const;
 	QString method() const;
 	QVariantHash args() const;
+	bool success() const;
+	QVariant result() const;
+	ErrorCondition errorCondition() const;
 
-	void respond(const QVariant &value = QVariant());
+	void start(const QString &method, const QVariantHash &args = QVariantHash());
+	void respond(const QVariant &result = QVariant());
 	void respondError(const QByteArray &condition);
+
+	void setError(ErrorCondition condition);
+
+protected:
+	virtual void onSuccess();
+	virtual void onError();
+
+signals:
+	void finished();
 
 private:
 	class Private;
@@ -45,8 +69,10 @@ private:
 
 	friend class ZrpcManager;
 	ZrpcRequest(QObject *parent = 0);
-	void setup(ZrpcManager *manager);
+	void setupClient(ZrpcManager *manager);
+	void setupServer(ZrpcManager *manager);
 	void handle(const ZrpcRequestPacket &packet);
+	void handle(const ZrpcResponsePacket &packet);
 };
 
 #endif

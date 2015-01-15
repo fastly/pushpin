@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,16 +17,16 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "inspectchecker.h"
+#include "zrpcchecker.h"
 
 #include <assert.h>
 #include <QHash>
 #include <QTimer>
-#include "inspectrequest.h"
+#include "zrpcrequest.h"
 
 #define CHECK_TIMEOUT 8
 
-class InspectChecker::Private : public QObject
+class ZrpcChecker::Private : public QObject
 {
 	Q_OBJECT
 
@@ -34,7 +34,7 @@ public:
 	class Item
 	{
 	public:
-		InspectRequest *req;
+		ZrpcRequest *req;
 		bool owned;
 
 		Item() :
@@ -50,12 +50,12 @@ public:
 		}
 	};
 
-	InspectChecker *q;
+	ZrpcChecker *q;
 	bool avail;
 	QTimer *timer;
-	QHash<InspectRequest*, Item*> requestsByReq;
+	QHash<ZrpcRequest*, Item*> requestsByReq;
 
-	Private(InspectChecker *_q) :
+	Private(ZrpcChecker *_q) :
 		QObject(_q),
 		q(_q),
 		avail(true)
@@ -80,11 +80,13 @@ public:
 			timer = 0;
 		}
 
-		QHashIterator<InspectRequest*, Item*> it(requestsByReq);
+		QHashIterator<ZrpcRequest*, Item*> it(requestsByReq);
 		while(it.hasNext())
 		{
 			it.next();
-			delete it.value();
+			Item *i = it.value();
+			i->req->disconnect(this);
+			delete i;
 		}
 
 		requestsByReq.clear();
@@ -95,14 +97,14 @@ public:
 		timer->start(CHECK_TIMEOUT * 1000);
 	}
 
-	void watch(InspectRequest *req)
+	void watch(ZrpcRequest *req)
 	{
 		Item *i = requestsByReq.value(req);
 		if(i)
 			return; // already watching
 
-		connect(req, SIGNAL(finished(const InspectData &)), SLOT(req_finished(const InspectData &)));
-		connect(req, SIGNAL(error()), SLOT(req_error()));
+		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		connect(req, SIGNAL(destroyed(QObject *)), SLOT(req_destroyed(QObject *)));
 
 		i = new Item;
 		i->req = req;
@@ -114,7 +116,7 @@ public:
 			restartCountdown();
 	}
 
-	void give(InspectRequest *req)
+	void give(ZrpcRequest *req)
 	{
 		Item *i = requestsByReq.value(req);
 		assert(i);
@@ -122,18 +124,8 @@ public:
 		i->owned = true;
 	}
 
-public slots:
-	void req_finished(const InspectData &idata)
+	void handleSuccess()
 	{
-		Q_UNUSED(idata);
-
-		InspectRequest *req = (InspectRequest *)sender();
-		Item *i = requestsByReq.value(req);
-		assert(i);
-
-		requestsByReq.remove(req);
-		delete i;
-
 		avail = true;
 
 		// success means we restart (or stop) the clock
@@ -143,15 +135,8 @@ public slots:
 			timer->stop();
 	}
 
-	void req_error()
+	void handleError()
 	{
-		InspectRequest *req = (InspectRequest *)sender();
-		Item *i = requestsByReq.value(req);
-		assert(i);
-
-		requestsByReq.remove(req);
-		delete i;
-
 		if(!requestsByReq.isEmpty())
 		{
 			// let the clock keep running
@@ -164,41 +149,82 @@ public slots:
 		}
 	}
 
+public slots:
+	void req_finished()
+	{
+		ZrpcRequest *req = (ZrpcRequest *)sender();
+		Item *i = requestsByReq.value(req);
+		assert(i);
+
+		bool success = req->success();
+		ZrpcRequest::ErrorCondition e = req->errorCondition();
+
+		req->disconnect(this);
+		requestsByReq.remove(req);
+		delete i;
+
+		if(success)
+		{
+			handleSuccess();
+		}
+		else
+		{
+			if(e == ZrpcRequest::ErrorTimeout || e == ZrpcRequest::ErrorUnavailable)
+			{
+				handleError();
+			}
+			else
+			{
+				// any other error is fine, it means the inspector is responding
+				handleSuccess();
+			}
+		}
+	}
+
+	void req_destroyed(QObject *obj)
+	{
+		Item *i = requestsByReq.value((ZrpcRequest *)obj);
+		assert(i);
+
+		requestsByReq.remove((ZrpcRequest *)obj);
+		delete i;
+	}
+
 	void timer_timeout()
 	{
 		avail = false;
 	}
 };
 
-InspectChecker::InspectChecker(QObject *parent) :
+ZrpcChecker::ZrpcChecker(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
 }
 
-InspectChecker::~InspectChecker()
+ZrpcChecker::~ZrpcChecker()
 {
 	delete d;
 }
         
-bool InspectChecker::isInterfaceAvailable() const
+bool ZrpcChecker::isInterfaceAvailable() const
 {
 	return d->avail;
 }
 
-void InspectChecker::setInterfaceAvailable(bool available)
+void ZrpcChecker::setInterfaceAvailable(bool available)
 {
 	d->avail = available;
 }
         
-void InspectChecker::watch(InspectRequest *req)
+void ZrpcChecker::watch(ZrpcRequest *req)
 {
 	d->watch(req);
 }
 
-void InspectChecker::give(InspectRequest *req)
+void ZrpcChecker::give(ZrpcRequest *req)
 {
 	d->give(req);
 }
 
-#include "inspectchecker.moc"
+#include "zrpcchecker.moc"

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -19,13 +19,46 @@
 
 #include "inspectrequest.h"
 
-#include <QTimer>
-#include "packet/inspectrequestpacket.h"
-#include "packet/inspectresponsepacket.h"
 #include "packet/httprequestdata.h"
 #include "inspectdata.h"
-#include "inspectmanager.h"
 #include "uuidutil.h"
+
+static InspectData resultToData(const QVariant &in, bool *ok)
+{
+	InspectData out;
+
+	if(in.type() != QVariant::Hash)
+	{
+		*ok = false;
+		return InspectData();
+	}
+
+	QVariantHash obj = in.toHash();
+
+	if(!obj.contains("no-proxy") || obj["no-proxy"].type() != QVariant::Bool)
+	{
+		*ok = false;
+		return InspectData();
+	}
+	out.doProxy = !obj["no-proxy"].toBool();
+
+	out.sharingKey.clear();
+	if(obj.contains("sharing-key"))
+	{
+		if(obj["sharing-key"].type() != QVariant::ByteArray)
+		{
+			*ok = false;
+			return InspectData();
+		}
+
+		out.sharingKey = obj["sharing-key"].toByteArray();
+	}
+
+	out.userData = obj["user-data"];
+
+	*ok = true;
+	return out;
+}
 
 class InspectRequest::Private : public QObject
 {
@@ -33,93 +66,17 @@ class InspectRequest::Private : public QObject
 
 public:
 	InspectRequest *q;
-	InspectManager *manager;
-	QByteArray id;
-	HttpRequestData hdata;
-	bool truncated;
-	InspectRequest::ErrorCondition condition;
-	QTimer *timer;
+	InspectData idata;
 
 	Private(InspectRequest *_q) :
 		QObject(_q),
-		q(_q),
-		manager(0),
-		timer(0)
+		q(_q)
 	{
-	}
-
-	~Private()
-	{
-		cleanup();
-	}
-
-	void cleanup()
-	{
-		if(timer)
-		{
-			timer->disconnect(this);
-			timer->setParent(0);
-			timer->deleteLater();
-			timer = 0;
-		}
-
-		if(manager)
-		{
-			manager->unlink(q);
-			manager = 0;
-		}
-	}
-
-	void handle(const InspectResponsePacket &packet)
-	{
-		InspectData idata;
-		idata.doProxy = !packet.noProxy;
-		idata.sharingKey = packet.sharingKey;
-		idata.userData = packet.userData;
-		cleanup();
-		emit q->finished(idata);
-	}
-
-public slots:
-	void doStart()
-	{
-		if(!manager->canWriteImmediately())
-		{
-			condition = InspectRequest::ErrorUnavailable;
-			cleanup();
-			emit q->error();
-			return;
-		}
-
-		InspectRequestPacket p;
-		p.id = id;
-		p.method = hdata.method;
-		p.uri = hdata.uri;
-		p.headers = hdata.headers;
-		p.body = hdata.body;
-		p.truncated = truncated;
-
-		if(manager->timeout() >= 0)
-		{
-			timer = new QTimer(this);
-			connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
-			timer->setSingleShot(true);
-			timer->start(manager->timeout());
-		}
-
-		manager->write(p);
-	}
-
-	void timer_timeout()
-	{
-		condition = InspectRequest::ErrorTimeout;
-		cleanup();
-		emit q->error();
 	}
 };
 
-InspectRequest::InspectRequest(QObject *parent) :
-	QObject(parent)
+InspectRequest::InspectRequest(ZrpcManager *manager, QObject *parent) :
+	ZrpcRequest(manager, parent)
 {
 	d = new Private(this);
 }
@@ -129,32 +86,45 @@ InspectRequest::~InspectRequest()
 	delete d;
 }
 
-InspectRequest::ErrorCondition InspectRequest::errorCondition() const
+InspectData InspectRequest::result() const
 {
-	return d->condition;
+	return d->idata;
 }
 
 void InspectRequest::start(const HttpRequestData &hdata, bool truncated)
 {
-	d->hdata = hdata;
-	d->truncated = truncated;
-	QMetaObject::invokeMethod(d, "doStart", Qt::QueuedConnection);
+	QVariantHash args;
+
+	args["method"] = hdata.method.toLatin1();
+	args["uri"] = hdata.uri.toEncoded();
+
+	QVariantList vheaders;
+	foreach(const HttpHeader &h, hdata.headers)
+	{
+		QVariantList vheader;
+		vheader += h.first;
+		vheader += h.second;
+		vheaders += QVariant(vheader);
+	}
+
+	args["headers"] = vheaders;
+	args["body"] = hdata.body;
+
+	if(truncated)
+		args["truncated"] = true;
+
+	ZrpcRequest::start("inspect", args);
 }
 
-QByteArray InspectRequest::id() const
+void InspectRequest::onSuccess()
 {
-	return d->id;
-}
-
-void InspectRequest::setup(InspectManager *manager)
-{
-	d->id = UuidUtil::createUuid();
-	d->manager = manager;
-}
-
-void InspectRequest::handle(const InspectResponsePacket &packet)
-{
-	d->handle(packet);
+	bool ok;
+	d->idata = resultToData(ZrpcRequest::result(), &ok);
+	if(!ok)
+	{
+		setError(ErrorFormat);
+		return;
+	}
 }
 
 #include "inspectrequest.moc"

@@ -32,9 +32,9 @@
 #include "layertracker.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
-#include "inspectmanager.h"
+#include "zrpcmanager.h"
+#include "zrpcchecker.h"
 #include "inspectrequest.h"
-#include "inspectchecker.h"
 
 #define MAX_PREFETCH_REQUEST_BODY 10000
 #define MAX_SHARED_REQUEST_BODY 100000
@@ -201,8 +201,8 @@ public:
 	State state;
 	ZhttpRequest::Rid rid;
 	DomainMap *domainMap;
-	InspectManager *inspectManager;
-	InspectChecker *inspectChecker;
+	ZrpcManager *inspectManager;
+	ZrpcChecker *inspectChecker;
 	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
 	DomainMap::Entry route;
@@ -220,7 +220,7 @@ public:
 	bool isRetry;
 	QList<QByteArray> jsonpExtractableHeaders;
 
-	Private(RequestSession *_q, DomainMap *_domainMap, InspectManager *_inspectManager, InspectChecker *_inspectChecker) :
+	Private(RequestSession *_q, DomainMap *_domainMap, ZrpcManager *_inspectManager, ZrpcChecker *_inspectChecker) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
@@ -253,9 +253,9 @@ public:
 
 		if(inspectRequest)
 		{
-			inspectChecker->disconnect(this);
+			inspectRequest->disconnect(this);
 			inspectChecker->give(inspectRequest);
-			inspectChecker = 0;
+			inspectRequest = 0;
 		}
 
 		state = Stopped;
@@ -332,7 +332,7 @@ public:
 			return;
 		}
 
-		log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), route.targets.count());
+		log_debug("requestsession: %p %s has %d routes", q, qPrintable(host), route.targets.count());
 
 		state = Prefetching;
 
@@ -380,12 +380,11 @@ public:
 				requestData.body = in.toByteArray();
 				bool truncated = (!zhttpRequest->isInputFinished() || zhttpRequest->bytesAvailable() > 0);
 
-				inspectRequest = inspectManager->createRequest();
+				inspectRequest = new InspectRequest(inspectManager);
 
 				if(inspectChecker->isInterfaceAvailable())
 				{
-					connect(inspectRequest, SIGNAL(finished(const InspectData &)), SLOT(inspectRequest_finished(const InspectData &)));
-					connect(inspectRequest, SIGNAL(error()), SLOT(inspectRequest_error()));
+					connect(inspectRequest, SIGNAL(finished()), SLOT(inspectRequest_finished()));
 					inspectChecker->watch(inspectRequest);
 					inspectRequest->start(requestData, truncated);
 				}
@@ -774,9 +773,15 @@ public slots:
 		emit q->finished();
 	}
 
-	void inspectRequest_finished(const InspectData &_idata)
+	void inspectRequest_finished()
 	{
-		idata = _idata;
+		if(!inspectRequest->success())
+		{
+			inspectRequest_error();
+			return;
+		}
+
+		idata = inspectRequest->result();
 
 		delete inspectRequest;
 		inspectRequest = 0;
@@ -969,7 +974,7 @@ public slots:
 	}
 };
 
-RequestSession::RequestSession(DomainMap *domainMap, InspectManager *inspectManager, InspectChecker *inspectChecker, QObject *parent) :
+RequestSession::RequestSession(DomainMap *domainMap, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this, domainMap, inspectManager, inspectChecker);

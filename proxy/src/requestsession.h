@@ -29,15 +29,15 @@ class QHostAddress;
 class HttpRequestData;
 class InspectData;
 class AcceptData;
-class InspectManager;
-class InspectChecker;
+class ZrpcManager;
+class ZrpcChecker;
 
 class RequestSession : public QObject
 {
 	Q_OBJECT
 
 public:
-	RequestSession(DomainMap *domainMap, InspectManager *inspectManager, InspectChecker *inspectChecker, QObject *parent = 0);
+	RequestSession(DomainMap *domainMap, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, QObject *parent = 0);
 	~RequestSession();
 
 	bool isRetry() const;

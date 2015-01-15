@@ -22,8 +22,9 @@
 
 #include <QObject>
 
-class ZrpcRequest;
+class ZrpcRequestPacket;
 class ZrpcResponsePacket;
+class ZrpcRequest;
 
 class ZrpcManager : public QObject
 {
@@ -33,7 +34,15 @@ public:
 	ZrpcManager(QObject *parent = 0);
 	~ZrpcManager();
 
-	bool setInSpec(const QString &spec);
+	int timeout() const;
+
+	void setIpcFileMode(int mode);
+	void setBind(bool enable);
+	void setTimeout(int ms);
+	void setUnavailableOnTimeout(bool enable);
+
+	bool setClientSpecs(const QStringList &specs);
+	bool setServerSpecs(const QStringList &specs);
 
 	ZrpcRequest *takeNext();
 
@@ -45,6 +54,10 @@ private:
 	Private *d;
 
 	friend class ZrpcRequest;
+	bool canWriteImmediately() const;
+	void link(ZrpcRequest *req);
+	void unlink(ZrpcRequest *req);
+	void write(const ZrpcRequestPacket &packet);
 	void write(const ZrpcResponsePacket &packet);
 };
 

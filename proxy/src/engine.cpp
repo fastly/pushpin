@@ -33,15 +33,14 @@
 #include "zwebsocket.h"
 #include "domainmap.h"
 #include "zroutes.h"
-#include "inspectmanager.h"
-#include "inspectchecker.h"
+#include "zrpcmanager.h"
+#include "zrpcrequest.h"
+#include "zrpcchecker.h"
 #include "wscontrolmanager.h"
 #include "requestsession.h"
 #include "proxysession.h"
 #include "wsproxysession.h"
 #include "statsmanager.h"
-#include "zrpcmanager.h"
-#include "zrpcrequest.h"
 
 #define DEFAULT_HWM 1000
 
@@ -84,12 +83,12 @@ public:
 	Configuration config;
 	ZhttpManager *zhttpIn;
 	ZRoutes *zroutes;
-	InspectManager *inspect;
+	ZrpcManager *inspect;
 	WsControlManager *wsControl;
 	DomainMap *domainMap;
-	InspectChecker *inspectChecker;
+	ZrpcChecker *inspectChecker;
 	StatsManager *stats;
-	ZrpcManager *rpc;
+	ZrpcManager *command;
 	QZmq::Socket *handler_retry_in_sock;
 	QZmq::Socket *handler_accept_out_sock;
 	QZmq::Valve *handler_retry_in_valve;
@@ -108,7 +107,7 @@ public:
 		domainMap(0),
 		inspectChecker(0),
 		stats(0),
-		rpc(0),
+		command(0),
 		handler_retry_in_sock(0),
 		handler_accept_out_sock(0),
 		handler_retry_in_valve(0)
@@ -164,16 +163,18 @@ public:
 
 		if(!config.inspectSpec.isEmpty())
 		{
-			inspect = new InspectManager(this);
-			if(!inspect->setSpec(config.inspectSpec))
+			inspect = new ZrpcManager(this);
+			inspect->setBind(true);
+			if(!inspect->setClientSpecs(QStringList() << config.inspectSpec))
 			{
-				log_error("unable to bind to handler_inspect_spec: %s", qPrintable(config.inspectSpec));
+				// FIXME: zrpcmanager logs error
+				//log_error("unable to bind to handler_inspect_spec: %s", qPrintable(config.inspectSpec));
 				return false;
 			}
 
 			inspect->setTimeout(config.inspectTimeout);
 
-			inspectChecker = new InspectChecker(this);
+			inspectChecker = new ZrpcChecker(this);
 		}
 
 		if(!config.retryInSpec.isEmpty())
@@ -241,12 +242,14 @@ public:
 
 		if(!config.commandSpec.isEmpty())
 		{
-			rpc = new ZrpcManager(this);
-			connect(rpc, SIGNAL(requestReady()), SLOT(rpc_requestReady()));
+			command = new ZrpcManager(this);
+			command->setBind(true);
+			connect(command, SIGNAL(requestReady()), SLOT(command_requestReady()));
 
-			if(!rpc->setInSpec(config.commandSpec))
+			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
-				log_error("unable to bind to command_spec: %s", qPrintable(config.commandSpec));
+				// FIXME: zrpcmanager logs error
+				//log_error("unable to bind to command_spec: %s", qPrintable(config.commandSpec));
 				return false;
 			}
 		}
@@ -661,9 +664,9 @@ private slots:
 		Q_UNUSED(count);
 	}
 
-	void rpc_requestReady()
+	void command_requestReady()
 	{
-		ZrpcRequest *req = rpc->takeNext();
+		ZrpcRequest *req = command->takeNext();
 		if(req->method() == "conncheck")
 		{
 			if(!stats)

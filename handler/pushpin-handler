@@ -569,19 +569,22 @@ def inspect_worker():
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN inspect: %s" % m)
 
-		# reply saying to always proxy
 		id = m["id"]
-		method = m["method"]
-		uri = m["uri"]
+		args = m["args"]
+
+		# reply saying to always proxy
+		method = args["method"]
+		uri = args["uri"]
+
 		m = dict()
-		m["id"] = id
 		m["no-proxy"] = False
 
 		if share_all:
 			m["sharing-key"] = method + '|' + uri
 
-		logger.debug("OUT inspect: %s" % m)
-		m_raw = tnetstring.dumps(m)
+		resp = {"id": id, "success": True, "value": m}
+		logger.debug("OUT inspect: %s" % resp)
+		m_raw = tnetstring.dumps(resp)
 		sock.send(m_raw)
 
 	sock.close()

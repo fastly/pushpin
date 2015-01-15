@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,43 +21,33 @@
 #define INSPECTREQUEST_H
 
 #include <QObject>
+#include "zrpcrequest.h"
 
 class HttpRequestData;
 class InspectData;
-class InspectResponsePacket;
-class InspectManager;
+class ZrpcManager;
 
-class InspectRequest : public QObject
+class InspectRequest : public ZrpcRequest
 {
 	Q_OBJECT
 
 public:
-	enum ErrorCondition
-	{
-		ErrorUnavailable,
-		ErrorTimeout
-	};
-
+	InspectRequest(ZrpcManager *manager, QObject *parent = 0);
 	~InspectRequest();
+
+	InspectData result() const;
 
 	void start(const HttpRequestData &hdata, bool truncated);
 
-	ErrorCondition errorCondition() const;
+protected:
+	virtual void onSuccess();
 
 signals:
 	void finished(const InspectData &idata);
-	void error();
 
 private:
 	class Private;
-	friend class Private;
 	Private *d;
-
-	friend class InspectManager;
-	InspectRequest(QObject *parent = 0);
-	QByteArray id() const;
-	void setup(InspectManager *manager);
-	void handle(const InspectResponsePacket &packet);
 };
 
 #endif

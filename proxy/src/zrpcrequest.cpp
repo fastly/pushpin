@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,9 +20,12 @@
 #include "zrpcrequest.h"
 
 #include <assert.h>
+#include <QTimer>
 #include "packet/zrpcrequestpacket.h"
 #include "packet/zrpcresponsepacket.h"
 #include "zrpcmanager.h"
+#include "uuidutil.h"
+#include "log.h"
 
 class ZrpcRequest::Private : public QObject
 {
@@ -34,12 +37,41 @@ public:
 	QByteArray id;
 	QString method;
 	QVariantHash args;
+	bool success;
+	QVariant result;
+	ErrorCondition condition;
+	QTimer *timer;
 
 	Private(ZrpcRequest *_q) :
 		QObject(_q),
 		q(_q),
-		manager(0)
+		manager(0),
+		success(false),
+		condition(ErrorGeneric),
+		timer(0)
 	{
+	}
+
+	~Private()
+	{
+		cleanup();
+	}
+
+	void cleanup()
+	{
+		if(timer)
+		{
+			timer->disconnect(this);
+			timer->setParent(0);
+			timer->deleteLater();
+			timer = 0;
+		}
+
+		if(manager)
+		{
+			manager->unlink(q);
+			manager = 0;
+		}
 	}
 
 	void respond(const QVariant &value)
@@ -66,6 +98,61 @@ public:
 		method = packet.method;
 		args = packet.args;
 	}
+
+	void handle(const ZrpcResponsePacket &packet)
+	{
+		cleanup();
+
+		success = packet.success;
+		if(success)
+		{
+			result = packet.value;
+			q->onSuccess();
+		}
+		else
+		{
+			// TODO: packet.condition
+			q->onError();
+		}
+
+		emit q->finished();
+	}
+
+private slots:
+	void doStart()
+	{
+		if(!manager->canWriteImmediately())
+		{
+			success = false;
+			condition = ErrorUnavailable;
+			cleanup();
+			emit q->finished();
+			return;
+		}
+
+		ZrpcRequestPacket p;
+		p.id = id;
+		p.method = method;
+		p.args = args;
+
+		if(manager->timeout() >= 0)
+		{
+			timer = new QTimer(this);
+			connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+			timer->setSingleShot(true);
+			timer->start(manager->timeout());
+		}
+
+		manager->write(p);
+	}
+
+	void timer_timeout()
+	{
+		success = false;
+		condition = ErrorTimeout;
+		cleanup();
+		emit q->finished();
+	}
 };
 
 ZrpcRequest::ZrpcRequest(QObject *parent) :
@@ -74,9 +161,21 @@ ZrpcRequest::ZrpcRequest(QObject *parent) :
 	d = new Private(this);
 }
 
+ZrpcRequest::ZrpcRequest(ZrpcManager *manager, QObject *parent) :
+	QObject(parent)
+{
+	d = new Private(this);
+	setupClient(manager);
+}
+
 ZrpcRequest::~ZrpcRequest()
 {
 	delete d;
+}
+
+QByteArray ZrpcRequest::id() const
+{
+	return d->id;
 }
 
 QString ZrpcRequest::method() const
@@ -89,6 +188,28 @@ QVariantHash ZrpcRequest::args() const
 	return d->args;
 }
 
+bool ZrpcRequest::success() const
+{
+	return d->success;
+}
+
+QVariant ZrpcRequest::result() const
+{
+	return d->result;
+}
+
+ZrpcRequest::ErrorCondition ZrpcRequest::errorCondition() const
+{
+	return d->condition;
+}
+
+void ZrpcRequest::start(const QString &method, const QVariantHash &args)
+{
+	d->method = method;
+	d->args = args;
+	QMetaObject::invokeMethod(d, "doStart", Qt::QueuedConnection);
+}
+
 void ZrpcRequest::respond(const QVariant &value)
 {
 	d->respond(value);
@@ -99,12 +220,42 @@ void ZrpcRequest::respondError(const QByteArray &condition)
 	d->respondError(condition);
 }
 
-void ZrpcRequest::setup(ZrpcManager *manager)
+void ZrpcRequest::setError(ErrorCondition condition)
+{
+	d->success = false;
+	d->condition = condition;
+}
+
+void ZrpcRequest::onSuccess()
+{
+	// by default, do nothing
+}
+
+void ZrpcRequest::onError()
+{
+	// by default, do nothing
+}
+
+void ZrpcRequest::setupClient(ZrpcManager *manager)
+{
+	d->id = UuidUtil::createUuid();
+	d->manager = manager;
+	d->manager->link(this);
+}
+
+void ZrpcRequest::setupServer(ZrpcManager *manager)
 {
 	d->manager = manager;
 }
 
 void ZrpcRequest::handle(const ZrpcRequestPacket &packet)
+{
+	assert(d->manager);
+
+	d->handle(packet);
+}
+
+void ZrpcRequest::handle(const ZrpcResponsePacket &packet)
 {
 	assert(d->manager);
 
