@@ -380,7 +380,7 @@ public:
 				requestData.body = in.toByteArray();
 				bool truncated = (!zhttpRequest->isInputFinished() || zhttpRequest->bytesAvailable() > 0);
 
-				inspectRequest = new InspectRequest(inspectManager);
+				inspectRequest = new InspectRequest(inspectManager, this);
 
 				if(inspectChecker->isInterfaceAvailable())
 				{

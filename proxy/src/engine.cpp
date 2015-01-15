@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 Fanout, Inc.
+ * Copyright (C) 2012-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -80,6 +80,7 @@ public:
 	};
 
 	Engine *q;
+	bool destroying;
 	Configuration config;
 	ZhttpManager *zhttpIn;
 	ZRoutes *zroutes;
@@ -100,6 +101,7 @@ public:
 	Private(Engine *_q) :
 		QObject(_q),
 		q(_q),
+		destroying(false),
 		zhttpIn(0),
 		zroutes(0),
 		inspect(0),
@@ -116,6 +118,8 @@ public:
 
 	~Private()
 	{
+		destroying = true;
+
 		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
 		while(it.hasNext())
 		{
@@ -126,7 +130,6 @@ public:
 
 		proxyItemsBySession.clear();
 		proxyItemsByKey.clear();
-		requestSessions.clear();
 
 		QHashIterator<WsProxySession*, WsProxyItem*> wit(wsProxyItemsBySession);
 		while(wit.hasNext())
@@ -137,6 +140,14 @@ public:
 		}
 
 		wsProxyItemsBySession.clear();
+
+		foreach(RequestSession *rs, requestSessions)
+			delete rs;
+		requestSessions.clear();
+
+		// need to make sure this is deleted before inspect manager
+		delete inspectChecker;
+		inspectChecker = 0;
 	}
 
 	bool start(const Configuration &_config)
@@ -373,7 +384,16 @@ public:
 
 	bool canTake()
 	{
-		return (config.maxWorkers == -1 || (requestSessions.count() + wsProxyItemsBySession.count()) < config.maxWorkers);
+		// don't accept new connections during shutdown
+		if(destroying)
+			return false;
+
+		// don't accept new connections if we're servicing maximum
+		int curWorkers = requestSessions.count() + wsProxyItemsBySession.count();
+		if(config.maxWorkers != -1 && curWorkers >= config.maxWorkers)
+			return false;
+
+		return true;
 	}
 
 	void tryTakeRequest()

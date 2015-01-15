@@ -121,6 +121,7 @@ public:
 		Item *i = requestsByReq.value(req);
 		assert(i);
 
+		req->setParent(this);
 		i->owned = true;
 	}
 

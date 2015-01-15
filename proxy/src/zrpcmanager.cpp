@@ -63,6 +63,11 @@ public:
 	{
 	}
 
+	~Private()
+	{
+		assert(clientReqsById.isEmpty());
+	}
+
 	bool bindSpec(QZmq::Socket *sock, const QString &spec)
 	{
 		if(!sock->bind(spec))

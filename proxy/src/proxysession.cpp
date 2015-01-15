@@ -140,7 +140,12 @@ public:
 	void cleanup()
 	{
 		foreach(SessionItem *si, sessionItems)
+		{
+			// emitting a signal here is gross, but this way the engine cleans up the request sessions
+			emit q->requestSessionDestroyed(si->rs, false);
 			delete si->rs;
+			delete si;
+		}
 
 		sessionItems.clear();
 		sessionItemsBySession.clear();
