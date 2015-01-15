@@ -158,9 +158,11 @@ public:
 	{
 		assert(clientSock);
 
-		QByteArray buf = TnetString::fromVariant(packet.toVariant());
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = TnetString::fromVariant(vpacket);
 
-		log_debug("zrpc client: OUT %s", buf.data());
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("zrpc client: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
 		clientSock->write(QList<QByteArray>() << QByteArray() << buf);
 	}
@@ -169,9 +171,11 @@ public:
 	{
 		assert(serverSock);
 
-		QByteArray buf = TnetString::fromVariant(packet.toVariant());
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = TnetString::fromVariant(vpacket);
 
-		log_debug("zrpc server: OUT %s", buf.data());
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("zrpc server: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
 		serverSock->write(QList<QByteArray>() << buf);
 	}
@@ -191,14 +195,15 @@ private slots:
 			return;
 		}
 
-		log_debug("zrpc client: IN %s", message[1].data());
-
 		QVariant data = TnetString::toVariant(message[1]);
 		if(data.isNull())
 		{
 			log_warning("zrpc client: received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("zrpc client: IN %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		ZrpcResponsePacket p;
 		if(!p.fromVariant(data))
@@ -225,14 +230,15 @@ private slots:
 			return;
 		}
 
-		log_debug("zrpc server: IN %s", message[0].data());
-
 		QVariant data = TnetString::toVariant(message[0]);
 		if(data.isNull())
 		{
 			log_warning("zrpc server: received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("zrpc server: IN %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		ZrpcRequestPacket p;
 		if(!p.fromVariant(data))

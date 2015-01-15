@@ -130,9 +130,12 @@ public:
 			prefix = "activity ";
 		else
 			prefix = "conn ";
-		QByteArray buf = prefix + TnetString::fromVariant(packet.toVariant());
 
-		log_debug("stats: OUT %s", buf.data());
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = prefix + TnetString::fromVariant(vpacket);
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("stats: OUT %s %s", prefix.data(), qPrintable(TnetString::variantToString(vpacket, -1)));
 
 		sock->write(QList<QByteArray>() << buf);
 	}
