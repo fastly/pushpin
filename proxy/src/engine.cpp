@@ -23,7 +23,6 @@
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
-#include "packet/acceptresponsepacket.h"
 #include "packet/retryrequestpacket.h"
 #include "log.h"
 #include "inspectdata.h"
@@ -90,8 +89,8 @@ public:
 	ZrpcChecker *inspectChecker;
 	StatsManager *stats;
 	ZrpcManager *command;
+	ZrpcManager *accept;
 	QZmq::Socket *handler_retry_in_sock;
-	QZmq::Socket *handler_accept_out_sock;
 	QZmq::Valve *handler_retry_in_valve;
 	QSet<RequestSession*> requestSessions;
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
@@ -110,8 +109,8 @@ public:
 		inspectChecker(0),
 		stats(0),
 		command(0),
+		accept(0),
 		handler_retry_in_sock(0),
-		handler_accept_out_sock(0),
 		handler_retry_in_valve(0)
 	{
 	}
@@ -187,6 +186,20 @@ public:
 			inspectChecker = new ZrpcChecker(this);
 		}
 
+		if(!config.acceptSpec.isEmpty())
+		{
+			accept = new ZrpcManager(this);
+			accept->setBind(true);
+			if(!accept->setClientSpecs(QStringList() << config.acceptSpec))
+			{
+				// zrpcmanager logs error
+				return false;
+			}
+
+			// there's no acceptTimeout config option so we'll reuse inspectTimeout
+			accept->setTimeout(config.inspectTimeout);
+		}
+
 		if(!config.retryInSpec.isEmpty())
 		{
 			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
@@ -201,20 +214,6 @@ public:
 
 			handler_retry_in_valve = new QZmq::Valve(handler_retry_in_sock, this);
 			connect(handler_retry_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(handler_retry_in_readyRead(const QList<QByteArray> &)));
-		}
-
-		if(!config.acceptOutSpec.isEmpty())
-		{
-			handler_accept_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
-
-			handler_accept_out_sock->setHwm(DEFAULT_HWM);
-
-			connect(handler_accept_out_sock, SIGNAL(messagesWritten(int)), SLOT(handler_accept_out_messagesWritten(int)));
-			if(!handler_accept_out_sock->bind(config.acceptOutSpec))
-			{
-				log_error("unable to bind to handler_accept_out_spec: %s", qPrintable(config.acceptOutSpec));
-				return false;
-			}
 		}
 
 		if(handler_retry_in_valve)
@@ -297,10 +296,9 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, this);
+			ps = new ProxySession(zroutes, accept, this);
 			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
-			connect(ps, SIGNAL(finishedByPassthrough()), SLOT(ps_finishedByPassthrough()));
-			connect(ps, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(ps_finishedForAccept(const AcceptData &)));
+			connect(ps, SIGNAL(finished()), SLOT(ps_finished()));
 			connect(ps, SIGNAL(requestSessionDestroyed(RequestSession *, bool)), SLOT(ps_requestSessionDestroyed(RequestSession *, bool)));
 
 			ps->setRoute(route);
@@ -339,49 +337,6 @@ public:
 		}
 	}
 
-	void sendAccept(const AcceptData &adata)
-	{
-		AcceptResponsePacket p;
-		foreach(const AcceptData::Request &areq, adata.requests)
-		{
-			AcceptResponsePacket::Request req;
-			req.rid = AcceptResponsePacket::Rid(areq.rid.first, areq.rid.second);
-			req.https = areq.https;
-			req.peerAddress = areq.peerAddress;
-			req.autoCrossOrigin = areq.autoCrossOrigin;
-			req.jsonpCallback = areq.jsonpCallback;
-			req.jsonpExtendedResponse = areq.jsonpExtendedResponse;
-			req.inSeq = areq.inSeq;
-			req.outSeq = areq.outSeq;
-			req.outCredits = areq.outCredits;
-			req.userData = areq.userData;
-			p.requests += req;
-		}
-
-		p.requestData = adata.requestData;
-
-		if(adata.haveInspectData)
-		{
-			p.haveInspectInfo = true;
-			p.inspectInfo.noProxy = !adata.inspectData.doProxy;
-			p.inspectInfo.sharingKey = adata.inspectData.sharingKey;
-			p.inspectInfo.userData = adata.inspectData.userData;
-		}
-
-		if(adata.haveResponse)
-		{
-			p.haveResponse = true;
-			p.response = adata.response;
-		}
-
-		p.route = adata.route;
-		p.channelPrefix = adata.channelPrefix;
-
-		QList<QByteArray> msg;
-		msg += TnetString::fromVariant(p.toVariant());
-		handler_accept_out_sock->write(msg);
-	}
-
 	bool canTake()
 	{
 		// don't accept new connections during shutdown
@@ -405,11 +360,11 @@ public:
 		if(!req)
 			return;
 
-		RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, this);
+		RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, accept, this);
 		connect(rs, SIGNAL(inspected(const InspectData &)), SLOT(rs_inspected(const InspectData &)));
 		connect(rs, SIGNAL(inspectError()), SLOT(rs_inspectError()));
 		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
-		connect(rs, SIGNAL(finishedForAccept(const AcceptData &)), SLOT(rs_finishedForAccept(const AcceptData &)));
+		connect(rs, SIGNAL(finishedByAccept()), SLOT(rs_finishedByAccept()));
 
 		rs->setAutoCrossOrigin(config.autoCrossOrigin);
 
@@ -473,7 +428,7 @@ private slots:
 		RequestSession *rs = (RequestSession *)sender();
 
 		// if we get here, then the request must be proxied. if it was to be directly
-		//   accepted, then finishedForAccept would have been emitted instead
+		//   accepted, then finishedByAccept would have been emitted instead
 		assert(idata.doProxy);
 
 		doProxy(rs, &idata);
@@ -500,15 +455,9 @@ private slots:
 		tryTakeNext();
 	}
 
-	void rs_finishedForAccept(const AcceptData &adata)
+	void rs_finishedByAccept()
 	{
 		RequestSession *rs = (RequestSession *)sender();
-
-		if(!handler_accept_out_sock->canWriteImmediately())
-		{
-			rs->respondCannotAccept();
-			return;
-		}
 
 		if(stats)
 		{
@@ -522,8 +471,6 @@ private slots:
 
 		requestSessions.remove(rs);
 		delete rs;
-
-		sendAccept(adata);
 
 		tryTakeNext();
 	}
@@ -543,7 +490,7 @@ private slots:
 		}
 	}
 
-	void ps_finishedByPassthrough()
+	void ps_finished()
 	{
 		ProxySession *ps = (ProxySession *)sender();
 
@@ -554,34 +501,6 @@ private slots:
 			proxyItemsByKey.remove(i->key);
 		proxyItemsBySession.remove(i->ps);
 		delete i;
-		delete ps;
-
-		tryTakeNext();
-	}
-
-	void ps_finishedForAccept(const AcceptData &adata)
-	{
-		ProxySession *ps = (ProxySession *)sender();
-
-		if(!handler_accept_out_sock->canWriteImmediately())
-		{
-			ps->cannotAccept();
-			return;
-		}
-
-		ProxyItem *i = proxyItemsBySession.value(ps);
-		assert(i);
-
-		if(i->shared)
-			proxyItemsByKey.remove(i->key);
-		proxyItemsBySession.remove(i->ps);
-		delete i;
-
-		// accept from ProxySession always has a response
-		assert(adata.haveResponse);
-
-		sendAccept(adata);
-
 		delete ps;
 
 		tryTakeNext();
@@ -664,7 +583,7 @@ private slots:
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, this);
+			RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, accept, this);
 			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
 
 			requestSessions += rs;
@@ -675,11 +594,6 @@ private slots:
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0, true);
 		}
-	}
-
-	void handler_accept_out_messagesWritten(int count)
-	{
-		Q_UNUSED(count);
 	}
 
 	void command_requestReady()

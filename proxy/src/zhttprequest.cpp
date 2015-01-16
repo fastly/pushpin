@@ -258,6 +258,16 @@ public:
 		writePacket(p);
 	}
 
+	void resume()
+	{
+		assert(paused);
+		paused = false;
+
+		ZhttpResponsePacket p;
+		p.type = ZhttpResponsePacket::KeepAlive;
+		writePacket(p);
+	}
+
 	void beginResponse()
 	{
 		assert(!pausing && !paused);
@@ -1024,6 +1034,12 @@ void ZhttpRequest::pause()
 {
 	assert(d->server);
 	d->pause();
+}
+
+void ZhttpRequest::resume()
+{
+	assert(d->server);
+	d->resume();
 }
 
 ZhttpRequest::ServerState ZhttpRequest::serverState() const

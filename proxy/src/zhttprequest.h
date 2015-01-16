@@ -93,6 +93,7 @@ public:
 
 	// for server requests only
 	void pause();
+	void resume();
 	ServerState serverState() const;
 
 	int bytesAvailable() const;

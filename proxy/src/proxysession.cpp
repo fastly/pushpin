@@ -36,6 +36,7 @@
 #include "xffrule.h"
 #include "requestsession.h"
 #include "proxyutil.h"
+#include "acceptrequest.h"
 
 #define MAX_ACCEPT_REQUEST_BODY 100000
 #define MAX_ACCEPT_RESPONSE_BODY 100000
@@ -86,6 +87,7 @@ public:
 	ZRoutes *zroutes;
 	ZhttpManager *zhttpManager;
 	ZhttpRequest *inRequest;
+	ZrpcManager *acceptManager;
 	bool isHttps;
 	DomainMap::Entry route;
 	QList<DomainMap::Target> targets;
@@ -93,7 +95,8 @@ public:
 	bool addAllowed;
 	bool haveInspectData;
 	InspectData idata;
-	QSet<QByteArray> acceptTypes;
+	QSet<QByteArray> acceptHeaderPrefixes;
+	QSet<QByteArray> acceptContentTypes;
 	QSet<SessionItem*> sessionItems;
 	HttpRequestData requestData;
 	HttpResponseData responseData;
@@ -112,14 +115,16 @@ public:
 	XffRule xffRule;
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
+	AcceptRequest *acceptRequest;
 
-	Private(ProxySession *_q, ZRoutes *_zroutes) :
+	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
 		zroutes(_zroutes),
 		zhttpManager(0),
 		inRequest(0),
+		acceptManager(_acceptManager),
 		isHttps(false),
 		zhttpRequest(0),
 		addAllowed(true),
@@ -127,9 +132,11 @@ public:
 		requestBytesToWrite(0),
 		total(0),
 		passToUpstream(false),
-		useXForwardedProtocol(false)
+		useXForwardedProtocol(false),
+		acceptRequest(0)
 	{
-		acceptTypes += "application/grip-instruct";
+		acceptHeaderPrefixes += "Grip-";
+		acceptContentTypes += "application/grip-instruct";
 	}
 
 	~Private()
@@ -381,6 +388,21 @@ public:
 		}
 	}
 
+	void respondAll(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
+	{
+		foreach(SessionItem *si, sessionItems)
+		{
+			if(si->state != SessionItem::Errored)
+			{
+				assert(si->state == SessionItem::WaitingForResponse);
+
+				si->state = SessionItem::Responded;
+				si->bytesToWrite = -1;
+				si->rs->respond(code, reason, headers, body);
+			}
+		}
+	}
+
 	void destroyAll()
 	{
 		// this method is only to be called when we are in Responding state
@@ -547,12 +569,38 @@ public slots:
 			total += responseBody.size();
 			log_debug("proxysession: %p recv total: %d", q, total);
 
-			QByteArray contentType = responseData.headers.get("Content-Type");
-			int at = contentType.indexOf(';');
-			if(at != -1)
-				contentType = contentType.mid(0, at);
+			bool doAccept = false;
+			if(!passToUpstream)
+			{
+				QByteArray contentType = responseData.headers.get("Content-Type");
+				int at = contentType.indexOf(';');
+				if(at != -1)
+					contentType = contentType.mid(0, at);
 
-			if(!passToUpstream && (responseData.headers.contains("Grip-Hold") || acceptTypes.contains(contentType)))
+				if(acceptContentTypes.contains(contentType))
+				{
+					doAccept = true;
+				}
+				else
+				{
+					foreach(const HttpHeader &h, responseData.headers)
+					{
+						foreach(const QByteArray &hp, acceptHeaderPrefixes)
+						{
+							if(qstrnicmp(h.first.data(), hp.data(), hp.length()) == 0)
+							{
+								doAccept = true;
+								break;
+							}
+						}
+
+						if(doAccept)
+							break;
+					}
+				}
+			}
+
+			if(doAccept)
 			{
 				if(!buffering)
 				{
@@ -686,7 +734,7 @@ public slots:
 		if(sessionItems.isEmpty())
 		{
 			log_debug("proxysession: %p finished by passthrough", q);
-			emit q->finishedByPassthrough();
+			emit q->finished();
 		}
 	}
 
@@ -714,9 +762,11 @@ public slots:
 
 		if(allPaused)
 		{
-			AcceptData adata;
+			assert(!acceptRequest);
 
-			QList<RequestSession*> toDestroy;
+			responseData.body = responseBody.take();
+
+			AcceptData adata;
 
 			foreach(SessionItem *si, sessionItems)
 			{
@@ -734,36 +784,28 @@ public slots:
 				areq.outCredits = ss.outCredits;
 				areq.userData = ss.userData;
 				adata.requests += areq;
-
-				toDestroy += si->rs;
 			}
-
-			sessionItems.clear();
-			sessionItemsBySession.clear();
-
-			QPointer<QObject> self = this;
-			foreach(RequestSession *rs, toDestroy)
-			{
-				if(self) // <-- weird!
-					emit q->requestSessionDestroyed(rs, true);
-				delete rs;
-			}
-			if(!self)
-				return;
 
 			adata.requestData = requestData;
 			adata.requestData.body = requestBody.take();
 
 			adata.haveResponse = true;
 			adata.response = responseData;
-			adata.response.body = responseBody.take();
+
+			if(haveInspectData)
+			{
+				adata.haveInspectData = true;
+				adata.inspectData.doProxy = idata.doProxy;
+				adata.inspectData.sharingKey = idata.sharingKey;
+				adata.inspectData.userData = idata.userData;
+			}
 
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
 
-			log_debug("proxysession: %p finished for accept", q);
-			cleanup();
-			emit q->finishedForAccept(adata);
+			acceptRequest = new AcceptRequest(acceptManager, this);
+			connect(acceptRequest, SIGNAL(finished()), SLOT(acceptRequest_finished()));
+			acceptRequest->start(adata);
 		}
 	}
 
@@ -784,12 +826,75 @@ public slots:
 
 		// don't destroy the RequestSession here. a finished signal will arrive next.
 	}
+
+	void acceptRequest_finished()
+	{
+		if(acceptRequest->success())
+		{
+			AcceptRequest::ResponseData rdata = acceptRequest->result();
+
+			delete acceptRequest;
+			acceptRequest = 0;
+
+			if(rdata.accepted)
+			{
+				// the requests were paused, so deleting them will leave the peer sessions active
+
+				QList<RequestSession*> toDestroy;
+				foreach(SessionItem *si, sessionItems)
+					toDestroy += si->rs;
+
+				sessionItems.clear();
+				sessionItemsBySession.clear();
+
+				QPointer<QObject> self = this;
+				foreach(RequestSession *rs, toDestroy)
+				{
+					emit q->requestSessionDestroyed(rs, true);
+					delete rs;
+					if(!self)
+						return;
+				}
+
+				log_debug("proxysession: %p finished for accept", q);
+				cleanup();
+				emit q->finished();
+			}
+			else
+			{
+				// wake up receivers
+				foreach(SessionItem *si, sessionItems)
+				{
+					si->state = SessionItem::WaitingForResponse;
+					si->rs->resume();
+				}
+
+				if(rdata.response.code != -1)
+					respondAll(rdata.response.code, rdata.response.reason, rdata.response.headers, rdata.response.body);
+				else
+					cannotAcceptAll();
+			}
+		}
+		else
+		{
+			delete acceptRequest;
+			acceptRequest = 0;
+
+			// wake up receivers and reject
+			foreach(SessionItem *si, sessionItems)
+			{
+				si->state = SessionItem::WaitingForResponse;
+				si->rs->resume();
+			}
+			cannotAcceptAll();
+		}
+	}
 };
 
-ProxySession::ProxySession(ZRoutes *zroutes, QObject *parent) :
+ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes);
+	d = new Private(this, zroutes, acceptManager);
 }
 
 ProxySession::~ProxySession()

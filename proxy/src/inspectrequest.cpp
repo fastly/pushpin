@@ -21,7 +21,6 @@
 
 #include "packet/httprequestdata.h"
 #include "inspectdata.h"
-#include "uuidutil.h"
 
 static InspectData resultToData(const QVariant &in, bool *ok)
 {

@@ -590,8 +590,8 @@ def inspect_worker():
 	sock.close()
 
 def accept_worker():
-	sock = ctx.socket(zmq.PULL)
-	sock.connect(config.get("handler", "proxy_accept_in_spec"))
+	sock = ctx.socket(zmq.REP)
+	sock.connect(config.get("handler", "proxy_accept_spec"))
 
 	out_sock = ctx.socket(zmq.PUB)
 	for spec in m2a_out_specs:
@@ -607,6 +607,13 @@ def accept_worker():
 		m_raw = sock.recv()
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN accept: %s" % m)
+
+		# for now always ack as a take
+		mresp = {"id": m["id"], "success": True, "value": {"accepted": True}}
+		logger.debug("OUT accept: %s" % mresp)
+		sock.send(tnetstring.dumps(mresp))
+
+		m = m["args"]
 
 		reqs = m["requests"]
 

@@ -45,9 +45,9 @@ public:
 
 	QZmq::Socket *handlerInspectSock;
 	QZmq::Valve *handlerInspectValve;
+	QZmq::Socket *handlerAcceptSock;
+	QZmq::Valve *handlerAcceptValve;
 	QZmq::Socket *handlerRetryOutSock;
-	QZmq::Socket *handlerAcceptInSock;
-	QZmq::Valve *handlerAcceptInValve;
 
 	int serverReqs;
 	bool inspectEnabled;
@@ -90,14 +90,14 @@ public:
 
 		handlerInspectSock = new QZmq::Socket(QZmq::Socket::Router, this);
 
+		handlerAcceptSock = new QZmq::Socket(QZmq::Socket::Router, this);
+		handlerAcceptValve = new QZmq::Valve(handlerAcceptSock, this);
+		connect(handlerAcceptValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(handlerAccept_readyRead(const QList<QByteArray> &)));
+
 		handlerInspectValve = new QZmq::Valve(handlerInspectSock, this);
 		connect(handlerInspectValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(handlerInspect_readyRead(const QList<QByteArray> &)));
 
 		handlerRetryOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
-
-		handlerAcceptInSock = new QZmq::Socket(QZmq::Socket::Pull, this);
-		handlerAcceptInValve = new QZmq::Valve(handlerAcceptInSock, this);
-		connect(handlerAcceptInValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(handlerAcceptIn_readyRead(const QList<QByteArray> &)));
 	}
 
 	void startHttp()
@@ -119,11 +119,11 @@ public:
 	void startHandler()
 	{
 		handlerInspectSock->connectToAddress("ipc://inspect");
+		handlerAcceptSock->connectToAddress("ipc://accept");
 		handlerRetryOutSock->connectToAddress("ipc://retry-out");
-		handlerAcceptInSock->connectToAddress("ipc://accept-in");
 
 		handlerInspectValve->open();
-		handlerAcceptInValve->open();
+		handlerAcceptValve->open();
 	}
 
 	void reset()
@@ -244,11 +244,23 @@ private slots:
 		}
 	}
 
-	void handlerAcceptIn_readyRead(const QList<QByteArray> &message)
+	void handlerAccept_readyRead(const QList<QByteArray> &_message)
 	{
-		QVariant v = TnetString::toVariant(message[0]);
-		log_debug("accept in: %s", qPrintable(TnetString::variantToString(v, -1)));
-		QVariantHash vaccept = v.toHash();
+		QZmq::ReqMessage message(_message);
+		QVariant v = TnetString::toVariant(message.content()[0]);
+		log_debug("inspect: %s", qPrintable(TnetString::variantToString(v, -1)));
+
+		QVariantHash vreq = v.toHash();
+
+		QVariantHash vresp;
+		vresp["id"] = vreq["id"];
+		vresp["success"] = true;
+		QVariantHash respValue;
+		respValue["accepted"] = true;
+		vresp["value"] = respValue;
+		handlerAcceptSock->write(message.createReply(QList<QByteArray>() << TnetString::fromVariant(vresp)).toRawMessage());
+
+		QVariantHash vaccept = vreq["args"].toHash();
 		acceptIn = vaccept["response"].toHash()["body"].toByteArray();
 
 		bool ok;
@@ -305,8 +317,8 @@ private slots:
 		config.clientOutStreamSpecs = QStringList() << "ipc://server-in-stream";
 		config.clientInSpecs = QStringList() << "ipc://server-out";
 		config.inspectSpec = "ipc://inspect";
+		config.acceptSpec = "ipc://accept";
 		config.retryInSpec = "ipc://retry-out";
-		config.acceptOutSpec = "ipc://accept-in";
 		config.inspectTimeout = 500;
 		config.routesFile = "routes";
 		config.sigIss = "pushpin";

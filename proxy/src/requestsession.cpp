@@ -35,6 +35,7 @@
 #include "zrpcmanager.h"
 #include "zrpcchecker.h"
 #include "inspectrequest.h"
+#include "acceptrequest.h"
 
 #define MAX_PREFETCH_REQUEST_BODY 10000
 #define MAX_SHARED_REQUEST_BODY 100000
@@ -190,6 +191,7 @@ public:
 		Prefetching,
 		Inspecting,
 		Receiving,
+		ReceivingForAccept,
 		Accepting,
 		WaitingForResponse,
 		RespondingStart,
@@ -203,12 +205,14 @@ public:
 	DomainMap *domainMap;
 	ZrpcManager *inspectManager;
 	ZrpcChecker *inspectChecker;
+	ZrpcManager *acceptManager;
 	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
 	DomainMap::Entry route;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
 	InspectData idata;
+	AcceptRequest *acceptRequest;
 	BufferList in;
 	QByteArray jsonpCallback;
 	bool jsonpExtendedResponse;
@@ -220,16 +224,18 @@ public:
 	bool isRetry;
 	QList<QByteArray> jsonpExtractableHeaders;
 
-	Private(RequestSession *_q, DomainMap *_domainMap, ZrpcManager *_inspectManager, ZrpcChecker *_inspectChecker) :
+	Private(RequestSession *_q, DomainMap *_domainMap, ZrpcManager *_inspectManager, ZrpcChecker *_inspectChecker, ZrpcManager *_acceptManager) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
 		domainMap(_domainMap),
 		inspectManager(_inspectManager),
 		inspectChecker(_inspectChecker),
+		acceptManager(_acceptManager),
 		zhttpRequest(0),
 		autoCrossOrigin(false),
 		inspectRequest(0),
+		acceptRequest(0),
 		jsonpExtendedResponse(false),
 		responseBodyFinished(false),
 		pendingResponseUpdate(false),
@@ -416,7 +422,7 @@ public:
 				emit q->inspected(idata);
 			}
 		}
-		else if(state == Accepting)
+		else if(state == ReceivingForAccept)
 		{
 			QByteArray buf = zhttpRequest->readBody();
 			if(in.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
@@ -432,15 +438,20 @@ public:
 		}
 	}
 
+	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
+	{
+		q->startResponse(code, reason, headers);
+		q->writeResponseBody(body);
+		q->endResponseBody();
+	}
+
 	void respond(int code, const QString &status, const QByteArray &body)
 	{
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
 		headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
 
-		q->startResponse(code, status.toUtf8(), headers);
-		q->writeResponseBody(body);
-		q->endResponseBody();
+		respond(code, status.toUtf8(), headers, body);
 	}
 
 	void respondError(int code, const QString &status, const QString &errorString)
@@ -451,6 +462,11 @@ public:
 	void respondBadRequest(const QString &errorString)
 	{
 		respondError(400, "Bad Request", errorString);
+	}
+
+	void respondCannotAccept()
+	{
+		respondError(500, "Internal Server Error", "Accept service unavailable.");
 	}
 
 	void responseUpdate()
@@ -725,7 +741,7 @@ public slots:
 
 	void zhttpRequest_paused()
 	{
-		if(state == Accepting)
+		if(state == ReceivingForAccept)
 		{
 			ZhttpRequest::ServerState ss = zhttpRequest->serverState();
 
@@ -752,13 +768,12 @@ public slots:
 			adata.inspectData.sharingKey = idata.sharingKey;
 			adata.inspectData.userData = idata.userData;
 
-			// the request was paused, so deleting it will leave the peer session active
-			delete zhttpRequest;
-			zhttpRequest = 0;
+			adata.route = route.id;
+			adata.channelPrefix = route.prefix;
 
-			state = Stopped;
-
-			emit q->finishedForAccept(adata);
+			acceptRequest = new AcceptRequest(acceptManager, this);
+			connect(acceptRequest, SIGNAL(finished()), SLOT(acceptRequest_finished()));
+			acceptRequest->start(adata);
 		}
 		else
 		{
@@ -788,7 +803,7 @@ public slots:
 
 		if(!idata.doProxy)
 		{
-			state = Accepting;
+			state = ReceivingForAccept;
 
 			// successful inspect indicated we should not proxy. in that case,
 			//   collect the body and accept
@@ -822,6 +837,49 @@ public slots:
 
 		state = WaitingForResponse;
 		emit q->inspectError();
+	}
+
+	void acceptRequest_finished()
+	{
+		if(acceptRequest->success())
+		{
+			AcceptRequest::ResponseData rdata = acceptRequest->result();
+
+			delete acceptRequest;
+			acceptRequest = 0;
+
+			if(rdata.accepted)
+			{
+				// the request was paused, so deleting it will leave the peer session active
+				delete zhttpRequest;
+				zhttpRequest = 0;
+
+				state = Stopped;
+
+				emit q->finishedByAccept();
+			}
+			else
+			{
+				if(rdata.response.code != -1)
+				{
+					zhttpRequest->resume();
+					respond(rdata.response.code, rdata.response.reason, rdata.response.headers, rdata.response.body);
+				}
+				else
+				{
+					zhttpRequest->resume();
+					respondCannotAccept();
+				}
+			}
+		}
+		else
+		{
+			delete acceptRequest;
+			acceptRequest = 0;
+
+			zhttpRequest->resume();
+			respondCannotAccept();
+		}
 	}
 
 	void doResponseUpdate()
@@ -974,10 +1032,10 @@ public slots:
 	}
 };
 
-RequestSession::RequestSession(DomainMap *domainMap, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, QObject *parent) :
+RequestSession::RequestSession(DomainMap *domainMap, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, domainMap, inspectManager, inspectChecker);
+	d = new Private(this, domainMap, inspectManager, inspectChecker, acceptManager);
 }
 
 RequestSession::~RequestSession()
@@ -1072,9 +1130,14 @@ void RequestSession::pause()
 	d->zhttpRequest->pause();
 }
 
+void RequestSession::resume()
+{
+	d->zhttpRequest->resume();
+}
+
 void RequestSession::startResponse(int code, const QByteArray &reason, const HttpHeaders &headers)
 {
-	assert(d->state == Private::Accepting || d->state == Private::WaitingForResponse);
+	assert(d->state == Private::ReceivingForAccept || d->state == Private::WaitingForResponse);
 
 	d->state = Private::RespondingStart;
 	d->responseData.code = code;
@@ -1102,6 +1165,11 @@ void RequestSession::endResponseBody()
 	d->responseUpdate();
 }
 
+void RequestSession::respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
+{
+	d->respond(code, reason, headers, body);
+}
+
 void RequestSession::respondError(int code, const QString &reason, const QString &errorString)
 {
 	d->respondError(code, reason, errorString);
@@ -1109,7 +1177,7 @@ void RequestSession::respondError(int code, const QString &reason, const QString
 
 void RequestSession::respondCannotAccept()
 {
-	respondError(500, "Internal Server Error", "Accept service unavailable.");
+	d->respondCannotAccept();
 }
 
 #include "requestsession.moc"

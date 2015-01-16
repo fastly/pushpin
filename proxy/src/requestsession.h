@@ -37,7 +37,7 @@ class RequestSession : public QObject
 	Q_OBJECT
 
 public:
-	RequestSession(DomainMap *domainMap, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, QObject *parent = 0);
+	RequestSession(DomainMap *domainMap, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept, QObject *parent = 0);
 	~RequestSession();
 
 	bool isRetry() const;
@@ -60,11 +60,13 @@ public:
 	void startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse);
 
 	void pause();
+	void resume();
 
 	void startResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
 	void writeResponseBody(const QByteArray &body);
 	void endResponseBody();
 
+	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
 	void respondError(int code, const QString &reason, const QString &errorString);
 	void respondCannotAccept();
 
@@ -72,7 +74,7 @@ signals:
 	void inspected(const InspectData &idata);
 	void inspectError();
 	void finished();
-	void finishedForAccept(const AcceptData &adata);
+	void finishedByAccept();
 	void bytesWritten(int count);
 	void paused();
 

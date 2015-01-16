@@ -42,9 +42,6 @@ public:
 protected:
 	virtual void onSuccess();
 
-signals:
-	void finished(const InspectData &idata);
-
 private:
 	class Private;
 	Private *d;

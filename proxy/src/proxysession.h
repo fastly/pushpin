@@ -25,6 +25,7 @@
 
 class InspectData;
 class AcceptData;
+class ZrpcManager;
 class ZRoutes;
 class XffRule;
 class RequestSession;
@@ -34,7 +35,7 @@ class ProxySession : public QObject
 	Q_OBJECT
 
 public:
-	ProxySession(ZRoutes *zroutes, QObject *parent = 0);
+	ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, QObject *parent = 0);
 	~ProxySession();
 
 	void setRoute(const DomainMap::Entry &route);
@@ -53,8 +54,7 @@ public:
 
 signals:
 	void addNotAllowed(); // no more sharing, for whatever reason
-	void finishedByPassthrough();
-	void finishedForAccept(const AcceptData &adata);
+	void finished();
 	void requestSessionDestroyed(RequestSession *rs, bool accept);
 
 private:

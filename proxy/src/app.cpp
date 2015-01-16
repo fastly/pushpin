@@ -223,8 +223,8 @@ public:
 		QStringList zurl_in_specs = settings.value("proxy/zurl_in_specs").toStringList();
 		trimlist(&zurl_in_specs);
 		QString handler_inspect_spec = settings.value("proxy/handler_inspect_spec").toString();
+		QString handler_accept_spec = settings.value("proxy/handler_accept_spec").toString();
 		QString handler_retry_in_spec = settings.value("proxy/handler_retry_in_spec").toString();
-		QString handler_accept_out_spec = settings.value("proxy/handler_accept_out_spec").toString();
 		QString handler_ws_control_in_spec = settings.value("proxy/handler_ws_control_in_spec").toString();
 		QString handler_ws_control_out_spec = settings.value("proxy/handler_ws_control_out_spec").toString();
 		QString stats_spec = settings.value("proxy/stats_spec").toString();
@@ -265,8 +265,8 @@ public:
 		config.clientOutStreamSpecs = zurl_out_stream_specs;
 		config.clientInSpecs = zurl_in_specs;
 		config.inspectSpec = handler_inspect_spec;
+		config.acceptSpec = handler_accept_spec;
 		config.retryInSpec = handler_retry_in_spec;
-		config.acceptOutSpec = handler_accept_out_spec;
 		config.wsControlInSpec = handler_ws_control_in_spec;
 		config.wsControlOutSpec = handler_ws_control_out_spec;
 		config.statsSpec = stats_spec;
