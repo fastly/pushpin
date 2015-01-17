@@ -51,8 +51,13 @@ class CallError(Exception):
 		return "condition=%s, message=%s" % (self.condition, self.message)
 
 class RpcClient(object):
-	def __init__(self, req_sock_specs):
+	def __init__(self, req_sock_specs, bind=False, context=None):
+		if context:
+			self.context = context
+		else:
+			self.context = zmq_context
 		self.specs = req_sock_specs
+		self.use_bind = bind
 		self.sock = None
 		self._reset_socket()
 
@@ -60,11 +65,14 @@ class RpcClient(object):
 		if self.sock is not None:
 			self.sock.linger = 0
 			self.sock.close()
-		self.sock = zmq_context.socket(zmq.DEALER)
-		for spec in self.specs:
-			self.sock.connect(spec)
+		self.sock = self.context.socket(zmq.DEALER)
+		if self.use_bind:
+			self.sock.bind(self.specs[0])
+		else:
+			for spec in self.specs:
+				self.sock.connect(spec)
 
-	def call(self, method, args):
+	def call(self, method, args, timeout=10000):
 		req = dict()
 		req['id'] = str(uuid.uuid4())
 		req['method'] = ensure_utf8(method)
@@ -83,7 +91,7 @@ class RpcClient(object):
 		while True:
 			elapsed = max(int(time.clock() * 1000) - start, 0)
 			try:
-				if not self.sock.poll(max(30000 - elapsed, 0), zmq.POLLIN):
+				if not self.sock.poll(max(timeout - elapsed, 0), zmq.POLLIN):
 					raise CallError('receive-timeout')
 				m_list = self.sock.recv_multipart()
 			except zmq.ZMQError as e:
