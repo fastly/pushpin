@@ -119,10 +119,19 @@ public:
 	void give(ZrpcRequest *req)
 	{
 		Item *i = requestsByReq.value(req);
-		assert(i);
-
-		req->setParent(this);
-		i->owned = true;
+		if(i)
+		{
+			// take over ownership
+			req->setParent(this);
+			i->owned = true;
+		}
+		else
+		{
+			// if we aren't watching (or were watching, but no
+			//   longer watching), then just delete what we were
+			//   given
+			delete req;
+		}
 	}
 
 	void handleSuccess()

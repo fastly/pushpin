@@ -127,6 +127,7 @@ public:
 		int pathRemove;
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
+		bool session;
 		QList<Target> targets;
 
 		Rule() :
@@ -134,7 +135,8 @@ public:
 			ssl(-1),
 			origHeaders(false),
 			pathRemove(0),
-			autoCrossOrigin(false)
+			autoCrossOrigin(false),
+			session(false)
 		{
 		}
 
@@ -195,6 +197,7 @@ public:
 			e.pathRemove = pathRemove;
 			e.autoCrossOrigin = autoCrossOrigin;
 			e.jsonpConfig = jsonpConfig;
+			e.session = session;
 			e.targets = targets;
 			return e;
 		}
@@ -368,6 +371,9 @@ public:
 			{
 				r.jsonpConfig.defaultCallback = props.value("jsonp_defcb").toUtf8();
 			}
+
+			if(props.contains("session"))
+				r.session = true;
 
 			QList<Rule> *rules = 0;
 			if(newmap.contains(domain))

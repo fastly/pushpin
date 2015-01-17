@@ -37,7 +37,7 @@ public:
 
 	InspectData result() const;
 
-	void start(const HttpRequestData &hdata, bool truncated);
+	void start(const HttpRequestData &hdata, bool truncated, bool getSession);
 
 protected:
 	virtual void onSuccess();

@@ -129,7 +129,7 @@ InspectData InspectRequest::result() const
 	return d->idata;
 }
 
-void InspectRequest::start(const HttpRequestData &hdata, bool truncated)
+void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool getSession)
 {
 	QVariantHash args;
 
@@ -150,6 +150,9 @@ void InspectRequest::start(const HttpRequestData &hdata, bool truncated)
 
 	if(truncated)
 		args["truncated"] = true;
+
+	if(getSession)
+		args["get-session"] = true;
 
 	ZrpcRequest::start("inspect", args);
 }

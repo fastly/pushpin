@@ -392,15 +392,16 @@ public:
 				{
 					connect(inspectRequest, SIGNAL(finished()), SLOT(inspectRequest_finished()));
 					inspectChecker->watch(inspectRequest);
-					inspectRequest->start(requestData, truncated);
+					inspectRequest->start(requestData, truncated, route.session);
 				}
 				else
 				{
+					log_debug("inspect not available");
 					inspectChecker->watch(inspectRequest);
 					inspectChecker->give(inspectRequest);
-					inspectRequest->start(requestData, truncated);
+					inspectRequest->start(requestData, truncated, route.session);
 					inspectRequest = 0;
-					QMetaObject::invokeMethod(this, "inspectRequest_error", Qt::QueuedConnection);
+					QMetaObject::invokeMethod(this, "doInspectError", Qt::QueuedConnection);
 				}
 			}
 		}
@@ -792,13 +793,18 @@ public slots:
 	{
 		if(!inspectRequest->success())
 		{
-			inspectRequest_error();
+			inspectRequest->disconnect(this);
+			inspectChecker->give(inspectRequest);
+			inspectRequest = 0;
+
+			doInspectError();
 			return;
 		}
 
 		idata = inspectRequest->result();
 
-		delete inspectRequest;
+		inspectRequest->disconnect(this);
+		inspectChecker->give(inspectRequest);
 		inspectRequest = 0;
 
 		if(!idata.doProxy)
@@ -828,15 +834,6 @@ public slots:
 				emit q->inspected(idata);
 			}
 		}
-	}
-
-	void inspectRequest_error()
-	{
-		delete inspectRequest;
-		inspectRequest = 0;
-
-		state = WaitingForResponse;
-		emit q->inspectError();
 	}
 
 	void acceptRequest_finished()
@@ -1029,6 +1026,12 @@ public slots:
 	void respondSuccess(const QString &message)
 	{
 		respond(200, "OK", message.toUtf8() + '\n');
+	}
+
+	void doInspectError()
+	{
+		state = WaitingForResponse;
+		emit q->inspectError();
 	}
 };
 

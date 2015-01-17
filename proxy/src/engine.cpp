@@ -584,13 +584,12 @@ private slots:
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
 			RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, accept, this);
-			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
-
 			requestSessions += rs;
 
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse
 			//   stats processors tracking route+connection mappings.
+			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0, true);
 		}

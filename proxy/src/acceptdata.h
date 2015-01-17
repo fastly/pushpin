@@ -68,10 +68,12 @@ public:
 
 	QByteArray route;
 	QByteArray channelPrefix;
+	bool useSession;
 
 	AcceptData() :
 		haveInspectData(false),
-		haveResponse(false)
+		haveResponse(false),
+		useSession(false)
 	{
 	}
 };

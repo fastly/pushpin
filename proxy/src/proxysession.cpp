@@ -802,6 +802,7 @@ public slots:
 
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
+			adata.useSession = route.session;
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
 			connect(acceptRequest, SIGNAL(finished()), SLOT(acceptRequest_finished()));

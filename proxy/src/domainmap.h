@@ -126,6 +126,7 @@ public:
 		int pathRemove;
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
+		bool session;
 		QList<Target> targets;
 
 		bool isNull() const
@@ -136,7 +137,8 @@ public:
 		Entry() :
 			origHeaders(false),
 			pathRemove(0),
-			autoCrossOrigin(false)
+			autoCrossOrigin(false),
+			session(false)
 		{
 		}
 	};

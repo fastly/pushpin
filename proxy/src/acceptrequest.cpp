@@ -129,6 +129,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 	if(!adata.channelPrefix.isEmpty())
 		obj["channel-prefix"] = adata.channelPrefix;
 
+	if(adata.useSession)
+		obj["use-session"] = true;
+
 	return obj;
 }
 
