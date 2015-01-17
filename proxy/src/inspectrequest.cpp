@@ -53,6 +53,45 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 		out.sharingKey = obj["sharing-key"].toByteArray();
 	}
 
+	out.sid.clear();
+	if(obj.contains("sid"))
+	{
+		if(obj["sid"].type() != QVariant::ByteArray)
+		{
+			*ok = false;
+			return InspectData();
+		}
+
+		out.sid = obj["sid"].toByteArray();
+	}
+
+	out.lastIds.clear();
+	if(obj.contains("last-ids"))
+	{
+		if(obj["last-ids"].type() != QVariant::Hash)
+		{
+			*ok = false;
+			return InspectData();
+		}
+
+		QVariantHash vlastIds = obj["last-ids"].toHash();
+		QHashIterator<QString, QVariant> it(vlastIds);
+		while(it.hasNext())
+		{
+			it.next();
+
+			if(it.value().type() != QVariant::ByteArray)
+			{
+				*ok = false;
+				return InspectData();
+			}
+
+			QByteArray key = it.key().toUtf8();
+			QByteArray val = it.value().toByteArray();
+			out.lastIds.insert(key, val);
+		}
+	}
+
 	out.userData = obj["user-data"];
 
 	*ok = true;

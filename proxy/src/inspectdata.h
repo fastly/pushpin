@@ -28,6 +28,8 @@ class InspectData
 public:
 	bool doProxy;
 	QByteArray sharingKey;
+	QByteArray sid;
+	QHash<QByteArray, QByteArray> lastIds;
 	QVariant userData;
 
 	InspectData() :

@@ -22,6 +22,7 @@
 #include <QDateTime>
 #include "log.h"
 #include "jwt.h"
+#include "inspectdata.h"
 
 static QByteArray make_token(const QByteArray &iss, const QByteArray &key)
 {
@@ -48,7 +49,7 @@ static bool validate_token(const QByteArray &token, const QByteArray &key)
 
 namespace ProxyUtil {
 
-bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress)
+bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata)
 {
 	// check if the request is coming from a grip proxy already
 	bool trustedClient = false;
@@ -143,8 +144,17 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 
 	if(!trustedClient)
 	{
-		// remove/replace Grip-Sig
-		requestData->headers.removeAll("Grip-Sig");
+		// remove all Grip- headers
+		for(int n = 0; n < requestData->headers.count(); ++n)
+		{
+			if(qstrnicmp(requestData->headers[n].first.data(), "Grip-", 5) == 0)
+			{
+				requestData->headers.removeAt(n);
+				--n; // adjust position
+			}
+		}
+
+		// set Grip-Sig
 		if(!sigIss.isEmpty() && !sigKey.isEmpty())
 		{
 			QByteArray token = make_token(sigIss, sigKey);
@@ -152,6 +162,17 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 				requestData->headers += HttpHeader("Grip-Sig", token);
 			else
 				log_warning("%s: %p failed to sign request", logprefix, object);
+		}
+	}
+
+	if(!idata.sid.isEmpty())
+	{
+		requestData->headers += HttpHeader("Grip-Session-Id", idata.sid);
+		QHashIterator<QByteArray, QByteArray> it(idata.lastIds);
+		while(it.hasNext())
+		{
+			it.next();
+			requestData->headers += HttpHeader("Grip-Last", it.key() + "; last-id=" + it.value());
 		}
 	}
 
