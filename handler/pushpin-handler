@@ -81,6 +81,7 @@ import copy
 import logging
 from logging.handlers import WatchedFileHandler
 from base64 import b64decode
+import urlparse
 from setproctitle import setproctitle
 import zmq
 import tnetstring
@@ -155,6 +156,11 @@ if config.has_option("handler", "proxy_command_spec"):
 else:
 	proxy_command_spec = None
 
+if config.has_option("handler", "state_spec"):
+	state_spec = config.get("handler", "state_spec")
+else:
+	state_spec = None
+
 ctx = zmq.Context()
 
 class Hold(object):
@@ -168,12 +174,14 @@ class Hold(object):
 		self.jsonp_extended_response = False
 		self.expire_time = None
 		self.last_keepalive = None
+		self.sid = None
 
 class WsSession(object):
 	def __init__(self, cid):
 		self.cid = cid
 		self.expire_time = None
 		self.channel_prefix = None
+		self.sid = None
 
 class Subscription(object):
 	def __init__(self, mode, channel):
@@ -191,6 +199,16 @@ class ConnectionInfo(object):
 		self.ssl = False
 		self.linger = False
 		self.last_keepalive = None
+
+class SessionDetectRule(object):
+	def __init__(self):
+		self.domain = None
+		self.path_prefix = None
+		self.sid_ptr = None
+
+class Session(object):
+	def __init__(self):
+		self.id = None
 
 lock = threading.Lock()
 response_channels = dict()
@@ -560,9 +578,43 @@ def json_patch(data, ops):
 			raise ValueError('unsupported op: %s' % otype)
 	return out
 
+def session_detect_rules_set(state_rpc, rules):
+	rule_data_list = list()
+	for r in rules:
+		rule_data = {"domain": r.domain, "path-prefix": r.path_prefix, "sid-ptr": r.sid_ptr}
+		rule_data_list.append(rule_data)
+	state_rpc.call("session-detect-rules-set", {"rules": rule_data_list})
+
+def session_detect_rules_get(state_rpc, domain, path):
+	out = list()
+	ret = state_rpc.call("session-detect-rules-get", {"domain": domain, "path": path})
+	for rule_data in ret:
+		r = SessionDetectRule()
+		r.domain = rule_data["domain"]
+		r.path_prefix = rule_data["path-prefix"]
+		r.sid_ptr = rule_data["sid-ptr"]
+		out.append(r)
+	return out
+
+def session_create_or_update(state_rpc, sid, last_ids):
+	state_rpc.call("session-create-or-update", {"sid": sid, "last-ids": last_ids})
+
+# sid_last_ids is dict of {sid: last_ids}
+def session_update_many(state_rpc, sid_last_ids):
+	state_rpc.call("session-update-many", {"sid-last-ids": sid_last_ids})
+
+def session_get_last_ids(state_rpc, sid):
+	# dict of channel, last-id
+	return state_rpc.call("session-get-last-ids", {"sid": sid})
+
 def inspect_worker():
 	sock = ctx.socket(zmq.REP)
 	sock.connect(config.get("handler", "proxy_inspect_spec"))
+
+	if state_spec:
+		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
+	else:
+		state_rpc = None
 
 	while True:
 		m_raw = sock.recv()
@@ -572,15 +624,39 @@ def inspect_worker():
 		id = m["id"]
 		args = m["args"]
 
-		# reply saying to always proxy
 		method = args["method"]
 		uri = args["uri"]
+		get_session = args.get("get-session", False)
 
 		m = dict()
+
+		# reply saying to always proxy
 		m["no-proxy"] = False
 
 		if share_all:
 			m["sharing-key"] = method + '|' + uri
+
+		# determine session info
+		if get_session and state_rpc:
+			try:
+				uri = urlparse.urlparse(uri)
+				rules = session_detect_rules_get(state_rpc, uri.netloc, uri.path)
+				logger.debug("retrieved %d rules", len(rules))
+				if rules:
+					sid = None
+					body = json.loads(args["body"])
+					for r in rules:
+						ptr = resolve_json_pointer(body, r.sid_ptr)
+						if ptr and not ptr.child_name and not ptr.child_index:
+							sid = ensure_utf8(ptr.obj)
+							break
+					if sid:
+						last_ids = session_get_last_ids(state_rpc, sid)
+						m["sid"] = sid
+						if last_ids:
+							m["last-ids"] = last_ids
+			except:
+				logger.debug("failed to detect session")
 
 		resp = {"id": id, "success": True, "value": m}
 		logger.debug("OUT inspect: %s" % resp)
@@ -603,17 +679,91 @@ def accept_worker():
 	stats_sock = ctx.socket(zmq.PUSH)
 	stats_sock.connect('inproc://stats_in')
 
+	if state_spec:
+		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
+	else:
+		state_rpc = None
+
 	while True:
 		m_raw = sock.recv()
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN accept: %s" % m)
 
-		# for now always ack as a take
-		mresp = {"id": m["id"], "success": True, "value": {"accepted": True}}
-		logger.debug("OUT accept: %s" % mresp)
-		sock.send(tnetstring.dumps(mresp))
+		req_id = m["id"]
+
+		if m['method'] != 'accept':
+			mresp = {"id": req_id, "success": False, "condition": "method-not-found"}
+			logger.debug("OUT accept: %s" % mresp)
+			sock.send(tnetstring.dumps(mresp))
+			continue
 
 		m = m["args"]
+
+		if "response" not in m:
+			mresp = {"id": req_id, "success": False, "condition": "bad-request"}
+			logger.debug("OUT accept: %s" % mresp)
+			sock.send(tnetstring.dumps(mresp))
+			continue
+
+		resp_headers = m["response"].get("headers") or {}
+		content_type = header_get(resp_headers, "Content-Type")
+		sid = header_get(resp_headers, "Grip-Session-Id")
+		last_ids = dict()
+		rule_headers = header_get_all_parsed(resp_headers, "Grip-Session-Detect")
+		rules = list()
+		try:
+			for rh in rule_headers:
+				params = rh[1]
+				at = rh[0].find("=")
+				if at != -1:
+					params[rh[0][:at]] = rh[0][at + 1:]
+				else:
+					params[rh[0]] = ""
+				if params.get("path-prefix") and params.get("sid-ptr"):
+					r = SessionDetectRule()
+					uri = m["request-data"]["uri"]
+					r.domain = urlparse.urlparse(uri).netloc
+					r.path_prefix = params["path-prefix"]
+					r.sid_ptr = params["sid-ptr"]
+					rules.append(r)
+			last_headers = header_get_all_parsed(resp_headers, "Grip-Last")
+			for lh in last_headers:
+				channel = lh[0]
+				last_id = lh[1]["last-id"]
+				last_ids[channel] = last_id
+		except:
+			logger.debug("error parsing detect/last headers")
+
+		if m.get("use-session") and state_rpc:
+			if rules:
+				try:
+					session_detect_rules_set(state_rpc, rules)
+				except:
+					logger.debug("couldn't store detection rules")
+
+			if sid:
+				try:
+					session_create_or_update(state_rpc, sid, last_ids)
+				except:
+					logger.debug("couldn't update session")
+
+		# TODO: support non-hold grip-instruct
+
+		if content_type != "application/grip-instruct" and not header_get(resp_headers, "Grip-Hold"):
+			new_headers = list()
+			for i in resp_headers:
+				if i[0].lower().startswith('grip-'):
+					continue
+				new_headers[i[0]] = i[1]
+			response["headers"] = new_headers
+			mresp = {"id": req_id, "success": True, "value": {"response": m["response"]}}
+			logger.debug("OUT accept: %s" % mresp)
+			sock.send(tnetstring.dumps(mresp))
+			continue
+
+		mresp = {"id": req_id, "success": True, "value": {"accepted": True}}
+		logger.debug("OUT accept: %s" % mresp)
+		sock.send(tnetstring.dumps(mresp))
 
 		reqs = m["requests"]
 
@@ -727,6 +877,7 @@ def accept_worker():
 			h.out_seq = req["out-seq"]
 			h.out_credits = req["out-credits"]
 			h.jsonp_extended_response = req.get("jsonp-extended-response", False)
+			h.sid = sid
 
 			notify_sub = False
 			if mode == "response":
@@ -943,25 +1094,34 @@ def push_in_worker(c):
 	stats_sock = ctx.socket(zmq.PUSH)
 	stats_sock.connect('inproc://stats_in')
 
+	if state_spec:
+		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
+	else:
+		state_rpc = None
+
 	while True:
 		m_raw = in_sock.recv()
 		m = tnetstring.loads(m_raw)
 		logger.debug("IN publish: %s" % m)
 		channel = m["channel"]
+		id = m.get("id", None)
 		formats = m["formats"]
+
+		response_holds = list()
+		stream_holds = list()
+		ws_cids = list()
+		ws_sids = list()
 
 		if "http-response" in formats:
 			lock.acquire()
 			hchannel = response_channels.get(channel)
 			if hchannel:
-				holds = hchannel.values()
+				response_holds = hchannel.values()
 				del response_channels[channel]
-				for h in holds:
+				for h in response_holds:
 					req_channels = channels_by_req[h.rid]
 					req_channels.remove(('response', channel))
 					remove_from_response_channels(h.rid)
-			else:
-				holds = list()
 			sub_key = ('response', channel)
 			sub = subs.get(sub_key)
 			if sub and sub.expire_time is None:
@@ -971,7 +1131,57 @@ def push_in_worker(c):
 			if item_id is not None:
 				response_lastids[channel] = item_id
 			lock.release()
-			logger.debug("relaying to %d subscribers" % len(holds))
+
+		if "http-stream" in formats:
+			# TODO: support close action and report immediate unsubscribe via stats
+			lock.acquire()
+			hchannel = stream_channels.get(channel)
+			if hchannel:
+				stream_holds = hchannel.values()
+			lock.release()
+
+		if "ws-message" in formats:
+			lock.acquire()
+			hchannel = ws_channels.get(channel)
+			if hchannel:
+				for cid, sess in hchannel.iteritems():
+					ws_cids.append(cid)
+					if sess.sid:
+						ws_sids.append(sess.sid)
+			lock.release()
+
+		# update sessions' last-id
+		if id is not None:
+			sid_last_ids = dict()
+			for h in response_holds:
+				if h.sid:
+					last_ids = sid_last_ids.get(h.sid)
+					if last_ids is None:
+						last_ids = dict()
+						sid_last_ids[h.sid] = last_ids
+					last_ids[channel] = id
+			for h in stream_holds:
+				if h.sid:
+					last_ids = sid_last_ids.get(h.sid)
+					if last_ids is None:
+						last_ids = dict()
+						sid_last_ids[h.sid] = last_ids
+					last_ids[channel] = id
+			for sid in ws_sids:
+				last_ids = sid_last_ids.get(sid)
+				if last_ids is None:
+					last_ids = dict()
+					sid_last_ids[sid] = last_ids
+				last_ids[channel] = id
+
+			if sid_last_ids and state_rpc:
+				try:
+					session_update_many(state_rpc, sid_last_ids)
+				except:
+					logger.debug("couldn't update sessions")
+
+		if response_holds:
+			logger.debug("relaying to %d http-response subscribers" % len(response_holds))
 			http_response = formats["http-response"]
 
 			if "code" in http_response:
@@ -1007,7 +1217,7 @@ def push_in_worker(c):
 			grip_expose_headers = header_get_all(pheaders, 'Grip-Expose-Headers')
 			header_remove(pheaders, 'Grip-Expose-Headers')
 
-			for n, h in enumerate(holds):
+			for n, h in enumerate(response_holds):
 				# inherit any headers from the timeout response
 				if 'headers' in h.response:
 					rheaders = copy.deepcopy(h.response['headers'])
@@ -1088,7 +1298,7 @@ def push_in_worker(c):
 					out['unavailable'] = True
 					stats_sock.send('conn ' + tnetstring.dumps(out))
 
-			rcount = len(holds)
+			rcount = len(response_holds)
 			if rcount > 0:
 				out = dict()
 				out['from'] = instance_id
@@ -1099,17 +1309,9 @@ def push_in_worker(c):
 				out['transport'] = 'http-response'
 				stats_sock.send('message ' + tnetstring.dumps(out))
 
-		if "http-stream" in formats:
-			# TODO: support close action and report immediate unsubscribe via stats
-			lock.acquire()
-			hchannel = stream_channels.get(channel)
-			if hchannel:
-				holds = hchannel.values()
-			else:
-				holds = list()
-			lock.release()
-			logger.debug("relaying to %d subscribers" % len(holds))
-			for h in holds:
+		if stream_holds:
+			logger.debug("relaying to %d http-stream subscribers" % len(stream_holds))
+			for h in stream_holds:
 				content = formats["http-stream"]["content"]
 				if content:
 					if h.out_credits < len(content):
@@ -1120,7 +1322,7 @@ def push_in_worker(c):
 					h.out_credits -= len(content)
 					h.out_seq += 1
 					lock.release()
-			rcount = len(holds)
+			rcount = len(stream_holds)
 			if rcount > 0:
 				out = dict()
 				out['from'] = instance_id
@@ -1131,16 +1333,9 @@ def push_in_worker(c):
 				out['transport'] = 'http-stream'
 				stats_sock.send('message ' + tnetstring.dumps(out))
 
-		if "ws-message" in formats:
-			lock.acquire()
-			hchannel = ws_channels.get(channel)
-			if hchannel:
-				cids = hchannel.keys()
-			else:
-				cids = list()
-			lock.release()
-			logger.debug("relaying to %d subscribers" % len(cids))
-			for cid in cids:
+		if ws_cids:
+			logger.debug("relaying to %d ws-message subscribers" % len(ws_cids))
+			for cid in ws_cids:
 				t = formats['ws-message']
 				if 'content-bin' in t:
 					content_type = 'binary'
@@ -1161,7 +1356,7 @@ def push_in_worker(c):
 					out['items'] = [item]
 					logger.debug('OUT wscontrol: %s' % out)
 					ws_control_out_sock.send(tnetstring.dumps(out))
-			rcount = len(cids)
+			rcount = len(ws_cids)
 			if rcount > 0:
 				out = dict()
 				out['from'] = instance_id
@@ -1696,7 +1891,7 @@ command_server = None
 def command_worker():
 	data = dict()
 	if proxy_command_spec:
-		data['proxy_client'] = rpc.RpcClient([proxy_command_spec])
+		data['proxy_client'] = rpc.RpcClient([proxy_command_spec], context=ctx)
 	command_server = rpc.RpcServer(command_spec, context=ctx)
 	command_server.run(command_handler, data)
 
@@ -1751,6 +1946,30 @@ def stats_worker(c):
 			m_raw = mtype + ' T' + mdata
 			logger.debug('OUT stats: %s' % m_raw)
 			out_sock.send(m_raw)
+
+def state_internal_handler(method, args, data):
+	state_client = data.get('state_client')
+	return state_client.call(method, args, timeout=1000)
+
+def state_internal_worker(c):
+	data = dict()
+	if state_spec:
+		data['state_client'] = rpc.RpcClient([state_spec], bind=True, context=ctx)
+	state_internal_server = rpc.RpcServer('inproc://state', context=ctx)
+	c.acquire()
+	c.notify()
+	c.release()
+	state_internal_server.run(state_internal_handler, data)
+
+if state_spec:
+	# we use a condition here to ensure the inproc bind succeeds before progressing
+	c = threading.Condition()
+	c.acquire()
+	state_internal_thread = threading.Thread(target=state_internal_worker, args=(c,))
+	state_internal_thread.daemon = True
+	state_internal_thread.start()
+	c.wait()
+	c.release()
 
 inspect_thread = threading.Thread(target=inspect_worker)
 inspect_thread.start()
