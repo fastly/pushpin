@@ -31,6 +31,7 @@
 #include "zrpcrequest.h"
 
 #define DEFAULT_HWM 5000
+#define SHUTDOWN_WAIT_TIME 1000
 
 class ZrpcManager::Private : public QObject
 {
@@ -111,6 +112,7 @@ public:
 		clientSock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 
 		clientSock->setHwm(DEFAULT_HWM);
+		clientSock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		if(doBind)
 		{
@@ -139,6 +141,7 @@ public:
 		serverSock = new QZmq::Socket(QZmq::Socket::Rep, this);
 
 		serverSock->setHwm(DEFAULT_HWM);
+		serverSock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		if(doBind)
 		{

@@ -34,6 +34,7 @@
 #define OUT_HWM 100
 #define IN_HWM 100
 #define DEFAULT_HWM 1000
+#define SHUTDOWN_WAIT_TIME 1000
 
 class ZhttpManager::Private : public QObject
 {
@@ -133,6 +134,7 @@ public:
 		connect(client_out_sock, SIGNAL(messagesWritten(int)), SLOT(client_out_messagesWritten(int)));
 
 		client_out_sock->setHwm(OUT_HWM);
+		client_out_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		if(doBind)
 		{
@@ -208,6 +210,7 @@ public:
 		connect(client_req_sock, SIGNAL(readyRead()), SLOT(client_req_readyRead()));
 
 		client_req_sock->setHwm(OUT_HWM);
+		client_req_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		if(doBind)
 		{
@@ -254,7 +257,7 @@ public:
 	{
 		delete server_in_stream_sock;
 
-		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
+		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
 		connect(server_in_stream_sock, SIGNAL(readyRead()), SLOT(server_in_stream_readyRead()));
 
 		server_in_stream_sock->setIdentity(instanceId);
@@ -283,6 +286,7 @@ public:
 
 		server_out_sock->setWriteQueueEnabled(false);
 		server_out_sock->setHwm(DEFAULT_HWM);
+		server_out_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		if(doBind)
 		{
@@ -621,19 +625,19 @@ public slots:
 		while(server_in_stream_sock->canRead())
 		{
 			QList<QByteArray> msg = server_in_stream_sock->read();
-			if(msg.count() != 2)
+			if(msg.count() != 3)
 			{
-				log_warning("zhttp/zws server: received message with parts != 2, skipping");
+				log_warning("zhttp/zws server: received message with parts != 3, skipping");
 				continue;
 			}
 
-			if(msg[1].length() < 1 || msg[1][0] != 'T')
+			if(msg[2].length() < 1 || msg[2][0] != 'T')
 			{
 				log_warning("zhttp/zws server: received message with invalid format (missing type), skipping");
 				continue;
 			}
 
-			QVariant data = TnetString::toVariant(msg[1].mid(1));
+			QVariant data = TnetString::toVariant(msg[2].mid(1));
 			if(data.isNull())
 			{
 				log_warning("zhttp/zws server: received message with invalid format (tnetstring parse failed), skipping");

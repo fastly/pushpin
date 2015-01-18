@@ -600,6 +600,7 @@ public:
 			}
 
 			zhttp_out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+			zhttp_out_stream_sock->setShutdownWaitTime(0);
 			zhttp_out_stream_sock->setHwm(DEFAULT_HWM);
 			if(zhttp_connect)
 			{
