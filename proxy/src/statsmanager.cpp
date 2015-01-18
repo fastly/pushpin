@@ -33,9 +33,9 @@
 
 #define ACTIVITY_TIMEOUT 100
 #define CONNECTION_TTL 600
-#define CONNECTION_REFRESH 540
+#define CONNECTION_REFRESH (CONNECTION_TTL * 9 / 10)
 #define CONNECTION_LINGER 60
-#define REFRESH_TIMEOUT 30000
+#define REFRESH_TIMEOUT (30 * 1000)
 
 // FIXME: trickle connection refreshes rather than all at once on an interval
 

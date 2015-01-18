@@ -60,6 +60,7 @@ HEADERS += \
 	$$SRC_DIR/inspectdata.h \
 	$$SRC_DIR/inspectrequest.h \
 	$$SRC_DIR/acceptrequest.h \
+	$$SRC_DIR/connectionmanager.h \
 	$$SRC_DIR/wscontrolmanager.h \
 	$$SRC_DIR/wscontrolsession.h \
 	$$SRC_DIR/acceptdata.h \
@@ -85,6 +86,7 @@ SOURCES += \
 	$$SRC_DIR/zrpcchecker.cpp \
 	$$SRC_DIR/inspectrequest.cpp \
 	$$SRC_DIR/acceptrequest.cpp \
+	$$SRC_DIR/connectionmanager.cpp \
 	$$SRC_DIR/wscontrolmanager.cpp \
 	$$SRC_DIR/wscontrolsession.cpp \
 	$$SRC_DIR/domainmap.cpp \

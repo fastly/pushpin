@@ -37,6 +37,7 @@
 #include "proxyutil.h"
 #include "statsmanager.h"
 #include "inspectdata.h"
+#include "connectionmanager.h"
 
 #define ACTIVITY_TIMEOUT 60000
 
@@ -203,6 +204,11 @@ static HttpExtension getExtension(const QList<QByteArray> &extStrings, const QBy
 	return HttpExtension();
 }
 
+static QByteArray ridToString(const QPair<QByteArray, QByteArray> &rid)
+{
+	return rid.first + ':' + rid.second;
+}
+
 class WsProxySession::Private : public QObject
 {
 	Q_OBJECT
@@ -221,6 +227,7 @@ public:
 	ZRoutes *zroutes;
 	ZhttpManager *zhttpManager;
 	DomainMap *domainMap;
+	ConnectionManager *connectionManager;
 	StatsManager *statsManager;
 	WsControlManager *wsControlManager;
 	WsControlSession *wsControl;
@@ -247,14 +254,16 @@ public:
 	bool detached;
 	QString subChannel;
 	QTimer *activityTimer;
+	QByteArray publicCid;
 
-	Private(WsProxySession *_q, ZRoutes *_zroutes, DomainMap *_domainMap, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
+	Private(WsProxySession *_q, ZRoutes *_zroutes, DomainMap *_domainMap, ConnectionManager *_connectionManager, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
 		q(_q),
 		state(Idle),
 		zroutes(_zroutes),
 		zhttpManager(0),
 		domainMap(_domainMap),
+		connectionManager(_connectionManager),
 		statsManager(_statsManager),
 		wsControlManager(_wsControlManager),
 		wsControl(0),
@@ -280,8 +289,12 @@ public:
 
 	void cleanup()
 	{
-		delete inSock;
-		inSock = 0;
+		if(inSock)
+		{
+			connectionManager->removeConnection(inSock->rid());
+			delete inSock;
+			inSock = 0;
+		}
 
 		delete outSock;
 		outSock = 0;
@@ -304,13 +317,14 @@ public:
 		}
 	}
 
-	void start(ZWebSocket *sock)
+	void start(ZWebSocket *sock, const QByteArray &_publicCid)
 	{
 		assert(!inSock);
 
 		state = Connecting;
 
 		rid = sock->rid();
+		publicCid = _publicCid;
 
 		if(statsManager)
 			activityTimer->start(ACTIVITY_TIMEOUT);
@@ -412,7 +426,9 @@ public:
 
 		if(target.overHttp)
 		{
-			outSock = new WebSocketOverHttp(zhttpManager, this);
+			WebSocketOverHttp *woh = new WebSocketOverHttp(zhttpManager, this);
+			woh->setConnectionId(publicCid);
+			outSock = woh;
 		}
 		else
 		{
@@ -584,13 +600,26 @@ private slots:
 		}
 		else
 		{
-			if(outSock && outSock->state() != WebSocket::Closing)
-				outSock->close();
+			if(outSock)
+			{
+				if(outSock->state() == WebSocket::Connecting)
+				{
+					delete outSock;
+					outSock = 0;
+
+					inSock->close();
+				}
+				else if(outSock->state() == WebSocket::Connected)
+				{
+					outSock->close();
+				}
+			}
 		}
 	}
 
 	void in_closed()
 	{
+		connectionManager->removeConnection(inSock->rid());
 		delete inSock;
 		inSock = 0;
 
@@ -602,6 +631,7 @@ private slots:
 
 	void in_error()
 	{
+		connectionManager->removeConnection(inSock->rid());
 		delete inSock;
 		inSock = 0;
 
@@ -641,7 +671,7 @@ private slots:
 
 			if(wsControlManager)
 			{
-				wsControl = wsControlManager->createSession();
+				wsControl = wsControlManager->createSession(ridToString(inSock->rid()));
 				connect(wsControl, SIGNAL(sendEventReceived(const QByteArray &, const QByteArray &)), SLOT(wsControl_sendEventReceived(const QByteArray &, const QByteArray &)));
 				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
 				wsControl->start(channelPrefix);
@@ -738,6 +768,7 @@ private slots:
 		}
 		else
 		{
+			connectionManager->removeConnection(inSock->rid());
 			delete inSock;
 			inSock = 0;
 			delete outSock;
@@ -779,10 +810,10 @@ private slots:
 	}
 };
 
-WsProxySession::WsProxySession(ZRoutes *zroutes, DomainMap *domainMap, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
+WsProxySession::WsProxySession(ZRoutes *zroutes, DomainMap *domainMap, ConnectionManager *connectionManager, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes, domainMap, statsManager, wsControlManager);
+	d = new Private(this, zroutes, domainMap, connectionManager, statsManager, wsControlManager);
 }
 
 WsProxySession::~WsProxySession()
@@ -827,9 +858,9 @@ void WsProxySession::setOrigHeadersNeedMark(const QList<QByteArray> &names)
 	d->origHeadersNeedMark = names;
 }
 
-void WsProxySession::start(ZWebSocket *sock)
+void WsProxySession::start(ZWebSocket *sock, const QByteArray &publicCid)
 {
-	d->start(sock);
+	d->start(sock, publicCid);
 }
 
 #include "wsproxysession.moc"

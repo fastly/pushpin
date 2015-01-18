@@ -184,10 +184,10 @@ bool WsControlManager::setOutSpec(const QString &spec)
 	return d->setupOut();
 }
 
-WsControlSession *WsControlManager::createSession()
+WsControlSession *WsControlManager::createSession(const QByteArray &cid)
 {
 	WsControlSession *s = new WsControlSession;
-	s->setup(this);
+	s->setup(this, cid);
 	return s;
 }
 

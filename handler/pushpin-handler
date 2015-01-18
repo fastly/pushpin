@@ -174,7 +174,6 @@ class Hold(object):
 		self.jsonp_extended_response = False
 		self.expire_time = None
 		self.last_keepalive = None
-		self.sid = None
 
 class WsSession(object):
 	def __init__(self, cid):
@@ -199,6 +198,7 @@ class ConnectionInfo(object):
 		self.ssl = False
 		self.linger = False
 		self.last_keepalive = None
+		self.sid = None
 
 class SessionDetectRule(object):
 	def __init__(self):
@@ -745,7 +745,7 @@ def accept_worker():
 				try:
 					session_create_or_update(state_rpc, sid, last_ids)
 				except:
-					logger.debug("couldn't update session")
+					logger.debug("couldn't create/update session")
 
 		# TODO: support non-hold grip-instruct
 
@@ -867,6 +867,7 @@ def accept_worker():
 			if "https" in req:
 				ci.ssl = req["https"]
 			ci.last_keepalive = int(time.time())
+			ci.sid = sid
 			# note: if we had a lingering connection, this will replace it
 			conns[ci.id] = ci
 			stats_lock.release()
@@ -877,7 +878,6 @@ def accept_worker():
 			h.out_seq = req["out-seq"]
 			h.out_credits = req["out-credits"]
 			h.jsonp_extended_response = req.get("jsonp-extended-response", False)
-			h.sid = sid
 
 			notify_sub = False
 			if mode == "response":
@@ -1110,7 +1110,7 @@ def push_in_worker(c):
 		response_holds = list()
 		stream_holds = list()
 		ws_cids = list()
-		ws_sids = list()
+		sids = set()
 
 		if "http-response" in formats:
 			lock.acquire()
@@ -1131,6 +1131,12 @@ def push_in_worker(c):
 			if item_id is not None:
 				response_lastids[channel] = item_id
 			lock.release()
+			stats_lock.acquire()
+			for h in response_holds:
+				ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
+				if ci is not None and ci.sid:
+					sids.add(ci.sid)
+			stats_lock.release()
 
 		if "http-stream" in formats:
 			# TODO: support close action and report immediate unsubscribe via stats
@@ -1139,6 +1145,12 @@ def push_in_worker(c):
 			if hchannel:
 				stream_holds = hchannel.values()
 			lock.release()
+			stats_lock.acquire()
+			for h in stream_holds:
+				ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
+				if ci is not None and ci.sid:
+					sids.add(ci.sid)
+			stats_lock.release()
 
 		if "ws-message" in formats:
 			lock.acquire()
@@ -1147,32 +1159,14 @@ def push_in_worker(c):
 				for cid, sess in hchannel.iteritems():
 					ws_cids.append(cid)
 					if sess.sid:
-						ws_sids.append(sess.sid)
+						sids.add(sess.sid)
 			lock.release()
 
 		# update sessions' last-id
-		if id is not None:
+		if id is not None and sids:
 			sid_last_ids = dict()
-			for h in response_holds:
-				if h.sid:
-					last_ids = sid_last_ids.get(h.sid)
-					if last_ids is None:
-						last_ids = dict()
-						sid_last_ids[h.sid] = last_ids
-					last_ids[channel] = id
-			for h in stream_holds:
-				if h.sid:
-					last_ids = sid_last_ids.get(h.sid)
-					if last_ids is None:
-						last_ids = dict()
-						sid_last_ids[h.sid] = last_ids
-					last_ids[channel] = id
-			for sid in ws_sids:
-				last_ids = sid_last_ids.get(sid)
-				if last_ids is None:
-					last_ids = dict()
-					sid_last_ids[sid] = last_ids
-				last_ids[channel] = id
+			for sid in sids:
+				sid_last_ids[sid] = {channel: id}
 
 			if sid_last_ids and state_rpc:
 				try:
@@ -1491,6 +1485,11 @@ def ws_control_worker():
 	stats_sock = ctx.socket(zmq.PUSH)
 	stats_sock.connect('inproc://stats_in')
 
+	if state_spec:
+		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
+	else:
+		state_rpc = None
+
 	while True:
 		m_raw = in_sock.recv()
 		m = tnetstring.loads(m_raw)
@@ -1550,16 +1549,24 @@ def ws_control_worker():
 				try:
 					gm = json.loads(item['message'])
 					gtype = gm['type']
+					channel = None
+					sid = None
 					if gtype == 'subscribe' or gtype == 'unsubscribe':
 						channel = gm['channel']
-					else:
-						channel = None
+						if not isinstance(channel, basestring) or len(channel) < 1:
+							raise ValueError('invalid channel')
+					elif gtype == 'session':
+						sid = gm['id']
+						if not isinstance(sid, basestring) or len(sid) < 1:
+							raise ValueError('invalid id')
+						sid = ensure_utf8(sid)
 				except:
 					gm = None
 
 				notify_sub = False
 				notify_unsub = False
 				notify_detach = False
+				save_sid = False
 
 				if gm:
 					lock.acquire()
@@ -1595,7 +1602,16 @@ def ws_control_worker():
 										notify_unsub = True
 						elif gtype == 'detach':
 							notify_detach = True
+						elif gtype == 'session':
+							s.sid = sid
+							save_sid = True
 					lock.release()
+
+				if save_sid:
+					try:
+						session_create_or_update(state_rpc, sid, {})
+					except:
+						logger.debug("couldn't create/update session")
 
 				if notify_sub:
 					logger.debug('ws session %s subscribed to %s' % (cid, channel))
@@ -1631,8 +1647,14 @@ def timeout_worker():
 	stats_sock = ctx.socket(zmq.PUSH)
 	stats_sock.connect('inproc://stats_in')
 
+	if state_spec:
+		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
+	else:
+		state_rpc = None
+
 	while True:
 		now = int(time.time())
+
 		lock.acquire()
 		# FIXME: use channels_by_req for lookup
 		holds = list()
@@ -1830,6 +1852,8 @@ def timeout_worker():
 		stats_activity.clear()
 		stats_lock.release()
 
+		refresh_sids = list()
+
 		for ci in refresh_conns:
 			out = dict()
 			out['from'] = instance_id
@@ -1844,6 +1868,9 @@ def timeout_worker():
 			out['ttl'] = CONNECTION_TTL
 			stats_sock.send('conn ' + tnetstring.dumps(out))
 
+			if ci.sid:
+				refresh_sids.append(ci.sid)
+
 		for i in send_activity:
 			out = dict()
 			out['from'] = instance_id
@@ -1851,6 +1878,15 @@ def timeout_worker():
 				out['route'] = i[0]
 			out['count'] = i[1]
 			stats_sock.send('activity ' + tnetstring.dumps(out))
+
+		if refresh_sids and state_rpc:
+			try:
+				sid_last_ids = dict()
+				for sid in refresh_sids:
+					sid_last_ids[sid] = dict()
+				session_update_many(state_rpc, sid_last_ids)
+			except:
+				logger.debug("couldn't update sessions")
 
 		time.sleep(1)
 
@@ -1903,11 +1939,17 @@ def proxy_stats_worker():
 	stats_sock = ctx.socket(zmq.PUSH)
 	stats_sock.connect('inproc://stats_in')
 
+	if state_spec:
+		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
+	else:
+		state_rpc = None
+
 	while True:
 		m_raw = in_sock.recv()
 		at = m_raw.find(' ')
 		mtype = m_raw[:at]
 		m = tnetstring.loads(m_raw[at + 1:])
+		#logger.debug("IN proxy stats: %s %s" % (mtype, m))
 		if mtype == 'activity':
 			route = m.get('route')
 			if not route:
@@ -1920,9 +1962,25 @@ def proxy_stats_worker():
 				stats_activity[route] = count
 			stats_lock.release()
 		elif mtype == 'conn':
+			# get sid
+			sid = None
+			lock.acquire()
+			if m.get('type') == 'ws':
+				s = ws_sessions.get(m['id'])
+				if s is not None:
+					sid = s.sid
+			lock.release()
+
 			# relay
 			m['from'] = instance_id
 			stats_sock.send(mtype + ' ' + tnetstring.dumps(m))
+
+			# update session
+			if sid and not m.get('unavailable') and state_rpc:
+				try:
+					session_update_many(state_rpc, {sid: {}})
+				except:
+					logger.debug("couldn't update session")
 
 def stats_worker(c):
 	in_sock = ctx.socket(zmq.PULL)

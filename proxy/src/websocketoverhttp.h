@@ -36,6 +36,8 @@ public:
 	WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent = 0);
 	~WebSocketOverHttp();
 
+	void setConnectionId(const QByteArray &id);
+
 	// reimplemented
 
 	virtual QHostAddress peerAddress() const;

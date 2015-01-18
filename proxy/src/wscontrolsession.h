@@ -47,7 +47,7 @@ private:
 
 	friend class WsControlManager;
 	WsControlSession(QObject *parent = 0);
-	void setup(WsControlManager *manager);
+	void setup(WsControlManager *manager, const QByteArray &cid);
 	void handle(const WsControlPacket::Item &item);
 };
 

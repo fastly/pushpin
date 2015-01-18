@@ -178,7 +178,8 @@ public:
 	{
 		state = Connecting;
 
-		cid = UuidUtil::createUuid();
+		if(cid.isEmpty())
+			cid = UuidUtil::createUuid();
 
 		// don't forward certain headers
 		requestData.headers.removeAll("Upgrade");
@@ -566,6 +567,11 @@ WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent
 WebSocketOverHttp::~WebSocketOverHttp()
 {
 	delete d;
+}
+
+void WebSocketOverHttp::setConnectionId(const QByteArray &id)
+{
+	d->cid = id;
 }
 
 QHostAddress WebSocketOverHttp::peerAddress() const

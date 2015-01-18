@@ -40,6 +40,7 @@
 #include "proxysession.h"
 #include "wsproxysession.h"
 #include "statsmanager.h"
+#include "connectionmanager.h"
 
 #define DEFAULT_HWM 1000
 
@@ -96,6 +97,7 @@ public:
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
+	ConnectionManager connectionManager;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -382,9 +384,11 @@ public:
 		if(!sock)
 			return;
 
+		QByteArray publicCid = connectionManager.addConnection(sock->rid());
+
 		log_debug("creating wsproxysession for id=%s", sock->rid().second.data());
 
-		WsProxySession *ps = new WsProxySession(zroutes, domainMap, stats, wsControl, this);
+		WsProxySession *ps = new WsProxySession(zroutes, domainMap, &connectionManager, stats, wsControl, this);
 		connect(ps, SIGNAL(finishedByPassthrough()), SLOT(wsps_finishedByPassthrough()));
 
 		ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -397,7 +401,7 @@ public:
 		i->ps = ps;
 		wsProxyItemsBySession.insert(i->ps, i);
 
-		ps->start(sock);
+		ps->start(sock, publicCid);
 
 		if(stats)
 		{
