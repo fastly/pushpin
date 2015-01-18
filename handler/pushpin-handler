@@ -116,6 +116,9 @@ CONNECTION_TTL = 600
 CONNECTION_REFRESH = 540
 CONNECTION_LINGER = 60
 
+# zmq socket linger
+DEFAULT_LINGER = 1000
+
 instance_id = "pushpin-handler_%d" % os.getpid()
 
 m2a_in_stream_specs = config.get("handler", "m2a_in_stream_specs").split(",")
@@ -609,6 +612,7 @@ def session_get_last_ids(state_rpc, sid):
 
 def inspect_worker():
 	sock = ctx.socket(zmq.REP)
+	sock.linger = DEFAULT_LINGER
 	sock.connect(config.get("handler", "proxy_inspect_spec"))
 
 	if state_spec:
@@ -667,16 +671,20 @@ def inspect_worker():
 
 def accept_worker():
 	sock = ctx.socket(zmq.REP)
+	sock.linger = DEFAULT_LINGER
 	sock.connect(config.get("handler", "proxy_accept_spec"))
 
 	out_sock = ctx.socket(zmq.PUB)
+	out_sock.linger = DEFAULT_LINGER
 	for spec in m2a_out_specs:
 		out_sock.connect(spec)
 
 	retry_sock = ctx.socket(zmq.PUSH)
+	retry_sock.linger = 0
 	retry_sock.connect(config.get("handler", "proxy_retry_out_spec"))
 
 	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.linger = 0
 	stats_sock.connect('inproc://stats_in')
 
 	if state_spec:
@@ -1002,6 +1010,7 @@ def push_in_zmq_worker():
 	in_sock.bind(config.get("handler", "push_in_spec"))
 
 	out_sock = ctx.socket(zmq.PUSH)
+	out_sock.linger = DEFAULT_LINGER
 	out_sock.connect("inproc://push_in")
 
 	while True:
@@ -1019,7 +1028,6 @@ def push_in_zmq_worker():
 
 		out_sock.send(tnetstring.dumps(m))
 
-	out_sock.linger = 0
 	out_sock.close()
 
 # return None for success or string on error
@@ -1068,13 +1076,13 @@ def push_in_http_handler(context, m):
 
 def push_in_http_worker():
 	out_sock = ctx.socket(zmq.PUSH)
+	out_sock.linger = DEFAULT_LINGER
 	out_sock.connect("inproc://push_in")
 
 	context = dict()
 	context["out_sock"] = out_sock
 	httpinterface.run(config.get("handler", "push_in_http_addr"), int(config.get("handler", "push_in_http_port")), push_in_http_handler, context)
 
-	out_sock.linger = 0
 	out_sock.close()
 
 def push_in_worker(c):
@@ -1085,13 +1093,16 @@ def push_in_worker(c):
 	c.release()
 
 	out_sock = ctx.socket(zmq.PUB)
+	out_sock.linger = DEFAULT_LINGER
 	for spec in m2a_out_specs:
 		out_sock.connect(spec)
 
 	ws_control_out_sock = ctx.socket(zmq.PUSH)
+	ws_control_out_sock.linger = DEFAULT_LINGER
 	ws_control_out_sock.connect(ws_control_out_spec)
 
 	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.linger = 0
 	stats_sock.connect('inproc://stats_in')
 
 	if state_spec:
@@ -1370,10 +1381,12 @@ def session_worker():
 		in_sock.connect(spec)
 
 	out_sock = ctx.socket(zmq.PUB)
+	out_sock.linger = DEFAULT_LINGER
 	for spec in m2a_out_specs:
 		out_sock.connect(spec)
 
 	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.linger = 0
 	stats_sock.connect('inproc://stats_in')
 
 	while True:
@@ -1480,9 +1493,11 @@ def ws_control_worker():
 	in_sock.connect(ws_control_in_spec)
 
 	out_sock = ctx.socket(zmq.PUSH)
+	out_sock.linger = DEFAULT_LINGER
 	out_sock.connect(ws_control_out_spec)
 
 	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.linger = 0
 	stats_sock.connect('inproc://stats_in')
 
 	if state_spec:
@@ -1641,10 +1656,12 @@ def ws_control_worker():
 
 def timeout_worker():
 	out_sock = ctx.socket(zmq.PUB)
+	out_sock.linger = DEFAULT_LINGER
 	for spec in m2a_out_specs:
 		out_sock.connect(spec)
 
 	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.linger = 0
 	stats_sock.connect('inproc://stats_in')
 
 	if state_spec:
@@ -1937,6 +1954,7 @@ def proxy_stats_worker():
 	in_sock.connect(proxy_stats_spec)
 
 	stats_sock = ctx.socket(zmq.PUSH)
+	stats_sock.linger = 0
 	stats_sock.connect('inproc://stats_in')
 
 	if state_spec:
@@ -1991,6 +2009,7 @@ def stats_worker(c):
 
 	if stats_spec:
 		out_sock = ctx.socket(zmq.PUB)
+		out_sock.linger = 0
 		out_sock.bind(stats_spec)
 	else:
 		out_sock = None

@@ -63,9 +63,9 @@ class RpcClient(object):
 
 	def _reset_socket(self):
 		if self.sock is not None:
-			self.sock.linger = 0
 			self.sock.close()
 		self.sock = self.context.socket(zmq.DEALER)
+		self.sock.linger = 0
 		if self.use_bind:
 			self.sock.bind(self.specs[0])
 		else:
@@ -136,6 +136,7 @@ class RpcServer(object):
 		self.control_sock = self.context.socket(zmq.PAIR)
 		self.control_sock.bind(self.control_spec)
 		self.rep_sock = self.context.socket(zmq.REP)
+		self.rep_sock.linger = 0
 		self.rep_sock.bind(rep_sock_spec)
 		self.req_id = None
 		if rep_sock_spec.startswith('ipc://'):
@@ -199,7 +200,6 @@ class RpcServer(object):
 					traceback.print_exc()
 					self._respond_error('internal-server-error')
 
-		self.rep_sock.linger = 0
 		self.rep_sock.close()
 		self.control_sock.send('finished')
 		self.control_sock.close()
