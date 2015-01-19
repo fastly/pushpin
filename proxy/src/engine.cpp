@@ -553,6 +553,9 @@ private slots:
 			return;
 		}
 
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("retry: IN %s", qPrintable(TnetString::variantToString(data, -1)));
+
 		RetryRequestPacket p;
 		if(!p.fromVariant(data))
 		{
@@ -560,7 +563,7 @@ private slots:
 			return;
 		}
 
-		log_info("retry: IN %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
+		log_info("IN (retry) %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
 
 		InspectData idata;
 		if(p.haveInspectInfo)
@@ -580,6 +583,7 @@ private slots:
 			if(req.https)
 				ss.requestUri.setScheme("https");
 			ss.requestHeaders = p.requestData.headers;
+			ss.requestBody = p.requestData.body;
 			ss.inSeq = req.inSeq;
 			ss.outSeq = req.outSeq;
 			ss.outCredits = req.outCredits;

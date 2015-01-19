@@ -212,6 +212,7 @@ public:
 		requestMethod = ss.requestMethod;
 		requestUri = ss.requestUri;
 		requestHeaders = ss.requestHeaders;
+		requestBodyBuf += ss.requestBody;
 		if(ss.inSeq >= 0)
 			inSeq = ss.inSeq;
 		if(ss.outSeq >= 0)

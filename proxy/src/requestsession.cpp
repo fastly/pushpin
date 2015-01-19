@@ -1122,6 +1122,7 @@ void RequestSession::startRetry(ZhttpRequest *req, bool autoCrossOrigin, const Q
 	d->requestData.method = req->requestMethod();
 	d->requestData.uri = req->requestUri();
 	d->requestData.headers = req->requestHeaders();
+	d->requestData.body = req->readBody();
 
 	d->startRetry();
 }

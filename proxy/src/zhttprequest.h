@@ -59,6 +59,7 @@ public:
 		QString requestMethod;
 		QUrl requestUri;
 		HttpHeaders requestHeaders;
+		QByteArray requestBody;
 		int inSeq;
 		int outSeq;
 		int outCredits;
