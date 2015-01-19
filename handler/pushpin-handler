@@ -207,6 +207,7 @@ class SessionDetectRule(object):
 	def __init__(self):
 		self.domain = None
 		self.path_prefix = None
+		self.json_param = None
 		self.sid_ptr = None
 
 class Session(object):
@@ -549,7 +550,10 @@ def resolve_json_pointer(data, p):
 			if part == '-':
 				ptr.child_index = -1
 			else:
-				index = int(part)
+				try:
+					index = int(part)
+				except:
+					raise ValueError('index must be an integer')
 				if index >= len(ptr.obj):
 					raise ValueError('index out of range')
 				ptr.obj = ptr.obj[index]
@@ -585,6 +589,8 @@ def session_detect_rules_set(state_rpc, rules):
 	rule_data_list = list()
 	for r in rules:
 		rule_data = {"domain": r.domain, "path-prefix": r.path_prefix, "sid-ptr": r.sid_ptr}
+		if r.json_param:
+			rule_data["json-param"] = r.json_param
 		rule_data_list.append(rule_data)
 	state_rpc.call("session-detect-rules-set", {"rules": rule_data_list})
 
@@ -596,6 +602,7 @@ def session_detect_rules_get(state_rpc, domain, path):
 		r.domain = rule_data["domain"]
 		r.path_prefix = rule_data["path-prefix"]
 		r.sid_ptr = rule_data["sid-ptr"]
+		r.json_param = rule_data.get("json-param")
 		out.append(r)
 	return out
 
@@ -648,9 +655,17 @@ def inspect_worker():
 				logger.debug("retrieved %d rules", len(rules))
 				if rules:
 					sid = None
-					body = json.loads(args["body"])
 					for r in rules:
-						ptr = resolve_json_pointer(body, r.sid_ptr)
+						try:
+							if r.json_param:
+								params = urlparse.parse_qs(args["body"])
+								body = json.loads(params[r.json_param][0])
+							else:
+								body = json.loads(args["body"])
+							ptr = resolve_json_pointer(body, r.sid_ptr)
+						except:
+							# try next rule
+							continue
 						if ptr and not ptr.child_name and not ptr.child_index:
 							sid = ensure_utf8(ptr.obj)
 							break
@@ -660,7 +675,7 @@ def inspect_worker():
 						if last_ids:
 							m["last-ids"] = last_ids
 			except:
-				logger.debug("failed to detect session")
+				logger.exception("failed to detect session")
 
 		resp = {"id": id, "success": True, "value": m}
 		logger.debug("OUT inspect: %s" % resp)
@@ -733,6 +748,8 @@ def accept_worker():
 					r.domain = urlparse.urlparse(uri).netloc
 					r.path_prefix = params["path-prefix"]
 					r.sid_ptr = params["sid-ptr"]
+					if "json-param" in params:
+						r.json_param = params["json-param"]
 					rules.append(r)
 			last_headers = header_get_all_parsed(resp_headers, "Grip-Last")
 			for lh in last_headers:
@@ -762,8 +779,8 @@ def accept_worker():
 			for i in resp_headers:
 				if i[0].lower().startswith('grip-'):
 					continue
-				new_headers[i[0]] = i[1]
-			response["headers"] = new_headers
+				new_headers.append(i)
+			m["response"]["headers"] = new_headers
 			mresp = {"id": req_id, "success": True, "value": {"response": m["response"]}}
 			logger.debug("OUT accept: %s" % mresp)
 			sock.send(tnetstring.dumps(mresp))
