@@ -9,6 +9,7 @@ class Rule(object):
 	domain = None
 	path_prefix = None
 	sid_ptr = None
+	json_param = None
 
 class Session(object):
 	last_ids = dict()
@@ -20,7 +21,7 @@ def session_detect_rules_set(new_rules):
 	for nr in new_rules:
 		found = False
 		for r in rules:
-			if r.domain == nr.domain and r.path_prefix == nr.path_prefix and r.sid_ptr == nr.sid_ptr:
+			if r.domain == nr.domain and r.path_prefix == nr.path_prefix and r.sid_ptr == nr.sid_ptr and r.json_param == nr.json_param:
 				found = True
 				break
 		if found:
@@ -58,9 +59,9 @@ def session_get_last_ids(sid):
 
 while True:
 	req = tnetstring.loads(sock.recv())
-	print 'IN %s' % req
 	method = req['method']
 	args = req['args']
+	print 'IN %s %s' % (method, args)
 	try:
 		ret = None
 		no_method = False
@@ -72,6 +73,7 @@ while True:
 				r.domain = rule_data['domain']
 				r.path_prefix = rule_data['path-prefix']
 				r.sid_ptr = rule_data['sid-ptr']
+				r.json_param = rule_data.get('json-param')
 				rlist.append(r)
 			session_detect_rules_set(rlist)
 		elif method == 'session-detect-rules-get':
@@ -79,6 +81,8 @@ while True:
 			ret = list()
 			for r in rlist:
 				i = {'domain': r.domain, 'path-prefix': r.path_prefix, 'sid-ptr': r.sid_ptr}
+				if r.json_param:
+					i['json-param'] = r.json_param
 				ret.append(i)
 		elif method == 'session-create-or-update':
 			session_create_or_update(args['sid'], args['last-ids'])
@@ -97,5 +101,9 @@ while True:
 			resp = {'id': req['id'], 'success': False, 'condition': 'method-not-found'}
 	except:
 		resp = {'id': req['id'], 'success': False, 'condition': 'general'}
-	print 'OUT %s' % resp
+
+	if resp['success']:
+		print 'OUT %s' % resp['value']
+	else:
+		print 'OUT error, condition=%s' % resp['condition']
 	sock.send(tnetstring.dumps(resp))
