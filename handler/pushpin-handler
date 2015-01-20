@@ -515,9 +515,10 @@ def apply_cors_headers(request_headers, response_headers):
 		header_set(response_headers, "Access-Control-Allow-Origin", origin)
 
 class JsonPointer(object):
-	obj = None
-	child_name = None
-	child_index = None
+	def __init__(self):
+		self.obj = None
+		self.child_name = None
+		self.child_index = None
 
 def resolve_json_pointer(data, p):
 	if not p.startswith('/'):
