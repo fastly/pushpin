@@ -6,13 +6,15 @@ sock = ctx.socket(zmq.REP)
 sock.connect('ipc:///tmp/pushpin-state')
 
 class Rule(object):
-	domain = None
-	path_prefix = None
-	sid_ptr = None
-	json_param = None
+	def __init__(self):
+		self.domain = None
+		self.path_prefix = None
+		self.sid_ptr = None
+		self.json_param = None
 
 class Session(object):
-	last_ids = dict()
+	def __init__(self):
+		self.last_ids = dict()
 
 rules = list()
 sessions = dict()
