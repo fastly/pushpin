@@ -55,9 +55,10 @@ def session_update(sid, last_ids):
 
 def session_get_last_ids(sid):
 	s = sessions.get(sid)
-	if s is None:
-		raise ValueError('unknown sid')
-	return s.last_ids
+	if s is not None:
+		return s.last_ids
+	else:
+		return None
 
 while True:
 	req = tnetstring.loads(sock.recv())
@@ -65,8 +66,8 @@ while True:
 	args = req['args']
 	print 'IN %s %s' % (method, args)
 	try:
+		resp = None
 		ret = None
-		no_method = False
 		if method == 'session-detect-rules-set':
 			rule_data_list = args['rules']
 			rlist = list()
@@ -94,13 +95,13 @@ while True:
 				session_update(sid, last_ids)
 		elif method == 'session-get-last-ids':
 			ret = session_get_last_ids(args['sid'])
-		else:
-			no_method = True
-
-		if not no_method:
-			resp = {'id': req['id'], 'success': True, 'value': ret}
+			if ret is None:
+				resp = {'id': req['id'], 'success': False, 'condition': 'item-not-found'}
 		else:
 			resp = {'id': req['id'], 'success': False, 'condition': 'method-not-found'}
+
+		if resp is None:
+			resp = {'id': req['id'], 'success': True, 'value': ret}
 	except:
 		resp = {'id': req['id'], 'success': False, 'condition': 'general'}
 

@@ -671,7 +671,14 @@ def inspect_worker():
 							sid = ensure_utf8(ptr.obj)
 							break
 					if sid:
-						last_ids = session_get_last_ids(state_rpc, sid)
+						try:
+							last_ids = session_get_last_ids(state_rpc, sid)
+						except rpc.CallError as e:
+							if e.condition == "item-not-found":
+								last_ids = None
+							else:
+								raise
+
 						m["sid"] = sid
 						if last_ids:
 							m["last-ids"] = last_ids
