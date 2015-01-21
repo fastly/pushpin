@@ -78,8 +78,9 @@ class RpcClient(object):
 		req['method'] = ensure_utf8(method)
 		req['args'] = ensure_utf8(args)
 		req_raw = tnetstring.dumps(req)
+		start = int(time.clock() * 1000)
 		try:
-			if not self.sock.poll(30000, zmq.POLLOUT):
+			if not self.sock.poll(timeout, zmq.POLLOUT):
 				raise CallError('send-timeout')
 			m_list = list()
 			m_list.append('')
@@ -87,7 +88,6 @@ class RpcClient(object):
 			self.sock.send_multipart(m_list)
 		except zmq.ZMQError as e:
 			raise CallError('send-failed', e.message)
-		start = int(time.clock() * 1000)
 		while True:
 			elapsed = max(int(time.clock() * 1000) - start, 0)
 			try:
