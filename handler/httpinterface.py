@@ -21,7 +21,8 @@ import BaseHTTPServer
 g_server = None
 
 class Server(BaseHTTPServer.HTTPServer):
-	def __init__(self):
+	def __init__(self, server_address, RequestHandlerClass):
+		BaseHTTPServer.HTTPServer.__init__(self, server_address, RequestHandlerClass)
 		self.handler_func = None
 		self.context = None
 
