@@ -2,10 +2,10 @@
 
 $body = @file_get_contents('php://input');
 
-header('Content-Type:application/websocket-events');
+header('Content-Type: application/websocket-events');
 
 if (substr($body, 0, 6) === "OPEN\r\n") {
-    header('Sec-WebSocket-Extensions:grip; message-prefix=""');
+    header('Sec-WebSocket-Extensions: grip; message-prefix=""');
     $sub = True;
 } else {
     $sub = False;

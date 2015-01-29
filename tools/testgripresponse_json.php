@@ -1,4 +1,4 @@
-<?php header('Content-Type:application/grip-instruct'); ?>
+<?php header('Content-Type: application/grip-instruct'); ?>
 {
   "hold": {
     "mode": "response",
@@ -6,7 +6,8 @@
       {
         "name": "test"
       }
-    ]
+    ],
+    "timeout": 55
   },
   "response": {
     "headers": {
