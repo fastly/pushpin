@@ -1266,7 +1266,7 @@ def push_in_worker(c):
 							del rheaders[k]
 
 				# if body patch specified, inherit body from timeout response
-				if pbody_patch:
+				if pbody_patch is not None:
 					try:
 						rbody = json.loads(h.response['body'])
 						rbody = json_patch(rbody, pbody_patch)
