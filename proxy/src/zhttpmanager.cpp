@@ -160,6 +160,7 @@ public:
 
 		client_out_stream_sock->setWriteQueueEnabled(false);
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
+		client_out_stream_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		if(doBind)
 		{
@@ -184,6 +185,7 @@ public:
 		connect(client_in_sock, SIGNAL(readyRead()), SLOT(client_in_readyRead()));
 
 		client_in_sock->setHwm(DEFAULT_HWM);
+		client_in_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 		client_in_sock->subscribe(instanceId + ' ');
 
 		if(doBind)
@@ -233,6 +235,7 @@ public:
 		server_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
 
 		server_in_sock->setHwm(IN_HWM);
+		server_in_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		if(doBind)
 		{
@@ -262,6 +265,7 @@ public:
 
 		server_in_stream_sock->setIdentity(instanceId);
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
+		server_in_stream_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		if(doBind)
 		{
