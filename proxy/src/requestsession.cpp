@@ -986,7 +986,7 @@ public slots:
 			}
 			else
 			{
-				if(autoCrossOrigin)
+				if(autoCrossOrigin || (!route.isNull() && route.autoCrossOrigin))
 					applyCorsHeaders(requestData.headers, &responseData.headers);
 
 				connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
