@@ -556,6 +556,7 @@ public:
 		{
 			zhttp_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			zhttp_in_sock->setHwm(DEFAULT_HWM);
+			zhttp_in_sock->setShutdownWaitTime(0);
 			zhttp_in_sock->subscribe(zhttpInstanceId + ' ');
 			if(zhttp_connect)
 			{
