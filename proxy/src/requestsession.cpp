@@ -386,21 +386,30 @@ public:
 				requestData.body = in.toByteArray();
 				bool truncated = (!zhttpRequest->isInputFinished() || zhttpRequest->bytesAvailable() > 0);
 
-				inspectRequest = new InspectRequest(inspectManager, this);
+				assert(!inspectRequest);
 
-				if(inspectChecker->isInterfaceAvailable())
+				if(inspectManager)
 				{
-					connect(inspectRequest, SIGNAL(finished()), SLOT(inspectRequest_finished()));
-					inspectChecker->watch(inspectRequest);
-					inspectRequest->start(requestData, truncated, route.session);
+					inspectRequest = new InspectRequest(inspectManager, this);
+
+					if(inspectChecker->isInterfaceAvailable())
+					{
+						connect(inspectRequest, SIGNAL(finished()), SLOT(inspectRequest_finished()));
+						inspectChecker->watch(inspectRequest);
+						inspectRequest->start(requestData, truncated, route.session);
+					}
+					else
+					{
+						inspectChecker->watch(inspectRequest);
+						inspectChecker->give(inspectRequest);
+						inspectRequest->start(requestData, truncated, route.session);
+						inspectRequest = 0;
+					}
 				}
-				else
+
+				if(!inspectRequest)
 				{
 					log_debug("inspect not available");
-					inspectChecker->watch(inspectRequest);
-					inspectChecker->give(inspectRequest);
-					inspectRequest->start(requestData, truncated, route.session);
-					inspectRequest = 0;
 					QMetaObject::invokeMethod(this, "doInspectError", Qt::QueuedConnection);
 				}
 			}
@@ -435,7 +444,12 @@ public:
 			in += buf;
 
 			if(zhttpRequest->isInputFinished())
-				zhttpRequest->pause();
+			{
+				if(acceptManager)
+					zhttpRequest->pause();
+				else
+					respondCannotAccept();
+			}
 		}
 	}
 

@@ -517,11 +517,17 @@ public:
 
 			if(state == Accepting)
 			{
-				foreach(SessionItem *si, sessionItems)
+				if(acceptManager)
 				{
-					si->state = SessionItem::Pausing;
-					si->rs->pause();
+					log_debug("we have an acceptmanager");
+					foreach(SessionItem *si, sessionItems)
+					{
+						si->state = SessionItem::Pausing;
+						si->rs->pause();
+					}
 				}
+				else
+					cannotAcceptAll();
 			}
 			else // Responding
 			{
