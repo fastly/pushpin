@@ -3,9 +3,7 @@ Pushpin
 Author: Justin Karneges <justin@fanout.io>  
 Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
 
-Read:
-  * http://blog.fanout.io/2013/02/10/http-grip-proxy-hold-technique/
-  * http://blog.fanout.io/2013/04/09/an-http-reverse-proxy-for-realtime/
+See: http://pushpin.org/
 
 Pushpin is a reverse proxy server that makes it easy to implement WebSocket, HTTP streaming, and HTTP long-polling services. It communicates with backend web applications using regular, short-lived HTTP requests (GRIP protocol). This allows backend applications to be written in any language and use any webserver.
 
