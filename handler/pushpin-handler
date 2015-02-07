@@ -1369,7 +1369,7 @@ def push_in_worker(c):
 				t = formats['ws-message']
 				if 'content-bin' in t:
 					content_type = 'binary'
-					content = t['content']
+					content = t['content-bin']
 				elif "content" in t:
 					content_type = 'text'
 					content = t['content']
