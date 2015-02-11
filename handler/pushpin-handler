@@ -164,6 +164,11 @@ if config.has_option("handler", "state_spec"):
 else:
 	state_spec = None
 
+if config.has_option("handler", "push_in_sub_spec"):
+	push_in_sub_spec = config.get("handler", "push_in_sub_spec")
+else:
+	push_in_sub_spec = None
+
 ctx = zmq.Context()
 
 class Hold(object):
@@ -1049,10 +1054,60 @@ def push_in_zmq_worker():
 			m = validate_publish(m)
 
 		except ValidationError as e:
-			logger.debug("warning: %s, dropping" % e)
+			logger.debug("warning: %s, dropping" % e.message)
+			continue
 
 		out_sock.send(tnetstring.dumps(m))
 
+	out_sock.close()
+
+def push_in_sub_zmq_worker():
+	in_sock = ctx.socket(zmq.SUB)
+	in_sock.linger = DEFAULT_LINGER
+	in_sock.bind(push_in_sub_spec)
+
+	sub_cmd_in_sock = ctx.socket(zmq.PULL)
+	sub_cmd_in_sock.connect("inproc://sub_cmd_in")
+
+	out_sock = ctx.socket(zmq.PUSH)
+	out_sock.linger = DEFAULT_LINGER
+	out_sock.connect("inproc://push_in")
+
+	poller = zmq.Poller()
+	poller.register(in_sock, zmq.POLLIN)
+	poller.register(sub_cmd_in_sock, zmq.POLLIN)
+
+	while True:
+		socks = dict(poller.poll())
+		if socks.get(in_sock) == zmq.POLLIN:
+			m_raw = in_sock.recv_multipart()
+
+			try:
+				try:
+					m = tnetstring.loads(m_raw[1])
+				except:
+					raise ValidationError("bad format (not a tnetstring)")
+
+				m['channel'] = m_raw[0]
+				m = validate_publish(m)
+
+			except ValidationError as e:
+				logger.debug("warning: %s, dropping" % e.message)
+				continue
+
+			out_sock.send(tnetstring.dumps(m))
+		elif socks.get(sub_cmd_in_sock) == zmq.POLLIN:
+			m = tnetstring.loads(sub_cmd_in_sock.recv())
+			mtype = m['type']
+			channel = m['channel']
+			if mtype == 'subscribe':
+				logger.debug('SUB socket subscribe: %s' % channel)
+				in_sock.setsockopt(zmq.SUBSCRIBE, channel)
+			elif mtype == 'unsubscribe':
+				logger.debug('SUB socket unsubscribe: %s' % channel)
+				in_sock.setsockopt(zmq.UNSUBSCRIBE, channel)
+
+	in_sock.close()
 	out_sock.close()
 
 # return None for success or string on error
@@ -2028,9 +2083,6 @@ def proxy_stats_worker():
 def stats_worker(c):
 	in_sock = ctx.socket(zmq.PULL)
 	in_sock.bind('inproc://stats_in')
-	c.acquire()
-	c.notify()
-	c.release()
 
 	if stats_spec:
 		out_sock = ctx.socket(zmq.PUB)
@@ -2039,11 +2091,38 @@ def stats_worker(c):
 	else:
 		out_sock = None
 
+	if push_in_sub_spec:
+		subs = set()
+		sub_sock = ctx.socket(zmq.PUSH)
+		sub_sock.linger = 0
+		sub_sock.bind('inproc://sub_cmd_in')
+	else:
+		sub_sock = None
+
+	c.acquire()
+	c.notify()
+	c.release()
+
 	while True:
 		m_raw = in_sock.recv()
 		at = m_raw.find(' ')
 		mtype = m_raw[:at]
 		mdata = m_raw[at + 1:]
+
+		if sub_sock and mtype == 'sub':
+			m = tnetstring.loads(mdata)
+			channel = m['channel']
+			here = not m.get('unavailable', False)
+			if (here and channel not in subs) or (not here and channel in subs):
+				sm = {'channel': channel}
+				if here:
+					sm['type'] = 'subscribe'
+					subs.add(channel)
+				else:
+					sm['type'] = 'unsubscribe'
+					subs.remove(channel)
+				sub_sock.send(tnetstring.dumps(sm))
+
 		if out_sock:
 			m_raw = mtype + ' T' + mdata
 			logger.debug('OUT stats: %s' % m_raw)
@@ -2098,6 +2177,10 @@ c.release()
 
 push_in_zmq_thread = threading.Thread(target=push_in_zmq_worker)
 push_in_zmq_thread.start()
+
+if push_in_sub_spec:
+	push_in_sub_zmq_thread = threading.Thread(target=push_in_sub_zmq_worker)
+	push_in_sub_zmq_thread.start()
 
 push_in_http_thread = threading.Thread(target=push_in_http_worker)
 push_in_http_thread.start()
