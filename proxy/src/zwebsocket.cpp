@@ -645,7 +645,7 @@ public:
 		QByteArray contentType;
 		if(frame.type == Frame::Binary || frame.type == Frame::Text || frame.type == Frame::Continuation)
 		{
-			Frame::Type ftype;
+			Frame::Type ftype = (Frame::Type)-1;
 			if(frame.type == Frame::Binary || frame.type == Frame::Text)
 			{
 				ftype = frame.type;
@@ -656,10 +656,13 @@ public:
 				ftype = (Frame::Type)outContentType;
 			}
 
-			if(ftype == Frame::Binary)
-				contentType = "binary";
-			else // Text
-				contentType = "text";
+			if((Frame::Type)ftype != -1)
+			{
+				if(ftype == Frame::Binary)
+					contentType = "binary";
+				else // Text
+					contentType = "text";
+			}
 		}
 
 		if(server)
