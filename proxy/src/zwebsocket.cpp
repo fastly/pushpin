@@ -656,7 +656,7 @@ public:
 				ftype = (Frame::Type)outContentType;
 			}
 
-			if((Frame::Type)ftype != -1)
+			if(ftype != (Frame::Type)-1)
 			{
 				if(ftype == Frame::Binary)
 					contentType = "binary";
