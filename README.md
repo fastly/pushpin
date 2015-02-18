@@ -9,6 +9,8 @@ Pushpin is a reverse proxy server that makes it easy to implement WebSocket, HTT
 
 Additionally, Pushpin does all of this without exposing a proprietary protocol to clients. The HTTP/WebSocket content between the client and your server is whatever you want it to be. This makes it ideal for implementing APIs.
 
+Pushpin is written in C++ and Python.
+
 License
 -------
 
