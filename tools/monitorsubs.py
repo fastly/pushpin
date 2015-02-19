@@ -1,3 +1,4 @@
+import sys
 import time
 import tnetstring
 import zmq
@@ -12,7 +13,7 @@ subs = dict()
 
 ctx = zmq.Context()
 sock = ctx.socket(zmq.SUB)
-sock.connect('ipc:///tmp/pushpin-stats')
+sock.connect(sys.argv[1])
 sock.setsockopt(zmq.SUBSCRIBE, 'sub ')
 
 poller = zmq.Poller()

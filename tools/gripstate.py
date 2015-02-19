@@ -1,9 +1,10 @@
+import sys
 import tnetstring
 import zmq
 
 ctx = zmq.Context()
 sock = ctx.socket(zmq.REP)
-sock.connect('ipc:///tmp/pushpin-state')
+sock.connect(sys.argv[1])
 
 class Rule(object):
 	def __init__(self):
