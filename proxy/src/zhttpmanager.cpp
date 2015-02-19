@@ -30,6 +30,7 @@
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "log.h"
+#include "zutil.h"
 
 #define OUT_HWM 100
 #define IN_HWM 100
@@ -90,41 +91,6 @@ public:
 	{
 	}
 
-	bool bindSpec(QZmq::Socket *sock, const QString &spec)
-	{
-		if(!sock->bind(spec))
-		{
-			log_error("unable to bind to %s", qPrintable(spec));
-			return false;
-		}
-
-		if(spec.startsWith("ipc://") && ipcFileMode != -1)
-		{
-			QFile::Permissions perms;
-			if(ipcFileMode & 0400)
-				perms |= QFile::ReadUser;
-			if(ipcFileMode & 0200)
-				perms |= QFile::WriteUser;
-			if(ipcFileMode & 0100)
-				perms |= QFile::ExeUser;
-			if(ipcFileMode & 0040)
-				perms |= QFile::ReadGroup;
-			if(ipcFileMode & 0020)
-				perms |= QFile::WriteGroup;
-			if(ipcFileMode & 0010)
-				perms |= QFile::ExeGroup;
-			if(ipcFileMode & 0004)
-				perms |= QFile::ReadOther;
-			if(ipcFileMode & 0002)
-				perms |= QFile::WriteOther;
-			if(ipcFileMode & 0001)
-				perms |= QFile::ExeOther;
-			QFile::setPermissions(spec.mid(6), perms);
-		}
-
-		return true;
-	}
-
 	bool setupClientOut()
 	{
 		delete client_req_sock;
@@ -136,15 +102,11 @@ public:
 		client_out_sock->setHwm(OUT_HWM);
 		client_out_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(client_out_sock, client_out_specs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(client_out_sock, client_out_specs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, client_out_specs)
-				client_out_sock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		return true;
@@ -162,15 +124,11 @@ public:
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
 		client_out_stream_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(client_out_stream_sock, client_out_stream_specs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(client_out_stream_sock, client_out_stream_specs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, client_out_stream_specs)
-				client_out_stream_sock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		return true;
@@ -188,15 +146,11 @@ public:
 		client_in_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 		client_in_sock->subscribe(instanceId + ' ');
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(client_in_sock, client_in_specs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(client_in_sock, client_in_specs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, client_in_specs)
-				client_in_sock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		return true;
@@ -214,15 +168,11 @@ public:
 		client_req_sock->setHwm(OUT_HWM);
 		client_req_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(client_req_sock, client_req_specs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(client_req_sock, client_req_specs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, client_req_specs)
-				client_req_sock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		return true;
@@ -237,15 +187,11 @@ public:
 		server_in_sock->setHwm(IN_HWM);
 		server_in_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(server_in_sock, server_in_specs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(server_in_sock, server_in_specs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, server_in_specs)
-				server_in_sock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		server_in_valve = new QZmq::Valve(server_in_sock, this);
@@ -267,15 +213,11 @@ public:
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
 		server_in_stream_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(server_in_stream_sock, server_in_stream_specs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(server_in_stream_sock, server_in_stream_specs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, server_in_stream_specs)
-				server_in_stream_sock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		return true;
@@ -292,15 +234,11 @@ public:
 		server_out_sock->setHwm(DEFAULT_HWM);
 		server_out_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(server_out_sock, server_out_specs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(server_out_sock, server_out_specs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, server_out_specs)
-				server_out_sock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		return true;

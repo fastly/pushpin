@@ -229,6 +229,8 @@ public:
 		QString handler_ws_control_out_spec = settings.value("proxy/handler_ws_control_out_spec").toString();
 		QString stats_spec = settings.value("proxy/stats_spec").toString();
 		QString command_spec = settings.value("proxy/command_spec").toString();
+		bool ok;
+		int ipcFileMode = settings.value("proxy/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		int maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesFile = settings.value("proxy/routesfile").toString();
 		bool autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
@@ -271,6 +273,7 @@ public:
 		config.wsControlOutSpec = handler_ws_control_out_spec;
 		config.statsSpec = stats_spec;
 		config.commandSpec = command_spec;
+		config.ipcFileMode = ipcFileMode;
 		config.maxWorkers = maxWorkers;
 		config.routesFile = routesFile;
 		config.autoCrossOrigin = autoCrossOrigin;

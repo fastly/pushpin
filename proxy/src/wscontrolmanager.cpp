@@ -25,6 +25,7 @@
 #include "qzmqvalve.h"
 #include "log.h"
 #include "tnetstring.h"
+#include "zutil.h"
 #include "wscontrolsession.h"
 
 #define DEFAULT_HWM 5000
@@ -35,6 +36,7 @@ class WsControlManager::Private : public QObject
 
 public:
 	WsControlManager *q;
+	int ipcFileMode;
 	QString inSpec;
 	QString outSpec;
 	QZmq::Socket *inSock;
@@ -45,6 +47,7 @@ public:
 	Private(WsControlManager *_q) :
 		QObject(_q),
 		q(_q),
+		ipcFileMode(-1),
 		inSock(0),
 		outSock(0),
 		inValve(0)
@@ -63,8 +66,12 @@ public:
 
 		inSock->setHwm(DEFAULT_HWM);
 
-		if(!inSock->bind(inSpec))
+		QString errorMessage;
+		if(!ZUtil::setupSocket(inSock, inSpec, true, ipcFileMode, &errorMessage))
+		{
+			log_error("%s", qPrintable(errorMessage));
 			return false;
+		}
 
 		inValve = new QZmq::Valve(inSock, this);
 		connect(inValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(in_readyRead(const QList<QByteArray> &)));
@@ -83,8 +90,12 @@ public:
 		outSock->setHwm(DEFAULT_HWM);
 		outSock->setShutdownWaitTime(0);
 
-		if(!outSock->bind(outSpec))
+		QString errorMessage;
+		if(!ZUtil::setupSocket(outSock, outSpec, true, ipcFileMode, &errorMessage))
+		{
+			log_error("%s", qPrintable(errorMessage));
 			return false;
+		}
 
 		return true;
 	}
@@ -170,6 +181,11 @@ WsControlManager::WsControlManager(QObject *parent) :
 WsControlManager::~WsControlManager()
 {
 	delete d;
+}
+
+void WsControlManager::setIpcFileMode(int mode)
+{
+	d->ipcFileMode = mode;
 }
 
 bool WsControlManager::setInSpec(const QString &spec)

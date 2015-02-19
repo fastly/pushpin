@@ -48,6 +48,7 @@ SOURCES += \
 
 HEADERS += \
 	$$SRC_DIR/uuidutil.h \
+	$$SRC_DIR/zutil.h \
 	$$SRC_DIR/jwt.h \
 	$$SRC_DIR/websocket.h \
 	$$SRC_DIR/zhttpmanager.h \
@@ -76,6 +77,7 @@ HEADERS += \
 
 SOURCES += \
 	$$SRC_DIR/uuidutil.cpp \
+	$$SRC_DIR/zutil.cpp \
 	$$SRC_DIR/jwt.cpp \
 	$$SRC_DIR/zhttpmanager.cpp \
 	$$SRC_DIR/zhttprequest.cpp \

@@ -29,6 +29,7 @@
 #include "packet/zrpcrequestpacket.h"
 #include "packet/zrpcresponsepacket.h"
 #include "zrpcrequest.h"
+#include "zutil.h"
 
 #define DEFAULT_HWM 5000
 #define SHUTDOWN_WAIT_TIME 1000
@@ -69,41 +70,6 @@ public:
 		assert(clientReqsById.isEmpty());
 	}
 
-	bool bindSpec(QZmq::Socket *sock, const QString &spec)
-	{
-		if(!sock->bind(spec))
-		{
-			log_error("unable to bind to %s", qPrintable(spec));
-			return false;
-		}
-
-		if(spec.startsWith("ipc://") && ipcFileMode != -1)
-		{
-			QFile::Permissions perms;
-			if(ipcFileMode & 0400)
-				perms |= QFile::ReadUser;
-			if(ipcFileMode & 0200)
-				perms |= QFile::WriteUser;
-			if(ipcFileMode & 0100)
-				perms |= QFile::ExeUser;
-			if(ipcFileMode & 0040)
-				perms |= QFile::ReadGroup;
-			if(ipcFileMode & 0020)
-				perms |= QFile::WriteGroup;
-			if(ipcFileMode & 0010)
-				perms |= QFile::ExeGroup;
-			if(ipcFileMode & 0004)
-				perms |= QFile::ReadOther;
-			if(ipcFileMode & 0002)
-				perms |= QFile::WriteOther;
-			if(ipcFileMode & 0001)
-				perms |= QFile::ExeOther;
-			QFile::setPermissions(spec.mid(6), perms);
-		}
-
-		return true;
-	}
-
 	bool setupClient()
 	{
 		delete clientValve;
@@ -114,15 +80,11 @@ public:
 		clientSock->setHwm(DEFAULT_HWM);
 		clientSock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(clientSock, clientSpecs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(clientSock, clientSpecs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, clientSpecs)
-				clientSock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		clientValve = new QZmq::Valve(clientSock, this);
@@ -143,15 +105,11 @@ public:
 		serverSock->setHwm(DEFAULT_HWM);
 		serverSock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
-		if(doBind)
+		QString errorMessage;
+		if(!ZUtil::setupSocket(serverSock, serverSpecs, doBind, ipcFileMode, &errorMessage))
 		{
-			if(!bindSpec(serverSock, serverSpecs[0]))
-				return false;
-		}
-		else
-		{
-			foreach(const QString &spec, serverSpecs)
-				serverSock->connectToAddress(spec);
+			log_error("%s", qPrintable(errorMessage));
+			return false;
 		}
 
 		serverValve = new QZmq::Valve(serverSock, this);

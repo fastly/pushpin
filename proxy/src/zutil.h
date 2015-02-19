@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,38 +17,26 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef WSCONTROLMANAGER_H
-#define WSCONTROLMANAGER_H
+#ifndef ZUTIL_H
+#define ZUTIL_H
 
-#include <QObject>
-#include "packet/wscontrolpacket.h"
+class QString;
+class QStringList;
 
-class WsControlSession;
+namespace QZmq {
 
-class WsControlManager : public QObject
-{
-	Q_OBJECT
+class Socket;
 
-public:
-	WsControlManager(QObject *parent = 0);
-	~WsControlManager();
+}
 
-	void setIpcFileMode(int mode);
+namespace ZUtil {
 
-	bool setInSpec(const QString &spec);
-	bool setOutSpec(const QString &spec);
+bool bindSpec(QZmq::Socket *sock, const QString &spec, int ipcFileMode, QString *errorMessage = 0);
 
-	WsControlSession *createSession(const QByteArray &cid);
+bool setupSocket(QZmq::Socket *sock, const QStringList &specs, bool bind, int ipcFileMode, QString *errorMessage = 0);
 
-private:
-	class Private;
-	Private *d;
+bool setupSocket(QZmq::Socket *sock, const QString &spec, bool bind, int ipcFileMode, QString *errorMessage = 0);
 
-	friend class WsControlSession;
-	void link(WsControlSession *s, const QByteArray &cid);
-	void unlink(const QByteArray &cid);
-	bool canWriteImmediately() const;
-	void write(const WsControlPacket::Item &item);
-};
+}
 
 #endif

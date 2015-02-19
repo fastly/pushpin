@@ -46,6 +46,7 @@ public:
 		QString wsControlOutSpec;
 		QString statsSpec;
 		QString commandSpec;
+		int ipcFileMode;
 		int maxWorkers;
 		int inspectTimeout;
 		QString routesFile;
@@ -59,6 +60,7 @@ public:
 		QByteArray upstreamKey;
 
 		Configuration() :
+			ipcFileMode(-1),
 			maxWorkers(-1),
 			inspectTimeout(8000),
 			autoCrossOrigin(false),

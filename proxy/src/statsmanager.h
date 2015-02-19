@@ -39,6 +39,7 @@ public:
 	~StatsManager();
 
 	void setInstanceId(const QByteArray &instanceId);
+	void setIpcFileMode(int mode);
 	bool setSpec(const QString &spec);
 
 	// routeId may be empty for non-identified route

@@ -27,6 +27,7 @@
 #include "log.h"
 #include "tnetstring.h"
 #include "packet/statspacket.h"
+#include "zutil.h"
 
 // make this somewhat big since PUB is lossy
 #define OUT_HWM 200000
@@ -64,6 +65,7 @@ public:
 
 	StatsManager *q;
 	QByteArray instanceId;
+	int ipcFileMode;
 	QString spec;
 	QZmq::Socket *sock;
 	QHash<QByteArray, int> routeActivity;
@@ -74,6 +76,7 @@ public:
 	Private(StatsManager *_q) :
 		QObject(_q),
 		q(_q),
+		ipcFileMode(-1),
 		sock(0)
 	{
 		activityTimer = new QTimer(this);
@@ -115,8 +118,12 @@ public:
 		sock->setHwm(OUT_HWM);
 		sock->setShutdownWaitTime(0);
 
-		if(!sock->bind(spec))
+		QString errorMessage;
+		if(!ZUtil::setupSocket(sock, spec, true, ipcFileMode, &errorMessage))
+		{
+			log_error("%s", qPrintable(errorMessage));
 			return false;
+		}
 
 		return true;
 	}
@@ -240,6 +247,11 @@ StatsManager::~StatsManager()
 void StatsManager::setInstanceId(const QByteArray &instanceId)
 {
 	d->instanceId = instanceId;
+}
+
+void StatsManager::setIpcFileMode(int mode)
+{
+	d->ipcFileMode = mode;
 }
 
 bool StatsManager::setSpec(const QString &spec)

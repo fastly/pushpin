@@ -51,7 +51,7 @@ class CallError(Exception):
 		return "condition=%s, message=%s" % (self.condition, self.message)
 
 class RpcClient(object):
-	def __init__(self, req_sock_specs, bind=False, context=None):
+	def __init__(self, req_sock_specs, bind=False, context=None, ipc_file_mode=None):
 		if context:
 			self.context = context
 		else:
@@ -59,6 +59,7 @@ class RpcClient(object):
 		self.specs = req_sock_specs
 		self.use_bind = bind
 		self.sock = None
+		self.ipc_file_mode = ipc_file_mode
 		self._reset_socket()
 
 	def _reset_socket(self):
@@ -67,7 +68,10 @@ class RpcClient(object):
 		self.sock = self.context.socket(zmq.DEALER)
 		self.sock.linger = 0
 		if self.use_bind:
-			self.sock.bind(self.specs[0])
+			spec = self.specs[0]
+			self.sock.bind(spec)
+			if spec.startswith('ipc://') and self.ipc_file_mode is not None:
+				os.chmod(spec[6:], self.ipc_file_mode)
 		else:
 			for spec in self.specs:
 				self.sock.connect(spec)
@@ -127,7 +131,7 @@ class RpcClient(object):
 			raise CallError(resp['condition'])
 
 class RpcServer(object):
-	def __init__(self, rep_sock_spec, context=None):
+	def __init__(self, rep_sock_spec, context=None, ipc_file_mode=None):
 		if context:
 			self.context = context
 		else:
@@ -139,8 +143,8 @@ class RpcServer(object):
 		self.rep_sock.linger = 0
 		self.rep_sock.bind(rep_sock_spec)
 		self.req_id = None
-		if rep_sock_spec.startswith('ipc://'):
-			os.chmod(rep_sock_spec[6:], 0o777)
+		if rep_sock_spec.startswith('ipc://') and ipc_file_mode is not None:
+			os.chmod(rep_sock_spec[6:], ipc_file_mode)
 
 	def _respond(self, value):
 		resp = dict()

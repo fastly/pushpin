@@ -41,6 +41,7 @@
 #include "wsproxysession.h"
 #include "statsmanager.h"
 #include "connectionmanager.h"
+#include "zutil.h"
 
 #define DEFAULT_HWM 1000
 
@@ -177,6 +178,7 @@ public:
 		{
 			inspect = new ZrpcManager(this);
 			inspect->setBind(true);
+			inspect->setIpcFileMode(config.ipcFileMode);
 			if(!inspect->setClientSpecs(QStringList() << config.inspectSpec))
 			{
 				// zrpcmanager logs error
@@ -192,6 +194,7 @@ public:
 		{
 			accept = new ZrpcManager(this);
 			accept->setBind(true);
+			accept->setIpcFileMode(config.ipcFileMode);
 			if(!accept->setClientSpecs(QStringList() << config.acceptSpec))
 			{
 				// zrpcmanager logs error
@@ -208,9 +211,10 @@ public:
 
 			handler_retry_in_sock->setHwm(DEFAULT_HWM);
 
-			if(!handler_retry_in_sock->bind(config.retryInSpec))
+			QString errorMessage;
+			if(!ZUtil::setupSocket(handler_retry_in_sock, config.retryInSpec, true, config.ipcFileMode, &errorMessage))
 			{
-				log_error("unable to bind to handler_retry_in_spec: %s", qPrintable(config.retryInSpec));
+				log_error("%s", qPrintable(errorMessage));
 				return false;
 			}
 
@@ -224,6 +228,8 @@ public:
 		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
 		{
 			wsControl = new WsControlManager(this);
+
+			wsControl->setIpcFileMode(config.ipcFileMode);
 
 			if(!wsControl->setInSpec(config.wsControlInSpec))
 			{
@@ -243,6 +249,7 @@ public:
 			stats = new StatsManager(this);
 
 			stats->setInstanceId(config.clientId);
+			stats->setIpcFileMode(config.ipcFileMode);
 
 			if(!stats->setSpec(config.statsSpec))
 			{
@@ -255,6 +262,7 @@ public:
 		{
 			command = new ZrpcManager(this);
 			command->setBind(true);
+			command->setIpcFileMode(config.ipcFileMode);
 			connect(command, SIGNAL(requestReady()), SLOT(command_requestReady()));
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
