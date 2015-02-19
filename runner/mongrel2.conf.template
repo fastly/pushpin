@@ -1,7 +1,7 @@
 {% for port in ports %}handler_{{ port.value }} = Handler(
-	send_spec="ipc:///tmp/pushpin-m2-out-{{ port.value }}",
+	send_spec="ipc://{{ rundir }}/pushpin-m2-out-{{ port.value }}",
 	send_ident="pushpin-m2-{{ port.value }}",
-	recv_spec="ipc:///tmp/pushpin-m2-in-{{ port.value }}",
+	recv_spec="ipc://{{ rundir }}/pushpin-m2-in-{{ port.value }}",
 	recv_ident="pushpin-m2-{{ port.value }} " # trailing space needed
 )
 
@@ -13,7 +13,7 @@
 	access_log="{{ logdir }}/access_{{ port.value }}.log",
 	error_log="{{ logdir }}/error_{{ port.value }}.log",
 	pid_file="{{ rundir }}/mongrel2_{{ port.value }}.pid",
-	control_port="ipc:///tmp/pushpin-m2-control-{{ port.value }}",
+	control_port="ipc://{{ rundir }}/pushpin-m2-control-{{ port.value }}",
 	default_host="default",
 	name="server-{{ port.value }}",
 	port={{ port.value }},
@@ -28,4 +28,3 @@
 }
 
 servers = [{% for port in ports %}server_{{ port.value }}{% if not loop.last %}, {% endif %}{% endfor %}]
-

@@ -12,22 +12,22 @@ m2_send_idents={% for i in instances %}{% if not loop.first %},{% endif %}{{ i.s
 m2_control_specs={% for i in instances %}{% if not loop.first %},{% endif %}{{ i.control_spec }}{% endfor %}
 
 # zhttp in specs
-zhttp_in_specs=ipc:///tmp/pushpin-m2zhttp-in
+zhttp_in_specs=ipc://{{ rundir }}/pushpin-m2zhttp-in
 
 # zhttp out specs
-zhttp_out_specs=ipc:///tmp/pushpin-m2zhttp-out
+zhttp_out_specs=ipc://{{ rundir }}/pushpin-m2zhttp-out
 
 # zhttp out stream specs
-zhttp_out_stream_specs=ipc:///tmp/pushpin-m2zhttp-out-stream
+zhttp_out_stream_specs=ipc://{{ rundir }}/pushpin-m2zhttp-out-stream
 
 # zws in specs
-zws_in_specs=ipc:///tmp/pushpin-m2zws-in
+zws_in_specs=ipc://{{ rundir }}/pushpin-m2zws-in
 
 # zws out specs
-zws_out_specs=ipc:///tmp/pushpin-m2zws-out
+zws_out_specs=ipc://{{ rundir }}/pushpin-m2zws-out
 
 # zws out stream specs
-zws_out_stream_specs=ipc:///tmp/pushpin-m2zws-out-stream
+zws_out_stream_specs=ipc://{{ rundir }}/pushpin-m2zws-out-stream
 
 # don't send more than this to mongrel2
 m2_client_buffer=200000

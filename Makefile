@@ -1,5 +1,5 @@
 prefix = /usr/local
-varprefix = /var/local
+varprefix = /var
 configdir = $(prefix)/etc/pushpin
 bindir = $(prefix)/bin
 libdir = $(prefix)/lib/pushpin
@@ -53,8 +53,6 @@ install:
 	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(configdir)/runner/certs || $(MKDIR) $(INSTALL_ROOT)$(configdir)/runner/certs
 	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(libdir)/handler || $(MKDIR) $(INSTALL_ROOT)$(libdir)/handler
 	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(libdir)/runner || $(MKDIR) $(INSTALL_ROOT)$(libdir)/runner
-	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(rundir) || $(MKDIR) $(INSTALL_ROOT)$(rundir)
-	@$(CHK_DIR_EXISTS) $(INSTALL_ROOT)$(logdir) || $(MKDIR) $(INSTALL_ROOT)$(logdir)
 	-$(INSTALL_PROGRAM) m2adapter/m2adapter "$(INSTALL_ROOT)$(bindir)/m2adapter"
 	-$(STRIP) "$(INSTALL_ROOT)$(bindir)/m2adapter"
 	-$(INSTALL_PROGRAM) proxy/pushpin-proxy "$(INSTALL_ROOT)$(bindir)/pushpin-proxy"
@@ -63,7 +61,7 @@ install:
 	-$(INSTALL_PROGRAM) pushpin.inst $(INSTALL_ROOT)$(bindir)/pushpin
 	$(COPY) handler/*.py $(INSTALL_ROOT)$(libdir)/handler
 	$(COPY) runner/*.py $(INSTALL_ROOT)$(libdir)/runner
-	$(COPY) runner/*.conf runner/*.template $(INSTALL_ROOT)$(configdir)/runner
+	$(COPY) runner/*.template $(INSTALL_ROOT)$(configdir)/runner
 	sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/internal.conf > $(INSTALL_ROOT)$(configdir)/internal.conf
 	test -e $(INSTALL_ROOT)$(configdir)/pushpin.conf || sed -e "s,libdir=.*,libdir=$(libdir),g" -e "s,configdir=.*,configdir=$(configdir)/runner,g" -e "s,rundir=.*,rundir=$(rundir),g" -e "s,logdir=.*,logdir=$(logdir),g" config/pushpin.conf > $(INSTALL_ROOT)$(configdir)/pushpin.conf
 	test -e $(INSTALL_ROOT)$(configdir)/routes || cp config/routes $(INSTALL_ROOT)$(configdir)/routes

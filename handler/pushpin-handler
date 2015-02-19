@@ -121,58 +121,56 @@ DEFAULT_LINGER = 1000
 
 instance_id = "pushpin-handler_%d" % os.getpid()
 
-if config.has_option("handler", "ipc_file_mode"):
-	ipc_file_mode = int(config.get("handler", "ipc_file_mode"), 8)
-else:
-	ipc_file_mode = None
+def get_option_raw(section, key, default=None):
+	if config.has_option(section, key):
+		return config.get(section, key)
+	else:
+		return default
 
-m2a_in_stream_specs = config.get("handler", "m2a_in_stream_specs").split(",")
-m2a_out_specs = config.get("handler", "m2a_out_specs").split(",")
+rundir = get_option_raw("global", "rundir")
 
-if config.has_option("handler", "share_all") and config.get("handler", "share_all") == "true":
+def get_option(section, key, default=None):
+	v = get_option_raw(section, key, default=default)
+	if v is not None:
+		v = v.replace('{rundir}', rundir)
+	return v
+
+ipc_file_mode = get_option("handler", "ipc_file_mode")
+if ipc_file_mode is not None:
+	ipc_file_mode = int(ipc_file_mode, 8)
+
+m2a_in_stream_specs = get_option("handler", "m2a_in_stream_specs").split(",")
+m2a_out_specs = get_option("handler", "m2a_out_specs").split(",")
+
+if get_option("handler", "share_all") == "true":
 	share_all = True
 else:
 	share_all = False
 
-if config.has_option("handler", "stats_spec"):
-	stats_spec = config.get("handler", "stats_spec")
-else:
-	stats_spec = None
+stats_spec = get_option("handler", "stats_spec")
+command_spec = get_option("handler", "command_spec")
+proxy_inspect_spec = get_option("handler", "proxy_inspect_spec")
+proxy_accept_spec = get_option("handler", "proxy_accept_spec")
+proxy_retry_out_spec = get_option("handler", "proxy_retry_out_spec")
+ws_control_in_spec = get_option("handler", "proxy_ws_control_in_spec")
+ws_control_out_spec = get_option("handler", "proxy_ws_control_out_spec")
+proxy_stats_spec = get_option("handler", "proxy_stats_spec")
+proxy_command_spec = get_option("handler", "proxy_command_spec")
+state_spec = get_option("handler", "state_spec")
+push_in_spec = get_option("handler", "push_in_spec")
+push_in_sub_spec = get_option("handler", "push_in_sub_spec")
+push_in_http_addr = get_option("handler", "push_in_http_addr")
 
-if config.has_option("handler", "command_spec"):
-	command_spec = config.get("handler", "command_spec")
-else:
-	command_spec = None
+push_in_http_port = get_option("handler", "push_in_http_port")
+if push_in_http_port is not None:
+	push_in_http_port = int(push_in_http_port)
 
-if config.has_option("handler", "proxy_ws_control_in_spec"):
-	ws_control_in_spec = config.get("handler", "proxy_ws_control_in_spec")
-else:
-	ws_control_in_spec = None
-
-if config.has_option("handler", "proxy_ws_control_out_spec"):
-	ws_control_out_spec = config.get("handler", "proxy_ws_control_out_spec")
-else:
-	ws_control_out_spec = None
-
-if config.has_option("handler", "proxy_stats_spec"):
-	proxy_stats_spec = config.get("handler", "proxy_stats_spec")
-else:
-	proxy_stats_spec = None
-
-if config.has_option("handler", "proxy_command_spec"):
-	proxy_command_spec = config.get("handler", "proxy_command_spec")
-else:
-	proxy_command_spec = None
-
-if config.has_option("handler", "state_spec"):
-	state_spec = config.get("handler", "state_spec")
-else:
-	state_spec = None
-
-if config.has_option("handler", "push_in_sub_spec"):
-	push_in_sub_spec = config.get("handler", "push_in_sub_spec")
-else:
-	push_in_sub_spec = None
+assert(proxy_inspect_spec)
+assert(proxy_accept_spec)
+assert(proxy_retry_out_spec)
+assert(push_in_spec)
+assert(push_in_http_addr)
+assert(push_in_http_port is not None)
 
 ctx = zmq.Context()
 
@@ -636,7 +634,7 @@ def session_get_last_ids(state_rpc, sid):
 def inspect_worker():
 	sock = ctx.socket(zmq.REP)
 	sock.linger = DEFAULT_LINGER
-	sock.connect(config.get("handler", "proxy_inspect_spec"))
+	sock.connect(proxy_inspect_spec)
 
 	if state_spec:
 		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
@@ -710,7 +708,7 @@ def inspect_worker():
 def accept_worker():
 	sock = ctx.socket(zmq.REP)
 	sock.linger = DEFAULT_LINGER
-	sock.connect(config.get("handler", "proxy_accept_spec"))
+	sock.connect(proxy_accept_spec)
 
 	out_sock = ctx.socket(zmq.PUB)
 	out_sock.linger = DEFAULT_LINGER
@@ -719,7 +717,7 @@ def accept_worker():
 
 	retry_sock = ctx.socket(zmq.PUSH)
 	retry_sock.linger = 0
-	retry_sock.connect(config.get("handler", "proxy_retry_out_spec"))
+	retry_sock.connect(proxy_retry_out_spec)
 
 	stats_sock = ctx.socket(zmq.PUSH)
 	stats_sock.linger = 0
@@ -1047,7 +1045,7 @@ def accept_worker():
 
 def push_in_zmq_worker():
 	in_sock = ctx.socket(zmq.PULL)
-	bind_spec(in_sock, config.get("handler", "push_in_spec"))
+	bind_spec(in_sock, push_in_spec)
 
 	out_sock = ctx.socket(zmq.PUSH)
 	out_sock.linger = DEFAULT_LINGER
@@ -1171,7 +1169,7 @@ def push_in_http_worker():
 
 	context = dict()
 	context["out_sock"] = out_sock
-	httpinterface.run(config.get("handler", "push_in_http_addr"), int(config.get("handler", "push_in_http_port")), push_in_http_handler, context)
+	httpinterface.run(push_in_http_addr, push_in_http_port, push_in_http_handler, context)
 
 	out_sock.close()
 

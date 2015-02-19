@@ -7,7 +7,7 @@ def compile_template(infilename, outfilename, vars):
 	f = open(infilename, "r")
 	t = e.from_string(f.read())
 	f.close()
-	out = t.render(vars)
+	out = t.render(vars) + "\n"
 	f = open(outfilename, "w")
 	f.write(out)
 	f.close()
@@ -50,14 +50,25 @@ def write_m2adapter_config(configpath, rundir, ports):
 	instances = list()
 	for port in ports:
 		i = dict()
-		i["send_spec"] = "ipc:///tmp/pushpin-m2-out-" + str(port)
-		i["recv_spec"] = "ipc:///tmp/pushpin-m2-in-" + str(port)
-		i["send_ident"] = "pushpin-m2-" + str(port)
-		i["control_spec"] = "ipc:///tmp/pushpin-m2-control-" + str(port)
+		i["send_spec"] = "ipc://%s/pushpin-m2-out-%d" % (rundir, port)
+		i["recv_spec"] = "ipc://%s/pushpin-m2-in-%d" % (rundir, port)
+		i["send_ident"] = "pushpin-m2-%d" % port
+		i["control_spec"] = "ipc://%s/pushpin-m2-control-%d" % (rundir, port)
 		instances.append(i)
 
 	vars = dict()
 	vars["instances"] = instances
+	vars["rundir"] = rundir
+	compile_template(configpath, genconfigpath, vars)
+
+def write_zurl_config(configpath, rundir):
+	assert(configpath.endswith(".template"))
+	fname = os.path.basename(configpath)
+	path, ext = os.path.splitext(fname)
+	genconfigpath = os.path.join(rundir, path)
+
+	vars = dict()
+	vars["rundir"] = rundir
 	compile_template(configpath, genconfigpath, vars)
 
 class Service(object):

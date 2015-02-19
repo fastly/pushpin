@@ -3,13 +3,13 @@
 instance_id=
 
 # bind PULL for initiating a request
-in_spec=ipc:///tmp/pushpin-zurl-in
+in_spec=ipc://{{ rundir }}/pushpin-zurl-in
 
 # bind DEALER for continuing a request
-in_stream_spec=ipc:///tmp/pushpin-zurl-in-stream
+in_stream_spec=ipc://{{ rundir }}/pushpin-zurl-in-stream
 
 # bind PUB for responding
-out_spec=ipc:///tmp/pushpin-zurl-out
+out_spec=ipc://{{ rundir }}/pushpin-zurl-out
 
 # bind ROUTER for handling non-streamed requests/responses
 in_req_spec=

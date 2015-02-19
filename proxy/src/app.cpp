@@ -78,6 +78,7 @@ class Settings
 private:
 	QSettings *main;
 	QSettings *include;
+	QString rundir;
 
 public:
 	Settings(const QString &fileName) :
@@ -95,6 +96,8 @@ public:
 
 			include = new QSettings(includeFile, QSettings::IniFormat);
 		}
+
+		rundir = valueRaw("global/rundir").toString();
 	}
 
 	~Settings()
@@ -103,7 +106,7 @@ public:
 		delete main;
 	}
 
-	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const
+	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const
 	{
 		if(include)
 		{
@@ -114,6 +117,29 @@ public:
 		}
 		else
 			return main->value(key, defaultValue);
+	}
+
+	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const
+	{
+		QVariant v = valueRaw(key, defaultValue);
+		if(v.isValid())
+		{
+			if(v.type() == QVariant::String)
+			{
+				QString s = v.toString();
+				v = s.replace("{rundir}", rundir);
+			}
+			else if(v.type() == QVariant::StringList)
+			{
+				QStringList oldList = v.toStringList();
+				QStringList newList;
+				foreach(QString s, oldList)
+					newList += s.replace("{rundir}", rundir);
+				v = newList;
+			}
+		}
+
+		return v;
 	}
 };
 
