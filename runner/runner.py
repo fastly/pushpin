@@ -22,7 +22,11 @@ def run(exedir, config_file, verbose):
 				continue
 			https_ports.append(int(p))
 
-	rundir = config.get("global", "rundir")
+	if config.has_option("global", "rundir"):
+		rundir = config.get("global", "rundir")
+	else:
+		print 'warning: rundir in [runner] section is deprecated. put in [global]'
+		rundir = config.get("runner", "rundir")
 	if not os.path.isabs(rundir):
 		rundir = os.path.join(os.path.dirname(config_file), rundir)
 

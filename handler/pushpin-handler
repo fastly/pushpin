@@ -128,6 +128,10 @@ def get_option_raw(section, key, default=None):
 		return default
 
 rundir = get_option_raw("global", "rundir")
+if rundir is None:
+	# fallback to runner section (deprecated)
+	rundir = get_option_raw("runner", "rundir")
+assert(rundir)
 
 def get_option(section, key, default=None):
 	v = get_option_raw(section, key, default=default)

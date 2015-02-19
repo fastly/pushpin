@@ -98,6 +98,12 @@ public:
 		}
 
 		rundir = valueRaw("global/rundir").toString();
+
+		if(rundir.isEmpty())
+		{
+			// fallback to runner section (deprecated)
+			rundir = valueRaw("runner/rundir").toString();
+		}
 	}
 
 	~Settings()
