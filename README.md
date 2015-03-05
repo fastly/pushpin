@@ -9,7 +9,7 @@ Pushpin is a reverse proxy server that makes it easy to implement WebSocket, HTT
 
 Additionally, Pushpin does all of this without exposing a proprietary protocol to clients. The HTTP/WebSocket content between the client and your server is whatever you want it to be. This makes it ideal for implementing APIs.
 
-Pushpin is written in C++ and Python.
+Pushpin is written in C++ and Python. The name means to "pin" (hold) connections open for "pushing".
 
 License
 -------
@@ -46,13 +46,12 @@ See [the Install guide](https://github.com/fanout/pushpin/wiki/Install), which c
 
 If accessing from Git, be sure to pull submodules:
 
-    git submodule init
-    git submodule update
+    git submodule init && git submodule update
 
 Build and run:
 
     make
-    cp config/pushpin.conf config/internal.conf config/routes .
+    cp -r examples/config .
     ./pushpin
 
 By default, Pushpin listens on port 7999 and forwards to localhost port 80. If you've got a webserver running on port 80, you can confirm that proxying works by browsing to http://localhost:7999/
