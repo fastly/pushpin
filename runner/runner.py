@@ -9,7 +9,7 @@ def run(exedir, config_file, verbose):
 
 	configdir = config.get("runner", "configdir")
 	if not os.path.isabs(configdir):
-		configdir = os.path.join(os.path.dirname(config_file), configdir)
+		configdir = os.path.abspath(configdir)
 
 	service_names = config.get("runner", "services").split(",")
 
@@ -28,11 +28,11 @@ def run(exedir, config_file, verbose):
 		print 'warning: rundir in [runner] section is deprecated. put in [global]'
 		rundir = config.get("runner", "rundir")
 	if not os.path.isabs(rundir):
-		rundir = os.path.join(os.path.dirname(config_file), rundir)
+		rundir = os.path.abspath(rundir)
 
 	logdir = config.get("runner", "logdir")
 	if not os.path.isabs(logdir):
-		logdir = os.path.join(os.path.dirname(config_file), logdir)
+		logdir = os.path.abspath(logdir)
 
 	m2abin = "m2adapter"
 	path = os.path.normpath(os.path.join(exedir, "m2adapter/m2adapter"))

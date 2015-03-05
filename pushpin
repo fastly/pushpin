@@ -25,7 +25,10 @@ for arg in sys.argv:
 		sys.exit(0)
 
 # config file in same dir as executable
-config_file_list.append(os.path.join(exedir, "pushpin.conf"))
+config_file_list.append(os.path.abspath("pushpin.conf"))
+
+# config file in ./config
+config_file_list.append(os.path.join(os.path.abspath("config"), "pushpin.conf"))
 
 # config file in /etc
 config_file_list.append(os.path.join(default_config_dir, "pushpin.conf"))
