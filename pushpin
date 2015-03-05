@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-default_config_dir = "/etc/pushpin"
+default_config_dir = '/etc/pushpin'
 version = '1.0.0'
 
 import sys
@@ -7,7 +7,7 @@ import os
 import ConfigParser
 from setproctitle import setproctitle
 
-setproctitle("pushpin")
+setproctitle('pushpin')
 
 exedir = os.path.dirname(os.path.realpath(__file__))
 
@@ -15,23 +15,23 @@ config_file_list = list()
 verbose = False
 
 for arg in sys.argv:
-	if arg.startswith("--config="):
+	if arg.startswith('--config='):
 		config_file_list.append(arg[9:])
 		break
-	elif arg == "--verbose":
+	elif arg == '--verbose':
 		verbose = True
-	elif arg == "--version":
+	elif arg == '--version':
 		print 'pushpin %s' % version
 		sys.exit(0)
 
 # config file in same dir as executable
-config_file_list.append(os.path.abspath("pushpin.conf"))
+config_file_list.append(os.path.abspath('pushpin.conf'))
 
 # config file in ./config
-config_file_list.append(os.path.join(os.path.abspath("config"), "pushpin.conf"))
+config_file_list.append(os.path.join(os.path.abspath('config'), 'pushpin.conf'))
 
 # config file in /etc
-config_file_list.append(os.path.join(default_config_dir, "pushpin.conf"))
+config_file_list.append(os.path.join(default_config_dir, 'pushpin.conf'))
 
 config_file = None
 for f in config_file_list:
@@ -40,18 +40,18 @@ for f in config_file_list:
 		break
 
 if not config_file:
-	print "Error: no configuration file found. Tried %s" % ", ".join(config_file_list)
+	print 'Error: no configuration file found. Tried %s' % ', '.join(config_file_list)
 	sys.exit(1)
 
 config = ConfigParser.ConfigParser()
 config.read([config_file])
 
 libdir = None
-if config.has_option("global", "libdir"):
-	libdir = config.get("global", "libdir")
+if config.has_option('global', 'libdir'):
+	libdir = config.get('global', 'libdir')
 
 if libdir:
-	sys.path.insert(0, os.path.join(libdir, "runner"))
+	sys.path.insert(0, os.path.join(libdir, 'runner'))
 	import runner
 else:
 	from runner import runner
