@@ -30,10 +30,49 @@ public:
 	{
 	public:
 		QPair<QByteArray, QByteArray> rid;
+		WebSocket *sock;
 		QByteArray cid;
+
+		Item() :
+			sock(0)
+		{
+		}
 	};
 
-	QHash<QPair<QByteArray, QByteArray>, Item*> itemsByRid;
+	//QHash<QPair<QByteArray, QByteArray>, Item*> itemsByRid;
+	QHash<WebSocket*, Item*> itemsBySock;
+
+	Private()
+	{
+	}
+
+	~Private()
+	{
+		//clearItemsByRid();
+		clearItemsBySock();
+	}
+
+	/*void clearItemsByRid()
+	{
+		QHashIterator<QPair<QByteArray, QByteArray>, Item*> it(itemsByRid);
+		while(it.hasNext())
+		{
+			it.next();
+			delete it.value();
+		}
+		itemsByRid.clear();
+	}*/
+
+	void clearItemsBySock()
+	{
+		QHashIterator<WebSocket*, Item*> it(itemsBySock);
+		while(it.hasNext())
+		{
+			it.next();
+			delete it.value();
+		}
+		itemsBySock.clear();
+	}
 };
 
 ConnectionManager::ConnectionManager()
@@ -46,7 +85,7 @@ ConnectionManager::~ConnectionManager()
 	delete d;
 }
 
-QByteArray ConnectionManager::addConnection(const QPair<QByteArray, QByteArray> &rid)
+/*QByteArray ConnectionManager::addConnection(const QPair<QByteArray, QByteArray> &rid)
 {
 	assert(!d->itemsByRid.contains(rid));
 
@@ -56,20 +95,48 @@ QByteArray ConnectionManager::addConnection(const QPair<QByteArray, QByteArray> 
 	d->itemsByRid[i->rid] = i;
 
 	return i->cid;
+}*/
+
+QByteArray ConnectionManager::addConnection(WebSocket *sock)
+{
+	assert(!d->itemsBySock.contains(sock));
+
+	Private::Item *i = new Private::Item;
+	i->sock = sock;
+	i->cid = UuidUtil::createUuid();
+	d->itemsBySock[i->sock] = i;
+
+	return i->cid;
 }
 
-QByteArray ConnectionManager::getConnection(const QPair<QByteArray, QByteArray> &rid)
+/*QByteArray ConnectionManager::getConnection(const QPair<QByteArray, QByteArray> &rid)
 {
 	Private::Item *i = d->itemsByRid.value(rid);
 	if(!i)
 		return QByteArray();
 
 	return i->cid;
+}*/
+
+QByteArray ConnectionManager::getConnection(WebSocket *sock)
+{
+	Private::Item *i = d->itemsBySock.value(sock);
+	if(!i)
+		return QByteArray();
+
+	return i->cid;
 }
 
-void ConnectionManager::removeConnection(const QPair<QByteArray, QByteArray> &rid)
+/*void ConnectionManager::removeConnection(const QPair<QByteArray, QByteArray> &rid)
 {
 	Private::Item *i = d->itemsByRid.value(rid);
 	assert(i);
 	d->itemsByRid.remove(rid);
+}*/
+
+void ConnectionManager::removeConnection(WebSocket *sock)
+{
+	Private::Item *i = d->itemsBySock.value(sock);
+	assert(i);
+	d->itemsBySock.remove(sock);
 }

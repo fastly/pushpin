@@ -101,6 +101,7 @@ public:
 	bool isFinished() const;
 	bool isInputFinished() const;
 	bool isOutputFinished() const;
+	bool isErrored() const;
 	ErrorCondition errorCondition() const;
 
 	QString requestMethod() const;

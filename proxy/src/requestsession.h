@@ -27,6 +27,7 @@
 class QHostAddress;
 
 class HttpRequestData;
+class SockJsManager;
 class InspectData;
 class AcceptData;
 class ZrpcManager;
@@ -37,7 +38,7 @@ class RequestSession : public QObject
 	Q_OBJECT
 
 public:
-	RequestSession(DomainMap *domainMap, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept, QObject *parent = 0);
+	RequestSession(DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept, QObject *parent = 0);
 	~RequestSession();
 
 	bool isRetry() const;

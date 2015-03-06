@@ -86,6 +86,7 @@ public:
 	bool pausing;
 	bool paused;
 	bool pendingUpdate;
+	bool errored;
 	ZhttpRequest::ErrorCondition errorCondition;
 	QTimer *expireTimer;
 	QTimer *keepAliveTimer;
@@ -110,6 +111,7 @@ public:
 		pausing(false),
 		paused(false),
 		pendingUpdate(false),
+		errored(false),
 		expireTimer(0),
 		keepAliveTimer(0)
 	{
@@ -415,6 +417,7 @@ public:
 
 		if(packet.type == ZhttpRequestPacket::Error)
 		{
+			errored = true;
 			errorCondition = convertError(packet.condition);
 
 			log_debug("zhttp server: error id=%s cond=%s", packet.id.data(), packet.condition.data());
@@ -428,6 +431,7 @@ public:
 		{
 			log_debug("zhttp server: received cancel id=%s", packet.id.data());
 
+			errored = true;
 			errorCondition = ErrorGeneric;
 			state = Stopped;
 			cleanup();
@@ -448,6 +452,7 @@ public:
 			}
 
 			state = Stopped;
+			errored = true;
 			errorCondition = ErrorGeneric;
 			cleanup();
 			emit q->error();
@@ -510,6 +515,7 @@ public:
 			if(packet.from.isEmpty())
 			{
 				state = Stopped;
+				errored = true;
 				errorCondition = ErrorGeneric;
 				cleanup();
 				log_warning("zhttp client: error id=%s initial ack for streamed input request did not contain from field", packet.id.data());
@@ -535,6 +541,7 @@ public:
 
 		if(packet.type == ZhttpResponsePacket::Error)
 		{
+			errored = true;
 			errorCondition = convertError(packet.condition);
 
 			log_debug("zhttp client: error id=%s cond=%s", packet.id.data(), packet.condition.data());
@@ -548,6 +555,7 @@ public:
 		{
 			log_debug("zhttp client: received cancel id=%s", packet.id.data());
 
+			errored = true;
 			errorCondition = ErrorGeneric;
 			state = Stopped;
 			cleanup();
@@ -569,6 +577,7 @@ public:
 			}
 
 			state = Stopped;
+			errored = true;
 			errorCondition = ErrorGeneric;
 			cleanup();
 			emit q->error();
@@ -584,6 +593,7 @@ public:
 			log_warning("zhttp/zws client req: received invalid req response");
 
 			state = Stopped;
+			errored = true;
 			errorCondition = ErrorGeneric;
 			cleanup();
 			emit q->error();
@@ -804,6 +814,7 @@ public slots:
 				if(requestBodyBuf.size() > REQ_BUF_MAX)
 				{
 					state = Stopped;
+					errored = true;
 					errorCondition = ZhttpRequest::ErrorRequestTooLarge;
 					emit q->error();
 					cleanup();
@@ -838,6 +849,7 @@ public slots:
 				if(!manager->canWriteImmediately())
 				{
 					state = Stopped;
+					errored = true;
 					errorCondition = ZhttpRequest::ErrorUnavailable;
 					emit q->error();
 					cleanup();
@@ -937,6 +949,7 @@ public slots:
 		tryCancel();
 
 		state = Stopped;
+		errored = true;
 		errorCondition = ZhttpRequest::ErrorTimeout;
 		cleanup();
 		emit q->error();
@@ -1013,7 +1026,7 @@ void ZhttpRequest::start(const QString &method, const QUrl &uri, const HttpHeade
 void ZhttpRequest::beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers)
 {
 	assert(d->server);
-	assert(d->state == Private::ServerResponseWait);
+	assert(d->state == Private::ServerReceiving || d->state == Private::ServerResponseWait);
 
 	d->responseCode = code;
 	d->responseReason = reason;
@@ -1084,6 +1097,11 @@ bool ZhttpRequest::isOutputFinished() const
 		return (d->state == Private::Stopped);
 	else
 		return (d->state == Private::Stopped || d->state == Private::ClientRequestFinishWait || d->state == Private::ClientReceiving);
+}
+
+bool ZhttpRequest::isErrored() const
+{
+	return d->errored;
 }
 
 ZhttpRequest::ErrorCondition ZhttpRequest::errorCondition() const

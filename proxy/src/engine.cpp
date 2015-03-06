@@ -42,6 +42,8 @@
 #include "statsmanager.h"
 #include "connectionmanager.h"
 #include "zutil.h"
+#include "sockjsmanager.h"
+#include "sockjssession.h"
 
 #define DEFAULT_HWM 1000
 
@@ -98,6 +100,7 @@ public:
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
 	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
+	SockJsManager *sockJsManager;
 	ConnectionManager connectionManager;
 
 	Private(Engine *_q) :
@@ -114,7 +117,8 @@ public:
 		command(0),
 		accept(0),
 		handler_retry_in_sock(0),
-		handler_retry_in_valve(0)
+		handler_retry_in_valve(0),
+		sockJsManager(0)
 	{
 	}
 
@@ -173,6 +177,9 @@ public:
 		zroutes->setDefaultOutSpecs(config.clientOutSpecs);
 		zroutes->setDefaultOutStreamSpecs(config.clientOutStreamSpecs);
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
+
+		sockJsManager = new SockJsManager(this);
+		connect(sockJsManager, SIGNAL(sessionReady()), SLOT(sockjs_sessionReady()));
 
 		if(!config.inspectSpec.isEmpty())
 		{
@@ -347,6 +354,32 @@ public:
 		}
 	}
 
+	void doProxySocket(WebSocket *sock, const DomainMap::Entry &route)
+	{
+		QByteArray cid = connectionManager.addConnection(sock);
+
+		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, stats, wsControl, this);
+		connect(ps, SIGNAL(finishedByPassthrough()), SLOT(wsps_finishedByPassthrough()));
+
+		ps->setDefaultSigKey(config.sigIss, config.sigKey);
+		ps->setDefaultUpstreamKey(config.upstreamKey);
+		ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
+		ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+		ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
+
+		WsProxyItem *i = new WsProxyItem;
+		i->ps = ps;
+		wsProxyItemsBySession.insert(i->ps, i);
+
+		ps->start(sock, cid, route);
+
+		if(stats)
+		{
+			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, sock->peerAddress(), sock->requestUri().scheme() == "wss", false);
+			stats->addActivity(ps->routeId());
+		}
+	}
+
 	bool canTake()
 	{
 		// don't accept new connections during shutdown
@@ -370,7 +403,7 @@ public:
 		if(!req)
 			return;
 
-		RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, accept, this);
+		RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, this);
 		connect(rs, SIGNAL(inspected(const InspectData &)), SLOT(rs_inspected(const InspectData &)));
 		connect(rs, SIGNAL(inspectError()), SLOT(rs_inspectError()));
 		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
@@ -392,36 +425,47 @@ public:
 		if(!sock)
 			return;
 
-		QByteArray publicCid = connectionManager.addConnection(sock->rid());
+		QUrl requestUri = sock->requestUri();
 
-		log_debug("creating wsproxysession for id=%s", sock->rid().second.data());
+		log_info("IN ws id=%s, %s", sock->rid().second.data(), requestUri.toEncoded().data());
 
-		WsProxySession *ps = new WsProxySession(zroutes, domainMap, &connectionManager, stats, wsControl, this);
-		connect(ps, SIGNAL(finishedByPassthrough()), SLOT(wsps_finishedByPassthrough()));
+		bool isSecure = (requestUri.scheme() == "wss");
+		QString host = requestUri.host();
 
-		ps->setDefaultSigKey(config.sigIss, config.sigKey);
-		ps->setDefaultUpstreamKey(config.upstreamKey);
-		ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
-		ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
-		ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
+		// look up the route
+		DomainMap::Entry route = domainMap->entry(DomainMap::WebSocket, isSecure, host, requestUri.encodedPath());
 
-		WsProxyItem *i = new WsProxyItem;
-		i->ps = ps;
-		wsProxyItemsBySession.insert(i->ps, i);
-
-		ps->start(sock, publicCid);
-
-		if(stats)
+		// before we do anything else, see if this is a sockjs request
+		if(!route.isNull() && !route.sockJsPath.isEmpty() && requestUri.encodedPath().startsWith(route.sockJsPath))
 		{
-			stats->addConnection(ridToString(sock->rid()), ps->routeId(), StatsManager::WebSocket, sock->peerAddress(), sock->requestUri().scheme() == "wss", false);
-			stats->addActivity(ps->routeId());
+			sockJsManager->giveSocket(sock, route.sockJsPath.length(), route.sockJsAsPath, route);
+			return;
 		}
+
+		log_debug("creating wsproxysession for zws id=%s", sock->rid().second.data());
+		doProxySocket(sock, route);
+	}
+
+	void tryTakeSockJsSession()
+	{
+		if(!canTake())
+			return;
+
+		SockJsSession *sock = sockJsManager->takeNext();
+		if(!sock)
+			return;
+
+		log_info("IN sockjs obj=%p %s", sock, sock->requestUri().toEncoded().data());
+
+		log_debug("creating wsproxysession for sockjs=%p", sock);
+		doProxySocket(sock, sock->route());
 	}
 
 	void tryTakeNext()
 	{
 		tryTakeRequest();
 		tryTakeSocket();
+		tryTakeSockJsSession();
 	}
 
 private slots:
@@ -431,6 +475,11 @@ private slots:
 	}
 
 	void zhttpIn_socketReady()
+	{
+		tryTakeNext();
+	}
+
+	void sockjs_sessionReady()
 	{
 		tryTakeNext();
 	}
@@ -536,7 +585,7 @@ private slots:
 		assert(i);
 
 		if(stats)
-			stats->removeConnection(ridToString(ps->rid()), false);
+			stats->removeConnection(ps->cid(), false);
 
 		wsProxyItemsBySession.remove(i->ps);
 		delete i;
@@ -599,7 +648,7 @@ private slots:
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(domainMap, inspect, inspectChecker, accept, this);
+			RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, this);
 			requestSessions += rs;
 
 			// note: if the routing table was changed, there's a chance the request

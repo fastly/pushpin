@@ -29,7 +29,6 @@
 #include "zhttpmanager.h"
 #include "zwebsocket.h"
 #include "websocketoverhttp.h"
-#include "domainmap.h"
 #include "zroutes.h"
 #include "wscontrolmanager.h"
 #include "wscontrolsession.h"
@@ -204,11 +203,6 @@ static HttpExtension getExtension(const QList<QByteArray> &extStrings, const QBy
 	return HttpExtension();
 }
 
-static QByteArray ridToString(const QPair<QByteArray, QByteArray> &rid)
-{
-	return rid.first + ':' + rid.second;
-}
-
 class WsProxySession::Private : public QObject
 {
 	Q_OBJECT
@@ -226,7 +220,6 @@ public:
 	State state;
 	ZRoutes *zroutes;
 	ZhttpManager *zhttpManager;
-	DomainMap *domainMap;
 	ConnectionManager *connectionManager;
 	StatsManager *statsManager;
 	WsControlManager *wsControlManager;
@@ -240,8 +233,7 @@ public:
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
 	HttpRequestData requestData;
-	ZWebSocket::Rid rid;
-	ZWebSocket *inSock;
+	WebSocket *inSock;
 	WebSocket *outSock;
 	int inPendingBytes;
 	int outPendingBytes;
@@ -256,13 +248,12 @@ public:
 	QTimer *activityTimer;
 	QByteArray publicCid;
 
-	Private(WsProxySession *_q, ZRoutes *_zroutes, DomainMap *_domainMap, ConnectionManager *_connectionManager, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
+	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
 		q(_q),
 		state(Idle),
 		zroutes(_zroutes),
 		zhttpManager(0),
-		domainMap(_domainMap),
 		connectionManager(_connectionManager),
 		statsManager(_statsManager),
 		wsControlManager(_wsControlManager),
@@ -291,7 +282,7 @@ public:
 	{
 		if(inSock)
 		{
-			connectionManager->removeConnection(inSock->rid());
+			connectionManager->removeConnection(inSock);
 			delete inSock;
 			inSock = 0;
 		}
@@ -317,13 +308,12 @@ public:
 		}
 	}
 
-	void start(ZWebSocket *sock, const QByteArray &_publicCid)
+	void start(WebSocket *sock, const QByteArray &_publicCid, const DomainMap::Entry &entry)
 	{
 		assert(!inSock);
 
 		state = Connecting;
 
-		rid = sock->rid();
 		publicCid = _publicCid;
 
 		if(statsManager)
@@ -341,9 +331,7 @@ public:
 		requestData.headers = inSock->requestHeaders();
 
 		QString host = requestData.uri.host();
-		bool isSecure = (requestData.uri.scheme() == "wss");
 
-		DomainMap::Entry entry = domainMap->entry(DomainMap::WebSocket, isSecure, host, requestData.uri.encodedPath());
 		if(entry.isNull())
 		{
 			log_warning("wsproxysession: %p %s has 0 routes", q, qPrintable(host));
@@ -619,7 +607,7 @@ private slots:
 
 	void in_closed()
 	{
-		connectionManager->removeConnection(inSock->rid());
+		connectionManager->removeConnection(inSock);
 		delete inSock;
 		inSock = 0;
 
@@ -631,7 +619,7 @@ private slots:
 
 	void in_error()
 	{
-		connectionManager->removeConnection(inSock->rid());
+		connectionManager->removeConnection(inSock);
 		delete inSock;
 		inSock = 0;
 
@@ -671,7 +659,7 @@ private slots:
 
 			if(wsControlManager)
 			{
-				wsControl = wsControlManager->createSession(ridToString(inSock->rid()));
+				wsControl = wsControlManager->createSession(publicCid);
 				connect(wsControl, SIGNAL(sendEventReceived(const QByteArray &, const QByteArray &)), SLOT(wsControl_sendEventReceived(const QByteArray &, const QByteArray &)));
 				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
 				wsControl->start(channelPrefix);
@@ -768,7 +756,7 @@ private slots:
 		}
 		else
 		{
-			connectionManager->removeConnection(inSock->rid());
+			connectionManager->removeConnection(inSock);
 			delete inSock;
 			inSock = 0;
 			delete outSock;
@@ -810,10 +798,10 @@ private slots:
 	}
 };
 
-WsProxySession::WsProxySession(ZRoutes *zroutes, DomainMap *domainMap, ConnectionManager *connectionManager, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
+WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes, domainMap, connectionManager, statsManager, wsControlManager);
+	d = new Private(this, zroutes, connectionManager, statsManager, wsControlManager);
 }
 
 WsProxySession::~WsProxySession()
@@ -826,9 +814,9 @@ QByteArray WsProxySession::routeId() const
 	return d->routeId;
 }
 
-ZWebSocket::Rid WsProxySession::rid() const
+QByteArray WsProxySession::cid() const
 {
-	return d->rid;
+	return d->publicCid;
 }
 
 void WsProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)
@@ -858,9 +846,9 @@ void WsProxySession::setOrigHeadersNeedMark(const QList<QByteArray> &names)
 	d->origHeadersNeedMark = names;
 }
 
-void WsProxySession::start(ZWebSocket *sock, const QByteArray &publicCid)
+void WsProxySession::start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route)
 {
-	d->start(sock, publicCid);
+	d->start(sock, publicCid, route);
 }
 
 #include "wsproxysession.moc"

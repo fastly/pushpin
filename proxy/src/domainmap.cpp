@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -128,6 +128,8 @@ public:
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
 		bool session;
+		QByteArray sockJsPath;
+		QByteArray sockJsAsPath;
 		QList<Target> targets;
 
 		Rule() :
@@ -198,6 +200,8 @@ public:
 			e.autoCrossOrigin = autoCrossOrigin;
 			e.jsonpConfig = jsonpConfig;
 			e.session = session;
+			e.sockJsPath = sockJsPath;
+			e.sockJsAsPath = sockJsAsPath;
 			e.targets = targets;
 			return e;
 		}
@@ -374,6 +378,12 @@ public:
 
 			if(props.contains("session"))
 				r.session = true;
+
+			if(props.contains("sockjs"))
+				r.sockJsPath = props.value("sockjs").toUtf8();
+
+			if(props.contains("sockjs_as_path"))
+				r.sockJsAsPath = props.value("sockjs_as_path").toUtf8();
 
 			QList<Rule> *rules = 0;
 			if(newmap.contains(domain))

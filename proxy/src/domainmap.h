@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -127,6 +127,8 @@ public:
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
 		bool session;
+		QByteArray sockJsPath;
+		QByteArray sockJsAsPath;
 		QList<Target> targets;
 
 		bool isNull() const

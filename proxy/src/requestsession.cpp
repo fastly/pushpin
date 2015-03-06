@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,6 +30,7 @@
 #include "bufferlist.h"
 #include "log.h"
 #include "layertracker.h"
+#include "sockjsmanager.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
 #include "zrpcmanager.h"
@@ -203,6 +204,7 @@ public:
 	State state;
 	ZhttpRequest::Rid rid;
 	DomainMap *domainMap;
+	SockJsManager *sockJsManager;
 	ZrpcManager *inspectManager;
 	ZrpcChecker *inspectChecker;
 	ZrpcManager *acceptManager;
@@ -224,11 +226,12 @@ public:
 	bool isRetry;
 	QList<QByteArray> jsonpExtractableHeaders;
 
-	Private(RequestSession *_q, DomainMap *_domainMap, ZrpcManager *_inspectManager, ZrpcChecker *_inspectChecker, ZrpcManager *_acceptManager) :
+	Private(RequestSession *_q, DomainMap *_domainMap, SockJsManager *_sockJsManager, ZrpcManager *_inspectManager, ZrpcChecker *_inspectChecker, ZrpcManager *_acceptManager) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
 		domainMap(_domainMap),
+		sockJsManager(_sockJsManager),
 		inspectManager(_inspectManager),
 		inspectChecker(_inspectChecker),
 		acceptManager(_acceptManager),
@@ -278,14 +281,23 @@ public:
 
 		log_info("IN id=%s, %s %s", rid.second.data(), qPrintable(requestData.method), requestData.uri.toEncoded().data());
 
-		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
-		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
-
 		bool isHttps = (requestData.uri.scheme() == "https");
 		QString host = requestData.uri.host();
 
 		// look up the route
 		route = domainMap->entry(DomainMap::Http, isHttps, host, requestData.uri.encodedPath());
+
+		// before we do anything else, see if this is a sockjs request
+		if(!route.isNull() && !route.sockJsPath.isEmpty() && requestData.uri.encodedPath().startsWith(route.sockJsPath))
+		{
+			sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
+			zhttpRequest = 0;
+			QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
+			return;
+		}
+
+		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
+		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
 
 		if(autoCrossOrigin || (!route.isNull() && route.autoCrossOrigin))
 		{
@@ -1049,10 +1061,10 @@ public slots:
 	}
 };
 
-RequestSession::RequestSession(DomainMap *domainMap, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, QObject *parent) :
+RequestSession::RequestSession(DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, domainMap, inspectManager, inspectChecker, acceptManager);
+	d = new Private(this, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager);
 }
 
 RequestSession::~RequestSession()

@@ -23,6 +23,8 @@
 #include <QPair>
 #include <QByteArray>
 
+class WebSocket;
+
 class ConnectionManager
 {
 public:
@@ -30,12 +32,15 @@ public:
 	~ConnectionManager();
 
 	// returns cid
-	QByteArray addConnection(const QPair<QByteArray, QByteArray> &rid);
+	//QByteArray addConnection(const QPair<QByteArray, QByteArray> &rid);
+	QByteArray addConnection(WebSocket *sock);
 
 	// returns cid or empty
-	QByteArray getConnection(const QPair<QByteArray, QByteArray> &rid);
+	//QByteArray getConnection(const QPair<QByteArray, QByteArray> &rid);
+	QByteArray getConnection(WebSocket *sock);
 
-	void removeConnection(const QPair<QByteArray, QByteArray> &rid);
+	//void removeConnection(const QPair<QByteArray, QByteArray> &rid);
+	void removeConnection(WebSocket *sock);
 
 private:
 	class Private;

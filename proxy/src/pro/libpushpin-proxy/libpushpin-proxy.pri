@@ -58,6 +58,8 @@ HEADERS += \
 	$$SRC_DIR/zrpcmanager.h \
 	$$SRC_DIR/zrpcrequest.h \
 	$$SRC_DIR/zrpcchecker.h \
+	$$SRC_DIR/sockjsmanager.h \
+	$$SRC_DIR/sockjssession.h \
 	$$SRC_DIR/inspectdata.h \
 	$$SRC_DIR/inspectrequest.h \
 	$$SRC_DIR/acceptrequest.h \
@@ -86,6 +88,8 @@ SOURCES += \
 	$$SRC_DIR/zrpcmanager.cpp \
 	$$SRC_DIR/zrpcrequest.cpp \
 	$$SRC_DIR/zrpcchecker.cpp \
+	$$SRC_DIR/sockjsmanager.cpp \
+	$$SRC_DIR/sockjssession.cpp \
 	$$SRC_DIR/inspectrequest.cpp \
 	$$SRC_DIR/acceptrequest.cpp \
 	$$SRC_DIR/connectionmanager.cpp \
