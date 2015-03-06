@@ -367,7 +367,7 @@ public:
 			inContentType = (int)ftype;
 		}
 
-		inFrames += Frame(ftype, data, more);
+		inFrames += Frame(ftype, !data.isNull() ? data : QByteArray(""), more);
 		inSize += data.size();
 
 		if(!more)
