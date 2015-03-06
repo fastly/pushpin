@@ -294,10 +294,15 @@ private:
 
 			if(state == Closing)
 			{
-				QByteArray buf(2, 0);
-				buf[0] = (closeCode >> 8) & 0xff;
-				buf[1] = closeCode & 0xff;
-				events += WsEvent("CLOSE", buf);
+				if(closeCode != -1)
+				{
+					QByteArray buf(2, 0);
+					buf[0] = (closeCode >> 8) & 0xff;
+					buf[1] = closeCode & 0xff;
+					events += WsEvent("CLOSE", buf);
+				}
+				else
+					events += WsEvent("CLOSE");
 
 				reqClose = true;
 			}
