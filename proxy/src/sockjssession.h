@@ -87,12 +87,12 @@ private:
 
 	friend class SockJsManager;
 	SockJsSession(QObject *parent = 0);
-	void setupServer(SockJsManager *manager, ZhttpRequest *req, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route);
+	void setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route);
 	void setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const DomainMap::Entry &route);
 	void setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route);
 
 	void startServer();
-	void handleRequest(ZhttpRequest *req, const QByteArray &lastPart, const QByteArray &body);
+	void handleRequest(ZhttpRequest *req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body);
 };
 
 #endif

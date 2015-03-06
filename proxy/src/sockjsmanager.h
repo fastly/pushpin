@@ -23,7 +23,6 @@
 #include <QObject>
 #include "domainmap.h"
 
-class HttpResponseData;
 class ZhttpRequest;
 class ZWebSocket;
 class SockJsSession;
@@ -50,9 +49,11 @@ private:
 	Private *d;
 
 	friend class SockJsSession;
-	void link(SockJsSession *sess);
 	void unlink(SockJsSession *sess);
-	void respond(ZhttpRequest *req, const HttpResponseData &respData);
+	void setLinger(SockJsSession *sess, const QVariant &closeValue);
+	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray());
+	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message);
+
 };
 
 #endif

@@ -20,11 +20,11 @@
 #include "sockjsmanager.h"
 
 #include <assert.h>
+#include <QTimer>
 #include <QtCrypto>
 #include <qjson/serializer.h>
 #include "log.h"
 #include "bufferlist.h"
-#include "packet/httpresponsedata.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjssession.h"
@@ -36,50 +36,63 @@ class SockJsManager::Private : public QObject
 	Q_OBJECT
 
 public:
-	class RequestItem
+	class Session
 	{
 	public:
+		enum Type
+		{
+			Http,
+			WebSocket
+		};
+
+		Private *owner;
+		Type type;
 		ZhttpRequest *req;
-		BufferList in;
+		ZWebSocket *sock;
+		BufferList reqBody;
 		QByteArray path;
+		QByteArray jsonpCallback;
 		QUrl asUri;
 		DomainMap::Entry route;
+		QByteArray sid;
+		QByteArray lastPart;
+		bool pending;
+		SockJsSession *ext;
+		QTimer *timer;
+		QVariant closeValue;
 
-		RequestItem(ZhttpRequest *_req) :
-			req(_req)
+		Session(Private *_owner) :
+			owner(_owner),
+			req(0),
+			sock(0),
+			pending(false),
+			ext(0),
+			timer(0)
 		{
 		}
 
-		~RequestItem()
+		~Session()
 		{
 			delete req;
-		}
-	};
-
-	class SocketItem
-	{
-	public:
-		ZWebSocket *sock;
-		QByteArray path;
-		QUrl asUri;
-		DomainMap::Entry route;
-
-		SocketItem(ZWebSocket *_sock) :
-			sock(_sock)
-		{
-		}
-
-		~SocketItem()
-		{
 			delete sock;
+
+			if(timer)
+			{
+				timer->disconnect(owner);
+				timer->setParent(0);
+				timer->deleteLater();
+			}
 		}
 	};
 
 	SockJsManager *q;
-	QHash<ZhttpRequest*, RequestItem*> requestItemsByRequest;
-	QHash<ZWebSocket*, SocketItem*> socketItemsBySocket;
-	QHash<QByteArray, SockJsSession*> sessionsById;
-	QList<SockJsSession*> pendingSessions;
+	QSet<Session*> sessions;
+	QHash<ZhttpRequest*, Session*> sessionsByRequest;
+	QHash<ZWebSocket*, Session*> sessionsBySocket;
+	QHash<QByteArray, Session*> sessionsById;
+	QHash<SockJsSession*, Session*> sessionsByExt;
+	QHash<QTimer*, Session*> sessionsByTimer;
+	QList<Session*> pendingSessions;
 
 	Private(SockJsManager *_q) :
 		QObject(_q),
@@ -89,74 +102,127 @@ public:
 
 	~Private()
 	{
-		qDeleteAll(requestItemsByRequest);
+		while(!pendingSessions.isEmpty())
+			removeSession(pendingSessions.takeFirst());
+
+		assert(sessions.isEmpty());
 	}
 
-	RequestItem *track(ZhttpRequest *req)
+	void removeSession(Session *s)
 	{
-		assert(!requestItemsByRequest.contains(req));
+		// can't remove unless unlinked
+		assert(!s->ext);
+
+		// note: this method assumes the session has already been removed
+		//   from pendingSessions if needed
+		if(s->req)
+			sessionsByRequest.remove(s->req);
+		if(s->sock)
+			sessionsBySocket.remove(s->sock);
+		if(s->sid.isEmpty())
+			sessionsById.remove(s->sid);
+		if(s->ext)
+			sessionsByExt.remove(s->ext);
+		if(s->timer)
+			sessionsByTimer.remove(s->timer);
+		sessions.remove(s);
+		delete s;
+	}
+
+	void unlink(SockJsSession *ext)
+	{
+		Session *s = sessionsByExt.value(ext);
+		assert(s);
+
+		sessionsByExt.remove(s->ext);
+		s->ext = 0;
+
+		if(s->closeValue.isValid())
+		{
+			// if there's a close value, hang around for a little bit
+			s->timer = new QTimer(this);
+			connect(s->timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+			s->timer->setSingleShot(true);
+			sessionsByTimer.insert(s->timer, s);
+			s->timer->start(5000);
+		}
+		else
+			removeSession(s);
+	}
+
+	void setLinger(SockJsSession *ext, const QVariant &closeValue)
+	{
+		Session *s = sessionsByExt.value(ext);
+		assert(s);
+
+		s->closeValue = closeValue;
+	}
+
+	void startHandleRequest(ZhttpRequest *req, int basePathStart, const QByteArray &asPath, const DomainMap::Entry &route)
+	{
+		Session *s = new Session(this);
+		s->req = req;
+
+		QUrl uri = req->requestUri();
+
+		QByteArray encPath = uri.encodedPath();
+		s->path = encPath.mid(basePathStart);
+
+		QList<QByteArray> parts = s->path.split('/');
+		if(!parts.isEmpty() && parts.last().startsWith("jsonp"))
+		{
+			if(uri.hasQueryItem("callback"))
+			{
+				s->jsonpCallback = uri.queryItemValue("callback").toUtf8();
+				uri.removeAllQueryItems("callback");
+			}
+			else if(uri.hasQueryItem("c"))
+			{
+				s->jsonpCallback = uri.queryItemValue("c").toUtf8();
+				uri.removeAllQueryItems("c");
+			}
+		}
+
+		s->asUri = uri;
+		s->asUri.setScheme((s->asUri.scheme() == "https") ? "wss" : "ws");
+		if(!asPath.isEmpty())
+			s->asUri.setEncodedPath(asPath);
+		else
+			s->asUri.setEncodedPath(encPath.mid(0, basePathStart) + "/websocket");
+
+		s->route = route;
 
 		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
 		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
 		connect(req, SIGNAL(error()), SLOT(req_error()));
 
-		RequestItem *ri = new RequestItem(req);
-		requestItemsByRequest.insert(req, ri);
-		return ri;
-	}
+		sessions += s;
+		sessionsByRequest.insert(s->req, s);
 
-	SocketItem *track(ZWebSocket *sock)
-	{
-		assert(!socketItemsBySocket.contains(sock));
-
-		connect(sock, SIGNAL(closed()), SLOT(sock_closed()));
-		connect(sock, SIGNAL(error()), SLOT(sock_error()));
-
-		SocketItem *si = new SocketItem(sock);
-		socketItemsBySocket.insert(sock, si);
-		return si;
-	}
-
-	void removeItem(RequestItem *ri)
-	{
-		requestItemsByRequest.remove(ri->req);
-		delete ri;
-	}
-
-	void removeItem(SocketItem *si)
-	{
-		socketItemsBySocket.remove(si->sock);
-		delete si;
-	}
-
-	void startHandleRequest(ZhttpRequest *req, int basePathStart, const QByteArray &asPath, const DomainMap::Entry &route)
-	{
-		RequestItem *ri = track(req);
-
-		QByteArray encPath = req->requestUri().encodedPath();
-		ri->path = encPath.mid(basePathStart);
-		ri->asUri = req->requestUri();
-		ri->asUri.setScheme((ri->asUri.scheme() == "https") ? "wss" : "ws");
-		if(!asPath.isEmpty())
-			ri->asUri.setEncodedPath(asPath);
-		else
-			ri->asUri.setEncodedPath(encPath.mid(0, basePathStart) + "/websocket");
-		ri->route = route;
-
-		processRequestInput(ri);
+		processRequestInput(s);
 	}
 
 	void startHandleSocket(ZWebSocket *sock, int basePathStart, const QByteArray &asPath, const DomainMap::Entry &route)
 	{
-		QByteArray encPath = sock->requestUri().encodedPath();
-		QByteArray path = encPath.mid(basePathStart);
-		QUrl asUri = sock->requestUri();
-		if(!asPath.isEmpty())
-			asUri.setEncodedPath(asPath);
-		else
-			asUri.setEncodedPath(encPath.mid(0, basePathStart) + "/websocket");
+		Session *s = new Session(this);
+		s->sock = sock;
 
-		handleSocket(sock, path, asUri, route);
+		QByteArray encPath = sock->requestUri().encodedPath();
+		s->path = encPath.mid(basePathStart);
+		s->asUri = sock->requestUri();
+		if(!asPath.isEmpty())
+			s->asUri.setEncodedPath(asPath);
+		else
+			s->asUri.setEncodedPath(encPath.mid(0, basePathStart) + "/websocket");
+		s->route = route;
+
+		connect(sock, SIGNAL(closed()), SLOT(sock_closed()));
+		connect(sock, SIGNAL(error()), SLOT(sock_error()));
+
+		sessions += s;
+		sessionsBySocket.insert(s->sock, s);
+
+		handleSocket(s);
 	}
 
 	void applyHeaders(const HttpHeaders &in, HttpHeaders *out)
@@ -172,124 +238,83 @@ public:
 		*out += HttpHeader("Access-Control-Allow-Credentials", "true");
 	}
 
-	void respond(RequestItem *ri, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
-	{
-		if(ri->req->isErrored())
-		{
-			removeItem(ri);
-			return;
-		}
-
-		ri->req->beginResponse(code, reason, headers);
-		ri->req->writeBody(body);
-		ri->req->endBody();
-	}
-
-	void respondError(RequestItem *ri, int code, const QByteArray &reason, const QString &message)
-	{
-		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", "text/plain");
-		applyHeaders(ri->req->requestHeaders(), &headers);
-		respond(ri, code, reason, headers, message.toUtf8() + '\n');
-	}
-
-	void respondError(SocketItem *si, int code, const QByteArray &reason, const QString &message)
-	{
-		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", "text/plain");
-		applyHeaders(si->sock->requestHeaders(), &headers);
-		si->sock->respondError(code, reason, headers, message.toUtf8() + '\n');
-	}
-
 	void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
 	{
-		RequestItem *ri = track(req);
-		respond(ri, code, reason, headers, body);
+		req->beginResponse(code, reason, headers);
+		req->writeBody(body);
+		req->endBody();
 	}
 
 	void respondEmpty(ZhttpRequest *req)
 	{
-		RequestItem *ri = track(req);
-
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain"); // workaround FF issue. see sockjs spec.
-		applyHeaders(ri->req->requestHeaders(), &headers);
-
-		respond(ri, 204, "No Content", headers, QByteArray());
+		applyHeaders(req->requestHeaders(), &headers);
+		respond(req, 204, "No Content", headers, QByteArray());
 	}
 
-	void respondOk(ZhttpRequest *req, const QByteArray &contentType, const QByteArray &body = QByteArray())
+	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
 	{
-		RequestItem *ri = track(req);
-
 		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", contentType);
-		applyHeaders(ri->req->requestHeaders(), &headers);
-
-		respond(ri, 200, "OK", headers, body);
-	}
-
-	void respondOk(ZhttpRequest *req, const QVariantMap &data)
-	{
-		RequestItem *ri = track(req);
-
-		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", "application/json");
-		applyHeaders(ri->req->requestHeaders(), &headers);
+		if(!jsonpCallback.isEmpty())
+			headers += HttpHeader("Content-Type", "application/javascript");
+		else
+			headers += HttpHeader("Content-Type", "text/plain");
+		applyHeaders(req->requestHeaders(), &headers);
 
 		QJson::Serializer serializer;
-		QByteArray bodyJson = serializer.serialize(data);
-		respond(ri, 200, "OK", headers, bodyJson + "\n");
+		QByteArray body = serializer.serialize(data);
+		if(!prefix.isEmpty())
+			body.prepend(prefix);
+
+		if(!jsonpCallback.isEmpty())
+		{
+			QByteArray encBody = serializer.serialize(QString::fromUtf8(body));
+			body = "/**/" + jsonpCallback + '(' + encBody + ");\n";
+		}
+
+		respond(req, 200, "OK", headers, body + "\n"); // note: the newline is required
 	}
 
 	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
 	{
-		RequestItem *ri = track(req);
-		respondError(ri, code, reason, message);
+		HttpHeaders headers;
+		headers += HttpHeader("Content-Type", "text/plain");
+		applyHeaders(req->requestHeaders(), &headers);
+		respond(req, code, reason, headers, message.toUtf8() + '\n');
 	}
 
 	void respondError(ZWebSocket *sock, int code, const QByteArray &reason, const QString &message)
 	{
-		SocketItem *si = track(sock);
-		respondError(si, code, reason, message);
+		HttpHeaders headers;
+		headers += HttpHeader("Content-Type", "text/plain");
+		applyHeaders(sock->requestHeaders(), &headers);
+		sock->respondError(code, reason, headers, message.toUtf8() + '\n');
 	}
 
-	void processRequestInput(RequestItem *ri)
+	void processRequestInput(Session *s)
 	{
-		ri->in += ri->req->readBody(MAX_REQUEST_BODY - ri->in.size() + 1);
-		if(ri->in.size() > MAX_REQUEST_BODY)
+		s->reqBody += s->req->readBody(MAX_REQUEST_BODY - s->reqBody.size() + 1);
+		if(s->reqBody.size() > MAX_REQUEST_BODY)
 		{
-			respondError(ri, 400, "Bad Request", "Request too large.");
+			respondError(s->req, 400, "Bad Request", "Request too large.");
 			return;
 		}
 
-		if(ri->req->isInputFinished())
-		{
-			ZhttpRequest *req = ri->req;
-			QByteArray body = ri->in.toByteArray();
-			QByteArray path = ri->path;
-			QUrl asUri = ri->asUri;
-			DomainMap::Entry route = ri->route;
-
-			requestItemsByRequest.remove(ri->req);
-			ri->req = 0;
-			delete ri;
-			req->disconnect(this);
-
-			handleRequest(req, path, asUri, body, route);
-		}
+		if(s->req->isInputFinished())
+			handleRequest(s);
 	}
 
-	void handleRequest(ZhttpRequest *req, const QByteArray &path, const QUrl &asUri, const QByteArray &body, const DomainMap::Entry &route)
+	void handleRequest(Session *s)
 	{
-		QString method = req->requestMethod();
-		log_debug("sockjs request: path=[%s], asUri=[%s]", path.data(), asUri.toEncoded().data());
+		QString method = s->req->requestMethod();
+		log_debug("sockjs request: path=[%s], asUri=[%s]", s->path.data(), s->asUri.toEncoded().data());
 
 		if(method == "OPTIONS")
 		{
-			respondEmpty(req);
+			respondEmpty(s->req);
 		}
-		else if(path == "/info")
+		else if(s->path == "/info")
 		{
 			QByteArray bytes = QCA::Random::randomArray(4).toByteArray();
 			quint32 x = 0;
@@ -301,78 +326,160 @@ public:
 			out["origins"] = QVariantList() << QString("*:*");
 			out["cookie_needed"] = false;
 			out["entropy"] = x;
-			respondOk(req, out);
+			respondOk(s->req, out);
 		}
 		else
 		{
-			QList<QByteArray> parts = path.mid(1).split('/');
+			QList<QByteArray> parts = s->path.mid(1).split('/');
 			if(parts.count() == 3)
 			{
 				QByteArray sid = parts[1];
 				QByteArray lastPart = parts[2];
 
-				SockJsSession *sess = sessionsById.value(sid);
-				if(sess)
+				Session *existing = sessionsById.value(sid);
+				if(existing)
 				{
-					sess->handleRequest(req, lastPart, body);
+					if(existing->ext)
+					{
+						// give to external session
+						ZhttpRequest *req = s->req;
+						QByteArray body = s->reqBody.toByteArray();
+						QByteArray jsonpCallback = s->jsonpCallback;
+						s->req->disconnect(this);
+						s->req = 0;
+						removeSession(s);
+
+						existing->ext->handleRequest(req, jsonpCallback, lastPart, body);
+					}
+					else
+					{
+						if(existing->closeValue.isValid())
+						{
+							respondOk(s->req, existing->closeValue, "c");
+						}
+						else
+						{
+							QVariantList out;
+							out += 2010;
+							out += QString("Another connection still open");
+							respondOk(s->req, out, "c", s->jsonpCallback);
+						}
+					}
 					return;
 				}
 
-				// TODO: check for lingering sid
-
-				if(lastPart == "xhr" || lastPart == "jsonp")
+				if((method == "POST" && lastPart == "xhr") || (method == "GET" && lastPart == "jsonp"))
 				{
-					sess = new SockJsSession;
-					sess->setupServer(q, req, asUri, sid, lastPart, body, route);
-					sessionsById.insert(sid, sess);
-					pendingSessions += sess;
+					if(lastPart == "jsonp" && s->jsonpCallback.isEmpty())
+					{
+						respondError(s->req, 400, "Bad Request", "Bad Request");
+						return;
+					}
+
+					s->sid = sid;
+					s->lastPart = lastPart;
+					sessionsById.insert(s->sid, s);
+					s->pending = true;
+					pendingSessions += s;
 					emit q->sessionReady();
 					return;
 				}
 			}
 
-			respondError(req, 404, "Not Found", "Not Found");
+			respondError(s->req, 404, "Not Found", "Not Found");
 		}
 	}
 
-	void handleSocket(ZWebSocket *sock, const QByteArray &path, const QUrl &asUri, const DomainMap::Entry &route)
+	void handleSocket(Session *s)
 	{
-		if(path == "/websocket")
+		if(s->path == "/websocket")
 		{
-			// passthrough
-			SockJsSession *sess = new SockJsSession;
-			sess->setupServer(q, sock, asUri, route);
-			pendingSessions += sess;
+			s->pending = true;
+			pendingSessions += s;
 			emit q->sessionReady();
 			return;
 		}
 		else
 		{
-			QList<QByteArray> parts = path.mid(1).split('/');
+			QList<QByteArray> parts = s->path.mid(1).split('/');
 			if(parts.count() == 3)
 			{
 				QByteArray sid = parts[1];
 				QByteArray lastPart = parts[2];
 
-				SockJsSession *sess = new SockJsSession;
-				sess->setupServer(q, sock, asUri, sid, lastPart, route);
-				pendingSessions += sess;
+				s->sid = sid;
+				s->lastPart = lastPart;
+				s->pending = true;
+				pendingSessions += s;
 				emit q->sessionReady();
 				return;
 			}
 
-			respondError(sock, 404, "Not Found", "Not Found");
+			respondError(s->sock, 404, "Not Found", "Not Found");
 		}
+	}
+
+	SockJsSession *takeNext()
+	{
+		Session *s = 0;
+
+		while(!s)
+		{
+			if(pendingSessions.isEmpty())
+				return 0;
+
+			s = pendingSessions.takeFirst();
+			s->pending = false;
+			if(!s->req && !s->sock)
+			{
+				// this means the object was a zombie. clean up and take next
+				removeSession(s);
+				s = 0;
+				continue;
+			}
+		}
+
+		s->ext = new SockJsSession;
+
+		if(s->req)
+		{
+			assert(!s->sid.isEmpty());
+			assert(!s->lastPart.isEmpty());
+
+			s->ext->setupServer(q, s->req, s->jsonpCallback, s->asUri, s->sid, s->lastPart, s->reqBody.toByteArray(), s->route);
+
+			s->req->disconnect(this);
+			sessionsByRequest.remove(s->req);
+			s->req = 0;
+		}
+		else // s->sock
+		{
+			if(!s->sid.isEmpty())
+			{
+				assert(!s->lastPart.isEmpty());
+				s->ext->setupServer(q, s->sock, s->asUri, s->sid, s->lastPart, s->route);
+			}
+			else
+				s->ext->setupServer(q, s->sock, s->asUri, s->route);
+
+			s->sock->disconnect(this);
+			sessionsBySocket.remove(s->sock);
+			s->sock = 0;
+		}
+
+		sessionsByExt.insert(s->ext, s);
+		s->ext->startServer();
+		return s->ext;
 	}
 
 private slots:
 	void req_readyRead()
 	{
 		ZhttpRequest *req = (ZhttpRequest *)sender();
-		RequestItem *ri = requestItemsByRequest.value(req);
-		assert(ri);
+		Session *s = sessionsByRequest.value(req);
+		assert(s);
 
-		processRequestInput(ri);
+		processRequestInput(s);
 	}
 
 	void req_bytesWritten(int count)
@@ -380,38 +487,60 @@ private slots:
 		Q_UNUSED(count);
 
 		ZhttpRequest *req = (ZhttpRequest *)sender();
-		RequestItem *ri = requestItemsByRequest.value(req);
-		assert(ri);
+		Session *s = sessionsByRequest.value(req);
+		assert(s);
 
 		if(req->isFinished())
-			removeItem(ri);
+		{
+			assert(!s->pending);
+			removeSession(s);
+		}
 	}
 
 	void req_error()
 	{
 		ZhttpRequest *req = (ZhttpRequest *)sender();
-		RequestItem *ri = requestItemsByRequest.value(req);
-		assert(ri);
+		Session *s = sessionsByRequest.value(req);
+		assert(s);
 
-		removeItem(ri);
+		if(s->pending)
+			s->req = 0;
+		else
+			removeSession(s);
 	}
 
 	void sock_closed()
 	{
 		ZWebSocket *sock = (ZWebSocket *)sender();
-		SocketItem *si = socketItemsBySocket.value(sock);
-		assert(si);
+		Session *s = sessionsBySocket.value(sock);
+		assert(s);
 
-		removeItem(si);
+		if(s->pending)
+			s->sock = 0;
+		else
+			removeSession(s);
 	}
 
 	void sock_error()
 	{
 		ZWebSocket *sock = (ZWebSocket *)sender();
-		SocketItem *si = socketItemsBySocket.value(sock);
-		assert(si);
+		Session *s = sessionsBySocket.value(sock);
+		assert(s);
 
-		removeItem(si);
+		if(s->pending)
+			s->sock = 0;
+		else
+			removeSession(s);
+	}
+
+	void timer_timeout()
+	{
+		QTimer *timer = (QTimer *)sender();
+		Session *s = sessionsByTimer.value(timer);
+		assert(s);
+
+		assert(!s->pending);
+		removeSession(s);
 	}
 };
 
@@ -438,45 +567,27 @@ void SockJsManager::giveSocket(ZWebSocket *sock, int basePathStart, const QByteA
 
 SockJsSession *SockJsManager::takeNext()
 {
-	SockJsSession *sess = 0;
-
-	while(!sess)
-	{
-		if(d->pendingSessions.isEmpty())
-			return 0;
-
-		sess = d->pendingSessions.takeFirst();
-		// FIXME
-		/*if(!d->sessionsById.contains(sess->sid()))
-		{
-			// this means the object was a zombie. clean up and take next
-			delete sess;
-			sess = 0;
-			continue;
-		}*/
-	}
-
-	sess->startServer();
-	return sess;
-}
-
-void SockJsManager::link(SockJsSession *sess)
-{
-	QByteArray sid = sess->sid();
-	assert(!sid.isEmpty());
-	d->sessionsById.insert(sid, sess);
+	return d->takeNext();
 }
 
 void SockJsManager::unlink(SockJsSession *sess)
 {
-	QByteArray sid = sess->sid();
-	assert(!sid.isEmpty());
-	d->sessionsById.remove(sid);
+	d->unlink(sess);
 }
 
-void SockJsManager::respond(ZhttpRequest *req, const HttpResponseData &respData)
+void SockJsManager::setLinger(SockJsSession *ext, const QVariant &closeValue)
 {
-	d->respond(req, respData.code, respData.reason, respData.headers, respData.body);
+	d->setLinger(ext, closeValue);
+}
+
+void SockJsManager::respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix, const QByteArray &jsonpCallback)
+{
+	d->respondOk(req, data, prefix, jsonpCallback);
+}
+
+void SockJsManager::respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
+{
+	d->respondError(req, code, reason, message);
 }
 
 #include "sockjsmanager.moc"

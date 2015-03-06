@@ -26,7 +26,6 @@
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
-#include "packet/httpresponsedata.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjsmanager.h"
@@ -46,6 +45,25 @@ public:
 		WebSocketPassthrough
 	};
 
+	class WriteItem
+	{
+	public:
+		enum Type
+		{
+			Transport,
+			User
+		};
+
+		Type type;
+		int size;
+
+		WriteItem(Type _type, int _size = 0) :
+			type(_type),
+			size(_size)
+		{
+		}
+	};
+
 	SockJsSession *q;
 	SockJsManager *manager;
 	Mode mode;
@@ -57,17 +75,23 @@ public:
 	bool errored;
 	ErrorCondition errorCondition;
 	ZhttpRequest *initialReq;
+	QByteArray initialJsonpCallback;
 	QByteArray initialLastPart;
 	QByteArray initialBody;
 	ZhttpRequest *req;
+	QByteArray jsonpCallback;
 	ZWebSocket *sock;
 	bool passThrough;
-	QByteArray jsonpCallback;
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int outPendingBytes;
+	int pendingWrittenFrames;
+	int pendingWrittenBytes;
+	QList<WriteItem> pendingWrites;
 	QTimer *keepAliveTimer;
 	int closeCode;
+	int peerCloseCode;
+	bool updating;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -81,11 +105,14 @@ public:
 		req(0),
 		sock(0),
 		outPendingBytes(0),
-		closeCode(-1)
+		pendingWrittenFrames(0),
+		pendingWrittenBytes(0),
+		closeCode(-1),
+		peerCloseCode(-1),
+		updating(false)
 	{
 		keepAliveTimer = new QTimer(this);
 		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
-		keepAliveTimer->setSingleShot(true);
 	}
 
 	~Private()
@@ -93,6 +120,9 @@ public:
 		keepAliveTimer->disconnect(this);
 		keepAliveTimer->setParent(0);
 		keepAliveTimer->deleteLater();
+
+		if(manager)
+			manager->unlink(q);
 	}
 
 	void cleanup()
@@ -100,9 +130,22 @@ public:
 		keepAliveTimer->stop();
 	}
 
-	void startServer()
+	void setup()
 	{
-		if(sock)
+		if(mode == Http)
+		{
+			req = initialReq;
+			initialReq = 0;
+			jsonpCallback = initialJsonpCallback;
+			initialJsonpCallback.clear();
+
+			// don't need these things
+			initialLastPart.clear();
+			initialBody.clear();
+
+			connect(req, SIGNAL(error()), SLOT(req_error()));
+		}
+		else
 		{
 			connect(sock, SIGNAL(connected()), SLOT(sock_connected()));
 			connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
@@ -110,149 +153,40 @@ public:
 			connect(sock, SIGNAL(closed()), SLOT(sock_closed()));
 			connect(sock, SIGNAL(peerClosed()), SLOT(sock_peerClosed()));
 			connect(sock, SIGNAL(error()), SLOT(sock_error()));
-
-			state = Connecting;
-		}
-		else
-		{
-			ZhttpRequest *_req = initialReq;
-			initialReq = 0;
-			QByteArray lastPart = initialLastPart;
-			initialLastPart.clear();
-			QByteArray body = initialBody;
-			initialBody.clear();
-
-			handleRequest(_req, lastPart, body, true);
 		}
 	}
 
-	void applyHeaders(const HttpHeaders &in, HttpHeaders *out)
+	void startServer()
 	{
-		*out += HttpHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+		state = Connecting;
 
-		QByteArray origin;
-		if(in.contains("Origin"))
-			origin = in.get("Origin");
-		else
-			origin = "*";
-		*out += HttpHeader("Access-Control-Allow-Origin", origin);
-		*out += HttpHeader("Access-Control-Allow-Credentials", "true");
+		if(mode != Http)
+			keepAliveTimer->start(KEEPALIVE_TIMEOUT * 1000);
 	}
 
-	void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body)
+	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
 	{
-		HttpHeaders headers = _headers;
-		applyHeaders(req->requestHeaders(), &headers);
-
-		HttpResponseData respData;
-		respData.code = code;
-		respData.reason = reason;
-		respData.headers = headers;
-		respData.body = body;
-		manager->respond(req, respData);
-	}
-
-	void respondEmpty(ZhttpRequest *req)
-	{
-		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", "text/plain"); // workaround FF issue. see sockjs spec.
-		applyHeaders(req->requestHeaders(), &headers);
-
-		HttpResponseData respData;
-		respData.code = 204;
-		respData.reason = "No Content";
-		respData.headers = headers;
-		manager->respond(req, respData);
-	}
-
-	void respondOk(ZhttpRequest *req, const QByteArray &contentType, const QByteArray &body = QByteArray())
-	{
-		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", contentType);
-		applyHeaders(req->requestHeaders(), &headers);
-
-		HttpResponseData respData;
-		respData.code = 200;
-		respData.reason = "OK";
-		respData.headers = headers;
-		respData.body = body;
-		manager->respond(req, respData);
+		manager->respondOk(req, data, prefix, jsonpCallback);
 	}
 
 	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
 	{
-		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", "text/plain");
-		applyHeaders(req->requestHeaders(), &headers);
-
-		HttpResponseData respData;
-		respData.code = code;
-		respData.reason = reason;
-		respData.headers = headers;
-		respData.body = message.toUtf8() + '\n';
-		manager->respond(req, respData);
+		manager->respondError(req, code, reason, message);
 	}
 
-	void handleRequest(ZhttpRequest *_req, const QByteArray &lastPart, const QByteArray &body, bool first)
+	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-		if(first)
-		{
-			assert(!req);
-
-			if(lastPart == "xhr" || lastPart == "jsonp")
+			/*if(lastPart == "xhr" || lastPart == "jsonp")
 			{
-				if(lastPart == "jsonp")
-				{
-					QUrl uri = _req->requestUri();
-					if(uri.hasQueryItem("callback"))
-					{
-						jsonpCallback = uri.queryItemValue("callback").toUtf8();
-					}
-					else if(uri.hasQueryItem("c"))
-					{
-						jsonpCallback = uri.queryItemValue("c").toUtf8();
-					}
-					else
-					{
-						errored = true;
-						respondError(_req, 400, "Bad Request", "Bad Request");
-						cleanup();
-						QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
-						return;
-					}
-
-					if(jsonpCallback.isEmpty())
-					{
-						errored = true;
-						respondError(_req, 400, "Bad Request", "Bad Request");
-						cleanup();
-						QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
-						return;
-					}
-				}
-
-				// TODO: monitor for errors, send timeout response
-				state = Connecting;
-				req = _req;
-				connect(req, SIGNAL(error()), SLOT(req_error()));
-			}
-			else
-			{
-				errored = true;
-				respondError(_req, 404, "Not Found", "Not Found");
-				cleanup();
-				QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
-			}
-		}
-		else
-		{
-			if(lastPart == "xhr" || lastPart == "jsonp")
-			{
-				// TODO: jsonp handling
-
 				if(req)
 				{
-					respondOk(_req, "application/javascript", "c[2010, \"Another connection still open\"]\n");
+					QVariantList out;
+					out += 2010;
+					out += QString("Another connection still open");
+					respondOk(s->req, out, "c", s->jsonpCallback);
+
+					[2010, \"Another connection still open\"]
+					respondOk(_req, "c\n");
 					return;
 				}
 
@@ -293,7 +227,7 @@ public:
 				inFrames += frames;
 				emit q->readyRead();
 			}
-		}
+		}*/
 	}
 
 	void accept(const QByteArray &reason, const HttpHeaders &headers)
@@ -307,9 +241,6 @@ public:
 
 			// note: reason/headers don't have meaning with sockjs http
 
-			if(errored)
-				return;
-
 			respondOk(req, "application/javascript", "o\n");
 			req = 0;
 			state = Connected;
@@ -321,7 +252,11 @@ public:
 			sock->respondSuccess(reason, headers);
 
 			if(mode == WebSocketFramed)
-				sock->writeFrame(Frame(Frame::Text, "o", false));
+			{
+				Frame f(Frame::Text, "o", false);
+				pendingWrites += WriteItem(WriteItem::Transport);
+				sock->writeFrame(f);
+			}
 		}
 	}
 
@@ -334,7 +269,7 @@ public:
 		{
 			assert(req);
 
-			respond(req, code, reason, headers, body);
+			//respond(req, code, reason, headers, body);
 			req = 0;
 			cleanup();
 			QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
@@ -369,7 +304,16 @@ public:
 
 					QJson::Serializer serializer;
 					QByteArray arrayJson = serializer.serialize(messages);
-					sock->writeFrame(Frame(Frame::Text, "a" + arrayJson, false));
+					Frame f(Frame::Text, "a" + arrayJson, false);
+
+					pendingWrites += WriteItem(WriteItem::User, arrayJson.size());
+					sock->writeFrame(f);
+				}
+				else
+				{
+					++pendingWrittenFrames;
+					pendingWrittenBytes += frame.data.size();
+					update();
 				}
 			}
 			else // WebSocketPassthrough
@@ -397,10 +341,19 @@ public:
 	{
 		assert(state != Closing);
 
-		// TODO
-
 		state = Closing;
 		closeCode = code;
+
+		if(mode == Http)
+		{
+			// TODO
+		}
+		else
+		{
+			assert(sock);
+
+			sock->close(closeCode);
+		}
 	}
 
 	void trySend()
@@ -464,10 +417,20 @@ public:
 		}
 	}
 
+	void update()
+	{
+		if(!updating)
+		{
+			updating = true;
+			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+		}
+	}
+
 private slots:
 	void req_error()
 	{
 		// FIXME: disconnect is clean close, timeout is not
+		delete req;
 		req = 0;
 		state = Idle;
 		cleanup();
@@ -488,20 +451,41 @@ private slots:
 
 	void sock_framesWritten(int count, int contentBytes)
 	{
-		// FIXME: consider framing
+		if(mode == WebSocketFramed)
+		{
+			int newCount = 0;
+			int newContentBytes = 0;
+			for(int n = 0; n < count; ++n)
+			{
+				WriteItem i = pendingWrites.takeFirst();
+				if(i.type == WriteItem::User)
+				{
+					++newCount;
+					newContentBytes += i.size;
+				}
+			}
+
+			count = newCount;
+			contentBytes = newContentBytes;
+		}
+
+		count += pendingWrittenFrames;
+		contentBytes += pendingWrittenBytes;
+		pendingWrittenFrames = 0;
+		pendingWrittenBytes = 0;
+
 		emit q->framesWritten(count, contentBytes);
 	}
 
 	void sock_peerClosed()
 	{
-		// FIXME?
+		peerCloseCode = sock->peerCloseCode();
 		emit q->peerClosed();
 	}
 
 	void sock_closed()
 	{
-		// FIXME
-		sock = 0;
+		peerCloseCode = sock->peerCloseCode();
 		state = Idle;
 		cleanup();
 		emit q->closed();
@@ -509,11 +493,25 @@ private slots:
 
 	void sock_error()
 	{
-		// FIXME
-		sock = 0;
 		state = Idle;
+		errorCondition = sock->errorCondition();
 		cleanup();
-		emit q->closed();
+		emit q->error();
+	}
+
+	void doUpdate()
+	{
+		updating = false;
+
+		if(pendingWrittenFrames > 0)
+		{
+			int count = pendingWrittenFrames;
+			int contentBytes = pendingWrittenBytes;
+			pendingWrittenFrames = 0;
+			pendingWrittenBytes = 0;
+
+			emit q->framesWritten(count, contentBytes);
+		}
 	}
 
 	void doClosed()
@@ -528,6 +526,8 @@ private slots:
 
 	void keepAliveTimer_timeout()
 	{
+		assert(mode != WebSocketPassthrough);
+
 		if(mode == Http)
 		{
 			assert(req);
@@ -539,7 +539,9 @@ private slots:
 		{
 			assert(sock);
 
-			// TODO
+			Frame f(Frame::Text, "h", false);
+			pendingWrites += WriteItem(WriteItem::Transport);
+			sock->writeFrame(f);
 		}
 	}
 };
@@ -706,7 +708,7 @@ int SockJsSession::writeBytesAvailable() const
 
 int SockJsSession::peerCloseCode() const
 {
-	return -1;
+	return d->peerCloseCode;
 }
 
 WebSocket::ErrorCondition SockJsSession::errorCondition() const
@@ -729,23 +731,23 @@ void SockJsSession::close(int code)
 	d->close(code);
 }
 
-void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route)
+void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route)
 {
 	d->manager = manager;
 	d->mode = Private::Http;
 	d->sid = sid;
 	d->requestData.uri = asUri;
-	// remove any jsonp params from the master uri
-	d->requestData.uri.removeAllQueryItems("c");
-	d->requestData.uri.removeAllQueryItems("callback");
 	d->requestData.headers = req->requestHeaders();
 	// we're not forwarding the request content so ignore this
 	d->requestData.headers.removeAll("Content-Length");
 	d->peerAddress = req->peerAddress();
 	d->route = route;
 	d->initialReq = req;
+	d->initialJsonpCallback = jsonpCallback;
 	d->initialLastPart = lastPart;
 	d->initialBody = body;
+
+	d->setup();
 }
 
 void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const DomainMap::Entry &route)
@@ -756,6 +758,8 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 	d->requestData.headers = sock->requestHeaders();
 	d->route = route;
 	d->sock = sock;
+
+	d->setup();
 }
 
 void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const DomainMap::Entry &route)
@@ -769,6 +773,8 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 	d->requestData.headers = sock->requestHeaders();
 	d->route = route;
 	d->sock = sock;
+
+	d->setup();
 }
 
 void SockJsSession::startServer()
@@ -776,9 +782,9 @@ void SockJsSession::startServer()
 	d->startServer();
 }
 
-void SockJsSession::handleRequest(ZhttpRequest *req, const QByteArray &lastPart, const QByteArray &body)
+void SockJsSession::handleRequest(ZhttpRequest *req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 {
-	d->handleRequest(req, lastPart, body, false);
+	d->handleRequest(req, jsonpCallback, lastPart, body);
 }
 
 #include "sockjssession.moc"
