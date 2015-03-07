@@ -20,6 +20,7 @@
 #include "sockjssession.h"
 
 #include <assert.h>
+#include <QPointer>
 #include <QTimer>
 #include <qjson/parser.h>
 #include <qjson/serializer.h>
@@ -32,6 +33,7 @@
 
 #define BUFFER_SIZE 200000
 #define KEEPALIVE_TIMEOUT 25
+#define UNCONNECTED_TIMEOUT 5
 
 class SockJsSession::Private : public QObject
 {
@@ -43,6 +45,47 @@ public:
 		Http,
 		WebSocketFramed,
 		WebSocketPassthrough
+	};
+
+	class RequestItem
+	{
+	public:
+		enum Type
+		{
+			Background,
+			Connect,
+			Accept,
+			Reject,
+			Send, // data from client
+			Receive, // data to client
+			ReceiveClose // close to client
+		};
+
+		ZhttpRequest *req;
+		QByteArray jsonpCallback;
+		Type type;
+		bool responded;
+
+		QList<Frame> sendFrames;
+		int sendBytes;
+		int receiveFrames;
+		int receiveBytes;
+
+		RequestItem(ZhttpRequest *_req, const QByteArray &_jsonpCallback, Type _type, bool _responded = false) :
+			req(_req),
+			jsonpCallback(_jsonpCallback),
+			type(_type),
+			responded(_responded),
+			sendBytes(0),
+			receiveFrames(0),
+			receiveBytes(0)
+		{
+		}
+
+		~RequestItem()
+		{
+			delete req;
+		}
 	};
 
 	class WriteItem
@@ -79,17 +122,20 @@ public:
 	QByteArray initialLastPart;
 	QByteArray initialBody;
 	ZhttpRequest *req;
-	QByteArray jsonpCallback;
 	ZWebSocket *sock;
 	bool passThrough;
+	QList<Frame> inWrappedFrames;
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
-	int outPendingBytes;
+	int inBytes;
 	int pendingWrittenFrames;
 	int pendingWrittenBytes;
 	QList<WriteItem> pendingWrites;
+	QHash<ZhttpRequest*, RequestItem*> requests;
 	QTimer *keepAliveTimer;
 	int closeCode;
+	bool closeSent;
+	bool peerClosed;
 	int peerCloseCode;
 	bool updating;
 
@@ -104,10 +150,12 @@ public:
 		initialReq(0),
 		req(0),
 		sock(0),
-		outPendingBytes(0),
+		inBytes(0),
 		pendingWrittenFrames(0),
 		pendingWrittenBytes(0),
 		closeCode(-1),
+		closeSent(false),
+		peerClosed(false),
 		peerCloseCode(-1),
 		updating(false)
 	{
@@ -121,13 +169,52 @@ public:
 		keepAliveTimer->setParent(0);
 		keepAliveTimer->deleteLater();
 
-		if(manager)
-			manager->unlink(q);
+		cleanup();
+	}
+
+	void removeRequestItem(RequestItem *ri)
+	{
+		requests.remove(ri->req);
+		delete ri;
+	}
+
+	RequestItem *findFirstSendRequest()
+	{
+		QHashIterator<ZhttpRequest*, RequestItem*> it(requests);
+		while(it.hasNext())
+		{
+			it.next();
+
+			RequestItem *ri = it.value();
+			if(ri->type == RequestItem::Send)
+				return ri;
+		}
+
+		return 0;
 	}
 
 	void cleanup()
 	{
 		keepAliveTimer->stop();
+
+		req = 0; // note: don't delete req. we'll delete its RequestItem below
+
+		QHashIterator<ZhttpRequest*, RequestItem*> it(requests);
+		while(it.hasNext())
+		{
+			it.next();
+			delete it.value();
+		}
+		requests.clear();
+
+		delete sock;
+		sock = 0;
+
+		if(manager)
+		{
+			manager->unlink(q);
+			manager = 0;
+		}
 	}
 
 	void setup()
@@ -136,13 +223,16 @@ public:
 		{
 			req = initialReq;
 			initialReq = 0;
-			jsonpCallback = initialJsonpCallback;
+			QByteArray jsonpCallback = initialJsonpCallback;
 			initialJsonpCallback.clear();
 
 			// don't need these things
 			initialLastPart.clear();
 			initialBody.clear();
 
+			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
+
+			connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
 			connect(req, SIGNAL(error()), SLOT(req_error()));
 		}
 		else
@@ -174,60 +264,122 @@ public:
 		manager->respondError(req, code, reason, message);
 	}
 
+	void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
+	{
+		manager->respond(req, code, reason, headers, body);
+	}
+
 	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-			/*if(lastPart == "xhr" || lastPart == "jsonp")
-			{
-				if(req)
-				{
-					QVariantList out;
-					out += 2010;
-					out += QString("Another connection still open");
-					respondOk(s->req, out, "c", s->jsonpCallback);
+		connect(_req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
+		connect(_req, SIGNAL(error()), SLOT(req_error()));
 
-					[2010, \"Another connection still open\"]
-					respondOk(_req, "c\n");
+		if(lastPart == "xhr" || lastPart == "jsonp")
+		{
+			if(req)
+			{
+				QVariantList out;
+				out += 2010;
+				out += QString("Another connection still open");
+
+				requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+				respondOk(_req, out, "c", jsonpCallback);
+				return;
+			}
+
+			if(peerClosed)
+			{
+				QVariantList out;
+				out += 3000;
+				out += QString("Client already closed connection");
+
+				requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+				respondOk(_req, out, "c", jsonpCallback);
+				return;
+			}
+
+			req = _req;
+			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Receive));
+			keepAliveTimer->start(KEEPALIVE_TIMEOUT * 1000);
+
+			tryWrite();
+		}
+		else if(lastPart == "xhr_send" || lastPart == "jsonp_send")
+		{
+			// only allow one outstanding send request at a time
+			if(findFirstSendRequest())
+			{
+				requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+				respondError(_req, 400, "Bad Request", "Already sending");
+				return;
+			}
+
+			QVariant vmessages;
+
+			if(lastPart == "xhr_send")
+			{
+				QJson::Parser parser;
+				bool ok;
+				vmessages = parser.parse(body, &ok);
+				if(!ok || vmessages.type() != QVariant::List)
+				{
+					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+					respondError(_req, 400, "Bad Request", "Payload expected");
 					return;
 				}
-
-				// TODO: monitor for errors, send timeout response
-				keepAliveTimer->start(KEEPALIVE_TIMEOUT * 1000);
-				req = _req;
-				connect(req, SIGNAL(error()), SLOT(req_error()));
 			}
-			else if(lastPart == "xhr_send" || lastPart == "jsonp_send")
+			else // jsonp_send
 			{
-				// TODO: jsonp handling
+				QByteArray param = _req->requestUri().queryItemValue("d").toUtf8();
 
 				QJson::Parser parser;
 				bool ok;
-				QVariant vmessages = parser.parse(body, &ok);
+				vmessages = parser.parse(param, &ok);
 				if(!ok || vmessages.type() != QVariant::List)
 				{
+					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+					respondError(_req, 400, "Bad Request", "Payload expected");
+					return;
+				}
+			}
+
+			QList<Frame> frames;
+			int bytes = 0;
+			foreach(const QVariant &vmessage, vmessages.toList())
+			{
+				if(vmessage.type() != QVariant::String)
+				{
+					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
 					respondError(_req, 400, "Bad Request", "Payload expected");
 					return;
 				}
 
-				// TODO: flow control? don't respond unless we can accept
-
-				QList<Frame> frames;
-				foreach(const QVariant &vmessage, vmessages.toList())
+				QByteArray data = vmessage.toString().toUtf8();
+				if(data.size() > BUFFER_SIZE)
 				{
-					if(vmessage.type() != QVariant::String)
-					{
-						respondError(_req, 400, "Bad Request", "Payload expected");
-						return;
-					}
-
-					frames += Frame(Frame::Text, vmessage.toString().toUtf8(), false);
+					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+					respondError(_req, 400, "Bad Request", "Message too large");
+					return;
 				}
 
-				respondEmpty(_req);
-
-				inFrames += frames;
-				emit q->readyRead();
+				frames += Frame(Frame::Text, data, false);
+				bytes += data.size();
 			}
-		}*/
+
+			if(frames.isEmpty())
+			{
+				requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+				respondOk(_req, QVariant(), QByteArray(), jsonpCallback);
+				return;
+			}
+
+			RequestItem *ri = new RequestItem(_req, jsonpCallback, RequestItem::Send);
+			requests.insert(_req, ri);
+			ri->sendFrames = frames;
+			ri->sendBytes = bytes;
+
+			tryRead();
+		}
 	}
 
 	void accept(const QByteArray &reason, const HttpHeaders &headers)
@@ -238,12 +390,14 @@ public:
 		if(mode == Http)
 		{
 			assert(req);
+			RequestItem *ri = requests.value(req);
+			assert(ri && !ri->responded);
 
 			// note: reason/headers don't have meaning with sockjs http
 
-			respondOk(req, "application/javascript", "o\n");
-			req = 0;
-			state = Connected;
+			ri->type = RequestItem::Accept;
+			ri->responded = true;
+			respondOk(req, QVariant(), "o", ri->jsonpCallback);
 		}
 		else
 		{
@@ -268,11 +422,12 @@ public:
 		if(mode == Http)
 		{
 			assert(req);
+			RequestItem *ri = requests.value(req);
+			assert(ri && !ri->responded);
 
-			//respond(req, code, reason, headers, body);
-			req = 0;
-			cleanup();
-			QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+			ri->type = RequestItem::Reject;
+			ri->responded = true;
+			respond(req, code, reason, headers, body);
 		}
 		else
 		{
@@ -286,53 +441,51 @@ public:
 	{
 		assert(state != Closing);
 
-		if(mode == Http)
+		if(mode == WebSocketPassthrough)
 		{
-			outFrames += frame;
-			trySend();
+			sock->writeFrame(frame);
 		}
 		else
 		{
-			assert(sock);
-
-			if(mode == WebSocketFramed)
+			if(frame.type != Frame::Text && frame.type != Frame::Binary)
 			{
-				if(frame.type == Frame::Text || frame.type == Frame::Binary)
-				{
-					QVariantList messages;
-					messages += QString::fromUtf8(frame.data);
-
-					QJson::Serializer serializer;
-					QByteArray arrayJson = serializer.serialize(messages);
-					Frame f(Frame::Text, "a" + arrayJson, false);
-
-					pendingWrites += WriteItem(WriteItem::User, arrayJson.size());
-					sock->writeFrame(f);
-				}
-				else
-				{
-					++pendingWrittenFrames;
-					pendingWrittenBytes += frame.data.size();
-					update();
-				}
+				++pendingWrittenFrames;
+				pendingWrittenBytes += frame.data.size();
+				update();
+				return;
 			}
-			else // WebSocketPassthrough
+
+			if(mode == Http)
 			{
-				sock->writeFrame(frame);
+				outFrames += frame;
+				tryWrite();
+			}
+			else // WebSocketFramed
+			{
+				QVariantList messages;
+				messages += QString::fromUtf8(frame.data);
+
+				QJson::Serializer serializer;
+				QByteArray arrayJson = serializer.serialize(messages);
+				Frame f(Frame::Text, "a" + arrayJson, false);
+
+				pendingWrites += WriteItem(WriteItem::User, frame.data.size());
+				sock->writeFrame(f);
 			}
 		}
 	}
 
 	Frame readFrame()
 	{
-		if(mode == Http)
+		if(mode == Http || mode == WebSocketFramed)
 		{
-			return inFrames.takeFirst();
+			Frame f = inFrames.takeFirst();
+			inBytes -= f.data.size();
+			update();
+			return f;
 		}
 		else
 		{
-			assert(sock);
-
 			return sock->readFrame();
 		}
 	}
@@ -346,7 +499,15 @@ public:
 
 		if(mode == Http)
 		{
-			// TODO
+			if(peerClosed)
+			{
+				state = Idle;
+				applyLinger();
+				cleanup();
+				QMetaObject::invokeMethod(q, "closed", Qt::QueuedConnection);
+			}
+			else
+				tryWrite();
 		}
 		else
 		{
@@ -356,10 +517,13 @@ public:
 		}
 	}
 
-	void trySend()
+	void tryWrite()
 	{
-		if(!req)
+		if(!req || closeSent)
 			return;
+
+		RequestItem *ri = requests.value(req);
+		assert(ri);
 
 		QVariantList messages;
 
@@ -388,33 +552,200 @@ public:
 				bufs += f.data;
 			}
 
-			if(first.type == Frame::Text || first.type == Frame::Binary)
-				messages += QString::fromUtf8(bufs.toByteArray());
+			assert(first.type == Frame::Text || first.type == Frame::Binary);
+
+			QByteArray data = bufs.toByteArray();
+
+			pendingWrites += WriteItem(WriteItem::User, data.size());
+			messages += QString::fromUtf8(data);
 		}
+
+		ri->receiveFrames = frames;
+		ri->receiveBytes = bytes;
 
 		if(!messages.isEmpty())
 		{
-			QJson::Serializer serializer;
-			QByteArray arrayJson = serializer.serialize(messages);
-			respondOk(req, "application/javascript", "a" + arrayJson + "\n");
-			req = 0;
+			ri->responded = true;
+			respondOk(req, messages, "a", ri->jsonpCallback);
 			keepAliveTimer->stop();
-			QMetaObject::invokeMethod(q, "bytesWritten", Qt::QueuedConnection, Q_ARG(int, frames), Q_ARG(int, bytes));
 		}
 		else if(state == Closing)
 		{
-			QVariantList closeArray;
-			closeArray += closeCode;
-			closeArray += QString("Connection closed");
-			QJson::Serializer serializer;
-			QByteArray arrayJson = serializer.serialize(closeArray);
-			respondOk(req, "application/javascript", "c" + arrayJson + "\n");
-			req = 0;
-			state = Idle;
-			// TODO: manager needs to linger this session
-			cleanup();
-			QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+			closeSent = true;
+			QVariant closeValue = applyLinger();
+
+			ri->type = RequestItem::ReceiveClose;
+			ri->responded = true;
+			respondOk(req, closeValue, "c", ri->jsonpCallback);
 		}
+	}
+
+	bool tryRead()
+	{
+		QPointer<QObject> self = this;
+
+		if(mode == Http)
+		{
+			QList<RequestItem*> sendRequests;
+			QHashIterator<ZhttpRequest*, RequestItem*> it(requests);
+			while(it.hasNext())
+			{
+				it.next();
+				RequestItem *ri = it.value();
+
+				if(ri->type == RequestItem::Send && !ri->responded)
+					sendRequests += ri;
+			}
+
+			bool emitReadyRead = false;
+
+			foreach(RequestItem *ri, sendRequests)
+			{
+				assert(!ri->sendFrames.isEmpty());
+
+				if(inBytes + ri->sendFrames.first().data.size() > BUFFER_SIZE)
+					break;
+
+				Frame f = ri->sendFrames.takeFirst();
+				ri->sendBytes -= f.data.size();
+
+				if(ri->sendFrames.isEmpty())
+				{
+					assert(ri->sendBytes == 0);
+
+					ri->responded = true;
+					respondOk(ri->req, QVariant(), QByteArray(), ri->jsonpCallback);
+				}
+
+				inFrames += f;
+				inBytes += f.data.size();
+
+				emitReadyRead = true;
+			}
+
+			if(emitReadyRead)
+			{
+				emit q->readyRead();
+				if(!self)
+					return false;
+			}
+		}
+		else if(mode == WebSocketFramed)
+		{
+			bool error = false;
+			bool emitReadyRead = false;
+
+			while(inBytes < BUFFER_SIZE)
+			{
+				int end = 0;
+				for(; end < inWrappedFrames.count(); ++end)
+				{
+					if(!inWrappedFrames[end].more)
+						break;
+				}
+				if(end >= inWrappedFrames.count())
+				{
+					if(sock->framesAvailable() == 0)
+						break;
+
+					Frame f = sock->readFrame();
+
+					// allow a larger temporary read size due to wrapping
+					if(f.data.size() > BUFFER_SIZE * 2)
+					{
+						error = true;
+						break;
+					}
+
+					inWrappedFrames += f;
+					continue;
+				}
+
+				int size = 0;
+				for(int n = 0; n <= end; ++n)
+					size += inWrappedFrames[n].data.size();
+
+				// allow a larger temporary read size due to wrapping
+				if(size > BUFFER_SIZE * 2)
+				{
+					error = true;
+					break;
+				}
+
+				Frame first = inWrappedFrames[0];
+
+				BufferList bufs;
+				for(int n = 0; n <= end; ++n)
+				{
+					Frame f = inWrappedFrames.takeFirst();
+					bufs += f.data;
+				}
+
+				if(first.type != Frame::Text && first.type != Frame::Binary)
+					continue;
+
+				QByteArray data = bufs.toByteArray();
+
+				QJson::Parser parser;
+				bool ok;
+				QVariant vmessages = parser.parse(data, &ok);
+				if(!ok || vmessages.type() != QVariant::List)
+				{
+					error = true;
+					break;
+				}
+
+				QList<Frame> frames;
+				int bytes = 0;
+				foreach(const QVariant &vmessage, vmessages.toList())
+				{
+					if(vmessage.type() != QVariant::String)
+					{
+						error = true;
+						break;
+					}
+
+					data = vmessage.toString().toUtf8();
+					if(data.size() > BUFFER_SIZE)
+					{
+						error = true;
+						break;
+					}
+
+					frames += Frame(Frame::Text, data, false);
+					bytes += data.size();
+				}
+
+				if(error)
+					break;
+
+				// note: inBytes may exceed BUFFER_SIZE at this point, but
+				//   it shouldn't be by more than double
+
+				inFrames += frames;
+				inBytes += bytes;
+				emitReadyRead = true;
+			}
+
+			if(error)
+			{
+				state = Idle;
+				cleanup();
+				emit q->error();
+
+				// stop signals
+				return false;
+			}
+
+			if(emitReadyRead)
+			{
+				emit q->readyRead();
+				if(!self)
+					return false;
+			}
+		}
+
+		return true;
 	}
 
 	void update()
@@ -426,32 +757,9 @@ public:
 		}
 	}
 
-private slots:
-	void req_error()
+	void handleWritten(int count, int contentBytes)
 	{
-		// FIXME: disconnect is clean close, timeout is not
-		delete req;
-		req = 0;
-		state = Idle;
-		cleanup();
-		emit q->closed();
-	}
-
-	void sock_connected()
-	{
-		state = Connected;
-
-		emit q->connected();
-	}
-
-	void sock_readyRead()
-	{
-		emit q->readyRead();
-	}
-
-	void sock_framesWritten(int count, int contentBytes)
-	{
-		if(mode == WebSocketFramed)
+		if(mode == Http || mode == WebSocketFramed)
 		{
 			int newCount = 0;
 			int newContentBytes = 0;
@@ -467,14 +775,151 @@ private slots:
 
 			count = newCount;
 			contentBytes = newContentBytes;
+
+			count += pendingWrittenFrames;
+			contentBytes += pendingWrittenBytes;
+			pendingWrittenFrames = 0;
+			pendingWrittenBytes = 0;
 		}
 
-		count += pendingWrittenFrames;
-		contentBytes += pendingWrittenBytes;
-		pendingWrittenFrames = 0;
-		pendingWrittenBytes = 0;
-
 		emit q->framesWritten(count, contentBytes);
+	}
+
+	QVariant applyLinger()
+	{
+		QVariantList closeValue;
+		if(closeCode != -1)
+			closeValue += closeCode;
+		else
+			closeValue += 0;
+		closeValue += QString("Connection closed");
+		manager->setLinger(q, closeValue);
+		return closeValue;
+	}
+
+private slots:
+	void req_bytesWritten(int count)
+	{
+		Q_UNUSED(count);
+
+		ZhttpRequest *_req = (ZhttpRequest *)sender();
+		RequestItem *ri = requests.value(_req);
+		assert(ri);
+
+		if(!_req->isFinished())
+			return;
+
+		if(ri->type == RequestItem::Accept)
+		{
+			assert(_req == req);
+			state = Connected;
+			req = 0;
+			removeRequestItem(ri);
+
+			keepAliveTimer->start(UNCONNECTED_TIMEOUT * 1000);
+		}
+		else
+		{
+			if(_req == req)
+			{
+				req = 0;
+
+				if(ri->type == RequestItem::Reject)
+				{
+					state = Idle;
+					removeRequestItem(ri);
+					cleanup();
+					emit q->closed();
+					return;
+				}
+				else if(ri->type == RequestItem::Receive)
+				{
+					int count = ri->receiveFrames;
+					int contentBytes = ri->receiveBytes;
+					removeRequestItem(ri);
+					keepAliveTimer->start(UNCONNECTED_TIMEOUT * 1000);
+					handleWritten(count, contentBytes);
+					return;
+				}
+				else if(ri->type == RequestItem::ReceiveClose)
+				{
+					state = Idle;
+					removeRequestItem(ri);
+					cleanup();
+					emit q->closed();
+					return;
+				}
+			}
+
+			removeRequestItem(ri);
+		}
+	}
+
+	void req_error()
+	{
+		ZhttpRequest *_req = (ZhttpRequest *)sender();
+		RequestItem *ri = requests.value(_req);
+		assert(ri);
+
+		if(ri->type == RequestItem::Connect ||
+			ri->type == RequestItem::Accept ||
+			ri->type == RequestItem::Reject ||
+			ri->type == RequestItem::Receive ||
+			ri->type == RequestItem::ReceiveClose)
+		{
+			assert(_req == req);
+
+			// disconnect while long-polling means close, not error
+			bool close = false;
+			if(ri->type == RequestItem::Receive && !ri->responded)
+				close = (_req->errorCondition() == ZhttpRequest::ErrorDisconnected);
+
+			req = 0;
+			removeRequestItem(ri);
+
+			if(close && !peerClosed)
+			{
+				peerClosed = true;
+				emit q->peerClosed();
+				return;
+			}
+
+			state = Idle;
+			cleanup();
+
+			if(close)
+				emit q->closed();
+			else
+				emit q->error();
+		}
+		else
+		{
+			removeRequestItem(ri);
+		}
+	}
+
+	void sock_connected()
+	{
+		state = Connected;
+
+		emit q->connected();
+	}
+
+	void sock_readyRead()
+	{
+		if(mode == WebSocketFramed)
+		{
+			tryRead();
+		}
+		else // WebSocketPassthrough
+		{
+			emit q->readyRead();
+		}
+	}
+
+	void sock_framesWritten(int count, int contentBytes)
+	{
+		handleWritten(count, contentBytes);
 	}
 
 	void sock_peerClosed()
@@ -503,25 +948,21 @@ private slots:
 	{
 		updating = false;
 
-		if(pendingWrittenFrames > 0)
+		if(mode == Http || mode == WebSocketFramed)
 		{
-			int count = pendingWrittenFrames;
-			int contentBytes = pendingWrittenBytes;
-			pendingWrittenFrames = 0;
-			pendingWrittenBytes = 0;
+			if(!tryRead())
+				return;
 
-			emit q->framesWritten(count, contentBytes);
+			if(pendingWrittenFrames > 0)
+			{
+				int count = pendingWrittenFrames;
+				int contentBytes = pendingWrittenBytes;
+				pendingWrittenFrames = 0;
+				pendingWrittenBytes = 0;
+
+				emit q->framesWritten(count, contentBytes);
+			}
 		}
-	}
-
-	void doClosed()
-	{
-		emit q->closed();
-	}
-
-	void doError()
-	{
-		emit q->error();
 	}
 
 	void keepAliveTimer_timeout()
@@ -530,10 +971,21 @@ private slots:
 
 		if(mode == Http)
 		{
-			assert(req);
+			if(req)
+			{
+				RequestItem *ri = requests.value(req);
+				assert(ri && !ri->responded);
 
-			respondOk(req, "application/javascript", "h\n");
-			req = 0;
+				ri->responded = true;
+				respondOk(req, QVariant(), "h", ri->jsonpCallback);
+			}
+			else
+			{
+				// timeout while unconnected
+				state = Idle;
+				cleanup();
+				emit q->error();
+			}
 		}
 		else
 		{
@@ -668,13 +1120,12 @@ QByteArray SockJsSession::responseBody() const
 
 int SockJsSession::framesAvailable() const
 {
-	if(d->mode == Private::Http)
+	if(d->mode == Private::Http || d->mode == Private::WebSocketFramed)
 	{
 		return d->inFrames.count();
 	}
 	else
 	{
-		assert(d->sock);
 		return d->sock->framesAvailable();
 	}
 }

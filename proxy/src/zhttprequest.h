@@ -43,6 +43,7 @@ public:
 		ErrorConnectTimeout,
 		ErrorTls,
 		ErrorLengthRequired,
+		ErrorDisconnected,
 		ErrorTimeout,
 		ErrorUnavailable,
 		ErrorRequestTooLarge

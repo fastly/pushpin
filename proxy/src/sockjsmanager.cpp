@@ -119,7 +119,7 @@ public:
 			sessionsByRequest.remove(s->req);
 		if(s->sock)
 			sessionsBySocket.remove(s->sock);
-		if(s->sid.isEmpty())
+		if(!s->sid.isEmpty())
 			sessionsById.remove(s->sid);
 		if(s->ext)
 			sessionsByExt.remove(s->ext);
@@ -263,7 +263,9 @@ public:
 		applyHeaders(req->requestHeaders(), &headers);
 
 		QJson::Serializer serializer;
-		QByteArray body = serializer.serialize(data);
+		QByteArray body;
+		if(data.isValid())
+			body = serializer.serialize(data);
 		if(!prefix.isEmpty())
 			body.prepend(prefix);
 
@@ -272,8 +274,10 @@ public:
 			QByteArray encBody = serializer.serialize(QString::fromUtf8(body));
 			body = "/**/" + jsonpCallback + '(' + encBody + ");\n";
 		}
+		else if(!body.isEmpty())
+			body += "\n"; // newline is required
 
-		respond(req, 200, "OK", headers, body + "\n"); // note: the newline is required
+		respond(req, 200, "OK", headers, body);
 	}
 
 	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
@@ -355,7 +359,7 @@ public:
 					{
 						if(existing->closeValue.isValid())
 						{
-							respondOk(s->req, existing->closeValue, "c");
+							respondOk(s->req, existing->closeValue, "c", s->jsonpCallback);
 						}
 						else
 						{
@@ -588,6 +592,11 @@ void SockJsManager::respondOk(ZhttpRequest *req, const QVariant &data, const QBy
 void SockJsManager::respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
 {
 	d->respondError(req, code, reason, message);
+}
+
+void SockJsManager::respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
+{
+	d->respond(req, code, reason, headers, body);
 }
 
 #include "sockjsmanager.moc"

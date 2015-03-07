@@ -798,6 +798,8 @@ public:
 			return ErrorLengthRequired;
 		else if(cond == "connection-timeout")
 			return ErrorConnectTimeout;
+		else if(cond == "disconnected")
+			return ErrorDisconnected;
 		else // lump the rest as generic
 			return ErrorGeneric;
 	}
