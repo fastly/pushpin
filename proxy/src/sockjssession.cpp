@@ -259,6 +259,11 @@ public:
 		manager->respondOk(req, data, prefix, jsonpCallback);
 	}
 
+	void respondOk(ZhttpRequest *req, const QString &str, const QByteArray &jsonpCallback = QByteArray())
+	{
+		manager->respondOk(req, str, jsonpCallback);
+	}
+
 	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
 	{
 		manager->respondError(req, code, reason, message);
@@ -314,33 +319,43 @@ public:
 				return;
 			}
 
-			QVariant vmessages;
+			QByteArray param;
 
-			if(lastPart == "xhr_send")
+			if(_req->requestMethod() == "POST")
 			{
-				QJson::Parser parser;
-				bool ok;
-				vmessages = parser.parse(body, &ok);
-				if(!ok || vmessages.type() != QVariant::List)
+				QByteArray contentType = _req->requestHeaders().get("Content-Type");
+				if(contentType == "application/json")
 				{
-					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
-					respondError(_req, 400, "Bad Request", "Payload expected");
-					return;
+					param = body;
+				}
+				else // assume form encoded
+				{
+					foreach(const QByteArray &kv, body.split('&'))
+					{
+						int at = kv.indexOf('=');
+						if(at == -1)
+							continue;
+						if(QUrl::fromPercentEncoding(kv.mid(0, at)) == "d")
+						{
+							param = QUrl::fromPercentEncoding(kv.mid(at + 1)).toUtf8();
+							break;
+						}
+					}
 				}
 			}
-			else // jsonp_send
+			else // GET
 			{
-				QByteArray param = _req->requestUri().queryItemValue("d").toUtf8();
+				param = _req->requestUri().queryItemValue("d").toUtf8();
+			}
 
-				QJson::Parser parser;
-				bool ok;
-				vmessages = parser.parse(param, &ok);
-				if(!ok || vmessages.type() != QVariant::List)
-				{
-					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
-					respondError(_req, 400, "Bad Request", "Payload expected");
-					return;
-				}
+			QJson::Parser parser;
+			bool ok;
+			QVariant vmessages = parser.parse(param, &ok);
+			if(!ok || vmessages.type() != QVariant::List)
+			{
+				requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+				respondError(_req, 400, "Bad Request", "Payload expected");
+				return;
 			}
 
 			QList<Frame> frames;
@@ -369,7 +384,7 @@ public:
 			if(frames.isEmpty())
 			{
 				requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
-				respondOk(_req, QVariant(), QByteArray(), jsonpCallback);
+				respondOk(_req, QString("ok"), jsonpCallback);
 				return;
 			}
 
@@ -614,7 +629,7 @@ public:
 					assert(ri->sendBytes == 0);
 
 					ri->responded = true;
-					respondOk(ri->req, QVariant(), QByteArray(), ri->jsonpCallback);
+					respondOk(ri->req, QString("ok"), ri->jsonpCallback);
 				}
 
 				inFrames += f;

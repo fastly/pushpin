@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QTimer>
+#include <QCryptographicHash>
 #include <QtCrypto>
 #include <qjson/serializer.h>
 #include "log.h"
@@ -30,6 +31,24 @@
 #include "sockjssession.h"
 
 #define MAX_REQUEST_BODY 100000
+
+const char *iframeHtmlTemplate =
+"<!DOCTYPE html>\n"
+"<html>\n"
+"<head>\n"
+"  <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" />\n"
+"  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n"
+"  <script src=\"%1\"></script>\n"
+"  <script>\n"
+"    document.domain = document.domain;\n"
+"    SockJS.bootstrap_iframe();\n"
+"  </script>\n"
+"</head>\n"
+"<body>\n"
+"  <h2>Don't panic!</h2>\n"
+"  <p>This is a SockJS hidden iframe. It's used for cross domain magic.</p>\n"
+"</body>\n"
+"</html>\n";
 
 class SockJsManager::Private : public QObject
 {
@@ -93,11 +112,15 @@ public:
 	QHash<SockJsSession*, Session*> sessionsByExt;
 	QHash<QTimer*, Session*> sessionsByTimer;
 	QList<Session*> pendingSessions;
+	QByteArray iframeHtml;
+	QByteArray iframeHtmlEtag;
 
-	Private(SockJsManager *_q) :
+	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
 		q(_q)
 	{
+		iframeHtml = QString(iframeHtmlTemplate).arg(sockJsUrl).toUtf8();
+		iframeHtmlEtag = '\"' + QCryptographicHash::hash(iframeHtml, QCryptographicHash::Md5).toHex() + '\"';
 	}
 
 	~Private()
@@ -188,7 +211,7 @@ public:
 		if(!asPath.isEmpty())
 			s->asUri.setEncodedPath(asPath);
 		else
-			s->asUri.setEncodedPath(encPath.mid(0, basePathStart) + "/websocket");
+			s->asUri.setEncodedPath(encPath.mid(0, basePathStart));
 
 		s->route = route;
 
@@ -240,7 +263,10 @@ public:
 
 	void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
 	{
-		req->beginResponse(code, reason, headers);
+		HttpHeaders outHeaders = headers;
+		applyHeaders(req->requestHeaders(), &outHeaders);
+
+		req->beginResponse(code, reason, outHeaders);
 		req->writeBody(body);
 		req->endBody();
 	}
@@ -249,7 +275,6 @@ public:
 	{
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain"); // workaround FF issue. see sockjs spec.
-		applyHeaders(req->requestHeaders(), &headers);
 		respond(req, 204, "No Content", headers, QByteArray());
 	}
 
@@ -260,7 +285,6 @@ public:
 			headers += HttpHeader("Content-Type", "application/javascript");
 		else
 			headers += HttpHeader("Content-Type", "text/plain");
-		applyHeaders(req->requestHeaders(), &headers);
 
 		QJson::Serializer serializer;
 		QByteArray body;
@@ -280,11 +304,31 @@ public:
 		respond(req, 200, "OK", headers, body);
 	}
 
+	void respondOk(ZhttpRequest *req, const QString &str, const QByteArray &jsonpCallback = QByteArray())
+	{
+		HttpHeaders headers;
+		if(!jsonpCallback.isEmpty())
+			headers += HttpHeader("Content-Type", "application/javascript");
+		else
+			headers += HttpHeader("Content-Type", "text/plain");
+
+		QByteArray body;
+		if(!jsonpCallback.isEmpty())
+		{
+			QJson::Serializer serializer;
+			QByteArray encBody = serializer.serialize(str);
+			body = "/**/" + jsonpCallback + '(' + encBody + ");\n";
+		}
+		else
+			body = str.toUtf8();
+
+		respond(req, 200, "OK", headers, body);
+	}
+
 	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
 	{
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
-		applyHeaders(req->requestHeaders(), &headers);
 		respond(req, code, reason, headers, message.toUtf8() + '\n');
 	}
 
@@ -292,7 +336,6 @@ public:
 	{
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
-		applyHeaders(sock->requestHeaders(), &headers);
 		sock->respondError(code, reason, headers, message.toUtf8() + '\n');
 	}
 
@@ -318,7 +361,7 @@ public:
 		{
 			respondEmpty(s->req);
 		}
-		else if(s->path == "/info")
+		else if(method == "GET" && s->path == "/info")
 		{
 			QByteArray bytes = QCA::Random::randomArray(4).toByteArray();
 			quint32 x = 0;
@@ -331,6 +374,23 @@ public:
 			out["cookie_needed"] = false;
 			out["entropy"] = x;
 			respondOk(s->req, out);
+		}
+		else if(method == "GET" && s->path.startsWith("/iframe") && s->path.endsWith(".html"))
+		{
+			HttpHeaders headers;
+			headers += HttpHeader("ETag", iframeHtmlEtag);
+
+			QByteArray ifNoneMatch = s->req->requestHeaders().get("If-None-Match");
+			if(ifNoneMatch == iframeHtmlEtag)
+			{
+				respond(s->req, 304, "Not Modified", headers, QByteArray());
+			}
+			else
+			{
+				headers += HttpHeader("Content-Type", "text/html; charset=UTF-8");
+				headers += HttpHeader("Cache-Control", "public, max-age=31536000");
+				respond(s->req, 200, "OK", headers, iframeHtml);
+			}
 		}
 		else
 		{
@@ -372,7 +432,7 @@ public:
 					return;
 				}
 
-				if((method == "POST" && lastPart == "xhr") || (method == "GET" && lastPart == "jsonp"))
+				if((method == "POST" && lastPart == "xhr") || ((method == "GET" || method == "POST") && lastPart == "jsonp"))
 				{
 					if(lastPart == "jsonp" && s->jsonpCallback.isEmpty())
 					{
@@ -548,10 +608,10 @@ private slots:
 	}
 };
 
-SockJsManager::SockJsManager(QObject *parent) :
+SockJsManager::SockJsManager(const QString &sockJsUrl, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = new Private(this, sockJsUrl);
 }
 
 SockJsManager::~SockJsManager()
@@ -587,6 +647,11 @@ void SockJsManager::setLinger(SockJsSession *ext, const QVariant &closeValue)
 void SockJsManager::respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix, const QByteArray &jsonpCallback)
 {
 	d->respondOk(req, data, prefix, jsonpCallback);
+}
+
+void SockJsManager::respondOk(ZhttpRequest *req, const QString &str, const QByteArray &jsonpCallback)
+{
+	d->respondOk(req, str, jsonpCallback);
 }
 
 void SockJsManager::respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)

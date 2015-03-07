@@ -58,6 +58,7 @@ public:
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray upstreamKey;
+		QString sockJsUrl;
 
 		Configuration() :
 			ipcFileMode(-1),

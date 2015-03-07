@@ -178,7 +178,7 @@ public:
 		zroutes->setDefaultOutStreamSpecs(config.clientOutStreamSpecs);
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
-		sockJsManager = new SockJsManager(this);
+		sockJsManager = new SockJsManager(config.sockJsUrl, this);
 		connect(sockJsManager, SIGNAL(sessionReady()), SLOT(sockjs_sessionReady()));
 
 		if(!config.inspectSpec.isEmpty())

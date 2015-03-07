@@ -273,6 +273,7 @@ public:
 		trimlist(&origHeadersNeedMarkStr);
 		QByteArray sigKey = parse_key(settings.value("proxy/sig_key").toString());
 		QByteArray upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
+		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -316,6 +317,7 @@ public:
 		config.sigIss = "pushpin";
 		config.sigKey = sigKey;
 		config.upstreamKey = upstreamKey;
+		config.sockJsUrl = sockJsUrl;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

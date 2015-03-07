@@ -33,7 +33,7 @@ class SockJsManager : public QObject
 	Q_OBJECT
 
 public:
-	SockJsManager(QObject *parent = 0);
+	SockJsManager(const QString &sockJsUrl, QObject *parent = 0);
 	~SockJsManager();
 
 	void giveRequest(ZhttpRequest *req, int basePathStart, const QByteArray &asPath = QByteArray(), const DomainMap::Entry &route = DomainMap::Entry());
@@ -53,6 +53,7 @@ private:
 	void unlink(SockJsSession *sess);
 	void setLinger(SockJsSession *sess, const QVariant &closeValue);
 	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray());
+	void respondOk(ZhttpRequest *req, const QString &str, const QByteArray &jsonpCallback = QByteArray());
 	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message);
 	void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
 };
