@@ -249,9 +249,6 @@ public:
 	void startServer()
 	{
 		state = Connecting;
-
-		if(mode != Http)
-			keepAliveTimer->start(KEEPALIVE_TIMEOUT * 1000);
 	}
 
 	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray())
@@ -323,13 +320,14 @@ public:
 
 			if(_req->requestMethod() == "POST")
 			{
-				QByteArray contentType = _req->requestHeaders().get("Content-Type");
-				if(contentType == "application/json")
+				if(lastPart == "xhr_send")
 				{
+					// assume json
 					param = body;
 				}
-				else // assume form encoded
+				else // jsonp_send
 				{
+					// assume form encoded
 					foreach(const QByteArray &kv, body.split('&'))
 					{
 						int at = kv.indexOf('=');
@@ -916,6 +914,9 @@ private slots:
 	void sock_connected()
 	{
 		state = Connected;
+
+		if(mode == WebSocketFramed)
+			keepAliveTimer->start(KEEPALIVE_TIMEOUT * 1000);
 
 		emit q->connected();
 	}
