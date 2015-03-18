@@ -1,46 +1,47 @@
 # this program uses pushpin's PULL socket to publish
 
-import sys
+import argparse
 import tnetstring
 import zmq
 
-args = sys.argv[1:]
+parser = argparse.ArgumentParser(description='Publish messages to Pushpin.')
+parser.add_argument('channel', help='channel to send to')
+parser.add_argument('content',
+	help='content to use for HTTP body and WS message')
+parser.add_argument('--code', type=int,
+	help='HTTP response code to use. default 200')
+parser.add_argument('-H', '--header', action='append',
+	help='add HTTP response header')
+parser.add_argument('--spec', default='tcp://localhost:5560',
+	help='zmq PUSH spec. default tcp://localhost:5560')
+args = parser.parse_args()
 
-spec = 'tcp://localhost:5560'
-
-n = 0
-while n < len(args):
-	arg = args[n]
-	if arg.startswith('--spec='):
-		spec = arg[7:]
-		del args[n]
-		n -= 1 # adjust position
-	n += 1
-
-if len(args) < 2:
-	print 'usage: %s (--spec=x) [channel] [content]' % sys.argv[0]
-	sys.exit(1)
-
-channel = args[0]
-content = args[1]
+headers = []
+if args.header:
+	for h in args.header:
+		k, v = h.split(':')
+		headers.append([k, v.lstrip()])
 
 ctx = zmq.Context()
 sock = ctx.socket(zmq.PUSH)
-sock.connect(spec)
+sock.connect(args.spec)
 
-hr = dict()
-hr['body'] = content + '\n'
-hs = dict()
-hs['content'] = content + '\n'
-ws = dict()
-ws['content'] = content
-formats = dict()
-formats['http-response'] = hr
-formats['http-stream'] = hs
-formats['ws-message'] = ws
-item = dict()
-item['channel'] = channel
-item['formats'] = formats
+hr = {'body': args.content + '\n'}
+if args.code is not None:
+	hr['code'] = args.code
+if headers:
+	hr['headers'] = headers
+hs = {'content': args.content + '\n'}
+ws = {'content': args.content}
+
+item = {
+	'channel': args.channel,
+	'formats': {
+		'http-response': hr,
+		'http-stream': hs,
+		'ws-message': ws
+	}
+}
 
 sock.send(tnetstring.dumps(item))
 
