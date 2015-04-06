@@ -299,7 +299,10 @@ public:
 		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
 		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
 
-		if(autoCrossOrigin || (!route.isNull() && route.autoCrossOrigin))
+		if(!route.isNull() && route.autoCrossOrigin)
+			autoCrossOrigin = true;
+
+		if(autoCrossOrigin)
 		{
 			DomainMap::JsonpConfig config;
 			if(!route.isNull())
@@ -998,7 +1001,7 @@ public slots:
 			}
 			else
 			{
-				if(autoCrossOrigin || (!route.isNull() && route.autoCrossOrigin))
+				if(autoCrossOrigin)
 					applyCorsHeaders(requestData.headers, &responseData.headers);
 
 				connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
