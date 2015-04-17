@@ -1,5 +1,8 @@
 Pushpin
 =======
+
+[![Join the chat at https://gitter.im/fanout/pushpin](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/fanout/pushpin?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 Author: Justin Karneges <justin@fanout.io>  
 Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io
 
