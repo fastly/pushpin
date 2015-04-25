@@ -274,6 +274,7 @@ public:
 		QByteArray sigKey = parse_key(settings.value("proxy/sig_key").toString());
 		QByteArray upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
 		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
+		bool updatesCheck = settings.value("proxy/updates_check", true).toBool();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -292,6 +293,7 @@ public:
 		}
 
 		Engine::Configuration config;
+		config.appVersion = VERSION;
 		config.clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
 		config.serverInSpecs = m2a_in_specs;
 		config.serverInStreamSpecs = m2a_in_stream_specs;
@@ -318,6 +320,7 @@ public:
 		config.sigKey = sigKey;
 		config.upstreamKey = upstreamKey;
 		config.sockJsUrl = sockJsUrl;
+		config.updatesCheck = updatesCheck;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

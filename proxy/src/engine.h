@@ -32,6 +32,7 @@ public:
 	class Configuration
 	{
 	public:
+		QString appVersion;
 		QByteArray clientId;
 		QStringList serverInSpecs;
 		QStringList serverInStreamSpecs;
@@ -59,13 +60,15 @@ public:
 		QByteArray sigKey;
 		QByteArray upstreamKey;
 		QString sockJsUrl;
+		bool updatesCheck;
 
 		Configuration() :
 			ipcFileMode(-1),
 			maxWorkers(-1),
 			inspectTimeout(8000),
 			autoCrossOrigin(false),
-			useXForwardedProtocol(false)
+			useXForwardedProtocol(false),
+			updatesCheck(true)
 		{
 		}
 	};

@@ -44,6 +44,7 @@
 #include "zutil.h"
 #include "sockjsmanager.h"
 #include "sockjssession.h"
+#include "updater.h"
 
 #define DEFAULT_HWM 1000
 
@@ -277,6 +278,11 @@ public:
 				// zrpcmanager logs error
 				return false;
 			}
+		}
+
+		if(!config.appVersion.isEmpty() && config.updatesCheck)
+		{
+			new Updater(config.appVersion, zroutes->defaultManager(), this);
 		}
 
 		// init zroutes
