@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2012-2014 Fanout, Inc.
+# Copyright (C) 2012-2015 Fanout, Inc.
 #
 # This file is part of Pushpin.
 #
@@ -270,6 +270,10 @@ def remove_from_req_channels(rid, response=True, stream=True):
 def remove_from_response_channels(rid):
 	remove_from_req_channels(rid, response=True, stream=False)
 
+# assumes state is locked
+def remove_from_stream_channels(rid):
+	remove_from_req_channels(rid, response=False, stream=True)
+
 def headernames_contains(headers, name):
 	lname = name.lower()
 	for i in headers:
@@ -474,6 +478,17 @@ def reply_http_chunk(sock, rid, content, seq=None):
 		out["seq"] = seq
 	out["body"] = content
 	out["more"] = True
+
+	m_raw = rid[0] + " T" + tnetstring.dumps(out)
+	logger.debug("OUT publish: %s" % m_raw)
+	sock.send(m_raw)
+
+def reply_http_close(sock, rid, seq=None):
+	out = dict()
+	out["from"] = instance_id
+	out["id"] = rid[1]
+	if seq is not None:
+		out["seq"] = seq
 
 	m_raw = rid[0] + " T" + tnetstring.dumps(out)
 	logger.debug("OUT publish: %s" % m_raw)
@@ -1214,6 +1229,7 @@ def push_in_worker(c):
 		stream_holds = list()
 		ws_cids = list()
 		sids = set()
+		notify_unsubs = set()
 
 		if "http-response" in formats:
 			lock.acquire()
@@ -1222,8 +1238,6 @@ def push_in_worker(c):
 				response_holds = hchannel.values()
 				del response_channels[channel]
 				for h in response_holds:
-					req_channels = channels_by_req[h.rid]
-					req_channels.remove(('response', channel))
 					remove_from_response_channels(h.rid)
 			sub_key = ('response', channel)
 			sub = subs.get(sub_key)
@@ -1242,11 +1256,21 @@ def push_in_worker(c):
 			stats_lock.release()
 
 		if "http-stream" in formats:
-			# TODO: support close action and report immediate unsubscribe via stats
+			do_close = (formats["http-stream"].get("action") == "close")
+
 			lock.acquire()
 			hchannel = stream_channels.get(channel)
 			if hchannel:
 				stream_holds = hchannel.values()
+				if do_close:
+					del stream_channels[channel]
+					for h in stream_holds:
+						remove_from_stream_channels(h.rid)
+					sub_key = ('stream', channel)
+					sub = subs.get(sub_key)
+					if sub:
+						del subs[sub_key]
+						notify_unsubs.add(sub_key)
 			lock.release()
 			stats_lock.acquire()
 			for h in stream_holds:
@@ -1407,18 +1431,21 @@ def push_in_worker(c):
 				stats_sock.send('message ' + tnetstring.dumps(out))
 
 		if stream_holds:
-			logger.debug("relaying to %d http-stream subscribers" % len(stream_holds))
-			for h in stream_holds:
-				content = formats["http-stream"]["content"]
-				if content:
-					if h.out_credits < len(content):
-						logger.debug('not enough send credits, dropping')
-						continue
-					reply_http_chunk(out_sock, h.rid, content, h.out_seq)
-					lock.acquire()
-					h.out_credits -= len(content)
-					h.out_seq += 1
-					lock.release()
+			content = formats["http-stream"].get("content")
+			if content or do_close:
+				logger.debug("relaying to %d http-stream subscribers" % len(stream_holds))
+				for h in stream_holds:
+					if content:
+						if h.out_credits < len(content):
+							logger.debug('not enough send credits, dropping')
+							continue
+						reply_http_chunk(out_sock, h.rid, content, h.out_seq)
+						lock.acquire()
+						h.out_credits -= len(content)
+						h.out_seq += 1
+						lock.release()
+					if do_close:
+						reply_http_close(out_sock, h.rid)
 			rcount = len(stream_holds)
 			if rcount > 0:
 				out = dict()
@@ -1463,6 +1490,14 @@ def push_in_worker(c):
 				out['count'] = rcount
 				out['transport'] = 'ws-message'
 				stats_sock.send('message ' + tnetstring.dumps(out))
+
+		for sub_key in notify_unsubs:
+			out = dict()
+			out['from'] = instance_id
+			out['mode'] = ensure_utf8(sub_key[0])
+			out['channel'] = ensure_utf8(sub_key[1])
+			out['unavailable'] = True
+			stats_sock.send('sub ' + tnetstring.dumps(out))
 
 	in_sock.close()
 
