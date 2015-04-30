@@ -61,6 +61,7 @@ install:
 	-$(INSTALL_PROGRAM) proxy/pushpin-proxy "$(INSTALL_ROOT)$(bindir)/pushpin-proxy"
 	-$(STRIP) "$(INSTALL_ROOT)$(bindir)/pushpin-proxy"
 	-$(INSTALL_PROGRAM) handler/pushpin-handler "$(INSTALL_ROOT)$(bindir)/pushpin-handler"
+	-$(INSTALL_PROGRAM) tools/publish "$(INSTALL_ROOT)$(bindir)/pushpin-publish"
 	-$(INSTALL_PROGRAM) pushpin.inst $(INSTALL_ROOT)$(bindir)/pushpin
 	$(COPY) handler/*.py $(INSTALL_ROOT)$(libdir)/handler
 	$(COPY) runner/*.py $(INSTALL_ROOT)$(libdir)/runner
