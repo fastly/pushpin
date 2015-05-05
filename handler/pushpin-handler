@@ -2063,6 +2063,15 @@ def command_handler(method, args, data):
 			cids.remove(cid)
 
 		return list(cids)
+	elif method == 'get-zmq-uris':
+		out = dict()
+		if command_spec:
+			out['command'] = command_spec
+		if push_in_spec:
+			out['publish-pull'] = push_in_spec
+		if push_in_sub_spec:
+			out['publish-sub'] = push_in_sub_spec
+		return out
 	else:
 		raise rpc.CallError('method-not-found')
 
