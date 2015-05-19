@@ -775,7 +775,7 @@ def accept_worker():
 			continue
 
 		resp_headers = m["response"].get("headers") or {}
-		content_type = header_get(resp_headers, "Content-Type")
+		content_type, x = header_get_parsed(resp_headers, "Content-Type")
 		sid = header_get(resp_headers, "Grip-Session-Id")
 		last_ids = dict()
 		rule_headers = header_get_all_parsed(resp_headers, "Grip-Session-Detect")
