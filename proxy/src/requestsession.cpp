@@ -94,7 +94,7 @@ static bool validMethod(const QString &in)
 
 	for(int n = 0; n < in.size(); ++n)
 	{
-		if(in[n].isPrint())
+		if(!in[n].isPrint())
 			return false;
 	}
 
