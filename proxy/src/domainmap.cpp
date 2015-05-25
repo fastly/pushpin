@@ -362,19 +362,21 @@ public:
 			}
 
 			if(props.contains("jsonp_cb"))
-			{
 				r.jsonpConfig.callbackParam = props.value("jsonp_cb").toUtf8();
-			}
 
 			if(props.contains("jsonp_body"))
-			{
 				r.jsonpConfig.bodyParam = props.value("jsonp_body").toUtf8();
-			}
 
 			if(props.contains("jsonp_defcb"))
-			{
 				r.jsonpConfig.defaultCallback = props.value("jsonp_defcb").toUtf8();
-			}
+
+			if(r.jsonpConfig.mode == JsonpConfig::Basic)
+				r.jsonpConfig.defaultMethod = "POST";
+			else // Extended
+				r.jsonpConfig.defaultMethod = "GET";
+
+			if(props.contains("jsonp_defmethod"))
+				r.jsonpConfig.defaultMethod = props.value("jsonp_defmethod");
 
 			if(props.contains("session"))
 				r.session = true;

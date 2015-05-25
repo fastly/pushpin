@@ -87,15 +87,14 @@ static QByteArray parsePercentEncoding(const QByteArray &in)
 	return out;
 }
 
-static bool validMethod(const QByteArray &in)
+static bool validMethod(const QString &in)
 {
 	if(in.isEmpty())
 		return false;
 
 	for(int n = 0; n < in.size(); ++n)
 	{
-		unsigned char c = (unsigned char)in[n];
-		if(c <= 0x20)
+		if(in[n].isPrint())
 			return false;
 	}
 
@@ -605,10 +604,10 @@ public:
 		else
 			callback = config.defaultCallback;
 
-		QByteArray method;
+		QString method;
 		if(uri.hasEncodedQueryItem("_method"))
 		{
-			method = parsePercentEncoding(uri.encodedQueryItemValue("_method"));
+			method = QString::fromLatin1(parsePercentEncoding(uri.encodedQueryItemValue("_method")));
 			if(!validMethod(method))
 			{
 				log_warning("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
@@ -711,7 +710,7 @@ public:
 		}
 
 		if(method.isEmpty())
-			method = "POST";
+			method = config.defaultMethod;
 
 		requestData.method = method;
 

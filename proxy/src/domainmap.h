@@ -45,6 +45,7 @@ public:
 		QByteArray callbackParam;
 		QByteArray bodyParam;
 		QByteArray defaultCallback;
+		QString defaultMethod;
 
 		JsonpConfig() :
 			mode(Extended)
