@@ -985,7 +985,7 @@ def accept_worker():
 			h.grip_keep_alive_timeout = keep_alive_timeout
 			h.last_send = now
 
-			notify_sub = False
+			notify_subs = set()
 			if mode == "response":
 				# bind channels
 				quit = False
@@ -1030,7 +1030,7 @@ def accept_worker():
 						sub = Subscription(mode, channel)
 						sub.last_keepalive = now
 						subs[sub_key] = sub
-						notify_sub = True
+						notify_subs.add(sub_key)
 					sub.expire_time = None
 				if quit:
 					# we already unlocked if this is set
@@ -1091,15 +1091,15 @@ def accept_worker():
 						sub = Subscription(mode, channel)
 						sub.last_keepalive = now
 						subs[sub_key] = sub
-						notify_sub = True
+						notify_subs.add(sub_key)
 					sub.expire_time = None
 				lock.release()
 
-			if notify_sub:
+			for sub_key in notify_subs:
 				out = dict()
 				out['from'] = instance_id
-				out['mode'] = ensure_utf8(mode)
-				out['channel'] = ensure_utf8(channel)
+				out['mode'] = ensure_utf8(sub_key[0])
+				out['channel'] = ensure_utf8(sub_key[1])
 				out['ttl'] = 60
 				stats_sock.send('sub ' + tnetstring.dumps(out))
 
