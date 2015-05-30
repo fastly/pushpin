@@ -119,6 +119,8 @@ CONNECTION_LINGER = 60
 # zmq socket linger
 DEFAULT_LINGER = 1000
 
+SUB_SNDHWM = 100000
+
 instance_id = "pushpin-handler_%d" % os.getpid()
 
 def get_option_raw(section, key, default=None):
@@ -1133,6 +1135,7 @@ def push_in_zmq_worker():
 
 def push_in_sub_zmq_worker():
 	in_sock = ctx.socket(zmq.SUB)
+	in_sock.sndhwm = SUB_SNDHWM
 	in_sock.linger = DEFAULT_LINGER
 	bind_spec(in_sock, push_in_sub_spec)
 
