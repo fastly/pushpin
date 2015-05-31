@@ -75,12 +75,21 @@ signals:
 	void framesWritten(int count, int contentBytes);
 	void peerClosed();
 	void closed();
+	void disconnected();
 	void error();
 
 private:
+	class DisconnectManager;
+	friend class DisconnectManager;
+
+	WebSocketOverHttp(QObject *parent = 0);
+	void sendDisconnect();
+
 	class Private;
 	friend class Private;
 	Private *d;
+
+	static DisconnectManager *g_disconnectManager;
 };
 
 #endif

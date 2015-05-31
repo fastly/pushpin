@@ -22,7 +22,7 @@
 #include <assert.h>
 #include <QTimer>
 #include <QPointer>
-#include "log.h"
+#include <QCoreApplication>
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -31,6 +31,8 @@
 #include "uuidutil.h"
 
 #define BUFFER_SIZE 200000
+
+namespace {
 
 class WsEvent
 {
@@ -48,6 +50,49 @@ public:
 	{
 	}
 };
+
+}
+
+class WebSocketOverHttp::DisconnectManager : public QObject
+{
+	Q_OBJECT
+
+public:
+	DisconnectManager(QObject *parent = 0) :
+		QObject(parent)
+	{
+	}
+
+	void addSocket(WebSocketOverHttp *sock)
+	{
+		sock->setParent(this);
+		connect(sock, SIGNAL(disconnected()), SLOT(sock_disconnected()));
+		connect(sock, SIGNAL(error()), SLOT(sock_error()));
+
+		sock->sendDisconnect();
+	}
+
+private:
+	void cleanupSocket(WebSocketOverHttp *sock)
+	{
+		delete sock;
+	}
+
+private slots:
+	void sock_disconnected()
+	{
+		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
+		cleanupSocket(sock);
+	}
+
+	void sock_error()
+	{
+		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
+		cleanupSocket(sock);
+	}
+};
+
+WebSocketOverHttp::DisconnectManager *WebSocketOverHttp::g_disconnectManager = 0;
 
 static QList<WsEvent> decodeEvents(const QByteArray &in, bool *ok = 0)
 {
@@ -141,6 +186,7 @@ public:
 	bool closeSent;
 	bool peerClosing;
 	int peerCloseCode;
+	bool disconnecting;
 	QTimer *keepAliveTimer;
 
 	Private(WebSocketOverHttp *_q) :
@@ -160,8 +206,12 @@ public:
 		closeCode(-1),
 		closeSent(false),
 		peerClosing(false),
-		peerCloseCode(-1)
+		peerCloseCode(-1),
+		disconnecting(false)
 	{
+		if(!g_disconnectManager)
+			g_disconnectManager = new DisconnectManager(QCoreApplication::instance());
+
 		keepAliveTimer = new QTimer(this);
 		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
 		keepAliveTimer->setSingleShot(true);
@@ -229,6 +279,13 @@ public:
 		update();
 	}
 
+	void sendDisconnect()
+	{
+		disconnecting = true;
+
+		update();
+	}
+
 private:
 	void update()
 	{
@@ -273,6 +330,10 @@ private:
 		if(state == Connecting)
 		{
 			events += WsEvent("OPEN");
+		}
+		else if(disconnecting)
+		{
+			events += WsEvent("DISCONNECT");
 		}
 		else
 		{
@@ -337,6 +398,7 @@ private slots:
 		{
 			updating = false;
 
+			state = Idle;
 			emit q->error();
 			return;
 		}
@@ -346,6 +408,7 @@ private slots:
 		{
 			updating = false;
 
+			state = Idle;
 			emit q->error();
 			return;
 		}
@@ -382,6 +445,7 @@ private slots:
 		{
 			updating = false;
 
+			state = Idle;
 			emit q->error();
 			return;
 		}
@@ -393,6 +457,7 @@ private slots:
 			{
 				updating = false;
 
+				state = Idle;
 				emit q->error();
 				return;
 			}
@@ -402,9 +467,19 @@ private slots:
 			{
 				updating = false;
 
+				state = Idle;
 				emit q->error();
 				return;
 			}
+		}
+
+		if(disconnecting)
+		{
+			updating = false;
+
+			state = Idle;
+			emit q->disconnected();
+			return;
 		}
 
 		QPointer<QObject> self = this;
@@ -520,6 +595,7 @@ private slots:
 		{
 			updating = false;
 
+			state = Idle;
 			emit q->error();
 			return;
 		}
@@ -535,7 +611,7 @@ private slots:
 
 		updating = false;
 
-		if(!outFrames.isEmpty() || (state == Closing && !closeSent))
+		if(disconnecting || !outFrames.isEmpty() || (state == Closing && !closeSent))
 			update();
 		else if(keepAliveInterval != -1)
 			keepAliveTimer->start(keepAliveInterval * 1000);
@@ -553,6 +629,7 @@ private slots:
 		delete req;
 		req = 0;
 
+		state = Idle;
 		emit q->error();
 	}
 
@@ -569,14 +646,36 @@ WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent
 	d->zhttpManager = zhttpManager;
 }
 
+WebSocketOverHttp::WebSocketOverHttp(QObject *parent) :
+	WebSocket(parent),
+	d(0)
+{
+}
+
 WebSocketOverHttp::~WebSocketOverHttp()
 {
+	if(d->state == Connected && parent() != g_disconnectManager)
+	{
+		// if we get destructed while connected, disconnect in the background
+		WebSocketOverHttp *sock = new WebSocketOverHttp;
+		sock->d = d;
+		d->setParent(sock);
+		d->q = sock;
+		d = 0;
+		g_disconnectManager->addSocket(sock);
+	}
+
 	delete d;
 }
 
 void WebSocketOverHttp::setConnectionId(const QByteArray &id)
 {
 	d->cid = id;
+}
+
+void WebSocketOverHttp::sendDisconnect()
+{
+	d->sendDisconnect();
 }
 
 QHostAddress WebSocketOverHttp::peerAddress() const
