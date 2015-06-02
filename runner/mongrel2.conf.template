@@ -23,6 +23,7 @@
 {% endfor %}settings = {
 	"certdir": "{{ certdir }}/",
 	"upload.stream": 1,
+	"superpoll.max_fd": 51000,
 	"server.daemonize": 0,
 	"no_clobber_xff": 1
 }
