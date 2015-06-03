@@ -24,7 +24,7 @@ Features
 
   * Implement any realtime HTTP/WebSocket API using any webserver for the logic
   * Proxied requests are streamed, so non-realtime requests remain unhindered
-  * Fault tolerant multiprocess design reduces risk if things go wrong
+  * Fault tolerant multiprocess design
   * Handle thousands of simultaneous connections
 
 Install
