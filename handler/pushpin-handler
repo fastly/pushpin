@@ -121,6 +121,10 @@ DEFAULT_LINGER = 1000
 
 SUB_SNDHWM = 100000
 
+# delay to avoid overflowing the nic. wait 1ms for every 20 deliveries
+SEND_BATCH_SIZE 20
+SEND_BATCH_DELAY 0.001
+
 instance_id = "pushpin-handler_%d" % os.getpid()
 
 def get_option_raw(section, key, default=None):
@@ -250,7 +254,9 @@ stats_activity = dict() # route, count
 conns = dict() # conn id, ConnectionInfo
 
 # assumes state is locked
+# returns list of (mode, channel) that should be unsubscribed
 def remove_from_req_channels(rid, response=True, stream=True):
+	unsub = []
 	req_channels = channels_by_req.get(rid)
 	if req_channels is not None:
 		to_remove = set()
@@ -261,6 +267,7 @@ def remove_from_req_channels(rid, response=True, stream=True):
 					del hchannels[rid]
 					if len(hchannels) == 0:
 						del response_channels[channel]
+						unsub.append((mode, channel))
 				to_remove.add((mode, channel))
 			elif stream and mode == 'stream':
 				hchannels = stream_channels.get(channel)
@@ -268,19 +275,21 @@ def remove_from_req_channels(rid, response=True, stream=True):
 					del hchannels[rid]
 					if len(hchannels) == 0:
 						del stream_channels[channel]
+						unsub.append((mode, channel))
 				to_remove.add((mode, channel))
 		for mode, channel in to_remove:
 			req_channels.remove((mode, channel))
 		if len(req_channels) == 0:
 			del channels_by_req[rid]
+	return unsub
 
 # assumes state is locked
 def remove_from_response_channels(rid):
-	remove_from_req_channels(rid, response=True, stream=False)
+	return remove_from_req_channels(rid, response=True, stream=False)
 
 # assumes state is locked
 def remove_from_stream_channels(rid):
-	remove_from_req_channels(rid, response=False, stream=True)
+	return remove_from_req_channels(rid, response=False, stream=True)
 
 def headernames_contains(headers, name):
 	lname = name.lower()
@@ -1282,17 +1291,20 @@ def push_in_worker(c):
 			hchannel = response_channels.get(channel)
 			if hchannel:
 				response_holds = hchannel.values()
-				del response_channels[channel]
+				unsubs = set()
 				for h in response_holds:
-					remove_from_response_channels(h.rid)
-			sub_key = ('response', channel)
-			sub = subs.get(sub_key)
-			if sub and sub.expire_time is None:
-				# flag for deletion soon
-				sub.expire_time = int(time.time()) + 60
-			item_id = m.get("id")
-			if item_id is not None:
-				response_lastids[channel] = item_id
+					unsub_list = remove_from_response_channels(h.rid)
+					for sub_key in unsub_list:
+						unsubs.add(sub_key)
+				assert('channel' not in response_channels)
+				for sub_key in unsubs:
+					sub = subs.get(sub_key)
+					if sub and sub.expire_time is None:
+						# flag for deletion soon
+						sub.expire_time = int(time.time()) + 60
+				item_id = m.get("id")
+				if item_id is not None:
+					response_lastids[channel] = item_id
 			lock.release()
 			stats_lock.acquire()
 			for h in response_holds:
@@ -1309,14 +1321,17 @@ def push_in_worker(c):
 			if hchannel:
 				stream_holds = hchannel.values()
 				if do_close:
-					del stream_channels[channel]
+					unsubs = set()
 					for h in stream_holds:
-						remove_from_stream_channels(h.rid)
-					sub_key = ('stream', channel)
-					sub = subs.get(sub_key)
-					if sub:
-						del subs[sub_key]
-						notify_unsubs.add(sub_key)
+						unsub_list = remove_from_stream_channels(h.rid)
+						for sub_key in unsub_list:
+							unsubs.add(sub_key)
+					assert('channel' not in stream_channels)
+					for sub_key in unsubs:
+						sub = subs.get(sub_key)
+						if sub:
+							del subs[sub_key]
+							notify_unsubs.add(sub_key)
 			lock.release()
 			stats_lock.acquire()
 			for h in stream_holds:
@@ -1444,9 +1459,6 @@ def push_in_worker(c):
 
 					reply_http(out_sock, h.rid, pcode, preason, headers, rbody)
 
-				if n % 10 == 0:
-					time.sleep(0.0005)
-
 				# report request done
 
 				stats_lock.acquire()
@@ -1465,6 +1477,9 @@ def push_in_worker(c):
 					out['unavailable'] = True
 					stats_sock.send('conn ' + tnetstring.dumps(out))
 
+				if n % SEND_BATCH_SIZE == 0:
+					time.sleep(SEND_BATCH_DELAY)
+
 			rcount = len(response_holds)
 			if rcount > 0:
 				out = dict()
@@ -1480,7 +1495,7 @@ def push_in_worker(c):
 			content = formats["http-stream"].get("content")
 			if content or do_close:
 				logger.debug("relaying to %d http-stream subscribers" % len(stream_holds))
-				for h in stream_holds:
+				for n, h in enumerate(stream_holds):
 					if content:
 						if h.out_credits < len(content):
 							logger.debug('not enough send credits, dropping')
@@ -1495,6 +1510,28 @@ def push_in_worker(c):
 						lock.release()
 					if do_close:
 						reply_http_close(out_sock, h.rid)
+
+						# report request done
+
+						stats_lock.acquire()
+						ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
+						if ci is not None:
+							ci = copy.deepcopy(ci)
+							del conns[ci.id]
+						stats_lock.release()
+
+						if ci is not None:
+							out = dict()
+							out['from'] = instance_id
+							if ci.route:
+								out['route'] = ci.route
+							out['id'] = ci.id
+							out['unavailable'] = True
+							stats_sock.send('conn ' + tnetstring.dumps(out))
+
+					if n % SEND_BATCH_SIZE == 0:
+						time.sleep(SEND_BATCH_DELAY)
+
 			rcount = len(stream_holds)
 			if rcount > 0:
 				out = dict()
@@ -1508,7 +1545,7 @@ def push_in_worker(c):
 
 		if ws_cids:
 			logger.debug("relaying to %d ws-message subscribers" % len(ws_cids))
-			for cid in ws_cids:
+			for n, cid in enumerate(ws_cids):
 				t = formats['ws-message']
 				if 'content-bin' in t:
 					content_type = 'binary'
@@ -1529,6 +1566,10 @@ def push_in_worker(c):
 					out['items'] = [item]
 					logger.debug('OUT wscontrol: %s' % out)
 					ws_control_out_sock.send(tnetstring.dumps(out))
+
+				if n % SEND_BATCH_SIZE == 0:
+					time.sleep(SEND_BATCH_DELAY)
+
 			rcount = len(ws_cids)
 			if rcount > 0:
 				out = dict()
@@ -1576,34 +1617,16 @@ def session_worker():
 			logger.debug('cleaning up subscriber %s' % repr(rid))
 			now = int(time.time())
 			lock.acquire()
-			# FIXME: use channels_by_req for lookup
-			channels = set()
-			for channel, hchannels in response_channels.iteritems():
-				channels.add(channel)
-				if rid in hchannels:
-					del hchannels[rid]
-			for channel in channels:
-				if channel in response_channels and len(response_channels[channel]) == 0:
-					del response_channels[channel]
-					sub_key = ('response', channel)
-					sub = subs.get(sub_key)
-					if sub and sub.expire_time is None:
+			unsub_list = remove_from_req_channels(rid)
+			for sub_key in unsub_list:
+				sub = subs.get(sub_key)
+				if sub:
+					if sub.mode == 'response' and sub.expire_time is None:
 						# flag for deletion soon
 						sub.expire_time = now + 60
-			channels = set()
-			for channel, hchannels in stream_channels.iteritems():
-				channels.add(channel)
-				if rid in hchannels:
-					del hchannels[rid]
-			for channel in channels:
-				if channel in stream_channels and len(stream_channels[channel]) == 0:
-					del stream_channels[channel]
-					sub_key = ('stream', channel)
-					sub = subs.get(sub_key)
-					if sub:
+					elif sub.mode == 'stream':
 						del subs[sub_key]
 						notify_unsubs.add(sub_key)
-			remove_from_req_channels(rid)
 			lock.release()
 
 			stats_lock.acquire()
@@ -1849,28 +1872,18 @@ def timeout_worker():
 		now = int(time.time())
 
 		lock.acquire()
-		# FIXME: use channels_by_req for lookup
 		holds = list()
-		channels = set()
-		for channel, hchannels in response_channels.iteritems():
-			channels.add(channel)
-			channel_holds = list()
+		for hchannels in response_channels.itervalues():
 			for h in hchannels.values():
 				if h.expire_time and now >= h.expire_time:
-					channel_holds.append(h)
-			for h in channel_holds:
-				del hchannels[h.rid]
-			holds.extend(channel_holds)
-		for channel in channels:
-			if channel in response_channels and len(response_channels[channel]) == 0:
-				del response_channels[channel]
-				sub_key = ('response', channel)
+					holds.append(h)
+		for h in holds:
+			unsub_list = remove_from_response_channels(h.rid)
+			for sub_key in unsub_list:
 				sub = subs.get(sub_key)
 				if sub and sub.expire_time is None:
 					# flag for deletion soon
 					sub.expire_time = now + 60
-		for h in holds:
-			remove_from_response_channels(h.rid)
 		lock.release()
 
 		if len(holds) > 0:
