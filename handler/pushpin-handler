@@ -119,11 +119,11 @@ CONNECTION_LINGER = 60
 # zmq socket linger
 DEFAULT_LINGER = 1000
 
-SUB_SNDHWM = 100000
+SUB_SNDHWM = 0 # infinite
 
 # delay to avoid overflowing the nic. wait 1ms for every 20 deliveries
-SEND_BATCH_SIZE 20
-SEND_BATCH_DELAY 0.001
+SEND_BATCH_SIZE = 20
+SEND_BATCH_DELAY = 0.001
 
 instance_id = "pushpin-handler_%d" % os.getpid()
 
