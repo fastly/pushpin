@@ -82,6 +82,7 @@ import logging
 from logging.handlers import WatchedFileHandler
 from base64 import b64decode
 import urlparse
+from blist import sorteddict
 from setproctitle import setproctitle
 import zmq
 import tnetstring
@@ -115,6 +116,9 @@ logger.addHandler(logger_handler)
 CONNECTION_TTL = 600
 CONNECTION_REFRESH = 540
 CONNECTION_LINGER = 60
+
+SUBSCRIPTION_TTL = 60
+SUBSCRIPTION_LINGER = 60
 
 # zmq socket linger
 DEFAULT_LINGER = 1000
@@ -237,6 +241,12 @@ class SessionDetectRule(object):
 class Session(object):
 	def __init__(self):
 		self.id = None
+
+class StatsSubscription(object):
+	def __init__(self):
+		self.mode = None
+		self.channel = None
+		self.expire_time = None
 
 lock = threading.Lock()
 response_channels = dict()
@@ -1111,7 +1121,7 @@ def accept_worker():
 				out['from'] = instance_id
 				out['mode'] = ensure_utf8(sub_key[0])
 				out['channel'] = ensure_utf8(sub_key[1])
-				out['ttl'] = 60
+				out['ttl'] = SUBSCRIPTION_TTL
 				stats_sock.send('sub ' + tnetstring.dumps(out))
 
 	sock.close()
@@ -1301,7 +1311,7 @@ def push_in_worker(c):
 					sub = subs.get(sub_key)
 					if sub and sub.expire_time is None:
 						# flag for deletion soon
-						sub.expire_time = int(time.time()) + 60
+						sub.expire_time = int(time.time()) + SUBSCRIPTION_LINGER
 				item_id = m.get("id")
 				if item_id is not None:
 					response_lastids[channel] = item_id
@@ -1623,7 +1633,7 @@ def session_worker():
 				if sub:
 					if sub.mode == 'response' and sub.expire_time is None:
 						# flag for deletion soon
-						sub.expire_time = now + 60
+						sub.expire_time = now + SUBSCRIPTION_LINGER
 					elif sub.mode == 'stream':
 						del subs[sub_key]
 						notify_unsubs.add(sub_key)
@@ -1757,6 +1767,7 @@ def ws_control_worker():
 					out['channel'] = ensure_utf8(sub_key[1])
 					out['unavailable'] = True
 					stats_sock.send('sub ' + tnetstring.dumps(out))
+
 			elif mtype == 'grip':
 				cid = item['cid']
 
@@ -1821,7 +1832,7 @@ def ws_control_worker():
 							save_sid = True
 					lock.release()
 
-				if save_sid:
+				if state_rpc and save_sid:
 					try:
 						session_create_or_update(state_rpc, sid, {})
 					except:
@@ -1833,7 +1844,7 @@ def ws_control_worker():
 					out['from'] = instance_id
 					out['mode'] = 'ws'
 					out['channel'] = ensure_utf8(channel)
-					out['ttl'] = 60
+					out['ttl'] = SUBSCRIPTION_TTL
 					stats_sock.send('sub ' + tnetstring.dumps(out))
 
 				if notify_unsub:
@@ -1883,7 +1894,7 @@ def timeout_worker():
 				sub = subs.get(sub_key)
 				if sub and sub.expire_time is None:
 					# flag for deletion soon
-					sub.expire_time = now + 60
+					sub.expire_time = now + SUBSCRIPTION_LINGER
 		lock.release()
 
 		if len(holds) > 0:
@@ -2057,7 +2068,7 @@ def timeout_worker():
 				out['from'] = instance_id
 				out['mode'] = ensure_utf8(sub_key[0])
 				out['channel'] = ensure_utf8(sub_key[1])
-				out['ttl'] = 60
+				out['ttl'] = SUBSCRIPTION_TTL
 				stats_sock.send('sub ' + tnetstring.dumps(out))
 
 		refresh_conns = list()
@@ -2230,7 +2241,8 @@ def stats_worker(c):
 		out_sock = None
 
 	if push_in_sub_spec:
-		subs = set()
+		subs_modes_by_channel = dict() # key=channel, value={mode: sub}
+		subs_by_exp = sorteddict() # key=time, value=set(sub)
 		sub_sock = ctx.socket(zmq.PUSH)
 		sub_sock.linger = 0
 		sub_sock.bind('inproc://sub_cmd_in')
@@ -2242,29 +2254,89 @@ def stats_worker(c):
 	c.release()
 
 	while True:
-		m_raw = in_sock.recv()
-		at = m_raw.find(' ')
-		mtype = m_raw[:at]
-		mdata = m_raw[at + 1:]
+		try:
+			m_raw = in_sock.recv()
+			at = m_raw.find(' ')
+			mtype = m_raw[:at]
+			mdata = m_raw[at + 1:]
 
-		if sub_sock and mtype == 'sub':
-			m = tnetstring.loads(mdata)
-			channel = m['channel']
-			here = not m.get('unavailable', False)
-			if (here and channel not in subs) or (not here and channel in subs):
-				sm = {'channel': channel}
+			now = int(time.time() * 1000)
+
+			if sub_sock and mtype == 'sub':
+				m = tnetstring.loads(mdata)
+				mode = m['mode']
+				channel = m['channel']
+				here = not m.get('unavailable', False)
+
 				if here:
-					sm['type'] = 'subscribe'
-					subs.add(channel)
+					ttl = m['ttl']
+					notify = False
+					subs_modes = subs_modes_by_channel.get(channel)
+					if subs_modes is None:
+						subs_modes = {}
+						subs_modes_by_channel[channel] = subs_modes
+						notify = True
+					sub = subs_modes.get(mode)
+					if sub is not None:
+						subs_exp = subs_by_exp[sub.expire_time]
+						subs_exp.remove(sub)
+						if len(subs_exp) == 0:
+							del subs_by_exp[sub.expire_time]
+					else:
+						sub = StatsSubscription()
+						sub.mode = mode
+						sub.channel = channel
+						subs_modes[mode] = sub
+					sub.expire_time = now + (ttl * 1000)
+					subs_exp = subs_by_exp.get(sub.expire_time)
+					if subs_exp is None:
+						subs_exp = set()
+						subs_by_exp[sub.expire_time] = subs_exp
+					subs_exp.add(sub)
+					if notify:
+						sm = {'channel': channel}
+						sm['type'] = 'subscribe'
+						sub_sock.send(tnetstring.dumps(sm))
 				else:
-					sm['type'] = 'unsubscribe'
-					subs.remove(channel)
-				sub_sock.send(tnetstring.dumps(sm))
+					subs_modes = subs_modes_by_channel.get(channel)
+					if subs_modes is not None:
+						sub = subs_modes.get(mode)
+						if sub is not None:
+							subs_exp = subs_by_exp[sub.expire_time]
+							subs_exp.remove(sub)
+							if len(subs_exp) == 0:
+								del subs_by_exp[sub.expire_time]
+							del subs_modes[mode]
+							if len(subs_modes) == 0:
+								del subs_modes_by_channel[channel]
+								sm = {'channel': channel}
+								sm['type'] = 'unsubscribe'
+								sub_sock.send(tnetstring.dumps(sm))
 
-		if out_sock:
-			m_raw = mtype + ' T' + mdata
-			logger.debug('OUT stats: %s' % m_raw)
-			out_sock.send(m_raw)
+			if out_sock:
+				m_raw = mtype + ' T' + mdata
+				logger.debug('OUT stats: %s' % m_raw)
+				out_sock.send(m_raw)
+
+			if sub_sock:
+				while len(subs_by_exp) > 0:
+					next_exp = iter(subs_by_exp).next()
+					if next_exp > now:
+						break
+
+					subs_exp = subs_by_exp[next_exp]
+					del subs_by_exp[next_exp]
+					for sub in subs_exp:
+						logger.debug('stats_worker: expiring %s %s' % (sub.mode, sub.channel))
+						subs_modes = subs_modes_by_channel.get(sub.channel)
+						del subs_modes[sub.mode]
+						if len(subs_modes) == 0:
+							del subs_modes_by_channel[sub.channel]
+							sm = {'channel': sub.channel}
+							sm['type'] = 'unsubscribe'
+							sub_sock.send(tnetstring.dumps(sm))
+		except:
+			logger.exception('failed')
 
 def state_internal_handler(method, args, data):
 	state_client = data.get('state_client')
