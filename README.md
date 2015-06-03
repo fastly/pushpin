@@ -27,21 +27,6 @@ Features
   * Fault tolerant multiprocess design reduces risk if things go wrong
   * Handle thousands of simultaneous connections
 
-Requirements
-------------
-
-  * qt >= 4.7
-  * qca >= 2.0 (and an hmac(sha256)-supporting plugin, like qca-ossl)
-  * libzmq >= 2.0
-  * qjson
-  * mongrel2 >= 1.9.0
-  * zurl >= 1.0.0
-  * python
-  * python setproctitle
-  * python tnetstring
-  * python zmq
-  * python jinja2
-
 Install
 -------
 
