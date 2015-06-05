@@ -339,15 +339,17 @@ private:
 		{
 			while(!outFrames.isEmpty())
 			{
+				// for compactness, we only include content on ping/pong if non-empty
+
 				Frame f = outFrames.takeFirst();
 				if(f.type == Frame::Text)
 					events += WsEvent("TEXT", f.data);
 				else if(f.type == Frame::Binary)
 					events += WsEvent("BINARY", f.data);
 				else if(f.type == Frame::Ping)
-					events += WsEvent("PING");
+					events += WsEvent("PING", !f.data.isEmpty() ? f.data : QByteArray());
 				else if(f.type == Frame::Pong)
-					events += WsEvent("PONG");
+					events += WsEvent("PONG", !f.data.isEmpty() ? f.data : QByteArray());
 
 				++reqFrames;
 				reqContentSize += f.data.size();
@@ -520,12 +522,12 @@ private slots:
 			}
 			else if(e.type == "PING")
 			{
-				inFrames += Frame(Frame::Ping, QByteArray(), false);
+				inFrames += Frame(Frame::Ping, e.content, false);
 				emitReadyRead = true;
 			}
 			else if(e.type == "PONG")
 			{
-				inFrames += Frame(Frame::Pong, QByteArray(), false);
+				inFrames += Frame(Frame::Pong, e.content, false);
 				emitReadyRead = true;
 			}
 			else if(e.type == "CLOSE")

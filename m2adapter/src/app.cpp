@@ -1541,14 +1541,19 @@ public:
 			mresp.sender = m2_send_idents[s->conn->identIndex];
 			mresp.id = s->conn->id;
 			mresp.data = makeWsHeader(true, opcode, 0);
+
+			int payloadSize = 0;
+
 			if(zresp.type == ZhttpResponsePacket::Close)
 			{
 				QByteArray buf(2, 0);
 				writeBigEndian(buf.data(), zresp.code != -1 ? zresp.code : 1000, 2);
 				mresp.data += buf;
+
+				payloadSize = buf.size();
 			}
 
-			m2_writeOrQueueData(s->conn, mresp, mresp.data.size());
+			m2_writeOrQueueData(s->conn, mresp, payloadSize);
 
 			if(s->downClosed && s->upClosed)
 			{

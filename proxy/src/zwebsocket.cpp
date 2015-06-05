@@ -415,12 +415,25 @@ public:
 
 		refreshTimeout();
 
-		if(packet.type == ZhttpRequestPacket::Data)
+		if(packet.type == ZhttpRequestPacket::Data || packet.type == ZhttpRequestPacket::Ping || packet.type == ZhttpRequestPacket::Pong)
 		{
 			if(inSize + packet.body.size() > IDEAL_CREDITS)
 				log_warning("zws client: id=%s server is sending too fast", packet.id.data());
 
-			handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
+			if(packet.type == ZhttpRequestPacket::Data)
+			{
+				handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
+			}
+			else if(packet.type == ZhttpRequestPacket::Ping)
+			{
+				inFrames += Frame(Frame::Ping, packet.body, false);
+				inSize += packet.body.size();
+			}
+			else if(packet.type == ZhttpRequestPacket::Pong)
+			{
+				inFrames += Frame(Frame::Pong, packet.body, false);
+				inSize += packet.body.size();
+			}
 
 			if(packet.credits > 0)
 			{
@@ -511,19 +524,35 @@ public:
 
 		refreshTimeout();
 
-		if(packet.type == ZhttpResponsePacket::Data)
+		if(state == Connecting)
+		{
+			if(packet.type != ZhttpResponsePacket::Data)
+			{
+				state = Idle;
+				errorCondition = ErrorGeneric;
+				cleanup();
+				log_warning("zws client: error id=%s initial response wrong type", packet.id.data());
+				emit q->error();
+				return;
+			}
+
+			if(packet.from.isEmpty())
+			{
+				state = Idle;
+				errorCondition = ErrorGeneric;
+				cleanup();
+				log_warning("zws client: error id=%s initial ack did not contain from field", packet.id.data());
+				emit q->error();
+				return;
+			}
+		}
+
+		if(packet.type == ZhttpResponsePacket::Data || packet.type == ZhttpResponsePacket::Ping || packet.type == ZhttpResponsePacket::Pong)
 		{
 			if(state == Connecting)
 			{
-				if(packet.from.isEmpty())
-				{
-					state = Idle;
-					errorCondition = ErrorGeneric;
-					cleanup();
-					log_warning("zws client: error id=%s initial ack did not contain from field", packet.id.data());
-					emit q->error();
-					return;
-				}
+				// this is assured earlier
+				assert(packet.type == ZhttpResponsePacket::Data);
 
 				responseCode = packet.code;
 				responseReason = packet.reason;
@@ -541,7 +570,20 @@ public:
 				if(inSize + packet.body.size() > IDEAL_CREDITS)
 					log_warning("zws client: id=%s server is sending too fast", packet.id.data());
 
-				handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
+				if(packet.type == ZhttpResponsePacket::Data)
+				{
+					handleIncomingDataPacket(packet.contentType, packet.body, packet.more);
+				}
+				else if(packet.type == ZhttpResponsePacket::Ping)
+				{
+					inFrames += Frame(Frame::Ping, packet.body, false);
+					inSize += packet.body.size();
+				}
+				else if(packet.type == ZhttpResponsePacket::Pong)
+				{
+					inFrames += Frame(Frame::Pong, packet.body, false);
+					inSize += packet.body.size();
+				}
 
 				if(packet.credits > 0)
 				{
@@ -668,8 +710,21 @@ public:
 		if(server)
 		{
 			ZhttpResponsePacket p;
-			p.type = ZhttpResponsePacket::Data;
-			p.contentType = contentType;
+
+			if(frame.type == Frame::Ping)
+			{
+				p.type = ZhttpResponsePacket::Ping;
+			}
+			else if(frame.type == Frame::Pong)
+			{
+				p.type = ZhttpResponsePacket::Pong;
+			}
+			else
+			{
+				p.type = ZhttpResponsePacket::Data;
+				p.contentType = contentType;
+			}
+
 			p.body = frame.data;
 			p.more = frame.more;
 			p.credits = credits;
@@ -678,8 +733,21 @@ public:
 		else
 		{
 			ZhttpRequestPacket p;
-			p.type = ZhttpRequestPacket::Data;
-			p.contentType = contentType;
+
+			if(frame.type == Frame::Ping)
+			{
+				p.type = ZhttpRequestPacket::Ping;
+			}
+			else if(frame.type == Frame::Pong)
+			{
+				p.type = ZhttpRequestPacket::Pong;
+			}
+			else
+			{
+				p.type = ZhttpRequestPacket::Data;
+				p.contentType = contentType;
+			}
+
 			p.body = frame.data;
 			p.more = frame.more;
 			p.credits = credits;
