@@ -38,6 +38,8 @@ public:
 
 	void setConnectionId(const QByteArray &id);
 
+	static void clearDisconnectManager();
+
 	// reimplemented
 
 	virtual QHostAddress peerAddress() const;

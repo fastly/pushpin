@@ -30,6 +30,7 @@
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
+#include "websocketoverhttp.h"
 #include "domainmap.h"
 #include "zroutes.h"
 #include "zrpcmanager.h"
@@ -151,6 +152,8 @@ public:
 		foreach(RequestSession *rs, requestSessions)
 			delete rs;
 		requestSessions.clear();
+
+		WebSocketOverHttp::clearDisconnectManager();
 
 		// need to make sure this is deleted before inspect manager
 		delete inspectChecker;

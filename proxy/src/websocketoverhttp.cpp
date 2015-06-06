@@ -675,6 +675,12 @@ void WebSocketOverHttp::setConnectionId(const QByteArray &id)
 	d->cid = id;
 }
 
+void WebSocketOverHttp::clearDisconnectManager()
+{
+	delete g_disconnectManager;
+	g_disconnectManager = 0;
+}
+
 void WebSocketOverHttp::sendDisconnect()
 {
 	d->sendDisconnect();
