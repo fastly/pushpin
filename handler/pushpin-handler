@@ -1312,9 +1312,9 @@ def push_in_worker(c):
 					if sub and sub.expire_time is None:
 						# flag for deletion soon
 						sub.expire_time = int(time.time()) + SUBSCRIPTION_LINGER
-				item_id = m.get("id")
-				if item_id is not None:
-					response_lastids[channel] = item_id
+			item_id = m.get("id")
+			if item_id is not None:
+				response_lastids[channel] = item_id
 			lock.release()
 			stats_lock.acquire()
 			for h in response_holds:
