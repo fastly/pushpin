@@ -526,7 +526,7 @@ public:
 
 		if(state == Connecting)
 		{
-			if(packet.type != ZhttpResponsePacket::Data)
+			if(packet.type != ZhttpResponsePacket::Data && packet.type != ZhttpResponsePacket::Credit && packet.type != ZhttpResponsePacket::KeepAlive)
 			{
 				state = Idle;
 				errorCondition = ErrorGeneric;
