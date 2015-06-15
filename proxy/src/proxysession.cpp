@@ -181,7 +181,6 @@ public:
 
 		if(state == Stopped)
 		{
-			QString host = rs->requestData().uri.host();
 			isHttps = rs->isHttps();
 
 			requestData = rs->requestData();
