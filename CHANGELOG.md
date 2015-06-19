@@ -1,6 +1,12 @@
 Pushpin Changelog
 =================
 
+v. 1.3.1 (2015-06-19)
+
+  * Fix http-response conflict recovery.
+  * Correctly proxy WebSocket ping and pong frames.
+  * Fix WebSocket compatibility with latest Zurl.
+
 v. 1.3.0 (2015-06-03)
 
   * Many fixes with subscription reporting via stats and SUB socket.

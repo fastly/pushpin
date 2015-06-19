@@ -31,7 +31,7 @@
 #include "xffrule.h"
 #include "engine.h"
 
-#define VERSION "1.3.0"
+#define VERSION "1.3.1"
 
 static void trimlist(QStringList *list)
 {
