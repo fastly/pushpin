@@ -602,6 +602,8 @@ public:
 
 		if(packet.type == ZhttpResponsePacket::Data)
 		{
+			bool needToSendHeaders = false;
+
 			if(!haveResponseValues)
 			{
 				haveResponseValues = true;
@@ -609,6 +611,8 @@ public:
 				responseCode = packet.code;
 				responseReason = packet.reason;
 				responseHeaders = packet.headers;
+
+				needToSendHeaders = true;
 			}
 
 			if(doReq)
@@ -639,7 +643,7 @@ public:
 
 			if(packet.more)
 			{
-				if(!packet.body.isEmpty())
+				if(needToSendHeaders || !packet.body.isEmpty())
 					emit q->readyRead();
 			}
 			else
