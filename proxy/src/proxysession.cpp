@@ -626,9 +626,6 @@ public slots:
 				responseData.headers.removeAll("Content-Encoding");
 				responseData.headers.removeAll("Transfer-Encoding");
 
-				if(!responseData.headers.contains("Content-Length") && !responseData.headers.contains("Transfer-Encoding"))
-					responseData.headers += HttpHeader("Transfer-Encoding", "chunked");
-
 				foreach(SessionItem *si, sessionItems)
 				{
 					si->state = SessionItem::Responding;
