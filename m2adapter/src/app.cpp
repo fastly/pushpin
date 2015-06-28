@@ -230,6 +230,8 @@ public:
 		QByteArray acceptToken; // for websocket
 		bool downClosed; // for websocket
 		bool upClosed; // for websockets
+		QString method;
+		bool responseHeadersOnly; // HEAD, 204, 304
 
 		// m2 stuff
 		M2Connection *conn;
@@ -256,6 +258,7 @@ public:
 			lastActive(-1),
 			downClosed(false),
 			upClosed(false),
+			responseHeadersOnly(false),
 			persistent(false),
 			allowChunked(false),
 			respondKeepAlive(false),
@@ -1331,6 +1334,9 @@ public:
 							}
 						}
 
+						if(s->method == "HEAD" || (zresp.code == 204 || zresp.code == 304))
+							s->responseHeadersOnly = true;
+
 						HttpHeaders headers = zresp.headers;
 						QList<QByteArray> connHeaders = headers.takeAll("Connection");
 						foreach(const QByteArray &h, connHeaders)
@@ -1344,14 +1350,17 @@ public:
 						if(s->respondClose)
 							connHeaders += "close";
 
-						if(s->chunked)
+						if(!s->responseHeadersOnly)
 						{
-							connHeaders += "Transfer-Encoding";
-							headers += HttpHeader("Transfer-Encoding", "chunked");
-						}
-						else if(!zresp.more && !headers.contains("Content-Length"))
-						{
-							headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
+							if(s->chunked)
+							{
+								connHeaders += "Transfer-Encoding";
+								headers += HttpHeader("Transfer-Encoding", "chunked");
+							}
+							else if(!zresp.more && !headers.contains("Content-Length"))
+							{
+								headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
+							}
 						}
 
 						if(!connHeaders.isEmpty())
@@ -1362,6 +1371,21 @@ public:
 
 					if(!zresp.body.isEmpty())
 					{
+						if(s->responseHeadersOnly)
+						{
+							log_warning("%s: received unexpected response body", logprefix);
+
+							if(!s->zhttpAddress.isEmpty())
+							{
+								ZhttpRequestPacket zreq;
+								zreq.type = ZhttpRequestPacket::Cancel;
+								zhttp_out_write(s, zreq);
+							}
+
+							destroySessionAndErrorConnection(s);
+							return;
+						}
+
 						if(s->chunked)
 						{
 							QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
@@ -1747,6 +1771,7 @@ private slots:
 			s->conn->session = s;
 			s->lastActive = time.elapsed();
 			s->id = m2_send_idents[conn->identIndex] + '_' + conn->id;
+			s->method = mreq.method;
 
 			if(mreq.type == M2RequestPacket::HttpRequest)
 			{
