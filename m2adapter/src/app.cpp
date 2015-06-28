@@ -1373,16 +1373,24 @@ public:
 					{
 						if(s->responseHeadersOnly)
 						{
-							log_warning("%s: received unexpected response body", logprefix);
+							log_warning("%s: received unexpected response body. sending headers only", logprefix);
 
+							bool persistent = s->persistent;
+
+							// send just the headers
+							M2Connection *conn = s->conn;
+							m2_writeOrQueueData(s->conn, mresp, 0);
+
+							// cancel and destroy session
 							if(!s->zhttpAddress.isEmpty())
 							{
 								ZhttpRequestPacket zreq;
 								zreq.type = ZhttpRequestPacket::Cancel;
 								zhttp_out_write(s, zreq);
 							}
-
-							destroySessionAndErrorConnection(s);
+							destroySession(s);
+							if(!persistent)
+								m2_writeClose(conn);
 							return;
 						}
 
