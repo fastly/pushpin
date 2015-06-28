@@ -715,6 +715,14 @@ public:
 		delete s;
 	}
 
+	void destroySessionAndErrorConnection(Session *s)
+	{
+		M2Connection *conn = s->conn;
+		destroySession(s);
+		if(conn)
+			m2_writeErrorClose(conn);
+	}
+
 	void m2_out_write(const M2ResponsePacket &packet)
 	{
 		QByteArray buf = packet.toByteArray();
@@ -1133,7 +1141,7 @@ public:
 				if(zresp.from.isEmpty())
 				{
 					log_warning("%s: received first response of sequence with no from address, canceling", logprefix);
-					destroySession(s);
+					destroySessionAndErrorConnection(s);
 					return;
 				}
 
@@ -1145,7 +1153,7 @@ public:
 					ZhttpRequestPacket zreq;
 					zreq.type = ZhttpRequestPacket::Cancel;
 					zhttp_out_write(s, zreq);
-					destroySession(s);
+					destroySessionAndErrorConnection(s);
 					return;
 				}
 			}
@@ -1167,7 +1175,7 @@ public:
 						zhttp_out_write(s, zreq);
 					}
 
-					destroySession(s);
+					destroySessionAndErrorConnection(s);
 					return;
 				}
 			}
@@ -1180,7 +1188,7 @@ public:
 				ZhttpRequestPacket zreq;
 				zreq.type = ZhttpRequestPacket::Cancel;
 				zhttp_out_write(s, zreq);
-				destroySession(s);
+				destroySessionAndErrorConnection(s);
 				return;
 			}
 
@@ -1491,11 +1499,7 @@ public:
 				m2_writeClose(conn);
 			}
 			else
-			{
-				M2Connection *conn = s->conn;
-				destroySession(s);
-				m2_writeErrorClose(conn);
-			}
+				destroySessionAndErrorConnection(s);
 		}
 		else if(zresp.type == ZhttpResponsePacket::Credit)
 		{
@@ -1512,9 +1516,7 @@ public:
 		}
 		else if(zresp.type == ZhttpResponsePacket::Cancel)
 		{
-			M2Connection *conn = s->conn;
-			destroySession(s);
-			m2_writeErrorClose(conn);
+			destroySessionAndErrorConnection(s);
 		}
 		else if(zresp.type == ZhttpResponsePacket::HandoffStart)
 		{
@@ -1998,10 +2000,7 @@ private slots:
 		foreach(Session *s, toDelete)
 		{
 			log_warning("timing out request %s", s->id.data());
-			M2Connection *conn = s->conn;
-			destroySession(s);
-			if(conn)
-				m2_writeErrorClose(conn);
+			destroySessionAndErrorConnection(s);
 		}
 	}
 
