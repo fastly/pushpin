@@ -112,22 +112,21 @@ while True:
 			print 'OUT %s' % resp
 			out_sock.send(req['from'] + ' T' + tnetstring.dumps(resp))
 		else:
-			if len(body) > 0:
-				# send credits
-				resp = dict()
-				resp['from'] = client_id
-				resp['id'] = s.id
-				resp['seq'] = s.out_seq
-				s.out_seq += 1
-				resp['type'] = 'credit'
-				if not s.sent_credits:
-					resp['credits'] = 200000
-					s.sent_credits = True
-				else:
-					resp['credits'] = len(body)
+			# send credits
+			resp = dict()
+			resp['from'] = client_id
+			resp['id'] = s.id
+			resp['seq'] = s.out_seq
+			s.out_seq += 1
+			resp['type'] = 'credit'
+			if not s.sent_credits:
+				resp['credits'] = 200000
+				s.sent_credits = True
+			else:
+				resp['credits'] = len(body)
 
-				print 'OUT %s' % resp
-				out_sock.send(req['from'] + ' T' + tnetstring.dumps(resp))
+			print 'OUT %s' % resp
+			out_sock.send(req['from'] + ' T' + tnetstring.dumps(resp))
 	elif ptype is not None and ptype == 'credit':
 		if s.state == 1 and s.credits > 0:
 			resp = dict()
