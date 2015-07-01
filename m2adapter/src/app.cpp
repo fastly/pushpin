@@ -1641,14 +1641,20 @@ private slots:
 
 		Rid m2Rid(mreq.sender, mreq.id);
 
-		Session *s = 0;
-
 		M2Connection *conn = m2ConnectionsByRid.value(m2Rid);
 		if(!conn)
 		{
+			if(mreq.version.isEmpty())
+			{
+				log_error("m2: id=%s no version on initial packet", mreq.id.data());
+				m2_writeCtlCancel(mreq.sender, mreq.id);
+				return;
+			}
+
 			if(mreq.version != "HTTP/1.0" && mreq.version != "HTTP/1.1")
 			{
-				log_error("m2: id=%s skipping unknown version: %s", mreq.id.data(), mreq.version.data());
+				log_error("m2: id=%s unknown version: %s", mreq.id.data(), mreq.version.data());
+				m2_writeCtlCancel(mreq.sender, mreq.id);
 				return;
 			}
 
@@ -1665,13 +1671,6 @@ private slots:
 			if(index == -1)
 			{
 				log_error("m2: id=%s unknown send_ident [%s]", mreq.id.data(), mreq.sender.data());
-				return;
-			}
-
-			if(mreq.type == M2RequestPacket::HttpRequest && mreq.uploadStreamOffset > 0)
-			{
-				log_warning("m2: id=%s stream offset > 0 but session unknown", mreq.id.data());
-				m2_writeCtlCancel(mreq.sender, mreq.id);
 				return;
 			}
 
@@ -1699,27 +1698,21 @@ private slots:
 
 			m2ConnectionsByRid.insert(m2Rid, conn);
 		}
-		else
-		{
-			s = sessionsByM2Rid.value(m2Rid);
-
-			if(mreq.type == M2RequestPacket::HttpRequest && !s && mreq.uploadStreamOffset > 0)
-			{
-				log_warning("m2: id=%s stream offset > 0 but session unknown", mreq.id.data());
-				endSession(s);
-				m2_writeCtlCancel(conn);
-				return;
-			}
-		}
-
-		// if we get here, then we have an m2 connection but may or may not have a session yet
 
 		bool requestBodyMore = false;
 		if(mreq.type == M2RequestPacket::HttpRequest && mreq.uploadStreamOffset >= 0 && !mreq.uploadStreamDone)
 			requestBodyMore = true;
 
+		Session *s = sessionsByM2Rid.value(m2Rid);
 		if(!s)
 		{
+			if(mreq.type == M2RequestPacket::HttpRequest && mreq.uploadStreamOffset > 0)
+			{
+				log_warning("m2: id=%s stream offset > 0 but session unknown", mreq.id.data());
+				m2_writeCtlCancel(conn);
+				return;
+			}
+
 			if(mreq.type != M2RequestPacket::HttpRequest && mreq.type != M2RequestPacket::WebSocketHandshake)
 			{
 				log_warning("m2: received unexpected starting packet type: %d", (int)mreq.type);
@@ -1849,9 +1842,12 @@ private slots:
 		}
 		else
 		{
+			assert(s->conn == conn);
+
 			if(mreq.type != M2RequestPacket::HttpRequest && mreq.type != M2RequestPacket::WebSocketFrame)
 			{
 				log_warning("m2: received unexpected subsequent packet type: %d", (int)mreq.type);
+				endSession(s);
 				m2_writeCtlCancel(conn);
 				return;
 			}
@@ -1865,7 +1861,6 @@ private slots:
 				if(offset != s->readCount)
 				{
 					log_warning("m2: %s id=%s unexpected stream offset (got=%d, expected=%d)", m2_send_idents[s->conn->identIndex].data(), mreq.id.data(), offset, s->readCount);
-					M2Connection *conn = s->conn;
 					endSession(s);
 					m2_writeCtlCancel(conn);
 					return;
@@ -1880,7 +1875,6 @@ private slots:
 			if(s->zhttpAddress.isEmpty())
 			{
 				log_error("m2: %s id=%s multiple packets from m2 before response from zhttp", m2_send_idents[s->conn->identIndex].data(), mreq.id.data());
-				M2Connection *conn = s->conn;
 				endSession(s);
 				m2_writeCtlCancel(conn);
 				return;
@@ -1907,7 +1901,6 @@ private slots:
 				if(opcode != 1 && opcode != 2 && opcode != 8 && opcode != 9 && opcode != 10)
 				{
 					log_warning("m2: %s id=%s unsupported ws opcode: %d", m2_send_idents[s->conn->identIndex].data(), mreq.id.data(), opcode);
-					M2Connection *conn = s->conn;
 					endSession(s);
 					m2_writeCtlCancel(conn);
 					return;
@@ -1953,7 +1946,6 @@ private slots:
 
 					if(s->downClosed && s->upClosed)
 					{
-						M2Connection *conn = s->conn;
 						destroySession(s); // we aren't in handoff so this is safe
 						m2_writeClose(conn);
 					}
