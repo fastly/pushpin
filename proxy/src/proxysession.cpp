@@ -547,6 +547,13 @@ public:
 public slots:
 	void inRequest_readyRead()
 	{
+		if(state != Requesting)
+		{
+			// if the state changed before input finished, then
+			//   stop reading input
+			return;
+		}
+
 		tryRequestRead();
 
 		if(inRequest->isInputFinished())
