@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,6 +23,7 @@
 #include <QTimer>
 #include <QPointer>
 #include <QCoreApplication>
+#include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -172,6 +173,7 @@ public:
 	HttpRequestData requestData;
 	HttpResponseData responseData;
 	ErrorCondition errorCondition;
+	ErrorCondition pendingErrorCondition;
 	int keepAliveInterval;
 	HttpHeaders meta;
 	bool updating;
@@ -196,7 +198,8 @@ public:
 		ignorePolicies(false),
 		ignoreTlsErrors(false),
 		state(WebSocket::Idle),
-		errorCondition(WebSocket::ErrorGeneric),
+		errorCondition(ErrorGeneric),
+		pendingErrorCondition((ErrorCondition)-1),
 		keepAliveInterval(-1),
 		updating(false),
 		req(0),
@@ -222,6 +225,18 @@ public:
 		keepAliveTimer->disconnect(this);
 		keepAliveTimer->setParent(0);
 		keepAliveTimer->deleteLater();
+	}
+
+	void cleanup()
+	{
+		keepAliveTimer->stop();
+
+		updating = false;
+
+		delete req;
+		req = 0;
+
+		state = Idle;
 	}
 
 	void start()
@@ -261,7 +276,9 @@ public:
 
 		outFrames += frame;
 
-		update();
+		// if write buffer is full we trigger an update in case we need to error out
+		if(canSend() || writeBytesAvailable() == 0)
+			update();
 	}
 
 	Frame readFrame()
@@ -279,6 +296,20 @@ public:
 		update();
 	}
 
+	int writeBytesAvailable() const
+	{
+		int avail = BUFFER_SIZE;
+		foreach(const Frame &f, outFrames)
+		{
+			if(f.data.size() >= avail)
+				return 0;
+
+			avail -= f.data.size();
+		}
+
+		return avail;
+	}
+
 	void sendDisconnect()
 	{
 		disconnecting = true;
@@ -287,6 +318,26 @@ public:
 	}
 
 private:
+	bool canSend() const
+	{
+		foreach(const Frame &f, outFrames)
+		{
+			if(!f.more)
+				return true;
+		}
+
+		return false;
+	}
+
+	void queueError(ErrorCondition e)
+	{
+		if((int)pendingErrorCondition == -1)
+		{
+			pendingErrorCondition = e;
+			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
+		}
+	}
+
 	void update()
 	{
 		// only one request allowed at a time
@@ -296,6 +347,14 @@ private:
 		updating = true;
 
 		keepAliveTimer->stop();
+
+		// if we can't send yet but also have no room for writes, then fail
+		if(!canSend() && writeBytesAvailable() == 0)
+		{
+			updating = false;
+			queueError(ErrorGeneric);
+			return;
+		}
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
@@ -319,8 +378,6 @@ private:
 		foreach(const HttpHeader &h, meta)
 			headers += HttpHeader("Meta-" + h.first, h.second);
 
-		req->start("POST", requestData.uri, headers);
-
 		reqFrames = 0;
 		reqContentSize = 0;
 		reqClose = false;
@@ -339,24 +396,69 @@ private:
 		{
 			while(!outFrames.isEmpty())
 			{
+				// make sure the next message is fully readable
+				int takeCount = -1;
+				for(int n = 0; n < outFrames.count(); ++n)
+				{
+					if(!outFrames[n].more)
+					{
+						takeCount = n + 1;
+						break;
+					}
+				}
+				if(takeCount == -1)
+					break;
+
+				Frame::Type ftype;
+				BufferList content;
+
+				for(int n = 0; n < takeCount; ++n)
+				{
+					Frame f = outFrames.takeFirst();
+
+					if((n == 0 && f.type == Frame::Continuation) || (n > 0 && f.type != Frame::Continuation))
+					{
+						updating = false;
+						queueError(ErrorGeneric);
+						return;
+					}
+
+					if(n == 0)
+					{
+						assert(f.type != Frame::Continuation);
+						ftype = f.type;
+					}
+
+					content += f.data;
+
+					assert(n + 1 < takeCount || !f.more);
+				}
+
+				QByteArray data = content.toByteArray();
+
 				// for compactness, we only include content on ping/pong if non-empty
+				if(ftype == Frame::Text)
+					events += WsEvent("TEXT", data);
+				else if(ftype == Frame::Binary)
+					events += WsEvent("BINARY", data);
+				else if(ftype == Frame::Ping)
+					events += WsEvent("PING", !data.isEmpty() ? data : QByteArray());
+				else if(ftype == Frame::Pong)
+					events += WsEvent("PONG", !data.isEmpty() ? data : QByteArray());
 
-				Frame f = outFrames.takeFirst();
-				if(f.type == Frame::Text)
-					events += WsEvent("TEXT", f.data);
-				else if(f.type == Frame::Binary)
-					events += WsEvent("BINARY", f.data);
-				else if(f.type == Frame::Ping)
-					events += WsEvent("PING", !f.data.isEmpty() ? f.data : QByteArray());
-				else if(f.type == Frame::Pong)
-					events += WsEvent("PONG", !f.data.isEmpty() ? f.data : QByteArray());
-
-				++reqFrames;
-				reqContentSize += f.data.size();
+				reqFrames += takeCount;
+				reqContentSize += content.size();
 			}
 
 			if(state == Closing)
 			{
+				// if there was a partial message left, throw it away
+				if(!outFrames.isEmpty())
+				{
+					log_warning("woh: dropping partial message before close");
+					outFrames.clear();
+				}
+
 				if(closeCode != -1)
 				{
 					QByteArray buf(2, 0);
@@ -371,9 +473,11 @@ private:
 			}
 		}
 
-		if(!events.isEmpty())
-			req->writeBody(encodeEvents(events));
+		QByteArray body = encodeEvents(events);
+		headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
 
+		req->start("POST", requestData.uri, headers);
+		req->writeBody(body);
 		req->endBody();
 	}
 
@@ -613,7 +717,7 @@ private slots:
 
 		updating = false;
 
-		if(disconnecting || !outFrames.isEmpty() || (state == Closing && !closeSent))
+		if(disconnecting || canSend() || writeBytesAvailable() == 0 || (state == Closing && !closeSent))
 			update();
 		else if(keepAliveInterval != -1)
 			keepAliveTimer->start(keepAliveInterval * 1000);
@@ -638,6 +742,14 @@ private slots:
 	void keepAliveTimer_timeout()
 	{
 		update();
+	}
+
+	void doError()
+	{
+		cleanup();
+		errorCondition = pendingErrorCondition;
+		pendingErrorCondition = (ErrorCondition)-1;
+		emit q->error();
 	}
 };
 
@@ -788,16 +900,7 @@ bool WebSocketOverHttp::canWrite() const
 
 int WebSocketOverHttp::writeBytesAvailable() const
 {
-	int avail = BUFFER_SIZE;
-	foreach(const Frame &f, d->outFrames)
-	{
-		if(f.data.size() >= avail)
-			return 0;
-
-		avail -= f.data.size();
-	}
-
-	return avail;
+	return d->writeBytesAvailable();
 }
 
 int WebSocketOverHttp::peerCloseCode() const
