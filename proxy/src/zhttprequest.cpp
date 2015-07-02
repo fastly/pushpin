@@ -846,6 +846,8 @@ public slots:
 					writePacket(p);
 
 					state = ClientRequestFinishWait;
+
+					emit q->bytesWritten(p.body.size());
 				}
 			}
 			else
@@ -889,6 +891,11 @@ public slots:
 					state = ClientRequestStartWait;
 				else
 					state = ClientRequestFinishWait;
+
+				if(!p.body.isEmpty())
+					emit q->bytesWritten(p.body.size());
+				else if(!p.more)
+					emit q->bytesWritten(0);
 			}
 		}
 		else if(state == ClientRequesting)
