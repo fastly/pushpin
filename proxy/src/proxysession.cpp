@@ -372,7 +372,7 @@ public:
 			zhttpRequest->writeBody(buf);
 		}
 
-		if(!requestBodySent && inRequest->isInputFinished())
+		if(!requestBodySent && inRequest->isInputFinished() && inRequest->bytesAvailable() == 0)
 		{
 			requestBodySent = true;
 			zhttpRequest->endBody();
