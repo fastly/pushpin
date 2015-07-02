@@ -105,6 +105,7 @@ public:
 	QHash<RequestSession*, SessionItem*> sessionItemsBySession;
 	QByteArray initialRequestBody;
 	int requestBytesToWrite;
+	bool requestBodySent;
 	int total;
 	bool buffering;
 	QByteArray defaultSigIss;
@@ -130,6 +131,7 @@ public:
 		addAllowed(true),
 		haveInspectData(false),
 		requestBytesToWrite(0),
+		requestBodySent(false),
 		total(0),
 		passToUpstream(false),
 		useXForwardedProtocol(false),
@@ -324,6 +326,8 @@ public:
 
 		zhttpRequest->start(requestData.method, uri, requestData.headers);
 
+		requestBodySent = false;
+
 		if(!initialRequestBody.isEmpty())
 		{
 			requestBytesToWrite += initialRequestBody.size();
@@ -331,30 +335,48 @@ public:
 		}
 
 		if(!inRequest || inRequest->isInputFinished())
+		{
+			requestBodySent = true;
 			zhttpRequest->endBody();
+		}
 	}
 
 	void tryRequestRead()
 	{
-		QByteArray buf = inRequest->readBody();
-		if(buf.isEmpty())
+		// if the state changed before input finished, then
+		//   stop reading input
+		if(state != Requesting)
 			return;
 
-		log_debug("proxysession: %p input chunk: %d", q, buf.size());
+		// if we're not buffering, then sync to speed of server
+		if(!buffering && requestBytesToWrite > 0)
+			return;
 
-		if(buffering)
+		QByteArray buf = inRequest->readBody(MAX_STREAM_BUFFER);
+		if(!buf.isEmpty())
 		{
-			if(requestBody.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
+			log_debug("proxysession: %p input chunk: %d", q, buf.size());
+
+			if(buffering)
 			{
-				requestBody.clear();
-				buffering = false;
+				if(requestBody.size() + buf.size() > MAX_ACCEPT_REQUEST_BODY)
+				{
+					requestBody.clear();
+					buffering = false;
+				}
+				else
+					requestBody += buf;
 			}
-			else
-				requestBody += buf;
+
+			requestBytesToWrite += buf.size();
+			zhttpRequest->writeBody(buf);
 		}
 
-		requestBytesToWrite += buf.size();
-		zhttpRequest->writeBody(buf);
+		if(!requestBodySent && inRequest->isInputFinished())
+		{
+			requestBodySent = true;
+			zhttpRequest->endBody();
+		}
 	}
 
 	void cannotAcceptAll()
@@ -547,17 +569,7 @@ public:
 public slots:
 	void inRequest_readyRead()
 	{
-		if(state != Requesting)
-		{
-			// if the state changed before input finished, then
-			//   stop reading input
-			return;
-		}
-
 		tryRequestRead();
-
-		if(inRequest->isInputFinished())
-			zhttpRequest->endBody();
 	}
 
 	void inRequest_error()
