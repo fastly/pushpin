@@ -673,7 +673,7 @@ public slots:
 		requestBytesToWrite -= count;
 		assert(requestBytesToWrite >= 0);
 
-		if(requestBytesToWrite == 0)
+		if(inRequest && requestBytesToWrite == 0)
 			tryRequestRead();
 	}
 
