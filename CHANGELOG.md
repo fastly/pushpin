@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.3.3 (2015-07-05)
+
+  * Fix crash on conflict retry introduced in previous version.
+
 v. 1.3.2 (2015-07-05)
 
   * Better handling of responses with no explicit body (HEAD, 204, 304).

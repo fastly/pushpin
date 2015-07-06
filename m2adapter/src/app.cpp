@@ -36,7 +36,7 @@
 #include "log.h"
 #include "layertracker.h"
 
-#define VERSION "1.3.2"
+#define VERSION "1.3.3"
 
 #define DEFAULT_HWM 51000
 #define EXPIRE_INTERVAL 1000
