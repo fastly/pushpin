@@ -231,7 +231,7 @@ public:
 		QHash< QString, QList<Rule> > newmap;
 
 		QTextStream ts(&file);
-		for(int lineNum = 0; !ts.atEnd(); ++lineNum)
+		for(int lineNum = 1; !ts.atEnd(); ++lineNum)
 		{
 			QString line = ts.readLine();
 
