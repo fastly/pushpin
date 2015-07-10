@@ -331,6 +331,7 @@ public:
 					state = Idle;
 					cleanup();
 					emit q->closed();
+					return;
 				}
 				else
 				{
