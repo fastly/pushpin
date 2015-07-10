@@ -875,6 +875,28 @@ public slots:
 	{
 		pendingUpdate = false;
 
+		if(state == Connected || state == ClosedPeerConnected)
+		{
+			if(inFrames.isEmpty() && inClosed)
+			{
+				if(state == ClosedPeerConnected)
+				{
+					state = Idle;
+					cleanup();
+					emit q->closed();
+					return;
+				}
+				else
+				{
+					QPointer<QObject> self = this;
+					state = ConnectedPeerClosed;
+					emit q->peerClosed();
+					if(!self)
+						return;
+				}
+			}
+		}
+
 		if(server)
 		{
 			if(state == Connected || state == ConnectedPeerClosed)
