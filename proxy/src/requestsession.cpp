@@ -38,7 +38,6 @@
 #include "inspectrequest.h"
 #include "acceptrequest.h"
 
-#define MAX_PREFETCH_REQUEST_BODY 10000
 #define MAX_SHARED_REQUEST_BODY 100000
 #define MAX_ACCEPT_REQUEST_BODY 100000
 
@@ -224,6 +223,7 @@ public:
 	LayerTracker jsonpTracker;
 	bool isRetry;
 	QList<QByteArray> jsonpExtractableHeaders;
+	int prefetchSize;
 
 	Private(RequestSession *_q, DomainMap *_domainMap, SockJsManager *_sockJsManager, ZrpcManager *_inspectManager, ZrpcChecker *_inspectChecker, ZrpcManager *_acceptManager) :
 		QObject(_q),
@@ -241,7 +241,8 @@ public:
 		jsonpExtendedResponse(false),
 		responseBodyFinished(false),
 		pendingResponseUpdate(false),
-		isRetry(false)
+		isRetry(false),
+		prefetchSize(0)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
 	}
@@ -388,9 +389,10 @@ public:
 	{
 		if(state == Prefetching)
 		{
-			in += zhttpRequest->readBody(MAX_PREFETCH_REQUEST_BODY - in.size());
+			if(prefetchSize > 0)
+				in += zhttpRequest->readBody(prefetchSize - in.size());
 
-			if(in.size() >= MAX_PREFETCH_REQUEST_BODY || zhttpRequest->isInputFinished())
+			if(in.size() >= prefetchSize || zhttpRequest->isInputFinished())
 			{
 				// we've read enough body to start inspection
 
@@ -1132,6 +1134,11 @@ ZhttpRequest *RequestSession::request()
 void RequestSession::setAutoCrossOrigin(bool enabled)
 {
 	d->autoCrossOrigin = enabled;
+}
+
+void RequestSession::setPrefetchSize(int size)
+{
+	d->prefetchSize = size;
 }
 
 void RequestSession::start(ZhttpRequest *req)

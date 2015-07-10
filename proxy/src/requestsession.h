@@ -55,6 +55,7 @@ public:
 	ZhttpRequest *request();
 
 	void setAutoCrossOrigin(bool enabled);
+	void setPrefetchSize(int size);
 
 	// takes ownership
 	void start(ZhttpRequest *req);

@@ -50,6 +50,7 @@ public:
 		int ipcFileMode;
 		int maxWorkers;
 		int inspectTimeout;
+		int inspectPrefetch;
 		QString routesFile;
 		bool autoCrossOrigin;
 		bool useXForwardedProtocol;
@@ -66,6 +67,7 @@ public:
 			ipcFileMode(-1),
 			maxWorkers(-1),
 			inspectTimeout(8000),
+			inspectPrefetch(10000),
 			autoCrossOrigin(false),
 			useXForwardedProtocol(false),
 			updatesCheck(true)

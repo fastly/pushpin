@@ -419,6 +419,7 @@ public:
 		connect(rs, SIGNAL(finishedByAccept()), SLOT(rs_finishedByAccept()));
 
 		rs->setAutoCrossOrigin(config.autoCrossOrigin);
+		rs->setPrefetchSize(config.inspectPrefetch);
 
 		requestSessions += rs;
 
