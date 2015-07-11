@@ -276,6 +276,9 @@ public:
 		}
 		else
 		{
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				log_debug("%s client req: OUT %s", logprefix, qPrintable(TnetString::variantToString(vpacket, -1)));
+
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
 	}
