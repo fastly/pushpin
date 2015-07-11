@@ -967,9 +967,4 @@ void ProxySession::add(RequestSession *rs)
 	d->add(rs);
 }
 
-void ProxySession::cannotAccept()
-{
-	d->cannotAcceptAll();
-}
-
 #include "proxysession.moc"

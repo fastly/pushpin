@@ -50,8 +50,6 @@ public:
 	// takes ownership
 	void add(RequestSession *rs);
 
-	void cannotAccept();
-
 signals:
 	void addNotAllowed(); // no more sharing, for whatever reason
 	void finished();
