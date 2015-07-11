@@ -814,7 +814,7 @@ public slots:
 
 	void zhttpRequest_error()
 	{
-		log_warning("requestsession: request error id=%s", rid.second.data());
+		log_debug("requestsession: request error id=%s", rid.second.data());
 		cleanup();
 		emit q->finished();
 	}
