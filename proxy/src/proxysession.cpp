@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -54,7 +54,8 @@ public:
 		Stopped,
 		Requesting,
 		Accepting,
-		Responding
+		Responding,
+		Responded
 	};
 
 	class SessionItem
@@ -334,8 +335,15 @@ public:
 			zhttpRequest->writeBody(initialRequestBody);
 		}
 
-		if(!inRequest || inRequest->isInputFinished())
+		if(!inRequest || (inRequest->isInputFinished() && inRequest->bytesAvailable() == 0))
 		{
+			// no need to track the primary request anymore
+			if(inRequest)
+			{
+				inRequest->disconnect(this);
+				inRequest = 0;
+			}
+
 			requestBodySent = true;
 			zhttpRequest->endBody();
 		}
@@ -374,6 +382,13 @@ public:
 
 		if(!requestBodySent && inRequest->isInputFinished() && inRequest->bytesAvailable() == 0)
 		{
+			// no need to track the primary request anymore
+			if(inRequest)
+			{
+				inRequest->disconnect(this);
+				inRequest = 0;
+			}
+
 			requestBodySent = true;
 			zhttpRequest->endBody();
 		}
@@ -381,6 +396,11 @@ public:
 
 	void cannotAcceptAll()
 	{
+		assert(state != Responding);
+		assert(state != Responded);
+
+		state = Responded;
+
 		foreach(SessionItem *si, sessionItems)
 		{
 			if(si->state != SessionItem::Errored)
@@ -396,6 +416,15 @@ public:
 
 	void rejectAll(int code, const QString &reason, const QString &errorMessage)
 	{
+		// kill the active target request, if any
+		delete zhttpRequest;
+		zhttpRequest = 0;
+
+		assert(state != Responding);
+		assert(state != Responded);
+
+		state = Responded;
+
 		foreach(SessionItem *si, sessionItems)
 		{
 			if(si->state != SessionItem::Errored)
@@ -411,6 +440,11 @@ public:
 
 	void respondAll(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
 	{
+		assert(state != Responding);
+		assert(state != Responded);
+
+		state = Responded;
+
 		foreach(SessionItem *si, sessionItems)
 		{
 			if(si->state != SessionItem::Errored)
@@ -428,6 +462,8 @@ public:
 	{
 		// this method is only to be called when we are in Responding state
 		assert(state == Responding);
+
+		state = Responded;
 
 		foreach(SessionItem *si, sessionItems)
 		{
@@ -468,7 +504,7 @@ public:
 
 				responseBody += buf;
 			}
-			else // Responding
+			else if(state == Responding)
 			{
 				bool wasAllowed = addAllowed;
 
@@ -550,7 +586,7 @@ public:
 				else
 					cannotAcceptAll();
 			}
-			else // Responding
+			else if(state == Responding)
 			{
 				foreach(SessionItem *si, sessionItems)
 				{
@@ -576,7 +612,7 @@ public slots:
 	{
 		log_warning("proxysession: %p error reading request", q);
 
-		rejectAll(500, "Internal Server Error", "Primary shared request failed.");
+		// don't take action here. do that in rs_finished
 	}
 
 	void zhttpRequest_readyRead()
@@ -746,6 +782,9 @@ public slots:
 		if(!self)
 			return;
 
+		ZhttpRequest *req = rs->request();
+		bool wasInputRequest = (req && req == inRequest);
+
 		sessionItemsBySession.remove(rs);
 		sessionItems.remove(si);
 		delete rs;
@@ -756,6 +795,14 @@ public slots:
 		{
 			log_debug("proxysession: %p finished by passthrough", q);
 			emit q->finished();
+		}
+		else if(wasInputRequest)
+		{
+			// this should never happen. for there to be more than
+			//   one SessionItem, inRequest must be 0.
+			assert(0);
+
+			rejectAll(500, "Internal Server Error", "Input request failed.");
 		}
 	}
 
