@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Fanout, Inc.
+ * Copyright (C) 2013-2015 Fanout, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 #include "tnetstring.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
+#include "packet/httpresponsedata.h"
 #include "engine.h"
 
 class Wrapper : public QObject
@@ -50,20 +51,28 @@ public:
 	QZmq::Socket *handlerRetryOutSock;
 
 	int serverReqs;
+	bool serverFailed;
 	bool inspectEnabled;
+	bool inspected;
 	QByteArray sharingKey;
 	QByteArray in;
 	QByteArray acceptIn;
 	bool retried;
 	bool finished;
+	int serverOutSeq;
 	int clientReqsFinished;
+	QByteArray requestBody;
+	QHash<QByteArray, HttpResponseData> responses;
 
 	Wrapper(QObject *parent) :
 		QObject(parent),
 		serverReqs(0),
+		serverFailed(false),
 		inspectEnabled(true),
+		inspected(false),
 		retried(false),
 		finished(false),
+		serverOutSeq(0),
 		clientReqsFinished(0)
 	{
 		// http sockets
@@ -81,6 +90,7 @@ public:
 		connect(zhttpServerInValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttpServerIn_readyRead(const QList<QByteArray> &)));
 
 		zhttpServerInStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
+		zhttpServerInStreamSock->setIdentity("test-server");
 		zhttpServerInStreamValve = new QZmq::Valve(zhttpServerInStreamSock, this);
 		connect(zhttpServerInStreamValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttpServerInStream_readyRead(const QList<QByteArray> &)));
 
@@ -129,13 +139,18 @@ public:
 	void reset()
 	{
 		serverReqs = 0;
+		serverFailed = false;
 		inspectEnabled = true;
+		inspected = false;
 		sharingKey.clear();
 		in.clear();
 		acceptIn.clear();
 		retried = false;
 		finished = false;
+		serverOutSeq = 0;
 		clientReqsFinished = 0;
+		requestBody.clear();
+		responses.clear();
 	}
 
 private slots:
@@ -148,7 +163,18 @@ private slots:
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
 		{
+			if(!responses.contains(zresp.id))
+			{
+				HttpResponseData rd;
+				rd.code = zresp.code;
+				rd.reason = zresp.reason;
+				rd.headers = zresp.headers;
+				responses[zresp.id] = rd;
+			}
+
+			responses[zresp.id].body += zresp.body;
 			in += zresp.body;
+
 			if(!zresp.more)
 			{
 				finished = true;
@@ -160,8 +186,8 @@ private slots:
 			ZhttpRequestPacket zreq;
 			zreq.from = "test-client";
 			zreq.id = zresp.id;
-			zreq.type = ZhttpRequestPacket::HandoffProceed;
 			zreq.seq = 1;
+			zreq.type = ZhttpRequestPacket::HandoffProceed;
 			QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 			log_debug("writing: %s", buf.data());
 			QList<QByteArray> msg;
@@ -180,10 +206,52 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.fromVariant(v);
 
+		handleServerIn(zreq);
+	}
+
+	void zhttpServerInStream_readyRead(const QList<QByteArray> &message)
+	{
+		log_debug("server stream in");
+		QVariant v = TnetString::toVariant(message[2].mid(1));
+		ZhttpRequestPacket zreq;
+		zreq.fromVariant(v);
+
+		handleServerIn(zreq);
+	}
+
+	void handleServerIn(const ZhttpRequestPacket &zreq)
+	{
+		if(zreq.type == ZhttpRequestPacket::Cancel)
+		{
+			serverFailed = true;
+			return;
+		}
+
+		if(zreq.type == ZhttpRequestPacket::Data)
+			requestBody += zreq.body;
+
+		if(zreq.more)
+		{
+			// ack
+			if(serverOutSeq == 0)
+			{
+				ZhttpResponsePacket zresp;
+				zresp.from = "test-server";
+				zresp.id = zreq.id;
+				zresp.seq = serverOutSeq++;
+				zresp.type = ZhttpResponsePacket::Credit;
+				zresp.credits = 200000;
+				QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+				zhttpServerOutSock->write(QList<QByteArray>() << buf);
+			}
+
+			return;
+		}
+
 		ZhttpResponsePacket zresp;
 		zresp.from = "test-server";
 		zresp.id = zreq.id;
-		zresp.seq = 0;
+		zresp.seq = serverOutSeq++;
 		zresp.code = 200;
 		zresp.reason = "OK";
 		if(!retried && zreq.uri.encodedQuery().contains("wait=true"))
@@ -215,11 +283,9 @@ private slots:
 		zresp.headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
 		QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
 		zhttpServerOutSock->write(QList<QByteArray>() << buf);
-	}
 
-	void zhttpServerInStream_readyRead(const QList<QByteArray> &message)
-	{
-		Q_UNUSED(message);
+		// zero out so we can accept another request
+		serverOutSeq = 0;
 	}
 
 	void handlerInspect_readyRead(const QList<QByteArray> &_message)
@@ -227,6 +293,9 @@ private slots:
 		QZmq::ReqMessage message(_message);
 		QVariant v = TnetString::toVariant(message.content()[0]);
 		log_debug("inspect: %s", qPrintable(TnetString::variantToString(v, -1)));
+
+		inspected = true;
+
 		if(inspectEnabled)
 		{
 			QVariantHash vreq = v.toHash();
@@ -248,7 +317,7 @@ private slots:
 	{
 		QZmq::ReqMessage message(_message);
 		QVariant v = TnetString::toVariant(message.content()[0]);
-		log_debug("inspect: %s", qPrintable(TnetString::variantToString(v, -1)));
+		log_debug("accept: %s", qPrintable(TnetString::variantToString(v, -1)));
 
 		QVariantHash vreq = v.toHash();
 
@@ -320,6 +389,7 @@ private slots:
 		config.acceptSpec = "ipc://accept";
 		config.retryInSpec = "ipc://retry-out";
 		config.inspectTimeout = 500;
+		config.inspectPrefetch = 5;
 		config.routesFile = "routes";
 		config.sigIss = "pushpin";
 		config.sigKey = "changeme";
@@ -344,6 +414,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.id = "1";
+		zreq.seq = 0;
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -365,6 +436,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.id = "2";
+		zreq.seq = 0;
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -385,6 +457,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.id = "3";
+		zreq.seq = 0;
 		zreq.uri = "http://example/jsonp?callback=jpcb";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -416,6 +489,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.id = "4";
+		zreq.seq = 0;
 		zreq.uri = "http://example/jsonp-basic?bparam={}";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -429,13 +503,101 @@ private slots:
 		QCOMPARE(wrapper->in, QByteArray("/**/jpcb({\"hello\": \"world\"});\n"));
 	}
 
-	void accept()
+	void passthroughPostStream()
 	{
 		wrapper->reset();
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.id = "5";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path";
+		zreq.method = "POST";
+		zreq.stream = true;
+		zreq.body = "hello"; // enough to hit the prefetch amount
+		zreq.more = true;
+		zreq.credits = 200000;
+
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+
+		// ensure the server gets hit without finishing the request
+		while(wrapper->serverReqs < 1)
+			QTest::qWait(10);
+
+		// now finish the request
+		zreq = ZhttpRequestPacket();
+		zreq.from = "test-client";
+		zreq.id = "5";
+		zreq.seq = 1;
+		zreq.type = ZhttpRequestPacket::Data;
+		zreq.body = " world";
+		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		QList<QByteArray> msg;
+		msg.append("proxy");
+		msg.append(QByteArray());
+		msg.append(buf);
+		wrapper->zhttpClientOutStreamSock->write(msg);
+
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		QCOMPARE(wrapper->requestBody, QByteArray("hello world"));
+		QCOMPARE(wrapper->responses["5"].body, QByteArray("hello world"));
+	}
+
+	void passthroughPostStreamFail()
+	{
+		wrapper->reset();
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.id = "6";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path";
+		zreq.method = "POST";
+		zreq.stream = true;
+		zreq.body = "hello"; // enough to hit the prefetch amount
+		zreq.more = true;
+		zreq.credits = 200000;
+
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+
+		// ensure the server gets hit without finishing the request
+		while(wrapper->serverReqs < 1)
+			QTest::qWait(10);
+
+		// now cancel the request
+		zreq = ZhttpRequestPacket();
+		zreq.from = "test-client";
+		zreq.id = "6";
+		zreq.seq = 1;
+		zreq.type = ZhttpRequestPacket::Cancel;
+		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		QList<QByteArray> msg;
+		msg.append("proxy");
+		msg.append(QByteArray());
+		msg.append(buf);
+		wrapper->zhttpClientOutStreamSock->write(msg);
+
+		// wait for server side to receive error
+		while(!wrapper->serverFailed)
+			QTest::qWait(10);
+	}
+
+	void accept()
+	{
+		wrapper->reset();
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.id = "7";
+		zreq.seq = 0;
 		zreq.uri = "http://example/path?wait=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -455,7 +617,8 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "6";
+		zreq.id = "8";
+		zreq.seq = 0;
 		zreq.uri = "http://example/path2?wait=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -476,6 +639,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
+		zreq.seq = 0;
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -485,12 +649,12 @@ private slots:
 
 		// send two requests
 
-		zreq.id = "7";
+		zreq.id = "9";
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
-		zreq.id = "8";
+		zreq.id = "10";
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -501,8 +665,77 @@ private slots:
 		// there should have only been 1 request to the server
 		QCOMPARE(wrapper->serverReqs, 1);
 
-		// hackishly compare the merged inputs
-		QCOMPARE(wrapper->in, QByteArray("hello worldhello world"));
+		QCOMPARE(wrapper->responses["9"].body, QByteArray("hello world"));
+		QCOMPARE(wrapper->responses["10"].body, QByteArray("hello world"));
+	}
+
+	void passthroughSharedPost()
+	{
+		wrapper->reset();
+		wrapper->sharingKey = "test";
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path";
+		zreq.method = "POST";
+		zreq.stream = true;
+		zreq.body = "hello"; // enough to hit the prefetch amount
+		zreq.more = true;
+		zreq.credits = 200000;
+
+		QByteArray buf;
+
+		// send two requests
+
+		zreq.id = "11";
+		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+
+		zreq.id = "12";
+		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+
+		// we've hit prefetch, wait for inspect
+		while(!wrapper->inspected)
+			QTest::qWait(10);
+
+		// finish the requests
+
+		zreq = ZhttpRequestPacket();
+		zreq.from = "test-client";
+		zreq.seq = 1;
+		zreq.type = ZhttpRequestPacket::Data;
+		zreq.body = " world";
+
+		zreq.id = "11";
+		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		QList<QByteArray> msg;
+		msg.append("proxy");
+		msg.append(QByteArray());
+		msg.append(buf);
+		wrapper->zhttpClientOutStreamSock->write(msg);
+
+		zreq.id = "12";
+		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		msg.clear();
+		msg.append("proxy");
+		msg.append(QByteArray());
+		msg.append(buf);
+		wrapper->zhttpClientOutStreamSock->write(msg);
+
+		while(wrapper->clientReqsFinished < 2)
+			QTest::qWait(10);
+
+		// there should have only been 1 request to the server
+		QCOMPARE(wrapper->serverReqs, 1);
+
+		QCOMPARE(wrapper->responses["11"].body, QByteArray("hello world"));
+		QCOMPARE(wrapper->responses["12"].body, QByteArray("hello world"));
 	}
 };
 
