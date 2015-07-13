@@ -359,7 +359,7 @@ private:
 		}
 
 		// if we can't fit a response then don't update yet
-		if(canReceive())
+		if(!canReceive())
 			return false;
 
 		// have message to send or close?
