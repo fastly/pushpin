@@ -32,6 +32,8 @@
 #include "uuidutil.h"
 
 #define BUFFER_SIZE 200000
+#define RESPONSE_BODY_MAX 1000000
+#define REJECT_BODY_MAX 100000
 
 namespace {
 
@@ -276,8 +278,7 @@ public:
 
 		outFrames += frame;
 
-		// if write buffer is full we trigger an update in case we need to error out
-		if(canSend() || writeBytesAvailable() == 0)
+		if(needUpdate())
 			update();
 	}
 
@@ -318,13 +319,52 @@ public:
 	}
 
 private:
-	bool canSend() const
+	bool canReceive() const
+	{
+		int avail = 0;
+		foreach(const Frame &f, inFrames)
+		{
+			avail += f.data.size();
+			if(avail >= BUFFER_SIZE)
+				return false;
+		}
+
+		return true;
+	}
+
+	bool canSendCompleteMessage() const
 	{
 		foreach(const Frame &f, outFrames)
 		{
 			if(!f.more)
 				return true;
 		}
+
+		return false;
+	}
+
+	bool needUpdate() const
+	{
+		// always send this right away
+		if(disconnecting)
+			return true;
+
+		bool cscm = canSendCompleteMessage();
+
+		if(!cscm && writeBytesAvailable() == 0)
+		{
+			// write buffer maxed with incomplete message. this is
+			//   unrecoverable. update to throw error right away.
+			return true;
+		}
+
+		// if we can't fit a response then don't update yet
+		if(canReceive())
+			return false;
+
+		// have message to send or close?
+		if(cscm || (outFrames.isEmpty() && state == Closing && !closeSent))
+			return true;
 
 		return false;
 	}
@@ -349,7 +389,7 @@ private:
 		keepAliveTimer->stop();
 
 		// if we can't send yet but also have no room for writes, then fail
-		if(!canSend() && writeBytesAvailable() == 0)
+		if(!canSendCompleteMessage() && writeBytesAvailable() == 0)
 		{
 			updating = false;
 			queueError(ErrorGeneric);
@@ -394,7 +434,7 @@ private:
 		}
 		else
 		{
-			while(!outFrames.isEmpty())
+			while(!outFrames.isEmpty() && reqContentSize < BUFFER_SIZE)
 			{
 				// make sure the next message is fully readable
 				int takeCount = -1;
@@ -484,6 +524,18 @@ private:
 private slots:
 	void req_readyRead()
 	{
+		if(inBuf.size() + req->bytesAvailable() > RESPONSE_BODY_MAX)
+		{
+			updating = false;
+
+			delete req;
+			req = 0;
+
+			state = Idle;
+			emit q->error();
+			return;
+		}
+
 		inBuf += req->readBody();
 
 		if(!req->isFinished())
@@ -495,24 +547,32 @@ private slots:
 		int responseCode = req->responseCode();
 		QByteArray responseReason = req->responseReason();
 		HttpHeaders responseHeaders = req->responseHeaders();
-		QByteArray responseBody = req->readBody();
+		QByteArray responseBody = inBuf.take();
 
 		delete req;
 		req = 0;
 
-		if(responseCode != 200)
+		if(state == Connecting)
 		{
-			updating = false;
-
-			state = Idle;
-			emit q->error();
-			return;
+			// save the initial response
+			responseData.code = responseCode;
+			responseData.reason = responseReason;
+			responseData.headers = responseHeaders;
 		}
 
 		QByteArray contentType = responseHeaders.get("Content-Type");
-		if(contentType != "application/websocket-events")
+
+		if(responseCode != 200 || contentType != "application/websocket-events")
 		{
 			updating = false;
+
+			if(state == Connecting)
+			{
+				errorCondition = ErrorRejected;
+				responseData.body = responseBody.mid(0, REJECT_BODY_MAX);
+			}
+			else
+				errorCondition = ErrorGeneric;
 
 			state = Idle;
 			emit q->error();
@@ -546,7 +606,7 @@ private slots:
 		}
 
 		bool ok;
-		QList<WsEvent> events = decodeEvents(inBuf.take(), &ok);
+		QList<WsEvent> events = decodeEvents(responseBody, &ok);
 		if(!ok)
 		{
 			updating = false;
@@ -582,6 +642,7 @@ private slots:
 		if(disconnecting)
 		{
 			updating = false;
+			disconnecting = false;
 
 			state = Idle;
 			emit q->disconnected();
@@ -604,12 +665,6 @@ private slots:
 					disconnected = true;
 					break;
 				}
-
-				// save the initial response
-				responseData.code = responseCode;
-				responseData.reason = responseReason;
-				responseData.headers = responseHeaders;
-				responseData.body = responseBody;
 
 				state = Connected;
 				emitConnected = true;
@@ -717,7 +772,7 @@ private slots:
 
 		updating = false;
 
-		if(disconnecting || canSend() || writeBytesAvailable() == 0 || (state == Closing && !closeSent))
+		if(needUpdate())
 			update();
 		else if(keepAliveInterval != -1)
 			keepAliveTimer->start(keepAliveInterval * 1000);
