@@ -82,7 +82,6 @@ import logging
 from logging.handlers import WatchedFileHandler
 from base64 import b64decode
 import urlparse
-from blist import sorteddict
 from setproctitle import setproctitle
 import zmq
 import tnetstring
@@ -91,6 +90,11 @@ from validation import validate_publish, validate_http_publish, ValidationError
 from conversion import ensure_utf8, convert_json_transport
 from statusreasons import get_reason
 import rpc
+
+try:
+	from sortedcontainers import SortedDict
+except ImportError:
+	from blist import sorteddict as SortedDict
 
 setproctitle("pushpin-handler")
 
@@ -2242,7 +2246,7 @@ def stats_worker(c):
 
 	if push_in_sub_spec:
 		subs_modes_by_channel = dict() # key=channel, value={mode: sub}
-		subs_by_exp = sorteddict() # key=time, value=set(sub)
+		subs_by_exp = SortedDict() # key=expire_time, value=set(sub)
 		sub_sock = ctx.socket(zmq.PUSH)
 		sub_sock.linger = 0
 		sub_sock.bind('inproc://sub_cmd_in')
