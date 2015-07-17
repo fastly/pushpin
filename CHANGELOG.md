@@ -1,6 +1,13 @@
 Pushpin Changelog
 =================
 
+v. 1.4.0 (2015-07-16)
+
+  * Improved handling of streamed input while proxying.
+  * WebSocket over_http mode: relay error responses rather than 502.
+  * Various WebSocket bugfixes.
+  * Prefer using sortedcontainers.SortedDict rather than blist.sorteddict.
+
 v. 1.3.3 (2015-07-05)
 
   * Fix crash on conflict retry introduced in previous version.
