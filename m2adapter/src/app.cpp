@@ -1759,7 +1759,7 @@ private slots:
 			}
 
 			QByteArray uriRaw = scheme + "://" + host + mreq.uri;
-			QUrl uri = QUrl::fromEncoded(uriRaw, QUrl::StrictMode);
+			QUrl uri = QUrl::fromEncoded(uriRaw, QUrl::TolerantMode);
 			if(!uri.isValid())
 			{
 				log_warning("m2: invalid constructed uri: [%s]", uriRaw.data());
