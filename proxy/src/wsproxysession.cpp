@@ -342,6 +342,16 @@ public:
 		if(!entry.asHost.isEmpty())
 			requestData.uri.setHost(entry.asHost);
 
+		QByteArray path = requestData.uri.encodedPath();
+
+		if(entry.pathRemove > 0)
+			path = path.mid(entry.pathRemove);
+
+		if(!entry.pathPrepend.isEmpty())
+			path = entry.pathPrepend + path;
+
+		requestData.uri.setEncodedPath(path);
+
 		QByteArray sigIss;
 		QByteArray sigKey;
 		if(!entry.sigIss.isEmpty() && !entry.sigKey.isEmpty())

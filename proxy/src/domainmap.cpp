@@ -125,6 +125,7 @@ public:
 		bool origHeaders;
 		QString asHost;
 		int pathRemove;
+		QByteArray pathPrepend;
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
 		bool session;
@@ -197,6 +198,7 @@ public:
 			e.origHeaders = origHeaders;
 			e.asHost = asHost;
 			e.pathRemove = pathRemove;
+			e.pathPrepend = pathPrepend;
 			e.autoCrossOrigin = autoCrossOrigin;
 			e.jsonpConfig = jsonpConfig;
 			e.session = session;
@@ -342,6 +344,12 @@ public:
 			if(props.contains("path_rem"))
 			{
 				r.pathRemove = props.value("path_rem").toInt();
+			}
+
+			if(props.contains("replace_beg"))
+			{
+				r.pathRemove = r.pathBeg.length();
+				r.pathPrepend = props.value("replace_beg").toUtf8();
 			}
 
 			if(props.contains("aco"))

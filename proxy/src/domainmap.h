@@ -125,6 +125,7 @@ public:
 		bool origHeaders;
 		QString asHost;
 		int pathRemove;
+		QByteArray pathPrepend;
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
 		bool session;
