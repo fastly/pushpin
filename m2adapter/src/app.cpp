@@ -177,12 +177,20 @@ public:
 	class M2PendingOutItem
 	{
 	public:
+		enum Type
+		{
+			Data,
+			Close
+		};
+
+		Type type;
 		QByteArray sender;
 		QByteArray id;
 		BufferList data;
 		int bodySize;
 
-		M2PendingOutItem(const QByteArray &_sender, const QByteArray &_id) :
+		M2PendingOutItem(Type _type, const QByteArray &_sender = QByteArray(), const QByteArray &_id = QByteArray()) :
+			type(_type),
 			sender(_sender),
 			id(_id),
 			bodySize(0)
@@ -814,12 +822,12 @@ public:
 			if(!conn->pendingOutItems.isEmpty())
 			{
 				M2PendingOutItem &last = conn->pendingOutItems.last();
-				if(last.sender == packet.sender && last.id == packet.id)
+				if(last.type == M2PendingOutItem::Data && last.sender == packet.sender && last.id == packet.id)
 					item = &last;
 			}
 			if(!item)
 			{
-				conn->pendingOutItems += M2PendingOutItem(packet.sender, packet.id);
+				conn->pendingOutItems += M2PendingOutItem(M2PendingOutItem::Data, packet.sender, packet.id);
 				item = &(conn->pendingOutItems.last());
 			}
 
@@ -828,16 +836,35 @@ public:
 		}
 	}
 
+	void m2_writeOrQueueClose(M2Connection *conn)
+	{
+		if(conn->canWrite() && !conn->waitForAllWritten)
+		{
+			m2_writeClose(conn);
+		}
+		else
+		{
+			conn->pendingOutItems += M2PendingOutItem(M2PendingOutItem::Close);
+		}
+	}
+
 	void m2_tryWriteQueued(M2Connection *conn)
 	{
 		while(!conn->pendingOutItems.isEmpty() && conn->canWrite())
 		{
 			M2PendingOutItem item = conn->pendingOutItems.takeFirst();
-			M2ResponsePacket packet;
-			packet.sender = item.sender;
-			packet.id = item.id;
-			packet.data = item.data.take();
-			m2_writeData(conn, packet, item.bodySize);
+			if(item.type == M2PendingOutItem::Data)
+			{
+				M2ResponsePacket packet;
+				packet.sender = item.sender;
+				packet.id = item.id;
+				packet.data = item.data.take();
+				m2_writeData(conn, packet, item.bodySize);
+			}
+			else if(item.type == M2PendingOutItem::Close)
+			{
+				m2_writeClose(conn);
+			}
 		}
 	}
 
@@ -1390,7 +1417,7 @@ public:
 							}
 							destroySession(s);
 							if(!persistent)
-								m2_writeClose(conn);
+								m2_writeOrQueueClose(conn);
 							return;
 						}
 
@@ -1437,7 +1464,7 @@ public:
 					M2Connection *conn = s->conn;
 					destroySession(s);
 					if(!persistent)
-						m2_writeClose(conn);
+						m2_writeOrQueueClose(conn);
 				}
 			}
 			else // WebSocket
@@ -1528,7 +1555,7 @@ public:
 
 				M2Connection *conn = s->conn;
 				destroySession(s);
-				m2_writeClose(conn);
+				m2_writeOrQueueClose(conn);
 			}
 			else
 				destroySessionAndErrorConnection(s);
@@ -1593,7 +1620,7 @@ public:
 			{
 				M2Connection *conn = s->conn;
 				destroySession(s);
-				m2_writeClose(conn);
+				m2_writeOrQueueClose(conn);
 			}
 		}
 		else
@@ -1947,7 +1974,7 @@ private slots:
 					if(s->downClosed && s->upClosed)
 					{
 						destroySession(s); // we aren't in handoff so this is safe
-						m2_writeClose(conn);
+						m2_writeOrQueueClose(conn);
 					}
 				}
 			}
