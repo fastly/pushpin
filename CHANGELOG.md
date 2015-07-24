@@ -1,6 +1,12 @@
 Pushpin Changelog
 =================
 
+v. 1.5.0 (2015-07-23)
+
+  * replace_beg route parameter.
+  * Fixed bug where non-persistent connections were closed before data sent.
+  * Accept invalid characters in request URIs and URL-encode them.
+
 v. 1.4.0 (2015-07-16)
 
   * Improved handling of streamed input while proxying.
