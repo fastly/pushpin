@@ -87,7 +87,7 @@ Server responds with two messages:
 
     TEXT 5\r\n
     world\r\n
-    TEXT 1B\r\n
+    TEXT 1C\r\n
     here is another nice message\r\n
 
 Gateway relays a close message:
