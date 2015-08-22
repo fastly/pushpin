@@ -177,6 +177,9 @@ static void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *res
 
 		*responseHeaders += HttpHeader("Access-Control-Allow-Origin", origin);
 	}
+
+	if(!responseHeaders->contains("Access-Control-Max-Age"))
+		*responseHeaders += HttpHeader("Access-Control-Max-Age", "3600");
 }
 
 class RequestSession::Private : public QObject

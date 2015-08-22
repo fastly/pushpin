@@ -572,6 +572,9 @@ def apply_cors_headers(request_headers, response_headers):
 			origin = "*"
 		header_set(response_headers, "Access-Control-Allow-Origin", origin)
 
+	if not header_get(response_headers, "Access-Control-Max-Age"):
+		header_set(response_headers, "Access-Control-Max-Age", "3600")
+
 def bind_spec(sock, spec):
 	sock.bind(spec)
 	if spec.startswith('ipc://') and ipc_file_mode is not None:
