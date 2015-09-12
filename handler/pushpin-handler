@@ -1895,7 +1895,10 @@ def timeout_worker():
 			for h in hchannels.values():
 				if h.expire_time and now >= h.expire_time:
 					holds.append(h)
+		holds_by_rid = dict()
 		for h in holds:
+			if h.rid not in holds_by_rid:
+				holds_by_rid[h.rid] = h
 			unsub_list = remove_from_response_channels(h.rid)
 			for sub_key in unsub_list:
 				sub = subs.get(sub_key)
@@ -1904,10 +1907,10 @@ def timeout_worker():
 					sub.expire_time = now + SUBSCRIPTION_LINGER
 		lock.release()
 
-		if len(holds) > 0:
-			logger.debug("timing out %d subscribers" % len(holds))
+		if len(holds_by_rid) > 0:
+			logger.debug("timing out %d subscribers" % len(holds_by_rid))
 
-			for h in holds:
+			for h in holds_by_rid.itervalues():
 				if "code" in h.response:
 					pcode = h.response["code"]
 				else:
