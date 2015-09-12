@@ -5,6 +5,7 @@ bindir = $(prefix)/bin
 libdir = $(prefix)/lib/pushpin
 rundir = $(varprefix)/run/pushpin
 logdir = $(varprefix)/log/pushpin
+version = $(shell sed -e "s/@@DATE@@/`date +%Y%m%d`/g" version)
 
 CHK_DIR_EXISTS  = test -d
 COPY            = cp -f
@@ -18,33 +19,47 @@ STRIP           = strip
 ifdef $($(shell sh ./init.sh))
 endif
 
-all: make-m2adapter make-pushpin-proxy pushpin.inst
+all: make-m2adapter make-pushpin-proxy handler/pushpin-handler.inst pushpin.inst
 
 clean:
 	if [ -f m2adapter/Makefile ]; then cd m2adapter && make clean; fi
+	rm -f m2adapter/version.h
 	if [ -f proxy/Makefile ]; then cd proxy && make clean; fi
+	rm -f proxy/version.h
 
 distclean:
 	if [ -f m2adapter/Makefile ]; then cd m2adapter && make distclean; fi
 	rm -f m2adapter/conf.pri m2adapter/conf.log
+	rm -f m2adapter/version.h
 	if [ -f proxy/Makefile ]; then cd proxy && make distclean; fi
 	rm -f proxy/conf.pri proxy/conf.log
+	rm -f proxy/version.h
+	rm -f handler/pushpin-handler.inst
 	rm -f pushpin.inst
 
-make-m2adapter: m2adapter/Makefile
+make-m2adapter: m2adapter/version.h m2adapter/Makefile
 	cd m2adapter && make
 
-make-pushpin-proxy: proxy/Makefile
+make-pushpin-proxy: proxy/version.h proxy/Makefile
 	cd proxy && make
+
+m2adapter/version.h: version
+	echo "#define VERSION \"$(version)\"" > m2adapter/version.h
 
 m2adapter/Makefile:
 	cd m2adapter && ./configure
 
+proxy/version.h: version
+	echo "#define VERSION \"$(version)\"" > proxy/version.h
+
 proxy/Makefile:
 	cd proxy && ./configure
 
-pushpin.inst: pushpin
-	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin > pushpin.inst && chmod 755 pushpin.inst
+handler/pushpin-handler.inst: handler/pushpin-handler version
+	sed -e "s,^version =.*,version = \"$(version)\",g" handler/pushpin-handler > handler/pushpin-handler.inst && chmod 755 handler/pushpin-handler.inst
+
+pushpin.inst: pushpin version
+	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin | sed -e "s,^version =.*,version = \"$(version)\",g" > pushpin.inst && chmod 755 pushpin.inst
 
 check:
 	cd proxy && make check
@@ -60,9 +75,9 @@ install:
 	-$(STRIP) "$(INSTALL_ROOT)$(bindir)/m2adapter"
 	-$(INSTALL_PROGRAM) proxy/pushpin-proxy "$(INSTALL_ROOT)$(bindir)/pushpin-proxy"
 	-$(STRIP) "$(INSTALL_ROOT)$(bindir)/pushpin-proxy"
-	-$(INSTALL_PROGRAM) handler/pushpin-handler "$(INSTALL_ROOT)$(bindir)/pushpin-handler"
-	-$(INSTALL_PROGRAM) tools/publish "$(INSTALL_ROOT)$(bindir)/pushpin-publish"
+	-$(INSTALL_PROGRAM) handler/pushpin-handler.inst "$(INSTALL_ROOT)$(bindir)/pushpin-handler"
 	-$(INSTALL_PROGRAM) pushpin.inst $(INSTALL_ROOT)$(bindir)/pushpin
+	-$(INSTALL_PROGRAM) tools/publish "$(INSTALL_ROOT)$(bindir)/pushpin-publish"
 	$(COPY) handler/*.py $(INSTALL_ROOT)$(libdir)/handler
 	$(COPY) runner/*.py $(INSTALL_ROOT)$(libdir)/runner
 	$(COPY) runner/*.template $(INSTALL_ROOT)$(configdir)/runner
