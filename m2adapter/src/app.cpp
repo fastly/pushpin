@@ -150,6 +150,7 @@ public:
 	public:
 		enum State
 		{
+			Disabled,
 			Idle,
 			ExpectingResponse
 		};
@@ -161,7 +162,7 @@ public:
 
 		ControlPort() :
 			sock(0),
-			state(Idle),
+			state(Disabled),
 			active(false),
 			reqStartTime(-1)
 		{
@@ -203,14 +204,17 @@ public:
 		int identIndex;
 		QByteArray id;
 		int confirmedBytesWritten;
-		int packetsPending;
+		int packetsPending; // count of packets sent to m2 not yet ack'd
 		Session *session;
 		bool isNew;
 		LayerTracker bodyTracker;
 		LayerTracker packetTracker;
-		QList<M2PendingOutItem> pendingOutItems;
+		QList<M2PendingOutItem> pendingOutItems; // packets yet to send
 		bool flowControl;
 		bool waitForAllWritten;
+		bool outCreditsEnabled;
+		int outCredits;
+		quint64 subIdBase;
 
 		M2Connection() :
 			confirmedBytesWritten(0),
@@ -218,13 +222,32 @@ public:
 			session(0),
 			isNew(false),
 			flowControl(false),
-			waitForAllWritten(false)
+			waitForAllWritten(false),
+			outCreditsEnabled(false),
+			outCredits(0),
+			subIdBase(0)
 		{
 		}
 
 		bool canWrite() const
 		{
-			return (!flowControl || packetsPending < M2_PENDING_MAX);
+			if(!flowControl)
+				return true;
+
+			if(outCreditsEnabled)
+			{
+				if(outCredits > 0)
+					return true;
+			}
+			else
+			{
+				// if we aren't using outCredits, then limit pending packets
+				//   to hardcoded m2 value
+				if(packetsPending < M2_PENDING_MAX)
+					return true;
+			}
+
+			return false;
 		}
 	};
 
@@ -796,6 +819,9 @@ public:
 	// bodySize = packet.data.size() - framing overhead
 	void m2_writeData(M2Connection *conn, const M2ResponsePacket &packet, int bodySize)
 	{
+		if(conn->outCreditsEnabled)
+			conn->outCredits -= packet.data.size();
+
 		if(conn->flowControl)
 		{
 			conn->bodyTracker.addPlain(bodySize);
@@ -1339,7 +1365,7 @@ public:
 					if(firstDataPacket)
 					{
 						// use flow control if the control port works and the response is more than one packet
-						if(controlPorts[s->conn->identIndex].active && zresp.more)
+						if((s->conn->outCreditsEnabled || controlPorts[s->conn->identIndex].active) && zresp.more)
 							s->conn->flowControl = true;
 						else
 							s->conn->flowControl = false;
@@ -1477,7 +1503,10 @@ public:
 				if(!s->sentResponseHeader)
 				{
 					s->sentResponseHeader = true;
-					s->conn->flowControl = controlPorts[s->conn->identIndex].active;
+					if(s->conn->outCreditsEnabled || controlPorts[s->conn->identIndex].active)
+						s->conn->flowControl = true;
+					else
+						s->conn->flowControl = false;
 
 					HttpHeaders headers = zresp.headers;
 					QList<QByteArray> connHeaders = headers.takeAll("Connection");
@@ -1711,18 +1740,64 @@ private slots:
 			conn->identIndex = index;
 			conn->id = mreq.id;
 
-			// if we were in the middle of requesting control info when this
-			//   http request arrived, then there's a chance the control
-			//   response won't account for this request (for example if the
-			//   control response was generated and was in the middle of being
-			//   delivered when this http request arrived). we'll flag the
-			//   connection as "new" in this case, so in the control response
-			//   handler we know to skip over it until the next control
-			//   request.
-			if(controlPorts[index].state == ControlPort::ExpectingResponse)
-				conn->isNew = true;
+			if(mreq.downloadCredits >= 0)
+			{
+				if(controlPorts[index].state != ControlPort::Disabled)
+				{
+					log_error("m2: request id=%s uses download credits but control port is activated, skipping", mreq.id.data());
+					m2_writeCtlCancel(mreq.sender, mreq.id);
+					return;
+				}
+
+				conn->outCreditsEnabled = true;
+				conn->outCredits += mreq.downloadCredits;
+			}
+			else
+			{
+				if(controlPorts[index].state == ControlPort::Disabled)
+				{
+					// activate the control port, but only if there are no other requests yet
+
+					// NOTE: technically we only need to check that there are no requests
+					//   from the same sender, not all senders, but this is such an edge
+					//   case that it doesn't matter much
+					if(!m2ConnectionsByRid.isEmpty())
+					{
+						log_error("m2: request id=%s unexpectedly doesn't use download credits, skipping", mreq.id.data());
+						m2_writeCtlCancel(mreq.sender, mreq.id);
+						return;
+					}
+
+					log_debug("activating control port index=%d", index);
+					controlPorts[index].state = ControlPort::Idle;
+				}
+
+				// if we were in the middle of requesting control info when this
+				//   http request arrived, then there's a chance the control
+				//   response won't account for this request (for example if the
+				//   control response was generated and was in the middle of being
+				//   delivered when this http request arrived). we'll flag the
+				//   connection as "new" in this case, so in the control response
+				//   handler we know to skip over it until the next control
+				//   request.
+				if(controlPorts[index].state == ControlPort::ExpectingResponse)
+					conn->isNew = true;
+			}
 
 			m2ConnectionsByRid.insert(m2Rid, conn);
+		}
+		else
+		{
+			// if packet contained credits, handle them now
+			if(mreq.downloadCredits > 0)
+			{
+				conn->outCredits += mreq.downloadCredits;
+				handleConnectionBytesWritten(conn, mreq.downloadCredits, true);
+			}
+
+			// if the packet only held credits, then there's nothing else to do
+			if(mreq.type == M2RequestPacket::Credits)
+				return;
 		}
 
 		bool requestBodyMore = false;
@@ -1797,7 +1872,7 @@ private slots:
 			s->conn = conn;
 			s->conn->session = s;
 			s->lastActive = time.elapsed();
-			s->id = m2_send_idents[conn->identIndex] + '_' + conn->id;
+			s->id = m2_send_idents[conn->identIndex] + '_' + conn->id + '_' + QByteArray::number((conn->subIdBase)++, 16);
 			s->method = mreq.method;
 
 			if(mreq.type == M2RequestPacket::HttpRequest)
@@ -2062,6 +2137,9 @@ private slots:
 		for(int n = 0; n < controlPorts.count(); ++n)
 		{
 			ControlPort &c = controlPorts[n];
+
+			if(c.state == ControlPort::Disabled)
+				continue;
 
 			// if idle or expired, make request
 			if(c.state == ControlPort::Idle || (c.state == ControlPort::ExpectingResponse && c.reqStartTime + CONTROL_REQUEST_EXPIRE <= now))
