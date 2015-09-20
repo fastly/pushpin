@@ -17,11 +17,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+default_libdir = None
+version = 'unknown-version'
+
 import sys
 import os
 import ConfigParser
-
-version = 'unknown-version'
 
 config_file = "/etc/pushpin/pushpin.conf"
 log_file = None
@@ -67,7 +68,7 @@ class ConfigWithInclude(object):
 
 config = ConfigWithInclude(config_file)
 
-libdir = None
+libdir = default_libdir
 if config.has_option("global", "libdir"):
 	libdir = config.get("global", "libdir")
 

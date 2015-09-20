@@ -56,10 +56,10 @@ proxy/Makefile:
 	cd proxy && ./configure
 
 handler/pushpin-handler.inst: handler/pushpin-handler version
-	sed -e "s,^version =.*,version = \"$(version)\",g" handler/pushpin-handler > handler/pushpin-handler.inst && chmod 755 handler/pushpin-handler.inst
+	sed -e "s,^default_libdir = .*,default_libdir = \'$(libdir)\',g" handler/pushpin-handler | sed -e "s,^version =.*,version = \'$(version)\',g" > handler/pushpin-handler.inst && chmod 755 handler/pushpin-handler.inst
 
 pushpin.inst: pushpin version
-	sed -e "s,^default_config_dir =.*,default_config_dir = \"$(configdir)\",g" pushpin | sed -e "s,^version =.*,version = \"$(version)\",g" > pushpin.inst && chmod 755 pushpin.inst
+	sed -e "s,^default_libdir = .*,default_libdir = \'$(libdir)\',g" pushpin | sed -e "s,^default_configdir =.*,default_configdir = \"$(configdir)\",g" | sed -e "s,^version =.*,version = \"$(version)\",g" > pushpin.inst && chmod 755 pushpin.inst
 
 check:
 	cd proxy && make check
