@@ -781,7 +781,7 @@ private slots:
 	void wsControl_sendEventReceived(const QByteArray &contentType, const QByteArray &message)
 	{
 		// only send if we can, otherwise drop
-		if(inSock && inSock->state() != WebSocket::Closing && inSock->canWrite())
+		if(inSock && inSock->canWrite())
 		{
 			if(contentType == "binary")
 				inSock->writeFrame(WebSocket::Frame(WebSocket::Frame::Binary, message, false));

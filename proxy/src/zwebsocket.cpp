@@ -253,6 +253,9 @@ public:
 
 	void writeFrame(const Frame &frame)
 	{
+		// FIXME: consider removing this assert. due to async signals,
+		//   the only way for the user to fully avoid it is by checking
+		//   canWrite() beforehand which is burdensome
 		assert(state == Connected || state == ConnectedPeerClosed);
 		outFrames += frame;
 		update();
@@ -1099,7 +1102,7 @@ int ZWebSocket::framesAvailable() const
 
 bool ZWebSocket::canWrite() const
 {
-	return (writeBytesAvailable() > 0);
+	return ((d->state == Private::Connected || d->state == Private::ConnectedPeerClosed) && writeBytesAvailable() > 0);
 }
 
 int ZWebSocket::writeBytesAvailable() const
