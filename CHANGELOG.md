@@ -1,6 +1,16 @@
 Pushpin Changelog
 =================
 
+v. 1.6.0 (2015-09-24)
+
+  * Fix rare assert when publishing to a WebSocket.
+  * Remove libdir from pushpin.conf.
+  * Mongrel2: use download flow control.
+  * Mongrel2: enable relaxed parsing.
+  * Auto Cross-Origin: include Access-Control-Max-Age.
+  * Throw error if can't create runtime directories on startup.
+  * Various cleanups.
+
 v. 1.5.0 (2015-07-23)
 
   * replace_beg route parameter.
