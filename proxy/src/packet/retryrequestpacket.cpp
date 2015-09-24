@@ -103,15 +103,15 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 			}
 		}
 
-		if(!vrequest.contains("in-seq") || vrequest["in-seq"].type() != QVariant::Int)
+		if(!vrequest.contains("in-seq") || !vrequest["in-seq"].canConvert(QVariant::Int))
 			return false;
 		r.inSeq = vrequest["in-seq"].toInt();
 
-		if(!vrequest.contains("out-seq") || vrequest["out-seq"].type() != QVariant::Int)
+		if(!vrequest.contains("out-seq") || !vrequest["out-seq"].canConvert(QVariant::Int))
 			return false;
 		r.outSeq = vrequest["out-seq"].toInt();
 
-		if(!vrequest.contains("out-credits") || vrequest["out-credits"].type() != QVariant::Int)
+		if(!vrequest.contains("out-credits") || !vrequest["out-credits"].canConvert(QVariant::Int))
 			return false;
 		r.outCredits = vrequest["out-credits"].toInt();
 

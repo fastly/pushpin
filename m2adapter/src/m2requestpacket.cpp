@@ -58,6 +58,7 @@ M2RequestPacket::M2RequestPacket() :
 	uploadDone(false),
 	uploadStreamOffset(-1),
 	uploadStreamDone(false),
+	downloadCredits(-1),
 	frameFlags(0)
 {
 }
@@ -222,6 +223,9 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 
 	QByteArray m2method = m2headers.value("METHOD");
 
+	if(m2headers.contains("DOWNLOAD_CREDITS"))
+		downloadCredits = m2headers.value("DOWNLOAD_CREDITS").toInt();
+
 	if(m2method == "JSON")
 	{
 		QJson::Parser parser;
@@ -237,10 +241,14 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 			return false;
 
 		QString jtype = data["type"].toString();
-		if(jtype != "disconnect")
+
+		if(jtype == "disconnect")
+			type = Disconnect;
+		else if(jtype == "credits")
+			type = Credits;
+		else
 			return false;
 
-		type = Disconnect;
 		return true;
 	}
 

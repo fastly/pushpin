@@ -32,7 +32,8 @@ public:
 		HttpRequest,
 		WebSocketHandshake, // body will contain accept token
 		WebSocketFrame,
-		Disconnect
+		Disconnect,
+		Credits
 	};
 
 	QByteArray sender;
@@ -53,6 +54,8 @@ public:
 
 	int uploadStreamOffset;
 	bool uploadStreamDone;
+
+	int downloadCredits;
 
 	int frameFlags;
 

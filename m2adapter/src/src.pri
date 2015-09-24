@@ -30,6 +30,7 @@ SOURCES += \
 HEADERS += \
 	$$PWD/m2requestpacket.h \
 	$$PWD/m2responsepacket.h \
+	$$PWD/../version.h \
 	$$PWD/app.h
 
 SOURCES += \

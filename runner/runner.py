@@ -1,7 +1,15 @@
 import os
+import errno
 import ConfigParser
 from processmanager import ProcessManager
 import services
+
+def trymakedir(dir):
+	try:
+		os.makedirs(dir)
+	except OSError as e:
+		if e.errno != errno.EEXIST:
+			raise
 
 def run(exedir, config_file, verbose):
 	config = ConfigParser.ConfigParser()
@@ -50,14 +58,8 @@ def run(exedir, config_file, verbose):
 		handlerbin = path
 
 	# make run/log dirs if needed. don't fail if dirs already exist
-	try:
-		os.makedirs(rundir)
-	except:
-		pass
-	try:
-		os.makedirs(logdir)
-	except:
-		pass
+	trymakedir(rundir)
+	trymakedir(logdir)
 
 	service_objs = list()
 

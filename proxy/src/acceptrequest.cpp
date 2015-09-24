@@ -170,7 +170,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 
 		if(vresponse.contains("code"))
 		{
-			if(vresponse["code"].type() != QVariant::Int)
+			if(!vresponse["code"].canConvert(QVariant::Int))
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();

@@ -17,11 +17,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+default_libdir = None
+version = 'unknown-version'
+
 import sys
 import os
 import ConfigParser
-
-version = '1.5.0'
 
 config_file = "/etc/pushpin/pushpin.conf"
 log_file = None
@@ -67,7 +68,7 @@ class ConfigWithInclude(object):
 
 config = ConfigWithInclude(config_file)
 
-libdir = None
+libdir = default_libdir
 if config.has_option("global", "libdir"):
 	libdir = config.get("global", "libdir")
 
@@ -571,6 +572,9 @@ def apply_cors_headers(request_headers, response_headers):
 		if not origin:
 			origin = "*"
 		header_set(response_headers, "Access-Control-Allow-Origin", origin)
+
+	if not header_get(response_headers, "Access-Control-Max-Age"):
+		header_set(response_headers, "Access-Control-Max-Age", "3600")
 
 def bind_spec(sock, spec):
 	sock.bind(spec)
@@ -1892,7 +1896,10 @@ def timeout_worker():
 			for h in hchannels.values():
 				if h.expire_time and now >= h.expire_time:
 					holds.append(h)
+		holds_by_rid = dict()
 		for h in holds:
+			if h.rid not in holds_by_rid:
+				holds_by_rid[h.rid] = h
 			unsub_list = remove_from_response_channels(h.rid)
 			for sub_key in unsub_list:
 				sub = subs.get(sub_key)
@@ -1901,10 +1908,10 @@ def timeout_worker():
 					sub.expire_time = now + SUBSCRIPTION_LINGER
 		lock.release()
 
-		if len(holds) > 0:
-			logger.debug("timing out %d subscribers" % len(holds))
+		if len(holds_by_rid) > 0:
+			logger.debug("timing out %d subscribers" % len(holds_by_rid))
 
-			for h in holds:
+			for h in holds_by_rid.itervalues():
 				if "code" in h.response:
 					pcode = h.response["code"]
 				else:
