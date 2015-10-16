@@ -34,6 +34,8 @@ parser.add_argument('--spec', default='tcp://localhost:5560',
 	help='zmq PUSH spec. default tcp://localhost:5560')
 parser.add_argument('--close', action='store_true',
 	help='close streaming requests')
+parser.add_argument('--sender',
+	help='sender meta value')
 args = parser.parse_args()
 
 headers = []
@@ -42,6 +44,7 @@ if args.header:
 		k, v = h.split(':')
 		headers.append([k, v.lstrip()])
 
+meta = dict()
 formats = dict()
 
 if args.content:
@@ -64,10 +67,16 @@ if not formats:
 	print 'error: nothing to send'
 	sys.exit(1)
 
+if args.sender:
+	meta['sender'] = args.sender
+
 item = {
 	'channel': args.channel,
 	'formats': formats
 }
+
+if meta:
+	item['meta'] = meta
 
 ctx = zmq.Context()
 sock = ctx.socket(zmq.PUSH)

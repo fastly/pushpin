@@ -210,6 +210,8 @@ class Hold(object):
 		self.grip_keep_alive = None
 		self.grip_keep_alive_timeout = None
 		self.last_send = None
+		self.meta = {}
+		self.channel_filters = {} # k=channel, v=filters
 
 class WsSession(object):
 	def __init__(self, cid):
@@ -217,6 +219,8 @@ class WsSession(object):
 		self.expire_time = None
 		self.channel_prefix = None
 		self.sid = None
+		self.meta = {}
+		self.channel_filters = {} # k=channel, v=filters
 
 class Subscription(object):
 	def __init__(self, mode, channel):
@@ -306,6 +310,27 @@ def remove_from_response_channels(rid):
 def remove_from_stream_channels(rid):
 	return remove_from_req_channels(rid, response=False, stream=True)
 
+def param_get(params, name):
+	if isinstance(params, list):
+		for i in params:
+			if i[0] == name:
+				return i[1]
+		return None
+	else:
+		return params.get(name)
+
+# return list of strings
+def param_get_all(params, name):
+	pvals = list()
+	if isinstance(params, list):
+		for i in params:
+			if i[0] == name:
+				pvals.append(i[1])
+	else:
+		if name in params:
+			pvals.append(params[name])
+	return pvals
+
 def headernames_contains(headers, name):
 	lname = name.lower()
 	for i in headers:
@@ -370,13 +395,10 @@ def header_names_contains(header_names, name):
 			return True
 	return False
 
-# return (initial value, params dict)
-def _parse_header_params(value):
-	parts = value.split(';')
-	v = parts[0].strip()
-	params = dict()
-	for n in range(1, len(parts)):
-		part = parts[n].strip()
+def _parse_header_params(parts):
+	params = {}
+	for part in parts:
+		part = part.strip()
 		at = part.find('=')
 		if at != -1:
 			pname = part[:at]
@@ -386,21 +408,70 @@ def _parse_header_params(value):
 			pval = None
 		if pname:
 			params[pname] = pval
-	return (v, params)
+	return params
+
+def _parse_header_params_ordered(parts):
+	params = []
+	for part in parts:
+		part = part.strip()
+		at = part.find('=')
+		if at != -1:
+			pname = part[:at]
+			pval = part[at + 1:]
+		else:
+			pname = part
+			pval = None
+		if pname:
+			params.append((pname, pval))
+	return params
+
+# return (k, v)
+def _parse_header_as_param(value):
+	at = value.find('=')
+	if at != -1:
+		return (value[:at], value[at + 1:])
+	else:
+		return (value, None)
+
+# return (initial value, params dict)
+def _parse_header_with_params(value):
+	parts = value.split(';')
+	return (parts[0].strip(), _parse_header_params(parts[1:]))
+
+# return (initial value, params list)
+def _parse_header_with_params_ordered(value):
+	parts = value.split(';')
+	return (parts[0].strip(), _parse_header_params_ordered(parts[1:]))
 
 # return (initial value, params dict) or None
 def header_get_parsed(headers, name):
 	h = header_get(headers, name)
 	if h is None:
 		return None
-	return _parse_header_params(h)
+	return _parse_header_with_params(h)
 
 # return list of (initial value, params dict)
 def header_get_all_parsed(headers, name):
 	out = list()
 	hlist = header_get_all(headers, name)
 	for h in hlist:
-		out.append(_parse_header_params(h))
+		out.append(_parse_header_with_params(h))
+	return out
+
+# return list of (initial value, params list)
+def header_get_all_parsed_ordered(headers, name):
+	out = list()
+	hlist = header_get_all(headers, name)
+	for h in hlist:
+		out.append(_parse_header_with_params_ordered(h))
+	return out
+
+def header_get_all_as_param(headers, name):
+	out = dict()
+	hlist = header_get_all(headers, name)
+	for h in hlist:
+		k, v = _parse_header_as_param(h)
+		out[k] = v
 	return out
 
 HTTP_FORMAT = "HTTP/1.1 %(code)s %(status)s\r\n%(headers)s\r\n\r\n%(body)s"
@@ -653,6 +724,17 @@ def json_patch(data, ops):
 			raise ValueError('unsupported op: %s' % otype)
 	return out
 
+# return True to send and False to drop.
+# TODO: support more than one filter, payload modification, etc
+def apply_filters(sub_meta, pub_meta, filters):
+	for f in filters:
+		if f == 'skip-self':
+			user = sub_meta.get('user')
+			sender = pub_meta.get('sender')
+			if user and sender and sender == user:
+				return False
+	return True
+
 def session_detect_rules_set(state_rpc, rules):
 	rule_data_list = list()
 	for r in rules:
@@ -886,17 +968,19 @@ def accept_worker():
 			grip_hold = header_get_parsed(resp_headers, 'Grip-Hold')
 			if grip_hold:
 				mode = grip_hold[0]
-			grip_channels = header_get_all_parsed(resp_headers, 'Grip-Channel')
+			grip_channels = header_get_all_parsed_ordered(resp_headers, 'Grip-Channel')
 			if grip_channels:
 				for c in grip_channels:
 					name = channel_prefix + c[0]
-					prev_id = c[1].get('prev-id')
-					channels.append((name, prev_id))
+					prev_id = param_get(c[1], 'prev-id')
+					filters = param_get_all(c[1], 'filter')
+					channels.append((name, prev_id, filters))
 			grip_timeout = header_get_parsed(resp_headers, 'Grip-Timeout')
 			if grip_timeout:
 				timeout = int(grip_timeout[0])
 			grip_expose_headers = header_get_all(resp_headers, 'Grip-Expose-Headers')
 			grip_keep_alive = header_get_parsed(resp_headers, 'Grip-Keep-Alive')
+			grip_meta = header_get_all_as_param(resp_headers, "Grip-Set-Meta")
 			keep_alive = None
 			keep_alive_timeout = None
 			if grip_keep_alive:
@@ -922,6 +1006,10 @@ def accept_worker():
 				else:
 					keep_alive_timeout = 55
 
+			meta = {}
+			if grip_meta:
+				meta = grip_meta
+
 			instruct = None
 			ctype = header_get_parsed(resp_headers, 'Content-Type')
 			if ctype and ctype[0] == 'application/grip-instruct':
@@ -935,7 +1023,10 @@ def accept_worker():
 				for hc in hold['channels']:
 					name = channel_prefix + hc['name']
 					prev_id = hc.get('prev-id')
-					channels.append((name, prev_id))
+					filters = hc.get('filters', [])
+					if not isinstance(filters, list):
+						raise ValueError('filters on channel must be a list')
+					channels.append((name, prev_id, filters))
 				if 'timeout' in hold:
 					timeout = int(hold['timeout'])
 				if 'keep-alive' in hold:
@@ -945,6 +1036,8 @@ def accept_worker():
 					else:
 						keep_alive = ka['content'].encode('utf-8')
 					keep_alive_timeout = int(ka['timeout'])
+				if 'meta' in hold:
+					meta = hold['meta']
 				response = instruct.get('response')
 				if response is None:
 					response = dict()
@@ -1013,15 +1106,17 @@ def accept_worker():
 			h.grip_keep_alive = keep_alive
 			h.grip_keep_alive_timeout = keep_alive_timeout
 			h.last_send = now
+			h.meta = meta
 
 			notify_subs = set()
 			if mode == "response":
 				# bind channels
 				quit = False
 				lock.acquire()
-				for channel, prev_id in channels:
+				for channel, prev_id, filters in channels:
 					logger.debug("adding response hold on %s" % channel)
 					h.expire_time = int(time.time()) + timeout
+					h.channel_filters[channel] = filters
 					if prev_id is not None:
 						last_id = response_lastids.get(channel)
 						if last_id is not None and last_id != prev_id:
@@ -1102,8 +1197,9 @@ def accept_worker():
 
 				# bind channels
 				lock.acquire()
-				for channel, prev_id in channels:
+				for channel, prev_id, filters in channels:
 					logger.debug("adding stream hold on %s" % channel)
+					h.channel_filters[channel] = filters
 					hchannel = stream_channels.get(channel)
 					if not hchannel:
 						hchannel = dict()
@@ -1249,6 +1345,12 @@ def push_in_http_handler(context, m):
 
 			out["formats"] = convformats
 
+			meta = i.get("meta")
+			if meta is not None:
+				if not isinstance(meta, dict):
+					raise ValueError('meta must be a dict')
+				out["meta"] = ensure_utf8(meta)
+
 			out_sock.send(tnetstring.dumps(out))
 		except Exception as e:
 			logger.debug("failed to process item: %s", e.message)
@@ -1297,6 +1399,7 @@ def push_in_worker(c):
 		channel = m["channel"]
 		id = m.get("id", None)
 		formats = m["formats"]
+		meta = m.get("meta", {})
 
 		response_holds = list()
 		stream_holds = list()
@@ -1308,13 +1411,18 @@ def push_in_worker(c):
 			lock.acquire()
 			hchannel = response_channels.get(channel)
 			if hchannel:
-				response_holds = hchannel.values()
+				all_response_holds = hchannel.values()
 				unsubs = set()
-				for h in response_holds:
+				skipped_some = False
+				for h in all_response_holds:
+					if not apply_filters(h.meta, meta, h.channel_filters[channel]):
+						skipped_some = True
+						continue
+					response_holds.append(h)
 					unsub_list = remove_from_response_channels(h.rid)
 					for sub_key in unsub_list:
 						unsubs.add(sub_key)
-				assert(channel not in response_channels)
+				assert(skipped_some or channel not in response_channels)
 				for sub_key in unsubs:
 					sub = subs.get(sub_key)
 					if sub and sub.expire_time is None:
@@ -1337,19 +1445,24 @@ def push_in_worker(c):
 			lock.acquire()
 			hchannel = stream_channels.get(channel)
 			if hchannel:
-				stream_holds = hchannel.values()
-				if do_close:
-					unsubs = set()
-					for h in stream_holds:
+				all_stream_holds = hchannel.values()
+				unsubs = set()
+				skipped_some = False
+				for h in all_stream_holds:
+					if not apply_filters(h.meta, meta, h.channel_filters[channel]):
+						skipped_some = True
+						continue
+					stream_holds.append(h)
+					if do_close:
 						unsub_list = remove_from_stream_channels(h.rid)
 						for sub_key in unsub_list:
 							unsubs.add(sub_key)
-					assert(channel not in stream_channels)
-					for sub_key in unsubs:
-						sub = subs.get(sub_key)
-						if sub:
-							del subs[sub_key]
-							notify_unsubs.add(sub_key)
+				assert(not do_close or skipped_some or channel not in stream_channels)
+				for sub_key in unsubs:
+					sub = subs.get(sub_key)
+					if sub:
+						del subs[sub_key]
+						notify_unsubs.add(sub_key)
 			lock.release()
 			stats_lock.acquire()
 			for h in stream_holds:
@@ -1363,6 +1476,8 @@ def push_in_worker(c):
 			hchannel = ws_channels.get(channel)
 			if hchannel:
 				for cid, sess in hchannel.iteritems():
+					if not apply_filters(sess.meta, meta, sess.channel_filters[channel]):
+						continue
 					ws_cids.append(cid)
 					if sess.sid:
 						sids.add(sess.sid)
@@ -1783,16 +1898,33 @@ def ws_control_worker():
 					gm = json.loads(item['message'])
 					gtype = gm['type']
 					channel = None
+					filters = []
 					sid = None
+					name = None
+					value = None
 					if gtype == 'subscribe' or gtype == 'unsubscribe':
 						channel = gm['channel']
 						if not isinstance(channel, basestring) or len(channel) < 1:
 							raise ValueError('invalid channel')
+						if gtype == 'subscribe':
+							filters = gm.get('filters', [])
+							if not isinstance(filters, list):
+								raise ValueError('invalid filters')
+							for f in filters:
+								if not isinstance(f, basestring):
+									raise ValueError('invalid filters')
 					elif gtype == 'session':
 						sid = gm['id']
 						if not isinstance(sid, basestring) or len(sid) < 1:
 							raise ValueError('invalid id')
 						sid = ensure_utf8(sid)
+					elif gtype == 'set-meta':
+						name = gm['name']
+						if not isinstance(name, basestring) or len(name) < 1:
+							raise ValueError('invalid meta name')
+						value = gm.get('value')
+						if value is not None and not isinstance(value, basestring):
+							raise ValueError('invalid meta value')
 				except:
 					gm = None
 
@@ -1808,6 +1940,7 @@ def ws_control_worker():
 						if channel is not None and s.channel_prefix:
 							channel = s.channel_prefix + channel
 						if gtype == 'subscribe':
+							s.channel_filters[channel] = filters
 							hchannel = ws_channels.get(channel)
 							if not hchannel:
 								hchannel = dict()
@@ -1822,6 +1955,8 @@ def ws_control_worker():
 								notify_sub = True
 							sub.expire_time = None
 						elif gtype == 'unsubscribe':
+							if channel in s.channel_filters:
+								del s.channel_filters[channel]
 							hchannel = ws_channels.get(channel)
 							if hchannel:
 								if cid in hchannel:
@@ -1838,6 +1973,11 @@ def ws_control_worker():
 						elif gtype == 'session':
 							s.sid = sid
 							save_sid = True
+						elif gtype == 'set-meta':
+							if not value and name in s.meta:
+								del s.meta[name]
+							elif value:
+								s.meta[name] = value
 					lock.release()
 
 				if state_rpc and save_sid:
