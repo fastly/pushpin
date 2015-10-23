@@ -637,6 +637,20 @@ private slots:
 				emit q->error();
 				return;
 			}
+
+			// strip private headers from the initial response
+			responseData.headers.removeAll("Content-Length");
+			responseData.headers.removeAll("Content-Type");
+			responseData.headers.removeAll("Keep-Alive-Interval");
+			for(int n = 0; n < responseData.headers.count(); ++n)
+			{
+				const HttpHeader &h = responseData.headers[n];
+				if(h.first.size() >= 10 && qstrnicmp(h.first.data(), "Set-Meta-", 9) == 0)
+				{
+					responseData.headers.removeAt(n);
+					--n; // adjust position
+				}
+			}
 		}
 
 		if(disconnecting)
