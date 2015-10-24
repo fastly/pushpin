@@ -166,41 +166,45 @@ static QHash<QByteArray, QByteArray> parseParams(const QByteArray &in, bool *ok 
 	return out;
 }
 
-static HttpExtension getExtension(const QList<QByteArray> &extStrings, const QByteArray &name)
+static QByteArray getExtensionRaw(const QList<QByteArray> &extStrings, const QByteArray &name)
 {
 	foreach(const QByteArray &ext, extStrings)
 	{
-		bool found = false;
 		int at = ext.indexOf(';');
 		if(at != -1)
 		{
 			if(ext.mid(0, at).trimmed() == name)
-				found = true;
+				return ext;
 		}
 		else
 		{
 			if(ext == name)
-				found = true;
-		}
-
-		if(found)
-		{
-			HttpExtension e;
-			e.name = name;
-
-			if(at != -1)
-			{
-				bool ok;
-				e.params = parseParams(ext.mid(at + 1), &ok);
-				if(!ok)
-					return HttpExtension();
-			}
-
-			return e;
+				return ext;
 		}
 	}
 
-	return HttpExtension();
+	return QByteArray();
+}
+
+static HttpExtension getExtension(const QList<QByteArray> &extStrings, const QByteArray &name)
+{
+	QByteArray ext = getExtensionRaw(extStrings, name);
+	if(ext.isNull())
+		return HttpExtension();
+
+	HttpExtension e;
+	e.name = name;
+
+	int at = ext.indexOf(';');
+	if(at != -1)
+	{
+		bool ok;
+		e.params = parseParams(ext.mid(at + 1), &ok);
+		if(!ok)
+			return HttpExtension();
+	}
+
+	return e;
 }
 
 class WsProxySession::Private : public QObject
@@ -659,13 +663,21 @@ private slots:
 		{
 			if(!grip.isNull())
 			{
-				if(grip.params.contains("message-prefix"))
-					messagePrefix = grip.params.value("message-prefix");
-				else
-					messagePrefix = "m:";
+				if(!passToUpstream)
+				{
+					if(grip.params.contains("message-prefix"))
+						messagePrefix = grip.params.value("message-prefix");
+					else
+						messagePrefix = "m:";
 
-				acceptGripMessages = true;
-				log_debug("wsproxysession: %p grip enabled, message-prefix=[%s]", q, messagePrefix.data());
+					acceptGripMessages = true;
+					log_debug("wsproxysession: %p grip enabled, message-prefix=[%s]", q, messagePrefix.data());
+				}
+				else
+				{
+					// tell upstream to do the grip stuff
+					headers += HttpHeader("Sec-WebSocket-Extensions", getExtensionRaw(wsExtensions, "grip"));
+				}
 			}
 
 			if(wsControlManager)
