@@ -285,6 +285,22 @@ public:
 
 		DomainMap::Target target = targets.takeFirst();
 
+		if(target.overHttp)
+		{
+			// don't forward WOH requests from client unless trusted
+
+			QByteArray contentType = requestData.headers.get("Content-Type");
+			int at = contentType.indexOf(';');
+			if(at != -1)
+				contentType.truncate(at);
+
+			if(contentType == "application/websocket-events" && !passToUpstream)
+			{
+				rejectAll(502, "Bad Gateway", "Error while proxying to origin.");
+				return;
+			}
+		}
+
 		QUrl uri = requestData.uri;
 		if(target.ssl)
 			uri.setScheme("https");
