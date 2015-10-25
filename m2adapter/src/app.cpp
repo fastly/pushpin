@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2014 Fanout, Inc.
+ * Copyright (C) 2013-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1006,7 +1006,7 @@ public:
 			ids += id;
 
 			M2Connection *conn = m2ConnectionsByRid.value(Rid(m2_send_idents[index], id));
-			if(!conn || !conn->flowControl)
+			if(!conn || !conn->flowControl || conn->outCreditsEnabled)
 				continue;
 
 			if(bytes_written > conn->confirmedBytesWritten)
@@ -1742,13 +1742,6 @@ private slots:
 
 			if(mreq.downloadCredits >= 0)
 			{
-				if(controlPorts[index].state != ControlPort::Disabled)
-				{
-					log_error("m2: request id=%s uses download credits but control port is activated, skipping", mreq.id.data());
-					m2_writeCtlCancel(mreq.sender, mreq.id);
-					return;
-				}
-
 				conn->outCreditsEnabled = true;
 				conn->outCredits += mreq.downloadCredits;
 			}
@@ -1756,18 +1749,6 @@ private slots:
 			{
 				if(controlPorts[index].state == ControlPort::Disabled)
 				{
-					// activate the control port, but only if there are no other requests yet
-
-					// NOTE: technically we only need to check that there are no requests
-					//   from the same sender, not all senders, but this is such an edge
-					//   case that it doesn't matter much
-					if(!m2ConnectionsByRid.isEmpty())
-					{
-						log_error("m2: request id=%s unexpectedly doesn't use download credits, skipping", mreq.id.data());
-						m2_writeCtlCancel(mreq.sender, mreq.id);
-						return;
-					}
-
 					log_debug("activating control port index=%d", index);
 					controlPorts[index].state = ControlPort::Idle;
 				}
@@ -1789,7 +1770,7 @@ private slots:
 		else
 		{
 			// if packet contained credits, handle them now
-			if(mreq.downloadCredits > 0)
+			if(conn->outCreditsEnabled && mreq.downloadCredits > 0)
 			{
 				conn->outCredits += mreq.downloadCredits;
 				handleConnectionBytesWritten(conn, mreq.downloadCredits, true);
@@ -2096,7 +2077,26 @@ private slots:
 
 			handleControlResponse(index, data);
 
-			c.state = ControlPort::Idle;
+			bool needControlPort = false;
+			QHashIterator<Rid, M2Connection*> it(m2ConnectionsByRid);
+			while(it.hasNext())
+			{
+				it.next();
+				M2Connection *conn = it.value();
+				if(!conn->outCreditsEnabled)
+					needControlPort = true;
+			}
+
+			if(needControlPort)
+			{
+				c.state = ControlPort::Idle;
+			}
+			else
+			{
+				log_debug("deactivating control port index=%d", index);
+				c.state = ControlPort::Disabled;
+			}
+
 			c.reqStartTime = -1;
 		}
 	}
