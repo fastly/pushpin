@@ -157,13 +157,13 @@ public:
 
 		QZmq::Socket *sock;
 		State state;
-		bool active;
+		bool works;
 		int reqStartTime;
 
 		ControlPort() :
 			sock(0),
 			state(Disabled),
-			active(false),
+			works(false),
 			reqStartTime(-1)
 		{
 		}
@@ -822,15 +822,12 @@ public:
 		if(conn->outCreditsEnabled)
 			conn->outCredits -= packet.data.size();
 
-		if(conn->flowControl)
-		{
-			conn->bodyTracker.addPlain(bodySize);
-			conn->bodyTracker.specifyEncoded(packet.data.size(), bodySize);
+		conn->bodyTracker.addPlain(bodySize);
+		conn->bodyTracker.specifyEncoded(packet.data.size(), bodySize);
 
-			++(conn->packetsPending);
-			conn->packetTracker.addPlain(1);
-			conn->packetTracker.specifyEncoded(packet.data.size(), 1);
-		}
+		++(conn->packetsPending);
+		conn->packetTracker.addPlain(1);
+		conn->packetTracker.specifyEncoded(packet.data.size(), 1);
 
 		m2_out_write(packet);
 	}
@@ -991,7 +988,11 @@ public:
 		QVariant rows = vhash["rows"];
 
 		// once we get at least one successful response then we flag the port as working
-		controlPorts[index].active = true;
+		if(!controlPorts[index].works)
+		{
+			controlPorts[index].works = true;
+			log_debug("control port index=%d works", index);
+		}
 
 		QSet<QByteArray> ids;
 		foreach(const QVariant &row, rows.toList())
@@ -1365,7 +1366,7 @@ public:
 					if(firstDataPacket)
 					{
 						// use flow control if the control port works and the response is more than one packet
-						if((s->conn->outCreditsEnabled || controlPorts[s->conn->identIndex].active) && zresp.more)
+						if((s->conn->outCreditsEnabled || controlPorts[s->conn->identIndex].works) && zresp.more)
 							s->conn->flowControl = true;
 						else
 							s->conn->flowControl = false;
@@ -1503,7 +1504,7 @@ public:
 				if(!s->sentResponseHeader)
 				{
 					s->sentResponseHeader = true;
-					if(s->conn->outCreditsEnabled || controlPorts[s->conn->identIndex].active)
+					if(s->conn->outCreditsEnabled || controlPorts[s->conn->identIndex].works)
 						s->conn->flowControl = true;
 					else
 						s->conn->flowControl = false;
