@@ -2,13 +2,15 @@
 
 ## Introduction
 
-The Generic Realtime Intermediary Protocol ("GRIP") makes it possible for a web service to delegate realtime push behavior to a proxy component. Listening entities, such as long-lived HTTP or WebSocket connections, can be managed by the proxy and be associated with publish-subscribe channels. Data may be published to channels rather than to specific listeners, and the proxy will fan-out the data to all associated listeners. When data is published, the entirety of the transmission is specified, allowing complete control over the protocol exposed to listeners.
+The Generic Realtime Intermediary Protocol ("GRIP") makes it possible for a web service to delegate realtime push behavior to a proxy component. Listening entities, such as long-lived HTTP or WebSocket connections, are managed by the proxy and can be associated with publish-subscribe channels. Data may be published to channels, and the proxy will relay the data to all associated listeners. When data is published, the entirety of the transmission is specified, allowing complete control over the protocol exposed to listeners.
+
+![grip-abstract](image/grip-abstract.png)
 
 There are many advantages to this approach:
 
 1. Reusability. The primary goal of GRIP is to isolate the common aspects of realtime push functionality into a reusable proxy component. A GRIP proxy should be able to power any kind of web service, with any kind of API contract, for any kind of application, running at any organization. Adding new endpoints, changing protocol flows, or using different data formats should be possible without modifying the proxy.
 
-2. Simplified routing. Knowing if or where a listening entity may be connected in a cluster makes for a tricky routing problem. It's simpler for data sources to publish data to channels rather than to individual listeners. With GRIP, data can be sent to a sole proxy, or to each proxy instance in a cluster (either directly or optionally via a message queue), without having to know whether or not any listeners are present. This is a benefit of any publish-subscribe system, GRIP or not.
+2. Simplified routing. Knowing if or where a listening entity may be connected in a cluster makes for a tricky routing problem. It's simpler for data sources to publish data to channels rather than to individual listeners. With GRIP, data can be sent to a sole proxy, or to each proxy instance in a cluster (either directly or optionally via a message queue), without having to know whether or not any listeners are present.
 
 3. High scalability. Many listeners may be associated with a single channel. This means data can be sent to the proxy once and multicasted to a set of listeners. Proxies can be chained to message brokers to form a multi-tiered architecture capable of massive output (e.g. publishing to a million connections at the same time across a set of proxies).
 
