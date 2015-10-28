@@ -59,7 +59,7 @@ To publish data to any held open connections, `http-response` and/or `http-strea
 
 The WebSocket GRIP transport allows a proxy to associate channels with WebSocket connections, so that data may be published to these connections.
 
-Proxy includes the `grip` extension in the Sec-WebSocket-Extensions header. Proxy will also include the `Grip-Sig` header (as defined in the [HTTP](#http) section):
+When a client makes a WebSocket connection to the proxy, the proxy makes a WebSocket connection to the backend server. In this connection request, the proxy includes the `grip` extension in the `Sec-WebSocket-Extensions` header. The proxy SHOULD also include a `Grip-Sig` header as described in the [HTTP](#http) section:
 
 ```
 GET /websocket/path/ HTTP/1.1
@@ -73,11 +73,11 @@ Sec-WebSocket-Extensions: grip
 ...
 ```
 
-Server includes the `grip` extension in its response in order to indicate support. If the server does not include the grip extension in its response, then the proxy will assume that the server is unable to send grip control messages. For now, this would mean that the session becomes a passthrough with no grip capabilities at all.
+The backend server then accepts the connection with the proxy by responding with status code 101. In order to enable GRIP functionality, the backend must include the `grip` extension in its response. If the backend does not include this extension, then the proxy MUST assume that the backend server is not GRIP capable and treat the session as a passthrough.
 
-If the server accepts the grip extension, then it is able to send normal messages to be relayed as-is to the client, or control messages to be processed by the proxy. The server denotes the kind of message by including a prefix in the payload of the message. If the message spans multiple frames, then the prefix would only be included in the first frame. By default, the prefix for normal messages is `m:` and the prefix for control messages is `c:`. The proxy will strip off the prefix before relaying or processing.
+If the backend server provides the `grip` extension, then the proxy will know that the backend is GRIP capable and the backend may send special control messages to the proxy. In order to disambiguate control messages from normal messages, the backend denotes the type of message by including a prefix in the payload of the message. If the message spans multiple frames, then the prefix would be included in the first frame only. By default, the prefix for normal messages is `m:` and the prefix for control messages is `c:`. The proxy MUST strip off the prefix before relaying or processing.
 
-The `grip` extension shall have an optional parameter called `message-prefix` that the server can use to override what the prefix should be for normal messages. The server can even specify a blank string for this value, to indicate that there should be no prefix at all. This can be useful if the server speaks entirely in JSON, in which case there is no chance of conflict with control messages (a JSON payload would never begin with `c:`). For example:
+The `grip` extension has an optional parameter called `message-prefix` that the backend server can use to override the prefix for normal messages. The backend can even specify a blank string for this value, to indicate that there should be no prefix at all. This can be useful if the backend speaks entirely in JSON, in which case there is no chance of conflict with control messages (a JSON payload would never begin with `c:`). For example:
 
 ```
 HTTP/1.1 101 Switching Protocols
@@ -88,15 +88,17 @@ Sec-WebSocket-Extensions: grip; message-prefix=""
 ...
 ```
 
-Control messages would use JSON format, encoded as an object with field `type` indicating the type of control message. All other fields in the object would be parameters for the message. The following control messages would be defined:
+Control messages are JSON format, encoded as an object with a `type` field indicating the type of control message. All other fields in the object are specific to the control message type. The following control messages are defined:
 
 * `{ "type": "subscribe", "channel": "{channel}" }`
 * `{ "type": "unsubscribe", "channel": "{channel}" }`
 * `{ "type": "detach" }`
 
-These are messages that the server sends to the proxy. The client/browser has no awareness of GRIP. The server would use the subscribe and unsubscribe messages to control the GRIP channels that the client's WebSocket connection is subscribed to. The detach message would be used to disconnect from the proxy without the proxy disconnecting from the client. Any further messages received by the client would be dropped by the proxy. Detached mode only makes sense if the connection has been subscribed to one or more channels and there is no expectation for the client to send anything further. This may be useful if the connection is used only for one-way transmission.
+Note that control messages are only ever sent by the backend server to the proxy. The proxy does not send control messages to the backend, and the client has no awareness of GRIP. The backend uses the `subscribe` and `unsubscribe` messages to control the GRIP channels that the client's WebSocket connection is subscribed to.
 
-The server may publish data to the proxy using the `ws-message` format, transmitted to the proxy using the [Control Service](#control-service). Example:
+The `detach` message is used to disconnect the backend from the proxy without the proxy disconnecting from the client. Once a connection is detached, any further messages the proxy receives from the client are dropped. Detached mode only makes sense if the connection has been subscribed to at least one channel and the client is not expected to send anything further. This is useful if the connection is used only for one-way transmission.
+
+The backend server may publish data to the proxy using the `ws-message` format, transmitted to the proxy using the [Control Service](#control-service). Example:
 
 ```
 "ws-message": {
