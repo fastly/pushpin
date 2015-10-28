@@ -2,9 +2,11 @@
 
 ## Introduction
 
-The Generic Realtime Intermediary Protocol ("GRIP") makes it possible for a web service to delegate realtime push behavior to a proxy component. Listening entities, such as long-lived HTTP or WebSocket connections, are managed by the proxy and can be associated with publish-subscribe channels. Data may be published to channels, and the proxy will relay the data to all associated listeners. When data is published, the entirety of the transmission is specified, allowing complete control over the protocol exposed to listeners.
+The Generic Realtime Intermediary Protocol ("GRIP") makes it possible for a web service to delegate realtime push behavior to a proxy component. Listening entities, such as long-lived HTTP or WebSocket connections, are managed by the proxy. The web service backend can instruct the proxy to associate listeners with publish-subscribe channels. The web service backend may publish data to channels, and the proxy will relay the data to all associated listeners. When data is published, the entirety of the transmission is specified, allowing complete control over the application protocol exposed to listeners.
 
-![grip-abstract](image/grip-abstract.png)
+<p align="center">
+  <img src="image/grip-abstract.png" alt="grip-abstract"/>
+</p>
 
 There are many advantages to this approach:
 
