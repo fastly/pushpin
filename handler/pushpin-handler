@@ -886,7 +886,9 @@ def accept_worker():
 			continue
 
 		resp_headers = m["response"].get("headers") or {}
-		content_type, x = header_get_parsed(resp_headers, "Content-Type")
+		content_type = header_get_parsed(resp_headers, "Content-Type")
+		if content_type:
+			content_type = content_type[0]
 		sid = header_get(resp_headers, "Grip-Session-Id")
 		last_ids = dict()
 		rule_headers = header_get_all_parsed(resp_headers, "Grip-Session-Detect")
@@ -962,7 +964,6 @@ def accept_worker():
 			mode = None
 			channels = list()
 			timeout = 55
-			resp_headers = m['response'].get('headers') or {}
 
 			# headers-based grip
 			grip_hold = header_get_parsed(resp_headers, 'Grip-Hold')
@@ -1011,8 +1012,7 @@ def accept_worker():
 				meta = grip_meta
 
 			instruct = None
-			ctype = header_get_parsed(resp_headers, 'Content-Type')
-			if ctype and ctype[0] == 'application/grip-instruct':
+			if content_type == 'application/grip-instruct':
 				if m['response']['code'] != 200:
 					raise ValueError('response code for grip-instruct must be 200')
 				instruct = json.loads(m['response']['body'])
