@@ -1347,7 +1347,7 @@ public:
 	QHash<Format::Type, Format> formats;
 	QHash<QString, QString> meta;
 
-	static PublishItem fromVariant(const QVariant &vitem, bool *ok = 0, QString *errorMessage = 0)
+	static PublishItem fromVariant(const QVariant &vitem, const QString &channel = QString(), bool *ok = 0, QString *errorMessage = 0)
 	{
 		QString pn = "publish item object";
 
@@ -1358,14 +1358,21 @@ public:
 		}
 
 		PublishItem item;
-
 		bool ok_;
-		item.channel = getString(vitem, pn, "channel", true, &ok_, errorMessage);
-		if(!ok_)
+
+		if(!channel.isEmpty())
 		{
-			if(ok)
-				*ok = false;
-			return PublishItem();
+			item.channel = channel;
+		}
+		else
+		{
+			item.channel = getString(vitem, pn, "channel", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return PublishItem();
+			}
 		}
 
 		item.id = getString(vitem, pn, "id", false, &ok_, errorMessage);
@@ -1520,7 +1527,7 @@ static QList<PublishItem> parseHttpItems(const QVariantList &vitems, bool *ok = 
 	foreach(const QVariant &vitem, vitems)
 	{
 		bool ok_;
-		PublishItem item = PublishItem::fromVariant(vitem, &ok_, errorMessage);
+		PublishItem item = PublishItem::fromVariant(vitem, QString(), &ok_, errorMessage);
 		if(!ok_)
 		{
 			if(ok)
@@ -2087,7 +2094,10 @@ public:
 		zhttpIn(_zhttpIn)
 	{
 		req->setParent(this);
+	}
 
+	void start()
+	{
 		/*out_sock = ctx.socket(zmq.PUB)
 		out_sock.linger = DEFAULT_LINGER
 		for spec in m2a_out_specs:
@@ -2367,6 +2377,9 @@ public:
 		}
 	}
 
+signals:
+	void subscriptionAdded(const QString &channel);
+
 private:
 	void respondError(const QByteArray &condition)
 	{
@@ -2486,12 +2499,30 @@ private:
 				hold->mode = instruct.holdMode;
 				hold->response = instruct.response;
 				hold->req = outReq;
+
+				QSet<QString> newSubs;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					log_debug("adding response hold on %s", qPrintable(c.name));
 					hold->channels += c.name;
+
+					bool found = false;
+					foreach(Hold *h, cs->holds)
+					{
+						if(h->channels.contains(c.name))
+						{
+							found = true;
+							break;
+						}
+					}
+					if(!found)
+						newSubs += c.name;
 				}
+
 				cs->holds += hold;
+
+				foreach(const QString &sub, newSubs)
+					emit subscriptionAdded(sub);
 
 				/*# bind channels
 				quit = False
@@ -2593,12 +2624,30 @@ private:
 				Hold *hold = new Hold;
 				hold->mode = instruct.holdMode;
 				hold->req = outReq;
+
+				QSet<QString> newSubs;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					log_debug("adding stream hold on %s", qPrintable(c.name));
 					hold->channels += c.name;
+
+					bool found = false;
+					foreach(Hold *h, cs->holds)
+					{
+						if(h->channels.contains(c.name))
+						{
+							found = true;
+							break;
+						}
+					}
+					if(!found)
+						newSubs += c.name;
 				}
+
 				cs->holds += hold;
+
+				foreach(const QString &sub, newSubs)
+					emit subscriptionAdded(sub);
 
 				//connect(hold->req, SIGNAL(
 				outReq->beginResponse(instruct.response.code, instruct.response.reason, instruct.response.headers);
@@ -2797,7 +2846,6 @@ public:
 
 		if(!config.pushInSubSpec.isEmpty())
 		{
-			// FIXME: XSub
 			inSubSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			inSubSock->setSendHwm(SUB_SNDHWM);
 
@@ -3267,7 +3315,9 @@ private slots:
 		if(!req)
 			return;
 
-		new AcceptWorker(req, stateClient, &cs, zhttpIn, this);
+		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, this);
+		connect(w, SIGNAL(subscriptionAdded(const QString &)), SLOT(addSub(const QString &)));
+		w->start();
 	}
 
 	void controlServer_requestReady()
@@ -3339,8 +3389,10 @@ private slots:
 			return;
 		}
 
+		log_debug("IN pull: %s", qPrintable(TnetString::variantToString(data, -1)));
+
 		QString errorMessage;
-		PublishItem item = PublishItem::fromVariant(data, &ok, &errorMessage);
+		PublishItem item = PublishItem::fromVariant(data, QString(), &ok, &errorMessage);
 		if(!ok)
 		{
 			log_warning("IN pull: received message with invalid format: %s, skipping", qPrintable(errorMessage));
@@ -3352,51 +3404,33 @@ private slots:
 
 	void inSub_readyRead(const QList<QByteArray> &message)
 	{
-		// TODO
-		Q_UNUSED(message);
+		if(message.count() != 2)
+		{
+			log_warning("IN sub: received message with parts != 2, skipping");
+			return;
+		}
 
-		/*
-		sub_cmd_in_sock = ctx.socket(zmq.PULL)
-		sub_cmd_in_sock.connect("inproc://sub_cmd_in")
+		bool ok;
+		QVariant data = TnetString::toVariant(message[1], 0, &ok);
+		if(!ok)
+		{
+			log_warning("IN sub: received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
 
-		out_sock = ctx.socket(zmq.PUSH)
-		out_sock.linger = DEFAULT_LINGER
-		out_sock.connect("inproc://push_in")
+		QString channel = QString::fromUtf8(message[0]);
 
-		poller = zmq.Poller()
-		poller.register(in_sock, zmq.POLLIN)
-		poller.register(sub_cmd_in_sock, zmq.POLLIN)
+		log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
 
-		while True:
-			socks = dict(poller.poll())
-			if socks.get(in_sock) == zmq.POLLIN:
-				m_raw = in_sock.recv_multipart()
+		QString errorMessage;
+		PublishItem item = PublishItem::fromVariant(data, channel, &ok, &errorMessage);
+		if(!ok)
+		{
+			log_warning("IN sub: received message with invalid format: %s, skipping", qPrintable(errorMessage));
+			return;
+		}
 
-				try:
-					try:
-						m = tnetstring.loads(m_raw[1])
-					except:
-						raise ValidationError("bad format (not a tnetstring)")
-
-					m['channel'] = m_raw[0]
-					m = validate_publish(m)
-
-				except ValidationError as e:
-					logger.debug("warning: %s, dropping" % e.message)
-					continue
-
-				out_sock.send(tnetstring.dumps(m))
-			elif socks.get(sub_cmd_in_sock) == zmq.POLLIN:
-				m = tnetstring.loads(sub_cmd_in_sock.recv())
-				mtype = m['type']
-				channel = m['channel']
-				if mtype == 'subscribe':
-					logger.debug('SUB socket subscribe: %s' % channel)
-					in_sock.setsockopt(zmq.SUBSCRIBE, channel)
-				elif mtype == 'unsubscribe':
-					logger.debug('SUB socket unsubscribe: %s' % channel)
-					in_sock.setsockopt(zmq.UNSUBSCRIBE, channel)
-		*/
+		handlePublishItem(item);
 	}
 
 	void controlHttpServer_requestReady()
@@ -3473,6 +3507,18 @@ private slots:
 		}
 
 		connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+	}
+
+	void addSub(const QString &channel)
+	{
+		log_debug("SUB socket subscribe: %s", qPrintable(channel));
+		inSubSock->subscribe(channel.toUtf8());
+	}
+
+	void removeSub(const QString &channel)
+	{
+		log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
+		inSubSock->unsubscribe(channel.toUtf8());
 	}
 };
 
