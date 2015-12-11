@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <qjson/parser.h>
+#include <qjson/serializer.h>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -168,74 +169,6 @@ def remove_from_response_channels(rid):
 def remove_from_stream_channels(rid):
 	return remove_from_req_channels(rid, response=False, stream=True)
 
-# return body size sent
-def reply_http(sock, rid, code, reason, headers, body, nolen=False, seq=None):
-	if isinstance(reason, unicode):
-		reason = reason.encode("utf-8")
-
-	# ensure headers are utf-8
-	tmp = dict()
-	for k, v in headers.iteritems():
-		if isinstance(k, unicode):
-				k = k.encode("utf-8")
-		if isinstance(v, unicode):
-				v = v.encode("utf-8")
-		tmp[k] = v
-	headers = tmp
-
-	if isinstance(body, unicode):
-		body = body.encode("utf-8")
-
-	if nolen:
-		header_remove(headers, "Content-Length")
-	else:
-		header_set(headers, "Content-Length", str(len(body)))
-
-	out = dict()
-	out["from"] = instance_id
-	out["id"] = rid[1]
-	if seq is not None:
-		out["seq"] = seq
-	out["code"] = code
-	out["reason"] = reason
-	headers_list = list()
-	for k, v in headers.iteritems():
-		headers_list.append([k, v])
-	out["headers"] = headers_list
-	if body:
-		out["body"] = body
-	if nolen:
-		out["more"] = True
-
-	m_raw = rid[0] + " T" + tnetstring.dumps(out)
-	logger.debug("OUT publish: %s" % m_raw)
-	sock.send(m_raw)
-	return len(body)
-
-def reply_http_chunk(sock, rid, content, seq=None):
-	out = dict()
-	out["from"] = instance_id
-	out["id"] = rid[1]
-	if seq is not None:
-		out["seq"] = seq
-	out["body"] = content
-	out["more"] = True
-
-	m_raw = rid[0] + " T" + tnetstring.dumps(out)
-	logger.debug("OUT publish: %s" % m_raw)
-	sock.send(m_raw)
-
-def reply_http_close(sock, rid, seq=None):
-	out = dict()
-	out["from"] = instance_id
-	out["id"] = rid[1]
-	if seq is not None:
-		out["seq"] = seq
-
-	m_raw = rid[0] + " T" + tnetstring.dumps(out)
-	logger.debug("OUT publish: %s" % m_raw)
-	sock.send(m_raw)
-
 simple_headers = set()
 simple_headers.add("Cache-control")
 simple_headers.add("Content-Language")
@@ -298,6 +231,252 @@ def apply_filters(sub_meta, pub_meta, filters):
 	return True
 */
 
+static void setSuccess(bool *ok, QString *errorMessage)
+{
+	if(ok)
+		*ok = true;
+	if(errorMessage)
+		errorMessage->clear();
+}
+
+static void setError(bool *ok, QString *errorMessage, const QString &msg)
+{
+	if(ok)
+		*ok = false;
+	if(errorMessage)
+		*errorMessage = msg;
+}
+
+static bool isKeyedObject(const QVariant &in)
+{
+	return (in.type() == QVariant::Hash || in.type() == QVariant::Map);
+}
+
+static QVariant createSameKeyedObject(const QVariant &in)
+{
+	if(in.type() == QVariant::Hash)
+		return QVariantHash();
+	else if(in.type() == QVariant::Map)
+		return QVariantMap();
+	else
+		return QVariant();
+}
+
+static bool keyedObjectIsEmpty(const QVariant &in)
+{
+	if(in.type() == QVariant::Hash)
+		return in.toHash().isEmpty();
+	else if(in.type() == QVariant::Map)
+		return in.toMap().isEmpty();
+	else
+		return true;
+}
+
+static bool keyedObjectContains(const QVariant &in, const QString &name)
+{
+	if(in.type() == QVariant::Hash)
+		return in.toHash().contains(name);
+	else if(in.type() == QVariant::Map)
+		return in.toMap().contains(name);
+	else
+		return false;
+}
+
+static QVariant keyedObjectGetValue(const QVariant &in, const QString &name)
+{
+	if(in.type() == QVariant::Hash)
+		return in.toHash().value(name);
+	else if(in.type() == QVariant::Map)
+		return in.toMap().value(name);
+	else
+		return QVariant();
+}
+
+static QVariant & keyedObjectGetRef(const QVariant &in, const QString &name)
+{
+	if(in.type() == QVariant::Hash)
+		return in.toHash()[name];
+	else if(in.type() == QVariant::Map)
+		return in.toMap()[name];
+	else
+		assert(0);
+}
+
+static void keyedObjectInsert(QVariant *in, const QString &name, const QVariant &value)
+{
+	if(in->type() == QVariant::Hash)
+	{
+		QVariantHash h = in->toHash();
+		h.insert(name, value);
+		*in = h;
+	}
+	else if(in->type() == QVariant::Map)
+	{
+		QVariantMap h = in->toMap();
+		h.insert(name, value);
+		*in = h;
+	}
+}
+
+static QVariant getChild(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
+{
+	if(!isKeyedObject(in))
+	{
+		QString pn = !parentName.isEmpty() ? parentName : QString("value");
+		setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
+		return QVariant();
+	}
+
+	QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+	QVariant v;
+	if(in.type() == QVariant::Hash)
+	{
+		QVariantHash h = in.toHash();
+
+		if(!h.contains(childName))
+		{
+			if(required)
+				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
+			else
+				setSuccess(ok, errorMessage);
+
+			return QVariant();
+		}
+
+		v = h[childName];
+	}
+	else // Map
+	{
+		QVariantMap m = in.toMap();
+
+		if(!m.contains(childName))
+		{
+			if(required)
+				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
+			else
+				setSuccess(ok, errorMessage);
+
+			return QVariant();
+		}
+
+		v = m[childName];
+	}
+
+	setSuccess(ok, errorMessage);
+	return v;
+}
+
+static QVariant getKeyedObject(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
+{
+	bool ok_;
+	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	if(!ok_)
+	{
+		if(ok)
+			*ok = false;
+		return QVariant();
+	}
+
+	if(!v.isValid() && !required)
+	{
+		setSuccess(ok, errorMessage);
+		return QVariant();
+	}
+
+	QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+	if(!isKeyedObject(v))
+	{
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		return QVariant();
+	}
+
+	setSuccess(ok, errorMessage);
+	return v;
+}
+
+static QVariantList getList(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
+{
+	bool ok_;
+	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	if(!ok_)
+	{
+		if(ok)
+			*ok = false;
+		return QVariantList();
+	}
+
+	if(!v.isValid() && !required)
+	{
+		setSuccess(ok, errorMessage);
+		return QVariantList();
+	}
+
+	QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+	if(v.type() != QVariant::List)
+	{
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		return QVariantList();
+	}
+
+	setSuccess(ok, errorMessage);
+	return v.toList();
+}
+
+static QString getString(const QVariant &in, bool *ok = 0)
+{
+	if(in.type() == QVariant::String)
+	{
+		if(ok)
+			*ok = true;
+		return in.toString();
+	}
+	else if(in.type() == QVariant::ByteArray)
+	{
+		if(ok)
+			*ok = true;
+		return QString::fromUtf8(in.toByteArray());
+	}
+	else
+	{
+		if(ok)
+			*ok = false;
+		return QString();
+	}
+}
+
+static QString getString(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
+{
+	bool ok_;
+	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	if(!ok_)
+	{
+		if(ok)
+			*ok = false;
+		return QString();
+	}
+
+	if(!v.isValid() && !required)
+	{
+		setSuccess(ok, errorMessage);
+		return QString();
+	}
+
+	QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+	QString str = getString(v, &ok_);
+	if(!ok_)
+	{
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		return QString();
+	}
+
+	setSuccess(ok, errorMessage);
+	return str;
+}
+
 class JsonPointer
 {
 public:
@@ -312,7 +491,6 @@ public:
 	}
 };
 
-// assumes data is qjson-style (hash->map, bytearray->string)
 static JsonPointer resolveJsonPointer(QVariant &data, const QString &jsonPointerStr, QString *errorMessage = 0)
 {
 	if(!jsonPointerStr.startsWith('/'))
@@ -343,21 +521,37 @@ static JsonPointer resolveJsonPointer(QVariant &data, const QString &jsonPointer
 		p.replace("~1", "/");
 		p.replace("~0", "~");
 
-		if(!ptr.childName.isNull() || ptr.childIndex != -2)
+		// step into previous reference, if any
+		if(!ptr.childName.isNull())
 		{
-			if(errorMessage)
-				*errorMessage = "cannot step into undefined reference";
-			return JsonPointer();
+			if(!keyedObjectContains(*ptr.obj, ptr.childName))
+			{
+				if(errorMessage)
+					*errorMessage = "cannot step into undefined reference";
+				return JsonPointer();
+			}
+
+			ptr.obj = &keyedObjectGetRef(*ptr.obj, ptr.childName);
+			ptr.childName.clear();
+		}
+		else if(ptr.childIndex != -2)
+		{
+			QVariantList lobj = ptr.obj->toList();
+			if(ptr.childIndex < 0 || ptr.childIndex >= lobj.count())
+			{
+				if(errorMessage)
+					*errorMessage = "cannot step into undefined reference";
+				return JsonPointer();
+			}
+
+			ptr.obj = &lobj[ptr.childIndex];
+			ptr.childIndex = -2;
 		}
 
-		if(ptr.obj->type() == QVariant::Map)
+		// set latest reference
+		if(isKeyedObject(*ptr.obj))
 		{
-			QVariantMap mobj = ptr.obj->toMap();
-
-			if(mobj.contains(p))
-				ptr.obj = &mobj[p];
-			else
-				ptr.childName = p;
+			ptr.childName = p;
 		}
 		else if(ptr.obj->type() == QVariant::List)
 		{
@@ -385,7 +579,7 @@ static JsonPointer resolveJsonPointer(QVariant &data, const QString &jsonPointer
 					return JsonPointer();
 				}
 
-				ptr.obj = &lobj[index];
+				ptr.childIndex = index;
 			}
 		}
 		else
@@ -399,68 +593,59 @@ static JsonPointer resolveJsonPointer(QVariant &data, const QString &jsonPointer
 	return ptr;
 }
 
-// assumes data and ops are qjson-style (hash->map, bytearray->string)
 static QVariant jsonPatch(const QVariant &data, const QVariantList &ops, QString *errorMessage = 0)
 {
 	QVariant out = data;
 
 	foreach(const QVariant &vop, ops)
 	{
-		if(vop.type() != QVariant::Map)
+		if(!isKeyedObject(vop))
 		{
 			if(errorMessage)
 				*errorMessage = "invalid op";
 			return QVariant();
 		}
 
-		QVariantMap op = vop.toMap();
-		QByteArray type = op.value("op").toByteArray();
-		if(type.isEmpty())
-		{
-			if(errorMessage)
-				*errorMessage = "invalid op";
+		QString pn = "op";
+
+		bool ok;
+		QString type = getString(vop, pn, "op", true, &ok, errorMessage);
+		if(!ok)
 			return QVariant();
-		}
 
 		if(type == "add")
 		{
-			QString path = QString::fromUtf8(op.value("path").toByteArray());
-			if(path.isEmpty())
+			QString path = getString(vop, pn, "path", true, &ok, errorMessage);
+			if(!ok)
+				return QVariant();
+
+			if(!keyedObjectContains(vop, "value"))
 			{
 				if(errorMessage)
-					*errorMessage = "invalid op";
+					*errorMessage = "op does not contain 'value'";
 				return QVariant();
 			}
 
-			if(!op.contains("value"))
-			{
-				if(errorMessage)
-					*errorMessage = "invalid op";
-				return QVariant();
-			}
+			QVariant value = keyedObjectGetValue(vop, "value");
 
-			// we assume this value is json compatible
-			QVariant value = op["value"];
-
-			QString msg;
-			JsonPointer ptr = resolveJsonPointer(out, path, &msg);
+			JsonPointer ptr = resolveJsonPointer(out, path, errorMessage);
 			if(!ptr.obj)
-			{
-				if(errorMessage)
-					*errorMessage = msg;
 				return QVariant();
-			}
 
 			if(!ptr.childName.isNull())
 			{
-				ptr.obj->toMap()[ptr.childName] = value;
+				QVariantMap tmp = ptr.obj->toMap();
+				tmp[ptr.childName] = value;
+				*ptr.obj = tmp;
 			}
 			else if(ptr.childIndex != -2)
 			{
+				QVariantList tmp = ptr.obj->toList();
 				if(ptr.childIndex != -1)
-					ptr.obj->toList().insert(ptr.childIndex, value);
+					tmp.insert(ptr.childIndex, value);
 				else
-					ptr.obj->toList().append(value);
+					tmp.append(value);
+				*ptr.obj = tmp;
 			}
 			else
 			{
@@ -470,7 +655,7 @@ static QVariant jsonPatch(const QVariant &data, const QVariantList &ops, QString
 		else
 		{
 			if(errorMessage)
-				*errorMessage = QString("unsupported op: %1").arg(QString::fromUtf8(type));
+				*errorMessage = QString("unsupported op: %1").arg(type);
 			return QVariant();
 		}
 	}
@@ -786,242 +971,6 @@ private slots:
 	}
 };
 
-static void setSuccess(bool *ok, QString *errorMessage)
-{
-	if(ok)
-		*ok = true;
-	if(errorMessage)
-		errorMessage->clear();
-}
-
-static void setError(bool *ok, QString *errorMessage, const QString &msg)
-{
-	if(ok)
-		*ok = false;
-	if(errorMessage)
-		*errorMessage = msg;
-}
-
-static bool isKeyedObject(const QVariant &in)
-{
-	return (in.type() == QVariant::Hash || in.type() == QVariant::Map);
-}
-
-static QVariant createSameKeyedObject(const QVariant &in)
-{
-	if(in.type() == QVariant::Hash)
-		return QVariantHash();
-	else if(in.type() == QVariant::Map)
-		return QVariantMap();
-	else
-		return QVariant();
-}
-
-static bool keyedObjectIsEmpty(const QVariant &in)
-{
-	if(in.type() == QVariant::Hash)
-		return in.toHash().isEmpty();
-	else if(in.type() == QVariant::Map)
-		return in.toMap().isEmpty();
-	else
-		return true;
-}
-
-static bool keyedObjectContains(const QVariant &in, const QString &name)
-{
-	if(in.type() == QVariant::Hash)
-		return in.toHash().contains(name);
-	else if(in.type() == QVariant::Map)
-		return in.toMap().contains(name);
-	else
-		return false;
-}
-
-static QVariant keyedObjectGetValue(const QVariant &in, const QString &name)
-{
-	if(in.type() == QVariant::Hash)
-		return in.toHash().value(name);
-	else if(in.type() == QVariant::Map)
-		return in.toMap().value(name);
-	else
-		return QVariant();
-}
-
-static void keyedObjectInsert(QVariant *in, const QString &name, const QVariant &value)
-{
-	if(in->type() == QVariant::Hash)
-	{
-		QVariantHash h = in->toHash();
-		h.insert(name, value);
-		*in = h;
-	}
-	else if(in->type() == QVariant::Map)
-	{
-		QVariantMap h = in->toMap();
-		h.insert(name, value);
-		*in = h;
-	}
-}
-
-static QVariant getChild(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
-{
-	if(!isKeyedObject(in))
-	{
-		QString pn = !parentName.isEmpty() ? parentName : QString("value");
-		setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
-		return QVariant();
-	}
-
-	QString pn = !parentName.isEmpty() ? parentName : QString("object");
-
-	QVariant v;
-	if(in.type() == QVariant::Hash)
-	{
-		QVariantHash h = in.toHash();
-
-		if(!h.contains(childName))
-		{
-			if(required)
-				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
-			else
-				setSuccess(ok, errorMessage);
-
-			return QVariant();
-		}
-
-		v = h[childName];
-	}
-	else // Map
-	{
-		QVariantMap m = in.toMap();
-
-		if(!m.contains(childName))
-		{
-			if(required)
-				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
-			else
-				setSuccess(ok, errorMessage);
-
-			return QVariant();
-		}
-
-		v = m[childName];
-	}
-
-	setSuccess(ok, errorMessage);
-	return v;
-}
-
-static QVariant getKeyedObject(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
-{
-	bool ok_;
-	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
-	if(!ok_)
-	{
-		if(ok)
-			*ok = false;
-		return QVariant();
-	}
-
-	if(!v.isValid() && !required)
-	{
-		setSuccess(ok, errorMessage);
-		return QVariant();
-	}
-
-	QString pn = !parentName.isEmpty() ? parentName : QString("object");
-
-	if(!isKeyedObject(v))
-	{
-		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
-		return QVariant();
-	}
-
-	setSuccess(ok, errorMessage);
-	return v;
-}
-
-static QVariantList getList(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
-{
-	bool ok_;
-	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
-	if(!ok_)
-	{
-		if(ok)
-			*ok = false;
-		return QVariantList();
-	}
-
-	if(!v.isValid() && !required)
-	{
-		setSuccess(ok, errorMessage);
-		return QVariantList();
-	}
-
-	QString pn = !parentName.isEmpty() ? parentName : QString("object");
-
-	if(v.type() != QVariant::List)
-	{
-		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
-		return QVariantList();
-	}
-
-	setSuccess(ok, errorMessage);
-	return v.toList();
-}
-
-static QString getString(const QVariant &in, bool *ok = 0)
-{
-	if(in.type() == QVariant::String)
-	{
-		if(ok)
-			*ok = true;
-		return in.toString();
-	}
-	else if(in.type() == QVariant::ByteArray)
-	{
-		if(ok)
-			*ok = true;
-		return QString::fromUtf8(in.toByteArray());
-	}
-	else
-	{
-		if(ok)
-			*ok = false;
-		return QString();
-	}
-}
-
-static QString getString(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
-{
-	bool ok_;
-	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
-	if(!ok_)
-	{
-		if(ok)
-			*ok = false;
-		return QString();
-	}
-
-	if(!v.isValid() && !required)
-	{
-		setSuccess(ok, errorMessage);
-		return QString();
-	}
-
-	QString pn = !parentName.isEmpty() ? parentName : QString("object");
-
-	QString str = getString(v, &ok_);
-	if(!ok_)
-	{
-		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
-		return QString();
-	}
-
-	setSuccess(ok, errorMessage);
-	return str;
-}
-
 class Format
 {
 public:
@@ -1033,16 +982,19 @@ public:
 	};
 
 	Type type;
-	int code;
-	QByteArray reason;
-	HttpHeaders headers;
-	QByteArray body; // used for content with stream/ws
+	int code; // response
+	QByteArray reason; // response
+	HttpHeaders headers; // response
+	QByteArray body; // response/stream/ws
+	bool haveBodyPatch; // response
+	QVariantList bodyPatch; // response
 	bool close; // stream
 	bool binary; // ws
 
 	Format() :
 		type((Type)-1),
 		code(-1),
+		haveBodyPatch(false),
 		close(false),
 		binary(false)
 	{
@@ -1051,6 +1003,7 @@ public:
 	Format(Type _type) :
 		type(_type),
 		code(-1),
+		haveBodyPatch(false),
 		close(false),
 		binary(false)
 	{
@@ -1224,12 +1177,24 @@ public:
 					return Format();
 				}
 			}
+			else if(keyedObjectContains(in, "body-patch"))
+			{
+				out.bodyPatch = getList(in, pn, "body-patch", false, &ok_, errorMessage);
+				if(!ok_)
+				{
+					if(ok)
+						*ok = false;
+					return Format();
+				}
+
+				out.haveBodyPatch = true;
+			}
 			else
 			{
 				if(in.type() == QVariant::Map) // JSON input
-					setError(ok, errorMessage, QString("%1 does not contain 'body' or 'body-bin'").arg(pn));
+					setError(ok, errorMessage, QString("%1 does not contain 'body', 'body-bin', or 'body-patch'").arg(pn));
 				else
-					setError(ok, errorMessage, QString("%1 does not contain 'body'").arg(pn));
+					setError(ok, errorMessage, QString("%1 does not contain 'body' or 'body-patch'").arg(pn));
 				return Format();
 			}
 		}
@@ -2911,22 +2876,82 @@ private:
 				log_debug("relaying to 1 http-response subscribers");
 				Format f = item.formats.value(Format::HttpResponse);
 
-				// TODO: extract Grip-Expose-Headers header
+				QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers");
 
-				// inherit headers
+				// remove grip headers from the push
+				for(int n = 0; n < f.headers.count(); ++n)
+				{
+					// strip out grip headers
+					if(qstrnicmp(f.headers[n].first.data(), "Grip-", 5) == 0)
+					{
+						f.headers.removeAt(n);
+						--n; // adjust position
+					}
+				}
+
+				// inherit headers from the instruct
 				HttpHeaders headers = hold->response.headers;
-				headers.removeAll("Content-Length"); // this will be auto set
-
-				// merge
+				headers.removeAll("Content-Length"); // this will be reset if needed
 				foreach(const HttpHeader &h, f.headers)
 				{
 					headers.removeAll(h.first);
 					headers += h;
 				}
 
-				// TODO: if Grip-Expose-Headers was set, apply now
+				// if Grip-Expose-Headers was provided in the push, apply now
+				if(!exposeHeaders.isEmpty())
+				{
+					for(int n = 0; n < headers.count(); ++n)
+					{
+						const HttpHeader &h = headers[n];
 
-				// TODO: support body patch
+						bool found = false;
+						foreach(const QByteArray &e, exposeHeaders)
+						{
+							if(qstricmp(h.first.data(), e.data()) == 0)
+							{
+								found = true;
+								break;
+							}
+						}
+						if(found)
+							headers.removeAt(n);
+					}
+				}
+
+				// if body patch specified, inherit body from timeout response
+				if(f.haveBodyPatch)
+				{
+					// first, load instruct body as json
+					QJson::Parser parser;
+					bool ok;
+					QVariant vbody = parser.parse(hold->response.body, &ok);
+					if(!hold->response.body.isEmpty() && ok)
+					{
+						QString errorMessage;
+						vbody = jsonPatch(vbody, f.bodyPatch, &errorMessage);
+						if(vbody.isValid())
+						{
+							QJson::Serializer serializer;
+							f.body = serializer.serialize(vbody);
+
+							if(hold->response.body.endsWith("\r\n"))
+								f.body += "\r\n";
+							else if(hold->response.body.endsWith("\n"))
+								f.body += '\n';
+						}
+						else
+						{
+							log_debug("failed to apply JSON patch: %s", qPrintable(errorMessage));
+							f.body.clear();
+						}
+					}
+					else
+					{
+						log_debug("failed to parse original response body as JSON");
+						f.body.clear();
+					}
+				}
 
 				hold->req->beginResponse(f.code, f.reason, headers);
 				hold->req->writeBody(f.body);
@@ -2961,20 +2986,6 @@ private:
 		stats_sock = ctx.socket(zmq.PUSH)
 		stats_sock.linger = 0
 		stats_sock.connect('inproc://stats_in')
-
-		if state_spec:
-			state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
-		else:
-			state_rpc = None
-
-		while True:
-			m_raw = in_sock.recv()
-			m = tnetstring.loads(m_raw)
-			logger.debug("IN publish: %s" % m)
-			channel = m["channel"]
-			id = m.get("id", None)
-			formats = m["formats"]
-			meta = m.get("meta", {})
 
 			response_holds = list()
 			stream_holds = list()
