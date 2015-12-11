@@ -18,9 +18,26 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import sys
+import json
 import argparse
 import tnetstring
 import zmq
+
+def ensure_utf8(i):
+	if isinstance(i, dict):
+		out = {}
+		for k, v in i.iteritems():
+			out[ensure_utf8(k)] = ensure_utf8(v)
+		return out
+	elif isinstance(i, list):
+		out = []
+		for v in i:
+			out.append(ensure_utf8(v))
+		return out
+	elif isinstance(i, unicode):
+		return i.encode("utf-8")
+	else:
+		return i
 
 parser = argparse.ArgumentParser(description='Publish messages to Pushpin.')
 parser.add_argument('channel', help='channel to send to')
@@ -36,6 +53,8 @@ parser.add_argument('--close', action='store_true',
 	help='close streaming requests')
 parser.add_argument('--sender',
 	help='sender meta value')
+parser.add_argument('--patch', action='store_true',
+	help='content is JSON patch')
 args = parser.parse_args()
 
 headers = []
@@ -48,7 +67,11 @@ meta = dict()
 formats = dict()
 
 if args.content:
-	hr = {'body': args.content + '\n'}
+	hr = {}
+	if args.patch:
+		hr['body-patch'] = ensure_utf8(json.loads(args.content))
+	else:
+		hr['body'] = args.content + '\n'
 	if args.code is not None:
 		hr['code'] = args.code
 	if headers:
@@ -57,10 +80,10 @@ if args.content:
 
 if args.close:
 	formats['http-stream'] = {'action': 'close'}
-elif args.content:
+elif args.content and not args.patch:
 	formats['http-stream'] = {'content': args.content + '\n'}
 
-if args.content:
+if args.content and not args.patch:
 	formats['ws-message'] = {'content': args.content}
 
 if not formats:
