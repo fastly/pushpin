@@ -33,6 +33,7 @@
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 #include "deferred.h"
+#include "statusreasons.h"
 #include "httpserver.h"
 
 // TODO: set lingers
@@ -785,6 +786,242 @@ private slots:
 	}
 };
 
+static void setSuccess(bool *ok, QString *errorMessage)
+{
+	if(ok)
+		*ok = true;
+	if(errorMessage)
+		errorMessage->clear();
+}
+
+static void setError(bool *ok, QString *errorMessage, const QString &msg)
+{
+	if(ok)
+		*ok = false;
+	if(errorMessage)
+		*errorMessage = msg;
+}
+
+static bool isKeyedObject(const QVariant &in)
+{
+	return (in.type() == QVariant::Hash || in.type() == QVariant::Map);
+}
+
+static QVariant createSameKeyedObject(const QVariant &in)
+{
+	if(in.type() == QVariant::Hash)
+		return QVariantHash();
+	else if(in.type() == QVariant::Map)
+		return QVariantMap();
+	else
+		return QVariant();
+}
+
+static bool keyedObjectIsEmpty(const QVariant &in)
+{
+	if(in.type() == QVariant::Hash)
+		return in.toHash().isEmpty();
+	else if(in.type() == QVariant::Map)
+		return in.toMap().isEmpty();
+	else
+		return true;
+}
+
+static bool keyedObjectContains(const QVariant &in, const QString &name)
+{
+	if(in.type() == QVariant::Hash)
+		return in.toHash().contains(name);
+	else if(in.type() == QVariant::Map)
+		return in.toMap().contains(name);
+	else
+		return false;
+}
+
+static QVariant keyedObjectGetValue(const QVariant &in, const QString &name)
+{
+	if(in.type() == QVariant::Hash)
+		return in.toHash().value(name);
+	else if(in.type() == QVariant::Map)
+		return in.toMap().value(name);
+	else
+		return QVariant();
+}
+
+static void keyedObjectInsert(QVariant *in, const QString &name, const QVariant &value)
+{
+	if(in->type() == QVariant::Hash)
+	{
+		QVariantHash h = in->toHash();
+		h.insert(name, value);
+		*in = h;
+	}
+	else if(in->type() == QVariant::Map)
+	{
+		QVariantMap h = in->toMap();
+		h.insert(name, value);
+		*in = h;
+	}
+}
+
+static QVariant getChild(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
+{
+	if(!isKeyedObject(in))
+	{
+		QString pn = !parentName.isEmpty() ? parentName : QString("value");
+		setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
+		return QVariant();
+	}
+
+	QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+	QVariant v;
+	if(in.type() == QVariant::Hash)
+	{
+		QVariantHash h = in.toHash();
+
+		if(!h.contains(childName))
+		{
+			if(required)
+				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
+			else
+				setSuccess(ok, errorMessage);
+
+			return QVariant();
+		}
+
+		v = h[childName];
+	}
+	else // Map
+	{
+		QVariantMap m = in.toMap();
+
+		if(!m.contains(childName))
+		{
+			if(required)
+				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
+			else
+				setSuccess(ok, errorMessage);
+
+			return QVariant();
+		}
+
+		v = m[childName];
+	}
+
+	setSuccess(ok, errorMessage);
+	return v;
+}
+
+static QVariant getKeyedObject(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
+{
+	bool ok_;
+	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	if(!ok_)
+	{
+		if(ok)
+			*ok = false;
+		return QVariant();
+	}
+
+	if(!v.isValid() && !required)
+	{
+		setSuccess(ok, errorMessage);
+		return QVariant();
+	}
+
+	QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+	if(!isKeyedObject(v))
+	{
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		return QVariant();
+	}
+
+	setSuccess(ok, errorMessage);
+	return v;
+}
+
+static QVariantList getList(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
+{
+	bool ok_;
+	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	if(!ok_)
+	{
+		if(ok)
+			*ok = false;
+		return QVariantList();
+	}
+
+	if(!v.isValid() && !required)
+	{
+		setSuccess(ok, errorMessage);
+		return QVariantList();
+	}
+
+	QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+	if(v.type() != QVariant::List)
+	{
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		return QVariantList();
+	}
+
+	setSuccess(ok, errorMessage);
+	return v.toList();
+}
+
+static QString getString(const QVariant &in, bool *ok = 0)
+{
+	if(in.type() == QVariant::String)
+	{
+		if(ok)
+			*ok = true;
+		return in.toString();
+	}
+	else if(in.type() == QVariant::ByteArray)
+	{
+		if(ok)
+			*ok = true;
+		return QString::fromUtf8(in.toByteArray());
+	}
+	else
+	{
+		if(ok)
+			*ok = false;
+		return QString();
+	}
+}
+
+static QString getString(const QVariant &in, const QString &parentName, const QString &childName, bool required, bool *ok = 0, QString *errorMessage = 0)
+{
+	bool ok_;
+	QVariant v = getChild(in, parentName, childName, required, &ok_, errorMessage);
+	if(!ok_)
+	{
+		if(ok)
+			*ok = false;
+		return QString();
+	}
+
+	if(!v.isValid() && !required)
+	{
+		setSuccess(ok, errorMessage);
+		return QString();
+	}
+
+	QString pn = !parentName.isEmpty() ? parentName : QString("object");
+
+	QString str = getString(v, &ok_);
+	if(!ok_)
+	{
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		return QString();
+	}
+
+	setSuccess(ok, errorMessage);
+	return str;
+}
+
 class Format
 {
 public:
@@ -800,32 +1037,299 @@ public:
 	QByteArray reason;
 	HttpHeaders headers;
 	QByteArray body; // used for content with stream/ws
-	bool close;
+	bool close; // stream
+	bool binary; // ws
 
 	Format() :
 		type((Type)-1),
 		code(-1),
-		close(false)
+		close(false),
+		binary(false)
 	{
 	}
 
 	Format(Type _type) :
 		type(_type),
 		code(-1),
-		close(false)
+		close(false),
+		binary(false)
 	{
 	}
 
-	static Format fromVariant(Type type, const QVariant &in, bool *ok = 0)
+	static Format fromVariant(Type type, const QVariant &in, bool *ok = 0, QString *errorMessage = 0)
 	{
-		// TODO
+		QString pn;
+		if(type == HttpResponse)
+			pn = "'http-response'";
+		else if(type == HttpStream)
+			pn = "'http-stream'";
+		else // WebSocketMessage
+			pn = "'ws-message'";
+
+		if(!isKeyedObject(in))
+		{
+			setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
+			return Format();
+		}
 
 		Format out(type);
+		bool ok_;
 
-		if(type == HttpStream)
+		if(type == HttpResponse)
 		{
-			QVariantMap vformat = in.toMap();
-			out.body = vformat["content"].toString().toUtf8();
+			if(keyedObjectContains(in, "code"))
+			{
+				QVariant vcode = keyedObjectGetValue(in, "code");
+				if(!vcode.canConvert(QVariant::Int))
+				{
+					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
+					return Format();
+				}
+
+				out.code = vcode.toInt();
+
+				if(out.code < 0 || out.code > 999)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'code' with invalid value").arg(pn));
+					return Format();
+				}
+			}
+			else
+				out.code = 200;
+
+			QString reasonStr = getString(in, pn, "reason", false, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return Format();
+			}
+
+			if(!reasonStr.isEmpty())
+				out.reason = reasonStr.toUtf8();
+			else
+				out.reason = StatusReasons::getReason(out.code);
+
+			if(keyedObjectContains(in, "headers"))
+			{
+				QVariant vheaders = keyedObjectGetValue(in, "headers");
+				if(vheaders.type() == QVariant::List)
+				{
+					foreach(const QVariant &vheader, vheaders.toList())
+					{
+						if(vheader.type() != QVariant::List)
+						{
+							setError(ok, errorMessage, "headers contains element with wrong type");
+							return Format();
+						}
+
+						QVariantList lheader = vheader.toList();
+						if(lheader.count() != 2)
+						{
+							setError(ok, errorMessage, "headers contains list with wrong number of elements");
+							return Format();
+						}
+
+						QString name = getString(lheader[0], &ok_);
+						if(!ok_)
+						{
+							setError(ok, errorMessage, "header contains name element with wrong type");
+							return Format();
+						}
+
+						QString val = getString(lheader[1], &ok_);
+						if(!ok_)
+						{
+							setError(ok, errorMessage, "header contains value element with wrong type");
+							return Format();
+						}
+
+						out.headers += HttpHeader(name.toUtf8(), val.toUtf8());
+					}
+				}
+				else if(isKeyedObject(vheaders))
+				{
+					if(vheaders.type() == QVariant::Hash)
+					{
+						QVariantHash hheaders = vheaders.toHash();
+
+						QHashIterator<QString, QVariant> it(hheaders);
+						while(it.hasNext())
+						{
+							it.next();
+							const QString &key = it.key();
+							const QVariant &vval = it.value();
+
+							QString val = getString(vval, &ok_);
+							if(!ok_)
+							{
+								setError(ok, errorMessage, QString("headers contains '%1' with wrong type").arg(key));
+								return Format();
+							}
+
+							out.headers += HttpHeader(key.toUtf8(), val.toUtf8());
+						}
+					}
+					else // Map
+					{
+						QVariantMap mheaders = vheaders.toMap();
+
+						QMapIterator<QString, QVariant> it(mheaders);
+						while(it.hasNext())
+						{
+							it.next();
+							const QString &key = it.key();
+							const QVariant &vval = it.value();
+
+							QString val = getString(vval, &ok_);
+							if(!ok_)
+							{
+								setError(ok, errorMessage, QString("headers contains '%1' with wrong type").arg(key));
+								return Format();
+							}
+
+							out.headers += HttpHeader(key.toUtf8(), val.toUtf8());
+						}
+					}
+				}
+				else
+				{
+					setError(ok, errorMessage, QString("%1 contains 'headers' with wrong type").arg(pn));
+					return Format();
+				}
+			}
+
+			if(in.type() == QVariant::Map && keyedObjectContains(in, "body-bin")) // JSON input
+			{
+				QString bodyBin = getString(in, pn, "body-bin", false, &ok_, errorMessage);
+				if(!ok_)
+				{
+					if(ok)
+						*ok = false;
+					return Format();
+				}
+
+				out.body = QByteArray::fromBase64(bodyBin.toUtf8());
+			}
+			else if(keyedObjectContains(in, "body"))
+			{
+				QVariant vcontent = keyedObjectGetValue(in, "body");
+				if(vcontent.type() == QVariant::ByteArray)
+					out.body = vcontent.toByteArray();
+				else if(vcontent.type() == QVariant::String)
+					out.body = vcontent.toString().toUtf8();
+				else
+				{
+					setError(ok, errorMessage, QString("%1 contains 'body' with wrong type").arg(pn));
+					return Format();
+				}
+			}
+			else
+			{
+				if(in.type() == QVariant::Map) // JSON input
+					setError(ok, errorMessage, QString("%1 does not contain 'body' or 'body-bin'").arg(pn));
+				else
+					setError(ok, errorMessage, QString("%1 does not contain 'body'").arg(pn));
+				return Format();
+			}
+		}
+		else if(type == HttpStream)
+		{
+			QString action = getString(in, pn, "action", false, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return Format();
+			}
+
+			if(action == "close")
+				out.close = true;
+
+			if(!out.close)
+			{
+				if(in.type() == QVariant::Map && keyedObjectContains(in, "content-bin")) // JSON input
+				{
+					QString contentBin = getString(in, pn, "content-bin", false, &ok_, errorMessage);
+					if(!ok_)
+					{
+						if(ok)
+							*ok = false;
+						return Format();
+					}
+
+					out.body = QByteArray::fromBase64(contentBin.toUtf8());
+				}
+				else if(keyedObjectContains(in, "content"))
+				{
+					QVariant vcontent = keyedObjectGetValue(in, "content");
+					if(vcontent.type() == QVariant::ByteArray)
+						out.body = vcontent.toByteArray();
+					else if(vcontent.type() == QVariant::String)
+						out.body = vcontent.toString().toUtf8();
+					else
+					{
+						setError(ok, errorMessage, QString("%1 contains 'content' with wrong type").arg(pn));
+						return Format();
+					}
+				}
+				else
+				{
+					if(in.type() == QVariant::Map) // JSON input
+						setError(ok, errorMessage, QString("%1 does not contain 'content' or 'content-bin'").arg(pn));
+					else
+						setError(ok, errorMessage, QString("%1 does not contain 'content'").arg(pn));
+					return Format();
+				}
+			}
+		}
+		else if(type == WebSocketMessage)
+		{
+			if(keyedObjectContains(in, "content-bin"))
+			{
+				QVariant vcontentBin = keyedObjectGetValue(in, "content-bin");
+
+				if(in.type() == QVariant::Map) // JSON input
+				{
+					if(vcontentBin.type() != QVariant::String)
+					{
+						setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
+						return Format();
+					}
+
+					out.body = QByteArray::fromBase64(vcontentBin.toString().toUtf8());
+				}
+				else
+				{
+					if(vcontentBin.type() != QVariant::ByteArray)
+					{
+						setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
+						return Format();
+					}
+
+					out.body = vcontentBin.toByteArray();
+				}
+
+				out.binary = true;
+			}
+			else if(keyedObjectContains(in, "content"))
+			{
+				QVariant vcontent = keyedObjectGetValue(in, "content");
+				if(vcontent.type() == QVariant::ByteArray)
+					out.body = vcontent.toByteArray();
+				else if(vcontent.type() == QVariant::String)
+					out.body = vcontent.toString().toUtf8();
+				else
+				{
+					setError(ok, errorMessage, QString("%1 contains 'content' with wrong type").arg(pn));
+					return Format();
+				}
+			}
+			else
+			{
+				setError(ok, errorMessage, QString("%1 does not contain 'content' or 'content-bin'").arg(pn));
+				return Format();
+			}
 		}
 
 		if(ok)
@@ -842,170 +1346,208 @@ public:
 	QString prevId;
 	QHash<Format::Type, Format> formats;
 	QHash<QString, QString> meta;
-};
 
-static QList<PublishItem> parseHttpItems(const QVariantList &vitems, bool *ok = 0)
-{
-	QList<PublishItem> out;
-
-	foreach(const QVariant &vitem, vitems)
+	static PublishItem fromVariant(const QVariant &vitem, bool *ok = 0, QString *errorMessage = 0)
 	{
-		if(vitem.type() != QVariant::Map)
-		{
-			if(ok)
-				*ok = false;
-			return QList<PublishItem>();
-		}
+		QString pn = "publish item object";
 
-		QVariantMap mitem = vitem.toMap();
+		if(!isKeyedObject(vitem))
+		{
+			setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
+			return PublishItem();
+		}
 
 		PublishItem item;
 
-		if(!mitem.contains("channel") || mitem["channel"].type() != QVariant::String)
+		bool ok_;
+		item.channel = getString(vitem, pn, "channel", true, &ok_, errorMessage);
+		if(!ok_)
 		{
 			if(ok)
 				*ok = false;
-			return QList<PublishItem>();
+			return PublishItem();
 		}
 
-		item.channel = mitem["channel"].toString();
-
-		if(mitem.contains("id"))
-		{
-			if(mitem["id"].type() != QVariant::String)
-			{
-				if(ok)
-					*ok = false;
-				return QList<PublishItem>();
-			}
-
-			item.id = mitem["id"].toString();
-		}
-
-		if(mitem.contains("prev-id"))
-		{
-			if(mitem["prev-id"].type() != QVariant::String)
-			{
-				if(ok)
-					*ok = false;
-				return QList<PublishItem>();
-			}
-
-			item.prevId = mitem["prev-id"].toString();
-		}
-
-		QVariantMap mformats;
-		if(mitem.contains("formats"))
-		{
-			if(mitem["formats"].type() != QVariant::Map)
-			{
-				if(ok)
-					*ok = false;
-				return QList<PublishItem>();
-			}
-
-			mformats = mitem["formats"].toMap();
-		}
-		else
-		{
-			if(mitem.contains("http-response"))
-				mformats.insert("http-response", mitem["http-response"]);
-			if(mitem.contains("http-stream"))
-				mformats.insert("http-stream", mitem["http-stream"]);
-			if(mitem.contains("ws-message"))
-				mformats.insert("ws-message", mitem["ws-message"]);
-		}
-
-		if(mformats.isEmpty())
+		item.id = getString(vitem, pn, "id", false, &ok_, errorMessage);
+		if(!ok_)
 		{
 			if(ok)
 				*ok = false;
-			return QList<PublishItem>();
+			return PublishItem();
 		}
 
-		if(mformats.contains("http-response"))
+		item.prevId = getString(vitem, pn, "prev-id", false, &ok_, errorMessage);
+		if(!ok_)
 		{
-			bool x;
-			Format f = Format::fromVariant(Format::HttpResponse, mformats["http-response"], &x);
-			if(!x)
+			if(ok)
+				*ok = false;
+			return PublishItem();
+		}
+
+		QVariant vformats = getKeyedObject(vitem, pn, "formats", false, &ok_, errorMessage);
+		if(!ok_)
+		{
+			if(ok)
+				*ok = false;
+			return PublishItem();
+		}
+
+		if(!vformats.isValid())
+		{
+			vformats = createSameKeyedObject(vitem);
+
+			QVariant v = keyedObjectGetValue(vitem, "http-response");
+			if(v.isValid())
+				keyedObjectInsert(&vformats, "http-response", v);
+
+			v = keyedObjectGetValue(vitem, "http-stream");
+			if(v.isValid())
+				keyedObjectInsert(&vformats, "http-stream", v);
+
+			v = keyedObjectGetValue(vitem, "ws-message");
+			if(v.isValid())
+				keyedObjectInsert(&vformats, "ws-message", v);
+		}
+
+		if(keyedObjectIsEmpty(vformats))
+		{
+			setError(ok, errorMessage, "no formats specified");
+			return PublishItem();
+		}
+
+		if(keyedObjectContains(vformats, "http-response"))
+		{
+			Format f = Format::fromVariant(Format::HttpResponse, keyedObjectGetValue(vformats, "http-response"), &ok_, errorMessage);
+			if(!ok_)
 			{
 				if(ok)
 					*ok = false;
-				return QList<PublishItem>();
+				return PublishItem();
 			}
 
 			item.formats.insert(Format::HttpResponse, f);
 		}
 
-		if(mformats.contains("http-stream"))
+		if(keyedObjectContains(vformats, "http-stream"))
 		{
-			bool x;
-			Format f = Format::fromVariant(Format::HttpStream, mformats["http-stream"], &x);
-			if(!x)
+			Format f = Format::fromVariant(Format::HttpStream, keyedObjectGetValue(vformats, "http-stream"), &ok_, errorMessage);
+			if(!ok_)
 			{
 				if(ok)
 					*ok = false;
-				return QList<PublishItem>();
+				return PublishItem();
 			}
 
 			item.formats.insert(Format::HttpStream, f);
 		}
 
-		if(mformats.contains("ws-message"))
+		if(keyedObjectContains(vformats, "ws-message"))
 		{
-			bool x;
-			Format f = Format::fromVariant(Format::WebSocketMessage, mformats["ws-message"], &x);
-			if(!x)
+			Format f = Format::fromVariant(Format::WebSocketMessage, keyedObjectGetValue(vformats, "ws-message"), &ok_, errorMessage);
+			if(!ok_)
 			{
 				if(ok)
 					*ok = false;
-				return QList<PublishItem>();
+				return PublishItem();
 			}
 
 			item.formats.insert(Format::WebSocketMessage, f);
 		}
 
-		if(mitem.contains("meta"))
+		QVariant vmeta = getKeyedObject(vitem, pn, "meta", false, &ok_, errorMessage);
+		if(!ok_)
 		{
-			if(mitem["meta"].type() != QVariant::Map)
-			{
-				if(ok)
-					*ok = false;
-				return QList<PublishItem>();
-			}
+			if(ok)
+				*ok = false;
+			return PublishItem();
+		}
 
-			QVariantMap vmeta = mitem["meta"].toMap();
-			QMapIterator<QString, QVariant> it(vmeta);
-			while(it.hasNext())
+		if(vmeta.isValid())
+		{
+			if(vmeta.type() == QVariant::Hash)
 			{
-				it.next();
-				const QString &key = it.key();
-				const QVariant &vval = it.value();
-				if(vval.type() != QVariant::String)
+				QVariantHash hmeta = vmeta.toHash();
+
+				QHashIterator<QString, QVariant> it(hmeta);
+				while(it.hasNext())
 				{
-					if(ok)
-						*ok = false;
-					return QList<PublishItem>();
+					it.next();
+					const QString &key = it.key();
+					const QVariant &vval = it.value();
+
+					QString val = getString(vval, &ok_);
+					if(!ok_)
+					{
+						setError(ok, errorMessage, QString("'meta' contains '%1' with wrong type").arg(key));
+						return PublishItem();
+					}
+
+					item.meta[key] = val;
 				}
-
-				QString val = vval.toString();
-
-				item.meta[key] = val;
 			}
+			else // Map
+			{
+				QVariantMap mmeta = vmeta.toMap();
+
+				QMapIterator<QString, QVariant> it(mmeta);
+				while(it.hasNext())
+				{
+					it.next();
+					const QString &key = it.key();
+					const QVariant &vval = it.value();
+
+					QString val = getString(vval, &ok_);
+					if(!ok_)
+					{
+						setError(ok, errorMessage, QString("'meta' contains '%1' with wrong type").arg(key));
+						return PublishItem();
+					}
+
+					item.meta[key] = val;
+				}
+			}
+		}
+
+		setSuccess(ok, errorMessage);
+		return item;
+	}
+};
+
+static QList<PublishItem> parseHttpItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
+{
+	QList<PublishItem> out;
+
+	foreach(const QVariant &vitem, vitems)
+	{
+		bool ok_;
+		PublishItem item = PublishItem::fromVariant(vitem, &ok_, errorMessage);
+		if(!ok_)
+		{
+			if(ok)
+				*ok = false;
+			return QList<PublishItem>();
 		}
 
 		out += item;
 	}
 
-	if(ok)
-		*ok = true;
+	setSuccess(ok, errorMessage);
 	return out;
 }
+
+enum HoldMode
+{
+	NoHold,
+	ResponseHold,
+	StreamHold
+};
 
 class Hold
 {
 public:
+	HoldMode mode;
 	QSet<QString> channels;
+	HttpResponseData response;
 	ZhttpRequest *req;
 };
 
@@ -1265,13 +1807,6 @@ public:
 class Instruct
 {
 public:
-	enum HoldMode
-	{
-		NoHold,
-		ResponseHold,
-		StreamHold
-	};
-
 	class Channel
 	{
 	public:
@@ -1891,7 +2426,7 @@ private:
 
 		bool ok;
 		Instruct instruct = Instruct::fromResponse(responseData, &ok);
-		if(!ok || instruct.holdMode == Instruct::NoHold)
+		if(!ok || instruct.holdMode == NoHold)
 		{
 			log_debug("failed to parse accept instructions");
 			/*for req in reqs:
@@ -1936,8 +2471,28 @@ private:
 			h.meta = meta
 
 			notify_subs = set()*/
-			if(instruct.holdMode == Instruct::ResponseHold)
+			if(instruct.holdMode == ResponseHold)
 			{
+				// TODO
+				ZhttpRequest::ServerState ss;
+				ss.rid = ZhttpRequest::Rid(rs.rid.first, rs.rid.second);
+				ss.inSeq = rs.inSeq;
+				ss.outSeq = rs.outSeq;
+				ss.outCredits = 200000;
+
+				ZhttpRequest *outReq = zhttpIn->createRequestFromState(ss);
+
+				Hold *hold = new Hold;
+				hold->mode = instruct.holdMode;
+				hold->response = instruct.response;
+				hold->req = outReq;
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					log_debug("adding response hold on %s", qPrintable(c.name));
+					hold->channels += c.name;
+				}
+				cs->holds += hold;
+
 				/*# bind channels
 				quit = False
 				lock.acquire()
@@ -2036,6 +2591,7 @@ private:
 				instruct.response.headers.removeAll("Content-Length");
 
 				Hold *hold = new Hold;
+				hold->mode = instruct.holdMode;
 				hold->req = outReq;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
@@ -2267,6 +2823,11 @@ public:
 			log_info("http control server: %s:%d", qPrintable(config.pushInHttpAddr.toString()), config.pushInHttpPort);
 		}
 
+		if(inPullValve)
+			inPullValve->open();
+		if(inSubValve)
+			inSubValve->open();
+
 		return true;
 	}
 
@@ -2282,6 +2843,9 @@ private:
 
 		foreach(Hold *hold, cs.holds)
 		{
+			if(!hold->req)
+				continue;
+
 			bool found = false;
 			foreach(const QString &c, hold->channels)
 			{
@@ -2291,11 +2855,48 @@ private:
 					break;
 				}
 			}
+			if(!found)
+				continue;
 
-			if(found)
+			if(hold->mode == ResponseHold && item.formats.contains(Format::HttpResponse))
+			{
+				log_debug("relaying to 1 http-response subscribers");
+				Format f = item.formats.value(Format::HttpResponse);
+
+				// TODO: extract Grip-Expose-Headers header
+
+				// inherit headers
+				HttpHeaders headers = hold->response.headers;
+				headers.removeAll("Content-Length"); // this will be auto set
+
+				// merge
+				foreach(const HttpHeader &h, f.headers)
+				{
+					headers.removeAll(h.first);
+					headers += h;
+				}
+
+				// TODO: if Grip-Expose-Headers was set, apply now
+
+				// TODO: support body patch
+
+				hold->req->beginResponse(f.code, f.reason, headers);
+				hold->req->writeBody(f.body);
+				hold->req->endBody();
+				hold->req = 0;
+			}
+			else if(hold->mode == StreamHold && item.formats.contains(Format::HttpStream))
 			{
 				log_debug("relaying to 1 http-stream subscribers");
-				hold->req->writeBody(item.formats.value(Format::HttpStream).body);
+				Format f = item.formats.value(Format::HttpStream);
+
+				if(f.close)
+				{
+					hold->req->endBody();
+					hold->req = 0;
+				}
+				else
+					hold->req->writeBody(f.body);
 			}
 		}
 
@@ -2724,24 +3325,29 @@ private slots:
 
 	void inPull_readyRead(const QList<QByteArray> &message)
 	{
-		// TODO
-		Q_UNUSED(message);
+		if(message.count() != 1)
+		{
+			log_warning("IN pull: received message with parts != 1, skipping");
+			return;
+		}
 
-		/*
-			try:
-				try:
-					m = tnetstring.loads(m_raw)
-				except:
-					raise ValidationError("bad format (not a tnetstring)")
+		bool ok;
+		QVariant data = TnetString::toVariant(message[0], 0, &ok);
+		if(!ok)
+		{
+			log_warning("IN pull: received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
 
-				m = validate_publish(m)
+		QString errorMessage;
+		PublishItem item = PublishItem::fromVariant(data, &ok, &errorMessage);
+		if(!ok)
+		{
+			log_warning("IN pull: received message with invalid format: %s, skipping", qPrintable(errorMessage));
+			return;
+		}
 
-			except ValidationError as e:
-				logger.debug("warning: %s, dropping" % e.message)
-				continue
-
-			// process m
-		*/
+		handlePublishItem(item);
 	}
 
 	void inSub_readyRead(const QList<QByteArray> &message)
@@ -2823,22 +3429,27 @@ private slots:
 				QVariantMap mdata = vdata.toMap();
 				QVariantList vitems;
 
-				if(mdata.contains("items"))
+				if(!mdata.contains("items"))
 				{
-					if(mdata["items"].type() != QVariant::List)
-					{
-						req->respond(400, "Bad Request", "Invalid format.\n");
-						connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
-						return;
-					}
-
-					vitems = mdata["items"].toList();
+					req->respond(400, "Bad Request", "Invalid format: object does not contain 'items'\n");
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
 				}
 
-				QList<PublishItem> items = parseHttpItems(vitems, &ok);
+				if(mdata["items"].type() != QVariant::List)
+				{
+					req->respond(400, "Bad Request", "Invalid format: object contains 'items' with wrong type\n");
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
+				}
+
+				vitems = mdata["items"].toList();
+
+				QString errorMessage;
+				QList<PublishItem> items = parseHttpItems(vitems, &ok, &errorMessage);
 				if(!ok)
 				{
-					req->respond(400, "Bad Request", "Invalid format.\n");
+					req->respond(400, "Bad Request", QString("Invalid format: %1\n").arg(errorMessage));
 					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
 					return;
 				}
