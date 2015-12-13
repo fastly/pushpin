@@ -33,6 +33,8 @@ moc_*
 /handler/src/pro/pushpin-handler/Makefile
 /handler/src/libpushpin-handler.a
 /handler/tests/Makefile
+/handler/tests/pro/*/Makefile
+/handler/tests/*test
 /runner/run
 /runner/log
 /pushpin.inst

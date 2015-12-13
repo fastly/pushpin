@@ -36,6 +36,8 @@
 #include "deferred.h"
 #include "statusreasons.h"
 #include "httpserver.h"
+#include "jsonpointer.h"
+#include "jsonpatch.h"
 
 // TODO: set lingers
 
@@ -292,16 +294,6 @@ static QVariant keyedObjectGetValue(const QVariant &in, const QString &name)
 		return QVariant();
 }
 
-static QVariant & keyedObjectGetRef(const QVariant &in, const QString &name)
-{
-	if(in.type() == QVariant::Hash)
-		return in.toHash()[name];
-	else if(in.type() == QVariant::Map)
-		return in.toMap()[name];
-	else
-		assert(0);
-}
-
 static void keyedObjectInsert(QVariant *in, const QString &name, const QVariant &value)
 {
 	if(in->type() == QVariant::Hash)
@@ -477,190 +469,58 @@ static QString getString(const QVariant &in, const QString &parentName, const QS
 	return str;
 }
 
-class JsonPointer
+// return true if item modified
+static bool convertToJsonStyleInPlace(QVariant *in)
 {
-public:
-	QVariant *obj;
-	QString childName;
-	int childIndex;
+	// Hash -> Map
+	// ByteArray (UTF-8) -> String
 
-	JsonPointer() :
-		obj(0),
-		childIndex(-2) // -2=unset, -1=end
+	bool changed = false;
+
+	int type = in->type();
+	if(type == QVariant::Hash)
 	{
+		QVariantMap vmap;
+		QVariantHash vhash = in->toHash();
+		QHashIterator<QString, QVariant> it(vhash);
+		while(it.hasNext())
+		{
+			it.next();
+			QVariant i = it.value();
+			convertToJsonStyleInPlace(&i);
+			vmap[it.key()] = i;
+		}
+
+		*in = vmap;
+		changed = true;
 	}
-};
-
-static JsonPointer resolveJsonPointer(QVariant &data, const QString &jsonPointerStr, QString *errorMessage = 0)
-{
-	if(!jsonPointerStr.startsWith('/'))
+	else if(type == QVariant::List)
 	{
-		if(errorMessage)
-			*errorMessage = "pointer must start with /";
-		return JsonPointer();
+		QVariantList vlist = in->toList();
+		for(int n = 0; n < vlist.count(); ++n)
+		{
+			QVariant i = vlist.at(n);
+			convertToJsonStyleInPlace(&i);
+			vlist[n] = i;
+		}
+
+		*in = vlist;
+		changed = true;
 	}
-
-	JsonPointer ptr;
-	ptr.obj = &data;
-
-	// root
-	if(jsonPointerStr.length() == 1)
-		return ptr;
-
-	QStringList parts = jsonPointerStr.split('/').mid(1);
-	foreach(const QString &part, parts)
+	else if(type == QVariant::ByteArray)
 	{
-		if(part.isEmpty())
-		{
-			if(errorMessage)
-				*errorMessage = "reference cannot be empty";
-			return JsonPointer();
-		}
-
-		QString p = part;
-		p.replace("~1", "/");
-		p.replace("~0", "~");
-
-		// step into previous reference, if any
-		if(!ptr.childName.isNull())
-		{
-			if(!keyedObjectContains(*ptr.obj, ptr.childName))
-			{
-				if(errorMessage)
-					*errorMessage = "cannot step into undefined reference";
-				return JsonPointer();
-			}
-
-			ptr.obj = &keyedObjectGetRef(*ptr.obj, ptr.childName);
-			ptr.childName.clear();
-		}
-		else if(ptr.childIndex != -2)
-		{
-			QVariantList lobj = ptr.obj->toList();
-			if(ptr.childIndex < 0 || ptr.childIndex >= lobj.count())
-			{
-				if(errorMessage)
-					*errorMessage = "cannot step into undefined reference";
-				return JsonPointer();
-			}
-
-			ptr.obj = &lobj[ptr.childIndex];
-			ptr.childIndex = -2;
-		}
-
-		// set latest reference
-		if(isKeyedObject(*ptr.obj))
-		{
-			ptr.childName = p;
-		}
-		else if(ptr.obj->type() == QVariant::List)
-		{
-			QVariantList lobj = ptr.obj->toList();
-
-			if(p == "-")
-			{
-				ptr.childIndex = -1;
-			}
-			else
-			{
-				bool ok;
-				int index = p.toInt(&ok);
-				if(!ok)
-				{
-					if(errorMessage)
-						*errorMessage = "index must be an integer";
-					return JsonPointer();
-				}
-
-				if(index < 0 || index >= lobj.count())
-				{
-					if(errorMessage)
-						*errorMessage = "index out of range";
-					return JsonPointer();
-				}
-
-				ptr.childIndex = index;
-			}
-		}
-		else
-		{
-			if(errorMessage)
-				*errorMessage = "non-container value cannot have child reference";
-			return JsonPointer();
-		}
+		*in = QVariant(QString::fromUtf8(in->toByteArray()));
+		changed = true;
 	}
 
-	return ptr;
+	return changed;
 }
 
-static QVariant jsonPatch(const QVariant &data, const QVariantList &ops, QString *errorMessage = 0)
+static QVariant convertToJsonStyle(const QVariant &in)
 {
-	QVariant out = data;
-
-	foreach(const QVariant &vop, ops)
-	{
-		if(!isKeyedObject(vop))
-		{
-			if(errorMessage)
-				*errorMessage = "invalid op";
-			return QVariant();
-		}
-
-		QString pn = "op";
-
-		bool ok;
-		QString type = getString(vop, pn, "op", true, &ok, errorMessage);
-		if(!ok)
-			return QVariant();
-
-		if(type == "add")
-		{
-			QString path = getString(vop, pn, "path", true, &ok, errorMessage);
-			if(!ok)
-				return QVariant();
-
-			if(!keyedObjectContains(vop, "value"))
-			{
-				if(errorMessage)
-					*errorMessage = "op does not contain 'value'";
-				return QVariant();
-			}
-
-			QVariant value = keyedObjectGetValue(vop, "value");
-
-			JsonPointer ptr = resolveJsonPointer(out, path, errorMessage);
-			if(!ptr.obj)
-				return QVariant();
-
-			if(!ptr.childName.isNull())
-			{
-				QVariantMap tmp = ptr.obj->toMap();
-				tmp[ptr.childName] = value;
-				*ptr.obj = tmp;
-			}
-			else if(ptr.childIndex != -2)
-			{
-				QVariantList tmp = ptr.obj->toList();
-				if(ptr.childIndex != -1)
-					tmp.insert(ptr.childIndex, value);
-				else
-					tmp.append(value);
-				*ptr.obj = tmp;
-			}
-			else
-			{
-				*(ptr.obj) = value;
-			}
-		}
-		else
-		{
-			if(errorMessage)
-				*errorMessage = QString("unsupported op: %1").arg(type);
-			return QVariant();
-		}
-	}
-
-	return out;
+	QVariant v = in;
+	convertToJsonStyleInPlace(&v);
+	return v;
 }
 
 class DetectRule
@@ -1717,10 +1577,13 @@ private slots:
 				if(!ok)
 					continue;
 
-				JsonPointer ptr = resolveJsonPointer(vdata, rule.sidPtr);
-				if(ptr.obj && ptr.childName.isNull() && ptr.childIndex == -2)
+				JsonPointer ptr = JsonPointer::resolve(&vdata, rule.sidPtr);
+				if(!ptr.isNull() && ptr.exists())
 				{
-					sid = ptr.obj->toString();
+					sid = getString(ptr.value(), &ok);
+					if(!ok)
+						continue;
+
 					break;
 				}
 			}
@@ -2929,11 +2792,11 @@ private:
 					if(!hold->response.body.isEmpty() && ok)
 					{
 						QString errorMessage;
-						vbody = jsonPatch(vbody, f.bodyPatch, &errorMessage);
+						vbody = JsonPatch::patch(vbody, f.bodyPatch, &errorMessage);
 						if(vbody.isValid())
 						{
 							QJson::Serializer serializer;
-							f.body = serializer.serialize(vbody);
+							f.body = serializer.serialize(convertToJsonStyle(vbody));
 
 							if(hold->response.body.endsWith("\r\n"))
 								f.body += "\r\n";
