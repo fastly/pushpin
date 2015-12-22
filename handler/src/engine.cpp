@@ -437,6 +437,65 @@ static QVariant convertToJsonStyle(const QVariant &in)
 	return v;
 }
 
+static int charToHex(char c)
+{
+	if(c >= '0' && c <= '9')
+		return c - '0';
+	else if(c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	else if(c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	else
+		return -1;
+}
+static QByteArray unescape(const QByteArray &in)
+{
+	QByteArray out;
+
+	for(int n = 0; n < in.length(); ++n)
+	{
+		if(in[n] == '\\')
+		{
+			if(n + 1 >= in.length())
+				return QByteArray();
+
+			++n;
+
+			if(in[n] == '\\')
+			{
+				out += '\\';
+			}
+			else if(in[n] == 'r')
+			{
+				out += '\r';
+			}
+			else if(in[n] == 'n')
+			{
+				out += '\n';
+			}
+			else if(in[n] == 'x')
+			{
+				if(n + 2 >= in.length())
+					return QByteArray();
+
+				int hi = charToHex(in[n + 1]);
+				int lo = charToHex(in[n + 2]);
+				n += 2;
+
+				if(hi == -1 || lo == -1)
+					return QByteArray();
+
+				unsigned int x = (hi << 4) + lo;
+				out += (char)x;
+			}
+		}
+		else
+			out += in[n];
+	}
+
+	return out;
+}
+
 // return true to send and false to drop.
 // TODO: support more than one filter, payload modification, etc
 static bool applyFilters(const QHash<QString, QString> &subscriptionMeta, const QHash<QString, QString> &publishMeta, const QStringList &filters)
@@ -1882,7 +1941,13 @@ public:
 			}
 			else if(format == "cstring")
 			{
-				// TODO: keepAlive = unescape(val)
+				keepAlive = unescape(val);
+				if(keepAlive.isNull())
+				{
+					if(ok)
+						*ok = false;
+					return Instruct();
+				}
 			}
 			else if(format == "base64")
 			{
