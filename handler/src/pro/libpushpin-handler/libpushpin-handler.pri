@@ -45,6 +45,7 @@ HEADERS += \
 	$$PROXY_SRC_DIR/zhttpmanager.h \
 	$$PROXY_SRC_DIR/zhttprequest.h \
 	$$PROXY_SRC_DIR/zwebsocket.h \
+	$$PROXY_SRC_DIR/cors.h \
 	$$SRC_DIR/deferred.h \
 	$$SRC_DIR/statusreasons.h \
 	$$SRC_DIR/httpserver.h \
@@ -62,6 +63,7 @@ SOURCES += \
 	$$PROXY_SRC_DIR/zhttpmanager.cpp \
 	$$PROXY_SRC_DIR/zhttprequest.cpp \
 	$$PROXY_SRC_DIR/zwebsocket.cpp \
+	$$PROXY_SRC_DIR/cors.cpp \
 	$$SRC_DIR/deferred.cpp \
 	$$SRC_DIR/statusreasons.cpp \
 	$$SRC_DIR/httpserver.cpp \

@@ -20,6 +20,7 @@
 #include "engine.h"
 
 #include <assert.h>
+#include <QTimer>
 #include <qjson/parser.h>
 #include <qjson/serializer.h>
 #include "qzmqsocket.h"
@@ -38,11 +39,14 @@
 #include "httpserver.h"
 #include "jsonpointer.h"
 #include "jsonpatch.h"
-
-// TODO: set lingers
+#include "cors.h"
 
 #define DEFAULT_HWM 1000
 #define SUB_SNDHWM 0 // infinite
+
+#define DEFAULT_LINGER 1000
+
+#define STATE_RPC_TIMEOUT 1000
 
 /*
 CONNECTION_TTL = 600
@@ -51,9 +55,6 @@ CONNECTION_LINGER = 60
 
 SUBSCRIPTION_TTL = 60
 SUBSCRIPTION_LINGER = 60
-
-# zmq socket linger
-DEFAULT_LINGER = 1000
 
 # delay to avoid overflowing the nic. wait 1ms for every 20 deliveries
 SEND_BATCH_SIZE = 20
@@ -170,67 +171,6 @@ def remove_from_response_channels(rid):
 # assumes state is locked
 def remove_from_stream_channels(rid):
 	return remove_from_req_channels(rid, response=False, stream=True)
-
-simple_headers = set()
-simple_headers.add("Cache-control")
-simple_headers.add("Content-Language")
-simple_headers.add("Content-Length")
-simple_headers.add("Content-Type")
-simple_headers.add("Expires")
-simple_headers.add("Last-Modified")
-simple_headers.add("Pragma")
-
-# modifies response_headers as needed
-def apply_cors_headers(request_headers, response_headers):
-	if not header_get(response_headers, "Access-Control-Allow-Methods"):
-		acr_method = header_get(request_headers, "Access-Control-Request-Method")
-		if acr_method:
-			header_set(response_headers, "Access-Control-Allow-Methods", acr_method)
-		else:
-			header_set(response_headers, "Access-Control-Allow-Methods", "OPTIONS, HEAD, GET, POST, PUT, DELETE")
-
-	if not header_get(response_headers, "Access-Control-Allow-Headers"):
-		acr_headers = header_get(request_headers, "Access-Control-Request-Headers")
-		allow_headers = list()
-		if acr_headers:
-			for name in acr_headers.split(","):
-				name = name.strip()
-				if name:
-					allow_headers.append(name)
-		if len(allow_headers) > 0:
-			header_set(response_headers, "Access-Control-Allow-Headers", ", ".join(allow_headers))
-
-	if not header_get(response_headers, "Access-Control-Expose-Headers"):
-		expose_headers = list()
-		for name in response_headers.keys():
-			lname = name.lower()
-			if not header_names_contains(simple_headers, name) and not lname.startswith("access-control-") and not header_names_contains(expose_headers, name):
-				expose_headers.append(name)
-		if len(expose_headers) > 0:
-			header_set(response_headers, "Access-Control-Expose-Headers", ", ".join(expose_headers))
-
-	if not header_get(response_headers, "Access-Control-Allow-Credentials"):
-		header_set(response_headers, "Access-Control-Allow-Credentials", "true")
-
-	if not header_get(response_headers, "Access-Control-Allow-Origin"):
-		origin = header_get(request_headers, "Origin")
-		if not origin:
-			origin = "*"
-		header_set(response_headers, "Access-Control-Allow-Origin", origin)
-
-	if not header_get(response_headers, "Access-Control-Max-Age"):
-		header_set(response_headers, "Access-Control-Max-Age", "3600")
-
-# return True to send and False to drop.
-# TODO: support more than one filter, payload modification, etc
-def apply_filters(sub_meta, pub_meta, filters):
-	for f in filters:
-		if f == 'skip-self':
-			user = sub_meta.get('user')
-			sender = pub_meta.get('sender')
-			if user and sender and sender == user:
-				return False
-	return True
 */
 
 static void setSuccess(bool *ok, QString *errorMessage)
@@ -523,6 +463,24 @@ static QVariant convertToJsonStyle(const QVariant &in)
 	return v;
 }
 
+// return true to send and false to drop.
+// TODO: support more than one filter, payload modification, etc
+static bool applyFilters(const QHash<QString, QString> &subscriptionMeta, const QHash<QString, QString> &publishMeta, const QStringList &filters)
+{
+	foreach(const QString &f, filters)
+	{
+		if(f == "skip-self")
+		{
+			QString user = subscriptionMeta.value("user");
+			QString sender = publishMeta.value("sender");
+			if(!user.isEmpty() && !sender.isEmpty() && sender == user)
+				return false;
+		}
+	}
+
+	return true;
+}
+
 class DetectRule
 {
 public:
@@ -537,6 +495,9 @@ Q_DECLARE_METATYPE(DetectRuleList);
 
 typedef QHash<QString, QString> LastIds;
 Q_DECLARE_METATYPE(LastIds);
+
+typedef QSet<QString> CidSet;
+Q_DECLARE_METATYPE(CidSet);
 
 class SessionDetectRulesSet : public Deferred
 {
@@ -1374,21 +1335,6 @@ enum HoldMode
 	StreamHold
 };
 
-class Hold
-{
-public:
-	HoldMode mode;
-	QSet<QString> channels;
-	HttpResponseData response;
-	ZhttpRequest *req;
-};
-
-class CommonState
-{
-public:
-	QList<Hold*> holds;
-};
-
 typedef QPair<QByteArray, QByteArray> ByteArrayPair;
 
 class InspectWorker : public Deferred
@@ -1631,11 +1577,205 @@ public:
 	QPair<QByteArray, QByteArray> rid;
 	int inSeq;
 	int outSeq;
+	int outCredits;
+	QHostAddress peerAddress;
+	bool isHttps;
+	bool autoCrossOrigin;
+	QByteArray jsonpCallback;
+	bool jsonpExtendedResponse;
 
 	RequestState() :
 		inSeq(0),
-		outSeq(0)
+		outSeq(0),
+		outCredits(0),
+		isHttps(false),
+		autoCrossOrigin(false),
+		jsonpExtendedResponse(false)
 	{
+	}
+
+	static RequestState fromVariant(const QVariant &in)
+	{
+		if(in.type() != QVariant::Hash)
+			return RequestState();
+
+		QVariantHash r = in.toHash();
+		RequestState rs;
+
+		if(!r.contains("rid") || r["rid"].type() != QVariant::Hash)
+			return RequestState();
+
+		QVariantHash vrid = r["rid"].toHash();
+
+		if(!vrid.contains("sender") || vrid["sender"].type() != QVariant::ByteArray)
+			return RequestState();
+
+		if(!vrid.contains("id") || vrid["id"].type() != QVariant::ByteArray)
+			return RequestState();
+
+		rs.rid = QPair<QByteArray, QByteArray>(vrid["sender"].toByteArray(), vrid["id"].toByteArray());
+
+		if(!r.contains("in-seq") || !r["in-seq"].canConvert(QVariant::Int))
+			return RequestState();
+
+		rs.inSeq = r["in-seq"].toInt();
+
+		if(!r.contains("out-seq") || !r["out-seq"].canConvert(QVariant::Int))
+			return RequestState();
+
+		rs.outSeq = r["out-seq"].toInt();
+
+		if(!r.contains("out-credits") || !r["out-credits"].canConvert(QVariant::Int))
+			return RequestState();
+
+		rs.outCredits = r["out-credits"].toInt();
+
+		if(r.contains("peer-address"))
+		{
+			if(r["peer-address"].type() != QVariant::ByteArray)
+				return RequestState();
+
+			if(!rs.peerAddress.setAddress(QString::fromUtf8(r["peer-address"].toByteArray())))
+				return RequestState();
+		}
+
+		if(r.contains("https"))
+		{
+			if(r["https"].type() != QVariant::Bool)
+				return RequestState();
+
+			rs.isHttps = r["https"].toBool();
+		}
+
+		if(r.contains("auto-cross-origin"))
+		{
+			if(r["auto-cross-origin"].type() != QVariant::Bool)
+				return RequestState();
+
+			rs.autoCrossOrigin = r["auto-cross-origin"].toBool();
+		}
+
+		if(r.contains("jsonp-callback"))
+		{
+			if(r["jsonp-callback"].type() != QVariant::ByteArray)
+				return RequestState();
+
+			rs.jsonpCallback = r["jsonp-callback"].toByteArray();
+		}
+
+		if(r.contains("jsonp-extended-response"))
+		{
+			if(r["jsonp-extended-response"].type() != QVariant::Bool)
+				return RequestState();
+
+			rs.jsonpExtendedResponse = r["jsonp-extended-response"].toBool();
+		}
+
+		return rs;
+	}
+};
+
+class WsControlPacket
+{
+public:
+	class Message
+	{
+	public:
+		enum Type
+		{
+			Here,
+			Gone,
+			Cancel,
+			Grip
+		};
+
+		Type type;
+		QString cid;
+		QByteArray message; // grip only
+	};
+
+	QList<Message> messages;
+
+	static WsControlPacket fromVariant(const QVariant &in, bool *ok = 0, QString *errorMessage = 0)
+	{
+		QString pn = "wscontrol object";
+
+		if(!isKeyedObject(in))
+		{
+			setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
+			return WsControlPacket();
+		}
+
+		bool ok_;
+		QVariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
+		if(!ok_)
+		{
+			if(ok)
+				*ok = false;
+			return WsControlPacket();
+		}
+
+		WsControlPacket out;
+
+		foreach(const QVariant &vitem, vitems)
+		{
+			Message msg;
+
+			pn = "wscontrol item";
+
+			QString type = getString(vitem, pn, "type", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlPacket();
+			}
+
+			if(type == "here")
+				msg.type = Message::Here;
+			else if(type == "gone")
+				msg.type = Message::Gone;
+			else if(type == "cancel")
+				msg.type = Message::Cancel;
+			else if(type == "grip")
+				msg.type = Message::Grip;
+			else
+			{
+				setError(ok, errorMessage, QString("'type' contains unknown value: %1").arg(type));
+				return WsControlPacket();
+			}
+
+			msg.cid = getString(vitem, pn, "cid", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlPacket();
+			}
+
+			if(msg.type == Message::Grip)
+			{
+				if(!keyedObjectContains(vitem, "message"))
+				{
+					setError(ok, errorMessage, QString("'%1' does not contain 'message'").arg(pn));
+					return WsControlPacket();
+				}
+
+				QVariant vmessage = keyedObjectGetValue(vitem, "message");
+				if(vmessage.type() != QVariant::ByteArray)
+				{
+					setError(ok, errorMessage, QString("'%1' contains 'message' with wrong type").arg(pn));
+					return WsControlPacket();
+				}
+
+				msg.message = vmessage.toByteArray();
+			}
+
+			out.messages += msg;
+		}
+
+		setSuccess(ok, errorMessage);
+		return out;
 	}
 };
 
@@ -1799,7 +1939,10 @@ public:
 				return Instruct();
 			}
 
-			meta[QString::fromUtf8(metaParam[0].first)] = QString::fromUtf8(metaParam[0].second);
+			QString key = QString::fromUtf8(metaParam[0].first);
+			QString val = QString::fromUtf8(metaParam[0].second);
+
+			meta[key] = val;
 		}
 
 		QByteArray contentType = response.headers.getAsFirstParameter("Content-Type");
@@ -1897,6 +2040,29 @@ public:
 	}
 };
 
+class Hold
+{
+public:
+	HoldMode mode;
+	QHash<QString, Instruct::Channel> channels;
+	HttpResponseData response;
+	ZhttpRequest *req;
+	QHash<QString, QString> meta;
+	bool done;
+
+	Hold() :
+		req(0),
+		done(false)
+	{
+	}
+};
+
+class CommonState
+{
+public:
+	QList<Hold*> holds;
+};
+
 class AcceptWorker : public Deferred
 {
 	Q_OBJECT
@@ -1926,19 +2092,6 @@ public:
 
 	void start()
 	{
-		/*out_sock = ctx.socket(zmq.PUB)
-		out_sock.linger = DEFAULT_LINGER
-		for spec in m2a_out_specs:
-			out_sock.connect(spec)
-
-		retry_sock = ctx.socket(zmq.PUSH)
-		retry_sock.linger = 0
-		retry_sock.connect(proxy_retry_out_spec)
-
-		stats_sock = ctx.socket(zmq.PUSH)
-		stats_sock.linger = 0
-		stats_sock.connect('inproc://stats_in')*/
-
 		if(req->method() == "accept")
 		{
 			QVariantHash args = req->args();
@@ -1975,52 +2128,12 @@ public:
 
 			foreach(const QVariant &vr, args["requests"].toList())
 			{
-				if(vr.type() != QVariant::Hash)
+				RequestState rs = RequestState::fromVariant(vr);
+				if(rs.rid.first.isEmpty())
 				{
 					respondError("bad-request");
 					return;
 				}
-
-				QVariantHash r = vr.toHash();
-				RequestState rs;
-
-				if(!r.contains("rid") || r["rid"].type() != QVariant::Hash)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				QVariantHash vrid = r["rid"].toHash();
-
-				if(!vrid.contains("sender") || vrid["sender"].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				if(!vrid.contains("id") || vrid["id"].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				rs.rid = QPair<QByteArray, QByteArray>(vrid["sender"].toByteArray(), vrid["id"].toByteArray());
-
-				if(!r.contains("in-seq") || !r["in-seq"].canConvert(QVariant::Int))
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				rs.inSeq = r["in-seq"].toInt();
-
-				if(!r.contains("out-seq") || !r["out-seq"].canConvert(QVariant::Int))
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				rs.outSeq = r["out-seq"].toInt();
 
 				requestStates.insert(rs.rid, rs);
 			}
@@ -2206,6 +2319,7 @@ public:
 	}
 
 signals:
+	void holdAdded(Hold *hold); // FIXME: hacky
 	void subscriptionAdded(const QString &channel);
 
 private:
@@ -2285,9 +2399,7 @@ private:
 		foreach(const RequestState &rs, requestStates)
 		{
 			// TODO
-			/*rid = (req["rid"]["sender"], req["rid"]["id"])
-
-			stats_lock.acquire()
+			/*stats_lock.acquire()
 			ci = ConnectionInfo("%s:%s" % (rid[0], rid[1]), "http")
 			ci.route = route
 			if "peer-address" in req:
@@ -2309,9 +2421,8 @@ private:
 			h.grip_keep_alive = keep_alive
 			h.grip_keep_alive_timeout = keep_alive_timeout
 			h.last_send = now
-			h.meta = meta
+			h.meta = meta*/
 
-			notify_subs = set()*/
 			if(instruct.holdMode == ResponseHold)
 			{
 				// TODO
@@ -2327,12 +2438,13 @@ private:
 				hold->mode = instruct.holdMode;
 				hold->response = instruct.response;
 				hold->req = outReq;
+				hold->meta = instruct.meta;
 
 				QSet<QString> newSubs;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					log_debug("adding response hold on %s", qPrintable(c.name));
-					hold->channels += c.name;
+					hold->channels.insert(c.name, c);
 
 					bool found = false;
 					foreach(Hold *h, cs->holds)
@@ -2348,6 +2460,8 @@ private:
 				}
 
 				cs->holds += hold;
+
+				emit holdAdded(hold);
 
 				foreach(const QString &sub, newSubs)
 					emit subscriptionAdded(sub);
@@ -2414,31 +2528,6 @@ private:
 			}
 			else // StreamHold
 			{
-				/* # initial reply
-				if "code" in response:
-					rcode = response["code"]
-				else:
-					rcode = 200
-
-				if "reason" in response:
-					rreason = response["reason"]
-				else:
-					rreason = get_reason(rcode)
-
-				if "headers" in response:
-					rheaders = response["headers"]
-				else:
-					rheaders = dict()
-
-				if h.auto_cross_origin:
-					apply_cors_headers(h.request["headers"], rheaders)
-
-				h.lock.acquire()
-				body_size = reply_http(out_sock, rid, rcode, rreason, rheaders, response.get("body"), True, h.out_seq)
-				h.out_credits -= body_size
-				h.out_seq += 1
-				h.lock.release()*/
-
 				// TODO
 				ZhttpRequest::ServerState ss;
 				ss.rid = ZhttpRequest::Rid(rs.rid.first, rs.rid.second);
@@ -2449,15 +2538,19 @@ private:
 				ZhttpRequest *outReq = zhttpIn->createRequestFromState(ss);
 				instruct.response.headers.removeAll("Content-Length");
 
+				if(rs.autoCrossOrigin)
+					Cors::applyCorsHeaders(requestData.headers, &instruct.response.headers);
+
 				Hold *hold = new Hold;
 				hold->mode = instruct.holdMode;
 				hold->req = outReq;
+				hold->meta = instruct.meta;
 
 				QSet<QString> newSubs;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					log_debug("adding stream hold on %s", qPrintable(c.name));
-					hold->channels += c.name;
+					hold->channels.insert(c.name, c);
 
 					bool found = false;
 					foreach(Hold *h, cs->holds)
@@ -2474,10 +2567,11 @@ private:
 
 				cs->holds += hold;
 
+				emit holdAdded(hold);
+
 				foreach(const QString &sub, newSubs)
 					emit subscriptionAdded(sub);
 
-				//connect(hold->req, SIGNAL(
 				outReq->beginResponse(instruct.response.code, instruct.response.reason, instruct.response.headers);
 				outReq->writeBody(instruct.response.body);
 
@@ -2538,6 +2632,156 @@ private slots:
 	}
 };
 
+class ProxyConnCheck : public Deferred
+{
+	Q_OBJECT
+
+public:
+	ProxyConnCheck(ZrpcManager *proxyControlClient, const CidSet &cids, QObject *parent = 0) :
+		Deferred(parent)
+	{
+		ZrpcRequest *req = new ZrpcRequest(proxyControlClient, this);
+		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+
+		QVariantList vcids;
+		foreach(const QString &cid, cids)
+			vcids += cid.toUtf8();
+
+		QVariantHash args;
+		args["ids"] = vcids;
+		req->start("conncheck", args);
+	}
+
+private slots:
+	void req_finished()
+	{
+		ZrpcRequest *req = (ZrpcRequest *)sender();
+
+		if(req->success())
+		{
+			QVariant vresult = req->result();
+			if(vresult.type() != QVariant::List)
+			{
+				setFinished(false);
+				return;
+			}
+
+			QVariantList result = vresult.toList();
+
+			CidSet out;
+			foreach(const QVariant &vcid, result)
+			{
+				if(vcid.type() != QVariant::ByteArray)
+				{
+					setFinished(false);
+					return;
+				}
+
+				out += QString::fromUtf8(vcid.toByteArray());
+			}
+
+			setFinished(true, QVariant::fromValue<CidSet>(out));
+		}
+		else
+		{
+			setFinished(false, req->errorCondition());
+		}
+	}
+};
+
+class ConnCheckWorker : public Deferred
+{
+	Q_OBJECT
+
+public:
+	ZrpcRequest *req;
+	CidSet cids;
+	CidSet missing;
+
+	ConnCheckWorker(ZrpcRequest *_req, ZrpcManager *proxyControlClient, QObject *parent = 0) :
+		Deferred(parent),
+		req(_req)
+	{
+		req->setParent(this);
+
+		QVariantHash args = req->args();
+
+		if(!args.contains("ids") || args["ids"].type() != QVariant::List)
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		QVariantList vids = args["ids"].toList();
+
+		foreach(const QVariant &vid, vids)
+		{
+			if(vid.type() != QVariant::ByteArray)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			cids += QString::fromUtf8(vid.toByteArray());
+		}
+
+		// FIXME:
+		//for cid in cids:
+		//	if cid not in conns:
+		//		missing.add(cid)
+		foreach(const QString &cid, cids)
+			missing += cid;
+
+		if(!missing.isEmpty())
+		{
+			// ask the proxy about any cids we don't know about
+			Deferred *d = new ProxyConnCheck(proxyControlClient, missing, this);
+			connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(proxyConnCheck_finished(const DeferredResult &)));
+			return;
+		}
+
+		doFinish();
+	}
+
+private:
+	void respondError(const QByteArray &condition)
+	{
+		req->respondError(condition);
+		setFinished(true);
+	}
+
+	void doFinish()
+	{
+		foreach(const QString &cid, missing)
+			cids.remove(cid);
+
+		QVariantList result;
+		foreach(const QString &cid, cids)
+			result += cid.toUtf8();
+
+		req->respond(result);
+		setFinished(true);
+	}
+
+private slots:
+	void proxyConnCheck_finished(const DeferredResult &result)
+	{
+		if(result.success)
+		{
+			CidSet found = result.value.value<CidSet>();
+
+			foreach(const QString &cid, found)
+				missing.remove(cid);
+
+			doFinish();
+		}
+		else
+		{
+			respondError("proxy-request-failed");
+		}
+	}
+};
+
 class Engine::Private : public QObject
 {
 	Q_OBJECT
@@ -2550,11 +2794,20 @@ public:
 	ZrpcManager *acceptServer;
 	ZrpcManager *stateClient;
 	ZrpcManager *controlServer;
+	ZrpcManager *proxyControlClient;
 	QZmq::Socket *inPullSock;
 	QZmq::Valve *inPullValve;
 	QZmq::Socket *inSubSock;
 	QZmq::Valve *inSubValve;
+	QZmq::Socket *retrySock;
+	QZmq::Socket *wsControlInSock;
+	QZmq::Valve *wsControlInValve;
+	QZmq::Socket *wsControlOutSock;
+	QZmq::Socket *statsSock;
+	QZmq::Socket *proxyStatsSock;
+	QZmq::Valve *proxyStatsValve;
 	HttpServer *controlHttpServer;
+	QTimer *timer;
 	CommonState cs;
 
 	Private(Engine *_q) :
@@ -2565,22 +2818,39 @@ public:
 		acceptServer(0),
 		stateClient(0),
 		controlServer(0),
+		proxyControlClient(0),
 		inPullSock(0),
 		inPullValve(0),
 		inSubSock(0),
 		inSubValve(0),
-		controlHttpServer(0)
+		retrySock(0),
+		wsControlInSock(0),
+		wsControlInValve(0),
+		wsControlOutSock(0),
+		statsSock(0),
+		proxyStatsSock(0),
+		proxyStatsValve(0),
+		controlHttpServer(0),
+		timer(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
 	}
 
 	~Private()
 	{
+		if(timer)
+		{
+			timer->disconnect(this);
+			timer->setParent(0);
+			timer->deleteLater();
+		}
 	}
 
 	bool start(const Configuration &_config)
 	{
 		config = _config;
+
+		// TODO: set lingers
 
 		zhttpIn = new ZhttpManager(this);
 
@@ -2628,6 +2898,7 @@ public:
 			stateClient = new ZrpcManager(this);
 			stateClient->setBind(true);
 			stateClient->setIpcFileMode(config.ipcFileMode);
+			stateClient->setTimeout(STATE_RPC_TIMEOUT);
 
 			if(!stateClient->setClientSpecs(QStringList() << config.stateSpec))
 			{
@@ -2690,6 +2961,98 @@ public:
 			log_info("in sub: %s", qPrintable(config.pushInSubSpec));
 		}
 
+		if(!config.retryOutSpec.isEmpty())
+		{
+			retrySock = new QZmq::Socket(QZmq::Socket::Push, this);
+			retrySock->setHwm(DEFAULT_HWM);
+
+			QString errorMessage;
+			if(!ZUtil::setupSocket(retrySock, config.retryOutSpec, false, config.ipcFileMode, &errorMessage))
+			{
+					log_error("%s", qPrintable(errorMessage));
+					return false;
+			}
+
+			log_info("retry: %s", qPrintable(config.retryOutSpec));
+		}
+
+		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
+		{
+			wsControlInSock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			wsControlInSock->setHwm(DEFAULT_HWM);
+
+			QString errorMessage;
+			if(!ZUtil::setupSocket(wsControlInSock, config.wsControlInSpec, false, config.ipcFileMode, &errorMessage))
+			{
+					log_error("%s", qPrintable(errorMessage));
+					return false;
+			}
+
+			wsControlInValve = new QZmq::Valve(wsControlInSock, this);
+			connect(wsControlInValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(wsControlIn_readyRead(const QList<QByteArray> &)));
+
+			log_info("ws control in: %s", qPrintable(config.wsControlInSpec));
+
+			wsControlOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
+			wsControlOutSock->setHwm(DEFAULT_HWM);
+
+			if(!ZUtil::setupSocket(wsControlOutSock, config.wsControlOutSpec, false, config.ipcFileMode, &errorMessage))
+			{
+					log_error("%s", qPrintable(errorMessage));
+					return false;
+			}
+
+			log_info("ws control out: %s", qPrintable(config.wsControlOutSpec));
+		}
+
+		if(!config.statsSpec.isEmpty())
+		{
+			statsSock = new QZmq::Socket(QZmq::Socket::Pub, this);
+			statsSock->setHwm(DEFAULT_HWM);
+
+			QString errorMessage;
+			if(!ZUtil::setupSocket(statsSock, config.statsSpec, true, config.ipcFileMode, &errorMessage))
+			{
+					log_error("%s", qPrintable(errorMessage));
+					return false;
+			}
+
+			log_info("stats: %s", qPrintable(config.statsSpec));
+		}
+
+		if(!config.proxyStatsSpec.isEmpty())
+		{
+			proxyStatsSock = new QZmq::Socket(QZmq::Socket::Sub, this);
+			proxyStatsSock->setHwm(DEFAULT_HWM);
+			proxyStatsSock->subscribe("");
+
+			QString errorMessage;
+			if(!ZUtil::setupSocket(proxyStatsSock, config.proxyStatsSpec, false, config.ipcFileMode, &errorMessage))
+			{
+					log_error("%s", qPrintable(errorMessage));
+					return false;
+			}
+
+			proxyStatsValve = new QZmq::Valve(proxyStatsSock, this);
+			connect(proxyStatsValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(proxyStats_readyRead(const QList<QByteArray> &)));
+
+			log_info("proxy stats: %s", qPrintable(config.proxyStatsSpec));
+		}
+
+		if(!config.proxyCommandSpec.isEmpty())
+		{
+			proxyControlClient = new ZrpcManager(this);
+			proxyControlClient->setIpcFileMode(config.ipcFileMode);
+
+			if(!proxyControlClient->setClientSpecs(QStringList() << config.proxyCommandSpec))
+			{
+				// zrpcmanager logs error
+				return false;
+			}
+
+			log_info("proxy control client: %s", qPrintable(config.proxyCommandSpec));
+		}
+
 		if(config.pushInHttpPort != -1)
 		{
 			controlHttpServer = new HttpServer(this);
@@ -2703,6 +3066,14 @@ public:
 			inPullValve->open();
 		if(inSubValve)
 			inSubValve->open();
+		if(wsControlInValve)
+			wsControlInValve->open();
+		if(proxyStatsValve)
+			proxyStatsValve->open();
+
+		timer = new QTimer(this);
+		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		timer->start(1000);
 
 		return true;
 	}
@@ -2719,19 +3090,13 @@ private:
 
 		foreach(Hold *hold, cs.holds)
 		{
-			if(!hold->req)
+			if(hold->done)
 				continue;
 
-			bool found = false;
-			foreach(const QString &c, hold->channels)
-			{
-				if(c == item.channel)
-				{
-					found = true;
-					break;
-				}
-			}
-			if(!found)
+			if(!hold->channels.contains(item.channel))
+				continue;
+
+			if(!applyFilters(hold->meta, item.meta, hold->channels[item.channel].filters))
 				continue;
 
 			if(hold->mode == ResponseHold && item.formats.contains(Format::HttpResponse))
@@ -2819,7 +3184,7 @@ private:
 				hold->req->beginResponse(f.code, f.reason, headers);
 				hold->req->writeBody(f.body);
 				hold->req->endBody();
-				hold->req = 0;
+				hold->done = true;
 			}
 			else if(hold->mode == StreamHold && item.formats.contains(Format::HttpStream))
 			{
@@ -2829,7 +3194,7 @@ private:
 				if(f.close)
 				{
 					hold->req->endBody();
-					hold->req = 0;
+					hold->done = true;
 				}
 				else
 					hold->req->writeBody(f.body);
@@ -2837,11 +3202,6 @@ private:
 		}
 
 		/*
-		out_sock = ctx.socket(zmq.PUB)
-		out_sock.linger = DEFAULT_LINGER
-		for spec in m2a_out_specs:
-			out_sock.connect(spec)
-
 		ws_control_out_sock = ctx.socket(zmq.PUSH)
 		ws_control_out_sock.linger = DEFAULT_LINGER
 		ws_control_out_sock.connect(ws_control_out_spec)
@@ -3173,6 +3533,57 @@ private:
 		*/
 	}
 
+	void handleClosed(Hold *hold)
+	{
+		delete hold->req;
+
+		cs.holds.removeAll(hold);
+
+		/*
+		notify_unsubs = set()
+		if mtype is not None and (mtype == 'error' or mtype == 'cancel'):
+			rid = (m['from'], m['id'])
+			logger.debug('cleaning up subscriber %s' % repr(rid))
+			now = int(time.time())
+			lock.acquire()
+			unsub_list = remove_from_req_channels(rid)
+			for sub_key in unsub_list:
+				sub = subs.get(sub_key)
+				if sub:
+					if sub.mode == 'response' and sub.expire_time is None:
+						# flag for deletion soon
+						sub.expire_time = now + SUBSCRIPTION_LINGER
+					elif sub.mode == 'stream':
+						del subs[sub_key]
+						notify_unsubs.add(sub_key)
+			lock.release()
+
+			stats_lock.acquire()
+			ci = conns.get("%s:%s" % (rid[0], rid[1]))
+			if ci is not None:
+				ci = copy.deepcopy(ci)
+				del conns[ci.id]
+			stats_lock.release()
+
+			if ci is not None:
+				out = dict()
+				out['from'] = instance_id
+				if ci.route:
+					out['route'] = ci.route
+				out['id'] = ci.id
+				out['unavailable'] = True
+				stats_sock.send('conn ' + tnetstring.dumps(out))
+
+		for sub_key in notify_unsubs:
+			out = dict()
+			out['from'] = instance_id
+			out['mode'] = ensure_utf8(sub_key[0])
+			out['channel'] = ensure_utf8(sub_key[1])
+			out['unavailable'] = True
+			stats_sock.send('sub ' + tnetstring.dumps(out))
+		*/
+	}
+
 private slots:
 	void inspectServer_requestReady()
 	{
@@ -3190,6 +3601,7 @@ private slots:
 			return;
 
 		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, this);
+		connect(w, SIGNAL(holdAdded(Hold *)), SLOT(holdAdded(Hold *)));
 		connect(w, SIGNAL(subscriptionAdded(const QString &)), SLOT(addSub(const QString &)));
 		w->start();
 	}
@@ -3204,31 +3616,7 @@ private slots:
 
 		if(req->method() == "conncheck")
 		{
-			// TODO
-			req->respondError("not-implemented");
-			/*if 'ids' not in args or not isinstance(args['ids'], list):
-				raise rpc.CallError('bad-format')
-			cids = set(args['ids'])
-
-			stats_lock.acquire()
-			missing = set()
-			for cid in cids:
-				if cid not in conns:
-					missing.add(cid)
-			stats_lock.release()
-
-			if len(missing) > 0:
-				try:
-					found = proxy_client.call('conncheck', {'ids': list(missing)})
-				except:
-					raise rpc.CallError('proxy-request-failed')
-				for cid in found:
-					missing.remove(cid)
-
-			for cid in missing:
-				cids.remove(cid)
-
-			return list(cids)*/
+			new ConnCheckWorker(req, proxyControlClient, this);
 		}
 		else if(req->method() == "get-zmq-uris")
 		{
@@ -3240,11 +3628,13 @@ private slots:
 			if(!config.pushInSubSpec.isEmpty())
 				out["publish-sub"] = config.pushInSubSpec.toUtf8();
 			req->respond(out);
+			delete req;
 		}
 		else
+		{
 			req->respondError("method-not-found");
-
-		delete req;
+			delete req;
+		}
 	}
 
 	void inPull_readyRead(const QList<QByteArray> &message)
@@ -3307,242 +3697,40 @@ private slots:
 		handlePublishItem(item);
 	}
 
-	void controlHttpServer_requestReady()
+	void wsControlIn_readyRead(const QList<QByteArray> &message)
 	{
-		HttpRequest *req = controlHttpServer->takeNext();
-		if(!req)
+		if(message.count() != 1)
+		{
+			log_warning("IN wscontrol: received message with parts != 1, skipping");
 			return;
-
-		if(req->requestUri() == "/publish/" || req->requestUri() == "/publish")
-		{
-			if(req->requestMethod() == "POST")
-			{
-				QJson::Parser parser;
-				bool ok;
-				QVariant vdata = parser.parse(req->requestBody(), &ok);
-				if(req->requestBody().isEmpty() || !ok)
-				{
-					req->respond(400, "Bad Request", "Body is not valid JSON.\n");
-					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
-					return;
-				}
-
-				if(vdata.type() != QVariant::Map)
-				{
-					req->respond(400, "Bad Request", "Invalid format.\n");
-					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
-					return;
-				}
-
-				QVariantMap mdata = vdata.toMap();
-				QVariantList vitems;
-
-				if(!mdata.contains("items"))
-				{
-					req->respond(400, "Bad Request", "Invalid format: object does not contain 'items'\n");
-					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
-					return;
-				}
-
-				if(mdata["items"].type() != QVariant::List)
-				{
-					req->respond(400, "Bad Request", "Invalid format: object contains 'items' with wrong type\n");
-					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
-					return;
-				}
-
-				vitems = mdata["items"].toList();
-
-				QString errorMessage;
-				QList<PublishItem> items = parseHttpItems(vitems, &ok, &errorMessage);
-				if(!ok)
-				{
-					req->respond(400, "Bad Request", QString("Invalid format: %1\n").arg(errorMessage));
-					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
-					return;
-				}
-
-				foreach(const PublishItem &item, items)
-					handlePublishItem(item);
-
-				req->respond(200, "OK", "Published\n");
-			}
-			else
-			{
-				HttpHeaders headers;
-				headers += HttpHeader("Content-Type", "text/plain");
-				headers += HttpHeader("Allow", "POST");
-				req->respond(405, "Method Not Allowed", headers, "Method not allowed: " + req->requestMethod().toUtf8() + ".\n");
-			}
-		}
-		else
-		{
-			req->respond(404, "Not Found", "Not Found\n");
 		}
 
-		connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
-	}
+		bool ok;
+		QVariant data = TnetString::toVariant(message[0], 0, &ok);
+		if(!ok)
+		{
+			log_warning("IN wscontrol: received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
 
-	void addSub(const QString &channel)
-	{
-		log_debug("SUB socket subscribe: %s", qPrintable(channel));
-		inSubSock->subscribe(channel.toUtf8());
-	}
+		log_debug("IN wscontrol: %s", qPrintable(TnetString::variantToString(data, -1)));
 
-	void removeSub(const QString &channel)
-	{
-		log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
-		inSubSock->unsubscribe(channel.toUtf8());
-	}
-};
+		QString errorMessage;
+		WsControlPacket packet = WsControlPacket::fromVariant(data, &ok, &errorMessage);
+		if(!ok)
+		{
+			log_warning("IN wscontrol: received message with invalid format: %s, skipping", qPrintable(errorMessage));
+			return;
+		}
 
-Engine::Engine(QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this);
-}
+		// TODO now = int(time.time())
 
-Engine::~Engine()
-{
-	delete d;
-}
-
-bool Engine::start(const Configuration &config)
-{
-	return d->start(config);
-}
-
-void Engine::reload()
-{
-	d->reload();
-}
-
-#include "engine.moc"
-
-/*
-def session_worker():
-	in_sock = ctx.socket(zmq.DEALER)
-	in_sock.identity = instance_id
-	for spec in m2a_in_stream_specs:
-		in_sock.connect(spec)
-
-	out_sock = ctx.socket(zmq.PUB)
-	out_sock.linger = DEFAULT_LINGER
-	for spec in m2a_out_specs:
-		out_sock.connect(spec)
-
-	stats_sock = ctx.socket(zmq.PUSH)
-	stats_sock.linger = 0
-	stats_sock.connect('inproc://stats_in')
-
-	while True:
-		m_list = in_sock.recv_multipart()
-		m = tnetstring.loads(m_list[1][1:])
-		logger.debug('IN session: %s' % m)
-		mtype = m.get('type')
-		notify_unsubs = set()
-		if mtype is not None and (mtype == 'error' or mtype == 'cancel'):
-			rid = (m['from'], m['id'])
-			logger.debug('cleaning up subscriber %s' % repr(rid))
-			now = int(time.time())
-			lock.acquire()
-			unsub_list = remove_from_req_channels(rid)
-			for sub_key in unsub_list:
-				sub = subs.get(sub_key)
-				if sub:
-					if sub.mode == 'response' and sub.expire_time is None:
-						# flag for deletion soon
-						sub.expire_time = now + SUBSCRIPTION_LINGER
-					elif sub.mode == 'stream':
-						del subs[sub_key]
-						notify_unsubs.add(sub_key)
-			lock.release()
-
-			stats_lock.acquire()
-			ci = conns.get("%s:%s" % (rid[0], rid[1]))
-			if ci is not None:
-				ci = copy.deepcopy(ci)
-				del conns[ci.id]
-			stats_lock.release()
-
-			if ci is not None:
-				out = dict()
-				out['from'] = instance_id
-				if ci.route:
-					out['route'] = ci.route
-				out['id'] = ci.id
-				out['unavailable'] = True
-				stats_sock.send('conn ' + tnetstring.dumps(out))
-
-		elif mtype is not None:
-			# is this a known session?
-			rid = (m['from'], m['id'])
-
-			h = None
-			lock.acquire()
-			for hchannels in response_channels.itervalues():
-				if rid in hchannels:
-					h = hchannels[rid]
-					break
-			if h is None:
-				for hchannels in stream_channels.itervalues():
-					if rid in hchannels:
-						h = hchannels[rid]
-						break
-			lock.release()
-
-			if h is not None:
-				if mtype == 'credit':
-					credits = m['credits']
-					lock.acquire()
-					h.out_credits += credits
-					lock.release()
-					logger.debug('received %d credits, now %d' % (credits, h.out_credits))
-			else:
-				# no such session, send cancel
-				out = dict()
-				out['from'] = instance_id
-				out['id'] = m['id']
-				out['type'] = 'cancel'
-				m_raw = m['from'] + ' T' + tnetstring.dumps(out)
-				logger.debug('OUT publish: %s' % m_raw)
-				out_sock.send(m_raw)
-
-		for sub_key in notify_unsubs:
-			out = dict()
-			out['from'] = instance_id
-			out['mode'] = ensure_utf8(sub_key[0])
-			out['channel'] = ensure_utf8(sub_key[1])
-			out['unavailable'] = True
-			stats_sock.send('sub ' + tnetstring.dumps(out))
-
-def ws_control_worker():
-	in_sock = ctx.socket(zmq.PULL)
-	in_sock.connect(ws_control_in_spec)
-
-	out_sock = ctx.socket(zmq.PUSH)
-	out_sock.linger = DEFAULT_LINGER
-	out_sock.connect(ws_control_out_spec)
-
-	stats_sock = ctx.socket(zmq.PUSH)
-	stats_sock.linger = 0
-	stats_sock.connect('inproc://stats_in')
-
-	if state_spec:
-		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
-	else:
-		state_rpc = None
-
-	while True:
-		m_raw = in_sock.recv()
-		m = tnetstring.loads(m_raw)
-		logger.debug('IN wscontrol: %s' % m)
-
-		now = int(time.time())
-
-		for item in m['items']:
-			mtype = item.get('type')
-			if mtype == 'here':
+		foreach(const WsControlPacket::Message &msg, packet.messages)
+		{
+			if(msg.type == WsControlPacket::Message::Here)
+			{
+				log_debug("here: %s", qPrintable(msg.cid));
+				/*
 				cid = item['cid']
 				channel_prefix = item.get('channel-prefix')
 				lock.acquire()
@@ -3554,7 +3742,12 @@ def ws_control_worker():
 					logger.debug('added ws session: %s' % cid)
 				s.expire_time = now + 60
 				lock.release()
-			elif mtype == 'gone' or mtype == 'cancel':
+				*/
+			}
+			else if(msg.type == WsControlPacket::Message::Gone || msg.type == WsControlPacket::Message::Cancel)
+			{
+				log_debug("gone: %s", qPrintable(msg.cid));
+				/*
 				cid = item['cid']
 
 				notify_unsubs = set()
@@ -3586,8 +3779,12 @@ def ws_control_worker():
 					out['channel'] = ensure_utf8(sub_key[1])
 					out['unavailable'] = True
 					stats_sock.send('sub ' + tnetstring.dumps(out))
-
-			elif mtype == 'grip':
+				*/
+			}
+			else if(msg.type == WsControlPacket::Message::Grip)
+			{
+				log_debug("grip: %s %s", qPrintable(msg.cid), qPrintable(msg.message));
+				/*
 				cid = item['cid']
 
 				try:
@@ -3707,23 +3904,220 @@ def ws_control_worker():
 					out['items'] = [item]
 					logger.debug('OUT wscontrol: %s' % out)
 					out_sock.send(tnetstring.dumps(out))
+				*/
+			}
+		}
+	}
 
-def timeout_worker():
-	out_sock = ctx.socket(zmq.PUB)
-	out_sock.linger = DEFAULT_LINGER
-	for spec in m2a_out_specs:
-		out_sock.connect(spec)
+	void proxyStats_readyRead(const QList<QByteArray> &message)
+	{
+		if(message.count() != 1)
+		{
+			log_warning("IN proxy stats: received message with parts != 1, skipping");
+			return;
+		}
 
-	stats_sock = ctx.socket(zmq.PUSH)
-	stats_sock.linger = 0
-	stats_sock.connect('inproc://stats_in')
+		int at = message[0].indexOf(' ');
+		if(at == -1)
+		{
+			log_warning("IN proxy stats: received message with invalid format, skipping");
+			return;
+		}
 
-	if state_spec:
-		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
-	else:
-		state_rpc = None
+		QString type = QString::fromUtf8(message[0].mid(0, at));
 
-	while True:
+		bool ok;
+		QVariant data = TnetString::toVariant(message[0].mid(at + 1), 0, &ok);
+		if(!ok)
+		{
+			log_warning("IN proxy stats: received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
+
+		log_debug("IN proxy stats: %s %s", qPrintable(type), qPrintable(TnetString::variantToString(data, -1)));
+
+		if(type == "activity")
+		{
+			// TODO
+			/*
+			route = m.get('route')
+			if not route:
+				route = ''
+			count = m['count']
+			stats_lock.acquire()
+			if route in stats_activity:
+				stats_activity[route] += count
+			else:
+				stats_activity[route] = count
+			stats_lock.release()*/
+		}
+		else if(type == "conn")
+		{
+			// TODO
+			/*
+			# get sid
+			sid = None
+			lock.acquire()
+			if m.get('type') == 'ws':
+				s = ws_sessions.get(m['id'])
+				if s is not None:
+					sid = s.sid
+			lock.release()
+
+			# relay
+			m['from'] = instance_id
+			stats_sock.send(mtype + ' ' + tnetstring.dumps(m))
+
+			# update session
+			if sid and not m.get('unavailable') and state_rpc:
+				try:
+					session_update_many(state_rpc, {sid: {}})
+				except:
+					logger.debug("couldn't update session")
+			*/
+		}
+	}
+
+	void controlHttpServer_requestReady()
+	{
+		HttpRequest *req = controlHttpServer->takeNext();
+		if(!req)
+			return;
+
+		if(req->requestUri() == "/publish/" || req->requestUri() == "/publish")
+		{
+			if(req->requestMethod() == "POST")
+			{
+				QJson::Parser parser;
+				bool ok;
+				QVariant vdata = parser.parse(req->requestBody(), &ok);
+				if(req->requestBody().isEmpty() || !ok)
+				{
+					req->respond(400, "Bad Request", "Body is not valid JSON.\n");
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
+				}
+
+				if(vdata.type() != QVariant::Map)
+				{
+					req->respond(400, "Bad Request", "Invalid format.\n");
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
+				}
+
+				QVariantMap mdata = vdata.toMap();
+				QVariantList vitems;
+
+				if(!mdata.contains("items"))
+				{
+					req->respond(400, "Bad Request", "Invalid format: object does not contain 'items'\n");
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
+				}
+
+				if(mdata["items"].type() != QVariant::List)
+				{
+					req->respond(400, "Bad Request", "Invalid format: object contains 'items' with wrong type\n");
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
+				}
+
+				vitems = mdata["items"].toList();
+
+				QString errorMessage;
+				QList<PublishItem> items = parseHttpItems(vitems, &ok, &errorMessage);
+				if(!ok)
+				{
+					req->respond(400, "Bad Request", QString("Invalid format: %1\n").arg(errorMessage));
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
+				}
+
+				foreach(const PublishItem &item, items)
+					handlePublishItem(item);
+
+				req->respond(200, "OK", "Published\n");
+			}
+			else
+			{
+				HttpHeaders headers;
+				headers += HttpHeader("Content-Type", "text/plain");
+				headers += HttpHeader("Allow", "POST");
+				req->respond(405, "Method Not Allowed", headers, "Method not allowed: " + req->requestMethod().toUtf8() + ".\n");
+			}
+		}
+		else
+		{
+			req->respond(404, "Not Found", "Not Found\n");
+		}
+
+		connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+	}
+
+	void holdAdded(Hold *hold)
+	{
+		connect(hold->req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
+		connect(hold->req, SIGNAL(error()), SLOT(req_error()));
+	}
+
+	void req_bytesWritten(int count)
+	{
+		Q_UNUSED(count);
+
+		ZhttpRequest *req = (ZhttpRequest *)sender();
+
+		if(!req->isFinished())
+			return;
+
+		Hold *hold = 0;
+		foreach(Hold *h, cs.holds)
+		{
+			if(h->req == req)
+			{
+				hold = h;
+				break;
+			}
+		}
+		if(!hold)
+			return;
+
+		handleClosed(hold);
+	}
+
+	void req_error()
+	{
+		ZhttpRequest *req = (ZhttpRequest *)sender();
+
+		Hold *hold = 0;
+		foreach(Hold *h, cs.holds)
+		{
+			if(h->req == req)
+			{
+				hold = h;
+				break;
+			}
+		}
+		if(!hold)
+			return;
+
+		handleClosed(hold);
+	}
+
+	void addSub(const QString &channel)
+	{
+		log_debug("SUB socket subscribe: %s", qPrintable(channel));
+		inSubSock->subscribe(channel.toUtf8());
+	}
+
+	void removeSub(const QString &channel)
+	{
+		log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
+		inSubSock->unsubscribe(channel.toUtf8());
+	}
+
+	void timer_timeout()
+	{
+		/*
 		now = int(time.time())
 
 		lock.acquire()
@@ -3851,17 +4245,6 @@ def timeout_worker():
 				h.out_seq += 1
 				h.lock.release()
 
-		if len(ka_rids) > 0:
-			logger.debug("keep-aliving %d subscribers" % len(ka_rids))
-			for rid in ka_rids:
-				out = dict()
-				out['from'] = instance_id
-				out['id'] = rid[1]
-				out['type'] = 'keep-alive'
-				m_raw = rid[0] + ' T' + tnetstring.dumps(out)
-				logger.debug('OUT publish: %s' % m_raw)
-				out_sock.send(m_raw)
-
 		now = int(time.time())
 		cids = set()
 		lock.acquire()
@@ -3971,87 +4354,11 @@ def timeout_worker():
 				session_update_many(state_rpc, sid_last_ids)
 			except:
 				logger.debug("couldn't update sessions")
+		*/
+	}
 
-		time.sleep(1)
-
-def proxy_stats_worker():
-	in_sock = ctx.socket(zmq.SUB)
-	in_sock.setsockopt(zmq.SUBSCRIBE, '')
-	in_sock.connect(proxy_stats_spec)
-
-	stats_sock = ctx.socket(zmq.PUSH)
-	stats_sock.linger = 0
-	stats_sock.connect('inproc://stats_in')
-
-	if state_spec:
-		state_rpc = rpc.RpcClient(['inproc://state'], context=ctx)
-	else:
-		state_rpc = None
-
-	while True:
-		m_raw = in_sock.recv()
-		at = m_raw.find(' ')
-		mtype = m_raw[:at]
-		m = tnetstring.loads(m_raw[at + 1:])
-		#logger.debug("IN proxy stats: %s %s" % (mtype, m))
-		if mtype == 'activity':
-			route = m.get('route')
-			if not route:
-				route = ''
-			count = m['count']
-			stats_lock.acquire()
-			if route in stats_activity:
-				stats_activity[route] += count
-			else:
-				stats_activity[route] = count
-			stats_lock.release()
-		elif mtype == 'conn':
-			# get sid
-			sid = None
-			lock.acquire()
-			if m.get('type') == 'ws':
-				s = ws_sessions.get(m['id'])
-				if s is not None:
-					sid = s.sid
-			lock.release()
-
-			# relay
-			m['from'] = instance_id
-			stats_sock.send(mtype + ' ' + tnetstring.dumps(m))
-
-			# update session
-			if sid and not m.get('unavailable') and state_rpc:
-				try:
-					session_update_many(state_rpc, {sid: {}})
-				except:
-					logger.debug("couldn't update session")
-
-def stats_worker(c):
-	in_sock = ctx.socket(zmq.PULL)
-	in_sock.bind('inproc://stats_in')
-
-	if stats_spec:
-		out_sock = ctx.socket(zmq.PUB)
-		out_sock.linger = 0
-		bind_spec(out_sock, stats_spec)
-	else:
-		out_sock = None
-
-	if push_in_sub_spec:
-		subs_modes_by_channel = dict() # key=channel, value={mode: sub}
-		subs_by_exp = SortedDict() # key=expire_time, value=set(sub)
-		sub_sock = ctx.socket(zmq.PUSH)
-		sub_sock.linger = 0
-		sub_sock.bind('inproc://sub_cmd_in')
-	else:
-		sub_sock = None
-
-	c.acquire()
-	c.notify()
-	c.release()
-
-	while True:
-		try:
+	// TODO stats stuff
+	/*
 			m_raw = in_sock.recv()
 			at = m_raw.find(' ')
 			mtype = m_raw[:at]
@@ -4136,30 +4443,28 @@ def stats_worker(c):
 			raise
 		except:
 			logger.exception('failed')
-*/
+	*/
+};
 
-/*
-def state_internal_handler(method, args, data):
-	state_client = data.get('state_client')
-	return state_client.call(method, args, timeout=1000)
+Engine::Engine(QObject *parent) :
+	QObject(parent)
+{
+	d = new Private(this);
+}
 
-def state_internal_worker(c):
-	data = dict()
-	if state_spec:
-		data['state_client'] = rpc.RpcClient([state_spec], bind=True, context=ctx, ipc_file_mode=ipc_file_mode)
-	state_internal_server = rpc.RpcServer('inproc://state', context=ctx)
-	c.acquire()
-	c.notify()
-	c.release()
-	state_internal_server.run(state_internal_handler, data)
+Engine::~Engine()
+{
+	delete d;
+}
 
-if state_spec:
-	# we use a condition here to ensure the inproc bind succeeds before progressing
-	c = threading.Condition()
-	c.acquire()
-	state_internal_thread = threading.Thread(target=state_internal_worker, args=(c,))
-	state_internal_thread.daemon = True
-	state_internal_thread.start()
-	c.wait()
-	c.release()
-*/
+bool Engine::start(const Configuration &config)
+{
+	return d->start(config);
+}
+
+void Engine::reload()
+{
+	d->reload();
+}
+
+#include "engine.moc"
