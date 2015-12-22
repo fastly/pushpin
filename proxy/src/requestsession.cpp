@@ -846,6 +846,16 @@ public slots:
 				if(responseBodyFinished)
 				{
 					QByteArray bodyRawBuf = out.take();
+
+					if(!jsonpExtendedResponse)
+					{
+						// trim any trailing newline before we wrap in a function call
+						if(bodyRawBuf.endsWith("\r\n"))
+							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
+						else if(bodyRawBuf.endsWith("\n"))
+							bodyRawBuf.truncate(bodyRawBuf.size() - 1);
+					}
+
 					QByteArray startBuf = makeJsonpStart(responseData.code, responseData.reason, responseData.headers);
 					QByteArray bodyBuf;
 					QByteArray endBuf = makeJsonpEnd();
@@ -938,6 +948,33 @@ public slots:
 			if(!jsonpCallback.isEmpty())
 			{
 				QByteArray bodyRawBuf = out.take();
+
+				if(!jsonpExtendedResponse)
+				{
+					if(responseBodyFinished)
+					{
+						// trim any trailing newline before we wrap in a function call
+						if(bodyRawBuf.endsWith("\r\n"))
+							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
+						else if(bodyRawBuf.endsWith("\n"))
+							bodyRawBuf.truncate(bodyRawBuf.size() - 1);
+					}
+					else
+					{
+						// response isn't finished. keep any trailing newline in the output buffer
+						if(bodyRawBuf.endsWith("\r\n"))
+						{
+							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
+							out += QByteArray("\r\n");
+						}
+						else if(bodyRawBuf.endsWith("\n"))
+						{
+							bodyRawBuf.truncate(bodyRawBuf.size() - 1);
+							out += QByteArray("\n");
+						}
+					}
+				}
+
 				QByteArray buf = makeJsonpBody(bodyRawBuf);
 				if(buf.isNull())
 				{
