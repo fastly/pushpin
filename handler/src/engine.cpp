@@ -43,9 +43,7 @@
 
 #define DEFAULT_HWM 1000
 #define SUB_SNDHWM 0 // infinite
-
-#define DEFAULT_LINGER 1000
-
+#define DEFAULT_SHUTDOWN_WAIT_TIME 1000
 #define STATE_RPC_TIMEOUT 1000
 
 /*
@@ -55,33 +53,9 @@ CONNECTION_LINGER = 60
 
 SUBSCRIPTION_TTL = 60
 SUBSCRIPTION_LINGER = 60
-
-# delay to avoid overflowing the nic. wait 1ms for every 20 deliveries
-SEND_BATCH_SIZE = 20
-SEND_BATCH_DELAY = 0.001
 */
 
 /*
-class Hold(object):
-	def __init__(self, rid, request, mode, response, auto_cross_origin, jsonp_callback):
-		self.lock = threading.Lock()
-		self.rid = rid
-		self.out_seq = None # need to lock hold
-		self.out_credits = 0 # need to lock hold
-		self.request = request
-		self.mode = mode
-		self.response = response
-		self.auto_cross_origin = auto_cross_origin
-		self.jsonp_callback = jsonp_callback
-		self.jsonp_extended_response = False
-		self.expire_time = None
-		self.last_keepalive = None
-		self.grip_keep_alive = None
-		self.grip_keep_alive_timeout = None
-		self.last_send = None
-		self.meta = {}
-		self.channel_filters = {} # k=channel, v=filters
-
 class WsSession(object):
 	def __init__(self, cid):
 		self.cid = cid
@@ -2040,18 +2014,25 @@ public:
 	}
 };
 
+// TODO: contain keep alive info, last_send as necessary
 class Hold
 {
 public:
 	HoldMode mode;
 	QHash<QString, Instruct::Channel> channels;
+	HttpRequestData requestData;
 	HttpResponseData response;
 	ZhttpRequest *req;
 	QHash<QString, QString> meta;
+	bool autoCrossOrigin;
+	QByteArray jsonpCallback;
+	bool jsonpExtendedResponse;
 	bool done;
 
 	Hold() :
 		req(0),
+		autoCrossOrigin(false),
+		jsonpExtendedResponse(false),
 		done(false)
 	{
 	}
@@ -2436,9 +2417,13 @@ private:
 
 				Hold *hold = new Hold;
 				hold->mode = instruct.holdMode;
+				hold->requestData = requestData;
 				hold->response = instruct.response;
 				hold->req = outReq;
 				hold->meta = instruct.meta;
+				hold->autoCrossOrigin = rs.autoCrossOrigin;
+				hold->jsonpCallback = rs.jsonpCallback;
+				hold->jsonpExtendedResponse = rs.jsonpExtendedResponse;
 
 				QSet<QString> newSubs;
 				foreach(const Instruct::Channel &c, instruct.channels)
@@ -2850,8 +2835,6 @@ public:
 	{
 		config = _config;
 
-		// TODO: set lingers
-
 		zhttpIn = new ZhttpManager(this);
 
 		zhttpIn->setInstanceId(config.instanceId);
@@ -2947,6 +2930,7 @@ public:
 		{
 			inSubSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			inSubSock->setSendHwm(SUB_SNDHWM);
+			inSubSock->setShutdownWaitTime(0);
 
 			QString errorMessage;
 			if(!ZUtil::setupSocket(inSubSock, config.pushInSubSpec, true, config.ipcFileMode, &errorMessage))
@@ -2965,6 +2949,7 @@ public:
 		{
 			retrySock = new QZmq::Socket(QZmq::Socket::Push, this);
 			retrySock->setHwm(DEFAULT_HWM);
+			retrySock->setShutdownWaitTime(DEFAULT_SHUTDOWN_WAIT_TIME);
 
 			QString errorMessage;
 			if(!ZUtil::setupSocket(retrySock, config.retryOutSpec, false, config.ipcFileMode, &errorMessage))
@@ -2995,6 +2980,7 @@ public:
 
 			wsControlOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
 			wsControlOutSock->setHwm(DEFAULT_HWM);
+			wsControlOutSock->setShutdownWaitTime(0);
 
 			if(!ZUtil::setupSocket(wsControlOutSock, config.wsControlOutSpec, false, config.ipcFileMode, &errorMessage))
 			{
@@ -3009,6 +2995,7 @@ public:
 		{
 			statsSock = new QZmq::Socket(QZmq::Socket::Pub, this);
 			statsSock->setHwm(DEFAULT_HWM);
+			statsSock->setShutdownWaitTime(0);
 
 			QString errorMessage;
 			if(!ZUtil::setupSocket(statsSock, config.statsSpec, true, config.ipcFileMode, &errorMessage))
@@ -3024,6 +3011,7 @@ public:
 		{
 			proxyStatsSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			proxyStatsSock->setHwm(DEFAULT_HWM);
+			proxyStatsSock->setShutdownWaitTime(0);
 			proxyStatsSock->subscribe("");
 
 			QString errorMessage;
@@ -3121,10 +3109,9 @@ private:
 				HttpHeaders headers = hold->response.headers;
 				headers.removeAll("Content-Length"); // this will be reset if needed
 				foreach(const HttpHeader &h, f.headers)
-				{
 					headers.removeAll(h.first);
+				foreach(const HttpHeader &h, f.headers)
 					headers += h;
-				}
 
 				// if Grip-Expose-Headers was provided in the push, apply now
 				if(!exposeHeaders.isEmpty())
@@ -3179,6 +3166,74 @@ private:
 						log_debug("failed to parse original response body as JSON");
 						f.body.clear();
 					}
+				}
+
+				if(!hold->jsonpCallback.isEmpty())
+				{
+					if(hold->jsonpExtendedResponse)
+					{
+						QVariantMap result;
+						result["code"] = f.code;
+						result["reason"] = QString::fromUtf8(f.reason);
+
+						// need to compact headers into a map
+						QVariantMap vheaders;
+						foreach(const HttpHeader &h, headers)
+						{
+							// don't add the same header name twice. we'll collect all values for a single header
+							bool found = false;
+							QMapIterator<QString, QVariant> it(vheaders);
+							while(it.hasNext())
+							{
+								it.next();
+								const QString &name = it.key();
+
+								QByteArray uname = name.toUtf8();
+								if(qstricmp(uname.data(), h.first.data()) == 0)
+								{
+									found = true;
+									break;
+								}
+							}
+							if(found)
+								continue;
+
+							QList<QByteArray> values = headers.getAll(h.first);
+							QString mergedValue;
+							for(int n = 0; n < values.count(); ++n)
+							{
+								mergedValue += QString::fromUtf8(values[n]);
+								if(n + 1 < values.count())
+									mergedValue += ", ";
+							}
+							vheaders[h.first] = mergedValue;
+						}
+						result["headers"] = vheaders;
+
+						result["body"] = QString::fromUtf8(f.body);
+
+						QJson::Serializer serializer;
+						QByteArray resultJson = serializer.serialize(result);
+
+						f.body = hold->jsonpCallback + '(' + resultJson + ");\n";
+					}
+					else
+					{
+						if(f.body.endsWith("\r\n"))
+							f.body.truncate(f.body.size() - 2);
+						else if(f.body.endsWith("\n"))
+							f.body.truncate(f.body.size() - 1);
+						f.body = hold->jsonpCallback + '(' + f.body + ");\n";
+					}
+
+					headers.removeAll("Content-Type");
+					headers += HttpHeader("Content-Type", "application/javascript");
+					f.code = 200;
+					f.reason = "OK";
+				}
+				else if(hold->autoCrossOrigin)
+				{
+					Cors::applyCorsHeaders(hold->requestData.headers, &headers);
 				}
 
 				hold->req->beginResponse(f.code, f.reason, headers);
