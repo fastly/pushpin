@@ -56,15 +56,6 @@ SUBSCRIPTION_LINGER = 60
 */
 
 /*
-class WsSession(object):
-	def __init__(self, cid):
-		self.cid = cid
-		self.expire_time = None
-		self.channel_prefix = None
-		self.sid = None
-		self.meta = {}
-		self.channel_filters = {} # k=channel, v=filters
-
 class Subscription(object):
 	def __init__(self, mode, channel):
 		self.mode = mode
@@ -1708,6 +1699,145 @@ public:
 	}
 };
 
+class WsControlMessage
+{
+public:
+	enum Type
+	{
+		Subscribe,
+		Unsubscribe,
+		Session,
+		SetMeta
+	};
+
+	Type type;
+	QString channel;
+	QStringList filters;
+	QString sessionId;
+	QString metaName;
+	QString metaValue;
+
+	static WsControlMessage fromVariant(const QVariant &in, bool *ok = 0, QString *errorMessage = 0)
+	{
+		QString pn = "grip control packet";
+
+		if(!isKeyedObject(in))
+		{
+			setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
+			return WsControlMessage();
+		}
+
+		pn = "grip control object";
+
+		WsControlMessage out;
+
+		bool ok_;
+		QString type = getString(in, pn, "type", true, &ok_, errorMessage);
+		if(!ok_)
+		{
+			if(ok)
+				*ok = false;
+			return WsControlMessage();
+		}
+
+		if(type == "subscribe")
+			out.type = Subscribe;
+		else if(type == "unsubscribe")
+			out.type = Unsubscribe;
+		else if(type == "session")
+			out.type = Session;
+		else if(type == "set-meta")
+			out.type = SetMeta;
+		else
+		{
+			setError(ok, errorMessage, QString("'type' contains unknown value: %1").arg(type));
+			return WsControlMessage();
+		}
+
+		if(out.type == Subscribe || out.type == Unsubscribe)
+		{
+			out.channel = getString(in, pn, "channel", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlMessage();
+			}
+
+			if(out.channel.isEmpty())
+			{
+				setError(ok, errorMessage, QString("%1 contains 'channel' with invalid value").arg(pn));
+				return WsControlMessage();
+			}
+
+			if(out.type == Subscribe)
+			{
+				QVariantList vfilters = getList(in, pn, "filters", false, &ok_, errorMessage);
+				if(!ok_)
+				{
+					if(ok)
+						*ok = false;
+					return WsControlMessage();
+				}
+
+				foreach(const QVariant &vfilter, vfilters)
+				{
+					QString filter = getString(vfilter, &ok_);
+					if(!ok_)
+					{
+						setError(ok, errorMessage, "filters contains value with wrong type");
+						return WsControlMessage();
+					}
+
+					out.filters += filter;
+				}
+			}
+		}
+		else if(out.type == Session)
+		{
+			out.sessionId = getString(in, pn, "id", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlMessage();
+			}
+
+			if(out.sessionId.isEmpty())
+			{
+				setError(ok, errorMessage, QString("%1 contains 'id' with invalid value").arg(pn));
+				return WsControlMessage();
+			}
+		}
+		else if(out.type == SetMeta)
+		{
+			out.metaName = getString(in, pn, "name", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlMessage();
+			}
+
+			if(out.metaName.isEmpty())
+			{
+				setError(ok, errorMessage, QString("%1 contains 'name' with invalid value").arg(pn));
+				return WsControlMessage();
+			}
+
+			out.metaValue = getString(in, pn, "value", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlMessage();
+			}
+		}
+
+		return out;
+	}
+};
+
 class WsControlPacket
 {
 public:
@@ -1724,20 +1854,24 @@ public:
 
 		Type type;
 		QString cid;
+		QString channelPrefix; // here only
 		QByteArray message; // grip only
 	};
 
+	QString channelPrefix;
 	QList<Message> messages;
 
 	static WsControlPacket fromVariant(const QVariant &in, bool *ok = 0, QString *errorMessage = 0)
 	{
-		QString pn = "wscontrol object";
+		QString pn = "wscontrol packet";
 
 		if(!isKeyedObject(in))
 		{
 			setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
 			return WsControlPacket();
 		}
+
+		pn = "wscontrol object";
 
 		bool ok_;
 		QVariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
@@ -1779,6 +1913,14 @@ public:
 			}
 
 			msg.cid = getString(vitem, pn, "cid", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlPacket();
+			}
+
+			msg.channelPrefix = getString(vitem, pn, "channel-prefix", false, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -2474,10 +2616,22 @@ public:
 	}
 };
 
+class WsSession
+{
+public:
+	QString cid;
+	QString channelPrefix;
+	QString sid;
+	QHash<QString, QString> meta;
+	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
+	QSet<QString> channels;
+};
+
 class CommonState
 {
 public:
 	QList<Hold*> holds;
+	QHash<QString, WsSession*> wsSessions;
 };
 
 class AcceptWorker : public Deferred
@@ -3697,6 +3851,37 @@ private:
 			}
 		}
 
+		QHashIterator<QString, WsSession*> it(cs.wsSessions);
+		while(it.hasNext())
+		{
+			it.next();
+			WsSession *s = it.value();
+
+			if(!s->channels.contains(item.channel))
+				continue;
+
+			if(!applyFilters(s->meta, item.meta, s->channelFilters[item.channel]))
+				continue;
+
+			if(item.formats.contains(Format::WebSocketMessage))
+			{
+				log_debug("relaying to 1 ws-message subscribers");
+				Format f = item.formats.value(Format::WebSocketMessage);
+
+				QVariantHash vitem;
+				vitem["cid"] = s->cid.toUtf8();
+				vitem["type"] = QByteArray("send");
+				vitem["content-type"] = f.binary ? QByteArray("binary") : QByteArray("text");
+				vitem["message"] = f.body;
+
+				QVariantHash out;
+				out["items"] = QVariantList() << vitem;
+
+				log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(out, -1)));
+				wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(out));
+			}
+		}
+
 		/*
 		ws_control_out_sock = ctx.socket(zmq.PUSH)
 		ws_control_out_sock.linger = DEFAULT_LINGER
@@ -4225,28 +4410,30 @@ private slots:
 		{
 			if(msg.type == WsControlPacket::Message::Here)
 			{
-				log_debug("here: %s", qPrintable(msg.cid));
-				/*
-				cid = item['cid']
-				channel_prefix = item.get('channel-prefix')
-				lock.acquire()
-				s = ws_sessions.get(cid)
-				if not s:
-					s = WsSession(cid)
-					s.channel_prefix = channel_prefix
-					ws_sessions[cid] = s
-					logger.debug('added ws session: %s' % cid)
-				s.expire_time = now + 60
-				lock.release()
-				*/
+				WsSession *s = cs.wsSessions.value(msg.cid);
+				if(!s)
+				{
+					s = new WsSession;
+					s->cid = msg.cid;
+					cs.wsSessions.insert(s->cid, s);
+					log_debug("added ws session: %s", qPrintable(s->cid));
+				}
+
+				s->channelPrefix = msg.channelPrefix;
+				//s.expire_time = now + 60
 			}
 			else if(msg.type == WsControlPacket::Message::Gone || msg.type == WsControlPacket::Message::Cancel)
 			{
-				log_debug("gone: %s", qPrintable(msg.cid));
-				/*
-				cid = item['cid']
+				WsSession *s = cs.wsSessions.value(msg.cid);
+				if(s)
+				{
+					cs.wsSessions.remove(msg.cid);
 
-				notify_unsubs = set()
+					log_debug("removed ws session: %s", qPrintable(s->cid));
+					delete s;
+				}
+
+				/*notify_unsubs = set()
 
 				lock.acquire()
 				s = ws_sessions.get(cid)
@@ -4279,45 +4466,35 @@ private slots:
 			}
 			else if(msg.type == WsControlPacket::Message::Grip)
 			{
-				log_debug("grip: %s %s", qPrintable(msg.cid), qPrintable(msg.message));
-				/*
-				cid = item['cid']
+				QJson::Parser parser;
+				data = parser.parse(msg.message, &ok);
+				if(msg.message.isEmpty() || !ok)
+				{
+					log_debug("grip control message is not valid json");
+					return;
+				}
 
-				try:
-					gm = json.loads(item['message'])
-					gtype = gm['type']
-					channel = None
-					filters = []
-					sid = None
-					name = None
-					value = None
-					if gtype == 'subscribe' or gtype == 'unsubscribe':
-						channel = gm['channel']
-						if not isinstance(channel, basestring) or len(channel) < 1:
-							raise ValueError('invalid channel')
-						if gtype == 'subscribe':
-							filters = gm.get('filters', [])
-							if not isinstance(filters, list):
-								raise ValueError('invalid filters')
-							for f in filters:
-								if not isinstance(f, basestring):
-									raise ValueError('invalid filters')
-					elif gtype == 'session':
-						sid = gm['id']
-						if not isinstance(sid, basestring) or len(sid) < 1:
-							raise ValueError('invalid id')
-						sid = ensure_utf8(sid)
-					elif gtype == 'set-meta':
-						name = gm['name']
-						if not isinstance(name, basestring) or len(name) < 1:
-							raise ValueError('invalid meta name')
-						value = gm.get('value')
-						if value is not None and not isinstance(value, basestring):
-							raise ValueError('invalid meta value')
-				except:
-					gm = None
+				WsControlMessage cm = WsControlMessage::fromVariant(data, &ok, &errorMessage);
+				if(!ok)
+				{
+					log_debug("failed to parse grip control message: %s", qPrintable(errorMessage));
+					return;
+				}
 
-				notify_sub = False
+				WsSession *s = cs.wsSessions.value(msg.cid);
+				if(!s)
+				{
+					log_debug("received grip control message for unknown websocket session, skipping");
+					return;
+				}
+
+				if(cm.type == WsControlMessage::Subscribe)
+				{
+					s->channels += s->channelPrefix + cm.channel;
+					s->channelFilters[cm.channel] = cm.filters;
+				}
+
+				/*notify_sub = False
 				notify_unsub = False
 				notify_detach = False
 				save_sid = False
