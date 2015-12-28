@@ -37,6 +37,7 @@ HEADERS += \
 	$$PROXY_SRC_DIR/packet/httpresponsedata.h \
 	$$PROXY_SRC_DIR/packet/zrpcrequestpacket.h \
 	$$PROXY_SRC_DIR/packet/zrpcresponsepacket.h \
+	$$PROXY_SRC_DIR/packet/statspacket.h \
 	$$PROXY_SRC_DIR/uuidutil.h \
 	$$PROXY_SRC_DIR/zutil.h \
 	$$PROXY_SRC_DIR/zrpcmanager.h \
@@ -46,6 +47,7 @@ HEADERS += \
 	$$PROXY_SRC_DIR/zhttprequest.h \
 	$$PROXY_SRC_DIR/zwebsocket.h \
 	$$PROXY_SRC_DIR/cors.h \
+	$$PROXY_SRC_DIR/statsmanager.h \
 	$$SRC_DIR/deferred.h \
 	$$SRC_DIR/statusreasons.h \
 	$$SRC_DIR/httpserver.h \
@@ -56,6 +58,7 @@ HEADERS += \
 SOURCES += \
 	$$PROXY_SRC_DIR/packet/zrpcrequestpacket.cpp \
 	$$PROXY_SRC_DIR/packet/zrpcresponsepacket.cpp \
+	$$PROXY_SRC_DIR/packet/statspacket.cpp \
 	$$PROXY_SRC_DIR/uuidutil.cpp \
 	$$PROXY_SRC_DIR/zutil.cpp \
 	$$PROXY_SRC_DIR/zrpcmanager.cpp \
@@ -64,6 +67,7 @@ SOURCES += \
 	$$PROXY_SRC_DIR/zhttprequest.cpp \
 	$$PROXY_SRC_DIR/zwebsocket.cpp \
 	$$PROXY_SRC_DIR/cors.cpp \
+	$$PROXY_SRC_DIR/statsmanager.cpp \
 	$$SRC_DIR/deferred.cpp \
 	$$SRC_DIR/statusreasons.cpp \
 	$$SRC_DIR/httpserver.cpp \

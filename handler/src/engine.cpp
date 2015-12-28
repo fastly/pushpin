@@ -29,11 +29,13 @@
 #include "log.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "packet/statspacket.h"
 #include "zutil.h"
 #include "zrpcmanager.h"
 #include "zrpcrequest.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
+#include "statsmanager.h"
 #include "deferred.h"
 #include "statusreasons.h"
 #include "httpserver.h"
@@ -45,15 +47,6 @@
 #define SUB_SNDHWM 0 // infinite
 #define DEFAULT_SHUTDOWN_WAIT_TIME 1000
 #define STATE_RPC_TIMEOUT 1000
-
-/*
-CONNECTION_TTL = 600
-CONNECTION_REFRESH = 540
-CONNECTION_LINGER = 60
-
-SUBSCRIPTION_TTL = 60
-SUBSCRIPTION_LINGER = 60
-*/
 
 /*
 class Subscription(object):
@@ -84,7 +77,6 @@ class StatsSubscription(object):
 		self.channel = None
 		self.expire_time = None
 
-lock = threading.Lock()
 response_channels = dict()
 response_lastids = dict()
 stream_channels = dict()
@@ -95,8 +87,6 @@ ws_channels = dict()
 # key=(type, channel)
 subs = dict()
 
-stats_lock = threading.Lock()
-stats_activity = dict() # route, count
 conns = dict() # conn id, ConnectionInfo
 
 # assumes state is locked
@@ -3387,6 +3377,7 @@ public:
 	QZmq::Socket *proxyStatsSock;
 	QZmq::Valve *proxyStatsValve;
 	HttpServer *controlHttpServer;
+	StatsManager *stats;
 	QTimer *timer;
 	CommonState cs;
 
@@ -3411,6 +3402,7 @@ public:
 		proxyStatsSock(0),
 		proxyStatsValve(0),
 		controlHttpServer(0),
+		stats(0),
 		timer(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
@@ -3588,15 +3580,14 @@ public:
 
 		if(!config.statsSpec.isEmpty())
 		{
-			statsSock = new QZmq::Socket(QZmq::Socket::Pub, this);
-			statsSock->setHwm(DEFAULT_HWM);
-			statsSock->setShutdownWaitTime(0);
+			stats = new StatsManager(this);
+			stats->setInstanceId(config.instanceId);
+			stats->setIpcFileMode(config.ipcFileMode);
 
-			QString errorMessage;
-			if(!ZUtil::setupSocket(statsSock, config.statsSpec, true, config.ipcFileMode, &errorMessage))
+			if(!stats->setSpec(config.statsSpec))
 			{
-					log_error("%s", qPrintable(errorMessage));
-					return false;
+				// statsmanager logs error
+				return false;
 			}
 
 			log_info("stats: %s", qPrintable(config.statsSpec));
@@ -4404,8 +4395,6 @@ private slots:
 			return;
 		}
 
-		// TODO now = int(time.time())
-
 		foreach(const WsControlPacket::Message &msg, packet.messages)
 		{
 			if(msg.type == WsControlPacket::Message::Here)
@@ -4597,57 +4586,61 @@ private slots:
 			return;
 		}
 
-		QString type = QString::fromUtf8(message[0].mid(0, at));
+		QByteArray type = message[0].mid(0, at);
+
+		if(at + 1 >= message[0].length() || message[0][at + 1] != 'T')
+		{
+			log_warning("IN proxy stats: received message with unsupported format, skipping");
+			return;
+		}
 
 		bool ok;
-		QVariant data = TnetString::toVariant(message[0].mid(at + 1), 0, &ok);
+		QVariant data = TnetString::toVariant(message[0], at + 2, &ok);
 		if(!ok)
 		{
 			log_warning("IN proxy stats: received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
 
-		log_debug("IN proxy stats: %s %s", qPrintable(type), qPrintable(TnetString::variantToString(data, -1)));
+		log_debug("IN proxy stats: %s %s", type.data(), qPrintable(TnetString::variantToString(data, -1)));
 
-		if(type == "activity")
+		StatsPacket p;
+		if(!p.fromVariant(type, data))
 		{
-			// TODO
-			/*
-			route = m.get('route')
-			if not route:
-				route = ''
-			count = m['count']
-			stats_lock.acquire()
-			if route in stats_activity:
-				stats_activity[route] += count
-			else:
-				stats_activity[route] = count
-			stats_lock.release()*/
+			log_warning("IN proxy stats: received message with invalid format, skipping");
+			return;
 		}
-		else if(type == "conn")
+
+		if(p.type == StatsPacket::Activity)
 		{
-			// TODO
-			/*
-			# get sid
-			sid = None
-			lock.acquire()
-			if m.get('type') == 'ws':
-				s = ws_sessions.get(m['id'])
-				if s is not None:
-					sid = s.sid
-			lock.release()
+			if(p.count > 0)
+			{
+				// merge with our own stats
+				stats->addActivity(p.route, p.count);
+			}
+		}
+		else if(p.type == StatsPacket::Connected || p.type == StatsPacket::Disconnected)
+		{
+			QString sid;
+			if(p.connectionType == StatsPacket::WebSocket)
+			{
+				WsSession *s = cs.wsSessions.value(QString::fromUtf8(p.connectionId));
+				if(s)
+					sid = s->sid;
+			}
 
-			# relay
-			m['from'] = instance_id
-			stats_sock.send(mtype + ' ' + tnetstring.dumps(m))
+			// just forward the packet. this will stamp the from field and keep the rest
+			stats->sendPacket(p);
 
-			# update session
-			if sid and not m.get('unavailable') and state_rpc:
-				try:
-					session_update_many(state_rpc, {sid: {}})
-				except:
-					logger.debug("couldn't update session")
-			*/
+			// update session
+			if(stateClient && !sid.isEmpty() && p.type == StatsPacket::Connected)
+			{
+				QHash<QString, LastIds> sidLastIds;
+				sidLastIds[sid] = LastIds();
+				Deferred *d = new SessionUpdateMany(stateClient, sidLastIds, this);
+				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionUpdateMany_finished(const DeferredResult &)));
+				return;
+			}
 		}
 	}
 
@@ -4725,6 +4718,14 @@ private slots:
 		}
 
 		connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+	}
+
+	void sessionUpdateMany_finished(const DeferredResult &result)
+	{
+		if(!result.success)
+		{
+			log_error("couldn't update session");
+		}
 	}
 
 	void holdAdded(Hold *hold)
@@ -5032,90 +5033,74 @@ private slots:
 
 	// TODO stats stuff
 	/*
-			m_raw = in_sock.recv()
-			at = m_raw.find(' ')
-			mtype = m_raw[:at]
-			mdata = m_raw[at + 1:]
+		if sub_sock and mtype == 'sub':
+			m = tnetstring.loads(mdata)
+			mode = m['mode']
+			channel = m['channel']
+			here = not m.get('unavailable', False)
 
-			now = int(time.time() * 1000)
-
-			if sub_sock and mtype == 'sub':
-				m = tnetstring.loads(mdata)
-				mode = m['mode']
-				channel = m['channel']
-				here = not m.get('unavailable', False)
-
-				if here:
-					ttl = m['ttl']
-					notify = False
-					subs_modes = subs_modes_by_channel.get(channel)
-					if subs_modes is None:
-						subs_modes = {}
-						subs_modes_by_channel[channel] = subs_modes
-						notify = True
+			if here:
+				ttl = m['ttl']
+				notify = False
+				subs_modes = subs_modes_by_channel.get(channel)
+				if subs_modes is None:
+					subs_modes = {}
+					subs_modes_by_channel[channel] = subs_modes
+					notify = True
+				sub = subs_modes.get(mode)
+				if sub is not None:
+					subs_exp = subs_by_exp[sub.expire_time]
+					subs_exp.remove(sub)
+					if len(subs_exp) == 0:
+						del subs_by_exp[sub.expire_time]
+				else:
+					sub = StatsSubscription()
+					sub.mode = mode
+					sub.channel = channel
+					subs_modes[mode] = sub
+				sub.expire_time = now + (ttl * 1000)
+				subs_exp = subs_by_exp.get(sub.expire_time)
+				if subs_exp is None:
+					subs_exp = set()
+					subs_by_exp[sub.expire_time] = subs_exp
+				subs_exp.add(sub)
+				if notify:
+					sm = {'channel': channel}
+					sm['type'] = 'subscribe'
+					sub_sock.send(tnetstring.dumps(sm))
+			else:
+				subs_modes = subs_modes_by_channel.get(channel)
+				if subs_modes is not None:
 					sub = subs_modes.get(mode)
 					if sub is not None:
 						subs_exp = subs_by_exp[sub.expire_time]
 						subs_exp.remove(sub)
 						if len(subs_exp) == 0:
 							del subs_by_exp[sub.expire_time]
-					else:
-						sub = StatsSubscription()
-						sub.mode = mode
-						sub.channel = channel
-						subs_modes[mode] = sub
-					sub.expire_time = now + (ttl * 1000)
-					subs_exp = subs_by_exp.get(sub.expire_time)
-					if subs_exp is None:
-						subs_exp = set()
-						subs_by_exp[sub.expire_time] = subs_exp
-					subs_exp.add(sub)
-					if notify:
-						sm = {'channel': channel}
-						sm['type'] = 'subscribe'
-						sub_sock.send(tnetstring.dumps(sm))
-				else:
-					subs_modes = subs_modes_by_channel.get(channel)
-					if subs_modes is not None:
-						sub = subs_modes.get(mode)
-						if sub is not None:
-							subs_exp = subs_by_exp[sub.expire_time]
-							subs_exp.remove(sub)
-							if len(subs_exp) == 0:
-								del subs_by_exp[sub.expire_time]
-							del subs_modes[mode]
-							if len(subs_modes) == 0:
-								del subs_modes_by_channel[channel]
-								sm = {'channel': channel}
-								sm['type'] = 'unsubscribe'
-								sub_sock.send(tnetstring.dumps(sm))
-
-			if out_sock:
-				m_raw = mtype + ' T' + mdata
-				logger.debug('OUT stats: %s' % m_raw)
-				out_sock.send(m_raw)
-
-			if sub_sock:
-				while len(subs_by_exp) > 0:
-					next_exp = iter(subs_by_exp).next()
-					if next_exp > now:
-						break
-
-					subs_exp = subs_by_exp[next_exp]
-					del subs_by_exp[next_exp]
-					for sub in subs_exp:
-						logger.debug('stats_worker: expiring %s %s' % (sub.mode, sub.channel))
-						subs_modes = subs_modes_by_channel.get(sub.channel)
-						del subs_modes[sub.mode]
+						del subs_modes[mode]
 						if len(subs_modes) == 0:
-							del subs_modes_by_channel[sub.channel]
-							sm = {'channel': sub.channel}
+							del subs_modes_by_channel[channel]
+							sm = {'channel': channel}
 							sm['type'] = 'unsubscribe'
 							sub_sock.send(tnetstring.dumps(sm))
-		except zmq.ContextTerminated:
-			raise
-		except:
-			logger.exception('failed')
+
+		if sub_sock:
+			while len(subs_by_exp) > 0:
+				next_exp = iter(subs_by_exp).next()
+				if next_exp > now:
+					break
+
+				subs_exp = subs_by_exp[next_exp]
+				del subs_by_exp[next_exp]
+				for sub in subs_exp:
+					logger.debug('stats_worker: expiring %s %s' % (sub.mode, sub.channel))
+					subs_modes = subs_modes_by_channel.get(sub.channel)
+					del subs_modes[sub.mode]
+					if len(subs_modes) == 0:
+						del subs_modes_by_channel[sub.channel]
+						sm = {'channel': sub.channel}
+						sm['type'] = 'unsubscribe'
+						sub_sock.send(tnetstring.dumps(sm))
 	*/
 };
 
