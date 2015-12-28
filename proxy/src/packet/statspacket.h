@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,8 +30,11 @@ public:
 	enum Type
 	{
 		Activity,
+		Message,
 		Connected,
-		Disconnected
+		Disconnected,
+		Subscribed,
+		Unsubscribed
 	};
 
 	enum ConnectionType
@@ -48,7 +51,11 @@ public:
 	ConnectionType connectionType; // connected
 	QHostAddress peerAddress; // connected
 	bool ssl; // connected
-	int ttl; // connected
+	int ttl; // connected, subscribed
+	QByteArray mode; // subscribed, unsubscribed
+	QByteArray channel; // message, subscribed, unsubscribed
+	QByteArray itemId; // message
+	QByteArray transport; // message
 
 	StatsPacket() :
 		type((Type)-1),
@@ -58,6 +65,7 @@ public:
 	}
 
 	QVariant toVariant() const;
+	bool fromVariant(const QByteArray &type, const QVariant &in);
 };
 
 #endif

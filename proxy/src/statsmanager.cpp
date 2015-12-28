@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -36,7 +36,10 @@
 #define CONNECTION_TTL 600
 #define CONNECTION_REFRESH (CONNECTION_TTL * 9 / 10)
 #define CONNECTION_LINGER 60
-#define REFRESH_TIMEOUT (30 * 1000)
+#define SUBSCRIPTION_TTL 60
+#define SUBSCRIPTION_REFRESH (SUBSCRIPTION_TTL * 9 / 10)
+#define SUBSCRIPTION_LINGER 60
+#define REFRESH_TIMEOUT (3 * 1000)
 
 // FIXME: trickle connection refreshes rather than all at once on an interval
 
@@ -63,6 +66,22 @@ public:
 		}
 	};
 
+	class Subscription
+	{
+	public:
+		QString mode;
+		QString channel;
+		QDateTime nextRefresh;
+		bool linger;
+
+		Subscription() :
+			linger(false)
+		{
+		}
+	};
+
+	typedef QPair<QString, QString> SubscriptionKey;
+
 	StatsManager *q;
 	QByteArray instanceId;
 	int ipcFileMode;
@@ -70,6 +89,7 @@ public:
 	QZmq::Socket *sock;
 	QHash<QByteArray, int> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
+	QHash<SubscriptionKey, Subscription*> subscriptionsByKey;
 	QTimer *activityTimer;
 	QTimer *refreshTimer;
 
@@ -134,15 +154,19 @@ public:
 
 		QByteArray prefix;
 		if(packet.type == StatsPacket::Activity)
-			prefix = "activity ";
-		else
-			prefix = "conn ";
+			prefix = "activity";
+		else if(packet.type == StatsPacket::Message)
+			prefix = "message";
+		else if(packet.type == StatsPacket::Connected || packet.type == StatsPacket::Disconnected)
+			prefix = "conn";
+		else // Subscribed/Unsubscribed
+			prefix = "sub";
 
 		QVariant vpacket = packet.toVariant();
-		QByteArray buf = prefix + TnetString::fromVariant(vpacket);
+		QByteArray buf = prefix + " T" + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("stats: OUT %s%s", prefix.data(), qPrintable(TnetString::variantToString(vpacket, -1)));
+			log_debug("stats: OUT %s %s", prefix.data(), qPrintable(TnetString::variantToString(vpacket, -1)));
 
 		sock->write(QList<QByteArray>() << buf);
 	}
@@ -154,6 +178,19 @@ public:
 		p.from = instanceId;
 		p.route = routeId;
 		p.count = count;
+		write(p);
+	}
+
+	void sendMessage(const QByteArray &routeId, const QString &channel, const QString &itemId, const QString &transport, int count)
+	{
+		StatsPacket p;
+		p.type = StatsPacket::Message;
+		p.from = instanceId;
+		p.route = routeId;
+		p.channel = channel.toUtf8();
+		p.itemId = itemId.toUtf8();
+		p.count = count;
+		p.transport = transport.toUtf8();
 		write(p);
 	}
 
@@ -184,6 +221,25 @@ public:
 		write(p);
 	}
 
+	void sendSubscribed(Subscription *s)
+	{
+		StatsPacket p;
+		p.type = StatsPacket::Subscribed;
+		p.mode = s->mode.toUtf8();
+		p.channel = s->channel.toUtf8();
+		p.ttl = SUBSCRIPTION_TTL;
+		write(p);
+	}
+
+	void sendUnsubscribed(Subscription *s)
+	{
+		StatsPacket p;
+		p.type = StatsPacket::Unsubscribed;
+		p.mode = s->mode.toUtf8();
+		p.channel = s->channel.toUtf8();
+		write(p);
+	}
+
 private slots:
 	void activity_timeout()
 	{
@@ -201,34 +257,69 @@ private slots:
 	{
 		QDateTime now = QDateTime::currentDateTime();
 
-		QList<ConnectionInfo*> toDelete;
-		QHashIterator<QByteArray, ConnectionInfo*> it(connectionInfoById);
-		while(it.hasNext())
 		{
-			it.next();
-			ConnectionInfo *c = it.value();
-			if(now >= c->nextRefresh)
+			QList<ConnectionInfo*> toDelete;
+			QHashIterator<QByteArray, ConnectionInfo*> it(connectionInfoById);
+			while(it.hasNext())
 			{
-				if(c->linger)
+				it.next();
+				ConnectionInfo *c = it.value();
+				if(now >= c->nextRefresh)
 				{
-					toDelete += c;
+					if(c->linger)
+					{
+						toDelete += c;
 
-					// note: we don't send a disconnect message when the
-					//   linger expires. the assumption is that the handler
-					//   owns the connection now
+						// note: we don't send a disconnect message when the
+						//   linger expires. the assumption is that the handler
+						//   owns the connection now
+					}
+					else
+					{
+						sendConnected(c);
+						c->nextRefresh = now.addSecs(CONNECTION_REFRESH);
+					}
 				}
-				else
-				{
-					sendConnected(c);
-					c->nextRefresh = now.addSecs(CONNECTION_REFRESH);
-				}
+			}
+
+			foreach(ConnectionInfo *c, toDelete)
+			{
+				connectionInfoById.remove(c->id);
+				delete c;
 			}
 		}
 
-		foreach(ConnectionInfo *c, toDelete)
 		{
-			connectionInfoById.remove(c->id);
-			delete c;
+			QList<Subscription*> toDelete;
+			QHashIterator<SubscriptionKey, Subscription*> it(subscriptionsByKey);
+			while(it.hasNext())
+			{
+				it.next();
+				Subscription *s = it.value();
+				if(now >= s->nextRefresh)
+				{
+					if(s->linger)
+					{
+						toDelete += s;
+
+						sendUnsubscribed(s);
+					}
+					else
+					{
+						sendSubscribed(s);
+						s->nextRefresh = now.addSecs(SUBSCRIPTION_REFRESH);
+					}
+				}
+			}
+
+			foreach(Subscription *s, toDelete)
+			{
+				SubscriptionKey subKey(s->mode, s->channel);
+				subscriptionsByKey.remove(subKey);
+				delete s;
+
+				emit q->unsubscribed(subKey.first, subKey.second);
+			}
 		}
 	}
 };
@@ -260,15 +351,22 @@ bool StatsManager::setSpec(const QString &spec)
 	return d->setup();
 }
 
-void StatsManager::addActivity(const QByteArray &routeId)
+void StatsManager::addActivity(const QByteArray &routeId, int count)
 {
+	assert(count >= 0);
+
 	if(d->routeActivity.contains(routeId))
-		++(d->routeActivity[routeId]);
+		d->routeActivity[routeId] += count;
 	else
-		d->routeActivity[routeId] = 1;
+		d->routeActivity[routeId] = count;
 
 	if(!d->activityTimer->isActive())
 		d->activityTimer->start(ACTIVITY_TIMEOUT);
+}
+
+void StatsManager::addMessage(const QByteArray &routeId, const QString &channel, const QString &itemId, const QString &transport, int count)
+{
+	d->sendMessage(routeId, channel, itemId, transport, count);
 }
 
 void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet)
@@ -320,9 +418,68 @@ void StatsManager::removeConnection(const QByteArray &id, bool linger)
 	}
 }
 
+void StatsManager::addSubscription(const QString &mode, const QString &channel)
+{
+	Private::SubscriptionKey subKey(mode, channel);
+	Private::Subscription *s = d->subscriptionsByKey.value(subKey);
+	if(!s)
+	{
+		// add the subscription if we didn't have it
+		s = new Private::Subscription;
+		s->mode = mode;
+		s->channel = channel;
+		d->subscriptionsByKey[subKey] = s;
+
+		s->nextRefresh = QDateTime::currentDateTime().addSecs(SUBSCRIPTION_REFRESH);
+		d->sendSubscribed(s);
+	}
+	else
+	{
+		if(s->linger)
+		{
+			// if this was a lingering subscription, return it to normal
+			s->linger = false;
+			s->nextRefresh = QDateTime::currentDateTime().addSecs(SUBSCRIPTION_REFRESH);
+			d->sendSubscribed(s);
+		}
+	}
+}
+
+void StatsManager::removeSubscription(const QString &mode, const QString &channel, bool linger)
+{
+	Private::SubscriptionKey subKey(mode, channel);
+	Private::Subscription *s = d->subscriptionsByKey.value(subKey);
+	if(!s)
+		return;
+
+	if(linger)
+	{
+		if(!s->linger)
+		{
+			s->linger = true;
+			s->nextRefresh = QDateTime::currentDateTime().addSecs(SUBSCRIPTION_LINGER);
+		}
+	}
+	else
+	{
+		d->sendUnsubscribed(s);
+		d->subscriptionsByKey.remove(subKey);
+		delete s;
+
+		emit unsubscribed(mode, channel);
+	}
+}
+
 bool StatsManager::checkConnection(const QByteArray &id)
 {
 	return d->connectionInfoById.contains(id);
+}
+
+void StatsManager::sendPacket(const StatsPacket &packet)
+{
+	StatsPacket p = packet;
+	p.from = d->instanceId;
+	d->write(p);
 }
 
 #include "statsmanager.moc"
