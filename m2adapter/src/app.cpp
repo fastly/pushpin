@@ -1515,11 +1515,11 @@ public:
 						headers.removeAll(h);
 					headers.removeAll("Transfer-Encoding");
 					headers.removeAll("Upgrade");
-					headers.removeAll("Sec-Websocket-Accept");
+					headers.removeAll("Sec-WebSocket-Accept");
 
 					headers += HttpHeader("Upgrade", "websocket");
 					headers += HttpHeader("Connection", "Upgrade");
-					headers += HttpHeader("Sec-Websocket-Accept", s->acceptToken);
+					headers += HttpHeader("Sec-WebSocket-Accept", s->acceptToken);
 
 					QByteArray reason;
 					if(!zresp.reason.isEmpty())
