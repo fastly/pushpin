@@ -181,12 +181,11 @@ public:
 		write(p);
 	}
 
-	void sendMessage(const QByteArray &routeId, const QString &channel, const QString &itemId, const QString &transport, int count)
+	void sendMessage(const QString &channel, const QString &itemId, const QString &transport, int count)
 	{
 		StatsPacket p;
 		p.type = StatsPacket::Message;
 		p.from = instanceId;
-		p.route = routeId;
 		p.channel = channel.toUtf8();
 		p.itemId = itemId.toUtf8();
 		p.count = count;
@@ -225,6 +224,7 @@ public:
 	{
 		StatsPacket p;
 		p.type = StatsPacket::Subscribed;
+		p.from = instanceId;
 		p.mode = s->mode.toUtf8();
 		p.channel = s->channel.toUtf8();
 		p.ttl = SUBSCRIPTION_TTL;
@@ -235,6 +235,7 @@ public:
 	{
 		StatsPacket p;
 		p.type = StatsPacket::Unsubscribed;
+		p.from = instanceId;
 		p.mode = s->mode.toUtf8();
 		p.channel = s->channel.toUtf8();
 		write(p);
@@ -364,9 +365,9 @@ void StatsManager::addActivity(const QByteArray &routeId, int count)
 		d->activityTimer->start(ACTIVITY_TIMEOUT);
 }
 
-void StatsManager::addMessage(const QByteArray &routeId, const QString &channel, const QString &itemId, const QString &transport, int count)
+void StatsManager::addMessage(const QString &channel, const QString &itemId, const QString &transport, int count)
 {
-	d->sendMessage(routeId, channel, itemId, transport, count);
+	d->sendMessage(channel, itemId, transport, count);
 }
 
 void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet)

@@ -47,7 +47,7 @@ public:
 	// routeId may be empty for non-identified route
 
 	void addActivity(const QByteArray &routeId, int count = 1);
-	void addMessage(const QByteArray &routeId, const QString &channel, const QString &itemId, const QString &transport, int count = 1);
+	void addMessage(const QString &channel, const QString &itemId, const QString &transport, int count = 1);
 
 	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet);
 	void removeConnection(const QByteArray &id, bool linger);
