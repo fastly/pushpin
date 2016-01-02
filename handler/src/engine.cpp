@@ -48,14 +48,10 @@
 #define DEFAULT_SHUTDOWN_WAIT_TIME 1000
 #define STATE_RPC_TIMEOUT 1000
 
-/*
-class Subscription(object):
-	def __init__(self, mode, channel):
-		self.mode = mode
-		self.channel = channel
-		self.expire_time = None
-		self.last_keepalive = None
+#define DEFAULT_RESPONSE_TIMEOUT 55
+#define MINIMUM_RESPONSE_TIMEOUT 5
 
+/*
 class ConnectionInfo(object):
 	def __init__(self, id, type):
 		self.id = id
@@ -67,65 +63,7 @@ class ConnectionInfo(object):
 		self.last_keepalive = None
 		self.sid = None
 
-class Session(object):
-	def __init__(self):
-		self.id = None
-
-class StatsSubscription(object):
-	def __init__(self):
-		self.mode = None
-		self.channel = None
-		self.expire_time = None
-
-response_channels = dict()
-response_lastids = dict()
-stream_channels = dict()
-channels_by_req = dict()
-ws_sessions = dict()
-ws_channels = dict()
-
-# key=(type, channel)
-subs = dict()
-
 conns = dict() # conn id, ConnectionInfo
-
-# assumes state is locked
-# returns list of (mode, channel) that should be unsubscribed
-def remove_from_req_channels(rid, response=True, stream=True):
-	unsub = []
-	req_channels = channels_by_req.get(rid)
-	if req_channels is not None:
-		to_remove = set()
-		for mode, channel in req_channels:
-			if response and mode == 'response':
-				hchannels = response_channels.get(channel)
-				if hchannels is not None and rid in hchannels:
-					del hchannels[rid]
-					if len(hchannels) == 0:
-						del response_channels[channel]
-						unsub.append((mode, channel))
-				to_remove.add((mode, channel))
-			elif stream and mode == 'stream':
-				hchannels = stream_channels.get(channel)
-				if hchannels is not None and rid in hchannels:
-					del hchannels[rid]
-					if len(hchannels) == 0:
-						del stream_channels[channel]
-						unsub.append((mode, channel))
-				to_remove.add((mode, channel))
-		for mode, channel in to_remove:
-			req_channels.remove((mode, channel))
-		if len(req_channels) == 0:
-			del channels_by_req[rid]
-	return unsub
-
-# assumes state is locked
-def remove_from_response_channels(rid):
-	return remove_from_req_channels(rid, response=True, stream=False)
-
-# assumes state is locked
-def remove_from_stream_channels(rid):
-	return remove_from_req_channels(rid, response=False, stream=True)
 */
 
 static void setSuccess(bool *ok, QString *errorMessage)
@@ -1597,6 +1535,7 @@ public:
 	bool autoCrossOrigin;
 	QByteArray jsonpCallback;
 	bool jsonpExtendedResponse;
+	QVariant userData;
 
 	RequestState() :
 		inSeq(0),
@@ -1683,6 +1622,11 @@ public:
 				return RequestState();
 
 			rs.jsonpExtendedResponse = r["jsonp-extended-response"].toBool();
+		}
+
+		if(r.contains("user-data"))
+		{
+			rs.userData = r["user-data"];
 		}
 
 		return rs;
@@ -1959,7 +1903,7 @@ public:
 	QList<Channel> channels;
 	int timeout;
 	QList<QByteArray> exposeHeaders;
-	QByteArray keepAlive;
+	QByteArray keepAliveData;
 	int keepAliveTimeout;
 	QHash<QString, QString> meta;
 	HttpResponseData response;
@@ -1977,7 +1921,7 @@ public:
 		QList<Channel> channels;
 		int timeout = -1;
 		QList<QByteArray> exposeHeaders;
-		QByteArray keepAlive;
+		QByteArray keepAliveData;
 		int keepAliveTimeout = -1;
 		QHash<QString, QString> meta;
 		HttpResponseData newResponse;
@@ -2070,18 +2014,18 @@ public:
 			}
 			else
 			{
-				keepAliveTimeout = 55;
+				keepAliveTimeout = DEFAULT_RESPONSE_TIMEOUT;
 			}
 
 			QByteArray format = keepAliveParams.get("format");
 			if(format.isEmpty() || format == "raw")
 			{
-				keepAlive = val;
+				keepAliveData = val;
 			}
 			else if(format == "cstring")
 			{
-				keepAlive = unescape(val);
-				if(keepAlive.isNull())
+				keepAliveData = unescape(val);
+				if(keepAliveData.isNull())
 				{
 					setError(ok, errorMessage, "failed to parse Grip-Keep-Alive cstring format");
 					return Instruct();
@@ -2089,7 +2033,7 @@ public:
 			}
 			else if(format == "base64")
 			{
-				keepAlive = QByteArray::fromBase64(val);
+				keepAliveData = QByteArray::fromBase64(val);
 			}
 			else
 			{
@@ -2292,15 +2236,15 @@ public:
 							return Instruct();
 						}
 
-						keepAlive = QByteArray::fromBase64(contentBin.toUtf8());
+						keepAliveData = QByteArray::fromBase64(contentBin.toUtf8());
 					}
 					else if(keyedObjectContains(vka, "content"))
 					{
 						QVariant vcontent = keyedObjectGetValue(vka, "content");
 						if(vcontent.type() == QVariant::ByteArray)
-							keepAlive = vcontent.toByteArray();
+							keepAliveData = vcontent.toByteArray();
 						else if(vcontent.type() == QVariant::String)
-							keepAlive = vcontent.toString().toUtf8();
+							keepAliveData = vcontent.toString().toUtf8();
 						else
 						{
 							setError(ok, errorMessage, QString("%1 contains 'content' with wrong type").arg(kpn));
@@ -2557,8 +2501,10 @@ public:
 			}
 		}
 
-		if(timeout == -1 || timeout < 10)
-			timeout = 55;
+		if(timeout == -1)
+			timeout = DEFAULT_RESPONSE_TIMEOUT;
+
+		timeout = qMax(timeout, MINIMUM_RESPONSE_TIMEOUT);
 
 		if(keepAliveTimeout != -1)
 		{
@@ -2571,7 +2517,7 @@ public:
 		i.channels = channels;
 		i.timeout = timeout;
 		i.exposeHeaders = exposeHeaders;
-		i.keepAlive = keepAlive;
+		i.keepAliveData = keepAliveData;
 		i.keepAliveTimeout = keepAliveTimeout;
 		i.meta = meta;
 		i.response = newResponse;
@@ -2582,9 +2528,38 @@ public:
 	}
 };
 
-// TODO: contain keep alive info, last_send as necessary
-class Hold
+/* TODO
+	for ci in refresh_conns:
+		out = dict()
+		out['from'] = instance_id
+		if ci.route:
+			out['route'] = ci.route
+		out['id'] = ci.id
+		out['type'] = ci.type
+		if ci.peer_address:
+			out['peer-address'] = ci.peer_address
+		if ci.ssl:
+			out['ssl'] = True
+		out['ttl'] = CONNECTION_TTL
+		stats_sock.send('conn ' + tnetstring.dumps(out))
+
+		if ci.sid:
+			refresh_sids.append(ci.sid)
+
+	if refresh_sids and state_rpc:
+		try:
+			sid_last_ids = dict()
+			for sid in refresh_sids:
+				sid_last_ids[sid] = dict()
+			session_update_many(state_rpc, sid_last_ids)
+		except:
+			logger.debug("couldn't update sessions")
+*/
+
+class Hold : public QObject
 {
+	Q_OBJECT
+
 public:
 	HoldMode mode;
 	QHash<QString, Instruct::Channel> channels;
@@ -2595,14 +2570,299 @@ public:
 	bool autoCrossOrigin;
 	QByteArray jsonpCallback;
 	bool jsonpExtendedResponse;
-	bool done;
+	QString route;
+	QString sid;
+	int timeout;
+	int keepAliveTimeout;
+	QByteArray keepAliveData;
+	QTimer *timer;
 
 	Hold() :
 		req(0),
 		autoCrossOrigin(false),
 		jsonpExtendedResponse(false),
-		done(false)
+		timeout(-1),
+		keepAliveTimeout(-1)
 	{
+		timer = new QTimer(this);
+		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+	}
+
+	~Hold()
+	{
+		if(timer)
+		{
+			timer->disconnect(this);
+			timer->setParent(0);
+			timer->deleteLater();
+		}
+	}
+
+	void start(ZhttpRequest *_req)
+	{
+		req = _req;
+		req->setParent(this);
+		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
+		connect(req, SIGNAL(error()), SLOT(req_error()));
+
+		if(mode == ResponseHold)
+		{
+			// set timeout
+			if(timeout >= 0)
+			{
+				timer->setSingleShot(true);
+				timer->start(timeout * 1000);
+			}
+		}
+		else // StreamHold
+		{
+			// send initial response
+			response.headers.removeAll("Content-Length");
+			if(autoCrossOrigin)
+				Cors::applyCorsHeaders(requestData.headers, &response.headers);
+			req->beginResponse(response.code, response.reason, response.headers);
+			req->writeBody(response.body);
+
+			// start keep alive timer
+			if(keepAliveTimeout >= 0)
+				timer->start(keepAliveTimeout * 1000);
+		}
+	}
+
+	void respond(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
+	{
+		assert(mode == ResponseHold);
+
+		// inherit headers from the timeout response
+		HttpHeaders headers = response.headers;
+		foreach(const HttpHeader &h, _headers)
+			headers.removeAll(h.first);
+		foreach(const HttpHeader &h, _headers)
+			headers += h;
+
+		// if Grip-Expose-Headers was provided in the push, apply now
+		if(!exposeHeaders.isEmpty())
+		{
+			for(int n = 0; n < headers.count(); ++n)
+			{
+				const HttpHeader &h = headers[n];
+
+				bool found = false;
+				foreach(const QByteArray &e, exposeHeaders)
+				{
+					if(qstricmp(h.first.data(), e.data()) == 0)
+					{
+						found = true;
+						break;
+					}
+				}
+
+				if(found)
+				{
+					headers.removeAt(n);
+					--n; // adjust position
+				}
+			}
+		}
+
+		respond(code, reason, headers, body);
+	}
+
+	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
+	{
+		assert(mode == ResponseHold);
+
+		QByteArray body;
+
+		QJson::Parser parser;
+		bool ok;
+		QVariant vbody = parser.parse(response.body, &ok);
+		if(!response.body.isEmpty() && ok)
+		{
+			QString errorMessage;
+			vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
+			if(vbody.isValid())
+			{
+				QJson::Serializer serializer;
+				body = serializer.serialize(convertToJsonStyle(vbody));
+
+				if(response.body.endsWith("\r\n"))
+					body += "\r\n";
+				else if(response.body.endsWith("\n"))
+					body += '\n';
+			}
+			else
+			{
+				log_debug("failed to apply JSON patch: %s", qPrintable(errorMessage));
+			}
+		}
+		else
+		{
+			log_debug("failed to parse original response body as JSON");
+		}
+
+		respond(code, reason, headers, body, exposeHeaders);
+	}
+
+	void stream(const QByteArray &content)
+	{
+		assert(mode == StreamHold);
+
+		if(req->writeBytesAvailable() < content.size())
+		{
+			log_debug("not enough send credits, dropping");
+			return;
+		}
+
+		req->writeBody(content);
+
+		// restart keep alive timer
+		if(keepAliveTimeout >= 0)
+			timer->start(keepAliveTimeout * 1000);
+	}
+
+	void close()
+	{
+		assert(mode == StreamHold);
+
+		req->endBody();
+		timer->stop();
+	}
+
+signals:
+	void finished();
+
+private:
+	void respond(int _code, const QByteArray &_reason, const HttpHeaders &_headers, const QByteArray &_body)
+	{
+		int code = _code;
+		QByteArray reason = _reason;
+		HttpHeaders headers = _headers;
+		QByteArray body = _body;
+
+		headers.removeAll("Content-Length"); // this will be reset if needed
+
+		if(!jsonpCallback.isEmpty())
+		{
+			if(jsonpExtendedResponse)
+			{
+				QVariantMap result;
+				result["code"] = code;
+				result["reason"] = QString::fromUtf8(reason);
+
+				// need to compact headers into a map
+				QVariantMap vheaders;
+				foreach(const HttpHeader &h, headers)
+				{
+					// don't add the same header name twice. we'll collect all values for a single header
+					bool found = false;
+					QMapIterator<QString, QVariant> it(vheaders);
+					while(it.hasNext())
+					{
+						it.next();
+						const QString &name = it.key();
+
+						QByteArray uname = name.toUtf8();
+						if(qstricmp(uname.data(), h.first.data()) == 0)
+						{
+							found = true;
+							break;
+						}
+					}
+					if(found)
+						continue;
+
+					QList<QByteArray> values = headers.getAll(h.first);
+					QString mergedValue;
+					for(int n = 0; n < values.count(); ++n)
+					{
+						mergedValue += QString::fromUtf8(values[n]);
+						if(n + 1 < values.count())
+							mergedValue += ", ";
+					}
+					vheaders[h.first] = mergedValue;
+				}
+				result["headers"] = vheaders;
+
+				result["body"] = QString::fromUtf8(body);
+
+				QJson::Serializer serializer;
+				QByteArray resultJson = serializer.serialize(result);
+
+				body = jsonpCallback + '(' + resultJson + ");\n";
+			}
+			else
+			{
+				if(body.endsWith("\r\n"))
+					body.truncate(body.size() - 2);
+				else if(body.endsWith("\n"))
+					body.truncate(body.size() - 1);
+				body = jsonpCallback + '(' + body + ");\n";
+			}
+
+			headers.removeAll("Content-Type");
+			headers += HttpHeader("Content-Type", "application/javascript");
+			code = 200;
+			reason = "OK";
+		}
+		else if(autoCrossOrigin)
+		{
+			Cors::applyCorsHeaders(requestData.headers, &headers);
+		}
+
+		req->beginResponse(code, reason, headers);
+		req->writeBody(body);
+		req->endBody();
+	}
+
+private slots:
+	void req_bytesWritten(int count)
+	{
+		Q_UNUSED(count);
+
+		if(!req->isFinished())
+			return;
+
+		/* TODO
+		stats_lock.acquire()
+		ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
+		if ci is not None:
+			ci = copy.deepcopy(ci)
+			del conns[ci.id]
+		stats_lock.release()
+
+		if ci is not None:
+			out = dict()
+			out['from'] = instance_id
+			if ci.route:
+				out['route'] = ci.route
+			out['id'] = ci.id
+			out['unavailable'] = True
+			stats_sock.send('conn ' + tnetstring.dumps(out))
+		*/
+
+		emit finished();
+	}
+
+	void req_error()
+	{
+		ZhttpRequest::Rid rid = req->rid();
+		log_debug("cleaning up subscriber ('%s', '%s')", rid.first.data(), rid.second.data());
+
+		emit finished();
+	}
+
+	void timer_timeout()
+	{
+		if(mode == ResponseHold)
+		{
+			// send timeout response
+			respond(response.code, response.reason, response.headers, response.body);
+		}
+		else // StreamHold
+		{
+			req->writeBody(keepAliveData);
+		}
 	}
 };
 
@@ -2615,13 +2875,98 @@ public:
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
 	QSet<QString> channels;
+
+	// TODO: use QTimer to expire
+	/*
+		now = int(time.time())
+		cids = set()
+		lock.acquire()
+		for cid, s in ws_sessions.iteritems():
+			if s.expire_time and now >= s.expire_time:
+				cids.add(cid)
+		for cid in cids:
+			del ws_sessions[cid]
+			channels = set()
+			for channel, hchannels in ws_channels.iteritems():
+				channels.add(channel)
+				if cid in hchannels:
+					del hchannels[cid]
+			for channel in channels:
+				if channel in ws_channels and len(ws_channels[channel]) == 0:
+					del ws_channels[channel]
+					sub_key = ('ws', channel)
+					sub = subs.get(sub_key)
+					if sub:
+						# use expire_time to flag for removal
+						sub.expire_time = now
+		lock.release()
+		if len(cids) > 0:
+			logger.debug("timing out %d ws sessions" % len(cids))
+	*/
 };
 
 class CommonState
 {
 public:
-	QList<Hold*> holds;
+	QSet<Hold*> holds;
 	QHash<QString, WsSession*> wsSessions;
+	QHash<QString, QSet<Hold*> > responseHoldsByChannel;
+	QHash<QString, QSet<Hold*> > streamHoldsByChannel;
+	QHash<QString, QSet<WsSession*> > wsSessionsByChannel;
+	QHash<QString, QString> responseLastIds;
+	QSet<QString> subs;
+
+	// returns set of channels that should be unsubscribed
+	QSet<QString> removeResponseChannels(Hold *hold)
+	{
+		QSet<QString> out;
+
+		foreach(const QString &channel, hold->channels.keys())
+		{
+			if(!responseHoldsByChannel.contains(channel))
+				continue;
+
+			QSet<Hold*> &cur = responseHoldsByChannel[channel];
+			if(!cur.contains(hold))
+				continue;
+
+			cur.remove(hold);
+
+			if(cur.isEmpty())
+			{
+				responseHoldsByChannel.remove(channel);
+				out += channel;
+			}
+		}
+
+		return out;
+	}
+
+	// returns set of channels that should be unsubscribed
+	QSet<QString> removeStreamChannels(Hold *hold)
+	{
+		QSet<QString> out;
+
+		foreach(const QString &channel, hold->channels.keys())
+		{
+			if(!streamHoldsByChannel.contains(channel))
+				continue;
+
+			QSet<Hold*> &cur = streamHoldsByChannel[channel];
+			if(!cur.contains(hold))
+				continue;
+
+			cur.remove(hold);
+
+			if(cur.isEmpty())
+			{
+				streamHoldsByChannel.remove(channel);
+				out += channel;
+			}
+		}
+
+		return out;
+	}
 };
 
 class AcceptWorker : public Deferred
@@ -2633,6 +2978,7 @@ public:
 	ZrpcManager *stateClient;
 	CommonState *cs;
 	ZhttpManager *zhttpIn;
+	StatsManager *stats;
 	QString route;
 	QString channelPrefix;
 	QHash<ByteArrayPair, RequestState> requestStates;
@@ -2641,12 +2987,13 @@ public:
 	QString sid;
 	LastIds lastIds;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, StatsManager *_stats, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req),
 		stateClient(_stateClient),
 		cs(_cs),
-		zhttpIn(_zhttpIn)
+		zhttpIn(_zhttpIn),
+		stats(_stats)
 	{
 		req->setParent(this);
 	}
@@ -2916,7 +3263,7 @@ private:
 			vresponse["code"] = 502;
 			vresponse["reason"] = QByteArray("Bad Gateway");
 			QVariantList vheaders;
-			vheaders += QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain");
+			vheaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
 			vresponse["headers"] = vheaders;
 			vresponse["body"] = QByteArray("Error while proxying to origin.\n");
 
@@ -2985,26 +3332,39 @@ private:
 			h.last_send = now
 			h.meta = meta*/
 
+			ZhttpRequest::ServerState ss;
+			ss.rid = ZhttpRequest::Rid(rs.rid.first, rs.rid.second);
+			ss.peerAddress = rs.peerAddress;
+			ss.requestMethod = requestData.method;
+			ss.requestUri = requestData.uri;
+			ss.requestHeaders = requestData.headers;
+			ss.requestBody = requestData.body;
+			ss.inSeq = rs.inSeq;
+			ss.outSeq = rs.outSeq;
+			ss.outCredits = rs.outCredits;
+			ss.userData = rs.userData;
+
+			// FIXME: don't create the req until we know we aren't retrying
+			ZhttpRequest *outReq = zhttpIn->createRequestFromState(ss);
+
+			Hold *hold = new Hold;
+			hold->mode = instruct.holdMode;
+			hold->requestData = requestData;
+			hold->response = instruct.response;
+			hold->meta = instruct.meta;
+			hold->autoCrossOrigin = rs.autoCrossOrigin;
+			hold->jsonpCallback = rs.jsonpCallback;
+			hold->jsonpExtendedResponse = rs.jsonpExtendedResponse;
+			hold->timeout = instruct.timeout;
+			hold->keepAliveTimeout = instruct.keepAliveTimeout;
+			hold->keepAliveData = instruct.keepAliveData;
+			hold->sid = sid;
+
+			hold->start(outReq);
+
 			if(instruct.holdMode == ResponseHold)
 			{
 				// TODO
-				ZhttpRequest::ServerState ss;
-				ss.rid = ZhttpRequest::Rid(rs.rid.first, rs.rid.second);
-				ss.inSeq = rs.inSeq;
-				ss.outSeq = rs.outSeq;
-				ss.outCredits = 200000;
-
-				ZhttpRequest *outReq = zhttpIn->createRequestFromState(ss);
-
-				Hold *hold = new Hold;
-				hold->mode = instruct.holdMode;
-				hold->requestData = requestData;
-				hold->response = instruct.response;
-				hold->req = outReq;
-				hold->meta = instruct.meta;
-				hold->autoCrossOrigin = rs.autoCrossOrigin;
-				hold->jsonpCallback = rs.jsonpCallback;
-				hold->jsonpExtendedResponse = rs.jsonpExtendedResponse;
 
 				QSet<QString> newSubs;
 				foreach(const Instruct::Channel &c, instruct.channels)
@@ -3028,11 +3388,21 @@ private:
 				}
 
 				cs->holds += hold;
+				foreach(const QString &sub, newSubs)
+				{
+					if(!cs->responseHoldsByChannel.contains(sub))
+						cs->responseHoldsByChannel.insert(sub, QSet<Hold*>());
+
+					cs->responseHoldsByChannel[sub] += hold;
+				}
 
 				emit holdAdded(hold);
 
 				foreach(const QString &sub, newSubs)
+				{
+					stats->addSubscription("response", sub);
 					emit subscriptionAdded(sub);
+				}
 
 				/*# bind channels
 				quit = False
@@ -3083,36 +3453,11 @@ private:
 				if quit:
 					# we already unlocked if this is set
 					continue
-				lock.release()
-
-				# ack
-				out = dict()
-				out['from'] = instance_id
-				out['id'] = rid[1]
-				out['type'] = 'keep-alive'
-				m_raw = rid[0] + ' T' + tnetstring.dumps(out)
-				logger.debug('OUT publish (ack response accept): %s' % m_raw)
-				out_sock.send(m_raw)*/
+				lock.release()*/
 			}
 			else // StreamHold
 			{
 				// TODO
-				ZhttpRequest::ServerState ss;
-				ss.rid = ZhttpRequest::Rid(rs.rid.first, rs.rid.second);
-				ss.inSeq = rs.inSeq;
-				ss.outSeq = rs.outSeq;
-				ss.outCredits = 200000;
-
-				ZhttpRequest *outReq = zhttpIn->createRequestFromState(ss);
-				instruct.response.headers.removeAll("Content-Length");
-
-				if(rs.autoCrossOrigin)
-					Cors::applyCorsHeaders(requestData.headers, &instruct.response.headers);
-
-				Hold *hold = new Hold;
-				hold->mode = instruct.holdMode;
-				hold->req = outReq;
-				hold->meta = instruct.meta;
 
 				QSet<QString> newSubs;
 				foreach(const Instruct::Channel &c, instruct.channels)
@@ -3136,14 +3481,21 @@ private:
 				}
 
 				cs->holds += hold;
+				foreach(const QString &sub, newSubs)
+				{
+					if(!cs->streamHoldsByChannel.contains(sub))
+						cs->streamHoldsByChannel.insert(sub, QSet<Hold*>());
+
+					cs->streamHoldsByChannel[sub] += hold;
+				}
 
 				emit holdAdded(hold);
 
 				foreach(const QString &sub, newSubs)
+				{
+					stats->addSubscription("stream", sub);
 					emit subscriptionAdded(sub);
-
-				outReq->beginResponse(instruct.response.code, instruct.response.reason, instruct.response.headers);
-				outReq->writeBody(instruct.response.body);
+				}
 
 				/*# bind channels
 				lock.acquire()
@@ -3378,7 +3730,6 @@ public:
 	QZmq::Valve *proxyStatsValve;
 	HttpServer *controlHttpServer;
 	StatsManager *stats;
-	QTimer *timer;
 	CommonState cs;
 
 	Private(Engine *_q) :
@@ -3402,20 +3753,13 @@ public:
 		proxyStatsSock(0),
 		proxyStatsValve(0),
 		controlHttpServer(0),
-		stats(0),
-		timer(0)
+		stats(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
 	}
 
 	~Private()
 	{
-		if(timer)
-		{
-			timer->disconnect(this);
-			timer->setParent(0);
-			timer->deleteLater();
-		}
 	}
 
 	bool start(const Configuration &_config)
@@ -3584,6 +3928,8 @@ public:
 			stats->setInstanceId(config.instanceId);
 			stats->setIpcFileMode(config.ipcFileMode);
 
+			connect(stats, SIGNAL(unsubscribed(const QString &, const QString &)), SLOT(stats_unsubscribed(const QString &, const QString &)));
+
 			if(!stats->setSpec(config.statsSpec))
 			{
 				// statsmanager logs error
@@ -3645,10 +3991,6 @@ public:
 		if(proxyStatsValve)
 			proxyStatsValve->open();
 
-		timer = new QTimer(this);
-		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
-		timer->start(1000);
-
 		return true;
 	}
 
@@ -3660,205 +4002,127 @@ public:
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
-		log_debug("item to publish: channel=%s, formats=%d", qPrintable(item.channel), item.formats.count());
+		QList<Hold*> responseHolds;
+		QList<Hold*> streamHolds;
+		QList<WsSession*> wsSessions;
+		QSet<QString> sids;
+		QSet<QString> responseUnsubs;
+		QSet<QString> streamUnsubs;
 
-		foreach(Hold *hold, cs.holds)
+		if(item.formats.contains(Format::HttpResponse))
 		{
-			if(hold->done)
-				continue;
-
-			if(!hold->channels.contains(item.channel))
-				continue;
-
-			if(!applyFilters(hold->meta, item.meta, hold->channels[item.channel].filters))
-				continue;
-
-			if(hold->mode == ResponseHold && item.formats.contains(Format::HttpResponse))
+			QSet<Hold*> holds = cs.responseHoldsByChannel.value(item.channel);
+			foreach(Hold *hold, holds)
 			{
-				log_debug("relaying to 1 http-response subscribers");
-				Format f = item.formats.value(Format::HttpResponse);
+				assert(hold->mode == ResponseHold);
+				assert(hold->channels.contains(item.channel));
 
-				QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers");
+				if(!applyFilters(hold->meta, item.meta, hold->channels[item.channel].filters))
+					continue;
 
-				// remove grip headers from the push
-				for(int n = 0; n < f.headers.count(); ++n)
-				{
-					// strip out grip headers
-					if(qstrnicmp(f.headers[n].first.data(), "Grip-", 5) == 0)
-					{
-						f.headers.removeAt(n);
-						--n; // adjust position
-					}
-				}
+				responseUnsubs += cs.removeResponseChannels(hold);
+				responseHolds += hold;
 
-				// inherit headers from the instruct
-				HttpHeaders headers = hold->response.headers;
-				headers.removeAll("Content-Length"); // this will be reset if needed
-				foreach(const HttpHeader &h, f.headers)
-					headers.removeAll(h.first);
-				foreach(const HttpHeader &h, f.headers)
-					headers += h;
-
-				// if Grip-Expose-Headers was provided in the push, apply now
-				if(!exposeHeaders.isEmpty())
-				{
-					for(int n = 0; n < headers.count(); ++n)
-					{
-						const HttpHeader &h = headers[n];
-
-						bool found = false;
-						foreach(const QByteArray &e, exposeHeaders)
-						{
-							if(qstricmp(h.first.data(), e.data()) == 0)
-							{
-								found = true;
-								break;
-							}
-						}
-						if(found)
-							headers.removeAt(n);
-					}
-				}
-
-				// if body patch specified, inherit body from timeout response
-				if(f.haveBodyPatch)
-				{
-					// first, load instruct body as json
-					QJson::Parser parser;
-					bool ok;
-					QVariant vbody = parser.parse(hold->response.body, &ok);
-					if(!hold->response.body.isEmpty() && ok)
-					{
-						QString errorMessage;
-						vbody = JsonPatch::patch(vbody, f.bodyPatch, &errorMessage);
-						if(vbody.isValid())
-						{
-							QJson::Serializer serializer;
-							f.body = serializer.serialize(convertToJsonStyle(vbody));
-
-							if(hold->response.body.endsWith("\r\n"))
-								f.body += "\r\n";
-							else if(hold->response.body.endsWith("\n"))
-								f.body += '\n';
-						}
-						else
-						{
-							log_debug("failed to apply JSON patch: %s", qPrintable(errorMessage));
-							f.body.clear();
-						}
-					}
-					else
-					{
-						log_debug("failed to parse original response body as JSON");
-						f.body.clear();
-					}
-				}
-
-				if(!hold->jsonpCallback.isEmpty())
-				{
-					if(hold->jsonpExtendedResponse)
-					{
-						QVariantMap result;
-						result["code"] = f.code;
-						result["reason"] = QString::fromUtf8(f.reason);
-
-						// need to compact headers into a map
-						QVariantMap vheaders;
-						foreach(const HttpHeader &h, headers)
-						{
-							// don't add the same header name twice. we'll collect all values for a single header
-							bool found = false;
-							QMapIterator<QString, QVariant> it(vheaders);
-							while(it.hasNext())
-							{
-								it.next();
-								const QString &name = it.key();
-
-								QByteArray uname = name.toUtf8();
-								if(qstricmp(uname.data(), h.first.data()) == 0)
-								{
-									found = true;
-									break;
-								}
-							}
-							if(found)
-								continue;
-
-							QList<QByteArray> values = headers.getAll(h.first);
-							QString mergedValue;
-							for(int n = 0; n < values.count(); ++n)
-							{
-								mergedValue += QString::fromUtf8(values[n]);
-								if(n + 1 < values.count())
-									mergedValue += ", ";
-							}
-							vheaders[h.first] = mergedValue;
-						}
-						result["headers"] = vheaders;
-
-						result["body"] = QString::fromUtf8(f.body);
-
-						QJson::Serializer serializer;
-						QByteArray resultJson = serializer.serialize(result);
-
-						f.body = hold->jsonpCallback + '(' + resultJson + ");\n";
-					}
-					else
-					{
-						if(f.body.endsWith("\r\n"))
-							f.body.truncate(f.body.size() - 2);
-						else if(f.body.endsWith("\n"))
-							f.body.truncate(f.body.size() - 1);
-						f.body = hold->jsonpCallback + '(' + f.body + ");\n";
-					}
-
-					headers.removeAll("Content-Type");
-					headers += HttpHeader("Content-Type", "application/javascript");
-					f.code = 200;
-					f.reason = "OK";
-				}
-				else if(hold->autoCrossOrigin)
-				{
-					Cors::applyCorsHeaders(hold->requestData.headers, &headers);
-				}
-
-				hold->req->beginResponse(f.code, f.reason, headers);
-				hold->req->writeBody(f.body);
-				hold->req->endBody();
-				hold->done = true;
+				if(!hold->sid.isEmpty())
+					sids += hold->sid;
 			}
-			else if(hold->mode == StreamHold && item.formats.contains(Format::HttpStream))
-			{
-				log_debug("relaying to 1 http-stream subscribers");
-				Format f = item.formats.value(Format::HttpStream);
 
-				if(f.close)
-				{
-					hold->req->endBody();
-					hold->done = true;
-				}
-				else
-					hold->req->writeBody(f.body);
+			if(!item.id.isNull())
+				cs.responseLastIds[item.channel] = item.id;
+		}
+
+		if(item.formats.contains(Format::HttpStream))
+		{
+			QSet<Hold*> holds = cs.streamHoldsByChannel.value(item.channel);
+			foreach(Hold *hold, holds)
+			{
+				assert(hold->mode == StreamHold);
+				assert(hold->channels.contains(item.channel));
+
+				if(!applyFilters(hold->meta, item.meta, hold->channels[item.channel].filters))
+					continue;
+
+				if(item.formats[Format::HttpStream].close)
+					streamUnsubs += cs.removeStreamChannels(hold);
+
+				streamHolds += hold;
+
+				if(!hold->sid.isEmpty())
+					sids += hold->sid;
 			}
 		}
 
-		QHashIterator<QString, WsSession*> it(cs.wsSessions);
-		while(it.hasNext())
+		if(item.formats.contains(Format::WebSocketMessage))
 		{
-			it.next();
-			WsSession *s = it.value();
-
-			if(!s->channels.contains(item.channel))
-				continue;
-
-			if(!applyFilters(s->meta, item.meta, s->channelFilters[item.channel]))
-				continue;
-
-			if(item.formats.contains(Format::WebSocketMessage))
+			QSet<WsSession*> wsbc = cs.wsSessionsByChannel.value(item.channel);
+			foreach(WsSession *s, wsbc)
 			{
-				log_debug("relaying to 1 ws-message subscribers");
-				Format f = item.formats.value(Format::WebSocketMessage);
+				assert(s->channels.contains(item.channel));
 
+				if(!applyFilters(s->meta, item.meta, s->channelFilters[item.channel]))
+					continue;
+
+				wsSessions += s;
+
+				if(!s->sid.isEmpty())
+					sids += s->sid;
+			}
+		}
+
+		if(!responseHolds.isEmpty())
+		{
+			Format f = item.formats.value(Format::HttpResponse);
+			QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers");
+
+			// remove grip headers from the push
+			for(int n = 0; n < f.headers.count(); ++n)
+			{
+				// strip out grip headers
+				if(qstrnicmp(f.headers[n].first.data(), "Grip-", 5) == 0)
+				{
+					f.headers.removeAt(n);
+					--n; // adjust position
+				}
+			}
+
+			log_debug("relaying to %d http-response subscribers", responseHolds.count());
+
+			foreach(Hold *hold, responseHolds)
+			{
+				if(f.haveBodyPatch)
+					hold->respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
+				else
+					hold->respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+			}
+
+			stats->addMessage(item.channel, item.id, "http-response", responseHolds.count());
+		}
+
+		if(!streamHolds.isEmpty())
+		{
+			Format f = item.formats.value(Format::HttpStream);
+
+			log_debug("relaying to %d http-stream subscribers", streamHolds.count());
+
+			foreach(Hold *hold, streamHolds)
+			{
+				if(f.close)
+					hold->close();
+				else
+					hold->stream(f.body);
+			}
+
+			stats->addMessage(item.channel, item.id, "http-stream", streamHolds.count());
+		}
+
+		if(!wsSessions.isEmpty())
+		{
+			Format f = item.formats.value(Format::WebSocketMessage);
+
+			log_debug("relaying to %d ws-message subscribers", wsSessions.count());
+
+			foreach(WsSession *s, wsSessions)
+			{
 				QVariantHash vitem;
 				vitem["cid"] = s->cid.toUtf8();
 				vitem["type"] = QByteArray("send");
@@ -3871,389 +4135,30 @@ private:
 				log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(out, -1)));
 				wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(out));
 			}
+
+			stats->addMessage(item.channel, item.id, "ws-message", wsSessions.count());
 		}
 
-		/*
-		ws_control_out_sock = ctx.socket(zmq.PUSH)
-		ws_control_out_sock.linger = DEFAULT_LINGER
-		ws_control_out_sock.connect(ws_control_out_spec)
+		foreach(const QString &channel, responseUnsubs)
+			stats->removeSubscription("response", channel, true);
 
-		stats_sock = ctx.socket(zmq.PUSH)
-		stats_sock.linger = 0
-		stats_sock.connect('inproc://stats_in')
+		foreach(const QString &channel, streamUnsubs)
+			stats->removeSubscription("stream", channel, false);
 
-			response_holds = list()
-			stream_holds = list()
-			ws_cids = list()
-			sids = set()
-			notify_unsubs = set()
+		if(!item.id.isNull() && !sids.isEmpty() && stateClient)
+		{
+			// update sessions' last-id
+			QHash<QString, LastIds> sidLastIds;
+			foreach(const QString &sid, sids)
+			{
+				LastIds lastIds;
+				lastIds[item.channel] = item.id;
+				sidLastIds[sid] = lastIds;
+			}
 
-			if "http-response" in formats:
-				lock.acquire()
-				hchannel = response_channels.get(channel)
-				if hchannel:
-					all_response_holds = hchannel.values()
-					unsubs = set()
-					skipped_some = False
-					for h in all_response_holds:
-						if not apply_filters(h.meta, meta, h.channel_filters[channel]):
-							skipped_some = True
-							continue
-						response_holds.append(h)
-						unsub_list = remove_from_response_channels(h.rid)
-						for sub_key in unsub_list:
-							unsubs.add(sub_key)
-					assert(skipped_some or channel not in response_channels)
-					for sub_key in unsubs:
-						sub = subs.get(sub_key)
-						if sub and sub.expire_time is None:
-							# flag for deletion soon
-							sub.expire_time = int(time.time()) + SUBSCRIPTION_LINGER
-				item_id = m.get("id")
-				if item_id is not None:
-					response_lastids[channel] = item_id
-				lock.release()
-				stats_lock.acquire()
-				for h in response_holds:
-					ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
-					if ci is not None and ci.sid:
-						sids.add(ci.sid)
-				stats_lock.release()
-
-			if "http-stream" in formats:
-				do_close = (formats["http-stream"].get("action") == "close")
-
-				lock.acquire()
-				hchannel = stream_channels.get(channel)
-				if hchannel:
-					all_stream_holds = hchannel.values()
-					unsubs = set()
-					skipped_some = False
-					for h in all_stream_holds:
-						if not apply_filters(h.meta, meta, h.channel_filters[channel]):
-							skipped_some = True
-							continue
-						stream_holds.append(h)
-						if do_close:
-							unsub_list = remove_from_stream_channels(h.rid)
-							for sub_key in unsub_list:
-								unsubs.add(sub_key)
-					assert(not do_close or skipped_some or channel not in stream_channels)
-					for sub_key in unsubs:
-						sub = subs.get(sub_key)
-						if sub:
-							del subs[sub_key]
-							notify_unsubs.add(sub_key)
-				lock.release()
-				stats_lock.acquire()
-				for h in stream_holds:
-					ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
-					if ci is not None and ci.sid:
-						sids.add(ci.sid)
-				stats_lock.release()
-
-			if "ws-message" in formats:
-				lock.acquire()
-				hchannel = ws_channels.get(channel)
-				if hchannel:
-					for cid, sess in hchannel.iteritems():
-						if not apply_filters(sess.meta, meta, sess.channel_filters[channel]):
-							continue
-						ws_cids.append(cid)
-						if sess.sid:
-							sids.add(sess.sid)
-				lock.release()
-
-			# update sessions' last-id
-			if id is not None and sids:
-				sid_last_ids = dict()
-				for sid in sids:
-					sid_last_ids[sid] = {channel: id}
-
-				if sid_last_ids and state_rpc:
-					try:
-						session_update_many(state_rpc, sid_last_ids)
-					except:
-						logger.debug("couldn't update sessions")
-
-			if response_holds:
-				logger.debug("relaying to %d http-response subscribers" % len(response_holds))
-				http_response = formats["http-response"]
-
-				if "code" in http_response:
-					pcode = http_response["code"]
-				else:
-					pcode = 200
-
-				if "reason" in http_response:
-					preason = http_response["reason"]
-				else:
-					preason = get_reason(pcode)
-
-				if "headers" in http_response:
-					pheaders = http_response["headers"]
-					if isinstance(pheaders, list):
-						d = dict()
-						for i in pheaders:
-							d[i[0]] = i[1]
-						pheaders = d
-				else:
-					pheaders = dict()
-
-				if "body" in http_response:
-					pbody = http_response["body"]
-				else:
-					pbody = ""
-
-				if "body-patch" in http_response:
-					pbody_patch = http_response["body-patch"]
-				else:
-					pbody_patch = None
-
-				grip_expose_headers = header_get_all(pheaders, 'Grip-Expose-Headers')
-				header_remove(pheaders, 'Grip-Expose-Headers')
-
-				for n, h in enumerate(response_holds):
-					# inherit any headers from the timeout response
-					if 'headers' in h.response:
-						rheaders = copy.deepcopy(h.response['headers'])
-					else:
-						rheaders = dict()
-
-					# apply the headers from the pushed message
-					for k, v in pheaders.iteritems():
-						header_set(rheaders, k, v)
-
-					# if Grip-Expose-Headers was provided in the pushed message, filter the results
-					if grip_expose_headers:
-						rkeys = rheaders.keys()
-						for k in rkeys:
-							if not headernames_contains(grip_expose_headers, k):
-								del rheaders[k]
-
-					# if body patch specified, inherit body from timeout response
-					if pbody_patch is not None:
-						try:
-							rbody = json.loads(h.response['body'])
-							rbody = json_patch(rbody, pbody_patch)
-							rbody = json.dumps(rbody)
-						except Exception as e:
-							logger.debug("failed to parse json patch: %s", e.message)
-							rbody = ''
-					else:
-						rbody = pbody
-
-					headers = dict()
-					if h.jsonp_callback:
-						if h.jsonp_extended_response:
-							result = dict()
-							result["code"] = pcode
-							result["reason"] = preason
-							result["headers"] = dict()
-							if rheaders:
-								for k, v in rheaders.iteritems():
-									result["headers"][k] = v
-							header_set(result["headers"], "Content-Length", str(len(pbody)))
-							result["body"] = rbody
-
-							body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
-						else:
-							body = h.jsonp_callback + "(" + rbody + ");\n"
-
-						header_set(headers, "Content-Type", "application/javascript")
-						header_set(headers, "Content-Length", str(len(body)))
-						reply_http(out_sock, h.rid, 200, "OK", headers, body)
-					else:
-						if rheaders:
-							for k, v in rheaders.iteritems():
-								headers[k] = v
-
-						if h.auto_cross_origin:
-							apply_cors_headers(h.request["headers"], headers)
-
-						reply_http(out_sock, h.rid, pcode, preason, headers, rbody)
-
-					# report request done
-
-					stats_lock.acquire()
-					ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
-					if ci is not None:
-						ci = copy.deepcopy(ci)
-						del conns[ci.id]
-					stats_lock.release()
-
-					if ci is not None:
-						out = dict()
-						out['from'] = instance_id
-						if ci.route:
-							out['route'] = ci.route
-						out['id'] = ci.id
-						out['unavailable'] = True
-						stats_sock.send('conn ' + tnetstring.dumps(out))
-
-					if n % SEND_BATCH_SIZE == 0:
-						time.sleep(SEND_BATCH_DELAY)
-
-				rcount = len(response_holds)
-				if rcount > 0:
-					out = dict()
-					out['from'] = instance_id
-					out['channel'] = ensure_utf8(channel)
-					if 'id' in m:
-						out['item-id'] = ensure_utf8(m['id'])
-					out['count'] = rcount
-					out['transport'] = 'http-response'
-					stats_sock.send('message ' + tnetstring.dumps(out))
-
-			if stream_holds:
-				content = formats["http-stream"].get("content")
-				if content or do_close:
-					logger.debug("relaying to %d http-stream subscribers" % len(stream_holds))
-					for n, h in enumerate(stream_holds):
-						if content:
-							if h.out_credits < len(content):
-								logger.debug('not enough send credits, dropping')
-								continue
-							h.lock.acquire()
-							reply_http_chunk(out_sock, h.rid, content, h.out_seq)
-							h.out_credits -= len(content)
-							h.out_seq += 1
-							h.lock.release()
-							lock.acquire()
-							h.last_send = int(time.time())
-							lock.release()
-						if do_close:
-							reply_http_close(out_sock, h.rid)
-
-							# report request done
-
-							stats_lock.acquire()
-							ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
-							if ci is not None:
-								ci = copy.deepcopy(ci)
-								del conns[ci.id]
-							stats_lock.release()
-
-							if ci is not None:
-								out = dict()
-								out['from'] = instance_id
-								if ci.route:
-									out['route'] = ci.route
-								out['id'] = ci.id
-								out['unavailable'] = True
-								stats_sock.send('conn ' + tnetstring.dumps(out))
-
-						if n % SEND_BATCH_SIZE == 0:
-							time.sleep(SEND_BATCH_DELAY)
-
-				rcount = len(stream_holds)
-				if rcount > 0:
-					out = dict()
-					out['from'] = instance_id
-					out['channel'] = ensure_utf8(channel)
-					if 'id' in m:
-						out['item-id'] = ensure_utf8(m['id'])
-					out['count'] = rcount
-					out['transport'] = 'http-stream'
-					stats_sock.send('message ' + tnetstring.dumps(out))
-
-			if ws_cids:
-				logger.debug("relaying to %d ws-message subscribers" % len(ws_cids))
-				for n, cid in enumerate(ws_cids):
-					t = formats['ws-message']
-					if 'content-bin' in t:
-						content_type = 'binary'
-						content = t['content-bin']
-					elif "content" in t:
-						content_type = 'text'
-						content = t['content']
-					else:
-						content = None
-
-					if content is not None:
-						item = dict()
-						item['cid'] = cid
-						item['type'] = 'send'
-						item['content-type'] = content_type
-						item['message'] = content
-						out = dict()
-						out['items'] = [item]
-						logger.debug('OUT wscontrol: %s' % out)
-						ws_control_out_sock.send(tnetstring.dumps(out))
-
-					if n % SEND_BATCH_SIZE == 0:
-						time.sleep(SEND_BATCH_DELAY)
-
-				rcount = len(ws_cids)
-				if rcount > 0:
-					out = dict()
-					out['from'] = instance_id
-					out['channel'] = ensure_utf8(channel)
-					if 'id' in m:
-						out['item-id'] = ensure_utf8(m['id'])
-					out['count'] = rcount
-					out['transport'] = 'ws-message'
-					stats_sock.send('message ' + tnetstring.dumps(out))
-
-			for sub_key in notify_unsubs:
-				out = dict()
-				out['from'] = instance_id
-				out['mode'] = ensure_utf8(sub_key[0])
-				out['channel'] = ensure_utf8(sub_key[1])
-				out['unavailable'] = True
-				stats_sock.send('sub ' + tnetstring.dumps(out))
-		*/
-	}
-
-	void handleClosed(Hold *hold)
-	{
-		delete hold->req;
-
-		cs.holds.removeAll(hold);
-
-		/*
-		notify_unsubs = set()
-		if mtype is not None and (mtype == 'error' or mtype == 'cancel'):
-			rid = (m['from'], m['id'])
-			logger.debug('cleaning up subscriber %s' % repr(rid))
-			now = int(time.time())
-			lock.acquire()
-			unsub_list = remove_from_req_channels(rid)
-			for sub_key in unsub_list:
-				sub = subs.get(sub_key)
-				if sub:
-					if sub.mode == 'response' and sub.expire_time is None:
-						# flag for deletion soon
-						sub.expire_time = now + SUBSCRIPTION_LINGER
-					elif sub.mode == 'stream':
-						del subs[sub_key]
-						notify_unsubs.add(sub_key)
-			lock.release()
-
-			stats_lock.acquire()
-			ci = conns.get("%s:%s" % (rid[0], rid[1]))
-			if ci is not None:
-				ci = copy.deepcopy(ci)
-				del conns[ci.id]
-			stats_lock.release()
-
-			if ci is not None:
-				out = dict()
-				out['from'] = instance_id
-				if ci.route:
-					out['route'] = ci.route
-				out['id'] = ci.id
-				out['unavailable'] = True
-				stats_sock.send('conn ' + tnetstring.dumps(out))
-
-		for sub_key in notify_unsubs:
-			out = dict()
-			out['from'] = instance_id
-			out['mode'] = ensure_utf8(sub_key[0])
-			out['channel'] = ensure_utf8(sub_key[1])
-			out['unavailable'] = True
-			stats_sock.send('sub ' + tnetstring.dumps(out))
-		*/
+			Deferred *d = new SessionUpdateMany(stateClient, sidLastIds, this);
+			connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionUpdateMany_finished(const DeferredResult &)));
+		}
 	}
 
 private slots:
@@ -4272,7 +4177,7 @@ private slots:
 		if(!req)
 			return;
 
-		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, this);
+		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, stats, this);
 		connect(w, SIGNAL(holdAdded(Hold *)), SLOT(holdAdded(Hold *)));
 		connect(w, SIGNAL(subscriptionAdded(const QString &)), SLOT(addSub(const QString &)));
 		w->start();
@@ -4409,19 +4314,31 @@ private slots:
 				}
 
 				s->channelPrefix = msg.channelPrefix;
-				//s.expire_time = now + 60
+				// TODO s.expire_time = now + 60
 			}
 			else if(msg.type == WsControlPacket::Message::Gone || msg.type == WsControlPacket::Message::Cancel)
 			{
 				WsSession *s = cs.wsSessions.value(msg.cid);
 				if(s)
 				{
-					cs.wsSessions.remove(msg.cid);
+					foreach(const QString &channel, s->channels)
+					{
+						if(cs.wsSessionsByChannel.contains(channel))
+						{
+							QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
+							cur.remove(s);
+							if(cur.isEmpty())
+								cs.wsSessionsByChannel.remove(channel);
+						}
+					}
+
+					cs.wsSessions.remove(s->cid);
 
 					log_debug("removed ws session: %s", qPrintable(s->cid));
 					delete s;
 				}
 
+				// TODO
 				/*notify_unsubs = set()
 
 				lock.acquire()
@@ -4479,10 +4396,17 @@ private slots:
 
 				if(cm.type == WsControlMessage::Subscribe)
 				{
-					s->channels += s->channelPrefix + cm.channel;
-					s->channelFilters[cm.channel] = cm.filters;
+					QString channel = s->channelPrefix + cm.channel;
+					s->channels += channel;
+					s->channelFilters[channel] = cm.filters;
+
+					if(!cs.wsSessionsByChannel.contains(channel))
+						cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
+
+					cs.wsSessionsByChannel[channel] += s;
 				}
 
+				// TODO
 				/*notify_sub = False
 				notify_unsub = False
 				notify_detach = False
@@ -4730,378 +4654,60 @@ private slots:
 
 	void holdAdded(Hold *hold)
 	{
-		connect(hold->req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-		connect(hold->req, SIGNAL(error()), SLOT(req_error()));
+		connect(hold, SIGNAL(finished()), SLOT(hold_finished()));
 	}
 
-	void req_bytesWritten(int count)
+	void hold_finished()
 	{
-		Q_UNUSED(count);
+		Hold *hold = (Hold *)sender();
 
-		ZhttpRequest *req = (ZhttpRequest *)sender();
+		QSet<QString> responseUnsubs;
+		QSet<QString> streamUnsubs;
 
-		if(!req->isFinished())
-			return;
+		if(hold->mode == ResponseHold)
+			responseUnsubs = cs.removeResponseChannels(hold);
+		else if(hold->mode == StreamHold)
+			streamUnsubs = cs.removeStreamChannels(hold);
 
-		Hold *hold = 0;
-		foreach(Hold *h, cs.holds)
-		{
-			if(h->req == req)
-			{
-				hold = h;
-				break;
-			}
-		}
-		if(!hold)
-			return;
+		foreach(const QString &channel, responseUnsubs)
+			stats->removeSubscription("response", channel, true);
 
-		handleClosed(hold);
-	}
+		foreach(const QString &channel, streamUnsubs)
+			stats->removeSubscription("stream", channel, false);
 
-	void req_error()
-	{
-		ZhttpRequest *req = (ZhttpRequest *)sender();
-
-		Hold *hold = 0;
-		foreach(Hold *h, cs.holds)
-		{
-			if(h->req == req)
-			{
-				hold = h;
-				break;
-			}
-		}
-		if(!hold)
-			return;
-
-		handleClosed(hold);
+		cs.holds.remove(hold);
+		delete hold;
 	}
 
 	void addSub(const QString &channel)
 	{
-		log_debug("SUB socket subscribe: %s", qPrintable(channel));
-		inSubSock->subscribe(channel.toUtf8());
+		if(!cs.subs.contains(channel))
+		{
+			cs.subs += channel;
+
+			log_debug("SUB socket subscribe: %s", qPrintable(channel));
+			inSubSock->subscribe(channel.toUtf8());
+		}
 	}
 
 	void removeSub(const QString &channel)
 	{
-		log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
-		inSubSock->unsubscribe(channel.toUtf8());
+		if(cs.subs.contains(channel))
+		{
+			cs.subs.remove(channel);
+
+			log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
+			inSubSock->unsubscribe(channel.toUtf8());
+		}
 	}
 
-	void timer_timeout()
+	void stats_unsubscribed(const QString &mode, const QString &channel)
 	{
-		/*
-		now = int(time.time())
+		Q_UNUSED(mode);
 
-		lock.acquire()
-		holds = list()
-		for hchannels in response_channels.itervalues():
-			for h in hchannels.values():
-				if h.expire_time and now >= h.expire_time:
-					holds.append(h)
-		holds_by_rid = dict()
-		for h in holds:
-			if h.rid not in holds_by_rid:
-				holds_by_rid[h.rid] = h
-			unsub_list = remove_from_response_channels(h.rid)
-			for sub_key in unsub_list:
-				sub = subs.get(sub_key)
-				if sub and sub.expire_time is None:
-					# flag for deletion soon
-					sub.expire_time = now + SUBSCRIPTION_LINGER
-		lock.release()
-
-		if len(holds_by_rid) > 0:
-			logger.debug("timing out %d subscribers" % len(holds_by_rid))
-
-			for h in holds_by_rid.itervalues():
-				if "code" in h.response:
-					pcode = h.response["code"]
-				else:
-					pcode = 200
-
-				if "reason" in h.response:
-					preason = h.response["reason"]
-				else:
-					preason = get_reason(pcode)
-
-				if "headers" in h.response:
-					pheaders = h.response["headers"]
-				else:
-					pheaders = dict()
-
-				if "body" in h.response:
-					pbody = h.response["body"]
-				else:
-					pbody = ""
-
-				headers = dict()
-				if h.jsonp_callback:
-					if h.jsonp_extended_response:
-						result = dict()
-						result["code"] = pcode
-						result["reason"] = preason
-						result["headers"] = dict()
-						if pheaders:
-							for k, v in pheaders.iteritems():
-								result["headers"][k] = v
-						header_set(result["headers"], "Content-Length", str(len(pbody)))
-						result["body"] = pbody
-
-						body = h.jsonp_callback + "(" + json.dumps(result) + ");\n"
-					else:
-						body = h.jsonp_callback + "(" + pbody + ");\n"
-
-					header_set(headers, "Content-Type", "application/javascript")
-					header_set(headers, "Content-Length", str(len(body)))
-					reply_http(out_sock, h.rid, 200, "OK", headers, body)
-				else:
-					if pheaders:
-						for k, v in pheaders.iteritems():
-							headers[k] = v
-
-					if h.auto_cross_origin:
-						apply_cors_headers(h.request["headers"], headers)
-
-					reply_http(out_sock, h.rid, pcode, preason, headers, pbody)
-
-				stats_lock.acquire()
-				ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
-				if ci is not None:
-					ci = copy.deepcopy(ci)
-					del conns[ci.id]
-				stats_lock.release()
-
-				if ci is not None:
-					out = dict()
-					out['from'] = instance_id
-					if ci.route:
-						out['route'] = ci.route
-					out['id'] = ci.id
-					out['unavailable'] = True
-					stats_sock.send('conn ' + tnetstring.dumps(out))
-
-		now = int(time.time())
-		grip_ka_rids = dict() # (hold, content)
-		ka_rids = set()
-		lock.acquire()
-		for channel, hchannels in response_channels.iteritems():
-			for h in hchannels.values():
-				if h.last_keepalive is None or h.last_keepalive + 30 < now:
-					if h.rid not in ka_rids:
-						h.last_keepalive = now
-						ka_rids.add(h.rid)
-		for channel, hchannels in stream_channels.iteritems():
-			for h in hchannels.values():
-				if h.grip_keep_alive and (h.last_send is None or h.last_send + h.grip_keep_alive_timeout < now):
-					if h.rid not in grip_ka_rids:
-						content = h.grip_keep_alive
-						if h.out_credits < len(content):
-							logger.debug('not enough send credits, skipping keep alive')
-							continue
-						h.last_send = now
-						h.last_keepalive = now
-						grip_ka_rids[h.rid] = (h, content)
-				if h.last_keepalive is None or h.last_keepalive + 30 < now:
-					if h.rid not in grip_ka_rids and h.rid not in ka_rids:
-						h.last_keepalive = now
-						ka_rids.add(h.rid)
-		lock.release()
-
-		if len(grip_ka_rids) > 0:
-			logger.debug("keep-aliving (grip) %d subscribers" % len(grip_ka_rids))
-			for rid, v in grip_ka_rids.iteritems():
-				h, content = v
-				h.lock.acquire()
-				reply_http_chunk(out_sock, rid, content, h.out_seq)
-				h.out_credits -= len(content)
-				h.out_seq += 1
-				h.lock.release()
-
-		now = int(time.time())
-		cids = set()
-		lock.acquire()
-		for cid, s in ws_sessions.iteritems():
-			if s.expire_time and now >= s.expire_time:
-				cids.add(cid)
-		for cid in cids:
-			del ws_sessions[cid]
-			channels = set()
-			for channel, hchannels in ws_channels.iteritems():
-				channels.add(channel)
-				if cid in hchannels:
-					del hchannels[cid]
-			for channel in channels:
-				if channel in ws_channels and len(ws_channels[channel]) == 0:
-					del ws_channels[channel]
-					sub_key = ('ws', channel)
-					sub = subs.get(sub_key)
-					if sub:
-						# use expire_time to flag for removal
-						sub.expire_time = now
-		lock.release()
-		if len(cids) > 0:
-			logger.debug("timing out %d ws sessions" % len(cids))
-
-		notify_subs = set()
-		notify_unsubs = set()
-		lock.acquire()
-		for sub_key, sub in subs.iteritems():
-			if sub.expire_time is not None and now >= sub.expire_time:
-				notify_unsubs.add(sub_key)
-			elif sub.last_keepalive is None or sub.last_keepalive + 30 < now:
-				sub.last_keepalive = now
-				notify_subs.add(sub_key)
-		for sub_key in notify_unsubs:
-			del subs[sub_key]
-		lock.release()
-
-		for sub_key in notify_unsubs:
-			out = dict()
-			out['from'] = instance_id
-			out['mode'] = ensure_utf8(sub_key[0])
-			out['channel'] = ensure_utf8(sub_key[1])
-			out['unavailable'] = True
-			stats_sock.send('sub ' + tnetstring.dumps(out))
-
-		if len(notify_subs) > 0:
-			logger.debug('keep-aliving %d subscriptions' % len(notify_subs))
-			for sub_key in notify_subs:
-				out = dict()
-				out['from'] = instance_id
-				out['mode'] = ensure_utf8(sub_key[0])
-				out['channel'] = ensure_utf8(sub_key[1])
-				out['ttl'] = SUBSCRIPTION_TTL
-				stats_sock.send('sub ' + tnetstring.dumps(out))
-
-		refresh_conns = list()
-		send_activity = list()
-		stats_lock.acquire()
-		remove_cids = set()
-		for cid, ci in conns.iteritems():
-			if ci.last_keepalive is None or (not ci.linger and ci.last_keepalive + CONNECTION_REFRESH < now) or (ci.linger and ci.last_keepalive + CONNECTION_LINGER < now):
-				if ci.linger:
-					remove_cids.add(cid)
-				else:
-					ci.last_keepalive = now
-					refresh_conns.append(copy.deepcopy(ci))
-		for cid in remove_cids:
-			del conns[cid]
-		for route, activity in stats_activity.iteritems():
-			send_activity.append((route, activity))
-		stats_activity.clear()
-		stats_lock.release()
-
-		refresh_sids = list()
-
-		for ci in refresh_conns:
-			out = dict()
-			out['from'] = instance_id
-			if ci.route:
-				out['route'] = ci.route
-			out['id'] = ci.id
-			out['type'] = ci.type
-			if ci.peer_address:
-				out['peer-address'] = ci.peer_address
-			if ci.ssl:
-				out['ssl'] = True
-			out['ttl'] = CONNECTION_TTL
-			stats_sock.send('conn ' + tnetstring.dumps(out))
-
-			if ci.sid:
-				refresh_sids.append(ci.sid)
-
-		for i in send_activity:
-			out = dict()
-			out['from'] = instance_id
-			if i[0]:
-				out['route'] = i[0]
-			out['count'] = i[1]
-			stats_sock.send('activity ' + tnetstring.dumps(out))
-
-		if refresh_sids and state_rpc:
-			try:
-				sid_last_ids = dict()
-				for sid in refresh_sids:
-					sid_last_ids[sid] = dict()
-				session_update_many(state_rpc, sid_last_ids)
-			except:
-				logger.debug("couldn't update sessions")
-		*/
+		if(!cs.responseHoldsByChannel.contains(channel) && !cs.streamHoldsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
+			removeSub(channel);
 	}
-
-	// TODO stats stuff
-	/*
-		if sub_sock and mtype == 'sub':
-			m = tnetstring.loads(mdata)
-			mode = m['mode']
-			channel = m['channel']
-			here = not m.get('unavailable', False)
-
-			if here:
-				ttl = m['ttl']
-				notify = False
-				subs_modes = subs_modes_by_channel.get(channel)
-				if subs_modes is None:
-					subs_modes = {}
-					subs_modes_by_channel[channel] = subs_modes
-					notify = True
-				sub = subs_modes.get(mode)
-				if sub is not None:
-					subs_exp = subs_by_exp[sub.expire_time]
-					subs_exp.remove(sub)
-					if len(subs_exp) == 0:
-						del subs_by_exp[sub.expire_time]
-				else:
-					sub = StatsSubscription()
-					sub.mode = mode
-					sub.channel = channel
-					subs_modes[mode] = sub
-				sub.expire_time = now + (ttl * 1000)
-				subs_exp = subs_by_exp.get(sub.expire_time)
-				if subs_exp is None:
-					subs_exp = set()
-					subs_by_exp[sub.expire_time] = subs_exp
-				subs_exp.add(sub)
-				if notify:
-					sm = {'channel': channel}
-					sm['type'] = 'subscribe'
-					sub_sock.send(tnetstring.dumps(sm))
-			else:
-				subs_modes = subs_modes_by_channel.get(channel)
-				if subs_modes is not None:
-					sub = subs_modes.get(mode)
-					if sub is not None:
-						subs_exp = subs_by_exp[sub.expire_time]
-						subs_exp.remove(sub)
-						if len(subs_exp) == 0:
-							del subs_by_exp[sub.expire_time]
-						del subs_modes[mode]
-						if len(subs_modes) == 0:
-							del subs_modes_by_channel[channel]
-							sm = {'channel': channel}
-							sm['type'] = 'unsubscribe'
-							sub_sock.send(tnetstring.dumps(sm))
-
-		if sub_sock:
-			while len(subs_by_exp) > 0:
-				next_exp = iter(subs_by_exp).next()
-				if next_exp > now:
-					break
-
-				subs_exp = subs_by_exp[next_exp]
-				del subs_by_exp[next_exp]
-				for sub in subs_exp:
-					logger.debug('stats_worker: expiring %s %s' % (sub.mode, sub.channel))
-					subs_modes = subs_modes_by_channel.get(sub.channel)
-					del subs_modes[sub.mode]
-					if len(subs_modes) == 0:
-						del subs_modes_by_channel[sub.channel]
-						sm = {'channel': sub.channel}
-						sm['type'] = 'unsubscribe'
-						sub_sock.send(tnetstring.dumps(sm))
-	*/
 };
 
 Engine::Engine(QObject *parent) :
