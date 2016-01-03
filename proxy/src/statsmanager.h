@@ -63,6 +63,7 @@ public:
 	void sendPacket(const StatsPacket &packet);
 
 signals:
+	void connectionsRefreshed(const QList<QByteArray> &ids);
 	void unsubscribed(const QString &mode, const QString &channel);
 
 private:

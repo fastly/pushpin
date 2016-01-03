@@ -33,7 +33,7 @@
 #define OUT_HWM 200000
 
 #define ACTIVITY_TIMEOUT 100
-#define CONNECTION_TTL 600
+#define CONNECTION_TTL 60
 #define CONNECTION_REFRESH (CONNECTION_TTL * 9 / 10)
 #define CONNECTION_LINGER 60
 #define SUBSCRIPTION_TTL 60
@@ -259,6 +259,7 @@ private slots:
 		QDateTime now = QDateTime::currentDateTime();
 
 		{
+			QList<QByteArray> refreshedIds;
 			QList<ConnectionInfo*> toDelete;
 			QHashIterator<QByteArray, ConnectionInfo*> it(connectionInfoById);
 			while(it.hasNext())
@@ -279,6 +280,8 @@ private slots:
 					{
 						sendConnected(c);
 						c->nextRefresh = now.addSecs(CONNECTION_REFRESH);
+
+						refreshedIds += c->id;
 					}
 				}
 			}
@@ -288,6 +291,9 @@ private slots:
 				connectionInfoById.remove(c->id);
 				delete c;
 			}
+
+			if(!refreshedIds.isEmpty())
+				emit q->connectionsRefreshed(refreshedIds);
 		}
 
 		{
