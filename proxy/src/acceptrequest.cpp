@@ -93,7 +93,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 		QVariantHash vinspect;
 
 		vinspect["no-proxy"] = !adata.inspectData.doProxy;
-		vinspect["sharing-key"] = adata.inspectData.sharingKey;
+
+		if(!adata.inspectData.sharingKey.isEmpty())
+			vinspect["sharing-key"] = adata.inspectData.sharingKey;
 
 		if(adata.inspectData.userData.isValid())
 			vinspect["user-data"] = adata.inspectData.userData;
