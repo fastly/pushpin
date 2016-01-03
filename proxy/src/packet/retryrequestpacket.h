@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -59,9 +59,16 @@ public:
 	class InspectInfo
 	{
 	public:
-		bool noProxy;
+		bool doProxy;
 		QByteArray sharingKey;
+		QByteArray sid;
+		QHash<QByteArray, QByteArray> lastIds;
 		QVariant userData;
+
+		InspectInfo() :
+			doProxy(false)
+		{
+		}
 	};
 
 	QList<Request> requests;
@@ -72,6 +79,7 @@ public:
 
 	RetryRequestPacket();
 
+	QVariant toVariant() const;
 	bool fromVariant(const QVariant &in);
 };
 
