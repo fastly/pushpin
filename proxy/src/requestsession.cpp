@@ -37,6 +37,7 @@
 #include "zrpcchecker.h"
 #include "inspectrequest.h"
 #include "acceptrequest.h"
+#include "cors.h"
 
 #define MAX_SHARED_REQUEST_BODY 100000
 #define MAX_ACCEPT_REQUEST_BODY 100000
@@ -98,88 +99,6 @@ static bool validMethod(const QString &in)
 	}
 
 	return true;
-}
-
-static bool isSimpleHeader(const QByteArray &in)
-{
-	return (qstricmp(in.data(), "Cache-Control") == 0 ||
-		qstricmp(in.data(), "Content-Language") == 0 ||
-		qstricmp(in.data(), "Content-Length") == 0 ||
-		qstricmp(in.data(), "Content-Type") == 0 ||
-		qstricmp(in.data(), "Expires") == 0 ||
-		qstricmp(in.data(), "Last-Modified") == 0 ||
-		qstricmp(in.data(), "Pragma") == 0);
-}
-
-static bool headerNamesContains(const QList<QByteArray> &names, const QByteArray &name)
-{
-	foreach(const QByteArray &i, names)
-	{
-		if(qstricmp(name.data(), i.data()) == 0)
-			return true;
-	}
-
-	return false;
-}
-
-static bool headerNameStartsWith(const QByteArray &name, const char *value)
-{
-	return (qstrnicmp(name.data(), value, qstrlen(value)) == 0);
-}
-
-static void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHeaders)
-{
-	if(!responseHeaders->contains("Access-Control-Allow-Methods"))
-	{
-		QByteArray method = requestHeaders.get("Access-Control-Request-Method");
-
-		if(!method.isEmpty())
-			*responseHeaders += HttpHeader("Access-Control-Allow-Methods", method);
-		else
-			*responseHeaders += HttpHeader("Access-Control-Allow-Methods", "OPTIONS, HEAD, GET, POST, PUT, DELETE");
-	}
-
-	if(!responseHeaders->contains("Access-Control-Allow-Headers"))
-	{
-		QList<QByteArray> allowHeaders;
-		foreach(const QByteArray &h, requestHeaders.getAll("Access-Control-Request-Headers", true))
-		{
-			if(!h.isEmpty())
-				allowHeaders += h;
-		}
-
-		if(!allowHeaders.isEmpty())
-			*responseHeaders += HttpHeader("Access-Control-Allow-Headers", HttpHeaders::join(allowHeaders));
-	}
-
-	if(!responseHeaders->contains("Access-Control-Expose-Headers"))
-	{
-		QList<QByteArray> exposeHeaders;
-		foreach(const HttpHeader &h, *responseHeaders)
-		{
-			if(!isSimpleHeader(h.first) && !headerNameStartsWith(h.first, "Access-Control-") && !headerNamesContains(exposeHeaders, h.first))
-				exposeHeaders += h.first;
-		}
-
-		if(!exposeHeaders.isEmpty())
-			*responseHeaders += HttpHeader("Access-Control-Expose-Headers", HttpHeaders::join(exposeHeaders));
-	}
-
-	if(!responseHeaders->contains("Access-Control-Allow-Credentials"))
-		*responseHeaders += HttpHeader("Access-Control-Allow-Credentials", "true");
-
-	if(!responseHeaders->contains("Access-Control-Allow-Origin"))
-	{
-		QByteArray origin = requestHeaders.get("Origin");
-
-		if(origin.isEmpty())
-			origin = "*";
-
-		*responseHeaders += HttpHeader("Access-Control-Allow-Origin", origin);
-	}
-
-	if(!responseHeaders->contains("Access-Control-Max-Age"))
-		*responseHeaders += HttpHeader("Access-Control-Max-Age", "3600");
 }
 
 class RequestSession::Private : public QObject
@@ -927,6 +846,16 @@ public slots:
 				if(responseBodyFinished)
 				{
 					QByteArray bodyRawBuf = out.take();
+
+					if(!jsonpExtendedResponse)
+					{
+						// trim any trailing newline before we wrap in a function call
+						if(bodyRawBuf.endsWith("\r\n"))
+							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
+						else if(bodyRawBuf.endsWith("\n"))
+							bodyRawBuf.truncate(bodyRawBuf.size() - 1);
+					}
+
 					QByteArray startBuf = makeJsonpStart(responseData.code, responseData.reason, responseData.headers);
 					QByteArray bodyBuf;
 					QByteArray endBuf = makeJsonpEnd();
@@ -1006,7 +935,7 @@ public slots:
 			else
 			{
 				if(autoCrossOrigin)
-					applyCorsHeaders(requestData.headers, &responseData.headers);
+					Cors::applyCorsHeaders(requestData.headers, &responseData.headers);
 
 				connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
 
@@ -1019,6 +948,33 @@ public slots:
 			if(!jsonpCallback.isEmpty())
 			{
 				QByteArray bodyRawBuf = out.take();
+
+				if(!jsonpExtendedResponse)
+				{
+					if(responseBodyFinished)
+					{
+						// trim any trailing newline before we wrap in a function call
+						if(bodyRawBuf.endsWith("\r\n"))
+							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
+						else if(bodyRawBuf.endsWith("\n"))
+							bodyRawBuf.truncate(bodyRawBuf.size() - 1);
+					}
+					else
+					{
+						// response isn't finished. keep any trailing newline in the output buffer
+						if(bodyRawBuf.endsWith("\r\n"))
+						{
+							bodyRawBuf.truncate(bodyRawBuf.size() - 2);
+							out += QByteArray("\r\n");
+						}
+						else if(bodyRawBuf.endsWith("\n"))
+						{
+							bodyRawBuf.truncate(bodyRawBuf.size() - 1);
+							out += QByteArray("\n");
+						}
+					}
+				}
+
 				QByteArray buf = makeJsonpBody(bodyRawBuf);
 				if(buf.isNull())
 				{

@@ -23,7 +23,8 @@
 #include <QTimer>
 #include "wscontrolmanager.h"
 
-#define KEEPALIVE_TIMEOUT 30000
+#define SESSION_TTL 30
+#define SESSION_REFRESH (SESSION_TTL * 9 / 10)
 
 class WsControlSession::Private : public QObject
 {
@@ -73,11 +74,12 @@ public:
 
 	void start()
 	{
-		keepAliveTimer->start(KEEPALIVE_TIMEOUT);
+		keepAliveTimer->start(SESSION_REFRESH * 1000);
 
 		WsControlPacket::Item i;
 		i.type = WsControlPacket::Item::Here;
 		i.channelPrefix = channelPrefix;
+		i.ttl = SESSION_TTL;
 		write(i);
 	}
 
@@ -112,13 +114,18 @@ public:
 		{
 			emit q->detachEventReceived();
 		}
+		else if(item.type == WsControlPacket::Item::Cancel)
+		{
+			emit q->cancelEventReceived();
+		}
 	}
 
 private slots:
 	void keepAlive_timeout()
 	{
 		WsControlPacket::Item i;
-		i.type = WsControlPacket::Item::Here;
+		i.type = WsControlPacket::Item::KeepAlive;
+		i.ttl = SESSION_TTL;
 		write(i);
 	}
 };

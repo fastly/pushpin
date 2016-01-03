@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,48 +17,15 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef WSCONTROLPACKET_H
-#define WSCONTROLPACKET_H
+#ifndef JSONPATCH_H
+#define JSONPATCH_H
 
-#include <QByteArray>
-#include <QList>
 #include <QVariant>
 
-class WsControlPacket
-{
-public:
-	class Item
-	{
-	public:
-		enum Type
-		{
-			Here,
-			KeepAlive,
-			Gone,
-			Grip,
-			Cancel,
-			Send,
-			Detach
-		};
+namespace JsonPatch {
 
-		QByteArray cid;
-		Type type;
-		QByteArray contentType;
-		QByteArray message;
-		QByteArray channelPrefix;
-		int ttl;
+QVariant patch(const QVariant &data, const QVariantList &ops, QString *errorMessage = 0);
 
-		Item() :
-			type((Type)-1),
-			ttl(-1)
-		{
-		}
-	};
-
-	QList<Item> items;
-
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
-};
+}
 
 #endif

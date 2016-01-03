@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,6 +24,8 @@
 
 class QHostAddress;
 
+class StatsPacket;
+
 class StatsManager : public QObject
 {
 	Q_OBJECT
@@ -44,15 +46,29 @@ public:
 
 	// routeId may be empty for non-identified route
 
-	void addActivity(const QByteArray &routeId);
+	void addActivity(const QByteArray &routeId, int count = 1);
+	void addMessage(const QString &channel, const QString &itemId, const QString &transport, int count = 1);
 
 	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet);
 	void removeConnection(const QByteArray &id, bool linger);
 
+	void addSubscription(const QString &mode, const QString &channel);
+
+	// NOTE: may emit unsubscribed immediately (not DOR-DS)
+	void removeSubscription(const QString &mode, const QString &channel, bool linger);
+
 	bool checkConnection(const QByteArray &id);
+
+	// directly send, for proxy->handler passthrough
+	void sendPacket(const StatsPacket &packet);
+
+signals:
+	void connectionsRefreshed(const QList<QByteArray> &ids);
+	void unsubscribed(const QString &mode, const QString &channel);
 
 private:
 	class Private;
+	friend class Private;
 	Private *d;
 };
 

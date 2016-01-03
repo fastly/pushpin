@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,14 +32,26 @@ QVariant StatsPacket::toVariant() const
 
 	if(type == Activity)
 	{
-		obj["type"] = QByteArray("activity");
-
 		int x = count;
 		if(x < 0)
 			x = 0;
 		obj["count"] = x;
 	}
-	else // Connected/Disconnected
+	else if(type == Message)
+	{
+		obj["channel"] = channel;
+
+		if(!itemId.isNull())
+			obj["item-id"] = itemId;
+
+		int x = count;
+		if(x < 0)
+			x = 0;
+		obj["count"] = x;
+
+		obj["transport"] = transport;
+	}
+	else if(type == Connected || type == Disconnected)
 	{
 		obj["id"] = connectionId;
 
@@ -62,6 +74,177 @@ QVariant StatsPacket::toVariant() const
 			obj["unavailable"] = true;
 		}
 	}
+	else // Subscribed/Unsubscribed
+	{
+		obj["mode"] = mode;
+		obj["channel"] = channel;
+
+		if(type == Subscribed)
+		{
+			obj["ttl"] = ttl;
+		}
+		else // Unsubscribed
+		{
+			obj["unavailable"] = true;
+		}
+	}
 
 	return obj;
+}
+
+bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
+{
+	if(in.type() != QVariant::Hash)
+		return false;
+
+	QVariantHash obj = in.toHash();
+
+	if(obj.contains("from"))
+	{
+		if(obj["from"].type() != QVariant::ByteArray)
+			return false;
+
+		from = obj["from"].toByteArray();
+	}
+
+	if(obj.contains("route"))
+	{
+		if(obj["route"].type() != QVariant::ByteArray)
+			return false;
+
+		route = obj["route"].toByteArray();
+	}
+
+	if(_type == "activity")
+	{
+		type = Activity;
+
+		if(!obj.contains("count") || !obj["count"].canConvert(QVariant::Int))
+			return false;
+
+		count = obj["count"].toInt();
+		if(count < 0)
+			return false;
+	}
+	else if(_type == "message")
+	{
+		type = Message;
+
+		if(!obj.contains("channel") || obj["channel"].type() != QVariant::ByteArray)
+			return false;
+
+		channel = obj["channel"].toByteArray();
+
+		if(obj.contains("item-id"))
+		{
+			if(obj["item-id"].type() != QVariant::ByteArray)
+				return false;
+
+			itemId = obj["item-id"].toByteArray();
+		}
+
+		if(!obj.contains("count") || !obj["count"].canConvert(QVariant::Int))
+			return false;
+
+		count = obj["count"].toInt();
+		if(count < 0)
+			return false;
+
+		if(!obj.contains("transport") || obj["transport"].type() != QVariant::ByteArray)
+			return false;
+
+		transport = obj["transport"].toByteArray();
+	}
+	else if(_type == "conn")
+	{
+		if(!obj.contains("id") || obj["id"].type() != QVariant::ByteArray)
+			return false;
+
+		connectionId = obj["id"].toByteArray();
+
+		type = Connected;
+		if(obj.contains("unavailable"))
+		{
+			if(obj["unavailable"].type() != QVariant::Bool)
+				return false;
+
+			if(obj["unavailable"].toBool())
+				type = Disconnected;
+		}
+
+		if(type == Connected)
+		{
+			if(!obj.contains("type") || obj["type"].type() != QVariant::ByteArray)
+				return false;
+
+			QByteArray typeStr = obj["type"].toByteArray();
+			if(typeStr == "ws")
+				connectionType = WebSocket;
+			else if(typeStr == "http")
+				connectionType = Http;
+			else
+				return false;
+
+			if(obj.contains("peer-address"))
+			{
+				if(obj["peer-address"].type() != QVariant::ByteArray)
+					return false;
+
+				QByteArray peerAddressStr = obj["peer-address"].toByteArray();
+				if(!peerAddress.setAddress(QString::fromUtf8(peerAddressStr)))
+					return false;
+			}
+
+			if(obj.contains("ssl"))
+			{
+				if(obj["ssl"].type() != QVariant::Bool)
+					return false;
+
+				ssl = obj["ssl"].toBool();
+			}
+
+			if(!obj.contains("ttl") || !obj["ttl"].canConvert(QVariant::Int))
+				return false;
+
+			ttl = obj["ttl"].toInt();
+			if(ttl < 0)
+				return false;
+		}
+	}
+	else if(_type == "sub")
+	{
+		if(!obj.contains("mode") || obj["mode"].type() != QVariant::ByteArray)
+			return false;
+
+		mode = obj["mode"].toByteArray();
+
+		if(!obj.contains("channel") || obj["channel"].type() != QVariant::ByteArray)
+			return false;
+
+		channel = obj["channel"].toByteArray();
+
+		type = Subscribed;
+		if(obj.contains("unavailable"))
+		{
+			if(obj["unavailable"].type() != QVariant::Bool)
+				return false;
+
+			if(obj["unavailable"].toBool())
+				type = Unsubscribed;
+		}
+
+		if(type == Subscribed)
+		{
+			if(!obj.contains("ttl") || !obj["ttl"].canConvert(QVariant::Int))
+				return false;
+
+			ttl = obj["ttl"].toInt();
+			if(ttl < 0)
+				return false;
+		}
+	}
+	else
+		return false;
+
+	return true;
 }

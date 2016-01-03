@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2012-2013 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,48 +17,42 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef WSCONTROLPACKET_H
-#define WSCONTROLPACKET_H
+#include <QCoreApplication>
+#include <QTimer>
+#include "app.h"
 
-#include <QByteArray>
-#include <QList>
-#include <QVariant>
-
-class WsControlPacket
+class AppMain : public QObject
 {
+	Q_OBJECT
+
 public:
-	class Item
+	App *app;
+
+public slots:
+	void start()
 	{
-	public:
-		enum Type
-		{
-			Here,
-			KeepAlive,
-			Gone,
-			Grip,
-			Cancel,
-			Send,
-			Detach
-		};
+		app = new App(this);
+		connect(app, SIGNAL(quit()), SLOT(app_quit()));
+		app->start();
+	}
 
-		QByteArray cid;
-		Type type;
-		QByteArray contentType;
-		QByteArray message;
-		QByteArray channelPrefix;
-		int ttl;
+	void app_quit()
+	{
+		delete app;
+		emit quit();
+	}
 
-		Item() :
-			type((Type)-1),
-			ttl(-1)
-		{
-		}
-	};
-
-	QList<Item> items;
-
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
+signals:
+	void quit();
 };
 
-#endif
+int main(int argc, char **argv)
+{
+	QCoreApplication qapp(argc, argv);
+	AppMain appMain;
+	QObject::connect(&appMain, SIGNAL(quit()), &qapp, SLOT(quit()));
+	QTimer::singleShot(0, &appMain, SLOT(start()));
+	return qapp.exec();
+}
+
+#include "main.moc"

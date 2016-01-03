@@ -685,6 +685,7 @@ private slots:
 				wsControl = wsControlManager->createSession(publicCid);
 				connect(wsControl, SIGNAL(sendEventReceived(const QByteArray &, const QByteArray &)), SLOT(wsControl_sendEventReceived(const QByteArray &, const QByteArray &)));
 				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
+				connect(wsControl, SIGNAL(cancelEventReceived()), SLOT(wsControl_cancelEventReceived()));
 				wsControl->start(channelPrefix);
 
 				if(!subChannel.isEmpty())
@@ -814,6 +815,23 @@ private slots:
 
 		if(outSock && outSock->state() != WebSocket::Closing)
 			outSock->close();
+	}
+
+	void wsControl_cancelEventReceived()
+	{
+		if(outSock)
+		{
+			delete outSock;
+			outSock = 0;
+		}
+
+		if(inSock)
+		{
+			delete inSock;
+			inSock = 0;
+		}
+
+		tryFinish();
 	}
 
 	void activity_timeout()

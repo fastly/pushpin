@@ -99,6 +99,7 @@ public:
 	ServerState serverState() const;
 
 	int bytesAvailable() const;
+	int writeBytesAvailable() const;
 	bool isFinished() const;
 	bool isInputFinished() const;
 	bool isOutputFinished() const;

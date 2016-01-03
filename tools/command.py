@@ -18,7 +18,7 @@ def make_tnet_compat(obj):
 	elif isinstance(obj, unicode):
 		return obj.encode('utf-8')
 	else:
-		return out
+		return obj
 
 ctx = zmq.Context()
 sock = ctx.socket(zmq.REQ)

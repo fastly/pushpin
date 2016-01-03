@@ -1091,6 +1091,11 @@ int ZhttpRequest::bytesAvailable() const
 		return d->responseBodyBuf.size();
 }
 
+int ZhttpRequest::writeBytesAvailable() const
+{
+	return d->outCredits;
+}
+
 bool ZhttpRequest::isFinished() const
 {
 	return d->state == Private::Stopped;

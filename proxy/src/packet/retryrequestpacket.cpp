@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,6 +22,103 @@
 RetryRequestPacket::RetryRequestPacket() :
 	haveInspectInfo(false)
 {
+}
+
+QVariant RetryRequestPacket::toVariant() const
+{
+	QVariantHash obj;
+
+	QVariantList vrequests;
+	foreach(const Request &r, requests)
+	{
+		QVariantHash vrequest;
+
+		QVariantHash vrid;
+		vrid["sender"] = r.rid.first;
+		vrid["id"] = r.rid.second;
+
+		vrequest["rid"] = vrid;
+
+		if(r.https)
+			vrequest["https"] = true;
+
+		if(!r.peerAddress.isNull())
+			vrequest["peer-address"] = r.peerAddress.toString().toUtf8();
+
+		if(r.autoCrossOrigin)
+			vrequest["auto-cross-origin"] = true;
+
+		if(!r.jsonpCallback.isEmpty())
+			vrequest["jsonp-callback"] = r.jsonpCallback;
+
+		if(r.jsonpExtendedResponse)
+			vrequest["jsonp-extended-response"] = true;
+
+		vrequest["in-seq"] = r.inSeq;
+		vrequest["out-seq"] = r.outSeq;
+		vrequest["out-credits"] = r.outCredits;
+
+		if(r.userData.isValid())
+			vrequest["user-data"] = r.userData;
+
+		vrequests += vrequest;
+	}
+
+	obj["requests"] = vrequests;
+
+	QVariantHash vrequestData;
+
+	vrequestData["method"] = requestData.method.toLatin1();
+	vrequestData["uri"] = requestData.uri.toEncoded();
+
+	QVariantList vheaders;
+	foreach(const HttpHeader &h, requestData.headers)
+	{
+		QVariantList vheader;
+		vheader += h.first;
+		vheader += h.second;
+		vheaders += QVariant(vheader);
+	}
+	vrequestData["headers"] = vheaders;
+
+	vrequestData["body"] = requestData.body;
+
+	obj["request-data"] = vrequestData;
+
+	if(haveInspectInfo)
+	{
+		QVariantHash vinspect;
+
+		vinspect["no-proxy"] = !inspectInfo.doProxy;
+
+		if(!inspectInfo.sharingKey.isEmpty())
+			vinspect["sharing-key"] = inspectInfo.sharingKey;
+
+		if(!inspectInfo.sid.isEmpty())
+			vinspect["sid"] = inspectInfo.sid;
+
+		if(!inspectInfo.lastIds.isEmpty())
+		{
+			QVariantHash vlastIds;
+
+			QHashIterator<QByteArray, QByteArray> it(inspectInfo.lastIds);
+			while(it.hasNext())
+			{
+				it.next();
+
+				vlastIds[QString::fromUtf8(it.key())] = it.value();
+			}
+
+			vinspect["last-ids"] = vlastIds;
+		}
+
+		if(inspectInfo.userData.isValid())
+			vinspect["user-data"] = inspectInfo.userData;
+
+		obj["inspect"] = vinspect;
+	}
+
+	return obj;
 }
 
 bool RetryRequestPacket::fromVariant(const QVariant &in)
@@ -164,7 +261,7 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 
 		if(!vinspect.contains("no-proxy") || vinspect["no-proxy"].type() != QVariant::Bool)
 			return false;
-		inspectInfo.noProxy = vinspect["no-proxy"].toBool();
+		inspectInfo.doProxy = !vinspect["no-proxy"].toBool();
 
 		inspectInfo.sharingKey.clear();
 		if(vinspect.contains("sharing-key"))
@@ -173,6 +270,34 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 				return false;
 
 			inspectInfo.sharingKey = vinspect["sharing-key"].toByteArray();
+		}
+
+		if(vinspect.contains("sid"))
+		{
+			if(vinspect["sid"].type() != QVariant::ByteArray)
+				return false;
+
+			inspectInfo.sid = vinspect["sid"].toByteArray();
+		}
+
+		if(vinspect.contains("last-ids"))
+		{
+			if(vinspect["last-ids"].type() != QVariant::Hash)
+				return false;
+
+			QVariantHash vlastIds = vinspect["last-ids"].toHash();
+			QHashIterator<QString, QVariant> it(vlastIds);
+			while(it.hasNext())
+			{
+				it.next();
+
+				if(it.value().type() != QVariant::ByteArray)
+					return false;
+
+				QByteArray key = it.key().toUtf8();
+				QByteArray val = it.value().toByteArray();
+				inspectInfo.lastIds.insert(key, val);
+			}
 		}
 
 		inspectInfo.userData = vinspect["user-data"];

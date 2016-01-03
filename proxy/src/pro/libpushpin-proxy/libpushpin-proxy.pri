@@ -70,6 +70,7 @@ HEADERS += \
 	$$SRC_DIR/domainmap.h \
 	$$SRC_DIR/zroutes.h \
 	$$SRC_DIR/xffrule.h \
+	$$SRC_DIR/cors.h \
 	$$SRC_DIR/requestsession.h \
 	$$SRC_DIR/proxyutil.h \
 	$$SRC_DIR/proxysession.h \
@@ -98,6 +99,7 @@ SOURCES += \
 	$$SRC_DIR/wscontrolsession.cpp \
 	$$SRC_DIR/domainmap.cpp \
 	$$SRC_DIR/zroutes.cpp \
+	$$SRC_DIR/cors.cpp \
 	$$SRC_DIR/requestsession.cpp \
 	$$SRC_DIR/proxyutil.cpp \
 	$$SRC_DIR/proxysession.cpp \

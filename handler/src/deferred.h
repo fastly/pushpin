@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,39 +17,54 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef WSCONTROLSESSION_H
-#define WSCONTROLSESSION_H
+#ifndef DEFERRED_H
+#define DEFERRED_H
 
-#include <QByteArray>
+#include <QVariant>
 #include <QObject>
-#include "packet/wscontrolpacket.h"
 
-class WsControlManager;
+class DeferredResult
+{
+public:
+	bool success;
+	QVariant value;
 
-class WsControlSession : public QObject
+	DeferredResult() :
+		success(false)
+	{
+	}
+
+	DeferredResult(bool _success, const QVariant &_value = QVariant()) :
+		success(_success),
+		value(_value)
+	{
+	}
+};
+
+Q_DECLARE_METATYPE(DeferredResult)
+
+class Deferred : public QObject
 {
 	Q_OBJECT
 
 public:
-	~WsControlSession();
+	virtual ~Deferred();
 
-	void start(const QByteArray &channelPrefix);
-	void sendGripMessage(const QByteArray &message);
+	virtual void cancel();
 
 signals:
-	void sendEventReceived(const QByteArray &contentType, const QByteArray &message);
-	void detachEventReceived();
-	void cancelEventReceived();
+	void finished(const DeferredResult &result);
+
+protected:
+	Deferred(QObject *parent = 0);
+
+	void setFinished(bool ok, const QVariant &value = QVariant());
+
+private slots:
+	void doFinish();
 
 private:
-	class Private;
-	friend class Private;
-	Private *d;
-
-	friend class WsControlManager;
-	WsControlSession(QObject *parent = 0);
-	void setup(WsControlManager *manager, const QByteArray &cid);
-	void handle(const WsControlPacket::Item &item);
+	DeferredResult result_;
 };
 
 #endif

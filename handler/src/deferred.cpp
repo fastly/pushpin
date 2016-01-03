@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2015 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,48 +17,33 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef WSCONTROLPACKET_H
-#define WSCONTROLPACKET_H
+#include "deferred.h"
 
-#include <QByteArray>
-#include <QList>
-#include <QVariant>
-
-class WsControlPacket
+Deferred::Deferred(QObject *parent) :
+	QObject(parent)
 {
-public:
-	class Item
-	{
-	public:
-		enum Type
-		{
-			Here,
-			KeepAlive,
-			Gone,
-			Grip,
-			Cancel,
-			Send,
-			Detach
-		};
+	qRegisterMetaType<DeferredResult>();
+}
 
-		QByteArray cid;
-		Type type;
-		QByteArray contentType;
-		QByteArray message;
-		QByteArray channelPrefix;
-		int ttl;
+Deferred::~Deferred()
+{
+}
 
-		Item() :
-			type((Type)-1),
-			ttl(-1)
-		{
-		}
-	};
+void Deferred::cancel()
+{
+	delete this;
+}
 
-	QList<Item> items;
+void Deferred::setFinished(bool ok, const QVariant &value)
+{
+	result_.success = ok;
+	result_.value = value;
 
-	QVariant toVariant() const;
-	bool fromVariant(const QVariant &in);
-};
+	QMetaObject::invokeMethod(this, "doFinish", Qt::QueuedConnection);
+}
 
-#endif
+void Deferred::doFinish()
+{
+	emit finished(result_);
+	delete this;
+}
