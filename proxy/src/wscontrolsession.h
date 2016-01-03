@@ -39,6 +39,7 @@ public:
 signals:
 	void sendEventReceived(const QByteArray &contentType, const QByteArray &message);
 	void detachEventReceived();
+	void cancelEventReceived();
 
 private:
 	class Private;
