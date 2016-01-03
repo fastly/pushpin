@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,7 +29,10 @@
 #include "log.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "packet/retryrequestpacket.h"
+#include "packet/wscontrolpacket.h"
 #include "packet/statspacket.h"
+#include "inspectdata.h"
 #include "zutil.h"
 #include "zrpcmanager.h"
 #include "zrpcrequest.h"
@@ -50,21 +53,6 @@
 
 #define DEFAULT_RESPONSE_TIMEOUT 55
 #define MINIMUM_RESPONSE_TIMEOUT 5
-
-/*
-class ConnectionInfo(object):
-	def __init__(self, id, type):
-		self.id = id
-		self.type = type
-		self.route = None
-		self.peer_address = None
-		self.ssl = False
-		self.linger = False
-		self.last_keepalive = None
-		self.sid = None
-
-conns = dict() # conn id, ConnectionInfo
-*/
 
 static void setSuccess(bool *ok, QString *errorMessage)
 {
@@ -603,18 +591,14 @@ public:
 
 		args["sid"] = sid.toUtf8();
 
-		if(!lastIds.isEmpty())
+		QVariantHash vlastIds;
+		QHashIterator<QString, QString> it(lastIds);
+		while(it.hasNext())
 		{
-			QVariantHash vlastIds;
-			QHashIterator<QString, QString> it(lastIds);
-			while(it.hasNext())
-			{
-				it.next();
-				vlastIds.insert(it.key(), it.value().toUtf8());
-			}
-
-			args["last-ids"] = vlastIds;
+			it.next();
+			vlastIds.insert(it.key(), it.value().toUtf8());
 		}
+		args["last-ids"] = vlastIds;
 
 		req->start("session-create-or-update", args);
 	}
@@ -1640,6 +1624,7 @@ public:
 	{
 		Subscribe,
 		Unsubscribe,
+		Detach,
 		Session,
 		SetMeta
 	};
@@ -1678,6 +1663,8 @@ public:
 			out.type = Subscribe;
 		else if(type == "unsubscribe")
 			out.type = Unsubscribe;
+		else if(type == "detach")
+			out.type = Detach;
 		else if(type == "session")
 			out.type = Session;
 		else if(type == "set-meta")
@@ -1759,7 +1746,7 @@ public:
 				return WsControlMessage();
 			}
 
-			out.metaValue = getString(in, pn, "value", true, &ok_, errorMessage);
+			out.metaValue = getString(in, pn, "value", false, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -1772,7 +1759,8 @@ public:
 	}
 };
 
-class WsControlPacket
+// FIXME: rewrite packet class using this code?
+/*class WsControlPacket
 {
 public:
 	class Message
@@ -1886,7 +1874,7 @@ public:
 		setSuccess(ok, errorMessage);
 		return out;
 	}
-};
+};*/
 
 class Instruct
 {
@@ -2528,34 +2516,6 @@ public:
 	}
 };
 
-/* TODO
-	for ci in refresh_conns:
-		out = dict()
-		out['from'] = instance_id
-		if ci.route:
-			out['route'] = ci.route
-		out['id'] = ci.id
-		out['type'] = ci.type
-		if ci.peer_address:
-			out['peer-address'] = ci.peer_address
-		if ci.ssl:
-			out['ssl'] = True
-		out['ttl'] = CONNECTION_TTL
-		stats_sock.send('conn ' + tnetstring.dumps(out))
-
-		if ci.sid:
-			refresh_sids.append(ci.sid)
-
-	if refresh_sids and state_rpc:
-		try:
-			sid_last_ids = dict()
-			for sid in refresh_sids:
-				sid_last_ids[sid] = dict()
-			session_update_many(state_rpc, sid_last_ids)
-		except:
-			logger.debug("couldn't update sessions")
-*/
-
 class Hold : public QObject
 {
 	Q_OBJECT
@@ -2576,14 +2536,21 @@ public:
 	int keepAliveTimeout;
 	QByteArray keepAliveData;
 	QTimer *timer;
+	StatsManager *stats;
 
-	Hold() :
-		req(0),
+	Hold(ZhttpRequest *_req, StatsManager *_stats, QObject *parent = 0) :
+		QObject(parent),
+		req(_req),
 		autoCrossOrigin(false),
 		jsonpExtendedResponse(false),
 		timeout(-1),
-		keepAliveTimeout(-1)
+		keepAliveTimeout(-1),
+		stats(_stats)
 	{
+		req->setParent(this);
+		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
+		connect(req, SIGNAL(error()), SLOT(req_error()));
+
 		timer = new QTimer(this);
 		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
 	}
@@ -2598,13 +2565,8 @@ public:
 		}
 	}
 
-	void start(ZhttpRequest *_req)
+	void start()
 	{
-		req = _req;
-		req->setParent(this);
-		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-		connect(req, SIGNAL(error()), SLOT(req_error()));
-
 		if(mode == ResponseHold)
 		{
 			// set timeout
@@ -2815,6 +2777,14 @@ private:
 		req->endBody();
 	}
 
+	void doFinish()
+	{
+		ZhttpRequest::Rid rid = req->rid();
+		stats->removeConnection(rid.first + ':' + rid.second, false);
+
+		emit finished();
+	}
+
 private slots:
 	void req_bytesWritten(int count)
 	{
@@ -2823,25 +2793,7 @@ private slots:
 		if(!req->isFinished())
 			return;
 
-		/* TODO
-		stats_lock.acquire()
-		ci = conns.get("%s:%s" % (h.rid[0], h.rid[1]))
-		if ci is not None:
-			ci = copy.deepcopy(ci)
-			del conns[ci.id]
-		stats_lock.release()
-
-		if ci is not None:
-			out = dict()
-			out['from'] = instance_id
-			if ci.route:
-				out['route'] = ci.route
-			out['id'] = ci.id
-			out['unavailable'] = True
-			stats_sock.send('conn ' + tnetstring.dumps(out))
-		*/
-
-		emit finished();
+		doFinish();
 	}
 
 	void req_error()
@@ -2849,7 +2801,7 @@ private slots:
 		ZhttpRequest::Rid rid = req->rid();
 		log_debug("cleaning up subscriber ('%s', '%s')", rid.first.data(), rid.second.data());
 
-		emit finished();
+		doFinish();
 	}
 
 	void timer_timeout()
@@ -2862,12 +2814,16 @@ private slots:
 		else // StreamHold
 		{
 			req->writeBody(keepAliveData);
+
+			stats->addActivity(route.toUtf8(), 1);
 		}
 	}
 };
 
-class WsSession
+class WsSession : public QObject
 {
+	Q_OBJECT
+
 public:
 	QString cid;
 	QString channelPrefix;
@@ -2875,40 +2831,38 @@ public:
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
 	QSet<QString> channels;
+	int ttl;
+	QTimer *timer;
 
-	// TODO: use QTimer to expire
-	/*
-		now = int(time.time())
-		cids = set()
-		lock.acquire()
-		for cid, s in ws_sessions.iteritems():
-			if s.expire_time and now >= s.expire_time:
-				cids.add(cid)
-		for cid in cids:
-			del ws_sessions[cid]
-			channels = set()
-			for channel, hchannels in ws_channels.iteritems():
-				channels.add(channel)
-				if cid in hchannels:
-					del hchannels[cid]
-			for channel in channels:
-				if channel in ws_channels and len(ws_channels[channel]) == 0:
-					del ws_channels[channel]
-					sub_key = ('ws', channel)
-					sub = subs.get(sub_key)
-					if sub:
-						# use expire_time to flag for removal
-						sub.expire_time = now
-		lock.release()
-		if len(cids) > 0:
-			logger.debug("timing out %d ws sessions" % len(cids))
-	*/
+	WsSession(QObject *parent = 0) :
+		QObject(parent)
+	{
+		timer = new QTimer(this);
+		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		timer->start(ttl * 1000);
+	}
+
+	void refresh()
+	{
+		timer->start(ttl * 1000);
+	}
+
+signals:
+	void expired();
+
+private slots:
+	void timer_timeout()
+	{
+		log_debug("timing out ws session: %s", qPrintable(cid));
+
+		emit expired();
+	}
 };
 
 class CommonState
 {
 public:
-	QSet<Hold*> holds;
+	QHash<ZhttpRequest::Rid, Hold*> holds;
 	QHash<QString, WsSession*> wsSessions;
 	QHash<QString, QSet<Hold*> > responseHoldsByChannel;
 	QHash<QString, QSet<Hold*> > streamHoldsByChannel;
@@ -2921,8 +2875,12 @@ public:
 	{
 		QSet<QString> out;
 
-		foreach(const QString &channel, hold->channels.keys())
+		QHashIterator<QString, Instruct::Channel> it(hold->channels);
+		while(it.hasNext())
 		{
+			it.next();
+			const QString &channel = it.key();
+
 			if(!responseHoldsByChannel.contains(channel))
 				continue;
 
@@ -2947,8 +2905,12 @@ public:
 	{
 		QSet<QString> out;
 
-		foreach(const QString &channel, hold->channels.keys())
+		QHashIterator<QString, Instruct::Channel> it(hold->channels);
+		while(it.hasNext())
 		{
+			it.next();
+			const QString &channel = it.key();
+
 			if(!streamHoldsByChannel.contains(channel))
 				continue;
 
@@ -2961,6 +2923,31 @@ public:
 			if(cur.isEmpty())
 			{
 				streamHoldsByChannel.remove(channel);
+				out += channel;
+			}
+		}
+
+		return out;
+	}
+
+	QSet<QString> removeWsSessionChannels(WsSession *s)
+	{
+		QSet<QString> out;
+
+		foreach(const QString &channel, s->channels)
+		{
+			if(!wsSessionsByChannel.contains(channel))
+				continue;
+
+			QSet<WsSession*> &cur = wsSessionsByChannel[channel];
+			if(!cur.contains(s))
+				continue;
+
+			cur.remove(s);
+
+			if(cur.isEmpty())
+			{
+				wsSessionsByChannel.remove(channel);
 				out += channel;
 			}
 		}
@@ -2983,9 +2970,12 @@ public:
 	QString channelPrefix;
 	QHash<ByteArrayPair, RequestState> requestStates;
 	HttpRequestData requestData;
+	bool haveInspectInfo;
+	InspectData inspectInfo;
 	HttpResponseData responseData;
 	QString sid;
 	LastIds lastIds;
+	QList<Hold*> holds;
 
 	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, StatsManager *_stats, QObject *parent = 0) :
 		Deferred(parent),
@@ -2993,7 +2983,8 @@ public:
 		stateClient(_stateClient),
 		cs(_cs),
 		zhttpIn(_zhttpIn),
-		stats(_stats)
+		stats(_stats),
+		haveInspectInfo(false)
 	{
 		req->setParent(this);
 	}
@@ -3167,6 +3158,78 @@ public:
 
 			responseData.body = rd["body"].toByteArray();
 
+			if(args.contains("inspect"))
+			{
+				if(args["inspect"].type() != QVariant::Hash)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				QVariantHash vinspect = args["inspect"].toHash();
+
+				if(!vinspect.contains("no-proxy") || vinspect["no-proxy"].type() != QVariant::Bool)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				inspectInfo.doProxy = !vinspect["no-proxy"].toBool();
+
+				inspectInfo.sharingKey.clear();
+				if(vinspect.contains("sharing-key"))
+				{
+					if(vinspect["sharing-key"].type() != QVariant::ByteArray)
+					{
+						respondError("bad-request");
+						return;
+					}
+
+					inspectInfo.sharingKey = vinspect["sharing-key"].toByteArray();
+				}
+
+				if(vinspect.contains("sid"))
+				{
+					if(vinspect["sid"].type() != QVariant::ByteArray)
+					{
+						respondError("bad-request");
+						return;
+					}
+
+					inspectInfo.sid = vinspect["sid"].toByteArray();
+				}
+
+				if(vinspect.contains("last-ids"))
+				{
+					if(vinspect["last-ids"].type() != QVariant::Hash)
+					{
+						respondError("bad-request");
+						return;
+					}
+
+					QVariantHash vlastIds = vinspect["last-ids"].toHash();
+					QHashIterator<QString, QVariant> it(vlastIds);
+					while(it.hasNext())
+					{
+						it.next();
+
+						if(it.value().type() != QVariant::ByteArray)
+						{
+							respondError("bad-request");
+							return;
+						}
+
+						QByteArray key = it.key().toUtf8();
+						QByteArray val = it.value().toByteArray();
+						inspectInfo.lastIds.insert(key, val);
+					}
+				}
+
+				inspectInfo.userData = vinspect["user-data"];
+
+				haveInspectInfo = true;
+			}
+
 			bool useSession = false;
 			if(args.contains("use-session"))
 			{
@@ -3226,9 +3289,19 @@ public:
 		}
 	}
 
+	QList<Hold*> takeHolds()
+	{
+		QList<Hold*> out = holds;
+		holds.clear();
+
+		foreach(Hold *hold, out)
+			hold->setParent(0);
+
+		return out;
+	}
+
 signals:
-	void holdAdded(Hold *hold); // FIXME: hacky
-	void subscriptionAdded(const QString &channel);
+	void retryPacketReady(const RetryRequestPacket &packet);
 
 private:
 	void respondError(const QByteArray &condition)
@@ -3305,38 +3378,85 @@ private:
 
 		log_debug("accepting %d requests", requestStates.count());
 
+		if(instruct.holdMode == ResponseHold)
+		{
+			// check if we need to retry
+			bool needRetry = false;
+			foreach(const Instruct::Channel &c, instruct.channels)
+			{
+				if(!c.prevId.isNull())
+				{
+					QString name = channelPrefix + c.name;
+
+					QString lastId = cs->responseLastIds.value(name);
+					if(!lastId.isNull() && lastId != c.prevId)
+					{
+						log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
+						cs->responseLastIds.remove(name);
+						needRetry = true;
+
+						// NOTE: don't exit loop here. we want to clear
+						//   the last ids of all conflicting channels
+					}
+				}
+			}
+
+			if(needRetry)
+			{
+				RetryRequestPacket rp;
+
+				foreach(const RequestState &rs, requestStates)
+				{
+					RetryRequestPacket::Request rpreq;
+					rpreq.rid = rs.rid;
+					rpreq.https = rs.isHttps;
+					rpreq.peerAddress = rs.peerAddress;
+					rpreq.autoCrossOrigin = rs.autoCrossOrigin;
+					rpreq.jsonpCallback = rs.jsonpCallback;
+					rpreq.jsonpExtendedResponse = rs.jsonpExtendedResponse;
+					rpreq.inSeq = rs.inSeq;
+					rpreq.outSeq = rs.outSeq;
+					rpreq.outCredits = rs.outCredits;
+					rpreq.userData = rs.userData;
+
+					rp.requests += rpreq;
+				}
+
+				rp.requestData = requestData;
+
+				if(haveInspectInfo)
+				{
+					rp.haveInspectInfo = true;
+					rp.inspectInfo.doProxy = inspectInfo.doProxy;
+					rp.inspectInfo.sharingKey = inspectInfo.sharingKey;
+					rp.inspectInfo.sid = inspectInfo.sid;
+					rp.inspectInfo.lastIds = inspectInfo.lastIds;
+					rp.inspectInfo.userData = inspectInfo.userData;
+				}
+
+				emit retryPacketReady(rp);
+
+				setFinished(true);
+				return;
+			}
+		}
+
 		foreach(const RequestState &rs, requestStates)
 		{
-			// TODO
-			/*stats_lock.acquire()
-			ci = ConnectionInfo("%s:%s" % (rid[0], rid[1]), "http")
-			ci.route = route
-			if "peer-address" in req:
-				ci.peer_address = req["peer-address"]
-			if "https" in req:
-				ci.ssl = req["https"]
-			ci.last_keepalive = int(time.time())
-			ci.sid = sid
-			# note: if we had a lingering connection, this will replace it
-			conns[ci.id] = ci
-			stats_lock.release()
+			ZhttpRequest::Rid rid(rs.rid.first, rs.rid.second);
 
-			h = Hold(rid, m["request-data"], mode, response, req.get("auto-cross-origin"), req.get("jsonp-callback"))
-			now = int(time.time())
-			h.last_keepalive = now
-			h.out_seq = req["out-seq"]
-			h.out_credits = req["out-credits"]
-			h.jsonp_extended_response = req.get("jsonp-extended-response", False)
-			h.grip_keep_alive = keep_alive
-			h.grip_keep_alive_timeout = keep_alive_timeout
-			h.last_send = now
-			h.meta = meta*/
+			if(zhttpIn->serverRequestByRid(rid))
+			{
+				log_error("received accept request for rid we already have (%s, %s), skipping", rid.first.data(), rid.second.data());
+				continue;
+			}
 
 			ZhttpRequest::ServerState ss;
 			ss.rid = ZhttpRequest::Rid(rs.rid.first, rs.rid.second);
 			ss.peerAddress = rs.peerAddress;
 			ss.requestMethod = requestData.method;
 			ss.requestUri = requestData.uri;
+			ss.requestUri.setScheme(rs.isHttps ? "https" : "http");
 			ss.requestHeaders = requestData.headers;
 			ss.requestBody = requestData.body;
 			ss.inSeq = rs.inSeq;
@@ -3344,14 +3464,15 @@ private:
 			ss.outCredits = rs.outCredits;
 			ss.userData = rs.userData;
 
-			// FIXME: don't create the req until we know we aren't retrying
+			// take over responsibility for request
 			ZhttpRequest *outReq = zhttpIn->createRequestFromState(ss);
 
-			Hold *hold = new Hold;
+			stats->addConnection(rs.rid.first + ':' + rs.rid.second, route.toUtf8(), StatsManager::Http, rs.peerAddress, rs.isHttps, true);
+
+			Hold *hold = new Hold(outReq, stats, this);
 			hold->mode = instruct.holdMode;
 			hold->requestData = requestData;
 			hold->response = instruct.response;
-			hold->meta = instruct.meta;
 			hold->autoCrossOrigin = rs.autoCrossOrigin;
 			hold->jsonpCallback = rs.jsonpCallback;
 			hold->jsonpExtendedResponse = rs.jsonpExtendedResponse;
@@ -3359,178 +3480,12 @@ private:
 			hold->keepAliveTimeout = instruct.keepAliveTimeout;
 			hold->keepAliveData = instruct.keepAliveData;
 			hold->sid = sid;
+			hold->meta = instruct.meta;
 
-			hold->start(outReq);
+			foreach(const Instruct::Channel &c, instruct.channels)
+				hold->channels.insert(channelPrefix + c.name, c);
 
-			if(instruct.holdMode == ResponseHold)
-			{
-				// TODO
-
-				QSet<QString> newSubs;
-				foreach(const Instruct::Channel &c, instruct.channels)
-				{
-					QString cname = channelPrefix + c.name;
-
-					log_debug("adding response hold on %s", qPrintable(cname));
-					hold->channels.insert(cname, c);
-
-					bool found = false;
-					foreach(Hold *h, cs->holds)
-					{
-						if(h->channels.contains(cname))
-						{
-							found = true;
-							break;
-						}
-					}
-					if(!found)
-						newSubs += cname;
-				}
-
-				cs->holds += hold;
-				foreach(const QString &sub, newSubs)
-				{
-					if(!cs->responseHoldsByChannel.contains(sub))
-						cs->responseHoldsByChannel.insert(sub, QSet<Hold*>());
-
-					cs->responseHoldsByChannel[sub] += hold;
-				}
-
-				emit holdAdded(hold);
-
-				foreach(const QString &sub, newSubs)
-				{
-					stats->addSubscription("response", sub);
-					emit subscriptionAdded(sub);
-				}
-
-				/*# bind channels
-				quit = False
-				lock.acquire()
-				for channel, prev_id, filters in channels:
-					logger.debug("adding response hold on %s" % channel)
-					h.expire_time = int(time.time()) + timeout
-					h.channel_filters[channel] = filters
-					if prev_id is not None:
-						last_id = response_lastids.get(channel)
-						if last_id is not None and last_id != prev_id:
-							del response_lastids[channel]
-							lock.release()
-							stats_lock.acquire()
-							ci.linger = True
-							ci.last_keepalive = int(time.time())
-							stats_lock.release()
-							# note: we don't need to do a handoff here because we didn't ack to take over yet
-							logger.debug("lastid inconsistency (got=%s, expected=%s), retrying" % (prev_id, last_id))
-							r = dict()
-							r["requests"] = [req] # only retry the request that failed the check
-							r["request-data"] = m["request-data"]
-							if "inspect" in m:
-								r["inspect"] = m["inspect"]
-							logger.debug("OUT retry: %s" % r)
-							r_raw = tnetstring.dumps(r)
-							retry_sock.send(r_raw)
-							quit = True
-							break
-					hchannel = response_channels.get(channel)
-					if not hchannel:
-						hchannel = dict()
-						response_channels[channel] = hchannel
-					hchannel[rid] = h
-					req_channels = channels_by_req.get(rid)
-					if not req_channels:
-						req_channels = set()
-						channels_by_req[rid] = req_channels
-					req_channels.add((mode, channel))
-					sub_key = (mode, channel)
-					sub = subs.get(sub_key)
-					if not sub:
-						sub = Subscription(mode, channel)
-						sub.last_keepalive = now
-						subs[sub_key] = sub
-						notify_subs.add(sub_key)
-					sub.expire_time = None
-				if quit:
-					# we already unlocked if this is set
-					continue
-				lock.release()*/
-			}
-			else // StreamHold
-			{
-				// TODO
-
-				QSet<QString> newSubs;
-				foreach(const Instruct::Channel &c, instruct.channels)
-				{
-					QString cname = channelPrefix + c.name;
-
-					log_debug("adding stream hold on %s", qPrintable(cname));
-					hold->channels.insert(cname, c);
-
-					bool found = false;
-					foreach(Hold *h, cs->holds)
-					{
-						if(h->channels.contains(cname))
-						{
-							found = true;
-							break;
-						}
-					}
-					if(!found)
-						newSubs += cname;
-				}
-
-				cs->holds += hold;
-				foreach(const QString &sub, newSubs)
-				{
-					if(!cs->streamHoldsByChannel.contains(sub))
-						cs->streamHoldsByChannel.insert(sub, QSet<Hold*>());
-
-					cs->streamHoldsByChannel[sub] += hold;
-				}
-
-				emit holdAdded(hold);
-
-				foreach(const QString &sub, newSubs)
-				{
-					stats->addSubscription("stream", sub);
-					emit subscriptionAdded(sub);
-				}
-
-				/*# bind channels
-				lock.acquire()
-				for channel, prev_id, filters in channels:
-					logger.debug("adding stream hold on %s" % channel)
-					h.channel_filters[channel] = filters
-					hchannel = stream_channels.get(channel)
-					if not hchannel:
-						hchannel = dict()
-						stream_channels[channel] = hchannel
-					hchannel[rid] = h
-					req_channels = channels_by_req.get(rid)
-					if not req_channels:
-						req_channels = set()
-						channels_by_req[rid] = req_channels
-					req_channels.add((mode, channel))
-					sub_key = (mode, channel)
-					sub = subs.get(sub_key)
-					if not sub:
-						sub = Subscription(mode, channel)
-						sub.last_keepalive = now
-						subs[sub_key] = sub
-						notify_subs.add(sub_key)
-					sub.expire_time = None
-				lock.release()*/
-			}
-
-			/*for sub_key in notify_subs:
-				out = dict()
-				out['from'] = instance_id
-				out['mode'] = ensure_utf8(sub_key[0])
-				out['channel'] = ensure_utf8(sub_key[1])
-				out['ttl'] = SUBSCRIPTION_TTL
-				stats_sock.send('sub ' + tnetstring.dumps(out))
-			*/
+			holds += hold;
 		}
 
 		setFinished(true);
@@ -3620,7 +3575,7 @@ public:
 	CidSet cids;
 	CidSet missing;
 
-	ConnCheckWorker(ZrpcRequest *_req, ZrpcManager *proxyControlClient, QObject *parent = 0) :
+	ConnCheckWorker(ZrpcRequest *_req, ZrpcManager *proxyControlClient, StatsManager *stats, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req)
 	{
@@ -3647,12 +3602,11 @@ public:
 			cids += QString::fromUtf8(vid.toByteArray());
 		}
 
-		// FIXME:
-		//for cid in cids:
-		//	if cid not in conns:
-		//		missing.add(cid)
 		foreach(const QString &cid, cids)
-			missing += cid;
+		{
+			if(!stats->checkConnection(cid.toUtf8()))
+				missing += cid;
+		}
 
 		if(!missing.isEmpty())
 		{
@@ -3731,6 +3685,7 @@ public:
 	HttpServer *controlHttpServer;
 	StatsManager *stats;
 	CommonState cs;
+	QSet<Deferred*> deferreds;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -3760,6 +3715,9 @@ public:
 
 	~Private()
 	{
+		qDeleteAll(deferreds);
+		qDeleteAll(cs.wsSessions);
+		qDeleteAll(cs.holds);
 	}
 
 	bool start(const Configuration &_config)
@@ -3928,6 +3886,7 @@ public:
 			stats->setInstanceId(config.instanceId);
 			stats->setIpcFileMode(config.ipcFileMode);
 
+			connect(stats, SIGNAL(connectionsRefreshed(const QList<QByteArray> &)), SLOT(stats_connectionsRefreshed(const QList<QByteArray> &)));
 			connect(stats, SIGNAL(unsubscribed(const QString &, const QString &)), SLOT(stats_unsubscribed(const QString &, const QString &)));
 
 			if(!stats->setSpec(config.statsSpec))
@@ -4123,17 +4082,12 @@ private:
 
 			foreach(WsSession *s, wsSessions)
 			{
-				QVariantHash vitem;
-				vitem["cid"] = s->cid.toUtf8();
-				vitem["type"] = QByteArray("send");
-				vitem["content-type"] = f.binary ? QByteArray("binary") : QByteArray("text");
-				vitem["message"] = f.body;
-
-				QVariantHash out;
-				out["items"] = QVariantList() << vitem;
-
-				log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(out, -1)));
-				wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(out));
+				WsControlPacket::Item i;
+				i.cid = s->cid.toUtf8();
+				i.type = WsControlPacket::Item::Send;
+				i.contentType = f.binary ? "binary" : "text";
+				i.message = f.body;
+				writeWsControlItem(i);
 			}
 
 			stats->addMessage(item.channel, item.id, "ws-message", wsSessions.count());
@@ -4158,6 +4112,60 @@ private:
 
 			Deferred *d = new SessionUpdateMany(stateClient, sidLastIds, this);
 			connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionUpdateMany_finished(const DeferredResult &)));
+			deferreds += d;
+		}
+	}
+
+	void writeRetryPacket(const RetryRequestPacket &packet)
+	{
+		if(!retrySock)
+		{
+			log_error("retry: can't write, no socket");
+			return;
+		}
+
+		QVariant vout = packet.toVariant();
+
+		log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
+		retrySock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
+	}
+
+	void writeWsControlItem(const WsControlPacket::Item &item)
+	{
+		if(!wsControlOutSock)
+		{
+			log_error("wscontrol: can't write, no socket");
+			return;
+		}
+
+		WsControlPacket out;
+		out.items += item;
+
+		QVariant vout = out.toVariant();
+
+		log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
+		wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
+	}
+
+	void addSub(const QString &channel)
+	{
+		if(!cs.subs.contains(channel))
+		{
+			cs.subs += channel;
+
+			log_debug("SUB socket subscribe: %s", qPrintable(channel));
+			inSubSock->subscribe(channel.toUtf8());
+		}
+	}
+
+	void removeSub(const QString &channel)
+	{
+		if(cs.subs.contains(channel))
+		{
+			cs.subs.remove(channel);
+
+			log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
+			inSubSock->unsubscribe(channel.toUtf8());
 		}
 	}
 
@@ -4168,7 +4176,8 @@ private slots:
 		if(!req)
 			return;
 
-		new InspectWorker(req, stateClient, config.shareAll, this);
+		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
+		deferreds += w;
 	}
 
 	void acceptServer_requestReady()
@@ -4178,8 +4187,9 @@ private slots:
 			return;
 
 		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, stats, this);
-		connect(w, SIGNAL(holdAdded(Hold *)), SLOT(holdAdded(Hold *)));
-		connect(w, SIGNAL(subscriptionAdded(const QString &)), SLOT(addSub(const QString &)));
+		connect(w, SIGNAL(finished(const DeferredResult &)), SLOT(acceptWorker_finished(const DeferredResult &)));
+		connect(w, SIGNAL(retryPacketReady(const RetryRequestPacket &)), SLOT(acceptWorker_retryPacketReady(const RetryRequestPacket &)));
+		deferreds += w;
 		w->start();
 	}
 
@@ -4193,7 +4203,7 @@ private slots:
 
 		if(req->method() == "conncheck")
 		{
-			new ConnCheckWorker(req, proxyControlClient, this);
+			new ConnCheckWorker(req, proxyControlClient, stats, this);
 		}
 		else if(req->method() == "get-zmq-uris")
 		{
@@ -4292,105 +4302,79 @@ private slots:
 
 		log_debug("IN wscontrol: %s", qPrintable(TnetString::variantToString(data, -1)));
 
-		QString errorMessage;
-		WsControlPacket packet = WsControlPacket::fromVariant(data, &ok, &errorMessage);
-		if(!ok)
+		WsControlPacket packet;
+		if(!packet.fromVariant(data))
 		{
-			log_warning("IN wscontrol: received message with invalid format: %s, skipping", qPrintable(errorMessage));
+			log_warning("IN wscontrol: received message with invalid format, skipping");
 			return;
 		}
 
-		foreach(const WsControlPacket::Message &msg, packet.messages)
+		QStringList updateSids;
+
+		foreach(const WsControlPacket::Item &item, packet.items)
 		{
-			if(msg.type == WsControlPacket::Message::Here)
+			if(item.type == WsControlPacket::Item::Here)
 			{
-				WsSession *s = cs.wsSessions.value(msg.cid);
+				WsSession *s = cs.wsSessions.value(item.cid);
 				if(!s)
 				{
-					s = new WsSession;
-					s->cid = msg.cid;
+					s = new WsSession(this);
+					connect(s, SIGNAL(expired()), SLOT(wssession_expired()));
+					s->cid = QString::fromUtf8(item.cid);
+					s->ttl = item.ttl;
 					cs.wsSessions.insert(s->cid, s);
 					log_debug("added ws session: %s", qPrintable(s->cid));
 				}
 
-				s->channelPrefix = msg.channelPrefix;
-				// TODO s.expire_time = now + 60
+				s->channelPrefix = QString::fromUtf8(item.channelPrefix);
+				continue;
 			}
-			else if(msg.type == WsControlPacket::Message::Gone || msg.type == WsControlPacket::Message::Cancel)
+
+			// any other type must be for a known cid
+			WsSession *s = cs.wsSessions.value(QString::fromUtf8(item.cid));
+			if(!s)
 			{
-				WsSession *s = cs.wsSessions.value(msg.cid);
-				if(s)
-				{
-					foreach(const QString &channel, s->channels)
-					{
-						if(cs.wsSessionsByChannel.contains(channel))
-						{
-							QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
-							cur.remove(s);
-							if(cur.isEmpty())
-								cs.wsSessionsByChannel.remove(channel);
-						}
-					}
-
-					cs.wsSessions.remove(s->cid);
-
-					log_debug("removed ws session: %s", qPrintable(s->cid));
-					delete s;
-				}
-
-				// TODO
-				/*notify_unsubs = set()
-
-				lock.acquire()
-				s = ws_sessions.get(cid)
-				if s:
-					del ws_sessions[cid]
-					channels = set()
-					for channel, hchannels in ws_channels.iteritems():
-						channels.add(channel)
-						if cid in hchannels:
-							del hchannels[cid]
-					for channel in channels:
-						if channel in ws_channels and len(ws_channels[channel]) == 0:
-							del ws_channels[channel]
-							sub_key = ('ws', channel)
-							sub = subs.get(sub_key)
-							if sub:
-								del subs[sub_key]
-								notify_unsubs.add(sub_key)
-					logger.debug('removed ws session: %s' % cid)
-				lock.release()
-
-				for sub_key in notify_unsubs:
-					out = dict()
-					out['from'] = instance_id
-					out['mode'] = ensure_utf8(sub_key[0])
-					out['channel'] = ensure_utf8(sub_key[1])
-					out['unavailable'] = True
-					stats_sock.send('sub ' + tnetstring.dumps(out))
-				*/
+				// send cancel, causing the proxy to close the connection. client
+				//   will need to retry to repair
+				WsControlPacket::Item i;
+				i.cid = item.cid;
+				i.type = WsControlPacket::Item::Cancel;
+				writeWsControlItem(i);
+				continue;
 			}
-			else if(msg.type == WsControlPacket::Message::Grip)
+
+			if(item.type == WsControlPacket::Item::KeepAlive)
+			{
+				s->ttl = item.ttl;
+				s->refresh();
+			}
+			else if(item.type == WsControlPacket::Item::Gone || item.type == WsControlPacket::Item::Cancel)
+			{
+				QSet<QString> unsubs = cs.removeWsSessionChannels(s);
+
+				foreach(const QString &channel, unsubs)
+					stats->removeSubscription("ws", channel, false);
+
+				log_debug("removed ws session: %s", qPrintable(s->cid));
+
+				cs.wsSessions.remove(s->cid);
+				delete s;
+			}
+			else if(item.type == WsControlPacket::Item::Grip)
 			{
 				QJson::Parser parser;
-				data = parser.parse(msg.message, &ok);
-				if(msg.message.isEmpty() || !ok)
+				data = parser.parse(item.message, &ok);
+				if(item.message.isEmpty() || !ok)
 				{
 					log_debug("grip control message is not valid json");
 					return;
 				}
 
+				QString errorMessage;
 				WsControlMessage cm = WsControlMessage::fromVariant(data, &ok, &errorMessage);
 				if(!ok)
 				{
 					log_debug("failed to parse grip control message: %s", qPrintable(errorMessage));
-					return;
-				}
-
-				WsSession *s = cs.wsSessions.value(msg.cid);
-				if(!s)
-				{
-					log_debug("received grip control message for unknown websocket session, skipping");
 					return;
 				}
 
@@ -4404,93 +4388,59 @@ private slots:
 						cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
 
 					cs.wsSessionsByChannel[channel] += s;
+
+					log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
+
+					stats->addSubscription("ws", channel);
+					addSub(channel);
 				}
+				else if(cm.type == WsControlMessage::Unsubscribe)
+				{
+					QString channel = s->channelPrefix + cm.channel;
+					s->channels.remove(channel);
+					s->channelFilters.remove(channel);
 
-				// TODO
-				/*notify_sub = False
-				notify_unsub = False
-				notify_detach = False
-				save_sid = False
+					if(cs.wsSessionsByChannel.contains(channel))
+					{
+						QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
+						cur.remove(s);
+						if(cur.isEmpty())
+						{
+							cs.wsSessionsByChannel.remove(channel);
+							stats->removeSubscription("ws", "channel", false);
+						}
+					}
+				}
+				else if(cm.type == WsControlMessage::Detach)
+				{
+					WsControlPacket::Item i;
+					i.cid = item.cid;
+					i.type = WsControlPacket::Item::Detach;
+					writeWsControlItem(i);
+					continue;
+				}
+				else if(cm.type == WsControlMessage::Session)
+				{
+					s->sid = cm.sessionId;
+					updateSids += cm.sessionId;
+				}
+				else if(cm.type == WsControlMessage::SetMeta)
+				{
+					if(!cm.metaValue.isNull())
+						s->meta[cm.metaName] = cm.metaValue;
+					else
+						s->meta.remove(cm.metaName);
+				}
+			}
+		}
 
-				if gm:
-					lock.acquire()
-					s = ws_sessions.get(cid)
-					if s:
-						if channel is not None and s.channel_prefix:
-							channel = s.channel_prefix + channel
-						if gtype == 'subscribe':
-							s.channel_filters[channel] = filters
-							hchannel = ws_channels.get(channel)
-							if not hchannel:
-								hchannel = dict()
-								ws_channels[channel] = hchannel
-							hchannel[cid] = s
-							sub_key = ('ws', channel)
-							sub = subs.get(sub_key)
-							if not sub:
-								sub = Subscription('ws', channel)
-								sub.last_keepalive = now
-								subs[sub_key] = sub
-								notify_sub = True
-							sub.expire_time = None
-						elif gtype == 'unsubscribe':
-							if channel in s.channel_filters:
-								del s.channel_filters[channel]
-							hchannel = ws_channels.get(channel)
-							if hchannel:
-								if cid in hchannel:
-									del hchannel[cid]
-									if len(hchannel) == 0:
-										del ws_channels[channel]
-									sub_key = ('ws', channel)
-									sub = subs.get(sub_key)
-									if sub:
-										del subs[sub_key]
-										notify_unsub = True
-						elif gtype == 'detach':
-							notify_detach = True
-						elif gtype == 'session':
-							s.sid = sid
-							save_sid = True
-						elif gtype == 'set-meta':
-							if not value and name in s.meta:
-								del s.meta[name]
-							elif value:
-								s.meta[name] = value
-					lock.release()
-
-				if state_rpc and save_sid:
-					try:
-						session_create_or_update(state_rpc, sid, {})
-					except:
-						logger.debug("couldn't create/update session")
-
-				if notify_sub:
-					logger.debug('ws session %s subscribed to %s' % (cid, channel))
-					out = dict()
-					out['from'] = instance_id
-					out['mode'] = 'ws'
-					out['channel'] = ensure_utf8(channel)
-					out['ttl'] = SUBSCRIPTION_TTL
-					stats_sock.send('sub ' + tnetstring.dumps(out))
-
-				if notify_unsub:
-					out = dict()
-					out['from'] = instance_id
-					out['mode'] = 'ws'
-					out['channel'] = ensure_utf8(channel)
-					out['unavailable'] = True
-					stats_sock.send('sub ' + tnetstring.dumps(out))
-
-				if notify_detach:
-					item = dict()
-					item['cid'] = cid
-					item['type'] = 'detach'
-					out = dict()
-					out['items'] = [item]
-					logger.debug('OUT wscontrol: %s' % out)
-					out_sock.send(tnetstring.dumps(out))
-				*/
+		if(stateClient && !updateSids.isEmpty())
+		{
+			foreach(const QString &sid, updateSids)
+			{
+				Deferred *d = new SessionCreateOrUpdate(stateClient, sid, LastIds(), this);
+				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionCreateOrUpdate_finished(const DeferredResult &)));
+				deferreds += d;
 			}
 		}
 	}
@@ -4563,6 +4513,7 @@ private slots:
 				sidLastIds[sid] = LastIds();
 				Deferred *d = new SessionUpdateMany(stateClient, sidLastIds, this);
 				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionUpdateMany_finished(const DeferredResult &)));
+				deferreds += d;
 				return;
 			}
 		}
@@ -4644,6 +4595,12 @@ private slots:
 		connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
 	}
 
+	void sessionCreateOrUpdate_finished(const DeferredResult &result)
+	{
+		if(!result.success)
+			log_debug("couldn't create/update session");
+	}
+
 	void sessionUpdateMany_finished(const DeferredResult &result)
 	{
 		if(!result.success)
@@ -4652,9 +4609,54 @@ private slots:
 		}
 	}
 
-	void holdAdded(Hold *hold)
+	void acceptWorker_finished(const DeferredResult &result)
 	{
-		connect(hold, SIGNAL(finished()), SLOT(hold_finished()));
+		Q_UNUSED(result);
+
+		AcceptWorker *w = (AcceptWorker *)sender();
+
+		QList<Hold*> holds = w->takeHolds();
+		foreach(Hold *hold, holds)
+		{
+			hold->setParent(this);
+			connect(hold, SIGNAL(finished()), SLOT(hold_finished()));
+
+			QHashIterator<QString, Instruct::Channel> it(hold->channels);
+			while(it.hasNext())
+			{
+				it.next();
+				const QString &channel = it.key();
+
+				if(hold->mode == ResponseHold)
+				{
+					log_debug("adding response hold on %s", qPrintable(channel));
+
+					if(!cs.responseHoldsByChannel.contains(channel))
+						cs.responseHoldsByChannel.insert(channel, QSet<Hold*>());
+
+					cs.responseHoldsByChannel[channel] += hold;
+				}
+				else // StreamHold
+				{
+					log_debug("adding stream hold on %s", qPrintable(channel));
+
+					if(!cs.streamHoldsByChannel.contains(channel))
+						cs.streamHoldsByChannel.insert(channel, QSet<Hold*>());
+
+					cs.streamHoldsByChannel[channel] += hold;
+				}
+
+				stats->addSubscription(hold->mode == ResponseHold ? "response" : "stream", channel);
+				addSub(channel);
+			}
+
+			hold->start();
+		}
+	}
+
+	void acceptWorker_retryPacketReady(const RetryRequestPacket &packet)
+	{
+		writeRetryPacket(packet);
 	}
 
 	void hold_finished()
@@ -4675,34 +4677,54 @@ private slots:
 		foreach(const QString &channel, streamUnsubs)
 			stats->removeSubscription("stream", channel, false);
 
-		cs.holds.remove(hold);
+		cs.holds.remove(hold->req->rid());
 		delete hold;
 	}
 
-	void addSub(const QString &channel)
+	void wssession_expired()
 	{
-		if(!cs.subs.contains(channel))
-		{
-			cs.subs += channel;
+		WsSession *s = (WsSession *)sender();
 
-			log_debug("SUB socket subscribe: %s", qPrintable(channel));
-			inSubSock->subscribe(channel.toUtf8());
-		}
+		QSet<QString> unsubs = cs.removeWsSessionChannels(s);
+
+		foreach(const QString &channel, unsubs)
+			stats->removeSubscription("ws", channel, false);
+
+		cs.wsSessions.remove(s->cid);
+		delete s;
 	}
 
-	void removeSub(const QString &channel)
+	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
 	{
-		if(cs.subs.contains(channel))
+		if(stateClient)
 		{
-			cs.subs.remove(channel);
+			// find sids of the connections
+			QHash<QString, LastIds> sidLastIds;
+			foreach(const QByteArray &id, ids)
+			{
+				int at = id.indexOf(':');
+				assert(at != -1);
+				ZhttpRequest::Rid rid(id.mid(0, at), id.mid(at + 1));
 
-			log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
-			inSubSock->unsubscribe(channel.toUtf8());
+				Hold *hold = cs.holds.value(rid);
+				if(hold && !hold->sid.isEmpty())
+					sidLastIds[hold->sid] = LastIds();
+			}
+
+			if(!sidLastIds.isEmpty())
+			{
+				Deferred *d = new SessionUpdateMany(stateClient, sidLastIds, this);
+				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionUpdateMany_finished(const DeferredResult &)));
+				deferreds += d;
+			}
 		}
 	}
 
 	void stats_unsubscribed(const QString &mode, const QString &channel)
 	{
+		// NOTE: this callback may be invoked while looping over certain structures,
+		//   so be careful what you touch
+
 		Q_UNUSED(mode);
 
 		if(!cs.responseHoldsByChannel.contains(channel) && !cs.streamHoldsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))

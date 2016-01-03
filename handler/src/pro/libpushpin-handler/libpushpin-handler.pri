@@ -35,8 +35,11 @@ SOURCES += \
 HEADERS += \
 	$$PROXY_SRC_DIR/packet/httprequestdata.h \
 	$$PROXY_SRC_DIR/packet/httpresponsedata.h \
+	$$PROXY_SRC_DIR/packet/inspectdata.h \
 	$$PROXY_SRC_DIR/packet/zrpcrequestpacket.h \
 	$$PROXY_SRC_DIR/packet/zrpcresponsepacket.h \
+	$$PROXY_SRC_DIR/packet/retryrequestpacket.h \
+	$$PROXY_SRC_DIR/packet/wscontrolpacket.h \
 	$$PROXY_SRC_DIR/packet/statspacket.h \
 	$$PROXY_SRC_DIR/uuidutil.h \
 	$$PROXY_SRC_DIR/zutil.h \
@@ -58,6 +61,8 @@ HEADERS += \
 SOURCES += \
 	$$PROXY_SRC_DIR/packet/zrpcrequestpacket.cpp \
 	$$PROXY_SRC_DIR/packet/zrpcresponsepacket.cpp \
+	$$PROXY_SRC_DIR/packet/retryrequestpacket.cpp \
+	$$PROXY_SRC_DIR/packet/wscontrolpacket.cpp \
 	$$PROXY_SRC_DIR/packet/statspacket.cpp \
 	$$PROXY_SRC_DIR/uuidutil.cpp \
 	$$PROXY_SRC_DIR/zutil.cpp \
