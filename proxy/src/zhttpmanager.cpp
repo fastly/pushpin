@@ -667,6 +667,11 @@ bool ZhttpManager::clientUsesReq() const
 	return (!d->client_out_sock && d->client_req_sock);
 }
 
+ZhttpRequest *ZhttpManager::serverRequestByRid(const ZhttpRequest::Rid &rid) const
+{
+	return d->serverReqsByRid.value(rid);
+}
+
 QByteArray ZhttpManager::instanceId() const
 {
 	return d->instanceId;

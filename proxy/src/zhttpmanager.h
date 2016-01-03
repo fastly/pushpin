@@ -37,6 +37,7 @@ public:
 
 	int connectionCount() const;
 	bool clientUsesReq() const;
+	ZhttpRequest *serverRequestByRid(const ZhttpRequest::Rid &rid) const;
 
 	QByteArray instanceId() const;
 	void setInstanceId(const QByteArray &id);
