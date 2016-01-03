@@ -2557,12 +2557,9 @@ public:
 
 	~Hold()
 	{
-		if(timer)
-		{
-			timer->disconnect(this);
-			timer->setParent(0);
-			timer->deleteLater();
-		}
+		timer->disconnect(this);
+		timer->setParent(0);
+		timer->deleteLater();
 	}
 
 	void start()
@@ -2839,10 +2836,9 @@ public:
 	{
 		timer = new QTimer(this);
 		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
-		timer->start(ttl * 1000);
 	}
 
-	void refresh()
+	void refreshExpiration()
 	{
 		timer->start(ttl * 1000);
 	}
@@ -4177,6 +4173,7 @@ private slots:
 			return;
 
 		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
+		connect(w, SIGNAL(finished(const DeferredResult &)), SLOT(inspectWorker_finished(const DeferredResult &)));
 		deferreds += w;
 	}
 
@@ -4322,6 +4319,7 @@ private slots:
 					connect(s, SIGNAL(expired()), SLOT(wssession_expired()));
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
+					s->refreshExpiration();
 					cs.wsSessions.insert(s->cid, s);
 					log_debug("added ws session: %s", qPrintable(s->cid));
 				}
@@ -4346,7 +4344,7 @@ private slots:
 			if(item.type == WsControlPacket::Item::KeepAlive)
 			{
 				s->ttl = item.ttl;
-				s->refresh();
+				s->refreshExpiration();
 			}
 			else if(item.type == WsControlPacket::Item::Gone || item.type == WsControlPacket::Item::Cancel)
 			{
@@ -4597,16 +4595,30 @@ private slots:
 
 	void sessionCreateOrUpdate_finished(const DeferredResult &result)
 	{
+		Deferred *d = (Deferred *)sender();
+		deferreds.remove(d);
+
 		if(!result.success)
 			log_debug("couldn't create/update session");
 	}
 
 	void sessionUpdateMany_finished(const DeferredResult &result)
 	{
+		Deferred *d = (Deferred *)sender();
+		deferreds.remove(d);
+
 		if(!result.success)
 		{
 			log_error("couldn't update session");
 		}
+	}
+
+	void inspectWorker_finished(const DeferredResult &result)
+	{
+		Q_UNUSED(result);
+
+		InspectWorker *w = (InspectWorker *)sender();
+		deferreds.remove(w);
 	}
 
 	void acceptWorker_finished(const DeferredResult &result)
@@ -4614,12 +4626,14 @@ private slots:
 		Q_UNUSED(result);
 
 		AcceptWorker *w = (AcceptWorker *)sender();
+		deferreds.remove(w);
 
 		QList<Hold*> holds = w->takeHolds();
 		foreach(Hold *hold, holds)
 		{
 			hold->setParent(this);
 			connect(hold, SIGNAL(finished()), SLOT(hold_finished()));
+			cs.holds.insert(hold->req->rid(), hold);
 
 			QHashIterator<QString, Instruct::Channel> it(hold->channels);
 			while(it.hasNext())
