@@ -33,6 +33,7 @@ public:
 		enum Type
 		{
 			Here,
+			KeepAlive,
 			Gone,
 			Grip,
 			Cancel,
@@ -45,9 +46,11 @@ public:
 		QByteArray contentType;
 		QByteArray message;
 		QByteArray channelPrefix;
+		int ttl;
 
 		Item() :
-			type((Type)-1)
+			type((Type)-1),
+			ttl(-1)
 		{
 		}
 	};

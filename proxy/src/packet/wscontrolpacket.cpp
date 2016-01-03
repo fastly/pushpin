@@ -35,12 +35,13 @@ QVariant WsControlPacket::toVariant() const
 		QByteArray typeStr;
 		switch(item.type)
 		{
-			case Item::Here:   typeStr = "here"; break;
-			case Item::Gone:   typeStr = "gone"; break;
-			case Item::Grip:   typeStr = "grip"; break;
-			case Item::Cancel: typeStr = "cancel"; break;
-			case Item::Send:   typeStr = "send"; break;
-			case Item::Detach: typeStr = "detach"; break;
+			case Item::Here:      typeStr = "here"; break;
+			case Item::KeepAlive: typeStr = "keep-alive"; break;
+			case Item::Gone:      typeStr = "gone"; break;
+			case Item::Grip:      typeStr = "grip"; break;
+			case Item::Cancel:    typeStr = "cancel"; break;
+			case Item::Send:      typeStr = "send"; break;
+			case Item::Detach:    typeStr = "detach"; break;
 			default:
 				assert(0);
 		}
@@ -54,6 +55,9 @@ QVariant WsControlPacket::toVariant() const
 
 		if(!item.channelPrefix.isEmpty())
 			vitem["channel-prefix"] = item.channelPrefix;
+
+		if(item.ttl >= 0)
+			vitem["ttl"] = item.ttl;
 
 		vitems += vitem;
 	}
@@ -93,6 +97,8 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 		if(typeStr == "here")
 			item.type = Item::Here;
+		else if(typeStr == "keep-alive")
+			item.type = Item::KeepAlive;
 		else if(typeStr == "gone")
 			item.type = Item::Gone;
 		else if(typeStr == "grip")
@@ -132,6 +138,16 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
 			if(!channelPrefix.isEmpty())
 				item.channelPrefix = channelPrefix;
+		}
+
+		if(vitem.contains("ttl"))
+		{
+			if(!vitem["ttl"].canConvert(QVariant::Int))
+				return false;
+
+			item.ttl = vitem["ttl"].toInt();
+			if(item.ttl < 0)
+				item.ttl = 0;
 		}
 
 		items += item;
