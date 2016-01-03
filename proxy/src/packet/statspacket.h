@@ -60,6 +60,8 @@ public:
 	StatsPacket() :
 		type((Type)-1),
 		count(-1),
+		connectionType((ConnectionType)-1),
+		ssl(false),
 		ttl(-1)
 	{
 	}
