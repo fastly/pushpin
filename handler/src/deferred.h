@@ -48,6 +48,8 @@ class Deferred : public QObject
 	Q_OBJECT
 
 public:
+	virtual ~Deferred();
+
 	virtual void cancel();
 
 signals:
@@ -55,7 +57,6 @@ signals:
 
 protected:
 	Deferred(QObject *parent = 0);
-	virtual ~Deferred();
 
 	void setFinished(bool ok, const QVariant &value = QVariant());
 
