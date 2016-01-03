@@ -635,7 +635,7 @@ private slots:
 		InspectData idata;
 		if(p.haveInspectInfo)
 		{
-			idata.doProxy = !p.inspectInfo.noProxy;
+			idata.doProxy = p.inspectInfo.doProxy;
 			idata.sharingKey = p.inspectInfo.sharingKey;
 			idata.userData = p.inspectInfo.userData;
 		}
