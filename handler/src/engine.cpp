@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QTimer>
+#include <QDateTime>
 #include <qjson/parser.h>
 #include <qjson/serializer.h>
 #include "qzmqsocket.h"
@@ -2855,6 +2856,80 @@ private slots:
 	}
 };
 
+// cache with LRU expiration
+class ResponseLastIds
+{
+private:
+	typedef QPair<QDateTime, QString> TimeStringPair;
+
+	class Item
+	{
+	public:
+		QString channel;
+		QString id;
+		QDateTime time;
+	};
+
+	QHash<QString, Item> table_;
+	QMap<TimeStringPair, Item> recentlyUsed_;
+	int maxCapacity_;
+
+public:
+	ResponseLastIds(int maxCapacity) :
+		maxCapacity_(maxCapacity)
+	{
+	}
+
+	void set(const QString &channel, const QString &id)
+	{
+		QDateTime now = QDateTime::currentDateTime();
+
+		if(table_.contains(channel))
+		{
+			Item &i = table_[channel];
+			recentlyUsed_.remove(TimeStringPair(i.time, channel));
+			i.id = id;
+			i.time = now;
+			recentlyUsed_.insert(TimeStringPair(i.time, channel), i);
+		}
+		else
+		{
+			while(!table_.isEmpty() && table_.count() >= maxCapacity_)
+			{
+				// remove oldest
+				QMutableMapIterator<TimeStringPair, Item> it(recentlyUsed_);
+				assert(it.hasNext());
+				it.next();
+				QString channel = it.value().channel;
+				it.remove();
+				table_.remove(channel);
+			}
+
+			Item i;
+			i.channel = channel;
+			i.id = id;
+			i.time = now;
+			table_.insert(channel, i);
+			recentlyUsed_.insert(TimeStringPair(i.time, channel), i);
+		}
+	}
+
+	void remove(const QString &channel)
+	{
+		if(table_.contains(channel))
+		{
+			Item &i = table_[channel];
+			recentlyUsed_.remove(TimeStringPair(i.time, channel));
+			table_.remove(channel);
+		}
+	}
+
+	QString value(const QString &channel)
+	{
+		return table_.value(channel).id;
+	}
+};
+
 class CommonState
 {
 public:
@@ -2863,8 +2938,13 @@ public:
 	QHash<QString, QSet<Hold*> > responseHoldsByChannel;
 	QHash<QString, QSet<Hold*> > streamHoldsByChannel;
 	QHash<QString, QSet<WsSession*> > wsSessionsByChannel;
-	QHash<QString, QString> responseLastIds;
+	ResponseLastIds responseLastIds;
 	QSet<QString> subs;
+
+	CommonState() :
+		responseLastIds(1000000)
+	{
+	}
 
 	// returns set of channels that should be unsubscribed
 	QSet<QString> removeResponseChannels(Hold *hold)
@@ -3983,7 +4063,7 @@ private:
 			}
 
 			if(!item.id.isNull())
-				cs.responseLastIds[item.channel] = item.id;
+				cs.responseLastIds.set(item.channel, item.id);
 		}
 
 		if(item.formats.contains(Format::HttpStream))
