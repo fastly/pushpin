@@ -1,5 +1,5 @@
-QZMQ_DIR = $$PWD/../../qzmq
-COMMON_DIR = $$PWD/../../common
+QZMQ_DIR = $$PWD/../../corelib/qzmq
+COMMON_DIR = $$PWD/../../corelib/common
 
 INCLUDEPATH += $$QZMQ_DIR/src
 include($$QZMQ_DIR/src/src.pri)

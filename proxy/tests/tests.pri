@@ -5,8 +5,8 @@ QT *= network
 
 TESTS_DIR = $$PWD
 SRC_DIR = $$PWD/../src
-QZMQ_DIR = $$PWD/../../qzmq
-COMMON_DIR = $$PWD/../../common
+QZMQ_DIR = $$PWD/../../corelib/qzmq
+COMMON_DIR = $$PWD/../../corelib/common
 DESTDIR = $$TESTS_DIR
 
 LIBS += -L$$SRC_DIR -lpushpin-proxy
