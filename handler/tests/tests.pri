@@ -14,6 +14,7 @@ PRE_TARGETDEPS += $$PWD/../src/libpushpin-handler.a
 include($$PWD/../conf.pri)
 
 INCLUDEPATH += $$SRC_DIR
+INCLUDEPATH += $$CORE_DIR
 INCLUDEPATH += $$QZMQ_DIR/src
 
 INCLUDEPATH += $$COMMON_DIR

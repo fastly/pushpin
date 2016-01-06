@@ -1,10 +1,10 @@
 SRC_DIR = $$PWD/../..
-QZMQ_DIR = $$PWD/../../../../corelib/qzmq
-COMMON_DIR = $$PWD/../../../../corelib/common
-PROXY_SRC_DIR = $$PWD/../../../../proxy/src
+CORE_DIR = $$PWD/../../../../corelib
+QZMQ_DIR = $$CORE_DIR/qzmq
+COMMON_DIR = $$CORE_DIR/common
 
 INCLUDEPATH += $$SRC_DIR
-INCLUDEPATH += $$PROXY_SRC_DIR
+INCLUDEPATH += $$CORE_DIR
 
 INCLUDEPATH += $$QZMQ_DIR/src
 include($$QZMQ_DIR/src/src.pri)
@@ -33,24 +33,46 @@ SOURCES += \
 	$$COMMON_DIR/layertracker.cpp
 
 HEADERS += \
-	$$PROXY_SRC_DIR/packet/httprequestdata.h \
-	$$PROXY_SRC_DIR/packet/httpresponsedata.h \
-	$$PROXY_SRC_DIR/packet/inspectdata.h \
-	$$PROXY_SRC_DIR/packet/zrpcrequestpacket.h \
-	$$PROXY_SRC_DIR/packet/zrpcresponsepacket.h \
-	$$PROXY_SRC_DIR/packet/retryrequestpacket.h \
-	$$PROXY_SRC_DIR/packet/wscontrolpacket.h \
-	$$PROXY_SRC_DIR/packet/statspacket.h \
-	$$PROXY_SRC_DIR/uuidutil.h \
-	$$PROXY_SRC_DIR/zutil.h \
-	$$PROXY_SRC_DIR/zrpcmanager.h \
-	$$PROXY_SRC_DIR/zrpcrequest.h \
-	$$PROXY_SRC_DIR/websocket.h \
-	$$PROXY_SRC_DIR/zhttpmanager.h \
-	$$PROXY_SRC_DIR/zhttprequest.h \
-	$$PROXY_SRC_DIR/zwebsocket.h \
-	$$PROXY_SRC_DIR/cors.h \
-	$$PROXY_SRC_DIR/statsmanager.h \
+	$$CORE_DIR/packet/httprequestdata.h \
+	$$CORE_DIR/packet/httpresponsedata.h \
+	$$CORE_DIR/packet/zrpcrequestpacket.h \
+	$$CORE_DIR/packet/zrpcresponsepacket.h \
+	$$CORE_DIR/packet/retryrequestpacket.h \
+	$$CORE_DIR/packet/wscontrolpacket.h \
+	$$CORE_DIR/packet/statspacket.h
+
+SOURCES += \
+	$$CORE_DIR/packet/zrpcrequestpacket.cpp \
+	$$CORE_DIR/packet/zrpcresponsepacket.cpp \
+	$$CORE_DIR/packet/retryrequestpacket.cpp \
+	$$CORE_DIR/packet/wscontrolpacket.cpp \
+	$$CORE_DIR/packet/statspacket.cpp
+
+HEADERS += \
+	$$CORE_DIR/inspectdata.h \
+	$$CORE_DIR/uuidutil.h \
+	$$CORE_DIR/zutil.h \
+	$$CORE_DIR/zrpcmanager.h \
+	$$CORE_DIR/zrpcrequest.h \
+	$$CORE_DIR/websocket.h \
+	$$CORE_DIR/zhttpmanager.h \
+	$$CORE_DIR/zhttprequest.h \
+	$$CORE_DIR/zwebsocket.h \
+	$$CORE_DIR/cors.h \
+	$$CORE_DIR/statsmanager.h
+
+SOURCES += \
+	$$CORE_DIR/uuidutil.cpp \
+	$$CORE_DIR/zutil.cpp \
+	$$CORE_DIR/zrpcmanager.cpp \
+	$$CORE_DIR/zrpcrequest.cpp \
+	$$CORE_DIR/zhttpmanager.cpp \
+	$$CORE_DIR/zhttprequest.cpp \
+	$$CORE_DIR/zwebsocket.cpp \
+	$$CORE_DIR/cors.cpp \
+	$$CORE_DIR/statsmanager.cpp
+
+HEADERS += \
 	$$SRC_DIR/deferred.h \
 	$$SRC_DIR/statusreasons.h \
 	$$SRC_DIR/httpserver.h \
@@ -59,20 +81,6 @@ HEADERS += \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
-	$$PROXY_SRC_DIR/packet/zrpcrequestpacket.cpp \
-	$$PROXY_SRC_DIR/packet/zrpcresponsepacket.cpp \
-	$$PROXY_SRC_DIR/packet/retryrequestpacket.cpp \
-	$$PROXY_SRC_DIR/packet/wscontrolpacket.cpp \
-	$$PROXY_SRC_DIR/packet/statspacket.cpp \
-	$$PROXY_SRC_DIR/uuidutil.cpp \
-	$$PROXY_SRC_DIR/zutil.cpp \
-	$$PROXY_SRC_DIR/zrpcmanager.cpp \
-	$$PROXY_SRC_DIR/zrpcrequest.cpp \
-	$$PROXY_SRC_DIR/zhttpmanager.cpp \
-	$$PROXY_SRC_DIR/zhttprequest.cpp \
-	$$PROXY_SRC_DIR/zwebsocket.cpp \
-	$$PROXY_SRC_DIR/cors.cpp \
-	$$PROXY_SRC_DIR/statsmanager.cpp \
 	$$SRC_DIR/deferred.cpp \
 	$$SRC_DIR/statusreasons.cpp \
 	$$SRC_DIR/httpserver.cpp \

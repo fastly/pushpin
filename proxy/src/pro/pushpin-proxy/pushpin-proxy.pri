@@ -1,8 +1,10 @@
 SRC_DIR = $$PWD/../..
-QZMQ_DIR = $$PWD/../../../../corelib/qzmq
-COMMON_DIR = $$PWD/../../../../corelib/common
+CORE_DIR = $$PWD/../../../../corelib
+QZMQ_DIR = $$CORE_DIR/qzmq
+COMMON_DIR = $$CORE_DIR/common
 
 INCLUDEPATH += $$SRC_DIR
+INCLUDEPATH += $$CORE_DIR
 INCLUDEPATH += $$QZMQ_DIR/src
 
 INCLUDEPATH += $$COMMON_DIR
