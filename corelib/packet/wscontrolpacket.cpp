@@ -21,6 +21,123 @@
 
 #include <assert.h>
 
+// FIXME: rewrite packet class using this code?
+/*class WsControlPacket
+{
+public:
+	class Message
+	{
+	public:
+		enum Type
+		{
+			Here,
+			Gone,
+			Cancel,
+			Grip
+		};
+
+		Type type;
+		QString cid;
+		QString channelPrefix; // here only
+		QByteArray message; // grip only
+	};
+
+	QString channelPrefix;
+	QList<Message> messages;
+
+	static WsControlPacket fromVariant(const QVariant &in, bool *ok = 0, QString *errorMessage = 0)
+	{
+		QString pn = "wscontrol packet";
+
+		if(!isKeyedObject(in))
+		{
+			setError(ok, errorMessage, QString("%1 is not an object").arg(pn));
+			return WsControlPacket();
+		}
+
+		pn = "wscontrol object";
+
+		bool ok_;
+		QVariantList vitems = getList(in, pn, "items", false, &ok_, errorMessage);
+		if(!ok_)
+		{
+			if(ok)
+				*ok = false;
+			return WsControlPacket();
+		}
+
+		WsControlPacket out;
+
+		foreach(const QVariant &vitem, vitems)
+		{
+			Message msg;
+
+			pn = "wscontrol item";
+
+			QString type = getString(vitem, pn, "type", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlPacket();
+			}
+
+			if(type == "here")
+				msg.type = Message::Here;
+			else if(type == "gone")
+				msg.type = Message::Gone;
+			else if(type == "cancel")
+				msg.type = Message::Cancel;
+			else if(type == "grip")
+				msg.type = Message::Grip;
+			else
+			{
+				setError(ok, errorMessage, QString("'type' contains unknown value: %1").arg(type));
+				return WsControlPacket();
+			}
+
+			msg.cid = getString(vitem, pn, "cid", true, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlPacket();
+			}
+
+			msg.channelPrefix = getString(vitem, pn, "channel-prefix", false, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlPacket();
+			}
+
+			if(msg.type == Message::Grip)
+			{
+				if(!keyedObjectContains(vitem, "message"))
+				{
+					setError(ok, errorMessage, QString("'%1' does not contain 'message'").arg(pn));
+					return WsControlPacket();
+				}
+
+				QVariant vmessage = keyedObjectGetValue(vitem, "message");
+				if(vmessage.type() != QVariant::ByteArray)
+				{
+					setError(ok, errorMessage, QString("'%1' contains 'message' with wrong type").arg(pn));
+					return WsControlPacket();
+				}
+
+				msg.message = vmessage.toByteArray();
+			}
+
+			out.messages += msg;
+		}
+
+		setSuccess(ok, errorMessage);
+		return out;
+	}
+};*/
+
 QVariant WsControlPacket::toVariant() const
 {
 	QVariantHash obj;
