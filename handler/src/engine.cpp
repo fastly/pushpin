@@ -1555,14 +1555,14 @@ public:
 			log_info("ws control out: %s", qPrintable(config.wsControlOutSpec));
 		}
 
+		stats = new StatsManager(this);
+		connect(stats, SIGNAL(connectionsRefreshed(const QList<QByteArray> &)), SLOT(stats_connectionsRefreshed(const QList<QByteArray> &)));
+		connect(stats, SIGNAL(unsubscribed(const QString &, const QString &)), SLOT(stats_unsubscribed(const QString &, const QString &)));
+
 		if(!config.statsSpec.isEmpty())
 		{
-			stats = new StatsManager(this);
 			stats->setInstanceId(config.instanceId);
 			stats->setIpcFileMode(config.ipcFileMode);
-
-			connect(stats, SIGNAL(connectionsRefreshed(const QList<QByteArray> &)), SLOT(stats_connectionsRefreshed(const QList<QByteArray> &)));
-			connect(stats, SIGNAL(unsubscribed(const QString &, const QString &)), SLOT(stats_unsubscribed(const QString &, const QString &)));
 
 			if(!stats->setSpec(config.statsSpec))
 			{
@@ -1828,8 +1828,11 @@ private:
 		{
 			cs.subs += channel;
 
-			log_debug("SUB socket subscribe: %s", qPrintable(channel));
-			inSubSock->subscribe(channel.toUtf8());
+			if(inSubSock)
+			{
+				log_debug("SUB socket subscribe: %s", qPrintable(channel));
+				inSubSock->subscribe(channel.toUtf8());
+			}
 		}
 	}
 
@@ -1839,8 +1842,11 @@ private:
 		{
 			cs.subs.remove(channel);
 
-			log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
-			inSubSock->unsubscribe(channel.toUtf8());
+			if(inSubSock)
+			{
+				log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
+				inSubSock->unsubscribe(channel.toUtf8());
+			}
 		}
 	}
 
