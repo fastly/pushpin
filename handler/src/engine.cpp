@@ -1125,6 +1125,7 @@ public:
 	}
 
 signals:
+	void holdsReady();
 	void retryPacketReady(const RetryRequestPacket &packet);
 
 private:
@@ -1311,6 +1312,10 @@ private:
 
 			holds += hold;
 		}
+
+		// engine should directly connect to this and register the holds
+		//   immediately, to avoid a race with the lastId check
+		emit holdsReady();
 
 		setFinished(true);
 	}
@@ -1870,6 +1875,7 @@ private slots:
 
 		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, stats, this);
 		connect(w, SIGNAL(finished(const DeferredResult &)), SLOT(acceptWorker_finished(const DeferredResult &)));
+		connect(w, SIGNAL(holdsReady()), SLOT(acceptWorker_holdsReady()));
 		connect(w, SIGNAL(retryPacketReady(const RetryRequestPacket &)), SLOT(acceptWorker_retryPacketReady(const RetryRequestPacket &)));
 		deferreds += w;
 		w->start();
@@ -2312,6 +2318,11 @@ private slots:
 
 		AcceptWorker *w = (AcceptWorker *)sender();
 		deferreds.remove(w);
+	}
+
+	void acceptWorker_holdsReady()
+	{
+		AcceptWorker *w = (AcceptWorker *)sender();
 
 		QList<Hold*> holds = w->takeHolds();
 		foreach(Hold *hold, holds)
