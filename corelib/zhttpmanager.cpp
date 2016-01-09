@@ -35,7 +35,9 @@
 #define OUT_HWM 100
 #define IN_HWM 100
 #define DEFAULT_HWM 1000
-#define SHUTDOWN_WAIT_TIME 1000
+#define CLIENT_WAIT_TIME 0
+#define CLIENT_STREAM_WAIT_TIME 500
+#define SERVER_WAIT_TIME 500
 
 class ZhttpManager::Private : public QObject
 {
@@ -100,7 +102,7 @@ public:
 		connect(client_out_sock, SIGNAL(messagesWritten(int)), SLOT(client_out_messagesWritten(int)));
 
 		client_out_sock->setHwm(OUT_HWM);
-		client_out_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
+		client_out_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(client_out_sock, client_out_specs, doBind, ipcFileMode, &errorMessage))
@@ -122,7 +124,7 @@ public:
 
 		client_out_stream_sock->setWriteQueueEnabled(false);
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
-		client_out_stream_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
+		client_out_stream_sock->setShutdownWaitTime(CLIENT_STREAM_WAIT_TIME);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(client_out_stream_sock, client_out_stream_specs, doBind, ipcFileMode, &errorMessage))
@@ -143,7 +145,7 @@ public:
 		connect(client_in_sock, SIGNAL(readyRead()), SLOT(client_in_readyRead()));
 
 		client_in_sock->setHwm(DEFAULT_HWM);
-		client_in_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
+		client_in_sock->setShutdownWaitTime(0);
 		client_in_sock->subscribe(instanceId + ' ');
 
 		QString errorMessage;
@@ -166,7 +168,7 @@ public:
 		connect(client_req_sock, SIGNAL(readyRead()), SLOT(client_req_readyRead()));
 
 		client_req_sock->setHwm(OUT_HWM);
-		client_req_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
+		client_req_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(client_req_sock, client_req_specs, doBind, ipcFileMode, &errorMessage))
@@ -185,7 +187,6 @@ public:
 		server_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
 
 		server_in_sock->setHwm(IN_HWM);
-		server_in_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(server_in_sock, server_in_specs, doBind, ipcFileMode, &errorMessage))
@@ -211,7 +212,6 @@ public:
 
 		server_in_stream_sock->setIdentity(instanceId);
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
-		server_in_stream_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(server_in_stream_sock, server_in_stream_specs, doBind, ipcFileMode, &errorMessage))
@@ -232,7 +232,7 @@ public:
 
 		server_out_sock->setWriteQueueEnabled(false);
 		server_out_sock->setHwm(DEFAULT_HWM);
-		server_out_sock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
+		server_out_sock->setShutdownWaitTime(SERVER_WAIT_TIME);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(server_out_sock, server_out_specs, doBind, ipcFileMode, &errorMessage))

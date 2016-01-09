@@ -59,7 +59,8 @@
 
 #define DEFAULT_HWM 1000
 #define SUB_SNDHWM 0 // infinite
-#define DEFAULT_SHUTDOWN_WAIT_TIME 1000
+#define RETRY_WAIT_TIME 0
+#define WSCONTROL_WAIT_TIME 0
 #define STATE_RPC_TIMEOUT 1000
 
 using namespace VariantUtil;
@@ -1512,7 +1513,7 @@ public:
 		{
 			retrySock = new QZmq::Socket(QZmq::Socket::Push, this);
 			retrySock->setHwm(DEFAULT_HWM);
-			retrySock->setShutdownWaitTime(DEFAULT_SHUTDOWN_WAIT_TIME);
+			retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
 
 			QString errorMessage;
 			if(!ZUtil::setupSocket(retrySock, config.retryOutSpec, false, config.ipcFileMode, &errorMessage))
@@ -1543,7 +1544,7 @@ public:
 
 			wsControlOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
 			wsControlOutSock->setHwm(DEFAULT_HWM);
-			wsControlOutSock->setShutdownWaitTime(0);
+			wsControlOutSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
 
 			if(!ZUtil::setupSocket(wsControlOutSock, config.wsControlOutSpec, false, config.ipcFileMode, &errorMessage))
 			{

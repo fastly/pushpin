@@ -33,7 +33,7 @@ class Process(object):
 		self.proc.terminate()
 		self.timeleft = 16 # 8 seconds
 
-	# call every 0.5 seconds after stopping
+	# call frequently after stopping to detect stopped
 	def check(self):
 		assert(self.state == Process.Started or self.state == Process.Stopping)
 		if self.proc.poll() is not None:
@@ -115,7 +115,7 @@ class ProcessManager(object):
 					all_stopped = False
 			if all_stopped:
 				break
-			time.sleep(0.5)
+			time.sleep(0.1)
 
 		# if we quit early here, then kill remaining processes
 		for p in copy.copy(self.procs):

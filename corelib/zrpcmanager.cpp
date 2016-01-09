@@ -32,7 +32,8 @@
 #include "zutil.h"
 
 #define DEFAULT_HWM 5000
-#define SHUTDOWN_WAIT_TIME 1000
+#define REQ_WAIT_TIME 0
+#define REP_WAIT_TIME 500
 
 class ZrpcManager::Private : public QObject
 {
@@ -78,7 +79,7 @@ public:
 		clientSock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 
 		clientSock->setHwm(DEFAULT_HWM);
-		clientSock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
+		clientSock->setShutdownWaitTime(REQ_WAIT_TIME);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(clientSock, clientSpecs, doBind, ipcFileMode, &errorMessage))
@@ -103,7 +104,7 @@ public:
 		serverSock = new QZmq::Socket(QZmq::Socket::Rep, this);
 
 		serverSock->setHwm(DEFAULT_HWM);
-		serverSock->setShutdownWaitTime(SHUTDOWN_WAIT_TIME);
+		serverSock->setShutdownWaitTime(REP_WAIT_TIME);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(serverSock, serverSpecs, doBind, ipcFileMode, &errorMessage))
