@@ -215,9 +215,13 @@ QString getString(const QVariant &in, bool *ok)
 	}
 	else if(in.type() == QVariant::ByteArray)
 	{
+		QByteArray buf = in.toByteArray();
 		if(ok)
 			*ok = true;
-		return QString::fromUtf8(in.toByteArray());
+		if(!buf.isNull())
+			return QString::fromUtf8(buf);
+		else
+			return QString();
 	}
 	else
 	{
@@ -296,7 +300,11 @@ bool convertToJsonStyleInPlace(QVariant *in)
 	}
 	else if(type == QVariant::ByteArray)
 	{
-		*in = QVariant(QString::fromUtf8(in->toByteArray()));
+		QByteArray buf = in->toByteArray();
+		if(!buf.isNull())
+			*in = QString::fromUtf8(buf);
+		else
+			*in = QString();
 		changed = true;
 	}
 
