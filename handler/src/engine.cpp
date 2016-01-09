@@ -2090,7 +2090,7 @@ private slots:
 						if(cur.isEmpty())
 						{
 							cs.wsSessionsByChannel.remove(channel);
-							stats->removeSubscription("ws", "channel", false);
+							stats->removeSubscription("ws", channel, false);
 						}
 					}
 				}
