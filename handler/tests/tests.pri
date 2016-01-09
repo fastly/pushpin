@@ -5,8 +5,9 @@ QT *= network
 
 TESTS_DIR = $$PWD
 SRC_DIR = $$PWD/../src
-QZMQ_DIR = $$PWD/../../corelib/qzmq
-COMMON_DIR = $$PWD/../../corelib/common
+CORE_DIR = $$PWD/../../corelib
+QZMQ_DIR = $$CORE_DIR/qzmq
+COMMON_DIR = $$CORE_DIR/common
 DESTDIR = $$TESTS_DIR
 
 LIBS += -L$$SRC_DIR -lpushpin-handler
