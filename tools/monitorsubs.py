@@ -47,5 +47,5 @@ while True:
 		if sub.last_refresh + sub.ttl <= now:
 			unsubs.add(sub_key)
 	for sub_key in unsubs:
-		del sub[sub_key]
+		del subs[sub_key]
 		print 'UNSUB mode=%s channel=%s' % (sub_key[0], sub_key[1])
