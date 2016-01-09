@@ -173,6 +173,9 @@ public:
 
 	void sendActivity(const QByteArray &routeId, int count)
 	{
+		if(!sock)
+			return;
+
 		StatsPacket p;
 		p.type = StatsPacket::Activity;
 		p.from = instanceId;
@@ -183,6 +186,9 @@ public:
 
 	void sendMessage(const QString &channel, const QString &itemId, const QString &transport, int count)
 	{
+		if(!sock)
+			return;
+
 		StatsPacket p;
 		p.type = StatsPacket::Message;
 		p.from = instanceId;
@@ -195,6 +201,9 @@ public:
 
 	void sendConnected(ConnectionInfo *c)
 	{
+		if(!sock)
+			return;
+
 		StatsPacket p;
 		p.type = StatsPacket::Connected;
 		p.from = instanceId;
@@ -212,6 +221,9 @@ public:
 
 	void sendDisconnected(ConnectionInfo *c)
 	{
+		if(!sock)
+			return;
+
 		StatsPacket p;
 		p.type = StatsPacket::Disconnected;
 		p.from = instanceId;
@@ -222,6 +234,9 @@ public:
 
 	void sendSubscribed(Subscription *s)
 	{
+		if(!sock)
+			return;
+
 		StatsPacket p;
 		p.type = StatsPacket::Subscribed;
 		p.from = instanceId;
@@ -233,6 +248,9 @@ public:
 
 	void sendUnsubscribed(Subscription *s)
 	{
+		if(!sock)
+			return;
+
 		StatsPacket p;
 		p.type = StatsPacket::Unsubscribed;
 		p.from = instanceId;
@@ -484,6 +502,9 @@ bool StatsManager::checkConnection(const QByteArray &id)
 
 void StatsManager::sendPacket(const StatsPacket &packet)
 {
+	if(!d->sock)
+		return;
+
 	StatsPacket p = packet;
 	p.from = d->instanceId;
 	d->write(p);
