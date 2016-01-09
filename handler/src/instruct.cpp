@@ -298,7 +298,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 			QVariant vhold = minstruct["hold"];
 
-			QString modeStr = getString(vhold, pn, "mode", true, &ok_, errorMessage);
+			QString modeStr = getString(vhold, pn, "mode", false, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -306,18 +306,25 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				return Instruct();
 			}
 
-			if(modeStr == "response")
+			if(!modeStr.isNull())
 			{
-				holdMode = ResponseHold;
-			}
-			else if(modeStr == "stream")
-			{
-				holdMode = StreamHold;
+				if(modeStr == "response")
+				{
+					holdMode = ResponseHold;
+				}
+				else if(modeStr == "stream")
+				{
+					holdMode = StreamHold;
+				}
+				else
+				{
+					setError(ok, errorMessage, "hold 'mode' must be set to either 'response' or 'stream'");
+					return Instruct();
+				}
 			}
 			else
 			{
-				setError(ok, errorMessage, "hold 'mode' must be set to either 'response' or 'stream'");
-				return Instruct();
+				holdMode = ResponseHold;
 			}
 
 			QVariantList vchannels = getList(vhold, pn, "channels", true, &ok_, errorMessage);
