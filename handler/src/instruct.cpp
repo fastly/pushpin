@@ -128,8 +128,10 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		}
 
 		Channel c;
-		c.name = gripChannel[0].first;
-		c.prevId = gripChannel.get("prev-id");
+		c.name = QString::fromUtf8(gripChannel[0].first);
+		QByteArray param = gripChannel.get("prev-id");
+		if(!param.isNull())
+			c.prevId = QString::fromUtf8(param);
 
 		for(int n = 1; n < gripChannel.count(); ++n)
 		{
