@@ -1057,7 +1057,8 @@ public:
 		}
 	}
 
-	void handleConnectionBytesWritten(M2Connection *conn, int written, bool giveCredits)
+	// return true if connection was deleted as a result of handling bytes written
+	bool handleConnectionBytesWritten(M2Connection *conn, int written, bool giveCredits)
 	{
 		int bodyWritten = conn->bodyTracker.finished(written);
 		int packetsWritten = conn->packetTracker.finished(written);
@@ -1070,13 +1071,15 @@ public:
 		// if we had any pending writes to make, now's the time
 		bool connDeleted = m2_tryWriteQueued(conn);
 		if(connDeleted)
-			return;
+			return true;
 
 		if(conn->session && bodyWritten > 0)
 		{
 			conn->session->lastActive = time.elapsed();
 			handleSessionBodyWritten(conn->session, bodyWritten, giveCredits);
 		}
+
+		return false;
 	}
 
 	void handleSessionBodyWritten(Session *s, int written, bool giveCredits)
@@ -1780,7 +1783,9 @@ private slots:
 			if(conn->outCreditsEnabled && mreq.downloadCredits > 0)
 			{
 				conn->outCredits += mreq.downloadCredits;
-				handleConnectionBytesWritten(conn, mreq.downloadCredits, true);
+				bool connDeleted = handleConnectionBytesWritten(conn, mreq.downloadCredits, true);
+				if(connDeleted)
+					return;
 			}
 
 			// if the packet only held credits, then there's nothing else to do
