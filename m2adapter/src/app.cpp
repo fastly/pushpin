@@ -870,7 +870,8 @@ public:
 		}
 	}
 
-	void m2_tryWriteQueued(M2Connection *conn)
+	// return true if connection was deleted as a result of writing queued items
+	bool m2_tryWriteQueued(M2Connection *conn)
 	{
 		while(!conn->pendingOutItems.isEmpty() && conn->canWrite())
 		{
@@ -885,9 +886,12 @@ public:
 			}
 			else if(item.type == M2PendingOutItem::Close)
 			{
-				m2_writeClose(conn);
+				m2_writeClose(conn); // this will delete the connection
+				return true;
 			}
 		}
+
+		return false;
 	}
 
 	void m2_writeClose(const QByteArray &sender, const QByteArray &id)
@@ -1064,7 +1068,9 @@ public:
 			conn->waitForAllWritten = false;
 
 		// if we had any pending writes to make, now's the time
-		m2_tryWriteQueued(conn);
+		bool connDeleted = m2_tryWriteQueued(conn);
+		if(connDeleted)
+			return;
 
 		if(conn->session && bodyWritten > 0)
 		{
