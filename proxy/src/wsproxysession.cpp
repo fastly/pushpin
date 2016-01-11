@@ -284,12 +284,7 @@ public:
 
 	void cleanup()
 	{
-		if(inSock)
-		{
-			connectionManager->removeConnection(inSock);
-			delete inSock;
-			inSock = 0;
-		}
+		cleanupInSock();
 
 		delete outSock;
 		outSock = 0;
@@ -309,6 +304,16 @@ public:
 		{
 			zroutes->removeRef(zhttpManager);
 			zhttpManager = 0;
+		}
+	}
+
+	void cleanupInSock()
+	{
+		if(inSock)
+		{
+			connectionManager->removeConnection(inSock);
+			delete inSock;
+			inSock = 0;
 		}
 	}
 
@@ -622,9 +627,7 @@ private slots:
 	void in_closed()
 	{
 		int code = inSock->peerCloseCode();
-		connectionManager->removeConnection(inSock);
-		delete inSock;
-		inSock = 0;
+		cleanupInSock();
 
 		if(!detached && outSock && outSock->state() != WebSocket::Closing)
 			outSock->close(code);
@@ -634,9 +637,7 @@ private slots:
 
 	void in_error()
 	{
-		connectionManager->removeConnection(inSock);
-		delete inSock;
-		inSock = 0;
+		cleanupInSock();
 
 		if(!detached)
 		{
@@ -781,9 +782,8 @@ private slots:
 		}
 		else
 		{
-			connectionManager->removeConnection(inSock);
-			delete inSock;
-			inSock = 0;
+			cleanupInSock();
+
 			delete outSock;
 			outSock = 0;
 
@@ -825,11 +825,7 @@ private slots:
 			outSock = 0;
 		}
 
-		if(inSock)
-		{
-			delete inSock;
-			inSock = 0;
-		}
+		cleanupInSock();
 
 		tryFinish();
 	}
