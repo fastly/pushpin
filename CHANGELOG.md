@@ -12,7 +12,7 @@ v. 1.7.0 (2016-01-10)
   * WebSocket-Over-HTTP: strip private headers from responses
   * Long-polling: finish support for JSON patch
   * m2adapter: dynamically enable/disable control port as needed
-  * publish tool: add id, prev-id, and patch options
+  * publish tool: add id, prev-id, patch, and sender options
   * Add monitorsubsock tool for monitoring SUB socket
   * Refactor docs/grip-protocol.md
 
