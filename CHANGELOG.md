@@ -3,18 +3,18 @@ Pushpin Changelog
 
 v. 1.7.0 (2016-01-10)
 
-  * Rewrite pushpin-handler from Python to C++
-  * Initial support for subscription filters and skip-self filter
-  * Fix sending of large responses when flow control not used
-  * Speed up shutdown
-  * Pass WebSocket GRIP logic upstream if GRIP proxy detected
-  * Don't forward WebSocket-Over-HTTP requests unless client trusted
-  * WebSocket-Over-HTTP: strip private headers from responses
-  * Long-polling: finish support for JSON patch
-  * m2adapter: dynamically enable/disable control port as needed
-  * publish tool: add id, prev-id, patch, and sender options
-  * Add monitorsubsock tool for monitoring SUB socket
-  * Refactor docs/grip-protocol.md
+  * Rewrite pushpin-handler from Python to C++.
+  * Initial support for subscription filters and skip-self filter.
+  * Fix sending of large responses when flow control not used.
+  * Speed up shutdown.
+  * Pass WebSocket GRIP logic upstream if GRIP proxy detected.
+  * Don't forward WebSocket-Over-HTTP requests unless client trusted.
+  * WebSocket-Over-HTTP: strip private headers from responses.
+  * Long-polling: finish support for JSON patch.
+  * m2adapter: dynamically enable/disable control port as needed.
+  * publish tool: add id, prev-id, patch, and sender options.
+  * Add monitorsubsock tool for monitoring SUB socket.
+  * Refactor docs/grip-protocol.md.
 
 v. 1.6.0 (2015-09-24)
 
