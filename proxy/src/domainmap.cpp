@@ -778,7 +778,34 @@ void DomainMap::setEntry(Protocol proto, SecurityMode sec, const QString &domain
 	r.pathBeg = pathBeg;
 	r.targets = e.targets;
 
-	d->thread->worker->map.insert(domain, QList<Worker::Rule>() << r);
+	// add or update the entry
+	if(d->thread->worker->map.contains(domain))
+	{
+		bool found = false;
+		QList<Worker::Rule> &rules = d->thread->worker->map[domain];
+		for(int n = 0; n < rules.count(); ++n)
+		{
+			Worker::Rule &i = rules[n];
+			if(i.compare(r))
+			{
+				// update
+				i.targets = e.targets;
+				found = true;
+				break;
+			}
+		}
+
+		if(!found)
+		{
+			// add
+			rules += r;
+		}
+	}
+	else
+	{
+		// add
+		d->thread->worker->map.insert(domain, QList<Worker::Rule>() << r);
+	}
 }
 
 #include "domainmap.moc"
