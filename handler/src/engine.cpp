@@ -58,6 +58,7 @@
 #include "responselastids.h"
 #include "instruct.h"
 #include "conncheckworker.h"
+#include "configworker.h"
 
 #define DEFAULT_HWM 1000
 #define SUB_SNDHWM 0 // infinite
@@ -2238,7 +2239,54 @@ private slots:
 		if(!req)
 			return;
 
-		if(req->requestUri() == "/publish/" || req->requestUri() == "/publish")
+		QByteArray path = req->requestUri();
+		if(path.endsWith("/"))
+			path.truncate(path.length() - 1);
+
+		if(path == "/config")
+		{
+			if(req->requestMethod() == "PUT" || req->requestMethod() == "POST")
+			{
+				QUrl tmp;
+				tmp.setEncodedQuery(req->requestBody());
+
+				QString targetHost;
+				int targetPort;
+				bool targetSsl = false;
+				bool targetOverHttp = false;
+
+				if(!tmp.hasQueryItem("target_host") || !tmp.hasQueryItem("target_port"))
+				{
+					req->respond(400, "Bad Request", "Missing target_host or target_port.\n");
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
+				}
+
+				targetHost = tmp.queryItemValue("target_host");
+
+				bool ok;
+				targetPort = tmp.queryItemValue("target_port").toInt(&ok);
+				if(!ok || targetPort < 1 || targetPort > 65535)
+				{
+					req->respond(400, "Bad Request", "Invalid target_port.\n");
+					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+					return;
+				}
+
+				targetSsl = (tmp.queryItemValue("target_ssl") == "true");
+				targetOverHttp = (tmp.queryItemValue("target_over_http") == "true");
+
+				new ConfigWorker(req, proxyControlClient, targetHost, targetPort, targetSsl, targetOverHttp, this);
+			}
+			else
+			{
+				HttpHeaders headers;
+				headers += HttpHeader("Content-Type", "text/plain");
+				headers += HttpHeader("Allow", "PUT, POST");
+				req->respond(405, "Method Not Allowed", headers, "Method not allowed: " + req->requestMethod().toUtf8() + ".\n");
+			}
+		}
+		else if(path == "/publish")
 		{
 			if(req->requestMethod() == "POST")
 			{

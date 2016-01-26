@@ -98,6 +98,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	QByteArray keepAliveData;
 	int keepAliveTimeout = -1;
 	QHash<QString, QString> meta;
+	QString channelPrefix;
 	HttpResponseData newResponse;
 
 	if(response.headers.contains("Grip-Hold"))
@@ -118,6 +119,8 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		}
 	}
 
+	channelPrefix = QString::fromUtf8(response.headers.get("Grip-Channel-Prefix"));
+
 	QList<HttpHeaderParameters> gripChannels = response.headers.getAllAsParameters("Grip-Channel");
 	foreach(const HttpHeaderParameters &gripChannel, gripChannels)
 	{
@@ -128,7 +131,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		}
 
 		Channel c;
-		c.name = QString::fromUtf8(gripChannel[0].first);
+		c.name = channelPrefix + QString::fromUtf8(gripChannel[0].first);
 		QByteArray param = gripChannel.get("prev-id");
 		if(!param.isNull())
 			c.prevId = QString::fromUtf8(param);
@@ -341,7 +344,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				QString cpn = "channel";
 				Channel c;
 
-				c.name = getString(vchannel, cpn, "name", true, &ok_, errorMessage);
+				c.name = channelPrefix + getString(vchannel, cpn, "name", true, &ok_, errorMessage);
 				if(!ok_)
 				{
 					if(ok)

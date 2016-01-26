@@ -81,9 +81,84 @@ private slots:
 	}
 };
 
+class RouteRemoveAll : public Deferred
+{
+	Q_OBJECT
+
+public:
+	RouteRemoveAll(ZrpcManager *controlClient, QObject *parent = 0) :
+		Deferred(parent)
+	{
+		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
+		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+
+		req->start("route-remove-all");
+	}
+
+private slots:
+	void req_finished()
+	{
+		ZrpcRequest *req = (ZrpcRequest *)sender();
+
+		if(req->success())
+		{
+			setFinished(true);
+		}
+		else
+		{
+			setFinished(false, req->errorCondition());
+		}
+	}
+};
+
+class RouteSet : public Deferred
+{
+	Q_OBJECT
+
+public:
+	RouteSet(ZrpcManager *controlClient, const QString &targetHost, int targetPort, bool targetSsl, bool targetOverHttp, QObject *parent = 0) :
+		Deferred(parent)
+	{
+		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
+		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+
+		QVariantHash args;
+		args["target-host"] = targetHost.toUtf8();
+		args["target-port"] = targetPort;
+		args["target-ssl"] = targetSsl;
+		args["target-over-http"] = targetOverHttp;
+		req->start("route-set", args);
+	}
+
+private slots:
+	void req_finished()
+	{
+		ZrpcRequest *req = (ZrpcRequest *)sender();
+
+		if(req->success())
+		{
+			setFinished(true);
+		}
+		else
+		{
+			setFinished(false, req->errorCondition());
+		}
+	}
+};
+
 Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent)
 {
 	return new ConnCheck(controlClient, cids, parent);
+}
+
+Deferred *routeRemoveAll(ZrpcManager *controlClient, QObject *parent)
+{
+	return new RouteRemoveAll(controlClient, parent);
+}
+
+Deferred *routeSet(ZrpcManager *controlClient, const QString &targetHost, int targetPort, bool targetSsl, bool overHttp, QObject *parent)
+{
+	return new RouteSet(controlClient, targetHost, targetPort, targetSsl, overHttp, parent);
 }
 
 }

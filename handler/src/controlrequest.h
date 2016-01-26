@@ -30,6 +30,8 @@ class Deferred;
 namespace ControlRequest {
 
 Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0);
+Deferred *routeRemoveAll(ZrpcManager *controlClient, QObject *parent = 0);
+Deferred *routeSet(ZrpcManager *controlClient, const QString &targetHost, int targetPort, bool targetSsl, bool targetOverHttp, QObject *parent = 0);
 
 }
 

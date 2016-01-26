@@ -675,7 +675,9 @@ private slots:
 	void command_requestReady()
 	{
 		ZrpcRequest *req = command->takeNext();
-		if(req->method() == "conncheck")
+		QString method = req->method();
+
+		if(method == "conncheck")
 		{
 			if(!stats)
 			{
@@ -721,6 +723,63 @@ private slots:
 			}
 
 			req->respond(out);
+		}
+		else if(method == "route-remove-all")
+		{
+			domainMap->clear();
+
+			req->respond();
+		}
+		else if(method == "route-set")
+		{
+			QVariantHash args = req->args();
+
+			DomainMap::Target target;
+
+			if(!args.contains("target-host") || args["target-host"].type() != QVariant::ByteArray ||
+				!args.contains("target-port") || !args["target-port"].canConvert(QVariant::Int))
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			target.connectHost = args["target-host"].toByteArray();
+			target.connectPort = args["target-port"].toInt();
+
+			if(args.contains("target-ssl"))
+			{
+				if(args["target-ssl"].type() != QVariant::Bool)
+				{
+					req->respondError("bad-format");
+					delete req;
+					return;
+				}
+
+				target.ssl = args["target-ssl"].toBool();
+			}
+
+			if(args.contains("target-over-http"))
+			{
+				if(args["target-over-http"].type() != QVariant::Bool)
+				{
+					req->respondError("bad-format");
+					delete req;
+					return;
+				}
+
+				target.overHttp = args["target-over-http"].toBool();
+			}
+
+			target.trusted = true;
+
+			DomainMap::Entry e;
+			e.targets += target;
+
+			// set primary route
+			domainMap->setEntry(DomainMap::AnyProtocol, DomainMap::AnySecurity, QString(), QByteArray(), e);
+
+			req->respond();
 		}
 		else
 		{

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -213,12 +213,20 @@ public:
 	QString fileName;
 	QHash< QString, QList<Rule> > map;
 	QTimer t;
+	bool enabled;
 
 	Worker() :
-		t(this)
+		t(this),
+		enabled(true)
 	{
 		connect(&t, SIGNAL(timeout()), SLOT(doReload()));
 		t.setSingleShot(true);
+	}
+
+	void setEnabled(bool on)
+	{
+		QMutexLocker locker(&m);
+		enabled = on;
 	}
 
 	void reload()
@@ -536,9 +544,12 @@ public:
 		}
 
 		// atomically replace the map
-		m.lock();
-		map = newmap;
-		m.unlock();
+		{
+			QMutexLocker locker(&m);
+			if(!enabled)
+				return;
+			map = newmap;
+		}
 
 		log_info("routes map loaded with %d entries", newmap.count());
 
@@ -564,6 +575,12 @@ public slots:
 	void fileChanged(const QString &path)
 	{
 		Q_UNUSED(path);
+
+		{
+			QMutexLocker locker(&m);
+			if(!enabled)
+				return;
+		}
 
 		// inotify tends to give us extra events so let's hang around a
 		//   little bit before reloading
@@ -670,6 +687,7 @@ DomainMap::~DomainMap()
 
 void DomainMap::reload()
 {
+	d->thread->worker->setEnabled(true);
 	QMetaObject::invokeMethod(d->thread->worker, "fileChanged", Qt::QueuedConnection, Q_ARG(QString, QString()));
 }
 
@@ -725,6 +743,42 @@ QList<DomainMap::ZhttpRoute> DomainMap::zhttpRoutes() const
 	}
 
 	return out;
+}
+
+void DomainMap::clear()
+{
+	d->thread->worker->setEnabled(false);
+
+	QMutexLocker locker(&d->thread->worker->m);
+	d->thread->worker->map.clear();
+}
+
+void DomainMap::setEntry(Protocol proto, SecurityMode sec, const QString &domain, const QByteArray &pathBeg, const Entry &e)
+{
+	d->thread->worker->setEnabled(false);
+
+	QMutexLocker locker(&d->thread->worker->m);
+
+	Worker::Rule r;
+
+	if(proto == Http)
+		r.proto = 0;
+	else if(proto == WebSocket)
+		r.proto = 1;
+	else // AnyProtocol
+		r.proto = -1;
+
+	if(sec == NoSsl)
+		r.ssl = 0;
+	else if(sec == Ssl)
+		r.ssl = 1;
+	else // AnySecurity
+		r.ssl = -1;
+
+	r.pathBeg = pathBeg;
+	r.targets = e.targets;
+
+	d->thread->worker->map.insert(domain, QList<Worker::Rule>() << r);
 }
 
 #include "domainmap.moc"

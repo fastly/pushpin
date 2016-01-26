@@ -55,6 +55,7 @@ public:
 
 	enum Protocol
 	{
+		AnyProtocol,
 		Http,
 		WebSocket
 	};
@@ -147,6 +148,13 @@ public:
 		}
 	};
 
+	enum SecurityMode
+	{
+		AnySecurity,
+		Ssl,
+		NoSsl
+	};
+
 	DomainMap(const QString &fileName, QObject *parent = 0);
 	~DomainMap();
 
@@ -157,6 +165,12 @@ public:
 	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
 
 	QList<ZhttpRoute> zhttpRoutes() const;
+
+	// calling any of the modification methods below will cause this class
+	//   to stop listening to the routes file for changes. calling reload()
+	//   will restore original behavior
+	void clear();
+	void setEntry(Protocol proto, SecurityMode sec, const QString &domain, const QByteArray &pathBeg, const Entry &e);
 
 signals:
 	void changed();
