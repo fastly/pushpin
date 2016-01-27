@@ -136,7 +136,6 @@ private:
 	{
 		state = WriteBody;
 		respond(code, reason, body + '\n');
-		emit q->finished();
 	}
 
 	void respondBadRequest(const QString &body)
