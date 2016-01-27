@@ -31,10 +31,11 @@ class ConfigWorker : public Deferred
 	Q_OBJECT
 
 public:
-	ConfigWorker(HttpRequest *req, ZrpcManager *proxyControlClient, const QString &targetHost, int targetPort, bool targetSsl, bool targetOverHttp, QObject *parent = 0);
+	ConfigWorker(HttpRequest *req, const QByteArray &responseContentType, ZrpcManager *proxyControlClient, const QString &targetHost, int targetPort, bool targetSsl, bool targetOverHttp, QObject *parent = 0);
 
 private:
 	HttpRequest *req_;
+	QByteArray responseContentType_;
 	ZrpcManager *proxyControlClient_;
 	QString targetHost_;
 	int targetPort_;

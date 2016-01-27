@@ -19,14 +19,16 @@
 
 #include "configworker.h"
 
+#include <qjson/serializer.h>
 #include "httpserver.h"
 #include "controlrequest.h"
 
-ConfigWorker::ConfigWorker(HttpRequest *req, ZrpcManager *proxyControlClient, const QString &targetHost, int targetPort, bool targetSsl, bool targetOverHttp, QObject *parent) :
+ConfigWorker::ConfigWorker(HttpRequest *req, const QByteArray &responseContentType, ZrpcManager *proxyControlClient, const QString &targetHost, int targetPort, bool targetSsl, bool targetOverHttp, QObject *parent) :
 	Deferred(parent),
 	req_(req)
 {
 	req_->setParent(this);
+	responseContentType_ = responseContentType;
 	proxyControlClient_ = proxyControlClient;
 	targetHost_ = targetHost;
 	targetPort_ = targetPort;
@@ -62,7 +64,20 @@ void ConfigWorker::proxyRouteSet_finished(const DeferredResult &result)
 {
 	if(result.success)
 	{
-		req_->respond(200, "OK", "Updated\n");
+		QString message = "Updated";
+		if(responseContentType_ == "application/json")
+		{
+			QVariantMap obj;
+			obj["message"] = message;
+			QJson::Serializer serializer;
+			QString body = QString::fromUtf8(serializer.serialize(obj));
+			req_->respond(200, "OK", responseContentType_, body + "\n");
+		}
+		else // text/plain
+		{
+			req_->respond(200, "OK", message + "\n");
+		}
+
 		setFinished(true);
 	}
 	else

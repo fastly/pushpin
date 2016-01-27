@@ -39,6 +39,7 @@ public:
 	QByteArray requestBody() const;
 
 	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
+	void respond(int code, const QByteArray &reason, const QByteArray &contentType, const QString &body);
 	void respond(int code, const QByteArray &reason, const QString &body);
 
 signals:

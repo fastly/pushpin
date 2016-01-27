@@ -2243,6 +2243,56 @@ private slots:
 		if(path.endsWith("/"))
 			path.truncate(path.length() - 1);
 
+		HttpHeaders headers = req->requestHeaders();
+
+		QByteArray responseContentType;
+		if(headers.contains("Accept"))
+		{
+			foreach(const HttpHeaderParameters &params, headers.getAllAsParameters("Accept"))
+			{
+				if(params.isEmpty() || params[0].first.isEmpty())
+					continue;
+
+				QList<QByteArray> type = params[0].first.split('/');
+				if(type[0] == "text" && type[1] == "plain")
+				{
+					responseContentType = "text/plain";
+					break;
+				}
+				else if(type[0] == "application" && type[1] == "json")
+				{
+					responseContentType = "application/json";
+					break;
+				}
+				else if(type[0] == "text" && type[1] == "*")
+				{
+					responseContentType = "text/plain";
+					break;
+				}
+				else if(type[0] == "application" && type[1] == "*")
+				{
+					responseContentType = "application/json";
+					break;
+				}
+				else if(type[0] == "*" && type[1] == "*")
+				{
+					responseContentType = "text/plain";
+					break;
+				}
+			}
+
+			if(responseContentType.isEmpty())
+			{
+				req->respond(406, "Not Acceptable", "Not Acceptable. Supported formats are text/plain and application/json.\n");
+				connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+				return;
+			}
+		}
+		else
+		{
+			responseContentType = "text/plain";
+		}
+
 		if(path == "/config")
 		{
 			if(req->requestMethod() == "PUT" || req->requestMethod() == "POST")
@@ -2276,7 +2326,7 @@ private slots:
 				targetSsl = (tmp.queryItemValue("target_ssl") == "true");
 				targetOverHttp = (tmp.queryItemValue("target_over_http") == "true");
 
-				new ConfigWorker(req, proxyControlClient, targetHost, targetPort, targetSsl, targetOverHttp, this);
+				new ConfigWorker(req, responseContentType, proxyControlClient, targetHost, targetPort, targetSsl, targetOverHttp, this);
 			}
 			else
 			{
@@ -2338,7 +2388,19 @@ private slots:
 				foreach(const PublishItem &item, items)
 					handlePublishItem(item);
 
-				req->respond(200, "OK", "Published\n");
+				QString message = "Published";
+				if(responseContentType == "application/json")
+				{
+					QVariantMap obj;
+					obj["message"] = message;
+					QJson::Serializer serializer;
+					QString body = QString::fromUtf8(serializer.serialize(obj));
+					req->respond(200, "OK", responseContentType, body + "\n");
+				}
+				else // text/plain
+				{
+					req->respond(200, "OK", message + "\n");
+				}
 			}
 			else
 			{

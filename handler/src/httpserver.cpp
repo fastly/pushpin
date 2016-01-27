@@ -120,12 +120,17 @@ public:
 		sock->write(respData);
 	}
 
-	void respond(int code, const QByteArray &reason, const QString &body)
+	void respond(int code, const QByteArray &reason, const QByteArray &contentType, const QString &body)
 	{
 		HttpHeaders headers;
-		headers += HttpHeader("Content-Type", "text/plain");
+		headers += HttpHeader("Content-Type", contentType);
 
 		respond(code, reason, headers, body.toUtf8());
+	}
+
+	void respond(int code, const QByteArray &reason, const QString &body)
+	{
+		respond(code, reason, "text/plain", body);
 	}
 
 signals:
@@ -388,6 +393,11 @@ QByteArray HttpRequest::requestBody() const
 void HttpRequest::respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
 {
 	d->respond(code, reason, headers, body);
+}
+
+void HttpRequest::respond(int code, const QByteArray &reason, const QByteArray &contentType, const QString &body)
+{
+	d->respond(code, reason, contentType, body);
 }
 
 void HttpRequest::respond(int code, const QByteArray &reason, const QString &body)
