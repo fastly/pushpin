@@ -64,7 +64,7 @@ args = parser.parse_args()
 headers = []
 if args.header:
 	for h in args.header:
-		k, v = h.split(':')
+		k, v = h.split(':', 1)
 		headers.append([k, v.lstrip()])
 
 meta = dict()
