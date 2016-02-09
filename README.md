@@ -5,7 +5,7 @@ Website: http://pushpin.org/
 Mailing List: http://lists.fanout.io/listinfo.cgi/fanout-users-fanout.io  
 Chat Room: [![Join the chat at https://gitter.im/fanout/pushpin](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/fanout/pushpin?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-Pushpin is a reverse proxy server written in C++ that makes it easy to implement WebSocket, HTTP streaming, and HTTP long-polling services. Is unique in that it is designed to address the needs of API creators. It is transparent to clients and integrates easily into an API stack.
+Pushpin is a reverse proxy server written in C++ that makes it easy to implement WebSocket, HTTP streaming, and HTTP long-polling services. The project is unique among realtime push solutions in that it is designed to address the needs of API creators. Pushpin transparent to clients and integrates easily into an API stack.
 
 How it works
 ------------
