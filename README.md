@@ -26,9 +26,9 @@ To assist with integration, there are [libraries](http://pushpin.org/docs/#libra
 Example
 -------
 
-For example, to create an HTTP streaming connection, respond to a proxied request with `Grip-Hold` and `Grip-Channel`<sup>[2](#grip)</sup> headers:
+To create an HTTP streaming connection, respond to a proxied request with `Grip-Hold` and `Grip-Channel`<sup>[2](#grip)</sup> headers:
 
-```
+```http
 HTTP/1.1 200 OK
 Grip-Hold: stream
 Grip-Channel: test
@@ -40,7 +40,7 @@ welcome to the stream
 
 When Pushpin receives the above response from the backend, it will process it and send an initial response to the client that instead looks like this:
 
-```
+```http
 HTTP/1.1 200 OK
 Content-Type: text/plain
 Transfer-Encoding: chunked
@@ -53,13 +53,15 @@ Pushpin eats the GRIP headers and switches to chunked encoding (notice there's n
 
 Data can then be pushed to the client by publishing data on the `test` channel:
 
-```
+```bash
 curl -d '{ "items": [ { "channel": "test", "http-stream": \
     { "content": "hello there\n" } } ] }' \
     http://localhost:5561/publish
 ```
 
 The client would then see the line "hello there" appended to the response stream. Ta-da, transparent realtime push!
+
+For more details, see the [HTTP streaming](http://pushpin.org/docs/#http-streaming) section of the documentation. Pushpin also supports [HTTP long-polling](http://pushpin.org/docs/#http-long-polling) and [WebSockets](http://pushpin.org/docs/#websockets).
 
 Why another realtime solution?
 ------------------------------
