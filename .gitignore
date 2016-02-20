@@ -38,3 +38,8 @@ moc_*
 /runner/run
 /runner/log
 /pushpin.inst
+/tools/publish/version.h
+/tools/publish/Makefile
+/tools/publish/conf.log
+/tools/publish/conf.pri
+/tools/publish/pushpin-publish
