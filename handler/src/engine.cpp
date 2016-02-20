@@ -590,7 +590,7 @@ private:
 
 				QByteArray resultJson = QJsonDocument(QJsonObject::fromVariantMap(result)).toJson(QJsonDocument::Compact);
 
-				body = jsonpCallback + '(' + resultJson + ");\n";
+				body = "/**/" + jsonpCallback + '(' + resultJson + ");\n";
 			}
 			else
 			{
@@ -598,7 +598,7 @@ private:
 					body.truncate(body.size() - 2);
 				else if(body.endsWith("\n"))
 					body.truncate(body.size() - 1);
-				body = jsonpCallback + '(' + body + ");\n";
+				body = "/**/" + jsonpCallback + '(' + body + ");\n";
 			}
 
 			headers.removeAll("Content-Type");
