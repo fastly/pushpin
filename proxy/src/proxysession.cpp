@@ -193,7 +193,7 @@ public:
 			if(!route.asHost.isEmpty())
 				requestData.uri.setHost(route.asHost);
 
-			QByteArray path = requestData.uri.encodedPath();
+			QByteArray path = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
 			if(route.pathRemove > 0)
 				path = path.mid(route.pathRemove);
@@ -201,7 +201,7 @@ public:
 			if(!route.pathPrepend.isEmpty())
 				path = route.pathPrepend + path;
 
-			requestData.uri.setEncodedPath(path);
+			requestData.uri.setPath(QString::fromUtf8(path), QUrl::StrictMode);
 
 			QByteArray sigIss;
 			QByteArray sigKey;

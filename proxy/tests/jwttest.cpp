@@ -16,28 +16,13 @@
  */
 
 #include <QtTest/QtTest>
-#include <QtCrypto>
 #include "jwt.h"
 
 class JwtTest : public QObject
 {
 	Q_OBJECT
 
-private:
-	QCA::Initializer *qcaInit;
-
 private slots:
-	void initTestCase()
-	{
-		qcaInit = new QCA::Initializer;
-		QVERIFY(QCA::isSupported("hmac(sha256)"));
-	}
-
-	void cleanupTestCase()
-	{
-		delete qcaInit;
-	}
-
 	void validToken()
 	{
 		QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", "secret");

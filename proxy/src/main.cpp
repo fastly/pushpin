@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,9 +17,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <QtGlobal>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QTimer>
-#include <QtCrypto>
 #include "app.h"
 
 class AppMain : public QObject
@@ -49,8 +50,10 @@ signals:
 
 int main(int argc, char **argv)
 {
-	QCA::Initializer qcaInit;
 	QCoreApplication qapp(argc, argv);
+
+	qsrand(QDateTime::currentMSecsSinceEpoch() & 0xffffffff);
+
 	AppMain appMain;
 	QObject::connect(&appMain, SIGNAL(quit()), &qapp, SLOT(quit()));
 	QTimer::singleShot(0, &appMain, SLOT(start()));

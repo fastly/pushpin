@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -19,9 +19,9 @@
 
 #include "jwt.h"
 
-#include <QtCrypto>
-#include <qjson/serializer.h>
-#include <qjson/parser.h>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMessageAuthenticationCode>
 #include "log.h"
 
 static QByteArray base64url(const QByteArray &in)
@@ -69,26 +69,21 @@ static QByteArray unbase64url(const QByteArray &in)
 static QByteArray jws_sign(const QByteArray &header, const QByteArray &claim, const QByteArray &key)
 {
 	QByteArray si = header + '.' + claim;
-	return base64url(QCA::MessageAuthenticationCode("hmac(sha256)", key).process(si).toByteArray());
+	return base64url(QMessageAuthenticationCode::hash(si, key, QCryptographicHash::Sha256));
 }
 
 namespace Jwt {
 
 QByteArray encode(const QVariant &claim, const QByteArray &key)
 {
-	if(!QCA::isSupported("hmac(sha256)"))
-		return QByteArray();
-
-	QJson::Serializer serializer;
-
 	QVariantMap header;
 	header["typ"] = "JWT";
 	header["alg"] = "HS256";
-	QByteArray headerJson = serializer.serialize(header);
+	QByteArray headerJson = QJsonDocument(QJsonObject::fromVariantMap(header)).toJson(QJsonDocument::Compact);
 	if(headerJson.isNull())
 		return QByteArray();
 
-	QByteArray claimJson = serializer.serialize(claim);
+	QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim.toMap())).toJson(QJsonDocument::Compact);
 	if(claimJson.isNull())
 		return QByteArray();
 
@@ -102,9 +97,6 @@ QByteArray encode(const QVariant &claim, const QByteArray &key)
 
 QVariant decode(const QByteArray &token, const QByteArray &key)
 {
-	if(!QCA::isSupported("hmac(sha256)"))
-		return QVariant();
-
 	int at = token.indexOf('.');
 	if(at == -1)
 		return QVariant();
@@ -120,18 +112,16 @@ QVariant decode(const QByteArray &token, const QByteArray &key)
 	QByteArray claimPart = token.mid(start, at - start);
 	QByteArray sig = token.mid(at + 1);
 
-	bool ok;
-	QJson::Parser parser;
-
 	QByteArray headerJson = unbase64url(headerPart);
 	if(headerJson.isEmpty())
 		return QVariant();
 
-	QVariant headerObj = parser.parse(headerJson, &ok);
-	if(!ok || headerObj.type() != QVariant::Map)
+	QJsonParseError error;
+	QJsonDocument doc = QJsonDocument::fromJson(headerJson, &error);
+	if(error.error != QJsonParseError::NoError || !doc.isObject())
 		return QVariant();
 
-	QVariantMap header = headerObj.toMap();
+	QVariantMap header = doc.object().toVariantMap();
 	if(header.value("typ").toString() != "JWT" || header.value("alg").toString() != "HS256")
 		return QVariant();
 
@@ -139,9 +129,11 @@ QVariant decode(const QByteArray &token, const QByteArray &key)
 	if(claimJson.isEmpty())
 		return QVariant();
 
-	QVariant claim = parser.parse(claimJson, &ok);
-	if(!ok)
+	doc = QJsonDocument::fromJson(claimJson, &error);
+	if(error.error != QJsonParseError::NoError || !doc.isObject())
 		return QVariant();
+
+	QVariant claim = doc.object().toVariantMap();
 
 	if(jws_sign(headerPart, claimPart, key) != sig)
 		return QVariant();

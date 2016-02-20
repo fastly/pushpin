@@ -21,8 +21,10 @@
 
 #include <assert.h>
 #include <QTimer>
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
+#include <QUrlQuery>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -211,7 +213,7 @@ public:
 			if(getSession && stateClient)
 			{
 				// determine session info
-				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.encodedPath(), this);
+				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8(), this);
 				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionDetectRulesGet_finished(const DeferredResult &)));
 				return;
 			}
@@ -275,9 +277,7 @@ private slots:
 
 				if(!rule.jsonParam.isEmpty())
 				{
-					// hack to use QUrl's query string parser on form data
-					QUrl tmp;
-					tmp.setEncodedQuery(requestData.body);
+					QUrlQuery tmp(QString::fromUtf8(requestData.body));
 					jsonData = tmp.queryItemValue(rule.jsonParam).toUtf8();
 				}
 				else
@@ -285,15 +285,23 @@ private slots:
 					jsonData = requestData.body;
 				}
 
-				QJson::Parser parser;
-				bool ok;
-				QVariant vdata = parser.parse(jsonData, &ok);
-				if(!ok)
+				QJsonParseError e;
+				QJsonDocument doc = QJsonDocument::fromJson(jsonData, &e);
+				if(e.error != QJsonParseError::NoError)
+					continue;
+
+				QVariant vdata;
+				if(doc.isObject())
+					vdata = doc.object().toVariantMap();
+				else if(doc.isArray())
+					vdata = doc.array().toVariantList();
+				else
 					continue;
 
 				JsonPointer ptr = JsonPointer::resolve(&vdata, rule.sidPtr);
 				if(!ptr.isNull() && ptr.exists())
 				{
+					bool ok;
 					sid = getString(ptr.value(), &ok);
 					if(!ok)
 						continue;
@@ -456,17 +464,29 @@ public:
 
 		QByteArray body;
 
-		QJson::Parser parser;
-		bool ok;
-		QVariant vbody = parser.parse(response.body, &ok);
-		if(!response.body.isEmpty() && ok)
+		QJsonParseError e;
+		QJsonDocument doc = QJsonDocument::fromJson(response.body, &e);
+		if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
 		{
+			QVariant vbody;
+			if(doc.isObject())
+				vbody = doc.object().toVariantMap();
+			else // isArray
+				vbody = doc.array().toVariantList();
+
 			QString errorMessage;
 			vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
 			if(vbody.isValid())
+				vbody = convertToJsonStyle(vbody);
+			if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
 			{
-				QJson::Serializer serializer;
-				body = serializer.serialize(convertToJsonStyle(vbody));
+				QJsonDocument doc;
+				if(vbody.type() == QVariant::Map)
+					doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
+				else // List
+					doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
+
+				body = doc.toJson(QJsonDocument::Compact);
 
 				if(response.body.endsWith("\r\n"))
 					body += "\r\n";
@@ -568,8 +588,7 @@ private:
 
 				result["body"] = QString::fromUtf8(body);
 
-				QJson::Serializer serializer;
-				QByteArray resultJson = serializer.serialize(result);
+				QByteArray resultJson = QJsonDocument(QJsonObject::fromVariantMap(result)).toJson(QJsonDocument::Compact);
 
 				body = jsonpCallback + '(' + resultJson + ");\n";
 			}
@@ -2051,13 +2070,18 @@ private slots:
 			}
 			else if(item.type == WsControlPacket::Item::Grip)
 			{
-				QJson::Parser parser;
-				data = parser.parse(item.message, &ok);
-				if(item.message.isEmpty() || !ok)
+				QJsonParseError e;
+				QJsonDocument doc = QJsonDocument::fromJson(item.message, &e);
+				if(e.error != QJsonParseError::NoError || (!doc.isObject() && !doc.isArray()))
 				{
 					log_debug("grip control message is not valid json");
 					return;
 				}
+
+				if(doc.isObject())
+					data = doc.object().toVariantMap();
+				else // isArray
+					data = doc.array().toVariantList();
 
 				QString errorMessage;
 				WsControlMessage cm = WsControlMessage::fromVariant(data, &ok, &errorMessage);
@@ -2218,24 +2242,23 @@ private slots:
 		{
 			if(req->requestMethod() == "POST")
 			{
-				QJson::Parser parser;
-				bool ok;
-				QVariant vdata = parser.parse(req->requestBody(), &ok);
-				if(req->requestBody().isEmpty() || !ok)
+				QJsonParseError e;
+				QJsonDocument doc = QJsonDocument::fromJson(req->requestBody(), &e);
+				if(e.error != QJsonParseError::NoError)
 				{
 					req->respond(400, "Bad Request", "Body is not valid JSON.\n");
 					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
 					return;
 				}
 
-				if(vdata.type() != QVariant::Map)
+				if(!doc.isObject())
 				{
 					req->respond(400, "Bad Request", "Invalid format.\n");
 					connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
 					return;
 				}
 
-				QVariantMap mdata = vdata.toMap();
+				QVariantMap mdata = doc.object().toVariantMap();
 				QVariantList vitems;
 
 				if(!mdata.contains("items"))
@@ -2254,6 +2277,7 @@ private slots:
 
 				vitems = mdata["items"].toList();
 
+				bool ok;
 				QString errorMessage;
 				QList<PublishItem> items = parseHttpItems(vitems, &ok, &errorMessage);
 				if(!ok)

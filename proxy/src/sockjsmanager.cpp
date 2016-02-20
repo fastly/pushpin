@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,10 +20,13 @@
 #include "sockjsmanager.h"
 
 #include <assert.h>
+#include <QtGlobal>
 #include <QTimer>
+#include <QUrlQuery>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include <QCryptographicHash>
-#include <QtCrypto>
-#include <qjson/serializer.h>
 #include "log.h"
 #include "bufferlist.h"
 #include "zhttprequest.h"
@@ -49,6 +52,17 @@ const char *iframeHtmlTemplate =
 "  <p>This is a SockJS hidden iframe. It's used for cross domain magic.</p>\n"
 "</body>\n"
 "</html>\n";
+
+static QByteArray serializeJsonString(const QString &s)
+{
+	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(QVariantList() << s)).toJson(QJsonDocument::Compact);
+
+	assert(tmp.length() >= 4);
+	assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
+	assert(tmp[1] == '"' && tmp[tmp.length() - 2] == '"');
+
+	return tmp.mid(1, tmp.length() - 2);
+}
 
 class SockJsManager::Private : public QObject
 {
@@ -188,30 +202,32 @@ public:
 
 		QUrl uri = req->requestUri();
 
-		QByteArray encPath = uri.encodedPath();
+		QByteArray encPath = uri.path(QUrl::FullyEncoded).toUtf8();
 		s->path = encPath.mid(basePathStart);
+
+		QUrlQuery query(uri);
 
 		QList<QByteArray> parts = s->path.split('/');
 		if(!parts.isEmpty() && parts.last().startsWith("jsonp"))
 		{
-			if(uri.hasQueryItem("callback"))
+			if(query.hasQueryItem("callback"))
 			{
-				s->jsonpCallback = uri.queryItemValue("callback").toUtf8();
-				uri.removeAllQueryItems("callback");
+				s->jsonpCallback = query.queryItemValue("callback").toUtf8();
+				query.removeAllQueryItems("callback");
 			}
-			else if(uri.hasQueryItem("c"))
+			else if(query.hasQueryItem("c"))
 			{
-				s->jsonpCallback = uri.queryItemValue("c").toUtf8();
-				uri.removeAllQueryItems("c");
+				s->jsonpCallback = query.queryItemValue("c").toUtf8();
+				query.removeAllQueryItems("c");
 			}
 		}
 
 		s->asUri = uri;
 		s->asUri.setScheme((s->asUri.scheme() == "https") ? "wss" : "ws");
 		if(!asPath.isEmpty())
-			s->asUri.setEncodedPath(asPath);
+			s->asUri.setPath(QString::fromUtf8(asPath), QUrl::StrictMode);
 		else
-			s->asUri.setEncodedPath(encPath.mid(0, basePathStart));
+			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart)), QUrl::StrictMode);
 
 		s->route = route;
 
@@ -230,13 +246,13 @@ public:
 		Session *s = new Session(this);
 		s->sock = sock;
 
-		QByteArray encPath = sock->requestUri().encodedPath();
+		QByteArray encPath = sock->requestUri().path(QUrl::FullyEncoded).toUtf8();
 		s->path = encPath.mid(basePathStart);
 		s->asUri = sock->requestUri();
 		if(!asPath.isEmpty())
-			s->asUri.setEncodedPath(asPath);
+			s->asUri.setPath(QString::fromUtf8(asPath), QUrl::StrictMode);
 		else
-			s->asUri.setEncodedPath(encPath.mid(0, basePathStart) + "/websocket");
+			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
 		s->route = route;
 
 		connect(sock, SIGNAL(closed()), SLOT(sock_closed()));
@@ -286,16 +302,15 @@ public:
 		else
 			headers += HttpHeader("Content-Type", "text/plain");
 
-		QJson::Serializer serializer;
 		QByteArray body;
 		if(data.isValid())
-			body = serializer.serialize(data);
+			body = QJsonDocument(QJsonObject::fromVariantMap(data.toMap())).toJson(QJsonDocument::Compact);
 		if(!prefix.isEmpty())
 			body.prepend(prefix);
 
 		if(!jsonpCallback.isEmpty())
 		{
-			QByteArray encBody = serializer.serialize(QString::fromUtf8(body));
+			QByteArray encBody = serializeJsonString(QString::fromUtf8(body));
 			body = "/**/" + jsonpCallback + '(' + encBody + ");\n";
 		}
 		else if(!body.isEmpty())
@@ -315,8 +330,7 @@ public:
 		QByteArray body;
 		if(!jsonpCallback.isEmpty())
 		{
-			QJson::Serializer serializer;
-			QByteArray encBody = serializer.serialize(str);
+			QByteArray encBody = serializeJsonString(str);
 			body = "/**/" + jsonpCallback + '(' + encBody + ");\n";
 		}
 		else
@@ -363,10 +377,7 @@ public:
 		}
 		else if(method == "GET" && s->path == "/info")
 		{
-			QByteArray bytes = QCA::Random::randomArray(4).toByteArray();
-			quint32 x = 0;
-			for(int n = 0; n < 4; ++n)
-				x |= ((unsigned char)bytes[n]) << ((3-n) * 8);
+			quint32 x = (quint32)qrand();
 
 			QVariantMap out;
 			out["websocket"] = true;

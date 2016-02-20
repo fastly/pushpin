@@ -23,8 +23,10 @@
 #include <QPointer>
 #include <QUrl>
 #include <QHostAddress>
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
+#include <QUrlQuery>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "bufferlist.h"
@@ -99,6 +101,17 @@ static bool validMethod(const QString &in)
 	}
 
 	return true;
+}
+
+static QByteArray serializeJsonString(const QString &s)
+{
+	QByteArray tmp = QJsonDocument(QJsonArray::fromVariantList(QVariantList() << s)).toJson(QJsonDocument::Compact);
+
+	assert(tmp.length() >= 4);
+	assert(tmp[0] == '[' && tmp[tmp.length() - 1] == ']');
+	assert(tmp[1] == '"' && tmp[tmp.length() - 2] == '"');
+
+	return tmp.mid(1, tmp.length() - 2);
 }
 
 class RequestSession::Private : public QObject
@@ -206,11 +219,13 @@ public:
 		bool isHttps = (requestData.uri.scheme() == "https");
 		QString host = requestData.uri.host();
 
+		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
+
 		// look up the route
-		route = domainMap->entry(DomainMap::Http, isHttps, host, requestData.uri.encodedPath());
+		route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 
 		// before we do anything else, see if this is a sockjs request
-		if(!route.isNull() && !route.sockJsPath.isEmpty() && requestData.uri.encodedPath().startsWith(route.sockJsPath))
+		if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
 		{
 			sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
 			zhttpRequest = 0;
@@ -293,8 +308,10 @@ public:
 		bool isHttps = (requestData.uri.scheme() == "https");
 		QString host = requestData.uri.host();
 
+		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
+
 		// look up the route
-		route = domainMap->entry(DomainMap::Http, isHttps, host, requestData.uri.encodedPath());
+		route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 		if(route.isNull())
 		{
 			log_warning("requestsession: %p %s has 0 routes", q, qPrintable(host));
@@ -438,9 +455,7 @@ public:
 
 		if(jsonpExtendedResponse)
 		{
-			QJson::Serializer serializer;
-
-			QByteArray reasonJson = serializer.serialize(QString::fromUtf8(reason));
+			QByteArray reasonJson = serializeJsonString(QString::fromUtf8(reason));
 			if(reasonJson.isNull())
 				return QByteArray();
 
@@ -451,7 +466,7 @@ public:
 					vheaders[h.first] = h.second;
 			}
 
-			QByteArray headersJson = serializer.serialize(vheaders);
+			QByteArray headersJson = QJsonDocument(QJsonObject::fromVariantMap(vheaders)).toJson(QJsonDocument::Compact);
 			if(headersJson.isNull())
 				return QByteArray();
 
@@ -465,9 +480,8 @@ public:
 	{
 		if(jsonpExtendedResponse)
 		{
-			QJson::Serializer serializer;
-
-			QByteArray bodyJson = serializer.serialize(buf);
+			// FIXME: this assumes there isn't a partial character encoding
+			QByteArray bodyJson = serializeJsonString(QString::fromUtf8(buf));
 			if(bodyJson.isNull())
 				return QByteArray();
 
@@ -496,25 +510,30 @@ public:
 		if(requestData.method != "GET")
 			return false;
 
-		QByteArray callbackParam = config.callbackParam;
+		QString callbackParam = QString::fromUtf8(config.callbackParam);
 		if(callbackParam.isEmpty())
 			callbackParam = "callback";
+
+		QString bodyParam;
+		if(!config.bodyParam.isEmpty())
+			bodyParam = QString::fromUtf8(config.bodyParam);
+
+		QUrl uri = requestData.uri;
+		QUrlQuery query(uri);
 
 		// two ways to activate JSON-P:
 		//   1) callback param present
 		//   2) default callback specified in configuration and body param present
-		if(!requestData.uri.hasEncodedQueryItem(callbackParam) &&
-			(config.defaultCallback.isEmpty() || config.bodyParam.isEmpty() || !requestData.uri.hasEncodedQueryItem(config.bodyParam)))
+		if(!query.hasQueryItem(callbackParam) &&
+			(config.defaultCallback.isEmpty() || bodyParam.isEmpty() || !query.hasQueryItem(bodyParam)))
 		{
 			return false;
 		}
 
-		QUrl uri = requestData.uri;
-
 		QByteArray callback;
-		if(uri.hasEncodedQueryItem(callbackParam))
+		if(query.hasQueryItem(callbackParam))
 		{
-			callback = parsePercentEncoding(uri.encodedQueryItemValue(callbackParam));
+			callback = parsePercentEncoding(query.queryItemValue(callbackParam, QUrl::FullyEncoded).toUtf8());
 			if(callback.isEmpty())
 			{
 				log_warning("requestsession: id=%s invalid callback parameter, rejecting", rid.second.data());
@@ -523,15 +542,15 @@ public:
 				return false;
 			}
 
-			uri.removeAllEncodedQueryItems(callbackParam);
+			query.removeAllQueryItems(callbackParam);
 		}
 		else
 			callback = config.defaultCallback;
 
 		QString method;
-		if(uri.hasEncodedQueryItem("_method"))
+		if(query.hasQueryItem("_method"))
 		{
-			method = QString::fromLatin1(parsePercentEncoding(uri.encodedQueryItemValue("_method")));
+			method = QString::fromLatin1(parsePercentEncoding(query.queryItemValue("_method", QUrl::FullyEncoded).toUtf8()));
 			if(!validMethod(method))
 			{
 				log_warning("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
@@ -540,16 +559,15 @@ public:
 				return false;
 			}
 
-			uri.removeAllEncodedQueryItems("_method");
+			query.removeAllQueryItems("_method");
 		}
 
 		HttpHeaders headers;
-		if(uri.hasEncodedQueryItem("_headers"))
+		if(query.hasQueryItem("_headers"))
 		{
-			QJson::Parser parser;
-			bool parserOk;
-			QVariant vheaders = parser.parse(parsePercentEncoding(uri.encodedQueryItemValue("_headers")), &parserOk);
-			if(!parserOk || vheaders.type() != QVariant::Map)
+			QJsonParseError e;
+			QJsonDocument doc = QJsonDocument::fromJson(parsePercentEncoding(query.queryItemValue("_headers", QUrl::FullyEncoded).toUtf8()), &e);
+			if(e.error != QJsonParseError::NoError || !doc.isObject())
 			{
 				log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 				*ok = false;
@@ -557,7 +575,8 @@ public:
 				return false;
 			}
 
-			QVariantMap headersMap = vheaders.toMap();
+			QVariantMap headersMap = doc.object().toVariantMap();
+
 			QMapIterator<QString, QVariant> vit(headersMap);
 			while(vit.hasNext())
 			{
@@ -582,15 +601,15 @@ public:
 				headers += HttpHeader(key, vit.value().toString().toUtf8());
 			}
 
-			uri.removeAllEncodedQueryItems("_headers");
+			query.removeAllQueryItems("_headers");
 		}
 
 		QByteArray body;
-		if(!config.bodyParam.isEmpty())
+		if(!bodyParam.isEmpty())
 		{
-			if(uri.hasEncodedQueryItem(config.bodyParam))
+			if(query.hasQueryItem(bodyParam))
 			{
-				body = parsePercentEncoding(uri.encodedQueryItemValue(config.bodyParam));
+				body = parsePercentEncoding(query.queryItemValue(bodyParam, QUrl::FullyEncoded).toUtf8());
 				if(body.isNull())
 				{
 					log_warning("requestsession: id=%s invalid body parameter, rejecting", rid.second.data());
@@ -602,14 +621,14 @@ public:
 				headers.removeAll("Content-Type");
 				headers += HttpHeader("Content-Type", "application/json");
 
-				uri.removeAllEncodedQueryItems(config.bodyParam);
+				query.removeAllQueryItems(bodyParam);
 			}
 		}
 		else
 		{
-			if(uri.hasEncodedQueryItem("_body"))
+			if(query.hasQueryItem("_body"))
 			{
-				body = parsePercentEncoding(uri.encodedQueryItemValue("_body"));
+				body = parsePercentEncoding(query.queryItemValue("_body").toUtf8());
 				if(body.isNull())
 				{
 					log_warning("requestsession: id=%s invalid _body parameter, rejecting", rid.second.data());
@@ -618,18 +637,20 @@ public:
 					return false;
 				}
 
-				uri.removeAllEncodedQueryItems("_body");
+				query.removeAllQueryItems("_body");
 			}
 		}
 
+		uri.setQuery(query);
+
 		// if we have no query items anymore, strip the '?'
-		if(uri.encodedQueryItems().isEmpty())
+		if(query.isEmpty())
 		{
 			QByteArray tmp = uri.toEncoded();
 			if(tmp.length() > 0 && tmp[tmp.length() - 1] == '?')
 			{
 				tmp.truncate(tmp.length() - 1);
-				uri = QUrl(tmp, QUrl::StrictMode);
+				uri = QUrl::fromEncoded(tmp, QUrl::StrictMode);
 			}
 		}
 

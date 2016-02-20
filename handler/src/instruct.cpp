@@ -20,8 +20,8 @@
 #include "instruct.h"
 
 #include <QVariant>
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "variantutil.h"
 #include "statusreasons.h"
 
@@ -269,22 +269,23 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			return Instruct();
 		}
 
-		QJson::Parser parser;
-		bool ok_;
-		QVariant vinstruct = parser.parse(response.body, &ok_);
-		if(response.body.isEmpty() && !ok_)
+		QJsonParseError e;
+		QJsonDocument doc = QJsonDocument::fromJson(response.body, &e);
+		if(e.error != QJsonParseError::NoError)
 		{
 			setError(ok, errorMessage, "failed to parse application/grip-instruct content as JSON");
 			return Instruct();
 		}
 
-		if(vinstruct.type() != QVariant::Map)
+		if(!doc.isObject())
 		{
 			setError(ok, errorMessage, "instruct must be an object");
 			return Instruct();
 		}
 
-		QVariantMap minstruct = vinstruct.toMap();
+		QVariantMap minstruct = doc.object().toVariantMap();
+
+		bool ok_;
 
 		if(minstruct.contains("hold"))
 		{

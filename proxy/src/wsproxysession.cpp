@@ -22,8 +22,9 @@
 #include <assert.h>
 #include <QTimer>
 #include <QUrl>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QHostAddress>
-#include <qjson/serializer.h>
 #include "packet/httprequestdata.h"
 #include "log.h"
 #include "zhttpmanager.h"
@@ -351,7 +352,7 @@ public:
 		if(!entry.asHost.isEmpty())
 			requestData.uri.setHost(entry.asHost);
 
-		QByteArray path = requestData.uri.encodedPath();
+		QByteArray path = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
 		if(entry.pathRemove > 0)
 			path = path.mid(entry.pathRemove);
@@ -359,7 +360,7 @@ public:
 		if(!entry.pathPrepend.isEmpty())
 			path = entry.pathPrepend + path;
 
-		requestData.uri.setEncodedPath(path);
+		requestData.uri.setPath(QString::fromUtf8(path), QUrl::StrictMode);
 
 		QByteArray sigIss;
 		QByteArray sigKey;
@@ -693,11 +694,12 @@ private slots:
 				{
 					log_debug("wsproxysession: %p implicit subscription to [%s]", q, qPrintable(subChannel));
 
-					QJson::Serializer serializer;
 					QVariantMap msg;
 					msg["type"] = "subscribe";
 					msg["channel"] = subChannel;
-					wsControl->sendGripMessage(serializer.serialize(msg));
+
+					QByteArray msgJson = QJsonDocument(QJsonObject::fromVariantMap(msg)).toJson(QJsonDocument::Compact);
+					wsControl->sendGripMessage(msgJson);
 				}
 			}
 		}

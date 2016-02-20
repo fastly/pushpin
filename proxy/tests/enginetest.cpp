@@ -17,8 +17,8 @@
 
 #include <unistd.h>
 #include <QtTest/QtTest>
-#include <QtCrypto>
-#include <qjson/parser.h>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -254,9 +254,12 @@ private slots:
 		zresp.seq = serverOutSeq++;
 		zresp.code = 200;
 		zresp.reason = "OK";
-		if(!retried && zreq.uri.encodedQuery().contains("wait=true"))
+
+		QByteArray encPath = zreq.uri.path(QUrl::FullyEncoded).toUtf8();
+
+		if(!retried && zreq.uri.query(QUrl::FullyEncoded).contains("wait=true"))
 		{
-			if(zreq.uri.encodedPath() == "/path2")
+			if(encPath == "/path2")
 			{
 				zresp.body = "{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\", \"prev-id\": \"1\" } ] } }";
 				zresp.headers += HttpHeader("Content-Type", "application/grip-instruct");
@@ -269,7 +272,7 @@ private slots:
 		}
 		else
 		{
-			if(zreq.uri.encodedPath().startsWith("/jsonp"))
+			if(encPath.startsWith("/jsonp"))
 			{
 				zresp.body = "{\"hello\": \"world\"}";
 				zresp.headers += HttpHeader("Content-Type", "application/json");
@@ -332,12 +335,14 @@ private slots:
 		QVariantHash vaccept = vreq["args"].toHash();
 		acceptIn = vaccept["response"].toHash()["body"].toByteArray();
 
-		bool ok;
-		QJson::Parser parser;
 		log_debug("instruct: [%s]", acceptIn.data());
-		QVariant vinstruct = parser.parse(acceptIn, &ok);
-		QVERIFY(ok && vinstruct.type() == QVariant::Map);
-		QVariantMap instruct = vinstruct.toMap();
+
+		QJsonParseError e;
+		QJsonDocument doc = QJsonDocument::fromJson(acceptIn, &e);
+		QVERIFY(e.error == QJsonParseError::NoError);
+		QVERIFY(doc.isObject());
+
+		QVariantMap instruct = doc.object().toVariantMap();
 
 		if(instruct["hold"].toMap()["channels"].toList()[0].toMap().contains("prev-id"))
 		{
@@ -359,16 +364,12 @@ class EngineTest : public QObject
 	Q_OBJECT
 
 private:
-	QCA::Initializer *qcaInit;
 	Engine *engine;
 	Wrapper *wrapper;
 
 private slots:
 	void initTestCase()
 	{
-		qcaInit = new QCA::Initializer;
-		QVERIFY(QCA::isSupported("hmac(sha256)"));
-
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
@@ -404,7 +405,6 @@ private slots:
 	{
 		delete engine;
 		delete wrapper;
-		delete qcaInit;
 	}
 
 	void passthrough()
@@ -472,11 +472,12 @@ private slots:
 		QVERIFY(wrapper->in.endsWith("});\n"));
 		QByteArray dataRaw = wrapper->in.mid(9, wrapper->in.size() - 9 - 3);
 
-		bool ok;
-		QJson::Parser parser;
-		QVariant vdata = parser.parse(dataRaw, &ok);
-		QVERIFY(ok && vdata.type() == QVariant::Map);
-		QVariantMap data = vdata.toMap();
+		QJsonParseError e;
+		QJsonDocument doc = QJsonDocument::fromJson(dataRaw, &e);
+		QVERIFY(e.error == QJsonParseError::NoError);
+		QVERIFY(doc.isObject());
+
+		QVariantMap data = doc.object().toVariantMap();
 
 		QCOMPARE(data["code"].toInt(), 200);
 		QCOMPARE(data["body"].toByteArray(), QByteArray("{\"hello\": \"world\"}"));

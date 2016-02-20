@@ -442,11 +442,13 @@ public:
 		bool isSecure = (requestUri.scheme() == "wss");
 		QString host = requestUri.host();
 
+		QByteArray encPath = requestUri.path(QUrl::FullyEncoded).toUtf8();
+
 		// look up the route
-		DomainMap::Entry route = domainMap->entry(DomainMap::WebSocket, isSecure, host, requestUri.encodedPath());
+		DomainMap::Entry route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
 
 		// before we do anything else, see if this is a sockjs request
-		if(!route.isNull() && !route.sockJsPath.isEmpty() && requestUri.encodedPath().startsWith(route.sockJsPath))
+		if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
 		{
 			sockJsManager->giveSocket(sock, route.sockJsPath.length(), route.sockJsAsPath, route);
 			return;

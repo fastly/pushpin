@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,8 +22,10 @@
 #include <assert.h>
 #include <QPointer>
 #include <QTimer>
-#include <qjson/parser.h>
-#include <qjson/serializer.h>
+#include <QUrlQuery>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
@@ -343,22 +345,24 @@ public:
 			}
 			else // GET
 			{
-				param = _req->requestUri().queryItemValue("d").toUtf8();
+				QUrlQuery query(_req->requestUri());
+				param = query.queryItemValue("d").toUtf8();
 			}
 
-			QJson::Parser parser;
-			bool ok;
-			QVariant vmessages = parser.parse(param, &ok);
-			if(!ok || vmessages.type() != QVariant::List)
+			QJsonParseError error;
+			QJsonDocument doc = QJsonDocument::fromJson(param, &error);
+			if(error.error != QJsonParseError::NoError || !doc.isArray())
 			{
 				requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
 				respondError(_req, 400, "Bad Request", "Payload expected");
 				return;
 			}
 
+			QVariantList messages = doc.array().toVariantList();
+
 			QList<Frame> frames;
 			int bytes = 0;
-			foreach(const QVariant &vmessage, vmessages.toList())
+			foreach(const QVariant &vmessage, messages)
 			{
 				if(vmessage.type() != QVariant::String)
 				{
@@ -478,8 +482,7 @@ public:
 				QVariantList messages;
 				messages += QString::fromUtf8(frame.data);
 
-				QJson::Serializer serializer;
-				QByteArray arrayJson = serializer.serialize(messages);
+				QByteArray arrayJson = QJsonDocument(QJsonArray::fromVariantList(messages)).toJson(QJsonDocument::Compact);
 				Frame f(Frame::Text, "a" + arrayJson, false);
 
 				pendingWrites += WriteItem(WriteItem::User, frame.data.size());
@@ -699,18 +702,19 @@ public:
 
 				QByteArray data = bufs.toByteArray();
 
-				QJson::Parser parser;
-				bool ok;
-				QVariant vmessages = parser.parse(data, &ok);
-				if(!ok || vmessages.type() != QVariant::List)
+				QJsonParseError e;
+				QJsonDocument doc = QJsonDocument::fromJson(data, &e);
+				if(e.error != QJsonParseError::NoError || !doc.isArray())
 				{
 					error = true;
 					break;
 				}
 
+				QVariantList messages = doc.array().toVariantList();
+
 				QList<Frame> frames;
 				int bytes = 0;
-				foreach(const QVariant &vmessage, vmessages.toList())
+				foreach(const QVariant &vmessage, messages)
 				{
 					if(vmessage.type() != QVariant::String)
 					{

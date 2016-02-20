@@ -20,7 +20,8 @@
 #include "m2requestpacket.h"
 
 #include <QSet>
-#include <qjson/parser.h>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "tnetstring.h"
 
 static bool isAllCaps(const QString &s)
@@ -154,12 +155,12 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 	}
 	else // ByteArray
 	{
-		QJson::Parser parser;
-		vheaders = parser.parse(vheaders.toByteArray(), &ok);
-		if(!ok)
+		QJsonParseError error;
+		QJsonDocument doc = QJsonDocument::fromJson(vheaders.toByteArray(), &error);
+		if(error.error != QJsonParseError::NoError || !doc.isObject())
 			return false;
 
-		QVariantMap headersMap = vheaders.toMap();
+		QVariantMap headersMap = doc.object().toVariantMap();
 		QMapIterator<QString, QVariant> vit(headersMap);
 		while(vit.hasNext())
 		{
@@ -228,15 +229,12 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 
 	if(m2method == "JSON")
 	{
-		QJson::Parser parser;
-		QVariant vdata = parser.parse(body, &ok);
-		if(!ok)
+		QJsonParseError error;
+		QJsonDocument doc = QJsonDocument::fromJson(body, &error);
+		if(error.error != QJsonParseError::NoError || !doc.isObject())
 			return false;
 
-		if(vdata.type() != QVariant::Map)
-			return false;
-
-		QVariantMap data = vdata.toMap();
+		QVariantMap data = doc.object().toVariantMap();
 		if(!data.contains("type") || data["type"].type() != QVariant::String)
 			return false;
 

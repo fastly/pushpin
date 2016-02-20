@@ -1,7 +1,7 @@
-CONFIG *= console qtestlib testcase
+CONFIG *= console testcase
 CONFIG -= app_bundle
 QT -= gui
-QT *= network
+QT *= network testlib
 
 TESTS_DIR = $$PWD
 SRC_DIR = $$PWD/../src

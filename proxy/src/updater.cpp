@@ -21,7 +21,9 @@
 
 #include <QSysInfo>
 #include <QTimer>
-#include <qjson/parser.h>
+#include <QUrlQuery>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "log.h"
 #include "httpheaders.h"
 #include "zhttpmanager.h"
@@ -105,14 +107,19 @@ private slots:
 		req->setIgnoreTlsErrors(true);
 
 		QUrl url(CHECK_URL);
-		url.addQueryItem("package", "pushpin");
-		url.addQueryItem("version", currentVersion);
+
+		QUrlQuery query;
+		query.addQueryItem("package", "pushpin");
+		query.addQueryItem("version", currentVersion);
 		QString os = getOs();
 		if(!os.isEmpty())
-			url.addQueryItem("os", os);
+			query.addQueryItem("os", os);
 		QString arch = getArch();
 		if(!arch.isEmpty())
-			url.addQueryItem("arch", arch);
+			query.addQueryItem("arch", arch);
+
+		url.setQuery(query);
+
 		HttpHeaders headers;
 		headers += HttpHeader("User-Agent", USER_AGENT);
 		log_debug("updater: checking for updates: %s", qPrintable(url.toString()));
@@ -142,10 +149,9 @@ private slots:
 		QByteArray rawBody = req->readBody();
 		cleanupRequest();
 
-		QJson::Parser parser;
-		bool ok;
-		QVariant vbody = parser.parse(rawBody, &ok);
-		if(!ok || vbody.type() != QVariant::Map)
+		QJsonParseError e;
+		QJsonDocument doc = QJsonDocument::fromJson(rawBody, &e);
+		if(e.error != QJsonParseError::NoError || !doc.isObject())
 		{
 			log_debug("updater: check failed, unexpected response body format");
 			return;
@@ -153,7 +159,7 @@ private slots:
 
 		log_debug("updater: check finished");
 
-		QVariantMap body = vbody.toMap();
+		QVariantMap body = doc.object().toVariantMap();
 
 		if(body.contains("updates") && body["updates"].type() == QVariant::List)
 		{
