@@ -2297,8 +2297,7 @@ private slots:
 		{
 			if(req->requestMethod() == "PUT" || req->requestMethod() == "POST")
 			{
-				QUrl tmp;
-				tmp.setEncodedQuery(req->requestBody());
+				QUrlQuery tmp(QString::fromUtf8(req->requestBody()));
 
 				QString targetHost;
 				int targetPort;
@@ -2393,8 +2392,7 @@ private slots:
 				{
 					QVariantMap obj;
 					obj["message"] = message;
-					QJson::Serializer serializer;
-					QString body = QString::fromUtf8(serializer.serialize(obj));
+					QString body = QJsonDocument(QJsonObject::fromVariantMap(obj)).toJson(QJsonDocument::Compact);
 					req->respond(200, "OK", responseContentType, body + "\n");
 				}
 				else // text/plain

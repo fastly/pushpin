@@ -19,7 +19,8 @@
 
 #include "configworker.h"
 
-#include <qjson/serializer.h>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "httpserver.h"
 #include "controlrequest.h"
 
@@ -69,8 +70,7 @@ void ConfigWorker::proxyRouteSet_finished(const DeferredResult &result)
 		{
 			QVariantMap obj;
 			obj["message"] = message;
-			QJson::Serializer serializer;
-			QString body = QString::fromUtf8(serializer.serialize(obj));
+			QString body = QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(obj)).toJson(QJsonDocument::Compact));
 			req_->respond(200, "OK", responseContentType_, body + "\n");
 		}
 		else // text/plain
