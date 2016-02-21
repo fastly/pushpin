@@ -6,6 +6,8 @@ sub_pushpin_proxy.depends = sub_libpushpin_proxy
 sub_tests.subdir = tests
 sub_tests.depends = sub_libpushpin_proxy
 
+sub_tests.CONFIG += no_default_install
+
 SUBDIRS += \
 	sub_libpushpin_proxy \
 	sub_pushpin_proxy \

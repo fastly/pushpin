@@ -35,7 +35,7 @@
 #include "bufferlist.h"
 #include "log.h"
 #include "layertracker.h"
-#include "../version.h"
+#include "config.h"
 
 #define DEFAULT_HWM 51000
 #define EXPIRE_INTERVAL 1000

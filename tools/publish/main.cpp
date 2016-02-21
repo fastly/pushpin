@@ -26,7 +26,7 @@
 #include <QVariantList>
 #include "zmq.h"
 #include "tnetstring.h"
-#include "version.h"
+#include "config.h"
 
 // return true if item modified
 static bool convertFromJsonStyleInPlace(QVariant *in)

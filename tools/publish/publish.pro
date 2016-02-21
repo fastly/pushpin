@@ -7,7 +7,7 @@ TARGET = pushpin-publish
 MOC_DIR = $$OUT_PWD/_moc
 OBJECTS_DIR = $$OUT_PWD/_obj
 
-include($$OUT_PWD/conf.pri)
+include($$OUT_PWD/../../conf.pri)
 
 CORE_DIR = $$PWD/../../corelib
 QZMQ_DIR = $$CORE_DIR/qzmq

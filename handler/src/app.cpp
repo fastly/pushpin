@@ -29,7 +29,7 @@
 #include "processquit.h"
 #include "log.h"
 #include "engine.h"
-#include "../version.h"
+#include "config.h"
 
 static void trimlist(QStringList *list)
 {

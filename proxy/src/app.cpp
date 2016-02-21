@@ -30,7 +30,7 @@
 #include "log.h"
 #include "xffrule.h"
 #include "engine.h"
-#include "../version.h"
+#include "config.h"
 
 static void trimlist(QStringList *list)
 {

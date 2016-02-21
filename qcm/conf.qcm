@@ -1,0 +1,91 @@
+/*
+-----BEGIN QCMOD-----
+name: Pushpin Configuration
+section: project
+arg: libdir=[path],Directory for libraries.  Default: PREFIX/lib
+arg: configdir=[path],Directory for config files.  Default: PREFIX/etc
+arg: rundir=[path],Directory for runtime files.  Default: /var/run
+arg: logdir=[path],Directory for log files.  Default: /var/log
+-----END QCMOD-----
+*/
+
+#include <QDateTime>
+
+static QString getVersion()
+{
+	QString str;
+
+	{
+		QFile file("version");
+		if(file.open(QIODevice::ReadOnly | QIODevice::Text))
+		{
+			QTextStream ts(&file);
+			if(!ts.atEnd())
+				str = ts.readLine();
+		}
+
+		if(str.isEmpty())
+			str = "UnknownVersion";
+	}
+
+	QString nowstr = QDateTime::currentDateTime().toString("yyyyMMdd");
+	str.replace("@@DATE@@", nowstr);
+	return str;
+}
+
+class qc_conf : public ConfObj
+{
+public:
+	qc_conf(Conf *c) : ConfObj(c) {}
+	QString name() const { return "Pushpin Configuration"; }
+	QString shortname() const { return "conf"; }
+	QString checkString() const { return QString(); }
+	bool exec()
+	{
+		QString version = getVersion();
+
+		QString prefix = conf->getenv("PREFIX");
+		QString varprefix = "/var";
+
+		QString libdir = conf->getenv("QC_LIBDIR");
+		if(libdir.isEmpty())
+			libdir = prefix + "/lib";
+		conf->addExtra(QString("LIBDIR = %1/pushpin").arg(libdir));
+
+		QString configdir = conf->getenv("QC_CONFIGDIR");
+		if(configdir.isEmpty())
+			configdir = prefix + "/etc";
+		conf->addExtra(QString("CONFIGDIR = %1/pushpin").arg(configdir));
+
+		QString rundir = conf->getenv("QC_RUNDIR");
+		if(rundir.isEmpty())
+			rundir = varprefix + "/run";
+		conf->addExtra(QString("RUNDIR = %1/pushpin").arg(rundir));
+
+		QString logdir = conf->getenv("QC_LOGDIR");
+		if(logdir.isEmpty())
+			logdir = varprefix + "/log";
+		conf->addExtra(QString("LOGDIR = %1/pushpin").arg(logdir));
+
+		conf->addIncludePath("$$PWD");
+
+		QFile file("config.h");
+		if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+		{
+			QTextStream stream( &file );
+			stream << "#define VERSION \"" << version << "\"" << endl;
+		}
+
+		conf->addDefine("HAVE_CONFIG");
+
+		int rc = system(QString("sed -e \"s,configdir=.*,configdir=%2/pushpin/runner,g\" -e \"s,rundir=.*,rundir=%3/pushpin,g\" -e \"s,logdir=.*,logdir=%4/pushpin,g\" examples/config/pushpin.conf > pushpin.conf.inst").arg(configdir).arg(rundir).arg(logdir).toUtf8());
+		if(rc != 0)
+			conf->debug("failed to create pushpin.conf.inst");
+
+		rc = system(QString("sed -e \"s,^default_libdir = .*,default_libdir = \\'%1/pushpin\\',g\" pushpin | sed -e \"s,^default_configdir =.*,default_configdir = \\\"%2/pushpin\\\",g\" | sed -e \"s,^version =.*,version = \\\"%3\\\",g\" > pushpin.inst && chmod 755 pushpin.inst").arg(libdir).arg(configdir).arg(version).toUtf8());
+		if(rc != 0)
+			conf->debug("failed to create pushpin.inst");
+
+		return true;
+	}
+};
