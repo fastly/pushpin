@@ -8,7 +8,6 @@ SRC_DIR = $$PWD/..
 CORE_DIR = $$PWD/../../corelib
 QZMQ_DIR = $$CORE_DIR/qzmq
 COMMON_DIR = $$CORE_DIR/common
-DESTDIR = $$TESTS_DIR
 
 LIBS += -L$$SRC_DIR -lpushpin-handler
 PRE_TARGETDEPS += $$PWD/../libpushpin-handler.a
