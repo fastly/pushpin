@@ -1,5 +1,5 @@
-SRC_DIR = $$PWD/../..
-CORE_DIR = $$PWD/../../../../corelib
+SRC_DIR = $$PWD/..
+CORE_DIR = $$PWD/../../corelib
 QZMQ_DIR = $$CORE_DIR/qzmq
 COMMON_DIR = $$CORE_DIR/common
 
@@ -11,7 +11,7 @@ INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
 
 HEADERS += \
-	$$SRC_DIR/../../config.h \
+	$$SRC_DIR/../config.h \
 	$$SRC_DIR/app.h
 
 SOURCES += \

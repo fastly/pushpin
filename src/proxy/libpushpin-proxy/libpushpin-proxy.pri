@@ -1,5 +1,5 @@
-SRC_DIR = $$PWD/../..
-CORE_DIR = $$PWD/../../../../corelib
+SRC_DIR = $$PWD/..
+CORE_DIR = $$PWD/../../corelib
 QZMQ_DIR = $$CORE_DIR/qzmq
 COMMON_DIR = $$CORE_DIR/common
 
@@ -35,78 +35,81 @@ SOURCES += \
 HEADERS += \
 	$$CORE_DIR/packet/httprequestdata.h \
 	$$CORE_DIR/packet/httpresponsedata.h \
-	$$CORE_DIR/packet/zrpcrequestpacket.h \
-	$$CORE_DIR/packet/zrpcresponsepacket.h \
 	$$CORE_DIR/packet/retryrequestpacket.h \
 	$$CORE_DIR/packet/wscontrolpacket.h \
-	$$CORE_DIR/packet/statspacket.h
+	$$CORE_DIR/packet/statspacket.h \
+	$$CORE_DIR/packet/zrpcrequestpacket.h \
+	$$CORE_DIR/packet/zrpcresponsepacket.h
 
 SOURCES += \
-	$$CORE_DIR/packet/zrpcrequestpacket.cpp \
-	$$CORE_DIR/packet/zrpcresponsepacket.cpp \
 	$$CORE_DIR/packet/retryrequestpacket.cpp \
 	$$CORE_DIR/packet/wscontrolpacket.cpp \
-	$$CORE_DIR/packet/statspacket.cpp
+	$$CORE_DIR/packet/statspacket.cpp \
+	$$CORE_DIR/packet/zrpcrequestpacket.cpp \
+	$$CORE_DIR/packet/zrpcresponsepacket.cpp
 
 HEADERS += \
-	$$CORE_DIR/inspectdata.h \
 	$$CORE_DIR/uuidutil.h \
 	$$CORE_DIR/zutil.h \
-	$$CORE_DIR/zrpcmanager.h \
-	$$CORE_DIR/zrpcrequest.h \
 	$$CORE_DIR/websocket.h \
 	$$CORE_DIR/zhttpmanager.h \
 	$$CORE_DIR/zhttprequest.h \
 	$$CORE_DIR/zwebsocket.h \
+	$$CORE_DIR/zrpcmanager.h \
+	$$CORE_DIR/zrpcrequest.h \
+	$$CORE_DIR/inspectdata.h \
 	$$CORE_DIR/cors.h \
 	$$CORE_DIR/statsmanager.h
 
 SOURCES += \
 	$$CORE_DIR/uuidutil.cpp \
 	$$CORE_DIR/zutil.cpp \
-	$$CORE_DIR/zrpcmanager.cpp \
-	$$CORE_DIR/zrpcrequest.cpp \
 	$$CORE_DIR/zhttpmanager.cpp \
 	$$CORE_DIR/zhttprequest.cpp \
 	$$CORE_DIR/zwebsocket.cpp \
+	$$CORE_DIR/zrpcmanager.cpp \
+	$$CORE_DIR/zrpcrequest.cpp \
 	$$CORE_DIR/cors.cpp \
 	$$CORE_DIR/statsmanager.cpp
 
 HEADERS += \
-	$$SRC_DIR/deferred.h \
-	$$SRC_DIR/statusreasons.h \
-	$$SRC_DIR/httpserver.h \
-	$$SRC_DIR/variantutil.h \
-	$$SRC_DIR/jsonpointer.h \
-	$$SRC_DIR/jsonpatch.h \
-	$$SRC_DIR/detectrule.h \
-	$$SRC_DIR/lastids.h \
-	$$SRC_DIR/cidset.h \
-	$$SRC_DIR/sessionrequest.h \
-	$$SRC_DIR/requeststate.h \
-	$$SRC_DIR/wscontrolmessage.h \
-	$$SRC_DIR/publishformat.h \
-	$$SRC_DIR/publishitem.h \
-	$$SRC_DIR/instruct.h \
-	$$SRC_DIR/responselastids.h \
-	$$SRC_DIR/controlrequest.h \
-	$$SRC_DIR/conncheckworker.h \
+	$$SRC_DIR/jwt.h \
+	$$SRC_DIR/websocketoverhttp.h \
+	$$SRC_DIR/zrpcchecker.h \
+	$$SRC_DIR/sockjsmanager.h \
+	$$SRC_DIR/sockjssession.h \
+	$$SRC_DIR/inspectrequest.h \
+	$$SRC_DIR/acceptrequest.h \
+	$$SRC_DIR/connectionmanager.h \
+	$$SRC_DIR/wscontrolmanager.h \
+	$$SRC_DIR/wscontrolsession.h \
+	$$SRC_DIR/acceptdata.h \
+	$$SRC_DIR/domainmap.h \
+	$$SRC_DIR/zroutes.h \
+	$$SRC_DIR/xffrule.h \
+	$$SRC_DIR/requestsession.h \
+	$$SRC_DIR/proxyutil.h \
+	$$SRC_DIR/proxysession.h \
+	$$SRC_DIR/wsproxysession.h \
+	$$SRC_DIR/updater.h \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
-	$$SRC_DIR/deferred.cpp \
-	$$SRC_DIR/statusreasons.cpp \
-	$$SRC_DIR/httpserver.cpp \
-	$$SRC_DIR/variantutil.cpp \
-	$$SRC_DIR/jsonpointer.cpp \
-	$$SRC_DIR/jsonpatch.cpp \
-	$$SRC_DIR/sessionrequest.cpp \
-	$$SRC_DIR/requeststate.cpp \
-	$$SRC_DIR/wscontrolmessage.cpp \
-	$$SRC_DIR/publishformat.cpp \
-	$$SRC_DIR/publishitem.cpp \
-	$$SRC_DIR/instruct.cpp \
-	$$SRC_DIR/responselastids.cpp \
-	$$SRC_DIR/controlrequest.cpp \
-	$$SRC_DIR/conncheckworker.cpp \
+	$$SRC_DIR/jwt.cpp \
+	$$SRC_DIR/websocketoverhttp.cpp \
+	$$SRC_DIR/zrpcchecker.cpp \
+	$$SRC_DIR/sockjsmanager.cpp \
+	$$SRC_DIR/sockjssession.cpp \
+	$$SRC_DIR/inspectrequest.cpp \
+	$$SRC_DIR/acceptrequest.cpp \
+	$$SRC_DIR/connectionmanager.cpp \
+	$$SRC_DIR/wscontrolmanager.cpp \
+	$$SRC_DIR/wscontrolsession.cpp \
+	$$SRC_DIR/domainmap.cpp \
+	$$SRC_DIR/zroutes.cpp \
+	$$SRC_DIR/requestsession.cpp \
+	$$SRC_DIR/proxyutil.cpp \
+	$$SRC_DIR/proxysession.cpp \
+	$$SRC_DIR/wsproxysession.cpp \
+	$$SRC_DIR/updater.cpp \
 	$$SRC_DIR/engine.cpp

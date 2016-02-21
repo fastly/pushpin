@@ -3,13 +3,14 @@ CONFIG -= app_bundle
 QT -= gui
 QT += network
 TARGET = pushpin-publish
+DESTDIR = ../../bin
 
 MOC_DIR = $$OUT_PWD/_moc
 OBJECTS_DIR = $$OUT_PWD/_obj
 
 include($$OUT_PWD/../../conf.pri)
 
-CORE_DIR = $$PWD/../../corelib
+CORE_DIR = $$PWD/../../src/corelib
 QZMQ_DIR = $$CORE_DIR/qzmq
 COMMON_DIR = $$CORE_DIR/common
 

@@ -1,15 +1,9 @@
 TEMPLATE = subdirs
 
-m2adapter.subdir = m2adapter
-proxy.subdir = proxy
-handler.subdir = handler
-tools.subdir = tools/publish
+src.subdir = src
+tools.subdir = tools
 
-SUBDIRS += \
-	m2adapter \
-	proxy \
-	handler \
-	tools
+SUBDIRS += src tools
 
 include($$OUT_PWD/conf.pri)
 
