@@ -18,7 +18,6 @@
  */
 
 #include <QtTest/QtTest>
-#include <qjson/parser.h>
 #include "httpheaders.h"
 #include "packet/httpresponsedata.h"
 #include "instruct.h"

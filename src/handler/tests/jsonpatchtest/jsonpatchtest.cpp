@@ -18,7 +18,6 @@
  */
 
 #include <QtTest/QtTest>
-#include <qjson/parser.h>
 #include "jsonpatch.h"
 
 class JsonPatchTest : public QObject
