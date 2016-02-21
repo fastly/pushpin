@@ -13,9 +13,9 @@ Main options:
   --prefix=[path]       Base path for build/install.  Default: /usr/local
   --bindir=[path]       Directory for binaries.  Default: PREFIX/bin
   --qtdir=[path]        Directory where Qt is installed.
-  --extraconf=[conf]    Extra configuration for nonstandard cases
+  --extraconf=[conf]    Extra configuration for nonstandard cases.
   --verbose             Show extra configure output.
-  --qtselect=[N]        Select major Qt verion (4 or 5).
+  --qtselect=[N]        Select major Qt version (4 or 5).
   --help                This help text.
 
 Project options:
