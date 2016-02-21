@@ -8,10 +8,10 @@ SUBDIRS += src tools
 include($$OUT_PWD/conf.pri)
 
 runnerlibfiles.path = $$LIBDIR/runner
-runnerlibfiles.files = runner/processmanager.py runner/services.py runner/runner.py
+runnerlibfiles.files = src/runner/processmanager.py src/runner/services.py src/runner/runner.py
 
 runnerconfigfiles.path = $$CONFIGDIR/runner
-runnerconfigfiles.files = runner/mongrel2.conf.template runner/m2adapter.conf.template runner/zurl.conf.template runner/certs
+runnerconfigfiles.files = src/runner/mongrel2.conf.template src/runner/m2adapter.conf.template src/runner/zurl.conf.template src/runner/certs
 
 runnerbinfiles.path = $$BINDIR
 runnerbinfiles.extra = cp -f pushpin.inst $(INSTALL_ROOT)$$runnerbinfiles.path/pushpin

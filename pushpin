@@ -53,8 +53,8 @@ if config.has_option('global', 'libdir'):
 
 if libdir:
 	sys.path.insert(0, os.path.join(libdir, 'runner'))
-	import runner
 else:
-	from runner import runner
+	sys.path.insert(0, os.path.join(os.path.abspath('src'), 'runner'))
 
+import runner
 runner.run(exedir, config_file, verbose)
