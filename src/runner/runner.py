@@ -11,13 +11,9 @@ def trymakedir(dir):
 		if e.errno != errno.EEXIST:
 			raise
 
-def run(exedir, config_file, verbose):
+def run(exedir, libdir, configdir, config_file, verbose):
 	config = ConfigParser.ConfigParser()
 	config.read([config_file])
-
-	configdir = config.get("runner", "configdir")
-	if not os.path.isabs(configdir):
-		configdir = os.path.abspath(configdir)
 
 	service_names = config.get("runner", "services").split(",")
 
@@ -71,7 +67,7 @@ def run(exedir, config_file, verbose):
 		if config.has_option("runner", "m2sh_bin"):
 			m2sh_bin = config.get("runner", "m2sh_bin")
 
-		m2sqlpath = services.write_mongrel2_config(configdir, os.path.join(configdir, "mongrel2.conf.template"), rundir, logdir, http_port, https_ports, m2sh_bin)
+		m2sqlpath = services.write_mongrel2_config(configdir, os.path.join(libdir, "mongrel2.conf.template"), rundir, logdir, http_port, https_ports, m2sh_bin)
 
 		service_objs.append(services.Mongrel2Service(mongrel2_bin, m2sqlpath, False, http_port, rundir, logdir))
 		for port in https_ports:
@@ -81,11 +77,11 @@ def run(exedir, config_file, verbose):
 		ports = list()
 		ports.append(http_port)
 		ports.extend(https_ports)
-		services.write_m2adapter_config(os.path.join(configdir, "m2adapter.conf.template"), rundir, ports)
+		services.write_m2adapter_config(os.path.join(libdir, "m2adapter.conf.template"), rundir, ports)
 		service_objs.append(services.M2AdapterService(m2abin, os.path.join(rundir, "m2adapter.conf"), verbose, rundir, logdir))
 
 	if "zurl" in service_names:
-		services.write_zurl_config(os.path.join(configdir, "zurl.conf.template"), rundir)
+		services.write_zurl_config(os.path.join(libdir, "zurl.conf.template"), rundir)
 		zurl_bin = "zurl"
 		if config.has_option("runner", "zurl_bin"):
 			zurl_bin = config.get("runner", "zurl_bin")
