@@ -13,6 +13,8 @@ moc_*
 /Makefile
 /src/config.h
 /src/Makefile
+/src/corelib/Makefile
+/src/corelib/libpushpin-core.a
 /src/m2adapter/Makefile
 /src/proxy/Makefile
 /src/proxy/libpushpin-proxy/Makefile
