@@ -9,7 +9,7 @@ fi
 VERSION=$1
 
 mkdir -p build/pushpin-$VERSION
-cp -a .gitignore CHANGELOG.md configure COPYING corelib doc examples handler m2adapter proxy pushpin pushpin.pro pushpin.qc README.md runner tools build/pushpin-$VERSION
+cp -a .gitignore CHANGELOG.md configure COPYING doc examples pushpin pushpin.pro pushpin.qc README.md runner tools build/pushpin-$VERSION
 rm -rf build/pushpin-$VERSION/corelib/qzmq/.git build/pushpin-$VERSION/corelib/common/.git
 echo $VERSION > build/pushpin-$VERSION/version
 cd build
