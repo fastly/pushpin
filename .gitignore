@@ -32,6 +32,7 @@ moc_*
 /src/handler/tests/*test/*test
 /src/runner/certs/*.crt
 /src/runner/certs/*.key
+/src/pushpin/Makefile
 /tools/Makefile
 /tools/publish/Makefile
 /pushpin.conf.inst

@@ -11,8 +11,11 @@ proxy.depends = corelib
 handler.subdir = handler
 handler.depends = corelib
 
+pushpin.subdir = pushpin
+
 SUBDIRS += \
 	corelib \
 	m2adapter \
 	proxy \
-	handler
+	handler \
+	pushpin
