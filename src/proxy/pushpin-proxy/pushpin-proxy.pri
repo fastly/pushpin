@@ -11,7 +11,6 @@ INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
 
 HEADERS += \
-	$$SRC_DIR/../config.h \
 	$$SRC_DIR/app.h
 
 SOURCES += \

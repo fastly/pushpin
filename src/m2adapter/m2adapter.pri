@@ -9,7 +9,6 @@ DEFINES += NO_IRISNET
 HEADERS += \
 	$$PWD/m2requestpacket.h \
 	$$PWD/m2responsepacket.h \
-	$$PWD/../../config.h \
 	$$PWD/app.h
 
 SOURCES += \
