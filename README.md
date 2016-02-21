@@ -13,7 +13,7 @@ How it works
 Pushpin is placed in the network path between the backend and any clients:
 
 <p align="center">
-  <img src="doc/image/pushpin-abstract.png" alt="pushpin-abstract"/>
+  <img src="docs/image/pushpin-abstract.png" alt="pushpin-abstract"/>
 </p>
 
 Pushpin communicates with backend web applications using regular, short-lived HTTP requests. This allows backend applications to be written in any language and use any webserver. There are two main integration points:
@@ -126,4 +126,4 @@ Footnotes
 
 <a name="proxy-modes">1</a>: Pushpin can communicate WebSocket activity to the backend using either HTTP or WebSockets. Conversion to HTTP is generally recommended as it makes the backend easier to reason about.
 
-<a name="grip">2</a>: GRIP (Generic Realtime Intermediary Protocol) is the name of Pushpin's backend protocol. More about that [here](https://github.com/fanout/pushpin/blob/master/doc/grip-protocol.md).
+<a name="grip">2</a>: GRIP (Generic Realtime Intermediary Protocol) is the name of Pushpin's backend protocol. More about that [here](https://github.com/fanout/pushpin/blob/master/docs/grip-protocol.md).
