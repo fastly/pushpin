@@ -54,7 +54,8 @@ HEADERS += \
 	$$PWD/zrpcrequest.h \
 	$$PWD/inspectdata.h \
 	$$PWD/cors.h \
-	$$PWD/statsmanager.h
+	$$PWD/statsmanager.h \
+	$$PWD/settings.h
 
 SOURCES += \
 	$$PWD/uuidutil.cpp \
@@ -65,4 +66,5 @@ SOURCES += \
 	$$PWD/zrpcmanager.cpp \
 	$$PWD/zrpcrequest.cpp \
 	$$PWD/cors.cpp \
-	$$PWD/statsmanager.cpp
+	$$PWD/statsmanager.cpp \
+	$$PWD/settings.cpp

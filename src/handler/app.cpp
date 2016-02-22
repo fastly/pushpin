@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,10 +24,9 @@
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
-#include <QDir>
-#include <QSettings>
 #include "processquit.h"
 #include "log.h"
+#include "settings.h"
 #include "engine.h"
 #include "config.h"
 
@@ -42,82 +41,6 @@ static void trimlist(QStringList *list)
 		}
 	}
 }
-
-class Settings
-{
-private:
-	QSettings *main;
-	QSettings *include;
-	QString rundir;
-
-public:
-	Settings(const QString &fileName) :
-		include(0)
-	{
-		main = new QSettings(fileName, QSettings::IniFormat);
-
-		QString includeFile = main->value("global/include").toString();
-		if(!includeFile.isEmpty())
-		{
-			// if include is a relative path, then use it relative to the config file location
-			QFileInfo fi(includeFile);
-			if(fi.isRelative())
-				includeFile = QFileInfo(QFileInfo(fileName).absoluteDir(), includeFile).filePath();
-
-			include = new QSettings(includeFile, QSettings::IniFormat);
-		}
-
-		rundir = valueRaw("global/rundir").toString();
-
-		if(rundir.isEmpty())
-		{
-			// fallback to runner section (deprecated)
-			rundir = valueRaw("runner/rundir").toString();
-		}
-	}
-
-	~Settings()
-	{
-		delete include;
-		delete main;
-	}
-
-	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const
-	{
-		if(include)
-		{
-			if(main->contains(key))
-				return main->value(key);
-			else
-				return include->value(key, defaultValue);
-		}
-		else
-			return main->value(key, defaultValue);
-	}
-
-	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const
-	{
-		QVariant v = valueRaw(key, defaultValue);
-		if(v.isValid())
-		{
-			if(v.type() == QVariant::String)
-			{
-				QString s = v.toString();
-				v = s.replace("{rundir}", rundir);
-			}
-			else if(v.type() == QVariant::StringList)
-			{
-				QStringList oldList = v.toStringList();
-				QStringList newList;
-				foreach(QString s, oldList)
-					newList += s.replace("{rundir}", rundir);
-				v = newList;
-			}
-		}
-
-		return v;
-	}
-};
 
 class App::Private : public QObject
 {
