@@ -35,10 +35,12 @@ runnerbinfiles.extra = cp -f pushpin.inst $(INSTALL_ROOT)$$runnerbinfiles.path/p
 
 INSTALLS += runnerlibfiles runnerconfigfiles runnerbinfiles
 
-# install config files
+# install general lib files
 
-pushpinconfigfiles.path = $$CONFIGDIR
-pushpinconfigfiles.files = ../../examples/config/internal.conf
+libfiles.path = $$LIBDIR
+libfiles.files = internal.conf
+
+# install config files
 
 routes.path = $$CONFIGDIR
 routes.extra = test -e $(INSTALL_ROOT)$$routes.path/routes || cp -f ../../examples/config/routes $(INSTALL_ROOT)$$routes.path/routes
@@ -46,4 +48,4 @@ routes.extra = test -e $(INSTALL_ROOT)$$routes.path/routes || cp -f ../../exampl
 pushpinconf.path = $$CONFIGDIR
 pushpinconf.extra = test -e $(INSTALL_ROOT)$$pushpinconf.path/pushpin.conf || cp -f pushpin.conf.inst $(INSTALL_ROOT)$$pushpinconf.path/pushpin.conf
 
-INSTALLS += pushpinconfigfiles routes pushpinconf
+INSTALLS += libfiles routes pushpinconf
