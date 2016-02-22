@@ -52,7 +52,15 @@ Settings::Settings(const QString &fileName) :
 		rundir = valueRaw("runner/rundir").toString();
 	}
 
-	QString includeFile = value("global/include").toString();
+	QString includeFile = valueRaw("global/include").toString();
+
+	// if include is exactly "internal.conf", rewrite relative to libdir
+	// TODO: remove this hack at next major version
+	if(includeFile == "internal.conf")
+		includeFile = "{libdir}/internal.conf";
+
+	includeFile = resolveVars(includeFile);
+
 	if(!includeFile.isEmpty())
 	{
 		// if include is a relative path, then use it relative to the config file location
