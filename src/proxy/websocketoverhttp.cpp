@@ -446,7 +446,7 @@ private:
 						break;
 					}
 				}
-				if(takeCount == -1)
+				if(takeCount < 1)
 					break;
 
 				Frame::Type ftype;
