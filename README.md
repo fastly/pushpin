@@ -63,6 +63,116 @@ The client would then see the line "hello there" appended to the response stream
 
 For more details, see the [HTTP streaming](http://pushpin.org/docs/#http-streaming) section of the documentation. Pushpin also supports [HTTP long-polling](http://pushpin.org/docs/#http-long-polling) and [WebSockets](http://pushpin.org/docs/#websockets).
 
+Example using a library
+-----------------------
+
+Using a library on the backend makes integration is even easier. Here's another HTTP streaming example, similar to the one shown above except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](http://pushpin.org/docs/#libraries).
+
+The Django library requires configuration in `settings.py`:
+```python
+MIDDLEWARE_CLASSES = (
+    'django_grip.GripMiddleware',
+    ...
+)
+
+GRIP_PROXIES = [{'control_uri': 'http://localhost:5561', 'key': 'changeme'}]
+```
+
+Here's a simple view:
+```python
+from django.http import HttpResponse
+from django_grip import set_hold_stream
+
+def myendpoint(request):
+    if request.method == 'GET':
+        # subscribe every incoming request to a channel in stream mode
+        resp = HttpResponse('welcome to the stream\n', content_type='text/plain')
+        set_hold_stream(request, 'test')
+        return resp
+    ...
+```
+
+What happens here is the `set_hold_stream()` method flags the request as needing to turn into a stream, bound to channel `test`. The middleware will see this and add the necessary `Grip-Hold` and `Grip-Channel` headers to the response.
+
+Publishing data is easy:
+```python
+from gripcontrol import HttpStreamFormat
+from django_grip import publish
+
+publish('test', HttpStreamFormat('hello there\n'))
+```
+
+Example using WebSockets
+------------------------
+
+Pushpin supports WebSockets by converting connection activity/messages into HTTP requests and sending them to the backend. For this example, we'll use Pushpin's [Express library](https://github.com/fanout/express-grip). As before, please note that Pushpin is not Node/Express-specific and there are backend libraries for [other languages/frameworks, too](http://pushpin.org/docs/#libraries).
+
+The Express library requires configuration and setting up middleware handlers before and after any endpoints:
+```javascript
+var express = require('express');
+var grip = require('grip');
+var expressGrip = require('express-grip');
+
+expressGrip.configure({
+    gripProxies: [{'control_uri': 'http://localhost:5561', 'key': 'changeme'}]
+});
+
+var app = express();
+
+// Add the pre-handler middleware to the front of the stack
+app.use(expressGrip.preHandlerGripMiddleware);
+
+// put your normal endpoint handlers here, for example:
+app.get('/hello', function(req, res, next) {
+    res.send('hello world\n');
+
+    // next() must be called for the post-handler middleware to execute
+    next();
+});
+
+// Add the post-handler middleware to the back of the stack
+app.use(expressGrip.postHandlerGripMiddleware);
+```
+
+Because of the post-handler middleware, it's important that you call `next()` at the end of your handlers.
+
+With that structure in place, here's an example of a WebSocket endpoint:
+```javascript
+app.post('/websocket', function(req, res, next) {
+    var ws = expressGrip.getWsContext(res);
+
+    // If this is a new connection, accept it and subscribe it to a channel
+    if (ws.isOpening()) {
+        ws.accept();
+        ws.subscribe('all');
+    }
+
+    while (ws.canRecv()) {
+        var message = ws.recv();
+
+        // If return value is null then connection is closed
+        if (message == null) {
+            ws.close();
+            break;
+        }
+
+        // broadcast the message to everyone connected
+        expressGrip.publish('all', new grip.WebSocketMessageFormat(message));
+    }
+
+    // next() must be called for the post-handler middleware to execute
+    next();
+});
+```
+
+The above code binds all incoming connections to a channel called `all`. Any received messages are published out to all connected clients.
+
+What's particularly noteworthy is that the above endpoint is stateless. The app doesn't keep track of connections, and the handler code only runs whenever messages arrive. Restarting the app won't disconnect clients.
+
+The `while` loop is deceptive. It looks like it's looping for the lifetime of the WebSocket connection, but what it's really doing is looping through a batch of WebSocket messages that was just received via HTTP. Often this will be one message, and so the loop performs one iteration and then exits. Similarly, the `ws` object only exists for the duration of the handler invocation, rather than for the lifetime of the connection as you might expect. The idea here is you get what appears to be a socket-looking API, except it's all an illusion. :tophat:
+
+For details on the underlying protocol conversion, see the [WebSocket-Over-HTTP Protocol spec](https://github.com/fanout/pushpin/blob/develop/docs/websocket-over-http.md).
+
 Why another realtime solution?
 ------------------------------
 
@@ -70,6 +180,8 @@ Pushpin is an ambitious project with two primary goals:
 
 * Make realtime API development easier. There are many other solutions out there that are excellent for building realtime apps, but few are useful within the context of *APIs*. For example, you can't use Socket.io to build Twitter's streaming API. A new kind of project is needed in this case.
 * Make realtime push behavior delegable. The reason there isn't a realtime push CDN yet is because the standards and practices necessary for delegating to a third party in a transparent way are not yet established. Pushpin is more than just another realtime push solution; it represents the next logical step in the evolution of realtime web architectures.
+
+To really understand Pushpin, you need to think of it as more like a gateway than a message queue. Pushpin does not persist data and it is agnostic to your application's data model. Your backend provides the mapping to whatever that data model is. Tools like Kafka and RabbitMQ are complementary. Pushpin is also agnostic to your API definition. Clients don't necessarily subscribe to "channels" or recieve "messages". Clients make HTTP requests or send WebSocket frames, and your backend decides the meaning of those inputs. Pushpin could perhaps be awkwardly described as "a proxy server that enables web services to delegate the handling of realtime push primitives".
 
 On a practical level, there are many benefits to Pushpin that you don't see anywhere else:
 
@@ -109,7 +221,7 @@ Pushpin is horizontally scalable. Instances don’t talk to each other, and stic
 
 Optionally, ZeroMQ PUB/SUB can be used to send data to Pushpin instead of using HTTP POST. When this method is used, subscription information is forwarded to each publisher, such that data will only be published to instances that have listeners.
 
-As for vertical scalability, Pushpin has been tested reliably with 10,000 concurrent connections running on a single Amazon EC2 m3.xlarge instance. 20,000 connections and beyond are possible with some latency degradation. We definitely want to increase this number, but it is not high priority as Pushpin is already horizontally scalable which is far more important.
+As for vertical scalability, Pushpin has been tested reliably with 10,000 concurrent connections running on a single Amazon EC2 m3.xlarge instance. 20,000 connections and beyond are possible with some latency degradation. We definitely want to increase this number, but the important thing is that Pushpin is horizontally scalable which is effectively limitless.
 
 What does the name mean?
 ------------------------
