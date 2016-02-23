@@ -66,7 +66,7 @@ For more details, see the [HTTP streaming](http://pushpin.org/docs/#http-streami
 Example using a library
 -----------------------
 
-Using a library on the backend makes integration is even easier. Here's another HTTP streaming example, similar to the one shown above except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](http://pushpin.org/docs/#libraries).
+Using a library on the backend makes integration is even easier. Here's another HTTP streaming example, similar to the one shown above, except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](http://pushpin.org/docs/#libraries).
 
 The Django library requires configuration in `settings.py`:
 ```python
@@ -169,7 +169,7 @@ The above code binds all incoming connections to a channel called `all`. Any rec
 
 What's particularly noteworthy is that the above endpoint is stateless. The app doesn't keep track of connections, and the handler code only runs whenever messages arrive. Restarting the app won't disconnect clients.
 
-The `while` loop is deceptive. It looks like it's looping for the lifetime of the WebSocket connection, but what it's really doing is looping through a batch of WebSocket messages that was just received via HTTP. Often this will be one message, and so the loop performs one iteration and then exits. Similarly, the `ws` object only exists for the duration of the handler invocation, rather than for the lifetime of the connection as you might expect. The idea here is you get what appears to be a socket-looking API, except it's all an illusion. :tophat:
+The `while` loop is deceptive. It looks like it's looping for the lifetime of the WebSocket connection, but what it's really doing is looping through a batch of WebSocket messages that was just received via HTTP. Often this will be one message, and so the loop performs one iteration and then exits. Similarly, the `ws` object only exists for the duration of the handler invocation, rather than for the lifetime of the connection as you might expect. It may look like socket code, but it's all an illusion. :tophat:
 
 For details on the underlying protocol conversion, see the [WebSocket-Over-HTTP Protocol spec](https://github.com/fanout/pushpin/blob/develop/docs/websocket-over-http.md).
 
