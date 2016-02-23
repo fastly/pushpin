@@ -203,7 +203,7 @@ If you want to build the git version and have the dependencies installed already
 git submodule init && git submodule update
 
 # build
-make
+./configure --qtselect=5 && make
 
 # copy default config
 cp -r examples/config .
