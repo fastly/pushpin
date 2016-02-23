@@ -179,21 +179,21 @@ public:
 	public:
 		enum Type
 		{
-			Data,
+			Headers,
+			Response,
+			Frame,
 			Close
 		};
 
 		Type type;
-		QByteArray sender;
-		QByteArray id;
 		BufferList data;
-		int bodySize;
+		bool chunked;
+		int contentSize;
 
-		M2PendingOutItem(Type _type, const QByteArray &_sender = QByteArray(), const QByteArray &_id = QByteArray()) :
+		M2PendingOutItem(Type _type) :
 			type(_type),
-			sender(_sender),
-			id(_id),
-			bodySize(0)
+			chunked(false),
+			contentSize(0)
 		{
 		}
 	};
@@ -816,14 +816,14 @@ public:
 		delete conn;
 	}
 
-	// bodySize = packet.data.size() - framing overhead
-	void m2_writeData(M2Connection *conn, const M2ResponsePacket &packet, int bodySize)
+	// contentSize = packet.data.size() - framing overhead
+	void m2_writeData(M2Connection *conn, const M2ResponsePacket &packet, int contentSize)
 	{
 		if(conn->outCreditsEnabled)
 			conn->outCredits -= packet.data.size();
 
-		conn->bodyTracker.addPlain(bodySize);
-		conn->bodyTracker.specifyEncoded(packet.data.size(), bodySize);
+		conn->bodyTracker.addPlain(contentSize);
+		conn->bodyTracker.specifyEncoded(packet.data.size(), contentSize);
 
 		++(conn->packetsPending);
 		conn->packetTracker.addPlain(1);
@@ -832,42 +832,74 @@ public:
 		m2_out_write(packet);
 	}
 
-	void m2_writeOrQueueData(M2Connection *conn, const M2ResponsePacket &packet, int bodySize)
+	void m2_queueHeaders(M2Connection *conn, const QByteArray &headerData)
 	{
-		if(conn->canWrite() && !conn->waitForAllWritten)
-		{
-			m2_writeData(conn, packet, bodySize);
-		}
-		else
-		{
-			M2PendingOutItem *item = 0;
-			if(!conn->pendingOutItems.isEmpty())
-			{
-				M2PendingOutItem &last = conn->pendingOutItems.last();
-				if(last.type == M2PendingOutItem::Data && last.sender == packet.sender && last.id == packet.id)
-					item = &last;
-			}
-			if(!item)
-			{
-				conn->pendingOutItems += M2PendingOutItem(M2PendingOutItem::Data, packet.sender, packet.id);
-				item = &(conn->pendingOutItems.last());
-			}
+		// only try writing if this item would be next
+		bool tryWrite = conn->pendingOutItems.isEmpty();
 
-			item->data += packet.data;
-			item->bodySize += bodySize;
-		}
+		M2PendingOutItem item(M2PendingOutItem::Headers);
+		item.data += headerData;
+		conn->pendingOutItems += item;
+
+		if(tryWrite)
+			m2_tryWriteQueued(conn);
 	}
 
-	void m2_writeOrQueueClose(M2Connection *conn)
+	void m2_queueResponse(M2Connection *conn, const QByteArray &data, bool chunked)
 	{
-		if(conn->canWrite() && !conn->waitForAllWritten)
+		// skip if the result would send no bytes
+		if(data.isEmpty() && !chunked)
+			return;
+
+		// only try writing if this item would be next
+		bool tryWrite = conn->pendingOutItems.isEmpty();
+
+		M2PendingOutItem *item = 0;
+		if(!conn->pendingOutItems.isEmpty())
 		{
-			m2_writeClose(conn);
+			M2PendingOutItem &last = conn->pendingOutItems.last();
+			bool lastIsZeroChunk = (last.chunked && last.data.isEmpty());
+
+			// see if we can merge with the previous item
+			if(last.type == M2PendingOutItem::Response && last.chunked == chunked && !lastIsZeroChunk)
+				item = &last;
 		}
-		else
+		if(!item)
 		{
-			conn->pendingOutItems += M2PendingOutItem(M2PendingOutItem::Close);
+			conn->pendingOutItems += M2PendingOutItem(M2PendingOutItem::Response);
+			item = &(conn->pendingOutItems.last());
 		}
+
+		item->data += data;
+		item->chunked = chunked;
+
+		if(tryWrite)
+			m2_tryWriteQueued(conn);
+	}
+
+	void m2_queueFrame(M2Connection *conn, const QByteArray &data, int contentSize)
+	{
+		// only try writing if this item would be next
+		bool tryWrite = conn->pendingOutItems.isEmpty();
+
+		M2PendingOutItem item(M2PendingOutItem::Frame);
+		item.data += data;
+		item.contentSize = contentSize;
+		conn->pendingOutItems += item;
+
+		if(tryWrite)
+			m2_tryWriteQueued(conn);
+	}
+
+	void m2_queueClose(M2Connection *conn)
+	{
+		// only try writing if this item would be next
+		bool tryWrite = conn->pendingOutItems.isEmpty();
+
+		conn->pendingOutItems += M2PendingOutItem(M2PendingOutItem::Close);
+
+		if(tryWrite)
+			m2_tryWriteQueued(conn);
 	}
 
 	// return true if connection was deleted as a result of writing queued items
@@ -875,17 +907,83 @@ public:
 	{
 		while(!conn->pendingOutItems.isEmpty() && conn->canWrite())
 		{
-			M2PendingOutItem item = conn->pendingOutItems.takeFirst();
-			if(item.type == M2PendingOutItem::Data)
+			M2PendingOutItem *item = &conn->pendingOutItems.first();
+			if(item->type == M2PendingOutItem::Headers)
 			{
 				M2ResponsePacket packet;
-				packet.sender = item.sender;
-				packet.id = item.id;
-				packet.data = item.data.take();
-				m2_writeData(conn, packet, item.bodySize);
+				packet.sender = m2_send_idents[conn->identIndex];
+				packet.id = conn->id;
+				packet.data = item->data.take();
+
+				conn->pendingOutItems.removeFirst();
+
+				m2_writeData(conn, packet, 0);
+
+				if(!conn->flowControl)
+					handleConnectionBytesWritten(conn, packet.data.size(), true);
 			}
-			else if(item.type == M2PendingOutItem::Close)
+			else if(item->type == M2PendingOutItem::Response)
 			{
+				// only write what we're allowed to
+				int maxSize;
+				if(conn->outCreditsEnabled)
+				{
+					if(item->chunked)
+						maxSize = conn->outCredits - 16; // make room for chunked header
+					else
+						maxSize = conn->outCredits;
+				}
+				else
+				{
+					maxSize = 200000; // some reasonable max
+				}
+
+				if(maxSize <= 0)
+				{
+					// can't write at this time
+					break;
+				}
+
+				QByteArray data = item->data.take(maxSize);
+				int contentSize = data.size();
+
+				M2ResponsePacket packet;
+				packet.sender = m2_send_idents[conn->identIndex];
+				packet.id = conn->id;
+
+				if(item->chunked)
+					packet.data = makeChunkHeader(data.size()) + data + makeChunkFooter();
+				else
+					packet.data = data;
+
+				if(item->data.isEmpty())
+					conn->pendingOutItems.removeFirst();
+
+				m2_writeData(conn, packet, contentSize);
+
+				if(!conn->flowControl)
+					handleConnectionBytesWritten(conn, packet.data.size(), true);
+			}
+			else if(item->type == M2PendingOutItem::Frame)
+			{
+				M2ResponsePacket packet;
+				packet.sender = m2_send_idents[conn->identIndex];
+				packet.id = conn->id;
+				packet.data = item->data.take();
+
+				int contentSize = item->contentSize;
+
+				conn->pendingOutItems.removeFirst();
+
+				m2_writeData(conn, packet, contentSize);
+
+				if(!conn->flowControl)
+					handleConnectionBytesWritten(conn, packet.data.size(), true);
+			}
+			else if(item->type == M2PendingOutItem::Close)
+			{
+				conn->pendingOutItems.removeFirst();
+
 				m2_writeClose(conn); // this will delete the connection
 				return true;
 			}
@@ -1020,6 +1118,10 @@ public:
 				conn->confirmedBytesWritten = bytes_written;
 
 				handleConnectionBytesWritten(conn, written, true);
+
+				// if we had any pending writes to make, now's the time.
+				// note: this might delete the connection but that's fine
+				m2_tryWriteQueued(conn);
 			}
 		}
 
@@ -1058,7 +1160,7 @@ public:
 	}
 
 	// return true if connection was deleted as a result of handling bytes written
-	bool handleConnectionBytesWritten(M2Connection *conn, int written, bool giveCredits)
+	void handleConnectionBytesWritten(M2Connection *conn, int written, bool giveCredits)
 	{
 		int bodyWritten = conn->bodyTracker.finished(written);
 		int packetsWritten = conn->packetTracker.finished(written);
@@ -1068,18 +1170,11 @@ public:
 		if(conn->waitForAllWritten && conn->packetsPending == 0 && conn->pendingOutItems.isEmpty())
 			conn->waitForAllWritten = false;
 
-		// if we had any pending writes to make, now's the time
-		bool connDeleted = m2_tryWriteQueued(conn);
-		if(connDeleted)
-			return true;
-
 		if(conn->session && bodyWritten > 0)
 		{
 			conn->session->lastActive = time.elapsed();
 			handleSessionBodyWritten(conn->session, bodyWritten, giveCredits);
 		}
-
-		return false;
 	}
 
 	void handleSessionBodyWritten(Session *s, int written, bool giveCredits)
@@ -1368,10 +1463,6 @@ public:
 				// respond with data if we have body data or this is the first packet
 				if(!zresp.body.isEmpty() || firstDataPacket)
 				{
-					M2ResponsePacket mresp;
-					mresp.sender = m2_send_idents[s->conn->identIndex];
-					mresp.id = s->conn->id;
-
 					if(firstDataPacket)
 					{
 						// use flow control if the control port works and the response is more than one packet
@@ -1428,22 +1519,19 @@ public:
 						if(!connHeaders.isEmpty())
 							headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
 
-						mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
+						m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason, headers));
 					}
 
 					if(!zresp.body.isEmpty())
 					{
 						if(s->responseHeadersOnly)
 						{
-							log_warning("%s: received unexpected response body. sending headers only", logprefix);
+							log_warning("%s: received unexpected response body, canceling", logprefix);
 
 							bool persistent = s->persistent;
 
-							// send just the headers
-							M2Connection *conn = s->conn;
-							m2_writeOrQueueData(s->conn, mresp, 0);
-
 							// cancel and destroy session
+							M2Connection *conn = s->conn;
 							if(!s->zhttpAddress.isEmpty())
 							{
 								ZhttpRequestPacket zreq;
@@ -1452,44 +1540,25 @@ public:
 							}
 							destroySession(s);
 							if(!persistent)
-								m2_writeOrQueueClose(conn);
+								m2_queueClose(conn);
 							return;
 						}
 
-						if(s->chunked)
-						{
-							QByteArray chunkHeader = makeChunkHeader(zresp.body.size());
-							QByteArray chunkFooter = makeChunkFooter();
-
-							mresp.data += chunkHeader + zresp.body + chunkFooter;
-						}
-						else
-							mresp.data += zresp.body;
+						m2_queueResponse(s->conn, zresp.body, s->chunked);
 					}
 
 					if(!zresp.more && s->chunked)
 					{
-						QByteArray chunkHeader = makeChunkHeader(0);
-						QByteArray chunkFooter = makeChunkFooter();
-
-						mresp.data += chunkHeader + chunkFooter;
+						// send closing chunk
+						m2_queueResponse(s->conn, QByteArray(), true);
 					}
-
-					m2_writeOrQueueData(s->conn, mresp, zresp.body.size());
-
-					if(!s->conn->flowControl)
-						handleConnectionBytesWritten(s->conn, mresp.data.size(), zresp.more);
 				}
 				else
 				{
 					if(!zresp.more && s->chunked)
 					{
 						// send closing chunk
-						M2ResponsePacket mresp;
-						mresp.sender = m2_send_idents[s->conn->identIndex];
-						mresp.id = s->conn->id;
-						mresp.data = makeChunkHeader(0) + makeChunkFooter();
-						m2_writeOrQueueData(s->conn, mresp, 0);
+						m2_queueResponse(s->conn, QByteArray(), true);
 					}
 				}
 
@@ -1499,17 +1568,11 @@ public:
 					M2Connection *conn = s->conn;
 					destroySession(s);
 					if(!persistent)
-						m2_writeOrQueueClose(conn);
+						m2_queueClose(conn);
 				}
 			}
 			else // WebSocket
 			{
-				M2ResponsePacket mresp;
-				mresp.sender = m2_send_idents[s->conn->identIndex];
-				mresp.id = s->conn->id;
-
-				int payloadSize = 0;
-
 				if(!s->sentResponseHeader)
 				{
 					s->sentResponseHeader = true;
@@ -1536,7 +1599,7 @@ public:
 					else
 						reason = "Switching Protocols";
 
-					mresp.data = createResponseHeader(101, reason, headers);
+					m2_queueHeaders(s->conn, createResponseHeader(101, reason, headers));
 				}
 				else
 				{
@@ -1546,15 +1609,10 @@ public:
 					else // text
 						opcode = 1;
 
-					mresp.data = makeWsHeader(!zresp.more, opcode, zresp.body.size()) + zresp.body;
+					QByteArray frame = makeWsHeader(!zresp.more, opcode, zresp.body.size()) + zresp.body;
 
-					payloadSize = zresp.body.size();
+					m2_queueFrame(s->conn, frame, zresp.body.size());
 				}
-
-				m2_writeOrQueueData(s->conn, mresp, payloadSize);
-
-				if(!s->conn->flowControl)
-					handleConnectionBytesWritten(s->conn, mresp.data.size(), true);
 			}
 		}
 		else if(zresp.type == ZhttpResponsePacket::Error)
@@ -1563,10 +1621,6 @@ public:
 
 			if(s->mode == WebSocket && zresp.condition == "rejected")
 			{
-				M2ResponsePacket mresp;
-				mresp.sender = m2_send_idents[s->conn->identIndex];
-				mresp.id = s->conn->id;
-
 				HttpHeaders headers = zresp.headers;
 				QList<QByteArray> connHeaders = headers.takeAll("Connection");
 				foreach(const QByteArray &h, connHeaders)
@@ -1586,14 +1640,12 @@ public:
 				if(!connHeaders.isEmpty())
 					headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
 
-				mresp.data = createResponseHeader(zresp.code, zresp.reason, headers);
-				mresp.data += zresp.body;
-
-				m2_writeOrQueueData(s->conn, mresp, zresp.body.size());
+				m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason, headers));
+				m2_queueResponse(s->conn, zresp.body, false);
 
 				M2Connection *conn = s->conn;
 				destroySession(s);
-				m2_writeOrQueueClose(conn);
+				m2_queueClose(conn);
 			}
 			else
 				destroySessionAndErrorConnection(s);
@@ -1636,29 +1688,22 @@ public:
 			else // Pong
 				opcode = 10;
 
-			M2ResponsePacket mresp;
-			mresp.sender = m2_send_idents[s->conn->identIndex];
-			mresp.id = s->conn->id;
-			mresp.data = makeWsHeader(true, opcode, 0);
-
-			int payloadSize = 0;
-
+			QByteArray data;
 			if(zresp.type == ZhttpResponsePacket::Close)
 			{
-				QByteArray buf(2, 0);
-				writeBigEndian(buf.data(), zresp.code != -1 ? zresp.code : 1000, 2);
-				mresp.data += buf;
-
-				payloadSize = buf.size();
+				data.resize(2);
+				writeBigEndian(data.data(), zresp.code != -1 ? zresp.code : 1000, 2);
 			}
 
-			m2_writeOrQueueData(s->conn, mresp, payloadSize);
+			QByteArray frame = makeWsHeader(true, opcode, data.size()) + data;
+
+			m2_queueFrame(s->conn, frame, data.size());
 
 			if(s->downClosed && s->upClosed)
 			{
 				M2Connection *conn = s->conn;
 				destroySession(s);
-				m2_writeOrQueueClose(conn);
+				m2_queueClose(conn);
 			}
 		}
 		else
@@ -1783,7 +1828,10 @@ private slots:
 			if(conn->outCreditsEnabled && mreq.downloadCredits > 0)
 			{
 				conn->outCredits += mreq.downloadCredits;
-				bool connDeleted = handleConnectionBytesWritten(conn, mreq.downloadCredits, true);
+				handleConnectionBytesWritten(conn, mreq.downloadCredits, true);
+
+				// if we had any pending writes to make, now's the time
+				bool connDeleted = m2_tryWriteQueued(conn);
 				if(connDeleted)
 					return;
 			}
@@ -1913,7 +1961,10 @@ private slots:
 			ZhttpRequestPacket zreq;
 
 			zreq.type = ZhttpRequestPacket::Data;
-			zreq.credits = m2_client_buffer;
+			if(conn->outCreditsEnabled)
+				zreq.credits = conn->outCredits;
+			else
+				zreq.credits = m2_client_buffer;
 			zreq.uri = uri;
 			zreq.headers = mreq.headers;
 			zreq.peerAddress = mreq.remoteAddress;
@@ -2041,7 +2092,7 @@ private slots:
 					if(s->downClosed && s->upClosed)
 					{
 						destroySession(s); // we aren't in handoff so this is safe
-						m2_writeOrQueueClose(conn);
+						m2_queueClose(conn);
 					}
 				}
 			}
