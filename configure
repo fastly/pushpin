@@ -49,7 +49,7 @@ which_command() {
 			for a in /usr/ucb /usr/bin /bin /usr/local/bin; do
 				if [ -x $a/which ]; then
 					WHICH=$a/which
-					break;
+					break
 				fi
 			done
 		fi
@@ -194,20 +194,40 @@ fi
 
 printf "Verifying Qt build environment ... "
 
-[ -z "$QC_QTSELECT" ] && QC_QTSELECT="$QT_SELECT"
-QTSEARCHTTEXT="$QC_QTSELECT"
-[ -z "$QC_QTSELECT" ] && QTSEARCHTTEXT="4 or 5"
+if [ -z "$QC_QTSELECT" ]; then
+	QC_QTSELECT="$QT_SELECT"
+fi
 
-# run qmake -v and check version
-qmake_check_v4() {
+if [ ! -z "$QC_QTSELECT" ]; then
+	QTSEARCHTEXT="$QC_QTSELECT"
+else
+	QTSEARCHTEXT="4 or 5"
+fi
+
+# run qmake and check version
+qmake_check() {
 	if [ -x "$1" ]; then
-		local v=`"$1" -query QT_VERSION 2>&1`
-		vmaj="${v%%.*}"
-		case "${v}" in ?.?.?) [ -z "$QC_QTSELECT" ] && [ "$vmaj" = 4 -o "$vmaj" = 5 ] && return 0;
-			 [ -n "$QC_QTSELECT" ] && [ "$vmaj" = "$QC_QTSELECT" ] && return 0; ;;
+		cmd="\"$1\" -query QT_VERSION"
+		if [ "$QC_VERBOSE" = "Y" ]; then
+			echo "running: $cmd"
+		fi
+		vout=`/bin/sh -c "$cmd" 2>&1`
+		case "${vout}" in
+			?.?.?)
+				vmaj="${vout%%.*}"
+				if [ ! -z "$QC_QTSELECT" ]; then
+					if [ "$vmaj" = "$QC_QTSELECT" ]; then
+						return 0
+					fi
+				else
+					if [ "$vmaj" = "4" ] || [ "$vmaj" = "5" ]; then
+						return 0
+					fi
+				fi
+				;;
 		esac
 		if [ "$QC_VERBOSE" = "Y" ]; then
-			echo "Warning: $1 not for Qt ${QTSEARCHTTEXT}"
+			echo "Warning: $1 not for Qt ${QTSEARCHTEXT}"
 		fi
 	fi
 	return 1
@@ -224,17 +244,20 @@ names="qmake"
 if [ -z "$QC_QTSELECT" ]; then
 	names="${qt5_names} ${qt4_names} $names"
 else
-	[ "$QC_QTSELECT" = "4" ] && names="${qt4_names} $names"
-	[ "$QC_QTSELECT" -ge "5" ] && names="${qt5_names} $names"
+	if [ "$QC_QTSELECT" = "4" ]; then
+		names="${qt4_names} $names"
+	elif [ "$QC_QTSELECT" -ge "5" ]; then
+		names="${qt5_names} $names"
+	fi
 fi
 
 if [ -z "$qm" ] && [ ! -z "$EX_QTDIR" ]; then
 	# qt4 check: --qtdir
 	for n in $names; do
 		qstr=$EX_QTDIR/bin/$n
-		if qmake_check_v4 "$qstr"; then
+		if qmake_check "$qstr"; then
 			qm=$qstr
-			break;
+			break
 		fi
 	done
 	if [ -z "$qm" ] && [ "$QC_VERBOSE" = "Y" ]; then
@@ -245,9 +268,9 @@ elif [ -z "$qm" ] && [ ! -z "$QTDIR" ]; then
 	# qt4 check: QTDIR
 	for n in $names; do
 		qstr=$QTDIR/bin/$n
-		if qmake_check_v4 "$qstr"; then
+		if qmake_check "$qstr"; then
 			qm=$qstr
-			break;
+			break
 		fi
 	done
 	if [ -z "$qm" ] && [ "$QC_VERBOSE" = "Y" ]; then
@@ -255,34 +278,51 @@ elif [ -z "$qm" ] && [ ! -z "$QTDIR" ]; then
 	fi
 
 else
-
 	# Try all other implicit checks
 
 	# qtchooser
 	if [ -z "$qm" ]; then
 		qtchooser=$($WHICH qtchooser 2>/dev/null)
 		if [ ! -z "$qtchooser" ]; then
-			cmd="$qtchooser -run-tool=qmake -qt=${QC_QTSELECT}"
-			qtbins="$($cmd -query QT_INSTALL_BINS 2>/dev/null)"
-			if [ -n "$qtbins" ] && qmake_check_v4 "$qtbins/qmake"; then
-				qm="$qtbins/qmake"
-				break;
+			if [ ! -z "$QC_QTSELECT"]; then
+				versions="$QC_QTSELECT"
+			else
+				cmd="$qtchooser --list-versions"
+				if [ "$QC_VERBOSE" = "Y" ]; then
+					echo "running: $cmd"
+				fi
+				versions=`$cmd`
 			fi
+			for version in $versions; do
+				cmd="$qtchooser -run-tool=qmake -qt=${version} -query QT_INSTALL_BINS"
+				if [ "$QC_VERBOSE" = "Y" ]; then
+					echo "running: $cmd"
+				fi
+				qtbins=`$cmd 2>/dev/null`
+				if [ ! -z "$qtbins" ] && qmake_check "$qtbins/qmake"; then
+					qm="$qtbins/qmake"
+					break
+				fi
+			done
 		fi
 	fi
 	if [ -z "$qm" ] && [ "$QC_VERBOSE" = "Y" ]; then
 		echo "Warning: qmake not found via qtchooser"
 	fi
 
-	# qt4 check: pkg-config
+	# qt4: pkg-config
 	if [ -z "$qm" ]; then
-		str=`pkg-config QtCore --variable=exec_prefix 2>/dev/null`
+		cmd="pkg-config QtCore --variable=exec_prefix"
+		if [ "$QC_VERBOSE" = "Y" ]; then
+			echo "running: $cmd"
+		fi
+		str=`$cmd 2>/dev/null`
 		if [ ! -z "$str" ]; then
 			for n in $names; do
 				qstr=$str/bin/$n
-				if qmake_check_v4 "$qstr"; then
+				if qmake_check "$qstr"; then
 					qm=$qstr
-					break;
+					break
 				fi
 			done
 		fi
@@ -291,17 +331,19 @@ else
 		echo "Warning: qmake not found via pkg-config"
 	fi
 
-	# qt4 check: PATH
+	# qmake in PATH
 	if [ -z "$qm" ]; then
 		for n in $names; do
 			qstr=`$WHICH -a $n 2>/dev/null`
 			for q in $qstr; do
-				if qmake_check_v4 "$q"; then
+				if qmake_check "$q"; then
 					qm="$q"
-					break;
+					break
 				fi
 			done
-			[ -n "$qm" ] && break
+			if [ ! -z "$qm" ]; then
+				break
+			fi
 		done
 	fi
 	if [ -z "$qm" ] && [ "$QC_VERBOSE" = "Y" ]; then
@@ -318,7 +360,7 @@ if [ -z "$qm" ]; then
 		echo "fail"
 	fi
 	printf "\n"
-	printf "Reason: Unable to find the 'qmake' tool for Qt ${QTSEARCHTTEXT}.\n"
+	printf "Reason: Unable to find the 'qmake' tool for Qt ${QTSEARCHTEXT}.\n"
 	printf "\n"
 	show_qt_info
 	exit 1;
