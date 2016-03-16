@@ -182,7 +182,7 @@ private slots:
 		ZrpcRequest *req = clientReqsById.value(p.id);
 		if(!req)
 		{
-			log_warning("zrpc client: received message for unknown request id, skipping");
+			log_debug("zrpc client: received message for unknown request id, skipping");
 			return;
 		}
 

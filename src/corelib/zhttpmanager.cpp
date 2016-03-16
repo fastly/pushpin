@@ -621,7 +621,7 @@ public slots:
 				continue;
 			}
 
-			log_warning("zhttp/zws server: received message for unknown request id, canceling");
+			log_debug("zhttp/zws server: received message for unknown request id, canceling");
 
 			// if this was not an error packet, send cancel
 			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel && !p.from.isEmpty())
