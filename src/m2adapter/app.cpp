@@ -1756,7 +1756,10 @@ private slots:
 		{
 			if(mreq.version.isEmpty())
 			{
-				log_error("m2: id=%s no version on initial packet", mreq.id.data());
+				if(mreq.type == M2RequestPacket::HttpRequest || mreq.type == M2RequestPacket::WebSocketHandshake) {
+					log_warning("m2: id=%s no version on initial packet", mreq.id.data());
+				}
+
 				m2_writeCtlCancel(mreq.sender, mreq.id);
 				return;
 			}
