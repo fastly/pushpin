@@ -152,6 +152,7 @@ public:
 	QByteArray jsonpCallback;
 	bool jsonpExtendedResponse;
 	HttpResponseData responseData;
+	int responseBodySize;
 	BufferList out;
 	bool responseBodyFinished;
 	bool pendingResponseUpdate;
@@ -174,6 +175,7 @@ public:
 		inspectRequest(0),
 		acceptRequest(0),
 		jsonpExtendedResponse(false),
+		responseBodySize(0),
 		responseBodyFinished(false),
 		pendingResponseUpdate(false),
 		isRetry(false),
@@ -214,7 +216,7 @@ public:
 		requestData.uri = req->requestUri();
 		requestData.headers = req->requestHeaders();
 
-		log_info("IN id=%s, %s %s", rid.second.data(), qPrintable(requestData.method), requestData.uri.toEncoded().data());
+		log_debug("IN id=%s, %s %s", rid.second.data(), qPrintable(requestData.method), requestData.uri.toEncoded().data());
 
 		bool isHttps = (requestData.uri.scheme() == "https");
 		QString host = requestData.uri.host();
@@ -536,7 +538,7 @@ public:
 			callback = parsePercentEncoding(query.queryItemValue(callbackParam, QUrl::FullyEncoded).toUtf8());
 			if(callback.isEmpty())
 			{
-				log_warning("requestsession: id=%s invalid callback parameter, rejecting", rid.second.data());
+				log_debug("requestsession: id=%s invalid callback parameter, rejecting", rid.second.data());
 				*ok = false;
 				*errorMessage = "Invalid callback parameter.";
 				return false;
@@ -553,7 +555,7 @@ public:
 			method = QString::fromLatin1(parsePercentEncoding(query.queryItemValue("_method", QUrl::FullyEncoded).toUtf8()));
 			if(!validMethod(method))
 			{
-				log_warning("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
+				log_debug("requestsession: id=%s invalid _method parameter, rejecting", rid.second.data());
 				*ok = false;
 				*errorMessage = "Invalid _method parameter.";
 				return false;
@@ -569,7 +571,7 @@ public:
 			QJsonDocument doc = QJsonDocument::fromJson(parsePercentEncoding(query.queryItemValue("_headers", QUrl::FullyEncoded).toUtf8()), &e);
 			if(e.error != QJsonParseError::NoError || !doc.isObject())
 			{
-				log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
+				log_debug("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 				*ok = false;
 				*errorMessage = "Invalid _headers parameter.";
 				return false;
@@ -584,7 +586,7 @@ public:
 
 				if(vit.value().type() != QVariant::String)
 				{
-					log_warning("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
+					log_debug("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 					*ok = false;
 					*errorMessage = "Invalid _headers parameter.";
 					return false;
@@ -612,7 +614,7 @@ public:
 				body = parsePercentEncoding(query.queryItemValue(bodyParam, QUrl::FullyEncoded).toUtf8());
 				if(body.isNull())
 				{
-					log_warning("requestsession: id=%s invalid body parameter, rejecting", rid.second.data());
+					log_debug("requestsession: id=%s invalid body parameter, rejecting", rid.second.data());
 					*ok = false;
 					*errorMessage = "Invalid body parameter.";
 					return false;
@@ -631,7 +633,7 @@ public:
 				body = parsePercentEncoding(query.queryItemValue("_body").toUtf8());
 				if(body.isNull())
 				{
-					log_warning("requestsession: id=%s invalid _body parameter, rejecting", rid.second.data());
+					log_debug("requestsession: id=%s invalid _body parameter, rejecting", rid.second.data());
 					*ok = false;
 					*errorMessage = "Invalid _body parameter.";
 					return false;
@@ -892,6 +894,7 @@ public slots:
 						headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
 						zhttpRequest->beginResponse(500, "Internal Server Error", headers);
 						zhttpRequest->writeBody(body);
+						responseBodySize += body.size();
 						zhttpRequest->endBody();
 						emit q->errorResponding();
 						return;
@@ -923,6 +926,7 @@ public slots:
 					jsonpTracker.specifyEncoded(buf.size(), bodyRawBuf.size());
 
 					zhttpRequest->writeBody(buf);
+					responseBodySize += buf.size();
 					zhttpRequest->endBody();
 					return;
 				}
@@ -937,6 +941,7 @@ public slots:
 					headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
 					zhttpRequest->beginResponse(500, "Internal Server Error", headers);
 					zhttpRequest->writeBody(body);
+					responseBodySize += body.size();
 					zhttpRequest->endBody();
 					emit q->errorResponding();
 					return;
@@ -952,6 +957,7 @@ public slots:
 				jsonpTracker.specifyEncoded(buf.size(), 0);
 
 				zhttpRequest->writeBody(buf);
+				responseBodySize += buf.size();
 			}
 			else
 			{
@@ -1013,10 +1019,13 @@ public slots:
 				jsonpTracker.specifyEncoded(buf.size(), bodyRawBuf.size());
 
 				zhttpRequest->writeBody(buf);
+				responseBodySize += buf.size();
 			}
 			else
 			{
-				zhttpRequest->writeBody(out.take());
+				QByteArray buf = out.take();
+				zhttpRequest->writeBody(buf);
+				responseBodySize += buf.size();
 			}
 		}
 
@@ -1027,6 +1036,7 @@ public slots:
 				QByteArray buf = makeJsonpEnd();
 				jsonpTracker.specifyEncoded(buf.size(), 0);
 				zhttpRequest->writeBody(buf);
+				responseBodySize += buf.size();
 			}
 
 			zhttpRequest->endBody();
@@ -1079,6 +1089,16 @@ ZhttpRequest::Rid RequestSession::rid() const
 HttpRequestData RequestSession::requestData() const
 {
 	return d->requestData;
+}
+
+HttpResponseData RequestSession::responseData() const
+{
+	return d->responseData;
+}
+
+int RequestSession::responseBodySize() const
+{
+	return d->responseBodySize;
 }
 
 bool RequestSession::autoCrossOrigin() const

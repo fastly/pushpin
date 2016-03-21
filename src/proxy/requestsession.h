@@ -27,6 +27,7 @@
 class QHostAddress;
 
 class HttpRequestData;
+class HttpResponseData;
 class SockJsManager;
 class InspectData;
 class AcceptData;
@@ -46,6 +47,8 @@ public:
 	QHostAddress peerAddress() const;
 	ZhttpRequest::Rid rid() const;
 	HttpRequestData requestData() const;
+	HttpResponseData responseData() const;
+	int responseBodySize() const;
 	bool autoCrossOrigin() const;
 	QByteArray jsonpCallback() const; // non-empty if JSON-P is used
 	bool jsonpExtendedResponse() const;
