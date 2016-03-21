@@ -666,6 +666,7 @@ class WsSession : public QObject
 public:
 	QString cid;
 	QString channelPrefix;
+	HttpRequestData requestData;
 	QString sid;
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
@@ -1792,6 +1793,9 @@ private:
 			stats->addMessage(item.channel, item.id, "ws-message", wsSessions.count());
 		}
 
+		int receivers = responseHolds.count() + streamHolds.count() + wsSessions.count();
+		log_info("publish channel=%s receivers=%d", qPrintable(item.channel), receivers);
+
 		foreach(const QString &channel, responseUnsubs)
 			stats->removeSubscription("response", channel, true);
 
@@ -2029,6 +2033,7 @@ private slots:
 					connect(s, SIGNAL(expired()), SLOT(wssession_expired()));
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
+					s->requestData.uri = item.uri;
 					s->refreshExpiration();
 					cs.wsSessions.insert(s->cid, s);
 					log_debug("added ws session: %s", qPrintable(s->cid));
@@ -2106,6 +2111,8 @@ private slots:
 
 					stats->addSubscription("ws", channel);
 					addSub(channel);
+
+					log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
 				}
 				else if(cm.type == WsControlMessage::Unsubscribe)
 				{
@@ -2287,6 +2294,8 @@ private slots:
 					return;
 				}
 
+				log_info("control: %s %s items=%d", qPrintable(req->requestMethod()), req->requestUri().data(), items.count());
+
 				foreach(const PublishItem &item, items)
 					handlePublishItem(item);
 
@@ -2379,6 +2388,8 @@ private slots:
 
 					cs.streamHoldsByChannel[channel] += hold;
 				}
+
+				log_info("subscribe %s channel=%s", qPrintable(hold->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
 
 				stats->addSubscription(hold->mode == Instruct::ResponseHold ? "response" : "stream", channel);
 				addSub(channel);

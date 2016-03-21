@@ -437,7 +437,7 @@ public:
 
 		QUrl requestUri = sock->requestUri();
 
-		log_info("IN ws id=%s, %s", sock->rid().second.data(), requestUri.toEncoded().data());
+		log_debug("IN ws id=%s, %s", sock->rid().second.data(), requestUri.toEncoded().data());
 
 		bool isSecure = (requestUri.scheme() == "wss");
 		QString host = requestUri.host();
@@ -467,7 +467,7 @@ public:
 		if(!sock)
 			return;
 
-		log_info("IN sockjs obj=%p %s", sock, sock->requestUri().toEncoded().data());
+		log_debug("IN sockjs obj=%p %s", sock, sock->requestUri().toEncoded().data());
 
 		log_debug("creating wsproxysession for sockjs=%p", sock);
 		doProxySocket(sock, sock->route());
@@ -531,6 +531,18 @@ private slots:
 	void rs_finishedByAccept()
 	{
 		RequestSession *rs = (RequestSession *)sender();
+
+		HttpRequestData rd = rs->requestData();
+		DomainMap::Entry e = rs->route();
+
+		QString msg = QString("%1 %2").arg(rd.method).arg(rd.uri.toString(QUrl::FullyEncoded));
+		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
+		if(!ref.isEmpty())
+			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
+		if(!e.id.isEmpty())
+			msg += QString(" route=%1").arg(QString::fromUtf8(e.id));
+		msg += " int";
+		log_info("%s", qPrintable(msg));
 
 		if(stats)
 		{
@@ -632,7 +644,7 @@ private slots:
 			return;
 		}
 
-		log_info("IN (retry) %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
+		log_debug("IN (retry) %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
 
 		InspectData idata;
 		if(p.haveInspectInfo)

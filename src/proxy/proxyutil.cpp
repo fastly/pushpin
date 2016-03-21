@@ -161,7 +161,7 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 			if(!token.isEmpty())
 				requestData->headers += HttpHeader("Grip-Sig", token);
 			else
-				log_warning("%s: %p failed to sign request", logprefix, object);
+				log_error("%s: %p failed to sign request", logprefix, object);
 		}
 	}
 

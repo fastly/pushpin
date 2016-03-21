@@ -246,6 +246,7 @@ public:
 	QByteArray routeId;
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
+	DomainMap::Target target;
 	bool acceptGripMessages;
 	QByteArray messagePrefix;
 	bool detached;
@@ -403,7 +404,7 @@ public:
 			return;
 		}
 
-		DomainMap::Target target = targets.takeFirst();
+		target = targets.takeFirst();
 
 		QUrl uri = requestData.uri;
 		if(target.ssl)
@@ -476,6 +477,8 @@ public:
 	void reject(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
 	{
 		assert(state == Connecting);
+
+		logConnection(code, body.size());
 
 		state = Closing;
 		inSock->respondError(code, reason, headers, body);
@@ -583,6 +586,31 @@ public:
 		}
 	}
 
+	void logConnection(int responseCode, int responseBodySize)
+	{
+		QString targetStr;
+		if(target.type == DomainMap::Target::Custom)
+		{
+			targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
+		}
+		else // Default
+		{
+			targetStr = target.connectHost + ':' + QString::number(target.connectPort);
+		}
+
+		QString msg = QString("GET %1 -> %2").arg(inSock->requestUri().toString(QUrl::FullyEncoded)).arg(targetStr);
+		if(target.overHttp)
+			msg += "[http]";
+		QUrl ref = QUrl(QString::fromUtf8(inSock->requestHeaders().get("Referer")));
+		if(!ref.isEmpty())
+			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
+		if(!routeId.isEmpty())
+			msg += QString(" route=%1").arg(QString::fromUtf8(routeId));
+		msg += QString(" code=%1 %2").arg(responseCode).arg(responseBodySize);
+
+		log_info("%s", qPrintable(msg));
+	}
+
 private slots:
 	void in_readyRead()
 	{
@@ -688,7 +716,7 @@ private slots:
 				connect(wsControl, SIGNAL(sendEventReceived(const QByteArray &, const QByteArray &)), SLOT(wsControl_sendEventReceived(const QByteArray &, const QByteArray &)));
 				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
 				connect(wsControl, SIGNAL(cancelEventReceived()), SLOT(wsControl_cancelEventReceived()));
-				wsControl->start(channelPrefix);
+				wsControl->start(channelPrefix, inSock->requestUri());
 
 				if(!subChannel.isEmpty())
 				{
@@ -705,6 +733,8 @@ private slots:
 		}
 
 		inSock->respondSuccess(outSock->responseReason(), headers);
+
+		logConnection(inSock->responseCode(), 0);
 
 		// send any pending frames
 		tryReadIn();

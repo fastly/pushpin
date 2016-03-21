@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QTimer>
+#include <QUrl>
 #include "wscontrolmanager.h"
 
 #define SESSION_TTL 30
@@ -36,6 +37,7 @@ public:
 	QByteArray cid;
 	QTimer *keepAliveTimer;
 	QByteArray channelPrefix;
+	QUrl uri;
 
 	Private(WsControlSession *_q) :
 		QObject(_q),
@@ -79,6 +81,7 @@ public:
 		WsControlPacket::Item i;
 		i.type = WsControlPacket::Item::Here;
 		i.channelPrefix = channelPrefix;
+		i.uri = uri;
 		i.ttl = SESSION_TTL;
 		write(i);
 	}
@@ -141,9 +144,10 @@ WsControlSession::~WsControlSession()
 	delete d;
 }
 
-void WsControlSession::start(const QByteArray &channelPrefix)
+void WsControlSession::start(const QByteArray &channelPrefix, const QUrl &uri)
 {
 	d->channelPrefix = channelPrefix;
+	d->uri = uri;
 	d->start();
 }
 

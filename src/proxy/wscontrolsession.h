@@ -24,6 +24,7 @@
 #include <QObject>
 #include "packet/wscontrolpacket.h"
 
+class QUri;
 class WsControlManager;
 
 class WsControlSession : public QObject
@@ -33,7 +34,7 @@ class WsControlSession : public QObject
 public:
 	~WsControlSession();
 
-	void start(const QByteArray &channelPrefix);
+	void start(const QByteArray &channelPrefix, const QUrl &uri);
 	void sendGripMessage(const QByteArray &message);
 
 signals:

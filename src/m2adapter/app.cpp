@@ -1519,6 +1519,8 @@ public:
 						if(!connHeaders.isEmpty())
 							headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
 
+						log_info("OUT %s id=%s code=%d %d%s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), zresp.code, zresp.body.size(), zresp.more ? " M": "");
+
 						m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason, headers));
 					}
 
@@ -1599,6 +1601,8 @@ public:
 					else
 						reason = "Switching Protocols";
 
+					log_info("OUT %s id=%s code=%d 0 M", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), zresp.code);
+
 					m2_queueHeaders(s->conn, createResponseHeader(101, reason, headers));
 				}
 				else
@@ -1617,7 +1621,7 @@ public:
 		}
 		else if(zresp.type == ZhttpResponsePacket::Error)
 		{
-			log_warning("%s: id=%s error condition=%s", logprefix, s->id.data(), zresp.condition.data());
+			log_debug("%s: id=%s error condition=%s", logprefix, s->id.data(), zresp.condition.data());
 
 			if(s->mode == WebSocket && zresp.condition == "rejected")
 			{
@@ -1639,6 +1643,8 @@ public:
 
 				if(!connHeaders.isEmpty())
 					headers += HttpHeader("Connection", HttpHeaders::join(connHeaders));
+
+				log_info("OUT %s id=%s code=%d %d", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), zresp.code, zresp.body.size());
 
 				m2_queueHeaders(s->conn, createResponseHeader(zresp.code, zresp.reason, headers));
 				m2_queueResponse(s->conn, zresp.body, false);
@@ -1959,7 +1965,7 @@ private slots:
 			else // WebSocketHandshake
 				sessionsByZwsRid.insert(Rid(zwsInstanceId, s->id), s);
 
-			log_info("m2: %s id=%s request %s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), uri.toEncoded().data());
+			log_info("IN %s id=%s %s %s", m2_send_idents[s->conn->identIndex].data(), s->conn->id.data(), s->mode == Http ? qPrintable(mreq.method) : "GET", uri.toEncoded().data());
 
 			ZhttpRequestPacket zreq;
 

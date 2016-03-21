@@ -150,7 +150,7 @@ private slots:
 			WsControlSession *s = sessionsByCid.value(i.cid);
 			if(!s)
 			{
-				log_warning("wscontrol: received item for unknown connection id, canceling");
+				log_debug("wscontrol: received item for unknown connection id, canceling");
 
 				// if this was not an error item, send cancel
 				if(i.type != WsControlPacket::Item::Cancel)

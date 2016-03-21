@@ -92,6 +92,7 @@ public:
 	bool isHttps;
 	DomainMap::Entry route;
 	QList<DomainMap::Target> targets;
+	DomainMap::Target target;
 	ZhttpRequest *zhttpRequest;
 	bool addAllowed;
 	bool haveInspectData;
@@ -99,6 +100,8 @@ public:
 	QSet<QByteArray> acceptHeaderPrefixes;
 	QSet<QByteArray> acceptContentTypes;
 	QSet<SessionItem*> sessionItems;
+	bool shared;
+	QByteArray outRid;
 	HttpRequestData requestData;
 	HttpResponseData responseData;
 	BufferList requestBody;
@@ -131,6 +134,7 @@ public:
 		zhttpRequest(0),
 		addAllowed(true),
 		haveInspectData(false),
+		shared(false),
 		requestBytesToWrite(0),
 		requestBodySent(false),
 		total(0),
@@ -175,6 +179,10 @@ public:
 		SessionItem *si = new SessionItem;
 		si->rs = rs;
 		si->rs->setParent(this);
+
+		if(!sessionItems.isEmpty())
+			shared = true;
+
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
 		connect(rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
@@ -283,7 +291,7 @@ public:
 			return;
 		}
 
-		DomainMap::Target target = targets.takeFirst();
+		target = targets.takeFirst();
 
 		if(target.overHttp)
 		{
@@ -343,6 +351,9 @@ public:
 			zhttpRequest->setConnectHost(target.connectHost);
 			zhttpRequest->setConnectPort(target.connectPort);
 		}
+
+		ZhttpRequest::Rid rid = zhttpRequest->rid();
+		outRid = rid.first + ':' + rid.second;
 
 		zhttpRequest->start(requestData.method, uri, requestData.headers);
 
@@ -621,6 +632,45 @@ public:
 		}
 	}
 
+	void logFinished(SessionItem *si, bool accepted = false)
+	{
+		RequestSession *rs = si->rs;
+
+		HttpRequestData rd = rs->requestData();
+
+		QString targetStr;
+		if(target.type == DomainMap::Target::Custom)
+		{
+			targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
+		}
+		else // Default
+		{
+			targetStr = target.connectHost + ':' + QString::number(target.connectPort);
+		}
+
+		QString msg = QString("%1 %2 -> %3").arg(rd.method).arg(rd.uri.toString(QUrl::FullyEncoded)).arg(targetStr);
+
+		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
+		if(!ref.isEmpty())
+			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
+
+		if(!route.id.isEmpty())
+			msg += QString(" route=%1").arg(QString::fromUtf8(route.id));
+
+		if(accepted)
+			msg += " hold";
+		else
+			msg += QString(" code=%1 %2").arg(rs->responseData().code).arg(rs->responseBodySize());
+
+		if(rs->isRetry())
+			msg += " retry";
+
+		if(shared)
+			msg += QString(" shared=%1").arg(QString::fromUtf8(outRid));
+
+		log_info("%s", qPrintable(msg));
+	}
+
 public slots:
 	void inRequest_readyRead()
 	{
@@ -796,6 +846,8 @@ public slots:
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
+		logFinished(si);
+
 		QPointer<QObject> self = this;
 		emit q->requestSessionDestroyed(si->rs, false);
 		if(!self)
@@ -926,6 +978,9 @@ public slots:
 
 			if(rdata.accepted)
 			{
+				foreach(SessionItem *si, sessionItems)
+					logFinished(si, true);
+
 				// the requests were paused, so deleting them will leave the peer sessions active
 
 				QList<RequestSession*> toDestroy;
