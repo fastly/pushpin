@@ -104,6 +104,14 @@ public:
 				return WsControlPacket();
 			}
 
+			msg.uri = QUrl::fromEncoded(getString(vitem, pn, "uri", false, &ok_, errorMessage).toUtf8(), QUrl::StrictMode);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlPacket();
+			}
+
 			msg.channelPrefix = getString(vitem, pn, "channel-prefix", false, &ok_, errorMessage);
 			if(!ok_)
 			{
@@ -163,6 +171,9 @@ QVariant WsControlPacket::toVariant() const
 				assert(0);
 		}
 		vitem["type"] = typeStr;
+
+		if(!item.uri.isEmpty())
+			vitem["uri"] = item.uri.toEncoded();
 
 		if(!item.contentType.isEmpty())
 			vitem["content-type"] = item.contentType;
@@ -228,6 +239,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.type = Item::Detach;
 		else
 			return false;
+
+		if(vitem.contains("uri"))
+		{
+			if(vitem["uri"].type() != QVariant::ByteArray)
+				return false;
+
+			item.uri = QUrl::fromEncoded(vitem["uri"].toByteArray(), QUrl::StrictMode);
+		}
 
 		if(vitem.contains("content-type"))
 		{

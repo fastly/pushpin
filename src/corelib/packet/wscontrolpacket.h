@@ -23,6 +23,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QVariant>
+#include <QUrl>
 
 class WsControlPacket
 {
@@ -43,6 +44,7 @@ public:
 
 		QByteArray cid;
 		Type type;
+		QUrl uri;
 		QByteArray contentType;
 		QByteArray message;
 		QByteArray channelPrefix;
