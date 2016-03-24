@@ -822,8 +822,8 @@ public slots:
 					state = Stopped;
 					errored = true;
 					errorCondition = ZhttpRequest::ErrorRequestTooLarge;
-					emit q->error();
 					cleanup();
+					emit q->error();
 					return;
 				}
 
@@ -859,8 +859,8 @@ public slots:
 					state = Stopped;
 					errored = true;
 					errorCondition = ZhttpRequest::ErrorUnavailable;
-					emit q->error();
 					cleanup();
+					emit q->error();
 					return;
 				}
 
