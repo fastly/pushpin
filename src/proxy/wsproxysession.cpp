@@ -20,7 +20,7 @@
 #include "wsproxysession.h"
 
 #include <assert.h>
-#include <QTimer>
+#include <QDateTime>
 #include <QUrl>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -251,7 +251,7 @@ public:
 	QByteArray messagePrefix;
 	bool detached;
 	QString subChannel;
-	QTimer *activityTimer;
+	QDateTime activityTime;
 	QByteArray publicCid;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
@@ -274,9 +274,6 @@ public:
 		acceptGripMessages(false),
 		detached(false)
 	{
-		activityTimer = new QTimer(this);
-		connect(activityTimer, SIGNAL(timeout()), SLOT(activity_timeout()));
-		activityTimer->setSingleShot(true);
 	}
 
 	~Private()
@@ -293,14 +290,6 @@ public:
 
 		delete wsControl;
 		wsControl = 0;
-
-		if(activityTimer)
-		{
-			activityTimer->setParent(0);
-			activityTimer->disconnect(this);
-			activityTimer->deleteLater();
-			activityTimer = 0;
-		}
 
 		if(zhttpManager)
 		{
@@ -328,7 +317,7 @@ public:
 		publicCid = _publicCid;
 
 		if(statsManager)
-			activityTimer->start(ACTIVITY_TIMEOUT);
+			activityTime = QDateTime::currentDateTimeUtc();
 
 		inSock = sock;
 		inSock->setParent(this);
@@ -578,11 +567,15 @@ public:
 
 	void tryLogActivity()
 	{
-		if(statsManager && !activityTimer->isActive())
+		if(statsManager && !activityTime.isNull())
 		{
-			statsManager->addActivity(routeId);
+			QDateTime now = QDateTime::currentDateTimeUtc();
+			if(now >= activityTime.addMSecs(ACTIVITY_TIMEOUT))
+			{
+				statsManager->addActivity(routeId);
 
-			activityTimer->start(ACTIVITY_TIMEOUT);
+				activityTime = activityTime.addMSecs((activityTime.msecsTo(now) / ACTIVITY_TIMEOUT) * ACTIVITY_TIMEOUT);
+			}
 		}
 	}
 
