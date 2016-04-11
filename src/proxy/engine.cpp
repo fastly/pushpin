@@ -406,7 +406,7 @@ public:
 	bool isXForwardedProtocolTls(const HttpHeaders &headers)
 	{
 		QByteArray xfp = headers.get("X-Forwarded-Protocol");
-		return (!xfp.isEmpty() && xfp == "https");
+		return (!xfp.isEmpty() && (xfp == "https" || xfp == "wss"));
 	}
 
 	void tryTakeRequest()
