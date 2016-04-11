@@ -53,6 +53,7 @@ public:
 		int inspectPrefetch;
 		QString routesFile;
 		bool autoCrossOrigin;
+		bool acceptXForwardedProtocol;
 		bool useXForwardedProtocol;
 		XffRule xffUntrustedRule;
 		XffRule xffTrustedRule;
@@ -69,6 +70,7 @@ public:
 			inspectTimeout(8000),
 			inspectPrefetch(10000),
 			autoCrossOrigin(false),
+			acceptXForwardedProtocol(false),
 			useXForwardedProtocol(false),
 			updatesCheck(true)
 		{

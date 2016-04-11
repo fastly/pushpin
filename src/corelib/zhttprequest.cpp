@@ -1026,6 +1026,11 @@ void ZhttpRequest::setIgnoreTlsErrors(bool on)
 	d->ignoreTlsErrors = on;
 }
 
+void ZhttpRequest::setIsTls(bool on)
+{
+	d->requestUri.setScheme(on ? "https" : "http");
+}
+
 void ZhttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 {
 	assert(!d->server);

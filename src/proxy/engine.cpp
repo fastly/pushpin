@@ -403,6 +403,12 @@ public:
 		return true;
 	}
 
+	bool isXForwardedProtocolTls(const HttpHeaders &headers)
+	{
+		QByteArray xfp = headers.get("X-Forwarded-Protocol");
+		return (!xfp.isEmpty() && xfp == "https");
+	}
+
 	void tryTakeRequest()
 	{
 		if(!canTake())
@@ -411,6 +417,9 @@ public:
 		ZhttpRequest *req = zhttpIn->takeNextRequest();
 		if(!req)
 			return;
+
+		if(config.acceptXForwardedProtocol && isXForwardedProtocolTls(req->requestHeaders()))
+			req->setIsTls(true);
 
 		RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, this);
 		connect(rs, SIGNAL(inspected(const InspectData &)), SLOT(rs_inspected(const InspectData &)));
@@ -434,6 +443,9 @@ public:
 		ZWebSocket *sock = zhttpIn->takeNextSocket();
 		if(!sock)
 			return;
+
+		if(config.acceptXForwardedProtocol && isXForwardedProtocolTls(sock->requestHeaders()))
+			sock->setIsTls(true);
 
 		QUrl requestUri = sock->requestUri();
 

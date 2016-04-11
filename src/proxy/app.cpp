@@ -188,6 +188,7 @@ public:
 		int maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesFile = settings.value("proxy/routesfile").toString();
 		bool autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
+		bool acceptXForwardedProtocol = settings.value("proxy/accept_x_forwarded_protocol").toBool();
 		bool useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
 		XffRule xffRule = parse_xffRule(settings.value("proxy/x_forwarded_for").toStringList());
 		XffRule xffTrustedRule = parse_xffRule(settings.value("proxy/x_forwarded_for_trusted").toStringList());
@@ -234,6 +235,7 @@ public:
 		config.maxWorkers = maxWorkers;
 		config.routesFile = routesFile;
 		config.autoCrossOrigin = autoCrossOrigin;
+		config.acceptXForwardedProtocol = acceptXForwardedProtocol;
 		config.useXForwardedProtocol = useXForwardedProtocol;
 		config.xffUntrustedRule = xffRule;
 		config.xffTrustedRule = xffTrustedRule;

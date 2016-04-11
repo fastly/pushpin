@@ -1010,6 +1010,11 @@ void ZWebSocket::setIgnoreTlsErrors(bool on)
 	d->ignoreTlsErrors = on;
 }
 
+void ZWebSocket::setIsTls(bool on)
+{
+	d->requestUri.setScheme(on ? "wss" : "ws");
+}
+
 void ZWebSocket::start(const QUrl &uri, const HttpHeaders &headers)
 {
 	assert(!d->server);

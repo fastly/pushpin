@@ -41,6 +41,7 @@ public:
 	~ZWebSocket();
 
 	Rid rid() const;
+	void setIsTls(bool on);
 
 	// reimplemented
 

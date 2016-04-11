@@ -84,6 +84,7 @@ public:
 	void setConnectPort(int port);
 	void setIgnorePolicies(bool on);
 	void setIgnoreTlsErrors(bool on);
+	void setIsTls(bool on); // updates scheme
 
 	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
 	void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
