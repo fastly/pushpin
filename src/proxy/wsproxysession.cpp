@@ -233,6 +233,7 @@ public:
 	QByteArray defaultSigKey;
 	QByteArray defaultUpstreamKey;
 	bool passToUpstream;
+	bool acceptXForwardedProtocol;
 	bool useXForwardedProtocol;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
@@ -265,6 +266,7 @@ public:
 		wsControlManager(_wsControlManager),
 		wsControl(0),
 		passToUpstream(false),
+		acceptXForwardedProtocol(false),
 		useXForwardedProtocol(false),
 		inSock(0),
 		outSock(0),
@@ -371,7 +373,7 @@ public:
 
 		log_debug("wsproxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
 
-		bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, entry, sigIss, sigKey, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, inSock->peerAddress(), InspectData());
+		bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, inSock->peerAddress(), InspectData());
 
 		// don't proxy extensions, as we may not know how to handle them
 		requestData.headers.removeAll("Sec-WebSocket-Extensions");
@@ -891,6 +893,11 @@ void WsProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &k
 void WsProxySession::setDefaultUpstreamKey(const QByteArray &key)
 {
 	d->defaultUpstreamKey = key;
+}
+
+void WsProxySession::setAcceptXForwardedProtocol(bool enabled)
+{
+	d->acceptXForwardedProtocol = enabled;
 }
 
 void WsProxySession::setUseXForwardedProtocol(bool enabled)

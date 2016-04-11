@@ -330,6 +330,7 @@ public:
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
 			ps->setDefaultUpstreamKey(config.upstreamKey);
+			ps->setAcceptXForwardedProtocol(config.acceptXForwardedProtocol);
 			ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
 			ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 			ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
@@ -372,6 +373,7 @@ public:
 
 		ps->setDefaultSigKey(config.sigIss, config.sigKey);
 		ps->setDefaultUpstreamKey(config.upstreamKey);
+		ps->setAcceptXForwardedProtocol(config.acceptXForwardedProtocol);
 		ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
 		ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 		ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);

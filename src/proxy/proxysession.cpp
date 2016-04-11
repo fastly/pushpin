@@ -116,6 +116,7 @@ public:
 	QByteArray defaultSigKey;
 	QByteArray defaultUpstreamKey;
 	bool passToUpstream;
+	bool acceptXForwardedProtocol;
 	bool useXForwardedProtocol;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
@@ -139,6 +140,7 @@ public:
 		requestBodySent(false),
 		total(0),
 		passToUpstream(false),
+		acceptXForwardedProtocol(false),
 		useXForwardedProtocol(false),
 		acceptRequest(0)
 	{
@@ -226,7 +228,7 @@ public:
 
 			targets = route.targets;
 
-			bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata);
+			bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata);
 
 			if(trustedClient)
 				passToUpstream = true;
@@ -1059,6 +1061,11 @@ void ProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key
 void ProxySession::setDefaultUpstreamKey(const QByteArray &key)
 {
 	d->defaultUpstreamKey = key;
+}
+
+void ProxySession::setAcceptXForwardedProtocol(bool enabled)
+{
+	d->acceptXForwardedProtocol = enabled;
 }
 
 void ProxySession::setUseXForwardedProtocol(bool enabled)

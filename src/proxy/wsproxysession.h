@@ -44,6 +44,7 @@ public:
 
 	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
 	void setDefaultUpstreamKey(const QByteArray &key);
+	void setAcceptXForwardedProtocol(bool enabled);
 	void setUseXForwardedProtocol(bool enabled);
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
 	void setOrigHeadersNeedMark(const QList<QByteArray> &names);

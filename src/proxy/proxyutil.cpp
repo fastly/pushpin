@@ -49,7 +49,7 @@ static bool validate_token(const QByteArray &token, const QByteArray &key)
 
 namespace ProxyUtil {
 
-bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata)
+bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata)
 {
 	// check if the request is coming from a grip proxy already
 	bool trustedClient = false;
@@ -176,10 +176,11 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 		}
 	}
 
-	if(useXForwardedProtocol)
-	{
+	if(acceptXForwardedProtocol || useXForwardedProtocol)
 		requestData->headers.removeAll("X-Forwarded-Protocol");
 
+	if(useXForwardedProtocol)
+	{
 		QString scheme = requestData->uri.scheme();
 		if(scheme == "https" || scheme == "wss")
 			requestData->headers += HttpHeader("X-Forwarded-Protocol", scheme.toUtf8());
