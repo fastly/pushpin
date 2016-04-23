@@ -165,6 +165,9 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 		}
 	}
 
+	requestData->headers.removeAll("Grip-Feature");
+	requestData->headers += HttpHeader("Grip-Feature", "status");
+
 	if(!idata.sid.isEmpty())
 	{
 		requestData->headers += HttpHeader("Grip-Session-Id", idata.sid);

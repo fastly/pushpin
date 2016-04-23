@@ -41,9 +41,26 @@ private slots:
 		i = Instruct::fromResponse(data, &ok);
 		QVERIFY(ok);
 		QCOMPARE(i.holdMode, Instruct::NoHold);
+		QCOMPARE(i.response.code, 200);
+		QCOMPARE(i.response.reason, QByteArray("OK"));
 		QCOMPARE(i.response.headers.get("Content-Type"), QByteArray("text/plain"));
 		QVERIFY(!i.response.headers.contains("Grip-Channel"));
 		QCOMPARE(i.response.body, QByteArray("hello world"));
+
+		data.headers += HttpHeader("Grip-Status", "404");
+		i = Instruct::fromResponse(data, &ok);
+		QVERIFY(ok);
+		QCOMPARE(i.holdMode, Instruct::NoHold);
+		QCOMPARE(i.response.code, 404);
+		QCOMPARE(i.response.reason, QByteArray("Not Found"));
+
+		data.headers.removeAll("Grip-Status");
+		data.headers += HttpHeader("Grip-Status", "404 Nothing To See Here");
+		i = Instruct::fromResponse(data, &ok);
+		QVERIFY(ok);
+		QCOMPARE(i.holdMode, Instruct::NoHold);
+		QCOMPARE(i.response.code, 404);
+		QCOMPARE(i.response.reason, QByteArray("Nothing To See Here"));
 
 		data.headers.clear();
 		data.headers += HttpHeader("Content-Type", "application/grip-instruct");

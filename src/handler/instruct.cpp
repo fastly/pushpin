@@ -234,6 +234,35 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	}
 
 	newResponse = response;
+
+	QByteArray statusHeader = response.headers.get("Grip-Status");
+	if(!statusHeader.isEmpty())
+	{
+		QByteArray codeStr;
+		QByteArray reason;
+
+		int at = statusHeader.indexOf(' ');
+		if(at != -1)
+		{
+			codeStr = statusHeader.mid(0, at);
+			reason = statusHeader.mid(at + 1);
+		}
+		else
+		{
+			codeStr = statusHeader;
+		}
+
+		bool _ok;
+		newResponse.code = codeStr.toInt(&_ok);
+		if(!_ok || newResponse.code < 0 || newResponse.code > 999)
+		{
+			setError(ok, errorMessage, "Grip-Status contains invalid status code");
+			return Instruct();
+		}
+
+		newResponse.reason = reason;
+	}
+
 	newResponse.headers.clear();
 	foreach(const HttpHeader &h, response.headers)
 	{
@@ -546,9 +575,11 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 					setError(ok, errorMessage, QString("%1 contains 'code' with invalid value").arg(pn));
 					return Instruct();
 				}
+
+				// if code was supplied in json instruct, then
+				//   we need to clear the default reason
+				newResponse.reason.clear();
 			}
-			else
-				newResponse.code = 200;
 
 			QString reasonStr = getString(in, pn, "reason", false, &ok_, errorMessage);
 			if(!ok_)
@@ -560,8 +591,6 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 			if(!reasonStr.isEmpty())
 				newResponse.reason = reasonStr.toUtf8();
-			else
-				newResponse.reason = StatusReasons::getReason(newResponse.code);
 
 			if(keyedObjectContains(in, "headers"))
 			{
@@ -678,12 +707,10 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				}
 			}
 		}
-		else
-		{
-			newResponse.code = 200;
-			newResponse.reason = "OK";
-		}
 	}
+
+	if(newResponse.reason.isEmpty())
+		newResponse.reason = StatusReasons::getReason(newResponse.code);
 
 	if(timeout == -1)
 		timeout = DEFAULT_RESPONSE_TIMEOUT;
