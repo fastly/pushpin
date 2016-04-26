@@ -1889,7 +1889,7 @@ private:
 		req->respond(code, reason, outHeaders, body.toUtf8());
 		connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
 
-		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod()).arg(QString::fromUtf8(req->requestUri())).arg(code).arg(body.size());
+		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod(), QString::fromUtf8(req->requestUri()), QString::number(code), QString::number(body.size()));
 		if(items > -1)
 			msg += QString(" items=%1").arg(items);
 

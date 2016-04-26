@@ -593,7 +593,7 @@ public:
 			targetStr = target.connectHost + ':' + QString::number(target.connectPort);
 		}
 
-		QString msg = QString("GET %1 -> %2").arg(inSock->requestUri().toString(QUrl::FullyEncoded)).arg(targetStr);
+		QString msg = QString("GET %1 -> %2").arg(inSock->requestUri().toString(QUrl::FullyEncoded), targetStr);
 		if(target.overHttp)
 			msg += "[http]";
 		QUrl ref = QUrl(QString::fromUtf8(inSock->requestHeaders().get("Referer")));
@@ -601,7 +601,7 @@ public:
 			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
 		if(!routeId.isEmpty())
 			msg += QString(" route=%1").arg(QString::fromUtf8(routeId));
-		msg += QString(" code=%1 %2").arg(responseCode).arg(responseBodySize);
+		msg += QString(" code=%1 %2").arg(QString::number(responseCode), responseBodySize);
 
 		log_info("%s", qPrintable(msg));
 	}
