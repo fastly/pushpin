@@ -84,7 +84,7 @@ static QVariant getChild(const QVariant &in, const QString &parentName, const QS
 		if(!h.contains(childName))
 		{
 			if(required)
-				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
+				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn, childName));
 			else
 				setSuccess(ok, errorMessage);
 
@@ -100,7 +100,7 @@ static QVariant getChild(const QVariant &in, const QString &parentName, const QS
 		if(!m.contains(childName))
 		{
 			if(required)
-				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
+				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn, childName));
 			else
 				setSuccess(ok, errorMessage);
 
@@ -158,7 +158,7 @@ static QString getString(const QVariant &in, const QString &parentName, const QS
 	QString str = getString(v, &ok_);
 	if(!ok_)
 	{
-		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn, childName));
 		return QString();
 	}
 

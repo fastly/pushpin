@@ -117,7 +117,7 @@ QVariant getChild(const QVariant &in, const QString &parentName, const QString &
 		if(!h.contains(childName))
 		{
 			if(required)
-				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
+				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn, childName));
 			else
 				setSuccess(ok, errorMessage);
 
@@ -133,7 +133,7 @@ QVariant getChild(const QVariant &in, const QString &parentName, const QString &
 		if(!m.contains(childName))
 		{
 			if(required)
-				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn).arg(childName));
+				setError(ok, errorMessage, QString("%1 does not contain '%2'").arg(pn, childName));
 			else
 				setSuccess(ok, errorMessage);
 
@@ -168,7 +168,7 @@ QVariant getKeyedObject(const QVariant &in, const QString &parentName, const QSt
 
 	if(!isKeyedObject(v))
 	{
-		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn, childName));
 		return QVariant();
 	}
 
@@ -197,7 +197,7 @@ QVariantList getList(const QVariant &in, const QString &parentName, const QStrin
 
 	if(v.type() != QVariant::List)
 	{
-		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn, childName));
 		return QVariantList();
 	}
 
@@ -253,7 +253,7 @@ QString getString(const QVariant &in, const QString &parentName, const QString &
 	QString str = getString(v, &ok_);
 	if(!ok_)
 	{
-		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn).arg(childName));
+		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn, childName));
 		return QString();
 	}
 

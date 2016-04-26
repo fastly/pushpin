@@ -650,7 +650,7 @@ public:
 			targetStr = target.connectHost + ':' + QString::number(target.connectPort);
 		}
 
-		QString msg = QString("%1 %2 -> %3").arg(rd.method).arg(rd.uri.toString(QUrl::FullyEncoded)).arg(targetStr);
+		QString msg = QString("%1 %2 -> %3").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded), targetStr);
 
 		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
 		if(!ref.isEmpty())
@@ -662,7 +662,7 @@ public:
 		if(accepted)
 			msg += " hold";
 		else
-			msg += QString(" code=%1 %2").arg(rs->responseData().code).arg(rs->responseBodySize());
+			msg += QString(" code=%1 %2").arg(QString::number(rs->responseData().code), rs->responseBodySize());
 
 		if(rs->isRetry())
 			msg += " retry";

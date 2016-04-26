@@ -549,7 +549,7 @@ private slots:
 		HttpRequestData rd = rs->requestData();
 		DomainMap::Entry e = rs->route();
 
-		QString msg = QString("%1 %2").arg(rd.method).arg(rd.uri.toString(QUrl::FullyEncoded));
+		QString msg = QString("%1 %2").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded));
 		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
 		if(!ref.isEmpty())
 			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
