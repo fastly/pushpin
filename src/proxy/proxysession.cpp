@@ -662,7 +662,7 @@ public:
 		if(accepted)
 			msg += " hold";
 		else
-			msg += QString(" code=%1 %2").arg(QString::number(rs->responseData().code), rs->responseBodySize());
+			msg += QString(" code=%1 %2").arg(QString::number(rs->responseData().code), QString::number(rs->responseBodySize()));
 
 		if(rs->isRetry())
 			msg += " retry";

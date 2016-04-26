@@ -601,7 +601,7 @@ public:
 			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
 		if(!routeId.isEmpty())
 			msg += QString(" route=%1").arg(QString::fromUtf8(routeId));
-		msg += QString(" code=%1 %2").arg(QString::number(responseCode), responseBodySize);
+		msg += QString(" code=%1 %2").arg(QString::number(responseCode), QString::number(responseBodySize));
 
 		log_info("%s", qPrintable(msg));
 	}
