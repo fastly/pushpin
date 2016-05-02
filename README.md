@@ -86,9 +86,8 @@ from django_grip import set_hold_stream
 def myendpoint(request):
     if request.method == 'GET':
         # subscribe every incoming request to a channel in stream mode
-        resp = HttpResponse('welcome to the stream\n', content_type='text/plain')
         set_hold_stream(request, 'test')
-        return resp
+        return HttpResponse('welcome to the stream\n', content_type='text/plain')
     ...
 ```
 
