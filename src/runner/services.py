@@ -20,9 +20,9 @@ def write_mongrel2_config(rootdir, configpath, rundir, logdir, http_port, https_
 	genconfigpath = os.path.join(rundir, path)
 
 	ports = list()
-	ports.append({ "ssl": False, "value": http_port })
+	ports.append({ "ssl": False, "value": http_port[1], "addr": http_port[0] })
 	for p in https_ports:
-		ports.append({ "ssl": True, "value": p })
+		ports.append({ "ssl": True, "value": p[1], "addr": p[0] })
 
 	cwd = os.getcwd()
 

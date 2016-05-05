@@ -16,6 +16,7 @@
 	control_port="ipc://{{ rundir }}/pushpin-m2-control-{{ port.value }}",
 	default_host="default",
 	name="server-{{ port.value }}",
+	bind_addr="{{ port.addr }}",
 	port={{ port.value }},
 	hosts=[host_{{ port.value }}]
 )
