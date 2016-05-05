@@ -70,6 +70,14 @@ if not libdir:
 libdir = os.path.join(libdir, 'runner')
 sys.path.insert(0, libdir)
 
+if config.has_option('runner', 'log_level'):
+	log_level = int(config.get('runner', 'log_level'))
+else:
+	log_level = 2
+
+if log_level > 2:
+	verbose = True
+
 configdir = os.path.join(os.path.dirname(config_file), 'runner')
 
 import runner
