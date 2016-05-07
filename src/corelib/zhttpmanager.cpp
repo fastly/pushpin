@@ -125,6 +125,7 @@ public:
 		client_out_stream_sock->setWriteQueueEnabled(false);
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
 		client_out_stream_sock->setShutdownWaitTime(CLIENT_STREAM_WAIT_TIME);
+		client_out_stream_sock->setImmediateEnabled(true);
 
 		QString errorMessage;
 		if(!ZUtil::setupSocket(client_out_stream_sock, client_out_stream_specs, doBind, ipcFileMode, &errorMessage))
