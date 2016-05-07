@@ -61,12 +61,14 @@ public:
 		QUrl requestUri;
 		HttpHeaders requestHeaders;
 		QByteArray requestBody;
+		int responseCode;
 		int inSeq;
 		int outSeq;
 		int outCredits;
 		QVariant userData;
 
 		ServerState() :
+			responseCode(-1),
 			inSeq(-1),
 			outSeq(-1),
 			outCredits(-1)

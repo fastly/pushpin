@@ -86,6 +86,7 @@ public:
 	bool pausing;
 	bool paused;
 	bool pendingUpdate;
+	bool needPause;
 	bool errored;
 	ZhttpRequest::ErrorCondition errorCondition;
 	QTimer *expireTimer;
@@ -111,6 +112,7 @@ public:
 		pausing(false),
 		paused(false),
 		pendingUpdate(false),
+		needPause(false),
 		errored(false),
 		expireTimer(0),
 		keepAliveTimer(0)
@@ -133,6 +135,8 @@ public:
 
 	void cleanup()
 	{
+		needPause = false;
+
 		if(expireTimer)
 		{
 			expireTimer->disconnect(this);
@@ -223,7 +227,15 @@ public:
 			outCredits = ss.outCredits;
 		userData = ss.userData;
 
-		state = ServerResponseWait;
+		if(ss.responseCode != -1)
+		{
+			responseCode = ss.responseCode;
+			state = ServerResponding;
+		}
+		else
+		{
+			state = ServerResponseWait;
+		}
 
 		refreshTimeout();
 		startKeepAlive();
@@ -253,12 +265,13 @@ public:
 
 	void pause()
 	{
+		assert(!pausing && !paused);
 		assert(!doReq);
-		pausing = true;
 
-		ZhttpResponsePacket p;
-		p.type = ZhttpResponsePacket::HandoffStart;
-		writePacket(p);
+		pausing = true;
+		needPause = true;
+
+		update();
 	}
 
 	void resume()
@@ -335,6 +348,8 @@ public:
 
 	void tryWrite()
 	{
+		QPointer<QObject> self = this;
+
 		if(state == ClientRequesting)
 		{
 			// if all we have to send is EOF, we don't need credits for that
@@ -407,6 +422,23 @@ public:
 
 				emit q->bytesWritten(packet.body.size());
 			}
+		}
+
+		if(!self)
+			return;
+
+		trySendPause();
+	}
+
+	void trySendPause()
+	{
+		if(needPause && (state == ServerResponseWait || state == ServerResponding) && responseBodyBuf.isEmpty())
+		{
+			needPause = false;
+
+			ZhttpResponsePacket p;
+			p.type = ZhttpResponsePacket::HandoffStart;
+			writePacket(p);
 		}
 	}
 
@@ -946,10 +978,17 @@ public slots:
 				cleanup();
 			}
 
+			QPointer<QObject> self = this;
+
 			if(!packet.body.isEmpty())
 				emit q->bytesWritten(packet.body.size());
 			else if(!packet.more)
 				emit q->bytesWritten(0);
+
+			if(!self)
+				return;
+
+			trySendPause();
 		}
 		else if(state == ServerResponding)
 		{
@@ -1081,6 +1120,8 @@ ZhttpRequest::ServerState ZhttpRequest::serverState() const
 	ss.requestMethod = d->requestMethod;
 	ss.requestUri = d->requestUri;
 	ss.requestHeaders = d->requestHeaders;
+	if(d->state == Private::ServerResponding)
+		ss.responseCode = d->responseCode;
 	ss.inSeq = d->inSeq;
 	ss.outSeq = d->outSeq;
 	ss.outCredits = d->outCredits;
