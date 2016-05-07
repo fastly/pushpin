@@ -160,6 +160,7 @@ public:
 	bool isRetry;
 	QList<QByteArray> jsonpExtractableHeaders;
 	int prefetchSize;
+	bool needPause;
 
 	Private(RequestSession *_q, DomainMap *_domainMap, SockJsManager *_sockJsManager, ZrpcManager *_inspectManager, ZrpcChecker *_inspectChecker, ZrpcManager *_acceptManager) :
 		QObject(_q),
@@ -179,7 +180,8 @@ public:
 		responseBodyFinished(false),
 		pendingResponseUpdate(false),
 		isRetry(false),
-		prefetchSize(0)
+		prefetchSize(0),
+		needPause(false)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
 	}
@@ -1031,6 +1033,8 @@ public slots:
 
 		if(responseBodyFinished)
 		{
+			assert(!needPause);
+
 			if(!jsonpCallback.isEmpty())
 			{
 				QByteArray buf = makeJsonpEnd();
@@ -1040,6 +1044,11 @@ public slots:
 			}
 
 			zhttpRequest->endBody();
+		}
+		else if(needPause)
+		{
+			needPause = false;
+			zhttpRequest->pause();
 		}
 	}
 
@@ -1164,9 +1173,10 @@ void RequestSession::startRetry(ZhttpRequest *req, bool autoCrossOrigin, const Q
 
 void RequestSession::pause()
 {
-	assert(d->state == Private::WaitingForResponse);
+	assert(!d->responseBodyFinished);
+	d->needPause = true;
 
-	d->zhttpRequest->pause();
+	d->responseUpdate();
 }
 
 void RequestSession::resume()
