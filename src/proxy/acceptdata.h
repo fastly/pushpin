@@ -41,6 +41,7 @@ public:
 		bool jsonpExtendedResponse;
 
 		// zhttp
+		int responseCode;
 		int inSeq;
 		int outSeq;
 		int outCredits;
@@ -50,6 +51,7 @@ public:
 			https(false),
 			autoCrossOrigin(false),
 			jsonpExtendedResponse(false),
+			responseCode(-1),
 			inSeq(-1),
 			outSeq(-1),
 			outCredits(-1)
@@ -69,11 +71,13 @@ public:
 	QByteArray route;
 	QByteArray channelPrefix;
 	bool useSession;
+	bool responseSent;
 
 	AcceptData() :
 		haveInspectData(false),
 		haveResponse(false),
-		useSession(false)
+		useSession(false),
+		responseSent(false)
 	{
 	}
 };

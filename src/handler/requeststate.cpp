@@ -55,6 +55,14 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	rs.outCredits = r["out-credits"].toInt();
 
+	if(r.contains("response-code"))
+	{
+		if(!r["response-code"].canConvert(QVariant::Int))
+			return RequestState();
+
+		rs.responseCode = r["response-code"].toInt();
+	}
+
 	if(r.contains("peer-address"))
 	{
 		if(r["peer-address"].type() != QVariant::ByteArray)

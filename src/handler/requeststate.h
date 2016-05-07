@@ -29,6 +29,7 @@ class RequestState
 {
 public:
 	ZhttpRequest::Rid rid;
+	int responseCode;
 	int inSeq;
 	int outSeq;
 	int outCredits;
@@ -40,6 +41,7 @@ public:
 	QVariant userData;
 
 	RequestState() :
+		responseCode(-1),
 		inSeq(0),
 		outSeq(0),
 		outCredits(0),

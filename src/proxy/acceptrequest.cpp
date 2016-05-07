@@ -54,6 +54,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 					vrequest["jsonp-extended-response"] = true;
 			}
 
+			if(r.responseCode != -1)
+				vrequest["response-code"] = r.responseCode;
+
 			vrequest["in-seq"] = r.inSeq;
 			vrequest["out-seq"] = r.outSeq;
 			vrequest["out-credits"] = r.outCredits;
@@ -133,6 +136,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	if(adata.useSession)
 		obj["use-session"] = true;
+
+	if(adata.responseSent)
+		obj["response-sent"] = true;
 
 	return obj;
 }
