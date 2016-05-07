@@ -366,6 +366,7 @@ public:
 	int timeout;
 	int keepAliveTimeout;
 	QByteArray keepAliveData;
+	bool responseSent;
 	QTimer *timer;
 	StatsManager *stats;
 
@@ -376,6 +377,7 @@ public:
 		jsonpExtendedResponse(false),
 		timeout(-1),
 		keepAliveTimeout(-1),
+		responseSent(false),
 		stats(_stats)
 	{
 		req->setParent(this);
@@ -406,12 +408,15 @@ public:
 		}
 		else // StreamHold
 		{
-			// send initial response
-			response.headers.removeAll("Content-Length");
-			if(autoCrossOrigin)
-				Cors::applyCorsHeaders(requestData.headers, &response.headers);
-			req->beginResponse(response.code, response.reason, response.headers);
-			req->writeBody(response.body);
+			if(!responseSent)
+			{
+				// send initial response
+				response.headers.removeAll("Content-Length");
+				if(autoCrossOrigin)
+					Cors::applyCorsHeaders(requestData.headers, &response.headers);
+				req->beginResponse(response.code, response.reason, response.headers);
+				req->writeBody(response.body);
+			}
 
 			// start keep alive timer
 			if(keepAliveTimeout >= 0)
@@ -817,6 +822,7 @@ public:
 	bool haveInspectInfo;
 	InspectData inspectInfo;
 	HttpResponseData responseData;
+	bool responseSent;
 	QString sid;
 	LastIds lastIds;
 	QList<Hold*> holds;
@@ -828,7 +834,8 @@ public:
 		cs(_cs),
 		zhttpIn(_zhttpIn),
 		stats(_stats),
-		haveInspectInfo(false)
+		haveInspectInfo(false),
+		responseSent(false)
 	{
 		req->setParent(this);
 	}
@@ -1074,6 +1081,17 @@ public:
 				haveInspectInfo = true;
 			}
 
+			if(args.contains("response-sent"))
+			{
+				if(args["response-sent"].type() != QVariant::Bool)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				responseSent = args["response-sent"].toBool();
+			}
+
 			bool useSession = false;
 			if(args.contains("use-session"))
 			{
@@ -1304,6 +1322,7 @@ private:
 			ss.requestUri.setScheme(rs.isHttps ? "https" : "http");
 			ss.requestHeaders = requestData.headers;
 			ss.requestBody = requestData.body;
+			ss.responseCode = rs.responseCode;
 			ss.inSeq = rs.inSeq;
 			ss.outSeq = rs.outSeq;
 			ss.outCredits = rs.outCredits;
@@ -1326,6 +1345,7 @@ private:
 			hold->keepAliveData = instruct.keepAliveData;
 			hold->sid = sid;
 			hold->meta = instruct.meta;
+			hold->responseSent = responseSent;
 
 			foreach(const Instruct::Channel &c, instruct.channels)
 				hold->channels.insert(channelPrefix + c.name, c);
