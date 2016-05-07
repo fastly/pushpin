@@ -52,6 +52,7 @@ HEADERS += \
 	$$PWD/zwebsocket.h \
 	$$PWD/zrpcmanager.h \
 	$$PWD/zrpcrequest.h \
+	$$PWD/statusreasons.h \
 	$$PWD/inspectdata.h \
 	$$PWD/cors.h \
 	$$PWD/statsmanager.h \
@@ -65,6 +66,7 @@ SOURCES += \
 	$$PWD/zwebsocket.cpp \
 	$$PWD/zrpcmanager.cpp \
 	$$PWD/zrpcrequest.cpp \
+	$$PWD/statusreasons.cpp \
 	$$PWD/cors.cpp \
 	$$PWD/statsmanager.cpp \
 	$$PWD/settings.cpp
