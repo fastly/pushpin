@@ -958,6 +958,10 @@ public slots:
 
 			emit q->readyRead();
 		}
+		else if(state == ServerResponseWait)
+		{
+			trySendPause();
+		}
 		else if(state == ServerResponseStarting)
 		{
 			state = ServerResponding;
