@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -334,6 +334,7 @@ public:
 			ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
 			ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 			ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
+			ps->setProxyInitialResponseEnabled(true);
 
 			if(idata)
 				ps->setInspectData(*idata);

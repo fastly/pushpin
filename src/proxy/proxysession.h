@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -45,6 +45,7 @@ public:
 	void setUseXForwardedProtocol(bool enabled);
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
 	void setOrigHeadersNeedMark(const QList<QByteArray> &names);
+	void setProxyInitialResponseEnabled(bool enabled);
 
 	void setInspectData(const InspectData &idata);
 
