@@ -495,6 +495,33 @@ public:
 		tryTakeSockJsSession();
 	}
 
+	void logFinished(RequestSession *rs, bool accepted = false)
+	{
+		HttpRequestData rd = rs->requestData();
+		DomainMap::Entry e = rs->route();
+
+		QString msg = QString("%1 %2").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded));
+		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
+		if(!ref.isEmpty())
+			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
+		if(!e.id.isEmpty())
+			msg += QString(" route=%1").arg(QString::fromUtf8(e.id));
+
+		HttpResponseData resp = rs->responseData();
+
+		if(resp.code != -1)
+		{
+			if(accepted)
+				msg += " hold";
+			else
+				msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
+		}
+		else
+			msg += " error";
+
+		log_info("%s", qPrintable(msg));
+	}
+
 private slots:
 	void zhttpIn_requestReady()
 	{
@@ -534,6 +561,8 @@ private slots:
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
+		logFinished(rs);
+
 		if(stats)
 			stats->removeConnection(ridToString(rs->rid()), false);
 
@@ -547,17 +576,7 @@ private slots:
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
-		HttpRequestData rd = rs->requestData();
-		DomainMap::Entry e = rs->route();
-
-		QString msg = QString("%1 %2").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded));
-		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
-		if(!ref.isEmpty())
-			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
-		if(!e.id.isEmpty())
-			msg += QString(" route=%1").arg(QString::fromUtf8(e.id));
-		msg += " int";
-		log_info("%s", qPrintable(msg));
+		logFinished(rs, true);
 
 		if(stats)
 		{

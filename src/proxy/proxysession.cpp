@@ -74,11 +74,13 @@ public:
 
 		RequestSession *rs;
 		State state;
+		bool unclean;
 		int bytesToWrite;
 
 		SessionItem() :
 			rs(0),
 			state(WaitingForResponse),
+			unclean(false),
 			bytesToWrite(0)
 		{
 		}
@@ -519,6 +521,7 @@ public:
 			if(si->state == SessionItem::WaitingForResponse || si->state == SessionItem::Responding)
 			{
 				si->state = SessionItem::Responded;
+				si->unclean = true;
 				si->bytesToWrite = -1;
 				si->rs->endResponseBody();
 			}
@@ -678,10 +681,17 @@ public:
 		if(!route.id.isEmpty())
 			msg += QString(" route=%1").arg(QString::fromUtf8(route.id));
 
-		if(accepted)
-			msg += " hold";
+		HttpResponseData resp = rs->responseData();
+
+		if(resp.code != -1 && !si->unclean)
+		{
+			if(accepted)
+				msg += " hold";
+			else
+				msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
+		}
 		else
-			msg += QString(" code=%1 %2").arg(QString::number(rs->responseData().code), QString::number(rs->responseBodySize()));
+			msg += " error";
 
 		if(rs->isRetry())
 			msg += " retry";
