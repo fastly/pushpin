@@ -1010,7 +1010,7 @@ public slots:
 		{
 			assert(!acceptRequest);
 
-			responseData.body = responseBody.take();
+			acceptResponseData.body = responseBody.take();
 
 			AcceptData adata;
 
