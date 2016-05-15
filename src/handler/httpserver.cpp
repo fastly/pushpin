@@ -216,18 +216,9 @@ private:
 
 	void processIn()
 	{
-		QByteArray buf = sock->readAll();
-
 		if(state == ReadHeader)
 		{
-			if(inBuf.size() + buf.size() > MAX_HEADERS_SIZE)
-			{
-				inBuf.clear();
-				respondBadRequest("Request header too large.");
-				return;
-			}
-
-			inBuf += buf;
+			inBuf += sock->read(MAX_HEADERS_SIZE - inBuf.size());
 
 			// look for double newline
 			int at = -1;
@@ -248,67 +239,71 @@ private:
 				}
 			}
 
-			if(at != -1)
+			if(at == -1 && inBuf.size() >= MAX_HEADERS_SIZE)
 			{
-				QByteArray headerData = inBuf.mid(0, at);
-				reqBody = inBuf.mid(next);
 				inBuf.clear();
+				respondBadRequest("Request header too large.");
+				return;
+			}
 
-				if(!processHeaderData(headerData))
+			QByteArray headerData = inBuf.mid(0, at);
+			reqBody = inBuf.mid(next);
+			inBuf.clear();
+
+			if(!processHeaderData(headerData))
+			{
+				respondBadRequest("Failed to parse request header.");
+				return;
+			}
+
+			bool methodAssumesBody = (method != "HEAD" && method != "GET" && method != "DELETE");
+			if(!reqHeaders.contains("Content-Length") && (reqHeaders.contains("Transfer-Encoding") || methodAssumesBody))
+			{
+				respondLengthRequired("Request requires Content-Length.");
+				return;
+			}
+
+			if(reqHeaders.contains("Content-Length"))
+			{
+				bool ok;
+				contentLength = reqHeaders.get("Content-Length").toInt(&ok);
+				if(!ok)
 				{
-					respondBadRequest("Failed to parse request header.");
+					respondBadRequest("Bad Content-Length.");
 					return;
 				}
 
-				bool methodAssumesBody = (method != "HEAD" && method != "GET" && method != "DELETE");
-				if(!reqHeaders.contains("Content-Length") && (reqHeaders.contains("Transfer-Encoding") || methodAssumesBody))
+				if(contentLength > MAX_BODY_SIZE)
 				{
-					respondLengthRequired("Request requires Content-Length.");
+					respondBadRequest("Request body too large.");
 					return;
 				}
 
-				if(reqHeaders.contains("Content-Length"))
+				if(reqHeaders.get("Expect") == "100-continue")
 				{
-					bool ok;
-					contentLength = reqHeaders.get("Content-Length").toInt(&ok);
-					if(!ok)
-					{
-						respondBadRequest("Bad Content-Length.");
-						return;
-					}
+					QByteArray respData = "HTTP/";
+					if(version1dot0)
+						respData += "1.0 ";
+					else
+						respData += "1.1 ";
+					respData += "100 Continue\r\n\r\n";
 
-					if(contentLength > MAX_BODY_SIZE)
-					{
-						respondBadRequest("Request body too large.");
-						return;
-					}
-
-					if(reqHeaders.get("Expect") == "100-continue")
-					{
-						QByteArray respData = "HTTP/";
-						if(version1dot0)
-							respData += "1.0 ";
-						else
-							respData += "1.1 ";
-						respData += "100 Continue\r\n\r\n";
-
-						pendingWritten += respData.size();
-						sock->write(respData);
-					}
-
-					state = ReadBody;
-					processIn();
+					pendingWritten += respData.size();
+					sock->write(respData);
 				}
-				else
-				{
-					state = WriteBody;
-					emit ready();
-				}
+
+				state = ReadBody;
+				processIn();
+			}
+			else
+			{
+				state = WriteBody;
+				emit ready();
 			}
 		}
 		else if(state == ReadBody)
 		{
-			reqBody += buf;
+			reqBody += sock->read(MAX_BODY_SIZE - reqBody.size() + 1);
 
 			if(reqBody.size() > contentLength)
 			{
