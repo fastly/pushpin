@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -105,13 +105,21 @@ public:
 	{
 		if(item.type == WsControlPacket::Item::Send)
 		{
-			QByteArray contentType;
-			if(!item.contentType.isEmpty())
-				contentType = item.contentType;
+			WebSocket::Frame::Type type;
+			if(item.contentType == "binary")
+				type = WebSocket::Frame::Binary;
+			else if(item.contentType == "ping")
+				type = WebSocket::Frame::Ping;
+			else if(item.contentType == "pong")
+				type = WebSocket::Frame::Pong;
 			else
-				contentType = "text";
+				type = WebSocket::Frame::Text;
 
-			emit q->sendEventReceived(contentType, item.message);
+			emit q->sendEventReceived(type, item.message);
+		}
+		else if(item.type == WsControlPacket::Item::Close)
+		{
+			emit q->closeEventReceived(item.code);
 		}
 		else if(item.type == WsControlPacket::Item::Detach)
 		{

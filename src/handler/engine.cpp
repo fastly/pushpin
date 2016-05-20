@@ -1804,9 +1804,28 @@ private:
 			{
 				WsControlPacket::Item i;
 				i.cid = s->cid.toUtf8();
-				i.type = WsControlPacket::Item::Send;
-				i.contentType = f.binary ? "binary" : "text";
-				i.message = f.body;
+
+				if(f.close)
+				{
+					i.type = WsControlPacket::Item::Close;
+					i.code = f.code;
+				}
+				else
+				{
+					i.type = WsControlPacket::Item::Send;
+
+					switch(f.messageType)
+					{
+						case PublishFormat::Text:   i.contentType = "text"; break;
+						case PublishFormat::Binary: i.contentType = "binary"; break;
+						case PublishFormat::Ping:   i.contentType = "ping"; break;
+						case PublishFormat::Pong:   i.contentType = "pong"; break;
+						default: continue; // unrecognized type, skip
+					}
+
+					i.message = f.body;
+				}
+
 				writeWsControlItem(i);
 			}
 

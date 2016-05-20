@@ -35,22 +35,30 @@ public:
 		WebSocketMessage
 	};
 
+	enum MessageType
+	{
+		Text,
+		Binary,
+		Ping,
+		Pong
+	};
+
 	Type type;
-	int code; // response
+	int code; // response/ws
 	QByteArray reason; // response
 	HttpHeaders headers; // response
 	QByteArray body; // response/stream/ws
 	bool haveBodyPatch; // response
 	QVariantList bodyPatch; // response
-	bool close; // stream
-	bool binary; // ws
+	bool close; // stream/ws
+	MessageType messageType; // ws
 
 	PublishFormat() :
 		type((Type)-1),
 		code(-1),
 		haveBodyPatch(false),
 		close(false),
-		binary(false)
+		messageType((MessageType)-1)
 	{
 	}
 
@@ -59,7 +67,7 @@ public:
 		code(-1),
 		haveBodyPatch(false),
 		close(false),
-		binary(false)
+		messageType((MessageType)-1)
 	{
 	}
 

@@ -83,7 +83,18 @@ private slots:
 		bool ok;
 		PublishFormat f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(!f.binary);
+		QVERIFY(!f.close);
+		QCOMPARE(f.messageType, PublishFormat::Text);
+		QCOMPARE(f.body, QByteArray("hello world"));
+
+		data.clear();
+		data["type"] = "binary";
+		data["content"] = QByteArray("hello world");
+
+		f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
+		QVERIFY(ok);
+		QVERIFY(!f.close);
+		QCOMPARE(f.messageType, PublishFormat::Binary);
 		QCOMPARE(f.body, QByteArray("hello world"));
 
 		data.clear();
@@ -91,8 +102,26 @@ private slots:
 
 		f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(f.binary);
+		QVERIFY(!f.close);
+		QCOMPARE(f.messageType, PublishFormat::Binary);
 		QCOMPARE(f.body, QByteArray("hello world"));
+
+		data.clear();
+		data["action"] = "close";
+
+		f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
+		QVERIFY(ok);
+		QVERIFY(f.close);
+		QCOMPARE(f.code, -1);
+
+		data.clear();
+		data["action"] = "close";
+		data["code"] = 1001;
+
+		f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
+		QVERIFY(ok);
+		QVERIFY(f.close);
+		QCOMPARE(f.code, 1001);
 	}
 };
 

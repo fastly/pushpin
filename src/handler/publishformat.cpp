@@ -265,50 +265,113 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 	}
 	else if(type == WebSocketMessage)
 	{
-		if(keyedObjectContains(in, "content-bin"))
+		QString action = getString(in, pn, "action", false, &ok_, errorMessage);
+		if(!ok_)
 		{
-			QVariant vcontentBin = keyedObjectGetValue(in, "content-bin");
-
-			if(in.type() == QVariant::Map) // JSON input
-			{
-				if(vcontentBin.type() != QVariant::String)
-				{
-					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
-					return PublishFormat();
-				}
-
-				out.body = QByteArray::fromBase64(vcontentBin.toString().toUtf8());
-			}
-			else
-			{
-				if(vcontentBin.type() != QVariant::ByteArray)
-				{
-					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
-					return PublishFormat();
-				}
-
-				out.body = vcontentBin.toByteArray();
-			}
-
-			out.binary = true;
+			if(ok)
+				*ok = false;
+			return PublishFormat();
 		}
-		else if(keyedObjectContains(in, "content"))
+
+		if(action == "close")
 		{
-			QVariant vcontent = keyedObjectGetValue(in, "content");
-			if(vcontent.type() == QVariant::ByteArray)
-				out.body = vcontent.toByteArray();
-			else if(vcontent.type() == QVariant::String)
-				out.body = vcontent.toString().toUtf8();
-			else
+			out.close = true;
+
+			if(keyedObjectContains(in, "code"))
 			{
-				setError(ok, errorMessage, QString("%1 contains 'content' with wrong type").arg(pn));
+				QVariant vcode = keyedObjectGetValue(in, "code");
+				if(!vcode.canConvert(QVariant::Int))
+				{
+					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
+					return PublishFormat();
+				}
+
+				out.code = vcode.toInt();
+
+				if(out.code < 0)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'code' with invalid value").arg(pn));
+					return PublishFormat();
+				}
+			}
+		}
+
+		if(!out.close)
+		{
+			QString typeStr = getString(in, pn, "type", false, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
 				return PublishFormat();
 			}
-		}
-		else
-		{
-			setError(ok, errorMessage, QString("%1 does not contain 'content' or 'content-bin'").arg(pn));
-			return PublishFormat();
+
+			if(!typeStr.isNull())
+			{
+				if(typeStr == "text")
+					out.messageType = Text;
+				else if(typeStr == "binary")
+					out.messageType = Binary;
+				else if(typeStr == "ping")
+					out.messageType = Ping;
+				else if(typeStr == "pong")
+					out.messageType = Pong;
+				else
+				{
+					setError(ok, errorMessage, QString("%1 contains 'type' with unknown value").arg(pn));
+					return PublishFormat();
+				}
+			}
+
+			if(keyedObjectContains(in, "content-bin"))
+			{
+				QVariant vcontentBin = keyedObjectGetValue(in, "content-bin");
+
+				if(in.type() == QVariant::Map) // JSON input
+				{
+					if(vcontentBin.type() != QVariant::String)
+					{
+						setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
+						return PublishFormat();
+					}
+
+					out.body = QByteArray::fromBase64(vcontentBin.toString().toUtf8());
+				}
+				else
+				{
+					if(vcontentBin.type() != QVariant::ByteArray)
+					{
+						setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
+						return PublishFormat();
+					}
+
+					out.body = vcontentBin.toByteArray();
+				}
+
+				if(((int)out.messageType) == -1)
+					out.messageType = Binary;
+			}
+			else if(keyedObjectContains(in, "content"))
+			{
+				QVariant vcontent = keyedObjectGetValue(in, "content");
+				if(vcontent.type() == QVariant::ByteArray)
+					out.body = vcontent.toByteArray();
+				else if(vcontent.type() == QVariant::String)
+					out.body = vcontent.toString().toUtf8();
+				else
+				{
+					setError(ok, errorMessage, QString("%1 contains 'content' with wrong type").arg(pn));
+					return PublishFormat();
+				}
+
+				if(((int)out.messageType) == -1)
+					out.messageType = Text;
+			}
+			else if(out.messageType == Text || out.messageType == Binary || ((int)out.messageType) == -1)
+			{
+				setError(ok, errorMessage, QString("%1 does not contain 'content' or 'content-bin'").arg(pn));
+				return PublishFormat();
+			}
 		}
 	}
 

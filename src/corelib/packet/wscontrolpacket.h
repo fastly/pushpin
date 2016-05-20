@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -39,6 +39,7 @@ public:
 			Grip,
 			Cancel,
 			Send,
+			Close,
 			Detach
 		};
 
@@ -47,11 +48,13 @@ public:
 		QUrl uri;
 		QByteArray contentType;
 		QByteArray message;
+		int code;
 		QByteArray channelPrefix;
 		int ttl;
 
 		Item() :
 			type((Type)-1),
+			code(-1),
 			ttl(-1)
 		{
 		}

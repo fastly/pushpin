@@ -133,7 +133,7 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(codeOption);
 	const QCommandLineOption headerOption(QStringList() << "H" << "header", "Add HTTP response header.", "\"K: V\"");
 	parser->addOption(headerOption);
-	const QCommandLineOption closeOption("close", "Close streaming requests.");
+	const QCommandLineOption closeOption("close", "Close streaming and WebSocket connections.");
 	parser->addOption(closeOption);
 	const QCommandLineOption patchOption("patch", "Content is JSON patch.");
 	parser->addOption(patchOption);
@@ -299,13 +299,13 @@ int main(int argc, char **argv)
 
 		formats["http-stream"] = httpStream;
 
-		if(!args.close)
-		{
-			QVariantHash wsMessage;
+		QVariantHash wsMessage;
+		if(args.close)
+			wsMessage["action"] = QByteArray("close");
+		else
 			wsMessage["content"] = args.content.toUtf8();
 
-			formats["ws-message"] = wsMessage;
-		}
+		formats["ws-message"] = wsMessage;
 	}
 
 	QVariantHash meta;

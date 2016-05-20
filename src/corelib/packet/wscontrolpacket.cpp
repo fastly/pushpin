@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -166,6 +166,7 @@ QVariant WsControlPacket::toVariant() const
 			case Item::Grip:      typeStr = "grip"; break;
 			case Item::Cancel:    typeStr = "cancel"; break;
 			case Item::Send:      typeStr = "send"; break;
+			case Item::Close:     typeStr = "close"; break;
 			case Item::Detach:    typeStr = "detach"; break;
 			default:
 				assert(0);
@@ -180,6 +181,9 @@ QVariant WsControlPacket::toVariant() const
 
 		if(!item.message.isNull())
 			vitem["message"] = item.message;
+
+		if(item.code >= 0)
+			vitem["code"] = item.code;
 
 		if(!item.channelPrefix.isEmpty())
 			vitem["channel-prefix"] = item.channelPrefix;
@@ -235,6 +239,8 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.type = Item::Cancel;
 		else if(typeStr == "send")
 			item.type = Item::Send;
+		else if(typeStr == "close")
+			item.type = Item::Close;
 		else if(typeStr == "detach")
 			item.type = Item::Detach;
 		else
@@ -264,6 +270,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 				return false;
 
 			item.message = vitem["message"].toByteArray();
+		}
+
+		if(vitem.contains("code"))
+		{
+			if(!vitem["code"].canConvert(QVariant::Int))
+				return false;
+
+			item.code = vitem["code"].toInt();
 		}
 
 		if(vitem.contains("channel-prefix"))

@@ -708,7 +708,8 @@ private slots:
 			if(wsControlManager)
 			{
 				wsControl = wsControlManager->createSession(publicCid);
-				connect(wsControl, SIGNAL(sendEventReceived(const QByteArray &, const QByteArray &)), SLOT(wsControl_sendEventReceived(const QByteArray &, const QByteArray &)));
+				connect(wsControl, SIGNAL(sendEventReceived(WebSocket::Frame::Type, const QByteArray &)), SLOT(wsControl_sendEventReceived(WebSocket::Frame::Type, const QByteArray &)));
+				connect(wsControl, SIGNAL(closeEventReceived(int)), SLOT(wsControl_closeEventReceived(int)));
 				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
 				connect(wsControl, SIGNAL(cancelEventReceived()), SLOT(wsControl_cancelEventReceived()));
 				wsControl->start(channelPrefix, inSock->requestUri());
@@ -818,18 +819,28 @@ private slots:
 		}
 	}
 
-	void wsControl_sendEventReceived(const QByteArray &contentType, const QByteArray &message)
+	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message)
 	{
+		// this method accepts a full message, which must be typed
+		if(type == WebSocket::Frame::Continuation)
+			return;
+
 		// only send if we can, otherwise drop
 		if(inSock && inSock->canWrite())
 		{
-			if(contentType == "binary")
-				inSock->writeFrame(WebSocket::Frame(WebSocket::Frame::Binary, message, false));
-			else
-				inSock->writeFrame(WebSocket::Frame(WebSocket::Frame::Text, message, false));
+			inSock->writeFrame(WebSocket::Frame(type, message, false));
 
 			inPendingBytes += message.size();
 		}
+	}
+
+	void wsControl_closeEventReceived(int code)
+	{
+		if(!detached && outSock && outSock->state() != WebSocket::Closing)
+			outSock->close();
+
+		if(inSock && inSock->state() != WebSocket::Closing)
+			inSock->close(code);
 	}
 
 	void wsControl_detachEventReceived()
