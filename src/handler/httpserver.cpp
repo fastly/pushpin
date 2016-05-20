@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -239,66 +239,68 @@ private:
 				}
 			}
 
-			if(at == -1 && inBuf.size() >= MAX_HEADERS_SIZE)
+			if(at != -1)
+			{
+				QByteArray headerData = inBuf.mid(0, at);
+				reqBody = inBuf.mid(next);
+				inBuf.clear();
+
+				if(!processHeaderData(headerData))
+				{
+					respondBadRequest("Failed to parse request header.");
+					return;
+				}
+
+				bool methodAssumesBody = (method != "HEAD" && method != "GET" && method != "DELETE");
+				if(!reqHeaders.contains("Content-Length") && (reqHeaders.contains("Transfer-Encoding") || methodAssumesBody))
+				{
+					respondLengthRequired("Request requires Content-Length.");
+					return;
+				}
+
+				if(reqHeaders.contains("Content-Length"))
+				{
+					bool ok;
+					contentLength = reqHeaders.get("Content-Length").toInt(&ok);
+					if(!ok)
+					{
+						respondBadRequest("Bad Content-Length.");
+						return;
+					}
+
+					if(contentLength > MAX_BODY_SIZE)
+					{
+						respondBadRequest("Request body too large.");
+						return;
+					}
+
+					if(reqHeaders.get("Expect") == "100-continue")
+					{
+						QByteArray respData = "HTTP/";
+						if(version1dot0)
+							respData += "1.0 ";
+						else
+							respData += "1.1 ";
+						respData += "100 Continue\r\n\r\n";
+
+						pendingWritten += respData.size();
+						sock->write(respData);
+					}
+
+					state = ReadBody;
+					processIn();
+				}
+				else
+				{
+					state = WriteBody;
+					emit ready();
+				}
+			}
+			else if(inBuf.size() >= MAX_HEADERS_SIZE)
 			{
 				inBuf.clear();
 				respondBadRequest("Request header too large.");
 				return;
-			}
-
-			QByteArray headerData = inBuf.mid(0, at);
-			reqBody = inBuf.mid(next);
-			inBuf.clear();
-
-			if(!processHeaderData(headerData))
-			{
-				respondBadRequest("Failed to parse request header.");
-				return;
-			}
-
-			bool methodAssumesBody = (method != "HEAD" && method != "GET" && method != "DELETE");
-			if(!reqHeaders.contains("Content-Length") && (reqHeaders.contains("Transfer-Encoding") || methodAssumesBody))
-			{
-				respondLengthRequired("Request requires Content-Length.");
-				return;
-			}
-
-			if(reqHeaders.contains("Content-Length"))
-			{
-				bool ok;
-				contentLength = reqHeaders.get("Content-Length").toInt(&ok);
-				if(!ok)
-				{
-					respondBadRequest("Bad Content-Length.");
-					return;
-				}
-
-				if(contentLength > MAX_BODY_SIZE)
-				{
-					respondBadRequest("Request body too large.");
-					return;
-				}
-
-				if(reqHeaders.get("Expect") == "100-continue")
-				{
-					QByteArray respData = "HTTP/";
-					if(version1dot0)
-						respData += "1.0 ";
-					else
-						respData += "1.1 ";
-					respData += "100 Continue\r\n\r\n";
-
-					pendingWritten += respData.size();
-					sock->write(respData);
-				}
-
-				state = ReadBody;
-				processIn();
-			}
-			else
-			{
-				state = WriteBody;
-				emit ready();
 			}
 		}
 		else if(state == ReadBody)
