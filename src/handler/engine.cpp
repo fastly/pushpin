@@ -64,6 +64,7 @@
 #define RETRY_WAIT_TIME 0
 #define WSCONTROL_WAIT_TIME 0
 #define STATE_RPC_TIMEOUT 1000
+#define DEFAULT_WS_KEEPALIVE_TIMEOUT 55
 
 using namespace VariantUtil;
 
@@ -672,11 +673,14 @@ public:
 	QString cid;
 	QString channelPrefix;
 	HttpRequestData requestData;
+	QString route;
 	QString sid;
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
 	QSet<QString> channels;
 	int ttl;
+	QByteArray keepAliveType;
+	QByteArray keepAliveMessage;
 	QTimer *timer;
 
 	WsSession(QObject *parent = 0) :
@@ -684,6 +688,13 @@ public:
 	{
 		timer = new QTimer(this);
 		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+	}
+
+	~WsSession()
+	{
+		timer->disconnect(this);
+		timer->setParent(0);
+		timer->deleteLater();
 	}
 
 	void refreshExpiration()
@@ -2096,6 +2107,7 @@ private slots:
 					log_debug("added ws session: %s", qPrintable(s->cid));
 				}
 
+				s->route = item.route;
 				s->channelPrefix = QString::fromUtf8(item.channelPrefix);
 				continue;
 			}
@@ -2194,7 +2206,6 @@ private slots:
 					i.cid = item.cid;
 					i.type = WsControlPacket::Item::Detach;
 					writeWsControlItem(i);
-					continue;
 				}
 				else if(cm.type == WsControlMessage::Session)
 				{
@@ -2207,6 +2218,52 @@ private slots:
 						s->meta[cm.metaName] = cm.metaValue;
 					else
 						s->meta.remove(cm.metaName);
+				}
+				else if(cm.type == WsControlMessage::KeepAlive)
+				{
+					WsControlPacket::Item i;
+					i.cid = item.cid;
+					i.type = WsControlPacket::Item::KeepAliveSetup;
+
+					if(!cm.content.isNull())
+					{
+						QString contentType;
+						switch(cm.messageType)
+						{
+							case WsControlMessage::Text:   contentType = "text"; break;
+							case WsControlMessage::Binary: contentType = "binary"; break;
+							case WsControlMessage::Ping:   contentType = "ping"; break;
+							case WsControlMessage::Pong:   contentType = "pong"; break;
+							default: continue; // unrecognized type, ignore
+						}
+
+						s->keepAliveType = contentType.toUtf8();
+						s->keepAliveMessage = cm.content;
+
+						i.timeout = (cm.timeout > 0 ? cm.timeout : DEFAULT_WS_KEEPALIVE_TIMEOUT);
+					}
+					else
+					{
+						s->keepAliveType.clear();
+						s->keepAliveMessage.clear();
+					}
+
+					writeWsControlItem(i);
+				}
+			}
+			else if(item.type == WsControlPacket::Item::NeedKeepAlive)
+			{
+				if(!s->keepAliveMessage.isNull())
+				{
+					WsControlPacket::Item i;
+					i.cid = s->cid.toUtf8();
+					i.type = WsControlPacket::Item::Send;
+					i.contentType = s->keepAliveType;
+					i.message = s->keepAliveMessage;
+
+					writeWsControlItem(i);
+
+					stats->addActivity(s->route.toUtf8(), 1);
 				}
 			}
 		}

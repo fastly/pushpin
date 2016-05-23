@@ -37,8 +37,10 @@ public:
 			KeepAlive,
 			Gone,
 			Grip,
+			NeedKeepAlive,
 			Cancel,
 			Send,
+			KeepAliveSetup,
 			Close,
 			Detach
 		};
@@ -49,13 +51,16 @@ public:
 		QByteArray contentType;
 		QByteArray message;
 		int code;
+		QByteArray route;
 		QByteArray channelPrefix;
 		int ttl;
+		int timeout;
 
 		Item() :
 			type((Type)-1),
 			code(-1),
-			ttl(-1)
+			ttl(-1),
+			timeout(-1)
 		{
 		}
 	};

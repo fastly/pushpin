@@ -57,6 +57,8 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		out.type = Session;
 	else if(type == "set-meta")
 		out.type = SetMeta;
+	else if(type == "keep-alive")
+		out.type = KeepAlive;
 	else
 	{
 		setError(ok, errorMessage, QString("'type' contains unknown value: %1").arg(type));
@@ -140,6 +142,99 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 			if(ok)
 				*ok = false;
 			return WsControlMessage();
+		}
+	}
+	else if(out.type == KeepAlive)
+	{
+		QString typeStr = getString(in, pn, "message-type", false, &ok_, errorMessage);
+		if(!ok_)
+		{
+			if(ok)
+				*ok = false;
+			return WsControlMessage();
+		}
+
+		if(!typeStr.isNull())
+		{
+			if(typeStr == "text")
+				out.messageType = Text;
+			else if(typeStr == "binary")
+				out.messageType = Binary;
+			else if(typeStr == "ping")
+				out.messageType = Ping;
+			else if(typeStr == "pong")
+				out.messageType = Pong;
+			else
+			{
+				setError(ok, errorMessage, QString("%1 contains 'message-type' with unknown value").arg(pn));
+				return WsControlMessage();
+			}
+		}
+
+		if(keyedObjectContains(in, "content-bin"))
+		{
+			QVariant vcontentBin = keyedObjectGetValue(in, "content-bin");
+
+			if(in.type() == QVariant::Map) // JSON input
+			{
+				if(vcontentBin.type() != QVariant::String)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
+					return WsControlMessage();
+				}
+
+				out.content = QByteArray::fromBase64(vcontentBin.toString().toUtf8());
+			}
+			else
+			{
+				if(vcontentBin.type() != QVariant::ByteArray)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
+					return WsControlMessage();
+				}
+
+				out.content = vcontentBin.toByteArray();
+			}
+
+			if(((int)out.messageType) == -1)
+				out.messageType = Binary;
+		}
+		else if(keyedObjectContains(in, "content"))
+		{
+			QVariant vcontent = keyedObjectGetValue(in, "content");
+			if(vcontent.type() == QVariant::ByteArray)
+				out.content = vcontent.toByteArray();
+			else if(vcontent.type() == QVariant::String)
+				out.content = vcontent.toString().toUtf8();
+			else
+			{
+				setError(ok, errorMessage, QString("%1 contains 'content' with wrong type").arg(pn));
+				return WsControlMessage();
+			}
+
+			if(((int)out.messageType) == -1)
+				out.messageType = Text;
+		}
+
+		if(!out.content.isNull())
+		{
+			if(keyedObjectContains(in, "timeout"))
+			{
+				QVariant vtimeout = keyedObjectGetValue(in, "timeout");
+				if(!vtimeout.canConvert(QVariant::Int))
+				{
+					setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(pn));
+					return WsControlMessage();
+				}
+
+				out.timeout = vtimeout.toInt();
+
+				if(out.timeout < 0)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'timeout' with invalid value").arg(pn));
+					return WsControlMessage();
+				}
+			}
 		}
 	}
 

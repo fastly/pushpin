@@ -20,6 +20,7 @@
 #include "wsproxysession.h"
 
 #include <assert.h>
+#include <QTimer>
 #include <QDateTime>
 #include <QUrl>
 #include <QJsonDocument>
@@ -254,6 +255,7 @@ public:
 	QString subChannel;
 	QDateTime activityTime;
 	QByteArray publicCid;
+	QTimer *keepAliveTimer;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -274,7 +276,8 @@ public:
 		outPendingBytes(0),
 		outReadInProgress(-1),
 		acceptGripMessages(false),
-		detached(false)
+		detached(false),
+		keepAliveTimer(0)
 	{
 	}
 
@@ -285,6 +288,8 @@ public:
 
 	void cleanup()
 	{
+		cleanupKeepAliveTimer();
+
 		cleanupInSock();
 
 		delete outSock;
@@ -307,6 +312,17 @@ public:
 			connectionManager->removeConnection(inSock);
 			delete inSock;
 			inSock = 0;
+		}
+	}
+
+	void cleanupKeepAliveTimer()
+	{
+		if(keepAliveTimer)
+		{
+			keepAliveTimer->disconnect(this);
+			keepAliveTimer->setParent(0);
+			keepAliveTimer->deleteLater();
+			keepAliveTimer = 0;
 		}
 	}
 
@@ -493,6 +509,8 @@ public:
 
 			outSock->writeFrame(f);
 			outPendingBytes += f.data.size();
+
+			restartKeepAlive();
 		}
 	}
 
@@ -531,6 +549,8 @@ public:
 						f.data = f.data.mid(messagePrefix.size());
 						inSock->writeFrame(f);
 						inPendingBytes += f.data.size();
+
+						restartKeepAlive();
 					}
 					else if(f.type == WebSocket::Frame::Continuation)
 					{
@@ -538,12 +558,16 @@ public:
 
 						inSock->writeFrame(f);
 						inPendingBytes += f.data.size();
+
+						restartKeepAlive();
 					}
 				}
 				else
 				{
 					inSock->writeFrame(f);
 					inPendingBytes += f.data.size();
+
+					restartKeepAlive();
 				}
 
 				if(!f.more)
@@ -554,6 +578,8 @@ public:
 				// always relay non-content frames
 				inSock->writeFrame(f);
 				inPendingBytes += f.data.size();
+
+				restartKeepAlive();
 			}
 		}
 	}
@@ -604,6 +630,12 @@ public:
 		msg += QString(" code=%1 %2").arg(QString::number(responseCode), QString::number(responseBodySize));
 
 		log_info("%s", qPrintable(msg));
+	}
+
+	void restartKeepAlive()
+	{
+		if(keepAliveTimer)
+			keepAliveTimer->start();
 	}
 
 private slots:
@@ -709,10 +741,11 @@ private slots:
 			{
 				wsControl = wsControlManager->createSession(publicCid);
 				connect(wsControl, SIGNAL(sendEventReceived(WebSocket::Frame::Type, const QByteArray &)), SLOT(wsControl_sendEventReceived(WebSocket::Frame::Type, const QByteArray &)));
+				connect(wsControl, SIGNAL(keepAliveSetupEventReceived(bool, int)), SLOT(wsControl_keepAliveSetupEventReceived(bool, int)));
 				connect(wsControl, SIGNAL(closeEventReceived(int)), SLOT(wsControl_closeEventReceived(int)));
 				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
 				connect(wsControl, SIGNAL(cancelEventReceived()), SLOT(wsControl_cancelEventReceived()));
-				wsControl->start(channelPrefix, inSock->requestUri());
+				wsControl->start(routeId, channelPrefix, inSock->requestUri());
 
 				if(!subChannel.isEmpty())
 				{
@@ -834,6 +867,25 @@ private slots:
 		}
 	}
 
+	void wsControl_keepAliveSetupEventReceived(bool enable, int timeout)
+	{
+		if(enable)
+		{
+			if(!keepAliveTimer)
+			{
+				keepAliveTimer = new QTimer(this);
+				connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
+			}
+
+			keepAliveTimer->setInterval(timeout * 1000);
+			keepAliveTimer->start();
+		}
+		else
+		{
+			cleanupKeepAliveTimer();
+		}
+	}
+
 	void wsControl_closeEventReceived(int code)
 	{
 		if(!detached && outSock && outSock->state() != WebSocket::Closing)
@@ -868,9 +920,9 @@ private slots:
 		tryFinish();
 	}
 
-	void activity_timeout()
+	void keepAliveTimer_timeout()
 	{
-		// nothing to do
+		wsControl->sendNeedKeepAlive();
 	}
 };
 

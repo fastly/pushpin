@@ -160,14 +160,16 @@ QVariant WsControlPacket::toVariant() const
 		QByteArray typeStr;
 		switch(item.type)
 		{
-			case Item::Here:      typeStr = "here"; break;
-			case Item::KeepAlive: typeStr = "keep-alive"; break;
-			case Item::Gone:      typeStr = "gone"; break;
-			case Item::Grip:      typeStr = "grip"; break;
-			case Item::Cancel:    typeStr = "cancel"; break;
-			case Item::Send:      typeStr = "send"; break;
-			case Item::Close:     typeStr = "close"; break;
-			case Item::Detach:    typeStr = "detach"; break;
+			case Item::Here:           typeStr = "here"; break;
+			case Item::KeepAlive:      typeStr = "keep-alive"; break;
+			case Item::Gone:           typeStr = "gone"; break;
+			case Item::Grip:           typeStr = "grip"; break;
+			case Item::KeepAliveSetup: typeStr = "keep-alive-setup"; break;
+			case Item::Cancel:         typeStr = "cancel"; break;
+			case Item::Send:           typeStr = "send"; break;
+			case Item::NeedKeepAlive:  typeStr = "need-keep-alive"; break;
+			case Item::Close:          typeStr = "close"; break;
+			case Item::Detach:         typeStr = "detach"; break;
 			default:
 				assert(0);
 		}
@@ -185,11 +187,17 @@ QVariant WsControlPacket::toVariant() const
 		if(item.code >= 0)
 			vitem["code"] = item.code;
 
+		if(!item.route.isEmpty())
+			vitem["route"] = item.route;
+
 		if(!item.channelPrefix.isEmpty())
 			vitem["channel-prefix"] = item.channelPrefix;
 
 		if(item.ttl >= 0)
 			vitem["ttl"] = item.ttl;
+
+		if(item.timeout >= 0)
+			vitem["timeout"] = item.timeout;
 
 		vitems += vitem;
 	}
@@ -235,10 +243,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.type = Item::Gone;
 		else if(typeStr == "grip")
 			item.type = Item::Grip;
+		else if(typeStr == "keep-alive-setup")
+			item.type = Item::KeepAliveSetup;
 		else if(typeStr == "cancel")
 			item.type = Item::Cancel;
 		else if(typeStr == "send")
 			item.type = Item::Send;
+		else if(typeStr == "need-keep-alive")
+			item.type = Item::NeedKeepAlive;
 		else if(typeStr == "close")
 			item.type = Item::Close;
 		else if(typeStr == "detach")
@@ -280,6 +292,16 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.code = vitem["code"].toInt();
 		}
 
+		if(vitem.contains("route"))
+		{
+			if(vitem["route"].type() != QVariant::ByteArray)
+				return false;
+
+			QByteArray route = vitem["route"].toByteArray();
+			if(!route.isEmpty())
+				item.route = route;
+		}
+
 		if(vitem.contains("channel-prefix"))
 		{
 			if(vitem["channel-prefix"].type() != QVariant::ByteArray)
@@ -298,6 +320,16 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.ttl = vitem["ttl"].toInt();
 			if(item.ttl < 0)
 				item.ttl = 0;
+		}
+
+		if(vitem.contains("timeout"))
+		{
+			if(!vitem["timeout"].canConvert(QVariant::Int))
+				return false;
+
+			item.timeout = vitem["timeout"].toInt();
+			if(item.timeout < 0)
+				item.timeout = 0;
 		}
 
 		items += item;

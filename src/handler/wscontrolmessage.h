@@ -34,7 +34,16 @@ public:
 		Unsubscribe,
 		Detach,
 		Session,
-		SetMeta
+		SetMeta,
+		KeepAlive
+	};
+
+	enum MessageType
+	{
+		Text,
+		Binary,
+		Ping,
+		Pong
 	};
 
 	Type type;
@@ -43,6 +52,16 @@ public:
 	QString sessionId;
 	QString metaName;
 	QString metaValue;
+	MessageType messageType;
+	QByteArray content;
+	int timeout;
+
+	WsControlMessage() :
+		type((Type)-1),
+		messageType((MessageType)-1),
+		timeout(-1)
+	{
+	}
 
 	static WsControlMessage fromVariant(const QVariant &in, bool *ok = 0, QString *errorMessage = 0);
 };
