@@ -509,8 +509,6 @@ public:
 
 			outSock->writeFrame(f);
 			outPendingBytes += f.data.size();
-
-			restartKeepAlive();
 		}
 	}
 
@@ -865,6 +863,8 @@ private slots:
 
 			inPendingBytes += message.size();
 		}
+
+		restartKeepAlive();
 	}
 
 	void wsControl_keepAliveSetupEventReceived(bool enable, int timeout)
