@@ -87,6 +87,7 @@ public:
 	void setIgnorePolicies(bool on);
 	void setIgnoreTlsErrors(bool on);
 	void setIsTls(bool on); // updates scheme
+	void setSendBodyAfterAcknowledgement(bool on); // only works in push/sub mode
 
 	void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
 	void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);

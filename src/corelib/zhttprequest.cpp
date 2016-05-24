@@ -67,6 +67,7 @@ public:
 	int connectPort;
 	bool ignorePolicies;
 	bool ignoreTlsErrors;
+	bool sendBodyAfterAck;
 	QString requestMethod;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
@@ -102,6 +103,7 @@ public:
 		connectPort(-1),
 		ignorePolicies(false),
 		ignoreTlsErrors(false),
+		sendBodyAfterAck(false),
 		inSeq(0),
 		outSeq(0),
 		outCredits(0),
@@ -896,17 +898,20 @@ public slots:
 					return;
 				}
 
-				// even though we don't have credits yet, we can act
-				//   like we do on the first packet. we'll still cap
-				//   our potential size though.
-				QByteArray buf = requestBodyBuf.take(IDEAL_CREDITS);
-
 				ZhttpRequestPacket p;
 				p.type = ZhttpRequestPacket::Data;
 				p.method = requestMethod;
 				p.uri = requestUri;
 				p.headers = requestHeaders;
-				p.body = buf;
+
+				if(!sendBodyAfterAck)
+				{
+					// even though we don't have credits yet, we can act
+					//   like we do on the first packet. we'll still cap
+					//   our potential size though.
+					p.body = requestBodyBuf.take(IDEAL_CREDITS);
+				}
+
 				if(!requestBodyBuf.isEmpty() || !bodyFinished)
 					p.more = true;
 				p.stream = true;
@@ -1072,6 +1077,11 @@ void ZhttpRequest::setIgnoreTlsErrors(bool on)
 void ZhttpRequest::setIsTls(bool on)
 {
 	d->requestUri.setScheme(on ? "https" : "http");
+}
+
+void ZhttpRequest::setSendBodyAfterAcknowledgement(bool on)
+{
+	d->sendBodyAfterAck = on;
 }
 
 void ZhttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
