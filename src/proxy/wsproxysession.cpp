@@ -875,6 +875,7 @@ private slots:
 			{
 				keepAliveTimer = new QTimer(this);
 				connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
+				keepAliveTimer->setSingleShot(true);
 			}
 
 			keepAliveTimer->setInterval(timeout * 1000);
