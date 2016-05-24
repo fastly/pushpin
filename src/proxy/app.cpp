@@ -198,6 +198,7 @@ public:
 		QByteArray upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
 		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
 		bool updatesCheck = settings.value("proxy/updates_check", true).toBool();
+		QString organizationName = settings.value("proxy/organization_name").toString();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -245,6 +246,7 @@ public:
 		config.upstreamKey = upstreamKey;
 		config.sockJsUrl = sockJsUrl;
 		config.updatesCheck = updatesCheck;
+		config.organizationName = organizationName;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

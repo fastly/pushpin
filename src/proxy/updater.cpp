@@ -65,14 +65,16 @@ class Updater::Private : public QObject
 public:
 	Updater *q;
 	QString currentVersion;
+	QString org;
 	ZhttpManager *zhttpManager;
 	QTimer *timer;
 	ZhttpRequest *req;
 
-	Private(Updater *_q, const QString &_currentVersion, ZhttpManager *zhttp) :
+	Private(Updater *_q, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
 		QObject(_q),
 		q(_q),
 		currentVersion(_currentVersion),
+		org(_org),
 		zhttpManager(zhttp),
 		req(0)
 	{
@@ -117,11 +119,15 @@ private slots:
 		QString arch = getArch();
 		if(!arch.isEmpty())
 			query.addQueryItem("arch", arch);
+		if(!org.isEmpty())
+			query.addQueryItem("org", org);
 
 		url.setQuery(query);
 
 		HttpHeaders headers;
+#ifdef USER_AGENT
 		headers += HttpHeader("User-Agent", USER_AGENT);
+#endif
 		log_debug("updater: checking for updates: %s", qPrintable(url.toString()));
 		req->start("GET", url, headers);
 		req->endBody();
@@ -194,10 +200,10 @@ private slots:
 	}
 };
 
-Updater::Updater(const QString &currentVersion, ZhttpManager *zhttp, QObject *parent) :
+Updater::Updater(const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, currentVersion, zhttp);
+	d = new Private(this, currentVersion, org, zhttp);
 }
 
 Updater::~Updater()

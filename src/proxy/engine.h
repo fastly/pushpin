@@ -63,6 +63,7 @@ public:
 		QByteArray upstreamKey;
 		QString sockJsUrl;
 		bool updatesCheck;
+		QString organizationName;
 
 		Configuration() :
 			ipcFileMode(-1),

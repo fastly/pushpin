@@ -29,7 +29,7 @@ class Updater : public QObject
 	Q_OBJECT
 
 public:
-	Updater(const QString &currentVersion, ZhttpManager *zhttp, QObject *parent = 0);
+	Updater(const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent = 0);
 	~Updater();
 
 private:

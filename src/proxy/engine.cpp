@@ -285,7 +285,7 @@ public:
 
 		if(!config.appVersion.isEmpty() && config.updatesCheck)
 		{
-			new Updater(config.appVersion, zroutes->defaultManager(), this);
+			new Updater(config.appVersion, config.organizationName, zroutes->defaultManager(), this);
 		}
 
 		// init zroutes
