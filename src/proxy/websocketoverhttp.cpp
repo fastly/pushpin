@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2015 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,6 +34,9 @@
 #define BUFFER_SIZE 200000
 #define RESPONSE_BODY_MAX 1000000
 #define REJECT_BODY_MAX 100000
+#define RETRY_TIMEOUT 1000
+#define RETRY_MAX 5
+#define RETRY_RAND_MAX 1000
 
 namespace {
 
@@ -180,6 +183,8 @@ public:
 	HttpHeaders meta;
 	bool updating;
 	ZhttpRequest *req;
+	QByteArray reqBody;
+	int reqPendingBytes;
 	int reqFrames;
 	int reqContentSize;
 	bool reqClose;
@@ -192,6 +197,8 @@ public:
 	int peerCloseCode;
 	bool disconnecting;
 	QTimer *keepAliveTimer;
+	QTimer *retryTimer;
+	int retries;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -205,6 +212,7 @@ public:
 		keepAliveInterval(-1),
 		updating(false),
 		req(0),
+		reqPendingBytes(0),
 		reqFrames(0),
 		reqContentSize(0),
 		reqClose(false),
@@ -212,7 +220,8 @@ public:
 		closeSent(false),
 		peerClosing(false),
 		peerCloseCode(-1),
-		disconnecting(false)
+		disconnecting(false),
+		retries(0)
 	{
 		if(!g_disconnectManager)
 			g_disconnectManager = new DisconnectManager(QCoreApplication::instance());
@@ -220,6 +229,10 @@ public:
 		keepAliveTimer = new QTimer(this);
 		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
 		keepAliveTimer->setSingleShot(true);
+
+		retryTimer = new QTimer(this);
+		connect(retryTimer, SIGNAL(timeout()), SLOT(retryTimer_timeout()));
+		retryTimer->setSingleShot(true);
 	}
 
 	~Private()
@@ -227,13 +240,19 @@ public:
 		keepAliveTimer->disconnect(this);
 		keepAliveTimer->setParent(0);
 		keepAliveTimer->deleteLater();
+
+		retryTimer->disconnect(this);
+		retryTimer->setParent(0);
+		retryTimer->deleteLater();
 	}
 
 	void cleanup()
 	{
 		keepAliveTimer->stop();
+		retryTimer->stop();
 
 		updating = false;
+		disconnecting = false;
 
 		delete req;
 		req = 0;
@@ -396,28 +415,6 @@ private:
 			return;
 		}
 
-		req = zhttpManager->createRequest();
-		req->setParent(this);
-		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
-		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-		connect(req, SIGNAL(error()), SLOT(req_error()));
-
-		if(!connectHost.isEmpty())
-			req->setConnectHost(connectHost);
-		if(connectPort != -1)
-			req->setConnectPort(connectPort);
-		req->setIgnorePolicies(ignorePolicies);
-		req->setIgnoreTlsErrors(ignoreTlsErrors);
-
-		HttpHeaders headers = requestData.headers;
-
-		headers += HttpHeader("Accept", "application/websocket-events");
-		headers += HttpHeader("Connection-Id", cid);
-		headers += HttpHeader("Content-Type", "application/websocket-events");
-
-		foreach(const HttpHeader &h, meta)
-			headers += HttpHeader("Meta-" + h.first, h.second);
-
 		reqFrames = 0;
 		reqContentSize = 0;
 		reqClose = false;
@@ -513,11 +510,43 @@ private:
 			}
 		}
 
-		QByteArray body = encodeEvents(events);
-		headers += HttpHeader("Content-Length", QByteArray::number(body.size()));
+		reqBody = encodeEvents(events);
+
+		doRequest();
+	}
+
+	void doRequest()
+	{
+		assert(!req);
+
+		req = zhttpManager->createRequest();
+		req->setParent(this);
+		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
+		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
+		connect(req, SIGNAL(error()), SLOT(req_error()));
+
+		if(!connectHost.isEmpty())
+			req->setConnectHost(connectHost);
+		if(connectPort != -1)
+			req->setConnectPort(connectPort);
+		req->setIgnorePolicies(ignorePolicies);
+		req->setIgnoreTlsErrors(ignoreTlsErrors);
+		req->setSendBodyAfterAcknowledgement(true);
+
+		HttpHeaders headers = requestData.headers;
+
+		headers += HttpHeader("Accept", "application/websocket-events");
+		headers += HttpHeader("Connection-Id", cid);
+		headers += HttpHeader("Content-Type", "application/websocket-events");
+		headers += HttpHeader("Content-Length", QByteArray::number(reqBody.size()));
+
+		foreach(const HttpHeader &h, meta)
+			headers += HttpHeader("Meta-" + h.first, h.second);
+
+		reqPendingBytes = reqBody.size();
 
 		req->start("POST", requestData.uri, headers);
-		req->writeBody(body);
+		req->writeBody(reqBody);
 		req->endBody();
 	}
 
@@ -526,12 +555,7 @@ private slots:
 	{
 		if(inBuf.size() + req->bytesAvailable() > RESPONSE_BODY_MAX)
 		{
-			updating = false;
-
-			delete req;
-			req = 0;
-
-			state = Idle;
+			cleanup();
 			emit q->error();
 			return;
 		}
@@ -540,9 +564,12 @@ private slots:
 
 		if(!req->isFinished())
 		{
-			updating = false;
+			// if request isn't finished yet, keep waiting
 			return;
 		}
+
+		reqBody.clear();
+		retries = 0;
 
 		int responseCode = req->responseCode();
 		QByteArray responseReason = req->responseReason();
@@ -564,8 +591,6 @@ private slots:
 
 		if(responseCode != 200 || contentType != "application/websocket-events")
 		{
-			updating = false;
-
 			if(state == Connecting)
 			{
 				errorCondition = ErrorRejected;
@@ -574,7 +599,7 @@ private slots:
 			else
 				errorCondition = ErrorGeneric;
 
-			state = Idle;
+			cleanup();
 			emit q->error();
 			return;
 		}
@@ -609,9 +634,7 @@ private slots:
 		QList<WsEvent> events = decodeEvents(responseBody, &ok);
 		if(!ok)
 		{
-			updating = false;
-
-			state = Idle;
+			cleanup();
 			emit q->error();
 			return;
 		}
@@ -621,9 +644,7 @@ private slots:
 			// server must respond with events or enable keep alive
 			if(events.isEmpty() && keepAliveInterval == -1)
 			{
-				updating = false;
-
-				state = Idle;
+				cleanup();
 				emit q->error();
 				return;
 			}
@@ -631,9 +652,7 @@ private slots:
 			// first event must be OPEN
 			if(!events.isEmpty() && events.first().type != "OPEN")
 			{
-				updating = false;
-
-				state = Idle;
+				cleanup();
 				emit q->error();
 				return;
 			}
@@ -655,10 +674,7 @@ private slots:
 
 		if(disconnecting)
 		{
-			updating = false;
-			disconnecting = false;
-
-			state = Idle;
+			cleanup();
 			emit q->disconnected();
 			return;
 		}
@@ -747,9 +763,7 @@ private slots:
 		{
 			if(closeSent)
 			{
-				updating = false;
-
-				state = Idle;
+				cleanup();
 				emit q->closed();
 				return;
 			}
@@ -768,18 +782,14 @@ private slots:
 
 		if(disconnected)
 		{
-			updating = false;
-
-			state = Idle;
+			cleanup();
 			emit q->error();
 			return;
 		}
 
 		if(reqClose && peerClosing)
 		{
-			updating = false;
-
-			state = Idle;
+			cleanup();
 			emit q->closed();
 			return;
 		}
@@ -794,23 +804,68 @@ private slots:
 
 	void req_bytesWritten(int count)
 	{
-		Q_UNUSED(count);
-
-		// nothing to do here
+		reqPendingBytes -= count;
+		assert(reqPendingBytes >= 0);
 	}
 
 	void req_error()
 	{
+		bool retry = false;
+
+		switch(req->errorCondition())
+		{
+			case ZhttpRequest::ErrorConnect:
+			case ZhttpRequest::ErrorConnectTimeout:
+				// these errors mean the server wasn't reached at all
+				retry = true;
+				break;
+			case ZhttpRequest::ErrorGeneric:
+			case ZhttpRequest::ErrorTimeout:
+				// these errors mean the server may have been reached, so
+				//   only retry if the request body wasn't completely sent
+				if(reqPendingBytes > 0)
+					retry = true;
+				break;
+			default:
+				// all other errors are hard fails that shouldn't be retried
+				break;
+		}
+
 		delete req;
 		req = 0;
 
-		state = Idle;
+		if(retry && retries < RETRY_MAX)
+		{
+			keepAliveTimer->stop();
+
+			int delay = RETRY_TIMEOUT;
+			for(int n = 0; n < retries; ++n)
+				delay *= 2;
+			delay += qrand() % RETRY_RAND_MAX;
+
+			log_debug("woh: trying again in %dms", delay);
+
+			++retries;
+
+			// this should still be flagged, for protection while retrying
+			assert(updating);
+
+			retryTimer->start(delay);
+			return;
+		}
+
+		cleanup();
 		emit q->error();
 	}
 
 	void keepAliveTimer_timeout()
 	{
 		update();
+	}
+
+	void retryTimer_timeout()
+	{
+		doRequest();
 	}
 
 	void doError()
