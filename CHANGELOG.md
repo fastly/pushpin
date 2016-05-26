@@ -1,6 +1,19 @@
 Pushpin Changelog
 =================
 
+v. 1.10.0 (2016-05-25)
+
+  * Streaming: initial response now has no size limit.
+  * WebSocket-Over-HTTP: retry requests to the origin server.
+  * WebSocket: ability to disconnect clients by publishing a close action.
+  * WebSocket: ability to publish ping/pong frames.
+  * WebSocket: keep-alives.
+  * New route target "test", for testing without an origin server.
+  * Fix publishing of large payloads through HTTP control port.
+  * New config option: log_level.
+  * Ability to set bind interface in config (use addr:port form).
+  * Grip-Status header, for setting alternate response code and reason.
+
 v. 1.9.0 (2016-04-14)
 
   * More practical logging. Non-verbose output more informative.
