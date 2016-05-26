@@ -39,6 +39,7 @@
 #include "statsmanager.h"
 #include "inspectdata.h"
 #include "connectionmanager.h"
+#include "testwebsocket.h"
 
 #define ACTIVITY_TIMEOUT 60000
 
@@ -425,38 +426,48 @@ public:
 		subChannel = target.subChannel;
 
 		if(zhttpManager)
+		{
 			zroutes->removeRef(zhttpManager);
-
-		if(target.type == DomainMap::Target::Custom)
-		{
-			zhttpManager = zroutes->managerForRoute(target.zhttpRoute);
-			log_debug("wsproxysession: %p forwarding to %s", q, qPrintable(target.zhttpRoute.baseSpec));
-		}
-		else // Default
-		{
-			zhttpManager = zroutes->defaultManager();
-			log_debug("wsproxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
+			zhttpManager = 0;
 		}
 
-		zroutes->addRef(zhttpManager);
-
-		if(target.overHttp)
+		if(target.type == DomainMap::Target::Test)
 		{
-			WebSocketOverHttp *woh = new WebSocketOverHttp(zhttpManager, this);
-			woh->setConnectionId(publicCid);
-			outSock = woh;
+			outSock = new TestWebSocket(this);
 		}
 		else
 		{
-			// websockets don't work with zhttp req mode
-			if(zhttpManager->clientUsesReq())
+			if(target.type == DomainMap::Target::Custom)
 			{
-				reject(502, "Bad Gateway", "Error while proxying to origin.");
-				return;
+				zhttpManager = zroutes->managerForRoute(target.zhttpRoute);
+				log_debug("wsproxysession: %p forwarding to %s", q, qPrintable(target.zhttpRoute.baseSpec));
+			}
+			else // Default
+			{
+				zhttpManager = zroutes->defaultManager();
+				log_debug("wsproxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
 			}
 
-			outSock = zhttpManager->createSocket();
-			outSock->setParent(this);
+			zroutes->addRef(zhttpManager);
+
+			if(target.overHttp)
+			{
+				WebSocketOverHttp *woh = new WebSocketOverHttp(zhttpManager, this);
+				woh->setConnectionId(publicCid);
+				outSock = woh;
+			}
+			else
+			{
+				// websockets don't work with zhttp req mode
+				if(zhttpManager->clientUsesReq())
+				{
+					reject(502, "Bad Gateway", "Error while proxying to origin.");
+					return;
+				}
+
+				outSock = zhttpManager->createSocket();
+				outSock->setParent(this);
+			}
 		}
 
 		connect(outSock, SIGNAL(connected()), SLOT(out_connected()));
@@ -608,7 +619,11 @@ public:
 	void logConnection(int responseCode, int responseBodySize)
 	{
 		QString targetStr;
-		if(target.type == DomainMap::Target::Custom)
+		if(target.type == DomainMap::Target::Test)
+		{
+			targetStr = "test";
+		}
+		else if(target.type == DomainMap::Target::Custom)
 		{
 			targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
 		}

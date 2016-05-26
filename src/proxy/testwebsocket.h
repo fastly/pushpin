@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,24 +17,20 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef WEBSOCKETOVERHTTP_H
-#define WEBSOCKETOVERHTTP_H
+#ifndef TESTWEBSOCKET_H
+#define TESTWEBSOCKET_H
 
 #include "websocket.h"
 
 class ZhttpManager;
 
-class WebSocketOverHttp : public WebSocket
+class TestWebSocket : public WebSocket
 {
 	Q_OBJECT
 
 public:
-	WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent = 0);
-	~WebSocketOverHttp();
-
-	void setConnectionId(const QByteArray &id);
-
-	static void clearDisconnectManager();
+	TestWebSocket(QObject *parent = 0);
+	~TestWebSocket();
 
 	// reimplemented
 
@@ -67,21 +63,10 @@ public:
 	virtual Frame readFrame();
 	virtual void close(int code = -1);
 
-signals:
-	void disconnected();
-
 private:
-	class DisconnectManager;
-	friend class DisconnectManager;
-
-	WebSocketOverHttp(QObject *parent = 0);
-	void sendDisconnect();
-
 	class Private;
 	friend class Private;
 	Private *d;
-
-	static DisconnectManager *g_disconnectManager;
 };
 
 #endif
