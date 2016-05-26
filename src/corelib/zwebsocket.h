@@ -20,10 +20,6 @@
 #ifndef ZWEBSOCKET_H
 #define ZWEBSOCKET_H
 
-#include <QObject>
-#include <QUrl>
-#include <QHostAddress>
-#include "httpheaders.h"
 #include "websocket.h"
 
 class ZhttpRequestPacket;
@@ -73,14 +69,6 @@ public:
 	virtual void writeFrame(const Frame &frame);
 	virtual Frame readFrame();
 	virtual void close(int code = -1);
-
-signals:
-	void connected();
-	void readyRead();
-	void framesWritten(int count, int contentBytes);
-	void peerClosed();
-	void closed();
-	void error();
 
 private:
 	class Private;

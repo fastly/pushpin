@@ -13,6 +13,7 @@ DEFINES += NO_IRISNET
 
 HEADERS += \
 	$$SRC_DIR/jwt.h \
+	$$SRC_DIR/testhttprequest.h \
 	$$SRC_DIR/websocketoverhttp.h \
 	$$SRC_DIR/zrpcchecker.h \
 	$$SRC_DIR/sockjsmanager.h \
@@ -35,6 +36,7 @@ HEADERS += \
 
 SOURCES += \
 	$$SRC_DIR/jwt.cpp \
+	$$SRC_DIR/testhttprequest.cpp \
 	$$SRC_DIR/websocketoverhttp.cpp \
 	$$SRC_DIR/zrpcchecker.cpp \
 	$$SRC_DIR/sockjsmanager.cpp \

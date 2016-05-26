@@ -46,6 +46,7 @@ SOURCES += \
 HEADERS += \
 	$$PWD/uuidutil.h \
 	$$PWD/zutil.h \
+	$$PWD/httprequest.h \
 	$$PWD/websocket.h \
 	$$PWD/zhttpmanager.h \
 	$$PWD/zhttprequest.h \

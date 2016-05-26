@@ -17,21 +17,21 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef HTTPSERVER_H
+#ifndef SIMPLEHTTPSERVER_H
 
 #include <QObject>
 #include <QHostAddress>
 
 class HttpHeaders;
 
-class HttpServerPrivate;
+class SimpleHttpServerPrivate;
 
-class HttpRequest : public QObject
+class SimpleHttpRequest : public QObject
 {
 	Q_OBJECT
 
 public:
-	~HttpRequest();
+	~SimpleHttpRequest();
 
 	QString requestMethod() const;
 	QByteArray requestUri() const;
@@ -47,29 +47,29 @@ signals:
 private:
 	class Private;
 	friend class Private;
-	friend class HttpServerPrivate;
+	friend class SimpleHttpServerPrivate;
 	Private *d;
 
-	HttpRequest(QObject *parent = 0);
+	SimpleHttpRequest(QObject *parent = 0);
 };
 
-class HttpServer : public QObject
+class SimpleHttpServer : public QObject
 {
 	Q_OBJECT
 
 public:
-	HttpServer(QObject *parent = 0);
-	~HttpServer();
+	SimpleHttpServer(QObject *parent = 0);
+	~SimpleHttpServer();
 
 	bool listen(const QHostAddress &addr, int port);
-	HttpRequest *takeNext();
+	SimpleHttpRequest *takeNext();
 
 signals:
 	void requestReady();
 
 private:
-	friend class HttpServerPrivate;
-	HttpServerPrivate *d;
+	friend class SimpleHttpServerPrivate;
+	SimpleHttpServerPrivate *d;
 };
 
 #endif

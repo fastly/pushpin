@@ -42,7 +42,7 @@
 #include "zhttprequest.h"
 #include "statsmanager.h"
 #include "deferred.h"
-#include "httpserver.h"
+#include "simplehttpserver.h"
 #include "variantutil.h"
 #include "detectrule.h"
 #include "lastids.h"
@@ -1413,7 +1413,7 @@ public:
 	QZmq::Socket *statsSock;
 	QZmq::Socket *proxyStatsSock;
 	QZmq::Valve *proxyStatsValve;
-	HttpServer *controlHttpServer;
+	SimpleHttpServer *controlHttpServer;
 	StatsManager *stats;
 	CommonState cs;
 	QSet<Deferred*> deferreds;
@@ -1665,7 +1665,7 @@ public:
 
 		if(config.pushInHttpPort != -1)
 		{
-			controlHttpServer = new HttpServer(this);
+			controlHttpServer = new SimpleHttpServer(this);
 			connect(controlHttpServer, SIGNAL(requestReady()), SLOT(controlHttpServer_requestReady()));
 			controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
 
@@ -1928,7 +1928,7 @@ private:
 		}
 	}
 
-	void httpControlRespond(HttpRequest *req, int code, const QByteArray &reason, const QString &body, const QByteArray &contentType = QByteArray(), const HttpHeaders &headers = HttpHeaders(), int items = -1)
+	void httpControlRespond(SimpleHttpRequest *req, int code, const QByteArray &reason, const QString &body, const QByteArray &contentType = QByteArray(), const HttpHeaders &headers = HttpHeaders(), int items = -1)
 	{
 		HttpHeaders outHeaders = headers;
 		if(!contentType.isEmpty())
@@ -2355,7 +2355,7 @@ private slots:
 
 	void controlHttpServer_requestReady()
 	{
-		HttpRequest *req = controlHttpServer->takeNext();
+		SimpleHttpRequest *req = controlHttpServer->takeNext();
 		if(!req)
 			return;
 

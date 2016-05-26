@@ -428,7 +428,11 @@ public:
 
 				Target target;
 
-				if(val.startsWith("zhttp/"))
+				if(val == "test")
+				{
+					target.type = Target::Test;
+				}
+				else if(val.startsWith("zhttp/"))
 				{
 					target.type = Target::Custom;
 

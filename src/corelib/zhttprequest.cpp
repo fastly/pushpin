@@ -89,7 +89,7 @@ public:
 	bool pendingUpdate;
 	bool needPause;
 	bool errored;
-	ZhttpRequest::ErrorCondition errorCondition;
+	ErrorCondition errorCondition;
 	QTimer *expireTimer;
 	QTimer *keepAliveTimer;
 
@@ -855,7 +855,7 @@ public slots:
 				{
 					state = Stopped;
 					errored = true;
-					errorCondition = ZhttpRequest::ErrorRequestTooLarge;
+					errorCondition = ErrorRequestTooLarge;
 					cleanup();
 					emit q->error();
 					return;
@@ -892,7 +892,7 @@ public slots:
 				{
 					state = Stopped;
 					errored = true;
-					errorCondition = ZhttpRequest::ErrorUnavailable;
+					errorCondition = ErrorUnavailable;
 					cleanup();
 					emit q->error();
 					return;
@@ -1011,7 +1011,7 @@ public slots:
 
 		state = Stopped;
 		errored = true;
-		errorCondition = ZhttpRequest::ErrorTimeout;
+		errorCondition = ErrorTimeout;
 		cleanup();
 		emit q->error();
 	}
@@ -1034,7 +1034,7 @@ public slots:
 };
 
 ZhttpRequest::ZhttpRequest(QObject *parent) :
-	QObject(parent)
+	HttpRequest(parent)
 {
 	d = new Private(this);
 }
@@ -1182,7 +1182,7 @@ bool ZhttpRequest::isErrored() const
 	return d->errored;
 }
 
-ZhttpRequest::ErrorCondition ZhttpRequest::errorCondition() const
+HttpRequest::ErrorCondition ZhttpRequest::errorCondition() const
 {
 	return d->errorCondition;
 }

@@ -73,7 +73,7 @@ public:
 	int peerCloseCode;
 	QVariant userData;
 	bool pendingUpdate;
-	WebSocket::ErrorCondition errorCondition;
+	ErrorCondition errorCondition;
 	QTimer *expireTimer;
 	QTimer *keepAliveTimer;
 	QList<Frame> inFrames;

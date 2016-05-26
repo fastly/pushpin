@@ -90,7 +90,8 @@ public:
 		enum Type
 		{
 			Default,
-			Custom
+			Custom,
+			Test
 		};
 
 		Type type;

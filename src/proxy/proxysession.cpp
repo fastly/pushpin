@@ -38,6 +38,7 @@
 #include "requestsession.h"
 #include "proxyutil.h"
 #include "acceptrequest.h"
+#include "testhttprequest.h"
 
 #define MAX_ACCEPT_REQUEST_BODY 100000
 #define MAX_ACCEPT_RESPONSE_BODY 100000
@@ -96,7 +97,7 @@ public:
 	DomainMap::Entry route;
 	QList<DomainMap::Target> targets;
 	DomainMap::Target target;
-	ZhttpRequest *zhttpRequest;
+	HttpRequest *zhttpRequest;
 	bool addAllowed;
 	bool haveInspectData;
 	InspectData idata;
@@ -104,7 +105,6 @@ public:
 	QSet<QByteArray> acceptContentTypes;
 	QSet<SessionItem*> sessionItems;
 	bool shared;
-	QByteArray outRid;
 	HttpRequestData requestData;
 	HttpResponseData responseData;
 	HttpResponseData acceptResponseData;
@@ -329,23 +329,34 @@ public:
 			uri.setHost(target.host);
 
 		if(zhttpManager)
+		{
 			zroutes->removeRef(zhttpManager);
-
-		if(target.type == DomainMap::Target::Custom)
-		{
-			zhttpManager = zroutes->managerForRoute(target.zhttpRoute);
-			log_debug("proxysession: %p forwarding to %s", q, qPrintable(target.zhttpRoute.baseSpec));
-		}
-		else // Default
-		{
-			zhttpManager = zroutes->defaultManager();
-			log_debug("proxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
+			zhttpManager = 0;
 		}
 
-		zroutes->addRef(zhttpManager);
+		if(target.type == DomainMap::Target::Test)
+		{
+			zhttpRequest = new TestHttpRequest(this);
+		}
+		else
+		{
+			if(target.type == DomainMap::Target::Custom)
+			{
+				zhttpManager = zroutes->managerForRoute(target.zhttpRoute);
+				log_debug("proxysession: %p forwarding to %s", q, qPrintable(target.zhttpRoute.baseSpec));
+			}
+			else // Default
+			{
+				zhttpManager = zroutes->defaultManager();
+				log_debug("proxysession: %p forwarding to %s:%d", q, qPrintable(target.connectHost), target.connectPort);
+			}
 
-		zhttpRequest = zhttpManager->createRequest();
-		zhttpRequest->setParent(this);
+			zroutes->addRef(zhttpManager);
+
+			zhttpRequest = zhttpManager->createRequest();
+			zhttpRequest->setParent(this);
+		}
+
 		connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
 		connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
 		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
@@ -361,9 +372,6 @@ public:
 			zhttpRequest->setConnectHost(target.connectHost);
 			zhttpRequest->setConnectPort(target.connectPort);
 		}
-
-		ZhttpRequest::Rid rid = zhttpRequest->rid();
-		outRid = rid.first + ':' + rid.second;
 
 		zhttpRequest->start(requestData.method, uri, requestData.headers);
 
@@ -663,7 +671,11 @@ public:
 		HttpRequestData rd = rs->requestData();
 
 		QString targetStr;
-		if(target.type == DomainMap::Target::Custom)
+		if(target.type == DomainMap::Target::Test)
+		{
+			targetStr = "test";
+		}
+		else if(target.type == DomainMap::Target::Custom)
 		{
 			targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
 		}
@@ -697,7 +709,7 @@ public:
 			msg += " retry";
 
 		if(shared)
-			msg += QString(" shared=%1").arg(QString::fromUtf8(outRid));
+			msg += QString().sprintf(" shared=%p", this);
 
 		log_info("%s", qPrintable(msg));
 	}

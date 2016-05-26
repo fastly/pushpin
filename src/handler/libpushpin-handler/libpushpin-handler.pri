@@ -13,7 +13,7 @@ DEFINES += NO_IRISNET
 
 HEADERS += \
 	$$SRC_DIR/deferred.h \
-	$$SRC_DIR/httpserver.h \
+	$$SRC_DIR/simplehttpserver.h \
 	$$SRC_DIR/variantutil.h \
 	$$SRC_DIR/jsonpointer.h \
 	$$SRC_DIR/jsonpatch.h \
@@ -33,7 +33,7 @@ HEADERS += \
 
 SOURCES += \
 	$$SRC_DIR/deferred.cpp \
-	$$SRC_DIR/httpserver.cpp \
+	$$SRC_DIR/simplehttpserver.cpp \
 	$$SRC_DIR/variantutil.cpp \
 	$$SRC_DIR/jsonpointer.cpp \
 	$$SRC_DIR/jsonpatch.cpp \
