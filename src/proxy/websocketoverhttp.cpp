@@ -834,7 +834,7 @@ private slots:
 		delete req;
 		req = 0;
 
-		if(retry && retries < RETRY_MAX)
+		if(retry && retries < RETRY_MAX && state != Connecting)
 		{
 			keepAliveTimer->stop();
 
