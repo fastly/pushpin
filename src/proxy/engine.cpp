@@ -509,15 +509,18 @@ public:
 
 		HttpResponseData resp = rs->responseData();
 
-		if(resp.code != -1)
+		if(accepted)
 		{
-			if(accepted)
-				msg += " hold";
-			else
-				msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
+			msg += " hold";
+		}
+		else if(resp.code != -1)
+		{
+			msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
 		}
 		else
+		{
 			msg += " error";
+		}
 
 		log_info("%s", qPrintable(msg));
 	}

@@ -695,15 +695,18 @@ public:
 
 		HttpResponseData resp = rs->responseData();
 
-		if(resp.code != -1 && !si->unclean)
+		if(accepted)
 		{
-			if(accepted)
-				msg += " hold";
-			else
-				msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
+			msg += " hold";
+		}
+		else if(resp.code != -1 && !si->unclean)
+		{
+			msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
 		}
 		else
+		{
 			msg += " error";
+		}
 
 		if(rs->isRetry())
 			msg += " retry";
