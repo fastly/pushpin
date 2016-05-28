@@ -496,10 +496,10 @@ public:
 	{
 		assert(state == Connecting);
 
-		logConnection(code, body.size());
-
 		state = Closing;
 		inSock->respondError(code, reason, headers, body);
+
+		logConnection(code, body.size());
 	}
 
 	void reject(int code, const QString &reason, const QString &errorMessage)
@@ -776,7 +776,7 @@ private slots:
 
 		inSock->respondSuccess(outSock->responseReason(), headers);
 
-		logConnection(inSock->responseCode(), 0);
+		logConnection(101, 0);
 
 		// send any pending frames
 		tryReadIn();
