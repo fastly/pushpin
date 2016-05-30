@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.10.1 (2016-05-30)
+
+  * Fix SockJS crash.
+  * Fix bug that logged successful requests as errors.
+
 v. 1.10.0 (2016-05-25)
 
   * Streaming: initial response now has no size limit.
