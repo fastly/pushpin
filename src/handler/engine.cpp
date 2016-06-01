@@ -398,6 +398,13 @@ public:
 
 	void start()
 	{
+		// don't relay these headers. their meaning is handled by
+		//   zurl and they only apply to the outgoing hop.
+		response.headers.removeAll("Connection");
+		response.headers.removeAll("Keep-Alive");
+		response.headers.removeAll("Content-Encoding");
+		response.headers.removeAll("Transfer-Encoding");
+
 		if(mode == Instruct::ResponseHold)
 		{
 			// set timeout
