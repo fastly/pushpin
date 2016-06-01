@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -177,12 +177,10 @@ public:
 			else if(other.proto != -1 && proto == -1)
 				return false;
 
-			if(other.ssl == -1 && ssl != -1)
+			if(pathBeg.size() > other.pathBeg.size())
 				return true;
-			else if(other.ssl != -1 && ssl == -1)
-				return false;
 
-			if(pathBeg.size() > other.pathBeg.size() && reqPath.startsWith(pathBeg))
+			if(other.ssl == -1 && ssl != -1)
 				return true;
 
 			return false;
