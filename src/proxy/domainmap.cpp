@@ -524,9 +524,11 @@ public:
 				QStringList tstr;
 				foreach(const Target &t, r.targets)
 				{
-					if(!t.zhttpRoute.isNull())
+					if(t.type == Target::Test)
+						tstr += "test";
+					else if(t.type == Target::Custom)
 						tstr += t.zhttpRoute.baseSpec;
-					else
+					else // Default
 						tstr += t.connectHost + ';' + QString::number(t.connectPort);
 				}
 

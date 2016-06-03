@@ -354,7 +354,7 @@ public:
 		if(entry.isNull())
 		{
 			log_warning("wsproxysession: %p %s has 0 routes", q, qPrintable(host));
-			reject(502, "Bad Gateway", QString("No route for host: %1").arg(host));
+			reject(false, 502, "Bad Gateway", QString("No route for host: %1").arg(host));
 			return;
 		}
 
@@ -408,7 +408,7 @@ public:
 	{
 		if(targets.isEmpty())
 		{
-			reject(502, "Bad Gateway", "Error while proxying to origin.");
+			reject(false, 502, "Bad Gateway", "Error while proxying to origin.");
 			return;
 		}
 
@@ -461,7 +461,7 @@ public:
 				// websockets don't work with zhttp req mode
 				if(zhttpManager->clientUsesReq())
 				{
-					reject(502, "Bad Gateway", "Error while proxying to origin.");
+					reject(false, 502, "Bad Gateway", "Error while proxying to origin.");
 					return;
 				}
 
@@ -492,19 +492,19 @@ public:
 		outSock->start(uri, requestData.headers);
 	}
 
-	void reject(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
+	void reject(bool proxied, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
 	{
 		assert(state == Connecting);
 
 		state = Closing;
 		inSock->respondError(code, reason, headers, body);
 
-		logConnection(code, body.size());
+		logConnection(proxied, code, body.size());
 	}
 
-	void reject(int code, const QString &reason, const QString &errorMessage)
+	void reject(bool proxied, int code, const QString &reason, const QString &errorMessage)
 	{
-		reject(code, reason.toUtf8(), HttpHeaders(), (errorMessage + '\n').toUtf8());
+		reject(proxied, code, reason.toUtf8(), HttpHeaders(), (errorMessage + '\n').toUtf8());
 	}
 
 	void tryReadIn()
@@ -616,25 +616,31 @@ public:
 		}
 	}
 
-	void logConnection(int responseCode, int responseBodySize)
+	void logConnection(bool proxied, int responseCode, int responseBodySize)
 	{
-		QString targetStr;
-		if(target.type == DomainMap::Target::Test)
+		QString msg = QString("GET %1").arg(inSock->requestUri().toString(QUrl::FullyEncoded));
+
+		if(proxied)
 		{
-			targetStr = "test";
-		}
-		else if(target.type == DomainMap::Target::Custom)
-		{
-			targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
-		}
-		else // Default
-		{
-			targetStr = target.connectHost + ':' + QString::number(target.connectPort);
+			QString targetStr;
+			if(target.type == DomainMap::Target::Test)
+			{
+				targetStr = "test";
+			}
+			else if(target.type == DomainMap::Target::Custom)
+			{
+				targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
+			}
+			else // Default
+			{
+				targetStr = target.connectHost + ':' + QString::number(target.connectPort);
+			}
+
+			msg += QString(" -> %2").arg(targetStr);
+			if(target.overHttp)
+				msg += "[http]";
 		}
 
-		QString msg = QString("GET %1 -> %2").arg(inSock->requestUri().toString(QUrl::FullyEncoded), targetStr);
-		if(target.overHttp)
-			msg += "[http]";
 		QUrl ref = QUrl(QString::fromUtf8(inSock->requestHeaders().get("Referer")));
 		if(!ref.isEmpty())
 			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
@@ -776,7 +782,7 @@ private slots:
 
 		inSock->respondSuccess(outSock->responseReason(), headers);
 
-		logConnection(101, 0);
+		logConnection(true, 101, 0);
 
 		// send any pending frames
 		tryReadIn();
@@ -841,10 +847,10 @@ private slots:
 					tryAgain = true;
 					break;
 				case WebSocket::ErrorRejected:
-					reject(outSock->responseCode(), outSock->responseReason(), outSock->responseHeaders(), outSock->responseBody());
+					reject(true, outSock->responseCode(), outSock->responseReason(), outSock->responseHeaders(), outSock->responseBody());
 					break;
 				default:
-					reject(502, "Bad Gateway", "Error while proxying to origin.");
+					reject(true, 502, "Bad Gateway", "Error while proxying to origin.");
 					break;
 			}
 
