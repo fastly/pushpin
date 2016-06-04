@@ -246,6 +246,7 @@ public:
 	int inPendingBytes;
 	int outPendingBytes;
 	int outReadInProgress; // frame type or -1
+	QByteArray pathBeg;
 	QByteArray routeId;
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
@@ -384,6 +385,7 @@ public:
 			sigKey = defaultSigKey;
 		}
 
+		pathBeg = entry.pathBeg;
 		routeId = entry.id;
 		channelPrefix = entry.prefix;
 		targets = entry.targets;
@@ -433,6 +435,17 @@ public:
 
 		if(target.type == DomainMap::Target::Test)
 		{
+			// for test route, auto-adjust path
+			if(!pathBeg.isEmpty())
+			{
+				int pathRemove = pathBeg.length();
+				if(pathBeg.endsWith('/'))
+					--pathRemove;
+
+				if(pathRemove > 0)
+					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
+			}
+
 			outSock = new TestWebSocket(this);
 		}
 		else

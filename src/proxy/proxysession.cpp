@@ -336,6 +336,17 @@ public:
 
 		if(target.type == DomainMap::Target::Test)
 		{
+			// for test route, auto-adjust path
+			if(!route.pathBeg.isEmpty())
+			{
+				int pathRemove = route.pathBeg.length();
+				if(route.pathBeg.endsWith('/'))
+					--pathRemove;
+
+				if(pathRemove > 0)
+					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
+			}
+
 			zhttpRequest = new TestHttpRequest(this);
 		}
 		else

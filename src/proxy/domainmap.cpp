@@ -189,6 +189,7 @@ public:
 		Entry toEntry() const
 		{
 			Entry e;
+			e.pathBeg = pathBeg;
 			e.id = id;
 			e.sigIss = sigIss;
 			e.sigKey = sigKey;

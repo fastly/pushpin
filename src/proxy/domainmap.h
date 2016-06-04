@@ -119,6 +119,7 @@ public:
 	class Entry
 	{
 	public:
+		QByteArray pathBeg;
 		QByteArray id;
 		QByteArray sigIss;
 		QByteArray sigKey;
