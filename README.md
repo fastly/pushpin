@@ -250,7 +250,7 @@ cp -r examples/config .
 ./pushpin
 ```
 
-By default, Pushpin listens on port 7999 and requests are handled by its internal test handler. You can confirm Pushpin is working by browsing to `http://localhost:7999/`. Next, you should modify Pushpin's `routes` file to route requests to your backend web server. See [Configuration](http://pushpin.org/docs/#configuration).
+By default, Pushpin listens on port 7999 and requests are handled by its internal test handler. You can confirm the server is working by browsing to `http://localhost:7999/`. Next, you should modify the `routes` config file to route requests to your backend webserver. See [Configuration](http://pushpin.org/docs/#configuration).
 
 Scalability
 -----------
