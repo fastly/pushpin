@@ -250,7 +250,7 @@ cp -r examples/config .
 ./pushpin
 ```
 
-By default, Pushpin listens on port 7999 and forwards to localhost port 80. If you've got a webserver running on port 80, you can confirm that proxying works by browsing to `http://localhost:7999/`.
+By default, Pushpin listens on port 7999 and requests are handled by its internal test handler. You can confirm Pushpin is working by browsing to `http://localhost:7999/`. Next, you should modify Pushpin's `routes` file to route requests to your backend web server. See [Configuration](http://pushpin.org/docs/#configuration).
 
 Scalability
 -----------
