@@ -75,7 +75,7 @@ MIDDLEWARE_CLASSES = (
     ...
 )
 
-GRIP_PROXIES = [{'control_uri': 'http://localhost:5561', 'key': 'changeme'}]
+GRIP_PROXIES = [{'control_uri': 'http://localhost:5561'}]
 ```
 
 Here's a simple view:
