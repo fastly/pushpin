@@ -26,14 +26,14 @@ To assist with integration, there are [libraries](http://pushpin.org/docs/#libra
 Example
 -------
 
-To create an HTTP streaming connection, respond to a proxied request with `Grip-Hold` and `Grip-Channel`<sup>[2](#grip)</sup> headers:
+To create an HTTP streaming connection, respond to a proxied request with special headers `Grip-Hold` and `Grip-Channel`<sup>[2](#grip)</sup>:
 
 ```http
 HTTP/1.1 200 OK
-Grip-Hold: stream
-Grip-Channel: test
 Content-Type: text/plain
 Content-Length: 22
+Grip-Hold: stream
+Grip-Channel: test
 
 welcome to the stream
 ```
@@ -49,7 +49,7 @@ Connection: Transfer-Encoding
 welcome to the stream
 ```
 
-Pushpin eats the GRIP headers and switches to chunked encoding (notice there's no `Content-Length`). The request between Pushpin and the backend is now complete, but the request between the client and Pushpin remains held open. The request is subscribed to a channel called `test`.
+Pushpin eats the special headers and switches to chunked encoding (notice there's no `Content-Length`). The request between Pushpin and the backend is now complete, but the request between the client and Pushpin remains held open. The request is subscribed to a channel called `test`.
 
 Data can then be pushed to the client by publishing data on the `test` channel:
 
@@ -75,7 +75,7 @@ MIDDLEWARE_CLASSES = (
     ...
 )
 
-GRIP_PROXIES = [{'control_uri': 'http://localhost:5561', 'key': 'changeme'}]
+GRIP_PROXIES = [{'control_uri': 'http://localhost:5561'}]
 ```
 
 Here's a simple view:
@@ -250,7 +250,7 @@ cp -r examples/config .
 ./pushpin
 ```
 
-By default, Pushpin listens on port 7999 and forwards to localhost port 80. If you've got a webserver running on port 80, you can confirm that proxying works by browsing to `http://localhost:7999/`.
+By default, Pushpin listens on port 7999 and requests are handled by its internal test handler. You can confirm the server is working by browsing to `http://localhost:7999/`. Next, you should modify the `routes` config file to route requests to your backend webserver. See [Configuration](http://pushpin.org/docs/#configuration).
 
 Scalability
 -----------
