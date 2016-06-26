@@ -26,14 +26,14 @@ To assist with integration, there are [libraries](http://pushpin.org/docs/#libra
 Example
 -------
 
-To create an HTTP streaming connection, respond to a proxied request with `Grip-Hold` and `Grip-Channel`<sup>[2](#grip)</sup> headers:
+To create an HTTP streaming connection, respond to a proxied request with special headers `Grip-Hold` and `Grip-Channel`<sup>[2](#grip)</sup>:
 
 ```http
 HTTP/1.1 200 OK
-Grip-Hold: stream
-Grip-Channel: test
 Content-Type: text/plain
 Content-Length: 22
+Grip-Hold: stream
+Grip-Channel: test
 
 welcome to the stream
 ```
@@ -49,7 +49,7 @@ Connection: Transfer-Encoding
 welcome to the stream
 ```
 
-Pushpin eats the GRIP headers and switches to chunked encoding (notice there's no `Content-Length`). The request between Pushpin and the backend is now complete, but the request between the client and Pushpin remains held open. The request is subscribed to a channel called `test`.
+Pushpin eats the special headers and switches to chunked encoding (notice there's no `Content-Length`). The request between Pushpin and the backend is now complete, but the request between the client and Pushpin remains held open. The request is subscribed to a channel called `test`.
 
 Data can then be pushed to the client by publishing data on the `test` channel:
 
