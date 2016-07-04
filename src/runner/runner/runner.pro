@@ -21,3 +21,11 @@ unix:!isEmpty(BINDIR) {
 	target.path = $$BINDIR
 	INSTALLS += target
 }
+
+libfiles.path = $$LIBDIR/runner
+libfiles.files = $$PWD/../*.template
+
+configfiles.path = $$CONFIGDIR/runner
+configfiles.files = $$PWD/../certs
+
+INSTALLS += libfiles configfiles

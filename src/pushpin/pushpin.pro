@@ -11,30 +11,6 @@ pushpin_conf_inst.depends = ../../examples/config/pushpin.conf
 QMAKE_EXTRA_TARGETS += pushpin_conf_inst
 PRE_TARGETDEPS += pushpin.conf.inst
 
-# generate pushpin launcher for installation
-# FIXME: if runner becomes a qmake project, move this
-
-pushpin_inst.target = pushpin.inst
-pushpin_inst.commands = sed -e \"s,^default_libdir = .*,default_libdir = \'$$LIBDIR\',g\" ../../pushpin | sed -e \"s,^default_configdir =.*,default_configdir = \'$$CONFIGDIR\',g\" | sed -e \"s,^version =.*,version = \'$$APP_VERSION\',g\" > pushpin.inst && chmod 755 pushpin.inst
-pushpin_inst.depends = ../../pushpin
-
-QMAKE_EXTRA_TARGETS += pushpin_inst
-PRE_TARGETDEPS += pushpin.inst
-
-# install runner files
-# FIXME: if runner becomes a qmake project, move this
-
-runnerlibfiles.path = $$LIBDIR/runner
-runnerlibfiles.files = ../runner/*.py ../runner/*.template
-
-runnerconfigfiles.path = $$CONFIGDIR/runner
-runnerconfigfiles.files = ../runner/certs
-
-runnerbinfiles.path = $$BINDIR
-runnerbinfiles.extra = cp -f pushpin.inst $(INSTALL_ROOT)$$runnerbinfiles.path/pushpin
-
-INSTALLS += runnerlibfiles runnerconfigfiles runnerbinfiles
-
 # install general lib files
 
 libfiles.path = $$LIBDIR
