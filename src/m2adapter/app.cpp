@@ -463,7 +463,7 @@ public:
 
 		QString configFile = options.value("config");
 		if(configFile.isEmpty())
-			configFile = "/etc/m2adapter.conf";
+			configFile = QDir(CONFIGDIR).filePath("m2adapter.conf");
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{

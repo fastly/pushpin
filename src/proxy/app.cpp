@@ -149,7 +149,7 @@ public:
 
 		QString configFile = options.value("config");
 		if(configFile.isEmpty())
-			configFile = "/etc/pushpin/pushpin.conf";
+			configFile = QDir(CONFIGDIR).filePath("pushpin.conf");
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{
