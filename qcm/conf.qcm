@@ -77,6 +77,7 @@ public:
 			QTextStream stream( &file );
 			stream << "#define VERSION \"" << version << "\"" << endl;
 			stream << "#define LIBDIR \"" << libdir << "/pushpin\"" << endl;
+			stream << "#define CONFIGDIR \"" << configdir << "/pushpin\"" << endl;
 		}
 
 		conf->addDefine("HAVE_CONFIG");
