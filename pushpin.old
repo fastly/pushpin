@@ -1,0 +1,84 @@
+#!/usr/bin/env python
+default_libdir = None
+default_configdir = '/etc/pushpin'
+version = 'unknown-version'
+
+import sys
+import os
+import ConfigParser
+from setproctitle import setproctitle
+
+setproctitle('pushpin')
+
+exedir = os.path.dirname(os.path.realpath(__file__))
+
+config_file_list = None
+verbose = False
+
+for arg in sys.argv:
+	if arg.startswith('--config='):
+		config_file_list = [arg[9:]]
+	elif arg == '--verbose':
+		verbose = True
+	elif arg == '--version':
+		print 'pushpin %s' % version
+		sys.exit(0)
+
+if config_file_list is None:
+	# if no config file specified, we'll look in a few places
+	config_file_list = []
+
+	# /etc
+	if default_configdir:
+		config_file_list.append(os.path.join(default_configdir, 'pushpin.conf'))
+
+	# ./config
+	config_file_list.append(os.path.join(os.path.abspath('config'), 'pushpin.conf'))
+
+	# ./examples/config
+	config_file_list.append(os.path.join(os.path.join(os.path.abspath('examples'), 'config'), 'pushpin.conf'))
+
+	# same dir as executable
+	config_file_list.append(os.path.abspath('pushpin.conf'))
+
+config_file = None
+for f in config_file_list:
+	if os.path.isfile(f):
+		config_file = f
+		break
+
+if not config_file:
+	print 'Error: no configuration file found. Tried:'
+	for f in config_file_list:
+		print '  %s' % f
+	sys.exit(1)
+
+config = ConfigParser.ConfigParser()
+config.read([config_file])
+
+# figure out libdir
+if config.has_option('global', 'libdir'):
+	libdir = config.get('global', 'libdir')
+else:
+	libdir = None
+if not libdir:
+	if default_libdir:
+		libdir = default_libdir
+	else:
+		libdir = os.path.abspath('src') # assume running in tree
+
+libdir = os.path.join(libdir, 'runner')
+sys.path.insert(0, libdir)
+
+if config.has_option('runner', 'log_level'):
+	log_level = int(config.get('runner', 'log_level'))
+else:
+	log_level = 2
+
+if log_level > 2:
+	verbose = True
+
+configdir = os.path.join(os.path.dirname(config_file), 'runner')
+
+import runner
+runner.run(exedir, libdir, configdir, config_file, verbose)
