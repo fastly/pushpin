@@ -210,17 +210,17 @@ public:
 		}
 		else
 		{
-			// default
-			configFileList += QDir("/etc/pushpin").filePath("pushpin.conf");
-
 			// ./config
 			configFileList += QDir("config").absoluteFilePath("pushpin.conf");
 
-			// same dir as executable
+			// same dir as executable (NOTE: deprecated)
 			configFileList += QDir(".").absoluteFilePath("pushpin.conf");
 
 			// ./examples/config
 			configFileList += QDir("examples/config").absoluteFilePath("pushpin.conf");
+
+			// default
+			configFileList += QDir(CONFIGDIR).filePath("pushpin.conf");
 		}
 
 		QString configFile;
@@ -253,12 +253,21 @@ public:
 			}
 		}
 
+		if(args.configFile.isEmpty())
+			log_info("using config: %s", qPrintable(configFile));
+
 		QSettings settings(configFile, QSettings::IniFormat);
 
 		QString exeDir = QCoreApplication::applicationDirPath();
 
+		// NOTE: libdir in config file is deprecated
 		QString libDir = settings.value("global/libdir").toString();
-		if(libDir.isEmpty())
+
+		if(!libDir.isEmpty())
+		{
+			libDir = QDir(libDir).absoluteFilePath("runner");
+		}
+		else
 		{
 			if(QFile::exists("src/pushpin/pushpin.pro"))
 			{
@@ -268,7 +277,7 @@ public:
 			else
 			{
 				// use compiled value
-				libDir = LIBDIR;
+				libDir = QDir(LIBDIR).absoluteFilePath("runner");
 			}
 		}
 
