@@ -32,18 +32,15 @@ public slots:
 	void start()
 	{
 		app = new App(this);
-		connect(app, SIGNAL(quit()), SLOT(app_quit()));
+		connect(app, &App::quit, this, &AppMain::app_quit);
 		app->start();
 	}
 
-	void app_quit()
+	void app_quit(int returnCode)
 	{
 		delete app;
-		emit quit();
+		QCoreApplication::exit(returnCode);
 	}
-
-signals:
-	void quit();
 };
 
 int main(int argc, char **argv)
@@ -51,7 +48,6 @@ int main(int argc, char **argv)
 	QCoreApplication qapp(argc, argv);
 
 	AppMain appMain;
-	QObject::connect(&appMain, SIGNAL(quit()), &qapp, SLOT(quit()));
 	QTimer::singleShot(0, &appMain, SLOT(start()));
 	return qapp.exec();
 }

@@ -33,7 +33,7 @@ public:
 	void start();
 
 signals:
-	void quit();
+	void quit(int returnCode = 0);
 
 private:
 	class Private;
