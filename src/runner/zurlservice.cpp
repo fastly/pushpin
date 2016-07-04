@@ -20,6 +20,7 @@
 #include "zurlservice.h"
 
 #include <QDir>
+#include <QProcess>
 #include "log.h"
 #include "template.h"
 
@@ -36,18 +37,19 @@ ZurlService::ZurlService(
 	args_ += "--config=" + QDir(runDir).filePath("zurl.conf");
 
 	if(!logDir.isEmpty())
+	{
 		args_ += "--logfile=" + QDir(logDir).filePath("zurl.log");
+		setStandardOutputFile(QProcess::nullDevice());
+	}
 
 	if(verbose)
 		args_ += "--verbose";
 
 	configTemplateFile_ = configTemplateFile;
 	runDir_ = runDir;
-}
 
-QString ZurlService::name() const
-{
-	return "zurl";
+	setName("zurl");
+	setPidFile(QDir(runDir).filePath("zurl.pid"));
 }
 
 QStringList ZurlService::arguments() const

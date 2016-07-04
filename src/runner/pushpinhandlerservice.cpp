@@ -20,10 +20,12 @@
 #include "pushpinhandlerservice.h"
 
 #include <QDir>
+#include <QProcess>
 
 PushpinHandlerService::PushpinHandlerService(
 	const QString &binFile,
 	const QString &configFile,
+	const QString &runDir,
 	const QString &logDir,
 	bool verbose,
 	QObject *parent) :
@@ -33,15 +35,16 @@ PushpinHandlerService::PushpinHandlerService(
 	args_ += "--config=" + configFile;
 
 	if(!logDir.isEmpty())
+	{
 		args_ += "--logfile=" + QDir(logDir).filePath("pushpin-handler.log");
+		setStandardOutputFile(QProcess::nullDevice());
+	}
 
 	if(verbose)
 		args_ += "--verbose";
-}
 
-QString PushpinHandlerService::name() const
-{
-	return "handler";
+	setName("handler");
+	setPidFile(QDir(runDir).filePath("pushpin-handler.pid"));
 }
 
 QStringList PushpinHandlerService::arguments() const

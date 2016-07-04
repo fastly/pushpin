@@ -37,7 +37,6 @@ public:
 
 	// reimplemented
 
-	virtual QString name() const;
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;
 	virtual bool preStart();

@@ -21,8 +21,12 @@
 
 #include <sys/types.h>
 #include <signal.h>
+#include <QTimer>
+#include <QFile>
 #include <QProcess>
 #include "log.h"
+
+#define STOP_TIMEOUT 4000
 
 class ServiceProcess : public QProcess
 {
@@ -57,25 +61,66 @@ public:
 
 	Service *q;
 	State state;
+	QString name;
+	QString outputFile;
+	QString pidFile;
 	QProcess *proc;
 	bool terminateAfterStarted;
+	bool sentKill;
+	QTimer *timer;
 
 	Private(Service *_q) :
 		QObject(_q),
 		q(_q),
 		state(NotStarted),
 		proc(0),
-		terminateAfterStarted(false)
+		terminateAfterStarted(false),
+		sentKill(false)
 	{
+		timer = new QTimer(this);
+		connect(timer, &QTimer::timeout, this, &Service::Private::timer_timeout);
+
+		timer->setSingleShot(true);
 	}
 
 	~Private()
 	{
+		timer->stop();
+
+		if(state == Starting || state == Started || state == Stopping)
+		{
+			proc->disconnect(this);
+			proc->setParent(0);
+
+			if(!sentKill)
+			{
+				sentKill = true;
+				log_warning("%s running while needing to exit, forcing quit", qPrintable(name));
+				proc->kill();
+
+				if(!pidFile.isEmpty())
+					QFile::remove(pidFile);
+			}
+			proc->waitForFinished();
+		}
+
+		cleanup();
+
+		timer->disconnect(this);
+		timer->setParent(0);
+		timer->deleteLater();
+	}
+
+	void cleanup()
+	{
+		timer->stop();
+
 		if(proc)
 		{
 			proc->disconnect(this);
 			proc->setParent(0);
 			proc->deleteLater();
+			proc = 0;
 		}
 	}
 
@@ -91,6 +136,9 @@ public:
 		proc->setProcessChannelMode(QProcess::MergedChannels);
 		proc->setReadChannel(QProcess::StandardOutput);
 
+		if(!outputFile.isEmpty())
+			proc->setStandardOutputFile(outputFile, QIODevice::Append);
+
 		state = Starting;
 
 		QStringList args = q->arguments();
@@ -105,22 +153,44 @@ public:
 		}
 		else if(state == Started)
 		{
-			state = Stopping;
-			proc->terminate();
+			doStop();
 		}
+	}
+
+private:
+	void doStop()
+	{
+		state = Stopping;
+		timer->start(STOP_TIMEOUT);
+		proc->terminate();
+	}
+
+	bool writePidFile(const QString &file, int pid)
+	{
+		QFile f(file);
+		if(!f.open(QFile::WriteOnly | QFile::Truncate))
+			return false;
+
+		if(f.write(QByteArray::number(pid) + '\n') == -1)
+			return false;
+
+		return true;
 	}
 
 private slots:
 	void proc_started()
 	{
+		if(!pidFile.isEmpty())
+		{
+			if(!writePidFile(pidFile, proc->pid()))
+				log_error("failed to write pid file: %s", qPrintable(pidFile));
+		}
+
 		state = Started;
 		emit q->started();
 
 		if(terminateAfterStarted)
-		{
-			state = Stopping;
-			proc->terminate();
-		}
+			doStop();
 	}
 
 	void proc_readyRead()
@@ -137,22 +207,27 @@ private slots:
 
 	void proc_finished(int exitCode, QProcess::ExitStatus exitStatus)
 	{
+		if(!pidFile.isEmpty())
+			QFile::remove(pidFile);
+
 		if(state != Stopping)
 		{
 			state = Stopped;
+			cleanup();
 			emit q->error("Exited unexpectedly");
 			return;
 		}
 
 		state = Stopped;
+		cleanup();
 
 		if(exitStatus == QProcess::CrashExit)
 		{
-			emit q->error("Crashed");
+			emit q->error("Exited uncleanly");
 			return;
 		}
 
-		if(exitCode != 0 && exitCode != -15)
+		if(exitCode != 0)
 		{
 			emit q->error("Unexpected return code: " + QString::number(exitCode));
 			return;
@@ -163,11 +238,29 @@ private slots:
 
 	void proc_error(QProcess::ProcessError error)
 	{
-		Q_UNUSED(error);
+		if(error == QProcess::FailedToStart)
+		{
+			QString program = proc->program();
+			state = Stopped;
+			cleanup();
 
-		state = Stopped;
+			emit q->error("Error running: " + program);
+		}
+		else
+		{
+			// other errors are followed by finished(), so we don't
+			//   need to handle them here
+		}
+	}
 
-		emit q->error("Error running: " + proc->program());
+	void timer_timeout()
+	{
+		if(!sentKill)
+		{
+			sentKill = true;
+			log_warning("%s taking too long, forcing quit", qPrintable(name));
+			proc->kill();
+		}
 	}
 };
 
@@ -180,6 +273,11 @@ Service::Service(QObject *parent) :
 Service::~Service()
 {
 	delete d;
+}
+
+QString Service::name() const
+{
+	return d->name;
 }
 
 bool Service::acceptSighup() const
@@ -229,6 +327,21 @@ void Service::sendSighup()
 {
 	if(d->proc)
 		::kill(d->proc->pid(), SIGHUP);
+}
+
+void Service::setName(const QString &name)
+{
+	d->name = name;
+}
+
+void Service::setStandardOutputFile(const QString &file)
+{
+	d->outputFile = file;
+}
+
+void Service::setPidFile(const QString &file)
+{
+	d->pidFile = file;
 }
 
 #include "service.moc"

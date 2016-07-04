@@ -53,6 +53,7 @@ public:
 		const QString &binFile,
 		const QString &configFile,
 		const QString &serverName,
+		const QString &logDir,
 		int port,
 		bool ssl,
 		QObject *parent = 0);
@@ -61,13 +62,11 @@ public:
 
 	// reimplemented
 
-	virtual QString name() const;
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;
 
 private:
 	QStringList args_;
-	QString name_;
 };
 
 #endif

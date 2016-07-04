@@ -20,10 +20,12 @@
 #include "pushpinproxyservice.h"
 
 #include <QDir>
+#include <QProcess>
 
 PushpinProxyService::PushpinProxyService(
 	const QString &binFile,
 	const QString &configFile,
+	const QString &runDir,
 	const QString &logDir,
 	bool verbose,
 	QObject *parent) :
@@ -33,15 +35,16 @@ PushpinProxyService::PushpinProxyService(
 	args_ += "--config=" + configFile;
 
 	if(!logDir.isEmpty())
+	{
 		args_ += "--logfile=" + QDir(logDir).filePath("pushpin-proxy.log");
+		setStandardOutputFile(QProcess::nullDevice());
+	}
 
 	if(verbose)
 		args_ += "--verbose";
-}
 
-QString PushpinProxyService::name() const
-{
-	return "proxy";
+	setName("proxy");
+	setPidFile(QDir(runDir).filePath("pushpin-proxy.pid"));
 }
 
 QStringList PushpinProxyService::arguments() const

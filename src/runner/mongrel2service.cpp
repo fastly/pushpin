@@ -29,6 +29,7 @@ Mongrel2Service::Mongrel2Service(
 	const QString &binFile,
 	const QString &configFile,
 	const QString &serverName,
+	const QString &logDir,
 	int port,
 	bool ssl,
 	QObject *parent) :
@@ -38,7 +39,8 @@ Mongrel2Service::Mongrel2Service(
 	args_ += configFile;
 	args_ += serverName;
 
-	name_ = QString("m2 %1:%2").arg(ssl ? "https" : "http", QString::number(port));
+	setName(QString("m2 %1:%2").arg(ssl ? "https" : "http", QString::number(port)));
+	setStandardOutputFile(QDir(logDir).filePath("mongrel2_" + QString::number(port) + ".log"));
 }
 
 bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &certsDir, const QList<Interface> &interfaces)
@@ -61,7 +63,7 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 	context["certdir"] = certsDir;
 
 	QString error;
-	if(!Template::renderFile(configTemplateFile, QDir(runDir).filePath("mongrel2.conf"), context))
+	if(!Template::renderFile(configTemplateFile, QDir(runDir).filePath("mongrel2.conf"), context, &error))
 	{
 		log_error("Failed to generate mongrel2 config file: %s", qPrintable(error));
 		return false;
@@ -80,11 +82,6 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 	}
 
 	return true;
-}
-
-QString Mongrel2Service::name() const
-{
-	return name_;
 }
 
 QStringList Mongrel2Service::arguments() const

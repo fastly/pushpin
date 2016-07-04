@@ -30,13 +30,13 @@ public:
 	PushpinProxyService(
 		const QString &binFile,
 		const QString &configFile,
+		const QString &runDir,
 		const QString &logDir,
 		bool verbose,
 		QObject *parent = 0);
 
 	// reimplemented
 
-	virtual QString name() const;
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;
 

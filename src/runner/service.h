@@ -31,7 +31,8 @@ public:
 	Service(QObject *parent = 0);
 	~Service();
 
-	virtual QString name() const = 0;
+	QString name() const;
+
 	virtual QStringList arguments() const = 0;
 	virtual bool acceptSighup() const;
 	virtual bool isStarted() const;
@@ -43,6 +44,11 @@ public:
 	virtual void postStop();
 
 	void sendSighup();
+
+protected:
+	void setName(const QString &name);
+	void setStandardOutputFile(const QString &file);
+	void setPidFile(const QString &file);
 
 signals:
 	void started();

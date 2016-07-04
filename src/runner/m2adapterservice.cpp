@@ -21,6 +21,7 @@
 
 #include <QDir>
 #include <QVariantList>
+#include <QProcess>
 #include "log.h"
 #include "template.h"
 
@@ -38,7 +39,10 @@ M2AdapterService::M2AdapterService(
 	args_ += "--config=" + QDir(runDir).filePath("m2adapter.conf");
 
 	if(!logDir.isEmpty())
+	{
 		args_ += "--logfile=" + QDir(logDir).filePath("m2adapter.log");
+		setStandardOutputFile(QProcess::nullDevice());
+	}
 
 	if(verbose)
 		args_ += "--verbose";
@@ -46,11 +50,9 @@ M2AdapterService::M2AdapterService(
 	configTemplateFile_ = configTemplateFile;
 	runDir_ = runDir;
 	ports_ = ports;
-}
 
-QString M2AdapterService::name() const
-{
-	return "m2a";
+	setName("m2a");
+	setPidFile(QDir(runDir).filePath("m2adapter.pid"));
 }
 
 QStringList M2AdapterService::arguments() const
