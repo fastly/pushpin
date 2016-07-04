@@ -573,12 +573,14 @@ public slots:
 		// inotify tends to give us extra events so let's hang around a
 		//   little bit before reloading
 		if(!t.isActive())
+		{
+			log_info("routes file changed, reloading");
 			t.start(1000);
+		}
 	}
 
 	void doReload()
 	{
-		log_info("routes file changed, reloading");
 		reload();
 	}
 };
@@ -675,7 +677,7 @@ DomainMap::~DomainMap()
 
 void DomainMap::reload()
 {
-	QMetaObject::invokeMethod(d->thread->worker, "fileChanged", Qt::QueuedConnection, Q_ARG(QString, QString()));
+	QMetaObject::invokeMethod(d->thread->worker, "doReload", Qt::QueuedConnection);
 }
 
 DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const
