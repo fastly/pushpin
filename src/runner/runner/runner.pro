@@ -3,7 +3,7 @@ CONFIG -= app_bundle
 QT -= gui
 QT += network
 TARGET = pushpin
-DESTDIR = ..
+DESTDIR = ../../..
 
 MOC_DIR = $$OUT_PWD/_moc
 OBJECTS_DIR = $$OUT_PWD/_obj
