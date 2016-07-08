@@ -85,9 +85,9 @@ public:
 	{
 		sock = _sock;
 		sock->setParent(this);
-		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(sock, SIGNAL(bytesWritten(qint64)), SLOT(sock_bytesWritten(qint64)));
-		connect(sock, SIGNAL(disconnected()), SLOT(sock_disconnected()));
+		connect(sock, &QTcpSocket::readyRead, this, &Private::sock_readyRead);
+		connect(sock, &QTcpSocket::bytesWritten, this, &Private::sock_bytesWritten);
+		connect(sock, &QTcpSocket::disconnected, this, &Private::sock_disconnected);
 		processIn();
 	}
 
@@ -418,7 +418,7 @@ public:
 	bool listen(const QHostAddress &addr, int port)
 	{
 		server = new QTcpServer(this);
-		connect(server, SIGNAL(newConnection()), SLOT(server_newConnection()));
+		connect(server, &QTcpServer::newConnection, this, &SimpleHttpServerPrivate::server_newConnection);
 		if(!server->listen(addr, port))
 		{
 			delete server;
@@ -433,8 +433,8 @@ private slots:
 	{
 		QTcpSocket *sock = server->nextPendingConnection();
 		SimpleHttpRequest *req = new SimpleHttpRequest;
-		connect(req->d, SIGNAL(ready()), SLOT(req_ready()));
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
+		connect(req, &SimpleHttpRequest::finished, this, &SimpleHttpServerPrivate::req_finished);
 		accepting += req;
 		req->d->start(sock);
 	}

@@ -425,22 +425,22 @@ public:
 		zhttp_in_valve(0),
 		zws_in_valve(0)
 	{
-		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
-		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
+		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 
 		time.start();
 
 		expireTimer = new QTimer(this);
-		connect(expireTimer, SIGNAL(timeout()), SLOT(expire_timeout()));
+		connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
 
 		statusTimer = new QTimer(this);
-		connect(statusTimer, SIGNAL(timeout()), SLOT(status_timeout()));
+		connect(statusTimer, &QTimer::timeout, this, &Private::status_timeout);
 
 		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAlive_timeout()));
+		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
 
 		m2KeepAliveTimer = new QTimer(this);
-		connect(m2KeepAliveTimer, SIGNAL(timeout()), SLOT(m2KeepAlive_timeout()));
+		connect(m2KeepAliveTimer, &QTimer::timeout, this, &Private::m2KeepAlive_timeout);
 	}
 
 	~Private()
@@ -617,7 +617,7 @@ public:
 		}
 
 		m2_in_valve = new QZmq::Valve(m2_in_sock, this);
-		connect(m2_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(m2_in_readyRead(const QList<QByteArray> &)));
+		connect(m2_in_valve, &QZmq::Valve::readyRead, this, &Private::m2_in_readyRead);
 
 		m2_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
 		m2_out_sock->setHwm(DEFAULT_HWM);
@@ -636,7 +636,7 @@ public:
 			sock->setShutdownWaitTime(0);
 			sock->setHwm(1); // queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
-			connect(sock, SIGNAL(readyRead()), SLOT(m2_control_readyRead()));
+			connect(sock, &QZmq::Socket::readyRead, this, &Private::m2_control_readyRead);
 
 			log_info("m2_control connect %s:%s", m2_send_idents[n].data(), qPrintable(spec));
 			sock->connectToAddress(spec);
@@ -671,7 +671,7 @@ public:
 			}
 
 			zhttp_in_valve = new QZmq::Valve(zhttp_in_sock, this);
-			connect(zhttp_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttp_in_readyRead(const QList<QByteArray> &)));
+			connect(zhttp_in_valve, &QZmq::Valve::readyRead, this, &Private::zhttp_in_readyRead);
 
 			zhttp_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 			zhttp_out_sock->setShutdownWaitTime(0);
@@ -740,7 +740,7 @@ public:
 			}
 
 			zws_in_valve = new QZmq::Valve(zws_in_sock, this);
-			connect(zws_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zws_in_readyRead(const QList<QByteArray> &)));
+			connect(zws_in_valve, &QZmq::Valve::readyRead, this, &Private::zws_in_readyRead);
 
 			zws_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 			zws_out_sock->setShutdownWaitTime(0);

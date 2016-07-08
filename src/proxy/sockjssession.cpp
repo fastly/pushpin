@@ -162,7 +162,7 @@ public:
 		updating(false)
 	{
 		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
+		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
 	}
 
 	~Private()
@@ -234,17 +234,17 @@ public:
 
 			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
 
-			connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-			connect(req, SIGNAL(error()), SLOT(req_error()));
+			connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
+			connect(req, &ZhttpRequest::error, this, &Private::req_error);
 		}
 		else
 		{
-			connect(sock, SIGNAL(connected()), SLOT(sock_connected()));
-			connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-			connect(sock, SIGNAL(framesWritten(int, int)), SLOT(sock_framesWritten(int, int)));
-			connect(sock, SIGNAL(closed()), SLOT(sock_closed()));
-			connect(sock, SIGNAL(peerClosed()), SLOT(sock_peerClosed()));
-			connect(sock, SIGNAL(error()), SLOT(sock_error()));
+			connect(sock, &ZWebSocket::connected, this, &Private::sock_connected);
+			connect(sock, &ZWebSocket::readyRead, this, &Private::sock_readyRead);
+			connect(sock, &ZWebSocket::framesWritten, this, &Private::sock_framesWritten);
+			connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
+			connect(sock, &ZWebSocket::peerClosed, this, &Private::sock_peerClosed);
+			connect(sock, &ZWebSocket::error, this, &Private::sock_error);
 		}
 	}
 
@@ -275,8 +275,8 @@ public:
 
 	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-		connect(_req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-		connect(_req, SIGNAL(error()), SLOT(req_error()));
+		connect(_req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
+		connect(_req, &ZhttpRequest::error, this, &Private::req_error);
 
 		if(lastPart == "xhr" || lastPart == "jsonp")
 		{

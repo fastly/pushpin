@@ -79,7 +79,7 @@ public:
 		req(0)
 	{
 		timer = new QTimer(this);
-		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
 		timer->setInterval(CHECK_INTERVAL);
 		timer->start();
 	}
@@ -102,8 +102,8 @@ private slots:
 	{
 		req = zhttpManager->createRequest();
 		req->setParent(this);
-		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
-		connect(req, SIGNAL(error()), SLOT(req_error()));
+		connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
+		connect(req, &ZhttpRequest::error, this, &Private::req_error);
 
 		req->setIgnorePolicies(true);
 		req->setIgnoreTlsErrors(true);

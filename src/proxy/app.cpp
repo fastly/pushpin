@@ -173,8 +173,8 @@ public:
 		q(_q),
 		engine(0)
 	{
-		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
-		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
+		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 	}
 
 	void start()

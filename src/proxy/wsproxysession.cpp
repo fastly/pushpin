@@ -341,11 +341,11 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		connect(inSock, SIGNAL(readyRead()), SLOT(in_readyRead()));
-		connect(inSock, SIGNAL(framesWritten(int, int)), SLOT(in_framesWritten(int, int)));
-		connect(inSock, SIGNAL(peerClosed()), SLOT(in_peerClosed()));
-		connect(inSock, SIGNAL(closed()), SLOT(in_closed()));
-		connect(inSock, SIGNAL(error()), SLOT(in_error()));
+		connect(inSock, &WebSocket::readyRead, this, &Private::in_readyRead);
+		connect(inSock, &WebSocket::framesWritten, this, &Private::in_framesWritten);
+		connect(inSock, &WebSocket::peerClosed, this, &Private::in_peerClosed);
+		connect(inSock, &WebSocket::closed, this, &Private::in_closed);
+		connect(inSock, &WebSocket::error, this, &Private::in_error);
 
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
@@ -483,12 +483,12 @@ public:
 			}
 		}
 
-		connect(outSock, SIGNAL(connected()), SLOT(out_connected()));
-		connect(outSock, SIGNAL(readyRead()), SLOT(out_readyRead()));
-		connect(outSock, SIGNAL(framesWritten(int, int)), SLOT(out_framesWritten(int, int)));
-		connect(outSock, SIGNAL(peerClosed()), SLOT(out_peerClosed()));
-		connect(outSock, SIGNAL(closed()), SLOT(out_closed()));
-		connect(outSock, SIGNAL(error()), SLOT(out_error()));
+		connect(outSock, &WebSocket::connected, this, &Private::out_connected);
+		connect(outSock, &WebSocket::readyRead, this, &Private::out_readyRead);
+		connect(outSock, &WebSocket::framesWritten, this, &Private::out_framesWritten);
+		connect(outSock, &WebSocket::peerClosed, this, &Private::out_peerClosed);
+		connect(outSock, &WebSocket::closed, this, &Private::out_closed);
+		connect(outSock, &WebSocket::error, this, &Private::out_error);
 
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
@@ -772,11 +772,11 @@ private slots:
 			if(wsControlManager)
 			{
 				wsControl = wsControlManager->createSession(publicCid);
-				connect(wsControl, SIGNAL(sendEventReceived(WebSocket::Frame::Type, const QByteArray &)), SLOT(wsControl_sendEventReceived(WebSocket::Frame::Type, const QByteArray &)));
-				connect(wsControl, SIGNAL(keepAliveSetupEventReceived(bool, int)), SLOT(wsControl_keepAliveSetupEventReceived(bool, int)));
-				connect(wsControl, SIGNAL(closeEventReceived(int)), SLOT(wsControl_closeEventReceived(int)));
-				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
-				connect(wsControl, SIGNAL(cancelEventReceived()), SLOT(wsControl_cancelEventReceived()));
+				connect(wsControl, &WsControlSession::sendEventReceived, this, &Private::wsControl_sendEventReceived);
+				connect(wsControl, &WsControlSession::keepAliveSetupEventReceived, this, &Private::wsControl_keepAliveSetupEventReceived);
+				connect(wsControl, &WsControlSession::closeEventReceived, this, &Private::wsControl_closeEventReceived);
+				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
+				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
 				wsControl->start(routeId, channelPrefix, inSock->requestUri());
 
 				if(!subChannel.isEmpty())
@@ -908,7 +908,7 @@ private slots:
 			if(!keepAliveTimer)
 			{
 				keepAliveTimer = new QTimer(this);
-				connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
+				connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
 				keepAliveTimer->setSingleShot(true);
 			}
 

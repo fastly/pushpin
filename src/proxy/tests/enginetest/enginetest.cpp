@@ -85,16 +85,16 @@ public:
 
 		zhttpClientInSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 		zhttpClientInValve = new QZmq::Valve(zhttpClientInSock, this);
-		connect(zhttpClientInValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttpClientIn_readyRead(const QList<QByteArray> &)));
+		connect(zhttpClientInValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpClientIn_readyRead);
 
 		zhttpServerInSock = new QZmq::Socket(QZmq::Socket::Pull, this);
 		zhttpServerInValve = new QZmq::Valve(zhttpServerInSock, this);
-		connect(zhttpServerInValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttpServerIn_readyRead(const QList<QByteArray> &)));
+		connect(zhttpServerInValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpServerIn_readyRead);
 
 		zhttpServerInStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
 		zhttpServerInStreamSock->setIdentity("test-server");
 		zhttpServerInStreamValve = new QZmq::Valve(zhttpServerInStreamSock, this);
-		connect(zhttpServerInStreamValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttpServerInStream_readyRead(const QList<QByteArray> &)));
+		connect(zhttpServerInStreamValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpServerInStream_readyRead);
 
 		zhttpServerOutSock = new QZmq::Socket(QZmq::Socket::Pub, this);
 
@@ -104,10 +104,10 @@ public:
 
 		handlerAcceptSock = new QZmq::Socket(QZmq::Socket::Router, this);
 		handlerAcceptValve = new QZmq::Valve(handlerAcceptSock, this);
-		connect(handlerAcceptValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(handlerAccept_readyRead(const QList<QByteArray> &)));
+		connect(handlerAcceptValve, &QZmq::Valve::readyRead, this, &Wrapper::handlerAccept_readyRead);
 
 		handlerInspectValve = new QZmq::Valve(handlerInspectSock, this);
-		connect(handlerInspectValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(handlerInspect_readyRead(const QList<QByteArray> &)));
+		connect(handlerInspectValve, &QZmq::Valve::readyRead, this, &Wrapper::handlerInspect_readyRead);
 
 		handlerRetryOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
 	}

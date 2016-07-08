@@ -72,8 +72,8 @@ public:
 	void addSocket(WebSocketOverHttp *sock)
 	{
 		sock->setParent(this);
-		connect(sock, SIGNAL(disconnected()), SLOT(sock_disconnected()));
-		connect(sock, SIGNAL(error()), SLOT(sock_error()));
+		connect(sock, &WebSocketOverHttp::disconnected, this, &DisconnectManager::sock_disconnected);
+		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
 
 		sock->sendDisconnect();
 	}
@@ -227,11 +227,11 @@ public:
 			g_disconnectManager = new DisconnectManager(QCoreApplication::instance());
 
 		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
+		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
 		keepAliveTimer->setSingleShot(true);
 
 		retryTimer = new QTimer(this);
-		connect(retryTimer, SIGNAL(timeout()), SLOT(retryTimer_timeout()));
+		connect(retryTimer, &QTimer::timeout, this, &Private::retryTimer_timeout);
 		retryTimer->setSingleShot(true);
 	}
 
@@ -521,9 +521,9 @@ private:
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
-		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
-		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-		connect(req, SIGNAL(error()), SLOT(req_error()));
+		connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
+		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
+		connect(req, &ZhttpRequest::error, this, &Private::req_error);
 
 		if(!connectHost.isEmpty())
 			req->setConnectHost(connectHost);

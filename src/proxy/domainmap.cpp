@@ -218,7 +218,7 @@ public:
 	Worker() :
 		t(this)
 	{
-		connect(&t, SIGNAL(timeout()), SLOT(doReload()));
+		connect(&t, &QTimer::timeout, this, &Worker::doReload);
 		t.setSingleShot(true);
 	}
 
@@ -322,7 +322,7 @@ public slots:
 		if(!fileName.isEmpty())
 		{
 			QFileSystemWatcher *watcher = new QFileSystemWatcher(this);
-			connect(watcher, SIGNAL(fileChanged(const QString &)), SLOT(fileChanged(const QString &)));
+			connect(watcher, &QFileSystemWatcher::fileChanged, this, &Worker::fileChanged);
 			watcher->addPath(fileName);
 
 			reload();
@@ -650,7 +650,7 @@ public:
 	{
 		worker = new Worker;
 		worker->fileName = fileName;
-		connect(worker, SIGNAL(started()), SLOT(worker_started()), Qt::DirectConnection);
+		connect(worker, &Worker::started, this, &Thread::worker_started, Qt::DirectConnection);
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
 		delete worker;
@@ -691,7 +691,7 @@ public:
 		thread->start();
 
 		// worker guaranteed to exist after starting
-		connect(thread->worker, SIGNAL(changed()), SLOT(doChanged()));
+		connect(thread->worker, &Worker::changed, this, &Private::doChanged);
 	}
 
 public slots:

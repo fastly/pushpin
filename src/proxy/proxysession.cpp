@@ -195,10 +195,10 @@ public:
 
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
-		connect(rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
-		connect(rs, SIGNAL(errorResponding()), SLOT(rs_errorResponding()));
-		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
-		connect(rs, SIGNAL(paused()), SLOT(rs_paused()));
+		connect(rs, &RequestSession::bytesWritten, this, &Private::rs_bytesWritten);
+		connect(rs, &RequestSession::errorResponding, this, &Private::rs_errorResponding);
+		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
+		connect(rs, &RequestSession::paused, this, &Private::rs_paused);
 
 		if(state == Stopped)
 		{
@@ -247,8 +247,8 @@ public:
 			if(!rs->isRetry())
 			{
 				inRequest = rs->request();
-				connect(inRequest, SIGNAL(readyRead()), SLOT(inRequest_readyRead()));
-				connect(inRequest, SIGNAL(error()), SLOT(inRequest_error()));
+				connect(inRequest, &ZhttpRequest::readyRead, this, &Private::inRequest_readyRead);
+				connect(inRequest, &ZhttpRequest::error, this, &Private::inRequest_error);
 
 				requestBody += inRequest->readBody();
 			}
@@ -368,9 +368,9 @@ public:
 			zhttpRequest->setParent(this);
 		}
 
-		connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
-		connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
-		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
+		connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+		connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
 
 		if(target.trusted)
 			zhttpRequest->setIgnorePolicies(true);
@@ -1079,7 +1079,7 @@ public slots:
 			adata.responseSent = acceptAfterResponding;
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			connect(acceptRequest, SIGNAL(finished()), SLOT(acceptRequest_finished()));
+			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);
 			acceptRequest->start(adata);
 		}
 	}

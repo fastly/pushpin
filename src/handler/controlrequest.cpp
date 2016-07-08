@@ -33,7 +33,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		connect(req, &ZrpcRequest::finished, this, &ConnCheck::req_finished);
 
 		QVariantList vcids;
 		foreach(const QString &cid, cids)

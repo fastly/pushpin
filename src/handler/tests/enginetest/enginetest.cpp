@@ -54,13 +54,13 @@ public:
 
 		zhttpClientInSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 		zhttpClientInValve = new QZmq::Valve(zhttpClientInSock, this);
-		connect(zhttpClientInValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttpClientIn_readyRead(const QList<QByteArray> &)));
+		connect(zhttpClientInValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpClientIn_readyRead);
 
 		// proxy sockets
 
 		proxyAcceptSock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 		proxyAcceptValve = new QZmq::Valve(proxyAcceptSock, this);
-		connect(proxyAcceptValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(proxyAccept_readyRead(const QList<QByteArray> &)));
+		connect(proxyAcceptValve, &QZmq::Valve::readyRead, this, &Wrapper::proxyAccept_readyRead);
 
 		// publish sockets
 

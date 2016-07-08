@@ -178,7 +178,7 @@ public:
 		{
 			// if there's a close value, hang around for a little bit
 			s->timer = new QTimer(this);
-			connect(s->timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+			connect(s->timer, &QTimer::timeout, this, &Private::timer_timeout);
 			s->timer->setSingleShot(true);
 			sessionsByTimer.insert(s->timer, s);
 			s->timer->start(5000);
@@ -231,9 +231,9 @@ public:
 
 		s->route = route;
 
-		connect(req, SIGNAL(readyRead()), SLOT(req_readyRead()));
-		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-		connect(req, SIGNAL(error()), SLOT(req_error()));
+		connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
+		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
+		connect(req, &ZhttpRequest::error, this, &Private::req_error);
 
 		sessions += s;
 		sessionsByRequest.insert(s->req, s);
@@ -255,8 +255,8 @@ public:
 			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
 		s->route = route;
 
-		connect(sock, SIGNAL(closed()), SLOT(sock_closed()));
-		connect(sock, SIGNAL(error()), SLOT(sock_error()));
+		connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
+		connect(sock, &ZWebSocket::error, this, &Private::sock_error);
 
 		sessions += s;
 		sessionsBySocket.insert(s->sock, s);

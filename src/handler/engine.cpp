@@ -215,7 +215,7 @@ public:
 			{
 				// determine session info
 				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8(), this);
-				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionDetectRulesGet_finished(const DeferredResult &)));
+				connect(d, &Deferred::finished, this, &InspectWorker::sessionDetectRulesGet_finished);
 				return;
 			}
 
@@ -314,7 +314,7 @@ private slots:
 			if(!sid.isEmpty())
 			{
 				Deferred *d = SessionRequest::getLastIds(stateClient, sid, this);
-				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionGetLastIds_finished(const DeferredResult &)));
+				connect(d, &Deferred::finished, this, &InspectWorker::sessionGetLastIds_finished);
 				return;
 			}
 		}
@@ -382,11 +382,11 @@ public:
 		stats(_stats)
 	{
 		req->setParent(this);
-		connect(req, SIGNAL(bytesWritten(int)), SLOT(req_bytesWritten(int)));
-		connect(req, SIGNAL(error()), SLOT(req_error()));
+		connect(req, &ZhttpRequest::bytesWritten, this, &Hold::req_bytesWritten);
+		connect(req, &ZhttpRequest::error, this, &Hold::req_error);
 
 		timer = new QTimer(this);
-		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		connect(timer, &QTimer::timeout, this, &Hold::timer_timeout);
 	}
 
 	~Hold()
@@ -687,7 +687,7 @@ public:
 		QObject(parent)
 	{
 		timer = new QTimer(this);
-		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		connect(timer, &QTimer::timeout, this, &WsSession::timer_timeout);
 	}
 
 	~WsSession()
@@ -1144,7 +1144,7 @@ public:
 				if(!rules.isEmpty())
 				{
 					Deferred *d = SessionRequest::detectRulesSet(stateClient, rules, this);
-					connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionDetectRulesSet_finished(const DeferredResult &)));
+					connect(d, &Deferred::finished, this, &AcceptWorker::sessionDetectRulesSet_finished);
 				}
 				else
 				{
@@ -1189,7 +1189,7 @@ private:
 		if(!sid.isEmpty())
 		{
 			Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, lastIds, this);
-			connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionCreateOrUpdate_finished(const DeferredResult &)));
+			connect(d, &Deferred::finished, this, &AcceptWorker::sessionCreateOrUpdate_finished);
 		}
 		else
 		{
@@ -1476,7 +1476,7 @@ public:
 			inspectServer = new ZrpcManager(this);
 			inspectServer->setBind(false);
 			inspectServer->setIpcFileMode(config.ipcFileMode);
-			connect(inspectServer, SIGNAL(requestReady()), SLOT(inspectServer_requestReady()));
+			connect(inspectServer, &ZrpcManager::requestReady, this, &Private::inspectServer_requestReady);
 
 			if(!inspectServer->setServerSpecs(QStringList() << config.inspectSpec))
 			{
@@ -1492,7 +1492,7 @@ public:
 			acceptServer = new ZrpcManager(this);
 			acceptServer->setBind(false);
 			acceptServer->setIpcFileMode(config.ipcFileMode);
-			connect(acceptServer, SIGNAL(requestReady()), SLOT(acceptServer_requestReady()));
+			connect(acceptServer, &ZrpcManager::requestReady, this, &Private::acceptServer_requestReady);
 
 			if(!acceptServer->setServerSpecs(QStringList() << config.acceptSpec))
 			{
@@ -1524,7 +1524,7 @@ public:
 			controlServer = new ZrpcManager(this);
 			controlServer->setBind(true);
 			controlServer->setIpcFileMode(config.ipcFileMode);
-			connect(controlServer, SIGNAL(requestReady()), SLOT(controlServer_requestReady()));
+			connect(controlServer, &ZrpcManager::requestReady, this, &Private::controlServer_requestReady);
 
 			if(!controlServer->setServerSpecs(QStringList() << config.commandSpec))
 			{
@@ -1548,7 +1548,7 @@ public:
 			}
 
 			inPullValve = new QZmq::Valve(inPullSock, this);
-			connect(inPullValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(inPull_readyRead(const QList<QByteArray> &)));
+			connect(inPullValve, &QZmq::Valve::readyRead, this, &Private::inPull_readyRead);
 
 			log_info("in pull: %s", qPrintable(config.pushInSpec));
 		}
@@ -1567,7 +1567,7 @@ public:
 			}
 
 			inSubValve = new QZmq::Valve(inSubSock, this);
-			connect(inSubValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(inSub_readyRead(const QList<QByteArray> &)));
+			connect(inSubValve, &QZmq::Valve::readyRead, this, &Private::inSub_readyRead);
 
 			log_info("in sub: %s", qPrintable(config.pushInSubSpec));
 		}
@@ -1601,7 +1601,7 @@ public:
 			}
 
 			wsControlInValve = new QZmq::Valve(wsControlInSock, this);
-			connect(wsControlInValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(wsControlIn_readyRead(const QList<QByteArray> &)));
+			connect(wsControlInValve, &QZmq::Valve::readyRead, this, &Private::wsControlIn_readyRead);
 
 			log_info("ws control in: %s", qPrintable(config.wsControlInSpec));
 
@@ -1619,8 +1619,8 @@ public:
 		}
 
 		stats = new StatsManager(this);
-		connect(stats, SIGNAL(connectionsRefreshed(const QList<QByteArray> &)), SLOT(stats_connectionsRefreshed(const QList<QByteArray> &)));
-		connect(stats, SIGNAL(unsubscribed(const QString &, const QString &)), SLOT(stats_unsubscribed(const QString &, const QString &)));
+		connect(stats, &StatsManager::connectionsRefreshed, this, &Private::stats_connectionsRefreshed);
+		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
 
 		if(!config.statsSpec.isEmpty())
 		{
@@ -1651,7 +1651,7 @@ public:
 			}
 
 			proxyStatsValve = new QZmq::Valve(proxyStatsSock, this);
-			connect(proxyStatsValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(proxyStats_readyRead(const QList<QByteArray> &)));
+			connect(proxyStatsValve, &QZmq::Valve::readyRead, this, &Private::proxyStats_readyRead);
 
 			log_info("proxy stats: %s", qPrintable(config.proxyStatsSpec));
 		}
@@ -1673,7 +1673,7 @@ public:
 		if(config.pushInHttpPort != -1)
 		{
 			controlHttpServer = new SimpleHttpServer(this);
-			connect(controlHttpServer, SIGNAL(requestReady()), SLOT(controlHttpServer_requestReady()));
+			connect(controlHttpServer, &SimpleHttpServer::requestReady, this, &Private::controlHttpServer_requestReady);
 			controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
 
 			log_info("http control server: %s:%d", qPrintable(config.pushInHttpAddr.toString()), config.pushInHttpPort);
@@ -1871,7 +1871,7 @@ private:
 			}
 
 			Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-			connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionUpdateMany_finished(const DeferredResult &)));
+			connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
 			deferreds += d;
 		}
 	}
@@ -1944,7 +1944,7 @@ private:
 			outHeaders += HttpHeader("Content-Type", "text/plain");
 
 		req->respond(code, reason, outHeaders, body.toUtf8());
-		connect(req, SIGNAL(finished()), req, SLOT(deleteLater()));
+		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
 
 		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod(), QString::fromUtf8(req->requestUri()), QString::number(code), QString::number(body.size()));
 		if(items > -1)
@@ -1961,7 +1961,7 @@ private slots:
 			return;
 
 		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
-		connect(w, SIGNAL(finished(const DeferredResult &)), SLOT(inspectWorker_finished(const DeferredResult &)));
+		connect(w, &Deferred::finished, this, &Private::inspectWorker_finished);
 		deferreds += w;
 	}
 
@@ -1972,9 +1972,9 @@ private slots:
 			return;
 
 		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, stats, this);
-		connect(w, SIGNAL(finished(const DeferredResult &)), SLOT(acceptWorker_finished(const DeferredResult &)));
-		connect(w, SIGNAL(holdsReady()), SLOT(acceptWorker_holdsReady()));
-		connect(w, SIGNAL(retryPacketReady(const RetryRequestPacket &)), SLOT(acceptWorker_retryPacketReady(const RetryRequestPacket &)));
+		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
+		connect(w, &AcceptWorker::holdsReady, this, &Private::acceptWorker_holdsReady);
+		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
 		deferreds += w;
 		w->start();
 	}
@@ -2105,7 +2105,7 @@ private slots:
 				if(!s)
 				{
 					s = new WsSession(this);
-					connect(s, SIGNAL(expired()), SLOT(wssession_expired()));
+					connect(s, &WsSession::expired, this, &Private::wssession_expired);
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
@@ -2280,7 +2280,7 @@ private slots:
 			foreach(const QString &sid, updateSids)
 			{
 				Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, LastIds(), this);
-				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionCreateOrUpdate_finished(const DeferredResult &)));
+				connect(d, &Deferred::finished, this, &Private::sessionCreateOrUpdate_finished);
 				deferreds += d;
 			}
 		}
@@ -2353,7 +2353,7 @@ private slots:
 				QHash<QString, LastIds> sidLastIds;
 				sidLastIds[sid] = LastIds();
 				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionUpdateMany_finished(const DeferredResult &)));
+				connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
 				deferreds += d;
 				return;
 			}
@@ -2536,7 +2536,7 @@ private slots:
 		foreach(Hold *hold, holds)
 		{
 			hold->setParent(this);
-			connect(hold, SIGNAL(finished()), SLOT(hold_finished()));
+			connect(hold, &Hold::finished, this, &Private::hold_finished);
 			cs.holds.insert(hold->req->rid(), hold);
 
 			QHashIterator<QString, Instruct::Channel> it(hold->channels);
@@ -2634,7 +2634,7 @@ private slots:
 			if(!sidLastIds.isEmpty())
 			{
 				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-				connect(d, SIGNAL(finished(const DeferredResult &)), SLOT(sessionUpdateMany_finished(const DeferredResult &)));
+				connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
 				deferreds += d;
 			}
 		}
