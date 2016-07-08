@@ -78,7 +78,7 @@ public:
 		sentKill(false)
 	{
 		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &Service::Private::timer_timeout);
+		connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
 
 		timer->setSingleShot(true);
 	}
@@ -128,10 +128,10 @@ public:
 	{
 		proc = new ServiceProcess(this);
 
-		connect(proc, &QProcess::started, this, &Service::Private::proc_started);
-		connect(proc, &QProcess::readyReadStandardOutput, this, &Service::Private::proc_readyRead);
-		connect(proc, static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), this, &Service::Private::proc_finished);
-		connect(proc, static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::error), this, &Service::Private::proc_error);
+		connect(proc, &QProcess::started, this, &Private::proc_started);
+		connect(proc, &QProcess::readyReadStandardOutput, this, &Private::proc_readyRead);
+		connect(proc, static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), this, &Private::proc_finished);
+		connect(proc, static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::error), this, &Private::proc_error);
 
 		proc->setProcessChannelMode(QProcess::MergedChannels);
 		proc->setReadChannel(QProcess::StandardOutput);

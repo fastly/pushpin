@@ -198,8 +198,8 @@ public:
 		q(_q),
 		stopping(false)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &App::Private::doQuit);
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &App::Private::reload);
+		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 	}
 
 	void start()
@@ -462,10 +462,10 @@ public:
 
 		foreach(Service *s, services)
 		{
-			connect(s, &Service::started, this, &App::Private::service_started);
-			connect(s, &Service::stopped, this, &App::Private::service_stopped);
-			connect(s, &Service::logLine, this, &App::Private::service_logLine);
-			connect(s, &Service::error, this, &App::Private::service_error);
+			connect(s, &Service::started, this, &Private::service_started);
+			connect(s, &Service::stopped, this, &Private::service_stopped);
+			connect(s, &Service::logLine, this, &Private::service_logLine);
+			connect(s, &Service::error, this, &Private::service_error);
 
 			if(!args.mergeOutput || qobject_cast<Mongrel2Service*>(s))
 				log_info("starting %s", qPrintable(s->name()));
