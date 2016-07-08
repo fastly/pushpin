@@ -99,7 +99,7 @@ public:
 		delete client_out_sock;
 
 		client_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
-		connect(client_out_sock, SIGNAL(messagesWritten(int)), SLOT(client_out_messagesWritten(int)));
+		connect(client_out_sock, &QZmq::Socket::messagesWritten, this, &Private::client_out_messagesWritten);
 
 		client_out_sock->setHwm(OUT_HWM);
 		client_out_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
@@ -120,7 +120,7 @@ public:
 		delete client_out_stream_sock;
 
 		client_out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
-		connect(client_out_stream_sock, SIGNAL(messagesWritten(int)), SLOT(client_out_stream_messagesWritten(int)));
+		connect(client_out_stream_sock, &QZmq::Socket::messagesWritten, this, &Private::client_out_stream_messagesWritten);
 
 		client_out_stream_sock->setWriteQueueEnabled(false);
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
@@ -143,7 +143,7 @@ public:
 		delete client_in_sock;
 
 		client_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
-		connect(client_in_sock, SIGNAL(readyRead()), SLOT(client_in_readyRead()));
+		connect(client_in_sock, &QZmq::Socket::readyRead, this, &Private::client_in_readyRead);
 
 		client_in_sock->setHwm(DEFAULT_HWM);
 		client_in_sock->setShutdownWaitTime(0);
@@ -166,7 +166,7 @@ public:
 		delete client_in_sock;
 
 		client_req_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
-		connect(client_req_sock, SIGNAL(readyRead()), SLOT(client_req_readyRead()));
+		connect(client_req_sock, &QZmq::Socket::readyRead, this, &Private::client_req_readyRead);
 
 		client_req_sock->setHwm(OUT_HWM);
 		client_req_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
@@ -197,7 +197,7 @@ public:
 		}
 
 		server_in_valve = new QZmq::Valve(server_in_sock, this);
-		connect(server_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(server_in_readyRead(const QList<QByteArray> &)));
+		connect(server_in_valve, &QZmq::Valve::readyRead, this, &Private::server_in_readyRead);
 
 		server_in_valve->open();
 
@@ -209,7 +209,7 @@ public:
 		delete server_in_stream_sock;
 
 		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
-		connect(server_in_stream_sock, SIGNAL(readyRead()), SLOT(server_in_stream_readyRead()));
+		connect(server_in_stream_sock, &QZmq::Socket::readyRead, this, &Private::server_in_stream_readyRead);
 
 		server_in_stream_sock->setIdentity(instanceId);
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
@@ -229,7 +229,7 @@ public:
 		delete server_out_sock;
 
 		server_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
-		connect(server_out_sock, SIGNAL(messagesWritten(int)), SLOT(server_out_messagesWritten(int)));
+		connect(server_out_sock, &QZmq::Socket::messagesWritten, this, &Private::server_out_messagesWritten);
 
 		server_out_sock->setWriteQueueEnabled(false);
 		server_out_sock->setHwm(DEFAULT_HWM);

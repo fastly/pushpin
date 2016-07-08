@@ -138,7 +138,7 @@ private slots:
 		if(manager->timeout() >= 0)
 		{
 			timer = new QTimer(this);
-			connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+			connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
 			timer->setSingleShot(true);
 			timer->start(manager->timeout());
 		}

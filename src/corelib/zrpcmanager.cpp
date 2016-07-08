@@ -89,7 +89,7 @@ public:
 		}
 
 		clientValve = new QZmq::Valve(clientSock, this);
-		connect(clientValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(client_readyRead(const QList<QByteArray> &)));
+		connect(clientValve, &QZmq::Valve::readyRead, this, &Private::client_readyRead);
 
 		clientValve->open();
 
@@ -114,7 +114,7 @@ public:
 		}
 
 		serverValve = new QZmq::Valve(serverSock, this);
-		connect(serverValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(server_readyRead(const QList<QByteArray> &)));
+		connect(serverValve, &QZmq::Valve::readyRead, this, &Private::server_readyRead);
 
 		serverValve->open();
 
