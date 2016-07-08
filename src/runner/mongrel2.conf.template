@@ -1,24 +1,24 @@
-{% for port in ports %}handler_{{ port.value }} = Handler(
-	send_spec="ipc://{{ rundir }}/pushpin-m2-out-{{ port.value }}",
-	send_ident="pushpin-m2-{{ port.value }}",
-	recv_spec="ipc://{{ rundir }}/pushpin-m2-in-{{ port.value }}",
-	recv_ident="pushpin-m2-{{ port.value }} " # trailing space needed
+{% for i in interfaces %}handler_{{ i.port }} = Handler(
+	send_spec="ipc://{{ rundir }}/{{ ipc_prefix }}m2-out-{{ i.port }}",
+	send_ident="pushpin-m2-{{ i.port }}",
+	recv_spec="ipc://{{ rundir }}/{{ ipc_prefix }}m2-in-{{ i.port }}",
+	recv_ident="pushpin-m2-{{ i.port }} " # trailing space needed
 )
 
-{% endfor %}{% for port in ports %}host_{{ port.value }} = Host(name="default", routes={ "/": handler_{{ port.value }} })
+{% endfor %}{% for i in interfaces %}host_{{ i.port }} = Host(name="default", routes={ "/": handler_{{ i.port }} })
 
-{% endfor %}{% for port in ports %}server_{{ port.value }} = Server(
-	uuid="default_{{ port.value }}",{% if port.ssl %}
+{% endfor %}{% for i in interfaces %}server_{{ i.port }} = Server(
+	uuid="default_{{ i.port }}",{% if i.ssl %}
 	use_ssl=1,{% endif %}
-	access_log="{{ logdir }}/access_{{ port.value }}.log",
-	error_log="{{ logdir }}/error_{{ port.value }}.log",
-	pid_file="{{ rundir }}/mongrel2_{{ port.value }}.pid",
-	control_port="ipc://{{ rundir }}/pushpin-m2-control-{{ port.value }}",
+	access_log="{{ logdir }}/{{ file_prefix }}access_{{ i.port }}.log",
+	error_log="{{ logdir }}/{{ file_prefix }}error_{{ i.port }}.log",
+	pid_file="{{ rundir }}/{{ file_prefix }}mongrel2_{{ i.port }}.pid",
+	control_port="ipc://{{ rundir }}/{{ ipc_prefix }}m2-control-{{ i.port }}",
 	default_host="default",
-	name="server-{{ port.value }}",
-	bind_addr="{{ port.addr }}",
-	port={{ port.value }},
-	hosts=[host_{{ port.value }}]
+	name="server-{{ i.port }}",
+	bind_addr="{{ i.addr }}",
+	port={{ i.port }},
+	hosts=[host_{{ i.port }}]
 )
 
 {% endfor %}settings = {
@@ -31,4 +31,4 @@
 	"download.flow_control": 1
 }
 
-servers = [{% for port in ports %}server_{{ port.value }}{% if not loop.last %}, {% endif %}{% endfor %}]
+servers = [{% for i in interfaces %}server_{{ i.port }}{% if not loop.last %}, {% endif %}{% endfor %}]

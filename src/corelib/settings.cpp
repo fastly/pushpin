@@ -163,3 +163,13 @@ int Settings::adjustedPort(const QString &key, int defaultValue) const
 		x += portOffset_;
 	return x;
 }
+
+void Settings::setIpcPrefix(const QString &s)
+{
+	ipcPrefix_ = s;
+}
+
+void Settings::setPortOffset(int x)
+{
+	portOffset_ = x;
+}

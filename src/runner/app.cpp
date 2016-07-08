@@ -80,10 +80,13 @@ public:
 	QString logFile;
 	int logLevel;
 	bool mergeOutput;
+	QPair<QHostAddress,int> port;
+	int id;
 
 	ArgsData() :
 		logLevel(-1),
-		mergeOutput(false)
+		mergeOutput(false),
+		id(-1)
 	{
 	}
 };
@@ -101,6 +104,10 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(verboseOption);
 	const QCommandLineOption mergeOutputOption(QStringList() << "m" << "merge-output", "Combine output of subprocesses.");
 	parser->addOption(mergeOutputOption);
+	const QCommandLineOption portOption("port", "Run a single HTTP server instance.", "[addr:]port");
+	parser->addOption(portOption);
+	const QCommandLineOption idOption("id", "Set instance ID (needed to run multiple instances).", "x");
+	parser->addOption(idOption);
 	const QCommandLineOption helpOption = parser->addHelpOption();
 	const QCommandLineOption versionOption = parser->addVersionOption();
 
@@ -140,6 +147,29 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 
 	if(parser->isSet(mergeOutputOption))
 		args->mergeOutput = true;
+
+	if(parser->isSet(portOption))
+	{
+		args->port = parsePort(parser->value(portOption));
+		if(args->port.second < 1)
+		{
+			*errorMessage = "error: port must be greater than or equal to 1";
+			return CommandLineError;
+		}
+	}
+
+	if(parser->isSet(idOption))
+	{
+		bool ok;
+		int x = parser->value(idOption).toInt(&ok);
+		if(!ok || x < 0)
+		{
+			*errorMessage = "error: id must be greater than or equal to 0";
+			return CommandLineError;
+		}
+
+		args->id = x;
+	}
 
 	return CommandLineOk;
 }
@@ -281,6 +311,8 @@ public:
 			}
 		}
 
+		QString ipcPrefix = settings.value("global/ipc_prefix", "pushpin-").toString();
+
 		QString configDir = QFileInfo(configFile).dir().filePath("runner");
 
 		QStringList serviceNames = settings.value("runner/services").toStringList();
@@ -346,13 +378,32 @@ public:
 			return;
 		}
 
+		int portOffset = 0;
+		QString filePrefix;
+
 		QList<Mongrel2Service::Interface> interfaces;
-		QPair<QHostAddress, int> p = parsePort(httpPortStr);
-		interfaces += Mongrel2Service::Interface(p.first, p.second, false);
-		foreach(const QString &httpsPortStr, httpsPortStrs)
+
+		if(args.port.second > 0)
 		{
-			QPair<QHostAddress, int> p = parsePort(httpsPortStr);
-			interfaces += Mongrel2Service::Interface(p.first, p.second, true);
+			// if port specified then instantiate a single http server
+			interfaces += Mongrel2Service::Interface(args.port.first, args.port.second, false);
+		}
+		else
+		{
+			QPair<QHostAddress, int> p = parsePort(httpPortStr);
+			interfaces += Mongrel2Service::Interface(p.first, p.second, false);
+			foreach(const QString &httpsPortStr, httpsPortStrs)
+			{
+				QPair<QHostAddress, int> p = parsePort(httpsPortStr);
+				interfaces += Mongrel2Service::Interface(p.first, p.second, true);
+			}
+		}
+
+		if(args.id >= 0)
+		{
+			ipcPrefix = QString("p%1-").arg(args.id);
+			portOffset = args.id * 10;
+			filePrefix = ipcPrefix;
 		}
 
 		if(serviceNames.contains("mongrel2"))
@@ -366,14 +417,14 @@ public:
 				m2shBin = settings.value("runner/m2sh_bin").toString();
 
 			QString certsDir = QDir(configDir).filePath("certs");
-			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, logDir, certsDir, interfaces))
+			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, logDir, ipcPrefix, filePrefix, certsDir, interfaces))
 			{
 				emit q->quit(1);
 				return;
 			}
 
 			foreach(const Mongrel2Service::Interface &i, interfaces)
-				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath("mongrel2.sqlite"), "default_" + QString::number(i.port), logDir, i.port, i.ssl, this);
+				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), logDir, filePrefix, i.port, i.ssl, this);
 		}
 
 		if(serviceNames.contains("m2adapter"))
@@ -382,7 +433,7 @@ public:
 			foreach(const Mongrel2Service::Interface &i, interfaces)
 				ports += i.port;
 
-			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), logLevel >= 3, ports, this);
+			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, ports, this);
 		}
 
 		if(serviceNames.contains("zurl"))
@@ -391,14 +442,14 @@ public:
 			if(settings.contains("runner/zurl_bin"))
 				zurlBin = settings.value("runner/zurl_bin").toString();
 
-			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), logLevel >= 3, this);
+			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, this);
 		}
 
 		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), logLevel >= 3, this);
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, this);
 
 		if(serviceNames.contains("pushpin-handler"))
-			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), logLevel >= 3, this);
+			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevel >= 3, this);
 
 		foreach(Service *s, services)
 		{
@@ -450,6 +501,15 @@ private:
 		}
 	}
 
+	void checkStopped()
+	{
+		if(services.isEmpty())
+		{
+			log_info("stopped");
+			emit q->quit(0);
+		}
+	}
+
 private slots:
 	void service_started()
 	{
@@ -474,11 +534,7 @@ private slots:
 		services.removeAll(s);
 		delete s;
 
-		if(services.isEmpty())
-		{
-			log_info("stopped");
-			emit q->quit(0);
-		}
+		checkStopped();
 	}
 
 	void service_logLine(const QString &line)
@@ -498,8 +554,13 @@ private slots:
 		services.removeAll(s);
 		delete s;
 
-		if(!stopping)
+		if(stopping)
 		{
+			checkStopped();
+		}
+		else
+		{
+			// shutdown if we receive an unexpected error from any service
 			stopping = true;
 			stopAll();
 		}

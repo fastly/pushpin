@@ -57,9 +57,12 @@ public:
 	QString configFile;
 	QString logFile;
 	int logLevel;
+	QString ipcPrefix;
+	int portOffset;
 
 	ArgsData() :
-		logLevel(-1)
+		logLevel(-1),
+		portOffset(-1)
 	{
 	}
 };
@@ -75,6 +78,10 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(logLevelOption);
 	const QCommandLineOption verboseOption("verbose", "Verbose output. Same as --loglevel=3.");
 	parser->addOption(verboseOption);
+	const QCommandLineOption ipcPrefixOption("ipc-prefix", "Override ipc_prefix config option.", "prefix");
+	parser->addOption(ipcPrefixOption);
+	const QCommandLineOption portOffsetOption("port-offset", "Override port_offset config option.", "offset");
+	parser->addOption(portOffsetOption);
 	const QCommandLineOption helpOption = parser->addHelpOption();
 	const QCommandLineOption versionOption = parser->addVersionOption();
 
@@ -111,6 +118,22 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 
 	if(parser->isSet(verboseOption))
 		args->logLevel = 3;
+
+	if(parser->isSet(ipcPrefixOption))
+		args->ipcPrefix = parser->value(ipcPrefixOption);
+
+	if(parser->isSet(portOffsetOption))
+	{
+		bool ok;
+		int x = parser->value(portOffsetOption).toInt(&ok);
+		if(!ok || x < 0)
+		{
+			*errorMessage = "error: port-offset must be greater than or equal to 0";
+			return CommandLineError;
+		}
+
+		args->portOffset = x;
+	}
 
 	return CommandLineOk;
 }
@@ -193,6 +216,12 @@ public:
 		}
 
 		Settings settings(configFile);
+
+		if(!args.ipcPrefix.isEmpty())
+			settings.setIpcPrefix(args.ipcPrefix);
+
+		if(args.portOffset != -1)
+			settings.setPortOffset(args.portOffset);
 
 		QStringList m2a_in_stream_specs = settings.value("handler/m2a_in_stream_specs").toStringList();
 		trimlist(&m2a_in_stream_specs);

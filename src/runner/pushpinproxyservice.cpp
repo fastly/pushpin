@@ -27,6 +27,8 @@ PushpinProxyService::PushpinProxyService(
 	const QString &configFile,
 	const QString &runDir,
 	const QString &logDir,
+	const QString &ipcPrefix,
+	const QString &filePrefix,
 	bool verbose,
 	QObject *parent) :
 	Service(parent)
@@ -34,9 +36,12 @@ PushpinProxyService::PushpinProxyService(
 	args_ += binFile;
 	args_ += "--config=" + configFile;
 
+	if(!ipcPrefix.isEmpty())
+		args_ += "--ipc-prefix=" + ipcPrefix;
+
 	if(!logDir.isEmpty())
 	{
-		args_ += "--logfile=" + QDir(logDir).filePath("pushpin-proxy.log");
+		args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "pushpin-proxy.log");
 		setStandardOutputFile(QProcess::nullDevice());
 	}
 
@@ -44,7 +49,7 @@ PushpinProxyService::PushpinProxyService(
 		args_ += "--verbose";
 
 	setName("proxy");
-	setPidFile(QDir(runDir).filePath("pushpin-proxy.pid"));
+	setPidFile(QDir(runDir).filePath(filePrefix + "pushpin-proxy.pid"));
 }
 
 QStringList PushpinProxyService::arguments() const

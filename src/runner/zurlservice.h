@@ -32,6 +32,8 @@ public:
 		const QString &configTemplateFile,
 		const QString &runDir,
 		const QString &logDir,
+		const QString &ipcPrefix,
+		const QString &filePrefix,
 		bool verbose,
 		QObject *parent = 0);
 
@@ -44,6 +46,8 @@ public:
 private:
 	QString configTemplateFile_;
 	QString runDir_;
+	QString ipcPrefix_;
+	QString filePrefix_;
 	QStringList args_;
 };
 

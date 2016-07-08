@@ -32,6 +32,8 @@ public:
 		const QString &configFile,
 		const QString &runDir,
 		const QString &logDir,
+		const QString &ipcPrefix,
+		const QString &filePrefix,
 		bool verbose,
 		QObject *parent = 0);
 

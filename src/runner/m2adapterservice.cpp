@@ -30,17 +30,19 @@ M2AdapterService::M2AdapterService(
 	const QString &configTemplateFile,
 	const QString &runDir,
 	const QString &logDir,
+	const QString &ipcPrefix,
+	const QString &filePrefix,
 	bool verbose,
 	const QList<int> &ports,
 	QObject *parent) :
 	Service(parent)
 {
 	args_ += binFile;
-	args_ += "--config=" + QDir(runDir).filePath("m2adapter.conf");
+	args_ += "--config=" + QDir(runDir).filePath(filePrefix + "m2adapter.conf");
 
 	if(!logDir.isEmpty())
 	{
-		args_ += "--logfile=" + QDir(logDir).filePath("m2adapter.log");
+		args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "m2adapter.log");
 		setStandardOutputFile(QProcess::nullDevice());
 	}
 
@@ -49,10 +51,12 @@ M2AdapterService::M2AdapterService(
 
 	configTemplateFile_ = configTemplateFile;
 	runDir_ = runDir;
+	ipcPrefix_ = ipcPrefix;
+	filePrefix_ = filePrefix;
 	ports_ = ports;
 
 	setName("m2a");
-	setPidFile(QDir(runDir).filePath("m2adapter.pid"));
+	setPidFile(QDir(runDir).filePath(filePrefix + "m2adapter.pid"));
 }
 
 QStringList M2AdapterService::arguments() const
@@ -67,25 +71,17 @@ bool M2AdapterService::acceptSighup() const
 
 bool M2AdapterService::preStart()
 {
-	QVariantList instances;
+	QVariantList portStrs;
 	foreach(int port, ports_)
-	{
-		QString portStr = QString::number(port);
-
-		QVariantMap i;
-		i["send_spec"] = QString("ipc://%1/pushpin-m2-out-%2").arg(runDir_, portStr);
-		i["recv_spec"] = QString("ipc://%1/pushpin-m2-in-%2").arg(runDir_, portStr);
-		i["send_ident"] = QString("pushpin-m2-%1").arg(portStr);
-		i["control_spec"] = QString("ipc://%1/pushpin-m2-control-%2").arg(runDir_, portStr);
-		instances.append(i);
-	}
+		portStrs += QString::number(port);
 
 	QVariantMap context;
-	context["instances"] = instances;
+	context["ports"] = portStrs;
 	context["rundir"] = runDir_;
+	context["ipc_prefix"] = ipcPrefix_;
 
 	QString error;
-	if(!Template::renderFile(configTemplateFile_, QDir(runDir_).filePath("m2adapter.conf"), context, &error))
+	if(!Template::renderFile(configTemplateFile_, QDir(runDir_).filePath(filePrefix_ + "m2adapter.conf"), context, &error))
 	{
 		log_error("Failed to generate m2adapter config file: %s", qPrintable(error));
 		return false;

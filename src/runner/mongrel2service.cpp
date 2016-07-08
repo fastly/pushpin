@@ -30,6 +30,7 @@ Mongrel2Service::Mongrel2Service(
 	const QString &configFile,
 	const QString &serverName,
 	const QString &logDir,
+	const QString &filePrefix,
 	int port,
 	bool ssl,
 	QObject *parent) :
@@ -40,30 +41,32 @@ Mongrel2Service::Mongrel2Service(
 	args_ += serverName;
 
 	setName(QString("m2 %1:%2").arg(ssl ? "https" : "http", QString::number(port)));
-	setStandardOutputFile(QDir(logDir).filePath("mongrel2_" + QString::number(port) + ".log"));
+	setStandardOutputFile(QDir(logDir).filePath(filePrefix + "mongrel2_" + QString::number(port) + ".log"));
 }
 
-bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &certsDir, const QList<Interface> &interfaces)
+bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, const QList<Interface> &interfaces)
 {
-	QVariantList ports;
+	QVariantList vinterfaces;
 
 	foreach(const Interface &i, interfaces)
 	{
-		QVariantMap port;
-		port["value"] = i.port;
-		port["addr"] = (!i.addr.isNull() ? i.addr.toString() : QString("0.0.0.0"));
-		port["ssl"] = i.ssl;
-		ports.append(port);
+		QVariantMap v;
+		v["addr"] = (!i.addr.isNull() ? i.addr.toString() : QString("0.0.0.0"));
+		v["port"] = i.port;
+		v["ssl"] = i.ssl;
+		vinterfaces += v;
 	}
 
 	QVariantMap context;
-	context["ports"] = ports;
+	context["interfaces"] = vinterfaces;
 	context["rundir"] = runDir;
 	context["logdir"] = logDir;
 	context["certdir"] = certsDir;
+	context["ipc_prefix"] = ipcPrefix;
+	context["file_prefix"] = filePrefix;
 
 	QString error;
-	if(!Template::renderFile(configTemplateFile, QDir(runDir).filePath("mongrel2.conf"), context, &error))
+	if(!Template::renderFile(configTemplateFile, QDir(runDir).filePath(filePrefix + "mongrel2.conf"), context, &error))
 	{
 		log_error("Failed to generate mongrel2 config file: %s", qPrintable(error));
 		return false;
@@ -71,8 +74,8 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 
 	QStringList args;
 	args << "load";
-	args << "-config" << QDir(runDir).filePath("mongrel2.conf");
-	args << "-db" << QDir(runDir).filePath("mongrel2.sqlite");
+	args << "-config" << QDir(runDir).filePath(filePrefix + "mongrel2.conf");
+	args << "-db" << QDir(runDir).filePath(filePrefix + "mongrel2.sqlite");
 
 	int ret = QProcess::execute(m2shBinFile, args);
 	if(ret != 0)

@@ -54,11 +54,12 @@ public:
 		const QString &configFile,
 		const QString &serverName,
 		const QString &logDir,
+		const QString &filePrefix,
 		int port,
 		bool ssl,
 		QObject *parent = 0);
 
-	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &certsDir, const QList<Interface> &interfaces);
+	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, const QList<Interface> &interfaces);
 
 	// reimplemented
 
@@ -67,6 +68,7 @@ public:
 
 private:
 	QStringList args_;
+	QString prefix_;
 };
 
 #endif

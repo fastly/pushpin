@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QCoreApplication>
+#include <QCommandLineParser>
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
@@ -85,6 +86,7 @@ public:
 	QString configFile;
 	QString logFile;
 	int logLevel;
+	QString ipcPrefix;
 
 	ArgsData() :
 		logLevel(-1)
@@ -103,6 +105,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(logLevelOption);
 	const QCommandLineOption verboseOption("verbose", "Verbose output. Same as --loglevel=3.");
 	parser->addOption(verboseOption);
+	const QCommandLineOption ipcPrefixOption("ipc-prefix", "Override ipc_prefix config option.", "prefix");
+	parser->addOption(ipcPrefixOption);
 	const QCommandLineOption helpOption = parser->addHelpOption();
 	const QCommandLineOption versionOption = parser->addVersionOption();
 
@@ -139,6 +143,9 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 
 	if(parser->isSet(verboseOption))
 		args->logLevel = 3;
+
+	if(parser->isSet(ipcPrefixOption))
+		args->ipcPrefix = parser->value(ipcPrefixOption);
 
 	return CommandLineOk;
 }
@@ -221,6 +228,9 @@ public:
 		}
 
 		Settings settings(configFile);
+
+		if(!args.ipcPrefix.isEmpty())
+			settings.setIpcPrefix(args.ipcPrefix);
 
 		QStringList m2a_in_specs = settings.value("proxy/m2a_in_specs").toStringList();
 		trimlist(&m2a_in_specs);

@@ -29,16 +29,18 @@ ZurlService::ZurlService(
 	const QString &configTemplateFile,
 	const QString &runDir,
 	const QString &logDir,
+	const QString &ipcPrefix,
+	const QString &filePrefix,
 	bool verbose,
 	QObject *parent) :
 	Service(parent)
 {
 	args_ += binFile;
-	args_ += "--config=" + QDir(runDir).filePath("zurl.conf");
+	args_ += "--config=" + QDir(runDir).filePath(filePrefix + "zurl.conf");
 
 	if(!logDir.isEmpty())
 	{
-		args_ += "--logfile=" + QDir(logDir).filePath("zurl.log");
+		args_ += "--logfile=" + QDir(logDir).filePath(filePrefix + "zurl.log");
 		setStandardOutputFile(QProcess::nullDevice());
 	}
 
@@ -47,9 +49,11 @@ ZurlService::ZurlService(
 
 	configTemplateFile_ = configTemplateFile;
 	runDir_ = runDir;
+	ipcPrefix_ = ipcPrefix;
+	filePrefix_ = filePrefix;
 
 	setName("zurl");
-	setPidFile(QDir(runDir).filePath("zurl.pid"));
+	setPidFile(QDir(runDir).filePath(filePrefix + "zurl.pid"));
 }
 
 QStringList ZurlService::arguments() const
@@ -66,9 +70,10 @@ bool ZurlService::preStart()
 {
 	QVariantMap context;
 	context["rundir"] = runDir_;
+	context["ipc_prefix"] = ipcPrefix_;
 
 	QString error;
-	if(!Template::renderFile(configTemplateFile_, QDir(runDir_).filePath("zurl.conf"), context, &error))
+	if(!Template::renderFile(configTemplateFile_, QDir(runDir_).filePath(filePrefix_ + "zurl.conf"), context, &error))
 	{
 		log_error("Failed to generate zurl config file: %s", qPrintable(error));
 		return false;
