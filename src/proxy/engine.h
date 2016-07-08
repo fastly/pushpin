@@ -52,6 +52,7 @@ public:
 		int inspectTimeout;
 		int inspectPrefetch;
 		QString routesFile;
+		QStringList routeLines;
 		bool autoCrossOrigin;
 		bool acceptXForwardedProtocol;
 		bool useXForwardedProtocol;

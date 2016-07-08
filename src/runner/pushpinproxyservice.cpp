@@ -30,6 +30,7 @@ PushpinProxyService::PushpinProxyService(
 	const QString &ipcPrefix,
 	const QString &filePrefix,
 	bool verbose,
+	const QStringList &routeLines,
 	QObject *parent) :
 	Service(parent)
 {
@@ -47,6 +48,9 @@ PushpinProxyService::PushpinProxyService(
 
 	if(verbose)
 		args_ += "--verbose";
+
+	foreach(const QString &route, routeLines)
+		args_ += "--route=" + route;
 
 	setName("proxy");
 	setPidFile(QDir(runDir).filePath(filePrefix + "pushpin-proxy.pid"));

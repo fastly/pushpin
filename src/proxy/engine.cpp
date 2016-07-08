@@ -164,7 +164,15 @@ public:
 	{
 		config = _config;
 
-		domainMap = new DomainMap(config.routesFile);
+		if(!config.routeLines.isEmpty())
+		{
+			domainMap = new DomainMap(this);
+			foreach(const QString &line, config.routeLines)
+				domainMap->addRouteLine(line);
+		}
+		else
+			domainMap = new DomainMap(config.routesFile, this);
+
 		connect(domainMap, SIGNAL(changed()), SLOT(domainMap_changed()));
 
 		zhttpIn = new ZhttpManager(this);

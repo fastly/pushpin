@@ -87,6 +87,7 @@ public:
 	QString logFile;
 	int logLevel;
 	QString ipcPrefix;
+	QStringList routeLines;
 
 	ArgsData() :
 		logLevel(-1)
@@ -107,6 +108,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(verboseOption);
 	const QCommandLineOption ipcPrefixOption("ipc-prefix", "Override ipc_prefix config option.", "prefix");
 	parser->addOption(ipcPrefixOption);
+	const QCommandLineOption routeOption("route", "Add route (overrides routes file).", "line");
+	parser->addOption(routeOption);
 	const QCommandLineOption helpOption = parser->addHelpOption();
 	const QCommandLineOption versionOption = parser->addVersionOption();
 
@@ -146,6 +149,12 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 
 	if(parser->isSet(ipcPrefixOption))
 		args->ipcPrefix = parser->value(ipcPrefixOption);
+
+	if(parser->isSet(routeOption))
+	{
+		foreach(const QString &r, parser->values(routeOption))
+			args->routeLines += r;
+	}
 
 	return CommandLineOk;
 }
@@ -302,7 +311,10 @@ public:
 		config.commandSpec = command_spec;
 		config.ipcFileMode = ipcFileMode;
 		config.maxWorkers = maxWorkers;
-		config.routesFile = routesFile;
+		if(!args.routeLines.isEmpty())
+			config.routeLines = args.routeLines;
+		else
+			config.routesFile = routesFile;
 		config.autoCrossOrigin = autoCrossOrigin;
 		config.acceptXForwardedProtocol = acceptXForwardedProtocol;
 		config.useXForwardedProtocol = useXForwardedProtocol;

@@ -149,6 +149,7 @@ public:
 		}
 	};
 
+	DomainMap(QObject *parent = 0);
 	DomainMap(const QString &fileName, QObject *parent = 0);
 	~DomainMap();
 
@@ -159,6 +160,8 @@ public:
 	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
 
 	QList<ZhttpRoute> zhttpRoutes() const;
+
+	bool addRouteLine(const QString &line);
 
 signals:
 	void changed();

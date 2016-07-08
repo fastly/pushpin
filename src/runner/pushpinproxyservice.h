@@ -35,6 +35,7 @@ public:
 		const QString &ipcPrefix,
 		const QString &filePrefix,
 		bool verbose,
+		const QStringList &routeLines,
 		QObject *parent = 0);
 
 	// reimplemented

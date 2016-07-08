@@ -114,6 +114,8 @@ public:
 	class Rule
 	{
 	public:
+		QString domain;
+
 		int proto; // -1=unspecified, 0=http, 1=websocket
 		QByteArray pathBeg;
 		int ssl; // -1=unspecified, 0=no, 1=yes
@@ -245,271 +247,18 @@ public:
 			if(line.isEmpty())
 				continue;
 
-			QStringList parts = line.split(' ', QString::SkipEmptyParts);
-			if(parts.count() < 2)
-			{
-				log_warning("%s:%d: must specify rule and at least one target", qPrintable(fileName), lineNum);
-				continue;
-			}
-
-			QString val;
-			QHash<QString, QString> props;
-			QString errmsg;
-			if(!parseItem(parts[0], &val, &props, &errmsg))
-			{
-				log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
-				continue;
-			}
-
-			if(val == "*")
-				val = QString();
-
-			QString domain = val;
-
 			Rule r;
-
-			r.jsonpConfig.mode = JsonpConfig::Extended;
-
-			if(props.contains("proto"))
+			if(!parseRouteLine(line, fileName, lineNum, &r))
 			{
-				val = props.value("proto");
-				if(val == "http")
-					r.proto = 0;
-				else if(val == "ws")
-					r.proto = 1;
-				else
-				{
-					log_warning("%s:%d: proto must be set to 'http' or 'ws'", qPrintable(fileName), lineNum);
-					continue;
-				}
-			}
-
-			if(props.contains("ssl"))
-			{
-				val = props.value("ssl");
-				if(val == "yes")
-					r.ssl = 1;
-				else if(val == "no")
-					r.ssl = 0;
-				else
-				{
-					log_warning("%s:%d: ssl must be set to 'yes' or 'no'", qPrintable(fileName), lineNum);
-					continue;
-				}
-			}
-
-			if(props.contains("id"))
-			{
-				r.id = props.value("id").toUtf8();
-			}
-
-			if(props.contains("path_beg"))
-			{
-				QString pathBeg = props.value("path_beg");
-				if(pathBeg.isEmpty())
-				{
-					log_warning("%s:%d: path_beg cannot be empty", qPrintable(fileName), lineNum);
-					continue;
-				}
-
-				r.pathBeg = pathBeg.toUtf8();
-			}
-
-			if(props.contains("sig_iss"))
-			{
-				r.sigIss = props.value("sig_iss").toUtf8();
-			}
-
-			if(props.contains("sig_key"))
-			{
-				r.sigKey = parse_key(props.value("sig_key"));
-			}
-
-			if(props.contains("prefix"))
-			{
-				r.prefix = props.value("prefix").toUtf8();
-			}
-
-			if(props.contains("orig_headers"))
-			{
-				r.origHeaders = true;
-			}
-
-			if(props.contains("as_host"))
-			{
-				r.asHost = props.value("as_host");
-			}
-
-			if(props.contains("path_rem"))
-			{
-				r.pathRemove = props.value("path_rem").toInt();
-			}
-
-			if(props.contains("replace_beg"))
-			{
-				r.pathRemove = r.pathBeg.length();
-				r.pathPrepend = props.value("replace_beg").toUtf8();
-			}
-
-			if(props.contains("aco"))
-				r.autoCrossOrigin = true;
-
-			if(props.contains("jsonp_mode"))
-			{
-				val = props.value("jsonp_mode");
-				if(val == "basic")
-					r.jsonpConfig.mode = JsonpConfig::Basic;
-				else if(val == "extended")
-					r.jsonpConfig.mode = JsonpConfig::Extended;
-				else
-				{
-					log_warning("%s:%d: jsonp_mode must be set to 'basic' or 'extended'", qPrintable(fileName), lineNum);
-					continue;
-				}
-			}
-
-			if(props.contains("jsonp_cb"))
-				r.jsonpConfig.callbackParam = props.value("jsonp_cb").toUtf8();
-
-			if(props.contains("jsonp_body"))
-				r.jsonpConfig.bodyParam = props.value("jsonp_body").toUtf8();
-
-			if(props.contains("jsonp_defcb"))
-				r.jsonpConfig.defaultCallback = props.value("jsonp_defcb").toUtf8();
-
-			if(r.jsonpConfig.mode == JsonpConfig::Basic)
-				r.jsonpConfig.defaultMethod = "POST";
-			else // Extended
-				r.jsonpConfig.defaultMethod = "GET";
-
-			if(props.contains("jsonp_defmethod"))
-				r.jsonpConfig.defaultMethod = props.value("jsonp_defmethod");
-
-			if(props.contains("session"))
-				r.session = true;
-
-			if(props.contains("sockjs"))
-				r.sockJsPath = props.value("sockjs").toUtf8();
-
-			if(props.contains("sockjs_as_path"))
-				r.sockJsAsPath = props.value("sockjs_as_path").toUtf8();
-
-			QList<Rule> *rules = 0;
-			if(newmap.contains(domain))
-			{
-				rules = &newmap[domain];
-				bool found = false;
-				foreach(const Rule &b, *rules)
-				{
-					if(b.compare(r))
-					{
-						found = true;
-						break;
-					}
-				}
-
-				if(found)
-				{
-					log_warning("%s:%d skipping duplicate condition", qPrintable(fileName), lineNum);
-					continue;
-				}
-			}
-
-			bool ok = true;
-			for(int n = 1; n < parts.count(); ++n)
-			{
-				if(!parseItem(parts[n], &val, &props, &errmsg))
-				{
-					log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
-					ok = false;
-					break;
-				}
-
-				Target target;
-
-				if(val == "test")
-				{
-					target.type = Target::Test;
-				}
-				else if(val.startsWith("zhttp/"))
-				{
-					target.type = Target::Custom;
-
-					target.zhttpRoute.baseSpec = val.mid(6);
-				}
-				else if(val.startsWith("zhttpreq/"))
-				{
-					target.type = Target::Custom;
-
-					target.zhttpRoute.baseSpec = val.mid(9);
-					target.zhttpRoute.req = true;
-				}
-				else
-				{
-					target.type = Target::Default;
-
-					int at = val.indexOf(':');
-					if(at == -1)
-					{
-						log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
-						ok = false;
-						break;
-					}
-
-					QString sport = val.mid(at + 1);
-					int port = sport.toInt(&ok);
-					if(!ok || port < 1 || port > 65535)
-					{
-						log_warning("%s:%d: target invalid port", qPrintable(fileName), lineNum);
-						ok = false;
-						break;
-					}
-
-					target.connectHost = parts[n].mid(0, at);
-					target.connectPort = port;
-				}
-
-				if(props.contains("ssl"))
-					target.ssl = true;
-
-				if(props.contains("untrusted"))
-					target.trusted = false;
-				else
-					target.trusted = true;
-
-				if(props.contains("insecure"))
-					target.insecure = true;
-
-				if(props.contains("host"))
-					target.host = props.value("host");
-
-				if(props.contains("sub"))
-					target.subChannel = props.value("sub");
-
-				if(props.contains("over_http"))
-					target.overHttp = true;
-
-				if(props.contains("ipc_file_mode"))
-				{
-					bool ok;
-					int x = props.value("ipc_file_mode").toInt(&ok, 8);
-					if(ok && x >= 0)
-						target.zhttpRoute.ipcFileMode = x;
-				}
-
-				r.targets += target;
-			}
-
-			if(!ok)
+				// parseRouteLine will have logged a message if needed
 				continue;
-
-			if(!rules)
-			{
-				newmap.insert(domain, QList<Rule>());
-				rules = &newmap[domain];
 			}
 
-			*rules += r;
+			if(!addRuleToMap(&newmap, r))
+			{
+				log_warning("%s:%d skipping duplicate condition", qPrintable(fileName), lineNum);
+				continue;
+			}
 		}
 
 		log_debug("routes map:");
@@ -550,6 +299,19 @@ public:
 		QMetaObject::invokeMethod(this, "changed", Qt::QueuedConnection);
 	}
 
+	// mutex must be locked when calling this method
+	bool addRouteLine(const QString &line)
+	{
+		Rule r;
+		if(!parseRouteLine(line, "<route>", 1, &r))
+			return false;
+
+		if(!addRuleToMap(&map, r))
+			return false;
+
+		return true;
+	}
+
 signals:
 	void started();
 	void changed();
@@ -557,11 +319,14 @@ signals:
 public slots:
 	void start()
 	{
-		QFileSystemWatcher *watcher = new QFileSystemWatcher(this);
-		connect(watcher, SIGNAL(fileChanged(const QString &)), SLOT(fileChanged(const QString &)));
-		watcher->addPath(fileName);
+		if(!fileName.isEmpty())
+		{
+			QFileSystemWatcher *watcher = new QFileSystemWatcher(this);
+			connect(watcher, SIGNAL(fileChanged(const QString &)), SLOT(fileChanged(const QString &)));
+			watcher->addPath(fileName);
 
-		reload();
+			reload();
+		}
 
 		emit started();
 	}
@@ -582,6 +347,279 @@ public slots:
 	void doReload()
 	{
 		reload();
+	}
+
+private:
+	static bool parseRouteLine(const QString &line, const QString &fileName, int lineNum, Rule *rule)
+	{
+		QStringList parts = line.split(' ', QString::SkipEmptyParts);
+		if(parts.count() < 2)
+		{
+			log_warning("%s:%d: must specify rule and at least one target", qPrintable(fileName), lineNum);
+			return false;
+		}
+
+		QString val;
+		QHash<QString, QString> props;
+		QString errmsg;
+		if(!parseItem(parts[0], &val, &props, &errmsg))
+		{
+			log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
+			return false;
+		}
+
+		if(val == "*")
+			val = QString();
+
+		Rule r;
+		r.domain = val;
+
+		r.jsonpConfig.mode = JsonpConfig::Extended;
+
+		if(props.contains("proto"))
+		{
+			val = props.value("proto");
+			if(val == "http")
+				r.proto = 0;
+			else if(val == "ws")
+				r.proto = 1;
+			else
+			{
+				log_warning("%s:%d: proto must be set to 'http' or 'ws'", qPrintable(fileName), lineNum);
+				return false;
+			}
+		}
+
+		if(props.contains("ssl"))
+		{
+			val = props.value("ssl");
+			if(val == "yes")
+				r.ssl = 1;
+			else if(val == "no")
+				r.ssl = 0;
+			else
+			{
+				log_warning("%s:%d: ssl must be set to 'yes' or 'no'", qPrintable(fileName), lineNum);
+				return false;
+			}
+		}
+
+		if(props.contains("id"))
+		{
+			r.id = props.value("id").toUtf8();
+		}
+
+		if(props.contains("path_beg"))
+		{
+			QString pathBeg = props.value("path_beg");
+			if(pathBeg.isEmpty())
+			{
+				log_warning("%s:%d: path_beg cannot be empty", qPrintable(fileName), lineNum);
+				return false;
+			}
+
+			r.pathBeg = pathBeg.toUtf8();
+		}
+
+		if(props.contains("sig_iss"))
+		{
+			r.sigIss = props.value("sig_iss").toUtf8();
+		}
+
+		if(props.contains("sig_key"))
+		{
+			r.sigKey = parse_key(props.value("sig_key"));
+		}
+
+		if(props.contains("prefix"))
+		{
+			r.prefix = props.value("prefix").toUtf8();
+		}
+
+		if(props.contains("orig_headers"))
+		{
+			r.origHeaders = true;
+		}
+
+		if(props.contains("as_host"))
+		{
+			r.asHost = props.value("as_host");
+		}
+
+		if(props.contains("path_rem"))
+		{
+			r.pathRemove = props.value("path_rem").toInt();
+		}
+
+		if(props.contains("replace_beg"))
+		{
+			r.pathRemove = r.pathBeg.length();
+			r.pathPrepend = props.value("replace_beg").toUtf8();
+		}
+
+		if(props.contains("aco"))
+			r.autoCrossOrigin = true;
+
+		if(props.contains("jsonp_mode"))
+		{
+			val = props.value("jsonp_mode");
+			if(val == "basic")
+				r.jsonpConfig.mode = JsonpConfig::Basic;
+			else if(val == "extended")
+				r.jsonpConfig.mode = JsonpConfig::Extended;
+			else
+			{
+				log_warning("%s:%d: jsonp_mode must be set to 'basic' or 'extended'", qPrintable(fileName), lineNum);
+				return false;
+			}
+		}
+
+		if(props.contains("jsonp_cb"))
+			r.jsonpConfig.callbackParam = props.value("jsonp_cb").toUtf8();
+
+		if(props.contains("jsonp_body"))
+			r.jsonpConfig.bodyParam = props.value("jsonp_body").toUtf8();
+
+		if(props.contains("jsonp_defcb"))
+			r.jsonpConfig.defaultCallback = props.value("jsonp_defcb").toUtf8();
+
+		if(r.jsonpConfig.mode == JsonpConfig::Basic)
+			r.jsonpConfig.defaultMethod = "POST";
+		else // Extended
+			r.jsonpConfig.defaultMethod = "GET";
+
+		if(props.contains("jsonp_defmethod"))
+			r.jsonpConfig.defaultMethod = props.value("jsonp_defmethod");
+
+		if(props.contains("session"))
+			r.session = true;
+
+		if(props.contains("sockjs"))
+			r.sockJsPath = props.value("sockjs").toUtf8();
+
+		if(props.contains("sockjs_as_path"))
+			r.sockJsAsPath = props.value("sockjs_as_path").toUtf8();
+
+		bool ok = true;
+		for(int n = 1; n < parts.count(); ++n)
+		{
+			if(!parseItem(parts[n], &val, &props, &errmsg))
+			{
+				log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
+				ok = false;
+				break;
+			}
+
+			Target target;
+
+			if(val == "test")
+			{
+				target.type = Target::Test;
+			}
+			else if(val.startsWith("zhttp/"))
+			{
+				target.type = Target::Custom;
+
+				target.zhttpRoute.baseSpec = val.mid(6);
+			}
+			else if(val.startsWith("zhttpreq/"))
+			{
+				target.type = Target::Custom;
+
+				target.zhttpRoute.baseSpec = val.mid(9);
+				target.zhttpRoute.req = true;
+			}
+			else
+			{
+				target.type = Target::Default;
+
+				int at = val.indexOf(':');
+				if(at == -1)
+				{
+					log_warning("%s:%d: target bad format", qPrintable(fileName), lineNum);
+					ok = false;
+					break;
+				}
+
+				QString sport = val.mid(at + 1);
+				int port = sport.toInt(&ok);
+				if(!ok || port < 1 || port > 65535)
+				{
+					log_warning("%s:%d: target invalid port", qPrintable(fileName), lineNum);
+					ok = false;
+					break;
+				}
+
+				target.connectHost = parts[n].mid(0, at);
+				target.connectPort = port;
+			}
+
+			if(props.contains("ssl"))
+				target.ssl = true;
+
+			if(props.contains("untrusted"))
+				target.trusted = false;
+			else
+				target.trusted = true;
+
+			if(props.contains("insecure"))
+				target.insecure = true;
+
+			if(props.contains("host"))
+				target.host = props.value("host");
+
+			if(props.contains("sub"))
+				target.subChannel = props.value("sub");
+
+			if(props.contains("over_http"))
+				target.overHttp = true;
+
+			if(props.contains("ipc_file_mode"))
+			{
+				bool ok_;
+				int x = props.value("ipc_file_mode").toInt(&ok_, 8);
+				if(ok_ && x >= 0)
+					target.zhttpRoute.ipcFileMode = x;
+			}
+
+			r.targets += target;
+		}
+
+		if(!ok)
+			return false;
+
+		*rule = r;
+		return true;
+	}
+
+	static bool addRuleToMap(QHash< QString,QList<Rule> > *m, const Rule &r)
+	{
+		QList<Rule> *rules = 0;
+		if(m->contains(r.domain))
+		{
+			rules = &((*m)[r.domain]);
+			bool found = false;
+			foreach(const Rule &b, *rules)
+			{
+				if(b.compare(r))
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if(found)
+				return false;
+		}
+
+		if(!rules)
+		{
+			m->insert(r.domain, QList<Rule>());
+			rules = &((*m)[r.domain]);
+		}
+
+		*rules += r;
+		return true;
 	}
 };
 
@@ -646,7 +684,7 @@ public:
 		delete thread;
 	}
 
-	void start(const QString &fileName)
+	void start(const QString &fileName = QString())
 	{
 		thread = new Thread;
 		thread->fileName = fileName;
@@ -662,6 +700,13 @@ public slots:
 		emit q->changed();
 	}
 };
+
+DomainMap::DomainMap(QObject *parent) :
+	QObject(parent)
+{
+	d = new Private(this);
+	d->start();
+}
 
 DomainMap::DomainMap(const QString &fileName, QObject *parent) :
 	QObject(parent)
@@ -732,6 +777,12 @@ QList<DomainMap::ZhttpRoute> DomainMap::zhttpRoutes() const
 	}
 
 	return out;
+}
+
+bool DomainMap::addRouteLine(const QString &line)
+{
+	QMutexLocker locker(&d->thread->worker->m);
+	return d->thread->worker->addRouteLine(line);
 }
 
 #include "domainmap.moc"

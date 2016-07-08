@@ -82,6 +82,7 @@ public:
 	bool mergeOutput;
 	QPair<QHostAddress,int> port;
 	int id;
+	QStringList routeLines;
 
 	ArgsData() :
 		logLevel(-1),
@@ -108,6 +109,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(portOption);
 	const QCommandLineOption idOption("id", "Set instance ID (needed to run multiple instances).", "x");
 	parser->addOption(idOption);
+	const QCommandLineOption routeOption("route", "Add route (overrides routes file).", "line");
+	parser->addOption(routeOption);
 	const QCommandLineOption helpOption = parser->addHelpOption();
 	const QCommandLineOption versionOption = parser->addVersionOption();
 
@@ -169,6 +172,12 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 		}
 
 		args->id = x;
+	}
+
+	if(parser->isSet(routeOption))
+	{
+		foreach(const QString &r, parser->values(routeOption))
+			args->routeLines += r;
 	}
 
 	return CommandLineOk;
@@ -446,7 +455,7 @@ public:
 		}
 
 		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, this);
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, args.routeLines, this);
 
 		if(serviceNames.contains("pushpin-handler"))
 			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevel >= 3, this);
