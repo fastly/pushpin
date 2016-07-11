@@ -359,6 +359,7 @@ public:
 	HttpResponseData response;
 	ZhttpRequest *req;
 	QHash<QString, QString> meta;
+	bool debug;
 	bool autoCrossOrigin;
 	QByteArray jsonpCallback;
 	bool jsonpExtendedResponse;
@@ -374,6 +375,7 @@ public:
 	Hold(ZhttpRequest *_req, StatsManager *_stats, QObject *parent = 0) :
 		QObject(parent),
 		req(_req),
+		debug(false),
 		autoCrossOrigin(false),
 		jsonpExtendedResponse(false),
 		timeout(-1),
@@ -1292,6 +1294,7 @@ private:
 					rpreq.rid = rs.rid;
 					rpreq.https = rs.isHttps;
 					rpreq.peerAddress = rs.peerAddress;
+					rpreq.debug = rs.debug;
 					rpreq.autoCrossOrigin = rs.autoCrossOrigin;
 					rpreq.jsonpCallback = rs.jsonpCallback;
 					rpreq.jsonpExtendedResponse = rs.jsonpExtendedResponse;
@@ -1355,6 +1358,7 @@ private:
 			hold->mode = instruct.holdMode;
 			hold->requestData = requestData;
 			hold->response = instruct.response;
+			hold->debug = rs.debug;
 			hold->autoCrossOrigin = rs.autoCrossOrigin;
 			hold->jsonpCallback = rs.jsonpCallback;
 			hold->jsonpExtendedResponse = rs.jsonpExtendedResponse;

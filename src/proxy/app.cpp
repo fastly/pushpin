@@ -264,6 +264,7 @@ public:
 		int ipcFileMode = settings.value("proxy/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		int maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesFile = settings.value("proxy/routesfile").toString();
+		bool debug = settings.value("proxy/debug").toBool();
 		bool autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
 		bool acceptXForwardedProtocol = settings.value("proxy/accept_x_forwarded_protocol").toBool();
 		bool useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
@@ -315,6 +316,7 @@ public:
 			config.routeLines = args.routeLines;
 		else
 			config.routesFile = routesFile;
+		config.debug = debug;
 		config.autoCrossOrigin = autoCrossOrigin;
 		config.acceptXForwardedProtocol = acceptXForwardedProtocol;
 		config.useXForwardedProtocol = useXForwardedProtocol;

@@ -128,6 +128,7 @@ public:
 		QString asHost;
 		int pathRemove;
 		QByteArray pathPrepend;
+		bool debug;
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
 		bool session;
@@ -140,6 +141,7 @@ public:
 			ssl(-1),
 			origHeaders(false),
 			pathRemove(0),
+			debug(false),
 			autoCrossOrigin(false),
 			session(false)
 		{
@@ -200,6 +202,7 @@ public:
 			e.asHost = asHost;
 			e.pathRemove = pathRemove;
 			e.pathPrepend = pathPrepend;
+			e.debug = debug;
 			e.autoCrossOrigin = autoCrossOrigin;
 			e.jsonpConfig = jsonpConfig;
 			e.session = session;
@@ -456,6 +459,9 @@ private:
 			r.pathRemove = r.pathBeg.length();
 			r.pathPrepend = props.value("replace_beg").toUtf8();
 		}
+
+		if(props.contains("debug"))
+			r.debug = true;
 
 		if(props.contains("aco"))
 			r.autoCrossOrigin = true;

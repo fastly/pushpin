@@ -1048,6 +1048,7 @@ public slots:
 				areq.rid = si->rs->rid();
 				areq.https = si->rs->isHttps();
 				areq.peerAddress = si->rs->peerAddress();
+				areq.debug = si->rs->debugEnabled();
 				areq.autoCrossOrigin = si->rs->autoCrossOrigin();
 				areq.jsonpCallback = si->rs->jsonpCallback();
 				areq.jsonpExtendedResponse = si->rs->jsonpExtendedResponse();

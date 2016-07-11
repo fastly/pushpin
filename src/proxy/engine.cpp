@@ -438,6 +438,7 @@ public:
 		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
 		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
 
+		rs->setDebugEnabled(config.debug);
 		rs->setAutoCrossOrigin(config.autoCrossOrigin);
 		rs->setPrefetchSize(config.inspectPrefetch);
 
@@ -723,7 +724,7 @@ private slots:
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse
 			//   stats processors tracking route+connection mappings.
-			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
+			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0, true);
 		}

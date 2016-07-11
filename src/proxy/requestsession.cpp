@@ -144,6 +144,7 @@ public:
 	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
 	DomainMap::Entry route;
+	bool debug;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
 	InspectData idata;
@@ -172,6 +173,7 @@ public:
 		inspectChecker(_inspectChecker),
 		acceptManager(_acceptManager),
 		zhttpRequest(0),
+		debug(false),
 		autoCrossOrigin(false),
 		inspectRequest(0),
 		acceptRequest(0),
@@ -240,8 +242,14 @@ public:
 		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
 		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
 
-		if(!route.isNull() && route.autoCrossOrigin)
-			autoCrossOrigin = true;
+		if(!route.isNull())
+		{
+			if(route.debug)
+				debug = true;
+
+			if(route.autoCrossOrigin)
+				autoCrossOrigin = true;
+		}
 
 		if(autoCrossOrigin)
 		{
@@ -729,6 +737,7 @@ public slots:
 			areq.rid = rid;
 			areq.https = zhttpRequest->requestUri().scheme() == "https";
 			areq.peerAddress = zhttpRequest->peerAddress();
+			areq.debug = debug;
 			areq.autoCrossOrigin = autoCrossOrigin;
 			areq.jsonpCallback = jsonpCallback;
 			areq.jsonpExtendedResponse = jsonpExtendedResponse;
@@ -1110,6 +1119,11 @@ int RequestSession::responseBodySize() const
 	return d->responseBodySize;
 }
 
+bool RequestSession::debugEnabled() const
+{
+	return d->debug;
+}
+
 bool RequestSession::autoCrossOrigin() const
 {
 	return d->autoCrossOrigin;
@@ -1140,6 +1154,11 @@ ZhttpRequest *RequestSession::request()
 	return d->zhttpRequest;
 }
 
+void RequestSession::setDebugEnabled(bool enabled)
+{
+	d->debug = enabled;
+}
+
 void RequestSession::setAutoCrossOrigin(bool enabled)
 {
 	d->autoCrossOrigin = enabled;
@@ -1155,11 +1174,12 @@ void RequestSession::start(ZhttpRequest *req)
 	d->start(req);
 }
 
-void RequestSession::startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse)
+void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse)
 {
 	d->isRetry = true;
 	d->zhttpRequest = req;
 	d->rid = req->rid();
+	d->debug = debug;
 	d->autoCrossOrigin = autoCrossOrigin;
 	d->jsonpCallback = jsonpCallback;
 	d->jsonpExtendedResponse = jsonpExtendedResponse;

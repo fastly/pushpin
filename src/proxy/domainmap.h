@@ -128,6 +128,7 @@ public:
 		QString asHost;
 		int pathRemove;
 		QByteArray pathPrepend;
+		bool debug;
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
 		bool session;
@@ -143,6 +144,7 @@ public:
 		Entry() :
 			origHeaders(false),
 			pathRemove(0),
+			debug(false),
 			autoCrossOrigin(false),
 			session(false)
 		{

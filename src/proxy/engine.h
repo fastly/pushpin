@@ -53,6 +53,7 @@ public:
 		int inspectPrefetch;
 		QString routesFile;
 		QStringList routeLines;
+		bool debug;
 		bool autoCrossOrigin;
 		bool acceptXForwardedProtocol;
 		bool useXForwardedProtocol;
@@ -71,6 +72,7 @@ public:
 			maxWorkers(-1),
 			inspectTimeout(8000),
 			inspectPrefetch(10000),
+			debug(false),
 			autoCrossOrigin(false),
 			acceptXForwardedProtocol(false),
 			useXForwardedProtocol(false),
