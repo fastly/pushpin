@@ -1,6 +1,15 @@
 Pushpin Changelog
 =================
 
+v. 1.11.0 (2016-07-11)
+
+  * Debug mode, to get more information about errors while proxying.
+  * Command line options for quick config: --port, --route.
+  * Command line option to easily run multiple instances: --id.
+  * Rewrite runner from Python to C++.
+  * Don't relay Content-Encoding (fixes compressed long-polling timeouts).
+  * Fixes to log output.
+
 v. 1.10.1 (2016-05-30)
 
   * Fix SockJS crash.
