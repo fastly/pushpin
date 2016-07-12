@@ -83,12 +83,13 @@ public:
 		manager->write(p);
 	}
 
-	void respondError(const QByteArray &condition)
+	void respondError(const QByteArray &condition, const QVariant &value)
 	{
 		ZrpcResponsePacket p;
 		p.id = id;
 		p.success = false;
 		p.condition = condition;
+		p.value = value;
 		manager->write(p);
 	}
 
@@ -111,7 +112,12 @@ public:
 		}
 		else
 		{
-			// TODO: packet.condition
+			if(packet.condition == "bad-format")
+				condition = ErrorFormat;
+			else
+				condition = ErrorGeneric;
+
+			result = packet.value;
 			q->onError();
 		}
 
@@ -210,20 +216,21 @@ void ZrpcRequest::start(const QString &method, const QVariantHash &args)
 	QMetaObject::invokeMethod(d, "doStart", Qt::QueuedConnection);
 }
 
-void ZrpcRequest::respond(const QVariant &value)
+void ZrpcRequest::respond(const QVariant &result)
 {
-	d->respond(value);
+	d->respond(result);
 }
 
-void ZrpcRequest::respondError(const QByteArray &condition)
+void ZrpcRequest::respondError(const QByteArray &condition, const QVariant &result)
 {
-	d->respondError(condition);
+	d->respondError(condition, result);
 }
 
-void ZrpcRequest::setError(ErrorCondition condition)
+void ZrpcRequest::setError(ErrorCondition condition, const QVariant &result)
 {
 	d->success = false;
 	d->condition = condition;
+	d->result = result;
 }
 
 void ZrpcRequest::onSuccess()
