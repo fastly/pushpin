@@ -1180,9 +1180,9 @@ signals:
 	void retryPacketReady(const RetryRequestPacket &packet);
 
 private:
-	void respondError(const QByteArray &condition)
+	void respondError(const QByteArray &condition, const QVariant &result = QVariant())
 	{
-		req->respondError(condition);
+		req->respondError(condition, result);
 		setFinished(true);
 	}
 
@@ -1206,21 +1206,7 @@ private:
 		Instruct instruct = Instruct::fromResponse(responseData, &ok, &errorMessage);
 		if(!ok)
 		{
-			log_debug("failed to parse accept instructions: %s", qPrintable(errorMessage));
-
-			QVariantHash vresponse;
-			vresponse["code"] = 502;
-			vresponse["reason"] = QByteArray("Bad Gateway");
-			QVariantList vheaders;
-			vheaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
-			vresponse["headers"] = vheaders;
-			vresponse["body"] = QByteArray("Error while proxying to origin.\n");
-
-			QVariantHash result;
-			result["response"] = vresponse;
-			req->respond(result);
-
-			setFinished(true);
+			respondError("bad-format", errorMessage.toUtf8());
 			return;
 		}
 
