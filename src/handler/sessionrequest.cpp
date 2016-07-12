@@ -37,7 +37,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		connect(req, &ZrpcRequest::finished, this, &DetectRulesSet::req_finished);
 
 		QVariantList rlist;
 		foreach(const DetectRule &rule, rules)
@@ -81,7 +81,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		connect(req, &ZrpcRequest::finished, this, &DetectRulesGet::req_finished);
 
 		QVariantHash args;
 		args["domain"] = domain.toUtf8();
@@ -174,7 +174,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		connect(req, &ZrpcRequest::finished, this, &CreateOrUpdate::req_finished);
 
 		QVariantHash args;
 
@@ -217,7 +217,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		connect(req, &ZrpcRequest::finished, this, &UpdateMany::req_finished);
 
 		QVariantHash vsidLastIds;
 
@@ -270,7 +270,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
+		connect(req, &ZrpcRequest::finished, this, &GetLastIds::req_finished);
 
 		QVariantHash args;
 		args["sid"] = sid.toUtf8();

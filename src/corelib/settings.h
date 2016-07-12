@@ -33,12 +33,18 @@ public:
 
 	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const;
 	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
+	int adjustedPort(const QString &key, int defaultValue = -1) const;
+
+	void setIpcPrefix(const QString &s);
+	void setPortOffset(int x);
 
 private:
-	QSettings *main;
-	QSettings *include;
-	QString libdir;
-	QString rundir;
+	QSettings *main_;
+	QSettings *include_;
+	QString libdir_;
+	QString rundir_;
+	QString ipcPrefix_;
+	int portOffset_;
 
 	QString resolveVars(const QString &in) const;
 };

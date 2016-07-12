@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QCoreApplication>
+#include <QCommandLineParser>
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
@@ -71,12 +72,100 @@ static XffRule parse_xffRule(const QStringList &in)
 	return out;
 }
 
+enum CommandLineParseResult
+{
+	CommandLineOk,
+	CommandLineError,
+	CommandLineVersionRequested,
+	CommandLineHelpRequested
+};
+
+class ArgsData
+{
+public:
+	QString configFile;
+	QString logFile;
+	int logLevel;
+	QString ipcPrefix;
+	QStringList routeLines;
+
+	ArgsData() :
+		logLevel(-1)
+	{
+	}
+};
+
+static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsData *args, QString *errorMessage)
+{
+	parser->setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
+	const QCommandLineOption configFileOption("config", "Config file.", "file");
+	parser->addOption(configFileOption);
+	const QCommandLineOption logFileOption("logfile", "File to log to.", "file");
+	parser->addOption(logFileOption);
+	const QCommandLineOption logLevelOption("loglevel", "Log level (default: 2).", "x");
+	parser->addOption(logLevelOption);
+	const QCommandLineOption verboseOption("verbose", "Verbose output. Same as --loglevel=3.");
+	parser->addOption(verboseOption);
+	const QCommandLineOption ipcPrefixOption("ipc-prefix", "Override ipc_prefix config option.", "prefix");
+	parser->addOption(ipcPrefixOption);
+	const QCommandLineOption routeOption("route", "Add route (overrides routes file).", "line");
+	parser->addOption(routeOption);
+	const QCommandLineOption helpOption = parser->addHelpOption();
+	const QCommandLineOption versionOption = parser->addVersionOption();
+
+	if(!parser->parse(QCoreApplication::arguments()))
+	{
+		*errorMessage = parser->errorText();
+		return CommandLineError;
+	}
+
+	if(parser->isSet(versionOption))
+		return CommandLineVersionRequested;
+
+	if(parser->isSet(helpOption))
+		return CommandLineHelpRequested;
+
+	if(parser->isSet(configFileOption))
+		args->configFile = parser->value(configFileOption);
+
+	if(parser->isSet(logFileOption))
+		args->logFile = parser->value(logFileOption);
+
+	if(parser->isSet(logLevelOption))
+	{
+		bool ok;
+		int x = parser->value(logLevelOption).toInt(&ok);
+		if(!ok || x < 0)
+		{
+			*errorMessage = "error: loglevel must be greater than or equal to 0";
+			return CommandLineError;
+		}
+
+		args->logLevel = x;
+	}
+
+	if(parser->isSet(verboseOption))
+		args->logLevel = 3;
+
+	if(parser->isSet(ipcPrefixOption))
+		args->ipcPrefix = parser->value(ipcPrefixOption);
+
+	if(parser->isSet(routeOption))
+	{
+		foreach(const QString &r, parser->values(routeOption))
+			args->routeLines += r;
+	}
+
+	return CommandLineOk;
+}
+
 class App::Private : public QObject
 {
 	Q_OBJECT
 
 public:
 	App *q;
+	ArgsData args;
 	Engine *engine;
 
 	Private(App *_q) :
@@ -84,72 +173,57 @@ public:
 		q(_q),
 		engine(0)
 	{
-		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
-		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
+		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 	}
 
 	void start()
 	{
-		QStringList args = QCoreApplication::instance()->arguments();
-		args.removeFirst();
+		QCoreApplication::setApplicationName("pushpin-proxy");
+		QCoreApplication::setApplicationVersion(VERSION);
 
-		// options
-		QHash<QString, QString> options;
-		for(int n = 0; n < args.count(); ++n)
+		QCommandLineParser parser;
+		parser.setApplicationDescription("Pushpin proxy component.");
+
+		QString errorMessage;
+		switch(parseCommandLine(&parser, &args, &errorMessage))
 		{
-			if(args[n] == "--")
-			{
+			case CommandLineOk:
 				break;
-			}
-			else if(args[n].startsWith("--"))
-			{
-				QString opt = args[n].mid(2);
-				QString var, val;
-
-				int at = opt.indexOf("=");
-				if(at != -1)
-				{
-					var = opt.mid(0, at);
-					val = opt.mid(at + 1);
-				}
-				else
-					var = opt;
-
-				options[var] = val;
-
-				args.removeAt(n);
-				--n; // adjust position
-			}
+			case CommandLineError:
+				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
+				emit q->quit(1);
+				return;
+			case CommandLineVersionRequested:
+				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
+					qPrintable(QCoreApplication::applicationVersion()));
+				emit q->quit(0);
+				return;
+			case CommandLineHelpRequested:
+				parser.showHelp();
+				Q_UNREACHABLE();
 		}
 
-		if(options.contains("version"))
-		{
-			printf("pushpin-proxy %s\n", VERSION);
-			emit q->quit();
-			return;
-		}
-
-		if(options.contains("verbose"))
-			log_setOutputLevel(LOG_LEVEL_DEBUG);
+		if(args.logLevel != -1)
+			log_setOutputLevel(args.logLevel);
 		else
 			log_setOutputLevel(LOG_LEVEL_INFO);
 
-		QString logFile = options.value("logfile");
-		if(!logFile.isEmpty())
+		if(!args.logFile.isEmpty())
 		{
-			if(!log_setFile(logFile))
+			if(!log_setFile(args.logFile))
 			{
-				log_error("failed to open log file: %s", qPrintable(logFile));
-				emit q->quit();
+				log_error("failed to open log file: %s", qPrintable(args.logFile));
+				emit q->quit(1);
 				return;
 			}
 		}
 
 		log_info("starting...");
 
-		QString configFile = options.value("config");
+		QString configFile = args.configFile;
 		if(configFile.isEmpty())
-			configFile = "/etc/pushpin/pushpin.conf";
+			configFile = QDir(CONFIGDIR).filePath("pushpin.conf");
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{
@@ -163,6 +237,9 @@ public:
 		}
 
 		Settings settings(configFile);
+
+		if(!args.ipcPrefix.isEmpty())
+			settings.setIpcPrefix(args.ipcPrefix);
 
 		QStringList m2a_in_specs = settings.value("proxy/m2a_in_specs").toStringList();
 		trimlist(&m2a_in_specs);
@@ -187,6 +264,7 @@ public:
 		int ipcFileMode = settings.value("proxy/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		int maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesFile = settings.value("proxy/routesfile").toString();
+		bool debug = settings.value("proxy/debug").toBool();
 		bool autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
 		bool acceptXForwardedProtocol = settings.value("proxy/accept_x_forwarded_protocol").toBool();
 		bool useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
@@ -234,7 +312,11 @@ public:
 		config.commandSpec = command_spec;
 		config.ipcFileMode = ipcFileMode;
 		config.maxWorkers = maxWorkers;
-		config.routesFile = routesFile;
+		if(!args.routeLines.isEmpty())
+			config.routeLines = args.routeLines;
+		else
+			config.routesFile = routesFile;
+		config.debug = debug;
 		config.autoCrossOrigin = autoCrossOrigin;
 		config.acceptXForwardedProtocol = acceptXForwardedProtocol;
 		config.useXForwardedProtocol = useXForwardedProtocol;

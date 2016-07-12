@@ -49,6 +49,7 @@ public:
 	HttpRequestData requestData() const;
 	HttpResponseData responseData() const;
 	int responseBodySize() const;
+	bool debugEnabled() const;
 	bool autoCrossOrigin() const;
 	QByteArray jsonpCallback() const; // non-empty if JSON-P is used
 	bool jsonpExtendedResponse() const;
@@ -57,12 +58,13 @@ public:
 
 	ZhttpRequest *request();
 
+	void setDebugEnabled(bool enabled);
 	void setAutoCrossOrigin(bool enabled);
 	void setPrefetchSize(int size);
 
 	// takes ownership
 	void start(ZhttpRequest *req);
-	void startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse);
+	void startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse);
 
 	void pause();
 	void resume();

@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QCoreApplication>
+#include <QCommandLineParser>
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
@@ -42,12 +43,108 @@ static void trimlist(QStringList *list)
 	}
 }
 
+enum CommandLineParseResult
+{
+	CommandLineOk,
+	CommandLineError,
+	CommandLineVersionRequested,
+	CommandLineHelpRequested
+};
+
+class ArgsData
+{
+public:
+	QString configFile;
+	QString logFile;
+	int logLevel;
+	QString ipcPrefix;
+	int portOffset;
+
+	ArgsData() :
+		logLevel(-1),
+		portOffset(-1)
+	{
+	}
+};
+
+static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsData *args, QString *errorMessage)
+{
+	parser->setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
+	const QCommandLineOption configFileOption("config", "Config file.", "file");
+	parser->addOption(configFileOption);
+	const QCommandLineOption logFileOption("logfile", "File to log to.", "file");
+	parser->addOption(logFileOption);
+	const QCommandLineOption logLevelOption("loglevel", "Log level (default: 2).", "x");
+	parser->addOption(logLevelOption);
+	const QCommandLineOption verboseOption("verbose", "Verbose output. Same as --loglevel=3.");
+	parser->addOption(verboseOption);
+	const QCommandLineOption ipcPrefixOption("ipc-prefix", "Override ipc_prefix config option.", "prefix");
+	parser->addOption(ipcPrefixOption);
+	const QCommandLineOption portOffsetOption("port-offset", "Override port_offset config option.", "offset");
+	parser->addOption(portOffsetOption);
+	const QCommandLineOption helpOption = parser->addHelpOption();
+	const QCommandLineOption versionOption = parser->addVersionOption();
+
+	if(!parser->parse(QCoreApplication::arguments()))
+	{
+		*errorMessage = parser->errorText();
+		return CommandLineError;
+	}
+
+	if(parser->isSet(versionOption))
+		return CommandLineVersionRequested;
+
+	if(parser->isSet(helpOption))
+		return CommandLineHelpRequested;
+
+	if(parser->isSet(configFileOption))
+		args->configFile = parser->value(configFileOption);
+
+	if(parser->isSet(logFileOption))
+		args->logFile = parser->value(logFileOption);
+
+	if(parser->isSet(logLevelOption))
+	{
+		bool ok;
+		int x = parser->value(logLevelOption).toInt(&ok);
+		if(!ok || x < 0)
+		{
+			*errorMessage = "error: loglevel must be greater than or equal to 0";
+			return CommandLineError;
+		}
+
+		args->logLevel = x;
+	}
+
+	if(parser->isSet(verboseOption))
+		args->logLevel = 3;
+
+	if(parser->isSet(ipcPrefixOption))
+		args->ipcPrefix = parser->value(ipcPrefixOption);
+
+	if(parser->isSet(portOffsetOption))
+	{
+		bool ok;
+		int x = parser->value(portOffsetOption).toInt(&ok);
+		if(!ok || x < 0)
+		{
+			*errorMessage = "error: port-offset must be greater than or equal to 0";
+			return CommandLineError;
+		}
+
+		args->portOffset = x;
+	}
+
+	return CommandLineOk;
+}
+
 class App::Private : public QObject
 {
 	Q_OBJECT
 
 public:
 	App *q;
+	ArgsData args;
 	Engine *engine;
 
 	Private(App *_q) :
@@ -55,72 +152,57 @@ public:
 		q(_q),
 		engine(0)
 	{
-		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
-		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
+		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 	}
 
 	void start()
 	{
-		QStringList args = QCoreApplication::instance()->arguments();
-		args.removeFirst();
+		QCoreApplication::setApplicationName("pushpin-handler");
+		QCoreApplication::setApplicationVersion(VERSION);
 
-		// options
-		QHash<QString, QString> options;
-		for(int n = 0; n < args.count(); ++n)
+		QCommandLineParser parser;
+		parser.setApplicationDescription("Pushpin handler component.");
+
+		QString errorMessage;
+		switch(parseCommandLine(&parser, &args, &errorMessage))
 		{
-			if(args[n] == "--")
-			{
+			case CommandLineOk:
 				break;
-			}
-			else if(args[n].startsWith("--"))
-			{
-				QString opt = args[n].mid(2);
-				QString var, val;
-
-				int at = opt.indexOf("=");
-				if(at != -1)
-				{
-					var = opt.mid(0, at);
-					val = opt.mid(at + 1);
-				}
-				else
-					var = opt;
-
-				options[var] = val;
-
-				args.removeAt(n);
-				--n; // adjust position
-			}
+			case CommandLineError:
+				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
+				emit q->quit(1);
+				return;
+			case CommandLineVersionRequested:
+				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
+					qPrintable(QCoreApplication::applicationVersion()));
+				emit q->quit(0);
+				return;
+			case CommandLineHelpRequested:
+				parser.showHelp();
+				Q_UNREACHABLE();
 		}
 
-		if(options.contains("version"))
-		{
-			printf("pushpin-handler %s\n", VERSION);
-			emit q->quit();
-			return;
-		}
-
-		if(options.contains("verbose"))
-			log_setOutputLevel(LOG_LEVEL_DEBUG);
+		if(args.logLevel != -1)
+			log_setOutputLevel(args.logLevel);
 		else
 			log_setOutputLevel(LOG_LEVEL_INFO);
 
-		QString logFile = options.value("logfile");
-		if(!logFile.isEmpty())
+		if(!args.logFile.isEmpty())
 		{
-			if(!log_setFile(logFile))
+			if(!log_setFile(args.logFile))
 			{
-				log_error("failed to open log file: %s", qPrintable(logFile));
-				emit q->quit();
+				log_error("failed to open log file: %s", qPrintable(args.logFile));
+				emit q->quit(1);
 				return;
 			}
 		}
 
 		log_info("starting...");
 
-		QString configFile = options.value("config");
+		QString configFile = args.configFile;
 		if(configFile.isEmpty())
-			configFile = "/etc/pushpin/pushpin.conf";
+			configFile = QDir(CONFIGDIR).filePath("pushpin.conf");
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{
@@ -134,6 +216,12 @@ public:
 		}
 
 		Settings settings(configFile);
+
+		if(!args.ipcPrefix.isEmpty())
+			settings.setIpcPrefix(args.ipcPrefix);
+
+		if(args.portOffset != -1)
+			settings.setPortOffset(args.portOffset);
 
 		QStringList m2a_in_stream_specs = settings.value("handler/m2a_in_stream_specs").toStringList();
 		trimlist(&m2a_in_stream_specs);
@@ -152,7 +240,7 @@ public:
 		QString push_in_spec = settings.value("handler/push_in_spec").toString();
 		QString push_in_sub_spec = settings.value("handler/push_in_sub_spec").toString();
 		QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
-		int push_in_http_port = settings.value("handler/push_in_http_port").toInt();
+		int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
 		bool ok;
 		int ipcFileMode = settings.value("handler/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		bool shareAll = settings.value("handler/share_all").toBool();

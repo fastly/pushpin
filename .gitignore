@@ -30,6 +30,13 @@ moc_*
 /src/handler/tests/Makefile
 /src/handler/tests/*test/Makefile
 /src/handler/tests/*test/*test
+/src/runner/Makefile
+/src/runner/librunner/Makefile
+/src/runner/runner/Makefile
+/src/runner/librunner.a
+/src/runner/tests/Makefile
+/src/runner/tests/*test/Makefile
+/src/runner/tests/*test/*test
 /src/runner/certs/*.crt
 /src/runner/certs/*.key
 /src/pushpin/Makefile

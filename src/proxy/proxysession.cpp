@@ -75,12 +75,14 @@ public:
 
 		RequestSession *rs;
 		State state;
+		bool startedResponse;
 		bool unclean;
 		int bytesToWrite;
 
 		SessionItem() :
 			rs(0),
 			state(WaitingForResponse),
+			startedResponse(false),
 			unclean(false),
 			bytesToWrite(0)
 		{
@@ -195,10 +197,10 @@ public:
 
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
-		connect(rs, SIGNAL(bytesWritten(int)), SLOT(rs_bytesWritten(int)));
-		connect(rs, SIGNAL(errorResponding()), SLOT(rs_errorResponding()));
-		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
-		connect(rs, SIGNAL(paused()), SLOT(rs_paused()));
+		connect(rs, &RequestSession::bytesWritten, this, &Private::rs_bytesWritten);
+		connect(rs, &RequestSession::errorResponding, this, &Private::rs_errorResponding);
+		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
+		connect(rs, &RequestSession::paused, this, &Private::rs_paused);
 
 		if(state == Stopped)
 		{
@@ -247,8 +249,8 @@ public:
 			if(!rs->isRetry())
 			{
 				inRequest = rs->request();
-				connect(inRequest, SIGNAL(readyRead()), SLOT(inRequest_readyRead()));
-				connect(inRequest, SIGNAL(error()), SLOT(inRequest_error()));
+				connect(inRequest, &ZhttpRequest::readyRead, this, &Private::inRequest_readyRead);
+				connect(inRequest, &ZhttpRequest::error, this, &Private::inRequest_error);
 
 				requestBody += inRequest->readBody();
 			}
@@ -272,6 +274,7 @@ public:
 			// get the session caught up with where we're at
 
 			si->state = SessionItem::Responding;
+			si->startedResponse = true;
 			rs->startResponse(responseData.code, responseData.reason, responseData.headers);
 
 			if(!responseBody.isEmpty())
@@ -297,7 +300,14 @@ public:
 	{
 		if(targets.isEmpty())
 		{
-			rejectAll(502, "Bad Gateway", "Error while proxying to origin.");
+			QString msg = "Error while proxying to origin.";
+
+			QStringList targetStrs;
+			foreach(const DomainMap::Target &t, route.targets)
+				targetStrs += targetToString(t);
+			QString dmsg = QString("Unable to connect to any targets. Tried: %1").arg(targetStrs.join(", "));
+
+			rejectAll(502, "Bad Gateway", msg, dmsg);
 			return;
 		}
 
@@ -314,7 +324,7 @@ public:
 
 			if(contentType == "application/websocket-events" && !passToUpstream)
 			{
-				rejectAll(502, "Bad Gateway", "Error while proxying to origin.");
+				rejectAll(403, "Forbidden", "Client not allowed to send WebSocket events directly.");
 				return;
 			}
 		}
@@ -336,6 +346,17 @@ public:
 
 		if(target.type == DomainMap::Target::Test)
 		{
+			// for test route, auto-adjust path
+			if(!route.pathBeg.isEmpty())
+			{
+				int pathRemove = route.pathBeg.length();
+				if(route.pathBeg.endsWith('/'))
+					--pathRemove;
+
+				if(pathRemove > 0)
+					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
+			}
+
 			zhttpRequest = new TestHttpRequest(this);
 		}
 		else
@@ -357,9 +378,9 @@ public:
 			zhttpRequest->setParent(this);
 		}
 
-		connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
-		connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
-		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
+		connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+		connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
 
 		if(target.trusted)
 			zhttpRequest->setIgnorePolicies(true);
@@ -451,24 +472,57 @@ public:
 
 		foreach(SessionItem *si, sessionItems)
 		{
-			if(si->state == SessionItem::Paused)
-			{
-				si->state = SessionItem::WaitingForResponse;
-				si->rs->resume();
-			}
-
 			if(si->state != SessionItem::Errored)
 			{
-				assert(si->state == SessionItem::WaitingForResponse);
+				if(si->state == SessionItem::Paused)
+				{
+					if(si->startedResponse)
+						si->state = SessionItem::Responding;
+					else
+						si->state = SessionItem::WaitingForResponse;
 
-				si->state = SessionItem::Responded;
-				si->bytesToWrite = -1;
-				si->rs->respondCannotAccept();
+					si->rs->resume();
+				}
+
+				assert(si->state == SessionItem::WaitingForResponse || si->state == SessionItem::Responding);
+
+				if(si->state == SessionItem::WaitingForResponse)
+				{
+					si->state = SessionItem::Responded;
+					si->bytesToWrite = -1;
+
+					si->rs->respondCannotAccept();
+				}
+				else
+				{
+					// if we already started responding, then only provide an
+					//   error message in debug mode
+
+					if(si->rs->debugEnabled())
+					{
+						// if debug enabled, append the message at the end.
+						//   this may ruin the content, but hey it's debug
+						//   mode
+						QByteArray buf = "\n\nAccept service unavailable\n";
+						si->bytesToWrite += buf.size();
+						si->rs->writeResponseBody(buf);
+						si->rs->endResponseBody();
+					}
+					else
+					{
+						// if debug not enabled, then the best we can do is
+						//   disconnect
+						si->state = SessionItem::Responded;
+						si->unclean = true;
+						si->bytesToWrite = -1;
+						si->rs->endResponseBody();
+					}
+				}
 			}
 		}
 	}
 
-	void rejectAll(int code, const QString &reason, const QString &errorMessage)
+	void rejectAll(int code, const QString &reason, const QString &errorMessage, const QString &debugErrorMessage)
 	{
 		// kill the active target request, if any
 		delete zhttpRequest;
@@ -483,13 +537,57 @@ public:
 		{
 			if(si->state != SessionItem::Errored)
 			{
-				assert(si->state == SessionItem::WaitingForResponse);
+				if(si->state == SessionItem::Paused)
+				{
+					if(si->startedResponse)
+						si->state = SessionItem::Responding;
+					else
+						si->state = SessionItem::WaitingForResponse;
 
-				si->state = SessionItem::Responded;
-				si->bytesToWrite = -1;
-				si->rs->respondError(code, reason, errorMessage);
+					si->rs->resume();
+				}
+
+				assert(si->state == SessionItem::WaitingForResponse || si->state == SessionItem::Responding);
+
+				if(si->state == SessionItem::WaitingForResponse)
+				{
+					si->state = SessionItem::Responded;
+					si->bytesToWrite = -1;
+
+					si->rs->respondError(code, reason, si->rs->debugEnabled() ? debugErrorMessage : errorMessage);
+				}
+				else // Responding
+				{
+					// if we already started responding, then only provide a
+					//   rejection message in debug mode
+
+					if(si->rs->debugEnabled())
+					{
+						// if debug enabled, append the message at the end.
+						//   this may ruin the content, but hey it's debug
+						//   mode
+						QByteArray buf = "\n\n" + debugErrorMessage.toUtf8() + '\n';
+						si->bytesToWrite += buf.size();
+						si->rs->writeResponseBody(buf);
+						si->rs->endResponseBody();
+					}
+					else
+					{
+						// if debug not enabled, then the best we can do is
+						//   disconnect
+						si->state = SessionItem::Responded;
+						si->unclean = true;
+						si->bytesToWrite = -1;
+						si->rs->endResponseBody();
+					}
+				}
 			}
 		}
+	}
+
+	void rejectAll(int code, const QString &reason, const QString &errorMessage)
+	{
+		rejectAll(code, reason, errorMessage, errorMessage);
 	}
 
 	void respondAll(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
@@ -556,7 +654,10 @@ public:
 			{
 				if(responseBody.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
 				{
-					rejectAll(502, "Bad Gateway", "GRIP instruct response too large.");
+					QString msg = "Error while proxying to origin.";
+					QString dmsg = QString("GRIP instruct response too large from %1").arg(targetToString(target));
+
+					rejectAll(502, "Bad Gateway", msg, dmsg);
 					return;
 				}
 
@@ -664,27 +765,23 @@ public:
 		}
 	}
 
+	static QString targetToString(const DomainMap::Target &target)
+	{
+		if(target.type == DomainMap::Target::Test)
+			return "test";
+		else if(target.type == DomainMap::Target::Custom)
+			return(target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
+		else // Default
+			return target.connectHost + ':' + QString::number(target.connectPort);
+	}
+
 	void logFinished(SessionItem *si, bool accepted = false)
 	{
 		RequestSession *rs = si->rs;
 
 		HttpRequestData rd = rs->requestData();
 
-		QString targetStr;
-		if(target.type == DomainMap::Target::Test)
-		{
-			targetStr = "test";
-		}
-		else if(target.type == DomainMap::Target::Custom)
-		{
-			targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
-		}
-		else // Default
-		{
-			targetStr = target.connectHost + ':' + QString::number(target.connectPort);
-		}
-
-		QString msg = QString("%1 %2 -> %3").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded), targetStr);
+		QString msg = QString("%1 %2 -> %3").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded), targetToString(target));
 
 		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
 		if(!ref.isEmpty())
@@ -855,7 +952,7 @@ public slots:
 			{
 				if(!buffering)
 				{
-					rejectAll(502, "Bad Gateway", "Request too large to accept GRIP instruct.");
+					rejectAll(400, "Bad Request", "Request too large to accept GRIP instruct.");
 					return;
 				}
 
@@ -875,6 +972,7 @@ public slots:
 				foreach(SessionItem *si, sessionItems)
 				{
 					si->state = SessionItem::Responding;
+					si->startedResponse = true;
 					si->rs->startResponse(responseData.code, responseData.reason, responseData.headers);
 
 					if(!responseBody.isEmpty())
@@ -1037,6 +1135,7 @@ public slots:
 				areq.rid = si->rs->rid();
 				areq.https = si->rs->isHttps();
 				areq.peerAddress = si->rs->peerAddress();
+				areq.debug = si->rs->debugEnabled();
 				areq.autoCrossOrigin = si->rs->autoCrossOrigin();
 				areq.jsonpCallback = si->rs->jsonpCallback();
 				areq.jsonpExtendedResponse = si->rs->jsonpExtendedResponse();
@@ -1068,7 +1167,7 @@ public slots:
 			adata.responseSent = acceptAfterResponding;
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			connect(acceptRequest, SIGNAL(finished()), SLOT(acceptRequest_finished()));
+			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);
 			acceptRequest->start(adata);
 		}
 	}
@@ -1129,13 +1228,15 @@ public slots:
 			}
 			else
 			{
-				if(acceptAfterResponding)
+				if(rdata.response.code != -1)
 				{
-					destroyAll();
-				}
-				else
-				{
-					if(rdata.response.code != -1)
+					if(acceptAfterResponding)
+					{
+						// can't respond again in this state, so just
+						//   disconnect
+						destroyAll();
+					}
+					else
 					{
 						// wake up receivers
 						foreach(SessionItem *si, sessionItems)
@@ -1146,28 +1247,32 @@ public slots:
 
 						respondAll(rdata.response.code, rdata.response.reason, rdata.response.headers, rdata.response.body);
 					}
-					else
-					{
-						cannotAcceptAll();
-					}
+				}
+				else
+				{
+					cannotAcceptAll();
 				}
 			}
 		}
 		else
 		{
-			delete acceptRequest;
-			acceptRequest = 0;
-
 			// wake up receivers and reject
 
-			if(acceptAfterResponding)
+			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && ((ZrpcRequest *)acceptRequest)->result().type() == QVariant::ByteArray)
 			{
-				destroyAll();
+				QString errorString = QString::fromUtf8(((ZrpcRequest *)acceptRequest)->result().toByteArray());
+				QString msg = "Error while proxying to origin.";
+				QString dmsg = QString("Failed to parse accept instructions: %1").arg(errorString);
+
+				rejectAll(502, "Bad Gateway", msg, dmsg);
 			}
 			else
 			{
 				cannotAcceptAll();
 			}
+
+			delete acceptRequest;
+			acceptRequest = 0;
 		}
 	}
 };

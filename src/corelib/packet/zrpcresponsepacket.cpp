@@ -27,9 +27,15 @@ QVariant ZrpcResponsePacket::toVariant() const
 	obj["success"] = success;
 
 	if(success)
+	{
 		obj["value"] = value;
+	}
 	else
+	{
 		obj["condition"] = condition;
+		if(value.isValid())
+			obj["value"] = value;
+	}
 
 	return obj;
 }
@@ -62,6 +68,9 @@ bool ZrpcResponsePacket::fromVariant(const QVariant &in)
 		if(!obj.contains("condition") || obj["condition"].type() != QVariant::ByteArray)
 			return false;
 		condition = obj["condition"].toByteArray();
+
+		if(obj.contains("value"))
+			value = obj["value"];
 	}
 
 	return true;

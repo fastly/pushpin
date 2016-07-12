@@ -61,7 +61,7 @@ public:
 		avail(true)
 	{
 		timer = new QTimer(this);
-		connect(timer, SIGNAL(timeout()), SLOT(timer_timeout()));
+		connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
 		timer->setSingleShot(true);
 	}
 
@@ -103,8 +103,8 @@ public:
 		if(i)
 			return; // already watching
 
-		connect(req, SIGNAL(finished()), SLOT(req_finished()));
-		connect(req, SIGNAL(destroyed(QObject *)), SLOT(req_destroyed(QObject *)));
+		connect(req, &ZrpcRequest::finished, this, &Private::req_finished);
+		connect(req, &ZrpcRequest::destroyed, this, &Private::req_destroyed);
 
 		i = new Item;
 		i->req = req;

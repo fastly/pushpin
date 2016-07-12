@@ -119,6 +119,7 @@ public:
 	class Entry
 	{
 	public:
+		QByteArray pathBeg;
 		QByteArray id;
 		QByteArray sigIss;
 		QByteArray sigKey;
@@ -127,6 +128,7 @@ public:
 		QString asHost;
 		int pathRemove;
 		QByteArray pathPrepend;
+		bool debug;
 		bool autoCrossOrigin;
 		JsonpConfig jsonpConfig;
 		bool session;
@@ -142,12 +144,14 @@ public:
 		Entry() :
 			origHeaders(false),
 			pathRemove(0),
+			debug(false),
 			autoCrossOrigin(false),
 			session(false)
 		{
 		}
 	};
 
+	DomainMap(QObject *parent = 0);
 	DomainMap(const QString &fileName, QObject *parent = 0);
 	~DomainMap();
 
@@ -158,6 +162,8 @@ public:
 	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
 
 	QList<ZhttpRoute> zhttpRoutes() const;
+
+	bool addRouteLine(const QString &line);
 
 signals:
 	void changed();

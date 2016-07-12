@@ -43,6 +43,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 			if(!r.peerAddress.isNull())
 				vrequest["peer-address"] = r.peerAddress.toString().toUtf8();
 
+			if(r.debug)
+				vrequest["debug"] = true;
+
 			if(r.autoCrossOrigin)
 				vrequest["auto-cross-origin"] = true;
 

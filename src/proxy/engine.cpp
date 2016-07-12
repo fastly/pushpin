@@ -164,12 +164,20 @@ public:
 	{
 		config = _config;
 
-		domainMap = new DomainMap(config.routesFile);
-		connect(domainMap, SIGNAL(changed()), SLOT(domainMap_changed()));
+		if(!config.routeLines.isEmpty())
+		{
+			domainMap = new DomainMap(this);
+			foreach(const QString &line, config.routeLines)
+				domainMap->addRouteLine(line);
+		}
+		else
+			domainMap = new DomainMap(config.routesFile, this);
+
+		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
 
 		zhttpIn = new ZhttpManager(this);
-		connect(zhttpIn, SIGNAL(requestReady()), SLOT(zhttpIn_requestReady()));
-		connect(zhttpIn, SIGNAL(socketReady()), SLOT(zhttpIn_socketReady()));
+		connect(zhttpIn, &ZhttpManager::requestReady, this, &Private::zhttpIn_requestReady);
+		connect(zhttpIn, &ZhttpManager::socketReady, this, &Private::zhttpIn_socketReady);
 
 		zhttpIn->setInstanceId(config.clientId);
 		zhttpIn->setServerInSpecs(config.serverInSpecs);
@@ -183,7 +191,7 @@ public:
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
 		sockJsManager = new SockJsManager(config.sockJsUrl, this);
-		connect(sockJsManager, SIGNAL(sessionReady()), SLOT(sockjs_sessionReady()));
+		connect(sockJsManager, &SockJsManager::sessionReady, this, &Private::sockjs_sessionReady);
 
 		if(!config.inspectSpec.isEmpty())
 		{
@@ -230,7 +238,7 @@ public:
 			}
 
 			handler_retry_in_valve = new QZmq::Valve(handler_retry_in_sock, this);
-			connect(handler_retry_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(handler_retry_in_readyRead(const QList<QByteArray> &)));
+			connect(handler_retry_in_valve, &QZmq::Valve::readyRead, this, &Private::handler_retry_in_readyRead);
 		}
 
 		if(handler_retry_in_valve)
@@ -274,7 +282,7 @@ public:
 			command = new ZrpcManager(this);
 			command->setBind(true);
 			command->setIpcFileMode(config.ipcFileMode);
-			connect(command, SIGNAL(requestReady()), SLOT(command_requestReady()));
+			connect(command, &ZrpcManager::requestReady, this, &Private::command_requestReady);
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
@@ -323,9 +331,9 @@ public:
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
 			ps = new ProxySession(zroutes, accept, this);
-			connect(ps, SIGNAL(addNotAllowed()), SLOT(ps_addNotAllowed()));
-			connect(ps, SIGNAL(finished()), SLOT(ps_finished()));
-			connect(ps, SIGNAL(requestSessionDestroyed(RequestSession *, bool)), SLOT(ps_requestSessionDestroyed(RequestSession *, bool)));
+			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
+			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
+			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
 
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -370,7 +378,7 @@ public:
 		QByteArray cid = connectionManager.addConnection(sock);
 
 		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, stats, wsControl, this);
-		connect(ps, SIGNAL(finishedByPassthrough()), SLOT(wsps_finishedByPassthrough()));
+		connect(ps, &WsProxySession::finishedByPassthrough, this, &Private::wsps_finishedByPassthrough);
 
 		ps->setDefaultSigKey(config.sigIss, config.sigKey);
 		ps->setDefaultUpstreamKey(config.upstreamKey);
@@ -425,11 +433,12 @@ public:
 			req->setIsTls(true);
 
 		RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, this);
-		connect(rs, SIGNAL(inspected(const InspectData &)), SLOT(rs_inspected(const InspectData &)));
-		connect(rs, SIGNAL(inspectError()), SLOT(rs_inspectError()));
-		connect(rs, SIGNAL(finished()), SLOT(rs_finished()));
-		connect(rs, SIGNAL(finishedByAccept()), SLOT(rs_finishedByAccept()));
+		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
+		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
+		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
+		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
 
+		rs->setDebugEnabled(config.debug);
 		rs->setAutoCrossOrigin(config.autoCrossOrigin);
 		rs->setPrefetchSize(config.inspectPrefetch);
 
@@ -715,7 +724,7 @@ private slots:
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse
 			//   stats processors tracking route+connection mappings.
-			rs->startRetry(zhttpRequest, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
+			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0, true);
 		}

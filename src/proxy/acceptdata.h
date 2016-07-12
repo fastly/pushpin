@@ -36,6 +36,7 @@ public:
 		ZhttpRequest::Rid rid;
 		bool https;
 		QHostAddress peerAddress;
+		bool debug;
 		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 		bool jsonpExtendedResponse;
@@ -49,6 +50,7 @@ public:
 
 		Request() :
 			https(false),
+			debug(false),
 			autoCrossOrigin(false),
 			jsonpExtendedResponse(false),
 			responseCode(-1),

@@ -9,7 +9,7 @@ fi
 VERSION=$1
 
 mkdir -p build/pushpin-$VERSION
-cp -a .gitignore CHANGELOG.md configure COPYING docs examples pushpin pushpin.pro pushpin.qc qcm README.md src tools build/pushpin-$VERSION
+cp -a .gitignore CHANGELOG.md configure COPYING docs examples pushpin.pro pushpin.qc qcm README.md src tools build/pushpin-$VERSION
 rm -rf build/pushpin-$VERSION/src/corelib/qzmq/.git build/pushpin-$VERSION/src/corelib/common/.git
 echo $VERSION > build/pushpin-$VERSION/version
 cd build

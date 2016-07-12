@@ -20,6 +20,8 @@
 #include "app.h"
 
 #include <assert.h>
+#include <QCoreApplication>
+#include <QCommandLineParser>
 #include <QPair>
 #include <QHash>
 #include <QTime>
@@ -132,6 +134,78 @@ static QByteArray makeWsHeader(bool fin, int opcode, quint64 size)
 		writeBigEndian(out.data() + 2, size, 8);
 		return out;
 	}
+}
+
+enum CommandLineParseResult
+{
+	CommandLineOk,
+	CommandLineError,
+	CommandLineVersionRequested,
+	CommandLineHelpRequested
+};
+
+class ArgsData
+{
+public:
+	QString configFile;
+	QString logFile;
+	int logLevel;
+
+	ArgsData() :
+		logLevel(-1)
+	{
+	}
+};
+
+static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsData *args, QString *errorMessage)
+{
+	parser->setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
+	const QCommandLineOption configFileOption("config", "Config file.", "file");
+	parser->addOption(configFileOption);
+	const QCommandLineOption logFileOption("logfile", "File to log to.", "file");
+	parser->addOption(logFileOption);
+	const QCommandLineOption logLevelOption("loglevel", "Log level (default: 2).", "x");
+	parser->addOption(logLevelOption);
+	const QCommandLineOption verboseOption("verbose", "Verbose output. Same as --loglevel=3.");
+	parser->addOption(verboseOption);
+	const QCommandLineOption helpOption = parser->addHelpOption();
+	const QCommandLineOption versionOption = parser->addVersionOption();
+
+	if(!parser->parse(QCoreApplication::arguments()))
+	{
+		*errorMessage = parser->errorText();
+		return CommandLineError;
+	}
+
+	if(parser->isSet(versionOption))
+		return CommandLineVersionRequested;
+
+	if(parser->isSet(helpOption))
+		return CommandLineHelpRequested;
+
+	if(parser->isSet(configFileOption))
+		args->configFile = parser->value(configFileOption);
+
+	if(parser->isSet(logFileOption))
+		args->logFile = parser->value(logFileOption);
+
+	if(parser->isSet(logLevelOption))
+	{
+		bool ok;
+		int x = parser->value(logLevelOption).toInt(&ok);
+		if(!ok || x < 0)
+		{
+			*errorMessage = "error: loglevel must be greater than or equal to 0";
+			return CommandLineError;
+		}
+
+		args->logLevel = x;
+	}
+
+	if(parser->isSet(verboseOption))
+		args->logLevel = 3;
+
+	return CommandLineOk;
 }
 
 class App::Private : public QObject
@@ -306,6 +380,7 @@ public:
 	};
 
 	App *q;
+	ArgsData args;
 	QByteArray zhttpInstanceId;
 	QByteArray zwsInstanceId;
 	QZmq::Socket *m2_in_sock;
@@ -350,22 +425,22 @@ public:
 		zhttp_in_valve(0),
 		zws_in_valve(0)
 	{
-		connect(ProcessQuit::instance(), SIGNAL(quit()), SLOT(doQuit()));
-		connect(ProcessQuit::instance(), SIGNAL(hup()), SLOT(reload()));
+		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 
 		time.start();
 
 		expireTimer = new QTimer(this);
-		connect(expireTimer, SIGNAL(timeout()), SLOT(expire_timeout()));
+		connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
 
 		statusTimer = new QTimer(this);
-		connect(statusTimer, SIGNAL(timeout()), SLOT(status_timeout()));
+		connect(statusTimer, &QTimer::timeout, this, &Private::status_timeout);
 
 		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAlive_timeout()));
+		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
 
 		m2KeepAliveTimer = new QTimer(this);
-		connect(m2KeepAliveTimer, SIGNAL(timeout()), SLOT(m2KeepAlive_timeout()));
+		connect(m2KeepAliveTimer, &QTimer::timeout, this, &Private::m2KeepAlive_timeout);
 	}
 
 	~Private()
@@ -376,41 +451,34 @@ public:
 
 	void start()
 	{
-		QStringList args = QCoreApplication::instance()->arguments();
-		args.removeFirst();
+		QCoreApplication::setApplicationName("m2adapter");
+		QCoreApplication::setApplicationVersion(VERSION);
 
-		// options
-		QHash<QString, QString> options;
-		for(int n = 0; n < args.count(); ++n)
+		QCommandLineParser parser;
+		parser.setApplicationDescription("Mongrel2 <-> ZHTTP adapter.");
+
+		QString errorMessage;
+		switch(parseCommandLine(&parser, &args, &errorMessage))
 		{
-			if(args[n] == "--")
-			{
+			case CommandLineOk:
 				break;
-			}
-			else if(args[n].startsWith("--"))
-			{
-				QString opt = args[n].mid(2);
-				QString var, val;
-
-				int at = opt.indexOf("=");
-				if(at != -1)
-				{
-					var = opt.mid(0, at);
-					val = opt.mid(at + 1);
-				}
-				else
-					var = opt;
-
-				options[var] = val;
-
-				args.removeAt(n);
-				--n; // adjust position
-			}
+			case CommandLineError:
+				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
+				emit q->quit(1);
+				return;
+			case CommandLineVersionRequested:
+				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
+					qPrintable(QCoreApplication::applicationVersion()));
+				emit q->quit(0);
+				return;
+			case CommandLineHelpRequested:
+				parser.showHelp();
+				Q_UNREACHABLE();
 		}
 
-		if(!init(options))
+		if(!init())
 		{
-			emit q->quit();
+			emit q->quit(1);
 			return;
 		}
 
@@ -436,34 +504,27 @@ public:
 		log_info("started");
 	}
 
-	bool init(const QHash<QString, QString> &options)
+	bool init()
 	{
-		if(options.contains("version"))
-		{
-			printf("m2adapter %s\n", VERSION);
-			return false;
-		}
-
-		if(options.contains("verbose"))
-			log_setOutputLevel(LOG_LEVEL_DEBUG);
+		if(args.logLevel != -1)
+			log_setOutputLevel(args.logLevel);
 		else
 			log_setOutputLevel(LOG_LEVEL_INFO);
 
-		QString logFile = options.value("logfile");
-		if(!logFile.isEmpty())
+		if(!args.logFile.isEmpty())
 		{
-			if(!log_setFile(logFile))
+			if(!log_setFile(args.logFile))
 			{
-				log_error("failed to open log file: %s", qPrintable(logFile));
+				log_error("failed to open log file: %s", qPrintable(args.logFile));
 				return false;
 			}
 		}
 
 		log_info("starting...");
 
-		QString configFile = options.value("config");
+		QString configFile = args.configFile;
 		if(configFile.isEmpty())
-			configFile = "/etc/m2adapter.conf";
+			configFile = QDir(CONFIGDIR).filePath("m2adapter.conf");
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{
@@ -556,7 +617,7 @@ public:
 		}
 
 		m2_in_valve = new QZmq::Valve(m2_in_sock, this);
-		connect(m2_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(m2_in_readyRead(const QList<QByteArray> &)));
+		connect(m2_in_valve, &QZmq::Valve::readyRead, this, &Private::m2_in_readyRead);
 
 		m2_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
 		m2_out_sock->setHwm(DEFAULT_HWM);
@@ -575,7 +636,7 @@ public:
 			sock->setShutdownWaitTime(0);
 			sock->setHwm(1); // queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
-			connect(sock, SIGNAL(readyRead()), SLOT(m2_control_readyRead()));
+			connect(sock, &QZmq::Socket::readyRead, this, &Private::m2_control_readyRead);
 
 			log_info("m2_control connect %s:%s", m2_send_idents[n].data(), qPrintable(spec));
 			sock->connectToAddress(spec);
@@ -610,7 +671,7 @@ public:
 			}
 
 			zhttp_in_valve = new QZmq::Valve(zhttp_in_sock, this);
-			connect(zhttp_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zhttp_in_readyRead(const QList<QByteArray> &)));
+			connect(zhttp_in_valve, &QZmq::Valve::readyRead, this, &Private::zhttp_in_readyRead);
 
 			zhttp_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 			zhttp_out_sock->setShutdownWaitTime(0);
@@ -679,7 +740,7 @@ public:
 			}
 
 			zws_in_valve = new QZmq::Valve(zws_in_sock, this);
-			connect(zws_in_valve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(zws_in_readyRead(const QList<QByteArray> &)));
+			connect(zws_in_valve, &QZmq::Valve::readyRead, this, &Private::zws_in_readyRead);
 
 			zws_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 			zws_out_sock->setShutdownWaitTime(0);

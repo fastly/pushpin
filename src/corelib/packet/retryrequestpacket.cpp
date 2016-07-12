@@ -45,6 +45,9 @@ QVariant RetryRequestPacket::toVariant() const
 		if(!r.peerAddress.isNull())
 			vrequest["peer-address"] = r.peerAddress.toString().toUtf8();
 
+		if(r.debug)
+			vrequest["debug"] = true;
+
 		if(r.autoCrossOrigin)
 			vrequest["auto-cross-origin"] = true;
 
@@ -174,6 +177,14 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 				return false;
 
 			r.peerAddress = QHostAddress(QString::fromUtf8(vrequest["peer-address"].toByteArray()));
+		}
+
+		if(vrequest.contains("debug"))
+		{
+			if(vrequest["debug"].type() != QVariant::Bool)
+				return false;
+
+			r.debug = vrequest["debug"].toBool();
 		}
 
 		if(vrequest.contains("auto-cross-origin"))

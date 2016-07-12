@@ -246,6 +246,7 @@ public:
 	int inPendingBytes;
 	int outPendingBytes;
 	int outReadInProgress; // frame type or -1
+	QByteArray pathBeg;
 	QByteArray routeId;
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
@@ -340,11 +341,11 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		connect(inSock, SIGNAL(readyRead()), SLOT(in_readyRead()));
-		connect(inSock, SIGNAL(framesWritten(int, int)), SLOT(in_framesWritten(int, int)));
-		connect(inSock, SIGNAL(peerClosed()), SLOT(in_peerClosed()));
-		connect(inSock, SIGNAL(closed()), SLOT(in_closed()));
-		connect(inSock, SIGNAL(error()), SLOT(in_error()));
+		connect(inSock, &WebSocket::readyRead, this, &Private::in_readyRead);
+		connect(inSock, &WebSocket::framesWritten, this, &Private::in_framesWritten);
+		connect(inSock, &WebSocket::peerClosed, this, &Private::in_peerClosed);
+		connect(inSock, &WebSocket::closed, this, &Private::in_closed);
+		connect(inSock, &WebSocket::error, this, &Private::in_error);
 
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
@@ -354,7 +355,7 @@ public:
 		if(entry.isNull())
 		{
 			log_warning("wsproxysession: %p %s has 0 routes", q, qPrintable(host));
-			reject(502, "Bad Gateway", QString("No route for host: %1").arg(host));
+			reject(false, 502, "Bad Gateway", QString("No route for host: %1").arg(host));
 			return;
 		}
 
@@ -384,6 +385,7 @@ public:
 			sigKey = defaultSigKey;
 		}
 
+		pathBeg = entry.pathBeg;
 		routeId = entry.id;
 		channelPrefix = entry.prefix;
 		targets = entry.targets;
@@ -408,7 +410,7 @@ public:
 	{
 		if(targets.isEmpty())
 		{
-			reject(502, "Bad Gateway", "Error while proxying to origin.");
+			reject(false, 502, "Bad Gateway", "Error while proxying to origin.");
 			return;
 		}
 
@@ -433,6 +435,17 @@ public:
 
 		if(target.type == DomainMap::Target::Test)
 		{
+			// for test route, auto-adjust path
+			if(!pathBeg.isEmpty())
+			{
+				int pathRemove = pathBeg.length();
+				if(pathBeg.endsWith('/'))
+					--pathRemove;
+
+				if(pathRemove > 0)
+					uri.setPath(uri.path(QUrl::FullyEncoded).mid(pathRemove));
+			}
+
 			outSock = new TestWebSocket(this);
 		}
 		else
@@ -461,7 +474,7 @@ public:
 				// websockets don't work with zhttp req mode
 				if(zhttpManager->clientUsesReq())
 				{
-					reject(502, "Bad Gateway", "Error while proxying to origin.");
+					reject(false, 502, "Bad Gateway", "Error while proxying to origin.");
 					return;
 				}
 
@@ -470,12 +483,12 @@ public:
 			}
 		}
 
-		connect(outSock, SIGNAL(connected()), SLOT(out_connected()));
-		connect(outSock, SIGNAL(readyRead()), SLOT(out_readyRead()));
-		connect(outSock, SIGNAL(framesWritten(int, int)), SLOT(out_framesWritten(int, int)));
-		connect(outSock, SIGNAL(peerClosed()), SLOT(out_peerClosed()));
-		connect(outSock, SIGNAL(closed()), SLOT(out_closed()));
-		connect(outSock, SIGNAL(error()), SLOT(out_error()));
+		connect(outSock, &WebSocket::connected, this, &Private::out_connected);
+		connect(outSock, &WebSocket::readyRead, this, &Private::out_readyRead);
+		connect(outSock, &WebSocket::framesWritten, this, &Private::out_framesWritten);
+		connect(outSock, &WebSocket::peerClosed, this, &Private::out_peerClosed);
+		connect(outSock, &WebSocket::closed, this, &Private::out_closed);
+		connect(outSock, &WebSocket::error, this, &Private::out_error);
 
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
@@ -492,19 +505,19 @@ public:
 		outSock->start(uri, requestData.headers);
 	}
 
-	void reject(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
+	void reject(bool proxied, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)
 	{
 		assert(state == Connecting);
 
 		state = Closing;
 		inSock->respondError(code, reason, headers, body);
 
-		logConnection(code, body.size());
+		logConnection(proxied, code, body.size());
 	}
 
-	void reject(int code, const QString &reason, const QString &errorMessage)
+	void reject(bool proxied, int code, const QString &reason, const QString &errorMessage)
 	{
-		reject(code, reason.toUtf8(), HttpHeaders(), (errorMessage + '\n').toUtf8());
+		reject(proxied, code, reason.toUtf8(), HttpHeaders(), (errorMessage + '\n').toUtf8());
 	}
 
 	void tryReadIn()
@@ -616,25 +629,31 @@ public:
 		}
 	}
 
-	void logConnection(int responseCode, int responseBodySize)
+	void logConnection(bool proxied, int responseCode, int responseBodySize)
 	{
-		QString targetStr;
-		if(target.type == DomainMap::Target::Test)
+		QString msg = QString("GET %1").arg(inSock->requestUri().toString(QUrl::FullyEncoded));
+
+		if(proxied)
 		{
-			targetStr = "test";
-		}
-		else if(target.type == DomainMap::Target::Custom)
-		{
-			targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
-		}
-		else // Default
-		{
-			targetStr = target.connectHost + ':' + QString::number(target.connectPort);
+			QString targetStr;
+			if(target.type == DomainMap::Target::Test)
+			{
+				targetStr = "test";
+			}
+			else if(target.type == DomainMap::Target::Custom)
+			{
+				targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
+			}
+			else // Default
+			{
+				targetStr = target.connectHost + ':' + QString::number(target.connectPort);
+			}
+
+			msg += QString(" -> %2").arg(targetStr);
+			if(target.overHttp)
+				msg += "[http]";
 		}
 
-		QString msg = QString("GET %1 -> %2").arg(inSock->requestUri().toString(QUrl::FullyEncoded), targetStr);
-		if(target.overHttp)
-			msg += "[http]";
 		QUrl ref = QUrl(QString::fromUtf8(inSock->requestHeaders().get("Referer")));
 		if(!ref.isEmpty())
 			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
@@ -753,11 +772,11 @@ private slots:
 			if(wsControlManager)
 			{
 				wsControl = wsControlManager->createSession(publicCid);
-				connect(wsControl, SIGNAL(sendEventReceived(WebSocket::Frame::Type, const QByteArray &)), SLOT(wsControl_sendEventReceived(WebSocket::Frame::Type, const QByteArray &)));
-				connect(wsControl, SIGNAL(keepAliveSetupEventReceived(bool, int)), SLOT(wsControl_keepAliveSetupEventReceived(bool, int)));
-				connect(wsControl, SIGNAL(closeEventReceived(int)), SLOT(wsControl_closeEventReceived(int)));
-				connect(wsControl, SIGNAL(detachEventReceived()), SLOT(wsControl_detachEventReceived()));
-				connect(wsControl, SIGNAL(cancelEventReceived()), SLOT(wsControl_cancelEventReceived()));
+				connect(wsControl, &WsControlSession::sendEventReceived, this, &Private::wsControl_sendEventReceived);
+				connect(wsControl, &WsControlSession::keepAliveSetupEventReceived, this, &Private::wsControl_keepAliveSetupEventReceived);
+				connect(wsControl, &WsControlSession::closeEventReceived, this, &Private::wsControl_closeEventReceived);
+				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
+				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
 				wsControl->start(routeId, channelPrefix, inSock->requestUri());
 
 				if(!subChannel.isEmpty())
@@ -776,7 +795,7 @@ private slots:
 
 		inSock->respondSuccess(outSock->responseReason(), headers);
 
-		logConnection(101, 0);
+		logConnection(true, 101, 0);
 
 		// send any pending frames
 		tryReadIn();
@@ -841,10 +860,10 @@ private slots:
 					tryAgain = true;
 					break;
 				case WebSocket::ErrorRejected:
-					reject(outSock->responseCode(), outSock->responseReason(), outSock->responseHeaders(), outSock->responseBody());
+					reject(true, outSock->responseCode(), outSock->responseReason(), outSock->responseHeaders(), outSock->responseBody());
 					break;
 				default:
-					reject(502, "Bad Gateway", "Error while proxying to origin.");
+					reject(true, 502, "Bad Gateway", "Error while proxying to origin.");
 					break;
 			}
 
@@ -889,7 +908,7 @@ private slots:
 			if(!keepAliveTimer)
 			{
 				keepAliveTimer = new QTimer(this);
-				connect(keepAliveTimer, SIGNAL(timeout()), SLOT(keepAliveTimer_timeout()));
+				connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
 				keepAliveTimer->setSingleShot(true);
 			}
 

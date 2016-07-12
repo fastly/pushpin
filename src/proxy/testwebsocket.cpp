@@ -25,6 +25,7 @@
 #include <QJsonObject>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "statusreasons.h"
 
 #define BUFFER_SIZE 200000
 
@@ -64,7 +65,7 @@ public slots:
 	void handleConnect()
 	{
 		QString path = request.uri.path();
-		if(path.endsWith('/'))
+		if(path.length() >= 2 && path.endsWith('/'))
 			path.truncate(path.length() - 1);
 
 		QSet<QString> channels;
@@ -80,11 +81,11 @@ public slots:
 		if(channels.isEmpty())
 			channels += "test";
 
-		if(path.endsWith("/ws"))
+		if(path == "/ws")
 		{
 			state = Connected;
 			response.code = 101;
-			response.reason = "Switching Protocols";
+			response.reason = StatusReasons::getReason(response.code);
 
 			gripEnabled = false;
 			foreach(const HttpHeaderParameters &ext, request.headers.getAllAsParameters("Sec-WebSocket-Extensions"))
@@ -117,6 +118,7 @@ public slots:
 		else
 		{
 			response.code = 404;
+			response.reason = StatusReasons::getReason(response.code);
 			response.headers += HttpHeader("Content-Type", "text/plain");
 			response.body += QByteArray("no such test resource\n");
 

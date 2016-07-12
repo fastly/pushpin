@@ -1,0 +1,16 @@
+SRC_DIR = $$PWD/..
+CORE_DIR = $$PWD/../../corelib
+COMMON_DIR = $$CORE_DIR/common
+
+INCLUDEPATH += $$SRC_DIR
+INCLUDEPATH += $$CORE_DIR
+
+INCLUDEPATH += $$COMMON_DIR
+DEFINES += NO_IRISNET
+
+HEADERS += \
+	$$SRC_DIR/app.h
+
+SOURCES += \
+	$$SRC_DIR/app.cpp \
+	$$SRC_DIR/main.cpp

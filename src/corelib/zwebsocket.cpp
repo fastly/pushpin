@@ -108,11 +108,11 @@ public:
 		outContentType((int)Frame::Text)
 	{
 		expireTimer = new QTimer(this);
-		connect(expireTimer, SIGNAL(timeout()), this, SLOT(expire_timeout()));
+		connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
 		expireTimer->setSingleShot(true);
 
 		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, SIGNAL(timeout()), this, SLOT(keepAlive_timeout()));
+		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
 	}
 
 	~Private()

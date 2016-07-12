@@ -98,7 +98,7 @@ public:
 		defaultItem(0)
 	{
 		cleanupTimer = new QTimer(this);
-		connect(cleanupTimer, SIGNAL(timeout()), SLOT(removeUnused()));
+		connect(cleanupTimer, &QTimer::timeout, this, &Private::removeUnused);
 		cleanupTimer->setInterval(10000);
 		cleanupTimer->start();
 	}

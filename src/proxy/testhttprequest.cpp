@@ -21,9 +21,11 @@
 
 #include <assert.h>
 #include <QUrlQuery>
+#include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "statusreasons.h"
 
 #define MAX_REQUEST_SIZE 100000
 
@@ -64,6 +66,7 @@ public slots:
 		if(!requestBodyFinished)
 		{
 			response.code = 400;
+			response.reason = StatusReasons::getReason(response.code);
 			response.headers += HttpHeader("Content-Type", "text/plain");
 			responseBody += QByteArray("request too large\n");
 
@@ -72,8 +75,10 @@ public slots:
 			return;
 		}
 
+		log_debug("processing test request: %s", qPrintable(request.uri.path()));
+
 		QString path = request.uri.path();
-		if(path.endsWith('/'))
+		if(path.length() >= 2 && path.endsWith('/'))
 			path.truncate(path.length() - 1);
 
 		QSet<QString> channels;
@@ -89,17 +94,26 @@ public slots:
 		if(channels.isEmpty())
 			channels += "test";
 
-		if(path.endsWith("/response"))
+		if(path == "/")
 		{
 			response.code = 200;
+			response.reason = StatusReasons::getReason(response.code);
+			response.headers += HttpHeader("Content-Type", "text/plain");
+			responseBody += QByteArray("Hello from the Pushpin test handler!\n");
+		}
+		else if(path == "/response")
+		{
+			response.code = 200;
+			response.reason = StatusReasons::getReason(response.code);
 			response.headers += HttpHeader("Content-Type", "text/plain");
 			response.headers += HttpHeader("Grip-Hold", "response");
 			response.headers += HttpHeader("Grip-Channel", QStringList(channels.toList()).join(", ").toUtf8());
 			responseBody += QByteArray("nothing for now\n");
 		}
-		else if(path.endsWith("/stream"))
+		else if(path == "/stream")
 		{
 			response.code = 200;
+			response.reason = StatusReasons::getReason(response.code);
 			response.headers += HttpHeader("Content-Type", "text/plain");
 			response.headers += HttpHeader("Grip-Hold", "stream");
 			response.headers += HttpHeader("Grip-Channel", QStringList(channels.toList()).join(", ").toUtf8());
@@ -108,6 +122,7 @@ public slots:
 		else
 		{
 			response.code = 404;
+			response.reason = StatusReasons::getReason(response.code);
 			response.headers += HttpHeader("Content-Type", "text/plain");
 			responseBody += QByteArray("no such test resource\n");
 		}

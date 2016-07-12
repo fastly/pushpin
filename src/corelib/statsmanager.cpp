@@ -100,11 +100,11 @@ public:
 		sock(0)
 	{
 		activityTimer = new QTimer(this);
-		connect(activityTimer, SIGNAL(timeout()), SLOT(activity_timeout()));
+		connect(activityTimer, &QTimer::timeout, this, &Private::activity_timeout);
 		activityTimer->setSingleShot(true);
 
 		refreshTimer = new QTimer(this);
-		connect(refreshTimer, SIGNAL(timeout()), SLOT(refresh_timeout()));
+		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
 		refreshTimer->start(REFRESH_TIMEOUT);
 	}
 

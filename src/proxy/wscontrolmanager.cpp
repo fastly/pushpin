@@ -74,7 +74,7 @@ public:
 		}
 
 		inValve = new QZmq::Valve(inSock, this);
-		connect(inValve, SIGNAL(readyRead(const QList<QByteArray> &)), SLOT(in_readyRead(const QList<QByteArray> &)));
+		connect(inValve, &QZmq::Valve::readyRead, this, &Private::in_readyRead);
 
 		inValve->open();
 

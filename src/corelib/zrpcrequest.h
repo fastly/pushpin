@@ -52,9 +52,9 @@ public:
 
 	void start(const QString &method, const QVariantHash &args = QVariantHash());
 	void respond(const QVariant &result = QVariant());
-	void respondError(const QByteArray &condition);
+	void respondError(const QByteArray &condition, const QVariant &result = QVariant());
 
-	void setError(ErrorCondition condition);
+	void setError(ErrorCondition condition, const QVariant &result = QVariant());
 
 protected:
 	virtual void onSuccess();

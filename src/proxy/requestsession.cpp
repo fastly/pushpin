@@ -144,6 +144,7 @@ public:
 	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
 	DomainMap::Entry route;
+	bool debug;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
 	InspectData idata;
@@ -172,6 +173,7 @@ public:
 		inspectChecker(_inspectChecker),
 		acceptManager(_acceptManager),
 		zhttpRequest(0),
+		debug(false),
 		autoCrossOrigin(false),
 		inspectRequest(0),
 		acceptRequest(0),
@@ -237,11 +239,17 @@ public:
 			return;
 		}
 
-		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
-		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
+		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
+		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
 
-		if(!route.isNull() && route.autoCrossOrigin)
-			autoCrossOrigin = true;
+		if(!route.isNull())
+		{
+			if(route.debug)
+				debug = true;
+
+			if(route.autoCrossOrigin)
+				autoCrossOrigin = true;
+		}
 
 		if(autoCrossOrigin)
 		{
@@ -298,14 +306,14 @@ public:
 
 		state = Prefetching;
 
-		connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
+		connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
 		processIncomingRequest();
 	}
 
 	void startRetry()
 	{
-		connect(zhttpRequest, SIGNAL(error()), SLOT(zhttpRequest_error()));
-		connect(zhttpRequest, SIGNAL(paused()), SLOT(zhttpRequest_paused()));
+		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
+		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
 
 		state = WaitingForResponse;
 
@@ -339,7 +347,7 @@ public:
 			{
 				// we've read enough body to start inspection
 
-				disconnect(zhttpRequest, SIGNAL(readyRead()), this, SLOT(zhttpRequest_readyRead()));
+				disconnect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
 
 				state = Inspecting;
 				requestData.body = in.toByteArray();
@@ -353,7 +361,7 @@ public:
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
-						connect(inspectRequest, SIGNAL(finished()), SLOT(inspectRequest_finished()));
+						connect(inspectRequest, &InspectRequest::finished, this, &Private::inspectRequest_finished);
 						inspectChecker->watch(inspectRequest);
 						inspectRequest->start(requestData, truncated, route.session);
 					}
@@ -384,7 +392,7 @@ public:
 				//   disallow sharing before passing to proxysession. at that
 				//   point, proxysession will read the remainder of the data
 
-				disconnect(zhttpRequest, SIGNAL(readyRead()), this, SLOT(zhttpRequest_readyRead()));
+				disconnect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
 
 				state = WaitingForResponse;
 				requestData.body = in.take();
@@ -729,6 +737,7 @@ public slots:
 			areq.rid = rid;
 			areq.https = zhttpRequest->requestUri().scheme() == "https";
 			areq.peerAddress = zhttpRequest->peerAddress();
+			areq.debug = debug;
 			areq.autoCrossOrigin = autoCrossOrigin;
 			areq.jsonpCallback = jsonpCallback;
 			areq.jsonpExtendedResponse = jsonpExtendedResponse;
@@ -750,7 +759,7 @@ public slots:
 			adata.channelPrefix = route.prefix;
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			connect(acceptRequest, SIGNAL(finished()), SLOT(acceptRequest_finished()));
+			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);
 			acceptRequest->start(adata);
 		}
 		else
@@ -790,7 +799,7 @@ public slots:
 
 			// successful inspect indicated we should not proxy. in that case,
 			//   collect the body and accept
-			connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
+			connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
 			processIncomingRequest();
 		}
 		else
@@ -801,7 +810,7 @@ public slots:
 				//   request body, so let's try to read it now
 				state = Receiving;
 
-				connect(zhttpRequest, SIGNAL(readyRead()), SLOT(zhttpRequest_readyRead()));
+				connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
 				processIncomingRequest();
 			}
 			else
@@ -920,7 +929,7 @@ public slots:
 						}
 					}
 
-					connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
+					connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
 
 					zhttpRequest->beginResponse(200, "OK", headers);
 
@@ -952,7 +961,7 @@ public slots:
 				headers += HttpHeader("Content-Type", "application/javascript");
 				headers += HttpHeader("Transfer-Encoding", "chunked");
 
-				connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
+				connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
 
 				zhttpRequest->beginResponse(200, "OK", headers);
 
@@ -966,7 +975,7 @@ public slots:
 				if(autoCrossOrigin)
 					Cors::applyCorsHeaders(requestData.headers, &responseData.headers);
 
-				connect(zhttpRequest, SIGNAL(bytesWritten(int)), SLOT(zhttpRequest_bytesWritten(int)));
+				connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
 
 				zhttpRequest->beginResponse(responseData.code, responseData.reason, responseData.headers);
 			}
@@ -1110,6 +1119,11 @@ int RequestSession::responseBodySize() const
 	return d->responseBodySize;
 }
 
+bool RequestSession::debugEnabled() const
+{
+	return d->debug;
+}
+
 bool RequestSession::autoCrossOrigin() const
 {
 	return d->autoCrossOrigin;
@@ -1140,6 +1154,11 @@ ZhttpRequest *RequestSession::request()
 	return d->zhttpRequest;
 }
 
+void RequestSession::setDebugEnabled(bool enabled)
+{
+	d->debug = enabled;
+}
+
 void RequestSession::setAutoCrossOrigin(bool enabled)
 {
 	d->autoCrossOrigin = enabled;
@@ -1155,11 +1174,12 @@ void RequestSession::start(ZhttpRequest *req)
 	d->start(req);
 }
 
-void RequestSession::startRetry(ZhttpRequest *req, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse)
+void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse)
 {
 	d->isRetry = true;
 	d->zhttpRequest = req;
 	d->rid = req->rid();
+	d->debug = debug;
 	d->autoCrossOrigin = autoCrossOrigin;
 	d->jsonpCallback = jsonpCallback;
 	d->jsonpExtendedResponse = jsonpExtendedResponse;

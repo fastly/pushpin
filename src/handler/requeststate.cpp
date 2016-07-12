@@ -80,6 +80,14 @@ RequestState RequestState::fromVariant(const QVariant &in)
 		rs.isHttps = r["https"].toBool();
 	}
 
+	if(r.contains("debug"))
+	{
+		if(r["debug"].type() != QVariant::Bool)
+			return RequestState();
+
+		rs.debug = r["debug"].toBool();
+	}
+
 	if(r.contains("auto-cross-origin"))
 	{
 		if(r["auto-cross-origin"].type() != QVariant::Bool)

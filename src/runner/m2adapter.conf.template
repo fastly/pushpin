@@ -1,33 +1,33 @@
 [General]
 # list of mongrel2 handler send_spec
-m2_in_specs={% for i in instances %}{% if not loop.first %},{% endif %}{{ i.send_spec }}{% endfor %}
+m2_in_specs={% for p in ports %}{% if not loop.first %},{% endif %}ipc://{{ rundir }}/{{ ipc_prefix }}m2-out-{{ p }}{% endfor %}
 
 # list of mongrel2 handler recv_spec
-m2_out_specs={% for i in instances %}{% if not loop.first %},{% endif %}{{ i.recv_spec }}{% endfor %}
+m2_out_specs={% for p in ports %}{% if not loop.first %},{% endif %}ipc://{{ rundir }}/{{ ipc_prefix }}m2-in-{{ p }}{% endfor %}
 
 # list of mongrel2 send_ident (per send_spec)
-m2_send_idents={% for i in instances %}{% if not loop.first %},{% endif %}{{ i.send_ident }}{% endfor %}
+m2_send_idents={% for p in ports %}{% if not loop.first %},{% endif %}pushpin-m2-{{ p }}{% endfor %}
 
 # list of mongrel2 control specs (per send_ident)
-m2_control_specs={% for i in instances %}{% if not loop.first %},{% endif %}{{ i.control_spec }}{% endfor %}
+m2_control_specs={% for p in ports %}{% if not loop.first %},{% endif %}ipc://{{ rundir }}/{{ ipc_prefix }}m2-control-{{ p }}{% endfor %}
 
 # zhttp in specs
-zhttp_in_specs=ipc://{{ rundir }}/pushpin-m2zhttp-in
+zhttp_in_specs=ipc://{{ rundir }}/{{ ipc_prefix }}m2zhttp-in
 
 # zhttp out specs
-zhttp_out_specs=ipc://{{ rundir }}/pushpin-m2zhttp-out
+zhttp_out_specs=ipc://{{ rundir }}/{{ ipc_prefix }}m2zhttp-out
 
 # zhttp out stream specs
-zhttp_out_stream_specs=ipc://{{ rundir }}/pushpin-m2zhttp-out-stream
+zhttp_out_stream_specs=ipc://{{ rundir }}/{{ ipc_prefix }}m2zhttp-out-stream
 
 # zws in specs
-zws_in_specs=ipc://{{ rundir }}/pushpin-m2zws-in
+zws_in_specs=ipc://{{ rundir }}/{{ ipc_prefix }}m2zws-in
 
 # zws out specs
-zws_out_specs=ipc://{{ rundir }}/pushpin-m2zws-out
+zws_out_specs=ipc://{{ rundir }}/{{ ipc_prefix }}m2zws-out
 
 # zws out stream specs
-zws_out_stream_specs=ipc://{{ rundir }}/pushpin-m2zws-out-stream
+zws_out_stream_specs=ipc://{{ rundir }}/{{ ipc_prefix }}m2zws-out-stream
 
 # don't send more than this to mongrel2
 m2_client_buffer=200000

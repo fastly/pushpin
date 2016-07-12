@@ -46,7 +46,7 @@ public:
 		manager(0)
 	{
 		 keepAliveTimer = new QTimer(this);
-		 connect(keepAliveTimer, SIGNAL(timeout()), this, SLOT(keepAlive_timeout()));
+		 connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
 	}
 
 	~Private()

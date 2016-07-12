@@ -213,7 +213,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		}
 		else
 		{
-			setError(ok, errorMessage, QString("no such Grip-Keep-Alive format '%s'").arg(QString::fromUtf8(format)));
+			setError(ok, errorMessage, QString("no such Grip-Keep-Alive format '%1'").arg(QString::fromUtf8(format)));
 			return Instruct();
 		}
 	}

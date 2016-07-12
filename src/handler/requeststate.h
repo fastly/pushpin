@@ -35,6 +35,7 @@ public:
 	int outCredits;
 	QHostAddress peerAddress;
 	bool isHttps;
+	bool debug;
 	bool autoCrossOrigin;
 	QByteArray jsonpCallback;
 	bool jsonpExtendedResponse;
@@ -46,6 +47,7 @@ public:
 		outSeq(0),
 		outCredits(0),
 		isHttps(false),
+		debug(false),
 		autoCrossOrigin(false),
 		jsonpExtendedResponse(false)
 	{
