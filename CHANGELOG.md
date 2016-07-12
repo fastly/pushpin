@@ -4,6 +4,8 @@ Pushpin Changelog
 v. 1.11.0 (2016-07-11)
 
   * Debug mode, to get more information about errors while proxying.
+  * Command line option to log subprocess output: --merge-output.
+  * Command line option to log merged output to file: --logfile.
   * Command line options for quick config: --port, --route.
   * Command line option to easily run multiple instances: --id.
   * Rewrite runner from Python to C++.
