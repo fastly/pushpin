@@ -180,13 +180,25 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	}
 
 	if(acceptXForwardedProtocol || useXForwardedProtocol)
+	{
+		requestData->headers.removeAll("X-Forwarded-Proto");
+
+		// TODO: deprecate
 		requestData->headers.removeAll("X-Forwarded-Protocol");
+	}
 
 	if(useXForwardedProtocol)
 	{
 		QString scheme = requestData->uri.scheme();
 		if(scheme == "https" || scheme == "wss")
-			requestData->headers += HttpHeader("X-Forwarded-Protocol", scheme.toUtf8());
+		{
+			QByteArray schemeVal = scheme.toUtf8();
+
+			requestData->headers += HttpHeader("X-Forwarded-Proto", schemeVal);
+
+			// TODO: deprecate
+			requestData->headers += HttpHeader("X-Forwarded-Protocol", schemeVal);
+		}
 	}
 
 	const XffRule *xr;
