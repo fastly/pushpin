@@ -180,13 +180,13 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	}
 
 	if(acceptXForwardedProtocol || useXForwardedProtocol)
-		requestData->headers.removeAll("X-Forwarded-Protocol");
+		requestData->headers.removeAll("X-Forwarded-Proto");
 
 	if(useXForwardedProtocol)
 	{
 		QString scheme = requestData->uri.scheme();
 		if(scheme == "https" || scheme == "wss")
-			requestData->headers += HttpHeader("X-Forwarded-Protocol", scheme.toUtf8());
+			requestData->headers += HttpHeader("X-Forwarded-Proto", scheme.toUtf8());
 	}
 
 	const XffRule *xr;
