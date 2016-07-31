@@ -360,7 +360,7 @@ public:
 		}
 
 		if(!entry.asHost.isEmpty())
-			requestData.uri.setHost(entry.asHost);
+			ProxyUtil::applyHost(&requestData.uri, entry.asHost);
 
 		QByteArray path = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
@@ -423,7 +423,7 @@ public:
 			uri.setScheme("ws");
 
 		if(!target.host.isEmpty())
-			uri.setHost(target.host);
+			ProxyUtil::applyHost(&uri, target.host);
 
 		subChannel = target.subChannel;
 
@@ -501,6 +501,8 @@ public:
 			outSock->setConnectHost(target.connectHost);
 			outSock->setConnectPort(target.connectPort);
 		}
+
+		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
 		outSock->start(uri, requestData.headers);
 	}

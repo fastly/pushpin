@@ -673,7 +673,11 @@ public:
 
 		requestData.uri = uri;
 
-		headers += HttpHeader("Host", uri.host().toUtf8());
+		QByteArray hostHeader = uri.host().toUtf8();
+		if(uri.port() != -1)
+			hostHeader += ':' + QByteArray::number(uri.port());
+		headers += HttpHeader("Host", hostHeader);
+
 		headers += HttpHeader("Accept", "*/*");
 
 		// carry over the rest of the headers

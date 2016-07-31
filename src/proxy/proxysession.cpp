@@ -211,7 +211,7 @@ public:
 			requestData.body.clear();
 
 			if(!route.asHost.isEmpty())
-				requestData.uri.setHost(route.asHost);
+				ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
 			QByteArray path = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
@@ -336,7 +336,7 @@ public:
 			uri.setScheme("http");
 
 		if(!target.host.isEmpty())
-			uri.setHost(target.host);
+			ProxyUtil::applyHost(&uri, target.host);
 
 		if(zhttpManager)
 		{
@@ -393,6 +393,8 @@ public:
 			zhttpRequest->setConnectHost(target.connectHost);
 			zhttpRequest->setConnectPort(target.connectPort);
 		}
+
+		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
 		zhttpRequest->start(requestData.method, uri, requestData.headers);
 
