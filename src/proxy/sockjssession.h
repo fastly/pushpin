@@ -72,14 +72,6 @@ public:
 	virtual Frame readFrame();
 	virtual void close(int code = -1);
 
-signals:
-	void connected();
-	void readyRead();
-	void framesWritten(int count, int contentBytes);
-	void peerClosed();
-	void closed();
-	void error();
-
 private:
 	class Private;
 	friend class Private;
