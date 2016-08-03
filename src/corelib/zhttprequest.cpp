@@ -875,6 +875,7 @@ public slots:
 					p.connectPort = connectPort;
 					if(ignorePolicies)
 						p.ignorePolicies = true;
+					p.trustConnectHost = true;
 					if(ignoreTlsErrors)
 						p.ignoreTlsErrors = true;
 					writePacket(p);
@@ -919,6 +920,7 @@ public slots:
 				p.connectPort = connectPort;
 				if(ignorePolicies)
 					p.ignorePolicies = true;
+				p.trustConnectHost = true;
 				if(ignoreTlsErrors)
 					p.ignoreTlsErrors = true;
 				p.credits = IDEAL_CREDITS;
