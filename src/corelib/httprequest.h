@@ -51,6 +51,7 @@ public:
 	virtual void setConnectHost(const QString &host) = 0;
 	virtual void setConnectPort(int port) = 0;
 	virtual void setIgnorePolicies(bool on) = 0;
+	virtual void setTrustConnectHost(bool on) = 0;
 	virtual void setIgnoreTlsErrors(bool on) = 0;
 
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers) = 0;

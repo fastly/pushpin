@@ -66,6 +66,7 @@ public:
 	QString connectHost;
 	int connectPort;
 	bool ignorePolicies;
+	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	bool sendBodyAfterAck;
 	QString requestMethod;
@@ -102,6 +103,7 @@ public:
 		doReq(false),
 		connectPort(-1),
 		ignorePolicies(false),
+		trustConnectHost(false),
 		ignoreTlsErrors(false),
 		sendBodyAfterAck(false),
 		inSeq(0),
@@ -875,7 +877,8 @@ public slots:
 					p.connectPort = connectPort;
 					if(ignorePolicies)
 						p.ignorePolicies = true;
-					p.trustConnectHost = true;
+					if(trustConnectHost)
+						p.trustConnectHost = true;
 					if(ignoreTlsErrors)
 						p.ignoreTlsErrors = true;
 					writePacket(p);
@@ -920,7 +923,8 @@ public slots:
 				p.connectPort = connectPort;
 				if(ignorePolicies)
 					p.ignorePolicies = true;
-				p.trustConnectHost = true;
+				if(trustConnectHost)
+					p.trustConnectHost = true;
 				if(ignoreTlsErrors)
 					p.ignoreTlsErrors = true;
 				p.credits = IDEAL_CREDITS;
@@ -1069,6 +1073,11 @@ void ZhttpRequest::setConnectPort(int port)
 void ZhttpRequest::setIgnorePolicies(bool on)
 {
 	d->ignorePolicies = on;
+}
+
+void ZhttpRequest::setTrustConnectHost(bool on)
+{
+	d->trustConnectHost = on;
 }
 
 void ZhttpRequest::setIgnoreTlsErrors(bool on)

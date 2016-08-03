@@ -1068,6 +1068,14 @@ void SockJsSession::setIgnorePolicies(bool on)
 	assert(0);
 }
 
+void SockJsSession::setTrustConnectHost(bool on)
+{
+	Q_UNUSED(on);
+
+	// this class is server only
+	assert(0);
+}
+
 void SockJsSession::setIgnoreTlsErrors(bool on)
 {
 	Q_UNUSED(on);

@@ -493,6 +493,9 @@ public:
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
 
+		if(target.trustConnectHost)
+			outSock->setTrustConnectHost(true);
+
 		if(target.insecure)
 			outSock->setIgnoreTlsErrors(true);
 

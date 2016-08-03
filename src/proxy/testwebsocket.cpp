@@ -166,6 +166,11 @@ void TestWebSocket::setIgnorePolicies(bool on)
 	Q_UNUSED(on);
 }
 
+void TestWebSocket::setTrustConnectHost(bool on)
+{
+	Q_UNUSED(on);
+}
+
 void TestWebSocket::setIgnoreTlsErrors(bool on)
 {
 	Q_UNUSED(on);

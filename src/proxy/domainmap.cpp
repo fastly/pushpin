@@ -568,6 +568,9 @@ private:
 			else
 				target.trusted = true;
 
+			if(props.contains("trust_connect_host"))
+				target.trustConnectHost = true;
+
 			if(props.contains("insecure"))
 				target.insecure = true;
 

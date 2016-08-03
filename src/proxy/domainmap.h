@@ -100,6 +100,7 @@ public:
 		ZhttpRoute zhttpRoute;
 		bool ssl; // use https
 		bool trusted; // bypass zurl access policies
+		bool trustConnectHost; // verify cert against target host
 		bool insecure; // ignore server certificate validity
 		QString host; // override input host
 		QString subChannel; // force subscription for websocket test
@@ -110,6 +111,7 @@ public:
 			connectPort(-1),
 			ssl(false),
 			trusted(false),
+			trustConnectHost(false),
 			insecure(false),
 			overHttp(false)
 		{

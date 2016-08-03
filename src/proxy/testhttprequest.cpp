@@ -164,6 +164,11 @@ void TestHttpRequest::setIgnorePolicies(bool on)
 	Q_UNUSED(on);
 }
 
+void TestHttpRequest::setTrustConnectHost(bool on)
+{
+	Q_UNUSED(on);
+}
+
 void TestHttpRequest::setIgnoreTlsErrors(bool on)
 {
 	Q_UNUSED(on);

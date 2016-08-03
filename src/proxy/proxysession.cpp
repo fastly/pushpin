@@ -385,6 +385,9 @@ public:
 		if(target.trusted)
 			zhttpRequest->setIgnorePolicies(true);
 
+		if(target.trustConnectHost)
+			zhttpRequest->setTrustConnectHost(true);
+
 		if(target.insecure)
 			zhttpRequest->setIgnoreTlsErrors(true);
 
