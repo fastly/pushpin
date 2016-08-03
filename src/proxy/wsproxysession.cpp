@@ -571,13 +571,20 @@ public:
 						else
 							outReadInProgress = -1; // ignore rest of message
 					}
-					else if(f.type != WebSocket::Frame::Continuation && f.data.startsWith(messagePrefix))
+					else if(f.type != WebSocket::Frame::Continuation)
 					{
-						f.data = f.data.mid(messagePrefix.size());
-						inSock->writeFrame(f);
-						inPendingBytes += f.data.size();
+						if(f.data.startsWith(messagePrefix))
+						{
+							f.data = f.data.mid(messagePrefix.size());
+							inSock->writeFrame(f);
+							inPendingBytes += f.data.size();
 
-						restartKeepAlive();
+							restartKeepAlive();
+						}
+						else
+						{
+							log_debug("wsproxysession: dropping unprefixed message");
+						}
 					}
 					else if(f.type == WebSocket::Frame::Continuation)
 					{
