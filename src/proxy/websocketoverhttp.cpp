@@ -657,6 +657,10 @@ private slots:
 				return;
 			}
 
+			// correct the status code/reason
+			responseData.code = 101;
+			responseData.reason = "Switching Protocols";
+
 			// strip private headers from the initial response
 			responseData.headers.removeAll("Content-Length");
 			responseData.headers.removeAll("Content-Type");
