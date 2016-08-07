@@ -62,8 +62,10 @@ public:
 	~ZhttpRequest();
 
 	Rid rid() const;
+	QVariant passthroughData() const;
 	void setIsTls(bool on); // updates scheme
 	void setSendBodyAfterAcknowledgement(bool on); // only works in push/sub mode
+	void setPassthroughData(const QVariant &data);
 
 	// for server requests only
 	void pause();

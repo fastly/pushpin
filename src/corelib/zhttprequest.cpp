@@ -69,6 +69,7 @@ public:
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	bool sendBodyAfterAck;
+	QVariant passthrough;
 	QString requestMethod;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
@@ -206,6 +207,8 @@ public:
 		requestUri = packet.uri;
 		requestHeaders = packet.headers;
 		requestBodyBuf += packet.body;
+
+		passthrough = packet.passthrough;
 
 		userData = packet.userData;
 		peerAddress = packet.peerAddress;
@@ -881,6 +884,8 @@ public slots:
 						p.trustConnectHost = true;
 					if(ignoreTlsErrors)
 						p.ignoreTlsErrors = true;
+					if(passthrough.isValid())
+						p.passthrough = passthrough;
 					writePacket(p);
 
 					state = ClientRequestFinishWait;
@@ -927,6 +932,8 @@ public slots:
 					p.trustConnectHost = true;
 				if(ignoreTlsErrors)
 					p.ignoreTlsErrors = true;
+				if(passthrough.isValid())
+					p.passthrough = passthrough;
 				p.credits = IDEAL_CREDITS;
 				writePacket(p);
 
@@ -1055,6 +1062,11 @@ ZhttpRequest::Rid ZhttpRequest::rid() const
 	return d->rid;
 }
 
+QVariant ZhttpRequest::passthroughData() const
+{
+	return d->passthrough;
+}
+
 QHostAddress ZhttpRequest::peerAddress() const
 {
 	return d->peerAddress;
@@ -1093,6 +1105,11 @@ void ZhttpRequest::setIsTls(bool on)
 void ZhttpRequest::setSendBodyAfterAcknowledgement(bool on)
 {
 	d->sendBodyAfterAck = on;
+}
+
+void ZhttpRequest::setPassthroughData(const QVariant &data)
+{
+	d->passthrough = data;
 }
 
 void ZhttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)

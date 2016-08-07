@@ -121,7 +121,8 @@ public:
 	QByteArray defaultSigIss;
 	QByteArray defaultSigKey;
 	QByteArray defaultUpstreamKey;
-	bool passToUpstream;
+	bool trustedClient;
+	bool passthrough;
 	bool acceptXForwardedProtocol;
 	bool useXForwardedProtocol;
 	XffRule xffRule;
@@ -147,7 +148,8 @@ public:
 		requestBytesToWrite(0),
 		requestBodySent(false),
 		total(0),
-		passToUpstream(false),
+		trustedClient(false),
+		passthrough(false),
 		acceptXForwardedProtocol(false),
 		useXForwardedProtocol(false),
 		proxyInitialResponse(false),
@@ -238,10 +240,7 @@ public:
 
 			targets = route.targets;
 
-			bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata);
-
-			if(trustedClient)
-				passToUpstream = true;
+			trustedClient = ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata);
 
 			state = Requesting;
 			buffering = true;
@@ -249,11 +248,17 @@ public:
 			if(!rs->isRetry())
 			{
 				inRequest = rs->request();
+
+				passthrough = inRequest->passthroughData().isValid();
+
 				connect(inRequest, &ZhttpRequest::readyRead, this, &Private::inRequest_readyRead);
 				connect(inRequest, &ZhttpRequest::error, this, &Private::inRequest_error);
 
 				requestBody += inRequest->readBody();
 			}
+
+			if(trustedClient || (inRequest && inRequest->passthroughData().isValid()))
+				passthrough = true;
 
 			initialRequestBody = requestBody.toByteArray();
 
@@ -322,7 +327,7 @@ public:
 			if(at != -1)
 				contentType.truncate(at);
 
-			if(contentType == "application/websocket-events" && !passToUpstream)
+			if(contentType == "application/websocket-events" && !trustedClient)
 			{
 				rejectAll(403, "Forbidden", "Client not allowed to send WebSocket events directly.");
 				return;
@@ -849,7 +854,7 @@ public slots:
 			log_debug("proxysession: %p recv total: %d", q, total);
 
 			bool doAccept = false;
-			if(!passToUpstream)
+			if(!passthrough)
 			{
 				QByteArray contentType = responseData.headers.get("Content-Type");
 				int at = contentType.indexOf(';');
@@ -1128,6 +1133,19 @@ public slots:
 		{
 			assert(!acceptRequest);
 
+			QByteArray sigIss;
+			QByteArray sigKey;
+			if(!route.sigIss.isEmpty() && !route.sigKey.isEmpty())
+			{
+				sigIss = route.sigIss;
+				sigKey = route.sigKey;
+			}
+			else
+			{
+				sigIss = defaultSigIss;
+				sigKey = defaultSigKey;
+			}
+
 			acceptResponseData.body = responseBody.take();
 
 			AcceptData adata;
@@ -1168,6 +1186,9 @@ public slots:
 
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
+			adata.sigIss = sigIss;
+			adata.sigKey = sigKey;
+			adata.trusted = target.trusted;
 			adata.useSession = route.session;
 			adata.responseSent = acceptAfterResponding;
 

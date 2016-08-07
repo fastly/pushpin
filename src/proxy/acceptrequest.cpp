@@ -137,6 +137,15 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 	if(!adata.channelPrefix.isEmpty())
 		obj["channel-prefix"] = adata.channelPrefix;
 
+	if(!adata.sigIss.isEmpty())
+		obj["sig-iss"] = adata.sigIss;
+
+	if(!adata.sigKey.isEmpty())
+		obj["sig-key"] = adata.sigKey;
+
+	if(adata.trusted)
+		obj["trusted"] = true;
+
 	if(adata.useSession)
 		obj["use-session"] = true;
 

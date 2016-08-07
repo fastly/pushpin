@@ -33,13 +33,15 @@ class InspectData;
 class AcceptData;
 class ZrpcManager;
 class ZrpcChecker;
+class StatsManager;
 
 class RequestSession : public QObject
 {
 	Q_OBJECT
 
 public:
-	RequestSession(DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept, QObject *parent = 0);
+	RequestSession(StatsManager *stats, QObject *parent = 0);
+	RequestSession(DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept, StatsManager *stats, QObject *parent = 0);
 	~RequestSession();
 
 	bool isRetry() const;
@@ -61,6 +63,8 @@ public:
 	void setDebugEnabled(bool enabled);
 	void setAutoCrossOrigin(bool enabled);
 	void setPrefetchSize(int size);
+	void setRoute(const DomainMap::Entry &route);
+	void setAccepted(bool enabled);
 
 	// takes ownership
 	void start(ZhttpRequest *req);
