@@ -181,15 +181,18 @@ public:
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
 		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
 
-		intZhttpIn = new ZhttpManager(this);
-		intZhttpIn->setBind(true);
-		intZhttpIn->setIpcFileMode(config.ipcFileMode);
-		connect(intZhttpIn, &ZhttpManager::requestReady, this, &Private::intZhttpIn_requestReady);
+		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
+		{
+			intZhttpIn = new ZhttpManager(this);
+			intZhttpIn->setBind(true);
+			intZhttpIn->setIpcFileMode(config.ipcFileMode);
+			connect(intZhttpIn, &ZhttpManager::requestReady, this, &Private::intZhttpIn_requestReady);
 
-		intZhttpIn->setInstanceId(config.clientId);
-		intZhttpIn->setServerInSpecs(config.intServerInSpecs);
-		intZhttpIn->setServerInStreamSpecs(config.intServerInStreamSpecs);
-		intZhttpIn->setServerOutSpecs(config.intServerOutSpecs);
+			intZhttpIn->setInstanceId(config.clientId);
+			intZhttpIn->setServerInSpecs(config.intServerInSpecs);
+			intZhttpIn->setServerInStreamSpecs(config.intServerInStreamSpecs);
+			intZhttpIn->setServerOutSpecs(config.intServerOutSpecs);
+		}
 
 		zroutes = new ZRoutes(this);
 		zroutes->setInstanceId(config.clientId);
@@ -433,7 +436,9 @@ public:
 		ZhttpRequest *req = zhttpIn->takeNextRequest();
 		if(!req)
 		{
-			req = intZhttpIn->takeNextRequest();
+			if(intZhttpIn)
+				req = intZhttpIn->takeNextRequest();
+
 			if(!req)
 				return;
 		}
