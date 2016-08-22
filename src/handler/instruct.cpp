@@ -263,6 +263,20 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		newResponse.reason = reason;
 	}
 
+	QUrl nextLink;
+	foreach(const HttpHeaderParameters &params, response.headers.getAllAsParameters("Grip-Link"))
+	{
+		if(params.count() >= 2 && params.get("rel") == "next")
+		{
+			QByteArray linkParam = params[0].first;
+			if(linkParam.length() > 2 && linkParam[0] == '<' && linkParam[linkParam.length() - 1] == '>')
+			{
+				nextLink = QUrl::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
+				break;
+			}
+		}
+	}
+
 	newResponse.headers.clear();
 	foreach(const HttpHeader &h, response.headers)
 	{
@@ -732,6 +746,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	i.keepAliveTimeout = keepAliveTimeout;
 	i.meta = meta;
 	i.response = newResponse;
+	i.nextLink = nextLink;
 
 	if(ok)
 		*ok = true;

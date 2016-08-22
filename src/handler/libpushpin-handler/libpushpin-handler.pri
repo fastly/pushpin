@@ -26,6 +26,7 @@ HEADERS += \
 	$$SRC_DIR/publishformat.h \
 	$$SRC_DIR/publishitem.h \
 	$$SRC_DIR/instruct.h \
+	$$SRC_DIR/httpsession.h \
 	$$SRC_DIR/responselastids.h \
 	$$SRC_DIR/controlrequest.h \
 	$$SRC_DIR/conncheckworker.h \
@@ -43,6 +44,7 @@ SOURCES += \
 	$$SRC_DIR/publishformat.cpp \
 	$$SRC_DIR/publishitem.cpp \
 	$$SRC_DIR/instruct.cpp \
+	$$SRC_DIR/httpsession.cpp \
 	$$SRC_DIR/responselastids.cpp \
 	$$SRC_DIR/controlrequest.cpp \
 	$$SRC_DIR/conncheckworker.cpp \

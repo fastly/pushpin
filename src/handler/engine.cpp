@@ -53,10 +53,9 @@
 #include "publishformat.h"
 #include "publishitem.h"
 #include "jsonpointer.h"
-#include "jsonpatch.h"
-#include "cors.h"
 #include "responselastids.h"
 #include "instruct.h"
+#include "httpsession.h"
 #include "conncheckworker.h"
 
 #define DEFAULT_HWM 1000
@@ -348,325 +347,6 @@ private slots:
 	}
 };
 
-class Hold : public QObject
-{
-	Q_OBJECT
-
-public:
-	Instruct::HoldMode mode;
-	QHash<QString, Instruct::Channel> channels;
-	HttpRequestData requestData;
-	HttpResponseData response;
-	ZhttpRequest *req;
-	QHash<QString, QString> meta;
-	bool debug;
-	bool autoCrossOrigin;
-	QByteArray jsonpCallback;
-	bool jsonpExtendedResponse;
-	QString route;
-	QString sid;
-	int timeout;
-	int keepAliveTimeout;
-	QByteArray keepAliveData;
-	bool responseSent;
-	QTimer *timer;
-	StatsManager *stats;
-
-	Hold(ZhttpRequest *_req, StatsManager *_stats, QObject *parent = 0) :
-		QObject(parent),
-		req(_req),
-		debug(false),
-		autoCrossOrigin(false),
-		jsonpExtendedResponse(false),
-		timeout(-1),
-		keepAliveTimeout(-1),
-		responseSent(false),
-		stats(_stats)
-	{
-		req->setParent(this);
-		connect(req, &ZhttpRequest::bytesWritten, this, &Hold::req_bytesWritten);
-		connect(req, &ZhttpRequest::error, this, &Hold::req_error);
-
-		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &Hold::timer_timeout);
-	}
-
-	~Hold()
-	{
-		timer->disconnect(this);
-		timer->setParent(0);
-		timer->deleteLater();
-	}
-
-	void start()
-	{
-		if(mode == Instruct::ResponseHold)
-		{
-			// set timeout
-			if(timeout >= 0)
-			{
-				timer->setSingleShot(true);
-				timer->start(timeout * 1000);
-			}
-		}
-		else // StreamHold
-		{
-			if(!responseSent)
-			{
-				// send initial response
-				response.headers.removeAll("Content-Length");
-				if(autoCrossOrigin)
-					Cors::applyCorsHeaders(requestData.headers, &response.headers);
-				req->beginResponse(response.code, response.reason, response.headers);
-				req->writeBody(response.body);
-			}
-
-			// start keep alive timer
-			if(keepAliveTimeout >= 0)
-				timer->start(keepAliveTimeout * 1000);
-		}
-	}
-
-	void respond(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
-	{
-		assert(mode == Instruct::ResponseHold);
-
-		// inherit headers from the timeout response
-		HttpHeaders headers = response.headers;
-		foreach(const HttpHeader &h, _headers)
-			headers.removeAll(h.first);
-		foreach(const HttpHeader &h, _headers)
-			headers += h;
-
-		// if Grip-Expose-Headers was provided in the push, apply now
-		if(!exposeHeaders.isEmpty())
-		{
-			for(int n = 0; n < headers.count(); ++n)
-			{
-				const HttpHeader &h = headers[n];
-
-				bool found = false;
-				foreach(const QByteArray &e, exposeHeaders)
-				{
-					if(qstricmp(h.first.data(), e.data()) == 0)
-					{
-						found = true;
-						break;
-					}
-				}
-
-				if(found)
-				{
-					headers.removeAt(n);
-					--n; // adjust position
-				}
-			}
-		}
-
-		respond(code, reason, headers, body);
-	}
-
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
-	{
-		assert(mode == Instruct::ResponseHold);
-
-		QByteArray body;
-
-		QJsonParseError e;
-		QJsonDocument doc = QJsonDocument::fromJson(response.body, &e);
-		if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
-		{
-			QVariant vbody;
-			if(doc.isObject())
-				vbody = doc.object().toVariantMap();
-			else // isArray
-				vbody = doc.array().toVariantList();
-
-			QString errorMessage;
-			vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
-			if(vbody.isValid())
-				vbody = convertToJsonStyle(vbody);
-			if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
-			{
-				QJsonDocument doc;
-				if(vbody.type() == QVariant::Map)
-					doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
-				else // List
-					doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
-
-				body = doc.toJson(QJsonDocument::Compact);
-
-				if(response.body.endsWith("\r\n"))
-					body += "\r\n";
-				else if(response.body.endsWith("\n"))
-					body += '\n';
-			}
-			else
-			{
-				log_debug("failed to apply JSON patch: %s", qPrintable(errorMessage));
-			}
-		}
-		else
-		{
-			log_debug("failed to parse original response body as JSON");
-		}
-
-		respond(code, reason, headers, body, exposeHeaders);
-	}
-
-	void stream(const QByteArray &content)
-	{
-		assert(mode == Instruct::StreamHold);
-
-		if(req->writeBytesAvailable() < content.size())
-		{
-			log_debug("not enough send credits, dropping");
-			return;
-		}
-
-		req->writeBody(content);
-
-		// restart keep alive timer
-		if(keepAliveTimeout >= 0)
-			timer->start(keepAliveTimeout * 1000);
-	}
-
-	void close()
-	{
-		assert(mode == Instruct::StreamHold);
-
-		req->endBody();
-		timer->stop();
-	}
-
-signals:
-	void finished();
-
-private:
-	void respond(int _code, const QByteArray &_reason, const HttpHeaders &_headers, const QByteArray &_body)
-	{
-		int code = _code;
-		QByteArray reason = _reason;
-		HttpHeaders headers = _headers;
-		QByteArray body = _body;
-
-		headers.removeAll("Content-Length"); // this will be reset if needed
-
-		if(!jsonpCallback.isEmpty())
-		{
-			if(jsonpExtendedResponse)
-			{
-				QVariantMap result;
-				result["code"] = code;
-				result["reason"] = QString::fromUtf8(reason);
-
-				// need to compact headers into a map
-				QVariantMap vheaders;
-				foreach(const HttpHeader &h, headers)
-				{
-					// don't add the same header name twice. we'll collect all values for a single header
-					bool found = false;
-					QMapIterator<QString, QVariant> it(vheaders);
-					while(it.hasNext())
-					{
-						it.next();
-						const QString &name = it.key();
-
-						QByteArray uname = name.toUtf8();
-						if(qstricmp(uname.data(), h.first.data()) == 0)
-						{
-							found = true;
-							break;
-						}
-					}
-					if(found)
-						continue;
-
-					QList<QByteArray> values = headers.getAll(h.first);
-					QString mergedValue;
-					for(int n = 0; n < values.count(); ++n)
-					{
-						mergedValue += QString::fromUtf8(values[n]);
-						if(n + 1 < values.count())
-							mergedValue += ", ";
-					}
-					vheaders[h.first] = mergedValue;
-				}
-				result["headers"] = vheaders;
-
-				result["body"] = QString::fromUtf8(body);
-
-				QByteArray resultJson = QJsonDocument(QJsonObject::fromVariantMap(result)).toJson(QJsonDocument::Compact);
-
-				body = "/**/" + jsonpCallback + '(' + resultJson + ");\n";
-			}
-			else
-			{
-				if(body.endsWith("\r\n"))
-					body.truncate(body.size() - 2);
-				else if(body.endsWith("\n"))
-					body.truncate(body.size() - 1);
-				body = "/**/" + jsonpCallback + '(' + body + ");\n";
-			}
-
-			headers.removeAll("Content-Type");
-			headers += HttpHeader("Content-Type", "application/javascript");
-			code = 200;
-			reason = "OK";
-		}
-		else if(autoCrossOrigin)
-		{
-			Cors::applyCorsHeaders(requestData.headers, &headers);
-		}
-
-		req->beginResponse(code, reason, headers);
-		req->writeBody(body);
-		req->endBody();
-	}
-
-	void doFinish()
-	{
-		ZhttpRequest::Rid rid = req->rid();
-		stats->removeConnection(rid.first + ':' + rid.second, false);
-
-		emit finished();
-	}
-
-private slots:
-	void req_bytesWritten(int count)
-	{
-		Q_UNUSED(count);
-
-		if(!req->isFinished())
-			return;
-
-		doFinish();
-	}
-
-	void req_error()
-	{
-		ZhttpRequest::Rid rid = req->rid();
-		log_debug("cleaning up subscriber ('%s', '%s')", rid.first.data(), rid.second.data());
-
-		doFinish();
-	}
-
-	void timer_timeout()
-	{
-		if(mode == Instruct::ResponseHold)
-		{
-			// send timeout response
-			respond(response.code, response.reason, response.headers, response.body);
-		}
-		else // StreamHold
-		{
-			req->writeBody(keepAliveData);
-
-			stats->addActivity(route.toUtf8(), 1);
-		}
-	}
-};
-
 class WsSession : public QObject
 {
 	Q_OBJECT
@@ -719,10 +399,10 @@ private slots:
 class CommonState
 {
 public:
-	QHash<ZhttpRequest::Rid, Hold*> holds;
+	QHash<ZhttpRequest::Rid, HttpSession*> httpSessions;
 	QHash<QString, WsSession*> wsSessions;
-	QHash<QString, QSet<Hold*> > responseHoldsByChannel;
-	QHash<QString, QSet<Hold*> > streamHoldsByChannel;
+	QHash<QString, QSet<HttpSession*> > responseSessionsByChannel;
+	QHash<QString, QSet<HttpSession*> > streamSessionsByChannel;
 	QHash<QString, QSet<WsSession*> > wsSessionsByChannel;
 	ResponseLastIds responseLastIds;
 	QSet<QString> subs;
@@ -730,66 +410,6 @@ public:
 	CommonState() :
 		responseLastIds(1000000)
 	{
-	}
-
-	// returns set of channels that should be unsubscribed
-	QSet<QString> removeResponseChannels(Hold *hold)
-	{
-		QSet<QString> out;
-
-		QHashIterator<QString, Instruct::Channel> it(hold->channels);
-		while(it.hasNext())
-		{
-			it.next();
-			const QString &channel = it.key();
-
-			if(!responseHoldsByChannel.contains(channel))
-				continue;
-
-			QSet<Hold*> &cur = responseHoldsByChannel[channel];
-			if(!cur.contains(hold))
-				continue;
-
-			cur.remove(hold);
-
-			if(cur.isEmpty())
-			{
-				responseHoldsByChannel.remove(channel);
-				out += channel;
-			}
-		}
-
-		return out;
-	}
-
-	// returns set of channels that should be unsubscribed
-	QSet<QString> removeStreamChannels(Hold *hold)
-	{
-		QSet<QString> out;
-
-		QHashIterator<QString, Instruct::Channel> it(hold->channels);
-		while(it.hasNext())
-		{
-			it.next();
-			const QString &channel = it.key();
-
-			if(!streamHoldsByChannel.contains(channel))
-				continue;
-
-			QSet<Hold*> &cur = streamHoldsByChannel[channel];
-			if(!cur.contains(hold))
-				continue;
-
-			cur.remove(hold);
-
-			if(cur.isEmpty())
-			{
-				streamHoldsByChannel.remove(channel);
-				out += channel;
-			}
-		}
-
-		return out;
 	}
 
 	QSet<QString> removeWsSessionChannels(WsSession *s)
@@ -827,9 +447,13 @@ public:
 	ZrpcManager *stateClient;
 	CommonState *cs;
 	ZhttpManager *zhttpIn;
+	ZhttpManager *zhttpOut;
 	StatsManager *stats;
 	QString route;
 	QString channelPrefix;
+	QByteArray sigIss;
+	QByteArray sigKey;
+	bool trusted;
 	QHash<ZhttpRequest::Rid, RequestState> requestStates;
 	HttpRequestData requestData;
 	bool haveInspectInfo;
@@ -838,15 +462,17 @@ public:
 	bool responseSent;
 	QString sid;
 	LastIds lastIds;
-	QList<Hold*> holds;
+	QList<HttpSession*> sessions;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, StatsManager *_stats, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req),
 		stateClient(_stateClient),
 		cs(_cs),
 		zhttpIn(_zhttpIn),
+		zhttpOut(_zhttpOut),
 		stats(_stats),
+		trusted(false),
 		haveInspectInfo(false),
 		responseSent(false)
 	{
@@ -879,6 +505,39 @@ public:
 				}
 
 				channelPrefix = QString::fromUtf8(args["channel-prefix"].toByteArray());
+			}
+
+			if(args.contains("sig-iss"))
+			{
+				if(args["sig-iss"].type() != QVariant::ByteArray)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				sigIss = args["sig-iss"].toByteArray();
+			}
+
+			if(args.contains("sig-key"))
+			{
+				if(args["sig-key"].type() != QVariant::ByteArray)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				sigKey = args["sig-key"].toByteArray();
+			}
+
+			if(args.contains("trusted"))
+			{
+				if(args["trusted"].type() != QVariant::Bool)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				trusted = args["trusted"].toBool();
 			}
 
 			// parse requests
@@ -1164,19 +823,19 @@ public:
 		}
 	}
 
-	QList<Hold*> takeHolds()
+	QList<HttpSession*> takeSessions()
 	{
-		QList<Hold*> out = holds;
-		holds.clear();
+		QList<HttpSession*> out = sessions;
+		sessions.clear();
 
-		foreach(Hold *hold, out)
-			hold->setParent(0);
+		foreach(HttpSession *hs, out)
+			hs->setParent(0);
 
 		return out;
 	}
 
 signals:
-	void holdsReady();
+	void sessionsReady();
 	void retryPacketReady(const RetryRequestPacket &packet);
 
 private:
@@ -1217,7 +876,7 @@ private:
 		instruct.response.headers.removeAll("Content-Encoding");
 		instruct.response.headers.removeAll("Transfer-Encoding");
 
-		if(instruct.holdMode == Instruct::NoHold)
+		if(instruct.holdMode == Instruct::NoHold && instruct.nextLink.isEmpty())
 		{
 			QVariantHash vresponse;
 			vresponse["code"] = instruct.response.code;
@@ -1336,34 +995,29 @@ private:
 			ss.userData = rs.userData;
 
 			// take over responsibility for request
-			ZhttpRequest *outReq = zhttpIn->createRequestFromState(ss);
+			ZhttpRequest *httpReq = zhttpIn->createRequestFromState(ss);
 
-			stats->addConnection(rs.rid.first + ':' + rs.rid.second, route.toUtf8(), StatsManager::Http, rs.peerAddress, rs.isHttps, true);
+			HttpSession::AcceptData adata;
+			adata.requestData = requestData;
+			adata.peerAddress = rs.peerAddress;
+			adata.debug = rs.debug;
+			adata.autoCrossOrigin = rs.autoCrossOrigin;
+			adata.jsonpCallback = rs.jsonpCallback;
+			adata.jsonpExtendedResponse = rs.jsonpExtendedResponse;
+			adata.route = route;
+			adata.channelPrefix = channelPrefix;
+			adata.sid = sid;
+			adata.responseSent = responseSent;
+			adata.sigIss = sigIss;
+			adata.sigKey = sigKey;
+			adata.trusted = trusted;
 
-			Hold *hold = new Hold(outReq, stats, this);
-			hold->mode = instruct.holdMode;
-			hold->requestData = requestData;
-			hold->response = instruct.response;
-			hold->debug = rs.debug;
-			hold->autoCrossOrigin = rs.autoCrossOrigin;
-			hold->jsonpCallback = rs.jsonpCallback;
-			hold->jsonpExtendedResponse = rs.jsonpExtendedResponse;
-			hold->timeout = instruct.timeout;
-			hold->keepAliveTimeout = instruct.keepAliveTimeout;
-			hold->keepAliveData = instruct.keepAliveData;
-			hold->sid = sid;
-			hold->meta = instruct.meta;
-			hold->responseSent = responseSent;
-
-			foreach(const Instruct::Channel &c, instruct.channels)
-				hold->channels.insert(channelPrefix + c.name, c);
-
-			holds += hold;
+			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, this);
 		}
 
 		// engine should directly connect to this and register the holds
 		//   immediately, to avoid a race with the lastId check
-		emit holdsReady();
+		emit sessionsReady();
 
 		setFinished(true);
 	}
@@ -1394,6 +1048,7 @@ public:
 	Engine *q;
 	Configuration config;
 	ZhttpManager *zhttpIn;
+	ZhttpManager *zhttpOut;
 	ZrpcManager *inspectServer;
 	ZrpcManager *acceptServer;
 	ZrpcManager *stateClient;
@@ -1419,6 +1074,7 @@ public:
 		QObject(_q),
 		q(_q),
 		zhttpIn(0),
+		zhttpOut(0),
 		inspectServer(0),
 		acceptServer(0),
 		stateClient(0),
@@ -1445,7 +1101,7 @@ public:
 	{
 		qDeleteAll(deferreds);
 		qDeleteAll(cs.wsSessions);
-		qDeleteAll(cs.holds);
+		qDeleteAll(cs.httpSessions);
 	}
 
 	bool start(const Configuration &_config)
@@ -1453,10 +1109,15 @@ public:
 		config = _config;
 
 		zhttpIn = new ZhttpManager(this);
-
 		zhttpIn->setInstanceId(config.instanceId);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
 		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
+
+		zhttpOut = new ZhttpManager(this);
+		zhttpOut->setInstanceId(config.instanceId);
+		zhttpOut->setClientOutSpecs(config.clientOutSpecs);
+		zhttpOut->setClientOutStreamSpecs(config.clientOutStreamSpecs);
+		zhttpOut->setClientInSpecs(config.clientInSpecs);
 
 		log_info("zhttp in stream: %s", qPrintable(config.serverInStreamSpecs.join(", ")));
 		log_info("zhttp out: %s", qPrintable(config.serverOutSpecs.join(", ")));
@@ -1689,29 +1350,26 @@ public:
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
-		QList<Hold*> responseHolds;
-		QList<Hold*> streamHolds;
+		QList<HttpSession*> responseSessions;
+		QList<HttpSession*> streamSessions;
 		QList<WsSession*> wsSessions;
 		QSet<QString> sids;
-		QSet<QString> responseUnsubs;
-		QSet<QString> streamUnsubs;
 
 		if(item.formats.contains(PublishFormat::HttpResponse))
 		{
-			QSet<Hold*> holds = cs.responseHoldsByChannel.value(item.channel);
-			foreach(Hold *hold, holds)
+			QSet<HttpSession*> sessions = cs.responseSessionsByChannel.value(item.channel);
+			foreach(HttpSession *hs, sessions)
 			{
-				assert(hold->mode == Instruct::ResponseHold);
-				assert(hold->channels.contains(item.channel));
+				assert(hs->holdMode() == Instruct::ResponseHold);
+				assert(hs->channels().contains(item.channel));
 
-				if(!applyFilters(hold->meta, item.meta, hold->channels[item.channel].filters))
+				if(!applyFilters(hs->meta(), item.meta, hs->channels()[item.channel].filters))
 					continue;
 
-				responseUnsubs += cs.removeResponseChannels(hold);
-				responseHolds += hold;
+				responseSessions += hs;
 
-				if(!hold->sid.isEmpty())
-					sids += hold->sid;
+				if(!hs->sid().isEmpty())
+					sids += hs->sid();
 			}
 
 			if(!item.id.isNull())
@@ -1720,22 +1378,19 @@ private:
 
 		if(item.formats.contains(PublishFormat::HttpStream))
 		{
-			QSet<Hold*> holds = cs.streamHoldsByChannel.value(item.channel);
-			foreach(Hold *hold, holds)
+			QSet<HttpSession*> sessions = cs.streamSessionsByChannel.value(item.channel);
+			foreach(HttpSession *hs, sessions)
 			{
-				assert(hold->mode == Instruct::StreamHold);
-				assert(hold->channels.contains(item.channel));
+				assert(hs->holdMode() == Instruct::StreamHold);
+				assert(hs->channels().contains(item.channel));
 
-				if(!applyFilters(hold->meta, item.meta, hold->channels[item.channel].filters))
+				if(!applyFilters(hs->meta(), item.meta, hs->channels()[item.channel].filters))
 					continue;
 
-				if(item.formats[PublishFormat::HttpStream].close)
-					streamUnsubs += cs.removeStreamChannels(hold);
+				streamSessions += hs;
 
-				streamHolds += hold;
-
-				if(!hold->sid.isEmpty())
-					sids += hold->sid;
+				if(!hs->sid().isEmpty())
+					sids += hs->sid();
 			}
 		}
 
@@ -1756,7 +1411,7 @@ private:
 			}
 		}
 
-		if(!responseHolds.isEmpty())
+		if(!responseSessions.isEmpty())
 		{
 			PublishFormat f = item.formats.value(PublishFormat::HttpResponse);
 			QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers");
@@ -1772,34 +1427,34 @@ private:
 				}
 			}
 
-			log_debug("relaying to %d http-response subscribers", responseHolds.count());
+			log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
-			foreach(Hold *hold, responseHolds)
+			foreach(HttpSession *hs, responseSessions)
 			{
 				if(f.haveBodyPatch)
-					hold->respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
+					hs->respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
 				else
-					hold->respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+					hs->respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
 			}
 
-			stats->addMessage(item.channel, item.id, "http-response", responseHolds.count());
+			stats->addMessage(item.channel, item.id, "http-response", responseSessions.count());
 		}
 
-		if(!streamHolds.isEmpty())
+		if(!streamSessions.isEmpty())
 		{
 			PublishFormat f = item.formats.value(PublishFormat::HttpStream);
 
-			log_debug("relaying to %d http-stream subscribers", streamHolds.count());
+			log_debug("relaying to %d http-stream subscribers", streamSessions.count());
 
-			foreach(Hold *hold, streamHolds)
+			foreach(HttpSession *hs, streamSessions)
 			{
 				if(f.close)
-					hold->close();
+					hs->close();
 				else
-					hold->stream(f.body);
+					hs->stream(f.body);
 			}
 
-			stats->addMessage(item.channel, item.id, "http-stream", streamHolds.count());
+			stats->addMessage(item.channel, item.id, "http-stream", streamSessions.count());
 		}
 
 		if(!wsSessions.isEmpty())
@@ -1840,14 +1495,8 @@ private:
 			stats->addMessage(item.channel, item.id, "ws-message", wsSessions.count());
 		}
 
-		int receivers = responseHolds.count() + streamHolds.count() + wsSessions.count();
+		int receivers = responseSessions.count() + streamSessions.count() + wsSessions.count();
 		log_info("publish channel=%s receivers=%d", qPrintable(item.channel), receivers);
-
-		foreach(const QString &channel, responseUnsubs)
-			stats->removeSubscription("response", channel, true);
-
-		foreach(const QString &channel, streamUnsubs)
-			stats->removeSubscription("stream", channel, false);
 
 		if(!item.id.isNull() && !sids.isEmpty() && stateClient)
 		{
@@ -1961,9 +1610,9 @@ private slots:
 		if(!req)
 			return;
 
-		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, stats, this);
+		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, this);
 		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
-		connect(w, &AcceptWorker::holdsReady, this, &Private::acceptWorker_holdsReady);
+		connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
 		deferreds += w;
 		w->start();
@@ -2518,49 +2167,20 @@ private slots:
 		deferreds.remove(w);
 	}
 
-	void acceptWorker_holdsReady()
+	void acceptWorker_sessionsReady()
 	{
 		AcceptWorker *w = (AcceptWorker *)sender();
 
-		QList<Hold*> holds = w->takeHolds();
-		foreach(Hold *hold, holds)
+		QList<HttpSession*> sessions = w->takeSessions();
+		foreach(HttpSession *hs, sessions)
 		{
-			hold->setParent(this);
-			connect(hold, &Hold::finished, this, &Private::hold_finished);
-			cs.holds.insert(hold->req->rid(), hold);
+			hs->setParent(this);
+			connect(hs, &HttpSession::subscribe, this, &Private::hs_subscribe);
+			connect(hs, &HttpSession::unsubscribe, this, &Private::hs_unsubscribe);
+			connect(hs, &HttpSession::finished, this, &Private::hs_finished);
+			cs.httpSessions.insert(hs->rid(), hs);
 
-			QHashIterator<QString, Instruct::Channel> it(hold->channels);
-			while(it.hasNext())
-			{
-				it.next();
-				const QString &channel = it.key();
-
-				if(hold->mode == Instruct::ResponseHold)
-				{
-					log_debug("adding response hold on %s", qPrintable(channel));
-
-					if(!cs.responseHoldsByChannel.contains(channel))
-						cs.responseHoldsByChannel.insert(channel, QSet<Hold*>());
-
-					cs.responseHoldsByChannel[channel] += hold;
-				}
-				else // StreamHold
-				{
-					log_debug("adding stream hold on %s", qPrintable(channel));
-
-					if(!cs.streamHoldsByChannel.contains(channel))
-						cs.streamHoldsByChannel.insert(channel, QSet<Hold*>());
-
-					cs.streamHoldsByChannel[channel] += hold;
-				}
-
-				log_info("subscribe %s channel=%s", qPrintable(hold->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
-
-				stats->addSubscription(hold->mode == Instruct::ResponseHold ? "response" : "stream", channel);
-				addSub(channel);
-			}
-
-			hold->start();
+			hs->start();
 		}
 	}
 
@@ -2569,26 +2189,88 @@ private slots:
 		writeRetryPacket(packet);
 	}
 
-	void hold_finished()
+	void hs_subscribe(const QString &channel)
 	{
-		Hold *hold = (Hold *)sender();
+		HttpSession *hs = (HttpSession *)sender();
 
-		QSet<QString> responseUnsubs;
-		QSet<QString> streamUnsubs;
+		Instruct::HoldMode mode = hs->holdMode();
+		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
 
-		if(hold->mode == Instruct::ResponseHold)
-			responseUnsubs = cs.removeResponseChannels(hold);
-		else if(hold->mode == Instruct::StreamHold)
-			streamUnsubs = cs.removeStreamChannels(hold);
+		QHash<QString, QSet<HttpSession*> > *sessionsByChannel;
 
-		foreach(const QString &channel, responseUnsubs)
-			stats->removeSubscription("response", channel, true);
+		if(mode == Instruct::ResponseHold)
+		{
+			log_debug("adding response hold on %s", qPrintable(channel));
 
-		foreach(const QString &channel, streamUnsubs)
-			stats->removeSubscription("stream", channel, false);
+			sessionsByChannel = &cs.responseSessionsByChannel;
+		}
+		else // StreamHold
+		{
+			log_debug("adding stream hold on %s", qPrintable(channel));
 
-		cs.holds.remove(hold->req->rid());
-		delete hold;
+			sessionsByChannel = &cs.streamSessionsByChannel;
+		}
+
+		if(!sessionsByChannel->contains(channel))
+			sessionsByChannel->insert(channel, QSet<HttpSession*>());
+
+		(*sessionsByChannel)[channel] += hs;
+
+		log_info("subscribe %s channel=%s", qPrintable(hs->requestUri().toString(QUrl::FullyEncoded)), qPrintable(channel));
+
+		stats->addSubscription(mode == Instruct::ResponseHold ? "response" : "stream", channel);
+		addSub(channel);
+	}
+
+	void hs_unsubscribe(const QString &channel)
+	{
+		HttpSession *hs = (HttpSession *)sender();
+
+		Instruct::HoldMode mode = hs->holdMode();
+		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
+
+		QHash<QString, QSet<HttpSession*> > *sessionsByChannel;
+
+		if(mode == Instruct::ResponseHold)
+		{
+			sessionsByChannel = &cs.responseSessionsByChannel;
+		}
+		else // StreamHold
+		{
+			sessionsByChannel = &cs.streamSessionsByChannel;
+		}
+
+		if(sessionsByChannel->contains(channel))
+		{
+			QSet<HttpSession*> &cur = (*sessionsByChannel)[channel];
+			if(cur.contains(hs))
+			{
+				cur.remove(hs);
+
+				if(cur.isEmpty())
+				{
+					sessionsByChannel->remove(channel);
+
+					if(mode == Instruct::ResponseHold)
+					{
+						// linger the unsub in case client long-polls again
+						stats->removeSubscription("response", channel, true);
+					}
+					else // StreamHold
+					{
+						stats->removeSubscription("stream", channel, false);
+					}
+				}
+			}
+		}
+	}
+
+	void hs_finished()
+	{
+		HttpSession *hs = (HttpSession *)sender();
+
+		cs.httpSessions.remove(hs->rid());
+		delete hs;
 	}
 
 	void wssession_expired()
@@ -2616,9 +2298,9 @@ private slots:
 				assert(at != -1);
 				ZhttpRequest::Rid rid(id.mid(0, at), id.mid(at + 1));
 
-				Hold *hold = cs.holds.value(rid);
-				if(hold && !hold->sid.isEmpty())
-					sidLastIds[hold->sid] = LastIds();
+				HttpSession *hs = cs.httpSessions.value(rid);
+				if(hs && !hs->sid().isEmpty())
+					sidLastIds[hs->sid()] = LastIds();
 			}
 
 			if(!sidLastIds.isEmpty())
@@ -2637,7 +2319,7 @@ private slots:
 
 		Q_UNUSED(mode);
 
-		if(!cs.responseHoldsByChannel.contains(channel) && !cs.streamHoldsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
+		if(!cs.responseSessionsByChannel.contains(channel) && !cs.streamSessionsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
 			removeSub(channel);
 	}
 };

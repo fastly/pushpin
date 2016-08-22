@@ -25,6 +25,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QHash>
+#include <QUrl>
 #include "packet/httpresponsedata.h"
 
 class Instruct
@@ -53,6 +54,7 @@ public:
 	int keepAliveTimeout;
 	QHash<QString, QString> meta;
 	HttpResponseData response;
+	QUrl nextLink;
 
 	Instruct() :
 		holdMode(NoHold),
