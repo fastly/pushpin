@@ -878,22 +878,27 @@ private:
 
 		if(instruct.holdMode == Instruct::NoHold && instruct.nextLink.isEmpty())
 		{
-			QVariantHash vresponse;
-			vresponse["code"] = instruct.response.code;
-			vresponse["reason"] = instruct.response.reason;
-			QVariantList vheaders;
-			foreach(const HttpHeader &h, instruct.response.headers)
-			{
-				QVariantList vheader;
-				vheader += h.first;
-				vheader += h.second;
-				vheaders += QVariant(vheader);
-			}
-			vresponse["headers"] = vheaders;
-			vresponse["body"] = instruct.response.body;
-
 			QVariantHash result;
-			result["response"] = vresponse;
+
+			if(!responseSent)
+			{
+				QVariantHash vresponse;
+				vresponse["code"] = instruct.response.code;
+				vresponse["reason"] = instruct.response.reason;
+				QVariantList vheaders;
+				foreach(const HttpHeader &h, instruct.response.headers)
+				{
+					QVariantList vheader;
+					vheader += h.first;
+					vheader += h.second;
+					vheaders += QVariant(vheader);
+				}
+				vresponse["headers"] = vheaders;
+				vresponse["body"] = instruct.response.body;
+
+				result["response"] = vresponse;
+			}
+
 			req->respond(result);
 
 			setFinished(true);
