@@ -67,6 +67,7 @@ public:
 	bool sentOutReqData;
 	int retries;
 	QString errorMessage;
+	QUrl currentUri;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats) :
 		QObject(_q),
@@ -94,6 +95,8 @@ public:
 
 		adata = _adata;
 		instruct = _instruct;
+
+		currentUri = adata.requestData.uri;
 	}
 
 	~Private()
@@ -471,7 +474,9 @@ private:
 			data["trusted"] = true;
 		outReq->setPassthroughData(data);
 
-		outReq->start("GET", instruct.nextLink, HttpHeaders());
+		currentUri = currentUri.resolved(instruct.nextLink);
+
+		outReq->start("GET", currentUri, HttpHeaders());
 		outReq->endBody();
 	}
 
