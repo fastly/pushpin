@@ -31,6 +31,9 @@
 #include "packet/httpresponsedata.h"
 #include "engine.h"
 
+// NOTE: based on proxysession hardcoded max
+#define PROXY_MAX_ACCEPT_RESPONSE_BODY 100000
+
 class Wrapper : public QObject
 {
 	Q_OBJECT
@@ -58,6 +61,7 @@ public:
 	bool inspected;
 	QByteArray sharingKey;
 	QByteArray in;
+	HttpHeaders acceptHeaders;
 	QByteArray acceptIn;
 	bool retried;
 	bool finished;
@@ -146,6 +150,7 @@ public:
 		inspected = false;
 		sharingKey.clear();
 		in.clear();
+		acceptHeaders.clear();
 		acceptIn.clear();
 		retried = false;
 		finished = false;
@@ -259,30 +264,97 @@ private slots:
 
 		QByteArray encPath = zreq.uri.path(QUrl::FullyEncoded).toUtf8();
 
-		if(!retried && zreq.uri.query(QUrl::FullyEncoded).contains("wait=true"))
+		QUrlQuery query(zreq.uri.query());
+		QString hold = query.queryItemValue("hold");
+		bool bodyInstruct = (query.queryItemValue("body-instruct") == "true");
+		bool large = (query.queryItemValue("large") == "true");
+
+		if(!retried && (hold == "response" || hold == "stream"))
 		{
 			if(encPath == "/path2")
 			{
-				zresp.body = "{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\", \"prev-id\": \"1\" } ] } }";
-				zresp.headers += HttpHeader("Content-Type", "application/grip-instruct");
+				if(bodyInstruct)
+				{
+					zresp.headers += HttpHeader("Content-Type", "application/grip-instruct");
+					zresp.body = "{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\", \"prev-id\": \"1\" } ] } }";
+				}
+				else
+				{
+					zresp.headers += HttpHeader("Grip-Hold", "response");
+					zresp.headers += HttpHeader("Grip-Channel", "test-channel; prev-id=1");
+				}
 			}
 			else
 			{
-				zresp.body = "{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\" } ] } }";
-				zresp.headers += HttpHeader("Content-Type", "application/grip-instruct");
+				if(bodyInstruct)
+				{
+					zresp.headers += HttpHeader("Content-Type", "application/grip-instruct");
+					zresp.body = "{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\" } ] } }";
+				}
+				else
+				{
+					if(hold == "stream")
+					{
+						zresp.headers += HttpHeader("Grip-Hold", "stream");
+						zresp.headers += HttpHeader("Grip-Channel", "test-channel");
+						if(large)
+							zresp.body = QByteArray(PROXY_MAX_ACCEPT_RESPONSE_BODY + 10000, 'a') + '\n';
+						else
+							zresp.body = "stream open\n";
+					}
+					else
+					{
+						zresp.headers += HttpHeader("Grip-Hold", "response");
+						zresp.headers += HttpHeader("Grip-Channel", "test-channel");
+					}
+				}
 			}
 		}
 		else
 		{
 			if(encPath.startsWith("/jsonp"))
 			{
-				zresp.body = "{\"hello\": \"world\"}";
 				zresp.headers += HttpHeader("Content-Type", "application/json");
+				zresp.body = "{\"hello\": \"world\"}";
+			}
+			else if(encPath == "/path3")
+			{
+				zresp.headers += HttpHeader("Content-Type", "text/plain");
+				zresp.body = "next page";
 			}
 			else
 			{
-				zresp.body = "hello world";
-				zresp.headers += HttpHeader("Content-Type", "text/plain");
+				if(hold == "none")
+				{
+					if(bodyInstruct)
+					{
+						zresp.headers += HttpHeader("Content-Type", "application/grip-instruct");
+						zresp.body = "{ \"response\": { \"body\": \"hello world\" } }";
+					}
+					else
+					{
+						zresp.headers += HttpHeader("Content-Type", "text/plain");
+						if(large)
+						{
+							// Grip-Link required to trigger accept after
+							//   sending large response. note that the link
+							//   won't be followed in this test since that's
+							//   not a proxy issue
+							zresp.headers += HttpHeader("Grip-Link", "</path3>; rel=next");
+							zresp.body = QByteArray(PROXY_MAX_ACCEPT_RESPONSE_BODY + 10000, 'a') + '\n';
+						}
+						else
+						{
+							zresp.headers += HttpHeader("Grip-Foo", "bar"); // something to trigger accept
+							zresp.body = "hello world";
+						}
+					}
+				}
+				else
+				{
+					zresp.headers += HttpHeader("Content-Type", "text/plain");
+					zresp.body = "hello world";
+				}
 			}
 		}
 		zresp.headers += HttpHeader("Content-Length", QByteArray::number(zresp.body.size()));
@@ -325,38 +397,67 @@ private slots:
 		log_debug("accept: %s", qPrintable(TnetString::variantToString(v, -1)));
 
 		QVariantHash vreq = v.toHash();
+		QVariantHash vaccept = vreq["args"].toHash();
+		QVariantHash vresponse = vaccept["response"].toHash();
+
+		acceptHeaders.clear();
+		foreach(const QVariant &vheader, vresponse["headers"].toList())
+		{
+			QVariantList h = vheader.toList();
+			acceptHeaders += HttpHeader(h[0].toByteArray(), h[1].toByteArray());
+		}
+
+		acceptIn = vresponse["body"].toByteArray();
+
+		QVariantMap jsonInstruct;
+		QByteArray hold;
+
+		if(acceptHeaders.get("Content-Type") == "application/grip-instruct")
+		{
+			QJsonParseError e;
+			QJsonDocument doc = QJsonDocument::fromJson(acceptIn, &e);
+			QVERIFY(e.error == QJsonParseError::NoError);
+			QVERIFY(doc.isObject());
+
+			jsonInstruct = doc.object().toVariantMap();
+
+			if(jsonInstruct.contains("hold"))
+				hold = jsonInstruct["hold"].toMap().value("mode").toString().toUtf8();
+		}
+		else
+		{
+			hold = acceptHeaders.get("Grip-Hold");
+		}
 
 		QVariantHash vresp;
 		vresp["id"] = vreq["id"];
 		vresp["success"] = true;
 		QVariantHash respValue;
-		respValue["accepted"] = true;
+		if(!hold.isEmpty())
+			respValue["accepted"] = true;
+		else if(!vaccept.value("response-sent").toBool())
+			respValue["response"] = vresponse;
 		vresp["value"] = respValue;
 		handlerAcceptSock->write(message.createReply(QList<QByteArray>() << TnetString::fromVariant(vresp)).toRawMessage());
 
-		QVariantHash vaccept = vreq["args"].toHash();
-		acceptIn = vaccept["response"].toHash()["body"].toByteArray();
-
 		log_debug("instruct: [%s]", acceptIn.data());
 
-		QJsonParseError e;
-		QJsonDocument doc = QJsonDocument::fromJson(acceptIn, &e);
-		QVERIFY(e.error == QJsonParseError::NoError);
-		QVERIFY(doc.isObject());
-
-		QVariantMap instruct = doc.object().toVariantMap();
-
-		if(instruct["hold"].toMap()["channels"].toList()[0].toMap().contains("prev-id"))
+		if(acceptHeaders.get("Content-Type") == "application/grip-instruct")
 		{
-			retried = true;
-			QVariantHash vretry;
-			vretry["requests"] = vaccept["requests"];
-			vretry["request-data"] = vaccept["request-data"];
-			QByteArray buf = TnetString::fromVariant(vretry);
-			log_debug("retrying: %s", buf.data());
-			handlerRetryOutSock->write(QList<QByteArray>() << buf);
+			if(jsonInstruct.contains("hold") && jsonInstruct["hold"].toMap()["channels"].toList()[0].toMap().contains("prev-id"))
+			{
+				retried = true;
+				QVariantHash vretry;
+				vretry["requests"] = vaccept["requests"];
+				vretry["request-data"] = vaccept["request-data"];
+				QByteArray buf = TnetString::fromVariant(vretry);
+				log_debug("retrying: %s", qPrintable(TnetString::variantToString(vretry, -1)));
+				handlerRetryOutSock->write(QList<QByteArray>() << buf);
+				return;
+			}
 		}
-		else
+
+		if(!hold.isEmpty())
 			finished = true;
 	}
 };
@@ -593,7 +694,7 @@ private slots:
 			QTest::qWait(10);
 	}
 
-	void accept()
+	void acceptResponse()
 	{
 		wrapper->reset();
 
@@ -601,7 +702,54 @@ private slots:
 		zreq.from = "test-client";
 		zreq.id = "7";
 		zreq.seq = 0;
-		zreq.uri = "http://example/path?wait=true";
+		zreq.uri = "http://example/path?hold=response";
+		zreq.method = "GET";
+		zreq.stream = true;
+		zreq.credits = 200000;
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		QCOMPARE(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("response"));
+		QCOMPARE(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
+		QVERIFY(wrapper->acceptIn.isEmpty());
+	}
+
+	void acceptStream()
+	{
+		wrapper->reset();
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.id = "8";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path?hold=stream";
+		zreq.method = "GET";
+		zreq.stream = true;
+		zreq.credits = 200000;
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		QCOMPARE(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("stream"));
+		QCOMPARE(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
+		QCOMPARE(wrapper->acceptIn, QByteArray("stream open\n"));
+		QVERIFY(wrapper->in.isEmpty());
+	}
+
+	void acceptResponseBodyInstruct()
+	{
+		wrapper->reset();
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.id = "9";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path?hold=response&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
 		zreq.credits = 200000;
@@ -614,15 +762,106 @@ private slots:
 		QCOMPARE(wrapper->acceptIn, QByteArray("{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\" } ] } }"));
 	}
 
+	void acceptNoHold()
+	{
+		wrapper->reset();
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.id = "10";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path?hold=none";
+		zreq.method = "GET";
+		zreq.stream = true;
+		zreq.credits = 200000;
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		QCOMPARE(wrapper->in, QByteArray("hello world"));
+	}
+
+	void acceptNoHoldBodyInstruct()
+	{
+		wrapper->reset();
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.id = "11";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path?hold=none&body-instruct=true";
+		zreq.method = "GET";
+		zreq.stream = true;
+		zreq.credits = 200000;
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		QCOMPARE(wrapper->acceptIn, QByteArray("{ \"response\": { \"body\": \"hello world\" } }"));
+	}
+
+	void passthroughThenAcceptStream()
+	{
+		wrapper->reset();
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.id = "12";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path?hold=stream&large=true";
+		zreq.method = "GET";
+		zreq.stream = true;
+		zreq.credits = 200000;
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		QCOMPARE(wrapper->in.size(), 110001);
+		QCOMPARE(wrapper->in.mid(wrapper->in.size() - 2), QByteArray("a\n"));
+		QCOMPARE(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("stream"));
+		QCOMPARE(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
+		QVERIFY(wrapper->acceptIn.isEmpty());
+	}
+
+	void passthroughThenAcceptNext()
+	{
+		wrapper->reset();
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.id = "12";
+		zreq.seq = 0;
+		zreq.uri = "http://example/path?hold=none&large=true";
+		zreq.method = "GET";
+		zreq.stream = true;
+		zreq.credits = 200000;
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		QCOMPARE(wrapper->in.size(), 110001);
+		QCOMPARE(wrapper->in.mid(wrapper->in.size() - 2), QByteArray("a\n"));
+		QVERIFY(wrapper->acceptIn.isEmpty());
+		QCOMPARE(wrapper->acceptHeaders.get("Grip-Link"), QByteArray("</path3>; rel=next"));
+	}
+
 	void acceptWithRetry()
 	{
 		wrapper->reset();
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "8";
+		zreq.id = "13";
 		zreq.seq = 0;
-		zreq.uri = "http://example/path2?wait=true";
+		zreq.uri = "http://example/path2?wait=true&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
 		zreq.credits = 200000;
@@ -652,12 +891,15 @@ private slots:
 
 		// send two requests
 
-		zreq.id = "9";
+		QByteArray id1 = "14";
+		QByteArray id2 = "15";
+
+		zreq.id = id1;
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
-		zreq.id = "10";
+		zreq.id = id2;
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -668,8 +910,8 @@ private slots:
 		// there should have only been 1 request to the server
 		QCOMPARE(wrapper->serverReqs, 1);
 
-		QCOMPARE(wrapper->responses["9"].body, QByteArray("hello world"));
-		QCOMPARE(wrapper->responses["10"].body, QByteArray("hello world"));
+		QCOMPARE(wrapper->responses[id1].body, QByteArray("hello world"));
+		QCOMPARE(wrapper->responses[id2].body, QByteArray("hello world"));
 	}
 
 	void passthroughSharedPost()
@@ -691,12 +933,15 @@ private slots:
 
 		// send two requests
 
-		zreq.id = "11";
+		QByteArray id1 = "16";
+		QByteArray id2 = "17";
+
+		zreq.id = id1;
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
-		zreq.id = "12";
+		zreq.id = id2;
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -713,7 +958,7 @@ private slots:
 		zreq.type = ZhttpRequestPacket::Data;
 		zreq.body = " world";
 
-		zreq.id = "11";
+		zreq.id = id1;
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		QList<QByteArray> msg;
@@ -722,7 +967,7 @@ private slots:
 		msg.append(buf);
 		wrapper->zhttpClientOutStreamSock->write(msg);
 
-		zreq.id = "12";
+		zreq.id = id2;
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		msg.clear();
@@ -737,8 +982,8 @@ private slots:
 		// there should have only been 1 request to the server
 		QCOMPARE(wrapper->serverReqs, 1);
 
-		QCOMPARE(wrapper->responses["11"].body, QByteArray("hello world"));
-		QCOMPARE(wrapper->responses["12"].body, QByteArray("hello world"));
+		QCOMPARE(wrapper->responses[id1].body, QByteArray("hello world"));
+		QCOMPARE(wrapper->responses[id2].body, QByteArray("hello world"));
 	}
 };
 
