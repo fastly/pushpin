@@ -392,6 +392,12 @@ public:
 
 		log_debug("wsproxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
 
+		foreach(const HttpHeader &h, entry.headers)
+		{
+			requestData.headers.removeAll(h.first);
+			requestData.headers += HttpHeader(h.first, h.second);
+		}
+
 		bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, inSock->peerAddress(), InspectData());
 
 		// don't proxy extensions, as we may not know how to handle them

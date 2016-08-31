@@ -242,6 +242,12 @@ public:
 
 			targets = route.targets;
 
+			foreach(const HttpHeader &h, route.headers)
+			{
+				requestData.headers.removeAll(h.first);
+				requestData.headers += HttpHeader(h.first, h.second);
+			}
+
 			trustedClient = ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata);
 
 			state = Requesting;

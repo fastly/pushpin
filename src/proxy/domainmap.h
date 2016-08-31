@@ -23,6 +23,7 @@
 #include <QObject>
 #include <QPair>
 #include <QString>
+#include "httpheaders.h"
 
 // this class offers fast access to the routes file. the table is maintained
 //   by a background thread so that file access doesn't cause blocking.
@@ -136,6 +137,7 @@ public:
 		bool session;
 		QByteArray sockJsPath;
 		QByteArray sockJsAsPath;
+		HttpHeaders headers;
 		QList<Target> targets;
 
 		bool isNull() const

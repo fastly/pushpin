@@ -68,6 +68,7 @@ public:
 		bool session;
 		QByteArray sockJsPath;
 		QByteArray sockJsAsPath;
+		HttpHeaders headers;
 		QList<Target> targets;
 
 		Rule() :
@@ -142,6 +143,7 @@ public:
 			e.session = session;
 			e.sockJsPath = sockJsPath;
 			e.sockJsAsPath = sockJsAsPath;
+			e.headers = headers;
 			e.targets = targets;
 			return e;
 		}
@@ -438,6 +440,33 @@ private:
 
 		if(props.contains("sockjs_as_path"))
 			r.sockJsAsPath = props.value("sockjs_as_path").toUtf8();
+
+		if(props.contains("header"))
+		{
+			foreach(const QString &s, props.values("header"))
+			{
+				int at = s.indexOf(':');
+				if(at < 1)
+				{
+					log_warning("%s:%d: header must use format 'name:value'", qPrintable(fileName), lineNum);
+					return false;
+				}
+
+				QByteArray name = s.mid(0, at).toUtf8();
+				QByteArray value = s.mid(at + 1).toUtf8();
+
+				// trim left side of value
+				int n = 0;
+				while(n < value.length() && value[n] == ' ')
+				{
+					++n;
+				}
+				if(n > 0)
+					value = value.mid(n);
+
+				r.headers += HttpHeader(name, value);
+			}
+		}
 
 		ok = true;
 		for(int n = 1; n < sections.count(); ++n)
