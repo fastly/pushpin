@@ -7,6 +7,7 @@ qrc_*
 ui_*
 moc_*
 *.pyc
+/pushpin
 /bin/*
 /conf.log
 /conf.pri
