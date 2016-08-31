@@ -62,7 +62,7 @@ private slots:
 		QCOMPARE(r[1].value, QString("banana"));
 		QVERIFY(r[1].props.isEmpty());
 
-		r = RoutesFile::parseLine("apple,organic,type=gala,from=\"washington, usa\"", &ok);
+		r = RoutesFile::parseLine("apple,organic,type=gala,from=\"washington, \\\"usa\\\"\"", &ok);
 		QVERIFY(ok);
 		QCOMPARE(r.count(), 1);
 		QCOMPARE(r[0].value, QString("apple"));
@@ -70,7 +70,7 @@ private slots:
 		QVERIFY(r[0].props.contains("organic"));
 		QVERIFY(r[0].props.value("organic").isEmpty());
 		QCOMPARE(r[0].props.value("type"), QString("gala"));
-		QCOMPARE(r[0].props.value("from"), QString("washington, usa"));
+		QCOMPARE(r[0].props.value("from"), QString("washington, \"usa\""));
 
 		r = RoutesFile::parseLine("apple,organic banana cherry,type=bing", &ok);
 		QVERIFY(ok);
