@@ -30,6 +30,7 @@
 #include <QTextStream>
 #include <QFileSystemWatcher>
 #include "log.h"
+#include "routesfile.h"
 
 static QByteArray parse_key(const QString &in)
 {
@@ -37,73 +38,6 @@ static QByteArray parse_key(const QString &in)
 		return QByteArray::fromBase64(in.mid(7).toUtf8());
 	else
 		return in.toUtf8();
-}
-
-// items are of the format: {value}(,propname=propval,...)
-static bool parseItem(const QString &item, QString *_value, QHash<QString, QString> *_props, QString *errmsg)
-{
-	// read value
-	int at = item.indexOf(',');
-	QString value;
-	if(at != -1)
-		value = item.mid(0, at);
-	else
-		value = item;
-
-	if(value.isEmpty())
-	{
-		*errmsg = "empty item value";
-		return false;
-	}
-
-	// read props
-	QHash<QString, QString> props;
-	int start = at + 1;
-	bool done = false;
-	while(!done)
-	{
-		at = item.indexOf(',', start);
-
-		QString attrib;
-		if(at != -1)
-		{
-			attrib = item.mid(start, at - start);
-			start = at + 1;
-		}
-		else
-		{
-			attrib = item.mid(start);
-			done = true;
-		}
-
-		at = attrib.indexOf('=');
-		QString var, val;
-		if(at != -1)
-		{
-			var = attrib.mid(0, at);
-			val = attrib.mid(at + 1);
-		}
-		else
-			var = attrib;
-
-		if(var.isEmpty())
-		{
-			*errmsg = "empty property name";
-			return false;
-		}
-
-		if(props.contains(var))
-		{
-			*errmsg = "duplicate property: " + var;
-			return false;
-		}
-
-		props[var] = val;
-	}
-
-	*_value = value;
-	*_props = props;
-	return true;
 }
 
 class DomainMap::Worker : public QObject
@@ -241,15 +175,6 @@ public:
 		{
 			QString line = ts.readLine();
 
-			// strip comments
-			int at = line.indexOf('#');
-			if(at != -1)
-				line.truncate(at);
-
-			line = line.trimmed();
-			if(line.isEmpty())
-				continue;
-
 			Rule r;
 			if(!parseRouteLine(line, fileName, lineNum, &r))
 			{
@@ -355,24 +280,32 @@ public slots:
 private:
 	static bool parseRouteLine(const QString &line, const QString &fileName, int lineNum, Rule *rule)
 	{
-		QStringList parts = line.split(' ', QString::SkipEmptyParts);
-		if(parts.count() < 2)
-		{
-			log_warning("%s:%d: must specify rule and at least one target", qPrintable(fileName), lineNum);
-			return false;
-		}
-
-		QString val;
-		QHash<QString, QString> props;
+		bool ok;
 		QString errmsg;
-		if(!parseItem(parts[0], &val, &props, &errmsg))
+		QList<RoutesFile::RouteSection> sections = RoutesFile::parseLine(line, &ok, &errmsg);
+		if(!ok)
 		{
 			log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
 			return false;
 		}
 
+		if(sections.isEmpty())
+		{
+			// nothing. could happen if line is blank or commented out
+			return false;
+		}
+
+		if(sections.count() < 2)
+		{
+			log_warning("%s:%d: must specify rule and at least one target", qPrintable(fileName), lineNum);
+			return false;
+		}
+
+		QString val = sections[0].value;
+		QHash<QString, QString> props = sections[0].props;
+
 		if(val == "*")
-			val = QString();
+			val.clear();
 
 		Rule r;
 		r.domain = val;
@@ -506,15 +439,11 @@ private:
 		if(props.contains("sockjs_as_path"))
 			r.sockJsAsPath = props.value("sockjs_as_path").toUtf8();
 
-		bool ok = true;
-		for(int n = 1; n < parts.count(); ++n)
+		ok = true;
+		for(int n = 1; n < sections.count(); ++n)
 		{
-			if(!parseItem(parts[n], &val, &props, &errmsg))
-			{
-				log_warning("%s:%d: %s", qPrintable(fileName), lineNum, qPrintable(errmsg));
-				ok = false;
-				break;
-			}
+			QString val = sections[n].value;
+			QHash<QString, QString> props = sections[n].props;
 
 			Target target;
 
@@ -556,7 +485,7 @@ private:
 					break;
 				}
 
-				target.connectHost = parts[n].mid(0, at);
+				target.connectHost = val.mid(0, at);
 				target.connectPort = port;
 			}
 
