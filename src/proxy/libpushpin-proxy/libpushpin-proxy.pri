@@ -25,6 +25,7 @@ HEADERS += \
 	$$SRC_DIR/wscontrolmanager.h \
 	$$SRC_DIR/wscontrolsession.h \
 	$$SRC_DIR/acceptdata.h \
+	$$SRC_DIR/routesfile.h \
 	$$SRC_DIR/domainmap.h \
 	$$SRC_DIR/zroutes.h \
 	$$SRC_DIR/xffrule.h \
@@ -48,6 +49,7 @@ SOURCES += \
 	$$SRC_DIR/connectionmanager.cpp \
 	$$SRC_DIR/wscontrolmanager.cpp \
 	$$SRC_DIR/wscontrolsession.cpp \
+	$$SRC_DIR/routesfile.cpp \
 	$$SRC_DIR/domainmap.cpp \
 	$$SRC_DIR/zroutes.cpp \
 	$$SRC_DIR/requestsession.cpp \

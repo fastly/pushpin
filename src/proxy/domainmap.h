@@ -23,6 +23,7 @@
 #include <QObject>
 #include <QPair>
 #include <QString>
+#include "httpheaders.h"
 
 // this class offers fast access to the routes file. the table is maintained
 //   by a background thread so that file access doesn't cause blocking.
@@ -100,6 +101,7 @@ public:
 		ZhttpRoute zhttpRoute;
 		bool ssl; // use https
 		bool trusted; // bypass zurl access policies
+		bool trustConnectHost; // verify cert against target host
 		bool insecure; // ignore server certificate validity
 		QString host; // override input host
 		QString subChannel; // force subscription for websocket test
@@ -110,6 +112,7 @@ public:
 			connectPort(-1),
 			ssl(false),
 			trusted(false),
+			trustConnectHost(false),
 			insecure(false),
 			overHttp(false)
 		{
@@ -134,6 +137,7 @@ public:
 		bool session;
 		QByteArray sockJsPath;
 		QByteArray sockJsAsPath;
+		HttpHeaders headers;
 		QList<Target> targets;
 
 		bool isNull() const

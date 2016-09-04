@@ -62,8 +62,10 @@ public:
 	~ZhttpRequest();
 
 	Rid rid() const;
+	QVariant passthroughData() const;
 	void setIsTls(bool on); // updates scheme
 	void setSendBodyAfterAcknowledgement(bool on); // only works in push/sub mode
+	void setPassthroughData(const QVariant &data);
 
 	// for server requests only
 	void pause();
@@ -77,6 +79,7 @@ public:
 	virtual void setConnectHost(const QString &host);
 	virtual void setConnectPort(int port);
 	virtual void setIgnorePolicies(bool on);
+	virtual void setTrustConnectHost(bool on);
 	virtual void setIgnoreTlsErrors(bool on);
 
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);

@@ -227,6 +227,12 @@ public:
 		trimlist(&m2a_in_stream_specs);
 		QStringList m2a_out_specs = settings.value("handler/m2a_out_specs").toStringList();
 		trimlist(&m2a_out_specs);
+		QStringList intreq_out_specs = settings.value("handler/proxy_intreq_out_specs").toStringList();
+		trimlist(&intreq_out_specs);
+		QStringList intreq_out_stream_specs = settings.value("handler/proxy_intreq_out_stream_specs").toStringList();
+		trimlist(&intreq_out_stream_specs);
+		QStringList intreq_in_specs = settings.value("handler/proxy_intreq_in_specs").toStringList();
+		trimlist(&intreq_in_specs);
 		QString proxy_inspect_spec = settings.value("handler/proxy_inspect_spec").toString();
 		QString proxy_accept_spec = settings.value("handler/proxy_accept_spec").toString();
 		QString proxy_retry_out_spec = settings.value("handler/proxy_retry_out_spec").toString();
@@ -264,6 +270,9 @@ public:
 		config.instanceId = "pushpin-handler_" + QByteArray::number(QCoreApplication::applicationPid());
 		config.serverInStreamSpecs = m2a_in_stream_specs;
 		config.serverOutSpecs = m2a_out_specs;
+		config.clientOutSpecs = intreq_out_specs;
+		config.clientOutStreamSpecs = intreq_out_stream_specs;
+		config.clientInSpecs = intreq_in_specs;
 		config.inspectSpec = proxy_inspect_spec;
 		config.acceptSpec = proxy_accept_spec;
 		config.retryOutSpec = proxy_retry_out_spec;

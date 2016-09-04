@@ -66,8 +66,10 @@ public:
 	QString connectHost;
 	int connectPort;
 	bool ignorePolicies;
+	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	bool sendBodyAfterAck;
+	QVariant passthrough;
 	QString requestMethod;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
@@ -102,6 +104,7 @@ public:
 		doReq(false),
 		connectPort(-1),
 		ignorePolicies(false),
+		trustConnectHost(false),
 		ignoreTlsErrors(false),
 		sendBodyAfterAck(false),
 		inSeq(0),
@@ -204,6 +207,8 @@ public:
 		requestUri = packet.uri;
 		requestHeaders = packet.headers;
 		requestBodyBuf += packet.body;
+
+		passthrough = packet.passthrough;
 
 		userData = packet.userData;
 		peerAddress = packet.peerAddress;
@@ -875,8 +880,12 @@ public slots:
 					p.connectPort = connectPort;
 					if(ignorePolicies)
 						p.ignorePolicies = true;
+					if(trustConnectHost)
+						p.trustConnectHost = true;
 					if(ignoreTlsErrors)
 						p.ignoreTlsErrors = true;
+					if(passthrough.isValid())
+						p.passthrough = passthrough;
 					writePacket(p);
 
 					state = ClientRequestFinishWait;
@@ -919,8 +928,12 @@ public slots:
 				p.connectPort = connectPort;
 				if(ignorePolicies)
 					p.ignorePolicies = true;
+				if(trustConnectHost)
+					p.trustConnectHost = true;
 				if(ignoreTlsErrors)
 					p.ignoreTlsErrors = true;
+				if(passthrough.isValid())
+					p.passthrough = passthrough;
 				p.credits = IDEAL_CREDITS;
 				writePacket(p);
 
@@ -1049,6 +1062,11 @@ ZhttpRequest::Rid ZhttpRequest::rid() const
 	return d->rid;
 }
 
+QVariant ZhttpRequest::passthroughData() const
+{
+	return d->passthrough;
+}
+
 QHostAddress ZhttpRequest::peerAddress() const
 {
 	return d->peerAddress;
@@ -1069,6 +1087,11 @@ void ZhttpRequest::setIgnorePolicies(bool on)
 	d->ignorePolicies = on;
 }
 
+void ZhttpRequest::setTrustConnectHost(bool on)
+{
+	d->trustConnectHost = on;
+}
+
 void ZhttpRequest::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
@@ -1082,6 +1105,11 @@ void ZhttpRequest::setIsTls(bool on)
 void ZhttpRequest::setSendBodyAfterAcknowledgement(bool on)
 {
 	d->sendBodyAfterAck = on;
+}
+
+void ZhttpRequest::setPassthroughData(const QVariant &data)
+{
+	d->passthrough = data;
 }
 
 void ZhttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)

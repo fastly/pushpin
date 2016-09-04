@@ -1952,10 +1952,6 @@ private slots:
 			if(host.isEmpty())
 				host = "localhost";
 
-			int at = host.indexOf(':');
-			if(at != -1)
-				host = host.mid(0, at);
-
 			if(!validateHost(host))
 			{
 				log_warning("m2: invalid host [%s]", host.data());

@@ -41,6 +41,8 @@
 #include "testhttprequest.h"
 
 #define MAX_ACCEPT_REQUEST_BODY 100000
+
+// NOTE: if this value is ever changed, fix enginetest to match
 #define MAX_ACCEPT_RESPONSE_BODY 100000
 
 #define MAX_INITIAL_BUFFER 100000
@@ -121,7 +123,8 @@ public:
 	QByteArray defaultSigIss;
 	QByteArray defaultSigKey;
 	QByteArray defaultUpstreamKey;
-	bool passToUpstream;
+	bool trustedClient;
+	bool passthrough;
 	bool acceptXForwardedProtocol;
 	bool useXForwardedProtocol;
 	XffRule xffRule;
@@ -147,7 +150,8 @@ public:
 		requestBytesToWrite(0),
 		requestBodySent(false),
 		total(0),
-		passToUpstream(false),
+		trustedClient(false),
+		passthrough(false),
 		acceptXForwardedProtocol(false),
 		useXForwardedProtocol(false),
 		proxyInitialResponse(false),
@@ -211,7 +215,7 @@ public:
 			requestData.body.clear();
 
 			if(!route.asHost.isEmpty())
-				requestData.uri.setHost(route.asHost);
+				ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
 			QByteArray path = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
@@ -238,10 +242,13 @@ public:
 
 			targets = route.targets;
 
-			bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata);
+			foreach(const HttpHeader &h, route.headers)
+			{
+				requestData.headers.removeAll(h.first);
+				requestData.headers += HttpHeader(h.first, h.second);
+			}
 
-			if(trustedClient)
-				passToUpstream = true;
+			trustedClient = ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata);
 
 			state = Requesting;
 			buffering = true;
@@ -249,11 +256,17 @@ public:
 			if(!rs->isRetry())
 			{
 				inRequest = rs->request();
+
+				passthrough = inRequest->passthroughData().isValid();
+
 				connect(inRequest, &ZhttpRequest::readyRead, this, &Private::inRequest_readyRead);
 				connect(inRequest, &ZhttpRequest::error, this, &Private::inRequest_error);
 
 				requestBody += inRequest->readBody();
 			}
+
+			if(trustedClient || (inRequest && inRequest->passthroughData().isValid()))
+				passthrough = true;
 
 			initialRequestBody = requestBody.toByteArray();
 
@@ -322,7 +335,7 @@ public:
 			if(at != -1)
 				contentType.truncate(at);
 
-			if(contentType == "application/websocket-events" && !passToUpstream)
+			if(contentType == "application/websocket-events" && !trustedClient)
 			{
 				rejectAll(403, "Forbidden", "Client not allowed to send WebSocket events directly.");
 				return;
@@ -336,7 +349,7 @@ public:
 			uri.setScheme("http");
 
 		if(!target.host.isEmpty())
-			uri.setHost(target.host);
+			ProxyUtil::applyHost(&uri, target.host);
 
 		if(zhttpManager)
 		{
@@ -385,6 +398,9 @@ public:
 		if(target.trusted)
 			zhttpRequest->setIgnorePolicies(true);
 
+		if(target.trustConnectHost)
+			zhttpRequest->setTrustConnectHost(true);
+
 		if(target.insecure)
 			zhttpRequest->setIgnoreTlsErrors(true);
 
@@ -393,6 +409,8 @@ public:
 			zhttpRequest->setConnectHost(target.connectHost);
 			zhttpRequest->setConnectPort(target.connectPort);
 		}
+
+		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
 		zhttpRequest->start(requestData.method, uri, requestData.headers);
 
@@ -644,15 +662,93 @@ public:
 
 		QPointer<QObject> self = this;
 
-		QByteArray buf = zhttpRequest->readBody(MAX_STREAM_BUFFER);
-		if(!buf.isEmpty())
-		{
-			total += buf.size();
-			log_debug("proxysession: %p recv=%d, total=%d", q, buf.size(), total);
+		bool wasAllowed = addAllowed;
 
-			if(state == Accepting)
+		if(state == Accepting)
+		{
+			if(responseBody.size() + zhttpRequest->bytesAvailable() > MAX_ACCEPT_RESPONSE_BODY)
 			{
-				if(responseBody.size() + buf.size() > MAX_ACCEPT_RESPONSE_BODY)
+				QByteArray gripHold = responseData.headers.get("Grip-Hold");
+
+				QByteArray gripNextLinkParam;
+				foreach(const HttpHeaderParameters &params, responseData.headers.getAllAsParameters("Grip-Link"))
+				{
+					if(params.count() >= 2 && params.get("rel") == "next")
+						gripNextLinkParam = params[0].first;
+				}
+
+				if(proxyInitialResponse && (gripHold == "stream" || (gripHold.isEmpty() && !gripNextLinkParam.isEmpty())))
+				{
+					// sending the initial response from the proxy means
+					//   we need to do some of the handler's job here
+
+					// NOTE: if we ever need to do more than what's
+					//   below, we should consider querying the handler
+					//   to perform these things while still letting
+					//   the proxy send the response body
+
+					// no content length
+					responseData.headers.removeAll("Content-Length");
+
+					// interpret grip-status
+					QByteArray statusHeader = responseData.headers.get("Grip-Status");
+					if(!statusHeader.isEmpty())
+					{
+						QByteArray codeStr;
+						QByteArray reason;
+
+						int at = statusHeader.indexOf(' ');
+						if(at != -1)
+						{
+							codeStr = statusHeader.mid(0, at);
+							reason = statusHeader.mid(at + 1);
+						}
+						else
+						{
+							codeStr = statusHeader;
+						}
+
+						bool _ok;
+						responseData.code = codeStr.toInt(&_ok);
+						if(!_ok || responseData.code < 0 || responseData.code > 999)
+						{
+							// this may output a misleading error message
+							cannotAcceptAll();
+							return;
+						}
+
+						if(reason.isEmpty())
+							reason = StatusReasons::getReason(responseData.code);
+
+						responseData.reason = reason;
+					}
+
+					// strip any grip headers
+					for(int n = 0; n < responseData.headers.count(); ++n)
+					{
+						const HttpHeader &h = responseData.headers[n];
+
+						bool prefixed = false;
+						foreach(const QByteArray &hp, acceptHeaderPrefixes)
+						{
+							if(qstrnicmp(h.first.data(), hp.data(), hp.length()) == 0)
+							{
+								prefixed = true;
+								break;
+							}
+						}
+
+						if(prefixed)
+						{
+							responseData.headers.removeAt(n);
+							--n; // adjust position
+						}
+					}
+
+					// we'll let the proxy send normally, then accept afterwards
+					acceptAfterResponding = true;
+				}
+				else
 				{
 					QString msg = "Error while proxying to origin.";
 					QString dmsg = QString("GRIP instruct response too large from %1").arg(targetToString(target));
@@ -660,44 +756,57 @@ public:
 					rejectAll(502, "Bad Gateway", msg, dmsg);
 					return;
 				}
-
-				responseBody += buf;
 			}
-			else if(state == Responding)
+		}
+		else if(state == Responding)
+		{
+			if(buffering && responseBody.size() + zhttpRequest->bytesAvailable() > MAX_INITIAL_BUFFER)
 			{
-				bool wasAllowed = addAllowed;
+				responseBody.clear();
+				buffering = false;
+				addAllowed = false;
+			}
+		}
 
-				if(buffering)
+		QByteArray buf;
+		int maxBytes = (buffering ? MAX_INITIAL_BUFFER - responseBody.size() : MAX_STREAM_BUFFER);
+		if(maxBytes > 0)
+			buf = zhttpRequest->readBody(maxBytes);
+
+		if(!buf.isEmpty())
+		{
+			total += buf.size();
+			log_debug("proxysession: %p recv=%d, total=%d, avail=%d", q, buf.size(), total, zhttpRequest->bytesAvailable());
+
+			if(buffering)
+				responseBody += buf;
+		}
+
+		if(state == Accepting)
+		{
+			if(acceptAfterResponding)
+				startResponse();
+		}
+		else if(state == Responding)
+		{
+			log_debug("proxysession: %p writing %d to clients", q, buf.size());
+
+			foreach(SessionItem *si, sessionItems)
+			{
+				assert(si->state != SessionItem::WaitingForResponse);
+
+				if(si->state == SessionItem::Responding)
 				{
-					if(responseBody.size() + buf.size() > MAX_INITIAL_BUFFER)
-					{
-						responseBody.clear();
-						buffering = false;
-						addAllowed = false;
-					}
-					else
-						responseBody += buf;
+					si->bytesToWrite += buf.size();
+					si->rs->writeResponseBody(buf);
 				}
+			}
 
-				log_debug("proxysession: %p writing %d to clients", q, buf.size());
-
-				foreach(SessionItem *si, sessionItems)
-				{
-					assert(si->state != SessionItem::WaitingForResponse);
-
-					if(si->state == SessionItem::Responding)
-					{
-						si->bytesToWrite += buf.size();
-						si->rs->writeResponseBody(buf);
-					}
-				}
-
-				if(wasAllowed && !addAllowed)
-				{
-					emit q->addNotAllowed();
-					if(!self)
-						return;
-				}
+			if(wasAllowed && !addAllowed)
+			{
+				emit q->addNotAllowed();
+				if(!self)
+					return;
 			}
 		}
 
@@ -761,6 +870,31 @@ public:
 						si->rs->endResponseBody();
 					}
 				}
+			}
+		}
+	}
+
+	void startResponse()
+	{
+		state = Responding;
+
+		// don't relay these headers. their meaning is handled by
+		//   zurl and they only apply to the outgoing hop.
+		responseData.headers.removeAll("Connection");
+		responseData.headers.removeAll("Keep-Alive");
+		responseData.headers.removeAll("Content-Encoding");
+		responseData.headers.removeAll("Transfer-Encoding");
+
+		foreach(SessionItem *si, sessionItems)
+		{
+			si->state = SessionItem::Responding;
+			si->startedResponse = true;
+			si->rs->startResponse(responseData.code, responseData.reason, responseData.headers);
+
+			if(!responseBody.isEmpty())
+			{
+				si->bytesToWrite += responseBody.size();
+				si->rs->writeResponseBody(responseBody.toByteArray());
 			}
 		}
 	}
@@ -844,7 +978,7 @@ public slots:
 			log_debug("proxysession: %p recv total: %d", q, total);
 
 			bool doAccept = false;
-			if(!passToUpstream)
+			if(!passthrough)
 			{
 				QByteArray contentType = responseData.headers.get("Content-Type");
 				int at = contentType.indexOf(';');
@@ -857,93 +991,19 @@ public slots:
 				}
 				else
 				{
-					if(proxyInitialResponse && responseData.headers.get("Grip-Hold") == "stream")
+					foreach(const HttpHeader &h, responseData.headers)
 					{
-						// sending the initial response from the proxy means
-						//   we need to do some of the handler's job here
-
-						// NOTE: if we ever need to do more than what's
-						//   below, we should consider querying the handler
-						//   to perform these things while still letting
-						//   the proxy send the response body
-
-						// no content length
-						responseData.headers.removeAll("Content-Length");
-
-						// interpret grip-status
-						QByteArray statusHeader = responseData.headers.get("Grip-Status");
-						if(!statusHeader.isEmpty())
+						foreach(const QByteArray &hp, acceptHeaderPrefixes)
 						{
-							QByteArray codeStr;
-							QByteArray reason;
-
-							int at = statusHeader.indexOf(' ');
-							if(at != -1)
+							if(qstrnicmp(h.first.data(), hp.data(), hp.length()) == 0)
 							{
-								codeStr = statusHeader.mid(0, at);
-								reason = statusHeader.mid(at + 1);
-							}
-							else
-							{
-								codeStr = statusHeader;
-							}
-
-							bool _ok;
-							responseData.code = codeStr.toInt(&_ok);
-							if(!_ok || responseData.code < 0 || responseData.code > 999)
-							{
-								// this may output a misleading error message
-								cannotAcceptAll();
-								return;
-							}
-
-							if(reason.isEmpty())
-								reason = StatusReasons::getReason(responseData.code);
-
-							responseData.reason = reason;
-						}
-
-						// strip any grip headers
-						for(int n = 0; n < responseData.headers.count(); ++n)
-						{
-							const HttpHeader &h = responseData.headers[n];
-
-							bool prefixed = false;
-							foreach(const QByteArray &hp, acceptHeaderPrefixes)
-							{
-								if(qstrnicmp(h.first.data(), hp.data(), hp.length()) == 0)
-								{
-									prefixed = true;
-									break;
-								}
-							}
-
-							if(prefixed)
-							{
-								responseData.headers.removeAt(n);
-								--n; // adjust position
-							}
-						}
-
-						// we'll let the proxy send normally, then accept afterwards
-						acceptAfterResponding = true;
-					}
-					else
-					{
-						foreach(const HttpHeader &h, responseData.headers)
-						{
-							foreach(const QByteArray &hp, acceptHeaderPrefixes)
-							{
-								if(qstrnicmp(h.first.data(), hp.data(), hp.length()) == 0)
-								{
-									doAccept = true;
-									break;
-								}
-							}
-
-							if(doAccept)
+								doAccept = true;
 								break;
+							}
 						}
+
+						if(doAccept)
+							break;
 					}
 				}
 			}
@@ -960,37 +1020,13 @@ public slots:
 			}
 			else
 			{
-				state = Responding;
-
-				// don't relay these headers. their meaning is handled by
-				//   zurl and they only apply to the outgoing hop.
-				responseData.headers.removeAll("Connection");
-				responseData.headers.removeAll("Keep-Alive");
-				responseData.headers.removeAll("Content-Encoding");
-				responseData.headers.removeAll("Transfer-Encoding");
-
-				foreach(SessionItem *si, sessionItems)
-				{
-					si->state = SessionItem::Responding;
-					si->startedResponse = true;
-					si->rs->startResponse(responseData.code, responseData.reason, responseData.headers);
-
-					if(!responseBody.isEmpty())
-					{
-						si->bytesToWrite += responseBody.size();
-						si->rs->writeResponseBody(responseBody.toByteArray());
-					}
-				}
+				startResponse();
 			}
-
-			checkIncomingResponseFinished();
 		}
-		else
-		{
-			assert(state == Accepting || state == Responding);
 
-			tryResponseRead();
-		}
+		assert(state == Accepting || state == Responding);
+
+		tryResponseRead();
 	}
 
 	void zhttpRequest_bytesWritten(int count)
@@ -1123,6 +1159,19 @@ public slots:
 		{
 			assert(!acceptRequest);
 
+			QByteArray sigIss;
+			QByteArray sigKey;
+			if(!route.sigIss.isEmpty() && !route.sigKey.isEmpty())
+			{
+				sigIss = route.sigIss;
+				sigKey = route.sigKey;
+			}
+			else
+			{
+				sigIss = defaultSigIss;
+				sigKey = defaultSigKey;
+			}
+
 			acceptResponseData.body = responseBody.take();
 
 			AcceptData adata;
@@ -1163,6 +1212,9 @@ public slots:
 
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
+			adata.sigIss = sigIss;
+			adata.sigKey = sigKey;
+			adata.trusted = target.trusted;
 			adata.useSession = route.session;
 			adata.responseSent = acceptAfterResponding;
 
@@ -1228,15 +1280,24 @@ public slots:
 			}
 			else
 			{
-				if(rdata.response.code != -1)
+				if(acceptAfterResponding)
 				{
-					if(acceptAfterResponding)
+					// wake up receivers and append
+					foreach(SessionItem *si, sessionItems)
 					{
-						// can't respond again in this state, so just
-						//   disconnect
-						destroyAll();
+						si->state = SessionItem::Responded;
+						si->rs->resume();
+
+						if(rdata.response.code != -1)
+							si->rs->writeResponseBody(rdata.response.body);
+
+						si->bytesToWrite = -1;
+						si->rs->endResponseBody();
 					}
-					else
+				}
+				else
+				{
+					if(rdata.response.code != -1)
 					{
 						// wake up receivers
 						foreach(SessionItem *si, sessionItems)
@@ -1247,10 +1308,10 @@ public slots:
 
 						respondAll(rdata.response.code, rdata.response.reason, rdata.response.headers, rdata.response.body);
 					}
-				}
-				else
-				{
-					cannotAcceptAll();
+					else
+					{
+						cannotAcceptAll();
+					}
 				}
 			}
 		}

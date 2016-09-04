@@ -1,6 +1,16 @@
 Pushpin Changelog
 =================
 
+v. 1.12.0 (2016-09-03)
+
+  * "GRIP Next" feature for streaming many responses as a single response.
+  * header route parameter for sending custom headers when proxying.
+  * trust_connect_host target parameter for trusting cert of connect host.
+  * SockJS: fix bug with not receiving messages from client.
+  * More correct handling of Host header.
+  * Set X-Forwarded-Proto in addition to X-Forwarded-Protocol.
+  * Various bugfixes.
+
 v. 1.11.0 (2016-07-11)
 
   * Debug mode, to get more information about errors while proxying.

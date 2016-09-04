@@ -56,6 +56,7 @@ public:
 	QString connectHost;
 	int connectPort;
 	bool ignorePolicies;
+	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	QUrl requestUri;
 	HttpHeaders requestHeaders;
@@ -90,6 +91,7 @@ public:
 		state(Idle),
 		connectPort(-1),
 		ignorePolicies(false),
+		trustConnectHost(false),
 		ignoreTlsErrors(false),
 		inSeq(0),
 		outSeq(0),
@@ -930,6 +932,8 @@ public slots:
 				p.connectPort = connectPort;
 				if(ignorePolicies)
 					p.ignorePolicies = true;
+				if(trustConnectHost)
+					p.trustConnectHost = true;
 				if(ignoreTlsErrors)
 					p.ignoreTlsErrors = true;
 				p.credits = IDEAL_CREDITS;
@@ -1003,6 +1007,11 @@ void ZWebSocket::setConnectPort(int port)
 void ZWebSocket::setIgnorePolicies(bool on)
 {
 	d->ignorePolicies = on;
+}
+
+void ZWebSocket::setTrustConnectHost(bool on)
+{
+	d->trustConnectHost = on;
 }
 
 void ZWebSocket::setIgnoreTlsErrors(bool on)

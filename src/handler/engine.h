@@ -36,6 +36,9 @@ public:
 		QByteArray instanceId;
 		QStringList serverInStreamSpecs;
 		QStringList serverOutSpecs;
+		QStringList clientOutSpecs;
+		QStringList clientOutStreamSpecs;
+		QStringList clientInSpecs;
 		QString inspectSpec;
 		QString acceptSpec;
 		QString retryOutSpec;

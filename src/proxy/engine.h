@@ -47,6 +47,9 @@ public:
 		QString wsControlOutSpec;
 		QString statsSpec;
 		QString commandSpec;
+		QStringList intServerInSpecs;
+		QStringList intServerInStreamSpecs;
+		QStringList intServerOutSpecs;
 		int ipcFileMode;
 		int maxWorkers;
 		int inspectTimeout;

@@ -48,6 +48,7 @@ public:
 	virtual void setConnectHost(const QString &host);
 	virtual void setConnectPort(int port);
 	virtual void setIgnorePolicies(bool on);
+	virtual void setTrustConnectHost(bool on);
 	virtual void setIgnoreTlsErrors(bool on);
 
 	virtual void start(const QUrl &uri, const HttpHeaders &headers);
@@ -71,14 +72,6 @@ public:
 	virtual void writeFrame(const Frame &frame);
 	virtual Frame readFrame();
 	virtual void close(int code = -1);
-
-signals:
-	void connected();
-	void readyRead();
-	void framesWritten(int count, int contentBytes);
-	void peerClosed();
-	void closed();
-	void error();
 
 private:
 	class Private;

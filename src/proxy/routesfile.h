@@ -17,53 +17,24 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef INSTRUCT_H
-#define INSTRUCT_H
+#ifndef ROUTESFILE_H
+#define ROUTESFILE_H
 
 #include <QString>
-#include <QStringList>
-#include <QByteArray>
 #include <QList>
 #include <QHash>
-#include <QUrl>
-#include "packet/httpresponsedata.h"
 
-class Instruct
+namespace RoutesFile {
+
+class RouteSection
 {
 public:
-	enum HoldMode
-	{
-		NoHold,
-		ResponseHold,
-		StreamHold
-	};
-
-	class Channel
-	{
-	public:
-		QString name;
-		QString prevId;
-		QStringList filters;
-	};
-
-	HoldMode holdMode;
-	QList<Channel> channels;
-	int timeout;
-	QList<QByteArray> exposeHeaders;
-	QByteArray keepAliveData;
-	int keepAliveTimeout;
-	QHash<QString, QString> meta;
-	HttpResponseData response;
-	QUrl nextLink;
-
-	Instruct() :
-		holdMode(NoHold),
-		timeout(-1),
-		keepAliveTimeout(-1)
-	{
-	}
-
-	static Instruct fromResponse(const HttpResponseData &response, bool *ok = 0, QString *errorMessage = 0);
+	QString value;
+	QHash<QString, QString> props;
 };
+
+QList<RouteSection> parseLine(const QString &line, bool *ok = 0, QString *errorMessage = 0);
+
+}
 
 #endif

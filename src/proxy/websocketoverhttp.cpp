@@ -172,6 +172,7 @@ public:
 	QString connectHost;
 	int connectPort;
 	bool ignorePolicies;
+	bool trustConnectHost;
 	bool ignoreTlsErrors;
 	State state;
 	QByteArray cid;
@@ -205,6 +206,7 @@ public:
 		q(_q),
 		connectPort(-1),
 		ignorePolicies(false),
+		trustConnectHost(false),
 		ignoreTlsErrors(false),
 		state(WebSocket::Idle),
 		errorCondition(ErrorGeneric),
@@ -530,6 +532,7 @@ private:
 		if(connectPort != -1)
 			req->setConnectPort(connectPort);
 		req->setIgnorePolicies(ignorePolicies);
+		req->setTrustConnectHost(trustConnectHost);
 		req->setIgnoreTlsErrors(ignoreTlsErrors);
 		req->setSendBodyAfterAcknowledgement(true);
 
@@ -656,6 +659,10 @@ private slots:
 				emit q->error();
 				return;
 			}
+
+			// correct the status code/reason
+			responseData.code = 101;
+			responseData.reason = "Switching Protocols";
 
 			// strip private headers from the initial response
 			responseData.headers.removeAll("Content-Length");
@@ -941,6 +948,11 @@ void WebSocketOverHttp::setConnectPort(int port)
 void WebSocketOverHttp::setIgnorePolicies(bool on)
 {
 	d->ignorePolicies = on;
+}
+
+void WebSocketOverHttp::setTrustConnectHost(bool on)
+{
+	d->trustConnectHost = on;
 }
 
 void WebSocketOverHttp::setIgnoreTlsErrors(bool on)

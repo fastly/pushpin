@@ -260,6 +260,12 @@ public:
 		QString handler_ws_control_out_spec = settings.value("proxy/handler_ws_control_out_spec").toString();
 		QString stats_spec = settings.value("proxy/stats_spec").toString();
 		QString command_spec = settings.value("proxy/command_spec").toString();
+		QStringList intreq_in_specs = settings.value("proxy/intreq_in_specs").toStringList();
+		trimlist(&intreq_in_specs);
+		QStringList intreq_in_stream_specs = settings.value("proxy/intreq_in_stream_specs").toStringList();
+		trimlist(&intreq_in_stream_specs);
+		QStringList intreq_out_specs = settings.value("proxy/intreq_out_specs").toStringList();
+		trimlist(&intreq_out_specs);
 		bool ok;
 		int ipcFileMode = settings.value("proxy/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		int maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
@@ -310,6 +316,9 @@ public:
 		config.wsControlOutSpec = handler_ws_control_out_spec;
 		config.statsSpec = stats_spec;
 		config.commandSpec = command_spec;
+		config.intServerInSpecs = intreq_in_specs;
+		config.intServerInStreamSpecs = intreq_in_stream_specs;
+		config.intServerOutSpecs = intreq_out_specs;
 		config.ipcFileMode = ipcFileMode;
 		config.maxWorkers = maxWorkers;
 		if(!args.routeLines.isEmpty())

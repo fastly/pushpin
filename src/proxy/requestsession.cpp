@@ -39,6 +39,7 @@
 #include "zrpcchecker.h"
 #include "inspectrequest.h"
 #include "acceptrequest.h"
+#include "statsmanager.h"
 #include "cors.h"
 
 #define MAX_SHARED_REQUEST_BODY 100000
@@ -114,6 +115,11 @@ static QByteArray serializeJsonString(const QString &s)
 	return tmp.mid(1, tmp.length() - 2);
 }
 
+static QByteArray ridToString(const QPair<QByteArray, QByteArray> &rid)
+{
+	return rid.first + ':' + rid.second;
+}
+
 class RequestSession::Private : public QObject
 {
 	Q_OBJECT
@@ -141,6 +147,7 @@ public:
 	ZrpcManager *inspectManager;
 	ZrpcChecker *inspectChecker;
 	ZrpcManager *acceptManager;
+	StatsManager *stats;
 	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
 	DomainMap::Entry route;
@@ -162,8 +169,11 @@ public:
 	QList<QByteArray> jsonpExtractableHeaders;
 	int prefetchSize;
 	bool needPause;
+	bool connectionRegistered;
+	bool accepted;
+	bool passthrough;
 
-	Private(RequestSession *_q, DomainMap *_domainMap, SockJsManager *_sockJsManager, ZrpcManager *_inspectManager, ZrpcChecker *_inspectChecker, ZrpcManager *_acceptManager) :
+	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
@@ -172,6 +182,7 @@ public:
 		inspectManager(_inspectManager),
 		inspectChecker(_inspectChecker),
 		acceptManager(_acceptManager),
+		stats(_stats),
 		zhttpRequest(0),
 		debug(false),
 		autoCrossOrigin(false),
@@ -183,7 +194,10 @@ public:
 		pendingResponseUpdate(false),
 		isRetry(false),
 		prefetchSize(0),
-		needPause(false)
+		needPause(false),
+		connectionRegistered(false),
+		accepted(false),
+		passthrough(false)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
 	}
@@ -208,6 +222,12 @@ public:
 			inspectRequest = 0;
 		}
 
+		if(stats && connectionRegistered)
+		{
+			// linger if accepted
+			stats->removeConnection(ridToString(rid), accepted);
+		}
+
 		state = Stopped;
 	}
 
@@ -215,6 +235,7 @@ public:
 	{
 		zhttpRequest = req;
 		rid = req->rid();
+		passthrough = req->passthroughData().isValid();
 
 		requestData.method = req->requestMethod();
 		requestData.uri = req->requestUri();
@@ -225,22 +246,25 @@ public:
 		bool isHttps = (requestData.uri.scheme() == "https");
 		QString host = requestData.uri.host();
 
-		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
-
-		// look up the route
-		route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
-
-		// before we do anything else, see if this is a sockjs request
-		if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
+		if(route.isNull() && domainMap)
 		{
-			sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
-			zhttpRequest = 0;
-			QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
-			return;
+			QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
+
+			// look up the route
+			route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+
+			// before we do anything else, see if this is a sockjs request
+			if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
+			{
+				sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
+				zhttpRequest = 0;
+				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
+				return;
+			}
 		}
 
-		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
 		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
+		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
 
 		if(!route.isNull())
 		{
@@ -304,6 +328,14 @@ public:
 
 		log_debug("requestsession: %p %s has %d routes", q, qPrintable(host), route.targets.count());
 
+		if(stats && !passthrough)
+		{
+			connectionRegistered = true;
+
+			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, zhttpRequest->peerAddress(), isHttps, false);
+			stats->addActivity(route.id);
+		}
+
 		state = Prefetching;
 
 		connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
@@ -334,6 +366,14 @@ public:
 		}
 
 		log_debug("proxysession: %p %s has %d routes", q, qPrintable(host), route.targets.count());
+
+		if(stats)
+		{
+			connectionRegistered = true;
+
+			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, zhttpRequest->peerAddress(), isHttps, true);
+			stats->addActivity(route.id);
+		}
 	}
 
 	void processIncomingRequest()
@@ -673,7 +713,11 @@ public:
 
 		requestData.uri = uri;
 
-		headers += HttpHeader("Host", uri.host().toUtf8());
+		QByteArray hostHeader = uri.host().toUtf8();
+		if(uri.port() != -1)
+			hostHeader += ':' + QByteArray::number(uri.port());
+		headers += HttpHeader("Host", hostHeader);
+
 		headers += HttpHeader("Accept", "*/*");
 
 		// carry over the rest of the headers
@@ -833,12 +877,13 @@ public slots:
 
 			if(rdata.accepted)
 			{
+				accepted = true;
+
 				// the request was paused, so deleting it will leave the peer session active
 				delete zhttpRequest;
 				zhttpRequest = 0;
 
-				state = Stopped;
-
+				cleanup();
 				emit q->finishedByAccept();
 			}
 			else
@@ -1073,10 +1118,16 @@ public slots:
 	}
 };
 
-RequestSession::RequestSession(DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, QObject *parent) :
+RequestSession::RequestSession(StatsManager *stats, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager);
+	d = new Private(this, 0, 0, 0, 0, 0, stats);
+}
+
+RequestSession::RequestSession(DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats, QObject *parent) :
+	QObject(parent)
+{
+	d = new Private(this, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager, stats);
 }
 
 RequestSession::~RequestSession()
@@ -1167,6 +1218,16 @@ void RequestSession::setAutoCrossOrigin(bool enabled)
 void RequestSession::setPrefetchSize(int size)
 {
 	d->prefetchSize = size;
+}
+
+void RequestSession::setRoute(const DomainMap::Entry &route)
+{
+	d->route = route;
+}
+
+void RequestSession::setAccepted(bool enabled)
+{
+	d->accepted = enabled;
 }
 
 void RequestSession::start(ZhttpRequest *req)

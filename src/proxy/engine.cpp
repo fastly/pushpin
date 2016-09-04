@@ -23,10 +23,10 @@
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
+#include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
 #include "log.h"
 #include "inspectdata.h"
-#include "acceptdata.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
@@ -48,11 +48,6 @@
 #include "updater.h"
 
 #define DEFAULT_HWM 1000
-
-static QByteArray ridToString(const QPair<QByteArray, QByteArray> &rid)
-{
-	return rid.first + ':' + rid.second;
-}
 
 class Engine::Private : public QObject
 {
@@ -88,6 +83,7 @@ public:
 	bool destroying;
 	Configuration config;
 	ZhttpManager *zhttpIn;
+	ZhttpManager *intZhttpIn;
 	ZRoutes *zroutes;
 	ZrpcManager *inspect;
 	WsControlManager *wsControl;
@@ -110,6 +106,7 @@ public:
 		q(_q),
 		destroying(false),
 		zhttpIn(0),
+		intZhttpIn(0),
 		zroutes(0),
 		inspect(0),
 		wsControl(0),
@@ -183,6 +180,19 @@ public:
 		zhttpIn->setServerInSpecs(config.serverInSpecs);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
 		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
+
+		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
+		{
+			intZhttpIn = new ZhttpManager(this);
+			intZhttpIn->setBind(true);
+			intZhttpIn->setIpcFileMode(config.ipcFileMode);
+			connect(intZhttpIn, &ZhttpManager::requestReady, this, &Private::intZhttpIn_requestReady);
+
+			intZhttpIn->setInstanceId(config.clientId);
+			intZhttpIn->setServerInSpecs(config.intServerInSpecs);
+			intZhttpIn->setServerInStreamSpecs(config.intServerInStreamSpecs);
+			intZhttpIn->setServerOutSpecs(config.intServerOutSpecs);
+		}
 
 		zroutes = new ZRoutes(this);
 		zroutes->setInstanceId(config.clientId);
@@ -307,7 +317,7 @@ public:
 		domainMap->reload();
 	}
 
-	void doProxy(RequestSession *rs, const InspectData *idata = 0, bool isRetry = false)
+	void doProxy(RequestSession *rs, const InspectData *idata = 0)
 	{
 		DomainMap::Entry route = rs->route();
 
@@ -365,12 +375,6 @@ public:
 		rs->disconnect(this);
 
 		ps->add(rs);
-
-		if(stats)
-		{
-			stats->addConnection(ridToString(rs->rid()), route.id, StatsManager::Http, rs->peerAddress(), rs->isHttps(), isRetry);
-			stats->addActivity(route.id);
-		}
 	}
 
 	void doProxySocket(WebSocket *sock, const DomainMap::Entry &route)
@@ -416,7 +420,9 @@ public:
 
 	bool isXForwardedProtocolTls(const HttpHeaders &headers)
 	{
-		QByteArray xfp = headers.get("X-Forwarded-Protocol");
+		QByteArray xfp = headers.get("X-Forwarded-Proto");
+		if(xfp.isEmpty())
+			xfp = headers.get("X-Forwarded-Protocol");
 		return (!xfp.isEmpty() && (xfp == "https" || xfp == "wss"));
 	}
 
@@ -425,22 +431,59 @@ public:
 		if(!canTake())
 			return;
 
+		// prioritize external requests over internal requests
+
 		ZhttpRequest *req = zhttpIn->takeNextRequest();
 		if(!req)
-			return;
+		{
+			if(intZhttpIn)
+				req = intZhttpIn->takeNextRequest();
 
-		if(config.acceptXForwardedProtocol && isXForwardedProtocolTls(req->requestHeaders()))
-			req->setIsTls(true);
+			if(!req)
+				return;
+		}
 
-		RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, this);
+		RequestSession *rs;
+
+		QVariant passthroughData = req->passthroughData();
+
+		if(passthroughData.isValid())
+		{
+			// passthrough mode. make a fake route
+			DomainMap::Entry route;
+			DomainMap::Target target;
+			QUrl uri = req->requestUri();
+			bool isHttps = (uri.scheme() == "https");
+			target.connectHost = uri.host();
+			target.connectPort = uri.port(isHttps ? 443 : 80);
+			target.ssl = isHttps;
+			if(passthroughData.type() == QVariant::Hash)
+			{
+				const QVariantHash data = passthroughData.toHash();
+				route.sigIss = data["sig-iss"].toByteArray();
+				route.sigKey = data["sig-key"].toByteArray();
+				target.trusted = data["trusted"].toBool();
+			}
+			route.targets += target;
+
+			rs = new RequestSession(stats, this);
+			rs->setRoute(route);
+		}
+		else
+		{
+			if(config.acceptXForwardedProtocol && isXForwardedProtocolTls(req->requestHeaders()))
+				req->setIsTls(true);
+
+			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
+			rs->setDebugEnabled(config.debug);
+			rs->setAutoCrossOrigin(config.autoCrossOrigin);
+			rs->setPrefetchSize(config.inspectPrefetch);
+		}
+
 		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
 		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
 		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
 		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
-
-		rs->setDebugEnabled(config.debug);
-		rs->setAutoCrossOrigin(config.autoCrossOrigin);
-		rs->setPrefetchSize(config.inspectPrefetch);
 
 		requestSessions += rs;
 
@@ -550,6 +593,11 @@ private slots:
 		tryTakeNext();
 	}
 
+	void intZhttpIn_requestReady()
+	{
+		tryTakeNext();
+	}
+
 	void rs_inspected(const InspectData &idata)
 	{
 		RequestSession *rs = (RequestSession *)sender();
@@ -575,9 +623,6 @@ private slots:
 
 		logFinished(rs);
 
-		if(stats)
-			stats->removeConnection(ridToString(rs->rid()), false);
-
 		requestSessions.remove(rs);
 		delete rs;
 
@@ -589,16 +634,6 @@ private slots:
 		RequestSession *rs = (RequestSession *)sender();
 
 		logFinished(rs, true);
-
-		if(stats)
-		{
-			// add connection so that it becomes lingerable
-			stats->addConnection(ridToString(rs->rid()), QByteArray(), StatsManager::Http, rs->peerAddress(), rs->isHttps(), false);
-			stats->addActivity(QByteArray());
-
-			// immediately remove since we're accepting
-			stats->removeConnection(ridToString(rs->rid()), true);
-		}
 
 		requestSessions.remove(rs);
 		delete rs;
@@ -641,8 +676,7 @@ private slots:
 	{
 		requestSessions.remove(rs);
 
-		if(stats)
-			stats->removeConnection(ridToString(rs->rid()), accept);
+		rs->setAccepted(accept);
 
 		tryTakeNext();
 	}
@@ -718,7 +752,7 @@ private slots:
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, this);
+			RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
 			requestSessions += rs;
 
 			// note: if the routing table was changed, there's a chance the request
@@ -726,7 +760,7 @@ private slots:
 			//   stats processors tracking route+connection mappings.
 			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse);
 
-			doProxy(rs, p.haveInspectInfo ? &idata : 0, true);
+			doProxy(rs, p.haveInspectInfo ? &idata : 0);
 		}
 	}
 

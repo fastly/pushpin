@@ -136,12 +136,6 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	requestData->headers.removeAll("Transfer-Encoding");
 	requestData->headers.removeAll("Expect");
 
-	// rewrite the Host header to match the hostname of the destination URL.
-	//   in practice, the only time the value should ever be different is
-	//   if the original Host header had a port specified
-	requestData->headers.removeAll("Host");
-	requestData->headers += HttpHeader("Host", requestData->uri.host().toUtf8());
-
 	if(!trustedClient)
 	{
 		// remove all Grip- headers
@@ -180,13 +174,25 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	}
 
 	if(acceptXForwardedProtocol || useXForwardedProtocol)
+	{
+		requestData->headers.removeAll("X-Forwarded-Proto");
+
+		// TODO: deprecate
 		requestData->headers.removeAll("X-Forwarded-Protocol");
+	}
 
 	if(useXForwardedProtocol)
 	{
 		QString scheme = requestData->uri.scheme();
 		if(scheme == "https" || scheme == "wss")
-			requestData->headers += HttpHeader("X-Forwarded-Protocol", scheme.toUtf8());
+		{
+			QByteArray schemeVal = scheme.toUtf8();
+
+			requestData->headers += HttpHeader("X-Forwarded-Proto", schemeVal);
+
+			// TODO: deprecate
+			requestData->headers += HttpHeader("X-Forwarded-Protocol", schemeVal);
+		}
 	}
 
 	const XffRule *xr;
@@ -204,6 +210,34 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 		requestData->headers += HttpHeader("X-Forwarded-For", HttpHeaders::join(xffValues));
 
 	return trustedClient;
+}
+
+void applyHost(QUrl *url, const QString &host)
+{
+	int at = host.indexOf(':');
+	if(at != -1)
+	{
+		url->setHost(host.mid(0, at));
+		url->setPort(host.mid(at + 1).toInt());
+	}
+	else
+	{
+		url->setHost(host);
+		url->setPort(-1);
+	}
+}
+
+void applyHostHeader(HttpHeaders *headers, const QUrl &uri)
+{
+	QByteArray hostHeader = uri.host().toUtf8();
+	if(uri.port() != -1)
+		hostHeader += ':' + QByteArray::number(uri.port());
+
+	if(headers->get("Host") != hostHeader)
+	{
+		headers->removeAll("Host");
+		headers->append(HttpHeader("Host", hostHeader));
+	}
 }
 
 }

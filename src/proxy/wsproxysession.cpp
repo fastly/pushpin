@@ -360,7 +360,7 @@ public:
 		}
 
 		if(!entry.asHost.isEmpty())
-			requestData.uri.setHost(entry.asHost);
+			ProxyUtil::applyHost(&requestData.uri, entry.asHost);
 
 		QByteArray path = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
@@ -391,6 +391,12 @@ public:
 		targets = entry.targets;
 
 		log_debug("wsproxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
+
+		foreach(const HttpHeader &h, entry.headers)
+		{
+			requestData.headers.removeAll(h.first);
+			requestData.headers += HttpHeader(h.first, h.second);
+		}
 
 		bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, inSock->peerAddress(), InspectData());
 
@@ -423,7 +429,7 @@ public:
 			uri.setScheme("ws");
 
 		if(!target.host.isEmpty())
-			uri.setHost(target.host);
+			ProxyUtil::applyHost(&uri, target.host);
 
 		subChannel = target.subChannel;
 
@@ -493,6 +499,9 @@ public:
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
 
+		if(target.trustConnectHost)
+			outSock->setTrustConnectHost(true);
+
 		if(target.insecure)
 			outSock->setIgnoreTlsErrors(true);
 
@@ -501,6 +510,8 @@ public:
 			outSock->setConnectHost(target.connectHost);
 			outSock->setConnectPort(target.connectPort);
 		}
+
+		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
 		outSock->start(uri, requestData.headers);
 	}
@@ -566,13 +577,20 @@ public:
 						else
 							outReadInProgress = -1; // ignore rest of message
 					}
-					else if(f.type != WebSocket::Frame::Continuation && f.data.startsWith(messagePrefix))
+					else if(f.type != WebSocket::Frame::Continuation)
 					{
-						f.data = f.data.mid(messagePrefix.size());
-						inSock->writeFrame(f);
-						inPendingBytes += f.data.size();
+						if(f.data.startsWith(messagePrefix))
+						{
+							f.data = f.data.mid(messagePrefix.size());
+							inSock->writeFrame(f);
+							inPendingBytes += f.data.size();
 
-						restartKeepAlive();
+							restartKeepAlive();
+						}
+						else
+						{
+							log_debug("wsproxysession: dropping unprefixed message");
+						}
 					}
 					else if(f.type == WebSocket::Frame::Continuation)
 					{

@@ -72,6 +72,9 @@ public:
 
 	QByteArray route;
 	QByteArray channelPrefix;
+	QByteArray sigIss;
+	QByteArray sigKey;
+	bool trusted; // whether a trusted target was used
 	bool useSession;
 	bool responseSent;
 

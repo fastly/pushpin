@@ -33,6 +33,10 @@ namespace ProxyUtil {
 
 bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata);
 
+void applyHost(QUrl *url, const QString &host);
+
+void applyHostHeader(HttpHeaders *headers, const QUrl &uri);
+
 }
 
 #endif

@@ -43,6 +43,7 @@ public:
 	virtual void setConnectHost(const QString &host);
 	virtual void setConnectPort(int port);
 	virtual void setIgnorePolicies(bool on);
+	virtual void setTrustConnectHost(bool on);
 	virtual void setIgnoreTlsErrors(bool on);
 
 	virtual void start(const QUrl &uri, const HttpHeaders &headers);
