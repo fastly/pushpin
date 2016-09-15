@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,6 +30,7 @@
 
 #define IDEAL_CREDITS 200000
 #define SESSION_EXPIRE 60000
+#define KEEPALIVE_INTERVAL 30000
 
 class ZWebSocket::Private : public QObject
 {
@@ -82,6 +83,7 @@ public:
 	int inSize;
 	int inContentType;
 	int outContentType;
+	bool multi;
 
 	Private(ZWebSocket *_q) :
 		QObject(_q),
@@ -107,7 +109,8 @@ public:
 		keepAliveTimer(0),
 		inSize(0),
 		inContentType(-1),
-		outContentType((int)Frame::Text)
+		outContentType((int)Frame::Text),
+		multi(false)
 	{
 		expireTimer = new QTimer(this);
 		connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
@@ -145,12 +148,14 @@ public:
 
 		if(manager)
 		{
+			manager->unregisterKeepAlive(q);
+
 			manager->unlink(q);
 			manager = 0;
 		}
 	}
 
-	bool setupServer(const ZhttpRequestPacket &packet)
+	bool setupServer(int seq, const ZhttpRequestPacket &packet)
 	{
 		if(packet.type != ZhttpRequestPacket::Data)
 		{
@@ -159,7 +164,7 @@ public:
 			return false;
 		}
 
-		if(packet.seq != 0)
+		if(seq != 0)
 		{
 			log_warning("zws server: error, received request with non-zero seq field");
 			writeError("bad-request");
@@ -200,7 +205,28 @@ public:
 
 	void startKeepAlive()
 	{
-		keepAliveTimer->start(SESSION_EXPIRE / 2);
+		if(multi)
+		{
+			if(keepAliveTimer->isActive())
+				keepAliveTimer->stop();
+
+			manager->registerKeepAlive(q);
+		}
+		else
+		{
+			manager->unregisterKeepAlive(q);
+
+			if(!keepAliveTimer->isActive())
+				keepAliveTimer->start(KEEPALIVE_INTERVAL);
+		}
+	}
+
+	void stopKeepAlive()
+	{
+		if(keepAliveTimer->isActive())
+			keepAliveTimer->stop();
+
+		manager->unregisterKeepAlive(q);
 	}
 
 	void refreshTimeout()
@@ -380,13 +406,13 @@ public:
 			inContentType = -1;
 	}
 
-	void handle(const ZhttpRequestPacket &packet)
+	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet)
 	{
 		if(packet.type == ZhttpRequestPacket::Error)
 		{
 			errorCondition = convertError(packet.condition);
 
-			log_debug("zws server: error id=%s cond=%s", packet.id.data(), packet.condition.data());
+			log_debug("zws server: error id=%s cond=%s", id.data(), packet.condition.data());
 
 			state = Idle;
 			cleanup();
@@ -395,7 +421,7 @@ public:
 		}
 		else if(packet.type == ZhttpRequestPacket::Cancel)
 		{
-			log_debug("zws server: received cancel id=%s", packet.id.data());
+			log_debug("zws server: received cancel id=%s", id.data());
 
 			errorCondition = ErrorGeneric;
 			state = Idle;
@@ -404,9 +430,9 @@ public:
 			return;
 		}
 
-		if(packet.seq != inSeq)
+		if(seq != inSeq)
 		{
-			log_warning("zws server: error id=%s received message out of sequence, canceling", packet.id.data());
+			log_warning("zws server: error id=%s received message out of sequence, canceling", id.data());
 
 			tryRespondCancel(packet);
 
@@ -424,7 +450,7 @@ public:
 		if(packet.type == ZhttpRequestPacket::Data || packet.type == ZhttpRequestPacket::Ping || packet.type == ZhttpRequestPacket::Pong)
 		{
 			if(inSize + packet.body.size() > IDEAL_CREDITS)
-				log_warning("zws client: id=%s server is sending too fast", packet.id.data());
+				log_warning("zws client: id=%s server is sending too fast", id.data());
 
 			if(packet.type == ZhttpRequestPacket::Data)
 			{
@@ -474,17 +500,17 @@ public:
 		}
 		else
 		{
-			log_debug("zws server: unsupported packet type id=%s type=%d", packet.id.data(), (int)packet.type);
+			log_debug("zws server: unsupported packet type id=%s type=%d", id.data(), (int)packet.type);
 		}
 	}
 
-	void handle(const ZhttpResponsePacket &packet)
+	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet)
 	{
 		if(packet.type == ZhttpResponsePacket::Error)
 		{
 			errorCondition = convertError(packet.condition);
 
-			log_debug("zws client: error id=%s cond=%s", packet.id.data(), packet.condition.data());
+			log_debug("zws client: error id=%s cond=%s", id.data(), packet.condition.data());
 
 			responseCode = packet.code;
 			responseReason = packet.reason;
@@ -498,7 +524,7 @@ public:
 		}
 		else if(packet.type == ZhttpResponsePacket::Cancel)
 		{
-			log_debug("zws client: received cancel id=%s", packet.id.data());
+			log_debug("zws client: received cancel id=%s", id.data());
 
 			errorCondition = ErrorGeneric;
 			state = Idle;
@@ -510,9 +536,9 @@ public:
 		if(!packet.from.isEmpty())
 			toAddress = packet.from;
 
-		if(packet.seq != inSeq)
+		if(seq != inSeq)
 		{
-			log_warning("zws client: error id=%s received message out of sequence, canceling", packet.id.data());
+			log_warning("zws client: error id=%s received message out of sequence, canceling", id.data());
 
 			tryRespondCancel(packet);
 
@@ -537,7 +563,7 @@ public:
 				state = Idle;
 				errorCondition = ErrorGeneric;
 				cleanup();
-				log_warning("zws client: error id=%s initial response wrong type", packet.id.data());
+				log_warning("zws client: error id=%s initial response wrong type", id.data());
 				emit q->error();
 				return;
 			}
@@ -547,7 +573,7 @@ public:
 				state = Idle;
 				errorCondition = ErrorGeneric;
 				cleanup();
-				log_warning("zws client: error id=%s initial ack did not contain from field", packet.id.data());
+				log_warning("zws client: error id=%s initial ack did not contain from field", id.data());
 				emit q->error();
 				return;
 			}
@@ -574,7 +600,7 @@ public:
 			else
 			{
 				if(inSize + packet.body.size() > IDEAL_CREDITS)
-					log_warning("zws client: id=%s server is sending too fast", packet.id.data());
+					log_warning("zws client: id=%s server is sending too fast", id.data());
 
 				if(packet.type == ZhttpResponsePacket::Data)
 				{
@@ -626,7 +652,7 @@ public:
 		}
 		else
 		{
-			log_debug("zws client: unsupported packet type id=%s type=%d", packet.id.data(), (int)packet.type);
+			log_debug("zws client: unsupported packet type id=%s type=%d", id.data(), (int)packet.type);
 		}
 	}
 
@@ -658,12 +684,13 @@ public:
 	{
 		assert(manager);
 
+		bool first = (outSeq == 0);
+
 		ZhttpRequestPacket out = packet;
 		out.from = rid.first;
-		out.id = rid.second;
-		out.seq = outSeq++;
-		
-		if(out.seq == 0)
+		out.ids += ZhttpRequestPacket::Id(rid.second, outSeq++);
+
+		if(first)
 		{
 			manager->writeWs(out);
 		}
@@ -680,8 +707,7 @@ public:
 
 		ZhttpResponsePacket out = packet;
 		out.from = manager->instanceId();
-		out.id = rid.second;
-		out.seq = outSeq++;
+		out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
 		out.userData = userData;
 		
 		manager->writeWs(out, rid.first);
@@ -1165,12 +1191,12 @@ void ZWebSocket::setupClient(ZhttpManager *manager)
 	d->manager->link(this);
 }
 
-bool ZWebSocket::setupServer(ZhttpManager *manager, const ZhttpRequestPacket &packet)
+bool ZWebSocket::setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet)
 {
 	d->manager = manager;
 	d->server = true;
-	d->rid = Rid(packet.from, packet.id);
-	return d->setupServer(packet);
+	d->rid = Rid(packet.from, id);
+	return d->setupServer(seq, packet);
 }
 
 void ZWebSocket::startServer()
@@ -1183,18 +1209,23 @@ bool ZWebSocket::isServer() const
 	return d->server;
 }
 
-void ZWebSocket::handle(const ZhttpRequestPacket &packet)
+int ZWebSocket::outSeqInc()
 {
-	assert(d->manager);
-
-	d->handle(packet);
+	return d->outSeq++;
 }
 
-void ZWebSocket::handle(const ZhttpResponsePacket &packet)
+void ZWebSocket::handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet)
 {
 	assert(d->manager);
 
-	d->handle(packet);
+	d->handle(id, seq, packet);
+}
+
+void ZWebSocket::handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet)
+{
+	assert(d->manager);
+
+	d->handle(id, seq, packet);
 }
 
 #include "zwebsocket.moc"

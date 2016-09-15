@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,7 +23,7 @@
 #include <QStringList>
 #include <QHash>
 #include <QPointer>
-#include <QFile>
+#include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -38,6 +38,11 @@
 #define CLIENT_WAIT_TIME 0
 #define CLIENT_STREAM_WAIT_TIME 500
 #define SERVER_WAIT_TIME 500
+
+#define KEEPALIVE_INTERVAL 30000
+
+// this doesn't have to match the peer, but we'll set a reasonable number
+#define ZHTTP_IDS_MAX 128
 
 class ZhttpManager::Private : public QObject
 {
@@ -76,6 +81,9 @@ public:
 	QHash<ZWebSocket::Rid, ZWebSocket*> clientSocksByRid;
 	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
 	QList<ZWebSocket*> serverPendingSocks;
+	QTimer *keepAliveTimer;
+	QSet<ZhttpRequest*> keepAliveReqs;
+	QSet<ZWebSocket*> keepAliveSocks;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -91,6 +99,15 @@ public:
 		ipcFileMode(-1),
 		doBind(false)
 	{
+		keepAliveTimer = new QTimer(this);
+		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
+	}
+
+	~Private()
+	{
+		keepAliveTimer->disconnect(this);
+		keepAliveTimer->setParent(0);
+		keepAliveTimer->deleteLater();
 	}
 
 	bool setupClientOut()
@@ -245,7 +262,7 @@ public:
 		return true;
 	}
 
-	void tryRespondCancel(SessionType type, const ZhttpRequestPacket &packet)
+	void tryRespondCancel(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
 	{
 		assert(!packet.from.isEmpty());
 
@@ -254,7 +271,7 @@ public:
 		{
 			ZhttpResponsePacket out;
 			out.from = instanceId;
-			out.id = packet.id;
+			out.ids += ZhttpResponsePacket::Id(id);
 			out.type = ZhttpResponsePacket::Cancel;
 			write(type, out, packet.from);
 		}
@@ -326,6 +343,17 @@ public:
 		}
 	}
 
+	void setupKeepAlive()
+	{
+		if(!keepAliveReqs.isEmpty() || !keepAliveSocks.isEmpty())
+		{
+			if(!keepAliveTimer->isActive())
+				keepAliveTimer->start(KEEPALIVE_INTERVAL);
+		}
+		else
+			keepAliveTimer->stop();
+	}
+
 public slots:
 	void client_out_messagesWritten(int count)
 	{
@@ -382,38 +410,41 @@ public slots:
 				continue;
 			}
 
-			// is this for a websocket?
-			ZWebSocket *sock = clientSocksByRid.value(ZWebSocket::Rid(instanceId, p.id));
-			if(sock)
+			foreach(const ZhttpResponsePacket::Id &id, p.ids)
 			{
-				sock->handle(p);
-				if(!self)
-					return;
+				// is this for a websocket?
+				ZWebSocket *sock = clientSocksByRid.value(ZWebSocket::Rid(instanceId, id.id));
+				if(sock)
+				{
+					sock->handle(id.id, id.seq, p);
+					if(!self)
+						return;
 
-				continue;
-			}
+					continue;
+				}
 
-			// is this for an http request?
-			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, p.id));
-			if(req)
-			{
-				req->handle(p);
-				if(!self)
-					return;
+				// is this for an http request?
+				ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
+				if(req)
+				{
+					req->handle(id.id, id.seq, p);
+					if(!self)
+						return;
 
-				continue;
-			}
+					continue;
+				}
 
-			log_debug("zhttp/zws client: received message for unknown request id, canceling");
+				log_debug("zhttp/zws client: received message for unknown request id, canceling");
 
-			// if this was not an error packet, send cancel
-			if(p.type != ZhttpResponsePacket::Error && p.type != ZhttpResponsePacket::Cancel && !p.from.isEmpty())
-			{
-				ZhttpRequestPacket out;
-				out.from = instanceId;
-				out.id = p.id;
-				out.type = ZhttpRequestPacket::Cancel;
-				write(UnknownSession, out, p.from);
+				// if this was not an error packet, send cancel
+				if(p.type != ZhttpResponsePacket::Error && p.type != ZhttpResponsePacket::Cancel && !p.from.isEmpty())
+				{
+					ZhttpRequestPacket out;
+					out.from = instanceId;
+					out.ids += ZhttpRequestPacket::Id(id.id);
+					out.type = ZhttpRequestPacket::Cancel;
+					write(UnknownSession, out, p.from);
+				}
 			}
 		}
 	}
@@ -455,20 +486,28 @@ public slots:
 			return;
 		}
 
+		if(p.ids.count() != 1)
+		{
+			log_warning("zhttp/zws server: received initial message with multiple ids, skipping");
+			return;
+		}
+
+		const ZhttpRequestPacket::Id &id = p.ids.first();
+
 		if(p.uri.scheme() == "wss" || p.uri.scheme() == "ws")
 		{
-			ZWebSocket::Rid rid(p.from, p.id);
+			ZWebSocket::Rid rid(p.from, id.id);
 
 			ZWebSocket *sock = serverSocksByRid.value(rid);
 			if(sock)
 			{
 				log_warning("zws server: received message for existing request id, canceling");
-				tryRespondCancel(WebSocketSession, p);
+				tryRespondCancel(WebSocketSession, id.id, p);
 				return;
 			}
 
 			sock = new ZWebSocket;
-			if(!sock->setupServer(q, p))
+			if(!sock->setupServer(q, id.id, id.seq, p))
 			{
 				delete sock;
 				return;
@@ -481,18 +520,18 @@ public slots:
 		}
 		else if(p.uri.scheme() == "https" || p.uri.scheme() == "http")
 		{
-			ZhttpRequest::Rid rid(p.from, p.id);
+			ZhttpRequest::Rid rid(p.from, id.id);
 
 			ZhttpRequest *req = serverReqsByRid.value(rid);
 			if(req)
 			{
 				log_warning("zhttp server: received message for existing request id, canceling");
-				tryRespondCancel(HttpSession, p);
+				tryRespondCancel(HttpSession, id.id, p);
 				return;
 			}
 
 			req = new ZhttpRequest;
-			if(!req->setupServer(q, p))
+			if(!req->setupServer(q, id.id, id.seq, p))
 			{
 				delete req;
 				return;
@@ -506,7 +545,7 @@ public slots:
 		else
 		{
 			log_debug("zhttp/zws server: rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
-			tryRespondCancel(UnknownSession, p);
+			tryRespondCancel(UnknownSession, id.id, p);
 			return;
 		}
 	}
@@ -548,10 +587,18 @@ public slots:
 				continue;
 			}
 
-			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, p.id));
+			if(p.ids.count() != 1)
+			{
+				log_warning("zhttp/zws client req: received message with multiple ids, skipping");
+				return;
+			}
+
+			const ZhttpResponsePacket::Id &id = p.ids.first();
+
+			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
 			if(req)
 			{
-				req->handle(p);
+				req->handle(id.id, id.seq, p);
 				if(!self)
 					return;
 
@@ -600,38 +647,41 @@ public slots:
 				continue;
 			}
 
-			// is this for a websocket?
-			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, p.id));
-			if(sock)
+			foreach(const ZhttpRequestPacket::Id &id, p.ids)
 			{
-				sock->handle(p);
-				if(!self)
-					return;
+				// is this for a websocket?
+				ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
+				if(sock)
+				{
+					sock->handle(id.id, id.seq, p);
+					if(!self)
+						return;
 
-				continue;
-			}
+					continue;
+				}
 
-			// is this for an http request?
-			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, p.id));
-			if(req)
-			{
-				req->handle(p);
-				if(!self)
-					return;
+				// is this for an http request?
+				ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
+				if(req)
+				{
+					req->handle(id.id, id.seq, p);
+					if(!self)
+						return;
 
-				continue;
-			}
+					continue;
+				}
 
-			log_debug("zhttp/zws server: received message for unknown request id, canceling");
+				log_debug("zhttp/zws server: received message for unknown request id, canceling");
 
-			// if this was not an error packet, send cancel
-			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel && !p.from.isEmpty())
-			{
-				ZhttpResponsePacket out;
-				out.from = instanceId;
-				out.id = p.id;
-				out.type = ZhttpResponsePacket::Cancel;
-				write(UnknownSession, out, p.from);
+				// if this was not an error packet, send cancel
+				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel && !p.from.isEmpty())
+				{
+					ZhttpResponsePacket out;
+					out.from = instanceId;
+					out.ids += ZhttpResponsePacket::Id(id.id);
+					out.type = ZhttpResponsePacket::Cancel;
+					write(UnknownSession, out, p.from);
+				}
 			}
 		}
 	}
@@ -639,6 +689,101 @@ public slots:
 	void server_out_messagesWritten(int count)
 	{
 		Q_UNUSED(count);
+	}
+
+	void keepAlive_timeout()
+	{
+		{
+			QHash<QByteArray, QList<ZhttpResponsePacket::Id> > sessionIdListBySender;
+
+			foreach(ZhttpRequest *req, keepAliveReqs)
+			{
+				ZhttpRequest::Rid rid = req->rid();
+
+				if(!sessionIdListBySender.contains(rid.first))
+					sessionIdListBySender.insert(rid.first, QList<ZhttpResponsePacket::Id>());
+
+				QList<ZhttpResponsePacket::Id> &sessionIdList = sessionIdListBySender[rid.first];
+				sessionIdList += ZhttpResponsePacket::Id(rid.second, req->outSeqInc());
+
+				// if we're at max, send out now
+				if(sessionIdList.count() >= ZHTTP_IDS_MAX)
+				{
+					ZhttpResponsePacket zresp;
+					zresp.from = instanceId;
+					zresp.ids = sessionIdList;
+					zresp.type = ZhttpResponsePacket::KeepAlive;
+					write(HttpSession, zresp, rid.first);
+
+					sessionIdList.clear();
+					sessionIdListBySender.remove(rid.first);
+				}
+			}
+
+			// send the rest
+			QHashIterator<QByteArray, QList<ZhttpResponsePacket::Id> > sit(sessionIdListBySender);
+			while(sit.hasNext())
+			{
+				sit.next();
+				const QByteArray &zhttpAddress = sit.key();
+				const QList<ZhttpResponsePacket::Id> &sessionIdList = sit.value();
+
+				if(!sessionIdList.isEmpty())
+				{
+					ZhttpResponsePacket zresp;
+					zresp.from = instanceId;
+					zresp.ids = sessionIdList;
+					zresp.type = ZhttpResponsePacket::KeepAlive;
+					write(HttpSession, zresp, zhttpAddress);
+				}
+			}
+		}
+
+		{
+			QHash<QByteArray, QList<ZhttpResponsePacket::Id> > sessionIdListBySender;
+
+			foreach(ZWebSocket *sock, keepAliveSocks)
+			{
+				ZWebSocket::Rid rid = sock->rid();
+
+				if(!sessionIdListBySender.contains(rid.first))
+					sessionIdListBySender.insert(rid.first, QList<ZhttpResponsePacket::Id>());
+
+				QList<ZhttpResponsePacket::Id> &sessionIdList = sessionIdListBySender[rid.first];
+				sessionIdList += ZhttpResponsePacket::Id(rid.second, sock->outSeqInc());
+
+				// if we're at max, send out now
+				if(sessionIdList.count() >= ZHTTP_IDS_MAX)
+				{
+					ZhttpResponsePacket zresp;
+					zresp.from = instanceId;
+					zresp.ids = sessionIdList;
+					zresp.type = ZhttpResponsePacket::KeepAlive;
+					write(WebSocketSession, zresp, rid.first);
+
+					sessionIdList.clear();
+					sessionIdListBySender.remove(rid.first);
+				}
+			}
+
+			// send the rest
+			QHashIterator<QByteArray, QList<ZhttpResponsePacket::Id> > sit(sessionIdListBySender);
+			while(sit.hasNext())
+			{
+				sit.next();
+				const QByteArray &zhttpAddress = sit.key();
+				const QList<ZhttpResponsePacket::Id> &sessionIdList = sit.value();
+
+				if(!sessionIdList.isEmpty())
+				{
+					ZhttpResponsePacket zresp;
+					zresp.from = instanceId;
+					zresp.ids = sessionIdList;
+					zresp.type = ZhttpResponsePacket::KeepAlive;
+					write(WebSocketSession, zresp, zhttpAddress);
+				}
+			}
+		}
 	}
 };
 
@@ -875,6 +1020,30 @@ void ZhttpManager::writeWs(const ZhttpRequestPacket &packet, const QByteArray &i
 void ZhttpManager::writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
 {
 	d->write(Private::WebSocketSession, packet, instanceAddress);
+}
+
+void ZhttpManager::registerKeepAlive(ZhttpRequest *req)
+{
+	d->keepAliveReqs += req;
+	d->setupKeepAlive();
+}
+
+void ZhttpManager::unregisterKeepAlive(ZhttpRequest *req)
+{
+	d->keepAliveReqs -= req;
+	d->setupKeepAlive();
+}
+
+void ZhttpManager::registerKeepAlive(ZWebSocket *sock)
+{
+	d->keepAliveSocks += sock;
+	d->setupKeepAlive();
+}
+
+void ZhttpManager::unregisterKeepAlive(ZWebSocket *sock)
+{
+	d->keepAliveSocks -= sock;
+	d->setupKeepAlive();
 }
 
 #include "zhttpmanager.moc"
