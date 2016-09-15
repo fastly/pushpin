@@ -183,6 +183,9 @@ public:
 		userData = packet.userData;
 		peerAddress = packet.peerAddress;
 
+		if(packet.multi)
+			multi = true;
+
 		return true;
 	}
 
@@ -251,6 +254,8 @@ public:
 		out.code = responseCode;
 		out.reason = responseReason;
 		out.headers = responseHeaders;
+		if(multi)
+			out.multi = true;
 		writePacket(out);
 	}
 
@@ -444,6 +449,13 @@ public:
 		}
 
 		++inSeq;
+
+		if(!multi && packet.multi)
+		{
+			// switch on multi support
+			multi = true;
+			startKeepAlive(); // re-setup keep alive
+		}
 
 		refreshTimeout();
 
