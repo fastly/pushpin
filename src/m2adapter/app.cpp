@@ -39,12 +39,12 @@
 #include "layertracker.h"
 #include "config.h"
 
-#define DEFAULT_HWM 51000
+#define DEFAULT_HWM 101000
 #define EXPIRE_INTERVAL 1000
 #define STATUS_INTERVAL 250
 #define M2_KEEPALIVE_INTERVAL 90000
 #define SESSION_EXPIRE 60000
-#define KEEPALIVE_INTERVAL 30000
+#define KEEPALIVE_INTERVAL 45000
 #define CONTROL_REQUEST_EXPIRE 30000
 
 // make sure this is not larger than Mongrel2's DELIVER_OUTSTANDING_MSGS

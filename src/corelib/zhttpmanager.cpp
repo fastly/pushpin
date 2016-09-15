@@ -34,12 +34,12 @@
 
 #define OUT_HWM 100
 #define IN_HWM 100
-#define DEFAULT_HWM 1000
+#define DEFAULT_HWM 101000
 #define CLIENT_WAIT_TIME 0
 #define CLIENT_STREAM_WAIT_TIME 500
 #define SERVER_WAIT_TIME 500
 
-#define KEEPALIVE_INTERVAL 30000
+#define KEEPALIVE_INTERVAL 45000
 
 // this doesn't have to match the peer, but we'll set a reasonable number
 #define ZHTTP_IDS_MAX 128

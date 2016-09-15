@@ -30,7 +30,7 @@
 
 #define IDEAL_CREDITS 200000
 #define SESSION_EXPIRE 60000
-#define KEEPALIVE_INTERVAL 30000
+#define KEEPALIVE_INTERVAL 45000
 
 class ZWebSocket::Private : public QObject
 {
