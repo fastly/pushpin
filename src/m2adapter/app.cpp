@@ -2441,7 +2441,7 @@ private slots:
 						zreq.from = zhttpInstanceId;
 						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
 						zreq.type = ZhttpRequestPacket::KeepAlive;
-						zhttp_out_write(Http, zreq, s->zhttpAddress);
+						zhttp_out_write(WebSocket, zreq, s->zhttpAddress);
 					}
 				}
 			}
