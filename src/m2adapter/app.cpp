@@ -44,10 +44,17 @@
 #define STATUS_INTERVAL 250
 #define M2_KEEPALIVE_INTERVAL 90000
 #define SESSION_EXPIRE 60000
+#define KEEPALIVE_INTERVAL 30000
 #define CONTROL_REQUEST_EXPIRE 30000
 
 // make sure this is not larger than Mongrel2's DELIVER_OUTSTANDING_MSGS
 #define M2_PENDING_MAX 16
+
+// make sure this is not larger than Mongrel2's limits.handler_targets
+#define M2_HANDLER_TARGETS_MAX 128
+
+// this doesn't have to match the peer, but we'll set a reasonable number
+#define ZHTTP_IDS_MAX 128
 
 //#define CONTROL_PORT_DEBUG
 
@@ -357,6 +364,7 @@ public:
 		int inSeq;
 		int pendingInCredits;
 		bool inHandoff;
+		bool multi;
 
 		Session() :
 			lastActive(-1),
@@ -374,7 +382,8 @@ public:
 			outSeq(0),
 			inSeq(0),
 			pendingInCredits(0),
-			inHandoff(false)
+			inHandoff(false),
+			multi(false)
 		{
 		}
 	};
@@ -495,7 +504,7 @@ public:
 		statusTimer->setInterval(STATUS_INTERVAL);
 		statusTimer->start();
 
-		keepAliveTimer->setInterval(SESSION_EXPIRE / 2);
+		keepAliveTimer->setInterval(KEEPALIVE_INTERVAL);
 		keepAliveTimer->start();
 
 		m2KeepAliveTimer->setInterval(M2_KEEPALIVE_INTERVAL);
@@ -856,6 +865,22 @@ public:
 		m2_out_write(mresp);
 	}
 
+	void m2_writeCtlMany(const QByteArray &sender, const QList<QByteArray> &connIds, const QVariant &args)
+	{
+		assert(!connIds.isEmpty());
+
+		M2ResponsePacket mresp;
+		mresp.sender = sender;
+		mresp.id = "X";
+		foreach(const QByteArray &id, connIds)
+			mresp.id += " " + id;
+		QVariantList parts;
+		parts += QByteArray("ctl");
+		parts += args;
+		mresp.data = TnetString::fromVariant(parts);
+		m2_out_write(mresp);
+	}
+
 	void m2_writeCtlCancel(const QByteArray &sender, const QByteArray &id)
 	{
 		M2ResponsePacket mresp;
@@ -1118,8 +1143,7 @@ public:
 	{
 		ZhttpRequestPacket out = packet;
 		out.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
-		out.id = s->id;
-		out.seq = (s->outSeq)++;
+		out.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
 		zhttp_out_write(s->mode, out);
 	}
 
@@ -1129,8 +1153,7 @@ public:
 
 		ZhttpRequestPacket out = packet;
 		out.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
-		out.id = s->id;
-		out.seq = (s->outSeq)++;
+		out.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
 		zhttp_out_write(s->mode, out, s->zhttpAddress);
 	}
 
@@ -1327,11 +1350,17 @@ public:
 			return;
 		}
 
+		foreach(const ZhttpResponsePacket::Id &id, zresp.ids)
+			handleZhttpIn(logprefix, mode, id.id, id.seq, zresp);
+	}
+
+	void handleZhttpIn(const char *logprefix, Mode mode, const QByteArray &id, int seq, const ZhttpResponsePacket &zresp)
+	{
 		Session *s;
 		if(mode == Http)
-			s = sessionsByZhttpRid.value(Rid(zhttpInstanceId, zresp.id));
+			s = sessionsByZhttpRid.value(Rid(zhttpInstanceId, id));
 		else // WebSocket
-			s = sessionsByZwsRid.value(Rid(zwsInstanceId, zresp.id));
+			s = sessionsByZwsRid.value(Rid(zwsInstanceId, id));
 
 		if(!s)
 		{
@@ -1342,7 +1371,7 @@ public:
 			{
 				ZhttpRequestPacket zreq;
 				zreq.from = (mode == Http ? zhttpInstanceId : zwsInstanceId);
-				zreq.id = zresp.id;
+				zreq.ids += ZhttpRequestPacket::Id(id);
 				zreq.type = ZhttpRequestPacket::Cancel;
 				zhttp_out_write(mode, zreq, zresp.from);
 			}
@@ -1368,7 +1397,7 @@ public:
 
 				s->zhttpAddress = zresp.from;
 
-				if(zresp.seq != 0)
+				if(seq != 0)
 				{
 					log_warning("%s: received first response of sequence without valid seq, canceling", logprefix);
 					ZhttpRequestPacket zreq;
@@ -1385,9 +1414,9 @@ public:
 					s->zhttpAddress = zresp.from;
 
 				// if not sequenced, but seq is provided, then it must be 0
-				if(zresp.seq != -1 && zresp.seq != 0)
+				if(seq != -1 && seq != 0)
 				{
-					log_warning("%s: received response out of sequence (got=%d, expected=-1,0), canceling", logprefix, zresp.seq);
+					log_warning("%s: received response out of sequence (got=%d, expected=-1,0), canceling", logprefix, seq);
 
 					if(!s->zhttpAddress.isEmpty())
 					{
@@ -1403,9 +1432,9 @@ public:
 		}
 		else
 		{
-			if(zresp.seq != -1 && zresp.seq != s->inSeq)
+			if(seq != -1 && seq != s->inSeq)
 			{
-				log_warning("%s: received response out of sequence (got=%d, expected=%d), canceling", logprefix, zresp.seq, s->inSeq);
+				log_warning("%s: received response out of sequence (got=%d, expected=%d), canceling", logprefix, seq, s->inSeq);
 				ZhttpRequestPacket zreq;
 				zreq.type = ZhttpRequestPacket::Cancel;
 				zhttp_out_write(s, zreq);
@@ -1419,7 +1448,7 @@ public:
 		}
 
 		// only bump sequence if seq was provided
-		if(zresp.seq != -1)
+		if(seq != -1)
 			++(s->inSeq);
 
 		s->lastActive = time.elapsed();
@@ -1446,6 +1475,14 @@ public:
 			return;
 		}
 
+		// if peer supports multi feature then flag it on the session
+		bool multiWasTurnedOn = false;
+		if(!s->multi && zresp.multi)
+		{
+			s->multi = true;
+			multiWasTurnedOn = true;
+		}
+
 		if(s->inHandoff)
 		{
 			// receiving any message means handoff is complete
@@ -1454,6 +1491,15 @@ public:
 			// in order to have been in a handoff state, we would have
 			//   had to receive a from address sometime earlier, so it
 			//   should be safe to call zhttp_out_write with session.
+
+			if(multiWasTurnedOn)
+			{
+				// acknowledge the feature
+				ZhttpRequestPacket zreq;
+				zreq.type = ZhttpRequestPacket::KeepAlive;
+				zreq.multi = true;
+				zhttp_out_write(s, zreq);
+			}
 
 			if(s->mode == Http)
 			{
@@ -1737,6 +1783,9 @@ public:
 		else if(zresp.type == ZhttpResponsePacket::HandoffStart)
 		{
 			s->inHandoff = true;
+
+			// whoever picks up after handoff can turn this on
+			s->multi = false;
 
 			ZhttpRequestPacket zreq;
 			zreq.type = ZhttpRequestPacket::HandoffProceed;
@@ -2049,6 +2098,8 @@ private slots:
 				zreq.more = !s->inFinished;
 			}
 
+			zreq.multi = true;
+
 			zhttp_out_writeFirst(s, zreq);
 		}
 		else
@@ -2286,6 +2337,8 @@ private slots:
 	void keepAlive_timeout()
 	{
 		{
+			QHash<QByteArray, QList<Session*> > sessionListBySender;
+
 			QHashIterator<Rid, Session*> it(sessionsByZhttpRid);
 			while(it.hasNext())
 			{
@@ -2294,14 +2347,63 @@ private slots:
 
 				if(!s->inHandoff && !s->zhttpAddress.isEmpty())
 				{
+					if(s->multi)
+					{
+						if(!sessionListBySender.contains(s->zhttpAddress))
+							sessionListBySender.insert(s->zhttpAddress, QList<Session*>());
+
+						QList<Session*> &sessionList = sessionListBySender[s->zhttpAddress];
+						sessionList += s;
+
+						// if we're at max, send out now
+						if(sessionList.count() >= ZHTTP_IDS_MAX)
+						{
+							ZhttpRequestPacket zreq;
+							zreq.from = zhttpInstanceId;
+							foreach(Session *i, sessionList)
+								zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
+							zreq.type = ZhttpRequestPacket::KeepAlive;
+							zhttp_out_write(Http, zreq, s->zhttpAddress);
+
+							sessionList.clear();
+							sessionListBySender.remove(s->zhttpAddress);
+						}
+					}
+					else
+					{
+						// session doesn't support sending with multiple ids
+						ZhttpRequestPacket zreq;
+						zreq.from = zhttpInstanceId;
+						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
+						zreq.type = ZhttpRequestPacket::KeepAlive;
+						zhttp_out_write(Http, zreq, s->zhttpAddress);
+					}
+				}
+			}
+
+			// send the rest
+			QHashIterator<QByteArray, QList<Session*> > sit(sessionListBySender);
+			while(sit.hasNext())
+			{
+				sit.next();
+				const QByteArray &zhttpAddress = sit.key();
+				const QList<Session*> &sessionList = sit.value();
+
+				if(!sessionList.isEmpty())
+				{
 					ZhttpRequestPacket zreq;
+					zreq.from = zhttpInstanceId;
+					foreach(Session *s, sessionList)
+						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
 					zreq.type = ZhttpRequestPacket::KeepAlive;
-					zhttp_out_write(s, zreq);
+					zhttp_out_write(Http, zreq, zhttpAddress);
 				}
 			}
 		}
 
 		{
+			QHash<QByteArray, QList<Session*> > sessionListBySender;
+
 			QHashIterator<Rid, Session*> it(sessionsByZwsRid);
 			while(it.hasNext())
 			{
@@ -2310,9 +2412,56 @@ private slots:
 
 				if(!s->inHandoff && !s->zhttpAddress.isEmpty())
 				{
+					if(s->multi)
+					{
+						if(!sessionListBySender.contains(s->zhttpAddress))
+							sessionListBySender.insert(s->zhttpAddress, QList<Session*>());
+
+						QList<Session*> &sessionList = sessionListBySender[s->zhttpAddress];
+						sessionList += s;
+
+						// if we're at max, send out now
+						if(sessionList.count() >= ZHTTP_IDS_MAX)
+						{
+							ZhttpRequestPacket zreq;
+							zreq.from = zwsInstanceId;
+							foreach(Session *i, sessionList)
+								zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
+							zreq.type = ZhttpRequestPacket::KeepAlive;
+							zhttp_out_write(WebSocket, zreq, s->zhttpAddress);
+
+							sessionList.clear();
+							sessionListBySender.remove(s->zhttpAddress);
+						}
+					}
+					else
+					{
+						// session doesn't support sending with multiple ids
+						ZhttpRequestPacket zreq;
+						zreq.from = zhttpInstanceId;
+						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
+						zreq.type = ZhttpRequestPacket::KeepAlive;
+						zhttp_out_write(Http, zreq, s->zhttpAddress);
+					}
+				}
+			}
+
+			// send the rest
+			QHashIterator<QByteArray, QList<Session*> > sit(sessionListBySender);
+			while(sit.hasNext())
+			{
+				sit.next();
+				const QByteArray &zhttpAddress = sit.key();
+				const QList<Session*> &sessionList = sit.value();
+
+				if(!sessionList.isEmpty())
+				{
 					ZhttpRequestPacket zreq;
+					zreq.from = zwsInstanceId;
+					foreach(Session *s, sessionList)
+						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
 					zreq.type = ZhttpRequestPacket::KeepAlive;
-					zhttp_out_write(s, zreq);
+					zhttp_out_write(WebSocket, zreq, zhttpAddress);
 				}
 			}
 		}
@@ -2320,15 +2469,46 @@ private slots:
 
 	void m2KeepAlive_timeout()
 	{
+		QHash<int, QList<QByteArray> > connIdListBySender;
+
 		QHashIterator<Rid, Session*> it(sessionsByM2Rid);
 		while(it.hasNext())
 		{
 			it.next();
 			Session *s = it.value();
 
-			QVariantHash args;
-			args["keep-alive"] = true;
-			m2_writeCtl(s->conn, args);
+			if(!connIdListBySender.contains(s->conn->identIndex))
+				connIdListBySender.insert(s->conn->identIndex, QList<QByteArray>());
+
+			QList<QByteArray> &connIdList = connIdListBySender[s->conn->identIndex];
+			connIdList += s->conn->id;
+
+			// if we're at max, send out now
+			if(connIdList.count() >= M2_HANDLER_TARGETS_MAX)
+			{
+				QVariantHash args;
+				args["keep-alive"] = true;
+				m2_writeCtlMany(m2_send_idents[s->conn->identIndex], connIdList, args);
+
+				connIdList.clear();
+				connIdListBySender.remove(s->conn->identIndex);
+			}
+		}
+
+		// send the rest
+		QHashIterator<int, QList<QByteArray> > cit(connIdListBySender);
+		while(cit.hasNext())
+		{
+			cit.next();
+			int index = cit.key();
+			const QList<QByteArray> &connIdList = cit.value();
+
+			if(!connIdList.isEmpty())
+			{
+				QVariantHash args;
+				args["keep-alive"] = true;
+				m2_writeCtlMany(m2_send_idents[index], connIdList, args);
+			}
 		}
 	}
 
