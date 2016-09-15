@@ -142,16 +142,16 @@ private slots:
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
 		{
-			if(!responses.contains(zresp.id))
+			if(!responses.contains(zresp.ids.first().id))
 			{
 				HttpResponseData rd;
 				rd.code = zresp.code;
 				rd.reason = zresp.reason;
 				rd.headers = zresp.headers;
-				responses[zresp.id] = rd;
+				responses[zresp.ids.first().id] = rd;
 			}
 
-			responses[zresp.id].body += zresp.body;
+			responses[zresp.ids.first().id].body += zresp.body;
 
 			if(!zresp.more)
 				finished = true;
@@ -197,8 +197,7 @@ private slots:
 			{
 				ZhttpResponsePacket zresp;
 				zresp.from = "test-server";
-				zresp.id = zreq.id;
-				zresp.seq = serverOutSeq++;
+				zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 				zresp.type = ZhttpResponsePacket::Credit;
 				zresp.credits = 200000;
 				QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
@@ -210,8 +209,7 @@ private slots:
 
 		ZhttpResponsePacket zresp;
 		zresp.from = "test-server";
-		zresp.id = zreq.id;
-		zresp.seq = serverOutSeq++;
+		zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 		zresp.code = 200;
 		zresp.reason = "OK";
 
