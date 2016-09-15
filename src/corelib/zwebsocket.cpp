@@ -561,8 +561,8 @@ public:
 			return;
 		}
 
-		if(!toAddress.isEmpty() && !keepAliveTimer->isActive())
-			startKeepAlive();
+		if(!toAddress.isEmpty())
+			startKeepAlive(); // only starts if wasn't started already
 
 		++inSeq;
 
