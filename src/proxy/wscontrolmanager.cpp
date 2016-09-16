@@ -21,6 +21,7 @@
 
 #include <assert.h>
 #include <QPointer>
+#include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "log.h"
@@ -28,7 +29,11 @@
 #include "zutil.h"
 #include "wscontrolsession.h"
 
-#define DEFAULT_HWM 5000
+#define DEFAULT_HWM 101000
+#define SESSION_TTL 60
+#define SESSION_REFRESH (SESSION_TTL * 3 / 4)
+
+#define PACKET_ITEMS_MAX 128
 
 class WsControlManager::Private : public QObject
 {
@@ -43,6 +48,8 @@ public:
 	QZmq::Socket *outSock;
 	QZmq::Valve *inValve;
 	QHash<QByteArray, WsControlSession*> sessionsByCid;
+	QTimer *keepAliveTimer;
+	QSet<WsControlSession*> keepAliveSessions;
 
 	Private(WsControlManager *_q) :
 		QObject(_q),
@@ -52,10 +59,15 @@ public:
 		outSock(0),
 		inValve(0)
 	{
+		 keepAliveTimer = new QTimer(this);
+		 connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
 	}
 
 	~Private()
 	{
+		keepAliveTimer->disconnect(this);
+		keepAliveTimer->setParent(0);
+		keepAliveTimer->deleteLater();
 	}
 
 	bool setupIn()
@@ -118,6 +130,17 @@ public:
 		write(out);
 	}
 
+	void setupKeepAlive()
+	{
+		if(!keepAliveSessions.isEmpty())
+		{
+			if(!keepAliveTimer->isActive())
+				keepAliveTimer->start(SESSION_REFRESH * 1000);
+		}
+		else
+			keepAliveTimer->stop();
+	}
+
 private slots:
 	void in_readyRead(const QList<QByteArray> &message)
 	{
@@ -169,6 +192,31 @@ private slots:
 			if(!self)
 				return;
 		}
+	}
+
+	void keepAlive_timeout()
+	{
+		WsControlPacket packet;
+
+		foreach(WsControlSession *s, keepAliveSessions)
+		{
+			WsControlPacket::Item i;
+			i.cid = s->cid();
+			i.type = WsControlPacket::Item::KeepAlive;
+			i.ttl = SESSION_TTL;
+			packet.items += i;
+
+			// if we're at max, send out now
+			if(packet.items.count() >= PACKET_ITEMS_MAX)
+			{
+				write(packet);
+				packet.items.clear();
+			}
+		}
+
+		// send the rest
+		if(!packet.items.isEmpty())
+			write(packet);
 	}
 };
 
@@ -227,6 +275,18 @@ bool WsControlManager::canWriteImmediately() const
 void WsControlManager::write(const WsControlPacket::Item &item)
 {
 	d->write(item);
+}
+
+void WsControlManager::registerKeepAlive(WsControlSession *s)
+{
+	d->keepAliveSessions += s;
+	d->setupKeepAlive();
+}
+
+void WsControlManager::unregisterKeepAlive(WsControlSession *s)
+{
+	d->keepAliveSessions -= s;
+	d->setupKeepAlive();
 }
 
 #include "wscontrolmanager.moc"

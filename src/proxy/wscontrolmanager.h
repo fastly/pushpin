@@ -49,6 +49,8 @@ private:
 	void unlink(const QByteArray &cid);
 	bool canWriteImmediately() const;
 	void write(const WsControlPacket::Item &item);
+	void registerKeepAlive(WsControlSession *s);
+	void unregisterKeepAlive(WsControlSession *s);
 };
 
 #endif

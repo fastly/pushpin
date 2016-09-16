@@ -20,12 +20,10 @@
 #include "wscontrolsession.h"
 
 #include <assert.h>
-#include <QTimer>
 #include <QUrl>
 #include "wscontrolmanager.h"
 
-#define SESSION_TTL 30
-#define SESSION_REFRESH (SESSION_TTL * 9 / 10)
+#define SESSION_TTL 60
 
 class WsControlSession::Private : public QObject
 {
@@ -35,7 +33,6 @@ public:
 	WsControlSession *q;
 	WsControlManager *manager;
 	QByteArray cid;
-	QTimer *keepAliveTimer;
 	QByteArray route;
 	QByteArray channelPrefix;
 	QUrl uri;
@@ -45,8 +42,6 @@ public:
 		q(_q),
 		manager(0)
 	{
-		 keepAliveTimer = new QTimer(this);
-		 connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
 	}
 
 	~Private()
@@ -56,16 +51,10 @@ public:
 
 	void cleanup()
 	{
-		if(keepAliveTimer)
-		{
-			keepAliveTimer->disconnect(this);
-			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
-			keepAliveTimer = 0;
-		}
-
 		if(manager)
 		{
+			manager->unregisterKeepAlive(q);
+
 			WsControlPacket::Item i;
 			i.type = WsControlPacket::Item::Gone;
 			write(i);
@@ -77,7 +66,7 @@ public:
 
 	void start()
 	{
-		keepAliveTimer->start(SESSION_REFRESH * 1000);
+		manager->registerKeepAlive(q);
 
 		WsControlPacket::Item i;
 		i.type = WsControlPacket::Item::Here;
@@ -146,15 +135,6 @@ public:
 			emit q->cancelEventReceived();
 		}
 	}
-
-private slots:
-	void keepAlive_timeout()
-	{
-		WsControlPacket::Item i;
-		i.type = WsControlPacket::Item::KeepAlive;
-		i.ttl = SESSION_TTL;
-		write(i);
-	}
 };
 
 WsControlSession::WsControlSession(QObject *parent) :
@@ -166,6 +146,11 @@ WsControlSession::WsControlSession(QObject *parent) :
 WsControlSession::~WsControlSession()
 {
 	delete d;
+}
+
+QByteArray WsControlSession::cid() const
+{
+	return d->cid;
 }
 
 void WsControlSession::start(const QByteArray &routeId, const QByteArray &channelPrefix, const QUrl &uri)
