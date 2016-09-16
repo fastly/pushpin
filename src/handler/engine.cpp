@@ -58,7 +58,7 @@
 #include "httpsession.h"
 #include "conncheckworker.h"
 
-#define DEFAULT_HWM 1000
+#define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // infinite
 #define RETRY_WAIT_TIME 0
 #define WSCONTROL_WAIT_TIME 0
