@@ -116,9 +116,11 @@ public:
 	{
 		assert(outSock);
 
-		QByteArray buf = TnetString::fromVariant(packet.toVariant());
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = TnetString::fromVariant(vpacket);
 
-		log_debug("wscontrol: OUT %s", buf.data());
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("wscontrol: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
 		outSock->write(QList<QByteArray>() << buf);
 	}
@@ -150,14 +152,15 @@ private slots:
 			return;
 		}
 
-		log_debug("wscontrol: IN %s", message[0].data());
-
 		QVariant data = TnetString::toVariant(message[0]);
 		if(data.isNull())
 		{
 			log_warning("wscontrol: received message with invalid format (tnetstring parse failed), skipping");
 			return;
 		}
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("wscontrol: IN %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		WsControlPacket p;
 		if(!p.fromVariant(data))
