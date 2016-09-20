@@ -82,6 +82,7 @@ private:
 	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void startServer();
 	bool isServer() const;
+	QByteArray toAddress() const;
 	int outSeqInc();
 	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);

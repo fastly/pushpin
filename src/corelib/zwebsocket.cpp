@@ -566,6 +566,13 @@ public:
 
 		++inSeq;
 
+		if(!multi && packet.multi)
+		{
+			// switch on multi support
+			multi = true;
+			startKeepAlive(); // re-setup keep alive
+		}
+
 		refreshTimeout();
 
 		if(state == Connecting)
@@ -975,6 +982,7 @@ public slots:
 				if(ignoreTlsErrors)
 					p.ignoreTlsErrors = true;
 				p.credits = IDEAL_CREDITS;
+				p.multi = true;
 				writePacket(p);
 			}
 			else if(state == Connected || state == ConnectedPeerClosed)
@@ -1219,6 +1227,11 @@ void ZWebSocket::startServer()
 bool ZWebSocket::isServer() const
 {
 	return d->server;
+}
+
+QByteArray ZWebSocket::toAddress() const
+{
+	return d->toAddress;
 }
 
 int ZWebSocket::outSeqInc()

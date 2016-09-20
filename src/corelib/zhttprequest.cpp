@@ -669,6 +669,13 @@ public:
 
 		++inSeq;
 
+		if(!multi && packet.multi)
+		{
+			// switch on multi support
+			multi = true;
+			startKeepAlive(); // re-setup keep alive
+		}
+
 		refreshTimeout();
 
 		if(doReq && (packet.type != ZhttpResponsePacket::Data || packet.more))
@@ -981,6 +988,7 @@ public slots:
 				if(passthrough.isValid())
 					p.passthrough = passthrough;
 				p.credits = IDEAL_CREDITS;
+				p.multi = true;
 				writePacket(p);
 
 				if(p.more)
@@ -1333,6 +1341,11 @@ void ZhttpRequest::startServer()
 bool ZhttpRequest::isServer() const
 {
 	return d->server;
+}
+
+QByteArray ZhttpRequest::toAddress() const
+{
+	return d->toAddress;
 }
 
 int ZhttpRequest::outSeqInc()

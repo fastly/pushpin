@@ -354,6 +354,24 @@ public:
 			keepAliveTimer->stop();
 	}
 
+	void writeKeepAlive(SessionType type, const QList<ZhttpRequestPacket::Id> &ids, const QByteArray &zhttpAddress)
+	{
+		ZhttpRequestPacket zreq;
+		zreq.from = instanceId;
+		zreq.ids = ids;
+		zreq.type = ZhttpRequestPacket::KeepAlive;
+		write(type, zreq, zhttpAddress);
+	}
+
+	void writeKeepAlive(SessionType type, const QList<ZhttpResponsePacket::Id> &ids, const QByteArray &zhttpAddress)
+	{
+		ZhttpResponsePacket zresp;
+		zresp.from = instanceId;
+		zresp.ids = ids;
+		zresp.type = ZhttpResponsePacket::KeepAlive;
+		write(type, zresp, zhttpAddress);
+	}
+
 public slots:
 	void client_out_messagesWritten(int count)
 	{
@@ -694,93 +712,151 @@ public slots:
 	void keepAlive_timeout()
 	{
 		{
-			QHash<QByteArray, QList<ZhttpResponsePacket::Id> > sessionIdListBySender;
+			QHash<QByteArray, QList<ZhttpRequestPacket::Id> > clientIdsBySender;
+			QHash<QByteArray, QList<ZhttpResponsePacket::Id> > serverIdsBySender;
 
 			foreach(ZhttpRequest *req, keepAliveReqs)
 			{
 				ZhttpRequest::Rid rid = req->rid();
 
-				if(!sessionIdListBySender.contains(rid.first))
-					sessionIdListBySender.insert(rid.first, QList<ZhttpResponsePacket::Id>());
-
-				QList<ZhttpResponsePacket::Id> &sessionIdList = sessionIdListBySender[rid.first];
-				sessionIdList += ZhttpResponsePacket::Id(rid.second, req->outSeqInc());
-
-				// if we're at max, send out now
-				if(sessionIdList.count() >= ZHTTP_IDS_MAX)
+				if(req->isServer())
 				{
-					ZhttpResponsePacket zresp;
-					zresp.from = instanceId;
-					zresp.ids = sessionIdList;
-					zresp.type = ZhttpResponsePacket::KeepAlive;
-					write(HttpSession, zresp, rid.first);
+					QByteArray sender = rid.first;
 
-					sessionIdList.clear();
-					sessionIdListBySender.remove(rid.first);
+					if(!serverIdsBySender.contains(sender))
+						serverIdsBySender.insert(sender, QList<ZhttpResponsePacket::Id>());
+
+					QList<ZhttpResponsePacket::Id> &ids = serverIdsBySender[sender];
+					ids += ZhttpResponsePacket::Id(rid.second, req->outSeqInc());
+
+					// if we're at max, send out now
+					if(ids.count() >= ZHTTP_IDS_MAX)
+					{
+						writeKeepAlive(HttpSession, ids, sender);
+
+						ids.clear();
+						serverIdsBySender.remove(sender);
+					}
+				}
+				else
+				{
+					QByteArray sender = req->toAddress();
+
+					if(!clientIdsBySender.contains(sender))
+						clientIdsBySender.insert(sender, QList<ZhttpRequestPacket::Id>());
+
+					QList<ZhttpRequestPacket::Id> &ids = clientIdsBySender[sender];
+					ids += ZhttpRequestPacket::Id(rid.second, req->outSeqInc());
+
+					// if we're at max, send out now
+					if(ids.count() >= ZHTTP_IDS_MAX)
+					{
+						writeKeepAlive(HttpSession, ids, sender);
+
+						ids.clear();
+						clientIdsBySender.remove(sender);
+					}
 				}
 			}
 
 			// send the rest
-			QHashIterator<QByteArray, QList<ZhttpResponsePacket::Id> > sit(sessionIdListBySender);
-			while(sit.hasNext())
 			{
-				sit.next();
-				const QByteArray &zhttpAddress = sit.key();
-				const QList<ZhttpResponsePacket::Id> &sessionIdList = sit.value();
-
-				if(!sessionIdList.isEmpty())
+				QHashIterator<QByteArray, QList<ZhttpRequestPacket::Id> > sit(clientIdsBySender);
+				while(sit.hasNext())
 				{
-					ZhttpResponsePacket zresp;
-					zresp.from = instanceId;
-					zresp.ids = sessionIdList;
-					zresp.type = ZhttpResponsePacket::KeepAlive;
-					write(HttpSession, zresp, zhttpAddress);
+					sit.next();
+					const QByteArray &zhttpAddress = sit.key();
+					const QList<ZhttpRequestPacket::Id> &ids = sit.value();
+
+					if(!ids.isEmpty())
+						writeKeepAlive(HttpSession, ids, zhttpAddress);
+				}
+			}
+			{
+				QHashIterator<QByteArray, QList<ZhttpResponsePacket::Id> > sit(serverIdsBySender);
+				while(sit.hasNext())
+				{
+					sit.next();
+					const QByteArray &zhttpAddress = sit.key();
+					const QList<ZhttpResponsePacket::Id> &ids = sit.value();
+
+					if(!ids.isEmpty())
+						writeKeepAlive(HttpSession, ids, zhttpAddress);
 				}
 			}
 		}
 
 		{
-			QHash<QByteArray, QList<ZhttpResponsePacket::Id> > sessionIdListBySender;
+			QHash<QByteArray, QList<ZhttpRequestPacket::Id> > clientIdsBySender;
+			QHash<QByteArray, QList<ZhttpResponsePacket::Id> > serverIdsBySender;
 
 			foreach(ZWebSocket *sock, keepAliveSocks)
 			{
 				ZWebSocket::Rid rid = sock->rid();
 
-				if(!sessionIdListBySender.contains(rid.first))
-					sessionIdListBySender.insert(rid.first, QList<ZhttpResponsePacket::Id>());
-
-				QList<ZhttpResponsePacket::Id> &sessionIdList = sessionIdListBySender[rid.first];
-				sessionIdList += ZhttpResponsePacket::Id(rid.second, sock->outSeqInc());
-
-				// if we're at max, send out now
-				if(sessionIdList.count() >= ZHTTP_IDS_MAX)
+				if(sock->isServer())
 				{
-					ZhttpResponsePacket zresp;
-					zresp.from = instanceId;
-					zresp.ids = sessionIdList;
-					zresp.type = ZhttpResponsePacket::KeepAlive;
-					write(WebSocketSession, zresp, rid.first);
+					QByteArray sender = rid.first;
 
-					sessionIdList.clear();
-					sessionIdListBySender.remove(rid.first);
+					if(!serverIdsBySender.contains(sender))
+						serverIdsBySender.insert(sender, QList<ZhttpResponsePacket::Id>());
+
+					QList<ZhttpResponsePacket::Id> &ids = serverIdsBySender[sender];
+					ids += ZhttpResponsePacket::Id(rid.second, sock->outSeqInc());
+
+					// if we're at max, send out now
+					if(ids.count() >= ZHTTP_IDS_MAX)
+					{
+						writeKeepAlive(WebSocketSession, ids, sender);
+
+						ids.clear();
+						serverIdsBySender.remove(sender);
+					}
+				}
+				else
+				{
+					QByteArray sender = sock->toAddress();
+
+					if(!clientIdsBySender.contains(sender))
+						clientIdsBySender.insert(sender, QList<ZhttpRequestPacket::Id>());
+
+					QList<ZhttpRequestPacket::Id> &ids = clientIdsBySender[sender];
+					ids += ZhttpRequestPacket::Id(rid.second, sock->outSeqInc());
+
+					// if we're at max, send out now
+					if(ids.count() >= ZHTTP_IDS_MAX)
+					{
+						writeKeepAlive(WebSocketSession, ids, sender);
+
+						ids.clear();
+						clientIdsBySender.remove(sender);
+					}
 				}
 			}
 
 			// send the rest
-			QHashIterator<QByteArray, QList<ZhttpResponsePacket::Id> > sit(sessionIdListBySender);
-			while(sit.hasNext())
 			{
-				sit.next();
-				const QByteArray &zhttpAddress = sit.key();
-				const QList<ZhttpResponsePacket::Id> &sessionIdList = sit.value();
-
-				if(!sessionIdList.isEmpty())
+				QHashIterator<QByteArray, QList<ZhttpRequestPacket::Id> > sit(clientIdsBySender);
+				while(sit.hasNext())
 				{
-					ZhttpResponsePacket zresp;
-					zresp.from = instanceId;
-					zresp.ids = sessionIdList;
-					zresp.type = ZhttpResponsePacket::KeepAlive;
-					write(WebSocketSession, zresp, zhttpAddress);
+					sit.next();
+					const QByteArray &zhttpAddress = sit.key();
+					const QList<ZhttpRequestPacket::Id> &ids = sit.value();
+
+					if(!ids.isEmpty())
+						writeKeepAlive(WebSocketSession, ids, zhttpAddress);
+				}
+			}
+			{
+				QHashIterator<QByteArray, QList<ZhttpResponsePacket::Id> > sit(serverIdsBySender);
+				while(sit.hasNext())
+				{
+					sit.next();
+					const QByteArray &zhttpAddress = sit.key();
+					const QList<ZhttpResponsePacket::Id> &ids = sit.value();
+
+					if(!ids.isEmpty())
+						writeKeepAlive(WebSocketSession, ids, zhttpAddress);
 				}
 			}
 		}
