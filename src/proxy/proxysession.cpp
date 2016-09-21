@@ -1102,7 +1102,8 @@ public slots:
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
-		logFinished(si);
+		if(!passthrough)
+			logFinished(si);
 
 		QPointer<QObject> self = this;
 		emit q->requestSessionDestroyed(si->rs, false);

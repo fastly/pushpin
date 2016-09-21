@@ -64,7 +64,7 @@ public:
 	ZhttpRequest *outReq; // for fetching next links
 	BufferList firstInstructResponse;
 	bool haveOutReqHeaders;
-	bool sentOutReqData;
+	int sentOutReqData;
 	int retries;
 	QString errorMessage;
 	QUrl currentUri;
@@ -77,7 +77,7 @@ public:
 		outZhttp(_outZhttp),
 		outReq(0),
 		haveOutReqHeaders(false),
-		sentOutReqData(false),
+		sentOutReqData(0),
 		retries(0)
 	{
 		state = NotStarted;
@@ -458,7 +458,7 @@ private:
 		}
 
 		haveOutReqHeaders = false;
-		sentOutReqData = false;
+		sentOutReqData = 0;
 
 		outReq = outZhttp->createRequest();
 		outReq->setParent(this);
@@ -502,7 +502,7 @@ private:
 				QByteArray buf = outReq->readBody(avail);
 				req->writeBody(buf);
 
-				sentOutReqData = true;
+				sentOutReqData += buf.size();
 			}
 
 			if(outReq->bytesAvailable() == 0 && outReq->isFinished())
@@ -511,6 +511,8 @@ private:
 				responseData.code = outReq->responseCode();
 				responseData.reason = outReq->responseReason();
 				responseData.headers = outReq->responseHeaders();
+
+				logRequest(outReq->requestMethod(), outReq->requestUri(), responseData.code, sentOutReqData);
 
 				retries = 0;
 
@@ -556,6 +558,30 @@ private:
 		}
 	}
 
+	void logRequest(const QString &method, const QUrl &uri, int code, int bodySize)
+	{
+		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
+
+		if(!adata.route.isEmpty())
+			msg += QString(" route=%1").arg(adata.route);
+
+		msg += QString(" code=%1 %2").arg(QString::number(code), QString::number(bodySize));
+
+		log_info("%s", qPrintable(msg));
+	}
+
+	void logRequestError(const QString &method, const QUrl &uri)
+	{
+		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
+
+		if(!adata.route.isEmpty())
+			msg += QString(" route=%1").arg(adata.route);
+
+		msg += QString(" error");
+
+		log_info("%s", qPrintable(msg));
+	}
+
 private slots:
 	void doError()
 	{
@@ -599,6 +625,8 @@ private slots:
 
 	void outReq_error()
 	{
+		logRequestError(outReq->requestMethod(), outReq->requestUri());
+
 		delete outReq;
 		outReq = 0;
 
@@ -606,7 +634,7 @@ private slots:
 
 		// can't retry if we started sending data
 
-		if(!sentOutReqData && retries < RETRY_MAX)
+		if(sentOutReqData <= 0 && retries < RETRY_MAX)
 		{
 			int delay = RETRY_TIMEOUT;
 			for(int n = 0; n < retries; ++n)
