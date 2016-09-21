@@ -928,7 +928,7 @@ public:
 
 		if(accepted)
 		{
-			msg += " hold";
+			msg += " accept";
 		}
 		else if(resp.code != -1 && !si->unclean)
 		{
