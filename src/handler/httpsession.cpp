@@ -68,6 +68,7 @@ public:
 	int retries;
 	QString errorMessage;
 	QUrl currentUri;
+	QUrl nextUri;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats) :
 		QObject(_q),
@@ -465,7 +466,7 @@ private:
 		connect(outReq, &ZhttpRequest::readyRead, this, &Private::outReq_readyRead);
 		connect(outReq, &ZhttpRequest::error, this, &Private::outReq_error);
 
-		QUrl nextUri = currentUri.resolved(instruct.nextLink);
+		nextUri = currentUri.resolved(instruct.nextLink);
 
 		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 		int nextPort = nextUri.port(currentUri.scheme() == "https" ? 443 : 80);
@@ -497,9 +498,7 @@ private:
 			outReq->setPassthroughData(data);
 		}
 
-		currentUri = nextUri;
-
-		outReq->start("GET", currentUri, HttpHeaders());
+		outReq->start("GET", nextUri, HttpHeaders());
 		outReq->endBody();
 	}
 
@@ -557,6 +556,9 @@ private:
 					doError();
 					return;
 				}
+
+				currentUri = nextUri;
+				nextUri.clear();
 
 				instruct = i;
 
