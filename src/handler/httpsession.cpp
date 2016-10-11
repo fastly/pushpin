@@ -465,16 +465,39 @@ private:
 		connect(outReq, &ZhttpRequest::readyRead, this, &Private::outReq_readyRead);
 		connect(outReq, &ZhttpRequest::error, this, &Private::outReq_error);
 
-		QVariantHash data;
-		if(!adata.sigIss.isEmpty())
-			data["sig-iss"] = adata.sigIss;
-		if(!adata.sigKey.isEmpty())
-			data["sig-key"] = adata.sigKey;
-		if(adata.trusted)
-			data["trusted"] = true;
-		outReq->setPassthroughData(data);
+		QUrl nextUri = currentUri.resolved(instruct.nextLink);
 
-		currentUri = currentUri.resolved(instruct.nextLink);
+		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
+		int nextPort = nextUri.port(currentUri.scheme() == "https" ? 443 : 80);
+
+		// if next link points to the same service as the current request,
+		//   then we can assume the network would send the request back to
+		//   us, so we can handle it internally. if the link points to a
+		//   different service, then we can't make this assumption and need
+		//   to make the request over the network. note that such a request
+		//   could still end up looping back to us
+		if(nextUri.scheme() == currentUri.scheme() && nextUri.host() == currentUri.host() && nextPort == currentPort)
+		{
+			// use proxy routing
+			QVariantHash data;
+			data["route"] = true;
+			outReq->setPassthroughData(data);
+		}
+		else
+		{
+			// don't use proxy routing
+			QVariantHash data;
+			data["route"] = false;
+			if(!adata.sigIss.isEmpty())
+				data["sig-iss"] = adata.sigIss;
+			if(!adata.sigKey.isEmpty())
+				data["sig-key"] = adata.sigKey;
+			if(adata.trusted)
+				data["trusted"] = true;
+			outReq->setPassthroughData(data);
+		}
+
+		currentUri = nextUri;
 
 		outReq->start("GET", currentUri, HttpHeaders());
 		outReq->endBody();

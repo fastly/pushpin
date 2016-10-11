@@ -443,13 +443,35 @@ public:
 				return;
 		}
 
-		RequestSession *rs;
+		bool lookupRoute = true;
 
 		QVariant passthroughData = req->passthroughData();
-
 		if(passthroughData.isValid())
 		{
-			// passthrough mode. make a fake route
+			if(passthroughData.type() == QVariant::Hash)
+				lookupRoute = passthroughData.toHash().value("route").toBool();
+		}
+		else
+		{
+			if(config.acceptXForwardedProtocol && isXForwardedProtocolTls(req->requestHeaders()))
+				req->setIsTls(true);
+		}
+
+		RequestSession *rs;
+		if(lookupRoute)
+		{
+			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
+			rs->setDebugEnabled(config.debug);
+			rs->setAutoCrossOrigin(config.autoCrossOrigin);
+			rs->setPrefetchSize(config.inspectPrefetch);
+		}
+		else
+		{
+			assert(passthroughData.isValid());
+
+			const QVariantHash data = passthroughData.toHash();
+
+			// make a direct route, no domainmap lookup
 			DomainMap::Entry route;
 			DomainMap::Target target;
 			QUrl uri = req->requestUri();
@@ -459,7 +481,7 @@ public:
 			target.ssl = isHttps;
 			if(passthroughData.type() == QVariant::Hash)
 			{
-				const QVariantHash data = passthroughData.toHash();
+
 				route.sigIss = data["sig-iss"].toByteArray();
 				route.sigKey = data["sig-key"].toByteArray();
 				target.trusted = data["trusted"].toBool();
@@ -468,16 +490,6 @@ public:
 
 			rs = new RequestSession(stats, this);
 			rs->setRoute(route);
-		}
-		else
-		{
-			if(config.acceptXForwardedProtocol && isXForwardedProtocolTls(req->requestHeaders()))
-				req->setIsTls(true);
-
-			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
-			rs->setDebugEnabled(config.debug);
-			rs->setAutoCrossOrigin(config.autoCrossOrigin);
-			rs->setPrefetchSize(config.inspectPrefetch);
 		}
 
 		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
