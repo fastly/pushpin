@@ -55,6 +55,8 @@ public:
 		int pushInHttpPort;
 		int ipcFileMode;
 		bool shareAll;
+		int messageRate;
+		int messageHwm;
 
 		Configuration() :
 			pushInHttpPort(-1),

@@ -57,6 +57,7 @@
 #include "instruct.h"
 #include "httpsession.h"
 #include "conncheckworker.h"
+#include "publishshaper.h"
 
 #define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // infinite
@@ -1072,6 +1073,7 @@ public:
 	QZmq::Valve *proxyStatsValve;
 	SimpleHttpServer *controlHttpServer;
 	StatsManager *stats;
+	PublishShaper *shaper;
 	CommonState cs;
 	QSet<Deferred*> deferreds;
 
@@ -1100,6 +1102,9 @@ public:
 		stats(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
+
+		shaper = new PublishShaper(this);
+		connect(shaper, &PublishShaper::send, this, &Private::shaper_send);
 	}
 
 	~Private()
@@ -1112,6 +1117,9 @@ public:
 	bool start(const Configuration &_config)
 	{
 		config = _config;
+
+		shaper->setRate(config.messageRate);
+		shaper->setHwm(config.messageHwm);
 
 		zhttpIn = new ZhttpManager(this);
 		zhttpIn->setInstanceId(config.instanceId);
@@ -1435,12 +1443,7 @@ private:
 			log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
 			foreach(HttpSession *hs, responseSessions)
-			{
-				if(f.haveBodyPatch)
-					hs->respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
-				else
-					hs->respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
-			}
+				shaper->addMessage(hs, f, hs->route(), exposeHeaders);
 
 			stats->addMessage(item.channel, item.id, "http-response", responseSessions.count());
 		}
@@ -1452,12 +1455,7 @@ private:
 			log_debug("relaying to %d http-stream subscribers", streamSessions.count());
 
 			foreach(HttpSession *hs, streamSessions)
-			{
-				if(f.close)
-					hs->close();
-				else
-					hs->stream(f.body);
-			}
+				shaper->addMessage(hs, f, hs->route());
 
 			stats->addMessage(item.channel, item.id, "http-stream", streamSessions.count());
 		}
@@ -1469,33 +1467,7 @@ private:
 			log_debug("relaying to %d ws-message subscribers", wsSessions.count());
 
 			foreach(WsSession *s, wsSessions)
-			{
-				WsControlPacket::Item i;
-				i.cid = s->cid.toUtf8();
-
-				if(f.close)
-				{
-					i.type = WsControlPacket::Item::Close;
-					i.code = f.code;
-				}
-				else
-				{
-					i.type = WsControlPacket::Item::Send;
-
-					switch(f.messageType)
-					{
-						case PublishFormat::Text:   i.contentType = "text"; break;
-						case PublishFormat::Binary: i.contentType = "binary"; break;
-						case PublishFormat::Ping:   i.contentType = "ping"; break;
-						case PublishFormat::Pong:   i.contentType = "pong"; break;
-						default: continue; // unrecognized type, skip
-					}
-
-					i.message = f.body;
-				}
-
-				writeWsControlItem(i);
-			}
+				shaper->addMessage(s, f, s->route);
 
 			stats->addMessage(item.channel, item.id, "ws-message", wsSessions.count());
 		}
@@ -2001,6 +1973,58 @@ private slots:
 				deferreds += d;
 				return;
 			}
+		}
+	}
+
+	void shaper_send(QObject *target, const PublishFormat &f, const QList<QByteArray> &exposeHeaders)
+	{
+		if(f.type == PublishFormat::HttpResponse)
+		{
+			HttpSession *hs = qobject_cast<HttpSession*>(target);
+
+			if(f.haveBodyPatch)
+				hs->respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
+			else
+				hs->respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+		}
+		else if(f.type == PublishFormat::HttpStream)
+		{
+			HttpSession *hs = qobject_cast<HttpSession*>(target);
+
+			if(f.close)
+				hs->close();
+			else
+				hs->stream(f.body);
+		}
+		else if(f.type == PublishFormat::WebSocketMessage)
+		{
+			WsSession *s = qobject_cast<WsSession*>(target);
+
+			WsControlPacket::Item i;
+			i.cid = s->cid.toUtf8();
+
+			if(f.close)
+			{
+				i.type = WsControlPacket::Item::Close;
+				i.code = f.code;
+			}
+			else
+			{
+				i.type = WsControlPacket::Item::Send;
+
+				switch(f.messageType)
+				{
+					case PublishFormat::Text:   i.contentType = "text"; break;
+					case PublishFormat::Binary: i.contentType = "binary"; break;
+					case PublishFormat::Ping:   i.contentType = "ping"; break;
+					case PublishFormat::Pong:   i.contentType = "pong"; break;
+					default: return; // unrecognized type, skip
+				}
+
+				i.message = f.body;
+			}
+
+			writeWsControlItem(i);
 		}
 	}
 

@@ -729,6 +729,11 @@ QUrl HttpSession::requestUri() const
 	return d->adata.requestData.uri;
 }
 
+QString HttpSession::route() const
+{
+	return d->adata.route;
+}
+
 QString HttpSession::sid() const
 {
 	return d->adata.sid;

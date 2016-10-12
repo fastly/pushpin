@@ -65,6 +65,7 @@ public:
 	Instruct::HoldMode holdMode() const;
 	ZhttpRequest::Rid rid() const;
 	QUrl requestUri() const;
+	QString route() const;
 	QString sid() const;
 	QHash<QString, Instruct::Channel> channels() const;
 	QHash<QString, QString> meta() const;
