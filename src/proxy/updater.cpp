@@ -24,6 +24,8 @@
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QCryptographicHash>
+#include <QHostInfo>
 #include "log.h"
 #include "httpheaders.h"
 #include "zhttpmanager.h"
@@ -130,6 +132,10 @@ private slots:
 
 		if(mode == ReportMode)
 		{
+			QString host = QHostInfo::localHostName();
+			QString hashedHost = QString::fromUtf8(QCryptographicHash::hash(host.toUtf8(), QCryptographicHash::Sha1).toHex());
+			query.addQueryItem("id", hashedHost);
+
 			int cmax = (report.connectionsMax > 0 ? report.connectionsMax : 0);
 			query.addQueryItem("cmax", QString::number(cmax));
 			query.addQueryItem("cminutes", QString::number(report.connectionsMinutes));
