@@ -28,7 +28,7 @@ ResponseLastIds::ResponseLastIds(int maxCapacity) :
 
 void ResponseLastIds::set(const QString &channel, const QString &id)
 {
-	QDateTime now = QDateTime::currentDateTime();
+	QDateTime now = QDateTime::currentDateTimeUtc();
 
 	if(table_.contains(channel))
 	{
