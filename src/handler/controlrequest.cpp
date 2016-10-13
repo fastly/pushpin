@@ -19,6 +19,7 @@
 
 #include "controlrequest.h"
 
+#include "packet/statspacket.h"
 #include "deferred.h"
 #include "zrpcrequest.h"
 
@@ -81,9 +82,41 @@ private slots:
 	}
 };
 
+class Report : public Deferred
+{
+	Q_OBJECT
+
+public:
+	Report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent) :
+		Deferred(parent)
+	{
+		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
+		connect(req, &ZrpcRequest::finished, this, &Report::req_finished);
+
+		QVariantHash args;
+		args["stats"] = packet.toVariant();
+		req->start("report", args);
+	}
+
+	void req_finished()
+	{
+		ZrpcRequest *req = (ZrpcRequest *)sender();
+
+		if(req->success())
+			setFinished(true);
+		else
+			setFinished(false, req->errorCondition());
+	}
+};
+
 Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent)
 {
 	return new ConnCheck(controlClient, cids, parent);
+}
+
+Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent)
+{
+	return new Report(controlClient, packet, parent);
 }
 
 }

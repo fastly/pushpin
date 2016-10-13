@@ -56,6 +56,7 @@
 #include "responselastids.h"
 #include "instruct.h"
 #include "httpsession.h"
+#include "controlrequest.h"
 #include "conncheckworker.h"
 #include "publishshaper.h"
 
@@ -64,6 +65,7 @@
 #define RETRY_WAIT_TIME 0
 #define WSCONTROL_WAIT_TIME 0
 #define STATE_RPC_TIMEOUT 1000
+#define PROXY_RPC_TIMEOUT 10000
 #define DEFAULT_WS_KEEPALIVE_TIMEOUT 55
 
 using namespace VariantUtil;
@@ -1076,6 +1078,7 @@ public:
 	PublishShaper *shaper;
 	CommonState cs;
 	QSet<Deferred*> deferreds;
+	Deferred *report;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -1099,7 +1102,8 @@ public:
 		proxyStatsSock(0),
 		proxyStatsValve(0),
 		controlHttpServer(0),
-		stats(0)
+		stats(0),
+		report(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
 
@@ -1285,6 +1289,7 @@ public:
 		stats = new StatsManager(this);
 		connect(stats, &StatsManager::connectionsRefreshed, this, &Private::stats_connectionsRefreshed);
 		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
+		connect(stats, &StatsManager::reported, this, &Private::stats_reported);
 
 		stats->setReportsEnabled(true);
 
@@ -1326,6 +1331,7 @@ public:
 		{
 			proxyControlClient = new ZrpcManager(this);
 			proxyControlClient->setIpcFileMode(config.ipcFileMode);
+			proxyControlClient->setTimeout(PROXY_RPC_TIMEOUT);
 
 			if(!proxyControlClient->setClientSpecs(QStringList() << config.proxyCommandSpec))
 			{
@@ -2367,6 +2373,41 @@ private slots:
 
 		if(!cs.responseSessionsByChannel.contains(channel) && !cs.streamSessionsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
 			removeSub(channel);
+	}
+
+	void stats_reported(const QList<StatsPacket> &packets)
+	{
+		// only one outstanding report at a time
+		if(report)
+			return;
+
+		// consolidate data
+		StatsPacket all;
+		all.connectionsMax = 0;
+		all.connectionsMinutes = 0;
+		all.messagesReceived = 0;
+		all.messagesSent = 0;
+		all.httpResponseMessagesSent = 0;
+		foreach(const StatsPacket &p, packets)
+		{
+			all.connectionsMax += p.connectionsMax;
+			all.connectionsMinutes += p.connectionsMinutes;
+			all.messagesReceived += p.messagesReceived;
+			all.messagesSent += p.messagesSent;
+			all.httpResponseMessagesSent += p.httpResponseMessagesSent;
+		}
+
+		report = ControlRequest::report(proxyControlClient, all, this);
+		connect(report, &Deferred::finished, this, &Private::report_finished);
+		deferreds += report;
+	}
+
+	void report_finished(const DeferredResult &result)
+	{
+		Q_UNUSED(result);
+
+		deferreds.remove(report);
+		report = 0;
 	}
 };
 

@@ -73,7 +73,7 @@ public:
 signals:
 	void connectionsRefreshed(const QList<QByteArray> &ids);
 	void unsubscribed(const QString &mode, const QString &channel);
-	void reported(const StatsPacket &packet);
+	void reported(const QList<StatsPacket> &packet);
 
 private:
 	class Private;

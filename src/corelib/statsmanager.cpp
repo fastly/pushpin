@@ -420,8 +420,6 @@ public:
 		int localConns = connectionInfoByRoute.value(routeId).count();
 		int extConns = externalConnectionInfoByRoute.value(routeId).count();
 
-		log_debug("updateConnectionsMax: %d/%d", localConns, extConns);
-
 		int conns = localConns + extConns;
 
 		if(report->connectionsMaxStale)
@@ -660,13 +658,7 @@ private slots:
 				delete report;
 			}
 
-			QPointer<QObject> self = this;
-			foreach(const StatsPacket &p, reportPackets)
-			{
-				emit q->reported(p);
-				if(!self)
-					return;
-			}
+			emit q->reported(reportPackets);
 		}
 	}
 };

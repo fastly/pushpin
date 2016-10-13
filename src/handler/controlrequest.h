@@ -25,11 +25,13 @@
 class QObject;
 
 class ZrpcManager;
+class StatsPacket;
 class Deferred;
 
 namespace ControlRequest {
 
 Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0);
+Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent = 0);
 
 }
 
