@@ -67,7 +67,7 @@ public:
 		QByteArray sigKey;
 		QByteArray upstreamKey;
 		QString sockJsUrl;
-		bool updatesCheck;
+		QString updatesCheck;
 		QString organizationName;
 
 		Configuration() :
@@ -79,7 +79,7 @@ public:
 			autoCrossOrigin(false),
 			acceptXForwardedProtocol(false),
 			useXForwardedProtocol(false),
-			updatesCheck(true)
+			updatesCheck("check")
 		{
 		}
 	};

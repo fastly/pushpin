@@ -25,6 +25,7 @@
 #include "tnetstring.h"
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
+#include "packet/statspacket.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "zhttpmanager.h"
@@ -100,6 +101,7 @@ public:
 	QHash<WsProxySession*, WsProxyItem*> wsProxyItemsBySession;
 	SockJsManager *sockJsManager;
 	ConnectionManager connectionManager;
+	Updater *updater;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -117,7 +119,8 @@ public:
 		accept(0),
 		handler_retry_in_sock(0),
 		handler_retry_in_valve(0),
-		sockJsManager(0)
+		sockJsManager(0),
+		updater(0)
 	{
 	}
 
@@ -301,9 +304,9 @@ public:
 			}
 		}
 
-		if(!config.appVersion.isEmpty() && config.updatesCheck)
+		if(!config.appVersion.isEmpty() && (config.updatesCheck == "check" || config.updatesCheck == "report"))
 		{
-			new Updater(config.appVersion, config.organizationName, zroutes->defaultManager(), this);
+			updater = new Updater(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.appVersion, config.organizationName, zroutes->defaultManager(), this);
 		}
 
 		// init zroutes
@@ -825,6 +828,46 @@ private slots:
 			}
 
 			req->respond(out);
+		}
+		else if(req->method() == "report")
+		{
+			QVariantHash args = req->args();
+			if(!args.contains("stats") || args["stats"].type() != QVariant::Hash)
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			QVariant data = args["stats"];
+
+			StatsPacket p;
+			if(!p.fromVariant("report", data))
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			if(!updater)
+			{
+				req->respondError("service-unavailable");
+				delete req;
+				return;
+			}
+
+			Updater::Report report;
+			report.connectionsMax = p.connectionsMax;
+			report.connectionsMinutes = p.connectionsMinutes;
+			report.messagesReceived = p.messagesReceived;
+			report.messagesSent = p.messagesSent;
+
+			// fanout cloud style ops calculation
+			report.ops = p.connectionsMinutes + p.messagesReceived + p.messagesSent - p.httpResponseMessagesSent;
+
+			updater->setReport(report);
+
+			req->respond();
 		}
 		else
 		{

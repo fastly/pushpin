@@ -29,8 +29,35 @@ class Updater : public QObject
 	Q_OBJECT
 
 public:
-	Updater(const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent = 0);
+	enum Mode
+	{
+		CheckMode,
+		ReportMode
+	};
+
+	class Report
+	{
+	public:
+		int connectionsMax;
+		int connectionsMinutes;
+		int messagesReceived;
+		int messagesSent;
+		int ops;
+
+		Report() :
+			connectionsMax(0),
+			connectionsMinutes(0),
+			messagesReceived(0),
+			messagesSent(0),
+			ops(0)
+		{
+		}
+	};
+
+	Updater(Mode mode, const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent = 0);
 	~Updater();
+
+	void setReport(const Report &report);
 
 private:
 	class Private;

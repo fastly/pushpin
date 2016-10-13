@@ -281,7 +281,7 @@ public:
 		QByteArray sigKey = parse_key(settings.value("proxy/sig_key").toString());
 		QByteArray upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
 		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
-		bool updatesCheck = settings.value("proxy/updates_check", true).toBool();
+		QString updatesCheck = settings.value("proxy/updates_check").toString();
 		QString organizationName = settings.value("proxy/organization_name").toString();
 
 		QList<QByteArray> origHeadersNeedMark;
@@ -299,6 +299,9 @@ public:
 			emit q->quit();
 			return;
 		}
+
+		if(updatesCheck == "true")
+			updatesCheck = "check";
 
 		Engine::Configuration config;
 		config.appVersion = VERSION;
