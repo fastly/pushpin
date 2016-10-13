@@ -658,7 +658,8 @@ private slots:
 				delete report;
 			}
 
-			emit q->reported(reportPackets);
+			if(!reportPackets.isEmpty())
+				emit q->reported(reportPackets);
 		}
 	}
 };
