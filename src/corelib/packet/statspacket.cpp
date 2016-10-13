@@ -25,7 +25,8 @@ QVariant StatsPacket::toVariant() const
 {
 	QVariantHash obj;
 
-	obj["from"] = from;
+	if(!from.isEmpty())
+		obj["from"] = from;
 
 	if(!route.isEmpty())
 		obj["route"] = route;
