@@ -128,6 +128,10 @@ public:
 	{
 		destroying = true;
 
+		// need to delete all objects that may have outgoing connections before zroutes
+
+		delete updater;
+
 		QHashIterator<ProxySession*, ProxyItem*> it(proxyItemsBySession);
 		while(it.hasNext())
 		{
