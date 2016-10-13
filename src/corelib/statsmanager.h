@@ -43,6 +43,7 @@ public:
 	void setInstanceId(const QByteArray &instanceId);
 	void setIpcFileMode(int mode);
 	bool setSpec(const QString &spec);
+	void setReportsEnabled(bool on);
 
 	// routeId may be empty for non-identified route
 
@@ -57,7 +58,14 @@ public:
 	// NOTE: may emit unsubscribed immediately (not DOR-DS)
 	void removeSubscription(const QString &mode, const QString &channel, bool linger);
 
+	// for reporting only
+	void addMessageReceived(const QByteArray &routeId);
+	void addMessageSent(const QByteArray &routeId, const QString &transport);
+
 	bool checkConnection(const QByteArray &id);
+
+	// for reporting
+	void processExternalPacket(const StatsPacket &packet);
 
 	// directly send, for proxy->handler passthrough
 	void sendPacket(const StatsPacket &packet);
@@ -65,6 +73,7 @@ public:
 signals:
 	void connectionsRefreshed(const QList<QByteArray> &ids);
 	void unsubscribed(const QString &mode, const QString &channel);
+	void reported(const StatsPacket &packet);
 
 private:
 	class Private;

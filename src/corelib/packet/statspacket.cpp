@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2015 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -74,7 +74,7 @@ QVariant StatsPacket::toVariant() const
 			obj["unavailable"] = true;
 		}
 	}
-	else // Subscribed/Unsubscribed
+	else if(type == Subscribed || type == Unsubscribed)
 	{
 		obj["mode"] = mode;
 		obj["channel"] = channel;
@@ -87,6 +87,19 @@ QVariant StatsPacket::toVariant() const
 		{
 			obj["unavailable"] = true;
 		}
+	}
+	else // Report
+	{
+		if(connectionsMax != -1)
+			obj["connections"] = connectionsMax;
+		if(connectionsMinutes != -1)
+			obj["minutes"] = connectionsMinutes;
+		if(messagesReceived != -1)
+			obj["received"] = messagesReceived;
+		if(messagesSent != -1)
+			obj["sent"] = messagesSent;
+		if(httpResponseMessagesSent != -1)
+			obj["http-response-sent"] = httpResponseMessagesSent;
 	}
 
 	return obj;
@@ -241,6 +254,48 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 			ttl = obj["ttl"].toInt();
 			if(ttl < 0)
 				return false;
+		}
+	}
+	else if(_type == "report")
+	{
+		if(obj.contains("connections"))
+		{
+			if(!obj["connections"].canConvert(QVariant::Int))
+				return false;
+
+			connectionsMax = obj["connections"].toInt();
+		}
+
+		if(obj.contains("minutes"))
+		{
+			if(!obj["minutes"].canConvert(QVariant::Int))
+				return false;
+
+			connectionsMinutes = obj["minutes"].toInt();
+		}
+
+		if(obj.contains("received"))
+		{
+			if(!obj["received"].canConvert(QVariant::Int))
+				return false;
+
+			messagesReceived = obj["received"].toInt();
+		}
+
+		if(obj.contains("sent"))
+		{
+			if(!obj["sent"].canConvert(QVariant::Int))
+				return false;
+
+			messagesSent = obj["sent"].toInt();
+		}
+
+		if(obj.contains("http-response-sent"))
+		{
+			if(!obj["http-response-sent"].canConvert(QVariant::Int))
+				return false;
+
+			httpResponseMessagesSent = obj["http-response-sent"].toInt();
 		}
 	}
 	else

@@ -1286,6 +1286,8 @@ public:
 		connect(stats, &StatsManager::connectionsRefreshed, this, &Private::stats_connectionsRefreshed);
 		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
 
+		stats->setReportsEnabled(true);
+
 		if(!config.statsSpec.isEmpty())
 		{
 			stats->setInstanceId(config.instanceId);
@@ -1363,6 +1365,9 @@ public:
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
+		// always add for non-identified route
+		stats->addMessageReceived(QByteArray());
+
 		QList<HttpSession*> responseSessions;
 		QList<HttpSession*> streamSessions;
 		QList<WsSession*> wsSessions;
@@ -1443,7 +1448,10 @@ private:
 			log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
 			foreach(HttpSession *hs, responseSessions)
+			{
 				shaper->addMessage(hs, f, hs->route(), exposeHeaders);
+				stats->addMessageSent(hs->route().toUtf8(), "http-response");
+			}
 
 			stats->addMessage(item.channel, item.id, "http-response", responseSessions.count());
 		}
@@ -1455,7 +1463,10 @@ private:
 			log_debug("relaying to %d http-stream subscribers", streamSessions.count());
 
 			foreach(HttpSession *hs, streamSessions)
+			{
 				shaper->addMessage(hs, f, hs->route());
+				stats->addMessageSent(hs->route().toUtf8(), "http-stream");
+			}
 
 			stats->addMessage(item.channel, item.id, "http-stream", streamSessions.count());
 		}
@@ -1467,7 +1478,10 @@ private:
 			log_debug("relaying to %d ws-message subscribers", wsSessions.count());
 
 			foreach(WsSession *s, wsSessions)
+			{
 				shaper->addMessage(s, f, s->route);
+				stats->addMessageSent(s->route.toUtf8(), "ws-message");
+			}
 
 			stats->addMessage(item.channel, item.id, "ws-message", wsSessions.count());
 		}
@@ -1960,7 +1974,10 @@ private slots:
 					sid = s->sid;
 			}
 
-			// just forward the packet. this will stamp the from field and keep the rest
+			// track proxy connections for reporting
+			stats->processExternalPacket(p);
+
+			// forward the packet. this will stamp the from field and keep the rest
 			stats->sendPacket(p);
 
 			// update session

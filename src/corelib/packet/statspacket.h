@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2015 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,7 +34,8 @@ public:
 		Connected,
 		Disconnected,
 		Subscribed,
-		Unsubscribed
+		Unsubscribed,
+		Report
 	};
 
 	enum ConnectionType
@@ -56,13 +57,23 @@ public:
 	QByteArray channel; // message, subscribed, unsubscribed
 	QByteArray itemId; // message
 	QByteArray transport; // message
+	int connectionsMax; // report
+	int connectionsMinutes; // report
+	int messagesReceived; // report
+	int messagesSent; // report
+	int httpResponseMessagesSent; // report
 
 	StatsPacket() :
 		type((Type)-1),
 		count(-1),
 		connectionType((ConnectionType)-1),
 		ssl(false),
-		ttl(-1)
+		ttl(-1),
+		connectionsMax(-1),
+		connectionsMinutes(-1),
+		messagesReceived(-1),
+		messagesSent(-1),
+		httpResponseMessagesSent(-1)
 	{
 	}
 
