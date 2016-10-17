@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Fanout, Inc.
+ * Copyright (C) 2013-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,7 +24,7 @@
 #include <QCommandLineParser>
 #include <QPair>
 #include <QHash>
-#include <QTime>
+#include <QDateTime>
 #include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
@@ -40,12 +40,19 @@
 #include "config.h"
 
 #define DEFAULT_HWM 101000
-#define EXPIRE_INTERVAL 1000
 #define STATUS_INTERVAL 250
-#define M2_KEEPALIVE_INTERVAL 90000
-#define SESSION_EXPIRE 60000
-#define KEEPALIVE_INTERVAL 45000
+#define REFRESH_INTERVAL 1000
+#define M2_CONNECTION_EXPIRE 120000
+#define ZHTTP_EXPIRE 60000
 #define CONTROL_REQUEST_EXPIRE 30000
+
+#define M2_CONNECTION_SHOULD_PROCESS (M2_CONNECTION_EXPIRE * 3 / 4)
+#define M2_CONNECTION_MUST_PROCESS (M2_CONNECTION_EXPIRE * 4 / 5)
+#define M2_REFRESH_BUCKETS (M2_CONNECTION_SHOULD_PROCESS / REFRESH_INTERVAL)
+
+#define ZHTTP_SHOULD_PROCESS (ZHTTP_EXPIRE * 3 / 4)
+#define ZHTTP_MUST_PROCESS (ZHTTP_EXPIRE * 4 / 5)
+#define ZHTTP_REFRESH_BUCKETS (ZHTTP_SHOULD_PROCESS / REFRESH_INTERVAL)
 
 // make sure this is not larger than Mongrel2's DELIVER_OUTSTANDING_MSGS
 #define M2_PENDING_MAX 16
@@ -296,6 +303,8 @@ public:
 		bool outCreditsEnabled;
 		int outCredits;
 		quint64 subIdBase;
+		qint64 lastRefresh;
+		int refreshBucket;
 
 		M2Connection() :
 			confirmedBytesWritten(0),
@@ -336,13 +345,15 @@ public:
 	{
 	public:
 		Mode mode;
-		int lastActive;
+		qint64 lastActive;
 		QByteArray errorCondition;
 		QByteArray acceptToken; // for websocket
 		bool downClosed; // for websocket
 		bool upClosed; // for websockets
 		QString method;
 		bool responseHeadersOnly; // HEAD, 204, 304
+		qint64 lastRefresh;
+		int refreshBucket;
 
 		// m2 stuff
 		M2Connection *conn;
@@ -371,6 +382,7 @@ public:
 			downClosed(false),
 			upClosed(false),
 			responseHeadersOnly(false),
+			lastRefresh(-1),
 			persistent(false),
 			allowChunked(false),
 			respondKeepAlive(false),
@@ -408,16 +420,21 @@ public:
 	QHash<Rid, Session*> sessionsByM2Rid;
 	QHash<Rid, Session*> sessionsByZhttpRid;
 	QHash<Rid, Session*> sessionsByZwsRid;
+	QMap<QPair<qint64, M2Connection*>, M2Connection*> m2ConnectionsByLastRefresh;
+	QSet<M2Connection*> m2ConnectionRefreshBuckets[M2_REFRESH_BUCKETS];
+	int currentM2RefreshBucket;
+	QMap<QPair<qint64, Session*>, Session*> sessionsByLastRefresh;
+	QSet<Session*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
+	int currentSessionRefreshBucket;
+	QMap<QPair<qint64, Session*>, Session*> sessionsByLastActive;
 	int m2_client_buffer;
 	int zhttpConnectPort;
 	int zwsConnectPort;
 	bool ignorePolicies;
 	QList<ControlPort> controlPorts;
 	QTime time;
-	QTimer *expireTimer;
 	QTimer *statusTimer;
-	QTimer *keepAliveTimer;
-	QTimer *m2KeepAliveTimer;
+	QTimer *refreshTimer;
 
 	Private(App *_q) :
 		QObject(_q),
@@ -432,24 +449,18 @@ public:
 		zws_out_stream_sock(0),
 		m2_in_valve(0),
 		zhttp_in_valve(0),
-		zws_in_valve(0)
+		zws_in_valve(0),
+		currentM2RefreshBucket(0),
+		currentSessionRefreshBucket(0)
 	{
 		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
 		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 
-		time.start();
-
-		expireTimer = new QTimer(this);
-		connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
-
 		statusTimer = new QTimer(this);
 		connect(statusTimer, &QTimer::timeout, this, &Private::status_timeout);
 
-		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
-
-		m2KeepAliveTimer = new QTimer(this);
-		connect(m2KeepAliveTimer, &QTimer::timeout, this, &Private::m2KeepAlive_timeout);
+		refreshTimer = new QTimer(this);
+		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
 	}
 
 	~Private()
@@ -498,17 +509,10 @@ public:
 		if(zws_in_valve)
 			zws_in_valve->open();
 
-		expireTimer->setInterval(EXPIRE_INTERVAL);
-		expireTimer->start();
-
 		statusTimer->setInterval(STATUS_INTERVAL);
-		statusTimer->start();
 
-		keepAliveTimer->setInterval(KEEPALIVE_INTERVAL);
-		keepAliveTimer->start();
-
-		m2KeepAliveTimer->setInterval(M2_KEEPALIVE_INTERVAL);
-		m2KeepAliveTimer->start();
+		refreshTimer->setInterval(REFRESH_INTERVAL);
+		refreshTimer->start();
 
 		log_info("started");
 	}
@@ -796,6 +800,13 @@ public:
 		return true;
 	}
 
+	void removeConnection(M2Connection *conn)
+	{
+		m2ConnectionRefreshBuckets[conn->refreshBucket].remove(conn);
+		m2ConnectionsByLastRefresh.remove(QPair<qint64, M2Connection*>(conn->lastRefresh, conn));
+		m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
+	}
+
 	void unlinkConnection(Session *s)
 	{
 		if(s->conn)
@@ -808,9 +819,44 @@ public:
 		}
 	}
 
+	int smallestM2RefreshBucket()
+	{
+		int best = -1;
+		int bestSize;
+		for(int n = 0; n < M2_REFRESH_BUCKETS; ++n)
+		{
+			if(best == -1 || m2ConnectionRefreshBuckets[n].count() < bestSize)
+			{
+				best = n;
+				bestSize = m2ConnectionRefreshBuckets[n].count();
+			}
+		}
+
+		return best;
+	}
+
+	int smallestSessionRefreshBucket()
+	{
+		int best = -1;
+		int bestSize;
+		for(int n = 0; n < ZHTTP_REFRESH_BUCKETS; ++n)
+		{
+			if(best == -1 || sessionRefreshBuckets[n].count() < bestSize)
+			{
+				best = n;
+				bestSize = sessionRefreshBuckets[n].count();
+			}
+		}
+
+		return best;
+	}
+
 	void destroySession(Session *s)
 	{
 		unlinkConnection(s);
+		sessionRefreshBuckets[s->refreshBucket].remove(s);
+		sessionsByLastRefresh.remove(QPair<qint64, Session*>(s->lastRefresh, s));
+		sessionsByLastActive.remove(QPair<qint64, Session*>(s->lastActive, s));
 		if(s->mode == Http)
 			sessionsByZhttpRid.remove(Rid(zhttpInstanceId, s->id));
 		else // WebSocket
@@ -898,7 +944,7 @@ public:
 	void m2_writeCtlCancel(M2Connection *conn)
 	{
 		m2_writeCtlCancel(m2_send_idents[conn->identIndex], conn->id);
-		m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
+		removeConnection(conn);
 		delete conn;
 	}
 
@@ -1090,7 +1136,7 @@ public:
 	void m2_writeClose(M2Connection *conn)
 	{
 		m2_writeClose(m2_send_idents[conn->identIndex], conn->id);
-		m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
+		removeConnection(conn);
 		delete conn;
 	}
 
@@ -1112,7 +1158,8 @@ public:
 
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
 
-		log_debug("%s: OUT %s", logprefix, buf.mid(0, 1000).data());
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("%s: OUT %s", logprefix, buf.mid(0, 1000).data());
 
 		if(mode == Http)
 			zhttp_out_sock->write(QList<QByteArray>() << buf);
@@ -1126,7 +1173,8 @@ public:
 
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
 
-		log_debug("%s: OUT instance=%s %s", logprefix, instanceAddress.data(), buf.mid(0, 1000).data());
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("%s: OUT instance=%s %s", logprefix, instanceAddress.data(), buf.mid(0, 1000).data());
 
 		QList<QByteArray> message;
 		message += instanceAddress;
@@ -1160,7 +1208,8 @@ public:
 	void handleControlResponse(int index, const QVariant &data)
 	{
 #ifdef CONTROL_PORT_DEBUG
-		log_debug("m2: IN control %s %s", m2_send_idents[index].data(), qPrintable(TnetString::variantToString(data)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("m2: IN control %s %s", m2_send_idents[index].data(), qPrintable(TnetString::variantToString(data)));
 #endif
 
 		if(data.type() != QVariant::Hash)
@@ -1238,7 +1287,7 @@ public:
 			if(conn->session)
 				endSession(conn->session, "disconnected");
 
-			m2ConnectionsByRid.remove(Rid(m2_send_idents[conn->identIndex], conn->id));
+			removeConnection(conn);
 			delete conn;
 		}
 	}
@@ -1256,8 +1305,15 @@ public:
 
 		if(conn->session && bodyWritten > 0)
 		{
-			conn->session->lastActive = time.elapsed();
-			handleSessionBodyWritten(conn->session, bodyWritten, giveCredits);
+			Session *s = conn->session;
+
+			// update lastActive
+			qint64 now = QDateTime::currentMSecsSinceEpoch();
+			sessionsByLastActive.remove(QPair<qint64, Session*>(s->lastActive, s));
+			s->lastActive = now;
+			sessionsByLastActive.insert(QPair<qint64, Session*>(s->lastActive, s), s);
+
+			handleSessionBodyWritten(s, bodyWritten, giveCredits);
 		}
 	}
 
@@ -1451,7 +1507,23 @@ public:
 		if(seq != -1)
 			++(s->inSeq);
 
-		s->lastActive = time.elapsed();
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		if(s->lastRefresh < 0 && !s->zhttpAddress.isEmpty())
+		{
+			// once we have the peer's address, set up refresh
+
+			s->lastRefresh = now;
+			sessionsByLastRefresh.insert(QPair<qint64, Session*>(s->lastRefresh, s), s);
+
+			s->refreshBucket = smallestSessionRefreshBucket();
+			sessionRefreshBuckets[s->refreshBucket] += s;
+		}
+
+		// update lastActive
+		sessionsByLastActive.remove(QPair<qint64, Session*>(s->lastActive, s));
+		s->lastActive = now;
+		sessionsByLastActive.insert(QPair<qint64, Session*>(s->lastActive, s), s);
 
 		// a session without a connection is just waiting to report error
 		if(!s->conn)
@@ -1487,6 +1559,13 @@ public:
 		{
 			// receiving any message means handoff is complete
 			s->inHandoff = false;
+
+			// refresh would have already been set up once if we are here
+			assert(s->lastRefresh >= 0);
+
+			sessionsByLastRefresh.insert(QPair<qint64, Session*>(s->lastRefresh, s), s);
+			s->refreshBucket = smallestSessionRefreshBucket();
+			sessionRefreshBuckets[s->refreshBucket] += s;
 
 			// in order to have been in a handoff state, we would have
 			//   had to receive a from address sometime earlier, so it
@@ -1784,6 +1863,9 @@ public:
 		{
 			s->inHandoff = true;
 
+			sessionRefreshBuckets[s->refreshBucket].remove(s);
+			sessionsByLastRefresh.remove(QPair<qint64, Session*>(s->lastRefresh, s));
+
 			// whoever picks up after handoff can turn this on
 			s->multi = false;
 
@@ -1828,6 +1910,234 @@ public:
 		}
 	}
 
+	void refreshM2Connections(qint64 now)
+	{
+		QHash<int, QList<QByteArray> > connIdListBySender;
+
+		// process the current bucket
+		const QSet<M2Connection*> &bucket = m2ConnectionRefreshBuckets[currentM2RefreshBucket];
+		foreach(M2Connection *conn, bucket)
+		{
+			// move to the end
+			QPair<qint64, M2Connection*> k(conn->lastRefresh, conn);
+			m2ConnectionsByLastRefresh.remove(k);
+			conn->lastRefresh = now;
+			m2ConnectionsByLastRefresh.insert(QPair<qint64, M2Connection*>(conn->lastRefresh, conn), conn);
+
+			if(!connIdListBySender.contains(conn->identIndex))
+				connIdListBySender.insert(conn->identIndex, QList<QByteArray>());
+
+			QList<QByteArray> &connIdList = connIdListBySender[conn->identIndex];
+			connIdList += conn->id;
+
+			// if we're at max, send out now
+			if(connIdList.count() >= M2_HANDLER_TARGETS_MAX)
+			{
+				QVariantHash args;
+				args["keep-alive"] = true;
+				m2_writeCtlMany(m2_send_idents[conn->identIndex], connIdList, args);
+
+				connIdList.clear();
+				connIdListBySender.remove(conn->identIndex);
+			}
+		}
+
+		// process any others
+		qint64 threshold = now - M2_CONNECTION_MUST_PROCESS;
+		while(!m2ConnectionsByLastRefresh.isEmpty())
+		{
+			QMap<QPair<qint64, M2Connection*>, M2Connection*>::iterator it = m2ConnectionsByLastRefresh.begin();
+			M2Connection *conn = it.value();
+
+			if(conn->lastRefresh > threshold)
+				break;
+
+			// move to the end
+			m2ConnectionsByLastRefresh.erase(it);
+			conn->lastRefresh = now;
+			m2ConnectionsByLastRefresh.insert(QPair<qint64, M2Connection*>(conn->lastRefresh, conn), conn);
+
+			if(!connIdListBySender.contains(conn->identIndex))
+				connIdListBySender.insert(conn->identIndex, QList<QByteArray>());
+
+			QList<QByteArray> &connIdList = connIdListBySender[conn->identIndex];
+			connIdList += conn->id;
+
+			// if we're at max, send out now
+			if(connIdList.count() >= M2_HANDLER_TARGETS_MAX)
+			{
+				QVariantHash args;
+				args["keep-alive"] = true;
+				m2_writeCtlMany(m2_send_idents[conn->identIndex], connIdList, args);
+
+				connIdList.clear();
+				connIdListBySender.remove(conn->identIndex);
+			}
+		}
+
+		// send last packet
+		QHashIterator<int, QList<QByteArray> > cit(connIdListBySender);
+		while(cit.hasNext())
+		{
+			cit.next();
+			int index = cit.key();
+			const QList<QByteArray> &connIdList = cit.value();
+
+			if(!connIdList.isEmpty())
+			{
+				QVariantHash args;
+				args["keep-alive"] = true;
+				m2_writeCtlMany(m2_send_idents[index], connIdList, args);
+			}
+		}
+
+		++currentM2RefreshBucket;
+		if(currentM2RefreshBucket >= M2_REFRESH_BUCKETS)
+			currentM2RefreshBucket = 0;
+	}
+
+	void refreshSessions(qint64 now)
+	{
+		QHash<QByteArray, QList<Session*> > sessionListBySender[2]; // index corresponds to mode
+
+		// process the current bucket
+		const QSet<Session*> &bucket = sessionRefreshBuckets[currentSessionRefreshBucket];
+		foreach(Session *s, bucket)
+		{
+			assert(!s->inHandoff && !s->zhttpAddress.isEmpty());
+
+			// move to the end
+			QPair<qint64, Session*> k(s->lastRefresh, s);
+			sessionsByLastRefresh.remove(k);
+			s->lastRefresh = now;
+			sessionsByLastRefresh.insert(QPair<qint64, Session*>(s->lastRefresh, s), s);
+
+			if(s->multi)
+			{
+				if(!sessionListBySender[s->mode].contains(s->zhttpAddress))
+					sessionListBySender[s->mode].insert(s->zhttpAddress, QList<Session*>());
+
+				QList<Session*> &sessionList = sessionListBySender[s->mode][s->zhttpAddress];
+				sessionList += s;
+
+				// if we're at max, send out now
+				if(sessionList.count() >= ZHTTP_IDS_MAX)
+				{
+					ZhttpRequestPacket zreq;
+					zreq.from = zhttpInstanceId;
+					foreach(Session *i, sessionList)
+						zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
+					zreq.type = ZhttpRequestPacket::KeepAlive;
+					zhttp_out_write(s->mode, zreq, s->zhttpAddress);
+
+					sessionList.clear();
+					sessionListBySender[s->mode].remove(s->zhttpAddress);
+				}
+			}
+			else
+			{
+				// session doesn't support sending with multiple ids
+				ZhttpRequestPacket zreq;
+				zreq.from = zhttpInstanceId;
+				zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
+				zreq.type = ZhttpRequestPacket::KeepAlive;
+				zhttp_out_write(s->mode, zreq, s->zhttpAddress);
+			}
+		}
+
+		// process any others
+		qint64 threshold = now - ZHTTP_MUST_PROCESS;
+		while(!sessionsByLastRefresh.isEmpty())
+		{
+			QMap<QPair<qint64, Session*>, Session*>::iterator it = sessionsByLastRefresh.begin();
+			Session *s = it.value();
+
+			if(s->lastRefresh > threshold)
+				break;
+
+			assert(!s->inHandoff && !s->zhttpAddress.isEmpty());
+
+			// move to the end
+			sessionsByLastRefresh.erase(it);
+			s->lastRefresh = now;
+			sessionsByLastRefresh.insert(QPair<qint64, Session*>(s->lastRefresh, s), s);
+
+			if(s->multi)
+			{
+				if(!sessionListBySender[s->mode].contains(s->zhttpAddress))
+					sessionListBySender[s->mode].insert(s->zhttpAddress, QList<Session*>());
+
+				QList<Session*> &sessionList = sessionListBySender[s->mode][s->zhttpAddress];
+				sessionList += s;
+
+				// if we're at max, send out now
+				if(sessionList.count() >= ZHTTP_IDS_MAX)
+				{
+					ZhttpRequestPacket zreq;
+					zreq.from = zhttpInstanceId;
+					foreach(Session *i, sessionList)
+						zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
+					zreq.type = ZhttpRequestPacket::KeepAlive;
+					zhttp_out_write(s->mode, zreq, s->zhttpAddress);
+
+					sessionList.clear();
+					sessionListBySender[s->mode].remove(s->zhttpAddress);
+				}
+			}
+			else
+			{
+				// session doesn't support sending with multiple ids
+				ZhttpRequestPacket zreq;
+				zreq.from = zhttpInstanceId;
+				zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
+				zreq.type = ZhttpRequestPacket::KeepAlive;
+				zhttp_out_write(s->mode, zreq, s->zhttpAddress);
+			}
+		}
+
+		// send last packets
+		for(int n = 0; n < 2; ++n)
+		{
+			QHashIterator<QByteArray, QList<Session*> > sit(sessionListBySender[n]);
+			while(sit.hasNext())
+			{
+				sit.next();
+				const QByteArray &zhttpAddress = sit.key();
+				const QList<Session*> &sessionList = sit.value();
+
+				if(!sessionList.isEmpty())
+				{
+					ZhttpRequestPacket zreq;
+					zreq.from = zhttpInstanceId;
+					foreach(Session *s, sessionList)
+						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
+					zreq.type = ZhttpRequestPacket::KeepAlive;
+					zhttp_out_write((Mode)n, zreq, zhttpAddress);
+				}
+			}
+		}
+
+		++currentSessionRefreshBucket;
+		if(currentSessionRefreshBucket >= ZHTTP_REFRESH_BUCKETS)
+			currentSessionRefreshBucket = 0;
+	}
+
+	void expireSessions(qint64 now)
+	{
+		qint64 threshold = now - ZHTTP_EXPIRE;
+		while(!sessionsByLastActive.isEmpty())
+		{
+			QMap<QPair<qint64, Session*>, Session*>::iterator it = sessionsByLastActive.begin();
+			Session *s = it.value();
+
+			if(s->lastActive > threshold)
+				break;
+
+			log_warning("timing out request %s", s->id.data());
+			destroySessionAndErrorConnection(s);
+		}
+	}
+
 private slots:
 	void m2_in_readyRead(const QList<QByteArray> &message)
 	{
@@ -1837,7 +2147,8 @@ private slots:
 			return;
 		}
 
-		log_debug("m2: IN %s", message[0].mid(0, 1000).data());
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("m2: IN %s", message[0].mid(0, 1000).data());
 
 		M2RequestPacket mreq;
 		if(!mreq.fromByteArray(message[0]))
@@ -1859,11 +2170,13 @@ private slots:
 			if(conn->session)
 				endSession(conn->session);
 
-			m2ConnectionsByRid.remove(rid);
+			removeConnection(conn);
 			delete conn;
 
 			return;
 		}
+
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
 
 		Rid m2Rid(mreq.sender, mreq.id);
 
@@ -1925,6 +2238,9 @@ private slots:
 				{
 					log_debug("activating control port index=%d", index);
 					controlPorts[index].state = ControlPort::Idle;
+
+					if(!statusTimer->isActive())
+						statusTimer->start();
 				}
 
 				// if we were in the middle of requesting control info when this
@@ -1940,6 +2256,12 @@ private slots:
 			}
 
 			m2ConnectionsByRid.insert(m2Rid, conn);
+
+			conn->lastRefresh = now;
+			m2ConnectionsByLastRefresh.insert(QPair<qint64, M2Connection*>(conn->lastRefresh, conn), conn);
+
+			conn->refreshBucket = smallestM2RefreshBucket();
+			m2ConnectionRefreshBuckets[conn->refreshBucket] += conn;
 		}
 		else
 		{
@@ -2027,7 +2349,6 @@ private slots:
 			s = new Session;
 			s->conn = conn;
 			s->conn->session = s;
-			s->lastActive = time.elapsed();
 			s->id = m2_send_idents[conn->identIndex] + '_' + conn->id + '_' + QByteArray::number((conn->subIdBase)++, 16);
 			s->method = mreq.method;
 
@@ -2065,6 +2386,11 @@ private slots:
 			}
 
 			sessionsByM2Rid.insert(m2Rid, s);
+
+			qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+			s->lastActive = now;
+			sessionsByLastActive.insert(QPair<qint64, Session*>(s->lastActive, s), s);
 
 			if(mreq.type == M2RequestPacket::HttpRequest)
 				sessionsByZhttpRid.insert(Rid(zhttpInstanceId, s->id), s);
@@ -2275,6 +2601,18 @@ private slots:
 			{
 				log_debug("deactivating control port index=%d", index);
 				c.state = ControlPort::Disabled;
+
+				bool allDisabled = true;
+				foreach(const ControlPort &i, controlPorts)
+				{
+					if(i.state != ControlPort::Disabled)
+					{
+						allDisabled = false;
+						break;
+					}
+				}
+				if(allDisabled)
+					statusTimer->stop();
 			}
 
 			c.reqStartTime = -1;
@@ -2289,25 +2627,6 @@ private slots:
 	void zws_in_readyRead(const QList<QByteArray> &message)
 	{
 		handleZhttpIn(WebSocket, message);
-	}
-
-	void expire_timeout()
-	{
-		int now = time.elapsed();
-		QList<Session*> toDelete;
-		QHashIterator<Rid, Session*> it(sessionsByM2Rid);
-		while(it.hasNext())
-		{
-			it.next();
-			Session *s = it.value();
-			if(s->lastActive + SESSION_EXPIRE <= now)
-				toDelete += s;
-		}
-		foreach(Session *s, toDelete)
-		{
-			log_warning("timing out request %s", s->id.data());
-			destroySessionAndErrorConnection(s);
-		}
 	}
 
 	void status_timeout()
@@ -2334,182 +2653,13 @@ private slots:
 		}
 	}
 
-	void keepAlive_timeout()
+	void refresh_timeout()
 	{
-		{
-			QHash<QByteArray, QList<Session*> > sessionListBySender;
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-			QHashIterator<Rid, Session*> it(sessionsByZhttpRid);
-			while(it.hasNext())
-			{
-				it.next();
-				Session *s = it.value();
-
-				if(!s->inHandoff && !s->zhttpAddress.isEmpty())
-				{
-					if(s->multi)
-					{
-						if(!sessionListBySender.contains(s->zhttpAddress))
-							sessionListBySender.insert(s->zhttpAddress, QList<Session*>());
-
-						QList<Session*> &sessionList = sessionListBySender[s->zhttpAddress];
-						sessionList += s;
-
-						// if we're at max, send out now
-						if(sessionList.count() >= ZHTTP_IDS_MAX)
-						{
-							ZhttpRequestPacket zreq;
-							zreq.from = zhttpInstanceId;
-							foreach(Session *i, sessionList)
-								zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
-							zreq.type = ZhttpRequestPacket::KeepAlive;
-							zhttp_out_write(Http, zreq, s->zhttpAddress);
-
-							sessionList.clear();
-							sessionListBySender.remove(s->zhttpAddress);
-						}
-					}
-					else
-					{
-						// session doesn't support sending with multiple ids
-						ZhttpRequestPacket zreq;
-						zreq.from = zhttpInstanceId;
-						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
-						zreq.type = ZhttpRequestPacket::KeepAlive;
-						zhttp_out_write(Http, zreq, s->zhttpAddress);
-					}
-				}
-			}
-
-			// send the rest
-			QHashIterator<QByteArray, QList<Session*> > sit(sessionListBySender);
-			while(sit.hasNext())
-			{
-				sit.next();
-				const QByteArray &zhttpAddress = sit.key();
-				const QList<Session*> &sessionList = sit.value();
-
-				if(!sessionList.isEmpty())
-				{
-					ZhttpRequestPacket zreq;
-					zreq.from = zhttpInstanceId;
-					foreach(Session *s, sessionList)
-						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
-					zreq.type = ZhttpRequestPacket::KeepAlive;
-					zhttp_out_write(Http, zreq, zhttpAddress);
-				}
-			}
-		}
-
-		{
-			QHash<QByteArray, QList<Session*> > sessionListBySender;
-
-			QHashIterator<Rid, Session*> it(sessionsByZwsRid);
-			while(it.hasNext())
-			{
-				it.next();
-				Session *s = it.value();
-
-				if(!s->inHandoff && !s->zhttpAddress.isEmpty())
-				{
-					if(s->multi)
-					{
-						if(!sessionListBySender.contains(s->zhttpAddress))
-							sessionListBySender.insert(s->zhttpAddress, QList<Session*>());
-
-						QList<Session*> &sessionList = sessionListBySender[s->zhttpAddress];
-						sessionList += s;
-
-						// if we're at max, send out now
-						if(sessionList.count() >= ZHTTP_IDS_MAX)
-						{
-							ZhttpRequestPacket zreq;
-							zreq.from = zwsInstanceId;
-							foreach(Session *i, sessionList)
-								zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
-							zreq.type = ZhttpRequestPacket::KeepAlive;
-							zhttp_out_write(WebSocket, zreq, s->zhttpAddress);
-
-							sessionList.clear();
-							sessionListBySender.remove(s->zhttpAddress);
-						}
-					}
-					else
-					{
-						// session doesn't support sending with multiple ids
-						ZhttpRequestPacket zreq;
-						zreq.from = zhttpInstanceId;
-						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
-						zreq.type = ZhttpRequestPacket::KeepAlive;
-						zhttp_out_write(WebSocket, zreq, s->zhttpAddress);
-					}
-				}
-			}
-
-			// send the rest
-			QHashIterator<QByteArray, QList<Session*> > sit(sessionListBySender);
-			while(sit.hasNext())
-			{
-				sit.next();
-				const QByteArray &zhttpAddress = sit.key();
-				const QList<Session*> &sessionList = sit.value();
-
-				if(!sessionList.isEmpty())
-				{
-					ZhttpRequestPacket zreq;
-					zreq.from = zwsInstanceId;
-					foreach(Session *s, sessionList)
-						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
-					zreq.type = ZhttpRequestPacket::KeepAlive;
-					zhttp_out_write(WebSocket, zreq, zhttpAddress);
-				}
-			}
-		}
-	}
-
-	void m2KeepAlive_timeout()
-	{
-		QHash<int, QList<QByteArray> > connIdListBySender;
-
-		QHashIterator<Rid, Session*> it(sessionsByM2Rid);
-		while(it.hasNext())
-		{
-			it.next();
-			Session *s = it.value();
-
-			if(!connIdListBySender.contains(s->conn->identIndex))
-				connIdListBySender.insert(s->conn->identIndex, QList<QByteArray>());
-
-			QList<QByteArray> &connIdList = connIdListBySender[s->conn->identIndex];
-			connIdList += s->conn->id;
-
-			// if we're at max, send out now
-			if(connIdList.count() >= M2_HANDLER_TARGETS_MAX)
-			{
-				QVariantHash args;
-				args["keep-alive"] = true;
-				m2_writeCtlMany(m2_send_idents[s->conn->identIndex], connIdList, args);
-
-				connIdList.clear();
-				connIdListBySender.remove(s->conn->identIndex);
-			}
-		}
-
-		// send the rest
-		QHashIterator<int, QList<QByteArray> > cit(connIdListBySender);
-		while(cit.hasNext())
-		{
-			cit.next();
-			int index = cit.key();
-			const QList<QByteArray> &connIdList = cit.value();
-
-			if(!connIdList.isEmpty())
-			{
-				QVariantHash args;
-				args["keep-alive"] = true;
-				m2_writeCtlMany(m2_send_idents[index], connIdList, args);
-			}
-		}
+		refreshM2Connections(now);
+		refreshSessions(now);
+		expireSessions(now);
 	}
 
 	void reload()
