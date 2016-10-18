@@ -95,6 +95,7 @@ public:
 			if(!sentKill)
 			{
 				sentKill = true;
+				state = Stopping;
 				log_warning("%s running while needing to exit, forcing quit", qPrintable(name));
 				proc->kill();
 
@@ -223,7 +224,10 @@ private slots:
 
 		if(exitStatus == QProcess::CrashExit)
 		{
-			emit q->error("Exited uncleanly");
+			if(sentKill)
+				emit q->stopped();
+			else
+				emit q->error("Exited uncleanly");
 			return;
 		}
 
