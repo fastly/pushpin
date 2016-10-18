@@ -312,8 +312,11 @@ public:
 				connectionInfoByRoute.remove(c->routeId);
 		}
 
-		connectionInfoByLastRefresh.remove(QPair<qint64, ConnectionInfo*>(c->lastRefresh, c));
-		connectionInfoRefreshBuckets[c->refreshBucket].remove(c);
+		if(c->lastRefresh >= 0)
+		{
+			connectionInfoByLastRefresh.remove(QPair<qint64, ConnectionInfo*>(c->lastRefresh, c));
+			connectionInfoRefreshBuckets[c->refreshBucket].remove(c);
+		}
 	}
 
 	void insertExternalConnection(ConnectionInfo *c)
@@ -350,7 +353,8 @@ public:
 				externalConnectionInfoByRoute.remove(c->routeId);
 		}
 
-		externalConnectionInfoByLastActive.remove(QPair<qint64, ConnectionInfo*>(c->lastActive, c));
+		if(c->lastActive >= 0)
+			externalConnectionInfoByLastActive.remove(QPair<qint64, ConnectionInfo*>(c->lastActive, c));
 	}
 
 	void insertSubscription(Subscription *s)
@@ -584,6 +588,11 @@ public:
 				// in linger mode, next refresh is set to the time we should
 				//   delete the connection rather than refresh
 				toDelete += c;
+
+				// need to remove from map to avoid reprocessing
+				connectionInfoByLastRefresh.erase(it);
+				connectionInfoRefreshBuckets[c->refreshBucket].remove(c);
+				c->lastRefresh = -1;
 			}
 			else
 			{
