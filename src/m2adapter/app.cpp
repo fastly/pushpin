@@ -465,7 +465,8 @@ public:
 
 	~Private()
 	{
-		qDeleteAll(sessionsByM2Rid);
+		qDeleteAll(sessionsByZhttpRid);
+		qDeleteAll(sessionsByZwsRid);
 		qDeleteAll(m2ConnectionsByRid);
 	}
 
