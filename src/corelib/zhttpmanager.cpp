@@ -23,6 +23,7 @@
 #include <QStringList>
 #include <QHash>
 #include <QPointer>
+#include <QDateTime>
 #include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
@@ -39,7 +40,12 @@
 #define CLIENT_STREAM_WAIT_TIME 500
 #define SERVER_WAIT_TIME 500
 
-#define KEEPALIVE_INTERVAL 45000
+#define REFRESH_INTERVAL 1000
+#define ZHTTP_EXPIRE 60000
+
+#define ZHTTP_SHOULD_PROCESS (ZHTTP_EXPIRE * 3 / 4)
+#define ZHTTP_MUST_PROCESS (ZHTTP_EXPIRE * 4 / 5)
+#define ZHTTP_REFRESH_BUCKETS (ZHTTP_SHOULD_PROCESS / REFRESH_INTERVAL)
 
 // this doesn't have to match the peer, but we'll set a reasonable number
 #define ZHTTP_IDS_MAX 128
@@ -54,6 +60,15 @@ public:
 		UnknownSession,
 		HttpSession,
 		WebSocketSession
+	};
+
+	class KeepAliveRegistration
+	{
+	public:
+		SessionType type;
+		union { ZhttpRequest *req; ZWebSocket *sock; } p;
+		qint64 lastRefresh;
+		int refreshBucket;
 	};
 
 	ZhttpManager *q;
@@ -81,9 +96,11 @@ public:
 	QHash<ZWebSocket::Rid, ZWebSocket*> clientSocksByRid;
 	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
 	QList<ZWebSocket*> serverPendingSocks;
-	QTimer *keepAliveTimer;
-	QSet<ZhttpRequest*> keepAliveReqs;
-	QSet<ZWebSocket*> keepAliveSocks;
+	QTimer *refreshTimer;
+	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
+	QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
+	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
+	int currentSessionRefreshBucket;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -97,17 +114,27 @@ public:
 		server_out_sock(0),
 		server_in_valve(0),
 		ipcFileMode(-1),
-		doBind(false)
+		doBind(false),
+		currentSessionRefreshBucket(0)
 	{
-		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
+		refreshTimer = new QTimer(this);
+		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
 	}
 
 	~Private()
 	{
-		keepAliveTimer->disconnect(this);
-		keepAliveTimer->setParent(0);
-		keepAliveTimer->deleteLater();
+		assert(clientReqsByRid.isEmpty());
+		assert(serverReqsByRid.isEmpty());
+		assert(clientSocksByRid.isEmpty());
+		assert(serverSocksByRid.isEmpty());
+		assert(keepAliveRegistrations.isEmpty());
+
+		refreshTimer->disconnect(this);
+		refreshTimer->setParent(0);
+		refreshTimer->deleteLater();
+
+		qDeleteAll(serverPendingReqs);
+		qDeleteAll(serverPendingSocks);
 	}
 
 	bool setupClientOut()
@@ -262,6 +289,22 @@ public:
 		return true;
 	}
 
+	int smallestSessionRefreshBucket()
+	{
+		int best = -1;
+		int bestSize;
+		for(int n = 0; n < ZHTTP_REFRESH_BUCKETS; ++n)
+		{
+			if(best == -1 || sessionRefreshBuckets[n].count() < bestSize)
+			{
+				best = n;
+				bestSize = sessionRefreshBuckets[n].count();
+			}
+		}
+
+		return best;
+	}
+
 	void tryRespondCancel(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
 	{
 		assert(!packet.from.isEmpty());
@@ -343,15 +386,54 @@ public:
 		}
 	}
 
+	void registerKeepAlive(void *p, SessionType type)
+	{
+		if(keepAliveRegistrations.contains(p))
+			return;
+
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		Private::KeepAliveRegistration *r = new KeepAliveRegistration;
+		r->type = type;
+		if(type == HttpSession)
+			r->p.req = (ZhttpRequest *)p;
+		else // WebSocketSession
+			r->p.sock = (ZWebSocket *)p;
+
+		keepAliveRegistrations.insert(p, r);
+
+		r->lastRefresh = now;
+		sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+
+		r->refreshBucket = smallestSessionRefreshBucket();
+		sessionRefreshBuckets[r->refreshBucket] += r;
+
+		setupKeepAlive();
+	}
+
+	void unregisterKeepAlive(void *p)
+	{
+		KeepAliveRegistration *r = keepAliveRegistrations.value(p);
+		if(!r)
+			return;
+
+		sessionRefreshBuckets[r->refreshBucket].remove(r);
+		sessionsByLastRefresh.remove(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r));
+		keepAliveRegistrations.remove(p);
+		delete r;
+
+		setupKeepAlive();
+	}
+
 	void setupKeepAlive()
 	{
-		if(!keepAliveReqs.isEmpty() || !keepAliveSocks.isEmpty())
+		if(!keepAliveRegistrations.isEmpty())
 		{
-			if(!keepAliveTimer->isActive())
-				keepAliveTimer->start(KEEPALIVE_INTERVAL);
+			if(!refreshTimer->isActive())
+				refreshTimer->start(REFRESH_INTERVAL);
 		}
 		else
-			keepAliveTimer->stop();
+			refreshTimer->stop();
 	}
 
 	void writeKeepAlive(SessionType type, const QList<ZhttpRequestPacket::Id> &ids, const QByteArray &zhttpAddress)
@@ -709,157 +791,243 @@ public slots:
 		Q_UNUSED(count);
 	}
 
-	void keepAlive_timeout()
+	void refresh_timeout()
 	{
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		QHash<QByteArray, QList<KeepAliveRegistration*> > clientSessionsBySender[2]; // index corresponds to type
+		QHash<QByteArray, QList<KeepAliveRegistration*> > serverSessionsBySender[2]; // index corresponds to type
+
+		// process the current bucket
+		const QSet<KeepAliveRegistration*> &bucket = sessionRefreshBuckets[currentSessionRefreshBucket];
+		foreach(KeepAliveRegistration *r, bucket)
 		{
-			QHash<QByteArray, QList<ZhttpRequestPacket::Id> > clientIdsBySender;
-			QHash<QByteArray, QList<ZhttpResponsePacket::Id> > serverIdsBySender;
-
-			foreach(ZhttpRequest *req, keepAliveReqs)
+			QPair<QByteArray, QByteArray> rid;
+			bool isServer;
+			if(r->type == HttpSession)
 			{
-				ZhttpRequest::Rid rid = req->rid();
+				rid = r->p.req->rid();
+				isServer = r->p.req->isServer();
+			}
+			else // WebSocketSession
+			{
+				rid = r->p.sock->rid();
+				isServer = r->p.sock->isServer();
+			}
 
-				if(req->isServer())
+			QByteArray sender;
+			if(isServer)
+			{
+				sender = rid.first;
+			}
+			else
+			{
+				if(r->type == HttpSession)
+					sender = r->p.req->toAddress();
+				else // WebSocketSession
+					sender = r->p.sock->toAddress();
+			}
+
+			assert(!sender.isEmpty());
+
+			// move to the end
+			QPair<qint64, KeepAliveRegistration*> k(r->lastRefresh, r);
+			sessionsByLastRefresh.remove(k);
+			r->lastRefresh = now;
+			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+
+			QHash<QByteArray, QList<KeepAliveRegistration*> > &sessionsBySender = (isServer ? serverSessionsBySender[r->type] : clientSessionsBySender[r->type]);
+
+			if(!sessionsBySender.contains(sender))
+				sessionsBySender.insert(sender, QList<KeepAliveRegistration*>());
+
+			QList<KeepAliveRegistration*> &sessions = sessionsBySender[sender];
+			sessions += r;
+
+			// if we're at max, send out now
+			if(sessions.count() >= ZHTTP_IDS_MAX)
+			{
+				if(isServer)
 				{
-					QByteArray sender = rid.first;
-
-					if(!serverIdsBySender.contains(sender))
-						serverIdsBySender.insert(sender, QList<ZhttpResponsePacket::Id>());
-
-					QList<ZhttpResponsePacket::Id> &ids = serverIdsBySender[sender];
-					ids += ZhttpResponsePacket::Id(rid.second, req->outSeqInc());
-
-					// if we're at max, send out now
-					if(ids.count() >= ZHTTP_IDS_MAX)
+					QList<ZhttpResponsePacket::Id> ids;
+					foreach(KeepAliveRegistration *i, sessions)
 					{
-						writeKeepAlive(HttpSession, ids, sender);
-
-						ids.clear();
-						serverIdsBySender.remove(sender);
+						assert(i->type == r->type);
+						if(r->type == HttpSession)
+							ids += ZhttpResponsePacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
+						else // WebSocketSession
+							ids += ZhttpResponsePacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
 					}
+
+					writeKeepAlive(r->type, ids, sender);
 				}
 				else
 				{
-					QByteArray sender = req->toAddress();
-
-					if(!clientIdsBySender.contains(sender))
-						clientIdsBySender.insert(sender, QList<ZhttpRequestPacket::Id>());
-
-					QList<ZhttpRequestPacket::Id> &ids = clientIdsBySender[sender];
-					ids += ZhttpRequestPacket::Id(rid.second, req->outSeqInc());
-
-					// if we're at max, send out now
-					if(ids.count() >= ZHTTP_IDS_MAX)
+					QList<ZhttpRequestPacket::Id> ids;
+					foreach(KeepAliveRegistration *i, sessions)
 					{
-						writeKeepAlive(HttpSession, ids, sender);
+						assert(i->type == r->type);
+						if(r->type == HttpSession)
+							ids += ZhttpRequestPacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
+						else // WebSocketSession
+							ids += ZhttpRequestPacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
+					}
 
-						ids.clear();
-						clientIdsBySender.remove(sender);
+					writeKeepAlive(r->type, ids, sender);
+				}
+
+				sessions.clear();
+				sessionsBySender.remove(sender);
+			}
+		}
+
+		// process any others
+		qint64 threshold = now - ZHTTP_MUST_PROCESS;
+		while(!sessionsByLastRefresh.isEmpty())
+		{
+			QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*>::iterator it = sessionsByLastRefresh.begin();
+			KeepAliveRegistration *r = it.value();
+
+			if(r->lastRefresh > threshold)
+				break;
+
+			QPair<QByteArray, QByteArray> rid;
+			bool isServer;
+			if(r->type == HttpSession)
+			{
+				rid = r->p.req->rid();
+				isServer = r->p.req->isServer();
+			}
+			else // WebSocketSession
+			{
+				rid = r->p.sock->rid();
+				isServer = r->p.sock->isServer();
+			}
+
+			QByteArray sender;
+			if(isServer)
+			{
+				sender = rid.first;
+			}
+			else
+			{
+				if(r->type == HttpSession)
+					sender = r->p.req->toAddress();
+				else // WebSocketSession
+					sender = r->p.sock->toAddress();
+			}
+
+			assert(!sender.isEmpty());
+
+			// move to the end
+			sessionsByLastRefresh.erase(it);
+			r->lastRefresh = now;
+			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
+
+			QHash<QByteArray, QList<KeepAliveRegistration*> > &sessionsBySender = (isServer ? serverSessionsBySender[r->type] : clientSessionsBySender[r->type]);
+
+			if(!sessionsBySender.contains(sender))
+				sessionsBySender.insert(sender, QList<KeepAliveRegistration*>());
+
+			QList<KeepAliveRegistration*> &sessions = sessionsBySender[sender];
+			sessions += r;
+
+			// if we're at max, send out now
+			if(sessions.count() >= ZHTTP_IDS_MAX)
+			{
+				if(isServer)
+				{
+					QList<ZhttpResponsePacket::Id> ids;
+					foreach(KeepAliveRegistration *i, sessions)
+					{
+						assert(i->type == r->type);
+						if(r->type == HttpSession)
+							ids += ZhttpResponsePacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
+						else // WebSocketSession
+							ids += ZhttpResponsePacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
+					}
+
+					writeKeepAlive(r->type, ids, sender);
+				}
+				else
+				{
+					QList<ZhttpRequestPacket::Id> ids;
+					foreach(KeepAliveRegistration *i, sessions)
+					{
+						assert(i->type == r->type);
+						if(r->type == HttpSession)
+							ids += ZhttpRequestPacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
+						else // WebSocketSession
+							ids += ZhttpRequestPacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
+					}
+
+					writeKeepAlive(r->type, ids, sender);
+				}
+
+				sessions.clear();
+				sessionsBySender.remove(sender);
+			}
+		}
+
+		// send last packets
+		for(int n = 0; n < 2; ++n)
+		{
+			SessionType type = (SessionType)n;
+
+			{
+				QHashIterator<QByteArray, QList<KeepAliveRegistration*> > sit(clientSessionsBySender[n]);
+				while(sit.hasNext())
+				{
+					sit.next();
+					const QByteArray &sender = sit.key();
+					const QList<KeepAliveRegistration*> &sessions = sit.value();
+
+					if(!sessions.isEmpty())
+					{
+						QList<ZhttpRequestPacket::Id> ids;
+						foreach(KeepAliveRegistration *i, sessions)
+						{
+							assert(i->type == type);
+							if(type == HttpSession)
+								ids += ZhttpRequestPacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
+							else // WebSocketSession
+								ids += ZhttpRequestPacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
+						}
+
+						writeKeepAlive(type, ids, sender);
 					}
 				}
 			}
 
-			// send the rest
 			{
-				QHashIterator<QByteArray, QList<ZhttpRequestPacket::Id> > sit(clientIdsBySender);
+				QHashIterator<QByteArray, QList<KeepAliveRegistration*> > sit(serverSessionsBySender[n]);
 				while(sit.hasNext())
 				{
 					sit.next();
-					const QByteArray &zhttpAddress = sit.key();
-					const QList<ZhttpRequestPacket::Id> &ids = sit.value();
+					const QByteArray &sender = sit.key();
+					const QList<KeepAliveRegistration*> &sessions = sit.value();
 
-					if(!ids.isEmpty())
-						writeKeepAlive(HttpSession, ids, zhttpAddress);
-				}
-			}
-			{
-				QHashIterator<QByteArray, QList<ZhttpResponsePacket::Id> > sit(serverIdsBySender);
-				while(sit.hasNext())
-				{
-					sit.next();
-					const QByteArray &zhttpAddress = sit.key();
-					const QList<ZhttpResponsePacket::Id> &ids = sit.value();
+					if(!sessions.isEmpty())
+					{
+						QList<ZhttpResponsePacket::Id> ids;
+						foreach(KeepAliveRegistration *i, sessions)
+						{
+							assert(i->type == type);
+							if(type == HttpSession)
+								ids += ZhttpResponsePacket::Id(i->p.req->rid().second, i->p.req->outSeqInc());
+							else // WebSocketSession
+								ids += ZhttpResponsePacket::Id(i->p.sock->rid().second, i->p.sock->outSeqInc());
+						}
 
-					if(!ids.isEmpty())
-						writeKeepAlive(HttpSession, ids, zhttpAddress);
+						writeKeepAlive(type, ids, sender);
+					}
 				}
 			}
 		}
 
-		{
-			QHash<QByteArray, QList<ZhttpRequestPacket::Id> > clientIdsBySender;
-			QHash<QByteArray, QList<ZhttpResponsePacket::Id> > serverIdsBySender;
-
-			foreach(ZWebSocket *sock, keepAliveSocks)
-			{
-				ZWebSocket::Rid rid = sock->rid();
-
-				if(sock->isServer())
-				{
-					QByteArray sender = rid.first;
-
-					if(!serverIdsBySender.contains(sender))
-						serverIdsBySender.insert(sender, QList<ZhttpResponsePacket::Id>());
-
-					QList<ZhttpResponsePacket::Id> &ids = serverIdsBySender[sender];
-					ids += ZhttpResponsePacket::Id(rid.second, sock->outSeqInc());
-
-					// if we're at max, send out now
-					if(ids.count() >= ZHTTP_IDS_MAX)
-					{
-						writeKeepAlive(WebSocketSession, ids, sender);
-
-						ids.clear();
-						serverIdsBySender.remove(sender);
-					}
-				}
-				else
-				{
-					QByteArray sender = sock->toAddress();
-
-					if(!clientIdsBySender.contains(sender))
-						clientIdsBySender.insert(sender, QList<ZhttpRequestPacket::Id>());
-
-					QList<ZhttpRequestPacket::Id> &ids = clientIdsBySender[sender];
-					ids += ZhttpRequestPacket::Id(rid.second, sock->outSeqInc());
-
-					// if we're at max, send out now
-					if(ids.count() >= ZHTTP_IDS_MAX)
-					{
-						writeKeepAlive(WebSocketSession, ids, sender);
-
-						ids.clear();
-						clientIdsBySender.remove(sender);
-					}
-				}
-			}
-
-			// send the rest
-			{
-				QHashIterator<QByteArray, QList<ZhttpRequestPacket::Id> > sit(clientIdsBySender);
-				while(sit.hasNext())
-				{
-					sit.next();
-					const QByteArray &zhttpAddress = sit.key();
-					const QList<ZhttpRequestPacket::Id> &ids = sit.value();
-
-					if(!ids.isEmpty())
-						writeKeepAlive(WebSocketSession, ids, zhttpAddress);
-				}
-			}
-			{
-				QHashIterator<QByteArray, QList<ZhttpResponsePacket::Id> > sit(serverIdsBySender);
-				while(sit.hasNext())
-				{
-					sit.next();
-					const QByteArray &zhttpAddress = sit.key();
-					const QList<ZhttpResponsePacket::Id> &ids = sit.value();
-
-					if(!ids.isEmpty())
-						writeKeepAlive(WebSocketSession, ids, zhttpAddress);
-				}
-			}
-		}
+		++currentSessionRefreshBucket;
+		if(currentSessionRefreshBucket >= ZHTTP_REFRESH_BUCKETS)
+			currentSessionRefreshBucket = 0;
 	}
 };
 
@@ -1100,26 +1268,22 @@ void ZhttpManager::writeWs(const ZhttpResponsePacket &packet, const QByteArray &
 
 void ZhttpManager::registerKeepAlive(ZhttpRequest *req)
 {
-	d->keepAliveReqs += req;
-	d->setupKeepAlive();
+	d->registerKeepAlive(req, Private::HttpSession);
 }
 
 void ZhttpManager::unregisterKeepAlive(ZhttpRequest *req)
 {
-	d->keepAliveReqs -= req;
-	d->setupKeepAlive();
+	d->unregisterKeepAlive(req);
 }
 
 void ZhttpManager::registerKeepAlive(ZWebSocket *sock)
 {
-	d->keepAliveSocks += sock;
-	d->setupKeepAlive();
+	d->registerKeepAlive(sock, Private::WebSocketSession);
 }
 
 void ZhttpManager::unregisterKeepAlive(ZWebSocket *sock)
 {
-	d->keepAliveSocks -= sock;
-	d->setupKeepAlive();
+	d->unregisterKeepAlive(sock);
 }
 
 #include "zhttpmanager.moc"
