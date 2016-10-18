@@ -393,7 +393,7 @@ public:
 
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-		Private::KeepAliveRegistration *r = new KeepAliveRegistration;
+		KeepAliveRegistration *r = new KeepAliveRegistration;
 		r->type = type;
 		if(type == HttpSession)
 			r->p.req = (ZhttpRequest *)p;
@@ -836,7 +836,7 @@ public slots:
 			r->lastRefresh = now;
 			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
-			QHash<QByteArray, QList<KeepAliveRegistration*> > &sessionsBySender = (isServer ? serverSessionsBySender[r->type] : clientSessionsBySender[r->type]);
+			QHash<QByteArray, QList<KeepAliveRegistration*> > &sessionsBySender = (isServer ? serverSessionsBySender[r->type - 1] : clientSessionsBySender[r->type - 1]);
 
 			if(!sessionsBySender.contains(sender))
 				sessionsBySender.insert(sender, QList<KeepAliveRegistration*>());
@@ -924,7 +924,7 @@ public slots:
 			r->lastRefresh = now;
 			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
-			QHash<QByteArray, QList<KeepAliveRegistration*> > &sessionsBySender = (isServer ? serverSessionsBySender[r->type] : clientSessionsBySender[r->type]);
+			QHash<QByteArray, QList<KeepAliveRegistration*> > &sessionsBySender = (isServer ? serverSessionsBySender[r->type - 1] : clientSessionsBySender[r->type - 1]);
 
 			if(!sessionsBySender.contains(sender))
 				sessionsBySender.insert(sender, QList<KeepAliveRegistration*>());
@@ -972,7 +972,7 @@ public slots:
 		// send last packets
 		for(int n = 0; n < 2; ++n)
 		{
-			SessionType type = (SessionType)n;
+			SessionType type = (SessionType)(n + 1);
 
 			{
 				QHashIterator<QByteArray, QList<KeepAliveRegistration*> > sit(clientSessionsBySender[n]);
