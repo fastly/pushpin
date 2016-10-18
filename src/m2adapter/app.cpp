@@ -2024,7 +2024,7 @@ public:
 				if(sessionList.count() >= ZHTTP_IDS_MAX)
 				{
 					ZhttpRequestPacket zreq;
-					zreq.from = zhttpInstanceId;
+					zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 					foreach(Session *i, sessionList)
 						zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
 					zreq.type = ZhttpRequestPacket::KeepAlive;
@@ -2038,7 +2038,7 @@ public:
 			{
 				// session doesn't support sending with multiple ids
 				ZhttpRequestPacket zreq;
-				zreq.from = zhttpInstanceId;
+				zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 				zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
 				zreq.type = ZhttpRequestPacket::KeepAlive;
 				zhttp_out_write(s->mode, zreq, s->zhttpAddress);
@@ -2074,7 +2074,7 @@ public:
 				if(sessionList.count() >= ZHTTP_IDS_MAX)
 				{
 					ZhttpRequestPacket zreq;
-					zreq.from = zhttpInstanceId;
+					zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 					foreach(Session *i, sessionList)
 						zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
 					zreq.type = ZhttpRequestPacket::KeepAlive;
@@ -2088,7 +2088,7 @@ public:
 			{
 				// session doesn't support sending with multiple ids
 				ZhttpRequestPacket zreq;
-				zreq.from = zhttpInstanceId;
+				zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
 				zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
 				zreq.type = ZhttpRequestPacket::KeepAlive;
 				zhttp_out_write(s->mode, zreq, s->zhttpAddress);
@@ -2098,6 +2098,8 @@ public:
 		// send last packets
 		for(int n = 0; n < 2; ++n)
 		{
+			Mode mode = (Mode)n;
+
 			QHashIterator<QByteArray, QList<Session*> > sit(sessionListBySender[n]);
 			while(sit.hasNext())
 			{
@@ -2108,11 +2110,11 @@ public:
 				if(!sessionList.isEmpty())
 				{
 					ZhttpRequestPacket zreq;
-					zreq.from = zhttpInstanceId;
+					zreq.from = (mode == Http ? zhttpInstanceId : zwsInstanceId);
 					foreach(Session *s, sessionList)
 						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
 					zreq.type = ZhttpRequestPacket::KeepAlive;
-					zhttp_out_write((Mode)n, zreq, zhttpAddress);
+					zhttp_out_write(mode, zreq, zhttpAddress);
 				}
 			}
 		}
