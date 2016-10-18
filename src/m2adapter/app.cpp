@@ -857,9 +857,19 @@ public:
 	void destroySession(Session *s)
 	{
 		unlinkConnection(s);
-		sessionRefreshBuckets[s->refreshBucket].remove(s);
-		sessionsByLastRefresh.remove(QPair<qint64, Session*>(s->lastRefresh, s));
+
+		if(s->lastRefresh >= 0)
+		{
+			QPair<qint64, Session*> k(s->lastRefresh, s);
+			if(sessionsByLastRefresh.contains(k))
+			{
+				sessionRefreshBuckets[s->refreshBucket].remove(s);
+				sessionsByLastRefresh.remove(k);
+			}
+		}
+
 		sessionsByLastActive.remove(QPair<qint64, Session*>(s->lastActive, s));
+
 		if(s->mode == Http)
 			sessionsByZhttpRid.remove(Rid(zhttpInstanceId, s->id));
 		else // WebSocket
