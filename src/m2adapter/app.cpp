@@ -634,6 +634,7 @@ public:
 		connect(m2_in_valve, &QZmq::Valve::readyRead, this, &Private::m2_in_readyRead);
 
 		m2_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+		m2_out_sock->setShutdownWaitTime(0);
 		m2_out_sock->setHwm(DEFAULT_HWM);
 		m2_out_sock->setWriteQueueEnabled(false);
 		foreach(const QString &spec, m2_out_specs)
@@ -778,6 +779,7 @@ public:
 			}
 
 			zws_out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+			zws_out_stream_sock->setShutdownWaitTime(0);
 			zws_out_stream_sock->setHwm(DEFAULT_HWM);
 			if(zws_connect)
 			{
