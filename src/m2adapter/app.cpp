@@ -45,6 +45,8 @@
 #define M2_CONNECTION_EXPIRE 120000
 #define ZHTTP_EXPIRE 60000
 #define CONTROL_REQUEST_EXPIRE 30000
+#define ZHTTP_LOW_PRIORITY_MAX 50000
+#define ZHTTP_LOW_PRIORITY_RATE 2500
 
 #define M2_CONNECTION_SHOULD_PROCESS (M2_CONNECTION_EXPIRE * 3 / 4)
 #define M2_CONNECTION_MUST_PROCESS (M2_CONNECTION_EXPIRE * 4 / 5)
@@ -53,6 +55,8 @@
 #define ZHTTP_SHOULD_PROCESS (ZHTTP_EXPIRE * 3 / 4)
 #define ZHTTP_MUST_PROCESS (ZHTTP_EXPIRE * 4 / 5)
 #define ZHTTP_REFRESH_BUCKETS (ZHTTP_SHOULD_PROCESS / REFRESH_INTERVAL)
+
+#define ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH (ZHTTP_LOW_PRIORITY_RATE * 1000 / REFRESH_INTERVAL)
 
 // make sure this is not larger than Mongrel2's DELIVER_OUTSTANDING_MSGS
 #define M2_PENDING_MAX 16
@@ -400,6 +404,21 @@ public:
 		}
 	};
 
+	class QueuedZhttpPacket
+	{
+	public:
+		Mode mode;
+		QByteArray addr;
+		ZhttpRequestPacket packet;
+
+		QueuedZhttpPacket(Mode _mode, QByteArray _addr, ZhttpRequestPacket _packet) :
+			mode(_mode),
+			addr(_addr),
+			packet(_packet)
+		{
+		}
+	};
+
 	App *q;
 	ArgsData args;
 	QByteArray zhttpInstanceId;
@@ -427,6 +446,8 @@ public:
 	QSet<Session*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
 	QMap<QPair<qint64, Session*>, Session*> sessionsByLastActive;
+	int zhttpLowPriorityMeter;
+	QList<QueuedZhttpPacket> zhttpLowPriorityQueue;
 	int m2_client_buffer;
 	int zhttpConnectPort;
 	int zwsConnectPort;
@@ -451,7 +472,8 @@ public:
 		zhttp_in_valve(0),
 		zws_in_valve(0),
 		currentM2RefreshBucket(0),
-		currentSessionRefreshBucket(0)
+		currentSessionRefreshBucket(0),
+		zhttpLowPriorityMeter(0)
 	{
 		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
 		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
@@ -1218,6 +1240,26 @@ public:
 		zhttp_out_write(s->mode, out, s->zhttpAddress);
 	}
 
+	void zhttp_out_write_lowPriority(Session *s, const ZhttpRequestPacket &packet)
+	{
+		assert(!s->zhttpAddress.isEmpty());
+
+		if(zhttpLowPriorityQueue.count() >= ZHTTP_LOW_PRIORITY_MAX)
+			return;
+
+		ZhttpRequestPacket out = packet;
+		out.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
+		out.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
+
+		if(zhttpLowPriorityQueue.isEmpty() && zhttpLowPriorityMeter < ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH)
+		{
+			zhttp_out_write(s->mode, out, s->zhttpAddress);
+			++zhttpLowPriorityMeter;
+		}
+		else
+			zhttpLowPriorityQueue += QueuedZhttpPacket(s->mode, s->zhttpAddress, out);
+	}
+
 	void handleControlResponse(int index, const QVariant &data)
 	{
 #ifdef CONTROL_PORT_DEBUG
@@ -1373,7 +1415,7 @@ public:
 			else
 				zreq.type = ZhttpRequestPacket::Cancel;
 
-			zhttp_out_write(s, zreq);
+			zhttp_out_write_lowPriority(s, zreq);
 
 			destroySession(s);
 		}
@@ -2153,6 +2195,23 @@ public:
 		}
 	}
 
+	void sendZhttpLowPriority()
+	{
+		int sent = zhttpLowPriorityMeter;
+
+		if(zhttpLowPriorityMeter > ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH)
+			zhttpLowPriorityMeter -= ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH;
+		else
+			zhttpLowPriorityMeter = 0;
+
+		while(!zhttpLowPriorityQueue.isEmpty() && sent < ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH)
+		{
+			QueuedZhttpPacket q = zhttpLowPriorityQueue.takeFirst();
+			zhttp_out_write(q.mode, q.packet, q.addr);
+			++sent;
+		}
+	}
+
 private slots:
 	void m2_in_readyRead(const QList<QByteArray> &message)
 	{
@@ -2675,6 +2734,7 @@ private slots:
 		refreshM2Connections(now);
 		refreshSessions(now);
 		expireSessions(now);
+		sendZhttpLowPriority();
 	}
 
 	void reload()
