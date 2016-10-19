@@ -1067,6 +1067,10 @@ void StatsManager::processExternalPacket(const StatsPacket &packet)
 	if(packet.type != StatsPacket::Connected && packet.type != StatsPacket::Disconnected)
 		return;
 
+	// can't add an external connection with same ID as local
+	if(packet.type == StatsPacket::Connected && d->connectionInfoById.contains(packet.connectionId))
+		return;
+
 	qint64 now = QDateTime::currentMSecsSinceEpoch();
 
 	QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = d->externalConnectionInfoByFrom[packet.from];
