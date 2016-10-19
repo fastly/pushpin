@@ -904,6 +904,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 			{
 				replacing = true;
 				d->removeExternalConnection(other);
+				delete other;
 				break;
 			}
 		}
@@ -1070,6 +1071,32 @@ void StatsManager::processExternalPacket(const StatsPacket &packet)
 	// can't add an external connection with same ID as local
 	if(packet.type == StatsPacket::Connected && d->connectionInfoById.contains(packet.connectionId))
 		return;
+
+	// if the connection exists under a different from address, remove it.
+	// note: this iterates over all the known external sources, which at
+	//   at the time of this writing is almost certainly just 1 (a single
+	//   pushpin-proxy source).
+	QList<Private::ConnectionInfo*> toDelete;
+	QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo*> > it(d->externalConnectionInfoByFrom);
+	while(it.hasNext())
+	{
+		it.next();
+		const QByteArray &from = it.key();
+
+		if(from == packet.from)
+			continue;
+
+		const QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = it.value();
+
+		Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
+		if(c)
+			toDelete += c;
+	}
+	foreach(Private::ConnectionInfo *c, toDelete)
+	{
+		d->removeExternalConnection(c);
+		delete c;
+	}
 
 	qint64 now = QDateTime::currentMSecsSinceEpoch();
 
