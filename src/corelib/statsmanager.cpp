@@ -638,7 +638,7 @@ public:
 		if(!reportsEnabled)
 			return;
 
-		QList<ConnectionInfo*> toDelete;
+		QSet<QByteArray> routesUpdated;
 
 		qint64 threshold = now - CONNECTION_EXPIRE;
 		while(!externalConnectionInfoByLastActive.isEmpty())
@@ -649,12 +649,6 @@ public:
 			if(c->lastActive > threshold)
 				break;
 
-			toDelete += c;
-		}
-
-		QSet<QByteArray> routesUpdated;
-		foreach(ConnectionInfo *c, toDelete)
-		{
 			routesUpdated += c->routeId;
 			updateConnectionsMinutes(c, now);
 			removeExternalConnection(c);
