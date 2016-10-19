@@ -1261,7 +1261,10 @@ public slots:
 
 				QList<RequestSession*> toDestroy;
 				foreach(SessionItem *si, sessionItems)
+				{
 					toDestroy += si->rs;
+					delete si;
+				}
 
 				sessionItems.clear();
 				sessionItemsBySession.clear();
