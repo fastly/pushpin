@@ -40,6 +40,8 @@
 #define CLIENT_STREAM_WAIT_TIME 500
 #define SERVER_WAIT_TIME 500
 
+#define PENDING_MAX 100
+
 #define REFRESH_INTERVAL 1000
 #define ZHTTP_EXPIRE 60000
 
@@ -86,7 +88,9 @@ public:
 	QZmq::Socket *server_in_sock;
 	QZmq::Socket *server_in_stream_sock;
 	QZmq::Socket *server_out_sock;
+	QZmq::Valve *client_in_valve;
 	QZmq::Valve *server_in_valve;
+	QZmq::Valve *server_in_stream_valve;
 	QByteArray instanceId;
 	int ipcFileMode;
 	bool doBind;
@@ -112,7 +116,9 @@ public:
 		server_in_sock(0),
 		server_in_stream_sock(0),
 		server_out_sock(0),
+		client_in_valve(0),
 		server_in_valve(0),
+		server_in_stream_valve(0),
 		ipcFileMode(-1),
 		doBind(false),
 		currentSessionRefreshBucket(0)
@@ -187,7 +193,6 @@ public:
 		delete client_in_sock;
 
 		client_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
-		connect(client_in_sock, &QZmq::Socket::readyRead, this, &Private::client_in_readyRead);
 
 		client_in_sock->setHwm(DEFAULT_HWM);
 		client_in_sock->setShutdownWaitTime(0);
@@ -199,6 +204,11 @@ public:
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
+
+		client_in_valve = new QZmq::Valve(client_in_sock, this);
+		connect(client_in_valve, &QZmq::Valve::readyRead, this, &Private::client_in_readyRead);
+
+		client_in_valve->open();
 
 		return true;
 	}
@@ -253,7 +263,6 @@ public:
 		delete server_in_stream_sock;
 
 		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
-		connect(server_in_stream_sock, &QZmq::Socket::readyRead, this, &Private::server_in_stream_readyRead);
 
 		server_in_stream_sock->setIdentity(instanceId);
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
@@ -264,6 +273,11 @@ public:
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
+
+		server_in_stream_valve = new QZmq::Valve(server_in_stream_sock, this);
+		connect(server_in_stream_valve, &QZmq::Valve::readyRead, this, &Private::server_in_stream_readyRead);
+
+		server_in_stream_valve->open();
 
 		return true;
 	}
@@ -465,86 +479,82 @@ public slots:
 		Q_UNUSED(count);
 	}
 
-	void client_in_readyRead()
+	void client_in_readyRead(const QList<QByteArray> &msg)
 	{
+		if(msg.count() != 1)
+		{
+			log_warning("zhttp/zws client: received message with parts != 1, skipping");
+			return;
+		}
+
+		int at = msg[0].indexOf(' ');
+		if(at == -1)
+		{
+			log_warning("zhttp/zws client: received message with invalid format, skipping");
+			return;
+		}
+
+		QByteArray receiver = msg[0].mid(0, at);
+		QByteArray dataRaw = msg[0].mid(at + 1);
+		if(dataRaw.length() < 1 || dataRaw[0] != 'T')
+		{
+			log_warning("zhttp/zws client: received message with invalid format (missing type), skipping");
+			return;
+		}
+
+		QVariant data = TnetString::toVariant(dataRaw.mid(1));
+		if(data.isNull())
+		{
+			log_warning("zhttp/zws client: received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("zhttp/zws client: IN %s %s", receiver.data(), qPrintable(TnetString::variantToString(data, -1)));
+
+		ZhttpResponsePacket p;
+		if(!p.fromVariant(data))
+		{
+			log_warning("zhttp/zws client: received message with invalid format (parse failed), skipping");
+			return;
+		}
+
 		QPointer<QObject> self = this;
 
-		while(client_in_sock->canRead())
+		foreach(const ZhttpResponsePacket::Id &id, p.ids)
 		{
-			QList<QByteArray> msg = client_in_sock->read();
-			if(msg.count() != 1)
+			// is this for a websocket?
+			ZWebSocket *sock = clientSocksByRid.value(ZWebSocket::Rid(instanceId, id.id));
+			if(sock)
 			{
-				log_warning("zhttp/zws client: received message with parts != 1, skipping");
+				sock->handle(id.id, id.seq, p);
+				if(!self)
+					return;
+
 				continue;
 			}
 
-			int at = msg[0].indexOf(' ');
-			if(at == -1)
+			// is this for an http request?
+			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
+			if(req)
 			{
-				log_warning("zhttp/zws client: received message with invalid format, skipping");
+				req->handle(id.id, id.seq, p);
+				if(!self)
+					return;
+
 				continue;
 			}
 
-			QByteArray receiver = msg[0].mid(0, at);
-			QByteArray dataRaw = msg[0].mid(at + 1);
-			if(dataRaw.length() < 1 || dataRaw[0] != 'T')
+			log_debug("zhttp/zws client: received message for unknown request id, canceling");
+
+			// if this was not an error packet, send cancel
+			if(p.type != ZhttpResponsePacket::Error && p.type != ZhttpResponsePacket::Cancel && !p.from.isEmpty())
 			{
-				log_warning("zhttp/zws client: received message with invalid format (missing type), skipping");
-				continue;
-			}
-
-			QVariant data = TnetString::toVariant(dataRaw.mid(1));
-			if(data.isNull())
-			{
-				log_warning("zhttp/zws client: received message with invalid format (tnetstring parse failed), skipping");
-				continue;
-			}
-
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				log_debug("zhttp/zws client: IN %s %s", receiver.data(), qPrintable(TnetString::variantToString(data, -1)));
-
-			ZhttpResponsePacket p;
-			if(!p.fromVariant(data))
-			{
-				log_warning("zhttp/zws client: received message with invalid format (parse failed), skipping");
-				continue;
-			}
-
-			foreach(const ZhttpResponsePacket::Id &id, p.ids)
-			{
-				// is this for a websocket?
-				ZWebSocket *sock = clientSocksByRid.value(ZWebSocket::Rid(instanceId, id.id));
-				if(sock)
-				{
-					sock->handle(id.id, id.seq, p);
-					if(!self)
-						return;
-
-					continue;
-				}
-
-				// is this for an http request?
-				ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
-				if(req)
-				{
-					req->handle(id.id, id.seq, p);
-					if(!self)
-						return;
-
-					continue;
-				}
-
-				log_debug("zhttp/zws client: received message for unknown request id, canceling");
-
-				// if this was not an error packet, send cancel
-				if(p.type != ZhttpResponsePacket::Error && p.type != ZhttpResponsePacket::Cancel && !p.from.isEmpty())
-				{
-					ZhttpRequestPacket out;
-					out.from = instanceId;
-					out.ids += ZhttpRequestPacket::Id(id.id);
-					out.type = ZhttpRequestPacket::Cancel;
-					write(UnknownSession, out, p.from);
-				}
+				ZhttpRequestPacket out;
+				out.from = instanceId;
+				out.ids += ZhttpRequestPacket::Id(id.id);
+				out.type = ZhttpRequestPacket::Cancel;
+				write(UnknownSession, out, p.from);
 			}
 		}
 	}
@@ -616,6 +626,9 @@ public slots:
 			serverSocksByRid.insert(rid, sock);
 			serverPendingSocks += sock;
 
+			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
+				server_in_valve->close();
+
 			emit q->socketReady();
 		}
 		else if(p.uri.scheme() == "https" || p.uri.scheme() == "http")
@@ -639,6 +652,9 @@ public slots:
 
 			serverReqsByRid.insert(rid, req);
 			serverPendingReqs += req;
+
+			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
+				server_in_valve->close();
 
 			emit q->requestReady();
 		}
@@ -711,77 +727,73 @@ public slots:
 		}
 	}
 
-	void server_in_stream_readyRead()
+	void server_in_stream_readyRead(const QList<QByteArray> &msg)
 	{
+		if(msg.count() != 3)
+		{
+			log_warning("zhttp/zws server: received message with parts != 3, skipping");
+			return;
+		}
+
+		if(msg[2].length() < 1 || msg[2][0] != 'T')
+		{
+			log_warning("zhttp/zws server: received message with invalid format (missing type), skipping");
+			return;
+		}
+
+		QVariant data = TnetString::toVariant(msg[2].mid(1));
+		if(data.isNull())
+		{
+			log_warning("zhttp/zws server: received message with invalid format (tnetstring parse failed), skipping");
+			return;
+		}
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("zhttp/zws server: IN stream %s", qPrintable(TnetString::variantToString(data, -1)));
+
+		ZhttpRequestPacket p;
+		if(!p.fromVariant(data))
+		{
+			log_warning("zhttp/zws server: received message with invalid format (parse failed), skipping");
+			return;
+		}
+
 		QPointer<QObject> self = this;
 
-		while(server_in_stream_sock->canRead())
+		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
-			QList<QByteArray> msg = server_in_stream_sock->read();
-			if(msg.count() != 3)
+			// is this for a websocket?
+			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
+			if(sock)
 			{
-				log_warning("zhttp/zws server: received message with parts != 3, skipping");
+				sock->handle(id.id, id.seq, p);
+				if(!self)
+					return;
+
 				continue;
 			}
 
-			if(msg[2].length() < 1 || msg[2][0] != 'T')
+			// is this for an http request?
+			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
+			if(req)
 			{
-				log_warning("zhttp/zws server: received message with invalid format (missing type), skipping");
+				req->handle(id.id, id.seq, p);
+				if(!self)
+					return;
+
 				continue;
 			}
 
-			QVariant data = TnetString::toVariant(msg[2].mid(1));
-			if(data.isNull())
+			log_debug("zhttp/zws server: received message for unknown request id, canceling");
+
+			// if this was not an error packet, send cancel
+			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel && !p.from.isEmpty())
 			{
-				log_warning("zhttp/zws server: received message with invalid format (tnetstring parse failed), skipping");
-				continue;
-			}
-
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				log_debug("zhttp/zws server: IN stream %s", qPrintable(TnetString::variantToString(data, -1)));
-
-			ZhttpRequestPacket p;
-			if(!p.fromVariant(data))
-			{
-				log_warning("zhttp/zws server: received message with invalid format (parse failed), skipping");
-				continue;
-			}
-
-			foreach(const ZhttpRequestPacket::Id &id, p.ids)
-			{
-				// is this for a websocket?
-				ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
-				if(sock)
-				{
-					sock->handle(id.id, id.seq, p);
-					if(!self)
-						return;
-
-					continue;
-				}
-
-				// is this for an http request?
-				ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
-				if(req)
-				{
-					req->handle(id.id, id.seq, p);
-					if(!self)
-						return;
-
-					continue;
-				}
-
-				log_debug("zhttp/zws server: received message for unknown request id, canceling");
-
-				// if this was not an error packet, send cancel
-				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel && !p.from.isEmpty())
-				{
-					ZhttpResponsePacket out;
-					out.from = instanceId;
-					out.ids += ZhttpResponsePacket::Id(id.id);
-					out.type = ZhttpResponsePacket::Cancel;
-					write(UnknownSession, out, p.from);
-				}
+				ZhttpResponsePacket out;
+				out.from = instanceId;
+				out.ids += ZhttpResponsePacket::Id(id.id);
+				out.type = ZhttpResponsePacket::Cancel;
+				write(UnknownSession, out, p.from);
 			}
 		}
 	}
@@ -1148,6 +1160,8 @@ ZhttpRequest *ZhttpManager::takeNextRequest()
 			req = 0;
 			continue;
 		}
+
+		d->server_in_valve->open();
 	}
 
 	req->startServer();
@@ -1181,6 +1195,8 @@ ZWebSocket *ZhttpManager::takeNextSocket()
 			sock = 0;
 			continue;
 		}
+
+		d->server_in_valve->open();
 	}
 
 	sock->startServer();
