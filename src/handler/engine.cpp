@@ -68,6 +68,9 @@
 #define PROXY_RPC_TIMEOUT 10000
 #define DEFAULT_WS_KEEPALIVE_TIMEOUT 55
 
+#define INSPECT_WORKERS_MAX 10
+#define ACCEPT_WORKERS_MAX 10
+
 using namespace VariantUtil;
 
 // return true to send and false to drop.
@@ -1077,6 +1080,8 @@ public:
 	StatsManager *stats;
 	PublishShaper *shaper;
 	CommonState cs;
+	QSet<InspectWorker*> inspectWorkers;
+	QSet<AcceptWorker*> acceptWorkers;
 	QSet<Deferred*> deferreds;
 	Deferred *report;
 
@@ -1113,6 +1118,8 @@ public:
 
 	~Private()
 	{
+		qDeleteAll(inspectWorkers);
+		qDeleteAll(acceptWorkers);
 		qDeleteAll(deferreds);
 		qDeleteAll(cs.wsSessions);
 		qDeleteAll(cs.httpSessions);
@@ -1592,17 +1599,23 @@ private:
 private slots:
 	void inspectServer_requestReady()
 	{
+		if(inspectWorkers.count() >= INSPECT_WORKERS_MAX)
+			return;
+
 		ZrpcRequest *req = inspectServer->takeNext();
 		if(!req)
 			return;
 
 		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
 		connect(w, &Deferred::finished, this, &Private::inspectWorker_finished);
-		deferreds += w;
+		inspectWorkers += w;
 	}
 
 	void acceptServer_requestReady()
 	{
+		if(acceptWorkers.count() >= ACCEPT_WORKERS_MAX)
+			return;
+
 		ZrpcRequest *req = acceptServer->takeNext();
 		if(!req)
 			return;
@@ -1611,7 +1624,7 @@ private slots:
 		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
 		connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
-		deferreds += w;
+		acceptWorkers += w;
 		w->start();
 	}
 
@@ -2208,7 +2221,10 @@ private slots:
 		Q_UNUSED(result);
 
 		InspectWorker *w = (InspectWorker *)sender();
-		deferreds.remove(w);
+		inspectWorkers.remove(w);
+
+		// try to read again
+		inspectServer_requestReady();
 	}
 
 	void acceptWorker_finished(const DeferredResult &result)
@@ -2216,7 +2232,10 @@ private slots:
 		Q_UNUSED(result);
 
 		AcceptWorker *w = (AcceptWorker *)sender();
-		deferreds.remove(w);
+		acceptWorkers.remove(w);
+
+		// try to read again
+		acceptServer_requestReady();
 	}
 
 	void acceptWorker_sessionsReady()
