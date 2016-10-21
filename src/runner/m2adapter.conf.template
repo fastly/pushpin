@@ -31,3 +31,6 @@ zws_out_stream_specs=ipc://{{ rundir }}/{{ ipc_prefix }}m2zws-out-stream
 
 # don't send more than this to mongrel2
 m2_client_buffer=200000
+
+# don't allow more than this many connections at once
+max_open_requests=50000
