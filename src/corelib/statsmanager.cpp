@@ -224,6 +224,7 @@ public:
 		sock = new QZmq::Socket(QZmq::Socket::Pub, this);
 
 		sock->setHwm(OUT_HWM);
+		sock->setWriteQueueEnabled(false);
 		sock->setShutdownWaitTime(0);
 
 		QString errorMessage;
