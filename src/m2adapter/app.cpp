@@ -45,7 +45,7 @@
 #define M2_CONNECTION_EXPIRE 120000
 #define ZHTTP_EXPIRE 60000
 #define CONTROL_REQUEST_EXPIRE 30000
-#define ZHTTP_CANCEL_RATE 1000
+#define ZHTTP_CANCEL_RATE 100
 
 #define M2_CONNECTION_SHOULD_PROCESS (M2_CONNECTION_EXPIRE * 3 / 4)
 #define M2_CONNECTION_MUST_PROCESS (M2_CONNECTION_EXPIRE * 4 / 5)
@@ -357,6 +357,7 @@ public:
 		bool responseHeadersOnly; // HEAD, 204, 304
 		qint64 lastRefresh;
 		int refreshBucket;
+		bool pendingCancel;
 
 		// m2 stuff
 		M2Connection *conn;
@@ -386,6 +387,7 @@ public:
 			upClosed(false),
 			responseHeadersOnly(false),
 			lastRefresh(-1),
+			pendingCancel(false),
 			persistent(false),
 			allowChunked(false),
 			respondKeepAlive(false),
@@ -431,7 +433,7 @@ public:
 	int currentSessionRefreshBucket;
 	QMap<QPair<qint64, Session*>, Session*> sessionsByLastActive;
 	int zhttpCancelMeter;
-	QList<Session*> sessionsToCancel;
+	QSet<Session*> sessionsToCancel;
 	int m2_client_buffer;
 	int maxSessions;
 	int zhttpConnectPort;
@@ -474,7 +476,6 @@ public:
 	{
 		qDeleteAll(sessionsByZhttpRid);
 		qDeleteAll(sessionsByZwsRid);
-		qDeleteAll(sessionsToCancel);
 		qDeleteAll(m2ConnectionsByRid);
 	}
 
@@ -868,6 +869,8 @@ public:
 	{
 		unlinkConnection(s);
 
+		sessionsToCancel -= s;
+
 		if(s->lastRefresh >= 0)
 		{
 			QPair<qint64, Session*> k(s->lastRefresh, s);
@@ -896,7 +899,9 @@ public:
 	{
 		assert(!s->zhttpAddress.isEmpty());
 
-		removeSession(s);
+		unlinkConnection(s);
+
+		s->pendingCancel = true;
 		sessionsToCancel += s;
 	}
 
@@ -1386,7 +1391,7 @@ public:
 		}
 		else
 		{
-			if(zhttpCancelMeter < ZHTTP_CANCEL_PER_REFRESH)
+			if(sessionsToCancel.isEmpty() && zhttpCancelMeter < ZHTTP_CANCEL_PER_REFRESH)
 			{
 				++zhttpCancelMeter;
 
@@ -1569,6 +1574,9 @@ public:
 		sessionsByLastActive.remove(QPair<qint64, Session*>(s->lastActive, s));
 		s->lastActive = now;
 		sessionsByLastActive.insert(QPair<qint64, Session*>(s->lastActive, s), s);
+
+		if(s->pendingCancel)
+			return;
 
 		// a session without a connection is just waiting to report error
 		if(!s->conn)
@@ -2198,7 +2206,9 @@ public:
 
 		while(!sessionsToCancel.isEmpty() && sent < ZHTTP_CANCEL_PER_REFRESH)
 		{
-			Session *s = sessionsToCancel.takeFirst();
+			QSet<Session*>::iterator it = sessionsToCancel.begin();
+			Session *s = (*it);
+			sessionsToCancel.erase(it);
 
 			if(s->multi)
 			{
@@ -2220,7 +2230,9 @@ public:
 
 					Mode mode = s->mode;
 					QByteArray zhttpAddress = s->zhttpAddress;
-					qDeleteAll(sessionList);
+
+					foreach(Session *s, sessionList)
+						destroySession(s);
 
 					sessionList.clear();
 					sessionListBySender[mode].remove(zhttpAddress);
@@ -2235,7 +2247,7 @@ public:
 				zreq.type = ZhttpRequestPacket::Cancel;
 				zhttp_out_write(s->mode, zreq, s->zhttpAddress);
 
-				delete s;
+				destroySession(s);
 			}
 
 			++sent;
@@ -2263,7 +2275,8 @@ public:
 					zhttp_out_write(mode, zreq, zhttpAddress);
 				}
 
-				qDeleteAll(sessionList);
+				foreach(Session *s, sessionList)
+					destroySession(s);
 			}
 		}
 	}
