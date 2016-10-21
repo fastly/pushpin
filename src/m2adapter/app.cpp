@@ -45,8 +45,7 @@
 #define M2_CONNECTION_EXPIRE 120000
 #define ZHTTP_EXPIRE 60000
 #define CONTROL_REQUEST_EXPIRE 30000
-#define ZHTTP_LOW_PRIORITY_MAX 50000
-#define ZHTTP_LOW_PRIORITY_RATE 2500
+#define ZHTTP_CANCEL_RATE 1000
 
 #define M2_CONNECTION_SHOULD_PROCESS (M2_CONNECTION_EXPIRE * 3 / 4)
 #define M2_CONNECTION_MUST_PROCESS (M2_CONNECTION_EXPIRE * 4 / 5)
@@ -56,7 +55,7 @@
 #define ZHTTP_MUST_PROCESS (ZHTTP_EXPIRE * 4 / 5)
 #define ZHTTP_REFRESH_BUCKETS (ZHTTP_SHOULD_PROCESS / REFRESH_INTERVAL)
 
-#define ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH (ZHTTP_LOW_PRIORITY_RATE * 1000 / REFRESH_INTERVAL)
+#define ZHTTP_CANCEL_PER_REFRESH (ZHTTP_CANCEL_RATE * 1000 / REFRESH_INTERVAL)
 
 // make sure this is not larger than Mongrel2's DELIVER_OUTSTANDING_MSGS
 #define M2_PENDING_MAX 16
@@ -404,21 +403,6 @@ public:
 		}
 	};
 
-	class QueuedZhttpPacket
-	{
-	public:
-		Mode mode;
-		QByteArray addr;
-		ZhttpRequestPacket packet;
-
-		QueuedZhttpPacket(Mode _mode, QByteArray _addr, ZhttpRequestPacket _packet) :
-			mode(_mode),
-			addr(_addr),
-			packet(_packet)
-		{
-		}
-	};
-
 	App *q;
 	ArgsData args;
 	QByteArray zhttpInstanceId;
@@ -446,9 +430,10 @@ public:
 	QSet<Session*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
 	QMap<QPair<qint64, Session*>, Session*> sessionsByLastActive;
-	int zhttpLowPriorityMeter;
-	QList<QueuedZhttpPacket> zhttpLowPriorityQueue;
+	int zhttpCancelMeter;
+	QList<Session*> sessionsToCancel;
 	int m2_client_buffer;
+	int maxSessions;
 	int zhttpConnectPort;
 	int zwsConnectPort;
 	bool ignorePolicies;
@@ -473,7 +458,7 @@ public:
 		zws_in_valve(0),
 		currentM2RefreshBucket(0),
 		currentSessionRefreshBucket(0),
-		zhttpLowPriorityMeter(0)
+		zhttpCancelMeter(0)
 	{
 		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
 		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
@@ -489,6 +474,7 @@ public:
 	{
 		qDeleteAll(sessionsByZhttpRid);
 		qDeleteAll(sessionsByZwsRid);
+		qDeleteAll(sessionsToCancel);
 		qDeleteAll(m2ConnectionsByRid);
 	}
 
@@ -605,6 +591,8 @@ public:
 		m2_client_buffer = settings.value("m2_client_buffer").toInt();
 		if(m2_client_buffer <= 0)
 			m2_client_buffer = 200000;
+
+		maxSessions = settings.value("max_open_requests", -1).toInt();
 
 		m2_send_idents.clear();
 		foreach(const QString &s, str_m2_send_idents)
@@ -876,7 +864,7 @@ public:
 		return best;
 	}
 
-	void destroySession(Session *s)
+	void removeSession(Session *s)
 	{
 		unlinkConnection(s);
 
@@ -896,7 +884,20 @@ public:
 			sessionsByZhttpRid.remove(Rid(zhttpInstanceId, s->id));
 		else // WebSocket
 			sessionsByZwsRid.remove(Rid(zwsInstanceId, s->id));
+	}
+
+	void destroySession(Session *s)
+	{
+		removeSession(s);
 		delete s;
+	}
+
+	void queueCancelSession(Session *s)
+	{
+		assert(!s->zhttpAddress.isEmpty());
+
+		removeSession(s);
+		sessionsToCancel += s;
 	}
 
 	void destroySessionAndErrorConnection(Session *s)
@@ -1240,26 +1241,6 @@ public:
 		zhttp_out_write(s->mode, out, s->zhttpAddress);
 	}
 
-	void zhttp_out_write_lowPriority(Session *s, const ZhttpRequestPacket &packet)
-	{
-		assert(!s->zhttpAddress.isEmpty());
-
-		if(zhttpLowPriorityQueue.count() >= ZHTTP_LOW_PRIORITY_MAX)
-			return;
-
-		ZhttpRequestPacket out = packet;
-		out.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
-		out.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
-
-		if(zhttpLowPriorityQueue.isEmpty() && zhttpLowPriorityMeter < ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH)
-		{
-			zhttp_out_write(s->mode, out, s->zhttpAddress);
-			++zhttpLowPriorityMeter;
-		}
-		else
-			zhttpLowPriorityQueue += QueuedZhttpPacket(s->mode, s->zhttpAddress, out);
-	}
-
 	void handleControlResponse(int index, const QVariant &data)
 	{
 #ifdef CONTROL_PORT_DEBUG
@@ -1405,19 +1386,28 @@ public:
 		}
 		else
 		{
-			ZhttpRequestPacket zreq;
-
-			if(!errorCondition.isEmpty())
+			if(zhttpCancelMeter < ZHTTP_CANCEL_PER_REFRESH)
 			{
-				zreq.type = ZhttpRequestPacket::Error;
-				zreq.condition = "disconnected";
+				++zhttpCancelMeter;
+
+				ZhttpRequestPacket zreq;
+
+				if(!errorCondition.isEmpty())
+				{
+					zreq.type = ZhttpRequestPacket::Error;
+					zreq.condition = "disconnected";
+				}
+				else
+					zreq.type = ZhttpRequestPacket::Cancel;
+
+				zhttp_out_write(s, zreq);
+
+				destroySession(s);
 			}
 			else
-				zreq.type = ZhttpRequestPacket::Cancel;
-
-			zhttp_out_write_lowPriority(s, zreq);
-
-			destroySession(s);
+			{
+				queueCancelSession(s);
+			}
 		}
 	}
 
@@ -2195,20 +2185,86 @@ public:
 		}
 	}
 
-	void sendZhttpLowPriority()
+	void cancelSessions()
 	{
-		int sent = zhttpLowPriorityMeter;
+		int sent = zhttpCancelMeter;
 
-		if(zhttpLowPriorityMeter > ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH)
-			zhttpLowPriorityMeter -= ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH;
+		if(zhttpCancelMeter > ZHTTP_CANCEL_PER_REFRESH)
+			zhttpCancelMeter -= ZHTTP_CANCEL_PER_REFRESH;
 		else
-			zhttpLowPriorityMeter = 0;
+			zhttpCancelMeter = 0;
 
-		while(!zhttpLowPriorityQueue.isEmpty() && sent < ZHTTP_LOW_PRIORITY_SEND_PER_REFRESH)
+		QHash<QByteArray, QList<Session*> > sessionListBySender[2]; // index corresponds to mode
+
+		while(!sessionsToCancel.isEmpty() && sent < ZHTTP_CANCEL_PER_REFRESH)
 		{
-			QueuedZhttpPacket q = zhttpLowPriorityQueue.takeFirst();
-			zhttp_out_write(q.mode, q.packet, q.addr);
+			Session *s = sessionsToCancel.takeFirst();
+
+			if(s->multi)
+			{
+				if(!sessionListBySender[s->mode].contains(s->zhttpAddress))
+					sessionListBySender[s->mode].insert(s->zhttpAddress, QList<Session*>());
+
+				QList<Session*> &sessionList = sessionListBySender[s->mode][s->zhttpAddress];
+				sessionList += s;
+
+				// if we're at max, send out now
+				if(sessionList.count() >= ZHTTP_IDS_MAX)
+				{
+					ZhttpRequestPacket zreq;
+					zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
+					foreach(Session *i, sessionList)
+						zreq.ids += ZhttpRequestPacket::Id(i->id, (i->outSeq)++);
+					zreq.type = ZhttpRequestPacket::Cancel;
+					zhttp_out_write(s->mode, zreq, s->zhttpAddress);
+
+					Mode mode = s->mode;
+					QByteArray zhttpAddress = s->zhttpAddress;
+					qDeleteAll(sessionList);
+
+					sessionList.clear();
+					sessionListBySender[mode].remove(zhttpAddress);
+				}
+			}
+			else
+			{
+				// session doesn't support sending with multiple ids
+				ZhttpRequestPacket zreq;
+				zreq.from = (s->mode == Http ? zhttpInstanceId : zwsInstanceId);
+				zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
+				zreq.type = ZhttpRequestPacket::Cancel;
+				zhttp_out_write(s->mode, zreq, s->zhttpAddress);
+
+				delete s;
+			}
+
 			++sent;
+		}
+
+		// send last packets
+		for(int n = 0; n < 2; ++n)
+		{
+			Mode mode = (Mode)n;
+
+			QHashIterator<QByteArray, QList<Session*> > sit(sessionListBySender[n]);
+			while(sit.hasNext())
+			{
+				sit.next();
+				const QByteArray &zhttpAddress = sit.key();
+				const QList<Session*> &sessionList = sit.value();
+
+				if(!sessionList.isEmpty())
+				{
+					ZhttpRequestPacket zreq;
+					zreq.from = (mode == Http ? zhttpInstanceId : zwsInstanceId);
+					foreach(Session *s, sessionList)
+						zreq.ids += ZhttpRequestPacket::Id(s->id, (s->outSeq)++);
+					zreq.type = ZhttpRequestPacket::Cancel;
+					zhttp_out_write(mode, zreq, zhttpAddress);
+				}
+
+				qDeleteAll(sessionList);
+			}
 		}
 	}
 
@@ -2416,6 +2472,13 @@ private slots:
 			if(!uri.isValid())
 			{
 				log_warning("m2: invalid constructed uri: [%s]", uriRaw.data());
+				m2_writeErrorClose(conn);
+				return;
+			}
+
+			if(maxSessions >= 0 && sessionsByZhttpRid.count() + sessionsByZwsRid.count() + sessionsToCancel.count() >= maxSessions)
+			{
+				log_warning("m2: max open sessions reached (%d), refusing new session", maxSessions);
 				m2_writeErrorClose(conn);
 				return;
 			}
@@ -2734,7 +2797,7 @@ private slots:
 		refreshM2Connections(now);
 		refreshSessions(now);
 		expireSessions(now);
-		sendZhttpLowPriority();
+		cancelSessions();
 	}
 
 	void reload()
