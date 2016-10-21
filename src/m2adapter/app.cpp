@@ -2489,7 +2489,7 @@ private slots:
 				return;
 			}
 
-			if(maxSessions >= 0 && sessionsByZhttpRid.count() + sessionsByZwsRid.count() + sessionsToCancel.count() >= maxSessions)
+			if(maxSessions >= 0 && sessionsByZhttpRid.count() + sessionsByZwsRid.count() >= maxSessions)
 			{
 				log_warning("m2: max open sessions reached (%d), refusing new session", maxSessions);
 				m2_writeErrorClose(conn);
