@@ -250,6 +250,8 @@ public:
 		bool ok;
 		int ipcFileMode = settings.value("handler/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		bool shareAll = settings.value("handler/share_all").toBool();
+		int messageRate = settings.value("handler/message_rate", -1).toInt();
+		int messageHwm = settings.value("handler/message_hwm", -1).toInt();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -289,6 +291,8 @@ public:
 		config.pushInHttpPort = push_in_http_port;
 		config.ipcFileMode = ipcFileMode;
 		config.shareAll = shareAll;
+		config.messageRate = messageRate;
+		config.messageHwm = messageHwm;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

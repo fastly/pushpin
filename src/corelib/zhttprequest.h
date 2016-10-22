@@ -115,12 +115,14 @@ private:
 	friend class ZhttpManager;
 	ZhttpRequest(QObject *parent = 0);
 	void setupClient(ZhttpManager *manager, bool req);
-	bool setupServer(ZhttpManager *manager, const ZhttpRequestPacket &packet);
+	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void setupServer(ZhttpManager *manager, const ServerState &state);
 	void startServer();
 	bool isServer() const;
-	void handle(const ZhttpRequestPacket &packet);
-	void handle(const ZhttpResponsePacket &packet);
+	QByteArray toAddress() const;
+	int outSeqInc();
+	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
+	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);
 };
 
 #endif

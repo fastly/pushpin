@@ -928,7 +928,7 @@ public:
 
 		if(accepted)
 		{
-			msg += " hold";
+			msg += " accept";
 		}
 		else if(resp.code != -1 && !si->unclean)
 		{
@@ -1102,7 +1102,8 @@ public slots:
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
-		logFinished(si);
+		if(!passthrough)
+			logFinished(si);
 
 		QPointer<QObject> self = this;
 		emit q->requestSessionDestroyed(si->rs, false);
@@ -1260,7 +1261,10 @@ public slots:
 
 				QList<RequestSession*> toDestroy;
 				foreach(SessionItem *si, sessionItems)
+				{
 					toDestroy += si->rs;
+					delete si;
+				}
 
 				sessionItems.clear();
 				sessionItemsBySession.clear();

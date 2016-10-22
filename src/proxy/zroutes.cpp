@@ -105,13 +105,7 @@ public:
 
 	~Private()
 	{
-		QHashIterator<QString, Item*> it(itemsBySpec);
-		while(it.hasNext())
-		{
-			it.next();
-			delete it.value();
-		}
-
+		qDeleteAll(itemsBySpec);
 		delete defaultItem;
 
 		cleanupTimer->disconnect(this);

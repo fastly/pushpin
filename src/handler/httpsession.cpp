@@ -64,10 +64,11 @@ public:
 	ZhttpRequest *outReq; // for fetching next links
 	BufferList firstInstructResponse;
 	bool haveOutReqHeaders;
-	bool sentOutReqData;
+	int sentOutReqData;
 	int retries;
 	QString errorMessage;
 	QUrl currentUri;
+	QUrl nextUri;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats) :
 		QObject(_q),
@@ -77,7 +78,7 @@ public:
 		outZhttp(_outZhttp),
 		outReq(0),
 		haveOutReqHeaders(false),
-		sentOutReqData(false),
+		sentOutReqData(0),
 		retries(0)
 	{
 		state = NotStarted;
@@ -458,25 +459,46 @@ private:
 		}
 
 		haveOutReqHeaders = false;
-		sentOutReqData = false;
+		sentOutReqData = 0;
 
 		outReq = outZhttp->createRequest();
 		outReq->setParent(this);
 		connect(outReq, &ZhttpRequest::readyRead, this, &Private::outReq_readyRead);
 		connect(outReq, &ZhttpRequest::error, this, &Private::outReq_error);
 
-		QVariantHash data;
-		if(!adata.sigIss.isEmpty())
-			data["sig-iss"] = adata.sigIss;
-		if(!adata.sigKey.isEmpty())
-			data["sig-key"] = adata.sigKey;
-		if(adata.trusted)
-			data["trusted"] = true;
-		outReq->setPassthroughData(data);
+		nextUri = currentUri.resolved(instruct.nextLink);
 
-		currentUri = currentUri.resolved(instruct.nextLink);
+		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
+		int nextPort = nextUri.port(currentUri.scheme() == "https" ? 443 : 80);
 
-		outReq->start("GET", currentUri, HttpHeaders());
+		// if next link points to the same service as the current request,
+		//   then we can assume the network would send the request back to
+		//   us, so we can handle it internally. if the link points to a
+		//   different service, then we can't make this assumption and need
+		//   to make the request over the network. note that such a request
+		//   could still end up looping back to us
+		if(nextUri.scheme() == currentUri.scheme() && nextUri.host() == currentUri.host() && nextPort == currentPort)
+		{
+			// use proxy routing
+			QVariantHash data;
+			data["route"] = true;
+			outReq->setPassthroughData(data);
+		}
+		else
+		{
+			// don't use proxy routing
+			QVariantHash data;
+			data["route"] = false;
+			if(!adata.sigIss.isEmpty())
+				data["sig-iss"] = adata.sigIss;
+			if(!adata.sigKey.isEmpty())
+				data["sig-key"] = adata.sigKey;
+			if(adata.trusted)
+				data["trusted"] = true;
+			outReq->setPassthroughData(data);
+		}
+
+		outReq->start("GET", nextUri, HttpHeaders());
 		outReq->endBody();
 	}
 
@@ -502,7 +524,7 @@ private:
 				QByteArray buf = outReq->readBody(avail);
 				req->writeBody(buf);
 
-				sentOutReqData = true;
+				sentOutReqData += buf.size();
 			}
 
 			if(outReq->bytesAvailable() == 0 && outReq->isFinished())
@@ -511,6 +533,8 @@ private:
 				responseData.code = outReq->responseCode();
 				responseData.reason = outReq->responseReason();
 				responseData.headers = outReq->responseHeaders();
+
+				logRequest(outReq->requestMethod(), outReq->requestUri(), responseData.code, sentOutReqData);
 
 				retries = 0;
 
@@ -533,6 +557,9 @@ private:
 					return;
 				}
 
+				currentUri = nextUri;
+				nextUri.clear();
+
 				instruct = i;
 
 				if(instruct.holdMode == Instruct::StreamHold)
@@ -554,6 +581,30 @@ private:
 			else
 				req->endBody();
 		}
+	}
+
+	void logRequest(const QString &method, const QUrl &uri, int code, int bodySize)
+	{
+		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
+
+		if(!adata.route.isEmpty())
+			msg += QString(" route=%1").arg(adata.route);
+
+		msg += QString(" code=%1 %2").arg(QString::number(code), QString::number(bodySize));
+
+		log_info("%s", qPrintable(msg));
+	}
+
+	void logRequestError(const QString &method, const QUrl &uri)
+	{
+		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
+
+		if(!adata.route.isEmpty())
+			msg += QString(" route=%1").arg(adata.route);
+
+		msg += QString(" error");
+
+		log_info("%s", qPrintable(msg));
 	}
 
 private slots:
@@ -599,6 +650,8 @@ private slots:
 
 	void outReq_error()
 	{
+		logRequestError(outReq->requestMethod(), outReq->requestUri());
+
 		delete outReq;
 		outReq = 0;
 
@@ -606,7 +659,7 @@ private slots:
 
 		// can't retry if we started sending data
 
-		if(!sentOutReqData && retries < RETRY_MAX)
+		if(sentOutReqData <= 0 && retries < RETRY_MAX)
 		{
 			int delay = RETRY_TIMEOUT;
 			for(int n = 0; n < retries; ++n)
@@ -674,6 +727,11 @@ ZhttpRequest::Rid HttpSession::rid() const
 QUrl HttpSession::requestUri() const
 {
 	return d->adata.requestData.uri;
+}
+
+QString HttpSession::route() const
+{
+	return d->adata.route;
 }
 
 QString HttpSession::sid() const

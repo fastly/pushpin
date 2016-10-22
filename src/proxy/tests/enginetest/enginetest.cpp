@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2015 Fanout, Inc.
+ * Copyright (C) 2013-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -170,16 +170,16 @@ private slots:
 		zresp.fromVariant(v);
 		if(zresp.type == ZhttpResponsePacket::Data)
 		{
-			if(!responses.contains(zresp.id))
+			if(!responses.contains(zresp.ids.first().id))
 			{
 				HttpResponseData rd;
 				rd.code = zresp.code;
 				rd.reason = zresp.reason;
 				rd.headers = zresp.headers;
-				responses[zresp.id] = rd;
+				responses[zresp.ids.first().id] = rd;
 			}
 
-			responses[zresp.id].body += zresp.body;
+			responses[zresp.ids.first().id].body += zresp.body;
 			in += zresp.body;
 
 			if(!zresp.more)
@@ -192,8 +192,7 @@ private slots:
 		{
 			ZhttpRequestPacket zreq;
 			zreq.from = "test-client";
-			zreq.id = zresp.id;
-			zreq.seq = 1;
+			zreq.ids += ZhttpRequestPacket::Id(zresp.ids.first().id, 1);
 			zreq.type = ZhttpRequestPacket::HandoffProceed;
 			QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 			log_debug("writing: %s", buf.data());
@@ -244,8 +243,7 @@ private slots:
 			{
 				ZhttpResponsePacket zresp;
 				zresp.from = "test-server";
-				zresp.id = zreq.id;
-				zresp.seq = serverOutSeq++;
+				zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 				zresp.type = ZhttpResponsePacket::Credit;
 				zresp.credits = 200000;
 				QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
@@ -257,8 +255,7 @@ private slots:
 
 		ZhttpResponsePacket zresp;
 		zresp.from = "test-server";
-		zresp.id = zreq.id;
-		zresp.seq = serverOutSeq++;
+		zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 		zresp.code = 200;
 		zresp.reason = "OK";
 
@@ -516,8 +513,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "1";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("1", 0);
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -538,8 +534,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "2";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("2", 0);
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -559,8 +554,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "3";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("3", 0);
 		zreq.uri = "http://example/jsonp?callback=jpcb";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -592,8 +586,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "4";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("4", 0);
 		zreq.uri = "http://example/jsonp-basic?bparam={}";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -613,8 +606,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "5";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("5", 0);
 		zreq.uri = "http://example/path";
 		zreq.method = "POST";
 		zreq.stream = true;
@@ -633,8 +625,7 @@ private slots:
 		// now finish the request
 		zreq = ZhttpRequestPacket();
 		zreq.from = "test-client";
-		zreq.id = "5";
-		zreq.seq = 1;
+		zreq.ids += ZhttpRequestPacket::Id("5", 1);
 		zreq.type = ZhttpRequestPacket::Data;
 		zreq.body = " world";
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
@@ -658,8 +649,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "6";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("6", 0);
 		zreq.uri = "http://example/path";
 		zreq.method = "POST";
 		zreq.stream = true;
@@ -678,8 +668,7 @@ private slots:
 		// now cancel the request
 		zreq = ZhttpRequestPacket();
 		zreq.from = "test-client";
-		zreq.id = "6";
-		zreq.seq = 1;
+		zreq.ids += ZhttpRequestPacket::Id("6", 1);
 		zreq.type = ZhttpRequestPacket::Cancel;
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
@@ -700,8 +689,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "7";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("7", 0);
 		zreq.uri = "http://example/path?hold=response";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -723,8 +711,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "8";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("8", 0);
 		zreq.uri = "http://example/path?hold=stream";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -747,8 +734,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "9";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("9", 0);
 		zreq.uri = "http://example/path?hold=response&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -768,8 +754,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "10";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("10", 0);
 		zreq.uri = "http://example/path?hold=none";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -789,8 +774,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "11";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("11", 0);
 		zreq.uri = "http://example/path?hold=none&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -810,8 +794,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "12";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("12", 0);
 		zreq.uri = "http://example/path?hold=stream&large=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -835,8 +818,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "12";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("13", 0);
 		zreq.uri = "http://example/path?hold=none&large=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -859,8 +841,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.id = "13";
-		zreq.seq = 0;
+		zreq.ids += ZhttpRequestPacket::Id("14", 0);
 		zreq.uri = "http://example/path2?wait=true&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -881,7 +862,6 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.seq = 0;
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -891,15 +871,15 @@ private slots:
 
 		// send two requests
 
-		QByteArray id1 = "14";
-		QByteArray id2 = "15";
+		QByteArray id1 = "15";
+		QByteArray id2 = "16";
 
-		zreq.id = id1;
+		zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id1, 0);
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
-		zreq.id = id2;
+		zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id2, 0);
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -921,7 +901,6 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
-		zreq.seq = 0;
 		zreq.uri = "http://example/path";
 		zreq.method = "POST";
 		zreq.stream = true;
@@ -933,15 +912,15 @@ private slots:
 
 		// send two requests
 
-		QByteArray id1 = "16";
-		QByteArray id2 = "17";
+		QByteArray id1 = "17";
+		QByteArray id2 = "18";
 
-		zreq.id = id1;
+		zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id1, 0);
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
-		zreq.id = id2;
+		zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id2, 0);
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
@@ -954,11 +933,10 @@ private slots:
 
 		zreq = ZhttpRequestPacket();
 		zreq.from = "test-client";
-		zreq.seq = 1;
 		zreq.type = ZhttpRequestPacket::Data;
 		zreq.body = " world";
 
-		zreq.id = id1;
+		zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id1, 1);
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		QList<QByteArray> msg;
@@ -967,7 +945,7 @@ private slots:
 		msg.append(buf);
 		wrapper->zhttpClientOutStreamSock->write(msg);
 
-		zreq.id = id2;
+		zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id(id2, 1);
 		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
 		log_debug("writing: %s", buf.data());
 		msg.clear();

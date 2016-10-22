@@ -25,7 +25,6 @@
 #include "websocket.h"
 #include "packet/wscontrolpacket.h"
 
-class QUri;
 class WsControlManager;
 
 class WsControlSession : public QObject
@@ -34,6 +33,8 @@ class WsControlSession : public QObject
 
 public:
 	~WsControlSession();
+
+	QByteArray cid() const;
 
 	void start(const QByteArray &routeId, const QByteArray &channelPrefix, const QUrl &uri);
 	void sendGripMessage(const QByteArray &message);

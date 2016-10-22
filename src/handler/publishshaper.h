@@ -17,22 +17,33 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CONTROLREQUEST_H
-#define CONTROLREQUEST_H
+#ifndef PUBLISHSHAPER_H
+#define PUBLISHSHAPER_H
 
-#include "cidset.h"
+#include <QObject>
 
-class QObject;
+class PublishFormat;
 
-class ZrpcManager;
-class StatsPacket;
-class Deferred;
+class PublishShaper : public QObject
+{
+	Q_OBJECT
 
-namespace ControlRequest {
+public:
+	PublishShaper(QObject *parent = 0);
+	~PublishShaper();
 
-Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0);
-Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent = 0);
+	void setRate(int messagesPerSecond);
+	void setHwm(int hwm);
 
-}
+	bool addMessage(QObject *target, const PublishFormat &format, const QString &route = QString(), const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
+
+signals:
+	void send(QObject *target, const PublishFormat &format, const QList<QByteArray> &exposeHeaders);
+
+private:
+	class Private;
+	friend class Private;
+	Private *d;
+};
 
 #endif

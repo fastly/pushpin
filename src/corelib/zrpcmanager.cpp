@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,9 +31,13 @@
 #include "zrpcrequest.h"
 #include "zutil.h"
 
-#define DEFAULT_HWM 5000
+#define OUT_HWM 100
+#define IN_HWM 100
+
 #define REQ_WAIT_TIME 0
 #define REP_WAIT_TIME 500
+
+#define PENDING_MAX 100
 
 class ZrpcManager::Private : public QObject
 {
@@ -78,7 +82,7 @@ public:
 
 		clientSock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 
-		clientSock->setHwm(DEFAULT_HWM);
+		clientSock->setSendHwm(OUT_HWM);
 		clientSock->setShutdownWaitTime(REQ_WAIT_TIME);
 
 		QString errorMessage;
@@ -103,7 +107,7 @@ public:
 
 		serverSock = new QZmq::Socket(QZmq::Socket::Rep, this);
 
-		serverSock->setHwm(DEFAULT_HWM);
+		serverSock->setReceiveHwm(IN_HWM);
 		serverSock->setShutdownWaitTime(REP_WAIT_TIME);
 
 		QString errorMessage;
@@ -216,6 +220,9 @@ private slots:
 
 		pending += p;
 
+		if(pending.count() >= PENDING_MAX)
+			serverValve->close();
+
 		emit q->requestReady();
 	}
 };
@@ -272,6 +279,9 @@ ZrpcRequest *ZrpcManager::takeNext()
 	ZrpcRequest *req = new ZrpcRequest;
 	req->setupServer(this);
 	req->handle(p);
+
+	d->serverValve->open();
+
 	return req;
 }
 

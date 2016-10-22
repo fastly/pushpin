@@ -56,14 +56,20 @@
 #include "responselastids.h"
 #include "instruct.h"
 #include "httpsession.h"
+#include "controlrequest.h"
 #include "conncheckworker.h"
+#include "publishshaper.h"
 
-#define DEFAULT_HWM 1000
+#define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // infinite
 #define RETRY_WAIT_TIME 0
 #define WSCONTROL_WAIT_TIME 0
 #define STATE_RPC_TIMEOUT 1000
+#define PROXY_RPC_TIMEOUT 10000
 #define DEFAULT_WS_KEEPALIVE_TIMEOUT 55
+
+#define INSPECT_WORKERS_MAX 10
+#define ACCEPT_WORKERS_MAX 10
 
 using namespace VariantUtil;
 
@@ -1072,8 +1078,12 @@ public:
 	QZmq::Valve *proxyStatsValve;
 	SimpleHttpServer *controlHttpServer;
 	StatsManager *stats;
+	PublishShaper *shaper;
 	CommonState cs;
+	QSet<InspectWorker*> inspectWorkers;
+	QSet<AcceptWorker*> acceptWorkers;
 	QSet<Deferred*> deferreds;
+	Deferred *report;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -1097,13 +1107,19 @@ public:
 		proxyStatsSock(0),
 		proxyStatsValve(0),
 		controlHttpServer(0),
-		stats(0)
+		stats(0),
+		report(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
+
+		shaper = new PublishShaper(this);
+		connect(shaper, &PublishShaper::send, this, &Private::shaper_send);
 	}
 
 	~Private()
 	{
+		qDeleteAll(inspectWorkers);
+		qDeleteAll(acceptWorkers);
 		qDeleteAll(deferreds);
 		qDeleteAll(cs.wsSessions);
 		qDeleteAll(cs.httpSessions);
@@ -1112,6 +1128,9 @@ public:
 	bool start(const Configuration &_config)
 	{
 		config = _config;
+
+		shaper->setRate(config.messageRate);
+		shaper->setHwm(config.messageHwm);
 
 		zhttpIn = new ZhttpManager(this);
 		zhttpIn->setInstanceId(config.instanceId);
@@ -1277,6 +1296,9 @@ public:
 		stats = new StatsManager(this);
 		connect(stats, &StatsManager::connectionsRefreshed, this, &Private::stats_connectionsRefreshed);
 		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
+		connect(stats, &StatsManager::reported, this, &Private::stats_reported);
+
+		stats->setReportsEnabled(true);
 
 		if(!config.statsSpec.isEmpty())
 		{
@@ -1316,6 +1338,7 @@ public:
 		{
 			proxyControlClient = new ZrpcManager(this);
 			proxyControlClient->setIpcFileMode(config.ipcFileMode);
+			proxyControlClient->setTimeout(PROXY_RPC_TIMEOUT);
 
 			if(!proxyControlClient->setClientSpecs(QStringList() << config.proxyCommandSpec))
 			{
@@ -1355,6 +1378,9 @@ public:
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
+		// always add for non-identified route
+		stats->addMessageReceived(QByteArray());
+
 		QList<HttpSession*> responseSessions;
 		QList<HttpSession*> streamSessions;
 		QList<WsSession*> wsSessions;
@@ -1436,10 +1462,8 @@ private:
 
 			foreach(HttpSession *hs, responseSessions)
 			{
-				if(f.haveBodyPatch)
-					hs->respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
-				else
-					hs->respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+				shaper->addMessage(hs, f, hs->route(), exposeHeaders);
+				stats->addMessageSent(hs->route().toUtf8(), "http-response");
 			}
 
 			stats->addMessage(item.channel, item.id, "http-response", responseSessions.count());
@@ -1453,10 +1477,8 @@ private:
 
 			foreach(HttpSession *hs, streamSessions)
 			{
-				if(f.close)
-					hs->close();
-				else
-					hs->stream(f.body);
+				shaper->addMessage(hs, f, hs->route());
+				stats->addMessageSent(hs->route().toUtf8(), "http-stream");
 			}
 
 			stats->addMessage(item.channel, item.id, "http-stream", streamSessions.count());
@@ -1470,31 +1492,8 @@ private:
 
 			foreach(WsSession *s, wsSessions)
 			{
-				WsControlPacket::Item i;
-				i.cid = s->cid.toUtf8();
-
-				if(f.close)
-				{
-					i.type = WsControlPacket::Item::Close;
-					i.code = f.code;
-				}
-				else
-				{
-					i.type = WsControlPacket::Item::Send;
-
-					switch(f.messageType)
-					{
-						case PublishFormat::Text:   i.contentType = "text"; break;
-						case PublishFormat::Binary: i.contentType = "binary"; break;
-						case PublishFormat::Ping:   i.contentType = "ping"; break;
-						case PublishFormat::Pong:   i.contentType = "pong"; break;
-						default: continue; // unrecognized type, skip
-					}
-
-					i.message = f.body;
-				}
-
-				writeWsControlItem(i);
+				shaper->addMessage(s, f, s->route);
+				stats->addMessageSent(s->route.toUtf8(), "ws-message");
 			}
 
 			stats->addMessage(item.channel, item.id, "ws-message", wsSessions.count());
@@ -1600,17 +1599,23 @@ private:
 private slots:
 	void inspectServer_requestReady()
 	{
+		if(inspectWorkers.count() >= INSPECT_WORKERS_MAX)
+			return;
+
 		ZrpcRequest *req = inspectServer->takeNext();
 		if(!req)
 			return;
 
 		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
 		connect(w, &Deferred::finished, this, &Private::inspectWorker_finished);
-		deferreds += w;
+		inspectWorkers += w;
 	}
 
 	void acceptServer_requestReady()
 	{
+		if(acceptWorkers.count() >= ACCEPT_WORKERS_MAX)
+			return;
+
 		ZrpcRequest *req = acceptServer->takeNext();
 		if(!req)
 			return;
@@ -1619,7 +1624,7 @@ private slots:
 		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
 		connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
-		deferreds += w;
+		acceptWorkers += w;
 		w->start();
 	}
 
@@ -1988,7 +1993,10 @@ private slots:
 					sid = s->sid;
 			}
 
-			// just forward the packet. this will stamp the from field and keep the rest
+			// track proxy connections for reporting
+			stats->processExternalPacket(p);
+
+			// forward the packet. this will stamp the from field and keep the rest
 			stats->sendPacket(p);
 
 			// update session
@@ -2001,6 +2009,58 @@ private slots:
 				deferreds += d;
 				return;
 			}
+		}
+	}
+
+	void shaper_send(QObject *target, const PublishFormat &f, const QList<QByteArray> &exposeHeaders)
+	{
+		if(f.type == PublishFormat::HttpResponse)
+		{
+			HttpSession *hs = qobject_cast<HttpSession*>(target);
+
+			if(f.haveBodyPatch)
+				hs->respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
+			else
+				hs->respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+		}
+		else if(f.type == PublishFormat::HttpStream)
+		{
+			HttpSession *hs = qobject_cast<HttpSession*>(target);
+
+			if(f.close)
+				hs->close();
+			else
+				hs->stream(f.body);
+		}
+		else if(f.type == PublishFormat::WebSocketMessage)
+		{
+			WsSession *s = qobject_cast<WsSession*>(target);
+
+			WsControlPacket::Item i;
+			i.cid = s->cid.toUtf8();
+
+			if(f.close)
+			{
+				i.type = WsControlPacket::Item::Close;
+				i.code = f.code;
+			}
+			else
+			{
+				i.type = WsControlPacket::Item::Send;
+
+				switch(f.messageType)
+				{
+					case PublishFormat::Text:   i.contentType = "text"; break;
+					case PublishFormat::Binary: i.contentType = "binary"; break;
+					case PublishFormat::Ping:   i.contentType = "ping"; break;
+					case PublishFormat::Pong:   i.contentType = "pong"; break;
+					default: return; // unrecognized type, skip
+				}
+
+				i.message = f.body;
+			}
+
+			writeWsControlItem(i);
 		}
 	}
 
@@ -2161,7 +2221,10 @@ private slots:
 		Q_UNUSED(result);
 
 		InspectWorker *w = (InspectWorker *)sender();
-		deferreds.remove(w);
+		inspectWorkers.remove(w);
+
+		// try to read again
+		inspectServer_requestReady();
 	}
 
 	void acceptWorker_finished(const DeferredResult &result)
@@ -2169,7 +2232,10 @@ private slots:
 		Q_UNUSED(result);
 
 		AcceptWorker *w = (AcceptWorker *)sender();
-		deferreds.remove(w);
+		acceptWorkers.remove(w);
+
+		// try to read again
+		acceptServer_requestReady();
 	}
 
 	void acceptWorker_sessionsReady()
@@ -2326,6 +2392,41 @@ private slots:
 
 		if(!cs.responseSessionsByChannel.contains(channel) && !cs.streamSessionsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
 			removeSub(channel);
+	}
+
+	void stats_reported(const QList<StatsPacket> &packets)
+	{
+		// only one outstanding report at a time
+		if(report)
+			return;
+
+		// consolidate data
+		StatsPacket all;
+		all.connectionsMax = 0;
+		all.connectionsMinutes = 0;
+		all.messagesReceived = 0;
+		all.messagesSent = 0;
+		all.httpResponseMessagesSent = 0;
+		foreach(const StatsPacket &p, packets)
+		{
+			all.connectionsMax += p.connectionsMax;
+			all.connectionsMinutes += p.connectionsMinutes;
+			all.messagesReceived += p.messagesReceived;
+			all.messagesSent += p.messagesSent;
+			all.httpResponseMessagesSent += p.httpResponseMessagesSent;
+		}
+
+		report = ControlRequest::report(proxyControlClient, all, this);
+		connect(report, &Deferred::finished, this, &Private::report_finished);
+		deferreds += report;
+	}
+
+	void report_finished(const DeferredResult &result)
+	{
+		Q_UNUSED(result);
+
+		deferreds.remove(report);
+		report = 0;
 	}
 };
 

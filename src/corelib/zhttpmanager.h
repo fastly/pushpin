@@ -86,6 +86,11 @@ private:
 	void writeWs(const ZhttpRequestPacket &packet);
 	void writeWs(const ZhttpRequestPacket &packet, const QByteArray &instanceAddress);
 	void writeWs(const ZhttpResponsePacket &packet, const QByteArray &instanceAddress);
+
+	void registerKeepAlive(ZhttpRequest *req);
+	void unregisterKeepAlive(ZhttpRequest *req);
+	void registerKeepAlive(ZWebSocket *sock);
+	void unregisterKeepAlive(ZWebSocket *sock);
 };
 
 #endif

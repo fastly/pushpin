@@ -39,7 +39,6 @@ public:
 		}
 	};
 
-	//QHash<QPair<QByteArray, QByteArray>, Item*> itemsByRid;
 	QHash<WebSocket*, Item*> itemsBySock;
 
 	Private()
@@ -48,20 +47,8 @@ public:
 
 	~Private()
 	{
-		//clearItemsByRid();
 		clearItemsBySock();
 	}
-
-	/*void clearItemsByRid()
-	{
-		QHashIterator<QPair<QByteArray, QByteArray>, Item*> it(itemsByRid);
-		while(it.hasNext())
-		{
-			it.next();
-			delete it.value();
-		}
-		itemsByRid.clear();
-	}*/
 
 	void clearItemsBySock()
 	{
@@ -85,18 +72,6 @@ ConnectionManager::~ConnectionManager()
 	delete d;
 }
 
-/*QByteArray ConnectionManager::addConnection(const QPair<QByteArray, QByteArray> &rid)
-{
-	assert(!d->itemsByRid.contains(rid));
-
-	Private::Item *i = new Private::Item;
-	i->rid = rid;
-	i->cid = UuidUtil::createUuid();
-	d->itemsByRid[i->rid] = i;
-
-	return i->cid;
-}*/
-
 QByteArray ConnectionManager::addConnection(WebSocket *sock)
 {
 	assert(!d->itemsBySock.contains(sock));
@@ -109,15 +84,6 @@ QByteArray ConnectionManager::addConnection(WebSocket *sock)
 	return i->cid;
 }
 
-/*QByteArray ConnectionManager::getConnection(const QPair<QByteArray, QByteArray> &rid)
-{
-	Private::Item *i = d->itemsByRid.value(rid);
-	if(!i)
-		return QByteArray();
-
-	return i->cid;
-}*/
-
 QByteArray ConnectionManager::getConnection(WebSocket *sock)
 {
 	Private::Item *i = d->itemsBySock.value(sock);
@@ -127,16 +93,10 @@ QByteArray ConnectionManager::getConnection(WebSocket *sock)
 	return i->cid;
 }
 
-/*void ConnectionManager::removeConnection(const QPair<QByteArray, QByteArray> &rid)
-{
-	Private::Item *i = d->itemsByRid.value(rid);
-	assert(i);
-	d->itemsByRid.remove(rid);
-}*/
-
 void ConnectionManager::removeConnection(WebSocket *sock)
 {
 	Private::Item *i = d->itemsBySock.value(sock);
 	assert(i);
 	d->itemsBySock.remove(sock);
+	delete i;
 }

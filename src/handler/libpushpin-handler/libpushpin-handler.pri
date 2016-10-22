@@ -30,6 +30,7 @@ HEADERS += \
 	$$SRC_DIR/responselastids.h \
 	$$SRC_DIR/controlrequest.h \
 	$$SRC_DIR/conncheckworker.h \
+	$$SRC_DIR/publishshaper.h \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
@@ -48,4 +49,5 @@ SOURCES += \
 	$$SRC_DIR/responselastids.cpp \
 	$$SRC_DIR/controlrequest.cpp \
 	$$SRC_DIR/conncheckworker.cpp \
+	$$SRC_DIR/publishshaper.cpp \
 	$$SRC_DIR/engine.cpp

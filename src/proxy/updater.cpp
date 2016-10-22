@@ -24,12 +24,15 @@
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QCryptographicHash>
+#include <QHostInfo>
 #include "log.h"
 #include "httpheaders.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 
 #define CHECK_INTERVAL (24 * 60 * 60 * 1000)
+#define REPORT_INTERVAL (15 * 60 * 1000)
 #define CHECK_URL "https://updates.fanout.io/check/"
 #define USER_AGENT "Pushpin-Updater"
 #define MAX_RESPONSE_SIZE 50000
@@ -64,15 +67,18 @@ class Updater::Private : public QObject
 
 public:
 	Updater *q;
+	Mode mode;
 	QString currentVersion;
 	QString org;
 	ZhttpManager *zhttpManager;
 	QTimer *timer;
 	ZhttpRequest *req;
+	Report report;
 
-	Private(Updater *_q, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
+	Private(Updater *_q, Mode _mode, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
 		QObject(_q),
 		q(_q),
+		mode(_mode),
 		currentVersion(_currentVersion),
 		org(_org),
 		zhttpManager(zhttp),
@@ -80,8 +86,10 @@ public:
 	{
 		timer = new QTimer(this);
 		connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
-		timer->setInterval(CHECK_INTERVAL);
+		timer->setInterval(mode == ReportMode ? REPORT_INTERVAL : CHECK_INTERVAL);
 		timer->start();
+
+		report.connectionsMax = -1; // stale
 	}
 
 	~Private()
@@ -98,7 +106,7 @@ public:
 	}
 
 private slots:
-	void doCheck()
+	void doRequest()
 	{
 		req = zhttpManager->createRequest();
 		req->setParent(this);
@@ -121,6 +129,26 @@ private slots:
 			query.addQueryItem("arch", arch);
 		if(!org.isEmpty())
 			query.addQueryItem("org", org);
+
+		if(mode == ReportMode)
+		{
+			QString host = QHostInfo::localHostName();
+			QString hashedHost = QString::fromUtf8(QCryptographicHash::hash(host.toUtf8(), QCryptographicHash::Sha1).toHex());
+			query.addQueryItem("id", hashedHost);
+
+			int cmax = (report.connectionsMax > 0 ? report.connectionsMax : 0);
+			query.addQueryItem("cmax", QString::number(cmax));
+			query.addQueryItem("cminutes", QString::number(report.connectionsMinutes));
+			query.addQueryItem("recv", QString::number(report.messagesReceived));
+			query.addQueryItem("sent", QString::number(report.messagesSent));
+			query.addQueryItem("ops", QString::number(report.ops));
+
+			report.connectionsMax = -1; // stale
+			report.connectionsMinutes = 0;
+			report.messagesReceived = 0;
+			report.messagesSent = 0;
+			report.ops = 0;
+		}
 
 		url.setQuery(query);
 
@@ -196,19 +224,32 @@ private slots:
 	void timer_timeout()
 	{
 		if(!req)
-			doCheck();
+			doRequest();
 	}
 };
 
-Updater::Updater(const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent) :
+Updater::Updater(Mode mode, const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, currentVersion, org, zhttp);
+	d = new Private(this, mode, currentVersion, org, zhttp);
 }
 
 Updater::~Updater()
 {
 	delete d;
+}
+
+void Updater::setReport(const Report &report)
+{
+	// update the current report data
+
+	if(d->report.connectionsMax == -1 || report.connectionsMax > d->report.connectionsMax)
+		d->report.connectionsMax = report.connectionsMax;
+
+	d->report.connectionsMinutes += report.connectionsMinutes;
+	d->report.messagesReceived += report.messagesReceived;
+	d->report.messagesSent += report.messagesSent;
+	d->report.ops += report.ops;
 }
 
 #include "updater.moc"

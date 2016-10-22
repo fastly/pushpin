@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -79,11 +79,13 @@ private:
 	friend class ZhttpManager;
 	ZWebSocket(QObject *parent = 0);
 	void setupClient(ZhttpManager *manager);
-	bool setupServer(ZhttpManager *manager, const ZhttpRequestPacket &packet);
+	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void startServer();
 	bool isServer() const;
-	void handle(const ZhttpRequestPacket &packet);
-	void handle(const ZhttpResponsePacket &packet);
+	QByteArray toAddress() const;
+	int outSeqInc();
+	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
+	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet);
 };
 
 #endif

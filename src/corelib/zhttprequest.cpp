@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,6 +31,7 @@
 
 #define IDEAL_CREDITS 200000
 #define SESSION_EXPIRE 60000
+#define KEEPALIVE_INTERVAL 45000
 #define REQ_BUF_MAX 1000000
 
 class ZhttpRequest::Private : public QObject
@@ -94,6 +95,7 @@ public:
 	ErrorCondition errorCondition;
 	QTimer *expireTimer;
 	QTimer *keepAliveTimer;
+	bool multi;
 
 	Private(ZhttpRequest *_q) :
 		QObject(_q),
@@ -120,7 +122,8 @@ public:
 		needPause(false),
 		errored(false),
 		expireTimer(0),
-		keepAliveTimer(0)
+		keepAliveTimer(0),
+		multi(false)
 	{
 		expireTimer = new QTimer(this);
 		connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
@@ -160,12 +163,14 @@ public:
 
 		if(manager)
 		{
+			manager->unregisterKeepAlive(q);
+
 			manager->unlink(q);
 			manager = 0;
 		}
 	}
 
-	bool setupServer(const ZhttpRequestPacket &packet)
+	bool setupServer(int seq, const ZhttpRequestPacket &packet)
 	{
 		if(packet.type != ZhttpRequestPacket::Data)
 		{
@@ -174,7 +179,7 @@ public:
 			return false;
 		}
 
-		if(packet.seq != -1 && packet.seq != 0)
+		if(seq != -1 && seq != 0)
 		{
 			log_warning("zhttp server: error, received request with non-zero seq field");
 			writeError("bad-request");
@@ -190,7 +195,7 @@ public:
 			return false;
 		}
 
-		if(packet.seq == -1 && packet.more)
+		if(seq == -1 && packet.more)
 		{
 			log_warning("zhttp server: error, received stream request with no seq field");
 			writeError("bad-request");
@@ -212,6 +217,9 @@ public:
 
 		userData = packet.userData;
 		peerAddress = packet.peerAddress;
+
+		if(packet.multi)
+			multi = true;
 
 		if(!packet.more)
 			haveRequestBody = true;
@@ -250,6 +258,7 @@ public:
 		// send a keep-alive right away to accept after handoff
 		ZhttpResponsePacket p;
 		p.type = ZhttpResponsePacket::KeepAlive;
+		p.multi = true; // request multi support
 		writePacket(p);
 	}
 
@@ -275,6 +284,8 @@ public:
 		assert(!pausing && !paused);
 		assert(!doReq);
 
+		stopKeepAlive();
+
 		pausing = true;
 		needPause = true;
 
@@ -285,6 +296,8 @@ public:
 	{
 		assert(paused);
 		paused = false;
+
+		startKeepAlive();
 
 		ZhttpResponsePacket p;
 		p.type = ZhttpResponsePacket::KeepAlive;
@@ -300,7 +313,28 @@ public:
 
 	void startKeepAlive()
 	{
-		keepAliveTimer->start(SESSION_EXPIRE / 2);
+		if(multi)
+		{
+			if(keepAliveTimer->isActive())
+				keepAliveTimer->stop();
+
+			manager->registerKeepAlive(q);
+		}
+		else
+		{
+			manager->unregisterKeepAlive(q);
+
+			if(!keepAliveTimer->isActive())
+				keepAliveTimer->start(KEEPALIVE_INTERVAL);
+		}
+	}
+
+	void stopKeepAlive()
+	{
+		if(keepAliveTimer->isActive())
+			keepAliveTimer->stop();
+
+		manager->unregisterKeepAlive(q);
 	}
 
 	void refreshTimeout()
@@ -449,7 +483,7 @@ public:
 		}
 	}
 
-	void handle(const ZhttpRequestPacket &packet)
+	void handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet)
 	{
 		if(paused)
 			return;
@@ -459,7 +493,7 @@ public:
 			errored = true;
 			errorCondition = convertError(packet.condition);
 
-			log_debug("zhttp server: error id=%s cond=%s", packet.id.data(), packet.condition.data());
+			log_debug("zhttp server: error id=%s cond=%s", id.data(), packet.condition.data());
 
 			state = Stopped;
 			cleanup();
@@ -468,7 +502,7 @@ public:
 		}
 		else if(packet.type == ZhttpRequestPacket::Cancel)
 		{
-			log_debug("zhttp server: received cancel id=%s", packet.id.data());
+			log_debug("zhttp server: received cancel id=%s", id.data());
 
 			errored = true;
 			errorCondition = ErrorGeneric;
@@ -478,27 +512,37 @@ public:
 			return;
 		}
 
-		if(packet.seq != inSeq)
+		if(seq != -1)
 		{
-			log_warning("zhttp server: error id=%s received message out of sequence, canceling", packet.id.data());
-
-			// if this was not an error packet, send cancel
-			if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+			if(seq != inSeq)
 			{
-				ZhttpResponsePacket p;
-				p.type = ZhttpResponsePacket::Cancel;
-				writePacket(p);
+				log_warning("zhttp server: error id=%s received message out of sequence, canceling", id.data());
+
+				// if this was not an error packet, send cancel
+				if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+				{
+					ZhttpResponsePacket p;
+					p.type = ZhttpResponsePacket::Cancel;
+					writePacket(p);
+				}
+
+				state = Stopped;
+				errored = true;
+				errorCondition = ErrorGeneric;
+				cleanup();
+				emit q->error();
+				return;
 			}
 
-			state = Stopped;
-			errored = true;
-			errorCondition = ErrorGeneric;
-			cleanup();
-			emit q->error();
-			return;
+			++inSeq;
 		}
 
-		++inSeq;
+		if(!multi && packet.multi)
+		{
+			// switch on multi support
+			multi = true;
+			startKeepAlive(); // re-setup keep alive
+		}
 
 		refreshTimeout();
 
@@ -543,11 +587,11 @@ public:
 		}
 		else
 		{
-			log_debug("zhttp server: unsupported packet type id=%s type=%d", packet.id.data(), (int)packet.type);
+			log_debug("zhttp server: unsupported packet type id=%s type=%d", id.data(), (int)packet.type);
 		}
 	}
 
-	void handle(const ZhttpResponsePacket &packet)
+	void handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet)
 	{
 		if(state == ClientRequestStartWait)
 		{
@@ -557,7 +601,7 @@ public:
 				errored = true;
 				errorCondition = ErrorGeneric;
 				cleanup();
-				log_warning("zhttp client: error id=%s initial ack for streamed input request did not contain from field", packet.id.data());
+				log_warning("zhttp client: error id=%s initial ack for streamed input request did not contain from field", id.data());
 				emit q->error();
 				return;
 			}
@@ -583,7 +627,7 @@ public:
 			errored = true;
 			errorCondition = convertError(packet.condition);
 
-			log_debug("zhttp client: error id=%s cond=%s", packet.id.data(), packet.condition.data());
+			log_debug("zhttp client: error id=%s cond=%s", id.data(), packet.condition.data());
 
 			state = Stopped;
 			cleanup();
@@ -592,7 +636,7 @@ public:
 		}
 		else if(packet.type == ZhttpResponsePacket::Cancel)
 		{
-			log_debug("zhttp client: received cancel id=%s", packet.id.data());
+			log_debug("zhttp client: received cancel id=%s", id.data());
 
 			errored = true;
 			errorCondition = ErrorGeneric;
@@ -603,9 +647,9 @@ public:
 		}
 
 		// if non-req mode, check sequencing
-		if(!doReq && packet.seq != inSeq)
+		if(!doReq && seq != inSeq)
 		{
-			log_warning("zhttp client: error id=%s received message out of sequence, canceling", packet.id.data());
+			log_warning("zhttp client: error id=%s received message out of sequence, canceling", id.data());
 
 			// if this was not an error packet, send cancel
 			if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
@@ -624,6 +668,13 @@ public:
 		}
 
 		++inSeq;
+
+		if(!multi && packet.multi)
+		{
+			// switch on multi support
+			multi = true;
+			startKeepAlive(); // re-setup keep alive
+		}
 
 		refreshTimeout();
 
@@ -657,12 +708,12 @@ public:
 			if(doReq)
 			{
 				if(responseBodyBuf.size() + packet.body.size() > REQ_BUF_MAX)
-					log_warning("zhttp client req: id=%s server response too large", packet.id.data());
+					log_warning("zhttp client req: id=%s server response too large", id.data());
 			}
 			else
 			{
 				if(responseBodyBuf.size() + packet.body.size() > IDEAL_CREDITS)
-					log_warning("zhttp client: id=%s server is sending too fast", packet.id.data());
+					log_warning("zhttp client: id=%s server is sending too fast", id.data());
 			}
 
 			responseBodyBuf += packet.body;
@@ -708,7 +759,7 @@ public:
 		}
 		else
 		{
-			log_debug("zhttp client: unsupported packet type id=%s type=%d", packet.id.data(), (int)packet.type);
+			log_debug("zhttp client: unsupported packet type id=%s type=%d", id.data(), (int)packet.type);
 		}
 	}
 
@@ -740,17 +791,20 @@ public:
 
 		ZhttpRequestPacket out = packet;
 		out.from = rid.first;
-		out.id = rid.second;
 
 		if(doReq)
 		{
+			out.ids += ZhttpRequestPacket::Id(rid.second);
+
 			manager->writeHttp(out);
 		}
 		else
 		{
-			out.seq = outSeq++;
+			bool first = (outSeq == 0);
 
-			if(out.seq == 0)
+			out.ids += ZhttpRequestPacket::Id(rid.second, outSeq++);
+
+			if(first)
 			{
 				manager->writeHttp(out);
 			}
@@ -768,8 +822,7 @@ public:
 
 		ZhttpResponsePacket out = packet;
 		out.from = manager->instanceId();
-		out.id = rid.second;
-		out.seq = outSeq++;
+		out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
 		out.userData = userData;
 		
 		manager->writeHttp(out, rid.first);
@@ -935,6 +988,7 @@ public slots:
 				if(passthrough.isValid())
 					p.passthrough = passthrough;
 				p.credits = IDEAL_CREDITS;
+				p.multi = true;
 				writePacket(p);
 
 				if(p.more)
@@ -961,6 +1015,8 @@ public slots:
 				// send ack
 				ZhttpResponsePacket p;
 				p.type = ZhttpResponsePacket::KeepAlive;
+				if(multi)
+					p.multi = true;
 				writePacket(p);
 			}
 			else
@@ -971,6 +1027,8 @@ public slots:
 				ZhttpResponsePacket p;
 				p.type = ZhttpResponsePacket::Credit;
 				p.credits = IDEAL_CREDITS - responseBodyBuf.size();
+				if(multi)
+					p.multi = true;
 				writePacket(p);
 			}
 
@@ -1258,12 +1316,12 @@ void ZhttpRequest::setupClient(ZhttpManager *manager, bool req)
 	d->manager->link(this);
 }
 
-bool ZhttpRequest::setupServer(ZhttpManager *manager, const ZhttpRequestPacket &packet)
+bool ZhttpRequest::setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet)
 {
 	d->manager = manager;
 	d->server = true;
-	d->rid = Rid(packet.from, packet.id);
-	return d->setupServer(packet);
+	d->rid = Rid(packet.from, id);
+	return d->setupServer(seq, packet);
 }
 
 void ZhttpRequest::setupServer(ZhttpManager *manager, const ZhttpRequest::ServerState &state)
@@ -1285,18 +1343,28 @@ bool ZhttpRequest::isServer() const
 	return d->server;
 }
 
-void ZhttpRequest::handle(const ZhttpRequestPacket &packet)
+QByteArray ZhttpRequest::toAddress() const
 {
-	assert(d->manager);
-
-	d->handle(packet);
+	return d->toAddress;
 }
 
-void ZhttpRequest::handle(const ZhttpResponsePacket &packet)
+int ZhttpRequest::outSeqInc()
+{
+	return d->outSeq++;
+}
+
+void ZhttpRequest::handle(const QByteArray &id, int seq, const ZhttpRequestPacket &packet)
 {
 	assert(d->manager);
 
-	d->handle(packet);
+	d->handle(id, seq, packet);
+}
+
+void ZhttpRequest::handle(const QByteArray &id, int seq, const ZhttpResponsePacket &packet)
+{
+	assert(d->manager);
+
+	d->handle(id, seq, packet);
 }
 
 #include "zhttprequest.moc"
