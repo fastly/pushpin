@@ -1,6 +1,17 @@
 Pushpin Changelog
 =================
 
+v. 1.13.0 (2016-10-22)
+
+  * Optimizations for higher concurrent connections.
+  * New config options: message_rate and message_hwm.
+  * New stats message: report.
+  * Handle next links internally if relative.
+  * Log accepted requests as "accept", not "hold".
+  * Log handler-initiated requests in handler, not proxy.
+  * Fix memory leaks.
+  * Send anonymous usage statistics to Fanout.
+
 v. 1.12.0 (2016-09-03)
 
   * "GRIP Next" feature for streaming many responses as a single response.
