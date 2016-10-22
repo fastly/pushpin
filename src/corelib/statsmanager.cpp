@@ -377,8 +377,11 @@ public:
 
 		subscriptionsByKey.remove(subKey);
 
-		subscriptionsByLastRefresh.remove(QPair<qint64, Subscription*>(s->lastRefresh, s));
-		subscriptionRefreshBuckets[s->refreshBucket].remove(s);
+		if(s->lastRefresh >= 0)
+		{
+			subscriptionsByLastRefresh.remove(QPair<qint64, Subscription*>(s->lastRefresh, s));
+			subscriptionRefreshBuckets[s->refreshBucket].remove(s);
+		}
 	}
 
 	Report *getOrCreateReport(const QByteArray &routeId)
@@ -697,6 +700,11 @@ public:
 				// in linger mode, next refresh is set to the time we should
 				//   delete the subscription rather than refresh
 				toDelete += s;
+
+				// need to remove from map to avoid reprocessing
+				subscriptionsByLastRefresh.erase(it);
+				subscriptionRefreshBuckets[s->refreshBucket].remove(s);
+				s->lastRefresh = -1;
 			}
 			else
 			{
