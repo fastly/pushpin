@@ -48,7 +48,8 @@ public:
 		NotStarted,
 		SendingFirstInstructResponse,
 		SendingInitialResponse,
-		Holding
+		Holding,
+		Closing
 	};
 
 	HttpSession *q;
@@ -154,7 +155,9 @@ public:
 
 	void respond(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
 	{
-		assert(state == Holding);
+		if(state != Holding)
+			return;
+
 		assert(instruct.holdMode == Instruct::ResponseHold);
 
 		// inherit headers from the timeout response
@@ -194,7 +197,9 @@ public:
 
 	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
 	{
-		assert(state == Holding);
+		if(state != Holding)
+			return;
+
 		assert(instruct.holdMode == Instruct::ResponseHold);
 
 		QByteArray body;
@@ -243,7 +248,9 @@ public:
 
 	void stream(const QByteArray &content)
 	{
-		assert(state == Holding);
+		if(state != Holding)
+			return;
+
 		assert(instruct.holdMode == Instruct::StreamHold);
 
 		if(req->writeBytesAvailable() < content.size())
@@ -261,8 +268,12 @@ public:
 
 	void close()
 	{
-		assert(state == Holding);
+		if(state != Holding)
+			return;
+
 		assert(instruct.holdMode == Instruct::StreamHold);
+
+		state = Closing;
 
 		req->endBody();
 		timer->stop();
@@ -339,6 +350,10 @@ private:
 
 	void respond(int _code, const QByteArray &_reason, const HttpHeaders &_headers, const QByteArray &_body)
 	{
+		state = Closing;
+
+		timer->stop();
+
 		int code = _code;
 		QByteArray reason = _reason;
 		HttpHeaders headers = _headers;
