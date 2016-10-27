@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.13.1 (2016-10-27)
+
+  * Fix crash when publishing to a long-polling client that is closing.
+  * More conservative message_rate default.
+
 v. 1.13.0 (2016-10-22)
 
   * Optimizations for higher concurrent connections.
