@@ -326,7 +326,7 @@ private slots:
 		else
 		{
 			// log error but keep going
-			log_error("failed to detect session");
+			log_error("failed to detect session: condition=%d", result.value.toInt());
 		}
 
 		doFinish();
@@ -345,7 +345,7 @@ private slots:
 			if(errorCondition != "item-not-found")
 			{
 				// log error but keep going
-				log_error("failed to detect session");
+				log_error("failed to detect session: condition=%d", result.value.toInt());
 			}
 		}
 
@@ -1037,7 +1037,7 @@ private slots:
 	void sessionDetectRulesSet_finished(const DeferredResult &result)
 	{
 		if(!result.success)
-			log_debug("couldn't store detection rules");
+			log_error("couldn't store detection rules: condition=%d", result.value.toInt());
 
 		afterSetRules();
 	}
@@ -1045,7 +1045,7 @@ private slots:
 	void sessionCreateOrUpdate_finished(const DeferredResult &result)
 	{
 		if(!result.success)
-			log_debug("couldn't create/update session");
+			log_error("couldn't create/update session: condition=%d", result.value.toInt());
 
 		afterSessionCalls();
 	}
@@ -2202,7 +2202,7 @@ private slots:
 		deferreds.remove(d);
 
 		if(!result.success)
-			log_debug("couldn't create/update session");
+			log_error("couldn't create/update session: condition=%d", result.value.toInt());
 	}
 
 	void sessionUpdateMany_finished(const DeferredResult &result)
@@ -2211,9 +2211,7 @@ private slots:
 		deferreds.remove(d);
 
 		if(!result.success)
-		{
-			log_error("couldn't update session");
-		}
+			log_error("couldn't update session: condition=%d", result.value.toInt());
 	}
 
 	void inspectWorker_finished(const DeferredResult &result)
