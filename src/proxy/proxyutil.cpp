@@ -49,7 +49,7 @@ static bool validate_token(const QByteArray &token, const QByteArray &key)
 
 namespace ProxyUtil {
 
-bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata)
+bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool stripHeaders)
 {
 	// check if the request is coming from a grip proxy already
 	bool trustedClient = false;
@@ -138,13 +138,16 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 
 	if(!trustedClient)
 	{
-		// remove all Grip- headers
-		for(int n = 0; n < requestData->headers.count(); ++n)
+		if(stripHeaders)
 		{
-			if(qstrnicmp(requestData->headers[n].first.data(), "Grip-", 5) == 0)
+			// remove all Grip- headers
+			for(int n = 0; n < requestData->headers.count(); ++n)
 			{
-				requestData->headers.removeAt(n);
-				--n; // adjust position
+				if(qstrnicmp(requestData->headers[n].first.data(), "Grip-", 5) == 0)
+				{
+					requestData->headers.removeAt(n);
+					--n; // adjust position
+				}
 			}
 		}
 
