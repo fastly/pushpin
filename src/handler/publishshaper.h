@@ -22,7 +22,7 @@
 
 #include <QObject>
 
-class PublishFormat;
+class PublishItem;
 
 class PublishShaper : public QObject
 {
@@ -35,10 +35,10 @@ public:
 	void setRate(int messagesPerSecond);
 	void setHwm(int hwm);
 
-	bool addMessage(QObject *target, const PublishFormat &format, const QString &route = QString(), const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
+	bool addMessage(QObject *target, const PublishItem &item, const QString &route = QString(), const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
 
 signals:
-	void send(QObject *target, const PublishFormat &format, const QList<QByteArray> &exposeHeaders);
+	void send(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders);
 
 private:
 	class Private;

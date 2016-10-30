@@ -24,7 +24,7 @@
 #include <QPointer>
 #include <QTimer>
 #include "log.h"
-#include "publishformat.h"
+#include "publishitem.h"
 
 #define MIN_BATCH_INTERVAL 25
 
@@ -37,7 +37,7 @@ public:
 	{
 	public:
 		QPointer<QObject> target;
-		PublishFormat format;
+		PublishItem item;
 		QList<QByteArray> exposeHeaders;
 	};
 
@@ -106,7 +106,7 @@ public:
 		setup();
 	}
 
-	bool add(QObject *target, const PublishFormat &format, const QString &route, const QList<QByteArray> &exposeHeaders)
+	bool add(QObject *target, const PublishItem &publishItem, const QString &route, const QList<QByteArray> &exposeHeaders)
 	{
 		QList<Item*> &items = itemsByRoute[route];
 		if(hwm > 0 && items.count() >= hwm)
@@ -121,7 +121,7 @@ public:
 
 		Item *i = new Item;
 		i->target = target;
-		i->format = format;
+		i->item = publishItem;
 		i->exposeHeaders = exposeHeaders;
 		items += i;
 
@@ -229,7 +229,7 @@ private:
 			}
 
 			QObject *target = i->target;
-			PublishFormat format = i->format;
+			PublishItem publishItem = i->item;
 			QList<QByteArray> exposeHeaders = i->exposeHeaders;
 			delete i;
 
@@ -239,7 +239,7 @@ private:
 				continue;
 			}
 
-			emit q->send(target, format, exposeHeaders);
+			emit q->send(target, publishItem, exposeHeaders);
 			if(!self)
 				return false;
 		}
@@ -283,10 +283,10 @@ void PublishShaper::setHwm(int hwm)
 	d->hwm = hwm;
 }
 
-bool PublishShaper::addMessage(QObject *target, const PublishFormat &format, const QString &route, const QList<QByteArray> &exposeHeaders)
+bool PublishShaper::addMessage(QObject *target, const PublishItem &item, const QString &route, const QList<QByteArray> &exposeHeaders)
 {
 	QString r = (!route.isEmpty() ? route : QString("")); // index by empty string not null string
-	return d->add(target, format, r, exposeHeaders);
+	return d->add(target, item, r, exposeHeaders);
 }
 
 #include "publishshaper.moc"

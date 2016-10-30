@@ -34,6 +34,8 @@ public:
 	QHash<PublishFormat::Type, PublishFormat> formats;
 	QHash<QString, QString> meta;
 
+	PublishFormat format; // for single format items
+
 	static PublishItem fromVariant(const QVariant &vitem, const QString &channel = QString(), bool *ok = 0, QString *errorMessage = 0);
 };
 

@@ -1444,7 +1444,12 @@ private:
 
 		if(!responseSessions.isEmpty())
 		{
-			PublishFormat f = item.formats.value(PublishFormat::HttpResponse);
+			PublishItem i = item;
+			i.format = item.formats.value(PublishFormat::HttpResponse);
+			i.formats.clear();
+
+			PublishFormat &f = i.format;
+
 			QList<QByteArray> exposeHeaders = f.headers.getAll("Grip-Expose-Headers");
 
 			// remove grip headers from the push
@@ -1462,41 +1467,45 @@ private:
 
 			foreach(HttpSession *hs, responseSessions)
 			{
-				shaper->addMessage(hs, f, hs->route(), exposeHeaders);
+				shaper->addMessage(hs, i, hs->route(), exposeHeaders);
 				stats->addMessageSent(hs->route().toUtf8(), "http-response");
 			}
 
-			stats->addMessage(item.channel, item.id, "http-response", responseSessions.count());
+			stats->addMessage(i.channel, i.id, "http-response", responseSessions.count());
 		}
 
 		if(!streamSessions.isEmpty())
 		{
-			PublishFormat f = item.formats.value(PublishFormat::HttpStream);
+			PublishItem i = item;
+			i.format = item.formats.value(PublishFormat::HttpStream);
+			i.formats.clear();
 
 			log_debug("relaying to %d http-stream subscribers", streamSessions.count());
 
 			foreach(HttpSession *hs, streamSessions)
 			{
-				shaper->addMessage(hs, f, hs->route());
+				shaper->addMessage(hs, i, hs->route());
 				stats->addMessageSent(hs->route().toUtf8(), "http-stream");
 			}
 
-			stats->addMessage(item.channel, item.id, "http-stream", streamSessions.count());
+			stats->addMessage(i.channel, i.id, "http-stream", streamSessions.count());
 		}
 
 		if(!wsSessions.isEmpty())
 		{
-			PublishFormat f = item.formats.value(PublishFormat::WebSocketMessage);
+			PublishItem i = item;
+			i.format = item.formats.value(PublishFormat::WebSocketMessage);
+			i.formats.clear();
 
 			log_debug("relaying to %d ws-message subscribers", wsSessions.count());
 
 			foreach(WsSession *s, wsSessions)
 			{
-				shaper->addMessage(s, f, s->route);
+				shaper->addMessage(s, i, s->route);
 				stats->addMessageSent(s->route.toUtf8(), "ws-message");
 			}
 
-			stats->addMessage(item.channel, item.id, "ws-message", wsSessions.count());
+			stats->addMessage(i.channel, i.id, "ws-message", wsSessions.count());
 		}
 
 		int receivers = responseSessions.count() + streamSessions.count() + wsSessions.count();
@@ -2012,8 +2021,10 @@ private slots:
 		}
 	}
 
-	void shaper_send(QObject *target, const PublishFormat &f, const QList<QByteArray> &exposeHeaders)
+	void shaper_send(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 	{
+		PublishFormat &f = item.format;
+
 		if(f.type == PublishFormat::HttpResponse)
 		{
 			HttpSession *hs = qobject_cast<HttpSession*>(target);
