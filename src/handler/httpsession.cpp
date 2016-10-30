@@ -33,6 +33,8 @@
 #include "jsonpatch.h"
 #include "statsmanager.h"
 #include "variantutil.h"
+#include "publishitem.h"
+#include "publishformat.h"
 
 #define RETRY_TIMEOUT 1000
 #define RETRY_MAX 5
@@ -153,130 +155,77 @@ public:
 		firstInstructResponseDone();
 	}
 
-	void respond(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
+	void publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 	{
 		if(state != Holding)
 			return;
 
-		assert(instruct.holdMode == Instruct::ResponseHold);
+		const PublishFormat &f = item.format;
 
-		// inherit headers from the timeout response
-		HttpHeaders headers = instruct.response.headers;
-		foreach(const HttpHeader &h, _headers)
-			headers.removeAll(h.first);
-		foreach(const HttpHeader &h, _headers)
-			headers += h;
-
-		// if Grip-Expose-Headers was provided in the push, apply now
-		if(!exposeHeaders.isEmpty())
+		if(f.type == PublishFormat::HttpResponse)
 		{
-			for(int n = 0; n < headers.count(); ++n)
-			{
-				const HttpHeader &h = headers[n];
+			assert(instruct.holdMode == Instruct::ResponseHold);
 
-				bool found = false;
-				foreach(const QByteArray &e, exposeHeaders)
-				{
-					if(qstricmp(h.first.data(), e.data()) == 0)
-					{
-						found = true;
-						break;
-					}
-				}
-
-				if(found)
-				{
-					headers.removeAt(n);
-					--n; // adjust position
-				}
-			}
+			if(f.haveBodyPatch)
+				respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
+			else
+				respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
 		}
-
-		respond(code, reason, headers, body);
-	}
-
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
-	{
-		if(state != Holding)
-			return;
-
-		assert(instruct.holdMode == Instruct::ResponseHold);
-
-		QByteArray body;
-
-		QJsonParseError e;
-		QJsonDocument doc = QJsonDocument::fromJson(instruct.response.body, &e);
-		if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
+		else if(f.type == PublishFormat::HttpStream)
 		{
-			QVariant vbody;
-			if(doc.isObject())
-				vbody = doc.object().toVariantMap();
-			else // isArray
-				vbody = doc.array().toVariantList();
+			assert(instruct.holdMode == Instruct::StreamHold);
 
-			QString errorMessage;
-			vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
-			if(vbody.isValid())
-				vbody = VariantUtil::convertToJsonStyle(vbody);
-			if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
+			if(f.close)
 			{
-				QJsonDocument doc;
-				if(vbody.type() == QVariant::Map)
-					doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
-				else // List
-					doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
+				state = Closing;
 
-				body = doc.toJson(QJsonDocument::Compact);
-
-				if(instruct.response.body.endsWith("\r\n"))
-					body += "\r\n";
-				else if(instruct.response.body.endsWith("\n"))
-					body += '\n';
+				req->endBody();
+				timer->stop();
 			}
 			else
 			{
-				log_debug("httpsession: failed to apply JSON patch: %s", qPrintable(errorMessage));
+				if(req->writeBytesAvailable() < f.body.size())
+				{
+					log_debug("httpsession: not enough send credits, dropping");
+					return;
+				}
+
+				// find channel object
+				int at = -1;
+				for(int n = 0; n < instruct.channels.count(); ++n)
+				{
+					if(instruct.channels[n].name == item.channel)
+					{
+						at = n;
+						break;
+					}
+				}
+				if(at == -1)
+				{
+					log_debug("httpsession: received publish for channel with no subscription, dropping");
+					return;
+				}
+
+				Instruct::Channel &channel = instruct.channels[at];
+
+				if(!channel.prevId.isNull() && channel.prevId != item.prevId)
+				{
+					// drop and recover
+					state = SendingInitialResponse;
+
+					requestNextLink();
+					return;
+				}
+
+				channel.prevId = item.id;
+
+				req->writeBody(f.body);
+
+				// restart keep alive timer
+				if(instruct.keepAliveTimeout >= 0)
+					timer->start(instruct.keepAliveTimeout * 1000);
 			}
 		}
-		else
-		{
-			log_debug("httpsession: failed to parse original response body as JSON");
-		}
-
-		respond(code, reason, headers, body, exposeHeaders);
-	}
-
-	void stream(const QByteArray &content)
-	{
-		if(state != Holding)
-			return;
-
-		assert(instruct.holdMode == Instruct::StreamHold);
-
-		if(req->writeBytesAvailable() < content.size())
-		{
-			log_debug("httpsession: not enough send credits, dropping");
-			return;
-		}
-
-		req->writeBody(content);
-
-		// restart keep alive timer
-		if(instruct.keepAliveTimeout >= 0)
-			timer->start(instruct.keepAliveTimeout * 1000);
-	}
-
-	void close()
-	{
-		if(state != Holding)
-			return;
-
-		assert(instruct.holdMode == Instruct::StreamHold);
-
-		state = Closing;
-
-		req->endBody();
-		timer->stop();
 	}
 
 private:
@@ -436,6 +385,89 @@ private:
 		req->endBody();
 	}
 
+	void respond(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
+	{
+		// inherit headers from the timeout response
+		HttpHeaders headers = instruct.response.headers;
+		foreach(const HttpHeader &h, _headers)
+			headers.removeAll(h.first);
+		foreach(const HttpHeader &h, _headers)
+			headers += h;
+
+		// if Grip-Expose-Headers was provided in the push, apply now
+		if(!exposeHeaders.isEmpty())
+		{
+			for(int n = 0; n < headers.count(); ++n)
+			{
+				const HttpHeader &h = headers[n];
+
+				bool found = false;
+				foreach(const QByteArray &e, exposeHeaders)
+				{
+					if(qstricmp(h.first.data(), e.data()) == 0)
+					{
+						found = true;
+						break;
+					}
+				}
+
+				if(found)
+				{
+					headers.removeAt(n);
+					--n; // adjust position
+				}
+			}
+		}
+
+		respond(code, reason, headers, body);
+	}
+
+	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
+	{
+		QByteArray body;
+
+		QJsonParseError e;
+		QJsonDocument doc = QJsonDocument::fromJson(instruct.response.body, &e);
+		if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
+		{
+			QVariant vbody;
+			if(doc.isObject())
+				vbody = doc.object().toVariantMap();
+			else // isArray
+				vbody = doc.array().toVariantList();
+
+			QString errorMessage;
+			vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
+			if(vbody.isValid())
+				vbody = VariantUtil::convertToJsonStyle(vbody);
+			if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
+			{
+				QJsonDocument doc;
+				if(vbody.type() == QVariant::Map)
+					doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
+				else // List
+					doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
+
+				body = doc.toJson(QJsonDocument::Compact);
+
+				if(instruct.response.body.endsWith("\r\n"))
+					body += "\r\n";
+				else if(instruct.response.body.endsWith("\n"))
+					body += '\n';
+			}
+			else
+			{
+				log_debug("httpsession: failed to apply JSON patch: %s", qPrintable(errorMessage));
+			}
+		}
+		else
+		{
+			log_debug("httpsession: failed to parse original response body as JSON");
+		}
+
+		respond(code, reason, headers, body, exposeHeaders);
+	}
+
 	void doFinish()
 	{
 		ZhttpRequest::Rid rid = req->rid();
@@ -513,7 +545,11 @@ private:
 			outReq->setPassthroughData(data);
 		}
 
-		outReq->start("GET", nextUri, HttpHeaders());
+		HttpHeaders headers;
+		foreach(const Instruct::Channel &c, instruct.channels)
+			headers += HttpHeader("Grip-Last", c.name.toUtf8() + "; last-id=" + c.prevId.toUtf8());
+
+		outReq->start("GET", nextUri, headers);
 		outReq->endBody();
 	}
 
@@ -769,24 +805,9 @@ void HttpSession::start()
 	d->start();
 }
 
-void HttpSession::respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
+void HttpSession::publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 {
-	d->respond(code, reason, headers, body, exposeHeaders);
-}
-
-void HttpSession::respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
-{
-	d->respond(code, reason, headers, bodyPatch, exposeHeaders);
-}
-
-void HttpSession::stream(const QByteArray &content)
-{
-	d->stream(content);
-}
-
-void HttpSession::close()
-{
-	d->close();
+	d->publish(item, exposeHeaders);
 }
 
 #include "httpsession.moc"

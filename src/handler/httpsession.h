@@ -29,6 +29,7 @@
 class QTimer;
 class ZhttpManager;
 class StatsManager;
+class PublishItem;
 
 class HttpSession : public QObject
 {
@@ -71,10 +72,7 @@ public:
 	QHash<QString, QString> meta() const;
 
 	void start();
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders);
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders);
-	void stream(const QByteArray &content);
-	void close();
+	void publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
 
 signals:
 	void subscribe(const QString &channel);

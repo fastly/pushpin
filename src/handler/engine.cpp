@@ -2023,25 +2023,13 @@ private slots:
 
 	void shaper_send(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 	{
-		PublishFormat &f = item.format;
+		const PublishFormat &f = item.format;
 
-		if(f.type == PublishFormat::HttpResponse)
+		if(f.type == PublishFormat::HttpResponse || f.type == PublishFormat::HttpStream)
 		{
 			HttpSession *hs = qobject_cast<HttpSession*>(target);
 
-			if(f.haveBodyPatch)
-				hs->respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
-			else
-				hs->respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
-		}
-		else if(f.type == PublishFormat::HttpStream)
-		{
-			HttpSession *hs = qobject_cast<HttpSession*>(target);
-
-			if(f.close)
-				hs->close();
-			else
-				hs->stream(f.body);
+			hs->publish(item, exposeHeaders);
 		}
 		else if(f.type == PublishFormat::WebSocketMessage)
 		{
