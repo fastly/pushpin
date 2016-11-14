@@ -857,7 +857,7 @@ private:
 				responseData.reason = outReq->responseReason();
 				responseData.headers = outReq->responseHeaders();
 
-				logRequest(outReq->requestMethod(), outReq->requestUri(), responseData.code, sentOutReqData);
+				logRequest(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders(), responseData.code, sentOutReqData);
 
 				retries = 0;
 
@@ -910,7 +910,23 @@ private:
 		}
 	}
 
-	void logRequest(const QString &method, const QUrl &uri, int code, int bodySize)
+	static QString makeLastIdsStr(const HttpHeaders &headers)
+	{
+		QString out;
+
+		bool first = true;
+		foreach(const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last"))
+		{
+			if(!first)
+				out += ' ';
+			out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first), QString::fromUtf8(params.get("last-id")));
+			first = false;
+		}
+
+		return out;
+	}
+
+	void logRequest(const QString &method, const QUrl &uri, const HttpHeaders &headers, int code, int bodySize)
 	{
 		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
 
@@ -919,15 +935,23 @@ private:
 
 		msg += QString(" code=%1 %2").arg(QString::number(code), QString::number(bodySize));
 
+		QString lastIdsStr = makeLastIdsStr(headers);
+		if(!lastIdsStr.isEmpty())
+			msg += ' ' + lastIdsStr;
+
 		log_info("%s", qPrintable(msg));
 	}
 
-	void logRequestError(const QString &method, const QUrl &uri)
+	void logRequestError(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 	{
 		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
 
 		if(!adata.route.isEmpty())
 			msg += QString(" route=%1").arg(adata.route);
+
+		QString lastIdsStr = makeLastIdsStr(headers);
+		if(!lastIdsStr.isEmpty())
+			msg += ' ' + lastIdsStr;
 
 		msg += QString(" error");
 
@@ -983,7 +1007,7 @@ private slots:
 
 	void outReq_error()
 	{
-		logRequestError(outReq->requestMethod(), outReq->requestUri());
+		logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
 
 		delete outReq;
 		outReq = 0;
