@@ -816,7 +816,10 @@ private:
 
 		HttpHeaders headers;
 		foreach(const Instruct::Channel &c, channels.values())
-			headers += HttpHeader("Grip-Last", c.name.toUtf8() + "; last-id=" + c.prevId.toUtf8());
+		{
+			if(!c.prevId.isNull())
+				headers += HttpHeader("Grip-Last", c.name.toUtf8() + "; last-id=" + c.prevId.toUtf8());
+		}
 
 		outReq->start("GET", nextUri, headers);
 		outReq->endBody();
