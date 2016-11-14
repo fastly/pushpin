@@ -20,6 +20,8 @@
 #include "engine.h"
 
 #include <assert.h>
+#include <algorithm>
+#include <QPointer>
 #include <QTimer>
 #include <QUrlQuery>
 #include <QJsonDocument>
@@ -53,12 +55,12 @@
 #include "publishformat.h"
 #include "publishitem.h"
 #include "jsonpointer.h"
-#include "responselastids.h"
+#include "publishlastids.h"
 #include "instruct.h"
 #include "httpsession.h"
 #include "controlrequest.h"
 #include "conncheckworker.h"
-#include "publishshaper.h"
+#include "ratelimiter.h"
 
 #define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // infinite
@@ -123,6 +125,7 @@ public:
 	bool shareAll;
 	HttpRequestData requestData;
 	bool truncated;
+	bool autoShare;
 	QString sid;
 	LastIds lastIds;
 
@@ -131,7 +134,8 @@ public:
 		req(_req),
 		stateClient(_stateClient),
 		shareAll(_shareAll),
-		truncated(false)
+		truncated(false),
+		autoShare(false)
 	{
 		req->setParent(this);
 
@@ -216,6 +220,18 @@ public:
 				getSession = args["get-session"].toBool();
 			}
 
+			autoShare = false;
+			if(args.contains("auto-share"))
+			{
+				if(args["auto-share"].type() != QVariant::Bool)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				autoShare = args["auto-share"].toBool();
+			}
+
 			if(getSession && stateClient)
 			{
 				// determine session info
@@ -244,7 +260,27 @@ private:
 		QVariantHash result;
 		result["no-proxy"] = false;
 
-		if(shareAll)
+		if(autoShare && requestData.method == "GET")
+		{
+			// auto share matches requests based on URI path (not query) and
+			//   Grip-Last headers. the reason the query part is not
+			//   considered is because it may vary per client and Grip-Last
+			//   supersedes whatever is in the query
+
+			QUrl uri = requestData.uri;
+			uri.setQuery(QString()); // remove the query part
+
+			QList<QByteArray> gripLastHeaders = requestData.headers.getAll("Grip-Last");
+			std::sort(gripLastHeaders.begin(), gripLastHeaders.end());
+
+			QByteArray key = "auto|" + uri.toEncoded();
+
+			foreach(const QByteArray &h, gripLastHeaders)
+				key += '|' + h;
+
+			result["sharing-key"] = key;
+		}
+		else if(shareAll)
 			result["sharing-key"] = requestData.method.toLatin1() + '|' + requestData.uri.toEncoded();
 
 		if(!sid.isEmpty())
@@ -410,11 +446,13 @@ public:
 	QHash<QString, QSet<HttpSession*> > responseSessionsByChannel;
 	QHash<QString, QSet<HttpSession*> > streamSessionsByChannel;
 	QHash<QString, QSet<WsSession*> > wsSessionsByChannel;
-	ResponseLastIds responseLastIds;
+	PublishLastIds responseLastIds;
+	PublishLastIds streamLastIds;
 	QSet<QString> subs;
 
 	CommonState() :
-		responseLastIds(1000000)
+		responseLastIds(1000000),
+		streamLastIds(1000000)
 	{
 	}
 
@@ -455,6 +493,7 @@ public:
 	ZhttpManager *zhttpIn;
 	ZhttpManager *zhttpOut;
 	StatsManager *stats;
+	RateLimiter *updateLimiter;
 	QString route;
 	QString channelPrefix;
 	QByteArray sigIss;
@@ -470,7 +509,7 @@ public:
 	LastIds lastIds;
 	QList<HttpSession*> sessions;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req),
 		stateClient(_stateClient),
@@ -478,6 +517,7 @@ public:
 		zhttpIn(_zhttpIn),
 		zhttpOut(_zhttpOut),
 		stats(_stats),
+		updateLimiter(_updateLimiter),
 		trusted(false),
 		haveInspectInfo(false),
 		responseSent(false)
@@ -919,8 +959,7 @@ private:
 
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{
-			// check if we need to retry
-			bool needRetry = false;
+			bool conflict = false;
 			foreach(const Instruct::Channel &c, instruct.channels)
 			{
 				if(!c.prevId.isNull())
@@ -932,7 +971,7 @@ private:
 					{
 						log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
 						cs->responseLastIds.remove(name);
-						needRetry = true;
+						conflict = true;
 
 						// NOTE: don't exit loop here. we want to clear
 						//   the last ids of all conflicting channels
@@ -940,7 +979,7 @@ private:
 				}
 			}
 
-			if(needRetry)
+			if(conflict)
 			{
 				RetryRequestPacket rp;
 
@@ -1023,7 +1062,9 @@ private:
 			adata.sigKey = sigKey;
 			adata.trusted = trusted;
 
-			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, this);
+			PublishLastIds &publishLastIds = (instruct.holdMode == Instruct::ResponseHold ? cs->responseLastIds : cs->streamLastIds);
+
+			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &publishLastIds, this);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -1056,6 +1097,32 @@ class Engine::Private : public QObject
 	Q_OBJECT
 
 public:
+	class PublishAction : public RateLimiter::Action
+	{
+	public:
+		Engine::Private *ep;
+		QPointer<QObject> target;
+		PublishItem item;
+		QList<QByteArray> exposeHeaders;
+
+		PublishAction(Engine::Private *_ep, QObject *_target, const PublishItem &_item, const QList<QByteArray> &_exposeHeaders = QList<QByteArray>()) :
+			ep(_ep),
+			target(_target),
+			item(_item),
+			exposeHeaders(_exposeHeaders)
+		{
+		}
+
+		virtual bool execute()
+		{
+			if(!target)
+				return false;
+
+			ep->publishSend(target, item, exposeHeaders);
+			return true;
+		}
+	};
+
 	Engine *q;
 	Configuration config;
 	ZhttpManager *zhttpIn;
@@ -1078,7 +1145,8 @@ public:
 	QZmq::Valve *proxyStatsValve;
 	SimpleHttpServer *controlHttpServer;
 	StatsManager *stats;
-	PublishShaper *shaper;
+	RateLimiter *publishLimiter;
+	RateLimiter *updateLimiter;
 	CommonState cs;
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
@@ -1112,8 +1180,9 @@ public:
 	{
 		qRegisterMetaType<DetectRuleList>();
 
-		shaper = new PublishShaper(this);
-		connect(shaper, &PublishShaper::send, this, &Private::shaper_send);
+		publishLimiter = new RateLimiter(this);
+
+		updateLimiter = new RateLimiter(this);
 	}
 
 	~Private()
@@ -1129,8 +1198,11 @@ public:
 	{
 		config = _config;
 
-		shaper->setRate(config.messageRate);
-		shaper->setHwm(config.messageHwm);
+		publishLimiter->setRate(config.messageRate);
+		publishLimiter->setHwm(config.messageHwm);
+
+		updateLimiter->setRate(10);
+		updateLimiter->setBatchWaitEnabled(true);
 
 		zhttpIn = new ZhttpManager(this);
 		zhttpIn->setInstanceId(config.instanceId);
@@ -1423,6 +1495,9 @@ private:
 				if(!hs->sid().isEmpty())
 					sids += hs->sid();
 			}
+
+			if(!item.id.isNull())
+				cs.streamLastIds.set(item.channel, item.id);
 		}
 
 		if(item.formats.contains(PublishFormat::WebSocketMessage))
@@ -1467,8 +1542,17 @@ private:
 
 			foreach(HttpSession *hs, responseSessions)
 			{
-				shaper->addMessage(hs, i, hs->route(), exposeHeaders);
-				stats->addMessageSent(hs->route().toUtf8(), "http-response");
+				QString route = hs->route();
+
+				if(!publishLimiter->addAction(route, new PublishAction(this, hs, i, exposeHeaders)))
+				{
+					if(!route.isEmpty())
+						log_warning("exceeded publish hwm (%d) for route %s, dropping message", config.messageHwm, qPrintable(route));
+					else
+						log_warning("exceeded publish hwm (%d), dropping message", config.messageHwm);
+				}
+
+				stats->addMessageSent(route.toUtf8(), "http-response");
 			}
 
 			stats->addMessage(i.channel, i.id, "http-response", responseSessions.count());
@@ -1484,8 +1568,10 @@ private:
 
 			foreach(HttpSession *hs, streamSessions)
 			{
-				shaper->addMessage(hs, i, hs->route());
-				stats->addMessageSent(hs->route().toUtf8(), "http-stream");
+				QString route = hs->route();
+
+				publishLimiter->addAction(route, new PublishAction(this, hs, i));
+				stats->addMessageSent(route.toUtf8(), "http-stream");
 			}
 
 			stats->addMessage(i.channel, i.id, "http-stream", streamSessions.count());
@@ -1501,8 +1587,10 @@ private:
 
 			foreach(WsSession *s, wsSessions)
 			{
-				shaper->addMessage(s, i, s->route);
-				stats->addMessageSent(s->route.toUtf8(), "ws-message");
+				QString route = s->route;
+
+				publishLimiter->addAction(route, new PublishAction(this, s, i));
+				stats->addMessageSent(route.toUtf8(), "ws-message");
 			}
 
 			stats->addMessage(i.channel, i.id, "ws-message", wsSessions.count());
@@ -1605,6 +1693,48 @@ private:
 		log_info("%s", qPrintable(msg));
 	}
 
+	void publishSend(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
+	{
+		const PublishFormat &f = item.format;
+
+		if(f.type == PublishFormat::HttpResponse || f.type == PublishFormat::HttpStream)
+		{
+			HttpSession *hs = qobject_cast<HttpSession*>(target);
+
+			hs->publish(item, exposeHeaders);
+		}
+		else if(f.type == PublishFormat::WebSocketMessage)
+		{
+			WsSession *s = qobject_cast<WsSession*>(target);
+
+			WsControlPacket::Item i;
+			i.cid = s->cid.toUtf8();
+
+			if(f.close)
+			{
+				i.type = WsControlPacket::Item::Close;
+				i.code = f.code;
+			}
+			else
+			{
+				i.type = WsControlPacket::Item::Send;
+
+				switch(f.messageType)
+				{
+					case PublishFormat::Text:   i.contentType = "text"; break;
+					case PublishFormat::Binary: i.contentType = "binary"; break;
+					case PublishFormat::Ping:   i.contentType = "ping"; break;
+					case PublishFormat::Pong:   i.contentType = "pong"; break;
+					default: return; // unrecognized type, skip
+				}
+
+				i.message = f.body;
+			}
+
+			writeWsControlItem(i);
+		}
+	}
+
 private slots:
 	void inspectServer_requestReady()
 	{
@@ -1629,7 +1759,7 @@ private slots:
 		if(!req)
 			return;
 
-		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, this);
+		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, this);
 		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
 		connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
@@ -2018,48 +2148,6 @@ private slots:
 				deferreds += d;
 				return;
 			}
-		}
-	}
-
-	void shaper_send(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
-	{
-		const PublishFormat &f = item.format;
-
-		if(f.type == PublishFormat::HttpResponse || f.type == PublishFormat::HttpStream)
-		{
-			HttpSession *hs = qobject_cast<HttpSession*>(target);
-
-			hs->publish(item, exposeHeaders);
-		}
-		else if(f.type == PublishFormat::WebSocketMessage)
-		{
-			WsSession *s = qobject_cast<WsSession*>(target);
-
-			WsControlPacket::Item i;
-			i.cid = s->cid.toUtf8();
-
-			if(f.close)
-			{
-				i.type = WsControlPacket::Item::Close;
-				i.code = f.code;
-			}
-			else
-			{
-				i.type = WsControlPacket::Item::Send;
-
-				switch(f.messageType)
-				{
-					case PublishFormat::Text:   i.contentType = "text"; break;
-					case PublishFormat::Binary: i.contentType = "binary"; break;
-					case PublishFormat::Ping:   i.contentType = "ping"; break;
-					case PublishFormat::Pong:   i.contentType = "pong"; break;
-					default: return; // unrecognized type, skip
-				}
-
-				i.message = f.body;
-			}
-
-			writeWsControlItem(i);
 		}
 	}
 

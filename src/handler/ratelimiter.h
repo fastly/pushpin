@@ -17,32 +17,36 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PUBLISHSHAPER_H
-#define PUBLISHSHAPER_H
+#ifndef RATELIMITER_H
+#define RATELIMITER_H
 
 #include <QObject>
 
-class PublishItem;
-
-class PublishShaper : public QObject
+class RateLimiter : public QObject
 {
 	Q_OBJECT
 
 public:
-	PublishShaper(QObject *parent = 0);
-	~PublishShaper();
+	class Action
+	{
+	public:
+		virtual ~Action() {}
 
-	void setRate(int messagesPerSecond);
+		virtual bool execute() = 0;
+	};
+
+	RateLimiter(QObject *parent = 0);
+	~RateLimiter();
+
+	void setRate(int actionsPerSecond);
 	void setHwm(int hwm);
+	void setBatchWaitEnabled(bool on);
 
-	bool addMessage(QObject *target, const PublishItem &item, const QString &route = QString(), const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
-
-signals:
-	void send(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders);
+	bool addAction(const QString &key, Action *action);
+	Action *lastAction(const QString &key) const;
 
 private:
 	class Private;
-	friend class Private;
 	Private *d;
 };
 

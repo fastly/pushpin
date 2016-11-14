@@ -55,11 +55,13 @@ public:
 	QHash<QString, QString> meta;
 	HttpResponseData response;
 	QUrl nextLink;
+	int nextLinkTimeout;
 
 	Instruct() :
 		holdMode(NoHold),
 		timeout(-1),
-		keepAliveTimeout(-1)
+		keepAliveTimeout(-1),
+		nextLinkTimeout(-1)
 	{
 	}
 

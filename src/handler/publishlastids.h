@@ -17,8 +17,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef RESPONSELASTIDS_H
-#define RESPONSELASTIDS_H
+#ifndef PUBLISHLASTIDS_H
+#define PUBLISHLASTIDS_H
 
 #include <QString>
 #include <QDateTime>
@@ -26,10 +26,10 @@
 #include <QHash>
 
 // cache with LRU expiration
-class ResponseLastIds
+class PublishLastIds
 {
 public:
-	ResponseLastIds(int maxCapacity);
+	PublishLastIds(int maxCapacity);
 	void set(const QString &channel, const QString &id);
 	void remove(const QString &channel);
 	QString value(const QString &channel);

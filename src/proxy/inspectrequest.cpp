@@ -129,7 +129,7 @@ InspectData InspectRequest::result() const
 	return d->idata;
 }
 
-void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool getSession)
+void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool getSession, bool autoShare)
 {
 	QVariantHash args;
 
@@ -153,6 +153,9 @@ void InspectRequest::start(const HttpRequestData &hdata, bool truncated, bool ge
 
 	if(getSession)
 		args["get-session"] = true;
+
+	if(autoShare)
+		args["auto-share"] = true;
 
 	ZrpcRequest::start("inspect", args);
 }

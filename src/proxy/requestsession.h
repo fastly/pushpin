@@ -64,6 +64,7 @@ public:
 	void setAutoCrossOrigin(bool enabled);
 	void setPrefetchSize(int size);
 	void setRoute(const DomainMap::Entry &route);
+	void setAutoShare(bool enabled);
 	void setAccepted(bool enabled);
 
 	// takes ownership
