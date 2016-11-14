@@ -69,6 +69,7 @@
 #define STATE_RPC_TIMEOUT 1000
 #define PROXY_RPC_TIMEOUT 10000
 #define DEFAULT_WS_KEEPALIVE_TIMEOUT 55
+#define SUBSCRIBED_DELAY 1000
 
 #define INSPECT_WORKERS_MAX 10
 #define ACCEPT_WORKERS_MAX 10
@@ -438,6 +439,8 @@ private slots:
 	}
 };
 
+class Subscription;
+
 class CommonState
 {
 public:
@@ -448,7 +451,7 @@ public:
 	QHash<QString, QSet<WsSession*> > wsSessionsByChannel;
 	PublishLastIds responseLastIds;
 	PublishLastIds streamLastIds;
-	QSet<QString> subs;
+	QHash<QString, Subscription*> subs;
 
 	CommonState() :
 		responseLastIds(1000000),
@@ -1092,6 +1095,55 @@ private slots:
 	}
 };
 
+class Subscription : public QObject
+{
+	Q_OBJECT
+
+public:
+	Subscription(const QString &channel) :
+		channel_(channel),
+		timer_(0)
+	{
+	}
+
+	~Subscription()
+	{
+		if(timer_)
+		{
+			timer_->stop();
+			timer_->disconnect(this);
+			timer_->setParent(0);
+			timer_->deleteLater();
+		}
+	}
+
+	const QString & channel() const
+	{
+		return channel_;
+	}
+
+	void start()
+	{
+		timer_ = new QTimer(this);
+		connect(timer_, &QTimer::timeout, this, &Subscription::timer_timeout);
+		timer_->setSingleShot(true);
+		timer_->start(SUBSCRIBED_DELAY);
+	}
+
+signals:
+	void subscribed();
+
+private:
+	QString channel_;
+	QTimer *timer_;
+
+private slots:
+	void timer_timeout()
+	{
+		emit subscribed();
+	}
+};
+
 class Engine::Private : public QObject
 {
 	Q_OBJECT
@@ -1192,6 +1244,7 @@ public:
 		qDeleteAll(deferreds);
 		qDeleteAll(cs.wsSessions);
 		qDeleteAll(cs.httpSessions);
+		qDeleteAll(cs.subs);
 	}
 
 	bool start(const Configuration &_config)
@@ -1484,8 +1537,14 @@ private:
 			QSet<HttpSession*> sessions = cs.streamSessionsByChannel.value(item.channel);
 			foreach(HttpSession *hs, sessions)
 			{
-				assert(hs->holdMode() == Instruct::StreamHold);
-				assert(hs->channels().contains(item.channel));
+				// note: we used to assert that the session was currently a
+				//   stream hold and subscribed to the target channel,
+				//   however with the new grip-link stuff it is possible for
+				//   the session to temporarily switch to NoHold, and for
+				//   channels to become unsubscribed. so we'll do a
+				//   conditional statement instead
+				if(!hs->channels().contains(item.channel))
+					continue;
 
 				if(!applyFilters(hs->meta(), item.meta, hs->channels()[item.channel].filters))
 					continue;
@@ -1651,7 +1710,10 @@ private:
 	{
 		if(!cs.subs.contains(channel))
 		{
-			cs.subs += channel;
+			Subscription *sub = new Subscription(channel);
+			connect(sub, &Subscription::subscribed, this, &Private::sub_subscribed);
+			cs.subs.insert(channel, sub);
+			sub->start();
 
 			if(inSubSock)
 			{
@@ -1665,7 +1727,9 @@ private:
 	{
 		if(cs.subs.contains(channel))
 		{
+			Subscription *sub = cs.subs[channel];
 			cs.subs.remove(channel);
+			delete sub;
 
 			if(inSubSock)
 			{
@@ -2440,6 +2504,15 @@ private slots:
 
 		cs.wsSessions.remove(s->cid);
 		delete s;
+	}
+
+	void sub_subscribed()
+	{
+		Subscription *sub = (Subscription *)sender();
+
+		QSet<HttpSession*> sessions = cs.streamSessionsByChannel.value(sub->channel());
+		foreach(HttpSession *hs, sessions)
+			hs->update();
 	}
 
 	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
