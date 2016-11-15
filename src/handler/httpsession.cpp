@@ -515,15 +515,18 @@ private:
 
 				Instruct::Channel &channel = channels[item.channel];
 
-				if(!channel.prevId.isNull() && channel.prevId != item.prevId)
+				if(!channel.prevId.isNull())
 				{
-					publishQueue.clear();
+					if(channel.prevId != item.prevId)
+					{
+						publishQueue.clear();
 
-					update(LowPriority);
-					break;
+						update(LowPriority);
+						break;
+					}
+
+					channel.prevId = item.id;
 				}
-
-				channel.prevId = item.id;
 
 				req->writeBody(f.body);
 
