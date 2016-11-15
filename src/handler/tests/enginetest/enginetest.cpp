@@ -655,6 +655,150 @@ private slots:
 		QVERIFY(wrapper->responses.contains(id));
 		QCOMPARE(wrapper->responses.value(id).body, QByteArray("stream open\nhello world\n"));
 	}
+
+	void publishStreamReorder()
+	{
+		wrapper->reset();
+
+		QByteArray id = "7";
+
+		QVariantHash rid;
+		rid["sender"] = QByteArray("test-client");
+		rid["id"] = id;
+
+		QVariantHash reqState;
+		reqState["rid"] = rid;
+		reqState["in-seq"] = 1;
+		reqState["out-seq"] = 1;
+		reqState["out-credits"] = 1000;
+
+		QVariantHash req;
+		req["method"] = QByteArray("GET");
+		req["uri"] = QByteArray("http://example.com/path");
+		QVariantList reqHeaders;
+		req["headers"] = reqHeaders;
+		req["body"] = QByteArray();
+
+		QVariantHash resp;
+		resp["code"] = 200;
+		resp["reason"] = QByteArray("OK");
+		QVariantList respHeaders;
+		respHeaders += QVariant(QVariantList() << QByteArray("Content-Type") << QByteArray("text/plain"));
+		respHeaders += QVariant(QVariantList() << QByteArray("Grip-Hold") << QByteArray("stream"));
+		respHeaders += QVariant(QVariantList() << QByteArray("Grip-Channel") << QByteArray("apple"));
+		resp["headers"] = respHeaders;
+		resp["body"] = QByteArray("stream open\n");
+
+		QVariantHash args;
+		args["requests"] = QVariantList() << reqState;
+		args["request-data"] = req;
+		args["response"] = resp;
+
+		QVariantHash data;
+		data["id"] = id;
+		data["method"] = QByteArray("accept");
+		data["args"] = args;
+
+		QByteArray buf = TnetString::fromVariant(data);
+		wrapper->proxyAcceptSock->write(QList<QByteArray>() << QByteArray() << buf);
+		while(!wrapper->acceptSuccess)
+			QTest::qWait(10);
+
+		data.clear();
+
+		{
+			QVariantHash hs;
+			hs["action"] = QByteArray("close");
+
+			QVariantHash formats;
+			formats["http-stream"] = hs;
+
+			data["channel"] = QByteArray("apple");
+			data["id"] = QByteArray("e");
+			data["prev-id"] = QByteArray("d");
+			data["formats"] = formats;
+		}
+
+		buf = TnetString::fromVariant(data);
+		wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+
+		data.clear();
+
+		{
+			QVariantHash hs;
+			hs["content"] = QByteArray("four\n");
+
+			QVariantHash formats;
+			formats["http-stream"] = hs;
+
+			data["channel"] = QByteArray("apple");
+			data["id"] = QByteArray("d");
+			data["prev-id"] = QByteArray("c");
+			data["formats"] = formats;
+		}
+
+		buf = TnetString::fromVariant(data);
+		wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+
+		data.clear();
+
+		{
+			QVariantHash hs;
+			hs["content"] = QByteArray("three\n");
+
+			QVariantHash formats;
+			formats["http-stream"] = hs;
+
+			data["channel"] = QByteArray("apple");
+			data["id"] = QByteArray("c");
+			data["prev-id"] = QByteArray("b");
+			data["formats"] = formats;
+		}
+
+		buf = TnetString::fromVariant(data);
+		wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+
+		data.clear();
+
+		{
+			QVariantHash hs;
+			hs["content"] = QByteArray("two\n");
+
+			QVariantHash formats;
+			formats["http-stream"] = hs;
+
+			data["channel"] = QByteArray("apple");
+			data["id"] = QByteArray("b");
+			data["prev-id"] = QByteArray("a");
+			data["formats"] = formats;
+		}
+
+		buf = TnetString::fromVariant(data);
+		wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+
+		data.clear();
+
+		{
+			QVariantHash hs;
+			hs["content"] = QByteArray("one\n");
+
+			QVariantHash formats;
+			formats["http-stream"] = hs;
+
+			data["channel"] = QByteArray("apple");
+			data["id"] = QByteArray("a");
+			data["formats"] = formats;
+		}
+
+		buf = TnetString::fromVariant(data);
+		wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		QVERIFY(wrapper->responses.contains(id));
+		QCOMPARE(wrapper->responses.value(id).body, QByteArray("stream open\none\ntwo\nthree\nfour\n"));
+	}
 };
 
 QTEST_MAIN(EngineTest)

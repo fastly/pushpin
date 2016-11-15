@@ -61,6 +61,7 @@
 #include "controlrequest.h"
 #include "conncheckworker.h"
 #include "ratelimiter.h"
+#include "sequencer.h"
 
 #define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // infinite
@@ -1199,6 +1200,7 @@ public:
 	StatsManager *stats;
 	RateLimiter *publishLimiter;
 	RateLimiter *updateLimiter;
+	Sequencer *sequencer;
 	CommonState cs;
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
@@ -1233,8 +1235,10 @@ public:
 		qRegisterMetaType<DetectRuleList>();
 
 		publishLimiter = new RateLimiter(this);
-
 		updateLimiter = new RateLimiter(this);
+
+		sequencer = new Sequencer(this);
+		connect(sequencer, &Sequencer::itemReady, this, &Private::sequencer_itemReady);
 	}
 
 	~Private()
@@ -1503,6 +1507,136 @@ public:
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
+		sequencer->addItem(item);
+	}
+
+	void writeRetryPacket(const RetryRequestPacket &packet)
+	{
+		if(!retrySock)
+		{
+			log_error("retry: can't write, no socket");
+			return;
+		}
+
+		QVariant vout = packet.toVariant();
+
+		log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
+		retrySock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
+	}
+
+	void writeWsControlItem(const WsControlPacket::Item &item)
+	{
+		if(!wsControlOutSock)
+		{
+			log_error("wscontrol: can't write, no socket");
+			return;
+		}
+
+		WsControlPacket out;
+		out.items += item;
+
+		QVariant vout = out.toVariant();
+
+		log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
+		wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
+	}
+
+	void addSub(const QString &channel)
+	{
+		if(!cs.subs.contains(channel))
+		{
+			Subscription *sub = new Subscription(channel);
+			connect(sub, &Subscription::subscribed, this, &Private::sub_subscribed);
+			cs.subs.insert(channel, sub);
+			sub->start();
+
+			if(inSubSock)
+			{
+				log_debug("SUB socket subscribe: %s", qPrintable(channel));
+				inSubSock->subscribe(channel.toUtf8());
+			}
+		}
+	}
+
+	void removeSub(const QString &channel)
+	{
+		if(cs.subs.contains(channel))
+		{
+			Subscription *sub = cs.subs[channel];
+			cs.subs.remove(channel);
+			delete sub;
+
+			if(inSubSock)
+			{
+				log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
+				inSubSock->unsubscribe(channel.toUtf8());
+			}
+		}
+	}
+
+	void httpControlRespond(SimpleHttpRequest *req, int code, const QByteArray &reason, const QString &body, const QByteArray &contentType = QByteArray(), const HttpHeaders &headers = HttpHeaders(), int items = -1)
+	{
+		HttpHeaders outHeaders = headers;
+		if(!contentType.isEmpty())
+			outHeaders += HttpHeader("Content-Type", contentType);
+		else
+			outHeaders += HttpHeader("Content-Type", "text/plain");
+
+		req->respond(code, reason, outHeaders, body.toUtf8());
+		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
+
+		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod(), QString::fromUtf8(req->requestUri()), QString::number(code), QString::number(body.size()));
+		if(items > -1)
+			msg += QString(" items=%1").arg(items);
+
+		log_info("%s", qPrintable(msg));
+	}
+
+	void publishSend(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
+	{
+		const PublishFormat &f = item.format;
+
+		if(f.type == PublishFormat::HttpResponse || f.type == PublishFormat::HttpStream)
+		{
+			HttpSession *hs = qobject_cast<HttpSession*>(target);
+
+			hs->publish(item, exposeHeaders);
+		}
+		else if(f.type == PublishFormat::WebSocketMessage)
+		{
+			WsSession *s = qobject_cast<WsSession*>(target);
+
+			WsControlPacket::Item i;
+			i.cid = s->cid.toUtf8();
+
+			if(f.close)
+			{
+				i.type = WsControlPacket::Item::Close;
+				i.code = f.code;
+			}
+			else
+			{
+				i.type = WsControlPacket::Item::Send;
+
+				switch(f.messageType)
+				{
+					case PublishFormat::Text:   i.contentType = "text"; break;
+					case PublishFormat::Binary: i.contentType = "binary"; break;
+					case PublishFormat::Ping:   i.contentType = "ping"; break;
+					case PublishFormat::Pong:   i.contentType = "pong"; break;
+					default: return; // unrecognized type, skip
+				}
+
+				i.message = f.body;
+			}
+
+			writeWsControlItem(i);
+		}
+	}
+
+private slots:
+	void sequencer_itemReady(const PublishItem &item)
+	{
 		// always add for non-identified route
 		stats->addMessageReceived(QByteArray());
 
@@ -1675,131 +1809,6 @@ private:
 		}
 	}
 
-	void writeRetryPacket(const RetryRequestPacket &packet)
-	{
-		if(!retrySock)
-		{
-			log_error("retry: can't write, no socket");
-			return;
-		}
-
-		QVariant vout = packet.toVariant();
-
-		log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
-		retrySock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
-	}
-
-	void writeWsControlItem(const WsControlPacket::Item &item)
-	{
-		if(!wsControlOutSock)
-		{
-			log_error("wscontrol: can't write, no socket");
-			return;
-		}
-
-		WsControlPacket out;
-		out.items += item;
-
-		QVariant vout = out.toVariant();
-
-		log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
-		wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
-	}
-
-	void addSub(const QString &channel)
-	{
-		if(!cs.subs.contains(channel))
-		{
-			Subscription *sub = new Subscription(channel);
-			connect(sub, &Subscription::subscribed, this, &Private::sub_subscribed);
-			cs.subs.insert(channel, sub);
-			sub->start();
-
-			if(inSubSock)
-			{
-				log_debug("SUB socket subscribe: %s", qPrintable(channel));
-				inSubSock->subscribe(channel.toUtf8());
-			}
-		}
-	}
-
-	void removeSub(const QString &channel)
-	{
-		if(cs.subs.contains(channel))
-		{
-			Subscription *sub = cs.subs[channel];
-			cs.subs.remove(channel);
-			delete sub;
-
-			if(inSubSock)
-			{
-				log_debug("SUB socket unsubscribe: %s", qPrintable(channel));
-				inSubSock->unsubscribe(channel.toUtf8());
-			}
-		}
-	}
-
-	void httpControlRespond(SimpleHttpRequest *req, int code, const QByteArray &reason, const QString &body, const QByteArray &contentType = QByteArray(), const HttpHeaders &headers = HttpHeaders(), int items = -1)
-	{
-		HttpHeaders outHeaders = headers;
-		if(!contentType.isEmpty())
-			outHeaders += HttpHeader("Content-Type", contentType);
-		else
-			outHeaders += HttpHeader("Content-Type", "text/plain");
-
-		req->respond(code, reason, outHeaders, body.toUtf8());
-		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
-
-		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod(), QString::fromUtf8(req->requestUri()), QString::number(code), QString::number(body.size()));
-		if(items > -1)
-			msg += QString(" items=%1").arg(items);
-
-		log_info("%s", qPrintable(msg));
-	}
-
-	void publishSend(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
-	{
-		const PublishFormat &f = item.format;
-
-		if(f.type == PublishFormat::HttpResponse || f.type == PublishFormat::HttpStream)
-		{
-			HttpSession *hs = qobject_cast<HttpSession*>(target);
-
-			hs->publish(item, exposeHeaders);
-		}
-		else if(f.type == PublishFormat::WebSocketMessage)
-		{
-			WsSession *s = qobject_cast<WsSession*>(target);
-
-			WsControlPacket::Item i;
-			i.cid = s->cid.toUtf8();
-
-			if(f.close)
-			{
-				i.type = WsControlPacket::Item::Close;
-				i.code = f.code;
-			}
-			else
-			{
-				i.type = WsControlPacket::Item::Send;
-
-				switch(f.messageType)
-				{
-					case PublishFormat::Text:   i.contentType = "text"; break;
-					case PublishFormat::Binary: i.contentType = "binary"; break;
-					case PublishFormat::Ping:   i.contentType = "ping"; break;
-					case PublishFormat::Pong:   i.contentType = "pong"; break;
-					default: return; // unrecognized type, skip
-				}
-
-				i.message = f.body;
-			}
-
-			writeWsControlItem(i);
-		}
-	}
-
-private slots:
 	void inspectServer_requestReady()
 	{
 		if(inspectWorkers.count() >= INSPECT_WORKERS_MAX)
