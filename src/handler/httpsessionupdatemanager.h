@@ -17,32 +17,25 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PUBLISHSHAPER_H
-#define PUBLISHSHAPER_H
+#ifndef HTTPSESSIONUPDATEMANAGER_H
+#define HTTPSESSIONUPDATEMANAGER_H
 
 #include <QObject>
 
-class PublishFormat;
+class QUrl;
+class HttpSession;
 
-class PublishShaper : public QObject
+class HttpSessionUpdateManager : public QObject
 {
-	Q_OBJECT
-
 public:
-	PublishShaper(QObject *parent = 0);
-	~PublishShaper();
+	HttpSessionUpdateManager(QObject *parent = 0);
+	~HttpSessionUpdateManager();
 
-	void setRate(int messagesPerSecond);
-	void setHwm(int hwm);
-
-	bool addMessage(QObject *target, const PublishFormat &format, const QString &route = QString(), const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
-
-signals:
-	void send(QObject *target, const PublishFormat &format, const QList<QByteArray> &exposeHeaders);
+	void registerSession(HttpSession *hs, int timeout, const QUrl &uri);
+	void unregisterSession(HttpSession *hs);
 
 private:
 	class Private;
-	friend class Private;
 	Private *d;
 };
 

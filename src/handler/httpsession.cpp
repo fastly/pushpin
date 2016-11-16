@@ -33,10 +33,17 @@
 #include "jsonpatch.h"
 #include "statsmanager.h"
 #include "variantutil.h"
+#include "publishitem.h"
+#include "publishformat.h"
+#include "ratelimiter.h"
+#include "publishlastids.h"
+#include "httpsessionupdatemanager.h"
 
 #define RETRY_TIMEOUT 1000
 #define RETRY_MAX 5
 #define RETRY_RAND_MAX 1000
+#define UPDATES_PER_ACTION_MAX 100
+#define PUBLISH_QUEUE_MAX 100
 
 class HttpSession::Private : public QObject
 {
@@ -47,9 +54,37 @@ public:
 	{
 		NotStarted,
 		SendingFirstInstructResponse,
-		SendingInitialResponse,
-		Holding
+		WaitingToUpdate,
+		Proxying,
+		SendingQueue,
+		Holding,
+		Closing
 	};
+
+	enum Priority
+	{
+		LowPriority,
+		HighPriority
+	};
+
+	class UpdateAction : public RateLimiter::Action
+	{
+	public:
+		QSet<HttpSession*> sessions;
+
+		virtual bool execute()
+		{
+			if(sessions.isEmpty())
+				return false;
+
+			foreach(HttpSession *q, sessions)
+				q->d->doUpdate();
+
+			return true;
+		}
+	};
+
+	friend class UpdateAction;
 
 	HttpSession *q;
 	State state;
@@ -62,6 +97,9 @@ public:
 	StatsManager *stats;
 	ZhttpManager *outZhttp;
 	ZhttpRequest *outReq; // for fetching next links
+	RateLimiter *updateLimiter;
+	PublishLastIds *publishLastIds;
+	HttpSessionUpdateManager *updateManager;
 	BufferList firstInstructResponse;
 	bool haveOutReqHeaders;
 	int sentOutReqData;
@@ -69,17 +107,25 @@ public:
 	QString errorMessage;
 	QUrl currentUri;
 	QUrl nextUri;
+	bool needUpdate;
+	UpdateAction *pendingAction;
+	QList<PublishItem> publishQueue;
 
-	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats) :
+	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager) :
 		QObject(_q),
 		q(_q),
 		req(_req),
 		stats(_stats),
 		outZhttp(_outZhttp),
 		outReq(0),
+		updateLimiter(_updateLimiter),
+		publishLastIds(_publishLastIds),
+		updateManager(_updateManager),
 		haveOutReqHeaders(false),
 		sentOutReqData(0),
-		retries(0)
+		retries(0),
+		needUpdate(false),
+		pendingAction(0)
 	{
 		state = NotStarted;
 
@@ -98,11 +144,16 @@ public:
 		instruct = _instruct;
 
 		currentUri = adata.requestData.uri;
+
+		if(!instruct.nextLink.isEmpty())
+			nextUri = currentUri.resolved(instruct.nextLink);
 	}
 
 	~Private()
 	{
 		cleanup();
+
+		updateManager->unregisterSession(q);
 
 		timer->disconnect(this);
 		timer->setParent(0);
@@ -111,15 +162,6 @@ public:
 		retryTimer->disconnect(this);
 		retryTimer->setParent(0);
 		retryTimer->deleteLater();
-	}
-
-	void cleanup()
-	{
-		if(outReq)
-		{
-			delete outReq;
-			outReq = 0;
-		}
 	}
 
 	void start()
@@ -152,123 +194,133 @@ public:
 		firstInstructResponseDone();
 	}
 
-	void respond(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
+	void update(Priority priority)
 	{
-		assert(state == Holding);
-		assert(instruct.holdMode == Instruct::ResponseHold);
-
-		// inherit headers from the timeout response
-		HttpHeaders headers = instruct.response.headers;
-		foreach(const HttpHeader &h, _headers)
-			headers.removeAll(h.first);
-		foreach(const HttpHeader &h, _headers)
-			headers += h;
-
-		// if Grip-Expose-Headers was provided in the push, apply now
-		if(!exposeHeaders.isEmpty())
+		if(state == Proxying || state == SendingQueue)
 		{
-			for(int n = 0; n < headers.count(); ++n)
-			{
-				const HttpHeader &h = headers[n];
-
-				bool found = false;
-				foreach(const QByteArray &e, exposeHeaders)
-				{
-					if(qstricmp(h.first.data(), e.data()) == 0)
-					{
-						found = true;
-						break;
-					}
-				}
-
-				if(found)
-				{
-					headers.removeAt(n);
-					--n; // adjust position
-				}
-			}
-		}
-
-		respond(code, reason, headers, body);
-	}
-
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
-	{
-		assert(state == Holding);
-		assert(instruct.holdMode == Instruct::ResponseHold);
-
-		QByteArray body;
-
-		QJsonParseError e;
-		QJsonDocument doc = QJsonDocument::fromJson(instruct.response.body, &e);
-		if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
-		{
-			QVariant vbody;
-			if(doc.isObject())
-				vbody = doc.object().toVariantMap();
-			else // isArray
-				vbody = doc.array().toVariantList();
-
-			QString errorMessage;
-			vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
-			if(vbody.isValid())
-				vbody = VariantUtil::convertToJsonStyle(vbody);
-			if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
-			{
-				QJsonDocument doc;
-				if(vbody.type() == QVariant::Map)
-					doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
-				else // List
-					doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
-
-				body = doc.toJson(QJsonDocument::Compact);
-
-				if(instruct.response.body.endsWith("\r\n"))
-					body += "\r\n";
-				else if(instruct.response.body.endsWith("\n"))
-					body += '\n';
-			}
-			else
-			{
-				log_debug("httpsession: failed to apply JSON patch: %s", qPrintable(errorMessage));
-			}
-		}
-		else
-		{
-			log_debug("httpsession: failed to parse original response body as JSON");
-		}
-
-		respond(code, reason, headers, body, exposeHeaders);
-	}
-
-	void stream(const QByteArray &content)
-	{
-		assert(state == Holding);
-		assert(instruct.holdMode == Instruct::StreamHold);
-
-		if(req->writeBytesAvailable() < content.size())
-		{
-			log_debug("httpsession: not enough send credits, dropping");
+			// if we are already in the process of updating, flag to update
+			//   again after current one finishes
+			needUpdate = true;
 			return;
 		}
 
-		req->writeBody(content);
+		if(state == WaitingToUpdate)
+		{
+			if(priority == HighPriority)
+			{
+				// switching to high priority
+				cleanupAction();
+				state = Holding;
+			}
+			else
+			{
+				// already waiting, do nothing
+				return;
+			}
+		}
 
-		// restart keep alive timer
-		if(instruct.keepAliveTimeout >= 0)
-			timer->start(instruct.keepAliveTimeout * 1000);
+		if(state != Holding)
+			return;
+
+		needUpdate = false;
+
+		if(nextUri.isEmpty())
+		{
+			// can't update without valid link
+			return;
+		}
+
+		// turn off timers during update
+		timer->stop();
+		updateManager->unregisterSession(q);
+
+		if(priority == HighPriority)
+		{
+			doUpdate();
+		}
+		else // LowPriority
+		{
+			state = WaitingToUpdate;
+
+			QString key = QString::fromUtf8(nextUri.toEncoded());
+
+			UpdateAction *action = static_cast<UpdateAction*>(updateLimiter->lastAction(key));
+			if(!action || action->sessions.count() >= UPDATES_PER_ACTION_MAX)
+			{
+				action = new UpdateAction;
+				updateLimiter->addAction(key, action);
+			}
+
+			action->sessions += q;
+			pendingAction = action;
+		}
 	}
 
-	void close()
+	void publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 	{
-		assert(state == Holding);
-		assert(instruct.holdMode == Instruct::StreamHold);
+		const PublishFormat &f = item.format;
 
-		req->endBody();
-		timer->stop();
+		if(f.type == PublishFormat::HttpResponse)
+		{
+			if(state != Holding)
+				return;
+
+			assert(instruct.holdMode == Instruct::ResponseHold);
+
+			if(f.haveBodyPatch)
+				respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
+			else
+				respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+		}
+		else if(f.type == PublishFormat::HttpStream)
+		{
+			if(state == WaitingToUpdate || state == Proxying || state == SendingQueue || state == Holding)
+			{
+				if(publishQueue.count() < PUBLISH_QUEUE_MAX)
+				{
+					publishQueue += item;
+
+					if(state == Holding)
+						trySendQueue();
+				}
+				else
+				{
+					log_debug("httpsession: publish queue at max, dropping");
+				}
+			}
+		}
 	}
 
 private:
+	void cleanup()
+	{
+		cleanupAction();
+
+		if(outReq)
+		{
+			delete outReq;
+			outReq = 0;
+		}
+	}
+
+	void cleanupAction()
+	{
+		if(pendingAction)
+		{
+			pendingAction->sessions.remove(q);
+			pendingAction = 0;
+		}
+	}
+
+	void prepareToClose()
+	{
+		state = Closing;
+
+		publishQueue.clear();
+		timer->stop();
+		updateManager->unregisterSession(q);
+	}
+
 	void tryWriteFirstInstructResponse()
 	{
 		int avail = req->writeBytesAvailable();
@@ -285,30 +337,118 @@ private:
 	{
 		if(instruct.holdMode == Instruct::NoHold)
 		{
-			state = SendingInitialResponse;
-
 			// NoHold instruct MUST have had a link to make it this far
-			assert(!instruct.nextLink.isEmpty());
+			assert(!nextUri.isEmpty());
 
-			requestNextLink();
+			doUpdate();
 		}
 		else // ResponseHold, StreamHold
 		{
-			state = Holding;
-
-			setupHold();
+			prepareToSendQueueOrHold();
 		}
 	}
 
-	void setupHold()
+	void doUpdate()
+	{
+		state = Proxying;
+		pendingAction = 0;
+
+		requestNextLink();
+	}
+
+	void prepareToSendQueueOrHold()
 	{
 		assert(instruct.holdMode != Instruct::NoHold);
 
+		if(instruct.holdMode == Instruct::StreamHold)
+		{
+			bool conflict = false;
+			foreach(const Instruct::Channel &c, instruct.channels)
+			{
+				if(!c.prevId.isNull())
+				{
+					QString name = adata.channelPrefix + c.name;
+
+					QString lastId = publishLastIds->value(name);
+					if(!lastId.isNull() && lastId != c.prevId)
+					{
+						log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
+						publishLastIds->remove(name);
+						conflict = true;
+
+						// NOTE: don't exit loop here. we want to clear
+						//   the last ids of all conflicting channels
+					}
+				}
+			}
+
+			if(conflict)
+			{
+				// update expects us to be in Holding state
+				state = Holding;
+
+				update(LowPriority);
+				return;
+			}
+		}
+
+		QList<QString> channelsRemoved;
+		QHashIterator<QString, Instruct::Channel> it(channels);
+		while(it.hasNext())
+		{
+			it.next();
+			const QString &name = it.key();
+
+			bool found = false;
+			foreach(const Instruct::Channel &c, instruct.channels)
+			{
+				if(adata.channelPrefix + c.name == name)
+				{
+					found = true;
+					break;
+				}
+			}
+			if(!found)
+				channelsRemoved += name;
+		}
+
+		QList<QString> channelsAdded;
 		foreach(const Instruct::Channel &c, instruct.channels)
-			channels.insert(adata.channelPrefix + c.name, c);
+		{
+			QString name = adata.channelPrefix + c.name;
+
+			if(!channels.contains(name))
+			{
+				channelsAdded += name;
+				channels.insert(name, c);
+			}
+			else
+			{
+				// update prev-id
+				channels[name].prevId = c.prevId;
+			}
+		}
+
+		QPointer<QObject> self = this;
+
+		foreach(const QString &channel, channelsRemoved)
+		{
+			emit q->unsubscribe(channel);
+
+			assert(self); // deleting here would leak subscriptions/connections
+		}
+
+		foreach(const QString &channel, channelsAdded)
+		{
+			emit q->subscribe(channel);
+
+			assert(self); // deleting here would leak subscriptions/connections
+		}
 
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{
+			state = Holding;
+
 			// set timeout
 			if(instruct.timeout >= 0)
 			{
@@ -318,27 +458,127 @@ private:
 		}
 		else // StreamHold
 		{
-			// start keep alive timer
-			if(instruct.keepAliveTimeout >= 0)
-				timer->start(instruct.keepAliveTimeout * 1000);
+			// drop any non-matching queued items
+			while(!publishQueue.isEmpty())
+			{
+				PublishItem &item = publishQueue.first();
+
+				if(!channels.contains(item.channel))
+				{
+					// we don't care about this channel anymore
+					publishQueue.removeFirst();
+					continue;
+				}
+
+				Instruct::Channel &channel = channels[item.channel];
+
+				if(!channel.prevId.isNull() && channel.prevId != item.prevId)
+				{
+					// item doesn't follow the hold
+					publishQueue.removeFirst();
+					continue;
+				}
+
+				break;
+			}
+
+			if(!publishQueue.isEmpty())
+			{
+				state = SendingQueue;
+				trySendQueue();
+			}
+			else
+			{
+				sendQueueDone();
+			}
 		}
+	}
 
-		QPointer<QObject> self = this;
+	void trySendQueue()
+	{
+		assert(instruct.holdMode == Instruct::StreamHold);
 
-		QHashIterator<QString, Instruct::Channel> it(channels);
-		while(it.hasNext())
+		while(!publishQueue.isEmpty() && req->writeBytesAvailable() > 0)
 		{
-			it.next();
-			const QString &channel = it.key();
+			PublishItem item = publishQueue.takeFirst();
 
-			emit q->subscribe(channel);
+			PublishFormat &f = item.format;
 
-			assert(self); // deleting here would leak subscriptions/connections
+			if(f.close)
+			{
+				prepareToClose();
+				req->endBody();
+				break;
+			}
+			else
+			{
+				if(!channels.contains(item.channel))
+				{
+					log_debug("httpsession: received publish for channel with no subscription, dropping");
+					continue;
+				}
+
+				Instruct::Channel &channel = channels[item.channel];
+
+				if(!channel.prevId.isNull())
+				{
+					if(channel.prevId != item.prevId)
+					{
+						publishQueue.clear();
+
+						update(LowPriority);
+						break;
+					}
+
+					channel.prevId = item.id;
+				}
+
+				req->writeBody(f.body);
+
+				// restart keep alive timer
+				if(instruct.keepAliveTimeout >= 0)
+					timer->start(instruct.keepAliveTimeout * 1000);
+
+				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
+					updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+			}
 		}
+
+		if(state == SendingQueue)
+		{
+			if(publishQueue.isEmpty())
+				sendQueueDone();
+		}
+		else if(state == Holding)
+		{
+			if(!publishQueue.isEmpty())
+			{
+				// if backlogged, turn off timers until we're able to send again
+				timer->stop();
+				updateManager->unregisterSession(q);
+			}
+		}
+	}
+
+	void sendQueueDone()
+	{
+		state = Holding;
+
+		// start keep alive timer
+		if(instruct.keepAliveTimeout >= 0)
+			timer->start(instruct.keepAliveTimeout * 1000);
+
+		if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
+			updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+
+		if(needUpdate)
+			update(LowPriority);
 	}
 
 	void respond(int _code, const QByteArray &_reason, const HttpHeaders &_headers, const QByteArray &_body)
 	{
+		prepareToClose();
+
 		int code = _code;
 		QByteArray reason = _reason;
 		HttpHeaders headers = _headers;
@@ -421,6 +661,89 @@ private:
 		req->endBody();
 	}
 
+	void respond(int code, const QByteArray &reason, const HttpHeaders &_headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
+	{
+		// inherit headers from the timeout response
+		HttpHeaders headers = instruct.response.headers;
+		foreach(const HttpHeader &h, _headers)
+			headers.removeAll(h.first);
+		foreach(const HttpHeader &h, _headers)
+			headers += h;
+
+		// if Grip-Expose-Headers was provided in the push, apply now
+		if(!exposeHeaders.isEmpty())
+		{
+			for(int n = 0; n < headers.count(); ++n)
+			{
+				const HttpHeader &h = headers[n];
+
+				bool found = false;
+				foreach(const QByteArray &e, exposeHeaders)
+				{
+					if(qstricmp(h.first.data(), e.data()) == 0)
+					{
+						found = true;
+						break;
+					}
+				}
+
+				if(found)
+				{
+					headers.removeAt(n);
+					--n; // adjust position
+				}
+			}
+		}
+
+		respond(code, reason, headers, body);
+	}
+
+	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
+	{
+		QByteArray body;
+
+		QJsonParseError e;
+		QJsonDocument doc = QJsonDocument::fromJson(instruct.response.body, &e);
+		if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
+		{
+			QVariant vbody;
+			if(doc.isObject())
+				vbody = doc.object().toVariantMap();
+			else // isArray
+				vbody = doc.array().toVariantList();
+
+			QString errorMessage;
+			vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
+			if(vbody.isValid())
+				vbody = VariantUtil::convertToJsonStyle(vbody);
+			if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
+			{
+				QJsonDocument doc;
+				if(vbody.type() == QVariant::Map)
+					doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
+				else // List
+					doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
+
+				body = doc.toJson(QJsonDocument::Compact);
+
+				if(instruct.response.body.endsWith("\r\n"))
+					body += "\r\n";
+				else if(instruct.response.body.endsWith("\n"))
+					body += '\n';
+			}
+			else
+			{
+				log_debug("httpsession: failed to apply JSON patch: %s", qPrintable(errorMessage));
+			}
+		}
+		else
+		{
+			log_debug("httpsession: failed to parse original response body as JSON");
+		}
+
+		respond(code, reason, headers, body, exposeHeaders);
+	}
+
 	void doFinish()
 	{
 		ZhttpRequest::Rid rid = req->rid();
@@ -466,10 +789,10 @@ private:
 		connect(outReq, &ZhttpRequest::readyRead, this, &Private::outReq_readyRead);
 		connect(outReq, &ZhttpRequest::error, this, &Private::outReq_error);
 
-		nextUri = currentUri.resolved(instruct.nextLink);
-
 		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 		int nextPort = nextUri.port(currentUri.scheme() == "https" ? 443 : 80);
+
+		QVariantHash passthroughData;
 
 		// if next link points to the same service as the current request,
 		//   then we can assume the network would send the request back to
@@ -480,25 +803,33 @@ private:
 		if(nextUri.scheme() == currentUri.scheme() && nextUri.host() == currentUri.host() && nextPort == currentPort)
 		{
 			// use proxy routing
-			QVariantHash data;
-			data["route"] = true;
-			outReq->setPassthroughData(data);
+			passthroughData["route"] = true;
 		}
 		else
 		{
 			// don't use proxy routing
-			QVariantHash data;
-			data["route"] = false;
+			passthroughData["route"] = false;
 			if(!adata.sigIss.isEmpty())
-				data["sig-iss"] = adata.sigIss;
+				passthroughData["sig-iss"] = adata.sigIss;
 			if(!adata.sigKey.isEmpty())
-				data["sig-key"] = adata.sigKey;
+				passthroughData["sig-key"] = adata.sigKey;
 			if(adata.trusted)
-				data["trusted"] = true;
-			outReq->setPassthroughData(data);
+				passthroughData["trusted"] = true;
 		}
 
-		outReq->start("GET", nextUri, HttpHeaders());
+		// share requests to the same URI
+		passthroughData["auto-share"] = true;
+
+		outReq->setPassthroughData(passthroughData);
+
+		HttpHeaders headers;
+		foreach(const Instruct::Channel &c, channels.values())
+		{
+			if(!c.prevId.isNull())
+				headers += HttpHeader("Grip-Last", c.name.toUtf8() + "; last-id=" + c.prevId.toUtf8());
+		}
+
+		outReq->start("GET", nextUri, headers);
 		outReq->endBody();
 	}
 
@@ -534,7 +865,7 @@ private:
 				responseData.reason = outReq->responseReason();
 				responseData.headers = outReq->responseHeaders();
 
-				logRequest(outReq->requestMethod(), outReq->requestUri(), responseData.code, sentOutReqData);
+				logRequest(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders(), responseData.code, sentOutReqData);
 
 				retries = 0;
 
@@ -557,33 +888,53 @@ private:
 					return;
 				}
 
-				currentUri = nextUri;
-				nextUri.clear();
-
 				instruct = i;
 
-				if(instruct.holdMode == Instruct::StreamHold)
-				{
-					state = Holding;
+				currentUri = nextUri;
 
-					setupHold();
-				}
+				if(!instruct.nextLink.isEmpty())
+					nextUri = currentUri.resolved(instruct.nextLink);
+				else
+					nextUri.clear();
+
+				if(instruct.holdMode == Instruct::StreamHold)
+					prepareToSendQueueOrHold();
 			}
 		}
 
-		if(state == SendingInitialResponse && !outReq)
+		if(state == Proxying && !outReq)
 		{
-			if(!instruct.nextLink.isEmpty())
+			if(!nextUri.isEmpty())
 			{
 				if(req->writeBytesAvailable() > 0)
 					requestNextLink();
 			}
 			else
+			{
+				prepareToClose();
+
 				req->endBody();
+			}
 		}
 	}
 
-	void logRequest(const QString &method, const QUrl &uri, int code, int bodySize)
+	static QString makeLastIdsStr(const HttpHeaders &headers)
+	{
+		QString out;
+
+		bool first = true;
+		foreach(const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last"))
+		{
+			if(!first)
+				out += ' ';
+			out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first), QString::fromUtf8(params.get("last-id")));
+			first = false;
+		}
+
+		return out;
+	}
+
+	void logRequest(const QString &method, const QUrl &uri, const HttpHeaders &headers, int code, int bodySize)
 	{
 		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
 
@@ -592,15 +943,23 @@ private:
 
 		msg += QString(" code=%1 %2").arg(QString::number(code), QString::number(bodySize));
 
+		QString lastIdsStr = makeLastIdsStr(headers);
+		if(!lastIdsStr.isEmpty())
+			msg += ' ' + lastIdsStr;
+
 		log_info("%s", qPrintable(msg));
 	}
 
-	void logRequestError(const QString &method, const QUrl &uri)
+	void logRequestError(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 	{
 		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
 
 		if(!adata.route.isEmpty())
 			msg += QString(" route=%1").arg(adata.route);
+
+		QString lastIdsStr = makeLastIdsStr(headers);
+		if(!lastIdsStr.isEmpty())
+			msg += ' ' + lastIdsStr;
 
 		msg += QString(" error");
 
@@ -610,6 +969,8 @@ private:
 private slots:
 	void doError()
 	{
+		prepareToClose();
+
 		if(adata.debug)
 			req->writeBody("\n\n" + errorMessage.toUtf8() + '\n');
 
@@ -630,9 +991,13 @@ private slots:
 		{
 			tryWriteFirstInstructResponse();
 		}
-		else if(state == SendingInitialResponse)
+		else if(state == Proxying)
 		{
 			tryProcessOutReq();
+		}
+		else if(state == SendingQueue || state == Holding)
+		{
+			trySendQueue();
 		}
 	}
 
@@ -650,7 +1015,7 @@ private slots:
 
 	void outReq_error()
 	{
-		logRequestError(outReq->requestMethod(), outReq->requestUri());
+		logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
 
 		delete outReq;
 		outReq = 0;
@@ -699,14 +1064,17 @@ private slots:
 
 	void retryTimer_timeout()
 	{
-		requestNextLink();
+		if(state == Proxying)
+			requestNextLink();
+		else if(state == Holding)
+			update(LowPriority);
 	}
 };
 
-HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, QObject *parent) :
+HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, req, adata, instruct, zhttpOut, stats);
+	d = new Private(this, req, adata, instruct, zhttpOut, stats, updateLimiter, publishLastIds, updateManager);
 }
 
 HttpSession::~HttpSession()
@@ -754,24 +1122,14 @@ void HttpSession::start()
 	d->start();
 }
 
-void HttpSession::respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders)
+void HttpSession::update()
 {
-	d->respond(code, reason, headers, body, exposeHeaders);
+	d->update(Private::LowPriority);
 }
 
-void HttpSession::respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
+void HttpSession::publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 {
-	d->respond(code, reason, headers, bodyPatch, exposeHeaders);
-}
-
-void HttpSession::stream(const QByteArray &content)
-{
-	d->stream(content);
-}
-
-void HttpSession::close()
-{
-	d->close();
+	d->publish(item, exposeHeaders);
 }
 
 #include "httpsession.moc"

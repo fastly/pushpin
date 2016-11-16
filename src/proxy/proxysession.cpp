@@ -248,24 +248,26 @@ public:
 				requestData.headers += HttpHeader(h.first, h.second);
 			}
 
-			trustedClient = ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata);
-
-			state = Requesting;
-			buffering = true;
+			bool intReq = false;
 
 			if(!rs->isRetry())
 			{
 				inRequest = rs->request();
 
-				passthrough = inRequest->passthroughData().isValid();
-
 				connect(inRequest, &ZhttpRequest::readyRead, this, &Private::inRequest_readyRead);
 				connect(inRequest, &ZhttpRequest::error, this, &Private::inRequest_error);
 
 				requestBody += inRequest->readBody();
+
+				intReq = inRequest->passthroughData().isValid();
 			}
 
-			if(trustedClient || (inRequest && inRequest->passthroughData().isValid()))
+			trustedClient = ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata, !intReq);
+
+			state = Requesting;
+			buffering = true;
+
+			if(trustedClient || intReq)
 				passthrough = true;
 
 			initialRequestBody = requestBody.toByteArray();

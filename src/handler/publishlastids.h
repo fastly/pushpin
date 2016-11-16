@@ -17,26 +17,37 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PUBLISHITEM_H
-#define PUBLISHITEM_H
+#ifndef PUBLISHLASTIDS_H
+#define PUBLISHLASTIDS_H
 
 #include <QString>
+#include <QDateTime>
+#include <QMap>
 #include <QHash>
-#include <QVariant>
-#include "publishformat.h"
 
-class PublishItem
+// cache with LRU expiration
+class PublishLastIds
 {
 public:
-	QString channel;
-	QString id;
-	QString prevId;
-	QHash<PublishFormat::Type, PublishFormat> formats;
-	QHash<QString, QString> meta;
+	PublishLastIds(int maxCapacity);
+	void set(const QString &channel, const QString &id);
+	void remove(const QString &channel);
+	QString value(const QString &channel);
 
-	PublishFormat format; // for single format items
+private:
+	typedef QPair<QDateTime, QString> TimeStringPair;
 
-	static PublishItem fromVariant(const QVariant &vitem, const QString &channel = QString(), bool *ok = 0, QString *errorMessage = 0);
+	class Item
+	{
+	public:
+		QString channel;
+		QString id;
+		QDateTime time;
+	};
+
+	QHash<QString, Item> table_;
+	QMap<TimeStringPair, Item> recentlyUsed_;
+	int maxCapacity_;
 };
 
 #endif

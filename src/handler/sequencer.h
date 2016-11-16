@@ -17,37 +17,31 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef RESPONSELASTIDS_H
-#define RESPONSELASTIDS_H
+#ifndef SEQUENCER_H
+#define SEQUENCER_H
 
-#include <QString>
-#include <QDateTime>
-#include <QMap>
-#include <QHash>
+#include <QObject>
 
-// cache with LRU expiration
-class ResponseLastIds
+class PublishItem;
+
+class Sequencer : public QObject
 {
+	Q_OBJECT
+
 public:
-	ResponseLastIds(int maxCapacity);
-	void set(const QString &channel, const QString &id);
-	void remove(const QString &channel);
-	QString value(const QString &channel);
+	Sequencer(QObject *parent = 0);
+	~Sequencer();
+
+	// note: may emit signals
+	void addItem(const PublishItem &item);
+
+signals:
+	void itemReady(const PublishItem &item);
 
 private:
-	typedef QPair<QDateTime, QString> TimeStringPair;
-
-	class Item
-	{
-	public:
-		QString channel;
-		QString id;
-		QDateTime time;
-	};
-
-	QHash<QString, Item> table_;
-	QMap<TimeStringPair, Item> recentlyUsed_;
-	int maxCapacity_;
+	class Private;
+	friend class Private;
+	Private *d;
 };
 
 #endif

@@ -451,12 +451,21 @@ public:
 		}
 
 		bool lookupRoute = true;
+		bool autoShare = false;
 
 		QVariant passthroughData = req->passthroughData();
 		if(passthroughData.isValid())
 		{
 			if(passthroughData.type() == QVariant::Hash)
-				lookupRoute = passthroughData.toHash().value("route").toBool();
+			{
+				QVariantHash data = passthroughData.toHash();
+
+				if(data.contains("route"))
+					lookupRoute = data["route"].toBool();
+
+				if(data.contains("auto-share"))
+					autoShare = data["auto-share"].toBool();
+			}
 		}
 		else
 		{
@@ -498,6 +507,8 @@ public:
 			rs = new RequestSession(stats, this);
 			rs->setRoute(route);
 		}
+
+		rs->setAutoShare(autoShare);
 
 		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
 		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);

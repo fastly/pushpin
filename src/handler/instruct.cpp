@@ -27,6 +27,7 @@
 
 #define DEFAULT_RESPONSE_TIMEOUT 55
 #define MINIMUM_RESPONSE_TIMEOUT 5
+#define DEFAULT_NEXTLINK_TIMEOUT 120
 
 using namespace VariantUtil;
 
@@ -264,15 +265,44 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	}
 
 	QUrl nextLink;
+	int nextLinkTimeout = -1;
 	foreach(const HttpHeaderParameters &params, response.headers.getAllAsParameters("Grip-Link"))
 	{
 		if(params.count() >= 2 && params.get("rel") == "next")
 		{
 			QByteArray linkParam = params[0].first;
-			if(linkParam.length() > 2 && linkParam[0] == '<' && linkParam[linkParam.length() - 1] == '>')
+			if(linkParam.length() <= 2 || linkParam[0] != '<' || linkParam[linkParam.length() - 1] != '>')
 			{
-				nextLink = QUrl::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
-				break;
+				setError(ok, errorMessage, "failed to parse Grip-Link value");
+				return Instruct();
+			}
+
+			nextLink = QUrl::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
+			if(!nextLink.isValid())
+			{
+				setError(ok, errorMessage, "Grip-Link contains invalid link");
+				return Instruct();
+			}
+
+			if(params.contains("timeout"))
+			{
+				bool x;
+				nextLinkTimeout = params.get("timeout").toInt(&x);
+				if(!x)
+				{
+					setError(ok, errorMessage, "failed to parse Grip-Link timeout value");
+					return Instruct();
+				}
+
+				if(nextLinkTimeout < 0)
+				{
+					setError(ok, errorMessage, "Grip-Link timeout has invalid value");
+					return Instruct();
+				}
+			}
+			else
+			{
+				nextLinkTimeout = DEFAULT_NEXTLINK_TIMEOUT;
 			}
 		}
 	}
@@ -747,6 +777,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	i.meta = meta;
 	i.response = newResponse;
 	i.nextLink = nextLink;
+	i.nextLinkTimeout = nextLinkTimeout;
 
 	if(ok)
 		*ok = true;

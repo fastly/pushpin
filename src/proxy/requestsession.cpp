@@ -172,6 +172,7 @@ public:
 	bool connectionRegistered;
 	bool accepted;
 	bool passthrough;
+	bool autoShare;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
@@ -197,7 +198,8 @@ public:
 		needPause(false),
 		connectionRegistered(false),
 		accepted(false),
-		passthrough(false)
+		passthrough(false),
+		autoShare(false)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
 	}
@@ -403,13 +405,13 @@ public:
 					{
 						connect(inspectRequest, &InspectRequest::finished, this, &Private::inspectRequest_finished);
 						inspectChecker->watch(inspectRequest);
-						inspectRequest->start(requestData, truncated, route.session);
+						inspectRequest->start(requestData, truncated, route.session, autoShare);
 					}
 					else
 					{
 						inspectChecker->watch(inspectRequest);
 						inspectChecker->give(inspectRequest);
-						inspectRequest->start(requestData, truncated, route.session);
+						inspectRequest->start(requestData, truncated, route.session, autoShare);
 						inspectRequest = 0;
 					}
 				}
@@ -1223,6 +1225,11 @@ void RequestSession::setPrefetchSize(int size)
 void RequestSession::setRoute(const DomainMap::Entry &route)
 {
 	d->route = route;
+}
+
+void RequestSession::setAutoShare(bool enabled)
+{
+	d->autoShare = enabled;
 }
 
 void RequestSession::setAccepted(bool enabled)

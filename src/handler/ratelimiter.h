@@ -17,26 +17,37 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PUBLISHITEM_H
-#define PUBLISHITEM_H
+#ifndef RATELIMITER_H
+#define RATELIMITER_H
 
-#include <QString>
-#include <QHash>
-#include <QVariant>
-#include "publishformat.h"
+#include <QObject>
 
-class PublishItem
+class RateLimiter : public QObject
 {
+	Q_OBJECT
+
 public:
-	QString channel;
-	QString id;
-	QString prevId;
-	QHash<PublishFormat::Type, PublishFormat> formats;
-	QHash<QString, QString> meta;
+	class Action
+	{
+	public:
+		virtual ~Action() {}
 
-	PublishFormat format; // for single format items
+		virtual bool execute() = 0;
+	};
 
-	static PublishItem fromVariant(const QVariant &vitem, const QString &channel = QString(), bool *ok = 0, QString *errorMessage = 0);
+	RateLimiter(QObject *parent = 0);
+	~RateLimiter();
+
+	void setRate(int actionsPerSecond);
+	void setHwm(int hwm);
+	void setBatchWaitEnabled(bool on);
+
+	bool addAction(const QString &key, Action *action);
+	Action *lastAction(const QString &key) const;
+
+private:
+	class Private;
+	Private *d;
 };
 
 #endif

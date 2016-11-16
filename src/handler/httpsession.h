@@ -29,6 +29,10 @@
 class QTimer;
 class ZhttpManager;
 class StatsManager;
+class PublishItem;
+class RateLimiter;
+class PublishLastIds;
+class HttpSessionUpdateManager;
 
 class HttpSession : public QObject
 {
@@ -59,7 +63,7 @@ public:
 		}
 	};
 
-	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, QObject *parent = 0);
+	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, QObject *parent = 0);
 	~HttpSession();
 
 	Instruct::HoldMode holdMode() const;
@@ -71,10 +75,8 @@ public:
 	QHash<QString, QString> meta() const;
 
 	void start();
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body, const QList<QByteArray> &exposeHeaders);
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders);
-	void stream(const QByteArray &content);
-	void close();
+	void update();
+	void publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
 
 signals:
 	void subscribe(const QString &channel);

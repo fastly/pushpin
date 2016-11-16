@@ -17,16 +17,16 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "responselastids.h"
+#include "publishlastids.h"
 
 #include <assert.h>
 
-ResponseLastIds::ResponseLastIds(int maxCapacity) :
+PublishLastIds::PublishLastIds(int maxCapacity) :
 	maxCapacity_(maxCapacity)
 {
 }
 
-void ResponseLastIds::set(const QString &channel, const QString &id)
+void PublishLastIds::set(const QString &channel, const QString &id)
 {
 	QDateTime now = QDateTime::currentDateTimeUtc();
 
@@ -60,7 +60,7 @@ void ResponseLastIds::set(const QString &channel, const QString &id)
 	}
 }
 
-void ResponseLastIds::remove(const QString &channel)
+void PublishLastIds::remove(const QString &channel)
 {
 	if(table_.contains(channel))
 	{
@@ -70,7 +70,7 @@ void ResponseLastIds::remove(const QString &channel)
 	}
 }
 
-QString ResponseLastIds::value(const QString &channel)
+QString PublishLastIds::value(const QString &channel)
 {
 	return table_.value(channel).id;
 }
