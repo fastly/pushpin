@@ -37,6 +37,7 @@
 #include "publishformat.h"
 #include "ratelimiter.h"
 #include "publishlastids.h"
+#include "httpsessionupdatemanager.h"
 
 #define RETRY_TIMEOUT 1000
 #define RETRY_MAX 5
@@ -98,6 +99,7 @@ public:
 	ZhttpRequest *outReq; // for fetching next links
 	RateLimiter *updateLimiter;
 	PublishLastIds *publishLastIds;
+	HttpSessionUpdateManager *updateManager;
 	BufferList firstInstructResponse;
 	bool haveOutReqHeaders;
 	int sentOutReqData;
@@ -109,7 +111,7 @@ public:
 	UpdateAction *pendingAction;
 	QList<PublishItem> publishQueue;
 
-	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds) :
+	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager) :
 		QObject(_q),
 		q(_q),
 		req(_req),
@@ -118,6 +120,7 @@ public:
 		outReq(0),
 		updateLimiter(_updateLimiter),
 		publishLastIds(_publishLastIds),
+		updateManager(_updateManager),
 		haveOutReqHeaders(false),
 		sentOutReqData(0),
 		retries(0),
@@ -149,6 +152,8 @@ public:
 	~Private()
 	{
 		cleanup();
+
+		updateManager->unregisterSession(q);
 
 		timer->disconnect(this);
 		timer->setParent(0);
@@ -227,7 +232,7 @@ public:
 
 		// turn off timers during update
 		timer->stop();
-		retryTimer->stop();
+		updateManager->unregisterSession(q);
 
 		if(priority == HighPriority)
 		{
@@ -313,7 +318,7 @@ private:
 
 		publishQueue.clear();
 		timer->stop();
-		retryTimer->stop();
+		updateManager->unregisterSession(q);
 	}
 
 	void tryWriteFirstInstructResponse()
@@ -535,7 +540,7 @@ private:
 					timer->start(instruct.keepAliveTimeout * 1000);
 
 				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
-					retryTimer->start(instruct.nextLinkTimeout * 1000);
+					updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
 			}
 		}
 
@@ -550,7 +555,7 @@ private:
 			{
 				// if backlogged, turn off timers until we're able to send again
 				timer->stop();
-				retryTimer->stop();
+				updateManager->unregisterSession(q);
 			}
 		}
 	}
@@ -564,7 +569,7 @@ private:
 			timer->start(instruct.keepAliveTimeout * 1000);
 
 		if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
-			retryTimer->start(instruct.nextLinkTimeout * 1000);
+			updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
 
 		if(needUpdate)
 			update(LowPriority);
@@ -1066,10 +1071,10 @@ private slots:
 	}
 };
 
-HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, QObject *parent) :
+HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, req, adata, instruct, zhttpOut, stats, updateLimiter, publishLastIds);
+	d = new Private(this, req, adata, instruct, zhttpOut, stats, updateLimiter, publishLastIds, updateManager);
 }
 
 HttpSession::~HttpSession()

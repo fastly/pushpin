@@ -61,6 +61,7 @@
 #include "controlrequest.h"
 #include "conncheckworker.h"
 #include "ratelimiter.h"
+#include "httpsessionupdatemanager.h"
 #include "sequencer.h"
 
 #define DEFAULT_HWM 101000
@@ -498,6 +499,7 @@ public:
 	ZhttpManager *zhttpOut;
 	StatsManager *stats;
 	RateLimiter *updateLimiter;
+	HttpSessionUpdateManager *httpSessionUpdateManager;
 	QString route;
 	QString channelPrefix;
 	QByteArray sigIss;
@@ -513,7 +515,7 @@ public:
 	LastIds lastIds;
 	QList<HttpSession*> sessions;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req),
 		stateClient(_stateClient),
@@ -522,6 +524,7 @@ public:
 		zhttpOut(_zhttpOut),
 		stats(_stats),
 		updateLimiter(_updateLimiter),
+		httpSessionUpdateManager(_httpSessionUpdateManager),
 		trusted(false),
 		haveInspectInfo(false),
 		responseSent(false)
@@ -1068,7 +1071,7 @@ private:
 
 			PublishLastIds &publishLastIds = (instruct.holdMode == Instruct::ResponseHold ? cs->responseLastIds : cs->streamLastIds);
 
-			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &publishLastIds, this);
+			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &publishLastIds, httpSessionUpdateManager, this);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -1200,6 +1203,7 @@ public:
 	StatsManager *stats;
 	RateLimiter *publishLimiter;
 	RateLimiter *updateLimiter;
+	HttpSessionUpdateManager *httpSessionUpdateManager;
 	Sequencer *sequencer;
 	CommonState cs;
 	QSet<InspectWorker*> inspectWorkers;
@@ -1236,6 +1240,8 @@ public:
 
 		publishLimiter = new RateLimiter(this);
 		updateLimiter = new RateLimiter(this);
+
+		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
 
 		sequencer = new Sequencer(this);
 		connect(sequencer, &Sequencer::itemReady, this, &Private::sequencer_itemReady);
@@ -1832,7 +1838,7 @@ private slots:
 		if(!req)
 			return;
 
-		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, this);
+		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, this);
 		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
 		connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
