@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.14.0 (2016-11-15)
+
+  * Reliable HTTP streaming (stream hold + "GRIP Next").
+  * Process messages in order if received out of order.
+
 v. 1.13.1 (2016-10-27)
 
   * Fix crash when publishing to a long-polling client that is closing.
