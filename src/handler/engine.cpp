@@ -1049,6 +1049,8 @@ private:
 			adata.sigIss = sigIss;
 			adata.sigKey = sigKey;
 			adata.trusted = trusted;
+			adata.haveInspectInfo = haveInspectInfo;
+			adata.inspectInfo = inspectInfo;
 
 			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, this);
 		}
@@ -2480,8 +2482,13 @@ private slots:
 	{
 		HttpSession *hs = (HttpSession *)sender();
 
+		RetryRequestPacket rp = hs->retryPacket();
+
 		cs.httpSessions.remove(hs->rid());
 		delete hs;
+
+		if(!rp.requests.isEmpty())
+			writeRetryPacket(rp);
 	}
 
 	void wssession_expired()

@@ -23,6 +23,7 @@
 #include <QObject>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "inspectdata.h"
 #include "zhttprequest.h"
 #include "instruct.h"
 
@@ -33,6 +34,7 @@ class PublishItem;
 class RateLimiter;
 class PublishLastIds;
 class HttpSessionUpdateManager;
+class RetryRequestPacket;
 
 class HttpSession : public QObject
 {
@@ -55,10 +57,13 @@ public:
 		bool trusted;
 		bool responseSent;
 		QString sid;
+		bool haveInspectInfo;
+		InspectData inspectInfo;
 
 		AcceptData() :
 			trusted(false),
-			responseSent(false)
+			responseSent(false),
+			haveInspectInfo(false)
 		{
 		}
 	};
@@ -73,6 +78,7 @@ public:
 	QString sid() const;
 	QHash<QString, Instruct::Channel> channels() const;
 	QHash<QString, QString> meta() const;
+	RetryRequestPacket retryPacket() const;
 
 	void start();
 	void update();

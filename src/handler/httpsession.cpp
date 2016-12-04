@@ -27,6 +27,7 @@
 #include <QJsonArray>
 #include "log.h"
 #include "bufferlist.h"
+#include "packet/retryrequestpacket.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 #include "cors.h"
@@ -111,6 +112,7 @@ public:
 	bool needUpdate;
 	UpdateAction *pendingAction;
 	QList<PublishItem> publishQueue;
+	RetryRequestPacket retryPacket;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager) :
 		QObject(_q),
@@ -225,7 +227,7 @@ public:
 
 		needUpdate = false;
 
-		if(nextUri.isEmpty())
+		if(instruct.holdMode != Instruct::ResponseHold && nextUri.isEmpty())
 		{
 			// can't update without valid link
 			return;
@@ -272,6 +274,22 @@ public:
 			{
 				log_debug("httpsession: received publish for channel with no subscription, dropping");
 				return;
+			}
+
+			Instruct::Channel &channel = channels[item.channel];
+
+			if(!channel.prevId.isNull())
+			{
+				if(channel.prevId != item.prevId)
+				{
+					log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
+					publishLastIds->remove(item.channel);
+
+					update(LowPriority);
+					return;
+				}
+
+				channel.prevId = item.id;
 			}
 
 			if(!Filters::applyFilters(instruct.meta, item.meta, channels[item.channel].filters))
@@ -360,10 +378,18 @@ private:
 
 	void doUpdate()
 	{
-		state = Proxying;
 		pendingAction = 0;
 
-		requestNextLink();
+		if(instruct.holdMode == Instruct::ResponseHold)
+		{
+			connect(req, &ZhttpRequest::paused, this, &Private::req_paused);
+			req->pause();
+		}
+		else
+		{
+			state = Proxying;
+			requestNextLink();
+		}
 	}
 
 	void prepareToSendQueueOrHold(bool first = false)
@@ -524,6 +550,9 @@ private:
 			{
 				if(channel.prevId != item.prevId)
 				{
+					log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
+					publishLastIds->remove(item.channel);
+
 					publishQueue.clear();
 
 					update(LowPriority);
@@ -757,11 +786,13 @@ private:
 		respond(code, reason, headers, body, exposeHeaders);
 	}
 
-	void doFinish()
+	void doFinish(bool retry = false)
 	{
 		ZhttpRequest::Rid rid = req->rid();
 
-		log_debug("httpsession: cleaning up ('%s', '%s')", rid.first.data(), rid.second.data());
+		QByteArray cid = rid.first + ':' + rid.second;
+
+		log_debug("httpsession: cleaning up %s", cid.data());
 
 		cleanup();
 
@@ -778,7 +809,49 @@ private:
 			assert(self); // deleting here would leak subscriptions/connections
 		}
 
-		stats->removeConnection(rid.first + ':' + rid.second, false);
+		if(retry)
+		{
+			// refresh before remove, to ensure transition
+			stats->refreshConnection(cid);
+			stats->removeConnection(cid, true);
+
+			ZhttpRequest::ServerState ss = req->serverState();
+
+			RetryRequestPacket rp;
+
+			RetryRequestPacket::Request rpreq;
+			rpreq.rid = rid;
+			rpreq.https = (req->requestUri().scheme() == "https");
+			rpreq.peerAddress = req->peerAddress();
+			rpreq.debug = adata.debug;
+			rpreq.autoCrossOrigin = adata.autoCrossOrigin;
+			rpreq.jsonpCallback = adata.jsonpCallback;
+			rpreq.jsonpExtendedResponse = adata.jsonpExtendedResponse;
+			rpreq.inSeq = ss.inSeq;
+			rpreq.outSeq = ss.outSeq;
+			rpreq.outCredits = ss.outCredits;
+			rpreq.userData = ss.userData;
+
+			rp.requests += rpreq;
+
+			rp.requestData = adata.requestData;
+
+			if(adata.haveInspectInfo)
+			{
+				rp.haveInspectInfo = true;
+				rp.inspectInfo.doProxy = adata.inspectInfo.doProxy;
+				rp.inspectInfo.sharingKey = adata.inspectInfo.sharingKey;
+				rp.inspectInfo.sid = adata.inspectInfo.sid;
+				rp.inspectInfo.lastIds = adata.inspectInfo.lastIds;
+				rp.inspectInfo.userData = adata.inspectInfo.userData;
+			}
+
+			retryPacket = rp;
+		}
+		else
+		{
+			stats->removeConnection(cid, false);
+		}
 
 		emit q->finished();
 	}
@@ -1019,6 +1092,11 @@ private slots:
 		doFinish();
 	}
 
+	void req_paused()
+	{
+		doFinish(true); // finish for retry
+	}
+
 	void outReq_readyRead()
 	{
 		haveOutReqHeaders = true;
@@ -1077,10 +1155,7 @@ private slots:
 
 	void retryTimer_timeout()
 	{
-		if(state == Proxying)
-			requestNextLink();
-		else if(state == Holding)
-			update(LowPriority);
+		requestNextLink();
 	}
 };
 
@@ -1097,7 +1172,13 @@ HttpSession::~HttpSession()
 
 Instruct::HoldMode HttpSession::holdMode() const
 {
-	return d->instruct.holdMode;
+	if(d->instruct.holdMode == Instruct::NoHold)
+	{
+		// NoHold is a temporary internal state for stream
+		return Instruct::StreamHold;
+	}
+	else
+		return d->instruct.holdMode;
 }
 
 ZhttpRequest::Rid HttpSession::rid() const
@@ -1128,6 +1209,11 @@ QHash<QString, Instruct::Channel> HttpSession::channels() const
 QHash<QString, QString> HttpSession::meta() const
 {
 	return d->instruct.meta;
+}
+
+RetryRequestPacket HttpSession::retryPacket() const
+{
+	return d->retryPacket;
 }
 
 void HttpSession::start()
