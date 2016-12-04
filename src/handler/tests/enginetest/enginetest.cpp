@@ -708,6 +708,23 @@ private slots:
 
 		{
 			QVariantHash hs;
+			hs["content"] = QByteArray("one\n");
+
+			QVariantHash formats;
+			formats["http-stream"] = hs;
+
+			data["channel"] = QByteArray("apple");
+			data["id"] = QByteArray("a");
+			data["formats"] = formats;
+		}
+
+		buf = TnetString::fromVariant(data);
+		wrapper->publishPushSock->write(QList<QByteArray>() << buf);
+
+		data.clear();
+
+		{
+			QVariantHash hs;
 			hs["action"] = QByteArray("close");
 
 			QVariantHash formats;
@@ -770,23 +787,6 @@ private slots:
 			data["channel"] = QByteArray("apple");
 			data["id"] = QByteArray("b");
 			data["prev-id"] = QByteArray("a");
-			data["formats"] = formats;
-		}
-
-		buf = TnetString::fromVariant(data);
-		wrapper->publishPushSock->write(QList<QByteArray>() << buf);
-
-		data.clear();
-
-		{
-			QVariantHash hs;
-			hs["content"] = QByteArray("one\n");
-
-			QVariantHash formats;
-			formats["http-stream"] = hs;
-
-			data["channel"] = QByteArray("apple");
-			data["id"] = QByteArray("a");
 			data["formats"] = formats;
 		}
 
