@@ -344,7 +344,7 @@ private:
 		}
 		else // ResponseHold, StreamHold
 		{
-			prepareToSendQueueOrHold();
+			prepareToSendQueueOrHold(true);
 		}
 	}
 
@@ -356,11 +356,11 @@ private:
 		requestNextLink();
 	}
 
-	void prepareToSendQueueOrHold()
+	void prepareToSendQueueOrHold(bool first = false)
 	{
 		assert(instruct.holdMode != Instruct::NoHold);
 
-		if(instruct.holdMode == Instruct::StreamHold)
+		if(first && instruct.holdMode == Instruct::StreamHold)
 		{
 			bool conflict = false;
 			foreach(const Instruct::Channel &c, instruct.channels)
