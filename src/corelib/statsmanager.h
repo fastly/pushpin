@@ -53,6 +53,10 @@ public:
 	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet);
 	void removeConnection(const QByteArray &id, bool linger);
 
+	// manager automatically refreshes, but it may be useful to force a
+	//   send before removing with linger
+	void refreshConnection(const QByteArray &id);
+
 	void addSubscription(const QString &mode, const QString &channel);
 
 	// NOTE: may emit unsubscribed immediately (not DOR-DS)

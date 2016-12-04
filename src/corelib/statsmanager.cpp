@@ -970,6 +970,15 @@ void StatsManager::removeConnection(const QByteArray &id, bool linger)
 		d->updateConnectionsMax(routeId, now);
 }
 
+void StatsManager::refreshConnection(const QByteArray &id)
+{
+	Private::ConnectionInfo *c = d->connectionInfoById.value(id);
+	if(!c)
+		return;
+
+	d->sendConnected(c);
+}
+
 void StatsManager::addSubscription(const QString &mode, const QString &channel)
 {
 	Private::SubscriptionKey subKey(mode, channel);
