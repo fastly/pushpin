@@ -451,13 +451,11 @@ public:
 	QHash<QString, QSet<HttpSession*> > responseSessionsByChannel;
 	QHash<QString, QSet<HttpSession*> > streamSessionsByChannel;
 	QHash<QString, QSet<WsSession*> > wsSessionsByChannel;
-	PublishLastIds responseLastIds;
-	PublishLastIds streamLastIds;
+	PublishLastIds publishLastIds;
 	QHash<QString, Subscription*> subs;
 
 	CommonState() :
-		responseLastIds(1000000),
-		streamLastIds(1000000)
+		publishLastIds(1000000)
 	{
 	}
 
@@ -973,11 +971,11 @@ private:
 				{
 					QString name = channelPrefix + c.name;
 
-					QString lastId = cs->responseLastIds.value(name);
+					QString lastId = cs->publishLastIds.value(name);
 					if(!lastId.isNull() && lastId != c.prevId)
 					{
 						log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
-						cs->responseLastIds.remove(name);
+						cs->publishLastIds.remove(name);
 						conflict = true;
 
 						// NOTE: don't exit loop here. we want to clear
@@ -1069,9 +1067,7 @@ private:
 			adata.sigKey = sigKey;
 			adata.trusted = trusted;
 
-			PublishLastIds &publishLastIds = (instruct.holdMode == Instruct::ResponseHold ? cs->responseLastIds : cs->streamLastIds);
-
-			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &publishLastIds, httpSessionUpdateManager, this);
+			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, this);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -1243,7 +1239,7 @@ public:
 
 		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
 
-		sequencer = new Sequencer(this);
+		sequencer = new Sequencer(&cs.publishLastIds, this);
 		connect(sequencer, &Sequencer::itemReady, this, &Private::sequencer_itemReady);
 	}
 
@@ -1513,6 +1509,12 @@ public:
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
+		if(!cs.subs.contains(item.channel))
+		{
+			// don't bother queuing/sequencing if nobody's listening
+			return;
+		}
+
 		sequencer->addItem(item);
 	}
 
@@ -1571,6 +1573,9 @@ private:
 			Subscription *sub = cs.subs[channel];
 			cs.subs.remove(channel);
 			delete sub;
+
+			sequencer->clearPendingForChannel(channel);
+			cs.publishLastIds.remove(channel);
 
 			if(inSubSock)
 			{
@@ -1667,9 +1672,6 @@ private slots:
 				if(!hs->sid().isEmpty())
 					sids += hs->sid();
 			}
-
-			if(!item.id.isNull())
-				cs.responseLastIds.set(item.channel, item.id);
 		}
 
 		if(item.formats.contains(PublishFormat::HttpStream))
@@ -1694,9 +1696,6 @@ private slots:
 				if(!hs->sid().isEmpty())
 					sids += hs->sid();
 			}
-
-			if(!item.id.isNull())
-				cs.streamLastIds.set(item.channel, item.id);
 		}
 
 		if(item.formats.contains(PublishFormat::WebSocketMessage))

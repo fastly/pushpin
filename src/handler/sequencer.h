@@ -22,6 +22,7 @@
 
 #include <QObject>
 
+class PublishLastIds;
 class PublishItem;
 
 class Sequencer : public QObject
@@ -29,11 +30,13 @@ class Sequencer : public QObject
 	Q_OBJECT
 
 public:
-	Sequencer(QObject *parent = 0);
+	Sequencer(PublishLastIds *publishLastIds, QObject *parent = 0);
 	~Sequencer();
 
 	// note: may emit signals
 	void addItem(const PublishItem &item);
+
+	void clearPendingForChannel(const QString &channel);
 
 signals:
 	void itemReady(const PublishItem &item);

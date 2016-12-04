@@ -53,15 +53,15 @@ public:
 	};
 
 	Sequencer *q;
-	PublishLastIds lastIds;
+	PublishLastIds *lastIds;
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
 	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
 	QTimer *expireTimer;
 
-	Private(Sequencer *_q) :
+	Private(Sequencer *_q, PublishLastIds *_publishLastIds) :
 		QObject(_q),
 		q(_q),
-		lastIds(1000000)
+		lastIds(_publishLastIds)
 	{
 		expireTimer = new QTimer(this);
 		connect(expireTimer, &QTimer::timeout, this, &Private::expireTimer_timeout);
@@ -76,11 +76,17 @@ public:
 
 	void addItem(const PublishItem &item)
 	{
-		QString lastId = lastIds.value(item.channel);
+		QString lastId = lastIds->value(item.channel);
 
-		if(!item.prevId.isNull() && lastId != item.prevId)
+		if(!lastId.isNull() && !item.prevId.isNull() && lastId != item.prevId)
 		{
 			ChannelPendingItems &channelPendingItems = pendingItemsByChannel[item.channel];
+
+			if(channelPendingItems.itemsByPrevId.contains(item.prevId))
+			{
+				log_debug("sequencer: already have item for channel [%s] depending on prev-id [%s], dropping", qPrintable(item.channel), qPrintable(item.prevId));
+				return;
+			}
 
 			if(channelPendingItems.itemsByPrevId.count() >= CHANNEL_PENDING_MAX)
 			{
@@ -105,9 +111,31 @@ public:
 		sendItem(item);
 	}
 
+	void clear(const QString &channel)
+	{
+		if(!pendingItemsByChannel.contains(channel))
+			return;
+
+		ChannelPendingItems &channelPendingItems = pendingItemsByChannel[channel];
+		QHashIterator<QString, PendingItem*> it(channelPendingItems.itemsByPrevId);
+		while(it.hasNext())
+		{
+			it.next();
+			PendingItem *i = it.value();
+
+			pendingItemsByTime.remove(QPair<qint64, PendingItem*>(i->time, i));
+		}
+
+		pendingItemsByChannel.remove(channel);
+	}
+
 	void sendItem(const PublishItem &item)
 	{
-		lastIds.set(item.channel, item.id);
+		if(!item.id.isNull())
+			lastIds->set(item.channel, item.id);
+		else
+			lastIds->remove(item.channel);
+
 		emit q->itemReady(item);
 
 		if(pendingItemsByChannel.contains(item.channel))
@@ -115,7 +143,7 @@ public:
 			ChannelPendingItems &channelPendingItems = pendingItemsByChannel[item.channel];
 			QString id = item.id;
 
-			while(!channelPendingItems.itemsByPrevId.isEmpty())
+			while(!id.isNull() && !channelPendingItems.itemsByPrevId.isEmpty())
 			{
 				PendingItem *i = channelPendingItems.itemsByPrevId.value(id);
 				if(!i)
@@ -126,7 +154,11 @@ public:
 				pendingItemsByTime.remove(QPair<qint64, PendingItem*>(i->time, i));
 				delete i;
 
-				lastIds.set(pitem.channel, pitem.id);
+				if(!pitem.id.isNull())
+					lastIds->set(pitem.channel, pitem.id);
+				else
+					lastIds->remove(pitem.channel);
+
 				emit q->itemReady(pitem);
 
 				id = pitem.id;
@@ -177,10 +209,10 @@ private slots:
 	}
 };
 
-Sequencer::Sequencer(QObject *parent) :
+Sequencer::Sequencer(PublishLastIds *publishLastIds, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = new Private(this, publishLastIds);
 }
 
 Sequencer::~Sequencer()
@@ -191,6 +223,11 @@ Sequencer::~Sequencer()
 void Sequencer::addItem(const PublishItem &item)
 {
 	d->addItem(item);
+}
+
+void Sequencer::clearPendingForChannel(const QString &channel)
+{
+	d->clear(channel);
 }
 
 #include "sequencer.moc"
