@@ -26,7 +26,7 @@
 #include "publishlastids.h"
 
 #define CHANNEL_PENDING_MAX 100
-#define PENDING_EXPIRE 10000
+#define PENDING_EXPIRE 5000
 #define EXPIRE_INTERVAL 1000
 
 class Sequencer::Private : public QObject
