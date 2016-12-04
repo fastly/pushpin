@@ -63,6 +63,7 @@
 #include "ratelimiter.h"
 #include "httpsessionupdatemanager.h"
 #include "sequencer.h"
+#include "filters.h"
 
 #define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // infinite
@@ -77,24 +78,6 @@
 #define ACCEPT_WORKERS_MAX 10
 
 using namespace VariantUtil;
-
-// return true to send and false to drop.
-// TODO: support more than one filter, payload modification, etc
-static bool applyFilters(const QHash<QString, QString> &subscriptionMeta, const QHash<QString, QString> &publishMeta, const QStringList &filters)
-{
-	foreach(const QString &f, filters)
-	{
-		if(f == "skip-self")
-		{
-			QString user = subscriptionMeta.value("user");
-			QString sender = publishMeta.value("sender");
-			if(!user.isEmpty() && !sender.isEmpty() && sender == user)
-				return false;
-		}
-	}
-
-	return true;
-}
 
 static QList<PublishItem> parseHttpItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
 {
@@ -1617,6 +1600,9 @@ private:
 		{
 			WsSession *s = qobject_cast<WsSession*>(target);
 
+			if(!Filters::applyFilters(s->meta, item.meta, s->channelFilters[item.channel]))
+				return;
+
 			WsControlPacket::Item i;
 			i.cid = s->cid.toUtf8();
 
@@ -1664,9 +1650,6 @@ private slots:
 				assert(hs->holdMode() == Instruct::ResponseHold);
 				assert(hs->channels().contains(item.channel));
 
-				if(!applyFilters(hs->meta(), item.meta, hs->channels()[item.channel].filters))
-					continue;
-
 				responseSessions += hs;
 
 				if(!hs->sid().isEmpty())
@@ -1688,9 +1671,6 @@ private slots:
 				if(!hs->channels().contains(item.channel))
 					continue;
 
-				if(!applyFilters(hs->meta(), item.meta, hs->channels()[item.channel].filters))
-					continue;
-
 				streamSessions += hs;
 
 				if(!hs->sid().isEmpty())
@@ -1704,9 +1684,6 @@ private slots:
 			foreach(WsSession *s, wsbc)
 			{
 				assert(s->channels.contains(item.channel));
-
-				if(!applyFilters(s->meta, item.meta, s->channelFilters[item.channel]))
-					continue;
 
 				wsSessions += s;
 

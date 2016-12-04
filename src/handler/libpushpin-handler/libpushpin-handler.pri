@@ -33,6 +33,7 @@ HEADERS += \
 	$$SRC_DIR/conncheckworker.h \
 	$$SRC_DIR/ratelimiter.h \
 	$$SRC_DIR/sequencer.h \
+	$$SRC_DIR/filters.h \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
@@ -54,4 +55,5 @@ SOURCES += \
 	$$SRC_DIR/conncheckworker.cpp \
 	$$SRC_DIR/ratelimiter.cpp \
 	$$SRC_DIR/sequencer.cpp \
+	$$SRC_DIR/filters.cpp \
 	$$SRC_DIR/engine.cpp

@@ -38,6 +38,7 @@
 #include "ratelimiter.h"
 #include "publishlastids.h"
 #include "httpsessionupdatemanager.h"
+#include "filters.h"
 
 #define RETRY_TIMEOUT 1000
 #define RETRY_MAX 5
@@ -266,6 +267,15 @@ public:
 				return;
 
 			assert(instruct.holdMode == Instruct::ResponseHold);
+
+			if(!channels.contains(item.channel))
+			{
+				log_debug("httpsession: received publish for channel with no subscription, dropping");
+				return;
+			}
+
+			if(!Filters::applyFilters(instruct.meta, item.meta, channels[item.channel].filters))
+				return;
 
 			if(f.haveBodyPatch)
 				respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
@@ -502,6 +512,30 @@ private:
 		{
 			PublishItem item = publishQueue.takeFirst();
 
+			if(!channels.contains(item.channel))
+			{
+				log_debug("httpsession: received publish for channel with no subscription, dropping");
+				continue;
+			}
+
+			Instruct::Channel &channel = channels[item.channel];
+
+			if(!channel.prevId.isNull())
+			{
+				if(channel.prevId != item.prevId)
+				{
+					publishQueue.clear();
+
+					update(LowPriority);
+					break;
+				}
+
+				channel.prevId = item.id;
+			}
+
+			if(!Filters::applyFilters(instruct.meta, item.meta, channels[item.channel].filters))
+				continue;
+
 			PublishFormat &f = item.format;
 
 			if(f.close)
@@ -512,27 +546,6 @@ private:
 			}
 			else
 			{
-				if(!channels.contains(item.channel))
-				{
-					log_debug("httpsession: received publish for channel with no subscription, dropping");
-					continue;
-				}
-
-				Instruct::Channel &channel = channels[item.channel];
-
-				if(!channel.prevId.isNull())
-				{
-					if(channel.prevId != item.prevId)
-					{
-						publishQueue.clear();
-
-						update(LowPriority);
-						break;
-					}
-
-					channel.prevId = item.id;
-				}
-
 				req->writeBody(f.body);
 
 				// restart keep alive timer
