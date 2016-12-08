@@ -109,6 +109,7 @@ public:
 	bool close;
 	bool patch;
 	QVariantList bodyPatch;
+	bool eol;
 	QString spec;
 	QString channel;
 	QString content;
@@ -116,7 +117,8 @@ public:
 	ArgsData() :
 		code(-1),
 		close(false),
-		patch(false)
+		patch(false),
+		eol(true)
 	{
 	}
 };
@@ -138,6 +140,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(closeOption);
 	const QCommandLineOption patchOption("patch", "Content is JSON patch.");
 	parser->addOption(patchOption);
+	const QCommandLineOption noEolOption("no-eol", "Don't add newline to HTTP payloads.");
+	parser->addOption(noEolOption);
 	const QCommandLineOption specOption("spec", "ZeroMQ PUSH spec (default: tcp://localhost:5560).", "spec", "tcp://localhost:5560");
 	parser->addOption(specOption);
 	parser->addPositionalArgument("channel", "Channel to send to.");
@@ -213,6 +217,9 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 		args->patch = true;
 		args->bodyPatch = convertFromJsonStyle(doc.array().toVariantList()).toList();
 	}
+
+	if(parser->isSet(noEolOption))
+		args->eol = false;
 
 	args->spec = parser->value(specOption);
 
@@ -293,7 +300,7 @@ int main(int argc, char **argv)
 		else
 		{
 			QByteArray body = args.content.toUtf8();
-			if(!isFile)
+			if(args.eol && !isFile)
 				body += '\n';
 			httpResponse["body"] = body;
 		}
@@ -323,7 +330,7 @@ int main(int argc, char **argv)
 		else
 		{
 			QByteArray body = args.content.toUtf8();
-			if(!isFile)
+			if(args.eol && !isFile)
 				body += '\n';
 			httpStream["content"] = body;
 		}
