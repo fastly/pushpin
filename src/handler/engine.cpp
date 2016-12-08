@@ -1496,7 +1496,11 @@ private:
 	{
 		if(!cs.subs.contains(item.channel))
 		{
-			// don't bother queuing/sequencing if nobody's listening
+			// don't sequence if nobody's listening, because we
+			//   clear lastId on unsubscribe and don't want it to
+			//   be set again until after a subscription returns
+
+			log_info("publish channel=%s receivers=0", qPrintable(item.channel));
 			return;
 		}
 
@@ -2508,7 +2512,11 @@ private slots:
 	{
 		Subscription *sub = (Subscription *)sender();
 
-		QSet<HttpSession*> sessions = cs.streamSessionsByChannel.value(sub->channel());
+		QSet<HttpSession*> sessions = cs.responseSessionsByChannel.value(sub->channel());
+		foreach(HttpSession *hs, sessions)
+			hs->update();
+
+		sessions = cs.streamSessionsByChannel.value(sub->channel());
 		foreach(HttpSession *hs, sessions)
 			hs->update();
 	}
