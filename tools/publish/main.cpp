@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <QCoreApplication>
+#include <QFile>
 #include <QCommandLineParser>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -265,14 +266,37 @@ int main(int argc, char **argv)
 
 	QVariantHash formats;
 
+	bool isFile = false;
+	if(args.content.startsWith('@'))
+	{
+		QString fname = args.content.mid(1);
+		QFile f(fname);
+		if(!f.open(QFile::ReadOnly))
+		{
+			errorMessage = QString("error: can't read file: %1").arg(fname);
+			fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
+			return 1;
+		}
+
+		isFile = true;
+		args.content = f.readAll();
+	}
+
 	if(!args.close)
 	{
 		QVariantHash httpResponse;
 
 		if(args.patch)
+		{
 			httpResponse["body-patch"] = args.bodyPatch;
+		}
 		else
-			httpResponse["body"] = args.content.toUtf8() + "\n";
+		{
+			QByteArray body = args.content.toUtf8();
+			if(!isFile)
+				body += '\n';
+			httpResponse["body"] = body;
+		}
 
 		if(args.code != -1)
 			httpResponse["code"] = args.code;
@@ -293,9 +317,16 @@ int main(int argc, char **argv)
 	{
 		QVariantHash httpStream;
 		if(args.close)
+		{
 			httpStream["action"] = QByteArray("close");
+		}
 		else
-			httpStream["content"] = args.content.toUtf8() + "\n";
+		{
+			QByteArray body = args.content.toUtf8();
+			if(!isFile)
+				body += '\n';
+			httpStream["content"] = body;
+		}
 
 		formats["http-stream"] = httpStream;
 
