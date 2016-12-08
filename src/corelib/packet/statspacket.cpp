@@ -50,6 +50,9 @@ QVariant StatsPacket::toVariant() const
 			x = 0;
 		obj["count"] = x;
 
+		if(blocks >= 0)
+			obj["blocks"] = blocks;
+
 		obj["transport"] = transport;
 	}
 	else if(type == Connected || type == Disconnected)
@@ -163,6 +166,14 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 		count = obj["count"].toInt();
 		if(count < 0)
 			return false;
+
+		if(obj.contains("blocks"))
+		{
+			if(!obj["blocks"].canConvert(QVariant::Int))
+				return false;
+
+			blocks = obj["blocks"].toInt();
+		}
 
 		if(!obj.contains("transport") || obj["transport"].type() != QVariant::ByteArray)
 			return false;

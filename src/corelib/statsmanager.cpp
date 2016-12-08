@@ -440,7 +440,7 @@ public:
 		write(p);
 	}
 
-	void sendMessage(const QString &channel, const QString &itemId, const QString &transport, int count)
+	void sendMessage(const QString &channel, const QString &itemId, const QString &transport, int count, int blocks)
 	{
 		if(!sock)
 			return;
@@ -451,6 +451,7 @@ public:
 		p.channel = channel.toUtf8();
 		p.itemId = itemId.toUtf8();
 		p.count = count;
+		p.blocks = blocks;
 		p.transport = transport.toUtf8();
 		write(p);
 	}
@@ -865,9 +866,9 @@ void StatsManager::addActivity(const QByteArray &routeId, int count)
 		d->activityTimer->start(ACTIVITY_TIMEOUT);
 }
 
-void StatsManager::addMessage(const QString &channel, const QString &itemId, const QString &transport, int count)
+void StatsManager::addMessage(const QString &channel, const QString &itemId, const QString &transport, int count, int blocks)
 {
-	d->sendMessage(channel, itemId, transport, count);
+	d->sendMessage(channel, itemId, transport, count, blocks);
 }
 
 void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet)

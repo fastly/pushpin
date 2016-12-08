@@ -57,11 +57,15 @@ public:
 		bool shareAll;
 		int messageRate;
 		int messageHwm;
+		int messageBlockSize;
 
 		Configuration() :
 			pushInHttpPort(-1),
 			ipcFileMode(-1),
-			shareAll(false)
+			shareAll(false),
+			messageRate(-1),
+			messageHwm(-1),
+			messageBlockSize(-1)
 		{
 		}
 	};

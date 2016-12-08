@@ -1637,6 +1637,14 @@ private:
 		}
 	}
 
+	int blocksForData(const QByteArray &data) const
+	{
+		if(config.messageBlockSize <= 0)
+			return -1;
+
+		return (data.size() + config.messageBlockSize - 1) / config.messageBlockSize;
+	}
+
 private slots:
 	void sequencer_itemReady(const PublishItem &item)
 	{
@@ -1736,7 +1744,10 @@ private slots:
 				stats->addMessageSent(route.toUtf8(), "http-response");
 			}
 
-			stats->addMessage(i.channel, i.id, "http-response", responseSessions.count());
+			int blocks = -1;
+			if(config.messageBlockSize > 0)
+				blocks = blocksForData(f.body) * responseSessions.count();
+			stats->addMessage(i.channel, i.id, "http-response", responseSessions.count(), blocks);
 		}
 
 		if(!streamSessions.isEmpty())
@@ -1744,6 +1755,8 @@ private slots:
 			PublishItem i = item;
 			i.format = item.formats.value(PublishFormat::HttpStream);
 			i.formats.clear();
+
+			PublishFormat &f = i.format;
 
 			log_debug("relaying to %d http-stream subscribers", streamSessions.count());
 
@@ -1755,7 +1768,11 @@ private slots:
 				stats->addMessageSent(route.toUtf8(), "http-stream");
 			}
 
-			stats->addMessage(i.channel, i.id, "http-stream", streamSessions.count());
+			int blocks = -1;
+			if(config.messageBlockSize > 0)
+				blocks = blocksForData(f.body) * streamSessions.count();
+
+			stats->addMessage(i.channel, i.id, "http-stream", streamSessions.count(), blocks);
 		}
 
 		if(!wsSessions.isEmpty())
@@ -1763,6 +1780,8 @@ private slots:
 			PublishItem i = item;
 			i.format = item.formats.value(PublishFormat::WebSocketMessage);
 			i.formats.clear();
+
+			PublishFormat &f = i.format;
 
 			log_debug("relaying to %d ws-message subscribers", wsSessions.count());
 
@@ -1774,7 +1793,11 @@ private slots:
 				stats->addMessageSent(route.toUtf8(), "ws-message");
 			}
 
-			stats->addMessage(i.channel, i.id, "ws-message", wsSessions.count());
+			int blocks = -1;
+			if(config.messageBlockSize > 0)
+				blocks = blocksForData(f.body) * wsSessions.count();
+
+			stats->addMessage(i.channel, i.id, "ws-message", wsSessions.count(), blocks);
 		}
 
 		int receivers = responseSessions.count() + streamSessions.count() + wsSessions.count();

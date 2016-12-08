@@ -252,6 +252,7 @@ public:
 		bool shareAll = settings.value("handler/share_all").toBool();
 		int messageRate = settings.value("handler/message_rate", -1).toInt();
 		int messageHwm = settings.value("handler/message_hwm", -1).toInt();
+		int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -293,6 +294,7 @@ public:
 		config.shareAll = shareAll;
 		config.messageRate = messageRate;
 		config.messageHwm = messageHwm;
+		config.messageBlockSize = messageBlockSize;
 
 		engine = new Engine(this);
 		if(!engine->start(config))
