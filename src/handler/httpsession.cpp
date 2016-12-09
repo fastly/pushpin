@@ -295,6 +295,9 @@ public:
 			if(!Filters::applyFilters(instruct.meta, item.meta, channels[item.channel].filters))
 				return;
 
+			// NOTE: http-response mode doesn't support a close
+			//   action since it's better to send a real response
+
 			if(f.haveBodyPatch)
 				respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
 			else
