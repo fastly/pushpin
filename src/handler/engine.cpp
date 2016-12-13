@@ -1730,15 +1730,13 @@ private slots:
 
 			log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
-			int blocks = -1;
-			if(config.messageBlockSize > 0)
-				blocks = blocksForData(f.body) * responseSessions.count();
+			int blocks = blocksForData(f.body);
 
 			foreach(HttpSession *hs, responseSessions)
 			{
 				QString route = hs->route();
 
-				if(!publishLimiter->addAction(route, new PublishAction(this, hs, i, exposeHeaders), blocks))
+				if(!publishLimiter->addAction(route, new PublishAction(this, hs, i, exposeHeaders), blocks != -1 ? blocks : 1))
 				{
 					if(!route.isEmpty())
 						log_warning("exceeded publish hwm (%d) for route %s, dropping message", config.messageHwm, qPrintable(route));
@@ -1749,7 +1747,7 @@ private slots:
 				stats->addMessageSent(route.toUtf8(), "http-response");
 			}
 
-			stats->addMessage(i.channel, i.id, "http-response", responseSessions.count(), blocks);
+			stats->addMessage(i.channel, i.id, "http-response", responseSessions.count(), blocks != -1 ? blocks * responseSessions.count() : -1);
 		}
 
 		if(!streamSessions.isEmpty())
@@ -1762,15 +1760,13 @@ private slots:
 
 			log_debug("relaying to %d http-stream subscribers", streamSessions.count());
 
-			int blocks = -1;
-			if(config.messageBlockSize > 0)
-				blocks = blocksForData(f.body) * streamSessions.count();
+			int blocks = blocksForData(f.body);
 
 			foreach(HttpSession *hs, streamSessions)
 			{
 				QString route = hs->route();
 
-				if(!publishLimiter->addAction(route, new PublishAction(this, hs, i), blocks))
+				if(!publishLimiter->addAction(route, new PublishAction(this, hs, i), blocks != -1 ? blocks : 1))
 				{
 					if(!route.isEmpty())
 						log_warning("exceeded publish hwm (%d) for route %s, dropping message", config.messageHwm, qPrintable(route));
@@ -1781,7 +1777,7 @@ private slots:
 				stats->addMessageSent(route.toUtf8(), "http-stream");
 			}
 
-			stats->addMessage(i.channel, i.id, "http-stream", streamSessions.count(), blocks);
+			stats->addMessage(i.channel, i.id, "http-stream", streamSessions.count(), blocks != -1 ? blocks * streamSessions.count() : -1);
 		}
 
 		if(!wsSessions.isEmpty())
@@ -1794,15 +1790,13 @@ private slots:
 
 			log_debug("relaying to %d ws-message subscribers", wsSessions.count());
 
-			int blocks = -1;
-			if(config.messageBlockSize > 0)
-				blocks = blocksForData(f.body) * wsSessions.count();
+			int blocks = blocksForData(f.body);
 
 			foreach(WsSession *s, wsSessions)
 			{
 				QString route = s->route;
 
-				if(!publishLimiter->addAction(route, new PublishAction(this, s, i), blocks))
+				if(!publishLimiter->addAction(route, new PublishAction(this, s, i), blocks != -1 ? blocks : 1))
 				{
 					if(!route.isEmpty())
 						log_warning("exceeded publish hwm (%d) for route %s, dropping message", config.messageHwm, qPrintable(route));
@@ -1813,7 +1807,7 @@ private slots:
 				stats->addMessageSent(route.toUtf8(), "ws-message");
 			}
 
-			stats->addMessage(i.channel, i.id, "ws-message", wsSessions.count(), blocks);
+			stats->addMessage(i.channel, i.id, "ws-message", wsSessions.count(), blocks != -1 ? blocks * wsSessions.count() : -1);
 		}
 
 		int receivers = responseSessions.count() + streamSessions.count() + wsSessions.count();

@@ -47,11 +47,13 @@ public:
 	class Bucket
 	{
 	public:
-		int weight;
 		QList<ActionItem> actions;
+		int weight;
+		int debt;
 
 		Bucket() :
-			weight(0)
+			weight(0),
+			debt(0)
 		{
 		}
 
@@ -126,8 +128,8 @@ public:
 		if(hwm > 0 && bucket.weight + weight > hwm)
 			return false;
 
-		bucket.weight += weight;
 		bucket.actions += ActionItem(action, weight);
+		bucket.weight += weight;
 
 		setup();
 		return true;
@@ -230,13 +232,40 @@ private:
 
 			QString key = it.key();
 
-			ActionItem ai = bucket.actions.takeFirst();
-			Action *action = ai.action;
-			int weight = ai.weight;
+			if(bucket.debt <= 0)
+			{
+				ActionItem ai = bucket.actions.takeFirst();
+				Action *action = ai.action;
+				int weight = ai.weight;
 
-			bucket.weight -= weight;
+				bucket.weight -= weight;
 
-			if(bucket.actions.isEmpty())
+				bool ret = action->execute();
+				delete action;
+
+				if(!self)
+					return false;
+
+				if(ret)
+				{
+					if(weight > 1)
+						processed += weight;
+					else
+						++processed;
+
+					if(batchSize >= 1 && processed > batchSize)
+					{
+						bucket.debt += processed - batchSize;
+					}
+				}
+			}
+			else
+			{
+				--bucket.debt;
+				++processed;
+			}
+
+			if(bucket.actions.isEmpty() && bucket.debt <= 0)
 			{
 				lastKey = key;
 				it = buckets.erase(it);
@@ -246,20 +275,6 @@ private:
 				++it;
 				if(it == buckets.end())
 					it = buckets.begin();
-			}
-
-			bool ret = action->execute();
-			delete action;
-
-			if(!self)
-				return false;
-
-			if(ret)
-			{
-				if(weight > 1)
-					processed += weight;
-				else
-					++processed;
 			}
 		}
 
