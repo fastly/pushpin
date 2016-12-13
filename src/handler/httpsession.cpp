@@ -1194,6 +1194,11 @@ QUrl HttpSession::requestUri() const
 	return d->adata.requestData.uri;
 }
 
+bool HttpSession::isRetry() const
+{
+	return d->adata.isRetry;
+}
+
 QString HttpSession::route() const
 {
 	return d->adata.route;

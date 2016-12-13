@@ -88,6 +88,14 @@ RequestState RequestState::fromVariant(const QVariant &in)
 		rs.debug = r["debug"].toBool();
 	}
 
+	if(r.contains("is-retry"))
+	{
+		if(r["is-retry"].type() != QVariant::Bool)
+			return RequestState();
+
+		rs.isRetry = r["is-retry"].toBool();
+	}
+
 	if(r.contains("auto-cross-origin"))
 	{
 		if(r["auto-cross-origin"].type() != QVariant::Bool)

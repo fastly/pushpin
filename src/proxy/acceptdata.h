@@ -37,6 +37,7 @@ public:
 		bool https;
 		QHostAddress peerAddress;
 		bool debug;
+		bool isRetry;
 		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 		bool jsonpExtendedResponse;
@@ -51,6 +52,7 @@ public:
 		Request() :
 			https(false),
 			debug(false),
+			isRetry(false),
 			autoCrossOrigin(false),
 			jsonpExtendedResponse(false),
 			responseCode(-1),

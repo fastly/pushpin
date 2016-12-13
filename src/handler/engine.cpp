@@ -1039,6 +1039,7 @@ private:
 			adata.requestData = requestData;
 			adata.peerAddress = rs.peerAddress;
 			adata.debug = rs.debug;
+			adata.isRetry = rs.isRetry;
 			adata.autoCrossOrigin = rs.autoCrossOrigin;
 			adata.jsonpCallback = rs.jsonpCallback;
 			adata.jsonpExtendedResponse = rs.jsonpExtendedResponse;
@@ -2456,7 +2457,11 @@ private slots:
 
 		(*sessionsByChannel)[channel] += hs;
 
-		log_info("subscribe %s channel=%s", qPrintable(hs->requestUri().toString(QUrl::FullyEncoded)), qPrintable(channel));
+		QString msg = QString("subscribe %1 channel=%2").arg(hs->requestUri().toString(QUrl::FullyEncoded), channel);
+		if(hs->isRetry())
+			msg += " retry";
+
+		log_info("%s", qPrintable(msg));
 
 		stats->addSubscription(mode == Instruct::ResponseHold ? "response" : "stream", channel);
 		addSub(channel);

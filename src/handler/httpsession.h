@@ -46,6 +46,7 @@ public:
 	public:
 		QHostAddress peerAddress;
 		bool debug;
+		bool isRetry;
 		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 		bool jsonpExtendedResponse;
@@ -61,6 +62,10 @@ public:
 		InspectData inspectInfo;
 
 		AcceptData() :
+			debug(false),
+			isRetry(false),
+			autoCrossOrigin(false),
+			jsonpExtendedResponse(false),
 			trusted(false),
 			responseSent(false),
 			haveInspectInfo(false)
@@ -74,6 +79,7 @@ public:
 	Instruct::HoldMode holdMode() const;
 	ZhttpRequest::Rid rid() const;
 	QUrl requestUri() const;
+	bool isRetry() const;
 	QString route() const;
 	QString sid() const;
 	QHash<QString, Instruct::Channel> channels() const;

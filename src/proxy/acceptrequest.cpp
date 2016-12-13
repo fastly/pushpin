@@ -46,6 +46,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 			if(r.debug)
 				vrequest["debug"] = true;
 
+			if(r.isRetry)
+				vrequest["is-retry"] = true;
+
 			if(r.autoCrossOrigin)
 				vrequest["auto-cross-origin"] = true;
 
