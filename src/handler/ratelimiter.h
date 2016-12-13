@@ -42,7 +42,7 @@ public:
 	void setHwm(int hwm);
 	void setBatchWaitEnabled(bool on);
 
-	bool addAction(const QString &key, Action *action);
+	bool addAction(const QString &key, Action *action, int weight = 1);
 	Action *lastAction(const QString &key) const;
 
 private:
