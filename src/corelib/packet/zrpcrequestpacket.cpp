@@ -23,9 +23,13 @@ QVariant ZrpcRequestPacket::toVariant() const
 {
 	QVariantHash obj;
 
-	obj["id"] = id;
+	if(!id.isEmpty())
+		obj["id"] = id;
+
 	obj["method"] = method.toUtf8();
-	obj["args"] = args;
+
+	if(!args.isEmpty())
+		obj["args"] = args;
 
 	return obj;
 }
@@ -37,17 +41,25 @@ bool ZrpcRequestPacket::fromVariant(const QVariant &in)
 
 	QVariantHash obj = in.toHash();
 
-	if(!obj.contains("id") || obj["id"].type() != QVariant::ByteArray)
-		return false;
-	id = obj["id"].toByteArray();
+	if(obj.contains("id"))
+	{
+		if(obj["id"].type() != QVariant::ByteArray)
+			return false;
+
+		id = obj["id"].toByteArray();
+	}
 
 	if(!obj.contains("method") || obj["method"].type() != QVariant::ByteArray)
 		return false;
 	method = QString::fromUtf8(obj["method"].toByteArray());
 
-	if(!obj.contains("args") || obj["args"].type() != QVariant::Hash)
-		return false;
-	args = obj["args"].toHash();
+	if(obj.contains("args"))
+	{
+		if(obj["args"].type() != QVariant::Hash)
+			return false;
+
+		args = obj["args"].toHash();
+	}
 
 	return true;
 }

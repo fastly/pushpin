@@ -23,7 +23,9 @@ QVariant ZrpcResponsePacket::toVariant() const
 {
 	QVariantHash obj;
 
-	obj["id"] = id;
+	if(!id.isEmpty())
+		obj["id"] = id;
+
 	obj["success"] = success;
 
 	if(success)
@@ -47,9 +49,13 @@ bool ZrpcResponsePacket::fromVariant(const QVariant &in)
 
 	QVariantHash obj = in.toHash();
 
-	if(!obj.contains("id") || obj["id"].type() != QVariant::ByteArray)
-		return false;
-	id = obj["id"].toByteArray();
+	if(obj.contains("id"))
+	{
+		if(obj["id"].type() != QVariant::ByteArray)
+			return false;
+
+		id = obj["id"].toByteArray();
+	}
 
 	if(!obj.contains("success") || obj["success"].type() != QVariant::Bool)
 		return false;
