@@ -1646,6 +1646,31 @@ private:
 		return (data.size() + config.messageBlockSize - 1) / config.messageBlockSize;
 	}
 
+	void updateSessions(const QString &channel = QString())
+	{
+		if(!channel.isNull())
+		{
+			QSet<HttpSession*> sessions = cs.responseSessionsByChannel.value(channel);
+			foreach(HttpSession *hs, sessions)
+				hs->update();
+
+			sessions = cs.streamSessionsByChannel.value(channel);
+			foreach(HttpSession *hs, sessions)
+				hs->update();
+		}
+		else
+		{
+			foreach(HttpSession *hs, cs.httpSessions)
+				hs->update();
+		}
+	}
+
+	void recoverCommand()
+	{
+		cs.publishLastIds.clear();
+		updateSessions();
+	}
+
 private slots:
 	void sequencer_itemReady(const PublishItem &item)
 	{
@@ -1890,6 +1915,12 @@ private slots:
 			if(!config.pushInSubSpec.isEmpty())
 				out["publish-sub"] = config.pushInSubSpec.toUtf8();
 			req->respond(out);
+			delete req;
+		}
+		else if(req->method() == "recover")
+		{
+			recoverCommand();
+			req->respond();
 			delete req;
 		}
 		else
@@ -2378,6 +2409,32 @@ private slots:
 				httpControlRespond(req, 405, "Method Not Allowed", "Method not allowed: " + req->requestMethod() + ".\n", QByteArray(), headers);
 			}
 		}
+		else if(path == "/recover")
+		{
+			if(req->requestMethod() == "POST")
+			{
+				QString message = "Updated";
+				if(responseContentType == "application/json")
+				{
+					QVariantMap obj;
+					obj["message"] = message;
+					QString body = QJsonDocument(QJsonObject::fromVariantMap(obj)).toJson(QJsonDocument::Compact);
+					httpControlRespond(req, 200, "OK", body + "\n", responseContentType, HttpHeaders());
+				}
+				else // text/plain
+				{
+					httpControlRespond(req, 200, "OK", message + "\n", responseContentType, HttpHeaders());
+				}
+
+				recoverCommand();
+			}
+			else
+			{
+				HttpHeaders headers;
+				headers += HttpHeader("Allow", "POST");
+				httpControlRespond(req, 405, "Method Not Allowed", "Method not allowed: " + req->requestMethod() + ".\n", QByteArray(), headers);
+			}
+		}
 		else
 		{
 			httpControlRespond(req, 404, "Not Found", "Not Found\n");
@@ -2556,13 +2613,7 @@ private slots:
 	{
 		Subscription *sub = (Subscription *)sender();
 
-		QSet<HttpSession*> sessions = cs.responseSessionsByChannel.value(sub->channel());
-		foreach(HttpSession *hs, sessions)
-			hs->update();
-
-		sessions = cs.streamSessionsByChannel.value(sub->channel());
-		foreach(HttpSession *hs, sessions)
-			hs->update();
+		updateSessions(sub->channel());
 	}
 
 	void stats_connectionsRefreshed(const QList<QByteArray> &ids)

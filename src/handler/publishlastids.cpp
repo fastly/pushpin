@@ -70,6 +70,12 @@ void PublishLastIds::remove(const QString &channel)
 	}
 }
 
+void PublishLastIds::clear()
+{
+	recentlyUsed_.clear();
+	table_.clear();
+}
+
 QString PublishLastIds::value(const QString &channel)
 {
 	return table_.value(channel).id;

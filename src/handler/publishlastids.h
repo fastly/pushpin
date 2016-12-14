@@ -32,6 +32,7 @@ public:
 	PublishLastIds(int maxCapacity);
 	void set(const QString &channel, const QString &id);
 	void remove(const QString &channel);
+	void clear();
 	QString value(const QString &channel);
 
 private:
