@@ -63,8 +63,8 @@ public:
 	void removeSubscription(const QString &mode, const QString &channel, bool linger);
 
 	// for reporting only
-	void addMessageReceived(const QByteArray &routeId);
-	void addMessageSent(const QByteArray &routeId, const QString &transport);
+	void addMessageReceived(const QByteArray &routeId, int blocks = -1);
+	void addMessageSent(const QByteArray &routeId, const QString &transport, int blocks = -1);
 
 	bool checkConnection(const QByteArray &id);
 

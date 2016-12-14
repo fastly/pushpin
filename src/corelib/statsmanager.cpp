@@ -109,6 +109,8 @@ public:
 		int messagesReceived;
 		int messagesSent;
 		int httpResponseMessagesSent;
+		int blocksReceived;
+		int blocksSent;
 		qint64 lastUpdate;
 
 		Report() :
@@ -118,6 +120,8 @@ public:
 			messagesReceived(0),
 			messagesSent(0),
 			httpResponseMessagesSent(0),
+			blocksReceived(-1),
+			blocksSent(-1),
 			lastUpdate(-1)
 		{
 		}
@@ -128,7 +132,9 @@ public:
 				connectionsMinutes == 0 &&
 				messagesReceived == 0 &&
 				messagesSent == 0 &&
-				httpResponseMessagesSent == 0);
+				httpResponseMessagesSent == 0 &&
+				blocksReceived <= 0 &&
+				blocksSent <= 0);
 		}
 	};
 
@@ -781,12 +787,16 @@ private slots:
 			p.messagesReceived = report->messagesReceived;
 			p.messagesSent = report->messagesSent;
 			p.httpResponseMessagesSent = report->httpResponseMessagesSent;
+			p.blocksReceived = report->blocksReceived;
+			p.blocksSent = report->blocksSent;
 
 			report->connectionsMaxStale = true;
 			report->connectionsMinutes = 0;
 			report->messagesReceived = 0;
 			report->messagesSent = 0;
 			report->httpResponseMessagesSent = 0;
+			report->blocksReceived = -1;
+			report->blocksSent = -1;
 
 			if(report->isEmpty())
 			{
@@ -1050,7 +1060,7 @@ void StatsManager::removeSubscription(const QString &mode, const QString &channe
 	}
 }
 
-void StatsManager::addMessageReceived(const QByteArray &routeId)
+void StatsManager::addMessageReceived(const QByteArray &routeId, int blocks)
 {
 	assert(d->reportsEnabled);
 
@@ -1058,10 +1068,18 @@ void StatsManager::addMessageReceived(const QByteArray &routeId)
 
 	++report->messagesReceived;
 
+	if(blocks > 0)
+	{
+		if(report->blocksReceived < 0)
+			report->blocksReceived = 0;
+
+		report->blocksReceived += blocks;
+	}
+
 	report->lastUpdate = QDateTime::currentMSecsSinceEpoch();
 }
 
-void StatsManager::addMessageSent(const QByteArray &routeId, const QString &transport)
+void StatsManager::addMessageSent(const QByteArray &routeId, const QString &transport, int blocks)
 {
 	assert(d->reportsEnabled);
 
@@ -1071,6 +1089,14 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 
 	if(transport == "http-response")
 		++report->httpResponseMessagesSent;
+
+	if(blocks > 0)
+	{
+		if(report->blocksSent < 0)
+			report->blocksSent = 0;
+
+		report->blocksSent += blocks;
+	}
 
 	report->lastUpdate = QDateTime::currentMSecsSinceEpoch();
 }

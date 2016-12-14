@@ -63,6 +63,8 @@ public:
 	int messagesReceived; // report
 	int messagesSent; // report
 	int httpResponseMessagesSent; // report
+	int blocksReceived; // report
+	int blocksSent; // report
 
 	StatsPacket() :
 		type((Type)-1),
@@ -75,7 +77,9 @@ public:
 		connectionsMinutes(-1),
 		messagesReceived(-1),
 		messagesSent(-1),
-		httpResponseMessagesSent(-1)
+		httpResponseMessagesSent(-1),
+		blocksReceived(-1),
+		blocksSent(-1)
 	{
 	}
 

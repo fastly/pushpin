@@ -1649,16 +1649,16 @@ private:
 private slots:
 	void sequencer_itemReady(const PublishItem &item)
 	{
-		// always add for non-identified route
-		stats->addMessageReceived(QByteArray());
-
 		QList<HttpSession*> responseSessions;
 		QList<HttpSession*> streamSessions;
 		QList<WsSession*> wsSessions;
 		QSet<QString> sids;
+		int largestBlocks = -1;
 
 		if(item.formats.contains(PublishFormat::HttpResponse))
 		{
+			largestBlocks = qMax(blocksForData(item.formats[PublishFormat::HttpResponse].body), largestBlocks);
+
 			QSet<HttpSession*> sessions = cs.responseSessionsByChannel.value(item.channel);
 			foreach(HttpSession *hs, sessions)
 			{
@@ -1674,6 +1674,8 @@ private slots:
 
 		if(item.formats.contains(PublishFormat::HttpStream))
 		{
+			largestBlocks = qMax(blocksForData(item.formats[PublishFormat::HttpStream].body), largestBlocks);
+
 			QSet<HttpSession*> sessions = cs.streamSessionsByChannel.value(item.channel);
 			foreach(HttpSession *hs, sessions)
 			{
@@ -1695,6 +1697,8 @@ private slots:
 
 		if(item.formats.contains(PublishFormat::WebSocketMessage))
 		{
+			largestBlocks = qMax(blocksForData(item.formats[PublishFormat::WebSocketMessage].body), largestBlocks);
+
 			QSet<WsSession*> wsbc = cs.wsSessionsByChannel.value(item.channel);
 			foreach(WsSession *s, wsbc)
 			{
@@ -1706,6 +1710,9 @@ private slots:
 					sids += s->sid;
 			}
 		}
+
+		// always add for non-identified route
+		stats->addMessageReceived(QByteArray(), largestBlocks);
 
 		if(!responseSessions.isEmpty())
 		{
@@ -1744,7 +1751,7 @@ private slots:
 						log_warning("exceeded publish hwm (%d), dropping message", config.messageHwm);
 				}
 
-				stats->addMessageSent(route.toUtf8(), "http-response");
+				stats->addMessageSent(route.toUtf8(), "http-response", blocks);
 			}
 
 			stats->addMessage(i.channel, i.id, "http-response", responseSessions.count(), blocks != -1 ? blocks * responseSessions.count() : -1);
@@ -1774,7 +1781,7 @@ private slots:
 						log_warning("exceeded publish hwm (%d), dropping message", config.messageHwm);
 				}
 
-				stats->addMessageSent(route.toUtf8(), "http-stream");
+				stats->addMessageSent(route.toUtf8(), "http-stream", blocks);
 			}
 
 			stats->addMessage(i.channel, i.id, "http-stream", streamSessions.count(), blocks != -1 ? blocks * streamSessions.count() : -1);
@@ -1804,7 +1811,7 @@ private slots:
 						log_warning("exceeded publish hwm (%d), dropping message", config.messageHwm);
 				}
 
-				stats->addMessageSent(route.toUtf8(), "ws-message");
+				stats->addMessageSent(route.toUtf8(), "ws-message", blocks);
 			}
 
 			stats->addMessage(i.channel, i.id, "ws-message", wsSessions.count(), blocks != -1 ? blocks * wsSessions.count() : -1);
