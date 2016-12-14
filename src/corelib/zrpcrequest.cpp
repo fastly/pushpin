@@ -34,6 +34,7 @@ class ZrpcRequest::Private : public QObject
 public:
 	ZrpcRequest *q;
 	ZrpcManager *manager;
+	QList<QByteArray> reqHeaders;
 	QByteArray id;
 	QString method;
 	QVariantHash args;
@@ -80,7 +81,7 @@ public:
 		p.id = id;
 		p.success = true;
 		p.value = value;
-		manager->write(p);
+		manager->write(reqHeaders, p);
 	}
 
 	void respondError(const QByteArray &condition, const QVariant &value)
@@ -90,11 +91,12 @@ public:
 		p.success = false;
 		p.condition = condition;
 		p.value = value;
-		manager->write(p);
+		manager->write(reqHeaders, p);
 	}
 
-	void handle(const ZrpcRequestPacket &packet)
+	void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet)
 	{
+		reqHeaders = headers;
 		id = packet.id;
 		method = packet.method;
 		args = packet.args;
@@ -255,11 +257,11 @@ void ZrpcRequest::setupServer(ZrpcManager *manager)
 	d->manager = manager;
 }
 
-void ZrpcRequest::handle(const ZrpcRequestPacket &packet)
+void ZrpcRequest::handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet)
 {
 	assert(d->manager);
 
-	d->handle(packet);
+	d->handle(headers, packet);
 }
 
 void ZrpcRequest::handle(const ZrpcResponsePacket &packet)

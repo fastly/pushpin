@@ -71,7 +71,7 @@ private:
 	ZrpcRequest(QObject *parent = 0);
 	void setupClient(ZrpcManager *manager);
 	void setupServer(ZrpcManager *manager);
-	void handle(const ZrpcRequestPacket &packet);
+	void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet);
 	void handle(const ZrpcResponsePacket &packet);
 };
 

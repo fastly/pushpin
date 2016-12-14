@@ -24,6 +24,7 @@
 #include <QFile>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
+#include "qzmqreqmessage.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "packet/zrpcrequestpacket.h"
@@ -44,6 +45,13 @@ class ZrpcManager::Private : public QObject
 	Q_OBJECT
 
 public:
+	class PendingItem
+	{
+	public:
+		QList<QByteArray> headers;
+		ZrpcRequestPacket packet;
+	};
+
 	ZrpcManager *q;
 	int ipcFileMode;
 	bool doBind;
@@ -55,7 +63,7 @@ public:
 	QZmq::Valve *clientValve;
 	QZmq::Valve *serverValve;
 	QHash<QByteArray, ZrpcRequest*> clientReqsById;
-	QList<ZrpcRequestPacket> pending;
+	QList<PendingItem> pending;
 
 	Private(ZrpcManager *_q) :
 		QObject(_q),
@@ -105,7 +113,7 @@ public:
 		delete serverValve;
 		delete serverSock;
 
-		serverSock = new QZmq::Socket(QZmq::Socket::Rep, this);
+		serverSock = new QZmq::Socket(QZmq::Socket::Router, this);
 
 		serverSock->setReceiveHwm(IN_HWM);
 		serverSock->setShutdownWaitTime(REP_WAIT_TIME);
@@ -138,7 +146,7 @@ public:
 		clientSock->write(QList<QByteArray>() << QByteArray() << buf);
 	}
 
-	void write(const ZrpcResponsePacket &packet)
+	void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet)
 	{
 		assert(serverSock);
 
@@ -148,7 +156,11 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			log_debug("zrpc server: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
 
-		serverSock->write(QList<QByteArray>() << buf);
+		QList<QByteArray> message;
+		message += headers;
+		message += QByteArray();
+		message += buf;
+		serverSock->write(message);
 	}
 
 private slots:
@@ -195,13 +207,15 @@ private slots:
 
 	void server_readyRead(const QList<QByteArray> &message)
 	{
-		if(message.count() != 1)
+		QZmq::ReqMessage req(message);
+
+		if(req.content().count() != 1)
 		{
 			log_warning("zrpc server: received message with parts != 1, skipping");
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(message[0]);
+		QVariant data = TnetString::toVariant(req.content()[0]);
 		if(data.isNull())
 		{
 			log_warning("zrpc server: received message with invalid format (tnetstring parse failed), skipping");
@@ -218,7 +232,10 @@ private slots:
 			return;
 		}
 
-		pending += p;
+		PendingItem i;
+		i.headers = req.headers();
+		i.packet = p;
+		pending += i;
 
 		if(pending.count() >= PENDING_MAX)
 			serverValve->close();
@@ -275,10 +292,10 @@ ZrpcRequest *ZrpcManager::takeNext()
 	if(d->pending.isEmpty())
 		return 0;
 
-	ZrpcRequestPacket p = d->pending.takeFirst();
+	Private::PendingItem i = d->pending.takeFirst();
 	ZrpcRequest *req = new ZrpcRequest;
 	req->setupServer(this);
-	req->handle(p);
+	req->handle(i.headers, i.packet);
 
 	d->serverValve->open();
 
@@ -307,9 +324,9 @@ void ZrpcManager::write(const ZrpcRequestPacket &packet)
 	d->write(packet);
 }
 
-void ZrpcManager::write(const ZrpcResponsePacket &packet)
+void ZrpcManager::write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet)
 {
-	d->write(packet);
+	d->write(headers, packet);
 }
 
 #include "zrpcmanager.moc"

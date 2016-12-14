@@ -58,7 +58,7 @@ private:
 	void link(ZrpcRequest *req);
 	void unlink(ZrpcRequest *req);
 	void write(const ZrpcRequestPacket &packet);
-	void write(const ZrpcResponsePacket &packet);
+	void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet);
 };
 
 #endif
