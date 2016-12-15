@@ -345,14 +345,14 @@ public:
 		if(client_out_sock)
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				log_debug("%s client: OUT %s", logprefix, qPrintable(TnetString::variantToString(vpacket, -1)));
+				log_debug("%s client: OUT %s", logprefix, qPrintable(TnetString::variantToString(vpacket, -1).mid(0, 1000)));
 
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
 		else
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				log_debug("%s client req: OUT %s", logprefix, qPrintable(TnetString::variantToString(vpacket, -1)));
+				log_debug("%s client req: OUT %s", logprefix, qPrintable(TnetString::variantToString(vpacket, -1).mid(0, 1000)));
 
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
@@ -367,7 +367,7 @@ public:
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("%s client: OUT %s %s", logprefix, instanceAddress.data(), qPrintable(TnetString::variantToString(vpacket, -1)));
+			log_debug("%s client: OUT %s %s", logprefix, instanceAddress.data(), qPrintable(TnetString::variantToString(vpacket, -1).mid(0, 1000)));
 
 		QList<QByteArray> msg;
 		msg += instanceAddress;
@@ -385,7 +385,7 @@ public:
 		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("%s server: OUT %s %s", logprefix, instanceAddress.data(), qPrintable(TnetString::variantToString(vpacket, -1)));
+			log_debug("%s server: OUT %s %s", logprefix, instanceAddress.data(), qPrintable(TnetString::variantToString(vpacket, -1).mid(0, 1000)));
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -510,7 +510,7 @@ public slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("zhttp/zws client: IN %s %s", receiver.data(), qPrintable(TnetString::variantToString(data, -1)));
+			log_debug("zhttp/zws client: IN %s %s", receiver.data(), qPrintable(TnetString::variantToString(data, -1).mid(0, 1000)));
 
 		ZhttpResponsePacket p;
 		if(!p.fromVariant(data))
@@ -581,7 +581,7 @@ public slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("zhttp/zws server: IN %s", qPrintable(TnetString::variantToString(data, -1)));
+			log_debug("zhttp/zws server: IN %s", qPrintable(TnetString::variantToString(data, -1).mid(0, 1000)));
 
 		ZhttpRequestPacket p;
 		if(!p.fromVariant(data))
@@ -694,7 +694,7 @@ public slots:
 			}
 
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				log_debug("zhttp/zws client req: IN %s", qPrintable(TnetString::variantToString(data, -1)));
+				log_debug("zhttp/zws client req: IN %s", qPrintable(TnetString::variantToString(data, -1).mid(0, 1000)));
 
 			ZhttpResponsePacket p;
 			if(!p.fromVariant(data))
@@ -749,7 +749,7 @@ public slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("zhttp/zws server: IN stream %s", qPrintable(TnetString::variantToString(data, -1)));
+			log_debug("zhttp/zws server: IN stream %s", qPrintable(TnetString::variantToString(data, -1).mid(0, 1000)));
 
 		ZhttpRequestPacket p;
 		if(!p.fromVariant(data))

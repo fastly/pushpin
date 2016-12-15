@@ -917,7 +917,8 @@ public:
 	{
 		QByteArray buf = packet.toByteArray();
 
-		log_debug("m2: OUT [%s]", buf.data());
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("m2: OUT [%s]", buf.mid(0, 1000).data());
 
 		m2_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -1447,7 +1448,8 @@ public:
 			return;
 		}
 
-		log_debug("%s: IN %s", logprefix, dataRaw.data());
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("%s: IN %s", logprefix, dataRaw.mid(0, 1000).data());
 
 		ZhttpResponsePacket zresp;
 		if(!zresp.fromVariant(data))

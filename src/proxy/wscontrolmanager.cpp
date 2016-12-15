@@ -157,7 +157,7 @@ public:
 		QByteArray buf = TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("wscontrol: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1)));
+			log_debug("wscontrol: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1).mid(0, 1000)));
 
 		outSock->write(QList<QByteArray>() << buf);
 	}
@@ -231,7 +231,7 @@ private slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("wscontrol: IN %s", qPrintable(TnetString::variantToString(data, -1)));
+			log_debug("wscontrol: IN %s", qPrintable(TnetString::variantToString(data, -1).mid(0, 1000)));
 
 		WsControlPacket p;
 		if(!p.fromVariant(data))
