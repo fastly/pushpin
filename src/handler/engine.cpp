@@ -1768,6 +1768,9 @@ private slots:
 
 			log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
+			// FIXME: if bodyPatch is used then body is empty. we should
+			//   really be calculating blocks after applying patch
+
 			int blocks;
 			if(item.size >= 0)
 				blocks = blocksForData(item.size);
