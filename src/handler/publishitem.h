@@ -33,8 +33,14 @@ public:
 	QString prevId;
 	QHash<PublishFormat::Type, PublishFormat> formats;
 	QHash<QString, QString> meta;
+	int size;
 
 	PublishFormat format; // for single format items
+
+	PublishItem() :
+		size(-1)
+	{
+	}
 
 	static PublishItem fromVariant(const QVariant &vitem, const QString &channel = QString(), bool *ok = 0, QString *errorMessage = 0);
 };

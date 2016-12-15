@@ -191,6 +191,24 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 		}
 	}
 
+	if(keyedObjectContains(vitem, "size"))
+	{
+		QVariant vsize = keyedObjectGetValue(vitem, "size");
+		if(!vsize.canConvert(QVariant::Int))
+		{
+			setError(ok, errorMessage, QString("%1 contains 'size' with wrong type").arg(pn));
+			return PublishItem();
+		}
+
+		item.size = vsize.toInt();
+
+		if(item.size < 0)
+		{
+			setError(ok, errorMessage, QString("%1 contains 'size' with invalid value").arg(pn));
+			return PublishItem();
+		}
+	}
+
 	setSuccess(ok, errorMessage);
 	return item;
 }

@@ -1638,12 +1638,12 @@ private:
 		}
 	}
 
-	int blocksForData(const QByteArray &data) const
+	int blocksForData(int size) const
 	{
 		if(config.messageBlockSize <= 0)
 			return -1;
 
-		return (data.size() + config.messageBlockSize - 1) / config.messageBlockSize;
+		return (size + config.messageBlockSize - 1) / config.messageBlockSize;
 	}
 
 	void updateSessions(const QString &channel = QString())
@@ -1678,11 +1678,15 @@ private slots:
 		QList<HttpSession*> streamSessions;
 		QList<WsSession*> wsSessions;
 		QSet<QString> sids;
-		int largestBlocks = -1;
+
+		int largestBlocks;
+		if(item.size >= 0)
+			largestBlocks = blocksForData(item.size);
 
 		if(item.formats.contains(PublishFormat::HttpResponse))
 		{
-			largestBlocks = qMax(blocksForData(item.formats[PublishFormat::HttpResponse].body), largestBlocks);
+			if(item.size < 0)
+				largestBlocks = qMax(blocksForData(item.formats[PublishFormat::HttpResponse].body.size()), largestBlocks);
 
 			QSet<HttpSession*> sessions = cs.responseSessionsByChannel.value(item.channel);
 			foreach(HttpSession *hs, sessions)
@@ -1699,7 +1703,8 @@ private slots:
 
 		if(item.formats.contains(PublishFormat::HttpStream))
 		{
-			largestBlocks = qMax(blocksForData(item.formats[PublishFormat::HttpStream].body), largestBlocks);
+			if(item.size < 0)
+				largestBlocks = qMax(blocksForData(item.formats[PublishFormat::HttpStream].body.size()), largestBlocks);
 
 			QSet<HttpSession*> sessions = cs.streamSessionsByChannel.value(item.channel);
 			foreach(HttpSession *hs, sessions)
@@ -1722,7 +1727,8 @@ private slots:
 
 		if(item.formats.contains(PublishFormat::WebSocketMessage))
 		{
-			largestBlocks = qMax(blocksForData(item.formats[PublishFormat::WebSocketMessage].body), largestBlocks);
+			if(item.size < 0)
+				largestBlocks = qMax(blocksForData(item.formats[PublishFormat::WebSocketMessage].body.size()), largestBlocks);
 
 			QSet<WsSession*> wsbc = cs.wsSessionsByChannel.value(item.channel);
 			foreach(WsSession *s, wsbc)
@@ -1762,7 +1768,11 @@ private slots:
 
 			log_debug("relaying to %d http-response subscribers", responseSessions.count());
 
-			int blocks = blocksForData(f.body);
+			int blocks;
+			if(item.size >= 0)
+				blocks = blocksForData(item.size);
+			else
+				blocks = blocksForData(f.body.size());
 
 			foreach(HttpSession *hs, responseSessions)
 			{
@@ -1792,7 +1802,11 @@ private slots:
 
 			log_debug("relaying to %d http-stream subscribers", streamSessions.count());
 
-			int blocks = blocksForData(f.body);
+			int blocks;
+			if(item.size >= 0)
+				blocks = blocksForData(item.size);
+			else
+				blocks = blocksForData(f.body.size());
 
 			foreach(HttpSession *hs, streamSessions)
 			{
@@ -1822,7 +1836,11 @@ private slots:
 
 			log_debug("relaying to %d ws-message subscribers", wsSessions.count());
 
-			int blocks = blocksForData(f.body);
+			int blocks;
+			if(item.size >= 0)
+				blocks = blocksForData(item.size);
+			else
+				blocks = blocksForData(f.body.size());
 
 			foreach(WsSession *s, wsSessions)
 			{
