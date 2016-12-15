@@ -298,6 +298,7 @@ public:
 		int packetsPending; // count of packets sent to m2 not yet ack'd
 		Session *session;
 		bool isNew;
+		bool continuation;
 		LayerTracker bodyTracker;
 		LayerTracker packetTracker;
 		QList<M2PendingOutItem> pendingOutItems; // packets yet to send
@@ -314,6 +315,7 @@ public:
 			packetsPending(0),
 			session(0),
 			isNew(false),
+			continuation(false),
 			flowControl(false),
 			waitForAllWritten(false),
 			outCreditsEnabled(false),
@@ -1849,10 +1851,19 @@ public:
 				else
 				{
 					int opcode;
-					if(zresp.contentType == "binary")
-						opcode = 2;
-					else // text
-						opcode = 1;
+					if(s->conn->continuation)
+					{
+						opcode = 0;
+					}
+					else
+					{
+						if(zresp.contentType == "binary")
+							opcode = 2;
+						else // text
+							opcode = 1;
+					}
+
+					s->conn->continuation = zresp.more;
 
 					QByteArray frame = makeWsHeader(!zresp.more, opcode, zresp.body.size()) + zresp.body;
 
