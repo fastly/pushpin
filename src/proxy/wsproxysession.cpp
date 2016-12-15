@@ -42,6 +42,7 @@
 #include "testwebsocket.h"
 
 #define ACTIVITY_TIMEOUT 60000
+#define FRAME_SIZE_MAX 16384
 
 class HttpExtension
 {
@@ -909,11 +910,29 @@ private slots:
 			return;
 
 		// only send if we can, otherwise drop
-		if(inSock && inSock->canWrite())
+		if(inSock && inSock->canWrite() && outReadInProgress == -1)
 		{
-			inSock->writeFrame(WebSocket::Frame(type, message, false));
+			// split into frames to avoid credits issue
+			QList<WebSocket::Frame> frames;
+			for(int n = 0; n < message.size(); n += FRAME_SIZE_MAX)
+			{
+				WebSocket::Frame::Type ftype;
+				if(n == 0)
+					ftype = type;
+				else
+					ftype = WebSocket::Frame::Continuation;
 
-			inPendingBytes += message.size();
+				QByteArray data = message.mid(n, FRAME_SIZE_MAX);
+				bool more = (n + FRAME_SIZE_MAX < message.size());
+
+				frames += WebSocket::Frame(ftype, data, more);
+			}
+
+			foreach(const WebSocket::Frame &frame, frames)
+			{
+				inSock->writeFrame(frame);
+				inPendingBytes += frame.data.size();
+			}
 		}
 
 		restartKeepAlive();
