@@ -1679,7 +1679,7 @@ private slots:
 		QList<WsSession*> wsSessions;
 		QSet<QString> sids;
 
-		int largestBlocks;
+		int largestBlocks = -1;
 		if(item.size >= 0)
 			largestBlocks = blocksForData(item.size);
 
