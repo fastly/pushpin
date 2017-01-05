@@ -1144,8 +1144,6 @@ private slots:
 
 	void timer_timeout()
 	{
-		assert(state == Holding);
-
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{
 			// send timeout response
