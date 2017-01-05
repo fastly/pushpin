@@ -233,8 +233,7 @@ public:
 			return;
 		}
 
-		// turn off timers during update
-		timer->stop();
+		// turn off update timer during update
 		updateManager->unregisterSession(q);
 
 		if(priority == HighPriority)
@@ -609,8 +608,8 @@ private:
 	{
 		state = Holding;
 
-		// start keep alive timer
-		if(instruct.keepAliveTimeout >= 0)
+		// start keep alive timer, if it wasn't started already
+		if(!timer->isActive() && instruct.keepAliveTimeout >= 0)
 			timer->start(instruct.keepAliveTimeout * 1000);
 
 		if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
@@ -937,6 +936,10 @@ private:
 
 			if(outReq->bytesAvailable() > 0)
 			{
+				// stop keep alive timer only if we have to send data. if the
+				//   response body is empty, then the timer is left alone
+				timer->stop();
+
 				int avail = req->writeBytesAvailable();
 				if(avail <= 0)
 					return;
