@@ -63,7 +63,7 @@ private slots:
 		bool ok;
 		PublishFormat f = PublishFormat::fromVariant(PublishFormat::HttpStream, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(!f.close);
+		QVERIFY(f.action == PublishFormat::Send);
 		QCOMPARE(f.body, QByteArray("hello world"));
 
 		data.clear();
@@ -71,7 +71,7 @@ private slots:
 
 		f = PublishFormat::fromVariant(PublishFormat::HttpStream, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(f.close);
+		QVERIFY(f.action == PublishFormat::Close);
 		QVERIFY(f.body.isEmpty());
 	}
 
@@ -83,7 +83,7 @@ private slots:
 		bool ok;
 		PublishFormat f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(!f.close);
+		QVERIFY(f.action == PublishFormat::Send);
 		QCOMPARE(f.messageType, PublishFormat::Text);
 		QCOMPARE(f.body, QByteArray("hello world"));
 
@@ -93,7 +93,7 @@ private slots:
 
 		f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(!f.close);
+		QVERIFY(f.action == PublishFormat::Send);
 		QCOMPARE(f.messageType, PublishFormat::Binary);
 		QCOMPARE(f.body, QByteArray("hello world"));
 
@@ -102,7 +102,7 @@ private slots:
 
 		f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(!f.close);
+		QVERIFY(f.action == PublishFormat::Send);
 		QCOMPARE(f.messageType, PublishFormat::Binary);
 		QCOMPARE(f.body, QByteArray("hello world"));
 
@@ -111,7 +111,7 @@ private slots:
 
 		f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(f.close);
+		QVERIFY(f.action == PublishFormat::Close);
 		QCOMPARE(f.code, -1);
 
 		data.clear();
@@ -120,7 +120,7 @@ private slots:
 
 		f = PublishFormat::fromVariant(PublishFormat::WebSocketMessage, data, &ok);
 		QVERIFY(ok);
-		QVERIFY(f.close);
+		QVERIFY(f.action == PublishFormat::Close);
 		QCOMPARE(f.code, 1001);
 	}
 };

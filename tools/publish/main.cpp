@@ -101,12 +101,19 @@ class ArgsData
 public:
 	typedef QPair<QByteArray, QByteArray> Header;
 
+	enum Action
+	{
+		Send,
+		Hint,
+		Close
+	};
+
 	QString id;
 	QString prevId;
 	QString sender;
+	Action action;
 	int code;
 	QList<Header> headers;
-	bool close;
 	bool patch;
 	QVariantList bodyPatch;
 	bool eol;
@@ -115,8 +122,8 @@ public:
 	QString content;
 
 	ArgsData() :
+		action(Send),
 		code(-1),
-		close(false),
 		patch(false),
 		eol(true)
 	{
@@ -136,6 +143,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(codeOption);
 	const QCommandLineOption headerOption(QStringList() << "H" << "header", "Add HTTP response header.", "\"K: V\"");
 	parser->addOption(headerOption);
+	const QCommandLineOption hintOption("hint", "Send hint instead of content.");
+	parser->addOption(hintOption);
 	const QCommandLineOption closeOption("close", "Close streaming and WebSocket connections.");
 	parser->addOption(closeOption);
 	const QCommandLineOption patchOption("patch", "Content is JSON patch.");
@@ -199,8 +208,10 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 		}
 	}
 
-	if(parser->isSet(closeOption))
-		args->close = true;
+	if(parser->isSet(hintOption))
+		args->action = ArgsData::Hint;
+	else if(parser->isSet(closeOption))
+		args->action = ArgsData::Close;
 
 	const QStringList positionalArguments = parser->positionalArguments();
 
@@ -234,7 +245,7 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	if(positionalArguments.count() >= 2)
 		args->content = positionalArguments[1];
 
-	if(!args->close && positionalArguments.count() < 2)
+	if(args->action == ArgsData::Send && positionalArguments.count() < 2)
 	{
 		*errorMessage = "error: must specify content";
 		return CommandLineError;
@@ -289,7 +300,7 @@ int main(int argc, char **argv)
 		args.content = f.readAll();
 	}
 
-	if(!args.close)
+	if(args.action == ArgsData::Send)
 	{
 		QVariantHash httpResponse;
 
@@ -318,31 +329,39 @@ int main(int argc, char **argv)
 		}
 
 		formats["http-response"] = httpResponse;
-	}
 
-	if(!args.patch)
-	{
-		QVariantHash httpStream;
-		if(args.close)
+		if(!args.patch)
 		{
-			httpStream["action"] = QByteArray("close");
-		}
-		else
-		{
+			QVariantHash httpStream;
 			QByteArray body = args.content.toUtf8();
 			if(args.eol && !isFile)
 				body += '\n';
 			httpStream["content"] = body;
-		}
+			formats["http-stream"] = httpStream;
 
+			QVariantHash wsMessage;
+			wsMessage["content"] = args.content.toUtf8();
+			formats["ws-message"] = wsMessage;
+		}
+	}
+	else if(args.action == ArgsData::Hint)
+	{
+		QVariantHash httpResponse;
+		httpResponse["action"] = QByteArray("hint");
+		formats["http-response"] = httpResponse;
+
+		QVariantHash httpStream;
+		httpStream["action"] = QByteArray("hint");
+		formats["http-stream"] = httpStream;
+	}
+	else if(args.action == ArgsData::Close)
+	{
+		QVariantHash httpStream;
+		httpStream["action"] = QByteArray("close");
 		formats["http-stream"] = httpStream;
 
 		QVariantHash wsMessage;
-		if(args.close)
-			wsMessage["action"] = QByteArray("close");
-		else
-			wsMessage["content"] = args.content.toUtf8();
-
+		wsMessage["action"] = QByteArray("close");
 		formats["ws-message"] = wsMessage;
 	}
 

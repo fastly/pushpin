@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1610,15 +1610,14 @@ private:
 			if(!Filters::applyFilters(s->meta, item.meta, s->channelFilters[item.channel]))
 				return;
 
+			// TODO: hint support for websockets?
+			if(f.action != PublishFormat::Send && f.action != PublishFormat::Close)
+				return;
+
 			WsControlPacket::Item i;
 			i.cid = s->cid.toUtf8();
 
-			if(f.close)
-			{
-				i.type = WsControlPacket::Item::Close;
-				i.code = f.code;
-			}
-			else
+			if(f.action == PublishFormat::Send)
 			{
 				i.type = WsControlPacket::Item::Send;
 
@@ -1632,6 +1631,11 @@ private:
 				}
 
 				i.message = f.body;
+			}
+			else if(f.action == PublishFormat::Close)
+			{
+				i.type = WsControlPacket::Item::Close;
+				i.code = f.code;
 			}
 
 			writeWsControlItem(i);

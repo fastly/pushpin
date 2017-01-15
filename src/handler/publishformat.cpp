@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -43,133 +43,58 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 	PublishFormat out(type);
 	bool ok_;
 
+	QString action = getString(in, pn, "action", false, &ok_, errorMessage);
+	if(!ok_)
+	{
+		if(ok)
+			*ok = false;
+		return PublishFormat();
+	}
+
+	if(action == "hint")
+	{
+		out.action = Hint;
+	}
+	else if(action == "close")
+	{
+		out.action = Close;
+	}
+	else if(action.isNull() || action == "send") // default
+	{
+		out.action = Send;
+	}
+	else
+	{
+		if(ok)
+			*ok = false;
+		return PublishFormat();
+	}
+
 	if(type == HttpResponse)
 	{
-		if(keyedObjectContains(in, "code"))
+		if(out.action == Send)
 		{
-			QVariant vcode = keyedObjectGetValue(in, "code");
-			if(!vcode.canConvert(QVariant::Int))
+			if(keyedObjectContains(in, "code"))
 			{
-				setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
-				return PublishFormat();
-			}
-
-			out.code = vcode.toInt();
-
-			if(out.code < 0 || out.code > 999)
-			{
-				setError(ok, errorMessage, QString("%1 contains 'code' with invalid value").arg(pn));
-				return PublishFormat();
-			}
-		}
-		else
-			out.code = 200;
-
-		QString reasonStr = getString(in, pn, "reason", false, &ok_, errorMessage);
-		if(!ok_)
-		{
-			if(ok)
-				*ok = false;
-			return PublishFormat();
-		}
-
-		if(!reasonStr.isEmpty())
-			out.reason = reasonStr.toUtf8();
-		else
-			out.reason = StatusReasons::getReason(out.code);
-
-		if(keyedObjectContains(in, "headers"))
-		{
-			QVariant vheaders = keyedObjectGetValue(in, "headers");
-			if(vheaders.type() == QVariant::List)
-			{
-				foreach(const QVariant &vheader, vheaders.toList())
+				QVariant vcode = keyedObjectGetValue(in, "code");
+				if(!vcode.canConvert(QVariant::Int))
 				{
-					if(vheader.type() != QVariant::List)
-					{
-						setError(ok, errorMessage, "headers contains element with wrong type");
-						return PublishFormat();
-					}
-
-					QVariantList lheader = vheader.toList();
-					if(lheader.count() != 2)
-					{
-						setError(ok, errorMessage, "headers contains list with wrong number of elements");
-						return PublishFormat();
-					}
-
-					QString name = getString(lheader[0], &ok_);
-					if(!ok_)
-					{
-						setError(ok, errorMessage, "header contains name element with wrong type");
-						return PublishFormat();
-					}
-
-					QString val = getString(lheader[1], &ok_);
-					if(!ok_)
-					{
-						setError(ok, errorMessage, "header contains value element with wrong type");
-						return PublishFormat();
-					}
-
-					out.headers += HttpHeader(name.toUtf8(), val.toUtf8());
+					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
+					return PublishFormat();
 				}
-			}
-			else if(isKeyedObject(vheaders))
-			{
-				if(vheaders.type() == QVariant::Hash)
+
+				out.code = vcode.toInt();
+
+				if(out.code < 0 || out.code > 999)
 				{
-					QVariantHash hheaders = vheaders.toHash();
-
-					QHashIterator<QString, QVariant> it(hheaders);
-					while(it.hasNext())
-					{
-						it.next();
-						const QString &key = it.key();
-						const QVariant &vval = it.value();
-
-						QString val = getString(vval, &ok_);
-						if(!ok_)
-						{
-							setError(ok, errorMessage, QString("headers contains '%1' with wrong type").arg(key));
-							return PublishFormat();
-						}
-
-						out.headers += HttpHeader(key.toUtf8(), val.toUtf8());
-					}
-				}
-				else // Map
-				{
-					QVariantMap mheaders = vheaders.toMap();
-
-					QMapIterator<QString, QVariant> it(mheaders);
-					while(it.hasNext())
-					{
-						it.next();
-						const QString &key = it.key();
-						const QVariant &vval = it.value();
-
-						QString val = getString(vval, &ok_);
-						if(!ok_)
-						{
-							setError(ok, errorMessage, QString("headers contains '%1' with wrong type").arg(key));
-							return PublishFormat();
-						}
-
-						out.headers += HttpHeader(key.toUtf8(), val.toUtf8());
-					}
+					setError(ok, errorMessage, QString("%1 contains 'code' with invalid value").arg(pn));
+					return PublishFormat();
 				}
 			}
 			else
-			{
-				setError(ok, errorMessage, QString("%1 contains 'headers' with wrong type").arg(pn));
-				return PublishFormat();
-			}
-		}
+				out.code = 200;
 
-		if(in.type() == QVariant::Map && keyedObjectContains(in, "body-bin")) // JSON input
-		{
-			QString bodyBin = getString(in, pn, "body-bin", false, &ok_, errorMessage);
+			QString reasonStr = getString(in, pn, "reason", false, &ok_, errorMessage);
 			if(!ok_)
 			{
 				if(ok)
@@ -177,56 +102,150 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 				return PublishFormat();
 			}
 
-			out.body = QByteArray::fromBase64(bodyBin.toUtf8());
-		}
-		else if(keyedObjectContains(in, "body"))
-		{
-			QVariant vcontent = keyedObjectGetValue(in, "body");
-			if(vcontent.type() == QVariant::ByteArray)
-				out.body = vcontent.toByteArray();
-			else if(vcontent.type() == QVariant::String)
-				out.body = vcontent.toString().toUtf8();
+			if(!reasonStr.isEmpty())
+				out.reason = reasonStr.toUtf8();
 			else
+				out.reason = StatusReasons::getReason(out.code);
+
+			if(keyedObjectContains(in, "headers"))
 			{
-				setError(ok, errorMessage, QString("%1 contains 'body' with wrong type").arg(pn));
-				return PublishFormat();
-			}
-		}
-		else if(keyedObjectContains(in, "body-patch"))
-		{
-			out.bodyPatch = getList(in, pn, "body-patch", false, &ok_, errorMessage);
-			if(!ok_)
-			{
-				if(ok)
-					*ok = false;
-				return PublishFormat();
+				QVariant vheaders = keyedObjectGetValue(in, "headers");
+				if(vheaders.type() == QVariant::List)
+				{
+					foreach(const QVariant &vheader, vheaders.toList())
+					{
+						if(vheader.type() != QVariant::List)
+						{
+							setError(ok, errorMessage, "headers contains element with wrong type");
+							return PublishFormat();
+						}
+
+						QVariantList lheader = vheader.toList();
+						if(lheader.count() != 2)
+						{
+							setError(ok, errorMessage, "headers contains list with wrong number of elements");
+							return PublishFormat();
+						}
+
+						QString name = getString(lheader[0], &ok_);
+						if(!ok_)
+						{
+							setError(ok, errorMessage, "header contains name element with wrong type");
+							return PublishFormat();
+						}
+
+						QString val = getString(lheader[1], &ok_);
+						if(!ok_)
+						{
+							setError(ok, errorMessage, "header contains value element with wrong type");
+							return PublishFormat();
+						}
+
+						out.headers += HttpHeader(name.toUtf8(), val.toUtf8());
+					}
+				}
+				else if(isKeyedObject(vheaders))
+				{
+					if(vheaders.type() == QVariant::Hash)
+					{
+						QVariantHash hheaders = vheaders.toHash();
+
+						QHashIterator<QString, QVariant> it(hheaders);
+						while(it.hasNext())
+						{
+							it.next();
+							const QString &key = it.key();
+							const QVariant &vval = it.value();
+
+							QString val = getString(vval, &ok_);
+							if(!ok_)
+							{
+								setError(ok, errorMessage, QString("headers contains '%1' with wrong type").arg(key));
+								return PublishFormat();
+							}
+
+							out.headers += HttpHeader(key.toUtf8(), val.toUtf8());
+						}
+					}
+					else // Map
+					{
+						QVariantMap mheaders = vheaders.toMap();
+
+						QMapIterator<QString, QVariant> it(mheaders);
+						while(it.hasNext())
+						{
+							it.next();
+							const QString &key = it.key();
+							const QVariant &vval = it.value();
+
+							QString val = getString(vval, &ok_);
+							if(!ok_)
+							{
+								setError(ok, errorMessage, QString("headers contains '%1' with wrong type").arg(key));
+								return PublishFormat();
+							}
+
+							out.headers += HttpHeader(key.toUtf8(), val.toUtf8());
+						}
+					}
+				}
+				else
+				{
+					setError(ok, errorMessage, QString("%1 contains 'headers' with wrong type").arg(pn));
+					return PublishFormat();
+				}
 			}
 
-			out.haveBodyPatch = true;
-		}
-		else
-		{
-			if(in.type() == QVariant::Map) // JSON input
-				setError(ok, errorMessage, QString("%1 does not contain 'body', 'body-bin', or 'body-patch'").arg(pn));
+			if(in.type() == QVariant::Map && keyedObjectContains(in, "body-bin")) // JSON input
+			{
+				QString bodyBin = getString(in, pn, "body-bin", false, &ok_, errorMessage);
+				if(!ok_)
+				{
+					if(ok)
+						*ok = false;
+					return PublishFormat();
+				}
+
+				out.body = QByteArray::fromBase64(bodyBin.toUtf8());
+			}
+			else if(keyedObjectContains(in, "body"))
+			{
+				QVariant vcontent = keyedObjectGetValue(in, "body");
+				if(vcontent.type() == QVariant::ByteArray)
+					out.body = vcontent.toByteArray();
+				else if(vcontent.type() == QVariant::String)
+					out.body = vcontent.toString().toUtf8();
+				else
+				{
+					setError(ok, errorMessage, QString("%1 contains 'body' with wrong type").arg(pn));
+					return PublishFormat();
+				}
+			}
+			else if(keyedObjectContains(in, "body-patch"))
+			{
+				out.bodyPatch = getList(in, pn, "body-patch", false, &ok_, errorMessage);
+				if(!ok_)
+				{
+					if(ok)
+						*ok = false;
+					return PublishFormat();
+				}
+
+				out.haveBodyPatch = true;
+			}
 			else
-				setError(ok, errorMessage, QString("%1 does not contain 'body' or 'body-patch'").arg(pn));
-			return PublishFormat();
+			{
+				if(in.type() == QVariant::Map) // JSON input
+					setError(ok, errorMessage, QString("%1 does not contain 'body', 'body-bin', or 'body-patch'").arg(pn));
+				else
+					setError(ok, errorMessage, QString("%1 does not contain 'body' or 'body-patch'").arg(pn));
+				return PublishFormat();
+			}
 		}
 	}
 	else if(type == HttpStream)
 	{
-		QString action = getString(in, pn, "action", false, &ok_, errorMessage);
-		if(!ok_)
-		{
-			if(ok)
-				*ok = false;
-			return PublishFormat();
-		}
-
-		if(action == "close")
-			out.close = true;
-
-		if(!out.close)
+		if(out.action == Send)
 		{
 			if(in.type() == QVariant::Map && keyedObjectContains(in, "content-bin")) // JSON input
 			{
@@ -265,38 +284,7 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 	}
 	else if(type == WebSocketMessage)
 	{
-		QString action = getString(in, pn, "action", false, &ok_, errorMessage);
-		if(!ok_)
-		{
-			if(ok)
-				*ok = false;
-			return PublishFormat();
-		}
-
-		if(action == "close")
-		{
-			out.close = true;
-
-			if(keyedObjectContains(in, "code"))
-			{
-				QVariant vcode = keyedObjectGetValue(in, "code");
-				if(!vcode.canConvert(QVariant::Int))
-				{
-					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
-					return PublishFormat();
-				}
-
-				out.code = vcode.toInt();
-
-				if(out.code < 0)
-				{
-					setError(ok, errorMessage, QString("%1 contains 'code' with invalid value").arg(pn));
-					return PublishFormat();
-				}
-			}
-		}
-
-		if(!out.close)
+		if(out.action == Send)
 		{
 			QString typeStr = getString(in, pn, "type", false, &ok_, errorMessage);
 			if(!ok_)
@@ -373,6 +361,27 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 				return PublishFormat();
 			}
 		}
+		else if(out.action == Close)
+		{
+			if(keyedObjectContains(in, "code"))
+			{
+				QVariant vcode = keyedObjectGetValue(in, "code");
+				if(!vcode.canConvert(QVariant::Int))
+				{
+					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
+					return PublishFormat();
+				}
+
+				out.code = vcode.toInt();
+
+				if(out.code < 0)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'code' with invalid value").arg(pn));
+					return PublishFormat();
+				}
+			}
+		}
+
 	}
 
 	if(ok)

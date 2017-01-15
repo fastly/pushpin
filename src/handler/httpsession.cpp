@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -110,6 +110,7 @@ public:
 	QUrl currentUri;
 	QUrl nextUri;
 	bool needUpdate;
+	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
 	QList<PublishItem> publishQueue;
 	RetryRequestPacket retryPacket;
@@ -203,7 +204,19 @@ public:
 		{
 			// if we are already in the process of updating, flag to update
 			//   again after current one finishes
-			needUpdate = true;
+
+			if(needUpdate)
+			{
+				// if needUpdate was already flagged, then raise
+				//   priority if needed
+				if(priority == HighPriority)
+					needUpdatePriority = priority;
+			}
+			else
+			{
+				needUpdate = true;
+				needUpdatePriority = priority;
+			}
 			return;
 		}
 
@@ -297,10 +310,17 @@ public:
 			// NOTE: http-response mode doesn't support a close
 			//   action since it's better to send a real response
 
-			if(f.haveBodyPatch)
-				respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
-			else
-				respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+			if(f.action == PublishFormat::Send)
+			{
+				if(f.haveBodyPatch)
+					respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
+				else
+					respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+			}
+			else if(f.action == PublishFormat::Hint)
+			{
+				update(HighPriority);
+			}
 		}
 		else if(f.type == PublishFormat::HttpStream)
 		{
@@ -569,13 +589,7 @@ private:
 
 			PublishFormat &f = item.format;
 
-			if(f.close)
-			{
-				prepareToClose();
-				req->endBody();
-				break;
-			}
-			else
+			if(f.action == PublishFormat::Send)
 			{
 				req->writeBody(f.body);
 
@@ -585,6 +599,20 @@ private:
 
 				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
 					updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+			}
+			else if(f.action == PublishFormat::Hint)
+			{
+				// clear queue since any items will be redundant
+				publishQueue.clear();
+
+				update(HighPriority);
+				break;
+			}
+			else if(f.action == PublishFormat::Close)
+			{
+				prepareToClose();
+				req->endBody();
+				break;
 			}
 		}
 
@@ -616,7 +644,7 @@ private:
 			updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
 
 		if(needUpdate)
-			update(LowPriority);
+			update(needUpdatePriority);
 	}
 
 	void respond(int _code, const QByteArray &_reason, const HttpHeaders &_headers, const QByteArray &_body)

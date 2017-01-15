@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -35,6 +35,13 @@ public:
 		WebSocketMessage
 	};
 
+	enum Action
+	{
+		Send,
+		Hint,
+		Close
+	};
+
 	enum MessageType
 	{
 		Text,
@@ -44,29 +51,29 @@ public:
 	};
 
 	Type type;
+	Action action; // response/stream/ws
 	int code; // response/ws
 	QByteArray reason; // response
 	HttpHeaders headers; // response
 	QByteArray body; // response/stream/ws
 	bool haveBodyPatch; // response
 	QVariantList bodyPatch; // response
-	bool close; // stream/ws
 	MessageType messageType; // ws
 
 	PublishFormat() :
 		type((Type)-1),
+		action(Send),
 		code(-1),
 		haveBodyPatch(false),
-		close(false),
 		messageType((MessageType)-1)
 	{
 	}
 
 	PublishFormat(Type _type) :
 		type(_type),
+		action(Send),
 		code(-1),
 		haveBodyPatch(false),
-		close(false),
 		messageType((MessageType)-1)
 	{
 	}
