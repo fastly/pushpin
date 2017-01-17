@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -796,6 +796,7 @@ private slots:
 				connect(wsControl, &WsControlSession::closeEventReceived, this, &Private::wsControl_closeEventReceived);
 				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
 				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
+				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
 				wsControl->start(routeId, channelPrefix, inSock->requestUri());
 
 				if(!subChannel.isEmpty())
@@ -990,6 +991,12 @@ private slots:
 		cleanupInSock();
 
 		tryFinish();
+	}
+
+	void wsControl_error()
+	{
+		log_debug("wsproxysession: %p wscontrol session error", q);
+		wsControl_cancelEventReceived();
 	}
 
 	void keepAliveTimer_timeout()

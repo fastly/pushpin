@@ -1522,7 +1522,7 @@ private:
 		retrySock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
 	}
 
-	void writeWsControlItem(const WsControlPacket::Item &item)
+	void writeWsControlItems(const QList<WsControlPacket::Item> &items)
 	{
 		if(!wsControlOutSock)
 		{
@@ -1531,7 +1531,7 @@ private:
 		}
 
 		WsControlPacket out;
-		out.items += item;
+		out.items = items;
 
 		QVariant vout = out.toVariant();
 
@@ -1638,7 +1638,7 @@ private:
 				i.code = f.code;
 			}
 
-			writeWsControlItem(i);
+			writeWsControlItems(QList<WsControlPacket::Item>() << i);
 		}
 	}
 
@@ -2042,8 +2042,20 @@ private slots:
 
 		QStringList updateSids;
 
+		QList<WsControlPacket::Item> outItems;
+
 		foreach(const WsControlPacket::Item &item, packet.items)
 		{
+			if(item.type != WsControlPacket::Item::Ack && !item.requestId.isEmpty())
+			{
+				// ack receipt
+				WsControlPacket::Item i;
+				i.cid = item.cid;
+				i.type = WsControlPacket::Item::Ack;
+				i.requestId = item.requestId;
+				outItems += i;
+			}
+
 			if(item.type == WsControlPacket::Item::Here)
 			{
 				WsSession *s = cs.wsSessions.value(item.cid);
@@ -2073,7 +2085,7 @@ private slots:
 				WsControlPacket::Item i;
 				i.cid = item.cid;
 				i.type = WsControlPacket::Item::Cancel;
-				writeWsControlItem(i);
+				outItems += i;
 				continue;
 			}
 
@@ -2157,7 +2169,7 @@ private slots:
 					WsControlPacket::Item i;
 					i.cid = item.cid;
 					i.type = WsControlPacket::Item::Detach;
-					writeWsControlItem(i);
+					outItems += i;
 				}
 				else if(cm.type == WsControlMessage::Session)
 				{
@@ -2200,7 +2212,7 @@ private slots:
 						s->keepAliveMessage.clear();
 					}
 
-					writeWsControlItem(i);
+					outItems += i;
 				}
 			}
 			else if(item.type == WsControlPacket::Item::NeedKeepAlive)
@@ -2213,12 +2225,15 @@ private slots:
 					i.contentType = s->keepAliveType;
 					i.message = s->keepAliveMessage;
 
-					writeWsControlItem(i);
+					outItems += i;
 
 					stats->addActivity(s->route.toUtf8(), 1);
 				}
 			}
 		}
+
+		if(!outItems.isEmpty())
+			writeWsControlItems(outItems);
 
 		if(stateClient && !updateSids.isEmpty())
 		{

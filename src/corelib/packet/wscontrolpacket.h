@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -42,11 +42,13 @@ public:
 			Send,
 			KeepAliveSetup,
 			Close,
-			Detach
+			Detach,
+			Ack
 		};
 
 		QByteArray cid;
 		Type type;
+		QByteArray requestId;
 		QUrl uri;
 		QByteArray contentType;
 		QByteArray message;

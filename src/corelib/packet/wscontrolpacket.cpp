@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -170,10 +170,14 @@ QVariant WsControlPacket::toVariant() const
 			case Item::NeedKeepAlive:  typeStr = "need-keep-alive"; break;
 			case Item::Close:          typeStr = "close"; break;
 			case Item::Detach:         typeStr = "detach"; break;
+			case Item::Ack:            typeStr = "ack"; break;
 			default:
 				assert(0);
 		}
 		vitem["type"] = typeStr;
+
+		if(!item.requestId.isEmpty())
+			vitem["req-id"] = item.requestId;
 
 		if(!item.uri.isEmpty())
 			vitem["uri"] = item.uri.toEncoded();
@@ -255,8 +259,18 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.type = Item::Close;
 		else if(typeStr == "detach")
 			item.type = Item::Detach;
+		else if(typeStr == "ack")
+			item.type = Item::Ack;
 		else
 			return false;
+
+		if(vitem.contains("req-id"))
+		{
+			if(vitem["req-id"].type() != QVariant::ByteArray)
+				return false;
+
+			item.requestId = vitem["req-id"].toByteArray();
+		}
 
 		if(vitem.contains("uri"))
 		{

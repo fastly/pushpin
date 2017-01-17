@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -46,6 +46,7 @@ signals:
 	void closeEventReceived(int code); // -1 for no code
 	void detachEventReceived();
 	void cancelEventReceived();
+	void error();
 
 private:
 	class Private;
