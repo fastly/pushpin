@@ -49,6 +49,7 @@ public:
 	bool success() const;
 	QVariant result() const;
 	ErrorCondition errorCondition() const;
+	QByteArray errorConditionString() const;
 
 	void start(const QString &method, const QVariantHash &args = QVariantHash());
 	void respond(const QVariant &result = QVariant());

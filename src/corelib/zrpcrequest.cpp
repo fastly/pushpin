@@ -41,6 +41,7 @@ public:
 	bool success;
 	QVariant result;
 	ErrorCondition condition;
+	QByteArray conditionString;
 	QTimer *timer;
 
 	Private(ZrpcRequest *_q) :
@@ -119,6 +120,8 @@ public:
 			else
 				condition = ErrorGeneric;
 
+			conditionString = packet.condition;
+
 			result = packet.value;
 			q->onError();
 		}
@@ -133,6 +136,7 @@ private slots:
 		{
 			success = false;
 			condition = ErrorUnavailable;
+			conditionString = "service-unavailable";
 			cleanup();
 			emit q->finished();
 			return;
@@ -158,6 +162,7 @@ private slots:
 	{
 		success = false;
 		condition = ErrorTimeout;
+		conditionString = "timeout";
 		cleanup();
 		emit q->finished();
 	}
@@ -209,6 +214,11 @@ QVariant ZrpcRequest::result() const
 ZrpcRequest::ErrorCondition ZrpcRequest::errorCondition() const
 {
 	return d->condition;
+}
+
+QByteArray ZrpcRequest::errorConditionString() const
+{
+	return d->conditionString;
 }
 
 void ZrpcRequest::start(const QString &method, const QVariantHash &args)
