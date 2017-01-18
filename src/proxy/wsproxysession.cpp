@@ -1076,6 +1076,16 @@ QByteArray WsProxySession::cid() const
 	return d->publicCid;
 }
 
+WebSocket *WsProxySession::inSocket() const
+{
+	return d->inSock;
+}
+
+WebSocket *WsProxySession::outSocket() const
+{
+	return d->outSock;
+}
+
 void WsProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)
 {
 	d->defaultSigIss = iss;

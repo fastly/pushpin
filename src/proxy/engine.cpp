@@ -391,6 +391,8 @@ public:
 		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, stats, wsControl, this);
 		connect(ps, &WsProxySession::finishedByPassthrough, this, &Private::wsps_finishedByPassthrough);
 
+		connectionManager.setProxyForConnection(sock, ps);
+
 		ps->setDefaultSigKey(config.sigIss, config.sigKey);
 		ps->setDefaultUpstreamKey(config.upstreamKey);
 		ps->setAcceptXForwardedProtocol(config.acceptXForwardedProtocol);
@@ -843,6 +845,32 @@ private slots:
 			}
 
 			req->respond(out);
+		}
+		else if(req->method() == "refresh")
+		{
+			QVariantHash args = req->args();
+			if(!args.contains("cid") || args["cid"].type() != QVariant::ByteArray)
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			QByteArray cid = args["cid"].toByteArray();
+
+			WsProxySession *ps = connectionManager.getProxyForConnection(cid);
+			if(!ps)
+			{
+				req->respondError("item-not-found");
+				delete req;
+				return;
+			}
+
+			WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(ps->outSocket());
+			if(woh)
+				woh->refresh();
+
+			req->respond();
 		}
 		else if(req->method() == "report")
 		{

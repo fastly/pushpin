@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,14 +32,17 @@ public:
 		QPair<QByteArray, QByteArray> rid;
 		WebSocket *sock;
 		QByteArray cid;
+		WsProxySession *proxy;
 
 		Item() :
-			sock(0)
+			sock(0),
+			proxy(0)
 		{
 		}
 	};
 
 	QHash<WebSocket*, Item*> itemsBySock;
+	QHash<QByteArray, Item*> itemsByCid;
 
 	Private()
 	{
@@ -52,13 +55,9 @@ public:
 
 	void clearItemsBySock()
 	{
-		QHashIterator<WebSocket*, Item*> it(itemsBySock);
-		while(it.hasNext())
-		{
-			it.next();
-			delete it.value();
-		}
+		qDeleteAll(itemsBySock);
 		itemsBySock.clear();
+		itemsByCid.clear();
 	}
 };
 
@@ -80,11 +79,12 @@ QByteArray ConnectionManager::addConnection(WebSocket *sock)
 	i->sock = sock;
 	i->cid = UuidUtil::createUuid();
 	d->itemsBySock[i->sock] = i;
+	d->itemsByCid[i->cid] = i;
 
 	return i->cid;
 }
 
-QByteArray ConnectionManager::getConnection(WebSocket *sock)
+QByteArray ConnectionManager::getConnection(WebSocket *sock) const
 {
 	Private::Item *i = d->itemsBySock.value(sock);
 	if(!i)
@@ -98,5 +98,23 @@ void ConnectionManager::removeConnection(WebSocket *sock)
 	Private::Item *i = d->itemsBySock.value(sock);
 	assert(i);
 	d->itemsBySock.remove(sock);
+	d->itemsByCid.remove(i->cid);
 	delete i;
+}
+
+WsProxySession *ConnectionManager::getProxyForConnection(const QByteArray &cid) const
+{
+	Private::Item *i = d->itemsByCid.value(cid);
+	if(!i)
+		return 0;
+
+	return i->proxy;
+}
+
+void ConnectionManager::setProxyForConnection(WebSocket *sock, WsProxySession *proxy)
+{
+	Private::Item *i = d->itemsBySock.value(sock);
+	assert(i);
+
+	i->proxy = proxy;
 }

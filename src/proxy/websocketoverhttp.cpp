@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -197,6 +197,7 @@ public:
 	bool peerClosing;
 	int peerCloseCode;
 	bool disconnecting;
+	bool updateQueued;
 	QTimer *keepAliveTimer;
 	QTimer *retryTimer;
 	int retries;
@@ -223,6 +224,7 @@ public:
 		peerClosing(false),
 		peerCloseCode(-1),
 		disconnecting(false),
+		updateQueued(false),
 		retries(0)
 	{
 		if(!g_disconnectManager)
@@ -255,6 +257,7 @@ public:
 
 		updating = false;
 		disconnecting = false;
+		updateQueued = false;
 
 		delete req;
 		req = 0;
@@ -339,6 +342,18 @@ public:
 		update();
 	}
 
+	void refresh()
+	{
+		// only allow refresh requests if connected
+		if(state == Connected && !disconnecting)
+		{
+			if(!updating)
+				update();
+			else
+				updateQueued = true;
+		}
+	}
+
 private:
 	bool canReceive() const
 	{
@@ -368,6 +383,9 @@ private:
 	{
 		// always send this right away
 		if(disconnecting)
+			return true;
+
+		if(updateQueued)
 			return true;
 
 		bool cscm = canSendCompleteMessage();
@@ -404,6 +422,8 @@ private:
 		// only one request allowed at a time
 		if(updating)
 			return;
+
+		updateQueued = false;
 
 		updating = true;
 
@@ -916,6 +936,11 @@ WebSocketOverHttp::~WebSocketOverHttp()
 void WebSocketOverHttp::setConnectionId(const QByteArray &id)
 {
 	d->cid = id;
+}
+
+void WebSocketOverHttp::refresh()
+{
+	d->refresh();
 }
 
 void WebSocketOverHttp::clearDisconnectManager()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,6 +24,7 @@
 #include <QByteArray>
 
 class WebSocket;
+class WsProxySession;
 
 class ConnectionManager
 {
@@ -32,15 +33,16 @@ public:
 	~ConnectionManager();
 
 	// returns cid
-	//QByteArray addConnection(const QPair<QByteArray, QByteArray> &rid);
 	QByteArray addConnection(WebSocket *sock);
 
 	// returns cid or empty
-	//QByteArray getConnection(const QPair<QByteArray, QByteArray> &rid);
-	QByteArray getConnection(WebSocket *sock);
+	QByteArray getConnection(WebSocket *sock) const;
 
-	//void removeConnection(const QPair<QByteArray, QByteArray> &rid);
 	void removeConnection(WebSocket *sock);
+
+	WsProxySession *getProxyForConnection(const QByteArray &cid) const;
+
+	void setProxyForConnection(WebSocket *sock, WsProxySession *proxy);
 
 private:
 	class Private;

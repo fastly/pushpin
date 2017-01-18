@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,6 +33,7 @@ public:
 	~WebSocketOverHttp();
 
 	void setConnectionId(const QByteArray &id);
+	void refresh();
 
 	static void clearDisconnectManager();
 

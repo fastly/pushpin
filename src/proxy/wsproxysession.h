@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -41,6 +41,9 @@ public:
 	QByteArray routeId() const;
 	//ZWebSocket::Rid rid() const;
 	QByteArray cid() const;
+
+	WebSocket *inSocket() const;
+	WebSocket *outSocket() const;
 
 	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
 	void setDefaultUpstreamKey(const QByteArray &key);
