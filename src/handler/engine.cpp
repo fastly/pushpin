@@ -60,6 +60,7 @@
 #include "httpsession.h"
 #include "controlrequest.h"
 #include "conncheckworker.h"
+#include "refreshworker.h"
 #include "ratelimiter.h"
 #include "httpsessionupdatemanager.h"
 #include "sequencer.h"
@@ -2045,7 +2046,9 @@ private slots:
 
 		if(req->method() == "conncheck")
 		{
-			new ConnCheckWorker(req, proxyControlClient, stats, this);
+			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
+			connect(w, &ConnCheckWorker::finished, this, &Private::deferred_finished);
+			deferreds += w;
 		}
 		else if(req->method() == "get-zmq-uris")
 		{
@@ -2064,6 +2067,12 @@ private slots:
 			recoverCommand();
 			req->respond();
 			delete req;
+		}
+		else if(req->method() == "refresh")
+		{
+			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, this);
+			connect(w, &RefreshWorker::finished, this, &Private::deferred_finished);
+			deferreds += w;
 		}
 		else
 		{
@@ -2886,6 +2895,15 @@ private slots:
 
 		deferreds.remove(report);
 		report = 0;
+	}
+
+	void deferred_finished(const DeferredResult &result)
+	{
+		Q_UNUSED(result);
+
+		Deferred *w = (Deferred *)sender();
+
+		deferreds.remove(w);
 	}
 };
 

@@ -31,6 +31,7 @@ HEADERS += \
 	$$SRC_DIR/publishlastids.h \
 	$$SRC_DIR/controlrequest.h \
 	$$SRC_DIR/conncheckworker.h \
+	$$SRC_DIR/refreshworker.h \
 	$$SRC_DIR/ratelimiter.h \
 	$$SRC_DIR/sequencer.h \
 	$$SRC_DIR/filters.h \
@@ -53,6 +54,7 @@ SOURCES += \
 	$$SRC_DIR/publishlastids.cpp \
 	$$SRC_DIR/controlrequest.cpp \
 	$$SRC_DIR/conncheckworker.cpp \
+	$$SRC_DIR/refreshworker.cpp \
 	$$SRC_DIR/ratelimiter.cpp \
 	$$SRC_DIR/sequencer.cpp \
 	$$SRC_DIR/filters.cpp \

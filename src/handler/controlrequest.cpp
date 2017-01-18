@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -82,6 +82,33 @@ private slots:
 	}
 };
 
+class Refresh : public Deferred
+{
+	Q_OBJECT
+
+public:
+	Refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent) :
+		Deferred(parent)
+	{
+		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
+		connect(req, &ZrpcRequest::finished, this, &Refresh::req_finished);
+
+		QVariantHash args;
+		args["cid"] = cid;
+		req->start("refresh", args);
+	}
+
+	void req_finished()
+	{
+		ZrpcRequest *req = (ZrpcRequest *)sender();
+
+		if(req->success())
+			setFinished(true);
+		else
+			setFinished(false, req->errorConditionString());
+	}
+};
+
 class Report : public Deferred
 {
 	Q_OBJECT
@@ -112,6 +139,11 @@ public:
 Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent)
 {
 	return new ConnCheck(controlClient, cids, parent);
+}
+
+Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent)
+{
+	return new Refresh(controlClient, cid, parent);
 }
 
 Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent)

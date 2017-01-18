@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,23 +17,30 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CONTROLREQUEST_H
-#define CONTROLREQUEST_H
+#ifndef REFRESHWORKER_H
+#define REFRESHWORKER_H
 
-#include "cidset.h"
+#include <QByteArray>
+#include "deferred.h"
 
-class QObject;
-
+class ZrpcRequest;
 class ZrpcManager;
-class StatsPacket;
-class Deferred;
+class StatsManager;
 
-namespace ControlRequest {
+class RefreshWorker : public Deferred
+{
+	Q_OBJECT
 
-Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0);
-Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent = 0);
-Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent = 0);
+public:
+	RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QObject *parent = 0);
 
-}
+private:
+	ZrpcRequest *req_;
+
+	void respondError(const QByteArray &condition);
+
+private slots:
+	void proxyRefresh_finished(const DeferredResult &result);
+};
 
 #endif
