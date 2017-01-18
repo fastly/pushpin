@@ -37,6 +37,7 @@ public:
 	WsControlManager *manager;
 	int nextReqId;
 	QHash<int, qint64> pendingRequests;
+	QList<QByteArray> pendingSendEventWrites;
 	QTimer *requestTimer;
 	QByteArray cid;
 	QByteArray route;
@@ -150,11 +151,14 @@ public:
 	{
 		if(item.type != WsControlPacket::Item::Ack && !item.requestId.isEmpty())
 		{
-			// ack receipt
-			WsControlPacket::Item i;
-			i.type = WsControlPacket::Item::Ack;
-			i.requestId = item.requestId;
-			write(i);
+			// ack non-sends immediately
+			if(item.type != WsControlPacket::Item::Send)
+			{
+				WsControlPacket::Item i;
+				i.type = WsControlPacket::Item::Ack;
+				i.requestId = item.requestId;
+				write(i);
+			}
 		}
 
 		if(item.type == WsControlPacket::Item::Send)
@@ -169,7 +173,14 @@ public:
 			else
 				type = WebSocket::Frame::Text;
 
-			emit q->sendEventReceived(type, item.message);
+			// for sends, don't ack until written
+
+			if(!item.requestId.isEmpty())
+				pendingSendEventWrites += item.requestId;
+			else
+				pendingSendEventWrites += QByteArray(); // placeholder
+
+			emit q->sendEventReceived(type, item.message, item.queue);
 		}
 		else if(item.type == WsControlPacket::Item::KeepAliveSetup)
 		{
@@ -193,8 +204,25 @@ public:
 		else if(item.type == WsControlPacket::Item::Ack)
 		{
 			int reqId = item.requestId.toInt();
-			pendingRequests.remove(reqId);
-			setupRequestTimer();
+			if(pendingRequests.contains(reqId))
+			{
+				pendingRequests.remove(reqId);
+				setupRequestTimer();
+			}
+		}
+	}
+
+	void sendEventWritten()
+	{
+		assert(!pendingSendEventWrites.isEmpty());
+
+		QByteArray requestId = pendingSendEventWrites.takeFirst();
+		if(!requestId.isNull())
+		{
+			WsControlPacket::Item i;
+			i.type = WsControlPacket::Item::Ack;
+			i.requestId = requestId;
+			write(i);
 		}
 	}
 
@@ -248,6 +276,11 @@ void WsControlSession::setup(WsControlManager *manager, const QByteArray &cid)
 	d->manager = manager;
 	d->cid = cid;
 	d->manager->link(this, d->cid);
+}
+
+void WsControlSession::sendEventWritten()
+{
+	d->sendEventWritten();
 }
 
 void WsControlSession::handle(const WsControlPacket::Item &item)

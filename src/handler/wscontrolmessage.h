@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -35,7 +35,9 @@ public:
 		Detach,
 		Session,
 		SetMeta,
-		KeepAlive
+		KeepAlive,
+		SendDelayed,
+		FlushDelayed
 	};
 
 	enum MessageType

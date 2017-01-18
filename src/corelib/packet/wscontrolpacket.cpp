@@ -188,6 +188,9 @@ QVariant WsControlPacket::toVariant() const
 		if(!item.message.isNull())
 			vitem["message"] = item.message;
 
+		if(item.queue)
+			vitem["queue"] = true;
+
 		if(item.code >= 0)
 			vitem["code"] = item.code;
 
@@ -296,6 +299,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 				return false;
 
 			item.message = vitem["message"].toByteArray();
+		}
+
+		if(vitem.contains("queue"))
+		{
+			if(vitem["queue"].type() != QVariant::Bool)
+				return false;
+
+			item.queue = vitem["queue"].toBool();
 		}
 
 		if(vitem.contains("code"))

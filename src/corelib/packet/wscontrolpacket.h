@@ -52,6 +52,7 @@ public:
 		QUrl uri;
 		QByteArray contentType;
 		QByteArray message;
+		bool queue;
 		int code;
 		QByteArray route;
 		QByteArray channelPrefix;
@@ -60,6 +61,7 @@ public:
 
 		Item() :
 			type((Type)-1),
+			queue(false),
 			code(-1),
 			ttl(-1),
 			timeout(-1)

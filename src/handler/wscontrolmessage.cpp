@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -59,6 +59,10 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		out.type = SetMeta;
 	else if(type == "keep-alive")
 		out.type = KeepAlive;
+	else if(type == "send-delayed")
+		out.type = SendDelayed;
+	else if(type == "flush-delayed")
+		out.type = FlushDelayed;
 	else
 	{
 		setError(ok, errorMessage, QString("'type' contains unknown value: %1").arg(type));
@@ -144,7 +148,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 			return WsControlMessage();
 		}
 	}
-	else if(out.type == KeepAlive)
+	else if(out.type == KeepAlive || out.type == SendDelayed)
 	{
 		QString typeStr = getString(in, pn, "message-type", false, &ok_, errorMessage);
 		if(!ok_)
@@ -169,6 +173,11 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 				setError(ok, errorMessage, QString("%1 contains 'message-type' with unknown value").arg(pn));
 				return WsControlMessage();
 			}
+		}
+		else
+		{
+			// default
+			out.messageType = Text;
 		}
 
 		if(keyedObjectContains(in, "content-bin"))

@@ -40,8 +40,11 @@ public:
 	void sendGripMessage(const QByteArray &message);
 	void sendNeedKeepAlive();
 
+	// tell session that a received sendEvent has been written
+	void sendEventWritten();
+
 signals:
-	void sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message);
+	void sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue);
 	void keepAliveSetupEventReceived(bool enable, int timeout = -1);
 	void closeEventReceived(int code); // -1 for no code
 	void detachEventReceived();

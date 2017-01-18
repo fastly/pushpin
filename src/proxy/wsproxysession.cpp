@@ -224,6 +224,8 @@ public:
 		Closing
 	};
 
+	typedef QPair<WebSocket::Frame, bool> QueuedFrame;
+
 	WsProxySession *q;
 	State state;
 	ZRoutes *zroutes;
@@ -245,6 +247,7 @@ public:
 	WebSocket *inSock;
 	WebSocket *outSock;
 	int inPendingBytes;
+	QList<bool> inPendingFrames; // true means we should ack a send event
 	int outPendingBytes;
 	int outReadInProgress; // frame type or -1
 	QByteArray pathBeg;
@@ -259,6 +262,7 @@ public:
 	QDateTime activityTime;
 	QByteArray publicCid;
 	QTimer *keepAliveTimer;
+	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -413,6 +417,14 @@ public:
 		tryNextTarget();
 	}
 
+	void writeInFrame(const WebSocket::Frame &frame, bool fromSendEvent = false)
+	{
+		inPendingBytes += frame.data.size();
+		inPendingFrames += fromSendEvent;
+
+		inSock->writeFrame(frame);
+	}
+
 	void tryNextTarget()
 	{
 		if(targets.isEmpty())
@@ -556,7 +568,7 @@ public:
 
 			tryLogActivity();
 
-			if(detached)
+			if(detached && outReadInProgress == -1)
 				continue;
 
 			if(f.type == WebSocket::Frame::Text || f.type == WebSocket::Frame::Binary || f.type == WebSocket::Frame::Continuation)
@@ -583,8 +595,7 @@ public:
 						if(f.data.startsWith(messagePrefix))
 						{
 							f.data = f.data.mid(messagePrefix.size());
-							inSock->writeFrame(f);
-							inPendingBytes += f.data.size();
+							writeInFrame(f);
 
 							restartKeepAlive();
 						}
@@ -597,16 +608,14 @@ public:
 					{
 						assert(outReadInProgress != -1);
 
-						inSock->writeFrame(f);
-						inPendingBytes += f.data.size();
+						writeInFrame(f);
 
 						restartKeepAlive();
 					}
 				}
 				else
 				{
-					inSock->writeFrame(f);
-					inPendingBytes += f.data.size();
+					writeInFrame(f);
 
 					restartKeepAlive();
 				}
@@ -617,10 +626,15 @@ public:
 			else
 			{
 				// always relay non-content frames
-				inSock->writeFrame(f);
-				inPendingBytes += f.data.size();
+				writeInFrame(f);
 
 				restartKeepAlive();
+			}
+
+			if(outReadInProgress == -1 && !queuedInFrames.isEmpty())
+			{
+				foreach(const QueuedFrame &i, queuedInFrames)
+					writeInFrame(i.first, i.second);
 			}
 		}
 	}
@@ -701,6 +715,13 @@ private slots:
 		Q_UNUSED(count);
 
 		inPendingBytes -= contentBytes;
+
+		for(int n = 0; n < count; ++n)
+		{
+			bool fromSendEvent = inPendingFrames.takeFirst();
+			if(fromSendEvent)
+				wsControl->sendEventWritten();
+		}
 
 		if(!detached && outSock)
 			tryReadOut();
@@ -904,17 +925,34 @@ private slots:
 		}
 	}
 
-	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message)
+	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
 	{
 		// this method accepts a full message, which must be typed
 		if(type == WebSocket::Frame::Continuation)
 			return;
 
-		// only send if we can, otherwise drop
-		if(inSock && inSock->canWrite() && outReadInProgress == -1)
+		// if we have no socket to write to, say the data was written anyway.
+		//   this is not quite correct but better than leaving the send event
+		//   dangling
+		if(!inSock)
 		{
-			// split into frames to avoid credits issue
-			QList<WebSocket::Frame> frames;
+			wsControl->sendEventWritten();
+			return;
+		}
+
+		// if queue == false, drop if we can't send right now
+		if(!queue && (!inSock->canWrite() || outReadInProgress != -1))
+		{
+			// if drop is allowed, drop is success :)
+			wsControl->sendEventWritten();
+			return;
+		}
+
+		// split into frames to avoid credits issue
+		QList<WebSocket::Frame> frames;
+
+		if(message.size() > 0)
+		{
 			for(int n = 0; n < message.size(); n += FRAME_SIZE_MAX)
 			{
 				WebSocket::Frame::Type ftype;
@@ -928,11 +966,23 @@ private slots:
 
 				frames += WebSocket::Frame(ftype, data, more);
 			}
+		}
+		else
+		{
+			frames += WebSocket::Frame(type, QByteArray(), false);
+		}
 
-			foreach(const WebSocket::Frame &frame, frames)
+		for(int n = 0; n < frames.count(); ++n)
+		{
+			bool fromSendEvent = (n + 1 >= frames.count());
+
+			if(outReadInProgress != -1)
 			{
-				inSock->writeFrame(frame);
-				inPendingBytes += frame.data.size();
+				queuedInFrames += QueuedFrame(frames[n], fromSendEvent);
+			}
+			else
+			{
+				writeInFrame(frames[n], fromSendEvent);
 			}
 		}
 

@@ -72,6 +72,8 @@
 #define STATE_RPC_TIMEOUT 1000
 #define PROXY_RPC_TIMEOUT 10000
 #define DEFAULT_WS_KEEPALIVE_TIMEOUT 55
+#define DEFAULT_WS_SENDDELAYED_TIMEOUT 1
+#define WSCONTROL_REQUEST_TIMEOUT 8000
 #define SUBSCRIBED_DELAY 1000
 
 #define INSPECT_WORKERS_MAX 10
@@ -381,6 +383,7 @@ class WsSession : public QObject
 
 public:
 	QString cid;
+	int nextReqId;
 	QString channelPrefix;
 	HttpRequestData requestData;
 	QString route;
@@ -391,36 +394,137 @@ public:
 	int ttl;
 	QByteArray keepAliveType;
 	QByteArray keepAliveMessage;
-	QTimer *timer;
+	QByteArray delayedType;
+	QByteArray delayedMessage;
+	QHash<int, qint64> pendingRequests;
+	QTimer *expireTimer;
+	QTimer *delayedTimer;
+	QTimer *requestTimer;
 
 	WsSession(QObject *parent = 0) :
-		QObject(parent)
+		QObject(parent),
+		nextReqId(0)
 	{
-		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &WsSession::timer_timeout);
+		expireTimer = new QTimer(this);
+		expireTimer->setSingleShot(true);
+		connect(expireTimer, &QTimer::timeout, this, &WsSession::expireTimer_timeout);
+
+		delayedTimer = new QTimer(this);
+		delayedTimer->setSingleShot(true);
+		connect(delayedTimer, &QTimer::timeout, this, &WsSession::delayedTimer_timeout);
+
+		requestTimer = new QTimer(this);
+		requestTimer->setSingleShot(true);
+		connect(requestTimer, &QTimer::timeout, this, &WsSession::requestTimer_timeout);
 	}
 
 	~WsSession()
 	{
-		timer->disconnect(this);
-		timer->setParent(0);
-		timer->deleteLater();
+		expireTimer->disconnect(this);
+		expireTimer->setParent(0);
+		expireTimer->deleteLater();
+
+		delayedTimer->disconnect(this);
+		delayedTimer->setParent(0);
+		delayedTimer->deleteLater();
+
+		requestTimer->disconnect(this);
+		requestTimer->setParent(0);
+		requestTimer->deleteLater();
 	}
 
 	void refreshExpiration()
 	{
-		timer->start(ttl * 1000);
+		expireTimer->start(ttl * 1000);
+	}
+
+	void flushDelayed()
+	{
+		if(delayedTimer->isActive())
+		{
+			delayedTimer->stop();
+			delayedTimer_timeout();
+		}
+	}
+
+	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout)
+	{
+		flushDelayed();
+
+		delayedType = type;
+		delayedMessage = message;
+		delayedTimer->start(timeout * 1000);
+	}
+
+	void ack(int reqId)
+	{
+		if(pendingRequests.contains(reqId))
+		{
+			pendingRequests.remove(reqId);
+			setupRequestTimer();
+		}
 	}
 
 signals:
+	void send(int reqId, const QByteArray &type, const QByteArray &message);
 	void expired();
+	void error();
+
+private:
+	void setupRequestTimer()
+	{
+		if(!pendingRequests.isEmpty())
+		{
+			// find next expiring request
+			qint64 lowestTime = -1;
+			QHashIterator<int, qint64> it(pendingRequests);
+			while(it.hasNext())
+			{
+				it.next();
+				qint64 time = it.value();
+
+				if(lowestTime == -1 || time < lowestTime)
+					lowestTime = time;
+			}
+
+			int until = int(lowestTime - QDateTime::currentMSecsSinceEpoch());
+
+			requestTimer->start(qMax(until, 0));
+		}
+		else
+		{
+			requestTimer->stop();
+		}
+	}
 
 private slots:
-	void timer_timeout()
+	void expireTimer_timeout()
 	{
 		log_debug("timing out ws session: %s", qPrintable(cid));
 
 		emit expired();
+	}
+
+	void delayedTimer_timeout()
+	{
+		int reqId = nextReqId++;
+
+		QByteArray message = delayedMessage;
+		delayedMessage.clear();
+
+		pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + WSCONTROL_REQUEST_TIMEOUT;
+		setupRequestTimer();
+
+		emit send(reqId, delayedType, message);
+	}
+
+	void requestTimer_timeout()
+	{
+		// on error, destroy any other pending requests
+		pendingRequests.clear();
+		setupRequestTimer();
+
+		emit error();
 	}
 };
 
@@ -1575,6 +1679,19 @@ private:
 		}
 	}
 
+	void removeWsSession(WsSession *s)
+	{
+		QSet<QString> unsubs = cs.removeWsSessionChannels(s);
+
+		foreach(const QString &channel, unsubs)
+			stats->removeSubscription("ws", channel, false);
+
+		log_debug("removed ws session: %s", qPrintable(s->cid));
+
+		cs.wsSessions.remove(s->cid);
+		delete s;
+	}
+
 	void httpControlRespond(SimpleHttpRequest *req, int code, const QByteArray &reason, const QString &body, const QByteArray &contentType = QByteArray(), const HttpHeaders &headers = HttpHeaders(), int items = -1)
 	{
 		HttpHeaders outHeaders = headers;
@@ -2062,7 +2179,9 @@ private slots:
 				if(!s)
 				{
 					s = new WsSession(this);
+					connect(s, &WsSession::send, this, &Private::wssession_send);
 					connect(s, &WsSession::expired, this, &Private::wssession_expired);
+					connect(s, &WsSession::error, this, &Private::wssession_error);
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
@@ -2096,15 +2215,7 @@ private slots:
 			}
 			else if(item.type == WsControlPacket::Item::Gone || item.type == WsControlPacket::Item::Cancel)
 			{
-				QSet<QString> unsubs = cs.removeWsSessionChannels(s);
-
-				foreach(const QString &channel, unsubs)
-					stats->removeSubscription("ws", channel, false);
-
-				log_debug("removed ws session: %s", qPrintable(s->cid));
-
-				cs.wsSessions.remove(s->cid);
-				delete s;
+				removeWsSession(s);
 			}
 			else if(item.type == WsControlPacket::Item::Grip)
 			{
@@ -2191,7 +2302,7 @@ private slots:
 
 					if(!cm.content.isNull())
 					{
-						QString contentType;
+						QByteArray contentType;
 						switch(cm.messageType)
 						{
 							case WsControlMessage::Text:   contentType = "text"; break;
@@ -2201,7 +2312,7 @@ private slots:
 							default: continue; // unrecognized type, ignore
 						}
 
-						s->keepAliveType = contentType.toUtf8();
+						s->keepAliveType = contentType;
 						s->keepAliveMessage = cm.content;
 
 						i.timeout = (cm.timeout > 0 ? cm.timeout : DEFAULT_WS_KEEPALIVE_TIMEOUT);
@@ -2213,6 +2324,26 @@ private slots:
 					}
 
 					outItems += i;
+				}
+				else if(cm.type == WsControlMessage::SendDelayed)
+				{
+					QByteArray contentType;
+					switch(cm.messageType)
+					{
+						case WsControlMessage::Text:   contentType = "text"; break;
+						case WsControlMessage::Binary: contentType = "binary"; break;
+						case WsControlMessage::Ping:   contentType = "ping"; break;
+						case WsControlMessage::Pong:   contentType = "pong"; break;
+						default: continue; // unrecognized type, ignore
+					}
+
+					int timeout = (cm.timeout > 0 ? cm.timeout : DEFAULT_WS_SENDDELAYED_TIMEOUT);
+
+					s->sendDelayed(contentType, cm.content, timeout);
+				}
+				else if(cm.type == WsControlMessage::FlushDelayed)
+				{
+					s->flushDelayed();
 				}
 			}
 			else if(item.type == WsControlPacket::Item::NeedKeepAlive)
@@ -2229,6 +2360,11 @@ private slots:
 
 					stats->addActivity(s->route.toUtf8(), 1);
 				}
+			}
+			else if(item.type == WsControlPacket::Item::Ack)
+			{
+				int reqId = item.requestId.toInt();
+				s->ack(reqId);
 			}
 		}
 
@@ -2636,17 +2772,41 @@ private slots:
 			writeRetryPacket(rp);
 	}
 
+	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message)
+	{
+		WsSession *s = (WsSession *)sender();
+
+		WsControlPacket::Item i;
+		i.cid = s->cid.toUtf8();
+		i.requestId = QByteArray::number(reqId);
+		i.type = WsControlPacket::Item::Send;
+		i.contentType = type;
+		i.message = message;
+		i.queue = true;
+
+		writeWsControlItems(QList<WsControlPacket::Item>() << i);
+	}
+
 	void wssession_expired()
 	{
 		WsSession *s = (WsSession *)sender();
 
-		QSet<QString> unsubs = cs.removeWsSessionChannels(s);
+		removeWsSession(s);
+	}
 
-		foreach(const QString &channel, unsubs)
-			stats->removeSubscription("ws", channel, false);
+	void wssession_error()
+	{
+		WsSession *s = (WsSession *)sender();
 
-		cs.wsSessions.remove(s->cid);
-		delete s;
+		log_debug("ws session %s control error", qPrintable(s->cid));
+
+		WsControlPacket::Item i;
+		i.cid = s->cid.toUtf8();
+		i.type = WsControlPacket::Item::Cancel;
+
+		writeWsControlItems(QList<WsControlPacket::Item>() << i);
+
+		removeWsSession(s);
 	}
 
 	void sub_subscribed()
