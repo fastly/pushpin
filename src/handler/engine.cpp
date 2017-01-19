@@ -2293,8 +2293,15 @@ private slots:
 				}
 				else if(cm.type == WsControlMessage::Session)
 				{
-					s->sid = cm.sessionId;
-					updateSids += cm.sessionId;
+					if(!cm.sessionId.isEmpty())
+					{
+						s->sid = cm.sessionId;
+						updateSids += cm.sessionId;
+					}
+					else
+					{
+						s->sid.clear();
+					}
 				}
 				else if(cm.type == WsControlMessage::SetMeta)
 				{

@@ -110,17 +110,11 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 	}
 	else if(out.type == Session)
 	{
-		out.sessionId = getString(in, pn, "id", true, &ok_, errorMessage);
+		out.sessionId = getString(in, pn, "id", false, &ok_, errorMessage);
 		if(!ok_)
 		{
 			if(ok)
 				*ok = false;
-			return WsControlMessage();
-		}
-
-		if(out.sessionId.isEmpty())
-		{
-			setError(ok, errorMessage, QString("%1 contains 'id' with invalid value").arg(pn));
 			return WsControlMessage();
 		}
 	}
