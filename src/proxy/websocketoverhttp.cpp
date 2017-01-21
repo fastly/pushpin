@@ -197,6 +197,7 @@ public:
 	bool peerClosing;
 	int peerCloseCode;
 	bool disconnecting;
+	bool disconnectSent;
 	bool updateQueued;
 	QTimer *keepAliveTimer;
 	QTimer *retryTimer;
@@ -224,6 +225,7 @@ public:
 		peerClosing(false),
 		peerCloseCode(-1),
 		disconnecting(false),
+		disconnectSent(false),
 		updateQueued(false),
 		retries(0)
 	{
@@ -382,7 +384,7 @@ private:
 	bool needUpdate() const
 	{
 		// always send this right away
-		if(disconnecting)
+		if(disconnecting && !disconnectSent)
 			return true;
 
 		if(updateQueued)
@@ -447,9 +449,10 @@ private:
 		{
 			events += WsEvent("OPEN");
 		}
-		else if(disconnecting)
+		else if(disconnecting && !disconnectSent)
 		{
 			events += WsEvent("DISCONNECT");
+			disconnectSent = true;
 		}
 		else
 		{
@@ -700,7 +703,7 @@ private slots:
 			}
 		}
 
-		if(disconnecting)
+		if(disconnectSent)
 		{
 			cleanup();
 			emit q->disconnected();
