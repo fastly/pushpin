@@ -649,7 +649,8 @@ private slots:
 				QByteArray name = h.first.mid(9);
 				if(meta.contains(name))
 					meta.removeAll(name);
-				meta += HttpHeader(name, h.second);
+				if(!h.second.isEmpty())
+					meta += HttpHeader(name, h.second);
 			}
 		}
 
