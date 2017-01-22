@@ -13,7 +13,7 @@ How it works
 Pushpin is placed in the network path between the backend and any clients:
 
 <p align="center">
-  <img src="http://pushpin.org/images/pushpin-abstract.png" alt="pushpin-abstract"/>
+  <img src="http://pushpin.org/image/pushpin-abstract.png" alt="pushpin-abstract"/>
 </p>
 
 Pushpin communicates with backend web applications using regular, short-lived HTTP requests. This allows backend applications to be written in any language and use any webserver. There are two main integration points:
