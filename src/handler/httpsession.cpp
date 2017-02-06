@@ -44,6 +44,7 @@
 #define RETRY_TIMEOUT 1000
 #define RETRY_MAX 5
 #define RETRY_RAND_MAX 1000
+#define KEEPALIVE_RAND_MAX 1000
 #define UPDATES_PER_ACTION_MAX 100
 #define PUBLISH_QUEUE_MAX 100
 
@@ -362,6 +363,16 @@ private:
 		}
 	}
 
+	void setupKeepAliveTimer()
+	{
+		if(instruct.keepAliveTimeout >= 0)
+		{
+			int timeout = instruct.keepAliveTimeout * 1000;
+			timeout = qMax(timeout - (qrand() % KEEPALIVE_RAND_MAX), 0);
+			timer->start(timeout);
+		}
+	}
+
 	void prepareToClose()
 	{
 		state = Closing;
@@ -594,8 +605,7 @@ private:
 				req->writeBody(f.body);
 
 				// restart keep alive timer
-				if(instruct.keepAliveTimeout >= 0)
-					timer->start(instruct.keepAliveTimeout * 1000);
+				setupKeepAliveTimer();
 
 				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
 					updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
@@ -637,8 +647,8 @@ private:
 		state = Holding;
 
 		// start keep alive timer, if it wasn't started already
-		if(!timer->isActive() && instruct.keepAliveTimeout >= 0)
-			timer->start(instruct.keepAliveTimeout * 1000);
+		if(!timer->isActive())
+			setupKeepAliveTimer();
 
 		if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
 			updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
@@ -1018,7 +1028,12 @@ private:
 					nextUri.clear();
 
 				if(instruct.holdMode == Instruct::StreamHold)
+				{
+					if(instruct.keepAliveTimeout < 0)
+						timer->stop();
+
 					prepareToSendQueueOrHold();
+				}
 			}
 		}
 
