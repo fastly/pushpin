@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,6 +20,7 @@
 #include "updater.h"
 
 #include <QSysInfo>
+#include <QDateTime>
 #include <QTimer>
 #include <QUrlQuery>
 #include <QJsonDocument>
@@ -74,6 +75,7 @@ public:
 	QTimer *timer;
 	ZhttpRequest *req;
 	Report report;
+	QDateTime lastLogTime;
 
 	Private(Updater *_q, Mode _mode, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
 		QObject(_q),
@@ -204,8 +206,12 @@ private slots:
 				QString version = update.value("version").toString();
 				QString link = update.value("link").toString();
 
-				if(!version.isEmpty())
+				QDateTime now = QDateTime::currentDateTime();
+
+				if(!version.isEmpty() && (lastLogTime.isNull() || now >= lastLogTime.addMSecs(CHECK_INTERVAL - (REPORT_INTERVAL / 2))))
 				{
+					lastLogTime = now;
+
 					QString msg = QString("New version of Pushpin available! version=%1").arg(version);
 					if(!link.isEmpty())
 						msg += QString(" %1").arg(link);
