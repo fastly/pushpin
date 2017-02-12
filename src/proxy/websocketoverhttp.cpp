@@ -923,7 +923,7 @@ WebSocketOverHttp::WebSocketOverHttp(QObject *parent) :
 
 WebSocketOverHttp::~WebSocketOverHttp()
 {
-	if(d->state == Connected && parent() != g_disconnectManager)
+	if((d->state == Connecting || d->state == Connected || d->state == Closing) && parent() != g_disconnectManager)
 	{
 		// if we get destructed while connected, disconnect in the background
 		WebSocketOverHttp *sock = new WebSocketOverHttp;
