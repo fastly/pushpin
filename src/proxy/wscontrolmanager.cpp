@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -28,6 +28,7 @@
 #include "log.h"
 #include "tnetstring.h"
 #include "zutil.h"
+#include "logutil.h"
 #include "wscontrolsession.h"
 
 #define DEFAULT_HWM 101000
@@ -157,7 +158,7 @@ public:
 		QByteArray buf = TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("wscontrol: OUT %s", qPrintable(TnetString::variantToString(vpacket, -1).mid(0, 1000)));
+			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT");
 
 		outSock->write(QList<QByteArray>() << buf);
 	}
@@ -231,7 +232,7 @@ private slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("wscontrol: IN %s", qPrintable(TnetString::variantToString(data, -1).mid(0, 1000)));
+			LogUtil::logVariant(LOG_LEVEL_DEBUG, data, "wscontrol: IN");
 
 		WsControlPacket p;
 		if(!p.fromVariant(data))
