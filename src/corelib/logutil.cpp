@@ -109,7 +109,7 @@ static void logPacket(int level, const QVariant &data, const QString &contentFie
 	logPacket(level, str, meta, MAX_DATA_LENGTH, content, MAX_CONTENT_LENGTH);
 }
 
-void logPacket(int level, const QVariant &data, const char *fmt, ...)
+void logVariant(int level, const QVariant &data, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
@@ -117,7 +117,7 @@ void logPacket(int level, const QVariant &data, const char *fmt, ...)
 	va_end(ap);
 }
 
-void logPacket(int level, const QByteArray &content, const char *fmt, ...)
+void logByteArray(int level, const QByteArray &content, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
@@ -125,15 +125,7 @@ void logPacket(int level, const QByteArray &content, const char *fmt, ...)
 	va_end(ap);
 }
 
-void logPacket(int level, const QVariant &data, const QByteArray &content, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	logPacket(level, data, content, fmt, ap);
-	va_end(ap);
-}
-
-void logPacket(int level, const QVariant &data, const QString &contentField, const char *fmt, ...)
+void logVariantWithContent(int level, const QVariant &data, const QString &contentField, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);

@@ -22,10 +22,9 @@
 
 namespace LogUtil {
 
-void logPacket(int level, const QVariant &data, const char *fmt, ...);
-void logPacket(int level, const QByteArray &content, const char *fmt, ...);
-void logPacket(int level, const QVariant &data, const QByteArray &content, const char *fmt, ...);
-void logPacket(int level, const QVariant &data, const QString &contentField, const char *fmt, ...);
+void logVariant(int level, const QVariant &data, const char *fmt, ...);
+void logByteArray(int level, const QByteArray &content, const char *fmt, ...);
+void logVariantWithContent(int level, const QVariant &data, const QString &contentField, const char *fmt, ...);
 
 }
 

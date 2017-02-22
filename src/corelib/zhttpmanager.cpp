@@ -346,14 +346,14 @@ public:
 		if(client_out_sock)
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logPacket(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT", logprefix);
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT", logprefix);
 
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
 		else
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logPacket(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT", logprefix);
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT", logprefix);
 
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
@@ -368,7 +368,7 @@ public:
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logPacket(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT %s", logprefix, instanceAddress.data());
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT %s", logprefix, instanceAddress.data());
 
 		QList<QByteArray> msg;
 		msg += instanceAddress;
@@ -386,7 +386,7 @@ public:
 		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logPacket(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -511,7 +511,7 @@ public slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logPacket(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client: IN %s", receiver.data());
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client: IN %s", receiver.data());
 
 		ZhttpResponsePacket p;
 		if(!p.fromVariant(data))
@@ -582,7 +582,7 @@ public slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logPacket(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws server: IN");
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws server: IN");
 
 		ZhttpRequestPacket p;
 		if(!p.fromVariant(data))
@@ -695,7 +695,7 @@ public slots:
 			}
 
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logPacket(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client req: IN");
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client req: IN");
 
 			ZhttpResponsePacket p;
 			if(!p.fromVariant(data))
@@ -750,7 +750,7 @@ public slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logPacket(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws server: IN stream");
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws server: IN stream");
 
 		ZhttpRequestPacket p;
 		if(!p.fromVariant(data))
