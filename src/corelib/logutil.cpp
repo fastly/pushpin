@@ -55,8 +55,9 @@ static void logPacket(int level, const QString &message, const QVariant &data = 
 
 	if(!content.isNull())
 	{
+		out += ' ' + QString::number(content.size()) + ' ';
 		QByteArray buf = trim(content, contentMax);
-		out += ' ' + TnetString::variantToString(QVariant(buf), -1);
+		out += TnetString::variantToString(QVariant(buf), -1);
 	}
 
 	log(level, "%s", qPrintable(out));
@@ -74,13 +75,6 @@ static void logPacket(int level, const QByteArray &content, const char *fmt, va_
 	QString str;
 	str.vsprintf(fmt, ap);
 	logPacket(level, str, QVariant(), -1, content, MAX_CONTENT_LENGTH);
-}
-
-static void logPacket(int level, const QVariant &data, const QByteArray &content, const char *fmt, va_list ap)
-{
-	QString str;
-	str.vsprintf(fmt, ap);
-	logPacket(level, str, data, MAX_DATA_LENGTH, content, MAX_CONTENT_LENGTH);
 }
 
 static void logPacket(int level, const QVariant &data, const QString &contentField, const char *fmt, va_list ap)
