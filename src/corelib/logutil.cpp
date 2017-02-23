@@ -31,7 +31,7 @@ namespace LogUtil {
 static QString trim(const QString &in, int max)
 {
 	if(in.length() > max && max >= 7)
-		return in.mid(0, max / 2) + "..." + in.mid((max / 2) + 3);
+		return in.mid(0, max / 2) + "..." + in.mid(in.length() - (max / 2) + 3);
 	else
 		return in;
 }
@@ -39,7 +39,7 @@ static QString trim(const QString &in, int max)
 static QByteArray trim(const QByteArray &in, int max)
 {
 	if(in.size() > max && max >= 7)
-		return in.mid(0, max / 2) + "..." + in.mid((max / 2) + 3);
+		return in.mid(0, max / 2) + "..." + in.mid(in.size() - (max / 2) + 3);
 	else
 		return in;
 }
