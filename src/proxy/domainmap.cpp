@@ -153,9 +153,10 @@ public:
 	QString fileName;
 	QHash< QString, QList<Rule> > map;
 	QTimer t;
+	QFileSystemWatcher watcher;
 
 	Worker() :
-		t(this)
+		t(this), watcher(this)
 	{
 		connect(&t, &QTimer::timeout, this, &Worker::doReload);
 		t.setSingleShot(true);
@@ -251,9 +252,8 @@ public slots:
 	{
 		if(!fileName.isEmpty())
 		{
-			QFileSystemWatcher *watcher = new QFileSystemWatcher(this);
-			connect(watcher, &QFileSystemWatcher::fileChanged, this, &Worker::fileChanged);
-			watcher->addPath(fileName);
+			connect(&watcher, &QFileSystemWatcher::fileChanged, this, &Worker::fileChanged);
+			watcher.addPath(fileName);
 
 			reload();
 		}
@@ -277,6 +277,11 @@ public slots:
 	void doReload()
 	{
 		reload();
+		// in case the file was not changed, but overwritten by a different
+		// file, re-arm watcher.
+		if(!fileName.isEmpty()) {
+			watcher.addPath(fileName);
+		}
 	}
 
 private:
