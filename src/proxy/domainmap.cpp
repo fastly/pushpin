@@ -156,7 +156,8 @@ public:
 	QFileSystemWatcher watcher;
 
 	Worker() :
-		t(this), watcher(this)
+		t(this),
+		watcher(this)
 	{
 		connect(&t, &QTimer::timeout, this, &Worker::doReload);
 		t.setSingleShot(true);
@@ -276,12 +277,14 @@ public slots:
 
 	void doReload()
 	{
-		reload();
 		// in case the file was not changed, but overwritten by a different
 		// file, re-arm watcher.
-		if(!fileName.isEmpty()) {
+		if(!fileName.isEmpty())
+		{
 			watcher.addPath(fileName);
 		}
+
+		reload();
 	}
 
 private:
