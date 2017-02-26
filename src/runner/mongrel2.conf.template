@@ -28,7 +28,8 @@
 	"server.daemonize": 0,
 	"no_clobber_xff": 1,
 	"request.relaxed": 1,
-	"download.flow_control": 1
+	"download.flow_control": 1,
+	"net.tcp_keepalive": 1
 }
 
 servers = [{% for i in interfaces %}server_{{ i.port }}{% if not loop.last %}, {% endif %}{% endfor %}]
