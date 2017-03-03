@@ -212,7 +212,7 @@ void TestHttpRequest::writeBody(const QByteArray &body)
 		{
 			d->requestBody += buf;
 
-			QMetaObject::invokeMethod(d, "bytesWritten", Qt::QueuedConnection, Q_ARG(int, buf.size()));
+			QMetaObject::invokeMethod(this, "bytesWritten", Qt::QueuedConnection, Q_ARG(int, buf.size()));
 		}
 	}
 }
