@@ -760,11 +760,7 @@ private slots:
 
 		InspectData idata;
 		if(p.haveInspectInfo)
-		{
-			idata.doProxy = p.inspectInfo.doProxy;
-			idata.sharingKey = p.inspectInfo.sharingKey;
-			idata.userData = p.inspectInfo.userData;
-		}
+			idata = p.inspectInfo;
 
 		foreach(const RetryRequestPacket::Request &req, p.requests)
 		{

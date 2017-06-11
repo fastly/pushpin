@@ -106,6 +106,22 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 		if(!adata.inspectData.sharingKey.isEmpty())
 			vinspect["sharing-key"] = adata.inspectData.sharingKey;
 
+		if(!adata.inspectData.sid.isEmpty())
+			vinspect["sid"] = adata.inspectData.sid;
+
+		if(!adata.inspectData.lastIds.isEmpty())
+		{
+			QVariantHash vlastIds;
+			QHashIterator<QByteArray, QByteArray> it(adata.inspectData.lastIds);
+			while(it.hasNext())
+			{
+				it.next();
+				vlastIds[QString::fromUtf8(it.key())] = it.value();
+			}
+
+			vinspect["last-ids"] = vlastIds;
+		}
+
 		if(adata.inspectData.userData.isValid())
 			vinspect["user-data"] = adata.inspectData.userData;
 

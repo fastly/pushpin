@@ -797,9 +797,7 @@ public slots:
 			adata.requestData.body = in.take();
 
 			adata.haveInspectData = true;
-			adata.inspectData.doProxy = idata.doProxy;
-			adata.inspectData.sharingKey = idata.sharingKey;
-			adata.inspectData.userData = idata.userData;
+			adata.inspectData = idata;
 
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
