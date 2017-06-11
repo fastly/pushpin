@@ -309,7 +309,7 @@ private slots:
 				if(!rule.jsonParam.isEmpty())
 				{
 					QUrlQuery tmp(QString::fromUtf8(requestData.body));
-					jsonData = tmp.queryItemValue(rule.jsonParam).toUtf8();
+					jsonData = tmp.queryItemValue(rule.jsonParam, QUrl::FullyDecoded).toUtf8();
 				}
 				else
 				{
