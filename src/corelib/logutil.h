@@ -20,11 +20,46 @@
 #ifndef LOGUTIL_H
 #define LOGUTIL_H
 
+#include <QHostAddress>
+#include "packet/httprequestdata.h"
+#include "packet/httpresponsedata.h"
+
 namespace LogUtil {
+
+enum RequestStatus
+{
+	Response,
+	Accept,
+	Error
+};
+
+class RequestData
+{
+public:
+	QString routeId;
+	RequestStatus status;
+	HttpRequestData requestData;
+	HttpResponseData responseData;
+	int responseBodySize;
+	QString targetStr;
+	bool targetOverHttp;
+	bool retry;
+	void *sharedBy;
+
+	RequestData() :
+		status(Response),
+		responseBodySize(-1),
+		targetOverHttp(false),
+		retry(false),
+		sharedBy(0)
+	{
+	}
+};
 
 void logVariant(int level, const QVariant &data, const char *fmt, ...);
 void logByteArray(int level, const QByteArray &content, const char *fmt, ...);
 void logVariantWithContent(int level, const QVariant &data, const QString &contentField, const char *fmt, ...);
+void logRequest(int level, const RequestData &data);
 
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -241,6 +241,16 @@ void applyHostHeader(HttpHeaders *headers, const QUrl &uri)
 		headers->removeAll("Host");
 		headers->append(HttpHeader("Host", hostHeader));
 	}
+}
+
+QString targetToString(const DomainMap::Target &target)
+{
+	if(target.type == DomainMap::Target::Test)
+		return "test";
+	else if(target.type == DomainMap::Target::Custom)
+		return(target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
+	else // Default
+		return target.connectHost + ':' + QString::number(target.connectPort);
 }
 
 }

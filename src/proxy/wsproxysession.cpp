@@ -35,6 +35,7 @@
 #include "wscontrolmanager.h"
 #include "wscontrolsession.h"
 #include "xffrule.h"
+#include "logutil.h"
 #include "proxyutil.h"
 #include "statsmanager.h"
 #include "inspectdata.h"
@@ -664,37 +665,32 @@ public:
 
 	void logConnection(bool proxied, int responseCode, int responseBodySize)
 	{
-		QString msg = QString("GET %1").arg(inSock->requestUri().toString(QUrl::FullyEncoded));
+		LogUtil::RequestData rd;
+
+		rd.routeId = routeId;
+
+		if(responseCode != -1)
+		{
+			rd.status = LogUtil::Response;
+			rd.responseData.code = responseCode;
+			rd.responseBodySize = responseBodySize;
+		}
+		else
+		{
+			rd.status = LogUtil::Error;
+		}
+
+		rd.requestData.method = "GET";
+		rd.requestData.uri = inSock->requestUri();
+		rd.requestData.headers = inSock->requestHeaders();
 
 		if(proxied)
 		{
-			QString targetStr;
-			if(target.type == DomainMap::Target::Test)
-			{
-				targetStr = "test";
-			}
-			else if(target.type == DomainMap::Target::Custom)
-			{
-				targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
-			}
-			else // Default
-			{
-				targetStr = target.connectHost + ':' + QString::number(target.connectPort);
-			}
-
-			msg += QString(" -> %2").arg(targetStr);
-			if(target.overHttp)
-				msg += "[http]";
+			rd.targetStr = ProxyUtil::targetToString(target);
+			rd.targetOverHttp = target.overHttp;
 		}
 
-		QUrl ref = QUrl(QString::fromUtf8(inSock->requestHeaders().get("Referer")));
-		if(!ref.isEmpty())
-			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
-		if(!routeId.isEmpty())
-			msg += QString(" route=%1").arg(QString::fromUtf8(routeId));
-		msg += QString(" code=%1 %2").arg(QString::number(responseCode), QString::number(responseBodySize));
-
-		log_info("%s", qPrintable(msg));
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd);
 	}
 
 	void restartKeepAlive()

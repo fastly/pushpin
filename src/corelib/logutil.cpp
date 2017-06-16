@@ -17,11 +17,12 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "log.h"
+#include "logutil.h"
 
 #include <assert.h>
 #include <stdarg.h>
 #include "tnetstring.h"
+#include "log.h"
 
 #define MAX_DATA_LENGTH 1000
 #define MAX_CONTENT_LENGTH 1000
@@ -125,6 +126,45 @@ void logVariantWithContent(int level, const QVariant &data, const QString &conte
 	va_start(ap, fmt);
 	logPacket(level, data, contentField, fmt, ap);
 	va_end(ap);
+}
+
+void logRequest(int level, const RequestData &data)
+{
+	QString msg = QString("%1 %2").arg(data.requestData.method, data.requestData.uri.toString(QUrl::FullyEncoded));
+
+	if(!data.targetStr.isEmpty())
+		msg += QString(" -> %1").arg(data.targetStr);
+
+	if(data.requestData.uri.scheme() != "http" && data.requestData.uri.scheme() != "https" && data.targetOverHttp)
+		msg += "[http]";
+
+	QUrl ref = QUrl(QString::fromUtf8(data.requestData.headers.get("Referer")));
+	if(!ref.isEmpty())
+		msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
+
+	if(!data.routeId.isEmpty())
+		msg += QString(" route=%1").arg(data.routeId);
+
+	if(data.status == LogUtil::Response)
+	{
+		msg += QString(" code=%1 %2").arg(QString::number(data.responseData.code), QString::number(data.responseBodySize));
+	}
+	else if(data.status == LogUtil::Accept)
+	{
+		msg += " accept";
+	}
+	else
+	{
+		msg += " error";
+	}
+
+	if(data.retry)
+		msg += " retry";
+
+	if(data.sharedBy)
+		msg += QString().sprintf(" shared=%p", data.sharedBy);
+
+	log(level, "%s", qPrintable(msg));
 }
 
 }

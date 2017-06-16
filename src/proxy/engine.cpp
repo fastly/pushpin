@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -47,6 +47,7 @@
 #include "sockjsmanager.h"
 #include "sockjssession.h"
 #include "updater.h"
+#include "logutil.h"
 
 #define DEFAULT_HWM 1000
 
@@ -581,32 +582,30 @@ public:
 
 	void logFinished(RequestSession *rs, bool accepted = false)
 	{
-		HttpRequestData rd = rs->requestData();
-		DomainMap::Entry e = rs->route();
-
-		QString msg = QString("%1 %2").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded));
-		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
-		if(!ref.isEmpty())
-			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
-		if(!e.id.isEmpty())
-			msg += QString(" route=%1").arg(QString::fromUtf8(e.id));
-
 		HttpResponseData resp = rs->responseData();
+
+		LogUtil::RequestData rd;
+
+		rd.routeId = rs->route().id;
 
 		if(accepted)
 		{
-			msg += " accept";
+			rd.status = LogUtil::Accept;
 		}
 		else if(resp.code != -1)
 		{
-			msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
+			rd.status = LogUtil::Response;
+			rd.responseData = resp;
+			rd.responseBodySize = rs->responseBodySize();
 		}
 		else
 		{
-			msg += " error";
+			rd.status = LogUtil::Error;
 		}
 
-		log_info("%s", qPrintable(msg));
+		rd.requestData = rs->requestData();
+
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd);
 	}
 
 private slots:

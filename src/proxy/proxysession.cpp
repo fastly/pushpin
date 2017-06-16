@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -36,6 +36,7 @@
 #include "statusreasons.h"
 #include "xffrule.h"
 #include "requestsession.h"
+#include "logutil.h"
 #include "proxyutil.h"
 #include "acceptrequest.h"
 #include "testhttprequest.h"
@@ -319,7 +320,7 @@ public:
 
 			QStringList targetStrs;
 			foreach(const DomainMap::Target &t, route.targets)
-				targetStrs += targetToString(t);
+				targetStrs += ProxyUtil::targetToString(t);
 			QString dmsg = QString("Unable to connect to any targets. Tried: %1").arg(targetStrs.join(", "));
 
 			rejectAll(502, "Bad Gateway", msg, dmsg);
@@ -753,7 +754,7 @@ public:
 				else
 				{
 					QString msg = "Error while proxying to origin.";
-					QString dmsg = QString("GRIP instruct response too large from %1").arg(targetToString(target));
+					QString dmsg = QString("GRIP instruct response too large from %1").arg(ProxyUtil::targetToString(target));
 
 					rejectAll(502, "Bad Gateway", msg, dmsg);
 					return;
@@ -901,53 +902,41 @@ public:
 		}
 	}
 
-	static QString targetToString(const DomainMap::Target &target)
-	{
-		if(target.type == DomainMap::Target::Test)
-			return "test";
-		else if(target.type == DomainMap::Target::Custom)
-			return(target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
-		else // Default
-			return target.connectHost + ':' + QString::number(target.connectPort);
-	}
-
 	void logFinished(SessionItem *si, bool accepted = false)
 	{
 		RequestSession *rs = si->rs;
 
-		HttpRequestData rd = rs->requestData();
-
-		QString msg = QString("%1 %2 -> %3").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded), targetToString(target));
-
-		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
-		if(!ref.isEmpty())
-			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
-
-		if(!route.id.isEmpty())
-			msg += QString(" route=%1").arg(QString::fromUtf8(route.id));
-
 		HttpResponseData resp = rs->responseData();
+
+		LogUtil::RequestData rd;
+
+		rd.routeId = route.id;
 
 		if(accepted)
 		{
-			msg += " accept";
+			rd.status = LogUtil::Accept;
 		}
 		else if(resp.code != -1 && !si->unclean)
 		{
-			msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
+			rd.status = LogUtil::Response;
+			rd.responseData = resp;
+			rd.responseBodySize = rs->responseBodySize();
 		}
 		else
 		{
-			msg += " error";
+			rd.status = LogUtil::Error;
 		}
 
-		if(rs->isRetry())
-			msg += " retry";
+		rd.requestData = rs->requestData();
 
+		rd.targetStr = ProxyUtil::targetToString(target);
+		rd.targetOverHttp = target.overHttp;
+
+		rd.retry = rs->isRetry();
 		if(shared)
-			msg += QString().sprintf(" shared=%p", this);
+			rd.sharedBy = this;
 
-		log_info("%s", qPrintable(msg));
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd);
 	}
 
 public slots:

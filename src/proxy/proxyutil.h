@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -36,6 +36,8 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 void applyHost(QUrl *url, const QString &host);
 
 void applyHostHeader(HttpHeaders *headers, const QUrl &uri);
+
+QString targetToString(const DomainMap::Target &target);
 
 }
 
