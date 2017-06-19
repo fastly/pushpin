@@ -31,13 +31,17 @@ class InspectData;
 
 namespace ProxyUtil {
 
-bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool stripHeaders);
+bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestData &requestData, const QByteArray &defaultUpstreamKey);
+
+void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool stripHeaders);
 
 void applyHost(QUrl *url, const QString &host);
 
 void applyHostHeader(HttpHeaders *headers, const QUrl &uri);
 
 QString targetToString(const DomainMap::Target &target);
+
+QHostAddress getLogicalAddress(const HttpHeaders &headers, const XffRule &xffRule, const QHostAddress &peerAddress);
 
 }
 

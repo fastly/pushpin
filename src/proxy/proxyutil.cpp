@@ -49,24 +49,28 @@ static bool validate_token(const QByteArray &token, const QByteArray &key)
 
 namespace ProxyUtil {
 
-bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, const QByteArray &defaultUpstreamKey, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool stripHeaders)
+// check if the request is coming from a grip proxy already
+bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestData &requestData, const QByteArray &defaultUpstreamKey)
 {
-	// check if the request is coming from a grip proxy already
-	bool trustedClient = false;
 	if(!defaultUpstreamKey.isEmpty())
 	{
-		QByteArray token = requestData->headers.get("Grip-Sig");
+		QByteArray token = requestData.headers.get("Grip-Sig");
 		if(!token.isEmpty())
 		{
 			if(validate_token(token, defaultUpstreamKey))
-			{
-				log_debug("%s: %p passing to upstream", logprefix, object);
-				trustedClient = true;
-			}
-			else
-				log_debug("%s: %p signature present but invalid: %s", logprefix, object, token.data());
+				return true;
+
+			log_debug("%s: %p signature present but invalid: %s", logprefix, object, token.data());
 		}
 	}
+
+	return false;
+}
+
+void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool stripHeaders)
+{
+	if(trustedClient)
+		log_debug("%s: %p passing to upstream", logprefix, object);
 
 	if(!trustedClient && entry.origHeaders)
 	{
@@ -211,8 +215,6 @@ bool manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 		xffValues += peerAddress.toString().toUtf8();
 	if(!xffValues.isEmpty())
 		requestData->headers += HttpHeader("X-Forwarded-For", HttpHeaders::join(xffValues));
-
-	return trustedClient;
 }
 
 void applyHost(QUrl *url, const QString &host)
@@ -251,6 +253,19 @@ QString targetToString(const DomainMap::Target &target)
 		return(target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
 	else // Default
 		return target.connectHost + ':' + QString::number(target.connectPort);
+}
+
+QHostAddress getLogicalAddress(const HttpHeaders &headers, const XffRule &xffRule, const QHostAddress &peerAddress)
+{
+	QList<QByteArray> xffValues = headers.getAll("X-Forwarded-For");
+	if(!xffValues.isEmpty() && xffRule.truncate != 0)
+	{
+		QHostAddress addr;
+		if(addr.setAddress(QString::fromUtf8(xffValues.first())))
+			return addr;
+	}
+
+	return peerAddress;
 }
 
 }

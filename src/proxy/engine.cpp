@@ -103,6 +103,7 @@ public:
 	SockJsManager *sockJsManager;
 	ConnectionManager connectionManager;
 	Updater *updater;
+	LogUtil::Config logConfig;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -168,6 +169,9 @@ public:
 	bool start(const Configuration &_config)
 	{
 		config = _config;
+
+		logConfig.fromAddress = config.logFrom;
+		logConfig.userAgent = config.logUserAgent;
 
 		if(!config.routeLines.isEmpty())
 		{
@@ -348,14 +352,13 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, accept, this);
+			ps = new ProxySession(zroutes, accept, logConfig, this);
 			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
 			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
 			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
 
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
-			ps->setDefaultUpstreamKey(config.upstreamKey);
 			ps->setAcceptXForwardedProtocol(config.acceptXForwardedProtocol);
 			ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
 			ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
@@ -389,7 +392,7 @@ public:
 	{
 		QByteArray cid = connectionManager.addConnection(sock);
 
-		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, stats, wsControl, this);
+		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl, this);
 		connect(ps, &WsProxySession::finishedByPassthrough, this, &Private::wsps_finishedByPassthrough);
 
 		connectionManager.setProxyForConnection(sock, ps);
@@ -405,11 +408,12 @@ public:
 		i->ps = ps;
 		wsProxyItemsBySession.insert(i->ps, i);
 
+		// after this call, ps->clientAddress() will be valid
 		ps->start(sock, cid, route);
 
 		if(stats)
 		{
-			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, sock->peerAddress(), sock->requestUri().scheme() == "wss", false);
+			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, ps->clientAddress(), sock->requestUri().scheme() == "wss", false);
 			stats->addActivity(ps->routeId());
 		}
 	}
@@ -483,6 +487,8 @@ public:
 			rs->setDebugEnabled(config.debug);
 			rs->setAutoCrossOrigin(config.autoCrossOrigin);
 			rs->setPrefetchSize(config.inspectPrefetch);
+			rs->setDefaultUpstreamKey(config.upstreamKey);
+			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 		}
 		else
 		{
@@ -605,7 +611,9 @@ public:
 
 		rd.requestData = rs->requestData();
 
-		LogUtil::logRequest(LOG_LEVEL_INFO, rd);
+		rd.fromAddress = rs->peerAddress();
+
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 private slots:

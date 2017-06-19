@@ -36,7 +36,6 @@
 #include "statusreasons.h"
 #include "xffrule.h"
 #include "requestsession.h"
-#include "logutil.h"
 #include "proxyutil.h"
 #include "acceptrequest.h"
 #include "testhttprequest.h"
@@ -123,7 +122,6 @@ public:
 	bool buffering;
 	QByteArray defaultSigIss;
 	QByteArray defaultSigKey;
-	QByteArray defaultUpstreamKey;
 	bool trustedClient;
 	bool passthrough;
 	bool acceptXForwardedProtocol;
@@ -134,8 +132,9 @@ public:
 	bool proxyInitialResponse;
 	bool acceptAfterResponding;
 	AcceptRequest *acceptRequest;
+	LogUtil::Config logConfig;
 
-	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager) :
+	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
@@ -157,7 +156,8 @@ public:
 		useXForwardedProtocol(false),
 		proxyInitialResponse(false),
 		acceptAfterResponding(false),
-		acceptRequest(0)
+		acceptRequest(0),
+		logConfig(_logConfig)
 	{
 		acceptHeaderPrefixes += "Grip-";
 		acceptContentTypes += "application/grip-instruct";
@@ -263,7 +263,10 @@ public:
 				intReq = inRequest->passthroughData().isValid();
 			}
 
-			trustedClient = ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata, !intReq);
+			trustedClient = rs->trusted();
+			QHostAddress physicalClientAddress = rs->request()->peerAddress();
+
+			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, physicalClientAddress, idata, !intReq);
 
 			state = Requesting;
 			buffering = true;
@@ -936,7 +939,9 @@ public:
 		if(shared)
 			rd.sharedBy = this;
 
-		LogUtil::logRequest(LOG_LEVEL_INFO, rd);
+		rd.fromAddress = rs->peerAddress();
+
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 public slots:
@@ -1332,10 +1337,10 @@ public slots:
 	}
 };
 
-ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, QObject *parent) :
+ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes, acceptManager);
+	d = new Private(this, zroutes, acceptManager, logConfig);
 }
 
 ProxySession::~ProxySession()
@@ -1352,11 +1357,6 @@ void ProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key
 {
 	d->defaultSigIss = iss;
 	d->defaultSigKey = key;
-}
-
-void ProxySession::setDefaultUpstreamKey(const QByteArray &key)
-{
-	d->defaultUpstreamKey = key;
 }
 
 void ProxySession::setAcceptXForwardedProtocol(bool enabled)

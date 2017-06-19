@@ -128,7 +128,7 @@ void logVariantWithContent(int level, const QVariant &data, const QString &conte
 	va_end(ap);
 }
 
-void logRequest(int level, const RequestData &data)
+void logRequest(int level, const RequestData &data, const Config &config)
 {
 	QString msg = QString("%1 %2").arg(data.requestData.method, data.requestData.uri.toString(QUrl::FullyEncoded));
 
@@ -137,6 +137,9 @@ void logRequest(int level, const RequestData &data)
 
 	if(data.requestData.uri.scheme() != "http" && data.requestData.uri.scheme() != "https" && data.targetOverHttp)
 		msg += "[http]";
+
+	if(config.fromAddress && !data.fromAddress.isNull())
+		msg += QString(" from=%1").arg(data.fromAddress.toString());
 
 	QUrl ref = QUrl(QString::fromUtf8(data.requestData.headers.get("Referer")));
 	if(!ref.isEmpty())
@@ -163,6 +166,13 @@ void logRequest(int level, const RequestData &data)
 
 	if(data.sharedBy)
 		msg += QString().sprintf(" shared=%p", data.sharedBy);
+
+	if(config.userAgent)
+	{
+		QString userAgent = data.requestData.headers.get("User-Agent");
+		if(!userAgent.isEmpty())
+			msg += QString(" ua=%1").arg(userAgent);
+	}
 
 	log(level, "%s", qPrintable(msg));
 }

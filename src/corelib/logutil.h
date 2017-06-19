@@ -45,6 +45,7 @@ public:
 	bool targetOverHttp;
 	bool retry;
 	void *sharedBy;
+	QHostAddress fromAddress;
 
 	RequestData() :
 		status(Response),
@@ -56,10 +57,23 @@ public:
 	}
 };
 
+class Config
+{
+public:
+	bool fromAddress;
+	bool userAgent;
+
+	Config() :
+		fromAddress(false),
+		userAgent(false)
+	{
+	}
+};
+
 void logVariant(int level, const QVariant &data, const char *fmt, ...);
 void logByteArray(int level, const QByteArray &content, const char *fmt, ...);
 void logVariantWithContent(int level, const QVariant &data, const QString &contentField, const char *fmt, ...);
-void logRequest(int level, const RequestData &data);
+void logRequest(int level, const RequestData &data, const Config &config = Config());
 
 }
 

@@ -35,7 +35,6 @@
 #include "wscontrolmanager.h"
 #include "wscontrolsession.h"
 #include "xffrule.h"
-#include "logutil.h"
 #include "proxyutil.h"
 #include "statsmanager.h"
 #include "inspectdata.h"
@@ -245,6 +244,7 @@ public:
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
 	HttpRequestData requestData;
+	QHostAddress clientAddress;
 	WebSocket *inSock;
 	WebSocket *outSock;
 	int inPendingBytes;
@@ -264,8 +264,9 @@ public:
 	QByteArray publicCid;
 	QTimer *keepAliveTimer;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
+	LogUtil::Config logConfig;
 
-	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
+	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
 		q(_q),
 		state(Idle),
@@ -285,7 +286,8 @@ public:
 		outReadInProgress(-1),
 		acceptGripMessages(false),
 		detached(false),
-		keepAliveTimer(0)
+		keepAliveTimer(0),
+		logConfig(_logConfig)
 	{
 	}
 
@@ -356,6 +358,10 @@ public:
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
 
+		bool trustedClient = ProxyUtil::checkTrustedClient("wsproxysession", q, requestData, defaultUpstreamKey);
+
+		clientAddress = ProxyUtil::getLogicalAddress(requestData.headers, trustedClient ? xffTrustedRule : xffRule, inSock->peerAddress());
+
 		QString host = requestData.uri.host();
 
 		if(entry.isNull())
@@ -404,7 +410,9 @@ public:
 			requestData.headers += HttpHeader(h.first, h.second);
 		}
 
-		bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, inSock->peerAddress(), InspectData(), true);
+		QHostAddress physicalClientAddress = inSock->peerAddress();
+
+		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, physicalClientAddress, InspectData(), true);
 
 		// don't proxy extensions, as we may not know how to handle them
 		requestData.headers.removeAll("Sec-WebSocket-Extensions");
@@ -690,7 +698,9 @@ public:
 			rd.targetOverHttp = target.overHttp;
 		}
 
-		LogUtil::logRequest(LOG_LEVEL_INFO, rd);
+		rd.fromAddress = clientAddress;
+
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 	void restartKeepAlive()
@@ -1051,15 +1061,20 @@ private slots:
 	}
 };
 
-WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
+WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes, connectionManager, statsManager, wsControlManager);
+	d = new Private(this, zroutes, connectionManager, logConfig, statsManager, wsControlManager);
 }
 
 WsProxySession::~WsProxySession()
 {
 	delete d;
+}
+
+QHostAddress WsProxySession::clientAddress() const
+{
+	return d->clientAddress;
 }
 
 QByteArray WsProxySession::routeId() const
