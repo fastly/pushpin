@@ -155,6 +155,7 @@ public:
 	QByteArray defaultUpstreamKey;
 	bool trusted;
 	QHostAddress peerAddress;
+	QHostAddress logicalPeerAddress;
 	DomainMap::Entry route;
 	bool debug;
 	bool autoCrossOrigin;
@@ -253,7 +254,8 @@ public:
 
 		trusted = ProxyUtil::checkTrustedClient("requestsession", q, requestData, defaultUpstreamKey);
 
-		peerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, req->peerAddress());
+		peerAddress = req->peerAddress();
+		logicalPeerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
 
 		log_debug("IN id=%s, %s %s", rid.second.data(), qPrintable(requestData.method), requestData.uri.toEncoded().data());
 
@@ -346,7 +348,7 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, peerAddress, isHttps, false);
+			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
 			stats->addActivity(route.id);
 		}
 
@@ -359,6 +361,9 @@ public:
 	void startRetry()
 	{
 		trusted = ProxyUtil::checkTrustedClient("requestsession", q, requestData, defaultUpstreamKey);
+
+		peerAddress = zhttpRequest->peerAddress();
+		logicalPeerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
 
 		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
 		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
@@ -387,7 +392,7 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, peerAddress, isHttps, true);
+			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, true);
 			stats->addActivity(route.id);
 		}
 	}
@@ -797,6 +802,7 @@ public slots:
 			areq.rid = rid;
 			areq.https = requestData.uri.scheme() == "https";
 			areq.peerAddress = peerAddress;
+			areq.logicalPeerAddress = logicalPeerAddress;
 			areq.debug = debug;
 			areq.autoCrossOrigin = autoCrossOrigin;
 			areq.jsonpCallback = jsonpCallback;
@@ -1167,6 +1173,11 @@ bool RequestSession::trusted() const
 QHostAddress RequestSession::peerAddress() const
 {
 	return d->peerAddress;
+}
+
+QHostAddress RequestSession::logicalPeerAddress() const
+{
+	return d->logicalPeerAddress;
 }
 
 ZhttpRequest::Rid RequestSession::rid() const

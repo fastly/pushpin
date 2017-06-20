@@ -36,6 +36,7 @@ public:
 		ZhttpRequest::Rid rid;
 		bool https;
 		QHostAddress peerAddress;
+		QHostAddress logicalPeerAddress;
 		bool debug;
 		bool isRetry;
 		bool autoCrossOrigin;
@@ -65,6 +66,7 @@ public:
 
 	QList<Request> requests;
 	HttpRequestData requestData;
+	HttpRequestData origRequestData;
 
 	bool haveInspectData;
 	InspectData inspectData;

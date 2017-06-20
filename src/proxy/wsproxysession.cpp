@@ -244,7 +244,7 @@ public:
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
 	HttpRequestData requestData;
-	QHostAddress clientAddress;
+	QHostAddress logicalClientAddress;
 	WebSocket *inSock;
 	WebSocket *outSock;
 	int inPendingBytes;
@@ -360,7 +360,7 @@ public:
 
 		bool trustedClient = ProxyUtil::checkTrustedClient("wsproxysession", q, requestData, defaultUpstreamKey);
 
-		clientAddress = ProxyUtil::getLogicalAddress(requestData.headers, trustedClient ? xffTrustedRule : xffRule, inSock->peerAddress());
+		logicalClientAddress = ProxyUtil::getLogicalAddress(requestData.headers, trustedClient ? xffTrustedRule : xffRule, inSock->peerAddress());
 
 		QString host = requestData.uri.host();
 
@@ -410,9 +410,9 @@ public:
 			requestData.headers += HttpHeader(h.first, h.second);
 		}
 
-		QHostAddress physicalClientAddress = inSock->peerAddress();
+		QHostAddress clientAddress = inSock->peerAddress();
 
-		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, physicalClientAddress, InspectData(), true);
+		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, InspectData(), true);
 
 		// don't proxy extensions, as we may not know how to handle them
 		requestData.headers.removeAll("Sec-WebSocket-Extensions");
@@ -698,7 +698,7 @@ public:
 			rd.targetOverHttp = target.overHttp;
 		}
 
-		rd.fromAddress = clientAddress;
+		rd.fromAddress = logicalClientAddress;
 
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
@@ -1072,9 +1072,9 @@ WsProxySession::~WsProxySession()
 	delete d;
 }
 
-QHostAddress WsProxySession::clientAddress() const
+QHostAddress WsProxySession::logicalClientAddress() const
 {
-	return d->clientAddress;
+	return d->logicalClientAddress;
 }
 
 QByteArray WsProxySession::routeId() const

@@ -148,7 +148,7 @@ public:
 		adata = _adata;
 		instruct = _instruct;
 
-		currentUri = adata.requestData.uri;
+		currentUri = req->requestUri();
 
 		if(!instruct.nextLink.isEmpty())
 			nextUri = currentUri.resolved(instruct.nextLink);
@@ -174,7 +174,7 @@ public:
 		assert(state == NotStarted);
 
 		ZhttpRequest::Rid rid = req->rid();
-		stats->addConnection(rid.first + ':' + rid.second, adata.route.toUtf8(), StatsManager::Http, adata.peerAddress, req->requestUri().scheme() == "https", true);
+		stats->addConnection(rid.first + ':' + rid.second, adata.route.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true);
 
 		// need to send initial content?
 		if((instruct.holdMode == Instruct::NoHold || instruct.holdMode == Instruct::StreamHold) && !adata.responseSent)
@@ -183,7 +183,7 @@ public:
 			HttpHeaders headers = instruct.response.headers;
 			headers.removeAll("Content-Length");
 			if(adata.autoCrossOrigin)
-				Cors::applyCorsHeaders(adata.requestData.headers, &headers);
+				Cors::applyCorsHeaders(req->requestHeaders(), &headers);
 			req->beginResponse(instruct.response.code, instruct.response.reason, headers);
 
 			if(!instruct.response.body.isEmpty())
@@ -734,7 +734,7 @@ private:
 			}
 			else
 			{
-				Cors::applyCorsHeaders(adata.requestData.headers, &headers);
+				Cors::applyCorsHeaders(req->requestHeaders(), &headers);
 			}
 		}
 
@@ -1235,7 +1235,7 @@ ZhttpRequest::Rid HttpSession::rid() const
 
 QUrl HttpSession::requestUri() const
 {
-	return d->adata.requestData.uri;
+	return d->req->requestUri();
 }
 
 bool HttpSession::isRetry() const

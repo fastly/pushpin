@@ -44,7 +44,7 @@ public:
 	class AcceptData
 	{
 	public:
-		QHostAddress peerAddress;
+		QHostAddress logicalPeerAddress;
 		bool debug;
 		bool isRetry;
 		bool autoCrossOrigin;

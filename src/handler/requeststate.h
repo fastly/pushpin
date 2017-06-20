@@ -34,6 +34,7 @@ public:
 	int outSeq;
 	int outCredits;
 	QHostAddress peerAddress;
+	QHostAddress logicalPeerAddress;
 	bool isHttps;
 	bool debug;
 	bool isRetry;

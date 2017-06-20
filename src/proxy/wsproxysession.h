@@ -39,9 +39,8 @@ public:
 	WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *stats = 0, WsControlManager *wsControlManager = 0, QObject *parent = 0);
 	~WsProxySession();
 
-	QHostAddress clientAddress() const;
+	QHostAddress logicalClientAddress() const;
 	QByteArray routeId() const;
-	//ZWebSocket::Rid rid() const;
 	QByteArray cid() const;
 
 	WebSocket *inSocket() const;

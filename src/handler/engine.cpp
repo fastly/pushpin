@@ -593,6 +593,7 @@ public:
 	bool trusted;
 	QHash<ZhttpRequest::Rid, RequestState> requestStates;
 	HttpRequestData requestData;
+	HttpRequestData origRequestData;
 	bool haveInspectInfo;
 	InspectData inspectInfo;
 	HttpResponseData responseData;
@@ -701,66 +702,21 @@ public:
 
 			// parse request-data
 
-			if(!args.contains("request-data") || args["request-data"].type() != QVariant::Hash)
+			requestData = parseRequestData(args, "request-data");
+			if(requestData.method.isEmpty())
 			{
 				respondError("bad-request");
 				return;
 			}
 
-			QVariantHash rd = args["request-data"].toHash();
+			// parse orig-request-data
 
-			if(!rd.contains("method") || rd["method"].type() != QVariant::ByteArray)
+			origRequestData = parseRequestData(args, "orig-request-data");
+			if(origRequestData.method.isEmpty())
 			{
 				respondError("bad-request");
 				return;
 			}
-
-			requestData.method = QString::fromLatin1(rd["method"].toByteArray());
-
-			if(!rd.contains("uri") || rd["uri"].type() != QVariant::ByteArray)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			requestData.uri = QUrl(rd["uri"].toString(), QUrl::StrictMode);
-			if(!requestData.uri.isValid())
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			foreach(const QVariant &vheader, rd["headers"].toList())
-			{
-				if(vheader.type() != QVariant::List)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				QVariantList vlist = vheader.toList();
-				if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				requestData.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
-			}
-
-			if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			requestData.body = rd["body"].toByteArray();
 
 			// parse response
 
@@ -770,7 +726,7 @@ public:
 				return;
 			}
 
-			rd = args["response"].toHash();
+			QVariantHash rd = args["response"].toHash();
 
 			if(!rd.contains("code") || !rd["code"].canConvert(QVariant::Int))
 			{
@@ -978,6 +934,49 @@ signals:
 	void retryPacketReady(const RetryRequestPacket &packet);
 
 private:
+	static HttpRequestData parseRequestData(const QVariantHash &args, const QString &field)
+	{
+		if(!args.contains(field) || args[field].type() != QVariant::Hash)
+			return HttpRequestData();
+
+		QVariantHash rd = args[field].toHash();
+
+		if(!rd.contains("method") || rd["method"].type() != QVariant::ByteArray)
+			return HttpRequestData();
+
+		HttpRequestData out;
+		out.method = QString::fromLatin1(rd["method"].toByteArray());
+
+		if(!rd.contains("uri") || rd["uri"].type() != QVariant::ByteArray)
+			return HttpRequestData();
+
+		out.uri = QUrl(rd["uri"].toString(), QUrl::StrictMode);
+		if(!out.uri.isValid())
+			return HttpRequestData();
+
+		if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
+			return HttpRequestData();
+
+		foreach(const QVariant &vheader, rd["headers"].toList())
+		{
+			if(vheader.type() != QVariant::List)
+				return HttpRequestData();
+
+			QVariantList vlist = vheader.toList();
+			if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+				return HttpRequestData();
+
+			out.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
+		}
+
+		if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
+			return HttpRequestData();
+
+		out.body = rd["body"].toByteArray();
+
+		return out;
+	}
+
 	void respondError(const QByteArray &condition, const QVariant &result = QVariant())
 	{
 		req->respondError(condition, result);
@@ -1094,7 +1093,7 @@ private:
 					rp.requests += rpreq;
 				}
 
-				rp.requestData = requestData;
+				rp.requestData = origRequestData;
 
 				if(haveInspectInfo)
 				{
@@ -1141,8 +1140,8 @@ private:
 			ZhttpRequest *httpReq = zhttpIn->createRequestFromState(ss);
 
 			HttpSession::AcceptData adata;
-			adata.requestData = requestData;
-			adata.peerAddress = rs.peerAddress;
+			adata.requestData = origRequestData;
+			adata.logicalPeerAddress = rs.logicalPeerAddress;
 			adata.debug = rs.debug;
 			adata.isRetry = rs.isRetry;
 			adata.autoCrossOrigin = rs.autoCrossOrigin;

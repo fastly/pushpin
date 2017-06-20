@@ -43,6 +43,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 			if(!r.peerAddress.isNull())
 				vrequest["peer-address"] = r.peerAddress.toString().toUtf8();
 
+			if(!r.logicalPeerAddress.isNull())
+				vrequest["logical-peer-address"] = r.logicalPeerAddress.toString().toUtf8();
+
 			if(r.debug)
 				vrequest["debug"] = true;
 
@@ -76,13 +79,14 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 	}
 
 	{
+		const HttpRequestData &requestData = adata.requestData;
 		QVariantHash vrequestData;
 
-		vrequestData["method"] = adata.requestData.method.toLatin1();
-		vrequestData["uri"] = adata.requestData.uri.toEncoded();
+		vrequestData["method"] = requestData.method.toLatin1();
+		vrequestData["uri"] = requestData.uri.toEncoded();
 
 		QVariantList vheaders;
-		foreach(const HttpHeader &h, adata.requestData.headers)
+		foreach(const HttpHeader &h, requestData.headers)
 		{
 			QVariantList vheader;
 			vheader += h.first;
@@ -92,9 +96,32 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 		vrequestData["headers"] = vheaders;
 
-		vrequestData["body"] = adata.requestData.body;
+		vrequestData["body"] = requestData.body;
 
 		obj["request-data"] = vrequestData;
+	}
+
+	{
+		const HttpRequestData &requestData = adata.origRequestData;
+		QVariantHash vrequestData;
+
+		vrequestData["method"] = requestData.method.toLatin1();
+		vrequestData["uri"] = requestData.uri.toEncoded();
+
+		QVariantList vheaders;
+		foreach(const HttpHeader &h, requestData.headers)
+		{
+			QVariantList vheader;
+			vheader += h.first;
+			vheader += h.second;
+			vheaders += QVariant(vheader);
+		}
+
+		vrequestData["headers"] = vheaders;
+
+		vrequestData["body"] = requestData.body;
+
+		obj["orig-request-data"] = vrequestData;
 	}
 
 	if(adata.haveInspectData)

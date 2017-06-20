@@ -49,6 +49,7 @@ public:
 	bool isHttps() const;
 	bool trusted() const;
 	QHostAddress peerAddress() const;
+	QHostAddress logicalPeerAddress() const;
 	ZhttpRequest::Rid rid() const;
 	HttpRequestData requestData() const;
 	HttpResponseData responseData() const;

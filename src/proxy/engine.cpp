@@ -408,12 +408,12 @@ public:
 		i->ps = ps;
 		wsProxyItemsBySession.insert(i->ps, i);
 
-		// after this call, ps->clientAddress() will be valid
+		// after this call, ps->logicalClientAddress() will be valid
 		ps->start(sock, cid, route);
 
 		if(stats)
 		{
-			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, ps->clientAddress(), sock->requestUri().scheme() == "wss", false);
+			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, ps->logicalClientAddress(), sock->requestUri().scheme() == "wss", false);
 			stats->addActivity(ps->routeId());
 		}
 	}
@@ -611,7 +611,7 @@ public:
 
 		rd.requestData = rs->requestData();
 
-		rd.fromAddress = rs->peerAddress();
+		rd.fromAddress = rs->logicalPeerAddress();
 
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
@@ -794,7 +794,11 @@ private slots:
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
 			RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
+
 			requestSessions += rs;
+
+			rs->setDefaultUpstreamKey(config.upstreamKey);
+			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse

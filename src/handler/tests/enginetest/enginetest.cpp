@@ -320,6 +320,7 @@ private slots:
 		QVariantHash args;
 		args["requests"] = QVariantList() << reqState;
 		args["request-data"] = req;
+		args["orig-request-data"] = req;
 		args["response"] = resp;
 
 		QVariantHash data;
@@ -370,6 +371,7 @@ private slots:
 		QVariantHash args;
 		args["requests"] = QVariantList() << reqState;
 		args["request-data"] = req;
+		args["orig-request-data"] = req;
 		args["response"] = resp;
 		args["response-sent"] = true;
 
@@ -422,6 +424,7 @@ private slots:
 		QVariantHash args;
 		args["requests"] = QVariantList() << reqState;
 		args["request-data"] = req;
+		args["orig-request-data"] = req;
 		args["response"] = resp;
 
 		QVariantHash data;
@@ -479,6 +482,7 @@ private slots:
 		QVariantHash args;
 		args["requests"] = QVariantList() << reqState;
 		args["request-data"] = req;
+		args["orig-request-data"] = req;
 		args["response"] = resp;
 		args["response-sent"] = true;
 
@@ -537,6 +541,7 @@ private slots:
 		QVariantHash args;
 		args["requests"] = QVariantList() << reqState;
 		args["request-data"] = req;
+		args["orig-request-data"] = req;
 		args["response"] = resp;
 
 		QVariantHash data;
@@ -605,6 +610,7 @@ private slots:
 		QVariantHash args;
 		args["requests"] = QVariantList() << reqState;
 		args["request-data"] = req;
+		args["orig-request-data"] = req;
 		args["response"] = resp;
 
 		QVariantHash data;
@@ -692,6 +698,7 @@ private slots:
 		QVariantHash args;
 		args["requests"] = QVariantList() << reqState;
 		args["request-data"] = req;
+		args["orig-request-data"] = req;
 		args["response"] = resp;
 
 		QVariantHash data;

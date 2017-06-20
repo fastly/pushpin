@@ -110,6 +110,7 @@ public:
 	QSet<SessionItem*> sessionItems;
 	bool shared;
 	HttpRequestData requestData;
+	HttpRequestData origRequestData;
 	HttpResponseData responseData;
 	HttpResponseData acceptResponseData;
 	BufferList requestBody;
@@ -215,6 +216,8 @@ public:
 			requestBody += requestData.body;
 			requestData.body.clear();
 
+			origRequestData = requestData;
+
 			if(!route.asHost.isEmpty())
 				ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
@@ -264,9 +267,9 @@ public:
 			}
 
 			trustedClient = rs->trusted();
-			QHostAddress physicalClientAddress = rs->request()->peerAddress();
+			QHostAddress clientAddress = rs->request()->peerAddress();
 
-			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, physicalClientAddress, idata, !intReq);
+			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, idata, !intReq);
 
 			state = Requesting;
 			buffering = true;
@@ -1181,6 +1184,7 @@ public slots:
 				areq.rid = si->rs->rid();
 				areq.https = si->rs->isHttps();
 				areq.peerAddress = si->rs->peerAddress();
+				areq.logicalPeerAddress = si->rs->logicalPeerAddress();
 				areq.debug = si->rs->debugEnabled();
 				areq.isRetry = si->rs->isRetry();
 				areq.autoCrossOrigin = si->rs->autoCrossOrigin();
@@ -1196,6 +1200,8 @@ public slots:
 
 			adata.requestData = requestData;
 			adata.requestData.body = requestBody.take();
+			adata.origRequestData = origRequestData;
+			adata.origRequestData.body = adata.requestData.body;
 
 			adata.haveResponse = true;
 			adata.response = acceptResponseData;
