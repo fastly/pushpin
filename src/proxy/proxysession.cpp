@@ -1051,6 +1051,9 @@ public slots:
 				case ZhttpRequest::ErrorLengthRequired:
 					rejectAll(411, "Length Required", "Must provide Content-Length header.");
 					break;
+				case ZhttpRequest::ErrorPolicy:
+					rejectAll(502, "Bad Gateway", "Error while proxying to origin.", "Error: Origin host/IP blocked.");
+					break;
 				case ZhttpRequest::ErrorConnect:
 				case ZhttpRequest::ErrorConnectTimeout:
 				case ZhttpRequest::ErrorTls:
