@@ -33,6 +33,7 @@
 #include "cors.h"
 #include "jsonpatch.h"
 #include "statsmanager.h"
+#include "logutil.h"
 #include "variantutil.h"
 #include "publishitem.h"
 #include "publishformat.h"
@@ -115,6 +116,7 @@ public:
 	UpdateAction *pendingAction;
 	QList<PublishItem> publishQueue;
 	RetryRequestPacket retryPacket;
+	LogUtil::Config logConfig;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager) :
 		QObject(_q),
@@ -1053,52 +1055,39 @@ private:
 		}
 	}
 
-	static QString makeLastIdsStr(const HttpHeaders &headers)
-	{
-		QString out;
-
-		bool first = true;
-		foreach(const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last"))
-		{
-			if(!first)
-				out += ' ';
-			out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first), QString::fromUtf8(params.get("last-id")));
-			first = false;
-		}
-
-		return out;
-	}
-
 	void logRequest(const QString &method, const QUrl &uri, const HttpHeaders &headers, int code, int bodySize)
 	{
-		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
+		LogUtil::RequestData rd;
 
 		if(!adata.route.isEmpty())
-			msg += QString(" route=%1").arg(adata.route);
+			rd.routeId = adata.route;
 
-		msg += QString(" code=%1 %2").arg(QString::number(code), QString::number(bodySize));
+		rd.status = LogUtil::Response;
 
-		QString lastIdsStr = makeLastIdsStr(headers);
-		if(!lastIdsStr.isEmpty())
-			msg += ' ' + lastIdsStr;
+		rd.requestData.method = method;
+		rd.requestData.uri = uri;
+		rd.requestData.headers = headers;
 
-		log_info("%s", qPrintable(msg));
+		rd.responseData.code = code;
+		rd.responseBodySize = bodySize;
+
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 	void logRequestError(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 	{
-		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
+		LogUtil::RequestData rd;
 
 		if(!adata.route.isEmpty())
-			msg += QString(" route=%1").arg(adata.route);
+			rd.routeId = adata.route;
 
-		QString lastIdsStr = makeLastIdsStr(headers);
-		if(!lastIdsStr.isEmpty())
-			msg += ' ' + lastIdsStr;
+		rd.status = LogUtil::Error;
 
-		msg += QString(" error");
+		rd.requestData.method = method;
+		rd.requestData.uri = uri;
+		rd.requestData.headers = headers;
 
-		log_info("%s", qPrintable(msg));
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 private slots:

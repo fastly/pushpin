@@ -45,6 +45,22 @@ static QByteArray trim(const QByteArray &in, int max)
 		return in;
 }
 
+static QString makeLastIdsStr(const HttpHeaders &headers)
+{
+	QString out;
+
+	bool first = true;
+	foreach(const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last"))
+	{
+		if(!first)
+			out += ' ';
+		out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first), QString::fromUtf8(params.get("last-id")));
+		first = false;
+	}
+
+	return out;
+}
+
 static void logPacket(int level, const QString &message, const QVariant &data = QVariant(), int dataMax = -1, const QByteArray &content = QByteArray(), int contentMax = -1)
 {
 	QString out = message;
@@ -173,6 +189,10 @@ void logRequest(int level, const RequestData &data, const Config &config)
 		if(!userAgent.isEmpty())
 			msg += QString(" ua=%1").arg(userAgent);
 	}
+
+	QString lastIdsStr = makeLastIdsStr(data.requestData.headers);
+	if(!lastIdsStr.isEmpty())
+		msg += ' ' + lastIdsStr;
 
 	log(level, "%s", qPrintable(msg));
 }
