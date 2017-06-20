@@ -76,6 +76,7 @@ public:
 
 	QByteArray route;
 	QByteArray channelPrefix;
+	QList<QByteArray> channels;
 	QByteArray sigIss;
 	QByteArray sigKey;
 	bool trusted; // whether a trusted target was used

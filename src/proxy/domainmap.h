@@ -104,7 +104,7 @@ public:
 		bool trustConnectHost; // verify cert against target host
 		bool insecure; // ignore server certificate validity
 		QString host; // override input host
-		QString subChannel; // force subscription for websocket test
+		QStringList subscriptions; // implicit subscriptions
 		bool overHttp; // use websocket-over-http protocol
 
 		Target() :

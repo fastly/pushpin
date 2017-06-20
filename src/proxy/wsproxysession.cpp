@@ -259,7 +259,6 @@ public:
 	bool acceptGripMessages;
 	QByteArray messagePrefix;
 	bool detached;
-	QString subChannel;
 	QDateTime activityTime;
 	QByteArray publicCid;
 	QTimer *keepAliveTimer;
@@ -452,8 +451,6 @@ public:
 
 		if(!target.host.isEmpty())
 			ProxyUtil::applyHost(&uri, target.host);
-
-		subChannel = target.subChannel;
 
 		if(zhttpManager)
 		{
@@ -794,7 +791,7 @@ private slots:
 		QList<QByteArray> wsExtensions = headers.takeAll("Sec-WebSocket-Extensions");
 
 		HttpExtension grip = getExtension(wsExtensions, "grip");
-		if(!grip.isNull() || !subChannel.isEmpty())
+		if(!grip.isNull() || !target.subscriptions.isEmpty())
 		{
 			if(!grip.isNull())
 			{
@@ -826,16 +823,11 @@ private slots:
 				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
 				wsControl->start(routeId, channelPrefix, inSock->requestUri());
 
-				if(!subChannel.isEmpty())
+				foreach(const QString &subChannel, target.subscriptions)
 				{
 					log_debug("wsproxysession: %p implicit subscription to [%s]", q, qPrintable(subChannel));
 
-					QVariantMap msg;
-					msg["type"] = "subscribe";
-					msg["channel"] = subChannel;
-
-					QByteArray msgJson = QJsonDocument(QJsonObject::fromVariantMap(msg)).toJson(QJsonDocument::Compact);
-					wsControl->sendGripMessage(msgJson);
+					wsControl->sendSubscribe(subChannel.toUtf8());
 				}
 			}
 		}

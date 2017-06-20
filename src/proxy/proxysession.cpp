@@ -1217,6 +1217,8 @@ public slots:
 
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
+			foreach(const QString &s, target.subscriptions)
+				adata.channels += s.toUtf8();
 			adata.sigIss = sigIss;
 			adata.sigKey = sigKey;
 			adata.trusted = target.trusted;

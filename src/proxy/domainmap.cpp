@@ -544,7 +544,13 @@ private:
 				target.host = props.value("host");
 
 			if(props.contains("sub"))
-				target.subChannel = props.value("sub");
+			{
+				foreach(const QString &s, props.values("sub"))
+				{
+					if(!s.isEmpty())
+						target.subscriptions += s;
+				}
+			}
 
 			if(props.contains("over_http"))
 				target.overHttp = true;

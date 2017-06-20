@@ -392,6 +392,7 @@ public:
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
 	QSet<QString> channels;
+	QSet<QString> implicitChannels;
 	int ttl;
 	QByteArray keepAliveType;
 	QByteArray keepAliveMessage;
@@ -588,6 +589,7 @@ public:
 	HttpSessionUpdateManager *httpSessionUpdateManager;
 	QString route;
 	QString channelPrefix;
+	QStringList implicitChannels;
 	QByteArray sigIss;
 	QByteArray sigKey;
 	bool trusted;
@@ -645,6 +647,27 @@ public:
 				}
 
 				channelPrefix = QString::fromUtf8(args["channel-prefix"].toByteArray());
+			}
+
+			if(args.contains("channels"))
+			{
+				if(args["channels"].type() != QVariant::List)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				QVariantList vchannels = args["channels"].toList();
+				foreach(const QVariant &v, vchannels)
+				{
+					if(v.type() != QVariant::ByteArray)
+					{
+						respondError("bad-request");
+						return;
+					}
+
+					implicitChannels += QString::fromUtf8(v.toByteArray());
+				}
 			}
 
 			if(args.contains("sig-iss"))
@@ -1149,6 +1172,7 @@ private:
 			adata.jsonpExtendedResponse = rs.jsonpExtendedResponse;
 			adata.route = route;
 			adata.channelPrefix = channelPrefix;
+			adata.implicitChannels = implicitChannels.toSet();
 			adata.sid = sid;
 			adata.responseSent = responseSent;
 			adata.sigIss = sigIss;
@@ -2269,17 +2293,21 @@ private slots:
 				else if(cm.type == WsControlMessage::Unsubscribe)
 				{
 					QString channel = s->channelPrefix + cm.channel;
-					s->channels.remove(channel);
-					s->channelFilters.remove(channel);
 
-					if(cs.wsSessionsByChannel.contains(channel))
+					if(!s->implicitChannels.contains(channel))
 					{
-						QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
-						cur.remove(s);
-						if(cur.isEmpty())
+						s->channels.remove(channel);
+						s->channelFilters.remove(channel);
+
+						if(cs.wsSessionsByChannel.contains(channel))
 						{
-							cs.wsSessionsByChannel.remove(channel);
-							stats->removeSubscription("ws", channel, false);
+							QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
+							cur.remove(s);
+							if(cur.isEmpty())
+							{
+								cs.wsSessionsByChannel.remove(channel);
+								stats->removeSubscription("ws", channel, false);
+							}
 						}
 					}
 				}
@@ -2375,6 +2403,24 @@ private slots:
 
 					stats->addActivity(s->route.toUtf8(), 1);
 				}
+			}
+			else if(item.type == WsControlPacket::Item::Subscribe)
+			{
+				QString channel = QString::fromUtf8(item.channel);
+				s->channels += channel;
+				s->implicitChannels += channel;
+
+				if(!cs.wsSessionsByChannel.contains(channel))
+					cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
+
+				cs.wsSessionsByChannel[channel] += s;
+
+				log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
+
+				stats->addSubscription("ws", channel);
+				addSub(channel);
+
+				log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
 			}
 			else if(item.type == WsControlPacket::Item::Ack)
 			{

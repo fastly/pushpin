@@ -53,6 +53,7 @@ public:
 		HttpRequestData requestData;
 		QString route;
 		QString channelPrefix;
+		QSet<QString> implicitChannels;
 		QByteArray sigIss;
 		QByteArray sigKey;
 		bool trusted;

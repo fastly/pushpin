@@ -183,6 +183,14 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 	if(!adata.channelPrefix.isEmpty())
 		obj["channel-prefix"] = adata.channelPrefix;
 
+	if(!adata.channels.isEmpty())
+	{
+		QVariantList vchannels;
+		foreach(const QByteArray &channel, adata.channels)
+			vchannels += channel;
+		obj["channels"] = vchannels;
+	}
+
 	if(!adata.sigIss.isEmpty())
 		obj["sig-iss"] = adata.sigIss;
 

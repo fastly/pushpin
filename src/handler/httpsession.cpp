@@ -178,6 +178,23 @@ public:
 		ZhttpRequest::Rid rid = req->rid();
 		stats->addConnection(rid.first + ':' + rid.second, adata.route.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true);
 
+		// set up implicit channels
+		QPointer<QObject> self = this;
+		foreach(const QString &name, adata.implicitChannels)
+		{
+			if(!channels.contains(name))
+			{
+				Instruct::Channel c;
+				c.name = name;
+
+				channels.insert(name, c);
+
+				emit q->subscribe(name);
+
+				assert(self); // deleting here would leak subscriptions/connections
+			}
+		}
+
 		// need to send initial content?
 		if((instruct.holdMode == Instruct::NoHold || instruct.holdMode == Instruct::StreamHold) && !adata.responseSent)
 		{
@@ -470,6 +487,9 @@ private:
 			it.next();
 			const QString &name = it.key();
 
+			if(adata.implicitChannels.contains(name))
+				continue;
+
 			bool found = false;
 			foreach(const Instruct::Channel &c, instruct.channels)
 			{
@@ -480,7 +500,10 @@ private:
 				}
 			}
 			if(!found)
+			{
 				channelsRemoved += name;
+				channels.remove(name);
+			}
 		}
 
 		QList<QString> channelsAdded;

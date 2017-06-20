@@ -39,6 +39,7 @@ public:
 	void start(const QByteArray &routeId, const QByteArray &channelPrefix, const QUrl &uri);
 	void sendGripMessage(const QByteArray &message);
 	void sendNeedKeepAlive();
+	void sendSubscribe(const QByteArray &channel);
 
 	// tell session that a received sendEvent has been written
 	void sendEventWritten();
