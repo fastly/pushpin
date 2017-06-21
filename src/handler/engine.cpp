@@ -1128,6 +1128,24 @@ private:
 					rp.inspectInfo.userData = inspectInfo.userData;
 				}
 
+				// if prev-id set on channels, set as inspect lastids so the proxy
+				//   will pass as Grip-Last in the next request
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					if(!c.prevId.isNull())
+					{
+						QString name = channelPrefix + c.name;
+
+						if(!rp.haveInspectInfo)
+						{
+							rp.haveInspectInfo = true;
+							rp.inspectInfo.doProxy = true;
+						}
+
+						rp.inspectInfo.lastIds.insert(name.toUtf8(), c.prevId.toUtf8());
+					}
+				}
+
 				emit retryPacketReady(rp);
 
 				setFinished(true);

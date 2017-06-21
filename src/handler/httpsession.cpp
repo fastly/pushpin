@@ -911,6 +911,28 @@ private:
 				rp.inspectInfo.userData = adata.inspectInfo.userData;
 			}
 
+			// if prev-id set on channels, set as inspect lastids so the proxy
+			//   will pass as Grip-Last in the next request
+			QHashIterator<QString, Instruct::Channel> it(channels);
+			while(it.hasNext())
+			{
+				it.next();
+				const Instruct::Channel &c = it.value();
+
+				if(!c.prevId.isNull())
+				{
+					QString name = adata.channelPrefix + c.name;
+
+					if(!rp.haveInspectInfo)
+					{
+						rp.haveInspectInfo = true;
+						rp.inspectInfo.doProxy = true;
+					}
+
+					rp.inspectInfo.lastIds.insert(name.toUtf8(), c.prevId.toUtf8());
+				}
+			}
+
 			retryPacket = rp;
 		}
 		else
