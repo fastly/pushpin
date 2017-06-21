@@ -172,6 +172,10 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	if(!idata.sid.isEmpty())
 	{
 		requestData->headers += HttpHeader("Grip-Session-Id", idata.sid);
+	}
+
+	if(!idata.lastIds.isEmpty())
+	{
 		QHashIterator<QByteArray, QByteArray> it(idata.lastIds);
 		while(it.hasNext())
 		{
