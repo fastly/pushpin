@@ -479,11 +479,8 @@ public:
 		if(!requestBodySent && inRequest->isInputFinished() && inRequest->bytesAvailable() == 0)
 		{
 			// no need to track the primary request anymore
-			if(inRequest)
-			{
-				inRequest->disconnect(this);
-				inRequest = 0;
-			}
+			inRequest->disconnect(this);
+			inRequest = 0;
 
 			requestBodySent = true;
 			zhttpRequest->endBody();
