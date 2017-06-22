@@ -23,6 +23,7 @@
 #include <QObject>
 #include <QPair>
 #include <QString>
+#include <QStringList>
 #include "httpheaders.h"
 
 // this class offers fast access to the routes file. the table is maintained
