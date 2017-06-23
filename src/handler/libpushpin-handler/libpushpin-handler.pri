@@ -26,6 +26,7 @@ HEADERS += \
 	$$SRC_DIR/publishformat.h \
 	$$SRC_DIR/publishitem.h \
 	$$SRC_DIR/instruct.h \
+	$$SRC_DIR/idformat.h \
 	$$SRC_DIR/httpsession.h \
 	$$SRC_DIR/httpsessionupdatemanager.h \
 	$$SRC_DIR/publishlastids.h \
@@ -34,7 +35,8 @@ HEADERS += \
 	$$SRC_DIR/refreshworker.h \
 	$$SRC_DIR/ratelimiter.h \
 	$$SRC_DIR/sequencer.h \
-	$$SRC_DIR/filters.h \
+	$$SRC_DIR/filter.h \
+	$$SRC_DIR/filterstack.h \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
@@ -49,6 +51,7 @@ SOURCES += \
 	$$SRC_DIR/publishformat.cpp \
 	$$SRC_DIR/publishitem.cpp \
 	$$SRC_DIR/instruct.cpp \
+	$$SRC_DIR/idformat.cpp \
 	$$SRC_DIR/httpsession.cpp \
 	$$SRC_DIR/httpsessionupdatemanager.cpp \
 	$$SRC_DIR/publishlastids.cpp \
@@ -57,5 +60,6 @@ SOURCES += \
 	$$SRC_DIR/refreshworker.cpp \
 	$$SRC_DIR/ratelimiter.cpp \
 	$$SRC_DIR/sequencer.cpp \
-	$$SRC_DIR/filters.cpp \
+	$$SRC_DIR/filter.cpp \
+	$$SRC_DIR/filterstack.cpp \
 	$$SRC_DIR/engine.cpp

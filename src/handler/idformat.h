@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,25 +17,37 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "filters.h"
+#ifndef IDFORMAT_H
+#define IDFORMAT_H
 
-namespace Filters {
+#include <QByteArray>
+#include <QString>
+#include <QHash>
 
-// TODO: support more than one filter, payload modification, etc
-bool applyFilters(const QHash<QString, QString> &subscriptionMeta, const QHash<QString, QString> &publishMeta, const QStringList &filters)
+namespace IdFormat {
+
+class ContentRenderer
 {
-	foreach(const QString &f, filters)
-	{
-		if(f == "skip-self")
-		{
-			QString user = subscriptionMeta.value("user");
-			QString sender = publishMeta.value("sender");
-			if(!user.isEmpty() && !sender.isEmpty() && sender == user)
-				return false;
-		}
-	}
+public:
+	ContentRenderer(const QByteArray &defaultId, bool hex);
 
-	return true;
+	// return null array on error
+	QByteArray update(const QByteArray &data);
+	QByteArray finalize();
+
+	QString errorMessage() { return errorMessage_; }
+
+	QByteArray process(const QByteArray &data);
+
+private:
+	QByteArray defaultId_;
+	bool hex_;
+	QByteArray buf_;
+	QString errorMessage_;
+};
+
+QByteArray renderId(const QByteArray &data, const QHash<QString, QByteArray> &vars, QString *error = 0);
+
 }
 
-}
+#endif

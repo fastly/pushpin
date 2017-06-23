@@ -683,7 +683,29 @@ public:
 						gripNextLinkParam = params[0].first;
 				}
 
-				if(proxyInitialResponse && (gripHold == "stream" || (gripHold.isEmpty() && !gripNextLinkParam.isEmpty())))
+				bool usingBuildIdFilter = false;
+				foreach(const HttpHeaderParameters &params, responseData.headers.getAllAsParameters("Grip-Channel"))
+				{
+					if(params.count() >= 2)
+					{
+						bool found = false;
+						for(int n = 1; n < params.count(); ++n)
+						{
+							if(params[n].first == "filter" && params[n].second == "build-id")
+							{
+								found = true;
+								break;
+							}
+						}
+						if(found)
+						{
+							usingBuildIdFilter = true;
+							break;
+						}
+					}
+				}
+
+				if(proxyInitialResponse && (gripHold == "stream" || (gripHold.isEmpty() && !gripNextLinkParam.isEmpty())) && !usingBuildIdFilter)
 				{
 					// sending the initial response from the proxy means
 					//   we need to do some of the handler's job here

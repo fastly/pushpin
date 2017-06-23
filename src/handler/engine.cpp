@@ -64,7 +64,7 @@
 #include "ratelimiter.h"
 #include "httpsessionupdatemanager.h"
 #include "sequencer.h"
-#include "filters.h"
+#include "filterstack.h"
 
 #define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // infinite
@@ -1043,6 +1043,32 @@ private:
 
 			if(!responseSent)
 			{
+				// apply filters of all channels to content
+				QStringList allFilters;
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					foreach(const QString &filter, c.filters)
+					{
+						if(!allFilters.contains(filter))
+							allFilters += filter;
+					}
+				}
+
+				Filter::Context fc;
+				fc.subscriptionMeta = instruct.meta;
+
+				FilterStack fs(fc, allFilters);
+				QByteArray body = fs.process(instruct.response.body);
+				if(body.isNull())
+				{
+					req->respondError("bad-format", QString("filter error: %1").arg(fs.errorMessage()).toUtf8());
+
+					setFinished(true);
+					return;
+				}
+
+				instruct.response.headers.removeAll("Content-Length");
+
 				QVariantHash vresponse;
 				vresponse["code"] = instruct.response.code;
 				vresponse["reason"] = instruct.response.reason;
@@ -1055,7 +1081,7 @@ private:
 					vheaders += QVariant(vheader);
 				}
 				vresponse["headers"] = vheaders;
-				vresponse["body"] = instruct.response.body;
+				vresponse["body"] = body;
 
 				result["response"] = vresponse;
 			}
@@ -1766,8 +1792,23 @@ private:
 		{
 			WsSession *s = qobject_cast<WsSession*>(target);
 
-			if(!Filters::applyFilters(s->meta, item.meta, s->channelFilters[item.channel]))
+			QByteArray body = f.body;
+
+			Filter::Context fc;
+			fc.subscriptionMeta = s->meta;
+			fc.publishMeta = item.meta;
+
+			FilterStack filters(fc, s->channelFilters[item.channel]);
+
+			if(filters.sendAction() == Filter::Drop)
 				return;
+
+			body = filters.process(body);
+			if(body.isNull())
+			{
+				log_debug("filter error: %s", qPrintable(filters.errorMessage()));
+				return;
+			}
 
 			// TODO: hint support for websockets?
 			if(f.action != PublishFormat::Send && f.action != PublishFormat::Close)
@@ -1789,7 +1830,7 @@ private:
 					default: return; // unrecognized type, skip
 				}
 
-				i.message = f.body;
+				i.message = body;
 			}
 			else if(f.action == PublishFormat::Close)
 			{

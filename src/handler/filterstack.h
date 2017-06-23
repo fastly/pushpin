@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -17,18 +17,29 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef FILTERS_H
-#define FILTERS_H
+#ifndef FILTERSTACK_H
+#define FILTERSTACK_H
 
-#include <QString>
 #include <QStringList>
-#include <QHash>
+#include "filter.h"
 
-namespace Filters {
+class FilterStack : public Filter
+{
+public:
+	FilterStack(const Filter::Context &context, const QStringList &filters);
 
-// returns true to send and false to drop
-bool applyFilters(const QHash<QString, QString> &subscriptionMeta, const QHash<QString, QString> &publishMeta, const QStringList &filters);
+	// takes ownership of filters in list
+	FilterStack(const Filter::Context &context, const QList<Filter*> &filters);
 
-}
+	~FilterStack();
+
+	// reimplemented
+	virtual SendAction sendAction() const;
+	virtual QByteArray update(const QByteArray &data);
+	virtual QByteArray finalize();
+
+private:
+	QList<Filter*> filters_;
+};
 
 #endif
