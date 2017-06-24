@@ -385,7 +385,7 @@ public:
 			{
 				if(channel.prevId != item.prevId)
 				{
-					log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
+					log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
 					publishLastIds->remove(item.channel);
 
 					update(LowPriority);
@@ -549,35 +549,56 @@ private:
 	{
 		assert(instruct.holdMode != Instruct::NoHold);
 
-		if(first && instruct.holdMode == Instruct::StreamHold)
+		if(instruct.holdMode == Instruct::StreamHold)
 		{
-			bool conflict = false;
-			foreach(const Instruct::Channel &c, instruct.channels)
+			// if prev ids used but not next link, error out
+			if(nextUri.isEmpty())
 			{
-				if(!c.prevId.isNull())
+				foreach(const Instruct::Channel &c, instruct.channels)
 				{
-					QString name = adata.channelPrefix + c.name;
-
-					QString lastId = publishLastIds->value(name);
-					if(!lastId.isNull() && lastId != c.prevId)
+					if(!c.prevId.isNull())
 					{
-						log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
-						publishLastIds->remove(name);
-						conflict = true;
-
-						// NOTE: don't exit loop here. we want to clear
-						//   the last ids of all conflicting channels
+						errorMessage = QString("channel '%1' specifies prev-id, but no next link found").arg(c.name);
+						doError();
+						return;
 					}
 				}
 			}
 
-			if(conflict)
+			// if conflict on first hold, immediately recover. we don't
+			//   do this on subsequent holds because there may be queued
+			//   messages available to resolve the conflict
+			if(first)
 			{
-				// update expects us to be in Holding state
-				state = Holding;
+				bool conflict = false;
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					if(!c.prevId.isNull())
+					{
+						QString name = adata.channelPrefix + c.name;
 
-				update(LowPriority);
-				return;
+						QString lastId = publishLastIds->value(name);
+
+						if(!lastId.isNull() && lastId != c.prevId)
+						{
+							log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
+							publishLastIds->remove(name);
+							conflict = true;
+
+							// NOTE: don't exit loop here. we want to clear
+							//   the last ids of all conflicting channels
+						}
+					}
+				}
+
+				if(conflict)
+				{
+					// update expects us to be in Holding state
+					state = Holding;
+
+					update(LowPriority);
+					return;
+				}
 			}
 		}
 
@@ -709,7 +730,7 @@ private:
 			{
 				if(channel.prevId != item.prevId)
 				{
-					log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
+					log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
 					publishLastIds->remove(item.channel);
 
 					publishQueue.clear();

@@ -1110,7 +1110,7 @@ private:
 					QString lastId = cs->publishLastIds.value(name);
 					if(!lastId.isNull() && lastId != c.prevId)
 					{
-						log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
+						log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
 						cs->publishLastIds.remove(name);
 						conflict = true;
 
