@@ -304,7 +304,15 @@ public:
 
 		QByteArray body;
 		if(data.isValid())
-			body = QJsonDocument(QJsonObject::fromVariantMap(data.toMap())).toJson(QJsonDocument::Compact);
+		{
+			QJsonDocument doc;
+			if(data.type() == QVariant::Map)
+				doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
+			else // List
+				doc = QJsonDocument(QJsonArray::fromVariantList(data.toList()));
+
+			body = doc.toJson(QJsonDocument::Compact);
+		}
 		if(!prefix.isEmpty())
 			body.prepend(prefix);
 
