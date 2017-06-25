@@ -1217,8 +1217,10 @@ void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const
 	d->sid = sid;
 	d->requestData.uri = asUri;
 	d->requestData.headers = req->requestHeaders();
+
 	// we're not forwarding the request content so ignore this
 	d->requestData.headers.removeAll("Content-Length");
+
 	d->peerAddress = req->peerAddress();
 	d->route = route;
 	d->initialReq = req;
@@ -1235,6 +1237,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 	d->mode = Private::WebSocketPassthrough;
 	d->requestData.uri = asUri;
 	d->requestData.headers = sock->requestHeaders();
+	d->peerAddress = sock->peerAddress();
 	d->route = route;
 	d->sock = sock;
 
@@ -1250,6 +1253,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 	d->sid = sid;
 	d->requestData.uri = asUri;
 	d->requestData.headers = sock->requestHeaders();
+	d->peerAddress = sock->peerAddress();
 	d->route = route;
 	d->sock = sock;
 
