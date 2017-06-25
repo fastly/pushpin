@@ -1690,7 +1690,9 @@ private:
 
 		QVariant vout = packet.toVariant();
 
-		log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
+
 		retrySock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
 	}
 
@@ -1707,7 +1709,9 @@ private:
 
 		QVariant vout = out.toVariant();
 
-		log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
+
 		wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
 	}
 
@@ -2124,7 +2128,8 @@ private slots:
 		if(!req)
 			return;
 
-		log_debug("IN command: %s args=%s", qPrintable(req->method()), qPrintable(TnetString::variantToString(req->args(), -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN command: %s args=%s", qPrintable(req->method()), qPrintable(TnetString::variantToString(req->args(), -1)));
 
 		if(req->method() == "conncheck")
 		{
@@ -2179,7 +2184,8 @@ private slots:
 			return;
 		}
 
-		log_debug("IN pull: %s", qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN pull: %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		QString errorMessage;
 		PublishItem item = PublishItem::fromVariant(data, QString(), &ok, &errorMessage);
@@ -2210,7 +2216,8 @@ private slots:
 
 		QString channel = QString::fromUtf8(message[0]);
 
-		log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
 
 		QString errorMessage;
 		PublishItem item = PublishItem::fromVariant(data, channel, &ok, &errorMessage);
@@ -2239,7 +2246,8 @@ private slots:
 			return;
 		}
 
-		log_debug("IN wscontrol: %s", qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN wscontrol: %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		WsControlPacket packet;
 		if(!packet.fromVariant(data))
@@ -2533,7 +2541,8 @@ private slots:
 			return;
 		}
 
-		log_debug("IN proxy stats: %s %s", type.data(), qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN proxy stats: %s %s", type.data(), qPrintable(TnetString::variantToString(data, -1)));
 
 		StatsPacket p;
 		if(!p.fromVariant(type, data))
