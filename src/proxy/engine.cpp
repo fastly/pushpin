@@ -660,7 +660,8 @@ private slots:
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
-		logFinished(rs);
+		if(!rs->isSockJs())
+			logFinished(rs);
 
 		requestSessions.remove(rs);
 		delete rs;

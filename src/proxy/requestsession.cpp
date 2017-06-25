@@ -181,6 +181,7 @@ public:
 	bool autoShare;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
+	bool isSockJs;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
@@ -208,7 +209,8 @@ public:
 		connectionRegistered(false),
 		accepted(false),
 		passthrough(false),
-		autoShare(false)
+		autoShare(false),
+		isSockJs(false)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
 	}
@@ -272,6 +274,7 @@ public:
 			// before we do anything else, see if this is a sockjs request
 			if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
 			{
+				isSockJs = true;
 				sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
 				zhttpRequest = 0;
 				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
@@ -1164,6 +1167,11 @@ bool RequestSession::isHttps() const
 {
 	return d->requestData.uri.scheme() == "https";
 }
+
+bool RequestSession::isSockJs() const
+{
+	return d->isSockJs;
+};
 
 bool RequestSession::trusted() const
 {

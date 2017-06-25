@@ -47,6 +47,7 @@ public:
 
 	bool isRetry() const;
 	bool isHttps() const;
+	bool isSockJs() const;
 	bool trusted() const;
 	QHostAddress peerAddress() const;
 	QHostAddress logicalPeerAddress() const;
