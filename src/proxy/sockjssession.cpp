@@ -541,6 +541,9 @@ public:
 		RequestItem *ri = requests.value(req);
 		assert(ri);
 
+		if(ri->responded)
+			return;
+
 		QVariantList messages;
 
 		int frames = 0;
