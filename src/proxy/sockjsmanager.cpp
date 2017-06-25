@@ -128,6 +128,7 @@ public:
 	QList<Session*> pendingSessions;
 	QByteArray iframeHtml;
 	QByteArray iframeHtmlEtag;
+	QSet<ZhttpRequest*> discardedRequests;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
@@ -139,6 +140,8 @@ public:
 
 	~Private()
 	{
+		qDeleteAll(discardedRequests);
+
 		while(!pendingSessions.isEmpty())
 			removeSession(pendingSessions.takeFirst());
 
@@ -347,8 +350,18 @@ public:
 		respond(req, 200, "OK", headers, body);
 	}
 
-	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
+	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message, bool discard = false)
 	{
+		// if discarded, manager takes ownership of req to handle sending
+		if(discard)
+		{
+			discardedRequests += req;
+
+			connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
+			connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
+			connect(req, &ZhttpRequest::error, this, &Private::req_error);
+		}
+
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
 		respond(req, code, reason, headers, message.toUtf8() + '\n');
@@ -559,6 +572,11 @@ private slots:
 	void req_readyRead()
 	{
 		ZhttpRequest *req = (ZhttpRequest *)sender();
+
+		// for a request to have been discardable, we must have read the
+		//   entire input already and handed to the session
+		assert(!discardedRequests.contains(req));
+
 		Session *s = sessionsByRequest.value(req);
 		assert(s);
 
@@ -570,6 +588,18 @@ private slots:
 		Q_UNUSED(count);
 
 		ZhttpRequest *req = (ZhttpRequest *)sender();
+
+		if(discardedRequests.contains(req))
+		{
+			if(req->isFinished())
+			{
+				discardedRequests.remove(req);
+				delete req;
+			}
+
+			return;
+		}
+
 		Session *s = sessionsByRequest.value(req);
 		assert(s);
 
@@ -583,6 +613,14 @@ private slots:
 	void req_error()
 	{
 		ZhttpRequest *req = (ZhttpRequest *)sender();
+
+		if(discardedRequests.contains(req))
+		{
+			discardedRequests.remove(req);
+			delete req;
+			return;
+		}
+
 		Session *s = sessionsByRequest.value(req);
 		assert(s);
 
@@ -673,9 +711,9 @@ void SockJsManager::respondOk(ZhttpRequest *req, const QString &str, const QByte
 	d->respondOk(req, str, jsonpCallback);
 }
 
-void SockJsManager::respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message)
+void SockJsManager::respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message, bool discard)
 {
-	d->respondError(req, code, reason, message);
+	d->respondError(req, code, reason, message, discard);
 }
 
 void SockJsManager::respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body)

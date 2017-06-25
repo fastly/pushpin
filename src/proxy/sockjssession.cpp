@@ -199,7 +199,21 @@ public:
 	{
 		keepAliveTimer->stop();
 
-		req = 0; // note: don't delete req. we'll delete its RequestItem below
+		if(req)
+		{
+			RequestItem *ri = requests.value(req);
+			assert(ri);
+
+			// detach req from RequestItem
+			requests.remove(req);
+			ri->req = 0;
+			delete ri;
+
+			// discard=true to let manager take over
+			manager->respondError(req, 410, "Gone", "Session terminated", true);
+
+			req = 0;
+		}
 
 		QHashIterator<ZhttpRequest*, RequestItem*> it(requests);
 		while(it.hasNext())
