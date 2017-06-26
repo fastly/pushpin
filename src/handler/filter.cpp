@@ -59,7 +59,7 @@ public:
 		delete idContentRenderer;
 	}
 
-	virtual QByteArray update(const QByteArray &data)
+	bool ensureInit()
 	{
 		if(!idContentRenderer)
 		{
@@ -67,7 +67,7 @@ public:
 			if(idFormat.isNull())
 			{
 				setError("no sub meta 'id_format'");
-				return QByteArray();
+				return false;
 			}
 
 			QHash<QString, QByteArray> idTemplateVars;
@@ -87,7 +87,7 @@ public:
 				if(id.isNull())
 				{
 					setError(QString("failed to render ID: %1").arg(_error));
-					return QByteArray();
+					return false;
 				}
 			}
 
@@ -103,12 +103,20 @@ public:
 				else
 				{
 					setError(QString("unsupported encoding: %1").arg(idEncoding));
-					return QByteArray();
+					return false;
 				}
 			}
 
 			idContentRenderer = new IdFormat::ContentRenderer(id, hex);
 		}
+
+		return true;
+	}
+
+	virtual QByteArray update(const QByteArray &data)
+	{
+		if(!ensureInit())
+			return QByteArray();
 
 		QByteArray buf = idContentRenderer->update(data);
 		if(buf.isNull())
@@ -122,6 +130,9 @@ public:
 
 	virtual QByteArray finalize()
 	{
+		if(!ensureInit())
+			return QByteArray();
+
 		QByteArray buf = idContentRenderer->finalize();
 		if(buf.isNull())
 		{
