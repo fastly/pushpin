@@ -164,6 +164,7 @@ public:
 	RetryRequestPacket retryPacket;
 	LogUtil::Config logConfig;
 	FilterStack *responseFilters;
+	QSet<QString> activeChannels;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager) :
 		QObject(_q),
@@ -780,7 +781,15 @@ private:
 				setupKeepAliveTimer();
 
 				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
-					updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+				{
+					activeChannels += item.channel;
+					if(activeChannels.count() == channels.count())
+					{
+						activeChannels.clear();
+
+						updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+					}
+				}
 			}
 			else if(f.action == PublishFormat::Hint)
 			{
@@ -817,6 +826,8 @@ private:
 	void sendQueueDone()
 	{
 		state = Holding;
+
+		activeChannels.clear();
 
 		// start keep alive timer, if it wasn't started already
 		if(!timer->isActive())
