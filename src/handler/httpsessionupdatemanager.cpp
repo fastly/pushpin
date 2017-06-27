@@ -33,6 +33,7 @@ public:
 	public:
 		QPair<int, QUrl> key;
 		QSet<HttpSession*> sessions;
+		QSet<HttpSession*> deferredSessions;
 		QTimer *timer;
 	};
 
@@ -78,9 +79,6 @@ public:
 
 	void registerSession(HttpSession *hs, int timeout, const QUrl &uri)
 	{
-		if(bucketsBySession.contains(hs))
-			return;
-
 		QUrl tmp = uri;
 		tmp.setQuery(QString()); // remove the query part
 		QPair<int, QUrl> key(timeout, tmp);
@@ -88,22 +86,38 @@ public:
 		Bucket *bucket = buckets.value(key);
 		if(bucket)
 		{
-			bucket->sessions += hs;
-			bucketsBySession[hs] = bucket;
-			return;
+			if(bucket->sessions.contains(hs))
+			{
+				// if the session is already in this bucket, flag it
+				//   for later processing
+				bucket->deferredSessions += hs;
+			}
+			else
+			{
+				// move the session to this bucket
+				unregisterSession(hs);
+				bucket->sessions += hs;
+				bucketsBySession[hs] = bucket;
+			}
 		}
+		else
+		{
+			// bucket doesn't exist. make it and put this session in it
 
-		bucket = new Bucket;
-		bucket->key = key;
-		bucket->sessions += hs;
-		bucket->timer = new QTimer(this);
-		connect(bucket->timer, &QTimer::timeout, this, &Private::timer_timeout);
+			unregisterSession(hs);
 
-		buckets[key] = bucket;
-		bucketsByTimer[bucket->timer] = bucket;
-		bucketsBySession[hs] = bucket;
+			bucket = new Bucket;
+			bucket->key = key;
+			bucket->sessions += hs;
+			bucket->timer = new QTimer(this);
+			connect(bucket->timer, &QTimer::timeout, this, &Private::timer_timeout);
 
-		bucket->timer->start(timeout * 1000);
+			buckets[key] = bucket;
+			bucketsByTimer[bucket->timer] = bucket;
+			bucketsBySession[hs] = bucket;
+
+			bucket->timer->start(timeout * 1000);
+		}
 	}
 
 	void unregisterSession(HttpSession *hs)
@@ -113,6 +127,7 @@ public:
 			return;
 
 		bucket->sessions.remove(hs);
+		bucket->deferredSessions.remove(hs);
 		bucketsBySession.remove(hs);
 
 		if(bucket->sessions.isEmpty())
@@ -127,8 +142,28 @@ private slots:
 		if(!bucket)
 			return;
 
-		QSet<HttpSession*> sessions = bucket->sessions;
-		removeBucket(bucket);
+		QSet<HttpSession*> sessions;
+
+		if(!bucket->deferredSessions.isEmpty())
+		{
+			foreach(HttpSession *hs, bucket->sessions)
+			{
+				if(!bucket->deferredSessions.contains(hs))
+				{
+					sessions += hs;
+					bucketsBySession.remove(hs);
+				}
+			}
+
+			bucket->sessions = bucket->deferredSessions;
+			bucket->deferredSessions.clear();
+			bucket->timer->start();
+		}
+		else
+		{
+			sessions = bucket->sessions;
+			removeBucket(bucket);
+		}
 
 		foreach(HttpSession *hs, sessions)
 			hs->update();
