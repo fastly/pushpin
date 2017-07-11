@@ -24,8 +24,11 @@ FilterStack::FilterStack(const Filter::Context &context, const QStringList &filt
 	foreach(const QString &name, filters)
 	{
 		Filter *f = Filter::create(name);
-		f->setContext(context);
-		filters_ += f;
+		if(f)
+		{
+			f->setContext(context);
+			filters_ += f;
+		}
 	}
 }
 

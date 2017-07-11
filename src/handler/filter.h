@@ -21,6 +21,7 @@
 #define FILTER_H
 
 #include <QString>
+#include <QStringList>
 #include <QHash>
 
 class Filter
@@ -58,6 +59,7 @@ public:
 	QByteArray process(const QByteArray &data);
 
 	static Filter *create(const QString &name);
+	static QStringList names();
 
 protected:
 	void setError(const QString &s) { errorMessage_ = s; }

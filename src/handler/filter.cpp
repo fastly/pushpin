@@ -43,6 +43,51 @@ public:
 	}
 };
 
+class SkipUsersFilter : public Filter
+{
+public:
+	SkipUsersFilter() :
+		Filter("skip-users")
+	{
+	}
+
+	virtual SendAction sendAction() const
+	{
+		QString user = context().subscriptionMeta.value("user");
+
+		QStringList skip_users;
+		foreach(const QString &part, context().publishMeta.value("skip_users").split(','))
+		{
+			QString s = part.trimmed();
+			if(!s.isEmpty())
+				skip_users += s;
+		}
+
+		if(!user.isEmpty() && skip_users.contains(user))
+			return Drop;
+
+		return Send;
+	}
+};
+
+class RequireSubFilter : public Filter
+{
+public:
+	RequireSubFilter() :
+		Filter("require-sub")
+	{
+	}
+
+	virtual SendAction sendAction() const
+	{
+		QString require_sub = context().publishMeta.value("require_sub");
+		if(!require_sub.isEmpty() && !context().prevIds.keys().contains(require_sub))
+			return Drop;
+
+		return Send;
+	}
+};
+
 class BuildIdFilter : public Filter
 {
 public:
@@ -187,8 +232,21 @@ Filter *Filter::create(const QString &name)
 {
 	if(name == "skip-self")
 		return new SkipSelfFilter;
+	else if(name == "skip-users")
+		return new SkipUsersFilter;
+	else if(name == "require-sub")
+		return new RequireSubFilter;
 	else if(name == "build-id")
 		return new BuildIdFilter;
 	else
 		return 0;
+}
+
+QStringList Filter::names()
+{
+	return (QStringList()
+		<< "skip-self"
+		<< "skip-users"
+		<< "require-sub"
+		<< "build-id");
 }
