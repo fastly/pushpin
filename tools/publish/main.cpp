@@ -114,6 +114,7 @@ public:
 	Action action;
 	int code;
 	QList<Header> headers;
+	QList<Header> meta;
 	bool patch;
 	QVariantList bodyPatch;
 	bool eol;
@@ -143,6 +144,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(codeOption);
 	const QCommandLineOption headerOption(QStringList() << "H" << "header", "Add HTTP response header.", "\"K: V\"");
 	parser->addOption(headerOption);
+	const QCommandLineOption metaOption(QStringList() << "M" << "meta", "Add meta variable.", "\"K=V\"");
+	parser->addOption(metaOption);
 	const QCommandLineOption hintOption("hint", "Send hint instead of content.");
 	parser->addOption(hintOption);
 	const QCommandLineOption closeOption("close", "Close streaming and WebSocket connections.");
@@ -205,6 +208,23 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 			QByteArray name = h.mid(0, at).toUtf8();
 			QByteArray val = h.mid(at + 1).trimmed().toUtf8();
 			args->headers += ArgsData::Header(name, val);
+		}
+	}
+
+	if(parser->isSet(metaOption))
+	{
+		foreach(const QString &m, parser->values(metaOption))
+		{
+			int at = m.indexOf('=');
+			if(at < 1)
+			{
+				*errorMessage = "error: meta must be in the form \"name=value\".";
+				return CommandLineError;
+			}
+
+			QByteArray name = m.mid(0, at).toUtf8();
+			QByteArray val = m.mid(at + 1).trimmed().toUtf8();
+			args->meta += ArgsData::Header(name, val);
 		}
 	}
 
@@ -369,6 +389,9 @@ int main(int argc, char **argv)
 
 	if(!args.sender.isEmpty())
 		meta["sender"] = args.sender.toUtf8();
+
+	foreach(const ArgsData::Header &m, args.meta)
+		meta[QString::fromUtf8(m.first)] = m.second;
 
 	QVariantHash item;
 
