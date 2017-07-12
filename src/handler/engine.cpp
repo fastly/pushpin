@@ -1677,7 +1677,14 @@ private:
 			return;
 		}
 
-		sequencer->addItem(item);
+		if(item.noSeq)
+		{
+			sequencer_itemReady(item);
+		}
+		else
+		{
+			sequencer->addItem(item);
+		}
 	}
 
 	void writeRetryPacket(const RetryRequestPacket &packet)

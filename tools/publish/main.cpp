@@ -117,6 +117,7 @@ public:
 	QList<Header> meta;
 	bool patch;
 	QVariantList bodyPatch;
+	bool noSeq;
 	bool eol;
 	QString spec;
 	QString channel;
@@ -126,6 +127,7 @@ public:
 		action(Send),
 		code(-1),
 		patch(false),
+		noSeq(false),
 		eol(true)
 	{
 	}
@@ -152,6 +154,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(closeOption);
 	const QCommandLineOption patchOption("patch", "Content is JSON patch.");
 	parser->addOption(patchOption);
+	const QCommandLineOption noSeqOption("no-seq", "Bypass sequencing buffer.");
+	parser->addOption(noSeqOption);
 	const QCommandLineOption noEolOption("no-eol", "Don't add newline to HTTP payloads.");
 	parser->addOption(noEolOption);
 	const QCommandLineOption specOption("spec", "ZeroMQ PUSH spec (default: tcp://localhost:5560).", "spec", "tcp://localhost:5560");
@@ -251,6 +255,9 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 
 	if(parser->isSet(noEolOption))
 		args->eol = false;
+
+	if(parser->isSet(noSeqOption))
+		args->noSeq = true;
 
 	args->spec = parser->value(specOption);
 
@@ -407,6 +414,9 @@ int main(int argc, char **argv)
 
 	if(!meta.isEmpty())
 		item["meta"] = meta;
+
+	if(args.noSeq)
+		item["no-seq"] = true;
 
 	QByteArray message = TnetString::fromVariant(item);
 
