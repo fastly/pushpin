@@ -565,42 +565,6 @@ private:
 					}
 				}
 			}
-
-			// if conflict on first hold, immediately recover. we don't
-			//   do this on subsequent holds because there may be queued
-			//   messages available to resolve the conflict
-			if(first)
-			{
-				bool conflict = false;
-				foreach(const Instruct::Channel &c, instruct.channels)
-				{
-					if(!c.prevId.isNull())
-					{
-						QString name = adata.channelPrefix + c.name;
-
-						QString lastId = publishLastIds->value(name);
-
-						if(!lastId.isNull() && lastId != c.prevId)
-						{
-							log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
-							publishLastIds->remove(name);
-							conflict = true;
-
-							// NOTE: don't exit loop here. we want to clear
-							//   the last ids of all conflicting channels
-						}
-					}
-				}
-
-				if(conflict)
-				{
-					// update expects us to be in Holding state
-					state = Holding;
-
-					update(LowPriority);
-					return;
-				}
-			}
 		}
 
 		QList<QString> channelsRemoved;
@@ -675,6 +639,42 @@ private:
 		}
 		else // StreamHold
 		{
+			// if conflict on first hold, immediately recover. we don't
+			//   do this on subsequent holds because there may be queued
+			//   messages available to resolve the conflict
+			if(first)
+			{
+				bool conflict = false;
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					if(!c.prevId.isNull())
+					{
+						QString name = adata.channelPrefix + c.name;
+
+						QString lastId = publishLastIds->value(name);
+
+						if(!lastId.isNull() && lastId != c.prevId)
+						{
+							log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
+							publishLastIds->remove(name);
+							conflict = true;
+
+							// NOTE: don't exit loop here. we want to clear
+							//   the last ids of all conflicting channels
+						}
+					}
+				}
+
+				if(conflict)
+				{
+					// update expects us to be in Holding state
+					state = Holding;
+
+					update(LowPriority);
+					return;
+				}
+			}
+
 			// drop any non-matching queued items
 			while(!publishQueue.isEmpty())
 			{
@@ -1374,6 +1374,9 @@ private slots:
 	void outReq_error()
 	{
 		logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
+
+		delete responseFilters;
+		responseFilters = 0;
 
 		delete outReq;
 		outReq = 0;
