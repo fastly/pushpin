@@ -411,7 +411,8 @@ public:
 			while(it.hasNext())
 			{
 				it.next();
-				prevIds[it.key()] = it.value().prevId;
+				const Instruct::Channel &c = it.value();
+				prevIds[c.name] = c.prevId;
 			}
 
 			Filter::Context fc;
@@ -752,7 +753,8 @@ private:
 			while(it.hasNext())
 			{
 				it.next();
-				prevIds[it.key()] = it.value().prevId;
+				const Instruct::Channel &c = it.value();
+				prevIds[c.name] = c.prevId;
 			}
 
 			Filter::Context fc;
