@@ -44,6 +44,7 @@ SOURCES += \
 	$$PWD/packet/zrpcresponsepacket.cpp
 
 HEADERS += \
+	$$PWD/logutil.h \
 	$$PWD/uuidutil.h \
 	$$PWD/zutil.h \
 	$$PWD/httprequest.h \
@@ -60,6 +61,7 @@ HEADERS += \
 	$$PWD/settings.h
 
 SOURCES += \
+	$$PWD/logutil.cpp \
 	$$PWD/uuidutil.cpp \
 	$$PWD/zutil.cpp \
 	$$PWD/zhttpmanager.cpp \

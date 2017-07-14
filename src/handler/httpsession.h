@@ -44,7 +44,7 @@ public:
 	class AcceptData
 	{
 	public:
-		QHostAddress peerAddress;
+		QHostAddress logicalPeerAddress;
 		bool debug;
 		bool isRetry;
 		bool autoCrossOrigin;
@@ -53,6 +53,7 @@ public:
 		HttpRequestData requestData;
 		QString route;
 		QString channelPrefix;
+		QSet<QString> implicitChannels;
 		QByteArray sigIss;
 		QByteArray sigKey;
 		bool trusted;

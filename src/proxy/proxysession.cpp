@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -110,6 +110,7 @@ public:
 	QSet<SessionItem*> sessionItems;
 	bool shared;
 	HttpRequestData requestData;
+	HttpRequestData origRequestData;
 	HttpResponseData responseData;
 	HttpResponseData acceptResponseData;
 	BufferList requestBody;
@@ -122,7 +123,6 @@ public:
 	bool buffering;
 	QByteArray defaultSigIss;
 	QByteArray defaultSigKey;
-	QByteArray defaultUpstreamKey;
 	bool trustedClient;
 	bool passthrough;
 	bool acceptXForwardedProtocol;
@@ -133,8 +133,9 @@ public:
 	bool proxyInitialResponse;
 	bool acceptAfterResponding;
 	AcceptRequest *acceptRequest;
+	LogUtil::Config logConfig;
 
-	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager) :
+	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig) :
 		QObject(_q),
 		q(_q),
 		state(Stopped),
@@ -156,7 +157,8 @@ public:
 		useXForwardedProtocol(false),
 		proxyInitialResponse(false),
 		acceptAfterResponding(false),
-		acceptRequest(0)
+		acceptRequest(0),
+		logConfig(_logConfig)
 	{
 		acceptHeaderPrefixes += "Grip-";
 		acceptContentTypes += "application/grip-instruct";
@@ -214,6 +216,8 @@ public:
 			requestBody += requestData.body;
 			requestData.body.clear();
 
+			origRequestData = requestData;
+
 			if(!route.asHost.isEmpty())
 				ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
@@ -262,7 +266,10 @@ public:
 				intReq = inRequest->passthroughData().isValid();
 			}
 
-			trustedClient = ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, defaultUpstreamKey, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, rs->peerAddress(), idata, !intReq);
+			trustedClient = rs->trusted();
+			QHostAddress clientAddress = rs->request()->peerAddress();
+
+			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, idata, !intReq);
 
 			state = Requesting;
 			buffering = true;
@@ -319,7 +326,7 @@ public:
 
 			QStringList targetStrs;
 			foreach(const DomainMap::Target &t, route.targets)
-				targetStrs += targetToString(t);
+				targetStrs += ProxyUtil::targetToString(t);
 			QString dmsg = QString("Unable to connect to any targets. Tried: %1").arg(targetStrs.join(", "));
 
 			rejectAll(502, "Bad Gateway", msg, dmsg);
@@ -472,11 +479,8 @@ public:
 		if(!requestBodySent && inRequest->isInputFinished() && inRequest->bytesAvailable() == 0)
 		{
 			// no need to track the primary request anymore
-			if(inRequest)
-			{
-				inRequest->disconnect(this);
-				inRequest = 0;
-			}
+			inRequest->disconnect(this);
+			inRequest = 0;
 
 			requestBodySent = true;
 			zhttpRequest->endBody();
@@ -679,7 +683,29 @@ public:
 						gripNextLinkParam = params[0].first;
 				}
 
-				if(proxyInitialResponse && (gripHold == "stream" || (gripHold.isEmpty() && !gripNextLinkParam.isEmpty())))
+				bool usingBuildIdFilter = false;
+				foreach(const HttpHeaderParameters &params, responseData.headers.getAllAsParameters("Grip-Channel"))
+				{
+					if(params.count() >= 2)
+					{
+						bool found = false;
+						for(int n = 1; n < params.count(); ++n)
+						{
+							if(params[n].first == "filter" && params[n].second == "build-id")
+							{
+								found = true;
+								break;
+							}
+						}
+						if(found)
+						{
+							usingBuildIdFilter = true;
+							break;
+						}
+					}
+				}
+
+				if(proxyInitialResponse && (gripHold == "stream" || (gripHold.isEmpty() && !gripNextLinkParam.isEmpty())) && !usingBuildIdFilter)
 				{
 					// sending the initial response from the proxy means
 					//   we need to do some of the handler's job here
@@ -753,7 +779,7 @@ public:
 				else
 				{
 					QString msg = "Error while proxying to origin.";
-					QString dmsg = QString("GRIP instruct response too large from %1").arg(targetToString(target));
+					QString dmsg = QString("GRIP instruct response too large from %1").arg(ProxyUtil::targetToString(target));
 
 					rejectAll(502, "Bad Gateway", msg, dmsg);
 					return;
@@ -901,53 +927,43 @@ public:
 		}
 	}
 
-	static QString targetToString(const DomainMap::Target &target)
-	{
-		if(target.type == DomainMap::Target::Test)
-			return "test";
-		else if(target.type == DomainMap::Target::Custom)
-			return(target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
-		else // Default
-			return target.connectHost + ':' + QString::number(target.connectPort);
-	}
-
 	void logFinished(SessionItem *si, bool accepted = false)
 	{
 		RequestSession *rs = si->rs;
 
-		HttpRequestData rd = rs->requestData();
-
-		QString msg = QString("%1 %2 -> %3").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded), targetToString(target));
-
-		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
-		if(!ref.isEmpty())
-			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
-
-		if(!route.id.isEmpty())
-			msg += QString(" route=%1").arg(QString::fromUtf8(route.id));
-
 		HttpResponseData resp = rs->responseData();
+
+		LogUtil::RequestData rd;
+
+		rd.routeId = route.id;
 
 		if(accepted)
 		{
-			msg += " accept";
+			rd.status = LogUtil::Accept;
 		}
 		else if(resp.code != -1 && !si->unclean)
 		{
-			msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
+			rd.status = LogUtil::Response;
+			rd.responseData = resp;
+			rd.responseBodySize = rs->responseBodySize();
 		}
 		else
 		{
-			msg += " error";
+			rd.status = LogUtil::Error;
 		}
 
-		if(rs->isRetry())
-			msg += " retry";
+		rd.requestData = rs->requestData();
 
+		rd.targetStr = ProxyUtil::targetToString(target);
+		rd.targetOverHttp = target.overHttp;
+
+		rd.retry = rs->isRetry();
 		if(shared)
-			msg += QString().sprintf(" shared=%p", this);
+			rd.sharedBy = this;
 
-		log_info("%s", qPrintable(msg));
+		rd.fromAddress = rs->peerAddress();
+
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 public slots:
@@ -1053,6 +1069,9 @@ public slots:
 			{
 				case ZhttpRequest::ErrorLengthRequired:
 					rejectAll(411, "Length Required", "Must provide Content-Length header.");
+					break;
+				case ZhttpRequest::ErrorPolicy:
+					rejectAll(502, "Bad Gateway", "Error while proxying to origin.", "Error: Origin host/IP blocked.");
 					break;
 				case ZhttpRequest::ErrorConnect:
 				case ZhttpRequest::ErrorConnectTimeout:
@@ -1187,6 +1206,7 @@ public slots:
 				areq.rid = si->rs->rid();
 				areq.https = si->rs->isHttps();
 				areq.peerAddress = si->rs->peerAddress();
+				areq.logicalPeerAddress = si->rs->logicalPeerAddress();
 				areq.debug = si->rs->debugEnabled();
 				areq.isRetry = si->rs->isRetry();
 				areq.autoCrossOrigin = si->rs->autoCrossOrigin();
@@ -1202,6 +1222,8 @@ public slots:
 
 			adata.requestData = requestData;
 			adata.requestData.body = requestBody.take();
+			adata.origRequestData = origRequestData;
+			adata.origRequestData.body = adata.requestData.body;
 
 			adata.haveResponse = true;
 			adata.response = acceptResponseData;
@@ -1209,13 +1231,13 @@ public slots:
 			if(haveInspectData)
 			{
 				adata.haveInspectData = true;
-				adata.inspectData.doProxy = idata.doProxy;
-				adata.inspectData.sharingKey = idata.sharingKey;
-				adata.inspectData.userData = idata.userData;
+				adata.inspectData = idata;
 			}
 
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
+			foreach(const QString &s, target.subscriptions)
+				adata.channels += s.toUtf8();
 			adata.sigIss = sigIss;
 			adata.sigKey = sigKey;
 			adata.trusted = target.trusted;
@@ -1345,10 +1367,10 @@ public slots:
 	}
 };
 
-ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, QObject *parent) :
+ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes, acceptManager);
+	d = new Private(this, zroutes, acceptManager, logConfig);
 }
 
 ProxySession::~ProxySession()
@@ -1365,11 +1387,6 @@ void ProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key
 {
 	d->defaultSigIss = iss;
 	d->defaultSigKey = key;
-}
-
-void ProxySession::setDefaultUpstreamKey(const QByteArray &key)
-{
-	d->defaultUpstreamKey = key;
 }
 
 void ProxySession::setAcceptXForwardedProtocol(bool enabled)

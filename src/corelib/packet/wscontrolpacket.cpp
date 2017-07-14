@@ -168,6 +168,7 @@ QVariant WsControlPacket::toVariant() const
 			case Item::Cancel:         typeStr = "cancel"; break;
 			case Item::Send:           typeStr = "send"; break;
 			case Item::NeedKeepAlive:  typeStr = "need-keep-alive"; break;
+			case Item::Subscribe:      typeStr = "subscribe"; break;
 			case Item::Close:          typeStr = "close"; break;
 			case Item::Detach:         typeStr = "detach"; break;
 			case Item::Ack:            typeStr = "ack"; break;
@@ -199,6 +200,9 @@ QVariant WsControlPacket::toVariant() const
 
 		if(!item.channelPrefix.isEmpty())
 			vitem["channel-prefix"] = item.channelPrefix;
+
+		if(!item.channel.isEmpty())
+			vitem["channel"] = item.channel;
 
 		if(item.ttl >= 0)
 			vitem["ttl"] = item.ttl;
@@ -258,6 +262,8 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.type = Item::Send;
 		else if(typeStr == "need-keep-alive")
 			item.type = Item::NeedKeepAlive;
+		else if(typeStr == "subscribe")
+			item.type = Item::Subscribe;
 		else if(typeStr == "close")
 			item.type = Item::Close;
 		else if(typeStr == "detach")
@@ -335,6 +341,16 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
 			if(!channelPrefix.isEmpty())
 				item.channelPrefix = channelPrefix;
+		}
+
+		if(vitem.contains("channel"))
+		{
+			if(vitem["channel"].type() != QVariant::ByteArray)
+				return false;
+
+			QByteArray channel = vitem["channel"].toByteArray();
+			if(!channel.isEmpty())
+				item.channel = channel;
 		}
 
 		if(vitem.contains("ttl"))

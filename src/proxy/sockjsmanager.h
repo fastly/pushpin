@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -54,7 +54,7 @@ private:
 	void setLinger(SockJsSession *sess, const QVariant &closeValue);
 	void respondOk(ZhttpRequest *req, const QVariant &data, const QByteArray &prefix = QByteArray(), const QByteArray &jsonpCallback = QByteArray());
 	void respondOk(ZhttpRequest *req, const QString &str, const QByteArray &jsonpCallback = QByteArray());
-	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message);
+	void respondError(ZhttpRequest *req, int code, const QByteArray &reason, const QString &message, bool discard = false);
 	void respond(ZhttpRequest *req, int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
 };
 

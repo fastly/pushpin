@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -278,6 +278,8 @@ public:
 		XffRule xffTrustedRule = parse_xffRule(settings.value("proxy/x_forwarded_for_trusted").toStringList());
 		QStringList origHeadersNeedMarkStr = settings.value("proxy/orig_headers_need_mark").toStringList();
 		trimlist(&origHeadersNeedMarkStr);
+		bool logFrom = settings.value("proxy/log_from").toBool();
+		bool logUserAgent = settings.value("proxy/log_user_agent").toBool();
 		QByteArray sigKey = parse_key(settings.value("proxy/sig_key").toString());
 		QByteArray upstreamKey = parse_key(settings.value("proxy/upstream_key").toString());
 		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
@@ -335,6 +337,8 @@ public:
 		config.xffUntrustedRule = xffRule;
 		config.xffTrustedRule = xffTrustedRule;
 		config.origHeadersNeedMark = origHeadersNeedMark;
+		config.logFrom = logFrom;
+		config.logUserAgent = logUserAgent;
 		config.sigIss = "pushpin";
 		config.sigKey = sigKey;
 		config.upstreamKey = upstreamKey;

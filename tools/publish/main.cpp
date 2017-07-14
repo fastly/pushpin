@@ -114,8 +114,10 @@ public:
 	Action action;
 	int code;
 	QList<Header> headers;
+	QList<Header> meta;
 	bool patch;
 	QVariantList bodyPatch;
+	bool noSeq;
 	bool eol;
 	QString spec;
 	QString channel;
@@ -125,6 +127,7 @@ public:
 		action(Send),
 		code(-1),
 		patch(false),
+		noSeq(false),
 		eol(true)
 	{
 	}
@@ -143,12 +146,16 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(codeOption);
 	const QCommandLineOption headerOption(QStringList() << "H" << "header", "Add HTTP response header.", "\"K: V\"");
 	parser->addOption(headerOption);
+	const QCommandLineOption metaOption(QStringList() << "M" << "meta", "Add meta variable.", "\"K=V\"");
+	parser->addOption(metaOption);
 	const QCommandLineOption hintOption("hint", "Send hint instead of content.");
 	parser->addOption(hintOption);
 	const QCommandLineOption closeOption("close", "Close streaming and WebSocket connections.");
 	parser->addOption(closeOption);
 	const QCommandLineOption patchOption("patch", "Content is JSON patch.");
 	parser->addOption(patchOption);
+	const QCommandLineOption noSeqOption("no-seq", "Bypass sequencing buffer.");
+	parser->addOption(noSeqOption);
 	const QCommandLineOption noEolOption("no-eol", "Don't add newline to HTTP payloads.");
 	parser->addOption(noEolOption);
 	const QCommandLineOption specOption("spec", "ZeroMQ PUSH spec (default: tcp://localhost:5560).", "spec", "tcp://localhost:5560");
@@ -208,6 +215,23 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 		}
 	}
 
+	if(parser->isSet(metaOption))
+	{
+		foreach(const QString &m, parser->values(metaOption))
+		{
+			int at = m.indexOf('=');
+			if(at < 1)
+			{
+				*errorMessage = "error: meta must be in the form \"name=value\".";
+				return CommandLineError;
+			}
+
+			QByteArray name = m.mid(0, at).toUtf8();
+			QByteArray val = m.mid(at + 1).trimmed().toUtf8();
+			args->meta += ArgsData::Header(name, val);
+		}
+	}
+
 	if(parser->isSet(hintOption))
 		args->action = ArgsData::Hint;
 	else if(parser->isSet(closeOption))
@@ -231,6 +255,9 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 
 	if(parser->isSet(noEolOption))
 		args->eol = false;
+
+	if(parser->isSet(noSeqOption))
+		args->noSeq = true;
 
 	args->spec = parser->value(specOption);
 
@@ -370,6 +397,9 @@ int main(int argc, char **argv)
 	if(!args.sender.isEmpty())
 		meta["sender"] = args.sender.toUtf8();
 
+	foreach(const ArgsData::Header &m, args.meta)
+		meta[QString::fromUtf8(m.first)] = m.second;
+
 	QVariantHash item;
 
 	item["channel"] = args.channel.toUtf8();
@@ -384,6 +414,9 @@ int main(int argc, char **argv)
 
 	if(!meta.isEmpty())
 		item["meta"] = meta;
+
+	if(args.noSeq)
+		item["no-seq"] = true;
 
 	QByteArray message = TnetString::fromVariant(item);
 

@@ -21,6 +21,7 @@
 #define WSPROXYSESSION_H
 
 #include <QObject>
+#include "logutil.h"
 #include "domainmap.h"
 
 class WebSocket;
@@ -35,11 +36,11 @@ class WsProxySession : public QObject
 	Q_OBJECT
 
 public:
-	WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, StatsManager *stats = 0, WsControlManager *wsControlManager = 0, QObject *parent = 0);
+	WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *stats = 0, WsControlManager *wsControlManager = 0, QObject *parent = 0);
 	~WsProxySession();
 
+	QHostAddress logicalClientAddress() const;
 	QByteArray routeId() const;
-	//ZWebSocket::Rid rid() const;
 	QByteArray cid() const;
 
 	WebSocket *inSocket() const;

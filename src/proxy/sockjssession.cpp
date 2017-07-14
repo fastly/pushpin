@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -199,7 +199,21 @@ public:
 	{
 		keepAliveTimer->stop();
 
-		req = 0; // note: don't delete req. we'll delete its RequestItem below
+		if(req)
+		{
+			RequestItem *ri = requests.value(req);
+			assert(ri);
+
+			// detach req from RequestItem
+			requests.remove(req);
+			ri->req = 0;
+			delete ri;
+
+			// discard=true to let manager take over
+			manager->respondError(req, 410, "Gone", "Session terminated", true);
+
+			req = 0;
+		}
 
 		QHashIterator<ZhttpRequest*, RequestItem*> it(requests);
 		while(it.hasNext())
@@ -540,6 +554,9 @@ public:
 
 		RequestItem *ri = requests.value(req);
 		assert(ri);
+
+		if(ri->responded)
+			return;
 
 		QVariantList messages;
 
@@ -1217,8 +1234,10 @@ void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const
 	d->sid = sid;
 	d->requestData.uri = asUri;
 	d->requestData.headers = req->requestHeaders();
+
 	// we're not forwarding the request content so ignore this
 	d->requestData.headers.removeAll("Content-Length");
+
 	d->peerAddress = req->peerAddress();
 	d->route = route;
 	d->initialReq = req;
@@ -1235,6 +1254,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 	d->mode = Private::WebSocketPassthrough;
 	d->requestData.uri = asUri;
 	d->requestData.headers = sock->requestHeaders();
+	d->peerAddress = sock->peerAddress();
 	d->route = route;
 	d->sock = sock;
 
@@ -1250,6 +1270,7 @@ void SockJsSession::setupServer(SockJsManager *manager, ZWebSocket *sock, const 
 	d->sid = sid;
 	d->requestData.uri = asUri;
 	d->requestData.headers = sock->requestHeaders();
+	d->peerAddress = sock->peerAddress();
 	d->route = route;
 	d->sock = sock;
 

@@ -43,6 +43,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 			if(!r.peerAddress.isNull())
 				vrequest["peer-address"] = r.peerAddress.toString().toUtf8();
 
+			if(!r.logicalPeerAddress.isNull())
+				vrequest["logical-peer-address"] = r.logicalPeerAddress.toString().toUtf8();
+
 			if(r.debug)
 				vrequest["debug"] = true;
 
@@ -76,13 +79,14 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 	}
 
 	{
+		const HttpRequestData &requestData = adata.requestData;
 		QVariantHash vrequestData;
 
-		vrequestData["method"] = adata.requestData.method.toLatin1();
-		vrequestData["uri"] = adata.requestData.uri.toEncoded();
+		vrequestData["method"] = requestData.method.toLatin1();
+		vrequestData["uri"] = requestData.uri.toEncoded();
 
 		QVariantList vheaders;
-		foreach(const HttpHeader &h, adata.requestData.headers)
+		foreach(const HttpHeader &h, requestData.headers)
 		{
 			QVariantList vheader;
 			vheader += h.first;
@@ -92,9 +96,32 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 		vrequestData["headers"] = vheaders;
 
-		vrequestData["body"] = adata.requestData.body;
+		vrequestData["body"] = requestData.body;
 
 		obj["request-data"] = vrequestData;
+	}
+
+	{
+		const HttpRequestData &requestData = adata.origRequestData;
+		QVariantHash vrequestData;
+
+		vrequestData["method"] = requestData.method.toLatin1();
+		vrequestData["uri"] = requestData.uri.toEncoded();
+
+		QVariantList vheaders;
+		foreach(const HttpHeader &h, requestData.headers)
+		{
+			QVariantList vheader;
+			vheader += h.first;
+			vheader += h.second;
+			vheaders += QVariant(vheader);
+		}
+
+		vrequestData["headers"] = vheaders;
+
+		vrequestData["body"] = requestData.body;
+
+		obj["orig-request-data"] = vrequestData;
 	}
 
 	if(adata.haveInspectData)
@@ -105,6 +132,22 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 		if(!adata.inspectData.sharingKey.isEmpty())
 			vinspect["sharing-key"] = adata.inspectData.sharingKey;
+
+		if(!adata.inspectData.sid.isEmpty())
+			vinspect["sid"] = adata.inspectData.sid;
+
+		if(!adata.inspectData.lastIds.isEmpty())
+		{
+			QVariantHash vlastIds;
+			QHashIterator<QByteArray, QByteArray> it(adata.inspectData.lastIds);
+			while(it.hasNext())
+			{
+				it.next();
+				vlastIds[QString::fromUtf8(it.key())] = it.value();
+			}
+
+			vinspect["last-ids"] = vlastIds;
+		}
 
 		if(adata.inspectData.userData.isValid())
 			vinspect["user-data"] = adata.inspectData.userData;
@@ -139,6 +182,14 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	if(!adata.channelPrefix.isEmpty())
 		obj["channel-prefix"] = adata.channelPrefix;
+
+	if(!adata.channels.isEmpty())
+	{
+		QVariantList vchannels;
+		foreach(const QByteArray &channel, adata.channels)
+			vchannels += channel;
+		obj["channels"] = vchannels;
+	}
 
 	if(!adata.sigIss.isEmpty())
 		obj["sig-iss"] = adata.sigIss;

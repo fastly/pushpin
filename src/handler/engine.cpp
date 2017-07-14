@@ -64,7 +64,7 @@
 #include "ratelimiter.h"
 #include "httpsessionupdatemanager.h"
 #include "sequencer.h"
-#include "filters.h"
+#include "filterstack.h"
 
 #define DEFAULT_HWM 101000
 #define SUB_SNDHWM 0 // infinite
@@ -309,7 +309,7 @@ private slots:
 				if(!rule.jsonParam.isEmpty())
 				{
 					QUrlQuery tmp(QString::fromUtf8(requestData.body));
-					jsonData = tmp.queryItemValue(rule.jsonParam).toUtf8();
+					jsonData = tmp.queryItemValue(rule.jsonParam, QUrl::FullyDecoded).toUtf8();
 				}
 				else
 				{
@@ -392,6 +392,7 @@ public:
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
 	QSet<QString> channels;
+	QSet<QString> implicitChannels;
 	int ttl;
 	QByteArray keepAliveType;
 	QByteArray keepAliveMessage;
@@ -588,11 +589,13 @@ public:
 	HttpSessionUpdateManager *httpSessionUpdateManager;
 	QString route;
 	QString channelPrefix;
+	QStringList implicitChannels;
 	QByteArray sigIss;
 	QByteArray sigKey;
 	bool trusted;
 	QHash<ZhttpRequest::Rid, RequestState> requestStates;
 	HttpRequestData requestData;
+	HttpRequestData origRequestData;
 	bool haveInspectInfo;
 	InspectData inspectInfo;
 	HttpResponseData responseData;
@@ -644,6 +647,27 @@ public:
 				}
 
 				channelPrefix = QString::fromUtf8(args["channel-prefix"].toByteArray());
+			}
+
+			if(args.contains("channels"))
+			{
+				if(args["channels"].type() != QVariant::List)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				QVariantList vchannels = args["channels"].toList();
+				foreach(const QVariant &v, vchannels)
+				{
+					if(v.type() != QVariant::ByteArray)
+					{
+						respondError("bad-request");
+						return;
+					}
+
+					implicitChannels += QString::fromUtf8(v.toByteArray());
+				}
 			}
 
 			if(args.contains("sig-iss"))
@@ -701,66 +725,21 @@ public:
 
 			// parse request-data
 
-			if(!args.contains("request-data") || args["request-data"].type() != QVariant::Hash)
+			requestData = parseRequestData(args, "request-data");
+			if(requestData.method.isEmpty())
 			{
 				respondError("bad-request");
 				return;
 			}
 
-			QVariantHash rd = args["request-data"].toHash();
+			// parse orig-request-data
 
-			if(!rd.contains("method") || rd["method"].type() != QVariant::ByteArray)
+			origRequestData = parseRequestData(args, "orig-request-data");
+			if(origRequestData.method.isEmpty())
 			{
 				respondError("bad-request");
 				return;
 			}
-
-			requestData.method = QString::fromLatin1(rd["method"].toByteArray());
-
-			if(!rd.contains("uri") || rd["uri"].type() != QVariant::ByteArray)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			requestData.uri = QUrl(rd["uri"].toString(), QUrl::StrictMode);
-			if(!requestData.uri.isValid())
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			foreach(const QVariant &vheader, rd["headers"].toList())
-			{
-				if(vheader.type() != QVariant::List)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				QVariantList vlist = vheader.toList();
-				if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				requestData.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
-			}
-
-			if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			requestData.body = rd["body"].toByteArray();
 
 			// parse response
 
@@ -770,7 +749,7 @@ public:
 				return;
 			}
 
-			rd = args["response"].toHash();
+			QVariantHash rd = args["response"].toHash();
 
 			if(!rd.contains("code") || !rd["code"].canConvert(QVariant::Int))
 			{
@@ -978,6 +957,49 @@ signals:
 	void retryPacketReady(const RetryRequestPacket &packet);
 
 private:
+	static HttpRequestData parseRequestData(const QVariantHash &args, const QString &field)
+	{
+		if(!args.contains(field) || args[field].type() != QVariant::Hash)
+			return HttpRequestData();
+
+		QVariantHash rd = args[field].toHash();
+
+		if(!rd.contains("method") || rd["method"].type() != QVariant::ByteArray)
+			return HttpRequestData();
+
+		HttpRequestData out;
+		out.method = QString::fromLatin1(rd["method"].toByteArray());
+
+		if(!rd.contains("uri") || rd["uri"].type() != QVariant::ByteArray)
+			return HttpRequestData();
+
+		out.uri = QUrl(rd["uri"].toString(), QUrl::StrictMode);
+		if(!out.uri.isValid())
+			return HttpRequestData();
+
+		if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
+			return HttpRequestData();
+
+		foreach(const QVariant &vheader, rd["headers"].toList())
+		{
+			if(vheader.type() != QVariant::List)
+				return HttpRequestData();
+
+			QVariantList vlist = vheader.toList();
+			if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+				return HttpRequestData();
+
+			out.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
+		}
+
+		if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
+			return HttpRequestData();
+
+		out.body = rd["body"].toByteArray();
+
+		return out;
+	}
+
 	void respondError(const QByteArray &condition, const QVariant &result = QVariant())
 	{
 		req->respondError(condition, result);
@@ -1021,6 +1043,32 @@ private:
 
 			if(!responseSent)
 			{
+				// apply filters of all channels to content
+				QStringList allFilters;
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					foreach(const QString &filter, c.filters)
+					{
+						if(!allFilters.contains(filter))
+							allFilters += filter;
+					}
+				}
+
+				Filter::Context fc;
+				fc.subscriptionMeta = instruct.meta;
+
+				FilterStack fs(fc, allFilters);
+				QByteArray body = fs.process(instruct.response.body);
+				if(body.isNull())
+				{
+					req->respondError("bad-format", QString("filter error: %1").arg(fs.errorMessage()).toUtf8());
+
+					setFinished(true);
+					return;
+				}
+
+				instruct.response.headers.removeAll("Content-Length");
+
 				QVariantHash vresponse;
 				vresponse["code"] = instruct.response.code;
 				vresponse["reason"] = instruct.response.reason;
@@ -1033,7 +1081,7 @@ private:
 					vheaders += QVariant(vheader);
 				}
 				vresponse["headers"] = vheaders;
-				vresponse["body"] = instruct.response.body;
+				vresponse["body"] = body;
 
 				result["response"] = vresponse;
 			}
@@ -1062,7 +1110,7 @@ private:
 					QString lastId = cs->publishLastIds.value(name);
 					if(!lastId.isNull() && lastId != c.prevId)
 					{
-						log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
+						log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
 						cs->publishLastIds.remove(name);
 						conflict = true;
 
@@ -1094,7 +1142,7 @@ private:
 					rp.requests += rpreq;
 				}
 
-				rp.requestData = requestData;
+				rp.requestData = origRequestData;
 
 				if(haveInspectInfo)
 				{
@@ -1104,6 +1152,24 @@ private:
 					rp.inspectInfo.sid = inspectInfo.sid;
 					rp.inspectInfo.lastIds = inspectInfo.lastIds;
 					rp.inspectInfo.userData = inspectInfo.userData;
+				}
+
+				// if prev-id set on channels, set as inspect lastids so the proxy
+				//   will pass as Grip-Last in the next request
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					if(!c.prevId.isNull())
+					{
+						QString name = channelPrefix + c.name;
+
+						if(!rp.haveInspectInfo)
+						{
+							rp.haveInspectInfo = true;
+							rp.inspectInfo.doProxy = true;
+						}
+
+						rp.inspectInfo.lastIds.insert(name.toUtf8(), c.prevId.toUtf8());
+					}
 				}
 
 				emit retryPacketReady(rp);
@@ -1141,8 +1207,8 @@ private:
 			ZhttpRequest *httpReq = zhttpIn->createRequestFromState(ss);
 
 			HttpSession::AcceptData adata;
-			adata.requestData = requestData;
-			adata.peerAddress = rs.peerAddress;
+			adata.requestData = origRequestData;
+			adata.logicalPeerAddress = rs.logicalPeerAddress;
 			adata.debug = rs.debug;
 			adata.isRetry = rs.isRetry;
 			adata.autoCrossOrigin = rs.autoCrossOrigin;
@@ -1150,6 +1216,7 @@ private:
 			adata.jsonpExtendedResponse = rs.jsonpExtendedResponse;
 			adata.route = route;
 			adata.channelPrefix = channelPrefix;
+			adata.implicitChannels = implicitChannels.toSet();
 			adata.sid = sid;
 			adata.responseSent = responseSent;
 			adata.sigIss = sigIss;
@@ -1610,7 +1677,14 @@ private:
 			return;
 		}
 
-		sequencer->addItem(item);
+		if(item.noSeq)
+		{
+			sequencer_itemReady(item);
+		}
+		else
+		{
+			sequencer->addItem(item);
+		}
 	}
 
 	void writeRetryPacket(const RetryRequestPacket &packet)
@@ -1623,7 +1697,9 @@ private:
 
 		QVariant vout = packet.toVariant();
 
-		log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
+
 		retrySock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
 	}
 
@@ -1640,7 +1716,9 @@ private:
 
 		QVariant vout = out.toVariant();
 
-		log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
+
 		wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
 	}
 
@@ -1725,8 +1803,23 @@ private:
 		{
 			WsSession *s = qobject_cast<WsSession*>(target);
 
-			if(!Filters::applyFilters(s->meta, item.meta, s->channelFilters[item.channel]))
+			QByteArray body = f.body;
+
+			Filter::Context fc;
+			fc.subscriptionMeta = s->meta;
+			fc.publishMeta = item.meta;
+
+			FilterStack filters(fc, s->channelFilters[item.channel]);
+
+			if(filters.sendAction() == Filter::Drop)
 				return;
+
+			body = filters.process(body);
+			if(body.isNull())
+			{
+				log_debug("filter error: %s", qPrintable(filters.errorMessage()));
+				return;
+			}
 
 			// TODO: hint support for websockets?
 			if(f.action != PublishFormat::Send && f.action != PublishFormat::Close)
@@ -1748,7 +1841,7 @@ private:
 					default: return; // unrecognized type, skip
 				}
 
-				i.message = f.body;
+				i.message = body;
 			}
 			else if(f.action == PublishFormat::Close)
 			{
@@ -2042,7 +2135,8 @@ private slots:
 		if(!req)
 			return;
 
-		log_debug("IN command: %s args=%s", qPrintable(req->method()), qPrintable(TnetString::variantToString(req->args(), -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN command: %s args=%s", qPrintable(req->method()), qPrintable(TnetString::variantToString(req->args(), -1)));
 
 		if(req->method() == "conncheck")
 		{
@@ -2097,7 +2191,8 @@ private slots:
 			return;
 		}
 
-		log_debug("IN pull: %s", qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN pull: %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		QString errorMessage;
 		PublishItem item = PublishItem::fromVariant(data, QString(), &ok, &errorMessage);
@@ -2128,7 +2223,8 @@ private slots:
 
 		QString channel = QString::fromUtf8(message[0]);
 
-		log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
 
 		QString errorMessage;
 		PublishItem item = PublishItem::fromVariant(data, channel, &ok, &errorMessage);
@@ -2157,7 +2253,8 @@ private slots:
 			return;
 		}
 
-		log_debug("IN wscontrol: %s", qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN wscontrol: %s", qPrintable(TnetString::variantToString(data, -1)));
 
 		WsControlPacket packet;
 		if(!packet.fromVariant(data))
@@ -2270,17 +2367,21 @@ private slots:
 				else if(cm.type == WsControlMessage::Unsubscribe)
 				{
 					QString channel = s->channelPrefix + cm.channel;
-					s->channels.remove(channel);
-					s->channelFilters.remove(channel);
 
-					if(cs.wsSessionsByChannel.contains(channel))
+					if(!s->implicitChannels.contains(channel))
 					{
-						QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
-						cur.remove(s);
-						if(cur.isEmpty())
+						s->channels.remove(channel);
+						s->channelFilters.remove(channel);
+
+						if(cs.wsSessionsByChannel.contains(channel))
 						{
-							cs.wsSessionsByChannel.remove(channel);
-							stats->removeSubscription("ws", channel, false);
+							QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
+							cur.remove(s);
+							if(cur.isEmpty())
+							{
+								cs.wsSessionsByChannel.remove(channel);
+								stats->removeSubscription("ws", channel, false);
+							}
 						}
 					}
 				}
@@ -2377,6 +2478,24 @@ private slots:
 					stats->addActivity(s->route.toUtf8(), 1);
 				}
 			}
+			else if(item.type == WsControlPacket::Item::Subscribe)
+			{
+				QString channel = QString::fromUtf8(item.channel);
+				s->channels += channel;
+				s->implicitChannels += channel;
+
+				if(!cs.wsSessionsByChannel.contains(channel))
+					cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
+
+				cs.wsSessionsByChannel[channel] += s;
+
+				log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
+
+				stats->addSubscription("ws", channel);
+				addSub(channel);
+
+				log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
+			}
 			else if(item.type == WsControlPacket::Item::Ack)
 			{
 				int reqId = item.requestId.toInt();
@@ -2429,7 +2548,8 @@ private slots:
 			return;
 		}
 
-		log_debug("IN proxy stats: %s %s", type.data(), qPrintable(TnetString::variantToString(data, -1)));
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN proxy stats: %s %s", type.data(), qPrintable(TnetString::variantToString(data, -1)));
 
 		StatsPacket p;
 		if(!p.fromVariant(type, data))

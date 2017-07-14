@@ -36,6 +36,7 @@ public:
 		ZhttpRequest::Rid rid;
 		bool https;
 		QHostAddress peerAddress;
+		QHostAddress logicalPeerAddress;
 		bool debug;
 		bool isRetry;
 		bool autoCrossOrigin;
@@ -65,6 +66,7 @@ public:
 
 	QList<Request> requests;
 	HttpRequestData requestData;
+	HttpRequestData origRequestData;
 
 	bool haveInspectData;
 	InspectData inspectData;
@@ -74,6 +76,7 @@ public:
 
 	QByteArray route;
 	QByteArray channelPrefix;
+	QList<QByteArray> channels;
 	QByteArray sigIss;
 	QByteArray sigKey;
 	bool trusted; // whether a trusted target was used

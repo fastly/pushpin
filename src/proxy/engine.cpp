@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -47,6 +47,7 @@
 #include "sockjsmanager.h"
 #include "sockjssession.h"
 #include "updater.h"
+#include "logutil.h"
 
 #define DEFAULT_HWM 1000
 
@@ -102,6 +103,7 @@ public:
 	SockJsManager *sockJsManager;
 	ConnectionManager connectionManager;
 	Updater *updater;
+	LogUtil::Config logConfig;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -167,6 +169,9 @@ public:
 	bool start(const Configuration &_config)
 	{
 		config = _config;
+
+		logConfig.fromAddress = config.logFrom;
+		logConfig.userAgent = config.logUserAgent;
 
 		if(!config.routeLines.isEmpty())
 		{
@@ -347,14 +352,13 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, accept, this);
+			ps = new ProxySession(zroutes, accept, logConfig, this);
 			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
 			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
 			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
 
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
-			ps->setDefaultUpstreamKey(config.upstreamKey);
 			ps->setAcceptXForwardedProtocol(config.acceptXForwardedProtocol);
 			ps->setUseXForwardedProtocol(config.useXForwardedProtocol);
 			ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
@@ -388,7 +392,7 @@ public:
 	{
 		QByteArray cid = connectionManager.addConnection(sock);
 
-		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, stats, wsControl, this);
+		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl, this);
 		connect(ps, &WsProxySession::finishedByPassthrough, this, &Private::wsps_finishedByPassthrough);
 
 		connectionManager.setProxyForConnection(sock, ps);
@@ -404,11 +408,12 @@ public:
 		i->ps = ps;
 		wsProxyItemsBySession.insert(i->ps, i);
 
+		// after this call, ps->logicalClientAddress() will be valid
 		ps->start(sock, cid, route);
 
 		if(stats)
 		{
-			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, sock->peerAddress(), sock->requestUri().scheme() == "wss", false);
+			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, ps->logicalClientAddress(), sock->requestUri().scheme() == "wss", false);
 			stats->addActivity(ps->routeId());
 		}
 	}
@@ -482,6 +487,8 @@ public:
 			rs->setDebugEnabled(config.debug);
 			rs->setAutoCrossOrigin(config.autoCrossOrigin);
 			rs->setPrefetchSize(config.inspectPrefetch);
+			rs->setDefaultUpstreamKey(config.upstreamKey);
+			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 		}
 		else
 		{
@@ -581,32 +588,32 @@ public:
 
 	void logFinished(RequestSession *rs, bool accepted = false)
 	{
-		HttpRequestData rd = rs->requestData();
-		DomainMap::Entry e = rs->route();
-
-		QString msg = QString("%1 %2").arg(rd.method, rd.uri.toString(QUrl::FullyEncoded));
-		QUrl ref = QUrl(QString::fromUtf8(rd.headers.get("Referer")));
-		if(!ref.isEmpty())
-			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
-		if(!e.id.isEmpty())
-			msg += QString(" route=%1").arg(QString::fromUtf8(e.id));
-
 		HttpResponseData resp = rs->responseData();
+
+		LogUtil::RequestData rd;
+
+		rd.routeId = rs->route().id;
 
 		if(accepted)
 		{
-			msg += " accept";
+			rd.status = LogUtil::Accept;
 		}
 		else if(resp.code != -1)
 		{
-			msg += QString(" code=%1 %2").arg(QString::number(resp.code), QString::number(rs->responseBodySize()));
+			rd.status = LogUtil::Response;
+			rd.responseData = resp;
+			rd.responseBodySize = rs->responseBodySize();
 		}
 		else
 		{
-			msg += " error";
+			rd.status = LogUtil::Error;
 		}
 
-		log_info("%s", qPrintable(msg));
+		rd.requestData = rs->requestData();
+
+		rd.fromAddress = rs->logicalPeerAddress();
+
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 private slots:
@@ -653,7 +660,8 @@ private slots:
 	{
 		RequestSession *rs = (RequestSession *)sender();
 
-		logFinished(rs);
+		if(!rs->isSockJs())
+			logFinished(rs);
 
 		requestSessions.remove(rs);
 		delete rs;
@@ -763,6 +771,8 @@ private slots:
 		{
 			idata.doProxy = p.inspectInfo.doProxy;
 			idata.sharingKey = p.inspectInfo.sharingKey;
+			idata.sid = p.inspectInfo.sid;
+			idata.lastIds = p.inspectInfo.lastIds;
 			idata.userData = p.inspectInfo.userData;
 		}
 
@@ -785,7 +795,11 @@ private slots:
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
 			RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
+
 			requestSessions += rs;
+
+			rs->setDefaultUpstreamKey(config.upstreamKey);
+			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse

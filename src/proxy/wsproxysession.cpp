@@ -244,6 +244,7 @@ public:
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
 	HttpRequestData requestData;
+	QHostAddress logicalClientAddress;
 	WebSocket *inSock;
 	WebSocket *outSock;
 	int inPendingBytes;
@@ -258,13 +259,13 @@ public:
 	bool acceptGripMessages;
 	QByteArray messagePrefix;
 	bool detached;
-	QString subChannel;
 	QDateTime activityTime;
 	QByteArray publicCid;
 	QTimer *keepAliveTimer;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
+	LogUtil::Config logConfig;
 
-	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
+	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
 		q(_q),
 		state(Idle),
@@ -284,7 +285,8 @@ public:
 		outReadInProgress(-1),
 		acceptGripMessages(false),
 		detached(false),
-		keepAliveTimer(0)
+		keepAliveTimer(0),
+		logConfig(_logConfig)
 	{
 	}
 
@@ -355,6 +357,10 @@ public:
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
 
+		bool trustedClient = ProxyUtil::checkTrustedClient("wsproxysession", q, requestData, defaultUpstreamKey);
+
+		logicalClientAddress = ProxyUtil::getLogicalAddress(requestData.headers, trustedClient ? xffTrustedRule : xffRule, inSock->peerAddress());
+
 		QString host = requestData.uri.host();
 
 		if(entry.isNull())
@@ -403,7 +409,9 @@ public:
 			requestData.headers += HttpHeader(h.first, h.second);
 		}
 
-		bool trustedClient = ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, defaultUpstreamKey, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, inSock->peerAddress(), InspectData(), true);
+		QHostAddress clientAddress = inSock->peerAddress();
+
+		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, entry, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, InspectData(), true);
 
 		// don't proxy extensions, as we may not know how to handle them
 		requestData.headers.removeAll("Sec-WebSocket-Extensions");
@@ -443,8 +451,6 @@ public:
 
 		if(!target.host.isEmpty())
 			ProxyUtil::applyHost(&uri, target.host);
-
-		subChannel = target.subChannel;
 
 		if(zhttpManager)
 		{
@@ -664,37 +670,34 @@ public:
 
 	void logConnection(bool proxied, int responseCode, int responseBodySize)
 	{
-		QString msg = QString("GET %1").arg(inSock->requestUri().toString(QUrl::FullyEncoded));
+		LogUtil::RequestData rd;
+
+		rd.routeId = routeId;
+
+		if(responseCode != -1)
+		{
+			rd.status = LogUtil::Response;
+			rd.responseData.code = responseCode;
+			rd.responseBodySize = responseBodySize;
+		}
+		else
+		{
+			rd.status = LogUtil::Error;
+		}
+
+		rd.requestData.method = "GET";
+		rd.requestData.uri = inSock->requestUri();
+		rd.requestData.headers = inSock->requestHeaders();
 
 		if(proxied)
 		{
-			QString targetStr;
-			if(target.type == DomainMap::Target::Test)
-			{
-				targetStr = "test";
-			}
-			else if(target.type == DomainMap::Target::Custom)
-			{
-				targetStr = (target.zhttpRoute.req ? "zhttpreq/" : "zhttp/") + target.zhttpRoute.baseSpec;
-			}
-			else // Default
-			{
-				targetStr = target.connectHost + ':' + QString::number(target.connectPort);
-			}
-
-			msg += QString(" -> %2").arg(targetStr);
-			if(target.overHttp)
-				msg += "[http]";
+			rd.targetStr = ProxyUtil::targetToString(target);
+			rd.targetOverHttp = target.overHttp;
 		}
 
-		QUrl ref = QUrl(QString::fromUtf8(inSock->requestHeaders().get("Referer")));
-		if(!ref.isEmpty())
-			msg += QString(" ref=%1").arg(ref.toString(QUrl::FullyEncoded));
-		if(!routeId.isEmpty())
-			msg += QString(" route=%1").arg(QString::fromUtf8(routeId));
-		msg += QString(" code=%1 %2").arg(QString::number(responseCode), QString::number(responseBodySize));
+		rd.fromAddress = logicalClientAddress;
 
-		log_info("%s", qPrintable(msg));
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 	void restartKeepAlive()
@@ -788,7 +791,7 @@ private slots:
 		QList<QByteArray> wsExtensions = headers.takeAll("Sec-WebSocket-Extensions");
 
 		HttpExtension grip = getExtension(wsExtensions, "grip");
-		if(!grip.isNull() || !subChannel.isEmpty())
+		if(!grip.isNull() || !target.subscriptions.isEmpty())
 		{
 			if(!grip.isNull())
 			{
@@ -820,16 +823,11 @@ private slots:
 				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
 				wsControl->start(routeId, channelPrefix, inSock->requestUri());
 
-				if(!subChannel.isEmpty())
+				foreach(const QString &subChannel, target.subscriptions)
 				{
 					log_debug("wsproxysession: %p implicit subscription to [%s]", q, qPrintable(subChannel));
 
-					QVariantMap msg;
-					msg["type"] = "subscribe";
-					msg["channel"] = subChannel;
-
-					QByteArray msgJson = QJsonDocument(QJsonObject::fromVariantMap(msg)).toJson(QJsonDocument::Compact);
-					wsControl->sendGripMessage(msgJson);
+					wsControl->sendSubscribe(subChannel.toUtf8());
 				}
 			}
 		}
@@ -1055,15 +1053,20 @@ private slots:
 	}
 };
 
-WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
+WsProxySession::WsProxySession(ZRoutes *zroutes, ConnectionManager *connectionManager, const LogUtil::Config &logConfig, StatsManager *statsManager, WsControlManager *wsControlManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes, connectionManager, statsManager, wsControlManager);
+	d = new Private(this, zroutes, connectionManager, logConfig, statsManager, wsControlManager);
 }
 
 WsProxySession::~WsProxySession()
 {
 	delete d;
+}
+
+QHostAddress WsProxySession::logicalClientAddress() const
+{
+	return d->logicalClientAddress;
 }
 
 QByteArray WsProxySession::routeId() const

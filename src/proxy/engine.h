@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -63,6 +63,8 @@ public:
 		XffRule xffUntrustedRule;
 		XffRule xffTrustedRule;
 		QList<QByteArray> origHeadersNeedMark;
+		bool logFrom;
+		bool logUserAgent;
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray upstreamKey;
@@ -79,6 +81,8 @@ public:
 			autoCrossOrigin(false),
 			acceptXForwardedProtocol(false),
 			useXForwardedProtocol(false),
+			logFrom(false),
+			logUserAgent(false),
 			updatesCheck("check")
 		{
 		}

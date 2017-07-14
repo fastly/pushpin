@@ -209,6 +209,18 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 		}
 	}
 
+	if(keyedObjectContains(vitem, "no-seq"))
+	{
+		QVariant vnoSeq = keyedObjectGetValue(vitem, "no-seq");
+		if(vnoSeq.type() != QVariant::Bool)
+		{
+			setError(ok, errorMessage, QString("%1 contains 'no-seq' with wrong type").arg(pn));
+			return PublishItem();
+		}
+
+		item.noSeq = vnoSeq.toBool();
+	}
+
 	setSuccess(ok, errorMessage);
 	return item;
 }

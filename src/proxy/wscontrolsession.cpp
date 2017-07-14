@@ -140,6 +140,21 @@ public:
 		write(i);
 	}
 
+	void sendSubscribe(const QByteArray &channel)
+	{
+		int reqId = nextReqId++;
+
+		WsControlPacket::Item i;
+		i.type = WsControlPacket::Item::Subscribe;
+		i.requestId = QByteArray::number(reqId);
+		i.channel = channel;
+
+		pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + REQUEST_TIMEOUT;
+		setupRequestTimer();
+
+		write(i);
+	}
+
 	void write(const WsControlPacket::Item &item)
 	{
 		WsControlPacket::Item out = item;
@@ -269,6 +284,11 @@ void WsControlSession::sendGripMessage(const QByteArray &message)
 void WsControlSession::sendNeedKeepAlive()
 {
 	d->sendNeedKeepAlive();
+}
+
+void WsControlSession::sendSubscribe(const QByteArray &channel)
+{
+	d->sendSubscribe(channel);
 }
 
 void WsControlSession::setup(WsControlManager *manager, const QByteArray &cid)

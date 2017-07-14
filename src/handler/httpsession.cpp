@@ -33,19 +33,67 @@
 #include "cors.h"
 #include "jsonpatch.h"
 #include "statsmanager.h"
+#include "logutil.h"
 #include "variantutil.h"
 #include "publishitem.h"
 #include "publishformat.h"
 #include "ratelimiter.h"
 #include "publishlastids.h"
 #include "httpsessionupdatemanager.h"
-#include "filters.h"
+#include "filterstack.h"
 
 #define RETRY_TIMEOUT 1000
 #define RETRY_MAX 5
 #define RETRY_RAND_MAX 1000
+#define KEEPALIVE_RAND_MAX 1000
 #define UPDATES_PER_ACTION_MAX 100
 #define PUBLISH_QUEUE_MAX 100
+
+static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyPatch)
+{
+	QByteArray body;
+
+	QJsonParseError e;
+	QJsonDocument doc = QJsonDocument::fromJson(in, &e);
+	if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
+	{
+		QVariant vbody;
+		if(doc.isObject())
+			vbody = doc.object().toVariantMap();
+		else // isArray
+			vbody = doc.array().toVariantList();
+
+		QString errorMessage;
+		vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
+		if(vbody.isValid())
+			vbody = VariantUtil::convertToJsonStyle(vbody);
+		if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
+		{
+			QJsonDocument doc;
+			if(vbody.type() == QVariant::Map)
+				doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
+			else // List
+				doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
+
+			body = doc.toJson(QJsonDocument::Compact);
+
+			if(in.endsWith("\r\n"))
+				body += "\r\n";
+			else if(in.endsWith("\n"))
+				body += '\n';
+		}
+		else
+		{
+			log_debug("httpsession: failed to apply JSON patch: %s", qPrintable(errorMessage));
+		}
+	}
+	else
+	{
+		log_debug("httpsession: failed to parse original response body as JSON");
+	}
+
+	return body;
+}
 
 class HttpSession::Private : public QObject
 {
@@ -114,6 +162,9 @@ public:
 	UpdateAction *pendingAction;
 	QList<PublishItem> publishQueue;
 	RetryRequestPacket retryPacket;
+	LogUtil::Config logConfig;
+	FilterStack *responseFilters;
+	QSet<QString> activeChannels;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager) :
 		QObject(_q),
@@ -129,7 +180,8 @@ public:
 		sentOutReqData(0),
 		retries(0),
 		needUpdate(false),
-		pendingAction(0)
+		pendingAction(0),
+		responseFilters(0)
 	{
 		state = NotStarted;
 
@@ -147,7 +199,7 @@ public:
 		adata = _adata;
 		instruct = _instruct;
 
-		currentUri = adata.requestData.uri;
+		currentUri = req->requestUri();
 
 		if(!instruct.nextLink.isEmpty())
 			nextUri = currentUri.resolved(instruct.nextLink);
@@ -173,7 +225,24 @@ public:
 		assert(state == NotStarted);
 
 		ZhttpRequest::Rid rid = req->rid();
-		stats->addConnection(rid.first + ':' + rid.second, adata.route.toUtf8(), StatsManager::Http, adata.peerAddress, req->requestUri().scheme() == "https", true);
+		stats->addConnection(rid.first + ':' + rid.second, adata.route.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true);
+
+		// set up implicit channels
+		QPointer<QObject> self = this;
+		foreach(const QString &name, adata.implicitChannels)
+		{
+			if(!channels.contains(name))
+			{
+				Instruct::Channel c;
+				c.name = name;
+
+				channels.insert(name, c);
+
+				emit q->subscribe(name);
+
+				assert(self); // deleting here would leak subscriptions/connections
+			}
+		}
 
 		// need to send initial content?
 		if((instruct.holdMode == Instruct::NoHold || instruct.holdMode == Instruct::StreamHold) && !adata.responseSent)
@@ -182,11 +251,34 @@ public:
 			HttpHeaders headers = instruct.response.headers;
 			headers.removeAll("Content-Length");
 			if(adata.autoCrossOrigin)
-				Cors::applyCorsHeaders(adata.requestData.headers, &headers);
+				Cors::applyCorsHeaders(req->requestHeaders(), &headers);
 			req->beginResponse(instruct.response.code, instruct.response.reason, headers);
 
 			if(!instruct.response.body.isEmpty())
 			{
+				// apply filters of all channels to content
+				QStringList allFilters;
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					foreach(const QString &filter, c.filters)
+					{
+						if(!allFilters.contains(filter))
+							allFilters += filter;
+					}
+				}
+
+				Filter::Context fc;
+				fc.subscriptionMeta = instruct.meta;
+
+				FilterStack fs(fc, allFilters);
+				instruct.response.body = fs.process(instruct.response.body);
+				if(instruct.response.body.isNull())
+				{
+					errorMessage = QString("filter error: %1").arg(fs.errorMessage());
+					doError();
+					return;
+				}
+
 				state = SendingFirstInstructResponse;
 
 				firstInstructResponse += instruct.response.body;
@@ -294,7 +386,7 @@ public:
 			{
 				if(channel.prevId != item.prevId)
 				{
-					log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
+					log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
 					publishLastIds->remove(item.channel);
 
 					update(LowPriority);
@@ -304,18 +396,49 @@ public:
 				channel.prevId = item.id;
 			}
 
-			if(!Filters::applyFilters(instruct.meta, item.meta, channels[item.channel].filters))
+			QByteArray body;
+			if(f.haveBodyPatch)
+			{
+				body = applyBodyPatch(instruct.response.body, f.bodyPatch);
+			}
+			else
+			{
+				body = f.body;
+			}
+
+			QHash<QString, QString> prevIds;
+			QHashIterator<QString, Instruct::Channel> it(channels);
+			while(it.hasNext())
+			{
+				it.next();
+				const Instruct::Channel &c = it.value();
+				prevIds[c.name] = c.prevId;
+			}
+
+			Filter::Context fc;
+			fc.prevIds = prevIds;
+			fc.subscriptionMeta = instruct.meta;
+			fc.publishMeta = item.meta;
+
+			FilterStack fs(fc, channels[item.channel].filters);
+
+			if(fs.sendAction() == Filter::Drop)
 				return;
+
+			body = fs.process(body);
+			if(body.isNull())
+			{
+				errorMessage = QString("filter error: %1").arg(fs.errorMessage());
+				doError();
+				return;
+			}
 
 			// NOTE: http-response mode doesn't support a close
 			//   action since it's better to send a real response
 
 			if(f.action == PublishFormat::Send)
 			{
-				if(f.haveBodyPatch)
-					respond(f.code, f.reason, f.headers, f.bodyPatch, exposeHeaders);
-				else
-					respond(f.code, f.reason, f.headers, f.body, exposeHeaders);
+				respond(f.code, f.reason, f.headers, body, exposeHeaders);
 			}
 			else if(f.action == PublishFormat::Hint)
 			{
@@ -346,11 +469,11 @@ private:
 	{
 		cleanupAction();
 
-		if(outReq)
-		{
-			delete outReq;
-			outReq = 0;
-		}
+		delete outReq;
+		outReq = 0;
+
+		delete responseFilters;
+		responseFilters = 0;
 	}
 
 	void cleanupAction()
@@ -359,6 +482,16 @@ private:
 		{
 			pendingAction->sessions.remove(q);
 			pendingAction = 0;
+		}
+	}
+
+	void setupKeepAliveTimer()
+	{
+		if(instruct.keepAliveTimeout >= 0)
+		{
+			int timeout = instruct.keepAliveTimeout * 1000;
+			timeout = qMax(timeout - (qrand() % KEEPALIVE_RAND_MAX), 0);
+			timer->start(timeout);
 		}
 	}
 
@@ -418,35 +551,20 @@ private:
 	{
 		assert(instruct.holdMode != Instruct::NoHold);
 
-		if(first && instruct.holdMode == Instruct::StreamHold)
+		if(instruct.holdMode == Instruct::StreamHold)
 		{
-			bool conflict = false;
-			foreach(const Instruct::Channel &c, instruct.channels)
+			// if prev ids used but not next link, error out
+			if(nextUri.isEmpty())
 			{
-				if(!c.prevId.isNull())
+				foreach(const Instruct::Channel &c, instruct.channels)
 				{
-					QString name = adata.channelPrefix + c.name;
-
-					QString lastId = publishLastIds->value(name);
-					if(!lastId.isNull() && lastId != c.prevId)
+					if(!c.prevId.isNull())
 					{
-						log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
-						publishLastIds->remove(name);
-						conflict = true;
-
-						// NOTE: don't exit loop here. we want to clear
-						//   the last ids of all conflicting channels
+						errorMessage = QString("channel '%1' specifies prev-id, but no next link found").arg(c.name);
+						doError();
+						return;
 					}
 				}
-			}
-
-			if(conflict)
-			{
-				// update expects us to be in Holding state
-				state = Holding;
-
-				update(LowPriority);
-				return;
 			}
 		}
 
@@ -456,6 +574,9 @@ private:
 		{
 			it.next();
 			const QString &name = it.key();
+
+			if(adata.implicitChannels.contains(name))
+				continue;
 
 			bool found = false;
 			foreach(const Instruct::Channel &c, instruct.channels)
@@ -467,7 +588,10 @@ private:
 				}
 			}
 			if(!found)
+			{
 				channelsRemoved += name;
+				channels.remove(name);
+			}
 		}
 
 		QList<QString> channelsAdded;
@@ -516,6 +640,42 @@ private:
 		}
 		else // StreamHold
 		{
+			// if conflict on first hold, immediately recover. we don't
+			//   do this on subsequent holds because there may be queued
+			//   messages available to resolve the conflict
+			if(first)
+			{
+				bool conflict = false;
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					if(!c.prevId.isNull())
+					{
+						QString name = adata.channelPrefix + c.name;
+
+						QString lastId = publishLastIds->value(name);
+
+						if(!lastId.isNull() && lastId != c.prevId)
+						{
+							log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(c.prevId), qPrintable(lastId));
+							publishLastIds->remove(name);
+							conflict = true;
+
+							// NOTE: don't exit loop here. we want to clear
+							//   the last ids of all conflicting channels
+						}
+					}
+				}
+
+				if(conflict)
+				{
+					// update expects us to be in Holding state
+					state = Holding;
+
+					update(LowPriority);
+					return;
+				}
+			}
+
 			// drop any non-matching queued items
 			while(!publishQueue.isEmpty())
 			{
@@ -572,7 +732,7 @@ private:
 			{
 				if(channel.prevId != item.prevId)
 				{
-					log_debug("lastid inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
+					log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
 					publishLastIds->remove(item.channel);
 
 					publishQueue.clear();
@@ -584,21 +744,54 @@ private:
 				channel.prevId = item.id;
 			}
 
-			if(!Filters::applyFilters(instruct.meta, item.meta, channels[item.channel].filters))
+			PublishFormat &f = item.format;
+
+			QByteArray body = f.body;
+
+			QHash<QString, QString> prevIds;
+			QHashIterator<QString, Instruct::Channel> it(channels);
+			while(it.hasNext())
+			{
+				it.next();
+				const Instruct::Channel &c = it.value();
+				prevIds[c.name] = c.prevId;
+			}
+
+			Filter::Context fc;
+			fc.prevIds = prevIds;
+			fc.subscriptionMeta = instruct.meta;
+			fc.publishMeta = item.meta;
+
+			FilterStack fs(fc, channels[item.channel].filters);
+
+			if(fs.sendAction() == Filter::Drop)
 				continue;
 
-			PublishFormat &f = item.format;
+			body = fs.process(body);
+			if(body.isNull())
+			{
+				errorMessage = QString("filter error: %1").arg(fs.errorMessage());
+				doError();
+				break;
+			}
 
 			if(f.action == PublishFormat::Send)
 			{
-				req->writeBody(f.body);
+				req->writeBody(body);
 
 				// restart keep alive timer
-				if(instruct.keepAliveTimeout >= 0)
-					timer->start(instruct.keepAliveTimeout * 1000);
+				setupKeepAliveTimer();
 
 				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
-					updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+				{
+					activeChannels += item.channel;
+					if(activeChannels.count() == channels.count())
+					{
+						activeChannels.clear();
+
+						updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+					}
+				}
 			}
 			else if(f.action == PublishFormat::Hint)
 			{
@@ -636,9 +829,11 @@ private:
 	{
 		state = Holding;
 
+		activeChannels.clear();
+
 		// start keep alive timer, if it wasn't started already
-		if(!timer->isActive() && instruct.keepAliveTimeout >= 0)
-			timer->start(instruct.keepAliveTimeout * 1000);
+		if(!timer->isActive())
+			setupKeepAliveTimer();
 
 		if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
 			updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
@@ -724,7 +919,7 @@ private:
 			}
 			else
 			{
-				Cors::applyCorsHeaders(adata.requestData.headers, &headers);
+				Cors::applyCorsHeaders(req->requestHeaders(), &headers);
 			}
 		}
 
@@ -768,52 +963,6 @@ private:
 		}
 
 		respond(code, reason, headers, body);
-	}
-
-	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QVariantList &bodyPatch, const QList<QByteArray> &exposeHeaders)
-	{
-		QByteArray body;
-
-		QJsonParseError e;
-		QJsonDocument doc = QJsonDocument::fromJson(instruct.response.body, &e);
-		if(e.error == QJsonParseError::NoError && (doc.isObject() || doc.isArray()))
-		{
-			QVariant vbody;
-			if(doc.isObject())
-				vbody = doc.object().toVariantMap();
-			else // isArray
-				vbody = doc.array().toVariantList();
-
-			QString errorMessage;
-			vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
-			if(vbody.isValid())
-				vbody = VariantUtil::convertToJsonStyle(vbody);
-			if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
-			{
-				QJsonDocument doc;
-				if(vbody.type() == QVariant::Map)
-					doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
-				else // List
-					doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
-
-				body = doc.toJson(QJsonDocument::Compact);
-
-				if(instruct.response.body.endsWith("\r\n"))
-					body += "\r\n";
-				else if(instruct.response.body.endsWith("\n"))
-					body += '\n';
-			}
-			else
-			{
-				log_debug("httpsession: failed to apply JSON patch: %s", qPrintable(errorMessage));
-			}
-		}
-		else
-		{
-			log_debug("httpsession: failed to parse original response body as JSON");
-		}
-
-		respond(code, reason, headers, body, exposeHeaders);
 	}
 
 	void doFinish(bool retry = false)
@@ -874,6 +1023,28 @@ private:
 				rp.inspectInfo.sid = adata.inspectInfo.sid;
 				rp.inspectInfo.lastIds = adata.inspectInfo.lastIds;
 				rp.inspectInfo.userData = adata.inspectInfo.userData;
+			}
+
+			// if prev-id set on channels, set as inspect lastids so the proxy
+			//   will pass as Grip-Last in the next request
+			QHashIterator<QString, Instruct::Channel> it(channels);
+			while(it.hasNext())
+			{
+				it.next();
+				const Instruct::Channel &c = it.value();
+
+				if(!c.prevId.isNull())
+				{
+					QString name = adata.channelPrefix + c.name;
+
+					if(!rp.haveInspectInfo)
+					{
+						rp.haveInspectInfo = true;
+						rp.inspectInfo.doProxy = true;
+					}
+
+					rp.inspectInfo.lastIds.insert(name.toUtf8(), c.prevId.toUtf8());
+				}
 			}
 
 			retryPacket = rp;
@@ -973,6 +1144,20 @@ private:
 					return;
 
 				QByteArray buf = outReq->readBody(avail);
+
+				if(responseFilters)
+				{
+					buf = responseFilters->update(buf);
+					if(buf.isNull())
+					{
+						logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
+
+						errorMessage = QString("filter error: %1").arg(responseFilters->errorMessage());
+						doError();
+						return;
+					}
+				}
+
 				req->writeBody(buf);
 
 				sentOutReqData += buf.size();
@@ -980,6 +1165,29 @@ private:
 
 			if(outReq->bytesAvailable() == 0 && outReq->isFinished())
 			{
+				if(responseFilters)
+				{
+					QByteArray buf = responseFilters->finalize();
+					if(buf.isNull())
+					{
+						logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
+
+						errorMessage = QString("filter error: %1").arg(responseFilters->errorMessage());
+						doError();
+						return;
+					}
+
+					delete responseFilters;
+					responseFilters = 0;
+
+					if(!buf.isEmpty())
+					{
+						req->writeBody(buf);
+
+						sentOutReqData += buf.size();
+					}
+				}
+
 				HttpResponseData responseData;
 				responseData.code = outReq->responseCode();
 				responseData.reason = outReq->responseReason();
@@ -1018,7 +1226,12 @@ private:
 					nextUri.clear();
 
 				if(instruct.holdMode == Instruct::StreamHold)
+				{
+					if(instruct.keepAliveTimeout < 0)
+						timer->stop();
+
 					prepareToSendQueueOrHold();
+				}
 			}
 		}
 
@@ -1038,63 +1251,66 @@ private:
 		}
 	}
 
-	static QString makeLastIdsStr(const HttpHeaders &headers)
-	{
-		QString out;
-
-		bool first = true;
-		foreach(const HttpHeaderParameters &params, headers.getAllAsParameters("Grip-Last"))
-		{
-			if(!first)
-				out += ' ';
-			out += QString("#%1=%2").arg(QString::fromUtf8(params[0].first), QString::fromUtf8(params.get("last-id")));
-			first = false;
-		}
-
-		return out;
-	}
-
 	void logRequest(const QString &method, const QUrl &uri, const HttpHeaders &headers, int code, int bodySize)
 	{
-		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
+		LogUtil::RequestData rd;
 
 		if(!adata.route.isEmpty())
-			msg += QString(" route=%1").arg(adata.route);
+			rd.routeId = adata.route;
 
-		msg += QString(" code=%1 %2").arg(QString::number(code), QString::number(bodySize));
+		rd.status = LogUtil::Response;
 
-		QString lastIdsStr = makeLastIdsStr(headers);
-		if(!lastIdsStr.isEmpty())
-			msg += ' ' + lastIdsStr;
+		rd.requestData.method = method;
+		rd.requestData.uri = uri;
+		rd.requestData.headers = headers;
 
-		log_info("%s", qPrintable(msg));
+		rd.responseData.code = code;
+		rd.responseBodySize = bodySize;
+
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 	void logRequestError(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 	{
-		QString msg = QString("%1 %2").arg(method, uri.toString(QUrl::FullyEncoded));
+		LogUtil::RequestData rd;
 
 		if(!adata.route.isEmpty())
-			msg += QString(" route=%1").arg(adata.route);
+			rd.routeId = adata.route;
 
-		QString lastIdsStr = makeLastIdsStr(headers);
-		if(!lastIdsStr.isEmpty())
-			msg += ' ' + lastIdsStr;
+		rd.status = LogUtil::Error;
 
-		msg += QString(" error");
+		rd.requestData.method = method;
+		rd.requestData.uri = uri;
+		rd.requestData.headers = headers;
 
-		log_info("%s", qPrintable(msg));
+		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
 private slots:
 	void doError()
 	{
-		prepareToClose();
+		if(instruct.holdMode == Instruct::ResponseHold)
+		{
+			QByteArray msg;
 
-		if(adata.debug)
-			req->writeBody("\n\n" + errorMessage.toUtf8() + '\n');
+			if(adata.debug)
+				msg = errorMessage.toUtf8();
+			else
+				msg = "Error while proxying to origin.";
 
-		req->endBody();
+			HttpHeaders headers;
+			headers += HttpHeader("Content-Type", "text/plain");
+			respond(502, "Bad Gateway", headers, msg + '\n');
+		}
+		else // StreamHold, NoHold
+		{
+			prepareToClose();
+
+			if(adata.debug)
+				req->writeBody("\n\n" + errorMessage.toUtf8() + '\n');
+
+			req->endBody();
+		}
 	}
 
 	void req_bytesWritten(int count)
@@ -1133,7 +1349,26 @@ private slots:
 
 	void outReq_readyRead()
 	{
-		haveOutReqHeaders = true;
+		if(!haveOutReqHeaders)
+		{
+			haveOutReqHeaders = true;
+
+			// apply filters of all channels to content
+			QStringList allFilters;
+			foreach(const Instruct::Channel &c, instruct.channels)
+			{
+				foreach(const QString &filter, c.filters)
+				{
+					if(!allFilters.contains(filter))
+						allFilters += filter;
+				}
+			}
+
+			Filter::Context fc;
+			fc.subscriptionMeta = instruct.meta;
+
+			responseFilters = new FilterStack(fc, allFilters);
+		}
 
 		tryProcessOutReq();
 	}
@@ -1141,6 +1376,9 @@ private slots:
 	void outReq_error()
 	{
 		logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
+
+		delete responseFilters;
+		responseFilters = 0;
 
 		delete outReq;
 		outReq = 0;
@@ -1220,7 +1458,7 @@ ZhttpRequest::Rid HttpSession::rid() const
 
 QUrl HttpSession::requestUri() const
 {
-	return d->adata.requestData.uri;
+	return d->req->requestUri();
 }
 
 bool HttpSession::isRetry() const

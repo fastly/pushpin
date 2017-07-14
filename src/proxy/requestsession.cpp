@@ -41,6 +41,8 @@
 #include "acceptrequest.h"
 #include "statsmanager.h"
 #include "cors.h"
+#include "proxyutil.h"
+#include "xffrule.h"
 
 #define MAX_SHARED_REQUEST_BODY 100000
 #define MAX_ACCEPT_REQUEST_BODY 100000
@@ -150,6 +152,10 @@ public:
 	StatsManager *stats;
 	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
+	QByteArray defaultUpstreamKey;
+	bool trusted;
+	QHostAddress peerAddress;
+	QHostAddress logicalPeerAddress;
 	DomainMap::Entry route;
 	bool debug;
 	bool autoCrossOrigin;
@@ -173,6 +179,9 @@ public:
 	bool accepted;
 	bool passthrough;
 	bool autoShare;
+	XffRule xffRule;
+	XffRule xffTrustedRule;
+	bool isSockJs;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
@@ -185,6 +194,7 @@ public:
 		acceptManager(_acceptManager),
 		stats(_stats),
 		zhttpRequest(0),
+		trusted(false),
 		debug(false),
 		autoCrossOrigin(false),
 		inspectRequest(0),
@@ -199,7 +209,8 @@ public:
 		connectionRegistered(false),
 		accepted(false),
 		passthrough(false),
-		autoShare(false)
+		autoShare(false),
+		isSockJs(false)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
 	}
@@ -243,6 +254,11 @@ public:
 		requestData.uri = req->requestUri();
 		requestData.headers = req->requestHeaders();
 
+		trusted = ProxyUtil::checkTrustedClient("requestsession", q, requestData, defaultUpstreamKey);
+
+		peerAddress = req->peerAddress();
+		logicalPeerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
+
 		log_debug("IN id=%s, %s %s", rid.second.data(), qPrintable(requestData.method), requestData.uri.toEncoded().data());
 
 		bool isHttps = (requestData.uri.scheme() == "https");
@@ -258,6 +274,7 @@ public:
 			// before we do anything else, see if this is a sockjs request
 			if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
 			{
+				isSockJs = true;
 				sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
 				zhttpRequest = 0;
 				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
@@ -334,7 +351,7 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, zhttpRequest->peerAddress(), isHttps, false);
+			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
 			stats->addActivity(route.id);
 		}
 
@@ -346,6 +363,11 @@ public:
 
 	void startRetry()
 	{
+		trusted = ProxyUtil::checkTrustedClient("requestsession", q, requestData, defaultUpstreamKey);
+
+		peerAddress = zhttpRequest->peerAddress();
+		logicalPeerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
+
 		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
 		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
 
@@ -373,7 +395,7 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, zhttpRequest->peerAddress(), isHttps, true);
+			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, true);
 			stats->addActivity(route.id);
 		}
 	}
@@ -781,8 +803,9 @@ public slots:
 
 			AcceptData::Request areq;
 			areq.rid = rid;
-			areq.https = zhttpRequest->requestUri().scheme() == "https";
-			areq.peerAddress = zhttpRequest->peerAddress();
+			areq.https = requestData.uri.scheme() == "https";
+			areq.peerAddress = peerAddress;
+			areq.logicalPeerAddress = logicalPeerAddress;
 			areq.debug = debug;
 			areq.autoCrossOrigin = autoCrossOrigin;
 			areq.jsonpCallback = jsonpCallback;
@@ -797,9 +820,7 @@ public slots:
 			adata.requestData.body = in.take();
 
 			adata.haveInspectData = true;
-			adata.inspectData.doProxy = idata.doProxy;
-			adata.inspectData.sharingKey = idata.sharingKey;
-			adata.inspectData.userData = idata.userData;
+			adata.inspectData = idata;
 
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
@@ -1144,12 +1165,27 @@ bool RequestSession::isRetry() const
 
 bool RequestSession::isHttps() const
 {
-	return d->zhttpRequest->requestUri().scheme() == "https";
+	return d->requestData.uri.scheme() == "https";
+}
+
+bool RequestSession::isSockJs() const
+{
+	return d->isSockJs;
+};
+
+bool RequestSession::trusted() const
+{
+	return d->trusted;
 }
 
 QHostAddress RequestSession::peerAddress() const
 {
-	return d->zhttpRequest->peerAddress();
+	return d->peerAddress;
+}
+
+QHostAddress RequestSession::logicalPeerAddress() const
+{
+	return d->logicalPeerAddress;
 }
 
 ZhttpRequest::Rid RequestSession::rid() const
@@ -1235,6 +1271,17 @@ void RequestSession::setAutoShare(bool enabled)
 void RequestSession::setAccepted(bool enabled)
 {
 	d->accepted = enabled;
+}
+
+void RequestSession::setDefaultUpstreamKey(const QByteArray &key)
+{
+	d->defaultUpstreamKey = key;
+}
+
+void RequestSession::setXffRules(const XffRule &untrusted, const XffRule &trusted)
+{
+	d->xffRule = untrusted;
+	d->xffTrustedRule = trusted;
 }
 
 void RequestSession::start(ZhttpRequest *req)

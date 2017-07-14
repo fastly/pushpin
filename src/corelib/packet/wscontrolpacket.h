@@ -38,6 +38,7 @@ public:
 			Gone,
 			Grip,
 			NeedKeepAlive,
+			Subscribe,
 			Cancel,
 			Send,
 			KeepAliveSetup,
@@ -56,6 +57,7 @@ public:
 		int code;
 		QByteArray route;
 		QByteArray channelPrefix;
+		QByteArray channel;
 		int ttl;
 		int timeout;
 

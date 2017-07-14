@@ -34,6 +34,7 @@ class AcceptData;
 class ZrpcManager;
 class ZrpcChecker;
 class StatsManager;
+class XffRule;
 
 class RequestSession : public QObject
 {
@@ -46,7 +47,10 @@ public:
 
 	bool isRetry() const;
 	bool isHttps() const;
+	bool isSockJs() const;
+	bool trusted() const;
 	QHostAddress peerAddress() const;
+	QHostAddress logicalPeerAddress() const;
 	ZhttpRequest::Rid rid() const;
 	HttpRequestData requestData() const;
 	HttpResponseData responseData() const;
@@ -66,6 +70,8 @@ public:
 	void setRoute(const DomainMap::Entry &route);
 	void setAutoShare(bool enabled);
 	void setAccepted(bool enabled);
+	void setDefaultUpstreamKey(const QByteArray &key);
+        void setXffRules(const XffRule &untrusted, const XffRule &trusted);
 
 	// takes ownership
 	void start(ZhttpRequest *req);

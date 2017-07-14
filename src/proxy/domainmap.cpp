@@ -153,9 +153,11 @@ public:
 	QString fileName;
 	QHash< QString, QList<Rule> > map;
 	QTimer t;
+	QFileSystemWatcher watcher;
 
 	Worker() :
-		t(this)
+		t(this),
+		watcher(this)
 	{
 		connect(&t, &QTimer::timeout, this, &Worker::doReload);
 		t.setSingleShot(true);
@@ -251,9 +253,8 @@ public slots:
 	{
 		if(!fileName.isEmpty())
 		{
-			QFileSystemWatcher *watcher = new QFileSystemWatcher(this);
-			connect(watcher, &QFileSystemWatcher::fileChanged, this, &Worker::fileChanged);
-			watcher->addPath(fileName);
+			connect(&watcher, &QFileSystemWatcher::fileChanged, this, &Worker::fileChanged);
+			watcher.addPath(fileName);
 
 			reload();
 		}
@@ -276,6 +277,13 @@ public slots:
 
 	void doReload()
 	{
+		// in case the file was not changed, but overwritten by a different
+		// file, re-arm watcher.
+		if(!fileName.isEmpty())
+		{
+			watcher.addPath(fileName);
+		}
+
 		reload();
 	}
 
@@ -536,7 +544,13 @@ private:
 				target.host = props.value("host");
 
 			if(props.contains("sub"))
-				target.subChannel = props.value("sub");
+			{
+				foreach(const QString &s, props.values("sub"))
+				{
+					if(!s.isEmpty())
+						target.subscriptions += s;
+				}
+			}
 
 			if(props.contains("over_http"))
 				target.overHttp = true;

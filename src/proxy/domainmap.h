@@ -23,6 +23,7 @@
 #include <QObject>
 #include <QPair>
 #include <QString>
+#include <QStringList>
 #include "httpheaders.h"
 
 // this class offers fast access to the routes file. the table is maintained
@@ -104,7 +105,7 @@ public:
 		bool trustConnectHost; // verify cert against target host
 		bool insecure; // ignore server certificate validity
 		QString host; // override input host
-		QString subChannel; // force subscription for websocket test
+		QStringList subscriptions; // implicit subscriptions
 		bool overHttp; // use websocket-over-http protocol
 
 		Target() :

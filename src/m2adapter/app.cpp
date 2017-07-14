@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Fanout, Inc.
+ * Copyright (C) 2013-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -37,6 +37,7 @@
 #include "bufferlist.h"
 #include "log.h"
 #include "layertracker.h"
+#include "logutil.h"
 #include "config.h"
 
 #define DEFAULT_HWM 101000
@@ -920,7 +921,7 @@ public:
 		QByteArray buf = packet.toByteArray();
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("m2: OUT [%s]", buf.mid(0, 1000).data());
+			LogUtil::logByteArray(LOG_LEVEL_DEBUG, buf, "m2: OUT");
 
 		m2_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -1200,10 +1201,11 @@ public:
 	{
 		const char *logprefix = (mode == Http ? "zhttp" : "zws");
 
-		QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("%s: OUT %s", logprefix, buf.mid(0, 1000).data());
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s: OUT", logprefix);
 
 		if(mode == Http)
 			zhttp_out_sock->write(QList<QByteArray>() << buf);
@@ -1215,10 +1217,11 @@ public:
 	{
 		const char *logprefix = (mode == Http ? "zhttp" : "zws");
 
-		QByteArray buf = QByteArray("T") + TnetString::fromVariant(packet.toVariant());
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("%s: OUT instance=%s %s", logprefix, instanceAddress.data(), buf.mid(0, 1000).data());
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s: OUT instance=%s", logprefix, instanceAddress.data());
 
 		QList<QByteArray> message;
 		message += instanceAddress;
@@ -1451,7 +1454,7 @@ public:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("%s: IN %s", logprefix, dataRaw.mid(0, 1000).data());
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "%s: IN", logprefix);
 
 		ZhttpResponsePacket zresp;
 		if(!zresp.fromVariant(data))
@@ -2304,7 +2307,7 @@ private slots:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("m2: IN %s", message[0].mid(0, 1000).data());
+			LogUtil::logByteArray(LOG_LEVEL_DEBUG, message[0], "m2: IN");
 
 		M2RequestPacket mreq;
 		if(!mreq.fromByteArray(message[0]))

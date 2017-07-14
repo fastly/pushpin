@@ -34,11 +34,13 @@ public:
 	QHash<PublishFormat::Type, PublishFormat> formats;
 	QHash<QString, QString> meta;
 	int size;
+	bool noSeq;
 
 	PublishFormat format; // for single format items
 
 	PublishItem() :
-		size(-1)
+		size(-1),
+		noSeq(false)
 	{
 	}
 

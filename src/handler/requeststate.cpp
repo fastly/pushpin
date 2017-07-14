@@ -72,6 +72,15 @@ RequestState RequestState::fromVariant(const QVariant &in)
 			return RequestState();
 	}
 
+	if(r.contains("logical-peer-address"))
+	{
+		if(r["logical-peer-address"].type() != QVariant::ByteArray)
+			return RequestState();
+
+		if(!rs.logicalPeerAddress.setAddress(QString::fromUtf8(r["logical-peer-address"].toByteArray())))
+			return RequestState();
+	}
+
 	if(r.contains("https"))
 	{
 		if(r["https"].type() != QVariant::Bool)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,6 +21,7 @@
 #define PROXYSESSION_H
 
 #include <QObject>
+#include "logutil.h"
 #include "domainmap.h"
 
 class InspectData;
@@ -35,12 +36,11 @@ class ProxySession : public QObject
 	Q_OBJECT
 
 public:
-	ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, QObject *parent = 0);
+	ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, QObject *parent = 0);
 	~ProxySession();
 
 	void setRoute(const DomainMap::Entry &route);
 	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
-	void setDefaultUpstreamKey(const QByteArray &key);
 	void setAcceptXForwardedProtocol(bool enabled);
 	void setUseXForwardedProtocol(bool enabled);
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);

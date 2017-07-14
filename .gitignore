@@ -44,5 +44,6 @@ moc_*
 /src/pushpin/*.inst
 /tools/Makefile
 /tools/publish/Makefile
+/config
 /run
 /log
