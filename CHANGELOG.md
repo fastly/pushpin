@@ -1,6 +1,26 @@
 Pushpin Changelog
 =================
 
+v. 1.16.0 (2017-07-14)
+
+  * Reliable streaming fixes.
+  * SockJS: XHR transport fixes.
+  * WebSocket-Over-HTTP: more fixes to ensure DISCONNECT events get sent.
+  * Fix routes file change detection when file is replaced.
+  * Set Grip-Last headers when retrying long-polling request.
+  * Enable client-side TCP keep-alives.
+  * Stats: report logical IP address rather than physical.
+  * Published items can include no-seq flag to bypass sequencing buffer.
+  * New config options: log_from, log_user_agent.
+  * New filters: skip-users, build-id, require-sub.
+  * Add randomness to stream keep alives.
+  * pushpin-publish: --meta option.
+  * pushpin-publish: --no-seq option.
+  * Announce more features using Grip-Feature request header.
+  * Fix GRIP session detection.
+  * sub target parameter works for both HTTP and WebSocket, forbids unsub.
+  * Packet logging uses new format that only trims content, not headers.
+
 v. 1.15.0 (2017-01-22)
 
   * Publish hint action for triggering recovery requests.
