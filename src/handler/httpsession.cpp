@@ -606,8 +606,9 @@ private:
 			}
 			else
 			{
-				// update prev-id
+				// update channel properties
 				channels[name].prevId = c.prevId;
+				channels[name].filters = c.filters;
 			}
 		}
 
