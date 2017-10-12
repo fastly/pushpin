@@ -396,6 +396,23 @@ public:
 				channel.prevId = item.id;
 			}
 
+			if(f.haveContentFilters)
+			{
+				// ensure content filters match
+				QStringList contentFilters;
+				foreach(const QString &f, channels[item.channel].filters)
+				{
+					if(Filter::isContentFilter(f))
+						contentFilters += f;
+				}
+				if(contentFilters != f.contentFilters)
+				{
+					errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+					doError();
+					return;
+				}
+			}
+
 			QByteArray body;
 			if(f.haveBodyPatch)
 			{
@@ -746,6 +763,23 @@ private:
 			}
 
 			PublishFormat &f = item.format;
+
+			if(f.haveContentFilters)
+			{
+				// ensure content filters match
+				QStringList contentFilters;
+				foreach(const QString &f, channels[item.channel].filters)
+				{
+					if(Filter::isContentFilter(f))
+						contentFilters += f;
+				}
+				if(contentFilters != f.contentFilters)
+				{
+					errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+					doError();
+					break;
+				}
+			}
 
 			QByteArray body = f.body;
 
