@@ -96,6 +96,7 @@ public:
 	QTimer *expireTimer;
 	QTimer *keepAliveTimer;
 	bool multi;
+	bool quiet;
 
 	Private(ZhttpRequest *_q) :
 		QObject(_q),
@@ -123,7 +124,8 @@ public:
 		errored(false),
 		expireTimer(0),
 		keepAliveTimer(0),
-		multi(false)
+		multi(false),
+		quiet(false)
 	{
 		expireTimer = new QTimer(this);
 		connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
@@ -939,6 +941,8 @@ public slots:
 						p.ignoreTlsErrors = true;
 					if(passthrough.isValid())
 						p.passthrough = passthrough;
+					if(quiet)
+						p.quiet = true;
 					writePacket(p);
 
 					state = ClientRequestFinishWait;
@@ -987,6 +991,8 @@ public slots:
 					p.ignoreTlsErrors = true;
 				if(passthrough.isValid())
 					p.passthrough = passthrough;
+				if(quiet)
+					p.quiet = true;
 				p.credits = IDEAL_CREDITS;
 				p.multi = true;
 				writePacket(p);
@@ -1168,6 +1174,11 @@ void ZhttpRequest::setSendBodyAfterAcknowledgement(bool on)
 void ZhttpRequest::setPassthroughData(const QVariant &data)
 {
 	d->passthrough = data;
+}
+
+void ZhttpRequest::setQuiet(bool on)
+{
+	d->quiet = on;
 }
 
 void ZhttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)

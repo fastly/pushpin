@@ -66,6 +66,7 @@ public:
 	void setIsTls(bool on); // updates scheme
 	void setSendBodyAfterAcknowledgement(bool on); // only works in push/sub mode
 	void setPassthroughData(const QVariant &data);
+	void setQuiet(bool on);
 
 	// for server requests only
 	void pause();

@@ -117,6 +117,7 @@ private slots:
 
 		req->setIgnorePolicies(true);
 		req->setIgnoreTlsErrors(true);
+		req->setQuiet(true);
 
 		QUrl url(CHECK_URL);
 
