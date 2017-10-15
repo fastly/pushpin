@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -253,6 +253,7 @@ public:
 		int messageRate = settings.value("handler/message_rate", -1).toInt();
 		int messageHwm = settings.value("handler/message_hwm", -1).toInt();
 		int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
+		int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -295,6 +296,7 @@ public:
 		config.messageRate = messageRate;
 		config.messageHwm = messageHwm;
 		config.messageBlockSize = messageBlockSize;
+		config.idCacheTtl = idCacheTtl;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

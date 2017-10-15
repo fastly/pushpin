@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,8 +33,11 @@ public:
 	Sequencer(PublishLastIds *publishLastIds, QObject *parent = 0);
 	~Sequencer();
 
+	void setIdCacheTtl(int secs);
+
+	// seq = false means ID cache handling only
 	// note: may emit signals
-	void addItem(const PublishItem &item);
+	void addItem(const PublishItem &item, bool seq = true);
 
 	void clearPendingForChannel(const QString &channel);
 

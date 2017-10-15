@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -52,16 +52,28 @@ public:
 		}
 	};
 
+	class CachedId
+	{
+	public:
+		qint64 expireTime;
+		QString channel;
+		QString id;
+	};
+
 	Sequencer *q;
 	PublishLastIds *lastIds;
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
 	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
 	QTimer *expireTimer;
+	int idCacheTtl;
+	QHash<QPair<QString, QString>, CachedId*> idCacheById;
+	QMap<QPair<qint64, CachedId*>, CachedId*> idCacheByExpireTime;
 
 	Private(Sequencer *_q, PublishLastIds *_publishLastIds) :
 		QObject(_q),
 		q(_q),
-		lastIds(_publishLastIds)
+		lastIds(_publishLastIds),
+		idCacheTtl(-1)
 	{
 		expireTimer = new QTimer(this);
 		connect(expireTimer, &QTimer::timeout, this, &Private::expireTimer_timeout);
@@ -72,10 +84,50 @@ public:
 		expireTimer->disconnect(this);
 		expireTimer->setParent(0);
 		expireTimer->deleteLater();
+
+		qDeleteAll(idCacheById);
 	}
 
-	void addItem(const PublishItem &item)
+	void addItem(const PublishItem &item, bool seq)
 	{
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		while(!idCacheByExpireTime.isEmpty())
+		{
+			QMap<QPair<qint64, CachedId*>, CachedId*>::iterator it = idCacheByExpireTime.begin();
+			CachedId *i = it.value();
+
+			if(i->expireTime > now)
+				break;
+
+			idCacheById.remove(QPair<QString, QString>(i->channel, i->id));
+			idCacheByExpireTime.erase(it);
+			delete i;
+		}
+
+		if(!item.id.isNull() && idCacheTtl > 0)
+		{
+			QPair<QString, QString> idKey(item.channel, item.id);
+			if(idCacheById.contains(idKey))
+			{
+				// we've seen this ID recently, drop the message
+				return;
+			}
+
+			CachedId *i = new CachedId;
+			i->expireTime = now + (idCacheTtl * 1000);
+			i->channel = item.channel;
+			i->id = item.id;
+			idCacheById.insert(idKey, i);
+			idCacheByExpireTime.insert(QPair<qint64, CachedId*>(i->expireTime, i), i);
+		}
+
+		if(!seq)
+		{
+			emit q->itemReady(item);
+			return;
+		}
+
 		QString lastId = lastIds->value(item.channel);
 
 		if(!lastId.isNull() && !item.prevId.isNull() && lastId != item.prevId)
@@ -93,8 +145,6 @@ public:
 				log_debug("sequencer: too many pending items for channel [%s], dropping", qPrintable(item.channel));
 				return;
 			}
-
-			qint64 now = QDateTime::currentMSecsSinceEpoch();
 
 			PendingItem *i = new PendingItem;
 			i->time = now;
@@ -220,9 +270,14 @@ Sequencer::~Sequencer()
 	delete d;
 }
 
-void Sequencer::addItem(const PublishItem &item)
+void Sequencer::setIdCacheTtl(int secs)
 {
-	d->addItem(item);
+	d->idCacheTtl = secs;
+}
+
+void Sequencer::addItem(const PublishItem &item, bool seq)
+{
+	d->addItem(item, seq);
 }
 
 void Sequencer::clearPendingForChannel(const QString &channel)

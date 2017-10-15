@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -58,6 +58,7 @@ public:
 		int messageRate;
 		int messageHwm;
 		int messageBlockSize;
+		int idCacheTtl;
 
 		Configuration() :
 			pushInHttpPort(-1),
@@ -65,7 +66,8 @@ public:
 			shareAll(false),
 			messageRate(-1),
 			messageHwm(-1),
-			messageBlockSize(-1)
+			messageBlockSize(-1),
+			idCacheTtl(-1)
 		{
 		}
 	};

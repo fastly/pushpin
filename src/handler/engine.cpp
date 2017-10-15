@@ -1421,6 +1421,8 @@ public:
 		updateLimiter->setRate(10);
 		updateLimiter->setBatchWaitEnabled(true);
 
+		sequencer->setIdCacheTtl(config.idCacheTtl);
+
 		zhttpIn = new ZhttpManager(this);
 		zhttpIn->setInstanceId(config.instanceId);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
@@ -1667,24 +1669,13 @@ public:
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
-		if(!cs.subs.contains(item.channel))
-		{
-			// don't sequence if nobody's listening, because we
-			//   clear lastId on unsubscribe and don't want it to
-			//   be set again until after a subscription returns
+		// only sequence if someone is listening, because we
+		//   clear lastId on unsubscribe and don't want it to
+		//   be set again until after a subscription returns
 
-			log_info("publish channel=%s receivers=0", qPrintable(item.channel));
-			return;
-		}
+		bool seq = (!item.noSeq && cs.subs.contains(item.channel));
 
-		if(item.noSeq)
-		{
-			sequencer_itemReady(item);
-		}
-		else
-		{
-			sequencer->addItem(item);
-		}
+		sequencer->addItem(item, seq);
 	}
 
 	void writeRetryPacket(const RetryRequestPacket &packet)
