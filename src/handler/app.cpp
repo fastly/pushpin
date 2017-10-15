@@ -254,6 +254,7 @@ public:
 		int messageHwm = settings.value("handler/message_hwm", -1).toInt();
 		int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
 		int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
+		int connectionSubscriptionMax = settings.value("handler/connection_subscription_max", 20).toInt();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -297,6 +298,7 @@ public:
 		config.messageHwm = messageHwm;
 		config.messageBlockSize = messageBlockSize;
 		config.idCacheTtl = idCacheTtl;
+		config.connectionSubscriptionMax = connectionSubscriptionMax;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

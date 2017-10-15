@@ -59,6 +59,7 @@ public:
 		int messageHwm;
 		int messageBlockSize;
 		int idCacheTtl;
+		int connectionSubscriptionMax;
 
 		Configuration() :
 			pushInHttpPort(-1),
@@ -67,7 +68,8 @@ public:
 			messageRate(-1),
 			messageHwm(-1),
 			messageBlockSize(-1),
-			idCacheTtl(-1)
+			idCacheTtl(-1),
+			connectionSubscriptionMax(-1)
 		{
 		}
 	};

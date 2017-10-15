@@ -603,8 +603,9 @@ public:
 	QString sid;
 	LastIds lastIds;
 	QList<HttpSession*> sessions;
+	int connectionSubscriptionMax;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req),
 		stateClient(_stateClient),
@@ -616,7 +617,8 @@ public:
 		httpSessionUpdateManager(_httpSessionUpdateManager),
 		trusted(false),
 		haveInspectInfo(false),
-		responseSent(false)
+		responseSent(false),
+		connectionSubscriptionMax(_connectionSubscriptionMax)
 	{
 		req->setParent(this);
 	}
@@ -1225,7 +1227,7 @@ private:
 			adata.haveInspectInfo = haveInspectInfo;
 			adata.inspectInfo = inspectInfo;
 
-			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, this);
+			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -2112,7 +2114,7 @@ private slots:
 		if(!req)
 			return;
 
-		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, this);
+		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
 		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
 		connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
@@ -2339,21 +2341,28 @@ private slots:
 
 				if(cm.type == WsControlMessage::Subscribe)
 				{
-					QString channel = s->channelPrefix + cm.channel;
-					s->channels += channel;
-					s->channelFilters[channel] = cm.filters;
+					if(s->channels.count() < config.connectionSubscriptionMax)
+					{
+						QString channel = s->channelPrefix + cm.channel;
+						s->channels += channel;
+						s->channelFilters[channel] = cm.filters;
 
-					if(!cs.wsSessionsByChannel.contains(channel))
-						cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
+						if(!cs.wsSessionsByChannel.contains(channel))
+							cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
 
-					cs.wsSessionsByChannel[channel] += s;
+						cs.wsSessionsByChannel[channel] += s;
 
-					log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
+						log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
 
-					stats->addSubscription("ws", channel);
-					addSub(channel);
+						stats->addSubscription("ws", channel);
+						addSub(channel);
 
-					log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
+						log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
+					}
+					else
+					{
+						log_warning("ws session %s: too many subscriptions", qPrintable(s->cid));
+					}
 				}
 				else if(cm.type == WsControlMessage::Unsubscribe)
 				{
