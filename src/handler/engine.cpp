@@ -547,31 +547,6 @@ public:
 		publishLastIds(1000000)
 	{
 	}
-
-	QSet<QString> removeWsSessionChannels(WsSession *s)
-	{
-		QSet<QString> out;
-
-		foreach(const QString &channel, s->channels)
-		{
-			if(!wsSessionsByChannel.contains(channel))
-				continue;
-
-			QSet<WsSession*> &cur = wsSessionsByChannel[channel];
-			if(!cur.contains(s))
-				continue;
-
-			cur.remove(s);
-
-			if(cur.isEmpty())
-			{
-				wsSessionsByChannel.remove(channel);
-				out += channel;
-			}
-		}
-
-		return out;
-	}
 };
 
 class AcceptWorker : public Deferred
@@ -1753,10 +1728,7 @@ private:
 
 	void removeWsSession(WsSession *s)
 	{
-		QSet<QString> unsubs = cs.removeWsSessionChannels(s);
-
-		foreach(const QString &channel, unsubs)
-			stats->removeSubscription("ws", channel, false);
+		removeSessionChannels(s);
 
 		log_debug("removed ws session: %s", qPrintable(s->cid));
 
@@ -1877,6 +1849,78 @@ private:
 	{
 		cs.publishLastIds.clear();
 		updateSessions();
+	}
+
+	void removeSessionChannel(HttpSession *hs, const QString &channel)
+	{
+		Instruct::HoldMode mode = hs->holdMode();
+		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
+
+		QHash<QString, QSet<HttpSession*> > *sessionsByChannel;
+		QString modeStr;
+
+		if(mode == Instruct::ResponseHold)
+		{
+			sessionsByChannel = &cs.responseSessionsByChannel;
+			modeStr = "response";
+		}
+		else // StreamHold
+		{
+			sessionsByChannel = &cs.streamSessionsByChannel;
+			modeStr = "stream";
+		}
+
+		if(!sessionsByChannel->contains(channel))
+			return;
+
+		QSet<HttpSession*> &cur = (*sessionsByChannel)[channel];
+		if(!cur.contains(hs))
+			return;
+
+		cur.remove(hs);
+
+		if(!cur.isEmpty())
+		{
+			stats->addSubscription(modeStr, channel, cur.count());
+		}
+		else
+		{
+			sessionsByChannel->remove(channel);
+
+			// linger the unsub in case client long-polls again
+			bool linger = (mode == Instruct::ResponseHold);
+
+			stats->removeSubscription(modeStr, channel, linger);
+		}
+	}
+
+	void removeSessionChannel(WsSession *s, const QString &channel)
+	{
+		if(!cs.wsSessionsByChannel.contains(channel))
+			return;
+
+		QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
+		if(!cur.contains(s))
+			return;
+
+		cur.remove(s);
+
+		if(!cur.isEmpty())
+		{
+			stats->addSubscription("ws", channel, cur.count());
+		}
+		else
+		{
+			cs.wsSessionsByChannel.remove(channel);
+
+			stats->removeSubscription("ws", channel, false);
+		}
+	}
+
+	void removeSessionChannels(WsSession *s)
+	{
+		foreach(const QString &channel, s->channels)
+			removeSessionChannel(s, channel);
 	}
 
 private slots:
@@ -2354,7 +2398,7 @@ private slots:
 
 						log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
 
-						stats->addSubscription("ws", channel);
+						stats->addSubscription("ws", channel, cs.wsSessionsByChannel.value(channel).count());
 						addSub(channel);
 
 						log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
@@ -2373,16 +2417,7 @@ private slots:
 						s->channels.remove(channel);
 						s->channelFilters.remove(channel);
 
-						if(cs.wsSessionsByChannel.contains(channel))
-						{
-							QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
-							cur.remove(s);
-							if(cur.isEmpty())
-							{
-								cs.wsSessionsByChannel.remove(channel);
-								stats->removeSubscription("ws", channel, false);
-							}
-						}
+						removeSessionChannel(s, channel);
 					}
 				}
 				else if(cm.type == WsControlMessage::Detach)
@@ -2491,7 +2526,7 @@ private slots:
 
 				log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
 
-				stats->addSubscription("ws", channel);
+				stats->addSubscription("ws", channel, cs.wsSessionsByChannel.value(channel).count());
 				addSub(channel);
 
 				log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
@@ -2823,18 +2858,21 @@ private slots:
 		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
 
 		QHash<QString, QSet<HttpSession*> > *sessionsByChannel;
+		QString modeStr;
 
 		if(mode == Instruct::ResponseHold)
 		{
 			log_debug("adding response hold on %s", qPrintable(channel));
 
 			sessionsByChannel = &cs.responseSessionsByChannel;
+			modeStr = "response";
 		}
 		else // StreamHold
 		{
 			log_debug("adding stream hold on %s", qPrintable(channel));
 
 			sessionsByChannel = &cs.streamSessionsByChannel;
+			modeStr = "stream";
 		}
 
 		if(!sessionsByChannel->contains(channel))
@@ -2842,57 +2880,21 @@ private slots:
 
 		(*sessionsByChannel)[channel] += hs;
 
+		stats->addSubscription(modeStr, channel, sessionsByChannel->value(channel).count());
+		addSub(channel);
+
 		QString msg = QString("subscribe %1 channel=%2").arg(hs->requestUri().toString(QUrl::FullyEncoded), channel);
 		if(hs->isRetry())
 			msg += " retry";
 
 		log_info("%s", qPrintable(msg));
-
-		stats->addSubscription(mode == Instruct::ResponseHold ? "response" : "stream", channel);
-		addSub(channel);
 	}
 
 	void hs_unsubscribe(const QString &channel)
 	{
 		HttpSession *hs = (HttpSession *)sender();
 
-		Instruct::HoldMode mode = hs->holdMode();
-		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
-
-		QHash<QString, QSet<HttpSession*> > *sessionsByChannel;
-
-		if(mode == Instruct::ResponseHold)
-		{
-			sessionsByChannel = &cs.responseSessionsByChannel;
-		}
-		else // StreamHold
-		{
-			sessionsByChannel = &cs.streamSessionsByChannel;
-		}
-
-		if(sessionsByChannel->contains(channel))
-		{
-			QSet<HttpSession*> &cur = (*sessionsByChannel)[channel];
-			if(cur.contains(hs))
-			{
-				cur.remove(hs);
-
-				if(cur.isEmpty())
-				{
-					sessionsByChannel->remove(channel);
-
-					if(mode == Instruct::ResponseHold)
-					{
-						// linger the unsub in case client long-polls again
-						stats->removeSubscription("response", channel, true);
-					}
-					else // StreamHold
-					{
-						stats->removeSubscription("stream", channel, false);
-					}
-				}
-			}
-		}
+		removeSessionChannel(hs, channel);
 	}
 
 	void hs_finished()

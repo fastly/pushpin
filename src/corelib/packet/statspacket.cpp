@@ -86,6 +86,9 @@ QVariant StatsPacket::toVariant() const
 		if(type == Subscribed)
 		{
 			obj["ttl"] = ttl;
+
+			if(subscribers >= 0)
+				obj["subscribers"] = subscribers;
 		}
 		else // Unsubscribed
 		{
@@ -270,6 +273,16 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 			ttl = obj["ttl"].toInt();
 			if(ttl < 0)
 				return false;
+
+			if(obj.contains("subscribers"))
+			{
+				if(!obj["subscribers"].canConvert(QVariant::Int))
+					return false;
+
+				subscribers = obj["subscribers"].toInt();
+				if(subscribers < 0)
+					return false;
+			}
 		}
 	}
 	else if(_type == "report")

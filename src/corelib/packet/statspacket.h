@@ -58,6 +58,7 @@ public:
 	QByteArray itemId; // message
 	QByteArray transport; // message
 	int blocks; // message
+	int subscribers; // subscribed
 	int connectionsMax; // report
 	int connectionsMinutes; // report
 	int messagesReceived; // report
@@ -73,6 +74,7 @@ public:
 		ssl(false),
 		ttl(-1),
 		blocks(-1),
+		subscribers(-1),
 		connectionsMax(-1),
 		connectionsMinutes(-1),
 		messagesReceived(-1),

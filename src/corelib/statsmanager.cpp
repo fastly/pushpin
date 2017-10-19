@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -87,11 +87,13 @@ public:
 	public:
 		QString mode;
 		QString channel;
+		int subscriberCount;
 		qint64 lastRefresh;
 		int refreshBucket;
 		bool linger;
 
 		Subscription() :
+			subscriberCount(0),
 			lastRefresh(-1),
 			refreshBucket(-1),
 			linger(false)
@@ -506,6 +508,7 @@ public:
 		p.mode = s->mode.toUtf8();
 		p.channel = s->channel.toUtf8();
 		p.ttl = SUBSCRIPTION_EXPIRE / 1000;
+		p.subscribers = s->subscriberCount;
 		write(p);
 	}
 
@@ -990,7 +993,7 @@ void StatsManager::refreshConnection(const QByteArray &id)
 	d->sendConnected(c);
 }
 
-void StatsManager::addSubscription(const QString &mode, const QString &channel)
+void StatsManager::addSubscription(const QString &mode, const QString &channel, int subscriberCount)
 {
 	Private::SubscriptionKey subKey(mode, channel);
 	Private::Subscription *s = d->subscriptionsByKey.value(subKey);
@@ -1002,6 +1005,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel)
 		s = new Private::Subscription;
 		s->mode = mode;
 		s->channel = channel;
+		s->subscriberCount = subscriberCount;
 		s->lastRefresh = now;
 		d->insertSubscription(s);
 
@@ -1009,6 +1013,10 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel)
 	}
 	else
 	{
+		int oldSubscriberCount = s->subscriberCount;
+
+		s->subscriberCount = subscriberCount;
+
 		if(s->linger)
 		{
 			qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -1022,6 +1030,15 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel)
 			d->subscriptionsByLastRefresh.insert(QPair<qint64, Private::Subscription*>(s->lastRefresh, s), s);
 
 			d->sendSubscribed(s);
+		}
+		else if(s->subscriberCount != oldSubscriberCount)
+		{
+			qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+			// process soon
+			d->subscriptionsByLastRefresh.remove(QPair<qint64, Private::Subscription*>(s->lastRefresh, s));
+			s->lastRefresh = now - SUBSCRIPTION_MUST_PROCESS;
+			d->subscriptionsByLastRefresh.insert(QPair<qint64, Private::Subscription*>(s->lastRefresh, s), s);
 		}
 	}
 }
