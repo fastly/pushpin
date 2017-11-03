@@ -1568,7 +1568,7 @@ public:
 
 		stats->setConnectionTtl(config.statsConnectionTtl);
 		stats->setSubscriptionTtl(config.statsSubscriptionTtl);
-		stats->setSubscriptionLinger(config.statsSubscriptionLinger);
+		stats->setSubscriptionLinger(config.subscriptionLinger);
 		stats->setReportInterval(config.statsReportInterval);
 
 		if(!config.statsSpec.isEmpty())
