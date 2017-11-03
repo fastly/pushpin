@@ -1566,7 +1566,10 @@ public:
 		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
 		connect(stats, &StatsManager::reported, this, &Private::stats_reported);
 
-		stats->setReportsEnabled(true);
+		stats->setConnectionTtl(config.statsConnectionTtl);
+		stats->setSubscriptionTtl(config.statsSubscriptionTtl);
+		stats->setSubscriptionLinger(config.statsSubscriptionLinger);
+		stats->setReportInterval(config.statsReportInterval);
 
 		if(!config.statsSpec.isEmpty())
 		{

@@ -297,6 +297,8 @@ public:
 				log_error("unable to bind to stats_spec: %s", qPrintable(config.statsSpec));
 				return false;
 			}
+
+			stats->setConnectionTtl(config.statsConnectionTtl);
 		}
 
 		if(!config.commandSpec.isEmpty())

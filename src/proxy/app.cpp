@@ -285,6 +285,7 @@ public:
 		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
 		QString updatesCheck = settings.value("proxy/updates_check").toString();
 		QString organizationName = settings.value("proxy/organization_name").toString();
+		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -345,6 +346,7 @@ public:
 		config.sockJsUrl = sockJsUrl;
 		config.updatesCheck = updatesCheck;
 		config.organizationName = organizationName;
+		config.statsConnectionTtl = statsConnectionTtl;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

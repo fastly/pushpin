@@ -60,6 +60,10 @@ public:
 		int messageBlockSize;
 		int idCacheTtl;
 		int connectionSubscriptionMax;
+		int statsConnectionTtl;
+		int statsSubscriptionTtl;
+		int statsSubscriptionLinger;
+		int statsReportInterval;
 
 		Configuration() :
 			pushInHttpPort(-1),
@@ -69,7 +73,11 @@ public:
 			messageHwm(-1),
 			messageBlockSize(-1),
 			idCacheTtl(-1),
-			connectionSubscriptionMax(-1)
+			connectionSubscriptionMax(-1),
+			statsConnectionTtl(-1),
+			statsSubscriptionTtl(-1),
+			statsSubscriptionLinger(-1),
+			statsReportInterval(-1)
 		{
 		}
 	};

@@ -71,6 +71,7 @@ public:
 		QString sockJsUrl;
 		QString updatesCheck;
 		QString organizationName;
+		int statsConnectionTtl;
 
 		Configuration() :
 			ipcFileMode(-1),
@@ -83,7 +84,8 @@ public:
 			useXForwardedProtocol(false),
 			logFrom(false),
 			logUserAgent(false),
-			updatesCheck("check")
+			updatesCheck("check"),
+			statsConnectionTtl(-1)
 		{
 		}
 	};
