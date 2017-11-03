@@ -69,6 +69,7 @@ class Updater::Private : public QObject
 public:
 	Updater *q;
 	Mode mode;
+	bool quiet;
 	QString currentVersion;
 	QString org;
 	ZhttpManager *zhttpManager;
@@ -77,10 +78,11 @@ public:
 	Report report;
 	QDateTime lastLogTime;
 
-	Private(Updater *_q, Mode _mode, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
+	Private(Updater *_q, Mode _mode, bool _quiet, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
 		QObject(_q),
 		q(_q),
 		mode(_mode),
+		quiet(_quiet),
 		currentVersion(_currentVersion),
 		org(_org),
 		zhttpManager(zhttp),
@@ -117,7 +119,7 @@ private slots:
 
 		req->setIgnorePolicies(true);
 		req->setIgnoreTlsErrors(true);
-		req->setQuiet(true);
+		req->setQuiet(quiet);
 
 		QUrl url(CHECK_URL);
 
@@ -235,10 +237,10 @@ private slots:
 	}
 };
 
-Updater::Updater(Mode mode, const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent) :
+Updater::Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, mode, currentVersion, org, zhttp);
+	d = new Private(this, mode, quiet, currentVersion, org, zhttp);
 }
 
 Updater::~Updater()

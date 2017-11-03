@@ -71,6 +71,7 @@ public:
 		QString sockJsUrl;
 		QString updatesCheck;
 		QString organizationName;
+		bool quietCheck;
 		int statsConnectionTtl;
 
 		Configuration() :
@@ -85,6 +86,7 @@ public:
 			logFrom(false),
 			logUserAgent(false),
 			updatesCheck("check"),
+			quietCheck(false),
 			statsConnectionTtl(-1)
 		{
 		}
