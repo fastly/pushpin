@@ -43,7 +43,10 @@ public:
 	void setInstanceId(const QByteArray &instanceId);
 	void setIpcFileMode(int mode);
 	bool setSpec(const QString &spec);
-	void setReportsEnabled(bool on);
+	void setConnectionTtl(int secs);
+	void setSubscriptionTtl(int secs);
+	void setSubscriptionLinger(int secs);
+	void setReportInterval(int secs);
 
 	// routeId may be empty for non-identified route
 

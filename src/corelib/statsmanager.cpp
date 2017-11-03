@@ -20,6 +20,7 @@
 #include "statsmanager.h"
 
 #include <assert.h>
+#include <QVector>
 #include <QDateTime>
 #include <QPointer>
 #include <QTimer>
@@ -33,21 +34,10 @@
 #define OUT_HWM 200000
 
 #define ACTIVITY_TIMEOUT 100
-#define REPORT_INTERVAL (10 * 1000)
-
 #define REFRESH_INTERVAL 1000
-#define CONNECTION_EXPIRE (120 * 1000)
-#define CONNECTION_LINGER (60 * 1000)
-#define SUBSCRIPTION_EXPIRE (60 * 1000)
-#define SUBSCRIPTION_LINGER (60 * 1000)
 
-#define CONNECTION_SHOULD_PROCESS (CONNECTION_EXPIRE * 3 / 4)
-#define CONNECTION_MUST_PROCESS (CONNECTION_EXPIRE * 4 / 5)
-#define CONNECTION_REFRESH_BUCKETS (CONNECTION_SHOULD_PROCESS / REFRESH_INTERVAL)
-
-#define SUBSCRIPTION_SHOULD_PROCESS (SUBSCRIPTION_EXPIRE * 3 / 4)
-#define SUBSCRIPTION_MUST_PROCESS (SUBSCRIPTION_EXPIRE * 4 / 5)
-#define SUBSCRIPTION_REFRESH_BUCKETS (SUBSCRIPTION_SHOULD_PROCESS / REFRESH_INTERVAL)
+#define SHOULD_PROCESS_TIME(x) (x * 3 / 4)
+#define MUST_PROCESS_TIME(x) (x * 4 / 5)
 
 class StatsManager::Private : public QObject
 {
@@ -114,6 +104,7 @@ public:
 		int blocksReceived;
 		int blocksSent;
 		qint64 lastUpdate;
+		qint64 startTime;
 
 		Report() :
 			connectionsMax(0),
@@ -124,7 +115,8 @@ public:
 			httpResponseMessagesSent(0),
 			blocksReceived(-1),
 			blocksSent(-1),
-			lastUpdate(-1)
+			lastUpdate(-1),
+			startTime(-1)
 		{
 		}
 
@@ -146,35 +138,43 @@ public:
 	QByteArray instanceId;
 	int ipcFileMode;
 	QString spec;
+	int connectionTtl;
+	int connectionLinger;
+	int subscriptionTtl;
+	int subscriptionLinger;
+	int reportInterval;
 	QZmq::Socket *sock;
 	QHash<QByteArray, int> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
 	QHash<QByteArray, QSet<ConnectionInfo*> > connectionInfoByRoute;
 	QMap<QPair<qint64, ConnectionInfo*>, ConnectionInfo*> connectionInfoByLastRefresh;
-	QSet<ConnectionInfo*> connectionInfoRefreshBuckets[CONNECTION_REFRESH_BUCKETS];
+	QVector<QSet<ConnectionInfo*> > connectionInfoRefreshBuckets;
 	int currentConnectionInfoRefreshBucket;
 	QHash<QByteArray, QHash<QByteArray, ConnectionInfo*> > externalConnectionInfoByFrom;
 	QHash<QByteArray, QSet<ConnectionInfo*> > externalConnectionInfoByRoute;
 	QMap<QPair<qint64, ConnectionInfo*>, ConnectionInfo*> externalConnectionInfoByLastActive;
 	QHash<SubscriptionKey, Subscription*> subscriptionsByKey;
 	QMap<QPair<qint64, Subscription*>, Subscription*> subscriptionsByLastRefresh;
-	QSet<Subscription*> subscriptionRefreshBuckets[SUBSCRIPTION_REFRESH_BUCKETS];
+	QVector<QSet<Subscription*> > subscriptionRefreshBuckets;
 	int currentSubscriptionRefreshBucket;
 	QHash<QByteArray, Report*> reports;
 	QTimer *activityTimer;
 	QTimer *reportTimer;
 	QTimer *refreshTimer;
-	bool reportsEnabled;
 
 	Private(StatsManager *_q) :
 		QObject(_q),
 		q(_q),
 		ipcFileMode(-1),
+		connectionTtl(120 * 1000),
+		connectionLinger(60 * 1000),
+		subscriptionTtl(60 * 1000),
+		subscriptionLinger(60 * 1000),
+		reportInterval(10 * 1000),
 		sock(0),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
-		reportTimer(0),
-		reportsEnabled(false)
+		reportTimer(0)
 	{
 		activityTimer = new QTimer(this);
 		connect(activityTimer, &QTimer::timeout, this, &Private::activity_timeout);
@@ -183,6 +183,9 @@ public:
 		refreshTimer = new QTimer(this);
 		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
 		refreshTimer->start(REFRESH_INTERVAL);
+
+		setupConnectionBuckets();
+		setupSubscriptionBuckets();
 	}
 
 	~Private()
@@ -225,7 +228,7 @@ public:
 		qDeleteAll(reports);
 	}
 
-	bool setup()
+	bool setupSock()
 	{
 		delete sock;
 
@@ -245,15 +248,55 @@ public:
 		return true;
 	}
 
-	void setupReports()
+	void setupConnectionBuckets()
 	{
-		if(reportsEnabled && !reportTimer)
+		int shouldProcessTime = SHOULD_PROCESS_TIME(connectionTtl);
+		QVector<QSet<ConnectionInfo*> > newBuckets(qMax(shouldProcessTime / REFRESH_INTERVAL, 1));
+
+		// rebalance (NOTE: this algorithm is not optimal)
+		int nextBucketIndex = 0;
+		for(int n = 0; n < connectionInfoRefreshBuckets.count(); ++n)
+		{
+			foreach(ConnectionInfo *c, connectionInfoRefreshBuckets[n])
+			{
+				newBuckets[nextBucketIndex++] += c;
+				if(nextBucketIndex >= newBuckets.count())
+					nextBucketIndex = 0;
+			}
+		}
+
+		connectionInfoRefreshBuckets = newBuckets;
+	}
+
+	void setupSubscriptionBuckets()
+	{
+		int shouldProcessTime = SHOULD_PROCESS_TIME(subscriptionTtl);
+		QVector<QSet<Subscription*> > newBuckets(qMax(shouldProcessTime / REFRESH_INTERVAL, 1));
+
+		// rebalance (NOTE: this algorithm is not optimal)
+		int nextBucketIndex = 0;
+		for(int n = 0; n < subscriptionRefreshBuckets.count(); ++n)
+		{
+			foreach(Subscription *s, subscriptionRefreshBuckets[n])
+			{
+				newBuckets[nextBucketIndex++] += s;
+				if(nextBucketIndex >= newBuckets.count())
+					nextBucketIndex = 0;
+			}
+		}
+
+		subscriptionRefreshBuckets = newBuckets;
+	}
+
+	void setupReportTimer()
+	{
+		if(reportInterval > 0 && !reportTimer)
 		{
 			reportTimer = new QTimer(this);
 			connect(reportTimer, &QTimer::timeout, this, &Private::report_timeout);
-			reportTimer->start(REPORT_INTERVAL);
+			reportTimer->start(reportInterval);
 		}
-		else if(!reportsEnabled && reportTimer)
+		else if(reportInterval <= 0 && reportTimer)
 		{
 			reportTimer->setParent(0);
 			reportTimer->disconnect(this);
@@ -266,7 +309,7 @@ public:
 	{
 		int best = -1;
 		int bestSize;
-		for(int n = 0; n < CONNECTION_REFRESH_BUCKETS; ++n)
+		for(int n = 0; n < connectionInfoRefreshBuckets.count(); ++n)
 		{
 			if(best == -1 || connectionInfoRefreshBuckets[n].count() < bestSize)
 			{
@@ -282,7 +325,7 @@ public:
 	{
 		int best = -1;
 		int bestSize;
-		for(int n = 0; n < SUBSCRIPTION_REFRESH_BUCKETS; ++n)
+		for(int n = 0; n < subscriptionRefreshBuckets.count(); ++n)
 		{
 			if(best == -1 || subscriptionRefreshBuckets[n].count() < bestSize)
 			{
@@ -399,6 +442,7 @@ public:
 		{
 			report = new Report;
 			report->routeId = routeId;
+			report->startTime = QDateTime::currentMSecsSinceEpoch();
 			reports[routeId] = report;
 		}
 
@@ -480,7 +524,7 @@ public:
 			p.connectionType = StatsPacket::Http;
 		p.peerAddress = c->peerAddress;
 		p.ssl = c->ssl;
-		p.ttl = CONNECTION_EXPIRE / 1000;
+		p.ttl = connectionTtl / 1000;
 		write(p);
 	}
 
@@ -507,7 +551,7 @@ public:
 		p.from = instanceId;
 		p.mode = s->mode.toUtf8();
 		p.channel = s->channel.toUtf8();
-		p.ttl = SUBSCRIPTION_EXPIRE / 1000;
+		p.ttl = subscriptionTtl / 1000;
 		p.subscribers = s->subscriberCount;
 		write(p);
 	}
@@ -588,7 +632,7 @@ public:
 		}
 
 		// process any others
-		qint64 threshold = now - CONNECTION_MUST_PROCESS;
+		qint64 threshold = now - MUST_PROCESS_TIME(connectionTtl);
 		while(!connectionInfoByLastRefresh.isEmpty())
 		{
 			QMap<QPair<qint64, ConnectionInfo*>, ConnectionInfo*>::iterator it = connectionInfoByLastRefresh.begin();
@@ -642,19 +686,19 @@ public:
 			emit q->connectionsRefreshed(refreshedIds);
 
 		++currentConnectionInfoRefreshBucket;
-		if(currentConnectionInfoRefreshBucket >= CONNECTION_REFRESH_BUCKETS)
+		if(currentConnectionInfoRefreshBucket >= connectionInfoRefreshBuckets.count())
 			currentConnectionInfoRefreshBucket = 0;
 	}
 
 	void expireExternalConnections(qint64 now)
 	{
 		// external connections should only be tracked if reporting is enabled
-		if(!reportsEnabled)
+		if(reportInterval <= 0)
 			return;
 
 		QSet<QByteArray> routesUpdated;
 
-		qint64 threshold = now - CONNECTION_EXPIRE;
+		qint64 threshold = now - connectionTtl;
 		while(!externalConnectionInfoByLastActive.isEmpty())
 		{
 			QMap<QPair<qint64, ConnectionInfo*>, ConnectionInfo*>::iterator it = externalConnectionInfoByLastActive.begin();
@@ -696,7 +740,7 @@ public:
 		}
 
 		// process any others
-		qint64 threshold = now - SUBSCRIPTION_MUST_PROCESS;
+		qint64 threshold = now - MUST_PROCESS_TIME(subscriptionTtl);
 		while(!subscriptionsByLastRefresh.isEmpty())
 		{
 			QMap<QPair<qint64, Subscription*>, Subscription*>::iterator it = subscriptionsByLastRefresh.begin();
@@ -743,7 +787,7 @@ public:
 		}
 
 		++currentSubscriptionRefreshBucket;
-		if(currentSubscriptionRefreshBucket >= SUBSCRIPTION_REFRESH_BUCKETS)
+		if(currentSubscriptionRefreshBucket >= subscriptionRefreshBuckets.count())
 			currentSubscriptionRefreshBucket = 0;
 	}
 
@@ -792,7 +836,9 @@ private slots:
 			p.httpResponseMessagesSent = report->httpResponseMessagesSent;
 			p.blocksReceived = report->blocksReceived;
 			p.blocksSent = report->blocksSent;
+			p.duration = now - report->startTime;
 
+			report->startTime = now;
 			report->connectionsMaxStale = true;
 			report->connectionsMinutes = 0;
 			report->messagesReceived = 0;
@@ -857,13 +903,30 @@ void StatsManager::setIpcFileMode(int mode)
 bool StatsManager::setSpec(const QString &spec)
 {
 	d->spec = spec;
-	return d->setup();
+	return d->setupSock();
 }
 
-void StatsManager::setReportsEnabled(bool on)
+void StatsManager::setConnectionTtl(int secs)
 {
-	d->reportsEnabled = on;
-	d->setupReports();
+	d->connectionTtl = secs * 1000;
+	d->setupConnectionBuckets();
+}
+
+void StatsManager::setSubscriptionTtl(int secs)
+{
+	d->subscriptionTtl = secs * 1000;
+	d->setupSubscriptionBuckets();
+}
+
+void StatsManager::setSubscriptionLinger(int secs)
+{
+	d->subscriptionLinger = secs * 1000;
+}
+
+void StatsManager::setReportInterval(int secs)
+{
+	d->reportInterval = secs * 1000;
+	d->setupReportTimer();
 }
 
 void StatsManager::addActivity(const QByteArray &routeId, int count)
@@ -909,7 +972,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 	c->lastReport = now; // start counting minutes from current time
 	d->insertConnection(c);
 
-	if(d->reportsEnabled)
+	if(d->reportInterval > 0)
 	{
 		// check if this connection should replace a lingering external one
 		// note: this iterates over all the known external sources, which at
@@ -955,7 +1018,7 @@ void StatsManager::removeConnection(const QByteArray &id, bool linger)
 	qint64 now = QDateTime::currentMSecsSinceEpoch();
 	QByteArray routeId = c->routeId;
 
-	if(d->reportsEnabled)
+	if(d->reportInterval > 0)
 		d->updateConnectionsMinutes(c, now);
 
 	if(linger)
@@ -965,7 +1028,7 @@ void StatsManager::removeConnection(const QByteArray &id, bool linger)
 			c->linger = true;
 
 			// hack to ensure full linger time honored by refresh processing
-			qint64 lingerStartTime = now + (CONNECTION_EXPIRE - CONNECTION_MUST_PROCESS);
+			qint64 lingerStartTime = now + (d->connectionLinger - MUST_PROCESS_TIME(d->connectionTtl));
 
 			// move to the end
 			d->connectionInfoByLastRefresh.remove(QPair<qint64, Private::ConnectionInfo*>(c->lastRefresh, c));
@@ -980,7 +1043,7 @@ void StatsManager::removeConnection(const QByteArray &id, bool linger)
 		delete c;
 	}
 
-	if(d->reportsEnabled)
+	if(d->reportInterval > 0)
 		d->updateConnectionsMax(routeId, now);
 }
 
@@ -1037,7 +1100,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel, 
 
 			// process soon
 			d->subscriptionsByLastRefresh.remove(QPair<qint64, Private::Subscription*>(s->lastRefresh, s));
-			s->lastRefresh = now - SUBSCRIPTION_MUST_PROCESS;
+			s->lastRefresh = now - MUST_PROCESS_TIME(d->subscriptionTtl);
 			d->subscriptionsByLastRefresh.insert(QPair<qint64, Private::Subscription*>(s->lastRefresh, s), s);
 		}
 	}
@@ -1059,7 +1122,7 @@ void StatsManager::removeSubscription(const QString &mode, const QString &channe
 			s->linger = true;
 
 			// hack to ensure full linger time honored by refresh processing
-			qint64 lingerStartTime = now + (SUBSCRIPTION_EXPIRE - SUBSCRIPTION_MUST_PROCESS);
+			qint64 lingerStartTime = now + (d->subscriptionLinger - MUST_PROCESS_TIME(d->subscriptionTtl));
 
 			// move to the end
 			d->subscriptionsByLastRefresh.remove(QPair<qint64, Private::Subscription*>(s->lastRefresh, s));
@@ -1079,7 +1142,8 @@ void StatsManager::removeSubscription(const QString &mode, const QString &channe
 
 void StatsManager::addMessageReceived(const QByteArray &routeId, int blocks)
 {
-	assert(d->reportsEnabled);
+	if(d->reportInterval <= 0)
+		return;
 
 	Private::Report *report = d->getOrCreateReport(routeId);
 
@@ -1098,7 +1162,8 @@ void StatsManager::addMessageReceived(const QByteArray &routeId, int blocks)
 
 void StatsManager::addMessageSent(const QByteArray &routeId, const QString &transport, int blocks)
 {
-	assert(d->reportsEnabled);
+	if(d->reportInterval <= 0)
+		return;
 
 	Private::Report *report = d->getOrCreateReport(routeId);
 
@@ -1125,7 +1190,8 @@ bool StatsManager::checkConnection(const QByteArray &id)
 
 void StatsManager::processExternalPacket(const StatsPacket &packet)
 {
-	assert(d->reportsEnabled);
+	if(d->reportInterval <= 0)
+		return;
 
 	if(packet.type != StatsPacket::Connected && packet.type != StatsPacket::Disconnected)
 		return;
