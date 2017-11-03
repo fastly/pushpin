@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -66,6 +66,7 @@ public:
 	int httpResponseMessagesSent; // report
 	int blocksReceived; // report
 	int blocksSent; // report
+	int duration; // report
 
 	StatsPacket() :
 		type((Type)-1),
@@ -81,7 +82,8 @@ public:
 		messagesSent(-1),
 		httpResponseMessagesSent(-1),
 		blocksReceived(-1),
-		blocksSent(-1)
+		blocksSent(-1),
+		duration(-1)
 	{
 	}
 
