@@ -266,6 +266,7 @@ public:
 		}
 
 		connectionInfoRefreshBuckets = newBuckets;
+		currentConnectionInfoRefreshBucket = 0;
 	}
 
 	void setupSubscriptionBuckets()
@@ -286,6 +287,7 @@ public:
 		}
 
 		subscriptionRefreshBuckets = newBuckets;
+		currentSubscriptionRefreshBucket = 0;
 	}
 
 	void setupReportTimer()
