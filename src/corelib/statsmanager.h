@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2015 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -43,7 +43,10 @@ public:
 	void setInstanceId(const QByteArray &instanceId);
 	void setIpcFileMode(int mode);
 	bool setSpec(const QString &spec);
-	void setReportsEnabled(bool on);
+	void setConnectionTtl(int secs);
+	void setSubscriptionTtl(int secs);
+	void setSubscriptionLinger(int secs);
+	void setReportInterval(int secs);
 
 	// routeId may be empty for non-identified route
 
@@ -57,7 +60,7 @@ public:
 	//   send before removing with linger
 	void refreshConnection(const QByteArray &id);
 
-	void addSubscription(const QString &mode, const QString &channel);
+	void addSubscription(const QString &mode, const QString &channel, int subscriberCount);
 
 	// NOTE: may emit unsubscribed immediately (not DOR-DS)
 	void removeSubscription(const QString &mode, const QString &channel, bool linger);

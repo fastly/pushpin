@@ -250,3 +250,11 @@ QStringList Filter::names()
 		<< "require-sub"
 		<< "build-id");
 }
+
+bool Filter::isContentFilter(const QString &name)
+{
+	if(name == "build-id")
+		return true;
+
+	return false;
+}

@@ -1,6 +1,18 @@
 Pushpin Changelog
 =================
 
+v. 1.17.0 (2017-11-06)
+
+  * De-dup published messages based on recently seen IDs (default 60s).
+  * Limit number of subscriptions per connection (default 20).
+  * Ensure filters update after following next links.
+  * Support content-filters field in http-stream and http-response formats.
+  * Include subscribers field in subscription stats.
+  * Include duration field in report stats.
+  * New config options: connection_subscription_max, subscription_linger.
+  * New config options: stats_connection_ttl, stats_subscription_ttl.
+  * New config option: stats_report_interval.
+
 v. 1.16.0 (2017-07-14)
 
   * Reliable streaming fixes.

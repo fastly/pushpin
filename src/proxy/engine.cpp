@@ -297,6 +297,8 @@ public:
 				log_error("unable to bind to stats_spec: %s", qPrintable(config.statsSpec));
 				return false;
 			}
+
+			stats->setConnectionTtl(config.statsConnectionTtl);
 		}
 
 		if(!config.commandSpec.isEmpty())
@@ -315,7 +317,7 @@ public:
 
 		if(!config.appVersion.isEmpty() && (config.updatesCheck == "check" || config.updatesCheck == "report"))
 		{
-			updater = new Updater(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.appVersion, config.organizationName, zroutes->defaultManager(), this);
+			updater = new Updater(config.updatesCheck == "report" ? Updater::ReportMode : Updater::CheckMode, config.quietCheck, config.appVersion, config.organizationName, zroutes->defaultManager(), this);
 		}
 
 		// init zroutes

@@ -59,13 +59,16 @@ public:
 	bool haveBodyPatch; // response
 	QVariantList bodyPatch; // response
 	MessageType messageType; // ws
+	bool haveContentFilters;
+	QStringList contentFilters; // response/stream
 
 	PublishFormat() :
 		type((Type)-1),
 		action(Send),
 		code(-1),
 		haveBodyPatch(false),
-		messageType((MessageType)-1)
+		messageType((MessageType)-1),
+		haveContentFilters(false)
 	{
 	}
 
@@ -74,7 +77,8 @@ public:
 		action(Send),
 		code(-1),
 		haveBodyPatch(false),
-		messageType((MessageType)-1)
+		messageType((MessageType)-1),
+		haveContentFilters(false)
 	{
 	}
 

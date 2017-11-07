@@ -165,8 +165,9 @@ public:
 	LogUtil::Config logConfig;
 	FilterStack *responseFilters;
 	QSet<QString> activeChannels;
+	int connectionSubscriptionMax;
 
-	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager) :
+	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
 		q(_q),
 		req(_req),
@@ -181,7 +182,8 @@ public:
 		retries(0),
 		needUpdate(false),
 		pendingAction(0),
-		responseFilters(0)
+		responseFilters(0),
+		connectionSubscriptionMax(_connectionSubscriptionMax)
 	{
 		state = NotStarted;
 
@@ -242,6 +244,12 @@ public:
 
 				assert(self); // deleting here would leak subscriptions/connections
 			}
+		}
+
+		if(instruct.channels.count() > connectionSubscriptionMax)
+		{
+			instruct.channels = instruct.channels.mid(0, connectionSubscriptionMax);
+			log_warning("httpsession: too many subscriptions");
 		}
 
 		// need to send initial content?
@@ -394,6 +402,23 @@ public:
 				}
 
 				channel.prevId = item.id;
+			}
+
+			if(f.haveContentFilters)
+			{
+				// ensure content filters match
+				QStringList contentFilters;
+				foreach(const QString &f, channels[item.channel].filters)
+				{
+					if(Filter::isContentFilter(f))
+						contentFilters += f;
+				}
+				if(contentFilters != f.contentFilters)
+				{
+					errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+					doError();
+					return;
+				}
 			}
 
 			QByteArray body;
@@ -606,8 +631,9 @@ private:
 			}
 			else
 			{
-				// update prev-id
+				// update channel properties
 				channels[name].prevId = c.prevId;
+				channels[name].filters = c.filters;
 			}
 		}
 
@@ -745,6 +771,23 @@ private:
 			}
 
 			PublishFormat &f = item.format;
+
+			if(f.haveContentFilters)
+			{
+				// ensure content filters match
+				QStringList contentFilters;
+				foreach(const QString &f, channels[item.channel].filters)
+				{
+					if(Filter::isContentFilter(f))
+						contentFilters += f;
+				}
+				if(contentFilters != f.contentFilters)
+				{
+					errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+					doError();
+					break;
+				}
+			}
 
 			QByteArray body = f.body;
 
@@ -1225,6 +1268,12 @@ private:
 				else
 					nextUri.clear();
 
+				if(instruct.channels.count() > connectionSubscriptionMax)
+				{
+					instruct.channels = instruct.channels.mid(0, connectionSubscriptionMax);
+					log_warning("httpsession: too many subscriptions");
+				}
+
 				if(instruct.holdMode == Instruct::StreamHold)
 				{
 					if(instruct.keepAliveTimeout < 0)
@@ -1429,10 +1478,10 @@ private slots:
 	}
 };
 
-HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, QObject *parent) :
+HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, req, adata, instruct, zhttpOut, stats, updateLimiter, publishLastIds, updateManager);
+	d = new Private(this, req, adata, instruct, zhttpOut, stats, updateLimiter, publishLastIds, updateManager, connectionSubscriptionMax);
 }
 
 HttpSession::~HttpSession()

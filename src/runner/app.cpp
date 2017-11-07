@@ -445,6 +445,8 @@ public:
 			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, ports, this);
 		}
 
+		bool quietCheck = false;
+
 		if(serviceNames.contains("zurl"))
 		{
 			QString zurlBin = "zurl";
@@ -452,10 +454,13 @@ public:
 				zurlBin = settings.value("runner/zurl_bin").toString();
 
 			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, this);
+
+			// when zurl is managed by pushpin, log updates checks as debug level
+			quietCheck = true;
 		}
 
 		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, args.routeLines, this);
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, args.routeLines, quietCheck, this);
 
 		if(serviceNames.contains("pushpin-handler"))
 			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevel >= 3, this);

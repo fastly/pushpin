@@ -547,31 +547,6 @@ public:
 		publishLastIds(1000000)
 	{
 	}
-
-	QSet<QString> removeWsSessionChannels(WsSession *s)
-	{
-		QSet<QString> out;
-
-		foreach(const QString &channel, s->channels)
-		{
-			if(!wsSessionsByChannel.contains(channel))
-				continue;
-
-			QSet<WsSession*> &cur = wsSessionsByChannel[channel];
-			if(!cur.contains(s))
-				continue;
-
-			cur.remove(s);
-
-			if(cur.isEmpty())
-			{
-				wsSessionsByChannel.remove(channel);
-				out += channel;
-			}
-		}
-
-		return out;
-	}
 };
 
 class AcceptWorker : public Deferred
@@ -603,8 +578,9 @@ public:
 	QString sid;
 	LastIds lastIds;
 	QList<HttpSession*> sessions;
+	int connectionSubscriptionMax;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req),
 		stateClient(_stateClient),
@@ -616,7 +592,8 @@ public:
 		httpSessionUpdateManager(_httpSessionUpdateManager),
 		trusted(false),
 		haveInspectInfo(false),
-		responseSent(false)
+		responseSent(false),
+		connectionSubscriptionMax(_connectionSubscriptionMax)
 	{
 		req->setParent(this);
 	}
@@ -1225,7 +1202,7 @@ private:
 			adata.haveInspectInfo = haveInspectInfo;
 			adata.inspectInfo = inspectInfo;
 
-			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, this);
+			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -1421,6 +1398,8 @@ public:
 		updateLimiter->setRate(10);
 		updateLimiter->setBatchWaitEnabled(true);
 
+		sequencer->setIdCacheTtl(config.idCacheTtl);
+
 		zhttpIn = new ZhttpManager(this);
 		zhttpIn->setInstanceId(config.instanceId);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
@@ -1587,7 +1566,10 @@ public:
 		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
 		connect(stats, &StatsManager::reported, this, &Private::stats_reported);
 
-		stats->setReportsEnabled(true);
+		stats->setConnectionTtl(config.statsConnectionTtl);
+		stats->setSubscriptionTtl(config.statsSubscriptionTtl);
+		stats->setSubscriptionLinger(config.subscriptionLinger);
+		stats->setReportInterval(config.statsReportInterval);
 
 		if(!config.statsSpec.isEmpty())
 		{
@@ -1667,24 +1649,13 @@ public:
 private:
 	void handlePublishItem(const PublishItem &item)
 	{
-		if(!cs.subs.contains(item.channel))
-		{
-			// don't sequence if nobody's listening, because we
-			//   clear lastId on unsubscribe and don't want it to
-			//   be set again until after a subscription returns
+		// only sequence if someone is listening, because we
+		//   clear lastId on unsubscribe and don't want it to
+		//   be set again until after a subscription returns
 
-			log_info("publish channel=%s receivers=0", qPrintable(item.channel));
-			return;
-		}
+		bool seq = (!item.noSeq && cs.subs.contains(item.channel));
 
-		if(item.noSeq)
-		{
-			sequencer_itemReady(item);
-		}
-		else
-		{
-			sequencer->addItem(item);
-		}
+		sequencer->addItem(item, seq);
 	}
 
 	void writeRetryPacket(const RetryRequestPacket &packet)
@@ -1760,10 +1731,7 @@ private:
 
 	void removeWsSession(WsSession *s)
 	{
-		QSet<QString> unsubs = cs.removeWsSessionChannels(s);
-
-		foreach(const QString &channel, unsubs)
-			stats->removeSubscription("ws", channel, false);
+		removeSessionChannels(s);
 
 		log_debug("removed ws session: %s", qPrintable(s->cid));
 
@@ -1884,6 +1852,78 @@ private:
 	{
 		cs.publishLastIds.clear();
 		updateSessions();
+	}
+
+	void removeSessionChannel(HttpSession *hs, const QString &channel)
+	{
+		Instruct::HoldMode mode = hs->holdMode();
+		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
+
+		QHash<QString, QSet<HttpSession*> > *sessionsByChannel;
+		QString modeStr;
+
+		if(mode == Instruct::ResponseHold)
+		{
+			sessionsByChannel = &cs.responseSessionsByChannel;
+			modeStr = "response";
+		}
+		else // StreamHold
+		{
+			sessionsByChannel = &cs.streamSessionsByChannel;
+			modeStr = "stream";
+		}
+
+		if(!sessionsByChannel->contains(channel))
+			return;
+
+		QSet<HttpSession*> &cur = (*sessionsByChannel)[channel];
+		if(!cur.contains(hs))
+			return;
+
+		cur.remove(hs);
+
+		if(!cur.isEmpty())
+		{
+			stats->addSubscription(modeStr, channel, cur.count());
+		}
+		else
+		{
+			sessionsByChannel->remove(channel);
+
+			// linger the unsub in case client long-polls again
+			bool linger = (mode == Instruct::ResponseHold);
+
+			stats->removeSubscription(modeStr, channel, linger);
+		}
+	}
+
+	void removeSessionChannel(WsSession *s, const QString &channel)
+	{
+		if(!cs.wsSessionsByChannel.contains(channel))
+			return;
+
+		QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
+		if(!cur.contains(s))
+			return;
+
+		cur.remove(s);
+
+		if(!cur.isEmpty())
+		{
+			stats->addSubscription("ws", channel, cur.count());
+		}
+		else
+		{
+			cs.wsSessionsByChannel.remove(channel);
+
+			stats->removeSubscription("ws", channel, false);
+		}
+	}
+
+	void removeSessionChannels(WsSession *s)
+	{
+		foreach(const QString &channel, s->channels)
+			removeSessionChannel(s, channel);
 	}
 
 private slots:
@@ -2121,7 +2161,7 @@ private slots:
 		if(!req)
 			return;
 
-		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, this);
+		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
 		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
 		connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
@@ -2348,21 +2388,28 @@ private slots:
 
 				if(cm.type == WsControlMessage::Subscribe)
 				{
-					QString channel = s->channelPrefix + cm.channel;
-					s->channels += channel;
-					s->channelFilters[channel] = cm.filters;
+					if(s->channels.count() < config.connectionSubscriptionMax)
+					{
+						QString channel = s->channelPrefix + cm.channel;
+						s->channels += channel;
+						s->channelFilters[channel] = cm.filters;
 
-					if(!cs.wsSessionsByChannel.contains(channel))
-						cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
+						if(!cs.wsSessionsByChannel.contains(channel))
+							cs.wsSessionsByChannel.insert(channel, QSet<WsSession*>());
 
-					cs.wsSessionsByChannel[channel] += s;
+						cs.wsSessionsByChannel[channel] += s;
 
-					log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
+						log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
 
-					stats->addSubscription("ws", channel);
-					addSub(channel);
+						stats->addSubscription("ws", channel, cs.wsSessionsByChannel.value(channel).count());
+						addSub(channel);
 
-					log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
+						log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
+					}
+					else
+					{
+						log_warning("ws session %s: too many subscriptions", qPrintable(s->cid));
+					}
 				}
 				else if(cm.type == WsControlMessage::Unsubscribe)
 				{
@@ -2373,16 +2420,7 @@ private slots:
 						s->channels.remove(channel);
 						s->channelFilters.remove(channel);
 
-						if(cs.wsSessionsByChannel.contains(channel))
-						{
-							QSet<WsSession*> &cur = cs.wsSessionsByChannel[channel];
-							cur.remove(s);
-							if(cur.isEmpty())
-							{
-								cs.wsSessionsByChannel.remove(channel);
-								stats->removeSubscription("ws", channel, false);
-							}
-						}
+						removeSessionChannel(s, channel);
 					}
 				}
 				else if(cm.type == WsControlMessage::Detach)
@@ -2491,7 +2529,7 @@ private slots:
 
 				log_debug("ws session %s subscribed to %s", qPrintable(s->cid), qPrintable(channel));
 
-				stats->addSubscription("ws", channel);
+				stats->addSubscription("ws", channel, cs.wsSessionsByChannel.value(channel).count());
 				addSub(channel);
 
 				log_info("subscribe %s channel=%s", qPrintable(s->requestData.uri.toString(QUrl::FullyEncoded)), qPrintable(channel));
@@ -2823,18 +2861,21 @@ private slots:
 		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
 
 		QHash<QString, QSet<HttpSession*> > *sessionsByChannel;
+		QString modeStr;
 
 		if(mode == Instruct::ResponseHold)
 		{
 			log_debug("adding response hold on %s", qPrintable(channel));
 
 			sessionsByChannel = &cs.responseSessionsByChannel;
+			modeStr = "response";
 		}
 		else // StreamHold
 		{
 			log_debug("adding stream hold on %s", qPrintable(channel));
 
 			sessionsByChannel = &cs.streamSessionsByChannel;
+			modeStr = "stream";
 		}
 
 		if(!sessionsByChannel->contains(channel))
@@ -2842,57 +2883,21 @@ private slots:
 
 		(*sessionsByChannel)[channel] += hs;
 
+		stats->addSubscription(modeStr, channel, sessionsByChannel->value(channel).count());
+		addSub(channel);
+
 		QString msg = QString("subscribe %1 channel=%2").arg(hs->requestUri().toString(QUrl::FullyEncoded), channel);
 		if(hs->isRetry())
 			msg += " retry";
 
 		log_info("%s", qPrintable(msg));
-
-		stats->addSubscription(mode == Instruct::ResponseHold ? "response" : "stream", channel);
-		addSub(channel);
 	}
 
 	void hs_unsubscribe(const QString &channel)
 	{
 		HttpSession *hs = (HttpSession *)sender();
 
-		Instruct::HoldMode mode = hs->holdMode();
-		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
-
-		QHash<QString, QSet<HttpSession*> > *sessionsByChannel;
-
-		if(mode == Instruct::ResponseHold)
-		{
-			sessionsByChannel = &cs.responseSessionsByChannel;
-		}
-		else // StreamHold
-		{
-			sessionsByChannel = &cs.streamSessionsByChannel;
-		}
-
-		if(sessionsByChannel->contains(channel))
-		{
-			QSet<HttpSession*> &cur = (*sessionsByChannel)[channel];
-			if(cur.contains(hs))
-			{
-				cur.remove(hs);
-
-				if(cur.isEmpty())
-				{
-					sessionsByChannel->remove(channel);
-
-					if(mode == Instruct::ResponseHold)
-					{
-						// linger the unsub in case client long-polls again
-						stats->removeSubscription("response", channel, true);
-					}
-					else // StreamHold
-					{
-						stats->removeSubscription("stream", channel, false);
-					}
-				}
-			}
-		}
+		removeSessionChannel(hs, channel);
 	}
 
 	void hs_finished()

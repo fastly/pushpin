@@ -36,6 +36,7 @@ public:
 		const QString &filePrefix,
 		bool verbose,
 		const QStringList &routeLines,
+		bool quietCheck,
 		QObject *parent = 0);
 
 	// reimplemented

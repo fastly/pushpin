@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -253,6 +253,12 @@ public:
 		int messageRate = settings.value("handler/message_rate", -1).toInt();
 		int messageHwm = settings.value("handler/message_hwm", -1).toInt();
 		int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
+		int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
+		int connectionSubscriptionMax = settings.value("handler/connection_subscription_max", 20).toInt();
+		int subscriptionLinger = settings.value("handler/subscription_linger", 60).toInt();
+		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
+		int statsSubscriptionTtl = settings.value("handler/stats_subscription_ttl", 60).toInt();
+		int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -295,6 +301,12 @@ public:
 		config.messageRate = messageRate;
 		config.messageHwm = messageHwm;
 		config.messageBlockSize = messageBlockSize;
+		config.idCacheTtl = idCacheTtl;
+		config.connectionSubscriptionMax = connectionSubscriptionMax;
+		config.subscriptionLinger = subscriptionLinger;
+		config.statsConnectionTtl = statsConnectionTtl;
+		config.statsSubscriptionTtl = statsSubscriptionTtl;
+		config.statsReportInterval = statsReportInterval;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2014-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -58,6 +58,7 @@ public:
 	QByteArray itemId; // message
 	QByteArray transport; // message
 	int blocks; // message
+	int subscribers; // subscribed
 	int connectionsMax; // report
 	int connectionsMinutes; // report
 	int messagesReceived; // report
@@ -65,6 +66,7 @@ public:
 	int httpResponseMessagesSent; // report
 	int blocksReceived; // report
 	int blocksSent; // report
+	int duration; // report
 
 	StatsPacket() :
 		type((Type)-1),
@@ -73,13 +75,15 @@ public:
 		ssl(false),
 		ttl(-1),
 		blocks(-1),
+		subscribers(-1),
 		connectionsMax(-1),
 		connectionsMinutes(-1),
 		messagesReceived(-1),
 		messagesSent(-1),
 		httpResponseMessagesSent(-1),
 		blocksReceived(-1),
-		blocksSent(-1)
+		blocksSent(-1),
+		duration(-1)
 	{
 	}
 

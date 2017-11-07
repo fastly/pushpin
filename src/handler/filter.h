@@ -60,6 +60,7 @@ public:
 
 	static Filter *create(const QString &name);
 	static QStringList names();
+	static bool isContentFilter(const QString &name);
 
 protected:
 	void setError(const QString &s) { errorMessage_ = s; }

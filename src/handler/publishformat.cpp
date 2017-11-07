@@ -196,6 +196,32 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 				}
 			}
 
+			if(keyedObjectContains(in, "content-filters"))
+			{
+				QVariant vfilters = keyedObjectGetValue(in, "content-filters");
+				if(vfilters.type() != QVariant::List)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'content-filters' with wrong type").arg(pn));
+					return PublishFormat();
+				}
+
+				QStringList filters;
+				foreach(const QVariant &vfilter, vfilters.toList())
+				{
+					QString filter = getString(vfilter, &ok_);
+					if(!ok_)
+					{
+						setError(ok, errorMessage, "content-filters contains element with wrong type");
+						return PublishFormat();
+					}
+
+					filters += filter;
+				}
+
+				out.haveContentFilters = true;
+				out.contentFilters = filters;
+			}
+
 			if(in.type() == QVariant::Map && keyedObjectContains(in, "body-bin")) // JSON input
 			{
 				QString bodyBin = getString(in, pn, "body-bin", false, &ok_, errorMessage);
@@ -247,6 +273,32 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 	{
 		if(out.action == Send)
 		{
+			if(keyedObjectContains(in, "content-filters"))
+			{
+				QVariant vfilters = keyedObjectGetValue(in, "content-filters");
+				if(vfilters.type() != QVariant::List)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'content-filters' with wrong type").arg(pn));
+					return PublishFormat();
+				}
+
+				QStringList filters;
+				foreach(const QVariant &vfilter, vfilters.toList())
+				{
+					QString filter = getString(vfilter, &ok_);
+					if(!ok_)
+					{
+						setError(ok, errorMessage, "content-filters contains element with wrong type");
+						return PublishFormat();
+					}
+
+					filters += filter;
+				}
+
+				out.haveContentFilters = true;
+				out.contentFilters = filters;
+			}
+
 			if(in.type() == QVariant::Map && keyedObjectContains(in, "content-bin")) // JSON input
 			{
 				QString contentBin = getString(in, pn, "content-bin", false, &ok_, errorMessage);

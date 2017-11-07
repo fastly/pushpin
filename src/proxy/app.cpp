@@ -88,9 +88,11 @@ public:
 	int logLevel;
 	QString ipcPrefix;
 	QStringList routeLines;
+	bool quietCheck;
 
 	ArgsData() :
-		logLevel(-1)
+		logLevel(-1),
+		quietCheck(false)
 	{
 	}
 };
@@ -110,6 +112,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	parser->addOption(ipcPrefixOption);
 	const QCommandLineOption routeOption("route", "Add route (overrides routes file).", "line");
 	parser->addOption(routeOption);
+	const QCommandLineOption quietCheckOption("quiet-check", "Log update checks in Zurl as debug level.");
+	parser->addOption(quietCheckOption);
 	const QCommandLineOption helpOption = parser->addHelpOption();
 	const QCommandLineOption versionOption = parser->addVersionOption();
 
@@ -155,6 +159,9 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 		foreach(const QString &r, parser->values(routeOption))
 			args->routeLines += r;
 	}
+
+	if(parser->isSet(quietCheckOption))
+		args->quietCheck = true;
 
 	return CommandLineOk;
 }
@@ -285,6 +292,7 @@ public:
 		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
 		QString updatesCheck = settings.value("proxy/updates_check").toString();
 		QString organizationName = settings.value("proxy/organization_name").toString();
+		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -345,6 +353,8 @@ public:
 		config.sockJsUrl = sockJsUrl;
 		config.updatesCheck = updatesCheck;
 		config.organizationName = organizationName;
+		config.quietCheck = args.quietCheck;
+		config.statsConnectionTtl = statsConnectionTtl;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

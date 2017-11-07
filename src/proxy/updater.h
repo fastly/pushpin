@@ -54,7 +54,7 @@ public:
 		}
 	};
 
-	Updater(Mode mode, const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent = 0);
+	Updater(Mode mode, bool quiet, const QString &currentVersion, const QString &org, ZhttpManager *zhttp, QObject *parent = 0);
 	~Updater();
 
 	void setReport(const Report &report);
