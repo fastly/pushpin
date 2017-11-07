@@ -273,6 +273,7 @@ private slots:
 		config.clientInSpecs = QStringList() << "ipc://server-out";
 		config.acceptSpec = "ipc://accept";
 		config.pushInSpec = "ipc://publish-pull";
+		config.connectionSubscriptionMax = 20;
 		QVERIFY(engine->start(config));
 
 		wrapper->startPublish();
