@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.17.1 (2017-12-12)
+
+  * Fix compilation with Qt 5.10.
+
 v. 1.17.0 (2017-11-06)
 
   * De-dup published messages based on recently seen IDs (default 60s).
