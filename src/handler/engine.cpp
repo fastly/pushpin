@@ -1780,8 +1780,6 @@ private:
 		{
 			WsSession *s = qobject_cast<WsSession*>(target);
 
-			QByteArray body = f.body;
-
 			Filter::Context fc;
 			fc.subscriptionMeta = s->meta;
 			fc.publishMeta = item.meta;
@@ -1790,13 +1788,6 @@ private:
 
 			if(filters.sendAction() == Filter::Drop)
 				return;
-
-			body = filters.process(body);
-			if(body.isNull())
-			{
-				log_debug("filter error: %s", qPrintable(filters.errorMessage()));
-				return;
-			}
 
 			// TODO: hint support for websockets?
 			if(f.action != PublishFormat::Send && f.action != PublishFormat::Close)
@@ -1807,6 +1798,13 @@ private:
 
 			if(f.action == PublishFormat::Send)
 			{
+				QByteArray body = filters.process(f.body);
+				if(body.isNull())
+				{
+					log_debug("filter error: %s", qPrintable(filters.errorMessage()));
+					return;
+				}
+
 				i.type = WsControlPacket::Item::Send;
 
 				switch(f.messageType)

@@ -798,8 +798,6 @@ private:
 				}
 			}
 
-			QByteArray body = f.body;
-
 			QHash<QString, QString> prevIds;
 			QHashIterator<QString, Instruct::Channel> it(channels);
 			while(it.hasNext())
@@ -819,16 +817,16 @@ private:
 			if(fs.sendAction() == Filter::Drop)
 				continue;
 
-			body = fs.process(body);
-			if(body.isNull())
-			{
-				errorMessage = QString("filter error: %1").arg(fs.errorMessage());
-				doError();
-				break;
-			}
-
 			if(f.action == PublishFormat::Send)
 			{
+				QByteArray body = fs.process(f.body);
+				if(body.isNull())
+				{
+					errorMessage = QString("filter error: %1").arg(fs.errorMessage());
+					doError();
+					break;
+				}
+
 				req->writeBody(body);
 
 				// restart keep alive timer
