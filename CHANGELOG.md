@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.17.2 (2018-01-11)
+
+  * Fix close actions with HTTP streaming and WebSockets.
+
 v. 1.17.1 (2017-12-12)
 
   * Fix compilation with Qt 5.10.
