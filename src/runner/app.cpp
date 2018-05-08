@@ -201,13 +201,15 @@ public:
 	ArgsData args;
 	QList<Service*> services;
 	bool stopping;
+	bool errored;
 
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
-		stopping(false)
+		stopping(false),
+		errored(false)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::processQuit);
 		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
 	}
 
@@ -529,8 +531,13 @@ private:
 		if(services.isEmpty())
 		{
 			log_info("stopped");
-			emit q->quit(0);
+			doQuit();
 		}
+	}
+
+	void doQuit()
+	{
+		emit q->quit(errored ? 1 : 0);
 	}
 
 private slots:
@@ -577,6 +584,8 @@ private slots:
 		services.removeAll(s);
 		delete s;
 
+		errored = true;
+
 		if(stopping)
 		{
 			checkStopped();
@@ -601,7 +610,7 @@ private slots:
 		}
 	}
 
-	void doQuit()
+	void processQuit()
 	{
 		if(!stopping)
 		{
@@ -617,7 +626,7 @@ private slots:
 			ProcessQuit::cleanup();
 
 			// if we were already stopping, then exit immediately
-			emit q->quit(0);
+			doQuit();
 		}
 	}
 };
