@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2018 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -38,6 +38,7 @@ Mongrel2Service::Mongrel2Service(
 	const QString &binFile,
 	const QString &configFile,
 	const QString &serverName,
+	const QString &runDir,
 	const QString &logDir,
 	const QString &filePrefix,
 	int port,
@@ -50,6 +51,11 @@ Mongrel2Service::Mongrel2Service(
 	args_ += serverName;
 
 	setName(QString("m2 %1:%2").arg(ssl ? "https" : "http", QString::number(port)));
+
+	// delete stale pid file, if any
+	QString pidFile = QDir(runDir).filePath(filePrefix + "mongrel2_" + QString::number(port) + ".pid");
+	QFile::remove(pidFile);
+
 	setStandardOutputFile(QDir(logDir).filePath(filePrefix + "mongrel2_" + QString::number(port) + ".log"));
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2018 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -62,6 +62,7 @@ public:
 		const QString &binFile,
 		const QString &configFile,
 		const QString &serverName,
+		const QString &runDir,
 		const QString &logDir,
 		const QString &filePrefix,
 		int port,

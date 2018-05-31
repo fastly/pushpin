@@ -444,7 +444,7 @@ public:
 			}
 
 			foreach(const Mongrel2Service::Interface &i, interfaces)
-				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), logDir, filePrefix, i.port, i.ssl, this);
+				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), runDir, logDir, filePrefix, i.port, i.ssl, this);
 		}
 
 		if(serviceNames.contains("m2adapter"))
