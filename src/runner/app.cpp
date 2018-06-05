@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2018 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -338,7 +338,7 @@ public:
 		QStringList serviceNames = settings.value("runner/services").toStringList();
 		trimlist(&serviceNames);
 
-		QString httpPortStr = settings.value("runner/http_port", "7999").toString();
+		QString httpPortStr = settings.value("runner/http_port").toString();
 
 		QStringList httpsPortStrs = settings.value("runner/https_ports").toStringList();
 		trimlist(&httpsPortStrs);
@@ -410,13 +410,38 @@ public:
 		}
 		else
 		{
-			QPair<QHostAddress, int> p = parsePort(httpPortStr);
-			interfaces += Mongrel2Service::Interface(p.first, p.second, false);
+			if(!httpPortStr.isEmpty())
+			{
+				QPair<QHostAddress, int> p = parsePort(httpPortStr);
+				if(p.second < 1)
+				{
+					log_error("invalid http port: %s", qPrintable(httpPortStr));
+					emit q->quit(1);
+					return;
+				}
+
+				interfaces += Mongrel2Service::Interface(p.first, p.second, false);
+			}
+
 			foreach(const QString &httpsPortStr, httpsPortStrs)
 			{
 				QPair<QHostAddress, int> p = parsePort(httpsPortStr);
+				if(p.second < 1)
+				{
+					log_error("invalid https port: %s", qPrintable(httpsPortStr));
+					emit q->quit(1);
+					return;
+				}
+
 				interfaces += Mongrel2Service::Interface(p.first, p.second, true);
 			}
+		}
+
+		if(interfaces.isEmpty())
+		{
+			log_error("no mongrel2 ports configured");
+			emit q->quit(1);
+			return;
 		}
 
 		if(args.id >= 0)
