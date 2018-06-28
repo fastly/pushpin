@@ -7,6 +7,9 @@ qrc_*
 ui_*
 moc_*
 *.pyc
+.qmake.stash
+target_wrapper.sh
+
 /pushpin
 /bin/*
 /conf.log
