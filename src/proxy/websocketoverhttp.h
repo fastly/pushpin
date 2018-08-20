@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2018 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -78,7 +78,10 @@ public:
 	virtual Frame readFrame();
 	virtual void close(int code = -1);
 
+	void setHeaders(const HttpHeaders &headers);
+
 signals:
+	void aboutToSendRequest();
 	void disconnected();
 
 private:

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2018 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -276,13 +276,8 @@ public:
 		state = Idle;
 	}
 
-	void start()
+	void sanitizeRequestHeaders()
 	{
-		state = Connecting;
-
-		if(cid.isEmpty())
-			cid = UuidUtil::createUuid();
-
 		// don't forward certain headers
 		requestData.headers.removeAll("Upgrade");
 		requestData.headers.removeAll("Accept");
@@ -298,6 +293,14 @@ public:
 				--n; // adjust position
 			}
 		}
+	}
+
+	void start()
+	{
+		state = Connecting;
+
+		if(cid.isEmpty())
+			cid = UuidUtil::createUuid();
 
 		if(requestData.uri.scheme() == "wss")
 			requestData.uri.setScheme("https");
@@ -552,6 +555,8 @@ private:
 	void doRequest()
 	{
 		assert(!req);
+
+		emit q->aboutToSendRequest();
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
@@ -1004,6 +1009,9 @@ void WebSocketOverHttp::start(const QUrl &uri, const HttpHeaders &headers)
 
 	d->requestData.uri = uri;
 	d->requestData.headers = headers;
+
+	d->sanitizeRequestHeaders();
+
 	d->start();
 }
 
@@ -1100,6 +1108,13 @@ WebSocket::Frame WebSocketOverHttp::readFrame()
 void WebSocketOverHttp::close(int code)
 {
 	d->close(code);
+}
+
+void WebSocketOverHttp::setHeaders(const HttpHeaders &headers)
+{
+	d->requestData.headers = headers;
+
+	d->sanitizeRequestHeaders();
 }
 
 #include "websocketoverhttp.moc"
