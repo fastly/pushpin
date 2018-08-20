@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2012-2018 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -408,6 +408,7 @@ public:
 
 		connectionManager.setProxyForConnection(sock, ps);
 
+		ps->setDebugEnabled(config.debug || route.debug);
 		ps->setDefaultSigKey(config.sigIss, config.sigKey);
 		ps->setDefaultUpstreamKey(config.upstreamKey);
 		ps->setAcceptXForwardedProtocol(config.acceptXForwardedProto);

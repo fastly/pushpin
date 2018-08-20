@@ -244,6 +244,7 @@ public:
 	WsControlManager *wsControlManager;
 	WsControlSession *wsControl;
 	DomainMap::Entry route;
+	bool debug;
 	QByteArray defaultSigIss;
 	QByteArray defaultSigKey;
 	QByteArray defaultUpstreamKey;
@@ -290,6 +291,7 @@ public:
 		statsManager(_statsManager),
 		wsControlManager(_wsControlManager),
 		wsControl(0),
+		debug(false),
 		passToUpstream(false),
 		acceptXForwardedProtocol(false),
 		useXForwardedProto(false),
@@ -454,7 +456,14 @@ public:
 	{
 		if(targets.isEmpty())
 		{
-			reject(false, 502, "Bad Gateway", "Error while proxying to origin.");
+			QString msg = "Error while proxying to origin.";
+
+			QStringList targetStrs;
+			foreach(const DomainMap::Target &t, route.targets)
+				targetStrs += ProxyUtil::targetToString(t);
+			QString dmsg = QString("Unable to connect to any targets. Tried: %1").arg(targetStrs.join(", "));
+
+			reject(true, 502, "Bad Gateway", msg, dmsg);
 			return;
 		}
 
@@ -517,7 +526,7 @@ public:
 				// websockets don't work with zhttp req mode
 				if(zhttpManager->clientUsesReq())
 				{
-					reject(false, 502, "Bad Gateway", "Error while proxying to origin.");
+					reject(false, 502, "Bad Gateway", "Error while proxying to origin.", "WebSockets cannot be used with zhttpreq target");
 					return;
 				}
 
@@ -563,9 +572,16 @@ public:
 		logConnection(proxied, code, body.size());
 	}
 
+	void reject(bool proxied, int code, const QString &reason, const QString &errorMessage, const QString &debugErrorMessage)
+	{
+		QString msg = debug ? debugErrorMessage : errorMessage;
+
+		reject(proxied, code, reason.toUtf8(), HttpHeaders(), (msg + '\n').toUtf8());
+	}
+
 	void reject(bool proxied, int code, const QString &reason, const QString &errorMessage)
 	{
-		reject(proxied, code, reason.toUtf8(), HttpHeaders(), (errorMessage + '\n').toUtf8());
+		reject(proxied, code, reason, errorMessage, errorMessage);
 	}
 
 	void tryReadIn()
@@ -1114,6 +1130,11 @@ WebSocket *WsProxySession::inSocket() const
 WebSocket *WsProxySession::outSocket() const
 {
 	return d->outSock;
+}
+
+void WsProxySession::setDebugEnabled(bool enabled)
+{
+	d->debug = enabled;
 }
 
 void WsProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)
