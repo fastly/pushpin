@@ -857,10 +857,13 @@ private slots:
 	{
 		bool retry = false;
 
-		switch(req->errorCondition())
+		ZhttpRequest::ErrorCondition reqError = req->errorCondition();
+
+		switch(reqError)
 		{
 			case ZhttpRequest::ErrorConnect:
 			case ZhttpRequest::ErrorConnectTimeout:
+			case ZhttpRequest::ErrorTls:
 				// these errors mean the server wasn't reached at all
 				retry = true;
 				break;
@@ -898,6 +901,13 @@ private slots:
 			retryTimer->start(delay);
 			return;
 		}
+
+		if(reqError == ZhttpRequest::ErrorConnect)
+			errorCondition = WebSocket::ErrorConnect;
+		else if(reqError == ZhttpRequest::ErrorConnectTimeout)
+			errorCondition = WebSocket::ErrorConnectTimeout;
+		else if(reqError == ZhttpRequest::ErrorTls)
+			errorCondition = WebSocket::ErrorTls;
 
 		cleanup();
 		emit q->error();
