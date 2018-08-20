@@ -76,7 +76,7 @@ bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestDa
 	return false;
 }
 
-void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool stripHeaders)
+void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool stripHeaders)
 {
 	if(trustedClient)
 		log_debug("%s: %p passing to upstream", logprefix, object);
@@ -194,7 +194,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 		}
 	}
 
-	if(acceptXForwardedProtocol || useXForwardedProtocol)
+	if(acceptXForwardedProtocol || useXForwardedProto || useXForwardedProtocol)
 	{
 		requestData->headers.removeAll("X-Forwarded-Proto");
 
@@ -202,17 +202,19 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 		requestData->headers.removeAll("X-Forwarded-Protocol");
 	}
 
-	if(useXForwardedProtocol)
+	if(useXForwardedProto || useXForwardedProtocol)
 	{
 		QString scheme = requestData->uri.scheme();
 		if(scheme == "https" || scheme == "wss")
 		{
 			QByteArray schemeVal = scheme.toUtf8();
 
-			requestData->headers += HttpHeader("X-Forwarded-Proto", schemeVal);
+			if(useXForwardedProto)
+				requestData->headers += HttpHeader("X-Forwarded-Proto", schemeVal);
 
 			// TODO: deprecate
-			requestData->headers += HttpHeader("X-Forwarded-Protocol", schemeVal);
+			if(useXForwardedProtocol)
+				requestData->headers += HttpHeader("X-Forwarded-Protocol", schemeVal);
 		}
 	}
 

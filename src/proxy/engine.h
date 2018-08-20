@@ -67,8 +67,9 @@ public:
 		QStringList routeLines;
 		bool debug;
 		bool autoCrossOrigin;
-		bool acceptXForwardedProtocol;
-		bool useXForwardedProtocol;
+		bool acceptXForwardedProto;
+		bool setXForwardedProto;
+		bool setXForwardedProtocol;
 		XffRule xffUntrustedRule;
 		XffRule xffTrustedRule;
 		QList<QByteArray> origHeadersNeedMark;
@@ -90,8 +91,9 @@ public:
 			inspectPrefetch(10000),
 			debug(false),
 			autoCrossOrigin(false),
-			acceptXForwardedProtocol(false),
-			useXForwardedProtocol(false),
+			acceptXForwardedProto(false),
+			setXForwardedProto(false),
+			setXForwardedProtocol(false),
 			logFrom(false),
 			logUserAgent(false),
 			updatesCheck("check"),

@@ -289,7 +289,9 @@ public:
 		bool debug = settings.value("proxy/debug").toBool();
 		bool autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
 		bool acceptXForwardedProtocol = settings.value("proxy/accept_x_forwarded_protocol").toBool();
-		bool useXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toBool();
+		QString setXForwardedProtocol = settings.value("proxy/set_x_forwarded_protocol").toString();
+		bool setXfProto = (setXForwardedProtocol == "true" || setXForwardedProtocol == "proto-only");
+		bool setXfProtocol = (setXForwardedProtocol == "true");
 		XffRule xffRule = parse_xffRule(settings.value("proxy/x_forwarded_for").toStringList());
 		XffRule xffTrustedRule = parse_xffRule(settings.value("proxy/x_forwarded_for_trusted").toStringList());
 		QStringList origHeadersNeedMarkStr = settings.value("proxy/orig_headers_need_mark").toStringList();
@@ -349,8 +351,9 @@ public:
 			config.routesFile = routesFile;
 		config.debug = debug;
 		config.autoCrossOrigin = autoCrossOrigin;
-		config.acceptXForwardedProtocol = acceptXForwardedProtocol;
-		config.useXForwardedProtocol = useXForwardedProtocol;
+		config.acceptXForwardedProto = acceptXForwardedProtocol;
+		config.setXForwardedProto = setXfProto;
+		config.setXForwardedProtocol = setXfProtocol;
 		config.xffUntrustedRule = xffRule;
 		config.xffTrustedRule = xffTrustedRule;
 		config.origHeadersNeedMark = origHeadersNeedMark;

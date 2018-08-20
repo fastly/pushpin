@@ -135,6 +135,7 @@ public:
 	bool trustedClient;
 	bool passthrough;
 	bool acceptXForwardedProtocol;
+	bool useXForwardedProto;
 	bool useXForwardedProtocol;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
@@ -163,6 +164,7 @@ public:
 		trustedClient(false),
 		passthrough(false),
 		acceptXForwardedProtocol(false),
+		useXForwardedProto(false),
 		useXForwardedProtocol(false),
 		proxyInitialResponse(false),
 		acceptAfterResponding(false),
@@ -278,7 +280,7 @@ public:
 			trustedClient = rs->trusted();
 			QHostAddress clientAddress = rs->request()->peerAddress();
 
-			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, idata, !intReq);
+			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, idata, !intReq);
 
 			state = Requesting;
 			buffering = true;
@@ -1403,9 +1405,10 @@ void ProxySession::setAcceptXForwardedProtocol(bool enabled)
 	d->acceptXForwardedProtocol = enabled;
 }
 
-void ProxySession::setUseXForwardedProtocol(bool enabled)
+void ProxySession::setUseXForwardedProtocol(bool protoEnabled, bool protocolEnabled)
 {
-	d->useXForwardedProtocol = enabled;
+	d->useXForwardedProto = protoEnabled;
+	d->useXForwardedProtocol = protocolEnabled;
 }
 
 void ProxySession::setXffRules(const XffRule &untrusted, const XffRule &trusted)
