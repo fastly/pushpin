@@ -1091,6 +1091,9 @@ public slots:
 					assert(state == Requesting);
 					tryAgain = true;
 					break;
+				case ZhttpRequest::ErrorTimeout:
+					rejectAll(502, "Bad Gateway", "Error while proxying to origin.", "Error: zhttp service for route is unreachable.");
+					break;
 				default:
 					rejectAll(502, "Bad Gateway", "Error while proxying to origin.");
 					break;
