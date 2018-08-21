@@ -1,6 +1,18 @@
 Pushpin Changelog
 =================
 
+v. 1.18.0 (2018-08-20)
+
+  * WebSocket-Over-HTTP: update headers (mainly Grip-Sig) for each request.
+  * WebSocket-Over-HTTP: properly report errors and handle target failover.
+  * WebSocket: support debug responses.
+  * Option to not send non-standard X-Forwarded-Protocol header.
+  * Increase default request buffer size to 8k.
+  * Make http_port optional.
+  * runner: remove mongrel2 pid file before starting.
+  * runner: return non-zero status code if failing due to subprocess error.
+  * runner: prevent SIGINT from being copied to subprocesses.
+
 v. 1.17.2 (2018-01-11)
 
   * Fix close actions with HTTP streaming and WebSockets.
