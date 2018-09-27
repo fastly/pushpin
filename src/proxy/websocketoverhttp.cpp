@@ -767,8 +767,12 @@ private slots:
 			else if(e.type == "CLOSE")
 			{
 				peerClosing = true;
-				if(e.content.size() == 2)
-					peerCloseCode = ((quint16)e.content[0] << 8) + (quint16)e.content[1];
+				if(e.content.size() >= 2)
+				{
+					int hi = (unsigned char)e.content[0];
+					int lo = (unsigned char)e.content[1];
+					peerCloseCode = (hi << 8) + lo;
+				}
 
 				closed = true;
 				break;
