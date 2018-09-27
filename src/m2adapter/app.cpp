@@ -2681,10 +2681,10 @@ private slots:
 				else if(opcode == 8)
 				{
 					zreq.type = ZhttpRequestPacket::Close;
-					if(mreq.body.size() == 2)
+					if(mreq.body.size() >= 2)
 					{
-						int hi = (unsigned char)zreq.body[0];
-						int lo = (unsigned char)zreq.body[1];
+						int hi = (unsigned char)mreq.body[0];
+						int lo = (unsigned char)mreq.body[1];
 						zreq.code = (hi << 8) + lo;
 					}
 
