@@ -145,9 +145,11 @@ public:
 	QHash<ZhttpRequest*, RequestItem*> requests;
 	QTimer *keepAliveTimer;
 	int closeCode;
+	QString closeReason;
 	bool closeSent;
 	bool peerClosed;
 	int peerCloseCode;
+	QString peerCloseReason;
 	bool updating;
 
 	Private(SockJsSession *_q) :
@@ -529,12 +531,13 @@ public:
 		}
 	}
 
-	void close(int code)
+	void close(int code, const QString &reason)
 	{
 		assert(state != Closing);
 
 		state = Closing;
 		closeCode = code;
+		closeReason = reason;
 
 		if(mode == Http)
 		{
@@ -552,7 +555,7 @@ public:
 		{
 			assert(sock);
 
-			sock->close(closeCode);
+			sock->close(closeCode, closeReason);
 		}
 	}
 
@@ -831,11 +834,17 @@ public:
 	QVariant applyLinger()
 	{
 		QVariantList closeValue;
+
 		if(closeCode != -1)
 			closeValue += closeCode;
 		else
 			closeValue += 0;
-		closeValue += QString("Connection closed");
+
+		if(closeCode != -1 && !closeReason.isEmpty())
+			closeValue += closeReason;
+		else
+			closeValue += QString("Connection closed");
+
 		manager->setLinger(q, closeValue);
 		return closeValue;
 	}
@@ -971,12 +980,14 @@ private slots:
 	void sock_peerClosed()
 	{
 		peerCloseCode = sock->peerCloseCode();
+		peerCloseReason = sock->peerCloseReason();
 		emit q->peerClosed();
 	}
 
 	void sock_closed()
 	{
 		peerCloseCode = sock->peerCloseCode();
+		peerCloseReason = sock->peerCloseReason();
 		state = Idle;
 		cleanup();
 		emit q->closed();
@@ -1216,6 +1227,11 @@ int SockJsSession::peerCloseCode() const
 	return d->peerCloseCode;
 }
 
+QString SockJsSession::peerCloseReason() const
+{
+	return d->peerCloseReason;
+}
+
 WebSocket::ErrorCondition SockJsSession::errorCondition() const
 {
 	return d->errorCondition;
@@ -1231,9 +1247,9 @@ WebSocket::Frame SockJsSession::readFrame()
 	return d->readFrame();
 }
 
-void SockJsSession::close(int code)
+void SockJsSession::close(int code, const QString &reason)
 {
-	d->close(code);
+	d->close(code, reason);
 }
 
 void SockJsSession::setupServer(SockJsManager *manager, ZhttpRequest *req, const QByteArray &jsonpCallback, const QUrl &asUri, const QByteArray &sid, const QByteArray &lastPart, const QByteArray &body, const DomainMap::Entry &route)

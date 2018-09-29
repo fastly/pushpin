@@ -202,9 +202,11 @@ public:
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int closeCode;
+	QString closeReason;
 	bool closeSent;
 	bool peerClosing;
 	int peerCloseCode;
+	QString peerCloseReason;
 	bool disconnecting;
 	bool disconnectSent;
 	bool updateQueued;
@@ -325,12 +327,13 @@ public:
 		return inFrames.takeFirst();
 	}
 
-	void close(int code)
+	void close(int code, const QString &reason)
 	{
 		assert(state != Closing);
 
 		state = Closing;
 		closeCode = code;
+		closeReason = reason;
 
 		update();
 	}
@@ -535,9 +538,12 @@ private:
 
 				if(closeCode != -1)
 				{
-					QByteArray buf(2, 0);
+					QByteArray rawReason = closeReason.toUtf8();
+
+					QByteArray buf(2 + rawReason.size(), 0);
 					buf[0] = (closeCode >> 8) & 0xff;
 					buf[1] = closeCode & 0xff;
+					memcpy(buf.data() + 2, rawReason.data(), rawReason.size());
 					events += WsEvent("CLOSE", buf);
 				}
 				else
@@ -772,6 +778,7 @@ private slots:
 					int hi = (unsigned char)e.content[0];
 					int lo = (unsigned char)e.content[1];
 					peerCloseCode = (hi << 8) + lo;
+					peerCloseReason = QString::fromUtf8(e.content.mid(2));
 				}
 
 				closed = true;
@@ -1104,6 +1111,11 @@ int WebSocketOverHttp::peerCloseCode() const
 	return d->peerCloseCode;
 }
 
+QString WebSocketOverHttp::peerCloseReason() const
+{
+	return d->peerCloseReason;
+}
+
 WebSocket::ErrorCondition WebSocketOverHttp::errorCondition() const
 {
 	return d->errorCondition;
@@ -1119,9 +1131,9 @@ WebSocket::Frame WebSocketOverHttp::readFrame()
 	return d->readFrame();
 }
 
-void WebSocketOverHttp::close(int code)
+void WebSocketOverHttp::close(int code, const QString &reason)
 {
-	d->close(code);
+	d->close(code, reason);
 }
 
 void WebSocketOverHttp::setHeaders(const HttpHeaders &headers)

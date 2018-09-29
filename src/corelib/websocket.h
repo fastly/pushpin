@@ -109,11 +109,12 @@ public:
 	virtual bool canWrite() const = 0;
 	virtual int writeBytesAvailable() const = 0;
 	virtual int peerCloseCode() const = 0;
+	virtual QString peerCloseReason() const = 0;
 	virtual ErrorCondition errorCondition() const = 0;
 
 	virtual void writeFrame(const Frame &frame) = 0;
 	virtual Frame readFrame() = 0;
-	virtual void close(int code = -1) = 0;
+	virtual void close(int code = -1, const QString &reason = QString()) = 0;
 
 signals:
 	void connected();

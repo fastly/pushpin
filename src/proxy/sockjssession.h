@@ -76,11 +76,12 @@ public:
 	virtual bool canWrite() const;
 	virtual int writeBytesAvailable() const;
 	virtual int peerCloseCode() const;
+	virtual QString peerCloseReason() const;
 	virtual ErrorCondition errorCondition() const;
 
 	virtual void writeFrame(const Frame &frame);
 	virtual Frame readFrame();
-	virtual void close(int code = -1);
+	virtual void close(int code = -1, const QString &reason = QString());
 
 private:
 	class Private;

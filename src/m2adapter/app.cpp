@@ -1967,8 +1967,12 @@ public:
 			QByteArray data;
 			if(zresp.type == ZhttpResponsePacket::Close)
 			{
-				data.resize(2);
+				data.resize(2 + zresp.body.size());
 				writeBigEndian(data.data(), zresp.code != -1 ? zresp.code : 1000, 2);
+				if(!zresp.body.isEmpty())
+				{
+					memcpy(data.data() + 2, zresp.body.data(), zresp.body.size());
+				}
 			}
 
 			QByteArray frame = makeWsHeader(true, opcode, data.size()) + data;
@@ -2686,6 +2690,7 @@ private slots:
 						int hi = (unsigned char)mreq.body[0];
 						int lo = (unsigned char)mreq.body[1];
 						zreq.code = (hi << 8) + lo;
+						zreq.body = mreq.body.mid(2);
 					}
 
 					s->downClosed = true;

@@ -58,6 +58,7 @@ public:
 	bool gripEnabled;
 	QList<Frame> inFrames;
 	int peerCloseCode;
+	QString peerCloseReason;
 	ErrorCondition errorCondition;
 
 	Private(TestWebSocket *_q) :
@@ -286,6 +287,11 @@ int TestWebSocket::peerCloseCode() const
 	return d->peerCloseCode;
 }
 
+QString TestWebSocket::peerCloseReason() const
+{
+	return d->peerCloseReason;
+}
+
 WebSocket::ErrorCondition TestWebSocket::errorCondition() const
 {
 	return d->errorCondition;
@@ -311,10 +317,11 @@ WebSocket::Frame TestWebSocket::readFrame()
 	return d->inFrames.takeFirst();
 }
 
-void TestWebSocket::close(int code)
+void TestWebSocket::close(int code, const QString &reason)
 {
 	d->state = Private::Closing;
 	d->peerCloseCode = code;
+	d->peerCloseReason = reason;
 
 	QMetaObject::invokeMethod(d, "handleClose", Qt::QueuedConnection);
 }
