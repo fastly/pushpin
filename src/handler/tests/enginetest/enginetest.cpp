@@ -219,6 +219,7 @@ private slots:
 		ZhttpResponsePacket zresp;
 		zresp.from = "test-server";
 		zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
+		zresp.type = ZhttpResponsePacket::Data;
 		zresp.code = 200;
 		zresp.reason = "OK";
 

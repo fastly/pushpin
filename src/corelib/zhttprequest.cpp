@@ -460,6 +460,7 @@ public:
 			if((!responseBodyBuf.isEmpty() && outCredits > 0) || (responseBodyBuf.isEmpty() && bodyFinished))
 			{
 				ZhttpResponsePacket packet;
+				packet.type = ZhttpResponsePacket::Data;
 				packet.body = responseBodyBuf.take(outCredits);
 				outCredits -= packet.body.size();
 				packet.more = (!responseBodyBuf.isEmpty() || !bodyFinished);
@@ -1058,6 +1059,7 @@ public slots:
 			state = ServerResponding;
 
 			ZhttpResponsePacket packet;
+			packet.type = ZhttpResponsePacket::Data;
 			packet.code = responseCode;
 			packet.reason = responseReason;
 			packet.headers = responseHeaders;

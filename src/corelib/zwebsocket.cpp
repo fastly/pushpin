@@ -262,6 +262,7 @@ public:
 		state = Connected;
 
 		ZhttpResponsePacket out;
+		out.type = ZhttpResponsePacket::Data;
 		out.code = responseCode;
 		out.reason = responseReason;
 		out.headers = responseHeaders;

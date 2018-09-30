@@ -265,6 +265,7 @@ private slots:
 		ZhttpResponsePacket zresp;
 		zresp.from = "test-server";
 		zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
+		zresp.type = ZhttpResponsePacket::Data;
 		zresp.code = 200;
 		zresp.reason = "OK";
 
@@ -523,6 +524,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("1", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -544,6 +546,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("2", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -564,6 +567,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("3", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/jsonp?callback=jpcb";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -596,6 +600,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("4", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/jsonp-basic?bparam={}";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -616,6 +621,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("5", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path";
 		zreq.method = "POST";
 		zreq.stream = true;
@@ -659,6 +665,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("6", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path";
 		zreq.method = "POST";
 		zreq.stream = true;
@@ -699,6 +706,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("7", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path?hold=response";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -721,6 +729,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("8", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path?hold=stream";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -744,6 +753,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("9", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path?hold=response&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -764,6 +774,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("10", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path?hold=none";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -784,6 +795,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("11", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path?hold=none&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -804,6 +816,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("12", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path?hold=stream&large=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -828,6 +841,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("13", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path?hold=none&large=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -851,6 +865,7 @@ private slots:
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("14", 0);
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path2?wait=true&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -871,6 +886,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path";
 		zreq.method = "GET";
 		zreq.stream = true;
@@ -910,6 +926,7 @@ private slots:
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
+		zreq.type = ZhttpRequestPacket::Data;
 		zreq.uri = "http://example/path";
 		zreq.method = "POST";
 		zreq.stream = true;
