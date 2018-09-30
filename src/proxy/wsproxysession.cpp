@@ -783,7 +783,7 @@ private slots:
 				}
 				else if(outSock->state() == WebSocket::Connected)
 				{
-					outSock->close(inSock->peerCloseCode());
+					outSock->close(inSock->peerCloseCode(), inSock->peerCloseReason());
 				}
 			}
 		}
@@ -792,10 +792,11 @@ private slots:
 	void in_closed()
 	{
 		int code = inSock->peerCloseCode();
+		QString reason = inSock->peerCloseReason();
 		cleanupInSock();
 
 		if(!detached && outSock && outSock->state() != WebSocket::Closing)
-			outSock->close(code);
+			outSock->close(code, reason);
 
 		tryFinish();
 	}
@@ -892,17 +893,18 @@ private slots:
 	void out_peerClosed()
 	{
 		if(!detached && inSock && inSock->state() != WebSocket::Closing)
-			inSock->close(outSock->peerCloseCode());
+			inSock->close(outSock->peerCloseCode(), outSock->peerCloseReason());
 	}
 
 	void out_closed()
 	{
 		int code = outSock->peerCloseCode();
+		QString reason = outSock->peerCloseReason();
 		delete outSock;
 		outSock = 0;
 
 		if(!detached && inSock && inSock->state() != WebSocket::Closing)
-			inSock->close(code);
+			inSock->close(code, reason);
 
 		tryFinish();
 	}
