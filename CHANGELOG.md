@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.19.0 (2018-12-18)
+
+  * WebSocket: support close reasons.
+
 v. 1.18.0 (2018-08-20)
 
   * WebSocket-Over-HTTP: update headers (mainly Grip-Sig) for each request.
