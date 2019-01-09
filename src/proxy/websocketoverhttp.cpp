@@ -314,7 +314,7 @@ public:
 
 	void writeFrame(const Frame &frame)
 	{
-		assert(state != Closing);
+		assert(state == Connected);
 
 		outFrames += frame;
 
@@ -1098,7 +1098,7 @@ int WebSocketOverHttp::framesAvailable() const
 
 bool WebSocketOverHttp::canWrite() const
 {
-	return (writeBytesAvailable() > 0);
+	return (d->state == Connected && writeBytesAvailable() > 0);
 }
 
 int WebSocketOverHttp::writeBytesAvailable() const
