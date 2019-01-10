@@ -2673,6 +2673,12 @@ private slots:
 					return;
 				}
 
+				if(s->downClosed)
+				{
+					log_debug("m2: %s id=%s ignoring frame after close", m2_send_idents[s->conn->identIndex].data(), mreq.id.data());
+					return;
+				}
+
 				ZhttpRequestPacket zreq;
 
 				if(opcode == 1 || opcode == 2)
