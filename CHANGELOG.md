@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.19.1 (2019-01-10)
+
+  * WebSocket: fix crash when receiving frames after close frame.
+  * WebSocket: include reason and headers in rejection responses.
+
 v. 1.19.0 (2018-12-18)
 
   * WebSocket: support close reasons.
