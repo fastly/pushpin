@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Fanout, Inc.
+ * Copyright (C) 2014-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -994,25 +994,18 @@ private slots:
 		// split into frames to avoid credits issue
 		QList<WebSocket::Frame> frames;
 
-		if(message.size() > 0)
+		for(int n = 0; frames.isEmpty() || n < message.size(); n += FRAME_SIZE_MAX)
 		{
-			for(int n = 0; n < message.size(); n += FRAME_SIZE_MAX)
-			{
-				WebSocket::Frame::Type ftype;
-				if(n == 0)
-					ftype = type;
-				else
-					ftype = WebSocket::Frame::Continuation;
+			WebSocket::Frame::Type ftype;
+			if(n == 0)
+				ftype = type;
+			else
+				ftype = WebSocket::Frame::Continuation;
 
-				QByteArray data = message.mid(n, FRAME_SIZE_MAX);
-				bool more = (n + FRAME_SIZE_MAX < message.size());
+			QByteArray data = message.mid(n, FRAME_SIZE_MAX);
+			bool more = (n + FRAME_SIZE_MAX < message.size());
 
-				frames += WebSocket::Frame(ftype, data, more);
-			}
-		}
-		else
-		{
-			frames += WebSocket::Frame(type, QByteArray(), false);
+			frames += WebSocket::Frame(ftype, data, more);
 		}
 
 		for(int n = 0; n < frames.count(); ++n)
