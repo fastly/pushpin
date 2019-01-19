@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Fanout, Inc.
+ * Copyright (C) 2014-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -41,6 +41,7 @@
 #include "uuidutil.h"
 
 #define BUFFER_SIZE 200000
+#define FRAME_SIZE_MAX 16384
 #define RESPONSE_BODY_MAX 1000000
 #define REJECT_BODY_MAX 100000
 #define RETRY_TIMEOUT 1000
@@ -383,6 +384,29 @@ private:
 		}
 
 		return true;
+	}
+
+	void appendInMessage(Frame::Type type, const QByteArray &message)
+	{
+		// split into frames to avoid credits issue
+		QList<Frame> frames;
+
+		for(int n = 0; frames.isEmpty() || n < message.size(); n += FRAME_SIZE_MAX)
+		{
+			Frame::Type ftype;
+			if(n == 0)
+				ftype = type;
+			else
+				ftype = Frame::Continuation;
+
+			QByteArray data = message.mid(n, FRAME_SIZE_MAX);
+			bool more = (n + FRAME_SIZE_MAX < message.size());
+
+			frames += Frame(ftype, data, more);
+		}
+
+		foreach(const Frame &f, frames)
+			inFrames += f;
 	}
 
 	bool canSendCompleteMessage() const
@@ -752,22 +776,22 @@ private slots:
 			}
 			else if(e.type == "TEXT")
 			{
-				inFrames += Frame(Frame::Text, e.content, false);
+				appendInMessage(Frame::Text, e.content);
 				emitReadyRead = true;
 			}
 			else if(e.type == "BINARY")
 			{
-				inFrames += Frame(Frame::Binary, e.content, false);
+				appendInMessage(Frame::Binary, e.content);
 				emitReadyRead = true;
 			}
 			else if(e.type == "PING")
 			{
-				inFrames += Frame(Frame::Ping, e.content, false);
+				appendInMessage(Frame::Ping, e.content);
 				emitReadyRead = true;
 			}
 			else if(e.type == "PONG")
 			{
-				inFrames += Frame(Frame::Pong, e.content, false);
+				appendInMessage(Frame::Pong, e.content);
 				emitReadyRead = true;
 			}
 			else if(e.type == "CLOSE")
