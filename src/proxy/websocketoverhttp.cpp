@@ -341,7 +341,10 @@ public:
 
 	int writeBytesAvailable() const
 	{
-		int avail = BUFFER_SIZE;
+		if(reqContentSize >= BUFFER_SIZE)
+			return 0;
+
+		int avail = BUFFER_SIZE - reqContentSize;
 		foreach(const Frame &f, outFrames)
 		{
 			if(f.data.size() >= avail)
