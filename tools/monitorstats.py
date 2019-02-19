@@ -1,4 +1,5 @@
 import sys
+import json
 import tnetstring
 import zmq
 
@@ -14,6 +15,8 @@ while True:
 	mdata = m_raw[at + 1:]
 	if mdata[0] == 'T':
 		m = tnetstring.loads(mdata[1:])
+	elif mdata[0] == 'J':
+		m = json.loads(mdata[1:])
 	else:
-		m = tnetstring.loads(mdata)
+		m = mdata
 	print '%s %s' % (mtype, m)

@@ -73,6 +73,7 @@ public:
 		int statsConnectionTtl;
 		int statsSubscriptionTtl;
 		int statsReportInterval;
+		QString statsFormat;
 
 		Configuration() :
 			pushInHttpPort(-1),

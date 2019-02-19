@@ -268,6 +268,7 @@ public:
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
 		int statsSubscriptionTtl = settings.value("handler/stats_subscription_ttl", 60).toInt();
 		int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
+		QString statsFormat = settings.value("handler/stats_format").toString();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -316,6 +317,7 @@ public:
 		config.statsConnectionTtl = statsConnectionTtl;
 		config.statsSubscriptionTtl = statsSubscriptionTtl;
 		config.statsReportInterval = statsReportInterval;
+		config.statsFormat = statsFormat;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

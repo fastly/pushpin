@@ -46,6 +46,12 @@ public:
 		WebSocket
 	};
 
+	enum Format
+	{
+		TnetStringFormat,
+		JsonFormat
+	};
+
 	StatsManager(QObject *parent = 0);
 	~StatsManager();
 
@@ -56,6 +62,7 @@ public:
 	void setSubscriptionTtl(int secs);
 	void setSubscriptionLinger(int secs);
 	void setReportInterval(int secs);
+	void setOutputFormat(Format format);
 
 	// routeId may be empty for non-identified route
 

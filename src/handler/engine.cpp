@@ -1580,6 +1580,15 @@ public:
 		stats->setSubscriptionLinger(config.subscriptionLinger);
 		stats->setReportInterval(config.statsReportInterval);
 
+		if(config.statsFormat == "json")
+		{
+			stats->setOutputFormat(StatsManager::JsonFormat);
+		}
+		else
+		{
+			stats->setOutputFormat(StatsManager::TnetStringFormat);
+		}
+
 		if(!config.statsSpec.isEmpty())
 		{
 			stats->setInstanceId(config.instanceId);

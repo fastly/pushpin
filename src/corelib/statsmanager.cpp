@@ -33,6 +33,8 @@
 #include <QDateTime>
 #include <QPointer>
 #include <QTimer>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "qzmqsocket.h"
 #include "log.h"
 #include "tnetstring.h"
@@ -147,6 +149,7 @@ public:
 	QByteArray instanceId;
 	int ipcFileMode;
 	QString spec;
+	Format outputFormat;
 	int connectionTtl;
 	int connectionLinger;
 	int subscriptionTtl;
@@ -175,6 +178,7 @@ public:
 		QObject(_q),
 		q(_q),
 		ipcFileMode(-1),
+		outputFormat(TnetStringFormat),
 		connectionTtl(120 * 1000),
 		connectionLinger(60 * 1000),
 		subscriptionTtl(60 * 1000),
@@ -482,12 +486,25 @@ public:
 			prefix = "report";
 
 		QVariant vpacket = packet.toVariant();
-		QByteArray buf = prefix + " T" + TnetString::fromVariant(vpacket);
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("stats: OUT %s %s", prefix.data(), qPrintable(TnetString::variantToString(vpacket, -1)));
+		QByteArray buf;
+		if(outputFormat == TnetStringFormat)
+		{
+			buf = prefix + " T" + TnetString::fromVariant(vpacket);
+		}
+		else if(outputFormat == JsonFormat)
+		{
+			QJsonObject obj = QJsonObject::fromVariantMap(vpacket.toMap());
+			buf = prefix + " J" + QJsonDocument(obj).toJson(QJsonDocument::Compact);
+		}
 
-		sock->write(QList<QByteArray>() << buf);
+		if(!buf.isEmpty())
+		{
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				log_debug("stats: OUT %s %s", prefix.data(), qPrintable(TnetString::variantToString(vpacket, -1)));
+
+			sock->write(QList<QByteArray>() << buf);
+		}
 	}
 
 	void sendActivity(const QByteArray &routeId, int count)
@@ -938,6 +955,11 @@ void StatsManager::setReportInterval(int secs)
 {
 	d->reportInterval = secs * 1000;
 	d->setupReportTimer();
+}
+
+void StatsManager::setOutputFormat(Format format)
+{
+	d->outputFormat = format;
 }
 
 void StatsManager::addActivity(const QByteArray &routeId, int count)
