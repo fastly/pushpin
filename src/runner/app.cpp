@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2018 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -369,6 +369,8 @@ public:
 		//   log messages outside the default level will be lost (if any)
 		log_setOutputLevel(logLevel);
 
+		int clientBufferSize = settings.value("runner/client_buffer_size", 8192).toInt();
+
 		QString m2aBin = "m2adapter";
 		QFileInfo fi(QDir(exeDir).filePath("bin/m2adapter"));
 		if(fi.isFile())
@@ -462,7 +464,7 @@ public:
 				m2shBin = settings.value("runner/m2sh_bin").toString();
 
 			QString certsDir = QDir(configDir).filePath("certs");
-			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, logDir, ipcPrefix, filePrefix, certsDir, interfaces))
+			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, logDir, ipcPrefix, filePrefix, certsDir, clientBufferSize, interfaces))
 			{
 				emit q->quit(1);
 				return;

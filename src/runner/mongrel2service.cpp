@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2018 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -59,7 +59,7 @@ Mongrel2Service::Mongrel2Service(
 	setStandardOutputFile(QDir(logDir).filePath(filePrefix + "mongrel2_" + QString::number(port) + ".log"));
 }
 
-bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, const QList<Interface> &interfaces)
+bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, const QList<Interface> &interfaces)
 {
 	QVariantList vinterfaces;
 
@@ -79,6 +79,7 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 	context["certdir"] = certsDir;
 	context["ipc_prefix"] = ipcPrefix;
 	context["file_prefix"] = filePrefix;
+	context["limits_buffer_size"] = clientBufferSize;
 
 	QString error;
 	if(!Template::renderFile(configTemplateFile, QDir(runDir).filePath(filePrefix + "mongrel2.conf"), context, &error))
