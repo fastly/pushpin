@@ -260,7 +260,8 @@ public:
 			foreach(const HttpHeader &h, route.headers)
 			{
 				requestData.headers.removeAll(h.first);
-				requestData.headers += HttpHeader(h.first, h.second);
+				if(!h.second.isEmpty())
+					requestData.headers += HttpHeader(h.first, h.second);
 			}
 
 			bool intReq = false;
