@@ -285,6 +285,7 @@ public:
 		requestData.headers.removeAll("Upgrade");
 		requestData.headers.removeAll("Accept");
 		requestData.headers.removeAll("Connection-Id");
+		requestData.headers.removeAll("Content-Length");
 
 		// don't forward headers starting with Meta-*
 		for(int n = 0; n < requestData.headers.count(); ++n)
