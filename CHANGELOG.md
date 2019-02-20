@@ -1,6 +1,12 @@
 Pushpin Changelog
 =================
 
+v. 1.20.0 (2019-02-19)
+
+  * WebSocket-Over-HTTP: break up response messages to fit session buffers.
+  * New config option: stats_format.
+  * New config option: client_buffer_size.
+
 v. 1.19.1 (2019-01-10)
 
   * WebSocket: fix crash when receiving frames after close frame.
