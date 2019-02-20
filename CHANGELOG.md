@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.20.1 (2019-02-20)
+
+  * WebSocket-Over-HTTP: don't forward Content-Length header.
+
 v. 1.20.0 (2019-02-19)
 
   * WebSocket-Over-HTTP: break up response messages to fit session buffers.
