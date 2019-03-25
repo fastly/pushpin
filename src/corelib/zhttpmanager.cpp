@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2012-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -139,6 +139,20 @@ public:
 
 	~Private()
 	{
+		while(!serverPendingReqs.isEmpty())
+		{
+			ZhttpRequest *req = serverPendingReqs.takeFirst();
+			serverReqsByRid.remove(req->rid());
+			delete req;
+		}
+
+		while(!serverPendingSocks.isEmpty())
+		{
+			ZWebSocket *sock = serverPendingSocks.takeFirst();
+			serverSocksByRid.remove(sock->rid());
+			delete sock;
+		}
+
 		assert(clientReqsByRid.isEmpty());
 		assert(serverReqsByRid.isEmpty());
 		assert(clientSocksByRid.isEmpty());
@@ -148,9 +162,6 @@ public:
 		refreshTimer->disconnect(this);
 		refreshTimer->setParent(0);
 		refreshTimer->deleteLater();
-
-		qDeleteAll(serverPendingReqs);
-		qDeleteAll(serverPendingSocks);
 	}
 
 	bool setupClientOut()
