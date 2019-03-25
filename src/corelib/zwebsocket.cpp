@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2014-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -742,7 +742,7 @@ public:
 		out.from = manager->instanceId();
 		out.ids += ZhttpResponsePacket::Id(rid.second, outSeq++);
 		out.userData = userData;
-		
+
 		manager->writeWs(out, rid.first);
 	}
 
