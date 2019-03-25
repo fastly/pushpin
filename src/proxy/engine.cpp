@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2018 Fanout, Inc.
+ * Copyright (C) 2012-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -181,6 +181,8 @@ public:
 
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
+
+		WebSocketOverHttp::setMaxManagedDisconnects(config.maxWorkers);
 
 		if(!config.routeLines.isEmpty())
 		{

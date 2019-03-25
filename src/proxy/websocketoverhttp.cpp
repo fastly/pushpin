@@ -83,9 +83,15 @@ public:
 	{
 		sock->setParent(this);
 		connect(sock, &WebSocketOverHttp::disconnected, this, &DisconnectManager::sock_disconnected);
+		connect(sock, &WebSocketOverHttp::closed, this, &DisconnectManager::sock_closed);
 		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
 
 		sock->sendDisconnect();
+	}
+
+	int count() const
+	{
+		return children().count();
 	}
 
 private:
@@ -101,6 +107,12 @@ private slots:
 		cleanupSocket(sock);
 	}
 
+	void sock_closed()
+	{
+		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
+		cleanupSocket(sock);
+	}
+
 	void sock_error()
 	{
 		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
@@ -109,6 +121,7 @@ private slots:
 };
 
 WebSocketOverHttp::DisconnectManager *WebSocketOverHttp::g_disconnectManager = 0;
+int WebSocketOverHttp::g_maxManagedDisconnects = -1;
 
 static QList<WsEvent> decodeEvents(const QByteArray &in, bool *ok = 0)
 {
@@ -986,9 +999,9 @@ WebSocketOverHttp::WebSocketOverHttp(QObject *parent) :
 
 WebSocketOverHttp::~WebSocketOverHttp()
 {
-	if((d->state == Connecting || d->state == Connected || d->state == Closing) && parent() != g_disconnectManager)
+	if(d->state != Idle && parent() != g_disconnectManager && (g_maxManagedDisconnects < 0 || g_disconnectManager->count() < g_maxManagedDisconnects))
 	{
-		// if we get destructed while connected, disconnect in the background
+		// if we get destructed while active, clean up in the background
 		WebSocketOverHttp *sock = new WebSocketOverHttp;
 		sock->d = d;
 		d->setParent(sock);
@@ -1008,6 +1021,11 @@ void WebSocketOverHttp::setConnectionId(const QByteArray &id)
 void WebSocketOverHttp::refresh()
 {
 	d->refresh();
+}
+
+void WebSocketOverHttp::setMaxManagedDisconnects(int max)
+{
+	g_maxManagedDisconnects = max;
 }
 
 void WebSocketOverHttp::clearDisconnectManager()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Fanout, Inc.
+ * Copyright (C) 2014-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -44,6 +44,7 @@ public:
 	void setConnectionId(const QByteArray &id);
 	void refresh();
 
+	static void setMaxManagedDisconnects(int max);
 	static void clearDisconnectManager();
 
 	// reimplemented
@@ -97,6 +98,7 @@ private:
 	Private *d;
 
 	static DisconnectManager *g_disconnectManager;
+	static int g_maxManagedDisconnects;
 };
 
 #endif
