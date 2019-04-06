@@ -349,22 +349,9 @@ public:
 
 		needUpdate = false;
 
-		bool havePrevId = false;
-		QHashIterator<QString, Instruct::Channel> it(channels);
-		while(it.hasNext())
+		if(instruct.holdMode != Instruct::ResponseHold && nextUri.isEmpty())
 		{
-			it.next();
-			const Instruct::Channel &c = it.value();
-			if(!c.prevId.isNull())
-			{
-				havePrevId = true;
-				break;
-			}
-		}
-
-		if(!havePrevId || (instruct.holdMode != Instruct::ResponseHold && nextUri.isEmpty()))
-		{
-			// can't update without prevId and valid link
+			// can't update without valid link
 			return;
 		}
 
