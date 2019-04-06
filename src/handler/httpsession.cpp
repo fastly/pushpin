@@ -1085,15 +1085,13 @@ private:
 
 				if(!c.prevId.isNull())
 				{
-					QString name = adata.channelPrefix + c.name;
-
 					if(!rp.haveInspectInfo)
 					{
 						rp.haveInspectInfo = true;
 						rp.inspectInfo.doProxy = true;
 					}
 
-					rp.inspectInfo.lastIds.insert(name.toUtf8(), c.prevId.toUtf8());
+					rp.inspectInfo.lastIds.insert(c.name.toUtf8(), c.prevId.toUtf8());
 				}
 			}
 
