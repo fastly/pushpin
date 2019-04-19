@@ -89,7 +89,7 @@ void applyCorsHeaders(const HttpHeaders &requestHeaders, HttpHeaders *responseHe
 		QList<QByteArray> exposeHeaders;
 		foreach(const HttpHeader &h, *responseHeaders)
 		{
-			if(!isSimpleHeader(h.first) && !headerNameStartsWith(h.first, "Access-Control-") && !headerNamesContains(exposeHeaders, h.first))
+			if(!isSimpleHeader(h.first) && !headerNameStartsWith(h.first, "Access-Control-") && !headerNameStartsWith(h.first, "Grip-") && !headerNamesContains(exposeHeaders, h.first))
 				exposeHeaders += h.first;
 		}
 
