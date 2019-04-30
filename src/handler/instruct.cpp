@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -105,6 +105,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	QList<Channel> channels;
 	int timeout = -1;
 	QList<QByteArray> exposeHeaders;
+	KeepAliveMode keepAliveMode = NoKeepAlive;
 	QByteArray keepAliveData;
 	int keepAliveTimeout = -1;
 	QHash<QString, QString> meta;
@@ -179,6 +180,21 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 		if(val.isEmpty())
 		{
 			setError(ok, errorMessage, "Grip-Keep-Alive cannot be empty");
+			return Instruct();
+		}
+
+		QByteArray mode = keepAliveParams.get("mode");
+		if(mode.isEmpty() || mode == "idle")
+		{
+			keepAliveMode = Idle;
+		}
+		else if(mode == "interval")
+		{
+			keepAliveMode = Interval;
+		}
+		else
+		{
+			setError(ok, errorMessage, QString("no such Grip-Keep-Alive mode '%1'").arg(QString::fromUtf8(mode)));
 			return Instruct();
 		}
 
@@ -781,6 +797,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	i.channels = channels;
 	i.timeout = timeout;
 	i.exposeHeaders = exposeHeaders;
+	i.keepAliveMode = keepAliveMode;
 	i.keepAliveData = keepAliveData;
 	i.keepAliveTimeout = keepAliveTimeout;
 	i.meta = meta;

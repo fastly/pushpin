@@ -41,6 +41,7 @@
 #include "zwebsocket.h"
 #include "websocketoverhttp.h"
 #include "zroutes.h"
+#include "wscontrol.h"
 #include "wscontrolmanager.h"
 #include "wscontrolsession.h"
 #include "xffrule.h"
@@ -52,6 +53,7 @@
 
 #define ACTIVITY_TIMEOUT 60000
 #define FRAME_SIZE_MAX 16384
+#define KEEPALIVE_RAND_MAX 1000
 
 class HttpExtension
 {
@@ -278,6 +280,8 @@ public:
 	QDateTime activityTime;
 	QByteArray publicCid;
 	QTimer *keepAliveTimer;
+	WsControl::KeepAliveMode keepAliveMode;
+	int keepAliveTimeout;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 	LogUtil::Config logConfig;
 
@@ -305,6 +309,8 @@ public:
 		acceptGripMessages(false),
 		detached(false),
 		keepAliveTimer(0),
+		keepAliveMode(WsControl::NoKeepAlive),
+		keepAliveTimeout(0),
 		logConfig(_logConfig)
 	{
 	}
@@ -638,7 +644,7 @@ public:
 							f.data = f.data.mid(messagePrefix.size());
 							writeInFrame(f);
 
-							restartKeepAlive();
+							adjustKeepAlive();
 						}
 						else
 						{
@@ -651,14 +657,14 @@ public:
 
 						writeInFrame(f);
 
-						restartKeepAlive();
+						adjustKeepAlive();
 					}
 				}
 				else
 				{
 					writeInFrame(f);
 
-					restartKeepAlive();
+					adjustKeepAlive();
 				}
 
 				if(!f.more)
@@ -669,7 +675,7 @@ public:
 				// always relay non-content frames
 				writeInFrame(f);
 
-				restartKeepAlive();
+				adjustKeepAlive();
 			}
 
 			if(outReadInProgress == -1 && !queuedInFrames.isEmpty())
@@ -735,10 +741,21 @@ public:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
-	void restartKeepAlive()
+	void setupKeepAlive()
 	{
-		if(keepAliveTimer)
-			keepAliveTimer->start();
+		if(keepAliveTimeout >= 0)
+		{
+			int timeout = keepAliveTimeout * 1000;
+			timeout = qMax(timeout - (qrand() % KEEPALIVE_RAND_MAX), 0);
+			keepAliveTimer->start(timeout);
+		}
+	}
+
+	void adjustKeepAlive()
+	{
+		// if idle mode, restart the timer. else leave alone
+		if(keepAliveTimer && keepAliveMode == WsControl::Idle)
+			setupKeepAlive();
 	}
 
 private slots:
@@ -1023,13 +1040,17 @@ private slots:
 			}
 		}
 
-		restartKeepAlive();
+		adjustKeepAlive();
 	}
 
-	void wsControl_keepAliveSetupEventReceived(bool enable, int timeout)
+	void wsControl_keepAliveSetupEventReceived(WsControl::KeepAliveMode mode, int timeout)
 	{
-		if(enable)
+		keepAliveMode = mode;
+
+		if(keepAliveMode != WsControl::NoKeepAlive && timeout > 0)
 		{
+			keepAliveTimeout = timeout;
+
 			if(!keepAliveTimer)
 			{
 				keepAliveTimer = new QTimer(this);
@@ -1037,8 +1058,7 @@ private slots:
 				keepAliveTimer->setSingleShot(true);
 			}
 
-			keepAliveTimer->setInterval(timeout * 1000);
-			keepAliveTimer->start();
+			setupKeepAlive();
 		}
 		else
 		{
@@ -1089,6 +1109,9 @@ private slots:
 	void keepAliveTimer_timeout()
 	{
 		wsControl->sendNeedKeepAlive();
+
+		if(keepAliveMode == WsControl::Interval)
+			setupKeepAlive();
 	}
 };
 

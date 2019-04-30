@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -209,9 +209,16 @@ public:
 		else if(item.type == WsControlPacket::Item::KeepAliveSetup)
 		{
 			if(item.timeout > 0)
-				emit q->keepAliveSetupEventReceived(true, item.timeout);
+			{
+				WsControl::KeepAliveMode mode;
+				if(item.keepAliveMode == "interval")
+					mode = WsControl::Interval;
+				else // idle
+					mode = WsControl::Idle;
+				emit q->keepAliveSetupEventReceived(mode, item.timeout);
+			}
 			else
-				emit q->keepAliveSetupEventReceived(false);
+				emit q->keepAliveSetupEventReceived(WsControl::NoKeepAlive);
 		}
 		else if(item.type == WsControlPacket::Item::Close)
 		{

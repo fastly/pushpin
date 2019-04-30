@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,64 +26,18 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef INSTRUCT_H
-#define INSTRUCT_H
+#ifndef WSCONTROL_H
+#define WSCONTROL_H
 
-#include <QString>
-#include <QStringList>
-#include <QByteArray>
-#include <QList>
-#include <QHash>
-#include <QUrl>
-#include "packet/httpresponsedata.h"
+namespace WsControl {
 
-class Instruct
+enum KeepAliveMode
 {
-public:
-	enum HoldMode
-	{
-		NoHold,
-		ResponseHold,
-		StreamHold
-	};
-
-	enum KeepAliveMode
-	{
-		NoKeepAlive,
-		Idle,
-		Interval
-	};
-
-	class Channel
-	{
-	public:
-		QString name;
-		QString prevId;
-		QStringList filters;
-	};
-
-	HoldMode holdMode;
-	QList<Channel> channels;
-	int timeout;
-	QList<QByteArray> exposeHeaders;
-	KeepAliveMode keepAliveMode;
-	QByteArray keepAliveData;
-	int keepAliveTimeout;
-	QHash<QString, QString> meta;
-	HttpResponseData response;
-	QUrl nextLink;
-	int nextLinkTimeout;
-
-	Instruct() :
-		holdMode(NoHold),
-		timeout(-1),
-		keepAliveMode(NoKeepAlive),
-		keepAliveTimeout(-1),
-		nextLinkTimeout(-1)
-	{
-	}
-
-	static Instruct fromResponse(const HttpResponseData &response, bool *ok = 0, QString *errorMessage = 0);
+	NoKeepAlive,
+	Idle,
+	Interval
 };
+
+}
 
 #endif

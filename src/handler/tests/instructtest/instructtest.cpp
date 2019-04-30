@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -238,17 +238,28 @@ private slots:
 		HttpResponseData data;
 		data.code = 200;
 		data.reason = "OK";
+		data.body = "hello world";
+
 		data.headers += HttpHeader("Content-Type", "text/plain");
 		data.headers += HttpHeader("Grip-Hold", "stream");
 		data.headers += HttpHeader("Grip-Channel", "test");
-		data.headers += HttpHeader("Grip-Keep-Alive", "ping1\\n; timeout=10");
-		data.body = "hello world";
-
 		Instruct i;
 		bool ok;
 		i = Instruct::fromResponse(data, &ok);
 		QVERIFY(ok);
 		QCOMPARE(i.holdMode, Instruct::StreamHold);
+		QCOMPARE(i.keepAliveMode, Instruct::NoKeepAlive);
+
+		data.headers.clear();
+		data.headers += HttpHeader("Content-Type", "text/plain");
+		data.headers += HttpHeader("Grip-Hold", "stream");
+		data.headers += HttpHeader("Grip-Channel", "test");
+		data.headers += HttpHeader("Grip-Keep-Alive", "ping1\\n; timeout=10");
+
+		i = Instruct::fromResponse(data, &ok);
+		QVERIFY(ok);
+		QCOMPARE(i.holdMode, Instruct::StreamHold);
+		QCOMPARE(i.keepAliveMode, Instruct::Idle);
 		QCOMPARE(i.keepAliveData, QByteArray("ping1\\n"));
 		QCOMPARE(i.keepAliveTimeout, 10);
 
@@ -261,6 +272,7 @@ private slots:
 		i = Instruct::fromResponse(data, &ok);
 		QVERIFY(ok);
 		QCOMPARE(i.holdMode, Instruct::StreamHold);
+		QCOMPARE(i.keepAliveMode, Instruct::Idle);
 		QCOMPARE(i.keepAliveData, QByteArray("ping2\n"));
 		QVERIFY(i.keepAliveTimeout > 0);
 
@@ -273,7 +285,21 @@ private slots:
 		i = Instruct::fromResponse(data, &ok);
 		QVERIFY(ok);
 		QCOMPARE(i.holdMode, Instruct::StreamHold);
+		QCOMPARE(i.keepAliveMode, Instruct::Idle);
 		QCOMPARE(i.keepAliveData, QByteArray("ping3\n"));
+		QVERIFY(i.keepAliveTimeout > 0);
+
+		data.headers.clear();
+		data.headers += HttpHeader("Content-Type", "text/plain");
+		data.headers += HttpHeader("Grip-Hold", "stream");
+		data.headers += HttpHeader("Grip-Channel", "test");
+		data.headers += HttpHeader("Grip-Keep-Alive", "ping4\\n; mode=interval");
+
+		i = Instruct::fromResponse(data, &ok);
+		QVERIFY(ok);
+		QCOMPARE(i.holdMode, Instruct::StreamHold);
+		QCOMPARE(i.keepAliveMode, Instruct::Interval);
+		QCOMPARE(i.keepAliveData, QByteArray("ping4\\n"));
 		QVERIFY(i.keepAliveTimeout > 0);
 	}
 };

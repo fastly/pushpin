@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -69,6 +69,7 @@ public:
 		QByteArray channel;
 		int ttl;
 		int timeout;
+		QByteArray keepAliveMode;
 
 		Item() :
 			type((Type)-1),

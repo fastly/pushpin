@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -247,6 +247,20 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 					return WsControlMessage();
 				}
 			}
+		}
+
+		if(out.type == KeepAlive)
+		{
+			QString mode = getString(in, pn, "mode", false, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return WsControlMessage();
+			}
+
+			if(!mode.isNull())
+				out.keepAliveMode = mode.toUtf8();
 		}
 	}
 

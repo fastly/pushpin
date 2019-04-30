@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Fanout, Inc.
+ * Copyright (C) 2015-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -2483,6 +2483,11 @@ private slots:
 
 						s->keepAliveType = contentType;
 						s->keepAliveMessage = cm.content;
+
+						if(cm.keepAliveMode == "interval")
+							i.keepAliveMode = "interval";
+						else
+							i.keepAliveMode = "idle";
 
 						i.timeout = (cm.timeout > 0 ? cm.timeout : DEFAULT_WS_KEEPALIVE_TIMEOUT);
 					}

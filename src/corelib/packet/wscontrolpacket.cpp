@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -219,6 +219,9 @@ QVariant WsControlPacket::toVariant() const
 		if(item.timeout >= 0)
 			vitem["timeout"] = item.timeout;
 
+		if(!item.keepAliveMode.isEmpty())
+			vitem["keep-alive-mode"] = item.keepAliveMode;
+
 		vitems += vitem;
 	}
 
@@ -380,6 +383,16 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.timeout = vitem["timeout"].toInt();
 			if(item.timeout < 0)
 				item.timeout = 0;
+		}
+
+		if(vitem.contains("keep-alive-mode"))
+		{
+			if(!vitem["keep-alive-mode"].canConvert(QVariant::ByteArray))
+				return false;
+
+			QByteArray keepAliveMode = vitem["keep-alive-mode"].toByteArray();
+			if(!keepAliveMode.isEmpty())
+				item.keepAliveMode = keepAliveMode;
 		}
 
 		items += item;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -66,6 +66,7 @@ public:
 	MessageType messageType;
 	QByteArray content;
 	int timeout;
+	QByteArray keepAliveMode;
 
 	WsControlMessage() :
 		type((Type)-1),

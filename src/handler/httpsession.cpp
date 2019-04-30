@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -519,14 +519,22 @@ private:
 		}
 	}
 
-	void setupKeepAliveTimer()
+	void setupKeepAlive()
 	{
 		if(instruct.keepAliveTimeout >= 0)
 		{
 			int timeout = instruct.keepAliveTimeout * 1000;
 			timeout = qMax(timeout - (qrand() % KEEPALIVE_RAND_MAX), 0);
+			timer->setSingleShot(true);
 			timer->start(timeout);
 		}
+	}
+
+	void adjustKeepAlive()
+	{
+		// if idle mode, restart the timer. else leave alone
+		if(timer && instruct.keepAliveMode == Instruct::Idle)
+			setupKeepAlive();
 	}
 
 	void prepareToClose()
@@ -830,7 +838,7 @@ private:
 				req->writeBody(body);
 
 				// restart keep alive timer
-				setupKeepAliveTimer();
+				adjustKeepAlive();
 
 				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
 				{
@@ -883,7 +891,7 @@ private:
 
 		// start keep alive timer, if it wasn't started already
 		if(!timer->isActive())
-			setupKeepAliveTimer();
+			setupKeepAlive();
 
 		if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
 			updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
@@ -1472,6 +1480,8 @@ private slots:
 		else if(instruct.holdMode == Instruct::StreamHold)
 		{
 			req->writeBody(instruct.keepAliveData);
+
+			setupKeepAlive();
 
 			stats->addActivity(adata.route.toUtf8(), 1);
 		}

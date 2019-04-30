@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,6 +32,7 @@
 #include <QByteArray>
 #include <QObject>
 #include "websocket.h"
+#include "wscontrol.h"
 #include "packet/wscontrolpacket.h"
 
 class WsControlManager;
@@ -55,7 +56,7 @@ public:
 
 signals:
 	void sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue);
-	void keepAliveSetupEventReceived(bool enable, int timeout = -1);
+	void keepAliveSetupEventReceived(WsControl::KeepAliveMode mode, int timeout = -1);
 	void closeEventReceived(int code); // -1 for no code
 	void detachEventReceived();
 	void cancelEventReceived();
