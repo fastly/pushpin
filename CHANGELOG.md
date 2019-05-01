@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.21.0 (2019-05-01)
+
+  * GRIP keep-alive modes: idle (default) and interval.
+  * Don't put GRIP headers in Access-Control-Expose-Headers.
+
 v. 1.20.3 (2019-04-08)
 
   * Fix Grip-Last values when route prefix is used.
