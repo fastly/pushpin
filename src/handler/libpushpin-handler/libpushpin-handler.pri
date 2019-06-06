@@ -26,6 +26,7 @@ HEADERS += \
 	$$SRC_DIR/publishformat.h \
 	$$SRC_DIR/publishitem.h \
 	$$SRC_DIR/instruct.h \
+	$$SRC_DIR/format.h \
 	$$SRC_DIR/idformat.h \
 	$$SRC_DIR/httpsession.h \
 	$$SRC_DIR/httpsessionupdatemanager.h \
@@ -51,6 +52,7 @@ SOURCES += \
 	$$SRC_DIR/publishformat.cpp \
 	$$SRC_DIR/publishitem.cpp \
 	$$SRC_DIR/instruct.cpp \
+	$$SRC_DIR/format.cpp \
 	$$SRC_DIR/idformat.cpp \
 	$$SRC_DIR/httpsession.cpp \
 	$$SRC_DIR/httpsessionupdatemanager.cpp \

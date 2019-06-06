@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +29,7 @@
 #include "filter.h"
 
 #include "log.h"
+#include "format.h"
 #include "idformat.h"
 
 namespace {
@@ -198,6 +199,66 @@ public:
 	}
 };
 
+class VarSubstFormatHandler : public Format::Handler
+{
+public:
+	QHash<QString, QString> vars;
+
+	virtual QByteArray handle(char type, const QByteArray &arg, QString *error) const
+	{
+		if(type != 's')
+		{
+			*error = QString("Unknown directive '%1'").arg(type);
+			return QByteArray();
+		}
+
+		if(arg.isNull())
+		{
+			*error = QString("Directive 's' requires argument");
+			return QByteArray();
+		}
+
+		QString value = vars.value(arg);
+		if(value.isNull())
+		{
+			*error = QString("No such variable '%1'").arg(QString::fromUtf8(arg));
+			return QByteArray();
+		}
+
+		return value.toUtf8();
+	}
+};
+
+class VarSubstFilter : public Filter
+{
+public:
+	VarSubstFilter() :
+		Filter("var-subst")
+	{
+	}
+
+	virtual QByteArray update(const QByteArray &data)
+	{
+		VarSubstFormatHandler handler;
+		handler.vars = context().subscriptionMeta;
+
+		QString errorMessage;
+		QByteArray buf = Format::process(data, &handler, 0, &errorMessage);
+		if(buf.isNull())
+		{
+			setError(errorMessage);
+			return QByteArray();
+		}
+
+		return buf;
+	}
+
+	virtual QByteArray finalize()
+	{
+		return QByteArray("");
+	}
+};
+
 }
 
 Filter::Filter(const QString &name) :
@@ -247,6 +308,8 @@ Filter *Filter::create(const QString &name)
 		return new RequireSubFilter;
 	else if(name == "build-id")
 		return new BuildIdFilter;
+	else if(name == "var-subst")
+		return new VarSubstFilter;
 	else
 		return 0;
 }
@@ -257,12 +320,13 @@ QStringList Filter::names()
 		<< "skip-self"
 		<< "skip-users"
 		<< "require-sub"
-		<< "build-id");
+		<< "build-id"
+		<< "var-subst");
 }
 
 bool Filter::isContentFilter(const QString &name)
 {
-	if(name == "build-id")
+	if(name == "build-id" || name == "var-subst")
 		return true;
 
 	return false;
