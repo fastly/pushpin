@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -370,6 +370,32 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 					setError(ok, errorMessage, QString("%1 contains 'type' with unknown value").arg(pn));
 					return PublishFormat();
 				}
+			}
+
+			if(keyedObjectContains(in, "content-filters"))
+			{
+				QVariant vfilters = keyedObjectGetValue(in, "content-filters");
+				if(vfilters.type() != QVariant::List)
+				{
+					setError(ok, errorMessage, QString("%1 contains 'content-filters' with wrong type").arg(pn));
+					return PublishFormat();
+				}
+
+				QStringList filters;
+				foreach(const QVariant &vfilter, vfilters.toList())
+				{
+					QString filter = getString(vfilter, &ok_);
+					if(!ok_)
+					{
+						setError(ok, errorMessage, "content-filters contains element with wrong type");
+						return PublishFormat();
+					}
+
+					filters += filter;
+				}
+
+				out.haveContentFilters = true;
+				out.contentFilters = filters;
 			}
 
 			if(keyedObjectContains(in, "content-bin"))

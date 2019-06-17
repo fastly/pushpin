@@ -1029,13 +1029,13 @@ private:
 
 			if(!responseSent)
 			{
-				// apply filters of all channels to content
+				// apply ProxyContent filters of all channels
 				QStringList allFilters;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					foreach(const QString &filter, c.filters)
 					{
-						if(!allFilters.contains(filter))
+						if((Filter::targets(filter) & Filter::ProxyContent) && !allFilters.contains(filter))
 							allFilters += filter;
 					}
 				}
@@ -1786,6 +1786,23 @@ private:
 		else if(f.type == PublishFormat::WebSocketMessage)
 		{
 			WsSession *s = qobject_cast<WsSession*>(target);
+
+			if(f.haveContentFilters)
+			{
+				// ensure content filters match
+				QStringList contentFilters;
+				foreach(const QString &f, s->channelFilters[item.channel])
+				{
+					if(Filter::targets(f) & Filter::MessageContent)
+						contentFilters += f;
+				}
+				if(contentFilters != f.contentFilters)
+				{
+					QString errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+					log_debug("%s", qPrintable(errorMessage));
+					return;
+				}
+			}
 
 			Filter::Context fc;
 			fc.subscriptionMeta = s->meta;

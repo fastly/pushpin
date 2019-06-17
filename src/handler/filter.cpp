@@ -324,10 +324,18 @@ QStringList Filter::names()
 		<< "var-subst");
 }
 
-bool Filter::isContentFilter(const QString &name)
+Filter::Targets Filter::targets(const QString &name)
 {
-	if(name == "build-id" || name == "var-subst")
-		return true;
-
-	return false;
+	if(name == "skip-self")
+		return Filter::MessageDelivery;
+	else if(name == "skip-users")
+		return Filter::MessageDelivery;
+	else if(name == "require-sub")
+		return Filter::MessageDelivery;
+	else if(name == "build-id")
+		return Filter::Targets(Filter::MessageContent | Filter::ProxyContent);
+	else if(name == "var-subst")
+		return Filter::MessageContent;
+	else
+		return Filter::Targets(0);
 }

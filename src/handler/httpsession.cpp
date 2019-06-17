@@ -273,13 +273,13 @@ public:
 
 			if(!instruct.response.body.isEmpty())
 			{
-				// apply filters of all channels to content
+				// apply ProxyContent filters of all channels
 				QStringList allFilters;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					foreach(const QString &filter, c.filters)
 					{
-						if(!allFilters.contains(filter))
+						if((Filter::targets(filter) & Filter::ProxyContent) && !allFilters.contains(filter))
 							allFilters += filter;
 					}
 				}
@@ -419,7 +419,7 @@ public:
 				QStringList contentFilters;
 				foreach(const QString &f, channels[item.channel].filters)
 				{
-					if(Filter::isContentFilter(f))
+					if(Filter::targets(f) & Filter::MessageContent)
 						contentFilters += f;
 				}
 				if(contentFilters != f.contentFilters)
@@ -795,7 +795,7 @@ private:
 				QStringList contentFilters;
 				foreach(const QString &f, channels[item.channel].filters)
 				{
-					if(Filter::isContentFilter(f))
+					if(Filter::targets(f) & Filter::MessageContent)
 						contentFilters += f;
 				}
 				if(contentFilters != f.contentFilters)
@@ -1415,13 +1415,13 @@ private slots:
 		{
 			haveOutReqHeaders = true;
 
-			// apply filters of all channels to content
+			// apply ProxyContent filters of all channels
 			QStringList allFilters;
 			foreach(const Instruct::Channel &c, instruct.channels)
 			{
 				foreach(const QString &filter, c.filters)
 				{
-					if(!allFilters.contains(filter))
+					if((Filter::targets(filter) & Filter::ProxyContent) && !allFilters.contains(filter))
 						allFilters += filter;
 				}
 			}

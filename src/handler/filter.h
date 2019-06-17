@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -42,6 +42,13 @@ public:
 		Drop
 	};
 
+	enum Targets
+	{
+		MessageDelivery = 0x01,
+		MessageContent  = 0x02,
+		ProxyContent    = 0x04,
+	};
+
 	class Context
 	{
 	public:
@@ -69,7 +76,7 @@ public:
 
 	static Filter *create(const QString &name);
 	static QStringList names();
-	static bool isContentFilter(const QString &name);
+	static Targets targets(const QString &name);
 
 protected:
 	void setError(const QString &s) { errorMessage_ = s; }
