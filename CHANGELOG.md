@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.22.0 (2019-06-17)
+
+  * New filter: var-subst.
+  * Support content-filters field in ws-message format.
+
 v. 1.21.0 (2019-05-01)
 
   * GRIP keep-alive modes: idle (default) and interval.
