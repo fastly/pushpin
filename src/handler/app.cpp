@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Fanout, Inc.
+ * Copyright (C) 2015-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -253,7 +253,12 @@ public:
 		QString proxy_stats_spec = settings.value("handler/proxy_stats_spec").toString();
 		QString proxy_command_spec = settings.value("handler/proxy_command_spec").toString();
 		QString push_in_spec = settings.value("handler/push_in_spec").toString();
+		QStringList push_in_sub_specs = settings.value("handler/push_in_sub_specs").toStringList();
+		trimlist(&push_in_sub_specs);
 		QString push_in_sub_spec = settings.value("handler/push_in_sub_spec").toString();
+		if(!push_in_sub_spec.isEmpty())
+			push_in_sub_specs += push_in_sub_spec;
+		bool push_in_sub_connect = settings.value("handler/push_in_sub_connect").toBool();
 		QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
 		int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
 		bool ok;
@@ -303,7 +308,8 @@ public:
 		config.proxyStatsSpec = proxy_stats_spec;
 		config.proxyCommandSpec = proxy_command_spec;
 		config.pushInSpec = push_in_spec;
-		config.pushInSubSpec = push_in_sub_spec;
+		config.pushInSubSpecs = push_in_sub_specs;
+		config.pushInSubConnect = push_in_sub_connect;
 		config.pushInHttpAddr = QHostAddress(push_in_http_addr);
 		config.pushInHttpPort = push_in_http_port;
 		config.ipcFileMode = ipcFileMode;

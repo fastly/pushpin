@@ -1503,23 +1503,31 @@ public:
 			log_info("in pull: %s", qPrintable(config.pushInSpec));
 		}
 
-		if(!config.pushInSubSpec.isEmpty())
+		if(!config.pushInSubSpecs.isEmpty())
 		{
 			inSubSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			inSubSock->setSendHwm(SUB_SNDHWM);
 			inSubSock->setShutdownWaitTime(0);
 
 			QString errorMessage;
-			if(!ZUtil::setupSocket(inSubSock, config.pushInSubSpec, true, config.ipcFileMode, &errorMessage))
+			if(!ZUtil::setupSocket(inSubSock, config.pushInSubSpecs, !config.pushInSubConnect, config.ipcFileMode, &errorMessage))
 			{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
 			}
 
+			if(config.pushInSubConnect)
+			{
+				// some sane TCP keep-alive settings
+				// idle=30, cnt=6, intvl=5
+				inSubSock->setTcpKeepAliveEnabled(true);
+				inSubSock->setTcpKeepAliveParameters(30, 6, 5);
+			}
+
 			inSubValve = new QZmq::Valve(inSubSock, this);
 			connect(inSubValve, &QZmq::Valve::readyRead, this, &Private::inSub_readyRead);
 
-			log_info("in sub: %s", qPrintable(config.pushInSubSpec));
+			log_info("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
 		}
 
 		if(!config.retryOutSpec.isEmpty())
@@ -2222,8 +2230,8 @@ private slots:
 				out["command"] = config.commandSpec.toUtf8();
 			if(!config.pushInSpec.isEmpty())
 				out["publish-pull"] = config.pushInSpec.toUtf8();
-			if(!config.pushInSubSpec.isEmpty())
-				out["publish-sub"] = config.pushInSubSpec.toUtf8();
+			if(!config.pushInSubSpecs.isEmpty() && !config.pushInSubConnect)
+				out["publish-sub"] = config.pushInSubSpecs[0].toUtf8();
 			req->respond(out);
 			delete req;
 		}

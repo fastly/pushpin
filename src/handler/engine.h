@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Fanout, Inc.
+ * Copyright (C) 2015-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -59,7 +59,8 @@ public:
 		QString proxyStatsSpec;
 		QString proxyCommandSpec;
 		QString pushInSpec;
-		QString pushInSubSpec;
+		QStringList pushInSubSpecs;
+		bool pushInSubConnect;
 		QHostAddress pushInHttpAddr;
 		int pushInHttpPort;
 		int ipcFileMode;
@@ -76,6 +77,7 @@ public:
 		QString statsFormat;
 
 		Configuration() :
+			pushInSubConnect(false),
 			pushInHttpPort(-1),
 			ipcFileMode(-1),
 			shareAll(false),
