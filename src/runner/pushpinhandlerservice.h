@@ -44,7 +44,7 @@ public:
 		const QString &ipcPrefix,
 		const QString &filePrefix,
 		int portOffset,
-		bool verbose,
+		int logLevel,
 		QObject *parent = 0);
 
 	// reimplemented

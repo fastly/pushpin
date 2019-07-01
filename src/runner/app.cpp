@@ -480,7 +480,7 @@ public:
 			foreach(const Mongrel2Service::Interface &i, interfaces)
 				ports += i.port;
 
-			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, ports, this);
+			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel, ports, this);
 		}
 
 		bool quietCheck = false;
@@ -498,10 +498,10 @@ public:
 		}
 
 		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel >= 3, args.routeLines, quietCheck, this);
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel, args.routeLines, quietCheck, this);
 
 		if(serviceNames.contains("pushpin-handler"))
-			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevel >= 3, this);
+			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevel, this);
 
 		foreach(Service *s, services)
 		{

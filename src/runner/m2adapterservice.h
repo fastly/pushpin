@@ -43,7 +43,7 @@ public:
 		const QString &logDir,
 		const QString &ipcPrefix,
 		const QString &filePrefix,
-		bool verbose,
+		int logLevel,
 		const QList<int> &ports,
 		QObject *parent = 0);
 
