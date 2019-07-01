@@ -59,7 +59,7 @@ Mongrel2Service::Mongrel2Service(
 	setStandardOutputFile(QDir(logDir).filePath(filePrefix + "mongrel2_" + QString::number(port) + ".log"));
 }
 
-bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, const QList<Interface> &interfaces)
+bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, const QList<Interface> &interfaces, int logLevel)
 {
 	QVariantList vinterfaces;
 
@@ -80,6 +80,7 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 	context["ipc_prefix"] = ipcPrefix;
 	context["file_prefix"] = filePrefix;
 	context["limits_buffer_size"] = clientBufferSize;
+	context["disable_access_logging"] = (logLevel >= LOG_LEVEL_INFO) ? 0 : 1;
 
 	QString error;
 	if(!Template::renderFile(configTemplateFile, QDir(runDir).filePath(filePrefix + "mongrel2.conf"), context, &error))

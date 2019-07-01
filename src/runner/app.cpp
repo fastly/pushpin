@@ -464,7 +464,7 @@ public:
 				m2shBin = settings.value("runner/m2sh_bin").toString();
 
 			QString certsDir = QDir(configDir).filePath("certs");
-			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, logDir, ipcPrefix, filePrefix, certsDir, clientBufferSize, interfaces))
+			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, logDir, ipcPrefix, filePrefix, certsDir, clientBufferSize, interfaces, logLevel))
 			{
 				emit q->quit(1);
 				return;
