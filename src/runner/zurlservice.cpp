@@ -40,7 +40,7 @@ ZurlService::ZurlService(
 	const QString &logDir,
 	const QString &ipcPrefix,
 	const QString &filePrefix,
-	bool verbose,
+	int logLevel,
 	QObject *parent) :
 	Service(parent)
 {
@@ -53,8 +53,10 @@ ZurlService::ZurlService(
 		setStandardOutputFile(QProcess::nullDevice());
 	}
 
-	if(verbose)
+	if(logLevel >= 3)
 		args_ += "--verbose";
+	else
+		args_ += "--loglevel=" + QString::number(logLevel);
 
 	configTemplateFile_ = configTemplateFile;
 	runDir_ = runDir;
