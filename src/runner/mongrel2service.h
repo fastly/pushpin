@@ -69,7 +69,7 @@ public:
 		bool ssl,
 		QObject *parent = 0);
 
-	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, const QList<Interface> &interfaces);
+	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, const QList<Interface> &interfaces, int logLevel);
 
 	// reimplemented
 

@@ -43,7 +43,7 @@ public:
 		const QString &logDir,
 		const QString &ipcPrefix,
 		const QString &filePrefix,
-		bool verbose,
+		int logLevel,
 		const QStringList &routeLines,
 		bool quietCheck,
 		QObject *parent = 0);

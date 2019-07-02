@@ -41,7 +41,7 @@ M2AdapterService::M2AdapterService(
 	const QString &logDir,
 	const QString &ipcPrefix,
 	const QString &filePrefix,
-	bool verbose,
+	int logLevel,
 	const QList<int> &ports,
 	QObject *parent) :
 	Service(parent)
@@ -55,8 +55,8 @@ M2AdapterService::M2AdapterService(
 		setStandardOutputFile(QProcess::nullDevice());
 	}
 
-	if(verbose)
-		args_ += "--verbose";
+	if(logLevel >= 0)
+		args_ += "--loglevel=" + QString::number(logLevel);
 
 	configTemplateFile_ = configTemplateFile;
 	runDir_ = runDir;

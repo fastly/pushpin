@@ -39,7 +39,7 @@ PushpinHandlerService::PushpinHandlerService(
 	const QString &ipcPrefix,
 	const QString &filePrefix,
 	int portOffset,
-	bool verbose,
+	int logLevel,
 	QObject *parent) :
 	Service(parent)
 {
@@ -58,8 +58,8 @@ PushpinHandlerService::PushpinHandlerService(
 		setStandardOutputFile(QProcess::nullDevice());
 	}
 
-	if(verbose)
-		args_ += "--verbose";
+	if(logLevel >= 0)
+		args_ += "--loglevel=" + QString::number(logLevel);
 
 	setName("handler");
 	setPidFile(QDir(runDir).filePath(filePrefix + "pushpin-handler.pid"));
