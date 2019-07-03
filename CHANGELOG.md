@@ -1,6 +1,14 @@
 Pushpin Changelog
 =================
 
+v. 1.23.0 (2019-07-03)
+
+  * Support log levels 0 and 1.
+  * Don't write to Mongrel2 access log for log levels < 2.
+  * Support JSON framing on the input PULL and SUB sockets.
+  * New config option: push_in_sub_specs.
+  * New config option: push_in_sub_connect.
+
 v. 1.22.0 (2019-06-17)
 
   * New filter: var-subst.
