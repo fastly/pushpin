@@ -2299,7 +2299,8 @@ private slots:
 				return data;
 			}
 		}
-		*ok = true;
+		if(ok)
+			*ok = true;
 		return data;
 	}
 
