@@ -9,9 +9,11 @@
 
 {% endfor %}{% for i in interfaces %}server_{{ i.port }} = Server(
 	uuid="default_{{ i.port }}",{% if i.ssl %}
-	use_ssl=1,{% endif %}
+	use_ssl=1,{% endif %}{%if logdir %}
 	access_log="{{ logdir }}/{{ file_prefix }}access_{{ i.port }}.log",
-	error_log="{{ logdir }}/{{ file_prefix }}error_{{ i.port }}.log",
+	error_log="{{ logdir }}/{{ file_prefix }}error_{{ i.port }}.log",{% endif %}{%if not logdir %}
+	access_log="/dev/stdout",
+	error_log="/dev/stdout",{% endif %}
 	pid_file="{{ rundir }}/{{ file_prefix }}mongrel2_{{ i.port }}.pid",
 	control_port="ipc://{{ rundir }}/{{ ipc_prefix }}m2-control-{{ i.port }}",
 	default_host="default",
