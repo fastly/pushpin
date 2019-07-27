@@ -471,7 +471,7 @@ public:
 			}
 
 			foreach(const Mongrel2Service::Interface &i, interfaces)
-				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, i.port, i.ssl, this);
+				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, i.port, i.ssl, logLevel, this);
 		}
 
 		if(serviceNames.contains("m2adapter"))
@@ -599,7 +599,9 @@ private slots:
 		Service *s = (Service *)sender();
 
 		QString out = tryInsertPrefix(s->formatLogLine(line), '[' + s->name() + "] ");
-		log_raw(qPrintable(out));
+		if(!out.isEmpty()) {
+			log_raw(qPrintable(out));
+		}
 	}
 
 	void service_error(const QString &error)

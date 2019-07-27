@@ -46,8 +46,10 @@ Mongrel2Service::Mongrel2Service(
 	const QString &filePrefix,
 	int port,
 	bool ssl,
+	int logLevel,
 	QObject *parent) :
-	Service(parent)
+	Service(parent),
+	logLevel_(logLevel)
 {
 	args_ += binFile;
 	args_ += configFile;
@@ -120,27 +122,60 @@ bool Mongrel2Service::acceptSighup() const
 }
 
 
+QString Mongrel2Service::filterLogLine(const int level, const QDateTime &time, const QString &line) const
+{
+	if(level > logLevel_) {
+		return QString();
+	}
+	if(level == LOG_LEVEL_DEBUG) {
+		return "[DEBUG] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+	}
+	if(level == LOG_LEVEL_INFO) {
+		return "[INFO] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+	}
+	if(level == LOG_LEVEL_WARNING) {
+		return "[WARN] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+	}
+	return "[ERR] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+}
+
 QString Mongrel2Service::formatLogLine(const QString &line) const
 {
+	if(line.isEmpty()) {
+		return line;
+	}
+
 	bool isTnetString;
 	QVariant data = TnetString::toVariant(qPrintable(line), 0, &isTnetString);
 	// if line is a valid tnet string, so it's most probably an access log entry
 	if(isTnetString)
 	{
 		QDateTime time = QDateTime::currentDateTime();
-		return "[INFO] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+		return filterLogLine(LOG_LEVEL_INFO, time, line);
 	}
 
 	int at = line.indexOf('[');
         if(at == -1) {
 		QDateTime time = QDateTime::currentDateTime();
-		return "[WARN] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " Can't parse mongrel2 log: " + line;
+		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse mongrel2 log: " + line);
 	}
 	int end = line.indexOf(']', at);
 	if(end == -1) {
 		QDateTime time = QDateTime::currentDateTime();
-		return "[WARN] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " Can't parse mongrel2 log: " + line;
+		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse mongrel2 log: " + line);
 	}
+	int level;
+	if(line.midRef(at+1, end-at-1) == "INFO") {
+		level = LOG_LEVEL_INFO;
+	} else if(line.midRef(at+1, end-at-1) == "ERROR") {
+		level = LOG_LEVEL_ERROR;
+	} else if(line.midRef(at+1, end-at-1) == "WARN") {
+		level = LOG_LEVEL_WARNING;
+	} else {
+		QDateTime time = QDateTime::currentDateTime();
+		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse severity: " + line);
+	}
+
 	// This may fail for leap seconds (ss = 60), as according to the qt documentation,
 	// seconds in QDateTime::toString go from 00 to 59. But the time stamp is
 	// created with strptime, where 60 is explicitly allowed ("The range is up to
@@ -152,8 +187,8 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 	QDateTime time = QDateTime::fromString(line.left(at - 1), "ddd, dd MMM yyyy HH:mm:ss t");
 	if(!time.isValid()) {
 		QDateTime time = QDateTime::currentDateTime();
-		return "[ERROR] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " Can't parse date: " + line;
+		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse date: " + line);
 
 	}
-	return line.midRef(at, end-at+1) + " " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + line.midRef(end + 1);
+	return filterLogLine(level, time, line.mid(end + 1));
 }
