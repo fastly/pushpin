@@ -27,9 +27,11 @@
  */
 
 #include "mongrel2service.h"
+#include "tnetstring.h"
 
 #include <QDateTime>
 #include <QDir>
+#include <QVariant>
 #include <QVariantList>
 #include <QProcess>
 #include "log.h"
@@ -120,13 +122,24 @@ bool Mongrel2Service::acceptSighup() const
 
 QString Mongrel2Service::formatLogLine(const QString &line) const
 {
+	bool isTnetString;
+	QVariant data = TnetString::toVariant(qPrintable(line), 0, &isTnetString);
+	// if line is a valid tnet string, so it's most probably an access log entry
+	if(isTnetString)
+	{
+		QDateTime time = QDateTime::currentDateTime();
+		return "[INFO] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+	}
+
 	int at = line.indexOf('[');
         if(at == -1) {
-		return line;
+		QDateTime time = QDateTime::currentDateTime();
+		return "[WARN] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " Can't parse mongrel2 log: " + line;
 	}
 	int end = line.indexOf(']', at);
 	if(end == -1) {
-		return line;
+		QDateTime time = QDateTime::currentDateTime();
+		return "[WARN] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " Can't parse mongrel2 log: " + line;
 	}
 	// This may fail for leap seconds (ss = 60), as according to the qt documentation,
 	// seconds in QDateTime::toString go from 00 to 59. But the time stamp is
@@ -138,8 +151,8 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 	// names are the same.
 	QDateTime time = QDateTime::fromString(line.left(at - 1), "ddd, dd MMM yyyy HH:mm:ss t");
 	if(!time.isValid()) {
-		time = QDateTime::currentDateTime();
-		return "[ERROR] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " Can't parse date: '" + line.left(at) + "' in " + line;
+		QDateTime time = QDateTime::currentDateTime();
+		return "[ERROR] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " Can't parse date: " + line;
 
 	}
 	return line.midRef(at, end-at+1) + " " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + line.midRef(end + 1);
