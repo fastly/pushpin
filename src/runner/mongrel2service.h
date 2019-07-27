@@ -75,6 +75,7 @@ public:
 
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;
+	virtual QString formatLogLine(const QString &line) const;
 
 private:
 	QStringList args_;

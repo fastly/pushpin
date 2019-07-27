@@ -598,7 +598,7 @@ private slots:
 	{
 		Service *s = (Service *)sender();
 
-		QString out = tryInsertPrefix(line, '[' + s->name() + "] ");
+		QString out = tryInsertPrefix(s->formatLogLine(line), '[' + s->name() + "] ");
 		log_raw(qPrintable(out));
 	}
 

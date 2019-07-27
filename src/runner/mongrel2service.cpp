@@ -28,6 +28,7 @@
 
 #include "mongrel2service.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QVariantList>
 #include <QProcess>
@@ -114,4 +115,32 @@ QStringList Mongrel2Service::arguments() const
 bool Mongrel2Service::acceptSighup() const
 {
 	return true;
+}
+
+
+QString Mongrel2Service::formatLogLine(const QString &line) const
+{
+	int at = line.indexOf('[');
+        if(at == -1) {
+		return line;
+	}
+	int end = line.indexOf(']', at);
+	if(end == -1) {
+		return line;
+	}
+	// This may fail for leap seconds (ss = 60), as according to the qt documentation,
+	// seconds in QDateTime::toString go from 00 to 59. But the time stamp is
+	// created with strptime, where 60 is explicitly allowed ("The range is up to
+	// 60 to allow for occasional leap seconds.")
+	//
+	// Also, this assumes that the locale of this process is the same as the one
+	// of the process generating the time stamp, so that abbreviated day and month
+	// names are the same.
+	QDateTime time = QDateTime::fromString(line.left(at - 1), "ddd, dd MMM yyyy HH:mm:ss t");
+	if(!time.isValid()) {
+		time = QDateTime::currentDateTime();
+		return "[ERROR] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " Can't parse date: '" + line.left(at) + "' in " + line;
+
+	}
+	return line.midRef(at, end-at+1) + " " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + line.midRef(end + 1);
 }
