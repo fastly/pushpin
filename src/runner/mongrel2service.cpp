@@ -61,7 +61,8 @@ Mongrel2Service::Mongrel2Service(
 	QString pidFile = QDir(runDir).filePath(filePrefix + "mongrel2_" + QString::number(port) + ".pid");
 	QFile::remove(pidFile);
 
-	if(logDir.length() > 0) {
+	if(!logDir.isEmpty())
+	{
 		setStandardOutputFile(QDir(logDir).filePath(filePrefix + "mongrel2_" + QString::number(port) + ".log"));
 	}
 }
@@ -124,30 +125,35 @@ bool Mongrel2Service::acceptSighup() const
 
 QString Mongrel2Service::filterLogLine(const int level, const QDateTime &time, const QString &line) const
 {
-	if(level > logLevel_) {
+	if(level > logLevel_)
+	{
 		return QString();
 	}
-	if(level == LOG_LEVEL_DEBUG) {
-		return "[DEBUG] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+	switch(level)
+	{
+		case LOG_LEVEL_DEBUG:
+			return "[DEBUG] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+		case LOG_LEVEL_INFO:
+			return "[INFO] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+		case LOG_LEVEL_WARNING:
+			return "[WARN] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+		default:
+			return "[ERR] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
 	}
-	if(level == LOG_LEVEL_INFO) {
-		return "[INFO] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
-	}
-	if(level == LOG_LEVEL_WARNING) {
-		return "[WARN] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
-	}
-	return "[ERR] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
 }
 
 QString Mongrel2Service::formatLogLine(const QString &line) const
 {
-	if(line.isEmpty()) {
+	if(line.isEmpty())
+	{
 		return line;
 	}
 
-	bool isTnetString;
-	QVariant data = TnetString::toVariant(qPrintable(line), 0, &isTnetString);
-	// if line is a valid tnet string, so it's most probably an access log entry
+	TnetString::Type type;
+	int dataOffset;
+	int dataSize;
+	bool isTnetString = TnetString::check(qPrintable(line), 0, &type, &dataOffset, &dataSize);
+	// if line is a valid tnet string, it most probably is an access log entry
 	if(isTnetString)
 	{
 		QDateTime time = QDateTime::currentDateTime();
@@ -155,23 +161,32 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 	}
 
 	int at = line.indexOf('[');
-        if(at == -1) {
+        if(at == -1)
+	{
 		QDateTime time = QDateTime::currentDateTime();
 		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse mongrel2 log: " + line);
 	}
 	int end = line.indexOf(']', at);
-	if(end == -1) {
+	if(end == -1)
+	{
 		QDateTime time = QDateTime::currentDateTime();
 		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse mongrel2 log: " + line);
 	}
 	int level;
-	if(line.midRef(at+1, end-at-1) == "INFO") {
+	if(line.midRef(at + 1, end - at - 1) == "INFO")
+	{
 		level = LOG_LEVEL_INFO;
-	} else if(line.midRef(at+1, end-at-1) == "ERROR") {
+	}
+	else if(line.midRef(at + 1, end - at - 1) == "ERROR")
+	{
 		level = LOG_LEVEL_ERROR;
-	} else if(line.midRef(at+1, end-at-1) == "WARN") {
+	}
+	else if(line.midRef(at + 1, end - at - 1) == "WARN")
+	{
 		level = LOG_LEVEL_WARNING;
-	} else {
+	}
+	else
+	{
 		QDateTime time = QDateTime::currentDateTime();
 		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse severity: " + line);
 	}
@@ -185,7 +200,8 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 	// of the process generating the time stamp, so that abbreviated day and month
 	// names are the same.
 	QDateTime time = QDateTime::fromString(line.left(at - 1), "ddd, dd MMM yyyy HH:mm:ss t");
-	if(!time.isValid()) {
+	if(!time.isValid())
+	{
 		QDateTime time = QDateTime::currentDateTime();
 		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse date: " + line);
 
