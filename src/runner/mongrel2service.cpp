@@ -206,5 +206,9 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse date: " + line);
 
 	}
+	if(line.size() > end + 1 && line.at(end + 1) == ' ')
+	{
+		end++;
+	}
 	return filterLogLine(level, time, line.mid(end + 1));
 }
