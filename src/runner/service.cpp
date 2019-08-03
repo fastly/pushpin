@@ -343,6 +343,10 @@ void Service::postStop()
 	// by default do nothing
 }
 
+QString Service::formatLogLine(const QString &line) const {
+	return line;
+}
+
 void Service::sendSighup()
 {
 	if(d->proc)

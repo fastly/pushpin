@@ -67,6 +67,7 @@ public:
 		const QString &filePrefix,
 		int port,
 		bool ssl,
+		int logLevel,
 		QObject *parent = 0);
 
 	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, const QList<Interface> &interfaces, int logLevel);
@@ -75,10 +76,14 @@ public:
 
 	virtual QStringList arguments() const;
 	virtual bool acceptSighup() const;
+	virtual QString formatLogLine(const QString &line) const;
 
 private:
 	QStringList args_;
 	QString prefix_;
+	int logLevel_;
+
+	QString filterLogLine(int, const QDateTime&, const QString&) const;
 };
 
 #endif

@@ -51,6 +51,7 @@ public:
 	virtual void postStart();
 	virtual void stop();
 	virtual void postStop();
+	virtual QString formatLogLine(const QString &line) const;
 
 	void sendSighup();
 

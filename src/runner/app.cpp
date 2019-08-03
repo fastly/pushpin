@@ -464,14 +464,14 @@ public:
 				m2shBin = settings.value("runner/m2sh_bin").toString();
 
 			QString certsDir = QDir(configDir).filePath("certs");
-			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, logDir, ipcPrefix, filePrefix, certsDir, clientBufferSize, interfaces, logLevel))
+			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, certsDir, clientBufferSize, interfaces, logLevel))
 			{
 				emit q->quit(1);
 				return;
 			}
 
 			foreach(const Mongrel2Service::Interface &i, interfaces)
-				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), runDir, logDir, filePrefix, i.port, i.ssl, this);
+				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, i.port, i.ssl, logLevel, this);
 		}
 
 		if(serviceNames.contains("m2adapter"))
@@ -598,8 +598,10 @@ private slots:
 	{
 		Service *s = (Service *)sender();
 
-		QString out = tryInsertPrefix(line, '[' + s->name() + "] ");
-		log_raw(qPrintable(out));
+		QString out = tryInsertPrefix(s->formatLogLine(line), '[' + s->name() + "] ");
+		if(!out.isEmpty()) {
+			log_raw(qPrintable(out));
+		}
 	}
 
 	void service_error(const QString &error)
