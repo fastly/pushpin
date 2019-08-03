@@ -393,7 +393,7 @@ public:
 			return;
 		}
 
-		if(!ensureDir(logDir))
+		if(!args.mergeOutput && !ensureDir(logDir))
 		{
 			log_error("failed to create directory: %s", qPrintable(logDir));
 			emit q->quit(1);
