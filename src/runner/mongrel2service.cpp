@@ -123,22 +123,23 @@ bool Mongrel2Service::acceptSighup() const
 }
 
 
-QString Mongrel2Service::filterLogLine(const int level, const QDateTime &time, const QString &line) const
+QString Mongrel2Service::filterLogLine(const int level, const QString &line) const
 {
 	if(level > logLevel_)
 	{
 		return QString();
 	}
+	QString tstr = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
 	switch(level)
 	{
 		case LOG_LEVEL_DEBUG:
-			return "[DEBUG] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+			return "[DEBUG] " + tstr + " " + line;
 		case LOG_LEVEL_INFO:
-			return "[INFO] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+			return "[INFO] " + tstr + " " + line;
 		case LOG_LEVEL_WARNING:
-			return "[WARN] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+			return "[WARN] " + tstr + " " + line;
 		default:
-			return "[ERR] " + time.toString("yyyy-MM-dd HH:mm:ss.zzz") + " " + line;
+			return "[ERR] " + tstr + " " + line;
 	}
 }
 
@@ -156,21 +157,18 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 	// if line is a valid tnet string, it most probably is an access log entry
 	if(isTnetString)
 	{
-		QDateTime time = QDateTime::currentDateTime();
-		return filterLogLine(LOG_LEVEL_INFO, time, line);
+		return filterLogLine(LOG_LEVEL_INFO, line);
 	}
 
 	int at = line.indexOf('[');
         if(at == -1)
 	{
-		QDateTime time = QDateTime::currentDateTime();
-		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse mongrel2 log: " + line);
+		return filterLogLine(LOG_LEVEL_WARNING, "Can't parse mongrel2 log: " + line);
 	}
 	int end = line.indexOf(']', at);
 	if(end == -1)
 	{
-		QDateTime time = QDateTime::currentDateTime();
-		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse mongrel2 log: " + line);
+		return filterLogLine(LOG_LEVEL_WARNING, "Can't parse mongrel2 log: " + line);
 	}
 	int level;
 	if(line.midRef(at + 1, end - at - 1) == "INFO")
@@ -187,28 +185,12 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 	}
 	else
 	{
-		QDateTime time = QDateTime::currentDateTime();
-		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse severity: " + line);
+		return filterLogLine(LOG_LEVEL_WARNING, "Can't parse severity: " + line);
 	}
 
-	// This may fail for leap seconds (ss = 60), as according to the qt documentation,
-	// seconds in QDateTime::toString go from 00 to 59. But the time stamp is
-	// created with strptime, where 60 is explicitly allowed ("The range is up to
-	// 60 to allow for occasional leap seconds.")
-	//
-	// Also, this assumes that the locale of this process is the same as the one
-	// of the process generating the time stamp, so that abbreviated day and month
-	// names are the same.
-	QDateTime time = QDateTime::fromString(line.left(at - 1), "ddd, dd MMM yyyy HH:mm:ss t");
-	if(!time.isValid())
-	{
-		QDateTime time = QDateTime::currentDateTime();
-		return filterLogLine(LOG_LEVEL_WARNING, time, "Can't parse date: " + line);
-
-	}
 	if(line.size() > end + 1 && line.at(end + 1) == ' ')
 	{
 		end++;
 	}
-	return filterLogLine(level, time, line.mid(end + 1));
+	return filterLogLine(level, line.mid(end + 1));
 }

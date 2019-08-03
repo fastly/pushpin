@@ -83,7 +83,7 @@ private:
 	QString prefix_;
 	int logLevel_;
 
-	QString filterLogLine(int, const QDateTime&, const QString&) const;
+	QString filterLogLine(int, const QString&) const;
 };
 
 #endif
