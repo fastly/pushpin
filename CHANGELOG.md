@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.24.0 (2019-08-06)
+
+  * runner: capture Mongrel2 logs when --merge-output is used.
+
 v. 1.23.0 (2019-07-03)
 
   * Support log levels 0 and 1.
