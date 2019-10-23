@@ -161,31 +161,49 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 	}
 
 	int at = line.indexOf('[');
-        if(at == -1)
-	{
-		return filterLogLine(LOG_LEVEL_WARNING, "Can't parse mongrel2 log: " + line);
-	}
-	int end = line.indexOf(']', at);
-	if(end == -1)
-	{
-		return filterLogLine(LOG_LEVEL_WARNING, "Can't parse mongrel2 log: " + line);
-	}
+	int end;
 	int level;
-	if(line.midRef(at + 1, end - at - 1) == "INFO")
+	if(at == -1)
 	{
-		level = LOG_LEVEL_INFO;
-	}
-	else if(line.midRef(at + 1, end - at - 1) == "ERROR")
-	{
-		level = LOG_LEVEL_ERROR;
-	}
-	else if(line.midRef(at + 1, end - at - 1) == "WARN")
-	{
-		level = LOG_LEVEL_WARNING;
+		QString debugTag("DEBUG");
+		at = line.indexOf(debugTag);
+		if(at == -1)
+		{
+			return filterLogLine(LOG_LEVEL_WARNING, "Can't parse mongrel2 log: " + line);
+		}
+		else
+		{
+			end = at + debugTag.length();
+			level = LOG_LEVEL_DEBUG;
+		}
 	}
 	else
 	{
-		return filterLogLine(LOG_LEVEL_WARNING, "Can't parse severity: " + line);
+		end = line.indexOf(']', at);
+		if(end == -1)
+		{
+			return filterLogLine(LOG_LEVEL_WARNING, "Can't parse mongrel2 log: " + line);
+		}
+		if(line.midRef(at + 1, end - at - 1) == "DEBUG")
+		{
+			level = LOG_LEVEL_DEBUG;
+		}
+		else if(line.midRef(at + 1, end - at - 1) == "INFO")
+		{
+			level = LOG_LEVEL_INFO;
+		}
+		else if(line.midRef(at + 1, end - at - 1) == "ERROR")
+		{
+			level = LOG_LEVEL_ERROR;
+		}
+		else if(line.midRef(at + 1, end - at - 1) == "WARN")
+		{
+			level = LOG_LEVEL_WARNING;
+		}
+		else
+		{
+			return filterLogLine(LOG_LEVEL_WARNING, "Can't parse severity: " + line);
+		}
 	}
 
 	if(line.size() > end + 1 && line.at(end + 1) == ' ')
