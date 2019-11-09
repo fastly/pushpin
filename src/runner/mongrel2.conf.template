@@ -14,6 +14,7 @@
 	error_log="{{ logdir }}/{{ file_prefix }}error_{{ i.port }}.log",{% endif %}{%if not logdir %}
 	access_log="/dev/stdout",
 	error_log="/dev/stdout",{% endif %}
+	error_log_level={{ loglevel }},
 	pid_file="{{ rundir }}/{{ file_prefix }}mongrel2_{{ i.port }}.pid",
 	control_port="ipc://{{ rundir }}/{{ ipc_prefix }}m2-control-{{ i.port }}",
 	default_host="default",

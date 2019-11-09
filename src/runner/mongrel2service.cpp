@@ -84,6 +84,7 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 	context["interfaces"] = vinterfaces;
 	context["rundir"] = runDir;
 	context["logdir"] = logDir;
+	context["loglevel"] = logLevel;
 	context["certdir"] = certsDir;
 	context["ipc_prefix"] = ipcPrefix;
 	context["file_prefix"] = filePrefix;
