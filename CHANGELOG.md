@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.25.0 (2019-11-20)
+
+  * Set the Mongrel2 log level and capture debug output.
+  * Ability to set different log levels per subprocess.
+
 v. 1.24.0 (2019-08-06)
 
   * runner: capture Mongrel2 logs when --merge-output is used.
