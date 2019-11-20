@@ -74,6 +74,56 @@ static QPair<QHostAddress, int> parsePort(const QString &s)
 		return QPair<QHostAddress, int>(QHostAddress(), s.toInt());
 }
 
+QMap<QString, int> parseLogLevel(const QStringList &parts, QString *errorMessage)
+{
+	QMap<QString, int> levels;
+
+	foreach(const QString &part, parts)
+	{
+		if(part.isEmpty())
+		{
+			*errorMessage = "log level component cannot be empty";
+			return QMap<QString, int>();
+		}
+
+		int at = part.indexOf(':');
+		if(at != -1)
+		{
+			if(at == 0)
+			{
+				*errorMessage = "log level component name cannot be empty";
+				return QMap<QString, int>();
+			}
+
+			QString name = part.mid(0, at);
+
+			bool ok;
+			int x = part.mid(at + 1).toInt(&ok);
+			if(!ok || x < 0)
+			{
+				*errorMessage = QString("log level for service %1 must be greater than or equal to 0").arg(name);
+				return QMap<QString, int>();
+			}
+
+			levels[name] = x;
+		}
+		else
+		{
+			bool ok;
+			int x = part.toInt(&ok);
+			if(!ok || x < 0)
+			{
+				*errorMessage = "log level must be greater than or equal to 0";
+				return QMap<QString, int>();
+			}
+
+			levels[""] = x;
+		}
+	}
+
+	return levels;
+}
+
 enum CommandLineParseResult
 {
 	CommandLineOk,
@@ -87,14 +137,13 @@ class ArgsData
 public:
 	QString configFile;
 	QString logFile;
-	int logLevel;
+	QMap<QString, int> logLevels;
 	bool mergeOutput;
 	QPair<QHostAddress,int> port;
 	int id;
 	QStringList routeLines;
 
 	ArgsData() :
-		logLevel(-1),
 		mergeOutput(false),
 		id(-1)
 	{
@@ -143,19 +192,21 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 
 	if(parser->isSet(logLevelOption))
 	{
-		bool ok;
-		int x = parser->value(logLevelOption).toInt(&ok);
-		if(!ok || x < 0)
+		QStringList parts = parser->value(logLevelOption).split(',');
+		QMap<QString, int> levels = parseLogLevel(parts, errorMessage);
+		if(levels.isEmpty())
 		{
-			*errorMessage = "error: loglevel must be greater than or equal to 0";
 			return CommandLineError;
 		}
 
-		args->logLevel = x;
+		args->logLevels = levels;
 	}
 
 	if(parser->isSet(verboseOption))
-		args->logLevel = 3;
+	{
+		args->logLevels.clear();
+		args->logLevels[""] = 3;
+	}
 
 	if(parser->isSet(mergeOutputOption))
 		args->mergeOutput = true;
@@ -165,7 +216,7 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 		args->port = parsePort(parser->value(portOption));
 		if(args->port.second < 1)
 		{
-			*errorMessage = "error: port must be greater than or equal to 1";
+			*errorMessage = "port must be greater than or equal to 1";
 			return CommandLineError;
 		}
 	}
@@ -176,7 +227,7 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 		int x = parser->value(idOption).toInt(&ok);
 		if(!ok || x < 0)
 		{
-			*errorMessage = "error: id must be greater than or equal to 0";
+			*errorMessage = "id must be greater than or equal to 0";
 			return CommandLineError;
 		}
 
@@ -227,7 +278,7 @@ public:
 			case CommandLineOk:
 				break;
 			case CommandLineError:
-				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
+				fprintf(stderr, "error: %s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
 				emit q->quit(1);
 				return;
 			case CommandLineVersionRequested:
@@ -359,15 +410,30 @@ public:
 		QString logDir = settings.value("runner/logdir").toString();
 		logDir = QDir(logDir).absolutePath();
 
-		int logLevel = settings.value("runner/log_level", 2).toInt();
+		QMap<QString, int> logLevels;
+
+		QStringList logLevelParts = settings.value("runner/log_level").toStringList();
+		if(!logLevelParts.isEmpty())
+		{
+			logLevels = parseLogLevel(logLevelParts, &errorMessage);
+			if(logLevels.isEmpty())
+			{
+				fprintf(stderr, "error: %s\n", qPrintable(errorMessage));
+				emit q->quit(1);
+				return;
+			}
+		}
 
 		// command line overrides config file
-		if(args.logLevel != -1)
-			logLevel = args.logLevel;
+		if(!args.logLevels.isEmpty())
+			logLevels = args.logLevels;
+
+		// if default log level not provided, use info level
+		int defaultLevel = logLevels.value("", 2);
 
 		// NOTE: since we only finally set the log level here, earlier
 		//   log messages outside the default level will be lost (if any)
-		log_setOutputLevel(logLevel);
+		log_setOutputLevel(logLevels.value("runner", defaultLevel));
 
 		int clientBufferSize = settings.value("runner/client_buffer_size", 8192).toInt();
 
@@ -464,14 +530,14 @@ public:
 				m2shBin = settings.value("runner/m2sh_bin").toString();
 
 			QString certsDir = QDir(configDir).filePath("certs");
-			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, certsDir, clientBufferSize, interfaces, logLevel))
+			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, certsDir, clientBufferSize, interfaces, logLevels.value("mongrel2", defaultLevel)))
 			{
 				emit q->quit(1);
 				return;
 			}
 
 			foreach(const Mongrel2Service::Interface &i, interfaces)
-				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, i.port, i.ssl, logLevel, this);
+				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, i.port, i.ssl, logLevels.value("mongrel2", defaultLevel), this);
 		}
 
 		if(serviceNames.contains("m2adapter"))
@@ -480,7 +546,7 @@ public:
 			foreach(const Mongrel2Service::Interface &i, interfaces)
 				ports += i.port;
 
-			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel, ports, this);
+			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("m2adapter", defaultLevel), ports, this);
 		}
 
 		bool quietCheck = false;
@@ -491,17 +557,17 @@ public:
 			if(settings.contains("runner/zurl_bin"))
 				zurlBin = settings.value("runner/zurl_bin").toString();
 
-			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel, this);
+			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("zurl", defaultLevel), this);
 
 			// when zurl is managed by pushpin, log updates checks as debug level
 			quietCheck = true;
 		}
 
 		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevel, args.routeLines, quietCheck, this);
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("pushpin-proxy", defaultLevel), args.routeLines, quietCheck, this);
 
 		if(serviceNames.contains("pushpin-handler"))
-			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevel, this);
+			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("pushpin-handler", defaultLevel), this);
 
 		foreach(Service *s, services)
 		{
