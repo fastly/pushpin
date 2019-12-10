@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2016 Fanout, Inc.
+ * Copyright (C) 2015-2019 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -260,7 +260,7 @@ private:
 					return;
 				}
 
-				bool methodAssumesBody = (method != "HEAD" && method != "GET" && method != "DELETE");
+				bool methodAssumesBody = (method != "HEAD" && method != "GET" && method != "DELETE" && method != "OPTIONS");
 				if(!reqHeaders.contains("Content-Length") && (reqHeaders.contains("Transfer-Encoding") || methodAssumesBody))
 				{
 					respondLengthRequired("Request requires Content-Length.");
