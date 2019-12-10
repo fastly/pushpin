@@ -2733,7 +2733,7 @@ private slots:
 			return;
 
 		QByteArray path = req->requestUri();
-		if(path.endsWith("/"))
+		if(path.length() > 1 && path[path.length() - 1] == '/')
 			path.truncate(path.length() - 1);
 
 		HttpHeaders headers = req->requestHeaders();
@@ -2785,7 +2785,11 @@ private slots:
 			responseContentType = "text/plain";
 		}
 
-		if(path == "/publish")
+		if(path == "/")
+		{
+			httpControlRespond(req, 200, "OK", "Pushpin API\n");
+		}
+		else if(path == "/publish")
 		{
 			if(req->requestMethod() == "POST")
 			{
