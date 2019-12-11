@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.26.0 (2019-12-11)
+
+  * Respond with status 200 on HTTP control port root path.
+
 v. 1.25.0 (2019-11-20)
 
   * Set the Mongrel2 log level and capture debug output.
