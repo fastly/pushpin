@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -62,14 +62,14 @@ public:
 	Type type;
 	Action action; // response/stream/ws
 	int code; // response/ws
-	QByteArray reason; // response
+	QByteArray reason; // response/ws
 	HttpHeaders headers; // response
 	QByteArray body; // response/stream/ws
 	bool haveBodyPatch; // response
 	QVariantList bodyPatch; // response
 	MessageType messageType; // ws
 	bool haveContentFilters;
-	QStringList contentFilters; // response/stream
+	QStringList contentFilters; // response/stream/ws
 
 	PublishFormat() :
 		type((Type)-1),

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Fanout, Inc.
+ * Copyright (C) 2015-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1854,6 +1854,7 @@ private:
 			{
 				i.type = WsControlPacket::Item::Close;
 				i.code = f.code;
+				i.reason = f.reason;
 			}
 
 			writeWsControlItems(QList<WsControlPacket::Item>() << i);

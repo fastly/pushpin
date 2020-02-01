@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -64,6 +64,7 @@ public:
 		QByteArray message;
 		bool queue;
 		int code;
+		QByteArray reason;
 		QByteArray route;
 		QByteArray channelPrefix;
 		QByteArray channel;

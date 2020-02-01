@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -57,7 +57,7 @@ public:
 signals:
 	void sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue);
 	void keepAliveSetupEventReceived(WsControl::KeepAliveMode mode, int timeout = -1);
-	void closeEventReceived(int code); // -1 for no code
+	void closeEventReceived(int code, const QByteArray &reason); // -1 for no code
 	void detachEventReceived();
 	void cancelEventReceived();
 	void error();

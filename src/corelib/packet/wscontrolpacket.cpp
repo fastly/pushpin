@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -204,6 +204,9 @@ QVariant WsControlPacket::toVariant() const
 		if(item.code >= 0)
 			vitem["code"] = item.code;
 
+		if(!item.reason.isEmpty())
+			vitem["reason"] = item.reason;
+
 		if(!item.route.isEmpty())
 			vitem["route"] = item.route;
 
@@ -333,6 +336,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 				return false;
 
 			item.code = vitem["code"].toInt();
+		}
+
+		if(vitem.contains("reason"))
+		{
+			if(vitem["reason"].type() != QVariant::ByteArray)
+				return false;
+
+			item.reason = vitem["reason"].toByteArray();
 		}
 
 		if(vitem.contains("route"))

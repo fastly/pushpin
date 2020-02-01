@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1066,13 +1066,13 @@ private slots:
 		}
 	}
 
-	void wsControl_closeEventReceived(int code)
+	void wsControl_closeEventReceived(int code, const QByteArray &reason)
 	{
 		if(!detached && outSock && outSock->state() != WebSocket::Closing)
 			outSock->close();
 
 		if(inSock && inSock->state() != WebSocket::Closing)
-			inSock->close(code);
+			inSock->close(code, reason);
 	}
 
 	void wsControl_detachEventReceived()

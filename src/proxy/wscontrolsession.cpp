@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -222,7 +222,7 @@ public:
 		}
 		else if(item.type == WsControlPacket::Item::Close)
 		{
-			emit q->closeEventReceived(item.code);
+			emit q->closeEventReceived(item.code, item.reason);
 		}
 		else if(item.type == WsControlPacket::Item::Detach)
 		{

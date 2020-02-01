@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2016-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -467,6 +467,17 @@ PublishFormat PublishFormat::fromVariant(Type type, const QVariant &in, bool *ok
 					return PublishFormat();
 				}
 			}
+
+			QString reasonStr = getString(in, pn, "reason", false, &ok_, errorMessage);
+			if(!ok_)
+			{
+				if(ok)
+					*ok = false;
+				return PublishFormat();
+			}
+
+			if(!reasonStr.isEmpty())
+				out.reason = reasonStr.toUtf8();
 		}
 
 	}
