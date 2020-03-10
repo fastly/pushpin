@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.27.0 (2020-03-10)
+
+  * WebSocket: ability to publish close reason.
+  * WebSocket: proxy the content of ping and pong frames.
+
 v. 1.26.0 (2019-12-11)
 
   * Respond with status 200 on HTTP control port root path.
