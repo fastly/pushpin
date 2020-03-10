@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2017 Fanout, Inc.
+ * Copyright (C) 2013-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1973,6 +1973,8 @@ public:
 				{
 					memcpy(data.data() + 2, zresp.body.data(), zresp.body.size());
 				}
+			} else {
+				data = zresp.body;
 			}
 
 			QByteArray frame = makeWsHeader(true, opcode, data.size()) + data;
@@ -2704,10 +2706,12 @@ private slots:
 				else if(opcode == 9)
 				{
 					zreq.type = ZhttpRequestPacket::Ping;
+					zreq.body = mreq.body;
 				}
 				else // 10
 				{
 					zreq.type = ZhttpRequestPacket::Pong;
+					zreq.body = mreq.body;
 				}
 
 				if(s->inHandoff)
