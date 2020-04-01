@@ -524,7 +524,12 @@ public:
 			if(target.overHttp)
 			{
 				WebSocketOverHttp *woh = new WebSocketOverHttp(zhttpManager, this);
+
 				woh->setConnectionId(publicCid);
+
+				if(target.oneEvent)
+					woh->setMaxEventsPerRequest(1);
+
 				connect(woh, &WebSocketOverHttp::aboutToSendRequest, this, &Private::out_aboutToSendRequest);
 				outSock = woh;
 			}

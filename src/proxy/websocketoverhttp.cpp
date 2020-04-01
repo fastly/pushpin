@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -227,6 +227,7 @@ public:
 	QTimer *keepAliveTimer;
 	QTimer *retryTimer;
 	int retries;
+	int maxEvents;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -252,7 +253,8 @@ public:
 		disconnecting(false),
 		disconnectSent(false),
 		updateQueued(false),
-		retries(0)
+		retries(0),
+		maxEvents(0)
 	{
 		if(!g_disconnectManager)
 			g_disconnectManager = new DisconnectManager(QCoreApplication::instance());
@@ -512,7 +514,7 @@ private:
 		}
 		else
 		{
-			while(!outFrames.isEmpty() && reqContentSize < BUFFER_SIZE)
+			while(!outFrames.isEmpty() && reqContentSize < BUFFER_SIZE && (maxEvents <= 0 || events.count() < maxEvents))
 			{
 				// make sure the next message is fully readable
 				int takeCount = -1;
@@ -568,7 +570,7 @@ private:
 				reqContentSize += content.size();
 			}
 
-			if(state == Closing)
+			if(state == Closing && (maxEvents <= 0 || events.count() < maxEvents))
 			{
 				// if there was a partial message left, throw it away
 				if(!outFrames.isEmpty())
@@ -1016,6 +1018,11 @@ WebSocketOverHttp::~WebSocketOverHttp()
 void WebSocketOverHttp::setConnectionId(const QByteArray &id)
 {
 	d->cid = id;
+}
+
+void WebSocketOverHttp::setMaxEventsPerRequest(int max)
+{
+	d->maxEvents = max;
 }
 
 void WebSocketOverHttp::refresh()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -42,6 +42,7 @@ public:
 	~WebSocketOverHttp();
 
 	void setConnectionId(const QByteArray &id);
+	void setMaxEventsPerRequest(int max);
 	void refresh();
 
 	static void setMaxManagedDisconnects(int max);

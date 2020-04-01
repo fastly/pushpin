@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2015 Fanout, Inc.
+ * Copyright (C) 2012-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -116,6 +116,7 @@ public:
 		QString host; // override input host
 		QStringList subscriptions; // implicit subscriptions
 		bool overHttp; // use websocket-over-http protocol
+		bool oneEvent; // send one event at a time with overHttp
 
 		Target() :
 			type(Default),
@@ -124,7 +125,8 @@ public:
 			trusted(false),
 			trustConnectHost(false),
 			insecure(false),
-			overHttp(false)
+			overHttp(false),
+			oneEvent(false)
 		{
 		}
 	};

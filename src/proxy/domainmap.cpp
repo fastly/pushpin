@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -563,6 +563,9 @@ private:
 
 			if(props.contains("over_http"))
 				target.overHttp = true;
+
+			if(props.contains("one_event"))
+				target.oneEvent = true;
 
 			if(props.contains("ipc_file_mode"))
 			{
