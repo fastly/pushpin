@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.28.0 (2020-04-08)
+
+  * New route target option: one_event.
+
 v. 1.27.0 (2020-03-10)
 
   * WebSocket: ability to publish close reason.
