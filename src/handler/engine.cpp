@@ -2747,31 +2747,15 @@ private slots:
 				if(params.isEmpty() || params[0].first.isEmpty())
 					continue;
 
-				QList<QByteArray> type = params[0].first.split('/');
-				if(type[0] == "text" && type[1] == "plain")
+				QByteArray type = params[0].first;
+
+				if(type == "text/plain" || type == "text/*" || type == "*/*" || type == "*")
 				{
 					responseContentType = "text/plain";
-					break;
 				}
-				else if(type[0] == "application" && type[1] == "json")
+				else if(type == "application/json" || type == "application/*")
 				{
 					responseContentType = "application/json";
-					break;
-				}
-				else if(type[0] == "text" && type[1] == "*")
-				{
-					responseContentType = "text/plain";
-					break;
-				}
-				else if(type[0] == "application" && type[1] == "*")
-				{
-					responseContentType = "application/json";
-					break;
-				}
-				else if(type[0] == "*" && type[1] == "*")
-				{
-					responseContentType = "text/plain";
-					break;
 				}
 			}
 
