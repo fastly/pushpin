@@ -266,6 +266,7 @@ public:
 		out.code = responseCode;
 		out.reason = responseReason;
 		out.headers = responseHeaders;
+		out.credits = IDEAL_CREDITS;
 		if(multi)
 			out.multi = true;
 		writePacket(out);
