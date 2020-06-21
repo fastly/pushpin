@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -553,7 +553,12 @@ public:
 		{
 			// switch on multi support
 			multi = true;
-			startKeepAlive(); // re-setup keep alive
+
+			if(!pausing)
+			{
+				// re-setup keep alive
+				startKeepAlive();
+			}
 		}
 
 		refreshTimeout();
