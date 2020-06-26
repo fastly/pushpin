@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -78,7 +78,7 @@ static QList<TemplateItem> parseContent(const QString &content, int *pos, Contro
 {
 	QList<TemplateItem> out;
 	QString curContent;
-	bool closed;
+	bool closed = false;
 
 	for(int n = *pos; n < content.length(); ++n)
 	{

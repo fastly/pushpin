@@ -848,7 +848,8 @@ public:
 	int smallestM2RefreshBucket()
 	{
 		int best = -1;
-		int bestSize;
+		int bestSize = 0;
+
 		for(int n = 0; n < M2_REFRESH_BUCKETS; ++n)
 		{
 			if(best == -1 || m2ConnectionRefreshBuckets[n].count() < bestSize)
@@ -864,7 +865,8 @@ public:
 	int smallestSessionRefreshBucket()
 	{
 		int best = -1;
-		int bestSize;
+		int bestSize = 0;
+
 		for(int n = 0; n < ZHTTP_REFRESH_BUCKETS; ++n)
 		{
 			if(best == -1 || sessionRefreshBuckets[n].count() < bestSize)

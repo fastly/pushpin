@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -146,7 +146,8 @@ public:
 	int smallestSessionRefreshBucket()
 	{
 		int best = -1;
-		int bestSize;
+		int bestSize = 0;
+
 		for(int n = 0; n < SESSION_REFRESH_BUCKETS; ++n)
 		{
 			if(best == -1 || sessionRefreshBuckets[n].count() < bestSize)

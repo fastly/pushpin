@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -323,7 +323,8 @@ public:
 	int smallestConnectionInfoRefreshBucket()
 	{
 		int best = -1;
-		int bestSize;
+		int bestSize = 0;
+
 		for(int n = 0; n < connectionInfoRefreshBuckets.count(); ++n)
 		{
 			if(best == -1 || connectionInfoRefreshBuckets[n].count() < bestSize)
@@ -339,7 +340,8 @@ public:
 	int smallestSubscriptionRefreshBucket()
 	{
 		int best = -1;
-		int bestSize;
+		int bestSize = 0;
+
 		for(int n = 0; n < subscriptionRefreshBuckets.count(); ++n)
 		{
 			if(best == -1 || subscriptionRefreshBuckets[n].count() < bestSize)

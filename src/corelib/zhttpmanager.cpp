@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2019 Fanout, Inc.
+ * Copyright (C) 2012-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -327,7 +327,8 @@ public:
 	int smallestSessionRefreshBucket()
 	{
 		int best = -1;
-		int bestSize;
+		int bestSize = 0;
+
 		for(int n = 0; n < ZHTTP_REFRESH_BUCKETS; ++n)
 		{
 			if(best == -1 || sessionRefreshBuckets[n].count() < bestSize)

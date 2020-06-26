@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Fanout, Inc.
+ * Copyright (C) 2015-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -231,7 +231,7 @@ private:
 
 			// look for double newline
 			int at = -1;
-			int next;
+			int next = 0;
 			for(int n = 0; n < inBuf.size(); ++n)
 			{
 				if(n + 1 < inBuf.size() && qstrncmp(inBuf.data() + n, "\n\n", 2) == 0)

@@ -529,7 +529,7 @@ private:
 				if(takeCount < 1)
 					break;
 
-				Frame::Type ftype;
+				Frame::Type ftype = Frame::Text;
 				BufferList content;
 
 				for(int n = 0; n < takeCount; ++n)
