@@ -114,6 +114,7 @@ public:
 		NotStarted,
 		SendingFirstInstructResponse,
 		WaitingToUpdate,
+		Pausing,
 		Proxying,
 		SendingQueue,
 		Holding,
@@ -579,6 +580,8 @@ private:
 
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{
+			state = Pausing;
+
 			// stop activity while pausing
 			timer->stop();
 
@@ -588,6 +591,7 @@ private:
 		else
 		{
 			state = Proxying;
+
 			requestNextLink();
 		}
 	}
