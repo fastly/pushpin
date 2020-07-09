@@ -430,16 +430,6 @@ public:
 				}
 			}
 
-			QByteArray body;
-			if(f.haveBodyPatch)
-			{
-				body = applyBodyPatch(instruct.response.body, f.bodyPatch);
-			}
-			else
-			{
-				body = f.body;
-			}
-
 			QHash<QString, QString> prevIds;
 			QHashIterator<QString, Instruct::Channel> it(channels);
 			while(it.hasNext())
@@ -459,19 +449,29 @@ public:
 			if(fs.sendAction() == Filter::Drop)
 				return;
 
-			body = fs.process(body);
-			if(body.isNull())
-			{
-				errorMessage = QString("filter error: %1").arg(fs.errorMessage());
-				doError();
-				return;
-			}
-
 			// NOTE: http-response mode doesn't support a close
 			//   action since it's better to send a real response
 
 			if(f.action == PublishFormat::Send)
 			{
+				QByteArray body;
+				if(f.haveBodyPatch)
+				{
+					body = applyBodyPatch(instruct.response.body, f.bodyPatch);
+				}
+				else
+				{
+					body = f.body;
+				}
+
+				body = fs.process(body);
+				if(body.isNull())
+				{
+					errorMessage = QString("filter error: %1").arg(fs.errorMessage());
+					doError();
+					return;
+				}
+
 				respond(f.code, f.reason, f.headers, body, exposeHeaders);
 			}
 			else if(f.action == PublishFormat::Hint)
