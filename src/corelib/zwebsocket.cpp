@@ -344,12 +344,44 @@ public:
 			int written = 0;
 			int contentBytesWritten = 0;
 
-			while(!outFrames.isEmpty() && outCredits >= outFrames.first().data.size())
+			while(!outFrames.isEmpty())
 			{
+				Frame &nextFrame = outFrames.first();
+				int contentSize = 0;
+
+				if((nextFrame.type == Frame::Ping || nextFrame.type == Frame::Pong) && outCredits >= nextFrame.data.size())
+				{
+					contentSize = nextFrame.data.size();
+				}
+				else if((nextFrame.type == Frame::Text || nextFrame.type == Frame::Binary || nextFrame.type == Frame::Continuation) && (nextFrame.data.isEmpty() || outCredits > 0))
+				{
+					contentSize = qMin(nextFrame.data.size(), outCredits);
+				}
+				else
+				{
+					break;
+				}
+
 				// if we have data to send, and the credits to do so, then send data.
 				// also send credits if we need to.
 
-				Frame f = outFrames.takeFirst();
+				Frame f = nextFrame;
+				bool outFrameDone = false;
+
+				if(contentSize >= nextFrame.data.size())
+				{
+					outFrames.removeFirst();
+					outFrameDone = true;
+				}
+				else
+				{
+					f.data = f.data.mid(0, contentSize);
+					f.more = true;
+
+					nextFrame.type = Frame::Continuation;
+					nextFrame.data = nextFrame.data.mid(contentSize);
+				}
+
 				outCredits -= f.data.size();
 
 				int credits = -1;
@@ -360,7 +392,10 @@ public:
 				}
 
 				writeFrameInternal(f, credits);
-				++written;
+
+				if(outFrameDone)
+					++written;
+
 				contentBytesWritten += f.data.size();
 			}
 

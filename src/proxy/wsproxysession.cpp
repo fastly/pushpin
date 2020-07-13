@@ -52,7 +52,6 @@
 #include "testwebsocket.h"
 
 #define ACTIVITY_TIMEOUT 60000
-#define FRAME_SIZE_MAX 16384
 #define KEEPALIVE_RAND_MAX 1000
 
 class HttpExtension
@@ -1014,35 +1013,15 @@ private slots:
 			return;
 		}
 
-		// split into frames to avoid credits issue
-		QList<WebSocket::Frame> frames;
+		WebSocket::Frame f(type, message, false);
 
-		for(int n = 0; frames.isEmpty() || n < message.size(); n += FRAME_SIZE_MAX)
+		if(outReadInProgress != -1)
 		{
-			WebSocket::Frame::Type ftype;
-			if(n == 0)
-				ftype = type;
-			else
-				ftype = WebSocket::Frame::Continuation;
-
-			QByteArray data = message.mid(n, FRAME_SIZE_MAX);
-			bool more = (n + FRAME_SIZE_MAX < message.size());
-
-			frames += WebSocket::Frame(ftype, data, more);
+			queuedInFrames += QueuedFrame(f, true);
 		}
-
-		for(int n = 0; n < frames.count(); ++n)
+		else
 		{
-			bool fromSendEvent = (n + 1 >= frames.count());
-
-			if(outReadInProgress != -1)
-			{
-				queuedInFrames += QueuedFrame(frames[n], fromSendEvent);
-			}
-			else
-			{
-				writeInFrame(frames[n], fromSendEvent);
-			}
+			writeInFrame(f, true);
 		}
 
 		adjustKeepAlive();
