@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -58,7 +58,8 @@ public:
 
 		Ref(const QString &_name) :
 			type(Object),
-			name(_name)
+			name(_name),
+			index(-1)
 		{
 		}
 
