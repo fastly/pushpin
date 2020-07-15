@@ -1,6 +1,14 @@
 Pushpin Changelog
 =================
 
+v. 1.29.0 (2020-07-15)
+
+  * Fix crash when parsing Accept header received on control port.
+  * Fix crash when response hold times out while pausing.
+  * Fix handling of hints in response mode.
+  * Fix handling of ZeroMQ errors, including EINTR.
+  * ZHTTP compatibility fixes.
+
 v. 1.28.0 (2020-04-08)
 
   * New route target option: one_event.
