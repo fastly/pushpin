@@ -1266,7 +1266,10 @@ int ZhttpRequest::bytesAvailable() const
 
 int ZhttpRequest::writeBytesAvailable() const
 {
-	return d->outCredits;
+	if(d->responseBodyBuf.size() <= IDEAL_CREDITS)
+		return (IDEAL_CREDITS - d->responseBodyBuf.size());
+	else
+		return 0;
 }
 
 bool ZhttpRequest::isFinished() const
