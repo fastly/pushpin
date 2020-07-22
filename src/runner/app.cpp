@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2016-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -37,6 +37,8 @@
 #include <QSettings>
 #include "processquit.h"
 #include "log.h"
+#include "listenport.h"
+#include "condureservice.h"
 #include "mongrel2service.h"
 #include "m2adapterservice.h"
 #include "zurlservice.h"
@@ -436,6 +438,7 @@ public:
 		log_setOutputLevel(logLevels.value("runner", defaultLevel));
 
 		int clientBufferSize = settings.value("runner/client_buffer_size", 8192).toInt();
+		int clientMaxConnections = settings.value("runner/client_maxconn", 50000).toInt();
 
 		QString m2aBin = "m2adapter";
 		QFileInfo fi(QDir(exeDir).filePath("bin/m2adapter"));
@@ -469,12 +472,12 @@ public:
 		int portOffset = 0;
 		QString filePrefix;
 
-		QList<Mongrel2Service::Interface> interfaces;
+		QList<ListenPort> ports;
 
 		if(args.port.second > 0)
 		{
 			// if port specified then instantiate a single http server
-			interfaces += Mongrel2Service::Interface(args.port.first, args.port.second, false);
+			ports += ListenPort(args.port.first, args.port.second, false);
 		}
 		else
 		{
@@ -488,7 +491,7 @@ public:
 					return;
 				}
 
-				interfaces += Mongrel2Service::Interface(p.first, p.second, false);
+				ports += ListenPort(p.first, p.second, false);
 			}
 
 			foreach(const QString &httpsPortStr, httpsPortStrs)
@@ -501,13 +504,13 @@ public:
 					return;
 				}
 
-				interfaces += Mongrel2Service::Interface(p.first, p.second, true);
+				ports += ListenPort(p.first, p.second, true);
 			}
 		}
 
-		if(interfaces.isEmpty())
+		if(ports.isEmpty())
 		{
-			log_error("no mongrel2 ports configured");
+			log_error("no server ports configured");
 			emit q->quit(1);
 			return;
 		}
@@ -517,6 +520,32 @@ public:
 			ipcPrefix = QString("p%1-").arg(args.id);
 			portOffset = args.id * 10;
 			filePrefix = ipcPrefix;
+		}
+
+		if(serviceNames.contains("condure") && (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter")))
+		{
+			log_error("cannot enable the condure service at the same time as mongrel2 or m2adapter");
+			emit q->quit(1);
+			return;
+		}
+
+		if(serviceNames.contains("condure"))
+		{
+			QString condureBin = "condure";
+			if(settings.contains("runner/condure_bin"))
+				condureBin = settings.value("runner/condure_bin").toString();
+
+			foreach(const ListenPort &p, ports)
+			{
+				if(p.ssl)
+				{
+					log_error("condure does not support ssl ports");
+					emit q->quit(1);
+					return;
+				}
+			}
+
+			services += new CondureService(condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), clientBufferSize, clientMaxConnections, ports, this);
 		}
 
 		if(serviceNames.contains("mongrel2"))
@@ -530,23 +559,23 @@ public:
 				m2shBin = settings.value("runner/m2sh_bin").toString();
 
 			QString certsDir = QDir(configDir).filePath("certs");
-			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, certsDir, clientBufferSize, interfaces, logLevels.value("mongrel2", defaultLevel)))
+			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, certsDir, clientBufferSize, clientMaxConnections, ports, logLevels.value("mongrel2", defaultLevel)))
 			{
 				emit q->quit(1);
 				return;
 			}
 
-			foreach(const Mongrel2Service::Interface &i, interfaces)
-				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(i.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, i.port, i.ssl, logLevels.value("mongrel2", defaultLevel), this);
+			foreach(const ListenPort &p, ports)
+				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(p.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, p.port, p.ssl, logLevels.value("mongrel2", defaultLevel), this);
 		}
 
 		if(serviceNames.contains("m2adapter"))
 		{
-			QList<int> ports;
-			foreach(const Mongrel2Service::Interface &i, interfaces)
-				ports += i.port;
+			QList<int> portsOnly;
+			foreach(const ListenPort &p, ports)
+				portsOnly += p.port;
 
-			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("m2adapter", defaultLevel), ports, this);
+			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("m2adapter", defaultLevel), portsOnly, this);
 		}
 
 		bool quietCheck = false;

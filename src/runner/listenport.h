@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2020 Fanout, Inc.
+ * Copyright (C) 2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,43 +26,30 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef MONGREL2SERVICE_H
-#define MONGREL2SERVICE_H
+#ifndef LISTENPORT_H
+#define LISTENPORT_H
 
-#include "service.h"
-#include "listenport.h"
+#include <QHostAddress>
 
-class Mongrel2Service : public Service
+class ListenPort
 {
-	Q_OBJECT
-
 public:
-	Mongrel2Service(
-		const QString &binFile,
-		const QString &configFile,
-		const QString &serverName,
-		const QString &runDir,
-		const QString &logDir,
-		const QString &filePrefix,
-		int port,
-		bool ssl,
-		int logLevel,
-		QObject *parent = 0);
+	QHostAddress addr;
+	int port;
+	bool ssl;
 
-	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, int maxconn, const QList<ListenPort> &ports, int logLevel);
+	ListenPort() :
+		port(-1),
+		ssl(false)
+	{
+	}
 
-	// reimplemented
-
-	virtual QStringList arguments() const;
-	virtual bool acceptSighup() const;
-	virtual QString formatLogLine(const QString &line) const;
-
-private:
-	QStringList args_;
-	QString prefix_;
-	int logLevel_;
-
-	QString filterLogLine(int, const QString&) const;
+	ListenPort(const QHostAddress &_addr, int _port, bool _ssl) :
+		addr(_addr),
+		port(_port),
+		ssl(_ssl)
+	{
+	}
 };
 
 #endif

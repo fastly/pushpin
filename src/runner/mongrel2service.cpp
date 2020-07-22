@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2016-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -67,16 +67,16 @@ Mongrel2Service::Mongrel2Service(
 	}
 }
 
-bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, const QList<Interface> &interfaces, int logLevel)
+bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, int maxconn, const QList<ListenPort> &ports, int logLevel)
 {
 	QVariantList vinterfaces;
 
-	foreach(const Interface &i, interfaces)
+	foreach(const ListenPort &p, ports)
 	{
 		QVariantMap v;
-		v["addr"] = (!i.addr.isNull() ? i.addr.toString() : QString("0.0.0.0"));
-		v["port"] = i.port;
-		v["ssl"] = i.ssl;
+		v["addr"] = (!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
+		v["port"] = p.port;
+		v["ssl"] = p.ssl;
 		vinterfaces += v;
 	}
 
@@ -90,6 +90,7 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 	context["file_prefix"] = filePrefix;
 	context["limits_buffer_size"] = clientBufferSize;
 	context["disable_access_logging"] = (logLevel >= LOG_LEVEL_INFO) ? 0 : 1;
+	context["superpoll_max_fd"] = maxconn + 1000;
 
 	QString error;
 	if(!Template::renderFile(configTemplateFile, QDir(runDir).filePath(filePrefix + "mongrel2.conf"), context, &error))
