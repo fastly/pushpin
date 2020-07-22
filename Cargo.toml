@@ -1,0 +1,31 @@
+[package]
+name = "condure"
+version = "1.0.0"
+authors = ["Justin Karneges <justin@fanout.io>"]
+edition = "2018"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[dependencies]
+base64 = "0.12"
+clap = { version = "2.33", features = ["wrap_help"] }
+httparse = "1.3"
+iovec = "0.1"
+log = "0.4"
+mio = "0.6"
+sha1 = "0.6"
+signal-hook = { version = "0.1", features = ["mio-support"] }
+slab = "0.4"
+time = "0.1"
+zmq = "0.9"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "server"
+harness = false
