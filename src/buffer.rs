@@ -18,7 +18,6 @@ use std::cell::RefCell;
 use std::cmp;
 use std::io;
 use std::mem;
-use std::ptr;
 use std::rc::Rc;
 
 pub const VECTORED_MAX: usize = 8;
@@ -347,12 +346,7 @@ impl RingBuffer {
 
         if self.end <= self.buf.len() {
             // if the buffer hasn't wrapped, simply copy down
-            unsafe {
-                let src = self.buf.as_ptr().add(self.start);
-                let dst = self.buf.as_mut_ptr();
-
-                ptr::copy(src, dst, size);
-            }
+            self.buf.copy_within(self.start.., 0);
         } else if size <= self.start {
             // if the buffer has wrapped, but the wrapped part can be copied
             //   without overlapping, then copy the wrapped part followed by
@@ -361,13 +355,9 @@ impl RingBuffer {
             let left_size = self.end - self.buf.len();
             let right_size = self.buf.len() - self.start;
 
-            unsafe {
-                let src = self.buf.as_ptr();
-                let dst = self.buf.as_mut_ptr();
-
-                ptr::copy(src, dst.add(right_size), left_size);
-                ptr::copy(src.add(self.start), dst, right_size);
-            }
+            self.buf.copy_within(..left_size, right_size);
+            self.buf
+                .copy_within(self.start..(self.start + right_size), 0);
         } else {
             // if the buffer has wrapped and the wrapped part can't be copied
             //   without overlapping, then use a temporary buffer to
@@ -379,31 +369,29 @@ impl RingBuffer {
             let left_size = self.end - self.buf.len();
             let right_size = self.buf.len() - self.start;
 
-            unsafe {
-                let (lsize, lsrc, ldest, hsize, hsrc, hdest);
+            let (lsize, lsrc, ldest, hsize, hsrc, hdest);
 
-                if left_size < right_size {
-                    lsize = left_size;
-                    hsize = right_size;
-                    lsrc = self.buf.as_ptr();
-                    ldest = self.buf.as_mut_ptr().add(hsize);
-                    hsrc = self.buf.as_ptr().add(self.start);
-                    hdest = self.buf.as_mut_ptr();
-                } else {
-                    lsize = right_size;
-                    hsize = left_size;
-                    lsrc = self.buf.as_ptr().add(self.start);
-                    ldest = self.buf.as_mut_ptr();
-                    hsrc = self.buf.as_ptr();
-                    hdest = self.buf.as_mut_ptr().add(lsize);
-                }
-
-                let mut tmp = self.tmp.0.borrow_mut();
-
-                ptr::copy(lsrc, tmp.as_mut_ptr(), lsize);
-                ptr::copy(hsrc, hdest, hsize);
-                ptr::copy(tmp.as_ptr(), ldest, lsize);
+            if left_size < right_size {
+                lsize = left_size;
+                hsize = right_size;
+                lsrc = 0;
+                ldest = hsize;
+                hsrc = self.start;
+                hdest = 0;
+            } else {
+                lsize = right_size;
+                hsize = left_size;
+                lsrc = self.start;
+                ldest = 0;
+                hsrc = 0;
+                hdest = lsize;
             }
+
+            let mut tmp = self.tmp.0.borrow_mut();
+
+            &mut tmp[..lsize].copy_from_slice(&self.buf[lsrc..(lsrc + lsize)]);
+            self.buf.copy_within(hsrc..(hsrc + hsize), hdest);
+            &mut self.buf[ldest..(ldest + lsize)].copy_from_slice(&mut tmp[..lsize]);
         }
 
         self.start = 0;
