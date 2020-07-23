@@ -17,7 +17,6 @@
 use std::cell::RefCell;
 use std::cmp;
 use std::io;
-use std::mem;
 use std::rc::Rc;
 
 pub const VECTORED_MAX: usize = 8;
@@ -102,9 +101,7 @@ pub fn write_vectored_offset(
         start += 1;
     }
 
-    let mut arr: [mem::MaybeUninit<io::IoSlice>; VECTORED_MAX] =
-        unsafe { mem::MaybeUninit::uninit().assume_init() };
-
+    let mut arr = [io::IoSlice::new(&b""[..]); VECTORED_MAX];
     let mut arr_len = 0;
 
     for i in start..bufs.len() {
@@ -114,13 +111,11 @@ pub fn write_vectored_offset(
             bufs[i]
         };
 
-        arr[arr_len] = mem::MaybeUninit::new(io::IoSlice::new(buf));
+        arr[arr_len] = io::IoSlice::new(buf);
         arr_len += 1;
     }
 
-    let arr = unsafe { &(mem::transmute::<_, [io::IoSlice; VECTORED_MAX]>(arr))[..arr_len] };
-
-    writer.write_vectored(arr)
+    writer.write_vectored(&arr[..arr_len])
 }
 
 pub trait LimitBufs<'a> {
