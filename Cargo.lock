@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "condure"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "base64 0.12.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.1 (registry+https://github.com/rust-lang/crates.io-index)",
