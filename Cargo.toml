@@ -2,6 +2,10 @@
 name = "condure"
 version = "1.0.0"
 authors = ["Justin Karneges <justin@fanout.io>"]
+license = "Apache-2.0"
+description = "HTTP/WebSocket connection manager"
+repository = "https://github.com/fanout/condure"
+readme = "README.md"
 edition = "2018"
 
 [profile.dev]
