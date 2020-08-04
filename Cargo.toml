@@ -33,3 +33,17 @@ criterion = "0.3"
 [[bench]]
 name = "server"
 harness = false
+
+[package.metadata.deb]
+extended-description = """\
+Condure is a service that manages network connections on behalf of server
+applications, in order to allow controlling the connections from multiple
+processes. Applications communicate with Condure over ZeroMQ.
+
+Condure can only manage connections for protocols it knows about. Currently
+this is HTTP/1 and WebSockets.
+
+The project was inspired by Mongrel2.
+"""
+separate-debug-symbols = true
+build-depends = "pkg-config, libzmq3-dev"
