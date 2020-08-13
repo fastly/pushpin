@@ -40,6 +40,7 @@ class SimpleHttpRequest : public QObject
 	Q_OBJECT
 
 public:
+	SimpleHttpRequest(int maxHeadersSize, int maxBodySize, QObject* parent = 0);
 	~SimpleHttpRequest();
 
 	QString requestMethod() const;
@@ -67,7 +68,7 @@ class SimpleHttpServer : public QObject
 	Q_OBJECT
 
 public:
-	SimpleHttpServer(QObject *parent = 0);
+	SimpleHttpServer(int maxHeadersSize, int maxBodySize, QObject *parent = 0);
 	~SimpleHttpServer();
 
 	bool listen(const QHostAddress &addr, int port);
