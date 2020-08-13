@@ -34,9 +34,6 @@
 #include "log.h"
 #include "httpheaders.h"
 
-#define MAX_HEADERS_SIZE 10000
-#define MAX_BODY_SIZE 1000000
-
 class SimpleHttpRequest::Private : public QObject
 {
 	Q_OBJECT
@@ -62,15 +59,19 @@ public:
 	QByteArray reqBody;
 	int contentLength;
 	int pendingWritten;
+	int maxHeadersSize;
+	int maxBodySize;
 
-	Private(SimpleHttpRequest *_q) :
+	Private(SimpleHttpRequest *_q, int maxHeadersSize, int maxBodySize) :
 		QObject(_q),
 		q(_q),
 		sock(0),
 		state(ReadHeader),
 		version1dot0(false),
 		contentLength(0),
-		pendingWritten(0)
+		pendingWritten(0),
+		maxHeadersSize(maxHeadersSize),
+		maxBodySize(maxBodySize)
 	{
 	}
 
@@ -227,7 +228,7 @@ private:
 	{
 		if(state == ReadHeader)
 		{
-			inBuf += sock->read(MAX_HEADERS_SIZE - inBuf.size());
+			inBuf += sock->read(maxHeadersSize - inBuf.size());
 
 			// look for double newline
 			int at = -1;
@@ -277,7 +278,7 @@ private:
 						return;
 					}
 
-					if(contentLength > MAX_BODY_SIZE)
+					if(contentLength > maxBodySize)
 					{
 						respondBadRequest("Request body too large.");
 						return;
@@ -305,7 +306,7 @@ private:
 					emit ready();
 				}
 			}
-			else if(inBuf.size() >= MAX_HEADERS_SIZE)
+			else if(inBuf.size() >= maxHeadersSize)
 			{
 				inBuf.clear();
 				respondBadRequest("Request header too large.");
@@ -314,7 +315,7 @@ private:
 		}
 		else if(state == ReadBody)
 		{
-			reqBody += sock->read(MAX_BODY_SIZE - reqBody.size() + 1);
+			reqBody += sock->read(maxBodySize - reqBody.size() + 1);
 
 			if(reqBody.size() > contentLength)
 			{
@@ -360,10 +361,10 @@ private slots:
 	}
 };
 
-SimpleHttpRequest::SimpleHttpRequest(QObject *parent) :
+SimpleHttpRequest::SimpleHttpRequest(int maxHeadersSize, int maxBodySize,QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = new Private(this, maxHeadersSize, maxBodySize);
 }
 
 SimpleHttpRequest::~SimpleHttpRequest()
@@ -410,11 +411,15 @@ public:
 	QTcpServer *server;
 	QSet<SimpleHttpRequest*> accepting;
 	QList<SimpleHttpRequest*> pending;
+	int maxHeadersSize;
+	int maxBodySize;
 
-	SimpleHttpServerPrivate(SimpleHttpServer *_q) :
+	SimpleHttpServerPrivate(int maxHeadersSize, int maxBodySize, SimpleHttpServer *_q) :
 		QObject(_q),
 		q(_q),
-		server(0)
+		server(0),
+		maxHeadersSize(maxHeadersSize),
+		maxBodySize(maxBodySize)
 	{
 	}
 
@@ -441,7 +446,7 @@ private slots:
 	void server_newConnection()
 	{
 		QTcpSocket *sock = server->nextPendingConnection();
-		SimpleHttpRequest *req = new SimpleHttpRequest;
+		SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
 		connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
 		connect(req, &SimpleHttpRequest::finished, this, &SimpleHttpServerPrivate::req_finished);
 		accepting += req;
@@ -466,10 +471,10 @@ private slots:
 	}
 };
 
-SimpleHttpServer::SimpleHttpServer(QObject *parent) :
+SimpleHttpServer::SimpleHttpServer(int maxHeadersSize, int maxBodySize, QObject *parent) :
 	QObject(parent)
 {
-	d = new SimpleHttpServerPrivate(this);
+	d = new SimpleHttpServerPrivate(maxHeadersSize, maxBodySize, this);
 }
 
 SimpleHttpServer::~SimpleHttpServer()

@@ -40,6 +40,9 @@
 #include "engine.h"
 #include "config.h"
 
+#define DEFAULT_HTTP_MAX_HEADERS_SIZE 10000
+#define DEFAULT_HTTP_MAX_BODY_SIZE 1000000
+
 static void trimlist(QStringList *list)
 {
 	for(int n = 0; n < list->count(); ++n)
@@ -261,6 +264,8 @@ public:
 		bool push_in_sub_connect = settings.value("handler/push_in_sub_connect").toBool();
 		QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
 		int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
+		int push_in_http_max_headers_size = settings.value("handler/push_in_max_headers_size", DEFAULT_HTTP_MAX_HEADERS_SIZE).toInt();
+		int push_in_http_max_body_size = settings.value("handler/push_in_max_body_size", DEFAULT_HTTP_MAX_BODY_SIZE).toInt();
 		bool ok;
 		int ipcFileMode = settings.value("handler/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		bool shareAll = settings.value("handler/share_all").toBool();
@@ -312,6 +317,8 @@ public:
 		config.pushInSubConnect = push_in_sub_connect;
 		config.pushInHttpAddr = QHostAddress(push_in_http_addr);
 		config.pushInHttpPort = push_in_http_port;
+		config.pushInHttpMaxHeadersSize = push_in_http_max_headers_size;
+		config.pushInHttpMaxBodySize = push_in_http_max_body_size;
 		config.ipcFileMode = ipcFileMode;
 		config.shareAll = shareAll;
 		config.messageRate = messageRate;

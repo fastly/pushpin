@@ -63,6 +63,8 @@ public:
 		bool pushInSubConnect;
 		QHostAddress pushInHttpAddr;
 		int pushInHttpPort;
+		int pushInHttpMaxHeadersSize;
+		int pushInHttpMaxBodySize;
 		int ipcFileMode;
 		bool shareAll;
 		int messageRate;
@@ -79,6 +81,8 @@ public:
 		Configuration() :
 			pushInSubConnect(false),
 			pushInHttpPort(-1),
+			pushInHttpMaxHeadersSize(-1),
+			pushInHttpMaxBodySize(-1),
 			ipcFileMode(-1),
 			shareAll(false),
 			messageRate(-1),

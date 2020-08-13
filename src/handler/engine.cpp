@@ -1646,7 +1646,7 @@ public:
 
 		if(config.pushInHttpPort != -1)
 		{
-			controlHttpServer = new SimpleHttpServer(this);
+			controlHttpServer = new SimpleHttpServer(config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize, this);
 			connect(controlHttpServer, &SimpleHttpServer::requestReady, this, &Private::controlHttpServer_requestReady);
 			controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
 
