@@ -128,12 +128,14 @@ fn get_key(id: &[u8]) -> Result<usize, ()> {
     Ok(key)
 }
 
-fn send_keep_alives(
-    from_addr: &[u8],
-    ids: &[zhttppacket::Id],
+fn send_batched<'buf, 'ids>(
+    mut zreq: zhttppacket::Request<'buf, 'ids, '_>,
+    ids: &'ids [zhttppacket::Id<'buf>],
     handle: &mut ClientStreamHandle,
     to_addr: &[u8],
 ) {
+    zreq.multi = true;
+
     let ids_per_msg = zhttppacket::IDS_MAX;
     let msg_count = (ids.len() + (ids_per_msg - 1)) / ids_per_msg;
 
@@ -141,10 +143,7 @@ fn send_keep_alives(
         let start = i * ids_per_msg;
         let len = cmp::min(ids_per_msg, ids.len() - start);
 
-        let msg_ids = &ids[start..(start + len)];
-
-        let mut zreq = zhttppacket::Request::new_keep_alive(from_addr, msg_ids);
-        zreq.multi = true;
+        zreq.ids = &ids[start..(start + len)];
 
         let mut data = [0; BULK_PACKET_SIZE_MAX];
 
@@ -153,54 +152,7 @@ fn send_keep_alives(
             Err(e) => {
                 error!(
                     "failed to serialize keep-alive packet with {} ids: {}",
-                    msg_ids.len(),
-                    e
-                );
-                break;
-            }
-        };
-
-        let buf = &data[..size];
-        let msg = zmq::Message::from(buf);
-
-        if let Err(e) = handle.send_to(to_addr, msg) {
-            let e = match e {
-                zhttpsocket::SendError::Full(_) => io::Error::from(io::ErrorKind::WriteZero),
-                zhttpsocket::SendError::Io(e) => e,
-            };
-
-            error!("zhttp write error: {:?}", e);
-            break;
-        }
-    }
-}
-
-fn send_cancels(
-    from_addr: &[u8],
-    ids: &[zhttppacket::Id],
-    handle: &mut ClientStreamHandle,
-    to_addr: &[u8],
-) {
-    let ids_per_msg = zhttppacket::IDS_MAX;
-    let msg_count = (ids.len() + (ids_per_msg - 1)) / ids_per_msg;
-
-    for i in 0..msg_count {
-        let start = i * ids_per_msg;
-        let len = cmp::min(ids_per_msg, ids.len() - start);
-
-        let msg_ids = &ids[start..(start + len)];
-
-        let mut zreq = zhttppacket::Request::new_cancel(from_addr, msg_ids);
-        zreq.multi = true;
-
-        let mut data = [0; BULK_PACKET_SIZE_MAX];
-
-        let size = match zreq.serialize(&mut data) {
-            Ok(size) => size,
-            Err(e) => {
-                error!(
-                    "failed to serialize cancel packet with {} ids: {}",
-                    msg_ids.len(),
+                    zreq.ids.len(),
                     e
                 );
                 break;
@@ -1394,7 +1346,9 @@ impl Worker {
                         ka_ids.len()
                     );
 
-                    send_keep_alives(instance_id.as_bytes(), &ka_ids, &mut stream_handle, addr);
+                    let zreq = zhttppacket::Request::new_keep_alive(instance_id.as_bytes(), &[]);
+
+                    send_batched(zreq, &ka_ids, &mut stream_handle, addr);
 
                     ka_ids_mem = arena::recycle_vec(ka_ids);
 
@@ -1591,7 +1545,9 @@ impl Worker {
                     ka_ids.len()
                 );
 
-                send_cancels(instance_id.as_bytes(), &ka_ids, &mut stream_handle, addr);
+                let zreq = zhttppacket::Request::new_cancel(instance_id.as_bytes(), &[]);
+
+                send_batched(zreq, &ka_ids, &mut stream_handle, addr);
 
                 ka_ids_mem = arena::recycle_vec(ka_ids);
 
