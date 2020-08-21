@@ -271,6 +271,18 @@ impl<T> Drop for Rc<T> {
     }
 }
 
+// adapted from https://github.com/rust-lang/rfcs/pull/2802
+pub fn recycle_vec<T, U>(mut v: Vec<T>) -> Vec<U> {
+    assert_eq!(core::mem::size_of::<T>(), core::mem::size_of::<U>());
+    assert_eq!(core::mem::align_of::<T>(), core::mem::align_of::<U>());
+    v.clear();
+    let ptr = v.as_mut_ptr();
+    let capacity = v.capacity();
+    mem::forget(v);
+    let ptr = ptr as *mut U;
+    unsafe { Vec::from_raw_parts(ptr, 0, capacity) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

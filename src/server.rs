@@ -37,7 +37,6 @@ use std::collections::VecDeque;
 use std::convert::{TryFrom, TryInto};
 use std::io;
 use std::io::Write;
-use std::mem;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str;
@@ -764,7 +763,7 @@ impl Worker {
 
         let mut ka_nodes: Slab<list::Node<usize>> = Slab::with_capacity(ka_batch);
         let mut ka_addrs: Vec<(VarLenArray64<u8>, list::List)> = Vec::with_capacity(ka_batch);
-        let mut ka_ids: Vec<zhttppacket::Id> = Vec::with_capacity(ka_batch);
+        let mut ka_ids_mem: Vec<zhttppacket::Id> = Vec::with_capacity(ka_batch);
 
         let mut zwrite_nodes: Slab<list::Node<ZWrite>> = Slab::with_capacity(maxconn + 1);
         let mut zwrite_req = list::List::default();
@@ -1366,25 +1365,24 @@ impl Worker {
                 for (addr, keys) in ka_addrs.iter() {
                     let addr = addr.as_ref();
 
-                    // set the seqs
+                    let mut ka_ids = arena::recycle_vec(ka_ids_mem);
+
+                    // get ids/seqs
                     let mut next = keys.head;
                     while let Some(nkey) = next {
                         let n = &ka_nodes[nkey];
 
-                        let c = &mut conns[n.value];
+                        let c = &conns[n.value];
 
                         // this must succeed since we checked it earlier
-                        let conn = match &mut c.conn {
+                        let conn = match &c.conn {
                             ServerConnection::Stream(conn) => conn,
                             _ => unreachable!(),
                         };
 
-                        // safe because we clear ka_ids before the next mutable usage of conns
-                        let id: &'static [u8] = unsafe { mem::transmute(c.id.as_bytes()) };
-
                         ka_ids.push(zhttppacket::Id {
-                            id,
-                            seq: Some(conn.next_out_seq()),
+                            id: c.id.as_bytes(),
+                            seq: Some(conn.out_seq()),
                         });
 
                         next = n.next;
@@ -1398,8 +1396,25 @@ impl Worker {
 
                     send_keep_alives(instance_id.as_bytes(), &ka_ids, &mut stream_handle, addr);
 
-                    // ensure we don't leave any dangling refs
-                    ka_ids.clear();
+                    ka_ids_mem = arena::recycle_vec(ka_ids);
+
+                    // inc seqs
+                    let mut next = keys.head;
+                    while let Some(nkey) = next {
+                        let n = &ka_nodes[nkey];
+
+                        let c = &mut conns[n.value];
+
+                        // this must succeed since we checked it earlier
+                        let conn = match &mut c.conn {
+                            ServerConnection::Stream(conn) => conn,
+                            _ => unreachable!(),
+                        };
+
+                        conn.inc_out_seq();
+
+                        next = n.next;
+                    }
                 }
 
                 if now - last_keep_alive_time >= KEEP_ALIVE_INTERVAL * 2 {
@@ -1547,25 +1562,24 @@ impl Worker {
             for (addr, keys) in ka_addrs.iter() {
                 let addr = addr.as_ref();
 
-                // set the seqs
+                let mut ka_ids = arena::recycle_vec(ka_ids_mem);
+
+                // get ids/seqs
                 let mut next = keys.head;
                 while let Some(nkey) = next {
                     let n = &ka_nodes[nkey];
 
-                    let c = &mut conns[n.value];
+                    let c = &conns[n.value];
 
                     // this must succeed since we checked it earlier
-                    let conn = match &mut c.conn {
+                    let conn = match &c.conn {
                         ServerConnection::Stream(conn) => conn,
                         _ => unreachable!(),
                     };
 
-                    // safe because we clear ka_ids before the next mutable usage of conns
-                    let id: &'static [u8] = unsafe { mem::transmute(c.id.as_bytes()) };
-
                     ka_ids.push(zhttppacket::Id {
-                        id,
-                        seq: Some(conn.next_out_seq()),
+                        id: c.id.as_bytes(),
+                        seq: Some(conn.out_seq()),
                     });
 
                     next = n.next;
@@ -1578,6 +1592,26 @@ impl Worker {
                 );
 
                 send_cancels(instance_id.as_bytes(), &ka_ids, &mut stream_handle, addr);
+
+                ka_ids_mem = arena::recycle_vec(ka_ids);
+
+                // inc seqs
+                let mut next = keys.head;
+                while let Some(nkey) = next {
+                    let n = &ka_nodes[nkey];
+
+                    let c = &mut conns[n.value];
+
+                    // this must succeed since we checked it earlier
+                    let conn = match &mut c.conn {
+                        ServerConnection::Stream(conn) => conn,
+                        _ => unreachable!(),
+                    };
+
+                    conn.inc_out_seq();
+
+                    next = n.next;
+                }
             }
 
             Self::flush_send_to(&mut can_zstream_out_stream_write, &mut stream_handle);

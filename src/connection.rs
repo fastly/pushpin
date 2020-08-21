@@ -1076,11 +1076,12 @@ impl ServerStreamConnection {
         }
     }
 
-    pub fn next_out_seq(&mut self) -> u32 {
-        let seq = self.d.out_seq;
-        self.d.out_seq += 1;
+    pub fn out_seq(&self) -> u32 {
+        self.d.out_seq
+    }
 
-        seq
+    pub fn inc_out_seq(&mut self) {
+        self.d.out_seq += 1;
     }
 
     pub fn start(&mut self, id: &str) {
