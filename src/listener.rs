@@ -256,7 +256,7 @@ mod tests {
             receivers[0].get_read_registration(),
             mio::Token(0),
             mio::Ready::readable(),
-            mio::PollOpt::level(),
+            mio::PollOpt::edge(),
         )
         .unwrap();
 

@@ -1972,7 +1972,7 @@ mod tests {
             h.get_write_addr_registration(),
             mio::Token(0),
             mio::Ready::writable(),
-            mio::PollOpt::level(),
+            mio::PollOpt::edge(),
         )
         .unwrap();
 
@@ -2064,7 +2064,7 @@ mod tests {
             h1.get_read_registration(),
             mio::Token(0),
             mio::Ready::readable(),
-            mio::PollOpt::level(),
+            mio::PollOpt::edge(),
         )
         .unwrap();
 
@@ -2072,7 +2072,7 @@ mod tests {
             h2.get_read_registration(),
             mio::Token(1),
             mio::Ready::readable(),
-            mio::PollOpt::level(),
+            mio::PollOpt::edge(),
         )
         .unwrap();
 
@@ -2189,7 +2189,7 @@ mod tests {
             h1.get_read_registration(),
             mio::Token(0),
             mio::Ready::readable(),
-            mio::PollOpt::level(),
+            mio::PollOpt::edge(),
         )
         .unwrap();
 
@@ -2197,7 +2197,7 @@ mod tests {
             h2.get_read_registration(),
             mio::Token(1),
             mio::Ready::readable(),
-            mio::PollOpt::level(),
+            mio::PollOpt::edge(),
         )
         .unwrap();
 
