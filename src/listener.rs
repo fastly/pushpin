@@ -14,11 +14,15 @@
  * limitations under the License.
  */
 
+use crate::arena::recycle_vec;
 use crate::channel;
+use crate::future::{
+    select_from_pair, select_from_slice, AcceptFuture, AsyncReceiver, AsyncSender,
+    AsyncTcpListener, Executor, WaitWritableFuture,
+};
 use log::{debug, error};
 use mio;
 use mio::net::{TcpListener, TcpStream};
-use std::io;
 use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::thread;
@@ -36,7 +40,9 @@ impl Listener {
         let (s, r) = channel::channel(1);
 
         let thread = thread::spawn(move || {
-            Self::run(r, listeners, senders);
+            let executor = Executor::new();
+
+            executor.block_on(Self::run(&executor, r, listeners, senders));
         });
 
         Self {
@@ -45,166 +51,113 @@ impl Listener {
         }
     }
 
-    fn run(
+    async fn run(
+        executor: &Executor,
         stop: channel::Receiver<()>,
         listeners: Vec<TcpListener>,
         senders: Vec<channel::Sender<(usize, TcpStream, SocketAddr)>>,
     ) {
-        let poll = mio::Poll::new().unwrap();
+        let mut stop = AsyncReceiver::new(stop, executor);
 
-        poll.register(
-            stop.get_read_registration(),
-            mio::Token(0),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        let mut listeners: Vec<AsyncTcpListener> = listeners
+            .into_iter()
+            .map(|l| AsyncTcpListener::new(l, executor))
+            .collect();
 
-        let listener_base = 1;
-        let mut listeners_readable = Vec::new();
+        let mut senders: Vec<AsyncSender<(usize, TcpStream, SocketAddr)>> = senders
+            .into_iter()
+            .map(|s| AsyncSender::new(s, executor))
+            .collect();
+
         let mut listeners_pos = 0;
-
-        for (i, l) in listeners.iter().enumerate() {
-            poll.register(
-                l,
-                mio::Token(listener_base + i),
-                mio::Ready::readable(),
-                mio::PollOpt::edge(),
-            )
-            .unwrap();
-
-            listeners_readable.push(true);
-        }
-
-        let sender_base = listener_base + listeners.len();
-        let mut senders_writable = Vec::new();
         let mut senders_pos = 0;
 
-        for (i, s) in senders.iter().enumerate() {
-            poll.register(
-                s.get_write_registration(),
-                mio::Token(sender_base + i),
-                mio::Ready::writable(),
-                mio::PollOpt::edge(),
-            )
-            .unwrap();
+        let mut sender_tasks_mem: Vec<WaitWritableFuture<(usize, TcpStream, SocketAddr)>> =
+            Vec::with_capacity(senders.len());
 
-            senders_writable.push(s.can_send());
-        }
-
-        let mut pending_sock = None;
-
-        let mut events = mio::Events::with_capacity(1024);
+        let mut listener_tasks_mem: Vec<AcceptFuture> = Vec::with_capacity(listeners.len());
 
         loop {
-            let mut can_send = false;
+            // wait for a sender to become writable
 
-            for &b in senders_writable.iter() {
-                if b {
-                    can_send = true;
-                    break;
-                }
+            let mut sender_tasks = recycle_vec(sender_tasks_mem);
+
+            for s in senders.iter_mut() {
+                sender_tasks.push(s.wait_writable());
             }
 
-            let mut can_accept = false;
+            let result = select_from_pair(stop.recv(), select_from_slice(&mut sender_tasks)).await;
 
-            for &b in listeners_readable.iter() {
-                if b {
-                    can_accept = true;
-                    break;
-                }
+            sender_tasks_mem = recycle_vec(sender_tasks);
+
+            match result {
+                (Some(_), None) => break,
+                (None, Some(_)) => {}
+                _ => unreachable!(),
             }
 
-            if can_accept && pending_sock.is_none() && can_send {
-                for _ in 0..listeners_readable.len() {
-                    if !listeners_readable[listeners_pos] {
-                        listeners_pos = (listeners_pos + 1) % listeners_readable.len();
-                        continue;
-                    }
+            // accept a connection
 
-                    match listeners[listeners_pos].accept() {
-                        Ok((stream, peer_addr)) => {
-                            debug!("accepted connection from {}", peer_addr);
-                            pending_sock = Some((listeners_pos, stream, peer_addr));
-                        }
-                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            listeners_readable[listeners_pos] = false;
-                        }
-                        Err(e) => {
-                            error!("accept error: {:?}", e);
-                        }
-                    }
+            let mut listener_tasks = recycle_vec(listener_tasks_mem);
 
-                    listeners_pos = (listeners_pos + 1) % listeners_readable.len();
+            let (b, a) = listeners.split_at_mut(listeners_pos);
 
-                    if pending_sock.is_some() {
+            for l in a.iter_mut().chain(b.iter_mut()) {
+                listener_tasks.push(l.accept());
+            }
+
+            let result;
+
+            loop {
+                match select_from_pair(stop.recv(), select_from_slice(&mut listener_tasks)).await {
+                    (None, Some((_, Err(e)))) => error!("accept error: {:?}", e),
+                    r => {
+                        result = r;
                         break;
                     }
                 }
             }
 
-            if pending_sock.is_some() && can_send {
-                for _ in 0..senders_writable.len() {
-                    if !senders_writable[senders_pos] {
-                        senders_pos = (senders_pos + 1) % senders_writable.len();
-                        continue;
-                    }
+            listener_tasks_mem = recycle_vec(listener_tasks);
 
-                    let sender = &senders[senders_pos];
+            let (pos, stream, peer_addr) = match result {
+                (Some(_), None) => break,
+                (None, Some((pos, Ok((stream, peer_addr))))) => (pos, stream, peer_addr),
+                _ => unreachable!(),
+            };
 
-                    let sock = pending_sock.take().unwrap();
+            listeners_pos = (listeners_pos + pos + 1) % listeners.len();
 
-                    match sender.try_send(sock) {
-                        Ok(()) => {
-                            senders_writable[senders_pos] = sender.can_send();
-                        }
-                        Err(mpsc::TrySendError::Full(sock)) => {
-                            senders_writable[senders_pos] = sender.can_send();
-                            pending_sock = Some(sock);
-                        }
-                        Err(mpsc::TrySendError::Disconnected(_)) => {
-                            // this could happen during shutdown
-                            senders_writable[senders_pos] = false;
-                            debug!("receiver disconnected");
-                        }
-                    }
+            debug!("accepted connection from {}", peer_addr);
 
-                    senders_pos = (senders_pos + 1) % senders_writable.len();
+            // write connection to sender
 
-                    if pending_sock.is_none() {
-                        break;
-                    }
-                }
+            let mut pending_sock = Some((pos, stream, peer_addr));
 
-                if pending_sock.is_none() {
-                    // if we successfully sent, loop again from the top instead of polling
+            for _ in 0..senders.len() {
+                let sender = &mut senders[senders_pos];
+
+                if !sender.is_writable() {
+                    senders_pos = (senders_pos + 1) % senders.len();
                     continue;
                 }
-            }
 
-            poll.poll(&mut events, None).unwrap();
+                let s = pending_sock.take().unwrap();
 
-            let mut done = false;
-
-            for event in events.iter() {
-                let t = usize::from(event.token());
-
-                if t == 0 {
-                    if stop.try_recv().is_ok() {
-                        done = true;
-                        break;
+                match sender.try_send(s) {
+                    Ok(()) => {}
+                    Err(mpsc::TrySendError::Full(s)) => pending_sock = Some(s),
+                    Err(mpsc::TrySendError::Disconnected(_)) => {
+                        // this could happen during shutdown
+                        debug!("receiver disconnected");
                     }
-                } else if t < sender_base {
-                    let i = t - listener_base;
-                    listeners_readable[i] = true
-                } else {
-                    let i = t - sender_base;
-                    senders_writable[i] = senders[i].can_send();
                 }
-            }
 
-            if done {
-                break;
+                senders_pos = (senders_pos + 1) % senders.len();
+
+                if pending_sock.is_none() {
+                    break;
+                }
             }
         }
     }

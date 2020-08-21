@@ -19,6 +19,7 @@ pub mod arena;
 pub mod buffer;
 pub mod channel;
 pub mod connection;
+pub mod future;
 pub mod http1;
 pub mod list;
 pub mod listener;
