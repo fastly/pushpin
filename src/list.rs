@@ -98,12 +98,16 @@ impl List {
             nn.prev = prev;
         }
 
-        if self.head.unwrap() == key {
-            self.head = next;
+        if let Some(hkey) = self.head {
+            if hkey == key {
+                self.head = next;
+            }
         }
 
-        if self.tail.unwrap() == key {
-            self.tail = prev;
+        if let Some(tkey) = self.tail {
+            if tkey == key {
+                self.tail = prev;
+            }
         }
     }
 
@@ -235,6 +239,42 @@ mod tests {
         assert_eq!(l.tail, None);
 
         assert_eq!(l.pop_front(&mut nodes), None);
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut nodes = Slab::new();
+        let n1 = nodes.insert(Node::new("n1"));
+
+        assert_eq!(nodes[n1].prev, None);
+        assert_eq!(nodes[n1].next, None);
+
+        let mut l = List::default();
+        assert_eq!(l.is_empty(), true);
+        assert_eq!(l.head, None);
+        assert_eq!(l.tail, None);
+
+        l.push_back(&mut nodes, n1);
+        assert_eq!(l.is_empty(), false);
+        assert_eq!(l.head, Some(n1));
+        assert_eq!(l.tail, Some(n1));
+        assert_eq!(nodes[n1].prev, None);
+        assert_eq!(nodes[n1].next, None);
+
+        l.remove(&mut nodes, n1);
+        assert_eq!(l.is_empty(), true);
+        assert_eq!(l.head, None);
+        assert_eq!(l.tail, None);
+        assert_eq!(nodes[n1].prev, None);
+        assert_eq!(nodes[n1].next, None);
+
+        // already removed
+        l.remove(&mut nodes, n1);
+        assert_eq!(l.is_empty(), true);
+        assert_eq!(l.head, None);
+        assert_eq!(l.tail, None);
+        assert_eq!(nodes[n1].prev, None);
+        assert_eq!(nodes[n1].next, None);
     }
 
     #[test]
