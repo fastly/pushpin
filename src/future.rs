@@ -24,32 +24,80 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::ptr;
 use std::sync::mpsc;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-const EVENT_REGISTRATIONS_MAX: usize = 128;
+pub trait Reactor {
+    fn poll(&self) -> Result<(), io::Error>;
+}
+
+pub struct RegistrationHandle<'a> {
+    reactor: &'a MioReactor,
+    key: usize,
+}
+
+impl RegistrationHandle<'_> {
+    fn is_ready(&self) -> bool {
+        let data = &*self.reactor.data.borrow();
+
+        let event_reg = &data.registrations[self.key];
+
+        event_reg.ready
+    }
+
+    fn set_ready(&self, ready: bool) {
+        let data = &mut *self.reactor.data.borrow_mut();
+
+        let event_reg = &mut data.registrations[self.key];
+
+        event_reg.ready = ready;
+    }
+
+    fn bind_waker(&self, waker: Waker) {
+        let data = &mut *self.reactor.data.borrow_mut();
+
+        let event_reg = &mut data.registrations[self.key];
+
+        event_reg.waker = Some(waker);
+    }
+
+    fn unbind_waker(&self) {
+        let data = &mut *self.reactor.data.borrow_mut();
+
+        let event_reg = &mut data.registrations[self.key];
+
+        event_reg.waker = None;
+    }
+}
+
+impl Drop for RegistrationHandle<'_> {
+    fn drop(&mut self) {
+        let data = &mut *self.reactor.data.borrow_mut();
+
+        data.registrations.remove(self.key);
+    }
+}
 
 struct EventRegistration {
     ready: bool,
-    enabled: bool,
+    waker: Option<Waker>,
 }
 
-struct ExecutorData {
-    registrations_nodes: Slab<list::Node<EventRegistration>>,
-    registrations: list::List,
+struct MioReactorData {
+    registrations: Slab<EventRegistration>,
+    events: mio::Events,
 }
 
-pub struct Executor {
-    data: RefCell<ExecutorData>,
+pub struct MioReactor {
+    data: RefCell<MioReactorData>,
     poll: mio::Poll,
 }
 
-impl Executor {
-    pub fn new() -> Self {
-        let data = ExecutorData {
-            registrations_nodes: Slab::with_capacity(EVENT_REGISTRATIONS_MAX),
-            registrations: list::List::default(),
+impl MioReactor {
+    pub fn new(registrations_max: usize) -> Self {
+        let data = MioReactorData {
+            registrations: Slab::with_capacity(registrations_max),
+            events: mio::Events::with_capacity(1024),
         };
 
         Self {
@@ -58,111 +106,265 @@ impl Executor {
         }
     }
 
-    fn register(&self) -> usize {
-        let data = &mut *self.data.borrow_mut();
-
-        let key = data
-            .registrations_nodes
-            .insert(list::Node::new(EventRegistration {
-                ready: false,
-                enabled: false,
-            }));
-
-        data.registrations
-            .push_back(&mut data.registrations_nodes, key);
-
-        key
-    }
-
-    fn unregister(&self, key: usize) {
-        let data = &mut *self.data.borrow_mut();
-
-        data.registrations
-            .remove(&mut data.registrations_nodes, key);
-        data.registrations_nodes.remove(key);
-    }
-
-    fn is_ready(&self, key: usize) -> bool {
-        let event_reg = &self.data.borrow().registrations_nodes[key].value;
-
-        event_reg.ready
-    }
-
-    fn set_ready(&self, key: usize, ready: bool) {
-        let event_reg = &mut self.data.borrow_mut().registrations_nodes[key].value;
-
-        event_reg.ready = ready;
-    }
-
-    fn set_enabled(&self, key: usize, enabled: bool) {
-        let event_reg = &mut self.data.borrow_mut().registrations_nodes[key].value;
-
-        event_reg.enabled = enabled;
-    }
-
-    pub fn block_on<F>(&self, mut f: F)
+    fn register<E>(&self, handle: &E, interest: mio::Ready) -> Result<RegistrationHandle, io::Error>
     where
-        F: Future<Output = ()>,
+        E: mio::Evented + ?Sized,
     {
-        let mut p = unsafe { Pin::new_unchecked(&mut f) };
+        let data = &mut *self.data.borrow_mut();
 
-        let mut events = mio::Events::with_capacity(1024);
+        if data.registrations.len() == data.registrations.capacity() {
+            return Err(io::Error::from(io::ErrorKind::WriteZero));
+        }
 
-        let mut need_poll = true;
+        let key = data.registrations.insert(EventRegistration {
+            ready: false,
+            waker: None,
+        });
 
-        loop {
-            if need_poll {
-                need_poll = false;
+        if let Err(e) = self
+            .poll
+            .register(handle, mio::Token(key), interest, mio::PollOpt::edge())
+        {
+            data.registrations.remove(key);
 
-                let w = NoopWaker {}.into_task_waker();
+            return Err(e);
+        }
 
-                let mut cx = Context::from_waker(&w);
+        Ok(RegistrationHandle { reactor: self, key })
+    }
+}
 
-                match p.as_mut().poll(&mut cx) {
-                    Poll::Ready(_) => break,
-                    Poll::Pending => {}
-                }
-            }
+impl Reactor for MioReactor {
+    fn poll(&self) -> Result<(), io::Error> {
+        let data = &mut *self.data.borrow_mut();
 
-            self.poll.poll(&mut events, None).unwrap();
+        self.poll.poll(&mut data.events, None)?;
 
-            for event in events.iter() {
-                let key = usize::from(event.token());
+        for event in data.events.iter() {
+            let key = usize::from(event.token());
 
-                let data = &mut *self.data.borrow_mut();
+            if let Some(event_reg) = data.registrations.get_mut(key) {
+                event_reg.ready = true;
 
-                if let Some(event_reg) = data.registrations_nodes.get_mut(key) {
-                    event_reg.value.ready = true;
-
-                    if event_reg.value.enabled {
-                        need_poll = true;
-                    }
+                if let Some(waker) = event_reg.waker.take() {
+                    waker.wake();
                 }
             }
         }
+
+        Ok(())
     }
 }
 
 static VTABLE: RawWakerVTable = RawWakerVTable::new(vt_clone, vt_wake, vt_wake_by_ref, vt_drop);
 
-struct NoopWaker {}
+struct SharedWaker {
+    ctx: *const (),
+    task_id: usize,
+    add_ref: fn(*const (), usize),
+    remove_ref: fn(*const (), usize),
+    wake: fn(*const (), usize),
+}
 
-impl NoopWaker {
-    fn into_task_waker(self) -> Waker {
-        let rw = RawWaker::new(ptr::null_mut(), &VTABLE);
-        unsafe { Waker::from_raw(rw) }
+impl SharedWaker {
+    unsafe fn as_std_waker(&self) -> Waker {
+        (self.add_ref)(self.ctx, self.task_id);
+
+        let rw = RawWaker::new(self as *const SharedWaker as *const (), &VTABLE);
+
+        Waker::from_raw(rw)
     }
 }
 
-unsafe fn vt_clone(_data: *const ()) -> RawWaker {
-    RawWaker::new(ptr::null_mut(), &VTABLE)
+unsafe fn vt_clone(data: *const ()) -> RawWaker {
+    let s = (data as *const SharedWaker).as_ref().unwrap();
+
+    (s.add_ref)(s.ctx, s.task_id);
+
+    RawWaker::new(data, &VTABLE)
 }
 
-unsafe fn vt_wake(_data: *const ()) {}
+unsafe fn vt_wake(data: *const ()) {
+    vt_wake_by_ref(data);
 
-unsafe fn vt_wake_by_ref(_data: *const ()) {}
+    vt_drop(data);
+}
 
-unsafe fn vt_drop(_data: *const ()) {}
+unsafe fn vt_wake_by_ref(data: *const ()) {
+    let s = (data as *const SharedWaker).as_ref().unwrap();
+
+    (s.wake)(s.ctx, s.task_id);
+}
+
+unsafe fn vt_drop(data: *const ()) {
+    let s = (data as *const SharedWaker).as_ref().unwrap();
+
+    (s.remove_ref)(s.ctx, s.task_id);
+}
+
+struct Task<F> {
+    fut: Option<F>,
+    waker: SharedWaker,
+    waker_refs: usize,
+    awake: bool,
+}
+
+struct Tasks<F> {
+    nodes: Slab<list::Node<Task<F>>>,
+    next: list::List,
+}
+
+pub struct Executor<'r, R, F> {
+    reactor: &'r R,
+    tasks: RefCell<Tasks<F>>,
+}
+
+impl<'r, R, F> Executor<'r, R, F>
+where
+    R: Reactor,
+    F: Future<Output = ()>,
+{
+    pub fn new(reactor: &'r R, tasks_max: usize) -> Self {
+        Self {
+            reactor,
+            tasks: RefCell::new(Tasks {
+                nodes: Slab::with_capacity(tasks_max),
+                next: list::List::default(),
+            }),
+        }
+    }
+
+    pub fn spawn(&self, f: F) -> Result<(), ()> {
+        let tasks = &mut *self.tasks.borrow_mut();
+
+        if tasks.nodes.len() == tasks.nodes.capacity() {
+            return Err(());
+        }
+
+        let entry = tasks.nodes.vacant_entry();
+        let key = entry.key();
+
+        let waker = SharedWaker {
+            ctx: self as *const Executor<R, F> as *const (),
+            task_id: key,
+            add_ref: Self::add_ref,
+            remove_ref: Self::remove_ref,
+            wake: Self::wake,
+        };
+
+        let task = Task {
+            fut: Some(f),
+            waker,
+            waker_refs: 0,
+            awake: true,
+        };
+
+        entry.insert(list::Node::new(task));
+
+        tasks.next.push_back(&mut tasks.nodes, key);
+
+        Ok(())
+    }
+
+    pub fn exec(&self) {
+        loop {
+            loop {
+                let (nkey, task_ptr) = {
+                    let tasks = &mut *self.tasks.borrow_mut();
+
+                    let nkey = match tasks.next.head {
+                        Some(nkey) => nkey,
+                        None => break,
+                    };
+
+                    tasks.next.remove(&mut tasks.nodes, nkey);
+
+                    let task = &mut tasks.nodes[nkey].value;
+
+                    task.awake = false;
+
+                    (nkey, task as *mut Task<F>)
+                };
+
+                // task won't move/drop while this pointer is in use
+                let task = unsafe { task_ptr.as_mut().unwrap() };
+
+                let done = {
+                    let mut p = unsafe { Pin::new_unchecked(task.fut.as_mut().unwrap()) };
+
+                    let w = unsafe { task.waker.as_std_waker() };
+
+                    let mut cx = Context::from_waker(&w);
+
+                    match p.as_mut().poll(&mut cx) {
+                        Poll::Ready(_) => true,
+                        Poll::Pending => false,
+                    }
+                };
+
+                if done {
+                    task.fut = None;
+
+                    let tasks = &mut *self.tasks.borrow_mut();
+
+                    let task = &mut tasks.nodes[nkey].value;
+
+                    assert_eq!(task.waker_refs, 0);
+
+                    tasks.next.remove(&mut tasks.nodes, nkey);
+                    tasks.nodes.remove(nkey);
+                }
+            }
+
+            {
+                let tasks = &*self.tasks.borrow();
+
+                if tasks.nodes.is_empty() {
+                    break;
+                }
+            }
+
+            self.reactor.poll().unwrap();
+        }
+    }
+
+    fn add_ref(ctx: *const (), task_id: usize) {
+        let executor = unsafe { (ctx as *const Executor<R, F>).as_ref().unwrap() };
+
+        let tasks = &mut *executor.tasks.borrow_mut();
+
+        let task = &mut tasks.nodes[task_id].value;
+
+        task.waker_refs += 1;
+    }
+
+    fn remove_ref(ctx: *const (), task_id: usize) {
+        let executor = unsafe { (ctx as *const Executor<R, F>).as_ref().unwrap() };
+
+        let tasks = &mut *executor.tasks.borrow_mut();
+
+        let task = &mut tasks.nodes[task_id].value;
+
+        assert!(task.waker_refs > 0);
+
+        task.waker_refs -= 1;
+    }
+
+    fn wake(ctx: *const (), task_id: usize) {
+        let executor = unsafe { (ctx as *const Executor<R, F>).as_ref().unwrap() };
+
+        let tasks = &mut *executor.tasks.borrow_mut();
+
+        let task = &mut tasks.nodes[task_id].value;
+
+        if !task.awake {
+            task.awake = true;
+
+            tasks.next.remove(&mut tasks.nodes, task_id);
+            tasks.next.push_back(&mut tasks.nodes, task_id);
+        }
+    }
+}
 
 pub struct SelectFromSliceFuture<'a, F> {
     futures: &'a mut [F],
@@ -233,158 +435,42 @@ where
     SelectFromPairFuture { f1, f2 }
 }
 
-pub struct WaitWritableFuture<'a, 'ex, T> {
-    s: &'a mut AsyncSender<'ex, T>,
-}
-
-impl<T> Future for WaitWritableFuture<'_, '_, T> {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-        let f = unsafe { self.get_unchecked_mut() };
-
-        f.s.executor.set_enabled(f.s.reg_key, true);
-
-        let dirty = f.s.executor.is_ready(f.s.reg_key);
-
-        if dirty {
-            f.s.writable.set(f.s.inner.can_send());
-            f.s.executor.set_ready(f.s.reg_key, false);
-        }
-
-        if f.s.writable.get() {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
-        }
-    }
-}
-
-impl<T> Drop for WaitWritableFuture<'_, '_, T> {
-    fn drop(&mut self) {
-        self.s.executor.set_enabled(self.s.reg_key, false);
-    }
-}
-
-pub struct RecvFuture<'a, 'ex, T> {
-    r: &'a mut AsyncReceiver<'ex, T>,
-}
-
-impl<T> Future for RecvFuture<'_, '_, T> {
-    type Output = Result<T, mpsc::RecvError>;
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-        let f = unsafe { self.get_unchecked_mut() };
-
-        f.r.executor.set_enabled(f.r.reg_key, true);
-
-        let ready = f.r.executor.is_ready(f.r.reg_key);
-
-        if !ready {
-            return Poll::Pending;
-        }
-
-        match f.r.inner.try_recv() {
-            Ok(v) => Poll::Ready(Ok(v)),
-            Err(mpsc::TryRecvError::Empty) => {
-                f.r.executor.set_ready(f.r.reg_key, false);
-
-                Poll::Pending
-            }
-            Err(mpsc::TryRecvError::Disconnected) => Poll::Ready(Err(mpsc::RecvError)),
-        }
-    }
-}
-
-impl<T> Drop for RecvFuture<'_, '_, T> {
-    fn drop(&mut self) {
-        self.r.executor.set_enabled(self.r.reg_key, false);
-    }
-}
-
-pub struct AcceptFuture<'a, 'ex> {
-    l: &'a mut AsyncTcpListener<'ex>,
-}
-
-impl Future for AcceptFuture<'_, '_> {
-    type Output = Result<(TcpStream, SocketAddr), io::Error>;
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
-        let f = unsafe { self.get_unchecked_mut() };
-
-        f.l.executor.set_enabled(f.l.reg_key, true);
-
-        let ready = f.l.executor.is_ready(f.l.reg_key);
-
-        if !ready {
-            return Poll::Pending;
-        }
-
-        match f.l.inner.accept() {
-            Ok((stream, peer_addr)) => Poll::Ready(Ok((stream, peer_addr))),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                f.l.executor.set_ready(f.l.reg_key, false);
-
-                Poll::Pending
-            }
-            Err(e) => Poll::Ready(Err(e)),
-        }
-    }
-}
-
-impl Drop for AcceptFuture<'_, '_> {
-    fn drop(&mut self) {
-        self.l.executor.set_enabled(self.l.reg_key, false);
-    }
-}
-
-pub struct AsyncSender<'ex, T> {
-    executor: &'ex Executor,
+pub struct AsyncSender<'r, T> {
     inner: channel::Sender<T>,
-    reg_key: usize,
+    handle: RegistrationHandle<'r>,
     writable: Cell<bool>,
 }
 
-impl<'ex, T> AsyncSender<'ex, T> {
-    pub fn new(s: channel::Sender<T>, executor: &'ex Executor) -> Self {
-        let e = executor;
-
-        let key = e.register();
-
-        e.poll
-            .register(
-                s.get_write_registration(),
-                mio::Token(key),
-                mio::Ready::writable(),
-                mio::PollOpt::edge(),
-            )
+impl<'r, T> AsyncSender<'r, T> {
+    pub fn new(s: channel::Sender<T>, reactor: &'r MioReactor) -> Self {
+        let handle = reactor
+            .register(s.get_write_registration(), mio::Ready::writable())
             .unwrap();
 
         let writable = s.can_send();
 
         // we know the state up front, so ready can start out unset
-        e.set_ready(key, false);
+        handle.set_ready(false);
 
         Self {
-            executor,
             inner: s,
-            reg_key: key,
+            handle,
             writable: Cell::new(writable),
         }
     }
 
     pub fn is_writable(&self) -> bool {
-        let dirty = self.executor.is_ready(self.reg_key);
+        let dirty = self.handle.is_ready();
 
         if dirty {
             self.writable.set(self.inner.can_send());
-            self.executor.set_ready(self.reg_key, false);
+            self.handle.set_ready(false);
         }
 
         self.writable.get()
     }
 
-    pub fn wait_writable<'a>(&'a mut self) -> WaitWritableFuture<'a, 'ex, T> {
+    pub fn wait_writable<'a>(&'a mut self) -> WaitWritableFuture<'a, 'r, T> {
         WaitWritableFuture { s: self }
     }
 
@@ -409,90 +495,143 @@ impl<'ex, T> AsyncSender<'ex, T> {
     }
 }
 
-impl<T> Drop for AsyncSender<'_, T> {
-    fn drop(&mut self) {
-        self.executor.unregister(self.reg_key);
-    }
-}
-
-pub struct AsyncReceiver<'ex, T> {
-    executor: &'ex Executor,
+pub struct AsyncReceiver<'r, T> {
     inner: channel::Receiver<T>,
-    reg_key: usize,
+    handle: RegistrationHandle<'r>,
 }
 
-impl<'ex, T> AsyncReceiver<'ex, T> {
-    pub fn new(r: channel::Receiver<T>, executor: &'ex Executor) -> Self {
-        let e = executor;
-
-        let key = e.register();
-
-        e.poll
-            .register(
-                r.get_read_registration(),
-                mio::Token(key),
-                mio::Ready::readable(),
-                mio::PollOpt::edge(),
-            )
+impl<'r, T> AsyncReceiver<'r, T> {
+    pub fn new(r: channel::Receiver<T>, reactor: &'r MioReactor) -> Self {
+        let handle = reactor
+            .register(r.get_read_registration(), mio::Ready::readable())
             .unwrap();
 
-        e.set_ready(key, true);
+        handle.set_ready(true);
 
-        Self {
-            executor,
-            inner: r,
-            reg_key: key,
-        }
+        Self { inner: r, handle }
     }
 
-    pub fn recv<'a>(&'a mut self) -> RecvFuture<'a, 'ex, T> {
+    pub fn recv<'a>(&'a mut self) -> RecvFuture<'a, 'r, T> {
         RecvFuture { r: self }
     }
 }
 
-impl<T> Drop for AsyncReceiver<'_, T> {
-    fn drop(&mut self) {
-        self.executor.unregister(self.reg_key);
-    }
-}
-
-pub struct AsyncTcpListener<'ex> {
-    executor: &'ex Executor,
+pub struct AsyncTcpListener<'r> {
     inner: TcpListener,
-    reg_key: usize,
+    handle: RegistrationHandle<'r>,
 }
 
-impl<'ex> AsyncTcpListener<'ex> {
-    pub fn new(l: TcpListener, executor: &'ex Executor) -> Self {
-        let e = executor;
+impl<'r> AsyncTcpListener<'r> {
+    pub fn new(l: TcpListener, reactor: &'r MioReactor) -> Self {
+        let handle = reactor.register(&l, mio::Ready::readable()).unwrap();
 
-        let key = e.register();
+        handle.set_ready(true);
 
-        e.poll
-            .register(
-                &l,
-                mio::Token(key),
-                mio::Ready::readable(),
-                mio::PollOpt::edge(),
-            )
-            .unwrap();
-
-        e.set_ready(key, true);
-
-        Self {
-            executor,
-            inner: l,
-            reg_key: key,
-        }
+        Self { inner: l, handle }
     }
 
-    pub fn accept<'a>(&'a mut self) -> AcceptFuture<'a, 'ex> {
+    pub fn accept<'a>(&'a mut self) -> AcceptFuture<'a, 'r> {
         AcceptFuture { l: self }
     }
 }
 
-impl Drop for AsyncTcpListener<'_> {
+pub struct WaitWritableFuture<'a, 'r, T> {
+    s: &'a mut AsyncSender<'r, T>,
+}
+
+impl<T> Future for WaitWritableFuture<'_, '_, T> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = unsafe { self.get_unchecked_mut() };
+
+        f.s.handle.bind_waker(cx.waker().clone());
+
+        let dirty = f.s.handle.is_ready();
+
+        if dirty {
+            f.s.writable.set(f.s.inner.can_send());
+            f.s.handle.set_ready(false);
+        }
+
+        if f.s.writable.get() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+impl<T> Drop for WaitWritableFuture<'_, '_, T> {
     fn drop(&mut self) {
-        self.executor.unregister(self.reg_key);
+        self.s.handle.unbind_waker();
+    }
+}
+
+pub struct RecvFuture<'a, 'r, T> {
+    r: &'a mut AsyncReceiver<'r, T>,
+}
+
+impl<T> Future for RecvFuture<'_, '_, T> {
+    type Output = Result<T, mpsc::RecvError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = unsafe { self.get_unchecked_mut() };
+
+        f.r.handle.bind_waker(cx.waker().clone());
+
+        if !f.r.handle.is_ready() {
+            return Poll::Pending;
+        }
+
+        match f.r.inner.try_recv() {
+            Ok(v) => Poll::Ready(Ok(v)),
+            Err(mpsc::TryRecvError::Empty) => {
+                f.r.handle.set_ready(false);
+
+                Poll::Pending
+            }
+            Err(mpsc::TryRecvError::Disconnected) => Poll::Ready(Err(mpsc::RecvError)),
+        }
+    }
+}
+
+impl<T> Drop for RecvFuture<'_, '_, T> {
+    fn drop(&mut self) {
+        self.r.handle.unbind_waker();
+    }
+}
+
+pub struct AcceptFuture<'a, 'r> {
+    l: &'a mut AsyncTcpListener<'r>,
+}
+
+impl Future for AcceptFuture<'_, '_> {
+    type Output = Result<(TcpStream, SocketAddr), io::Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = unsafe { self.get_unchecked_mut() };
+
+        f.l.handle.bind_waker(cx.waker().clone());
+
+        if !f.l.handle.is_ready() {
+            return Poll::Pending;
+        }
+
+        match f.l.inner.accept() {
+            Ok((stream, peer_addr)) => Poll::Ready(Ok((stream, peer_addr))),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.l.handle.set_ready(false);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
+impl Drop for AcceptFuture<'_, '_> {
+    fn drop(&mut self) {
+        self.l.handle.unbind_waker();
     }
 }

@@ -18,7 +18,7 @@ use crate::arena::recycle_vec;
 use crate::channel;
 use crate::future::{
     select_from_pair, select_from_slice, AcceptFuture, AsyncReceiver, AsyncSender,
-    AsyncTcpListener, Executor, WaitWritableFuture,
+    AsyncTcpListener, Executor, MioReactor, WaitWritableFuture,
 };
 use log::{debug, error};
 use mio;
@@ -26,6 +26,9 @@ use mio::net::{TcpListener, TcpStream};
 use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::thread;
+
+const REACTOR_REGISTRATIONS_MAX: usize = 128;
+const EXECUTOR_TASKS_MAX: usize = 1;
 
 pub struct Listener {
     thread: Option<thread::JoinHandle<()>>,
@@ -40,9 +43,15 @@ impl Listener {
         let (s, r) = channel::channel(1);
 
         let thread = thread::spawn(move || {
-            let executor = Executor::new();
+            let reactor = MioReactor::new(REACTOR_REGISTRATIONS_MAX);
 
-            executor.block_on(Self::run(&executor, r, listeners, senders));
+            let executor = Executor::new(&reactor, EXECUTOR_TASKS_MAX);
+
+            executor
+                .spawn(Self::run(&reactor, r, listeners, senders))
+                .unwrap();
+
+            executor.exec();
         });
 
         Self {
@@ -52,21 +61,21 @@ impl Listener {
     }
 
     async fn run(
-        executor: &Executor,
+        reactor: &MioReactor,
         stop: channel::Receiver<()>,
         listeners: Vec<TcpListener>,
         senders: Vec<channel::Sender<(usize, TcpStream, SocketAddr)>>,
     ) {
-        let mut stop = AsyncReceiver::new(stop, executor);
+        let mut stop = AsyncReceiver::new(stop, reactor);
 
         let mut listeners: Vec<AsyncTcpListener> = listeners
             .into_iter()
-            .map(|l| AsyncTcpListener::new(l, executor))
+            .map(|l| AsyncTcpListener::new(l, reactor))
             .collect();
 
         let mut senders: Vec<AsyncSender<(usize, TcpStream, SocketAddr)>> = senders
             .into_iter()
-            .map(|s| AsyncSender::new(s, executor))
+            .map(|s| AsyncSender::new(s, reactor))
             .collect();
 
         let mut listeners_pos = 0;
