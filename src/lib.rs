@@ -25,7 +25,6 @@ pub mod listener;
 pub mod server;
 pub mod timer;
 pub mod tnetstring;
-pub mod varlenarray;
 pub mod websocket;
 pub mod zhttppacket;
 pub mod zhttpsocket;

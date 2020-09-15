@@ -17,19 +17,18 @@
 use crate::arena;
 use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, WriteVectored, VECTORED_MAX};
 use crate::http1;
-use crate::varlenarray::{VarLenArray64, VarLenStr32};
 use crate::websocket;
 use crate::zhttppacket;
 use crate::zhttpsocket;
+use arrayvec::{ArrayString, ArrayVec};
 use log::debug;
 use std::cmp;
 use std::collections::VecDeque;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::io;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::str;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -377,7 +376,7 @@ enum ServerReqState {
 }
 
 pub struct ServerReqConnection {
-    id: VarLenStr32,
+    id: ArrayString<[u8; 32]>,
     peer_addr: Option<SocketAddr>,
     timeout: Duration,
     state: ServerReqState,
@@ -411,7 +410,7 @@ impl ServerReqConnection {
         body_buf.clear();
 
         Self {
-            id: "".try_into().unwrap(),
+            id: ArrayString::new(),
             peer_addr,
             timeout,
             state: ServerReqState::Ready,
@@ -451,7 +450,7 @@ impl ServerReqConnection {
     }
 
     pub fn start(&mut self, id: &str) {
-        self.id = id.try_into().unwrap();
+        self.id = ArrayString::from_str(id).unwrap();
         self.state = ServerReqState::Active;
     }
 
@@ -946,7 +945,7 @@ enum ServerStreamState {
 }
 
 struct ServerStreamData {
-    id: VarLenStr32,
+    id: ArrayString<[u8; 32]>,
     peer_addr: Option<SocketAddr>,
     client_timeout: Duration,
     state: ServerStreamState,
@@ -956,9 +955,9 @@ struct ServerStreamData {
     cont: [u8; 32],
     cont_len: usize,
     cont_left: usize,
-    to_addr: Option<VarLenArray64<u8>>,
+    to_addr: Option<ArrayVec<[u8; 64]>>,
     websocket: bool,
-    ws_accept: Option<VarLenStr32>, // base64_encode(sha1_hash) = 28 bytes
+    ws_accept: Option<ArrayString<[u8; 28]>>, // base64_encode(sha1_hash) = 28 bytes
     in_seq: u32,
     out_seq: u32,
     in_credits: u32,
@@ -998,7 +997,7 @@ impl ServerStreamConnection {
 
         let mut s = Self {
             d: ServerStreamData {
-                id: "".try_into().unwrap(),
+                id: ArrayString::new(),
                 peer_addr,
                 client_timeout: timeout,
                 state: ServerStreamState::Ready,
@@ -1085,7 +1084,7 @@ impl ServerStreamConnection {
     }
 
     pub fn start(&mut self, id: &str) {
-        self.d.id = id.try_into().unwrap();
+        self.d.id = ArrayString::from_str(id).unwrap();
         self.d.state = ServerStreamState::Active;
     }
 
@@ -1551,8 +1550,7 @@ impl ServerStreamConnection {
 
                         let digest = sha1::Sha1::from(input).digest();
 
-                        // we'll be copying this into a VarLenStr32
-                        let mut output = [0; 32];
+                        let mut output = [0; 28];
 
                         let size = base64::encode_config_slice(
                             &digest.bytes(),
@@ -1562,7 +1560,7 @@ impl ServerStreamConnection {
 
                         let output = str::from_utf8(&output[..size]).unwrap();
 
-                        self.d.ws_accept = Some(VarLenStr32::try_from(output).unwrap());
+                        self.d.ws_accept = Some(ArrayString::from_str(output).unwrap());
                     }
                 }
 
@@ -2051,10 +2049,10 @@ impl ServerStreamConnection {
             return Err(ServerError::BadMessage);
         }
 
-        let addr = match zresp.from.try_into() {
-            Ok(addr) => addr,
-            Err(_) => return Err(ServerError::BadMessage),
-        };
+        let mut addr = ArrayVec::new();
+        if addr.try_extend_from_slice(zresp.from).is_err() {
+            return Err(ServerError::BadMessage);
+        }
 
         self.d.to_addr = Some(addr);
 

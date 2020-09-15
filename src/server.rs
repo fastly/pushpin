@@ -24,9 +24,9 @@ use crate::list;
 use crate::listener::Listener;
 use crate::timer;
 use crate::tnetstring;
-use crate::varlenarray::{VarLenArray64, VarLenStr32};
 use crate::zhttppacket;
 use crate::zhttpsocket;
+use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
 use mio;
 use mio::net::{TcpListener, TcpStream};
@@ -34,12 +34,13 @@ use mio::unix::EventedFd;
 use slab::Slab;
 use std::cmp;
 use std::collections::VecDeque;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::io;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -213,7 +214,7 @@ impl ZhttpSender for zhttpsocket::ClientReqHandle {
 
 struct ClientStreamHandle {
     inner: zhttpsocket::ClientStreamHandle,
-    out: VecDeque<(VarLenArray64<u8>, zmq::Message)>,
+    out: VecDeque<(ArrayVec<[u8; 64]>, zmq::Message)>,
     send_to_allowed: bool,
 }
 
@@ -268,16 +269,14 @@ impl ZhttpSender for ClientStreamHandle {
             return Err(zhttpsocket::SendError::Full(message));
         }
 
-        let addr = match addr.try_into() {
-            Ok(addr) => addr,
-            Err(_) => {
-                return Err(zhttpsocket::SendError::Io(io::Error::from(
-                    io::ErrorKind::InvalidInput,
-                )))
-            }
-        };
+        let mut a = ArrayVec::new();
+        if a.try_extend_from_slice(addr).is_err() {
+            return Err(zhttpsocket::SendError::Io(io::Error::from(
+                io::ErrorKind::InvalidInput,
+            )));
+        }
 
-        self.out.push_back((addr, message));
+        self.out.push_back((a, message));
 
         Ok(())
     }
@@ -302,7 +301,7 @@ enum ZWriteKey {
 }
 
 struct Connection {
-    id: VarLenStr32,
+    id: ArrayString<[u8; 32]>,
     stream: TcpStream,
     conn: ServerConnection,
     want: Want,
@@ -346,7 +345,7 @@ impl Connection {
         };
 
         Self {
-            id: "".try_into().unwrap(),
+            id: ArrayString::new(),
             stream,
             conn,
             want: Want::nothing(),
@@ -370,7 +369,7 @@ impl Connection {
     }
 
     fn start(&mut self, id: &str) {
-        self.id = id.try_into().unwrap();
+        self.id = ArrayString::from_str(id).unwrap();
 
         debug!("conn {}: assigning id", self.id);
 
@@ -567,7 +566,7 @@ impl Worker {
         }
     }
 
-    fn gen_id(id: usize, ckey: usize, next_cid: &mut u32) -> VarLenStr32 {
+    fn gen_id(id: usize, ckey: usize, next_cid: &mut u32) -> ArrayString<[u8; 32]> {
         let mut buf = [0; 32];
         let mut c = io::Cursor::new(&mut buf[..]);
 
@@ -579,7 +578,7 @@ impl Worker {
 
         *next_cid += 1;
 
-        s.try_into().unwrap()
+        ArrayString::from_str(s).unwrap()
     }
 
     fn flush_send_to(
@@ -714,7 +713,7 @@ impl Worker {
         let ka_batch = (stream_maxconn + (KEEP_ALIVE_BATCHES - 1)) / KEEP_ALIVE_BATCHES;
 
         let mut ka_nodes: Slab<list::Node<usize>> = Slab::with_capacity(ka_batch);
-        let mut ka_addrs: Vec<(VarLenArray64<u8>, list::List)> = Vec::with_capacity(ka_batch);
+        let mut ka_addrs: Vec<(ArrayVec<[u8; 64]>, list::List)> = Vec::with_capacity(ka_batch);
         let mut ka_ids_mem: Vec<zhttppacket::Id> = Vec::with_capacity(ka_batch);
 
         let mut zwrite_nodes: Slab<list::Node<ZWrite>> = Slab::with_capacity(maxconn + 1);
@@ -1304,9 +1303,10 @@ impl Worker {
 
                         if pos == ka_addrs.len() {
                             // connection limits to_addr to 64 so this is guaranteed to succeed
-                            let addr = addr.try_into().unwrap();
+                            let mut a = ArrayVec::new();
+                            a.try_extend_from_slice(addr).unwrap();
 
-                            ka_addrs.push((addr, list::List::default()));
+                            ka_addrs.push((a, list::List::default()));
                         }
 
                         let node = ka_nodes.insert(list::Node::new(key));
@@ -1503,9 +1503,10 @@ impl Worker {
 
                     if pos == ka_addrs.len() {
                         // connection limits to_addr to 64 so this is guaranteed to succeed
-                        let addr = addr.try_into().unwrap();
+                        let mut a = ArrayVec::new();
+                        a.try_extend_from_slice(addr).unwrap();
 
-                        ka_addrs.push((addr, list::List::default()));
+                        ka_addrs.push((a, list::List::default()));
                     }
 
                     let node = ka_nodes.insert(list::Node::new(key));

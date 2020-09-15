@@ -18,17 +18,17 @@ use crate::arena;
 use crate::channel;
 use crate::list;
 use crate::tnetstring;
-use crate::varlenarray::{VarLenArray64, VarLenStr8};
 use crate::zhttppacket::{Id, Response, ResponseScratch};
+use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, log_enabled, trace, warn};
 use mio::unix::EventedFd;
 use slab::Slab;
-use std::convert::TryInto;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::str;
+use std::str::FromStr;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -680,29 +680,29 @@ struct ReqPipeEnd {
 struct StreamPipeEnd {
     sender: channel::Sender<arena::Rc<zmq::Message>>,
     receiver_any: channel::Receiver<zmq::Message>,
-    receiver_addr: channel::Receiver<(VarLenArray64<u8>, zmq::Message)>,
+    receiver_addr: channel::Receiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
 }
 
 enum ControlRequest {
     Stop,
     SetClientReq(Vec<SpecInfo>),
     SetClientStream(Vec<SpecInfo>, Vec<SpecInfo>, Vec<SpecInfo>),
-    AddClientReqHandle(ReqPipeEnd, VarLenStr8),
-    AddClientStreamHandle(StreamPipeEnd, VarLenStr8),
+    AddClientReqHandle(ReqPipeEnd, ArrayString<[u8; 8]>),
+    AddClientStreamHandle(StreamPipeEnd, ArrayString<[u8; 8]>),
 }
 
 type ControlResponse = Result<(), String>;
 
 struct ReqPipe {
     pe: ReqPipeEnd,
-    filter: VarLenStr8,
+    filter: ArrayString<[u8; 8]>,
     valid: bool,
     readable: bool,
 }
 
 struct StreamPipe {
     pe: StreamPipeEnd,
-    filter: VarLenStr8,
+    filter: ArrayString<[u8; 8]>,
     valid: bool,
     readable_any: bool,
     readable_addr: bool,
@@ -727,7 +727,7 @@ impl ReqHandles {
         self.nodes.len()
     }
 
-    fn add<F>(&mut self, pe: ReqPipeEnd, filter: VarLenStr8, f: F)
+    fn add<F>(&mut self, pe: ReqPipeEnd, filter: ArrayString<[u8; 8]>, f: F)
     where
         F: Fn(&ReqPipe, usize),
     {
@@ -893,7 +893,7 @@ impl StreamHandles {
         self.nodes.len()
     }
 
-    fn add<F>(&mut self, pe: StreamPipeEnd, filter: VarLenStr8, f: F)
+    fn add<F>(&mut self, pe: StreamPipeEnd, filter: ArrayString<[u8; 8]>, f: F)
     where
         F: Fn(&StreamPipe, usize),
     {
@@ -1011,7 +1011,7 @@ impl StreamHandles {
         None
     }
 
-    fn recv_addr(&mut self) -> Option<(VarLenArray64<u8>, zmq::Message)> {
+    fn recv_addr(&mut self) -> Option<(ArrayVec<[u8; 64]>, zmq::Message)> {
         if self.cur.is_none() {
             return None;
         }
@@ -1167,7 +1167,7 @@ impl SocketManager {
             receiver: r2,
         };
 
-        let prefix = str::from_utf8(id_prefix).unwrap().try_into().unwrap();
+        let prefix = ArrayString::from_str(str::from_utf8(id_prefix).unwrap()).unwrap();
 
         self.control_send(ControlRequest::AddClientReqHandle(pe, prefix));
 
@@ -1188,7 +1188,7 @@ impl SocketManager {
             receiver_addr: r3,
         };
 
-        let prefix = str::from_utf8(id_prefix).unwrap().try_into().unwrap();
+        let prefix = ArrayString::from_str(str::from_utf8(id_prefix).unwrap()).unwrap();
 
         self.control_send(ControlRequest::AddClientStreamHandle(pe, prefix));
 
@@ -1819,7 +1819,7 @@ impl ClientReqHandle {
 
 pub struct ClientStreamHandle {
     sender_any: channel::Sender<zmq::Message>,
-    sender_addr: channel::Sender<(VarLenArray64<u8>, zmq::Message)>,
+    sender_addr: channel::Sender<(ArrayVec<[u8; 64]>, zmq::Message)>,
     receiver: channel::Receiver<arena::Rc<zmq::Message>>,
 }
 
@@ -1857,12 +1857,12 @@ impl ClientStreamHandle {
     }
 
     pub fn send_to_addr(&mut self, addr: &[u8], msg: zmq::Message) -> Result<(), SendError> {
-        let addr = match addr.try_into() {
-            Ok(addr) => addr,
-            Err(_) => return Err(SendError::Io(io::Error::from(io::ErrorKind::InvalidInput))),
-        };
+        let mut a = ArrayVec::new();
+        if a.try_extend_from_slice(addr).is_err() {
+            return Err(SendError::Io(io::Error::from(io::ErrorKind::InvalidInput)));
+        }
 
-        match self.sender_addr.try_send((addr, msg)) {
+        match self.sender_addr.try_send((a, msg)) {
             Ok(_) => Ok(()),
             Err(mpsc::TrySendError::Full((_, msg))) => Err(SendError::Full(msg)),
             Err(mpsc::TrySendError::Disconnected(_)) => {

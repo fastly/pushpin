@@ -15,6 +15,7 @@ panic = "abort"
 panic = "abort"
 
 [dependencies]
+arrayvec = "0.5"
 base64 = "0.12"
 clap = { version = "2.33", features = ["wrap_help"] }
 httparse = "1.3"
