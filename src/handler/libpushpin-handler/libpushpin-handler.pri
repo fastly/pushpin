@@ -30,6 +30,7 @@ HEADERS += \
 	$$SRC_DIR/idformat.h \
 	$$SRC_DIR/httpsession.h \
 	$$SRC_DIR/httpsessionupdatemanager.h \
+	$$SRC_DIR/wssession.h \
 	$$SRC_DIR/publishlastids.h \
 	$$SRC_DIR/controlrequest.h \
 	$$SRC_DIR/conncheckworker.h \
@@ -56,6 +57,7 @@ SOURCES += \
 	$$SRC_DIR/idformat.cpp \
 	$$SRC_DIR/httpsession.cpp \
 	$$SRC_DIR/httpsessionupdatemanager.cpp \
+	$$SRC_DIR/wssession.cpp \
 	$$SRC_DIR/publishlastids.cpp \
 	$$SRC_DIR/controlrequest.cpp \
 	$$SRC_DIR/conncheckworker.cpp \
