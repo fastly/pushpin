@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Fanout, Inc.
+ * Copyright (C) 2017-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,25 +31,55 @@
 #include "zrpcrequest.h"
 #include "controlrequest.h"
 #include "statsmanager.h"
+#include "wssession.h"
 
-RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QObject *parent) :
+RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel, QObject *parent) :
 	Deferred(parent),
+	ignoreErrors_(false),
+	proxyControlClient_(proxyControlClient),
 	req_(req)
 {
 	req_->setParent(this);
 
 	QVariantHash args = req_->args();
 
-	if(!args.contains("cid") || args["cid"].type() != QVariant::ByteArray)
+	if(args.contains("cid"))
+	{
+		if(args["cid"].type() != QVariant::ByteArray)
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		cids_ += QString::fromUtf8(args["cid"].toByteArray());
+
+		refreshNextCid();
+	}
+	else if(args.contains("channel"))
+	{
+		if(args["channel"].type() != QVariant::ByteArray)
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		QString channel = QString::fromUtf8(args["channel"].toByteArray());
+
+		QSet<WsSession*> wsbc = wsSessionsByChannel->value(channel);
+		foreach(WsSession *s, wsbc)
+		{
+			cids_ += s->cid;
+		}
+
+		ignoreErrors_ = true;
+
+		refreshNextCid();
+	}
+	else
 	{
 		respondError("bad-request");
 		return;
 	}
-
-	QByteArray cid = args["cid"].toByteArray();
-
-	Deferred *d = ControlRequest::refresh(proxyControlClient, cid, this);
-	connect(d, &Deferred::finished, this, &RefreshWorker::proxyRefresh_finished);
 }
 
 void RefreshWorker::respondError(const QByteArray &condition)
@@ -58,12 +88,24 @@ void RefreshWorker::respondError(const QByteArray &condition)
 	setFinished(true);
 }
 
-void RefreshWorker::proxyRefresh_finished(const DeferredResult &result)
+void RefreshWorker::refreshNextCid()
 {
-	if(result.success)
+	if(cids_.isEmpty())
 	{
 		req_->respond();
 		setFinished(true);
+		return;
+	}
+
+	Deferred *d = ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8(), this);
+	connect(d, &Deferred::finished, this, &RefreshWorker::proxyRefresh_finished);
+}
+
+void RefreshWorker::proxyRefresh_finished(const DeferredResult &result)
+{
+	if(result.success || ignoreErrors_)
+	{
+		refreshNextCid();
 	}
 	else
 	{

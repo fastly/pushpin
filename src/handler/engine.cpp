@@ -2092,7 +2092,7 @@ private slots:
 		}
 		else if(req->method() == "refresh")
 		{
-			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, this);
+			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
 			connect(w, &RefreshWorker::finished, this, &Private::deferred_finished);
 			deferreds += w;
 		}

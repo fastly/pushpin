@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Fanout, Inc.
+ * Copyright (C) 2017-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,22 +30,29 @@
 #define REFRESHWORKER_H
 
 #include <QByteArray>
+#include <QHash>
+#include <QSet>
 #include "deferred.h"
 
 class ZrpcRequest;
 class ZrpcManager;
 class StatsManager;
+class WsSession;
 
 class RefreshWorker : public Deferred
 {
 	Q_OBJECT
 
 public:
-	RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QObject *parent = 0);
+	RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel, QObject *parent = 0);
 
 private:
+	QStringList cids_;
+	bool ignoreErrors_;
+	ZrpcManager *proxyControlClient_;
 	ZrpcRequest *req_;
 
+	void refreshNextCid();
 	void respondError(const QByteArray &condition);
 
 private slots:
