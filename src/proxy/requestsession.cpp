@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2012-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -246,8 +246,14 @@ public:
 
 		if(stats && connectionRegistered)
 		{
+			QByteArray cid = ridToString(rid);
+
+			// refresh before remove, to ensure transition
+			if(accepted)
+				stats->refreshConnection(cid);
+
 			// linger if accepted
-			stats->removeConnection(ridToString(rid), accepted);
+			stats->removeConnection(cid, accepted);
 		}
 
 		state = Stopped;
@@ -404,7 +410,7 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, true);
+			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
 			stats->addActivity(route.id);
 		}
 	}

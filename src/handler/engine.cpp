@@ -2557,10 +2557,13 @@ private slots:
 			}
 
 			// track proxy connections for reporting
-			stats->processExternalPacket(p);
+			bool localReplaced = stats->processExternalPacket(p);
 
-			// forward the packet. this will stamp the from field and keep the rest
-			stats->sendPacket(p);
+			if(!localReplaced)
+			{
+				// forward the packet. this will stamp the from field and keep the rest
+				stats->sendPacket(p);
+			}
 
 			// update session
 			if(stateClient && !sid.isEmpty() && p.type == StatsPacket::Connected)

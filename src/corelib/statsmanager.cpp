@@ -984,6 +984,37 @@ void StatsManager::addMessage(const QString &channel, const QString &itemId, con
 
 void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet)
 {
+	qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+	bool replacing = false;
+	qint64 lastReport = now;
+
+	if(d->reportInterval > 0)
+	{
+		// check if this connection should replace a lingering external one
+		// note: this iterates over all the known external sources, which at
+		//   at the time of this writing is almost certainly just 1 (a single
+		//   pushpin-proxy source).
+		QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo*> > it(d->externalConnectionInfoByFrom);
+		while(it.hasNext())
+		{
+			it.next();
+			const QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = it.value();
+
+			Private::ConnectionInfo *other = extConnectionInfoById.value(id);
+			if(other)
+			{
+				replacing = true;
+				lastReport = other->lastReport;
+
+				d->removeExternalConnection(other);
+				delete other;
+
+				break;
+			}
+		}
+	}
+
 	// if we already had an entry, silently overwrite it. this can
 	//   happen if we sent an accepted connection off to the handler,
 	//   kept it lingering in our table, and then the handler passed
@@ -991,11 +1022,12 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 	Private::ConnectionInfo *c = d->connectionInfoById.value(id);
 	if(c)
 	{
+		replacing = true;
+		lastReport = c->lastReport;
+
 		d->removeConnection(c);
 		delete c;
 	}
-
-	qint64 now = QDateTime::currentMSecsSinceEpoch();
 
 	c = new Private::ConnectionInfo;
 	c->id = id;
@@ -1004,32 +1036,11 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 	c->peerAddress = peerAddress;
 	c->ssl = ssl;
 	c->lastRefresh = now;
-	c->lastReport = now; // start counting minutes from current time
+	c->lastReport = lastReport;
 	d->insertConnection(c);
 
 	if(d->reportInterval > 0)
 	{
-		// check if this connection should replace a lingering external one
-		// note: this iterates over all the known external sources, which at
-		//   at the time of this writing is almost certainly just 1 (a single
-		//   pushpin-proxy source).
-		bool replacing = false;
-		QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo*> > it(d->externalConnectionInfoByFrom);
-		while(it.hasNext())
-		{
-			it.next();
-			const QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = it.value();
-
-			Private::ConnectionInfo *other = extConnectionInfoById.value(c->id);
-			if(other)
-			{
-				replacing = true;
-				d->removeExternalConnection(other);
-				delete other;
-				break;
-			}
-		}
-
 		d->updateConnectionsMax(c->routeId, now);
 
 		// only count a minute if we weren't replacing
@@ -1218,22 +1229,45 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 	report->lastUpdate = QDateTime::currentMSecsSinceEpoch();
 }
 
-bool StatsManager::checkConnection(const QByteArray &id)
+bool StatsManager::checkConnection(const QByteArray &id) const
 {
 	return d->connectionInfoById.contains(id);
 }
 
-void StatsManager::processExternalPacket(const StatsPacket &packet)
+bool StatsManager::processExternalPacket(const StatsPacket &packet)
 {
 	if(d->reportInterval <= 0)
-		return;
+		return false;
 
 	if(packet.type != StatsPacket::Connected && packet.type != StatsPacket::Disconnected)
-		return;
+		return false;
 
-	// can't add an external connection with same ID as local
-	if(packet.type == StatsPacket::Connected && d->connectionInfoById.contains(packet.connectionId))
-		return;
+	qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+	bool replacing = false;
+	qint64 lastReport = now;
+
+	if(packet.type == StatsPacket::Connected)
+	{
+		// is there a local connection with the same ID?
+		Private::ConnectionInfo *c = d->connectionInfoById.value(packet.connectionId);
+		if(c)
+		{
+			// if there is a non-lingering local connection, ignore the packet
+			if(!c->linger)
+			{
+				return false;
+			}
+
+			// otherwise, remove local connection and it will be replaced with external
+
+			replacing = true;
+			lastReport = c->lastReport;
+
+			d->removeConnection(c);
+			delete c;
+		}
+	}
 
 	// if the connection exists under a different from address, remove it.
 	// note: this iterates over all the known external sources, which at
@@ -1261,8 +1295,6 @@ void StatsManager::processExternalPacket(const StatsPacket &packet)
 		delete c;
 	}
 
-	qint64 now = QDateTime::currentMSecsSinceEpoch();
-
 	QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = d->externalConnectionInfoByFrom[packet.from];
 
 	if(packet.type == StatsPacket::Connected)
@@ -1277,15 +1309,19 @@ void StatsManager::processExternalPacket(const StatsPacket &packet)
 			c->type = packet.connectionType == StatsPacket::Http ? Http : WebSocket;
 			c->peerAddress = packet.peerAddress;
 			c->ssl = packet.ssl;
-			c->lastReport = now;
+			c->lastReport = lastReport;
 			c->from = packet.from;
 			c->lastActive = now;
 			d->insertExternalConnection(c);
 
 			d->updateConnectionsMax(c->routeId, now);
 
-			Private::Report *report = d->getOrCreateReport(c->routeId);
-			++(report->connectionsMinutes); // minutes are rounded up so count one immediately
+			// only count a minute if we weren't replacing
+			if(!replacing)
+			{
+				Private::Report *report = d->getOrCreateReport(c->routeId);
+				++(report->connectionsMinutes); // minutes are rounded up so count one immediately
+			}
 		}
 		else
 		{
@@ -1302,17 +1338,19 @@ void StatsManager::processExternalPacket(const StatsPacket &packet)
 	else // Disconnected
 	{
 		Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
-		if(!c)
-			return;
+		if(c)
+		{
+			QByteArray routeId = c->routeId;
 
-		QByteArray routeId = c->routeId;
+			d->updateConnectionsMinutes(c, now);
+			d->removeExternalConnection(c);
+			delete c;
 
-		d->updateConnectionsMinutes(c, now);
-		d->removeExternalConnection(c);
-		delete c;
-
-		d->updateConnectionsMax(routeId, now);
+			d->updateConnectionsMax(routeId, now);
+		}
 	}
+
+	return replacing;
 }
 
 void StatsManager::sendPacket(const StatsPacket &packet)

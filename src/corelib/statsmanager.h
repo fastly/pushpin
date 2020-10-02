@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -85,10 +85,10 @@ public:
 	void addMessageReceived(const QByteArray &routeId, int blocks = -1);
 	void addMessageSent(const QByteArray &routeId, const QString &transport, int blocks = -1);
 
-	bool checkConnection(const QByteArray &id);
+	bool checkConnection(const QByteArray &id) const;
 
-	// for reporting
-	void processExternalPacket(const StatsPacket &packet);
+	// for reporting. return true if local connection was replaced
+	bool processExternalPacket(const StatsPacket &packet);
 
 	// directly send, for proxy->handler passthrough
 	void sendPacket(const StatsPacket &packet);
