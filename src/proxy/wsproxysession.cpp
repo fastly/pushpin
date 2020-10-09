@@ -999,7 +999,7 @@ private slots:
 		// if we have no socket to write to, say the data was written anyway.
 		//   this is not quite correct but better than leaving the send event
 		//   dangling
-		if(!inSock)
+		if(!inSock || inSock->state() != WebSocket::Connected)
 		{
 			wsControl->sendEventWritten();
 			return;
