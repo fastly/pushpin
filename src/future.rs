@@ -376,10 +376,8 @@ where
 {
     type Output = (usize, F::Output);
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let s = unsafe { self.get_unchecked_mut() };
-
-        for (i, f) in s.futures.iter_mut().enumerate() {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        for (i, f) in self.futures.iter_mut().enumerate() {
             let p = unsafe { Pin::new_unchecked(f) };
 
             if let Poll::Ready(v) = p.poll(cx) {
@@ -410,16 +408,16 @@ where
 {
     type Output = (Option<F1::Output>, Option<F2::Output>);
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let s = unsafe { self.get_unchecked_mut() };
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f1 = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.f1) };
 
-        let p = unsafe { Pin::new_unchecked((&mut s.f1 as *mut F1).as_mut().unwrap()) };
-        if let Poll::Ready(v) = p.poll(cx) {
+        if let Poll::Ready(v) = f1.poll(cx) {
             return Poll::Ready((Some(v), None));
         }
 
-        let p = unsafe { Pin::new_unchecked((&mut s.f2 as *mut F2).as_mut().unwrap()) };
-        if let Poll::Ready(v) = p.poll(cx) {
+        let f2 = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.f2) };
+
+        if let Poll::Ready(v) = f2.poll(cx) {
             return Poll::Ready((None, Some(v)));
         }
 
@@ -542,8 +540,8 @@ pub struct WaitWritableFuture<'a, 'r, T> {
 impl<T> Future for WaitWritableFuture<'_, '_, T> {
     type Output = ();
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = unsafe { self.get_unchecked_mut() };
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
 
         f.s.handle.bind_waker(cx.waker().clone());
 
@@ -575,8 +573,8 @@ pub struct RecvFuture<'a, 'r, T> {
 impl<T> Future for RecvFuture<'_, '_, T> {
     type Output = Result<T, mpsc::RecvError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = unsafe { self.get_unchecked_mut() };
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
 
         f.r.handle.bind_waker(cx.waker().clone());
 
@@ -609,8 +607,8 @@ pub struct AcceptFuture<'a, 'r> {
 impl Future for AcceptFuture<'_, '_> {
     type Output = Result<(TcpStream, SocketAddr), io::Error>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = unsafe { self.get_unchecked_mut() };
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
 
         f.l.handle.bind_waker(cx.waker().clone());
 
