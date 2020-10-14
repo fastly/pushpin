@@ -202,27 +202,26 @@ unsafe fn vt_drop(data: *const ()) {
     (s.remove_ref)(s.ctx, s.task_id);
 }
 
-struct Task<F> {
-    fut: Option<F>,
+struct Task<'r> {
+    fut: Option<Pin<Box<dyn Future<Output = ()> + 'r>>>,
     waker: SharedWaker,
     waker_refs: usize,
     awake: bool,
 }
 
-struct Tasks<F> {
-    nodes: Slab<list::Node<Task<F>>>,
+struct Tasks<'r> {
+    nodes: Slab<list::Node<Task<'r>>>,
     next: list::List,
 }
 
-pub struct Executor<'r, R, F> {
+pub struct Executor<'r, R> {
     reactor: &'r R,
-    tasks: RefCell<Tasks<F>>,
+    tasks: RefCell<Tasks<'r>>,
 }
 
-impl<'r, R, F> Executor<'r, R, F>
+impl<'r, R> Executor<'r, R>
 where
     R: Reactor,
-    F: Future<Output = ()>,
 {
     pub fn new(reactor: &'r R, tasks_max: usize) -> Self {
         Self {
@@ -234,7 +233,10 @@ where
         }
     }
 
-    pub fn spawn(&self, f: F) -> Result<(), ()> {
+    pub fn spawn<F>(&self, f: F) -> Result<(), ()>
+    where
+        F: Future<Output = ()> + 'r,
+    {
         let tasks = &mut *self.tasks.borrow_mut();
 
         if tasks.nodes.len() == tasks.nodes.capacity() {
@@ -245,7 +247,7 @@ where
         let key = entry.key();
 
         let waker = SharedWaker {
-            ctx: self as *const Executor<R, F> as *const (),
+            ctx: self as *const Executor<R> as *const (),
             task_id: key,
             add_ref: Self::add_ref,
             remove_ref: Self::remove_ref,
@@ -253,7 +255,7 @@ where
         };
 
         let task = Task {
-            fut: Some(f),
+            fut: Some(Box::pin(f)),
             waker,
             waker_refs: 0,
             awake: true,
@@ -283,20 +285,20 @@ where
 
                     task.awake = false;
 
-                    (nkey, task as *mut Task<F>)
+                    (nkey, task as *mut Task)
                 };
 
                 // task won't move/drop while this pointer is in use
-                let task = unsafe { task_ptr.as_mut().unwrap() };
+                let task: &mut Task = unsafe { task_ptr.as_mut().unwrap() };
 
                 let done = {
-                    let mut p = unsafe { Pin::new_unchecked(task.fut.as_mut().unwrap()) };
+                    let f: Pin<&mut dyn Future<Output = ()>> = task.fut.as_mut().unwrap().as_mut();
 
                     let w = unsafe { task.waker.as_std_waker() };
 
                     let mut cx = Context::from_waker(&w);
 
-                    match p.as_mut().poll(&mut cx) {
+                    match f.poll(&mut cx) {
                         Poll::Ready(_) => true,
                         Poll::Pending => false,
                     }
@@ -329,7 +331,7 @@ where
     }
 
     fn add_ref(ctx: *const (), task_id: usize) {
-        let executor = unsafe { (ctx as *const Executor<R, F>).as_ref().unwrap() };
+        let executor = unsafe { (ctx as *const Executor<R>).as_ref().unwrap() };
 
         let tasks = &mut *executor.tasks.borrow_mut();
 
@@ -339,7 +341,7 @@ where
     }
 
     fn remove_ref(ctx: *const (), task_id: usize) {
-        let executor = unsafe { (ctx as *const Executor<R, F>).as_ref().unwrap() };
+        let executor = unsafe { (ctx as *const Executor<R>).as_ref().unwrap() };
 
         let tasks = &mut *executor.tasks.borrow_mut();
 
@@ -351,7 +353,7 @@ where
     }
 
     fn wake(ctx: *const (), task_id: usize) {
-        let executor = unsafe { (ctx as *const Executor<R, F>).as_ref().unwrap() };
+        let executor = unsafe { (ctx as *const Executor<R>).as_ref().unwrap() };
 
         let tasks = &mut *executor.tasks.borrow_mut();
 
