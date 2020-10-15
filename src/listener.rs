@@ -45,13 +45,13 @@ impl Listener {
         let thread = thread::spawn(move || {
             let reactor = MioReactor::new(REACTOR_REGISTRATIONS_MAX);
 
-            let executor = Executor::new(&reactor, EXECUTOR_TASKS_MAX);
+            let executor = Executor::new(EXECUTOR_TASKS_MAX);
 
             executor
                 .spawn(Self::run(&reactor, r, listeners, senders))
                 .unwrap();
 
-            executor.exec();
+            executor.exec(&reactor).unwrap();
         });
 
         Self {
