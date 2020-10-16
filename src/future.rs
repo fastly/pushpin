@@ -24,6 +24,7 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
@@ -31,12 +32,12 @@ pub trait Reactor {
     fn poll(&self) -> Result<(), io::Error>;
 }
 
-pub struct RegistrationHandle<'a> {
-    reactor: &'a MioReactor,
+pub struct RegistrationHandle {
+    reactor: Rc<MioReactor>,
     key: usize,
 }
 
-impl RegistrationHandle<'_> {
+impl RegistrationHandle {
     fn is_ready(&self) -> bool {
         let data = &*self.reactor.data.borrow();
 
@@ -70,7 +71,7 @@ impl RegistrationHandle<'_> {
     }
 }
 
-impl Drop for RegistrationHandle<'_> {
+impl Drop for RegistrationHandle {
     fn drop(&mut self) {
         let data = &mut *self.reactor.data.borrow_mut();
 
@@ -106,11 +107,15 @@ impl MioReactor {
         }
     }
 
-    fn register<E>(&self, handle: &E, interest: mio::Ready) -> Result<RegistrationHandle, io::Error>
+    fn register<E>(
+        reactor: &Rc<MioReactor>,
+        handle: &E,
+        interest: mio::Ready,
+    ) -> Result<RegistrationHandle, io::Error>
     where
         E: mio::Evented + ?Sized,
     {
-        let data = &mut *self.data.borrow_mut();
+        let data = &mut *reactor.data.borrow_mut();
 
         if data.registrations.len() == data.registrations.capacity() {
             return Err(io::Error::from(io::ErrorKind::WriteZero));
@@ -121,16 +126,20 @@ impl MioReactor {
             waker: None,
         });
 
-        if let Err(e) = self
-            .poll
-            .register(handle, mio::Token(key), interest, mio::PollOpt::edge())
+        if let Err(e) =
+            reactor
+                .poll
+                .register(handle, mio::Token(key), interest, mio::PollOpt::edge())
         {
             data.registrations.remove(key);
 
             return Err(e);
         }
 
-        Ok(RegistrationHandle { reactor: self, key })
+        Ok(RegistrationHandle {
+            reactor: Rc::clone(reactor),
+            key,
+        })
     }
 }
 
@@ -434,17 +443,17 @@ where
     SelectFromPairFuture { f1, f2 }
 }
 
-pub struct AsyncSender<'r, T> {
+pub struct AsyncSender<T> {
     inner: channel::Sender<T>,
-    handle: RegistrationHandle<'r>,
+    handle: RegistrationHandle,
     writable: Cell<bool>,
 }
 
-impl<'r, T> AsyncSender<'r, T> {
-    pub fn new(s: channel::Sender<T>, reactor: &'r MioReactor) -> Self {
-        let handle = reactor
-            .register(s.get_write_registration(), mio::Ready::writable())
-            .unwrap();
+impl<T> AsyncSender<T> {
+    pub fn new(s: channel::Sender<T>, reactor: &Rc<MioReactor>) -> Self {
+        let handle =
+            MioReactor::register(reactor, s.get_write_registration(), mio::Ready::writable())
+                .unwrap();
 
         let writable = s.can_send();
 
@@ -469,7 +478,7 @@ impl<'r, T> AsyncSender<'r, T> {
         self.writable.get()
     }
 
-    pub fn wait_writable<'a>(&'a mut self) -> WaitWritableFuture<'a, 'r, T> {
+    pub fn wait_writable<'a>(&'a mut self) -> WaitWritableFuture<'a, T> {
         WaitWritableFuture { s: self }
     }
 
@@ -494,51 +503,51 @@ impl<'r, T> AsyncSender<'r, T> {
     }
 }
 
-pub struct AsyncReceiver<'r, T> {
+pub struct AsyncReceiver<T> {
     inner: channel::Receiver<T>,
-    handle: RegistrationHandle<'r>,
+    handle: RegistrationHandle,
 }
 
-impl<'r, T> AsyncReceiver<'r, T> {
-    pub fn new(r: channel::Receiver<T>, reactor: &'r MioReactor) -> Self {
-        let handle = reactor
-            .register(r.get_read_registration(), mio::Ready::readable())
-            .unwrap();
+impl<T> AsyncReceiver<T> {
+    pub fn new(r: channel::Receiver<T>, reactor: &Rc<MioReactor>) -> Self {
+        let handle =
+            MioReactor::register(reactor, r.get_read_registration(), mio::Ready::readable())
+                .unwrap();
 
         handle.set_ready(true);
 
         Self { inner: r, handle }
     }
 
-    pub fn recv<'a>(&'a mut self) -> RecvFuture<'a, 'r, T> {
+    pub fn recv<'a>(&'a mut self) -> RecvFuture<'a, T> {
         RecvFuture { r: self }
     }
 }
 
-pub struct AsyncTcpListener<'r> {
+pub struct AsyncTcpListener {
     inner: TcpListener,
-    handle: RegistrationHandle<'r>,
+    handle: RegistrationHandle,
 }
 
-impl<'r> AsyncTcpListener<'r> {
-    pub fn new(l: TcpListener, reactor: &'r MioReactor) -> Self {
-        let handle = reactor.register(&l, mio::Ready::readable()).unwrap();
+impl AsyncTcpListener {
+    pub fn new(l: TcpListener, reactor: &Rc<MioReactor>) -> Self {
+        let handle = MioReactor::register(reactor, &l, mio::Ready::readable()).unwrap();
 
         handle.set_ready(true);
 
         Self { inner: l, handle }
     }
 
-    pub fn accept<'a>(&'a mut self) -> AcceptFuture<'a, 'r> {
+    pub fn accept<'a>(&'a mut self) -> AcceptFuture<'a> {
         AcceptFuture { l: self }
     }
 }
 
-pub struct WaitWritableFuture<'a, 'r, T> {
-    s: &'a mut AsyncSender<'r, T>,
+pub struct WaitWritableFuture<'a, T> {
+    s: &'a mut AsyncSender<T>,
 }
 
-impl<T> Future for WaitWritableFuture<'_, '_, T> {
+impl<T> Future for WaitWritableFuture<'_, T> {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -561,17 +570,17 @@ impl<T> Future for WaitWritableFuture<'_, '_, T> {
     }
 }
 
-impl<T> Drop for WaitWritableFuture<'_, '_, T> {
+impl<T> Drop for WaitWritableFuture<'_, T> {
     fn drop(&mut self) {
         self.s.handle.unbind_waker();
     }
 }
 
-pub struct RecvFuture<'a, 'r, T> {
-    r: &'a mut AsyncReceiver<'r, T>,
+pub struct RecvFuture<'a, T> {
+    r: &'a mut AsyncReceiver<T>,
 }
 
-impl<T> Future for RecvFuture<'_, '_, T> {
+impl<T> Future for RecvFuture<'_, T> {
     type Output = Result<T, mpsc::RecvError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -595,17 +604,17 @@ impl<T> Future for RecvFuture<'_, '_, T> {
     }
 }
 
-impl<T> Drop for RecvFuture<'_, '_, T> {
+impl<T> Drop for RecvFuture<'_, T> {
     fn drop(&mut self) {
         self.r.handle.unbind_waker();
     }
 }
 
-pub struct AcceptFuture<'a, 'r> {
-    l: &'a mut AsyncTcpListener<'r>,
+pub struct AcceptFuture<'a> {
+    l: &'a mut AsyncTcpListener,
 }
 
-impl Future for AcceptFuture<'_, '_> {
+impl Future for AcceptFuture<'_> {
     type Output = Result<(TcpStream, SocketAddr), io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -629,7 +638,7 @@ impl Future for AcceptFuture<'_, '_> {
     }
 }
 
-impl Drop for AcceptFuture<'_, '_> {
+impl Drop for AcceptFuture<'_> {
     fn drop(&mut self) {
         self.l.handle.unbind_waker();
     }

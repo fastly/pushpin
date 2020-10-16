@@ -24,6 +24,7 @@ use log::{debug, error};
 use mio;
 use mio::net::{TcpListener, TcpStream};
 use std::net::SocketAddr;
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 
@@ -43,15 +44,15 @@ impl Listener {
         let (s, r) = channel::channel(1);
 
         let thread = thread::spawn(move || {
-            let reactor = MioReactor::new(REACTOR_REGISTRATIONS_MAX);
+            let reactor = Rc::new(MioReactor::new(REACTOR_REGISTRATIONS_MAX));
 
             let executor = Executor::new(EXECUTOR_TASKS_MAX);
 
             executor
-                .spawn(Self::run(&reactor, r, listeners, senders))
+                .spawn(Self::run(Rc::clone(&reactor), r, listeners, senders))
                 .unwrap();
 
-            executor.exec(&reactor).unwrap();
+            executor.exec(&*reactor).unwrap();
         });
 
         Self {
@@ -61,21 +62,21 @@ impl Listener {
     }
 
     async fn run(
-        reactor: &MioReactor,
+        reactor: Rc<MioReactor>,
         stop: channel::Receiver<()>,
         listeners: Vec<TcpListener>,
         senders: Vec<channel::Sender<(usize, TcpStream, SocketAddr)>>,
     ) {
-        let mut stop = AsyncReceiver::new(stop, reactor);
+        let mut stop = AsyncReceiver::new(stop, &reactor);
 
         let mut listeners: Vec<AsyncTcpListener> = listeners
             .into_iter()
-            .map(|l| AsyncTcpListener::new(l, reactor))
+            .map(|l| AsyncTcpListener::new(l, &reactor))
             .collect();
 
         let mut senders: Vec<AsyncSender<(usize, TcpStream, SocketAddr)>> = senders
             .into_iter()
-            .map(|s| AsyncSender::new(s, reactor))
+            .map(|s| AsyncSender::new(s, &reactor))
             .collect();
 
         let mut listeners_pos = 0;
