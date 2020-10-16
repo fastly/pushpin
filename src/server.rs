@@ -26,6 +26,7 @@ use crate::timer;
 use crate::tnetstring;
 use crate::zhttppacket;
 use crate::zhttpsocket;
+use crate::zmq::SpecInfo;
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
 use mio;
@@ -1702,7 +1703,7 @@ impl TestServer {
         );
 
         zsockman
-            .set_client_req_specs(&vec![zhttpsocket::SpecInfo {
+            .set_client_req_specs(&vec![SpecInfo {
                 spec: String::from("inproc://server-test"),
                 bind: true,
                 ipc_file_mode: 0,
@@ -1711,17 +1712,17 @@ impl TestServer {
 
         zsockman
             .set_client_stream_specs(
-                &vec![zhttpsocket::SpecInfo {
+                &vec![SpecInfo {
                     spec: String::from("inproc://server-test-out"),
                     bind: true,
                     ipc_file_mode: 0,
                 }],
-                &vec![zhttpsocket::SpecInfo {
+                &vec![SpecInfo {
                     spec: String::from("inproc://server-test-out-stream"),
                     bind: true,
                     ipc_file_mode: 0,
                 }],
-                &vec![zhttpsocket::SpecInfo {
+                &vec![SpecInfo {
                     spec: String::from("inproc://server-test-in"),
                     bind: true,
                     ipc_file_mode: 0,

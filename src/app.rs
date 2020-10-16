@@ -17,6 +17,7 @@
 use crate::server::{Server, MSG_RETAINED_MAX};
 use crate::zhttppacket;
 use crate::zhttpsocket;
+use crate::zmq::SpecInfo;
 use log::info;
 use signal_hook;
 use signal_hook::iterator::Signals;
@@ -110,7 +111,7 @@ impl App {
                     info!("zhttp client bind {}", spec);
                 }
 
-                specs.push(zhttpsocket::SpecInfo {
+                specs.push(SpecInfo {
                     spec: spec.clone(),
                     bind: !config.zclient_connect,
                     ipc_file_mode: config.ipc_file_mode,
@@ -142,19 +143,19 @@ impl App {
                     );
                 }
 
-                out_specs.push(zhttpsocket::SpecInfo {
+                out_specs.push(SpecInfo {
                     spec: out_spec,
                     bind: !config.zclient_connect,
                     ipc_file_mode: config.ipc_file_mode,
                 });
 
-                out_stream_specs.push(zhttpsocket::SpecInfo {
+                out_stream_specs.push(SpecInfo {
                     spec: out_stream_spec,
                     bind: !config.zclient_connect,
                     ipc_file_mode: config.ipc_file_mode,
                 });
 
-                in_specs.push(zhttpsocket::SpecInfo {
+                in_specs.push(SpecInfo {
                     spec: in_spec,
                     bind: !config.zclient_connect,
                     ipc_file_mode: config.ipc_file_mode,

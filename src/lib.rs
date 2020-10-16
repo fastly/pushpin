@@ -29,6 +29,7 @@ pub mod tnetstring;
 pub mod websocket;
 pub mod zhttppacket;
 pub mod zhttpsocket;
+pub mod zmq;
 
 pub use app::Config;
 use log::info;
