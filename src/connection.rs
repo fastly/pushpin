@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-use crate::arena;
-use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, WriteVectored, VECTORED_MAX};
+use crate::buffer::{
+    Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, WriteVectored, VECTORED_MAX,
+};
 use crate::http1;
 use crate::websocket;
 use crate::zhttppacket;
@@ -27,9 +28,9 @@ use std::collections::VecDeque;
 use std::io;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
+use std::rc::Rc;
 use std::str;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const URI_SIZE_MAX: usize = 4096;
@@ -383,9 +384,9 @@ pub struct ServerReqConnection {
     protocol: http1::ServerProtocol,
     exp_time: Option<Instant>,
     req: Option<RequestHeaderRanges>,
-    buf1: arena::ReusableValue<RingBuffer>,
-    buf2: arena::ReusableValue<RingBuffer>,
-    body_buf: arena::ReusableValue<Buffer>,
+    buf1: RingBuffer,
+    buf2: RingBuffer,
+    body_buf: Buffer,
     cont: [u8; 32],
     cont_len: usize,
     cont_left: usize,
@@ -397,17 +398,14 @@ impl ServerReqConnection {
     pub fn new(
         now: Instant,
         peer_addr: Option<SocketAddr>,
-        buffers: &Arc<arena::Reusable<RingBuffer>>,
-        body_buffers: &Arc<arena::Reusable<Buffer>>,
+        buffer_size: usize,
+        body_buffer_size: usize,
+        rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
     ) -> Self {
-        let mut buf1 = buffers.reserve().unwrap();
-        let mut buf2 = buffers.reserve().unwrap();
-        let mut body_buf = body_buffers.reserve().unwrap();
-
-        buf1.clear();
-        buf2.clear();
-        body_buf.clear();
+        let buf1 = RingBuffer::new(buffer_size, rb_tmp);
+        let buf2 = RingBuffer::new(buffer_size, rb_tmp);
+        let body_buf = Buffer::new(body_buffer_size);
 
         Self {
             id: ArrayString::new(),
@@ -964,7 +962,7 @@ struct ServerStreamData {
     out_credits: u32,
     resp_header_left: usize,
     resp_body_done: bool,
-    ws_in_tracker: arena::ReusableValue<MessageTracker>,
+    ws_in_tracker: MessageTracker,
     in_overflow_allow: usize,
     sock_readable: bool,
     pending_msg: Option<zmq::Message>,
@@ -974,8 +972,8 @@ struct ServerStreamData {
 pub struct ServerStreamConnection {
     d: ServerStreamData,
     protocol: ServerProtocol,
-    buf1: arena::ReusableValue<RingBuffer>,
-    buf2: arena::ReusableValue<RingBuffer>,
+    buf1: RingBuffer,
+    buf2: RingBuffer,
     in_overflow: Option<Buffer>,
 }
 
@@ -983,17 +981,14 @@ impl ServerStreamConnection {
     pub fn new(
         now: Instant,
         peer_addr: Option<SocketAddr>,
-        buffers: &Arc<arena::Reusable<RingBuffer>>,
-        trackers: &Arc<arena::Reusable<MessageTracker>>,
+        buffer_size: usize,
+        messages_max: usize,
+        rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
     ) -> Self {
-        let mut buf1 = buffers.reserve().unwrap();
-        let mut buf2 = buffers.reserve().unwrap();
-        let mut ws_in_tracker = trackers.reserve().unwrap();
-
-        buf1.clear();
-        buf2.clear();
-        ws_in_tracker.clear();
+        let buf1 = RingBuffer::new(buffer_size, &rb_tmp);
+        let buf2 = RingBuffer::new(buffer_size, &rb_tmp);
+        let ws_in_tracker = MessageTracker::new(messages_max);
 
         let mut s = Self {
             d: ServerStreamData {
@@ -1867,7 +1862,7 @@ impl ServerStreamConnection {
 
         self.buf1.align();
 
-        match proto.recv_message_content(&mut *self.buf1, &mut tmp_buf[..max_read]) {
+        match proto.recv_message_content(&mut self.buf1, &mut tmp_buf[..max_read]) {
             Some(Ok((opcode, size, end))) => {
                 let body = &tmp_buf[..size];
 
@@ -2561,15 +2556,20 @@ mod tests {
         let mut sock = FakeSock::new();
         let mut sender = FakeSender::new();
 
+        let buffer_size = 1024;
         let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let buffers = Arc::new(arena::Reusable::new(8, || RingBuffer::new(1024, &rb_tmp)));
-        let body_buffers = Arc::new(arena::Reusable::new(8, || Buffer::new(1024)));
         let mut packet_buf = vec![0; 2048];
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c =
-            ServerReqConnection::new(Instant::now(), None, &buffers, &body_buffers, timeout);
+        let mut c = ServerReqConnection::new(
+            Instant::now(),
+            None,
+            buffer_size,
+            buffer_size,
+            &rb_tmp,
+            timeout,
+        );
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);
@@ -2682,15 +2682,20 @@ mod tests {
         let mut sock = FakeSock::new();
         let mut sender = FakeSender::new();
 
+        let buffer_size = 1024;
         let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let buffers = Arc::new(arena::Reusable::new(8, || RingBuffer::new(1024, &rb_tmp)));
-        let body_buffers = Arc::new(arena::Reusable::new(8, || Buffer::new(1024)));
         let mut packet_buf = vec![0; 2048];
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c =
-            ServerReqConnection::new(Instant::now(), None, &buffers, &body_buffers, timeout);
+        let mut c = ServerReqConnection::new(
+            Instant::now(),
+            None,
+            buffer_size,
+            buffer_size,
+            &rb_tmp,
+            timeout,
+        );
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);
@@ -2808,14 +2813,13 @@ mod tests {
 
         let now = Instant::now();
 
+        let buffer_size = 1024;
         let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let buffers = Arc::new(arena::Reusable::new(8, || RingBuffer::new(1024, &rb_tmp)));
-        let body_buffers = Arc::new(arena::Reusable::new(8, || Buffer::new(1024)));
         let mut packet_buf = vec![0; 2048];
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c = ServerReqConnection::new(now, None, &buffers, &body_buffers, timeout);
+        let mut c = ServerReqConnection::new(now, None, buffer_size, buffer_size, &rb_tmp, timeout);
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);
@@ -2839,15 +2843,20 @@ mod tests {
         let mut sock = FakeSock::new();
         let mut sender = FakeSender::new();
 
+        let buffer_size = 1024;
         let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let buffers = Arc::new(arena::Reusable::new(8, || RingBuffer::new(1024, &rb_tmp)));
-        let body_buffers = Arc::new(arena::Reusable::new(8, || Buffer::new(1024)));
         let mut packet_buf = vec![0; 2048];
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c =
-            ServerReqConnection::new(Instant::now(), None, &buffers, &body_buffers, timeout);
+        let mut c = ServerReqConnection::new(
+            Instant::now(),
+            None,
+            buffer_size,
+            buffer_size,
+            &rb_tmp,
+            timeout,
+        );
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);
@@ -3040,18 +3049,22 @@ mod tests {
         let mut sender = FakeSender::new();
 
         let buffer_size = 1024;
+        let messages_max = 10;
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
-        let buffers = Arc::new(arena::Reusable::new(8, || {
-            RingBuffer::new(buffer_size, &rb_tmp)
-        }));
-        let trackers = Arc::new(arena::Reusable::new(8, || MessageTracker::new(10)));
         let mut packet_buf = vec![0; buffer_size * 2];
         let mut tmp_buf = vec![0; buffer_size];
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c = ServerStreamConnection::new(Instant::now(), None, &buffers, &trackers, timeout);
+        let mut c = ServerStreamConnection::new(
+            Instant::now(),
+            None,
+            buffer_size,
+            messages_max,
+            &rb_tmp,
+            timeout,
+        );
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);
@@ -3203,18 +3216,22 @@ mod tests {
         let mut sender = FakeSender::new();
 
         let buffer_size = 1024;
+        let messages_max = 10;
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
-        let buffers = Arc::new(arena::Reusable::new(8, || {
-            RingBuffer::new(buffer_size, &rb_tmp)
-        }));
-        let trackers = Arc::new(arena::Reusable::new(8, || MessageTracker::new(10)));
         let mut packet_buf = vec![0; buffer_size * 2];
         let mut tmp_buf = vec![0; buffer_size];
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c = ServerStreamConnection::new(Instant::now(), None, &buffers, &trackers, timeout);
+        let mut c = ServerStreamConnection::new(
+            Instant::now(),
+            None,
+            buffer_size,
+            messages_max,
+            &rb_tmp,
+            timeout,
+        );
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);
@@ -3417,18 +3434,22 @@ mod tests {
         let mut sender = FakeSender::new();
 
         let buffer_size = 1024;
+        let messages_max = 10;
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
-        let buffers = Arc::new(arena::Reusable::new(8, || {
-            RingBuffer::new(buffer_size, &rb_tmp)
-        }));
-        let trackers = Arc::new(arena::Reusable::new(8, || MessageTracker::new(10)));
         let mut packet_buf = vec![0; buffer_size * 2];
         let mut tmp_buf = vec![0; buffer_size];
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c = ServerStreamConnection::new(Instant::now(), None, &buffers, &trackers, timeout);
+        let mut c = ServerStreamConnection::new(
+            Instant::now(),
+            None,
+            buffer_size,
+            messages_max,
+            &rb_tmp,
+            timeout,
+        );
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);
@@ -3611,18 +3632,22 @@ mod tests {
         let mut sender = FakeSender::new();
 
         let buffer_size = 1024;
+        let messages_max = 10;
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
-        let buffers = Arc::new(arena::Reusable::new(8, || {
-            RingBuffer::new(buffer_size, &rb_tmp)
-        }));
-        let trackers = Arc::new(arena::Reusable::new(8, || MessageTracker::new(10)));
         let mut packet_buf = vec![0; buffer_size * 2];
         let mut tmp_buf = vec![0; buffer_size];
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c = ServerStreamConnection::new(Instant::now(), None, &buffers, &trackers, timeout);
+        let mut c = ServerStreamConnection::new(
+            Instant::now(),
+            None,
+            buffer_size,
+            messages_max,
+            &rb_tmp,
+            timeout,
+        );
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);

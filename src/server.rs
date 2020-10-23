@@ -15,10 +15,10 @@
  */
 
 use crate::arena;
-use crate::buffer::{Buffer, RingBuffer, TmpBuffer, WriteVectored, VECTORED_MAX};
+use crate::buffer::{TmpBuffer, WriteVectored, VECTORED_MAX};
 use crate::channel;
 use crate::connection::{
-    MessageTracker, ServerReqConnection, ServerState, ServerStreamConnection, Want, ZhttpSender,
+    ServerReqConnection, ServerState, ServerStreamConnection, Want, ZhttpSender,
 };
 use crate::list;
 use crate::listener::Listener;
@@ -315,9 +315,10 @@ impl Connection {
         stream: TcpStream,
         peer_addr: SocketAddr,
         zmode: ZhttpMode,
-        buffers: &Arc<arena::Reusable<RingBuffer>>,
-        body_buffers: &Arc<arena::Reusable<Buffer>>,
-        trackers: &Arc<arena::Reusable<MessageTracker>>,
+        buffer_size: usize,
+        body_buffer_size: usize,
+        messages_max: usize,
+        rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
     ) -> Self {
         if let Err(e) = stream.set_nodelay(true) {
@@ -332,15 +333,17 @@ impl Connection {
             ZhttpMode::Req => ServerConnection::Req(ServerReqConnection::new(
                 Instant::now(),
                 Some(peer_addr),
-                buffers,
-                body_buffers,
+                buffer_size,
+                body_buffer_size,
+                rb_tmp,
                 timeout,
             )),
             ZhttpMode::Stream => ServerConnection::Stream(ServerStreamConnection::new(
                 Instant::now(),
                 Some(peer_addr),
-                buffers,
-                trackers,
+                buffer_size,
+                messages_max,
+                rb_tmp,
                 timeout,
             )),
         };
@@ -686,21 +689,6 @@ impl Worker {
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
 
-        // ensure two working buffers per connection
-        let buffers = Arc::new(arena::Reusable::new(maxconn * 2, || {
-            RingBuffer::new(buffer_size, &rb_tmp)
-        }));
-
-        // ensure one body buffer per req connection
-        let body_buffers = Arc::new(arena::Reusable::new(req_maxconn, || {
-            Buffer::new(body_buffer_size)
-        }));
-
-        // ensure one tracker per stream connection
-        let trackers = Arc::new(arena::Reusable::new(stream_maxconn, || {
-            MessageTracker::new(messages_max)
-        }));
-
         // large enough to fit anything
         let mut packet_buf = vec![0; buffer_size + body_buffer_size + 4096];
 
@@ -853,9 +841,10 @@ impl Worker {
                     stream,
                     peer_addr,
                     ZhttpMode::Req,
-                    &buffers,
-                    &body_buffers,
-                    &trackers,
+                    buffer_size,
+                    body_buffer_size,
+                    messages_max,
+                    &rb_tmp,
                     req_timeout,
                 );
 
@@ -908,9 +897,10 @@ impl Worker {
                     stream,
                     peer_addr,
                     ZhttpMode::Stream,
-                    &buffers,
-                    &body_buffers,
-                    &trackers,
+                    buffer_size,
+                    body_buffer_size,
+                    messages_max,
+                    &rb_tmp,
                     stream_timeout,
                 );
 
