@@ -23,6 +23,7 @@ use signal_hook;
 use signal_hook::iterator::Signals;
 use std::cmp;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -50,6 +51,13 @@ fn make_specs(base: &str) -> Result<(String, String, String), String> {
     }
 }
 
+pub struct ListenConfig {
+    pub addr: SocketAddr,
+    pub stream: bool,
+    pub tls: bool,
+    pub default_cert: Option<String>,
+}
+
 pub struct Config {
     pub instance_id: String,
     pub workers: usize,
@@ -60,11 +68,12 @@ pub struct Config {
     pub messages_max: usize,
     pub req_timeout: Duration,
     pub stream_timeout: Duration,
-    pub listen: Vec<(SocketAddr, bool)>, // bool=stream
+    pub listen: Vec<ListenConfig>,
     pub zclient_req: Vec<String>,
     pub zclient_stream: Vec<String>,
     pub zclient_connect: bool,
     pub ipc_file_mode: usize,
+    pub certs_dir: PathBuf,
 }
 
 pub struct App {
@@ -93,8 +102,8 @@ impl App {
         let mut any_req = false;
         let mut any_stream = false;
 
-        for (_, stream) in config.listen.iter() {
-            if *stream {
+        for lc in config.listen.iter() {
+            if lc.stream {
                 any_stream = true;
             } else {
                 any_req = true;
@@ -180,6 +189,7 @@ impl App {
             config.req_timeout,
             config.stream_timeout,
             &config.listen,
+            config.certs_dir.as_path(),
             zsockman,
         )?;
 

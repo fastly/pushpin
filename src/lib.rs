@@ -25,13 +25,14 @@ pub mod list;
 pub mod listener;
 pub mod server;
 pub mod timer;
+pub mod tls;
 pub mod tnetstring;
 pub mod websocket;
 pub mod zhttppacket;
 pub mod zhttpsocket;
 pub mod zmq;
 
-pub use app::Config;
+use app::Config;
 use log::info;
 use std::error::Error;
 

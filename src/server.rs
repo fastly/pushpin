@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::app::ListenConfig;
 use crate::arena;
 use crate::buffer::{TmpBuffer, WriteVectored, VECTORED_MAX};
 use crate::channel;
@@ -23,6 +24,7 @@ use crate::connection::{
 use crate::list;
 use crate::listener::Listener;
 use crate::timer;
+use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
 use crate::tnetstring;
 use crate::zhttppacket;
 use crate::zhttpsocket;
@@ -39,6 +41,7 @@ use std::convert::TryFrom;
 use std::io;
 use std::io::Write;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::rc::Rc;
 use std::str;
 use std::str::FromStr;
@@ -193,6 +196,21 @@ impl WriteVectored for TcpStream {
     }
 }
 
+impl WriteVectored for TlsStream {
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        let mut total = 0;
+
+        for buf in bufs {
+            match self.write(&*buf) {
+                Ok(size) => total += size,
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(total)
+    }
+}
+
 impl ZhttpSender for zhttpsocket::ClientReqHandle {
     fn can_send_to(&self) -> bool {
         // req mode doesn't use this
@@ -301,9 +319,23 @@ enum ZWriteKey {
     StreamTo(usize),
 }
 
+enum Stream {
+    Plain(TcpStream),
+    Tls(TlsStream),
+}
+
+impl Stream {
+    fn get_tcp(&self) -> Option<&TcpStream> {
+        match self {
+            Stream::Plain(stream) => Some(stream),
+            Stream::Tls(stream) => stream.get_tcp(),
+        }
+    }
+}
+
 struct Connection {
     id: ArrayString<[u8; 32]>,
-    stream: TcpStream,
+    stream: Stream,
     conn: ServerConnection,
     want: Want,
     timer: Option<(usize, u64)>, // timer id, exp time
@@ -312,7 +344,7 @@ struct Connection {
 
 impl Connection {
     fn new(
-        stream: TcpStream,
+        stream: Stream,
         peer_addr: SocketAddr,
         zmode: ZhttpMode,
         buffer_size: usize,
@@ -321,11 +353,11 @@ impl Connection {
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
     ) -> Self {
-        if let Err(e) = stream.set_nodelay(true) {
+        if let Err(e) = stream.get_tcp().unwrap().set_nodelay(true) {
             error!("set nodelay failed: {:?}", e);
         }
 
-        if let Err(e) = stream.set_keepalive(Some(TCP_KEEPALIVE)) {
+        if let Err(e) = stream.get_tcp().unwrap().set_keepalive(Some(TCP_KEEPALIVE)) {
             error!("set keepalive failed: {:?}", e);
         }
 
@@ -372,8 +404,16 @@ impl Connection {
         }
     }
 
+    fn get_tcp(&self) -> Option<&TcpStream> {
+        self.stream.get_tcp()
+    }
+
     fn start(&mut self, id: &str) {
         self.id = ArrayString::from_str(id).unwrap();
+
+        if let Stream::Tls(stream) = &mut self.stream {
+            stream.set_id(id);
+        }
 
         debug!("conn {}: assigning id", self.id);
 
@@ -429,40 +469,65 @@ impl Connection {
         packet_buf: &mut [u8],
         tmp_buf: &mut [u8],
     ) -> bool {
-        match &mut self.conn {
-            ServerConnection::Req(conn) => {
-                match conn.process(now, &mut self.stream, req_handle, packet_buf) {
-                    Ok(want) => self.want = want,
-                    Err(e) => {
-                        debug!("conn {}: process error: {:?}", self.id, e);
+        match &mut self.stream {
+            Stream::Plain(stream) => match &mut self.conn {
+                ServerConnection::Req(conn) => {
+                    match conn.process(now, stream, req_handle, packet_buf) {
+                        Ok(want) => self.want = want,
+                        Err(e) => {
+                            debug!("conn {}: process error: {:?}", self.id, e);
+                            return true;
+                        }
+                    }
+
+                    if conn.state() == ServerState::Finished {
                         return true;
                     }
                 }
+                ServerConnection::Stream(conn) => {
+                    match conn.process(now, instance_id, stream, stream_handle, packet_buf, tmp_buf)
+                    {
+                        Ok(want) => self.want = want,
+                        Err(e) => {
+                            debug!("conn {}: process error: {:?}", self.id, e);
+                            return true;
+                        }
+                    }
 
-                if conn.state() == ServerState::Finished {
-                    return true;
-                }
-            }
-            ServerConnection::Stream(conn) => {
-                match conn.process(
-                    now,
-                    instance_id,
-                    &mut self.stream,
-                    stream_handle,
-                    packet_buf,
-                    tmp_buf,
-                ) {
-                    Ok(want) => self.want = want,
-                    Err(e) => {
-                        debug!("conn {}: process error: {:?}", self.id, e);
+                    if conn.state() == ServerState::Finished {
                         return true;
                     }
                 }
+            },
+            Stream::Tls(stream) => match &mut self.conn {
+                ServerConnection::Req(conn) => {
+                    match conn.process(now, stream, req_handle, packet_buf) {
+                        Ok(want) => self.want = want,
+                        Err(e) => {
+                            debug!("conn {}: process error: {:?}", self.id, e);
+                            return true;
+                        }
+                    }
 
-                if conn.state() == ServerState::Finished {
-                    return true;
+                    if conn.state() == ServerState::Finished {
+                        return true;
+                    }
                 }
-            }
+                ServerConnection::Stream(conn) => {
+                    match conn.process(now, instance_id, stream, stream_handle, packet_buf, tmp_buf)
+                    {
+                        Ok(want) => self.want = want,
+                        Err(e) => {
+                            debug!("conn {}: process error: {:?}", self.id, e);
+                            return true;
+                        }
+                    }
+
+                    if conn.state() == ServerState::Finished {
+                        return true;
+                    }
+                }
+            },
         }
 
         false
@@ -534,7 +599,10 @@ impl Worker {
         stream_timeout: Duration,
         req_acceptor: channel::Receiver<(usize, TcpStream, SocketAddr)>,
         stream_acceptor: channel::Receiver<(usize, TcpStream, SocketAddr)>,
-        zsockman: Arc<zhttpsocket::SocketManager>,
+        req_acceptor_tls: &Vec<(bool, Option<String>)>,
+        stream_acceptor_tls: &Vec<(bool, Option<String>)>,
+        identities: &Arc<IdentityCache>,
+        zsockman: &Arc<zhttpsocket::SocketManager>,
     ) -> Self {
         debug!("worker {}: starting", id);
 
@@ -542,6 +610,10 @@ impl Worker {
         let (rs, rr) = channel::channel(1);
 
         let instance_id = String::from(instance_id);
+        let req_acceptor_tls = req_acceptor_tls.clone();
+        let stream_acceptor_tls = stream_acceptor_tls.clone();
+        let identities = Arc::clone(identities);
+        let zsockman = Arc::clone(zsockman);
 
         let thread = thread::spawn(move || {
             Self::run(
@@ -557,6 +629,9 @@ impl Worker {
                 r,
                 req_acceptor,
                 stream_acceptor,
+                &req_acceptor_tls,
+                &stream_acceptor_tls,
+                identities,
                 zsockman,
                 rs,
             );
@@ -675,6 +750,9 @@ impl Worker {
         stop: channel::Receiver<()>,
         req_acceptor: channel::Receiver<(usize, TcpStream, SocketAddr)>,
         stream_acceptor: channel::Receiver<(usize, TcpStream, SocketAddr)>,
+        req_acceptor_tls: &[(bool, Option<String>)],
+        stream_acceptor_tls: &[(bool, Option<String>)],
+        identities: Arc<IdentityCache>,
         zsockman: Arc<zhttpsocket::SocketManager>,
         ready_sender: channel::Sender<()>,
     ) {
@@ -710,6 +788,28 @@ impl Worker {
         let mut zwrite_stream = list::List::default();
         let mut zwrite_stream_to = list::List::default();
         let mut server_zwrite_key = None;
+
+        let mut req_tls_acceptors = Vec::new();
+
+        for config in req_acceptor_tls {
+            if config.0 {
+                let default_cert = config.1.as_ref().map(|s| s.as_str());
+                req_tls_acceptors.push(Some(TlsAcceptor::new(&identities, default_cert)));
+            } else {
+                req_tls_acceptors.push(None);
+            }
+        }
+
+        let mut stream_tls_acceptors = Vec::new();
+
+        for config in stream_acceptor_tls {
+            if config.0 {
+                let default_cert = config.1.as_ref().map(|s| s.as_str());
+                stream_tls_acceptors.push(Some(TlsAcceptor::new(&identities, default_cert)));
+            } else {
+                stream_tls_acceptors.push(None);
+            }
+        }
 
         debug!("worker {}: allocating done", id);
 
@@ -822,12 +922,27 @@ impl Worker {
                     break;
                 }
 
-                let (_, stream, peer_addr) = match req_acceptor.try_recv() {
+                let (pos, stream, peer_addr) = match req_acceptor.try_recv() {
                     Ok(stream) => stream,
                     Err(_) => {
                         can_req_accept = false;
                         break;
                     }
+                };
+
+                let stream = match &req_tls_acceptors[pos] {
+                    Some(tls_acceptor) => match tls_acceptor.accept(stream) {
+                        Ok(stream) => {
+                            debug!("worker {}: tls accept", id);
+
+                            Stream::Tls(stream)
+                        }
+                        Err(e) => {
+                            error!("worker {}: tls accept: {}", id, e);
+                            break;
+                        }
+                    },
+                    None => Stream::Plain(stream),
                 };
 
                 req_count += 1;
@@ -863,7 +978,7 @@ impl Worker {
                 let ready_flags = mio::Ready::readable() | mio::Ready::writable();
 
                 poll.register(
-                    &c.stream,
+                    c.get_tcp().unwrap(),
                     mio::Token(CONN_BASE + (key * 4) + 0),
                     ready_flags,
                     mio::PollOpt::edge(),
@@ -878,12 +993,27 @@ impl Worker {
                     break;
                 }
 
-                let (_, stream, peer_addr) = match stream_acceptor.try_recv() {
+                let (pos, stream, peer_addr) = match stream_acceptor.try_recv() {
                     Ok(stream) => stream,
                     Err(_) => {
                         can_stream_accept = false;
                         break;
                     }
+                };
+
+                let stream = match &stream_tls_acceptors[pos] {
+                    Some(tls_acceptor) => match tls_acceptor.accept(stream) {
+                        Ok(stream) => {
+                            debug!("worker {}: tls accept", id);
+
+                            Stream::Tls(stream)
+                        }
+                        Err(e) => {
+                            error!("worker {}: tls accept: {}", id, e);
+                            break;
+                        }
+                    },
+                    None => Stream::Plain(stream),
                 };
 
                 stream_count += 1;
@@ -919,7 +1049,7 @@ impl Worker {
                 let ready_flags = mio::Ready::readable() | mio::Ready::writable();
 
                 poll.register(
-                    &c.stream,
+                    c.get_tcp().unwrap(),
                     mio::Token(CONN_BASE + (key * 4) + 0),
                     ready_flags,
                     mio::PollOpt::edge(),
@@ -1126,7 +1256,9 @@ impl Worker {
                 ) {
                     debug!("conn {}: destroying", c.id);
 
-                    poll.deregister(&c.stream).unwrap();
+                    if let Some(stream) = c.get_tcp() {
+                        poll.deregister(stream).unwrap();
+                    }
 
                     if let Some(k) = c.zwrite_key.take() {
                         Self::zwrite_remove(
@@ -1601,20 +1733,26 @@ impl Server {
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
-        listen_addrs: &[(SocketAddr, bool)],
+        listen_addrs: &[ListenConfig],
+        certs_dir: &Path,
         zsockman: zhttpsocket::SocketManager,
     ) -> Result<Self, String> {
+        let identities = Arc::new(IdentityCache::new(certs_dir));
+
         let mut req_tcp_listeners = Vec::new();
         let mut stream_tcp_listeners = Vec::new();
+
+        let mut req_acceptor_tls = Vec::new();
+        let mut stream_acceptor_tls = Vec::new();
 
         let zsockman = Arc::new(zsockman);
 
         let mut addrs = Vec::new();
 
-        for (addr, stream) in listen_addrs.iter() {
-            let l = match TcpListener::bind(addr) {
+        for lc in listen_addrs.iter() {
+            let l = match TcpListener::bind(&lc.addr) {
                 Ok(l) => l,
-                Err(e) => return Err(format!("failed to bind {}: {}", addr, e)),
+                Err(e) => return Err(format!("failed to bind {}: {}", lc.addr, e)),
             };
 
             let addr = l.local_addr().unwrap();
@@ -1623,10 +1761,12 @@ impl Server {
 
             addrs.push(addr);
 
-            if *stream {
+            if lc.stream {
                 stream_tcp_listeners.push(l);
+                stream_acceptor_tls.push((lc.tls, lc.default_cert.clone()));
             } else {
                 req_tcp_listeners.push(l);
+                req_acceptor_tls.push((lc.tls, lc.default_cert.clone()));
             };
         }
 
@@ -1653,7 +1793,10 @@ impl Server {
                 stream_timeout,
                 req_r,
                 stream_r,
-                Arc::clone(&zsockman),
+                &req_acceptor_tls,
+                &stream_acceptor_tls,
+                &identities,
+                &zsockman,
             );
             workers.push(w);
         }
@@ -1733,7 +1876,21 @@ impl TestServer {
             10,
             Duration::from_secs(5),
             Duration::from_secs(5),
-            &vec![(addr1, false), (addr2, true)],
+            &vec![
+                ListenConfig {
+                    addr: addr1,
+                    stream: false,
+                    tls: false,
+                    default_cert: None,
+                },
+                ListenConfig {
+                    addr: addr2,
+                    stream: true,
+                    tls: false,
+                    default_cert: None,
+                },
+            ],
+            Path::new("."),
             zsockman,
         )
         .unwrap();

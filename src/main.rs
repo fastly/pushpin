@@ -15,8 +15,10 @@
  */
 
 use clap::{crate_version, App, Arg};
+use condure::app;
 use log::{error, Level, LevelFilter, Metadata, Record};
 use std::error::Error;
+use std::path::PathBuf;
 use std::process;
 use std::time::Duration;
 
@@ -78,6 +80,7 @@ struct Args {
     zclient_stream_specs: Vec<String>,
     zclient_connect: bool,
     ipc_file_mode: usize,
+    tls_identities_dir: String,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -93,7 +96,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         return Err("total maxconn is too large".into());
     }
 
-    let mut config = condure::Config {
+    let mut config = app::Config {
         instance_id: args.id,
         workers: args.workers,
         req_maxconn: args.req_maxconn,
@@ -108,50 +111,63 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         zclient_stream: args.zclient_stream_specs,
         zclient_connect: args.zclient_connect,
         ipc_file_mode: args.ipc_file_mode,
+        certs_dir: PathBuf::from(args.tls_identities_dir),
     };
 
     for v in args.listen.iter() {
-        let (v, stream) = match v.rfind(',') {
-            Some(pos) => {
-                let target = &v[(pos + 1)..];
+        let mut parts = v.split(',');
 
-                let stream = match target {
-                    "req" => false,
-                    "stream" => true,
-                    _ => {
-                        return Err(
-                            format!("failed to parse listen: invalid target: {}", target).into(),
-                        );
-                    }
-                };
+        // there's always a first part
+        let part1 = parts.next().unwrap();
 
-                (&v[..pos], stream)
-            }
-            None => (&v[..], true),
-        };
-
-        let port_pos = match v.rfind(':') {
+        let port_pos = match part1.rfind(':') {
             Some(pos) => pos + 1,
             None => 0,
         };
 
-        let port = &v[port_pos..];
+        let port = &part1[port_pos..];
         if port.parse::<u16>().is_err() {
             return Err(format!("failed to parse listen: invalid port {}", port).into());
         }
 
-        let v = if port_pos > 0 {
-            String::from(v)
+        let addr = if port_pos > 0 {
+            String::from(part1)
         } else {
-            format!("0.0.0.0:{}", v)
+            format!("0.0.0.0:{}", part1)
         };
 
-        match v.parse() {
-            Ok(addr) => config.listen.push((addr, stream)),
+        let addr = match addr.parse() {
+            Ok(addr) => addr,
             Err(e) => {
                 return Err(format!("failed to parse listen: {}", e).into());
             }
+        };
+
+        let mut stream = true;
+        let mut tls = false;
+        let mut default_cert = None;
+
+        for part in parts {
+            let (k, v) = match part.find('=') {
+                Some(pos) => (&part[..pos], &part[(pos + 1)..]),
+                None => (part, ""),
+            };
+
+            match k {
+                "req" => stream = false,
+                "stream" => stream = true,
+                "tls" => tls = true,
+                "default-cert" => default_cert = Some(String::from(v)),
+                _ => return Err(format!("failed to parse listen: invalid param: {}", part).into()),
+            }
         }
+
+        config.listen.push(app::ListenConfig {
+            addr,
+            stream,
+            tls,
+            default_cert,
+        });
     }
 
     condure::run(&config)
@@ -245,7 +261,7 @@ fn main() {
             Arg::with_name("listen")
                 .long("listen")
                 .takes_value(true)
-                .value_name("[addr:]port[,mode]")
+                .value_name("[addr:]port[,params...]")
                 .multiple(true)
                 .help("Port to listen on")
                 .default_value("0.0.0.0:8000,stream"),
@@ -279,6 +295,14 @@ fn main() {
                 .takes_value(true)
                 .value_name("octal")
                 .help("Permissions for ZeroMQ IPC binds"),
+        )
+        .arg(
+            Arg::with_name("tls-identities-dir")
+                .long("tls-identities-dir")
+                .takes_value(true)
+                .value_name("directory")
+                .help("Directory containing certificates and private keys")
+                .default_value("."),
         )
         .get_matches();
 
@@ -419,6 +443,8 @@ fn main() {
         }
     };
 
+    let tls_identities_dir = matches.value_of("tls-identities-dir").unwrap();
+
     let args = Args {
         id: id.to_string(),
         workers,
@@ -434,6 +460,7 @@ fn main() {
         zclient_stream_specs,
         zclient_connect,
         ipc_file_mode,
+        tls_identities_dir: tls_identities_dir.to_string(),
     };
 
     if let Err(e) = process_args_and_run(args) {

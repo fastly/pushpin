@@ -136,9 +136,11 @@ impl Listener {
                 _ => unreachable!(),
             };
 
-            listeners_pos = (listeners_pos + pos + 1) % listeners.len();
+            let pos = (listeners_pos + pos) % listeners.len();
 
             debug!("accepted connection from {}", peer_addr);
+
+            listeners_pos = (pos + 1) % listeners.len();
 
             // write connection to sender
 
