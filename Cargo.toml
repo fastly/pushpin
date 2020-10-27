@@ -22,6 +22,7 @@ httparse = "1.3"
 iovec = "0.1"
 log = "0.4"
 mio = "0.6"
+openssl = "0.10"
 sha1 = "0.6"
 signal-hook = { version = "0.1", features = ["mio-support"] }
 slab = "0.4"
