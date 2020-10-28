@@ -79,6 +79,7 @@ fn make_zhttp_request(
     mode: Mode,
     credits: u32,
     peer_addr: Option<SocketAddr>,
+    secure: bool,
     packet_buf: &mut [u8],
 ) -> Result<zmq::Message, io::Error> {
     let mut data = zhttppacket::RequestData::new();
@@ -100,8 +101,20 @@ fn make_zhttp_request(
     data.headers = &zheaders[..zheaders_len];
 
     let scheme = match mode {
-        Mode::HttpReq | Mode::HttpStream => "http",
-        Mode::WebSocket => "ws",
+        Mode::HttpReq | Mode::HttpStream => {
+            if secure {
+                "https"
+            } else {
+                "http"
+            }
+        }
+        Mode::WebSocket => {
+            if secure {
+                "wss"
+            } else {
+                "ws"
+            }
+        }
     };
 
     let mut uri = [0; URI_SIZE_MAX];
@@ -384,6 +397,7 @@ enum ServerReqState {
 pub struct ServerReqConnection {
     id: ArrayString<[u8; 32]>,
     peer_addr: Option<SocketAddr>,
+    secure: bool,
     timeout: Duration,
     state: ServerReqState,
     protocol: http1::ServerProtocol,
@@ -403,6 +417,7 @@ impl ServerReqConnection {
     pub fn new(
         now: Instant,
         peer_addr: Option<SocketAddr>,
+        secure: bool,
         buffer_size: usize,
         body_buffer_size: usize,
         rb_tmp: &Rc<TmpBuffer>,
@@ -415,6 +430,7 @@ impl ServerReqConnection {
         Self {
             id: ArrayString::new(),
             peer_addr,
+            secure,
             timeout,
             state: ServerReqState::Ready,
             protocol: http1::ServerProtocol::new(),
@@ -611,6 +627,7 @@ impl ServerReqConnection {
             Mode::HttpReq,
             0,
             self.peer_addr,
+            self.secure,
             args.packet_buf,
         ) {
             Ok(msg) => msg,
@@ -731,9 +748,11 @@ impl ServerReqConnection {
 
                 let host = get_host(req.headers);
 
+                let scheme = if self.secure { "https" } else { "http" };
+
                 debug!(
-                    "conn {}: request: {} http://{}{}",
-                    self.id, req.method, host, req.uri
+                    "conn {}: request: {} {}://{}{}",
+                    self.id, req.method, scheme, host, req.uri
                 );
 
                 let hbuf = self.buf1.read_buf();
@@ -969,6 +988,7 @@ enum ServerStreamState {
 struct ServerStreamData {
     id: ArrayString<[u8; 32]>,
     peer_addr: Option<SocketAddr>,
+    secure: bool,
     client_timeout: Duration,
     state: ServerStreamState,
     client_exp_time: Option<Instant>,
@@ -1005,6 +1025,7 @@ impl ServerStreamConnection {
     pub fn new(
         now: Instant,
         peer_addr: Option<SocketAddr>,
+        secure: bool,
         buffer_size: usize,
         messages_max: usize,
         rb_tmp: &Rc<TmpBuffer>,
@@ -1018,6 +1039,7 @@ impl ServerStreamConnection {
             d: ServerStreamData {
                 id: ArrayString::new(),
                 peer_addr,
+                secure,
                 client_timeout: timeout,
                 state: ServerStreamState::Ready,
                 client_exp_time: None,
@@ -1553,7 +1575,19 @@ impl ServerStreamConnection {
 
                 let host = get_host(req.headers);
 
-                let scheme = if self.d.websocket { "ws" } else { "http" };
+                let scheme = if self.d.websocket {
+                    if self.d.secure {
+                        "wss"
+                    } else {
+                        "ws"
+                    }
+                } else {
+                    if self.d.secure {
+                        "https"
+                    } else {
+                        "http"
+                    }
+                };
 
                 debug!(
                     "conn {}: request: {} {}://{}{}",
@@ -1629,6 +1663,7 @@ impl ServerStreamConnection {
                     mode,
                     self.buf2.capacity() as u32,
                     self.d.peer_addr,
+                    self.d.secure,
                     args.packet_buf,
                 ) {
                     Ok(msg) => msg,
@@ -2614,6 +2649,7 @@ mod tests {
         let mut c = ServerReqConnection::new(
             Instant::now(),
             None,
+            false,
             buffer_size,
             buffer_size,
             &rb_tmp,
@@ -2740,6 +2776,7 @@ mod tests {
         let mut c = ServerReqConnection::new(
             Instant::now(),
             None,
+            false,
             buffer_size,
             buffer_size,
             &rb_tmp,
@@ -2868,7 +2905,8 @@ mod tests {
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c = ServerReqConnection::new(now, None, buffer_size, buffer_size, &rb_tmp, timeout);
+        let mut c =
+            ServerReqConnection::new(now, None, false, buffer_size, buffer_size, &rb_tmp, timeout);
         c.start("1");
 
         assert_eq!(c.state(), ServerState::Connected);
@@ -2901,6 +2939,7 @@ mod tests {
         let mut c = ServerReqConnection::new(
             Instant::now(),
             None,
+            false,
             buffer_size,
             buffer_size,
             &rb_tmp,
@@ -3093,6 +3132,133 @@ mod tests {
     }
 
     #[test]
+    fn server_req_secure() {
+        let mut sock = FakeSock::new();
+        let mut sender = FakeSender::new();
+
+        let buffer_size = 1024;
+        let rb_tmp = Rc::new(TmpBuffer::new(1024));
+        let mut packet_buf = vec![0; 2048];
+
+        let timeout = Duration::from_millis(5_000);
+
+        let mut c = ServerReqConnection::new(
+            Instant::now(),
+            None,
+            true,
+            buffer_size,
+            buffer_size,
+            &rb_tmp,
+            timeout,
+        );
+        c.start("1");
+
+        assert_eq!(c.state(), ServerState::Connected);
+
+        let want = c
+            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
+            .unwrap();
+
+        assert_eq!(c.state(), ServerState::Connected);
+        assert_eq!(want.sock_read, true);
+
+        let req_data = concat!(
+            "GET /path HTTP/1.1\r\n",
+            "Host: example.com\r\n",
+            "Connection: close\r\n",
+            "\r\n"
+        )
+        .as_bytes();
+
+        sock.add_readable(req_data);
+        c.set_sock_readable();
+
+        let want = c
+            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
+            .unwrap();
+
+        assert_eq!(c.state(), ServerState::Connected);
+        assert_eq!(want.zhttp_write, true);
+        assert_eq!(sender.msgs.len(), 0);
+
+        sender.allow(1);
+
+        let want = c
+            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
+            .unwrap();
+
+        assert_eq!(c.state(), ServerState::Connected);
+        assert_eq!(want.zhttp_read, true);
+        assert_eq!(sender.msgs.len(), 1);
+
+        let (_, buf) = sender.take();
+        let buf = &buf[..];
+
+        let expected = concat!(
+            "T149:2:id,1:1,3:ext,15:5:multi,4:true!}6:method,3:GET,3:ur",
+            "i,24:https://example.com/path,7:headers,52:22:4:Host,11:ex",
+            "ample.com,]22:10:Connection,5:close,]]}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        let ids = [zhttppacket::Id {
+            id: b"1",
+            seq: None,
+        }];
+
+        let rdata = zhttppacket::ResponseData {
+            credits: 0,
+            more: false,
+            code: 200,
+            reason: "OK",
+            headers: &[zhttppacket::Header {
+                name: "Content-Type",
+                value: b"text/plain",
+            }],
+            content_type: None,
+            body: b"hello\n",
+        };
+
+        let zresp = zhttppacket::Response {
+            from: b"",
+            ids: &ids,
+            multi: false,
+            ptype: zhttppacket::ResponsePacket::Data(rdata),
+            ptype_str: "",
+        };
+
+        c.apply_zhttp_response(&zresp).unwrap();
+
+        let want = c
+            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
+            .unwrap();
+
+        assert_eq!(c.state(), ServerState::Connected);
+        assert_eq!(want.sock_write, true);
+
+        sock.allow_write(1024);
+
+        c.process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
+            .unwrap();
+
+        assert_eq!(c.state(), ServerState::Finished);
+
+        let data = sock.take_writable();
+
+        let expected = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Connection: close\r\n",
+            "Content-Length: 6\r\n",
+            "\r\n",
+            "hello\n",
+        );
+
+        assert_eq!(str::from_utf8(&data).unwrap(), expected);
+    }
+
+    #[test]
     fn server_stream_without_body() {
         let mut sock = FakeSock::new();
         let mut sender = FakeSender::new();
@@ -3109,6 +3275,7 @@ mod tests {
         let mut c = ServerStreamConnection::new(
             Instant::now(),
             None,
+            false,
             buffer_size,
             messages_max,
             &rb_tmp,
@@ -3276,6 +3443,7 @@ mod tests {
         let mut c = ServerStreamConnection::new(
             Instant::now(),
             None,
+            false,
             buffer_size,
             messages_max,
             &rb_tmp,
@@ -3494,6 +3662,7 @@ mod tests {
         let mut c = ServerStreamConnection::new(
             Instant::now(),
             None,
+            false,
             buffer_size,
             messages_max,
             &rb_tmp,
@@ -3692,6 +3861,7 @@ mod tests {
         let mut c = ServerStreamConnection::new(
             Instant::now(),
             None,
+            false,
             buffer_size,
             messages_max,
             &rb_tmp,

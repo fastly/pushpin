@@ -373,10 +373,16 @@ impl Connection {
             error!("set keepalive failed: {:?}", e);
         }
 
+        let secure = match &stream {
+            Stream::Plain(_) => false,
+            Stream::Tls(_) => true,
+        };
+
         let conn = match zmode {
             ZhttpMode::Req => ServerConnection::Req(ServerReqConnection::new(
                 Instant::now(),
                 Some(peer_addr),
+                secure,
                 buffer_size,
                 body_buffer_size,
                 rb_tmp,
@@ -385,6 +391,7 @@ impl Connection {
             ZhttpMode::Stream => ServerConnection::Stream(ServerStreamConnection::new(
                 Instant::now(),
                 Some(peer_addr),
+                secure,
                 buffer_size,
                 messages_max,
                 rb_tmp,
