@@ -494,18 +494,28 @@ impl Connection {
                 packet_buf,
                 tmp_buf,
             ),
-            Stream::Tls(stream) => Self::process_with_stream(
-                &self.id,
-                &mut self.conn,
-                &mut self.want,
-                stream,
-                now,
-                instance_id,
-                req_handle,
-                stream_handle,
-                packet_buf,
-                tmp_buf,
-            ),
+            Stream::Tls(stream) => {
+                let done = Self::process_with_stream(
+                    &self.id,
+                    &mut self.conn,
+                    &mut self.want,
+                    stream,
+                    now,
+                    instance_id,
+                    req_handle,
+                    stream_handle,
+                    packet_buf,
+                    tmp_buf,
+                );
+
+                // for TLS, wake on all socket events
+                if self.want.sock_read || self.want.sock_write {
+                    self.want.sock_read = true;
+                    self.want.sock_write = true;
+                }
+
+                done
+            }
         }
     }
 
@@ -1582,11 +1592,20 @@ impl Worker {
 
                         let c = &mut conns[key];
 
+                        let using_tls = match &c.stream {
+                            Stream::Tls(_) => true,
+                            _ => false,
+                        };
+
                         let readable = event.readiness().is_readable();
                         let writable = event.readiness().is_writable();
 
                         if readable {
                             debug!("conn {}: sock read event", c.id);
+                        }
+
+                        // for TLS, set readable on all events
+                        if readable || using_tls {
                             c.set_sock_readable();
                         }
 
