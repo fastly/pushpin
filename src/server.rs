@@ -19,7 +19,7 @@ use crate::arena;
 use crate::buffer::{TmpBuffer, WriteVectored, VECTORED_MAX};
 use crate::channel;
 use crate::connection::{
-    ServerReqConnection, ServerState, ServerStreamConnection, Want, ZhttpSender,
+    ServerReqConnection, ServerState, ServerStreamConnection, Shutdown, Want, ZhttpSender,
 };
 use crate::list;
 use crate::listener::Listener;
@@ -39,7 +39,7 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::io;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::rc::Rc;
@@ -196,6 +196,12 @@ impl WriteVectored for TcpStream {
     }
 }
 
+impl Shutdown for TcpStream {
+    fn shutdown(&mut self) -> Result<(), io::Error> {
+        Ok(())
+    }
+}
+
 impl WriteVectored for TlsStream {
     fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
         let mut total = 0;
@@ -208,6 +214,12 @@ impl WriteVectored for TlsStream {
         }
 
         Ok(total)
+    }
+}
+
+impl Shutdown for TlsStream {
+    fn shutdown(&mut self) -> Result<(), io::Error> {
+        self.shutdown()
     }
 }
 
@@ -470,64 +482,72 @@ impl Connection {
         tmp_buf: &mut [u8],
     ) -> bool {
         match &mut self.stream {
-            Stream::Plain(stream) => match &mut self.conn {
-                ServerConnection::Req(conn) => {
-                    match conn.process(now, stream, req_handle, packet_buf) {
-                        Ok(want) => self.want = want,
-                        Err(e) => {
-                            debug!("conn {}: process error: {:?}", self.id, e);
-                            return true;
-                        }
-                    }
+            Stream::Plain(stream) => Self::process_with_stream(
+                &self.id,
+                &mut self.conn,
+                &mut self.want,
+                stream,
+                now,
+                instance_id,
+                req_handle,
+                stream_handle,
+                packet_buf,
+                tmp_buf,
+            ),
+            Stream::Tls(stream) => Self::process_with_stream(
+                &self.id,
+                &mut self.conn,
+                &mut self.want,
+                stream,
+                now,
+                instance_id,
+                req_handle,
+                stream_handle,
+                packet_buf,
+                tmp_buf,
+            ),
+        }
+    }
 
-                    if conn.state() == ServerState::Finished {
+    fn process_with_stream<S: Read + Write + WriteVectored + Shutdown>(
+        id: &ArrayString<[u8; 32]>,
+        conn: &mut ServerConnection,
+        want: &mut Want,
+        stream: &mut S,
+        now: Instant,
+        instance_id: &str,
+        req_handle: &mut zhttpsocket::ClientReqHandle,
+        stream_handle: &mut ClientStreamHandle,
+        packet_buf: &mut [u8],
+        tmp_buf: &mut [u8],
+    ) -> bool {
+        match conn {
+            ServerConnection::Req(conn) => {
+                match conn.process(now, stream, req_handle, packet_buf) {
+                    Ok(w) => *want = w,
+                    Err(e) => {
+                        debug!("conn {}: process error: {:?}", id, e);
                         return true;
                     }
                 }
-                ServerConnection::Stream(conn) => {
-                    match conn.process(now, instance_id, stream, stream_handle, packet_buf, tmp_buf)
-                    {
-                        Ok(want) => self.want = want,
-                        Err(e) => {
-                            debug!("conn {}: process error: {:?}", self.id, e);
-                            return true;
-                        }
-                    }
 
-                    if conn.state() == ServerState::Finished {
+                if conn.state() == ServerState::Finished {
+                    return true;
+                }
+            }
+            ServerConnection::Stream(conn) => {
+                match conn.process(now, instance_id, stream, stream_handle, packet_buf, tmp_buf) {
+                    Ok(w) => *want = w,
+                    Err(e) => {
+                        debug!("conn {}: process error: {:?}", id, e);
                         return true;
                     }
                 }
-            },
-            Stream::Tls(stream) => match &mut self.conn {
-                ServerConnection::Req(conn) => {
-                    match conn.process(now, stream, req_handle, packet_buf) {
-                        Ok(want) => self.want = want,
-                        Err(e) => {
-                            debug!("conn {}: process error: {:?}", self.id, e);
-                            return true;
-                        }
-                    }
 
-                    if conn.state() == ServerState::Finished {
-                        return true;
-                    }
+                if conn.state() == ServerState::Finished {
+                    return true;
                 }
-                ServerConnection::Stream(conn) => {
-                    match conn.process(now, instance_id, stream, stream_handle, packet_buf, tmp_buf)
-                    {
-                        Ok(want) => self.want = want,
-                        Err(e) => {
-                            debug!("conn {}: process error: {:?}", self.id, e);
-                            return true;
-                        }
-                    }
-
-                    if conn.state() == ServerState::Finished {
-                        return true;
-                    }
-                }
-            },
+            }
         }
 
         false

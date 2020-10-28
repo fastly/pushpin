@@ -37,6 +37,10 @@ const URI_SIZE_MAX: usize = 4096;
 const WS_HASH_INPUT_MAX: usize = 256;
 const ZHTTP_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
 
+pub trait Shutdown {
+    fn shutdown(&mut self) -> Result<(), io::Error>;
+}
+
 pub trait ZhttpSender {
     fn can_send_to(&self) -> bool;
     fn send(&mut self, message: zmq::Message) -> Result<(), zhttpsocket::SendError>;
@@ -357,7 +361,7 @@ impl MessageTracker {
 
 struct ServerProcessArgs<'a, S, Z>
 where
-    S: Read + Write + WriteVectored,
+    S: Read + Write + WriteVectored + Shutdown,
     Z: ZhttpSender,
 {
     now: Instant,
@@ -372,6 +376,7 @@ where
 enum ServerReqState {
     Ready,
     Active,
+    ShuttingDown,
     Finishing,
     Finished,
 }
@@ -464,7 +469,7 @@ impl ServerReqConnection {
         packet_buf: &mut [u8],
     ) -> Result<Want, ServerError>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         loop {
@@ -517,7 +522,7 @@ impl ServerReqConnection {
         let closed = size == 0;
 
         if closed {
-            self.state = ServerReqState::Finishing;
+            self.state = ServerReqState::ShuttingDown;
         }
 
         Ok(closed)
@@ -525,7 +530,7 @@ impl ServerReqConnection {
 
     fn after_request<S, Z>(&mut self, args: ServerProcessArgs<'_, S, Z>) -> Result<(), ServerError>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         let proto = &mut self.protocol;
@@ -626,7 +631,7 @@ impl ServerReqConnection {
         args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         // check expiration if not already shutting down
@@ -642,6 +647,24 @@ impl ServerReqConnection {
         match self.state {
             ServerReqState::Active => {
                 return self.process_http(args);
+            }
+            ServerReqState::ShuttingDown => {
+                match args.sock.shutdown() {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        let mut want = Want::nothing();
+                        want.sock_read = true;
+                        want.sock_read = true;
+                        want.sock_write = true;
+                        want.timeout = self.exp_time;
+                        return Some(Ok(want));
+                    }
+                    Err(e) => return Some(Err(e.into())),
+                }
+
+                self.state = ServerReqState::Finishing;
+
+                return None;
             }
             ServerReqState::Finishing => {
                 self.state = ServerReqState::Finished;
@@ -659,7 +682,7 @@ impl ServerReqConnection {
         args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         let mut want = Want::nothing();
@@ -865,7 +888,7 @@ impl ServerReqConnection {
                 if proto.is_persistent() {
                     self.reset(args.now);
                 } else {
-                    self.state = ServerReqState::Finished;
+                    self.state = ServerReqState::ShuttingDown;
                 }
             }
         }
@@ -938,6 +961,7 @@ enum ServerStreamState {
     Ready,
     Active,
     Paused,
+    ShuttingDown,
     Finishing,
     Finished,
 }
@@ -1097,7 +1121,7 @@ impl ServerStreamConnection {
         tmp_buf: &mut [u8],
     ) -> Result<Want, ServerError>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         loop {
@@ -1150,7 +1174,7 @@ impl ServerStreamConnection {
         let closed = size == 0;
 
         if closed {
-            self.d.state = ServerStreamState::Finishing;
+            self.d.state = ServerStreamState::ShuttingDown;
         }
 
         Ok(closed)
@@ -1162,7 +1186,7 @@ impl ServerStreamConnection {
         zreq: zhttppacket::Request,
     ) -> Result<(), io::Error>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         if !args.zsender.can_send_to() {
@@ -1231,7 +1255,7 @@ impl ServerStreamConnection {
         mut want: Want,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         let size = match args
@@ -1313,7 +1337,7 @@ impl ServerStreamConnection {
         mut args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         // check expiration if not already shutting down
@@ -1381,6 +1405,24 @@ impl ServerStreamConnection {
                 want.timeout = Self::timeout(&self.d);
                 return Some(Ok(want));
             }
+            ServerStreamState::ShuttingDown => {
+                match args.sock.shutdown() {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        let mut want = Want::nothing();
+                        want.sock_read = true;
+                        want.sock_read = true;
+                        want.sock_write = true;
+                        want.timeout = Self::timeout(&self.d);
+                        return Some(Ok(want));
+                    }
+                    Err(e) => return Some(Err(e.into())),
+                }
+
+                self.d.state = ServerStreamState::Finishing;
+
+                return None;
+            }
             ServerStreamState::Finishing => {
                 if self.d.to_addr.is_some() {
                     if !args.zsender.can_send_to() {
@@ -1411,7 +1453,7 @@ impl ServerStreamConnection {
         mut args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         let mut want = Want::nothing();
@@ -1725,7 +1767,7 @@ impl ServerStreamConnection {
                 if proto.is_persistent() {
                     self.reset(args.now);
                 } else {
-                    self.d.state = ServerStreamState::Finished;
+                    self.d.state = ServerStreamState::ShuttingDown;
                 }
             }
         }
@@ -1738,7 +1780,7 @@ impl ServerStreamConnection {
         mut args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         let mut want = Want::nothing();
@@ -1824,7 +1866,7 @@ impl ServerStreamConnection {
                 Some(Ok(r.merge(&want)))
             }
             websocket::State::Finished => {
-                self.d.state = ServerStreamState::Finished;
+                self.d.state = ServerStreamState::ShuttingDown;
 
                 None
             }
@@ -1837,7 +1879,7 @@ impl ServerStreamConnection {
         tmp_buf: &mut [u8],
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         let proto = match &mut self.protocol {
@@ -1948,7 +1990,7 @@ impl ServerStreamConnection {
         args: &mut ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored,
+        S: Read + Write + WriteVectored + Shutdown,
         Z: ZhttpSender,
     {
         let proto = match &mut self.protocol {
@@ -2024,6 +2066,7 @@ impl ServerStreamConnection {
 
         match self.d.state {
             ServerStreamState::Ready
+            | ServerStreamState::ShuttingDown
             | ServerStreamState::Finishing
             | ServerStreamState::Finished => {
                 debug!(
@@ -2459,6 +2502,12 @@ mod tests {
             }
 
             Ok(total)
+        }
+    }
+
+    impl Shutdown for FakeSock {
+        fn shutdown(&mut self) -> Result<(), io::Error> {
+            Ok(())
         }
     }
 

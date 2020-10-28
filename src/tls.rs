@@ -339,6 +339,23 @@ impl TlsStream {
         self.id = ArrayString::from_str(id).unwrap();
     }
 
+    pub fn shutdown(&mut self) -> Result<(), io::Error> {
+        match &mut self.stream {
+            Some(Stream::Ssl(stream)) => match stream.shutdown() {
+                Ok(_) => {
+                    debug!("conn {}: tls shutdown sent", self.id);
+
+                    Ok(())
+                }
+                Err(e) => Err(match e.into_io_error() {
+                    Ok(e) => e,
+                    Err(_) => io::Error::from(io::ErrorKind::Other),
+                }),
+            },
+            _ => Err(io::Error::from(io::ErrorKind::Other)),
+        }
+    }
+
     fn ensure_handshake(&mut self) -> Result<(), io::Error> {
         match &self.stream {
             Some(Stream::Ssl(_)) => Ok(()),
