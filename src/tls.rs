@@ -24,6 +24,7 @@ use openssl::ssl::{
 };
 use std::cmp;
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
 use std::io;
 use std::io::{Read, Write};
@@ -33,11 +34,122 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
 
+const DOMAIN_LEN_MAX: usize = 253;
+
+enum IdentityError {
+    InvalidName,
+    CertMetadata(PathBuf, io::Error),
+    KeyMetadata(PathBuf, io::Error),
+    SslContext(ErrorStack),
+    CertContent(PathBuf, ErrorStack),
+    KeyContent(PathBuf, ErrorStack),
+    CertCheck(ErrorStack),
+}
+
+impl fmt::Display for IdentityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidName => write!(f, "invalid name"),
+            Self::CertMetadata(fname, e) => {
+                write!(f, "failed to read cert file metadata {:?}: {}", fname, e)
+            }
+            Self::KeyMetadata(fname, e) => {
+                write!(f, "failed to read key file metadata {:?}: {}", fname, e)
+            }
+            Self::SslContext(e) => write!(f, "failed to create SSL context: {}", e),
+            Self::CertContent(fname, e) => {
+                write!(f, "failed to read cert content {:?}: {}", fname, e)
+            }
+            Self::KeyContent(fname, e) => {
+                write!(f, "failed to read key content {:?}: {}", fname, e)
+            }
+            Self::CertCheck(e) => write!(f, "failed to check private key: {}", e),
+        }
+    }
+}
+
 struct Identity {
     ssl_context: SslContext,
     cert_fname: PathBuf,
     key_fname: PathBuf,
     modified: Option<SystemTime>,
+}
+
+impl Identity {
+    fn from_name(dir: &Path, name: &str) -> Result<Self, IdentityError> {
+        // forbid long names
+        if name.len() > DOMAIN_LEN_MAX {
+            return Err(IdentityError::InvalidName);
+        }
+
+        // forbid control chars and '/', for safe filesystem usage
+        for c in name.chars() {
+            if (c as u32) < 0x20 || c == '/' {
+                return Err(IdentityError::InvalidName);
+            }
+        }
+
+        let cert_fname = dir.join(Path::new(&format!("{}.crt", name)));
+
+        let cert_metadata = match fs::metadata(&cert_fname) {
+            Ok(md) => md,
+            Err(e) => return Err(IdentityError::CertMetadata(cert_fname, e)),
+        };
+
+        let key_fname = dir.join(Path::new(&format!("{}.key", name)));
+
+        let key_metadata = match fs::metadata(&key_fname) {
+            Ok(md) => md,
+            Err(e) => return Err(IdentityError::KeyMetadata(key_fname, e)),
+        };
+
+        let cert_modified = cert_metadata.modified();
+        let key_modified = key_metadata.modified();
+
+        let modified = if cert_modified.is_ok() && key_modified.is_ok() {
+            let cert_modified = cert_modified.unwrap();
+            let key_modified = key_modified.unwrap();
+
+            Some(cmp::max(cert_modified, key_modified))
+        } else {
+            None
+        };
+
+        let mut ctx = match SslContextBuilder::new(SslMethod::tls()) {
+            Ok(ctx) => ctx,
+            Err(e) => return Err(IdentityError::SslContext(e)),
+        };
+
+        if let Err(e) = ctx.set_certificate_chain_file(&cert_fname) {
+            return Err(IdentityError::CertContent(cert_fname, e));
+        }
+
+        if let Err(e) = ctx.set_private_key_file(&key_fname, SslFiletype::PEM) {
+            return Err(IdentityError::KeyContent(key_fname, e));
+        }
+
+        if let Err(e) = ctx.check_private_key() {
+            return Err(IdentityError::CertCheck(e));
+        }
+
+        Ok(Self {
+            ssl_context: ctx.build(),
+            cert_fname,
+            key_fname,
+            modified,
+        })
+    }
+}
+
+fn modified_after(fnames: &[&Path], t: SystemTime) -> Result<bool, io::Error> {
+    for fname in fnames {
+        match fs::metadata(fname)?.modified() {
+            Ok(modified) if modified > t => return Ok(true),
+            _ => {}
+        }
+    }
+
+    Ok(false)
 }
 
 struct IdentityRef<'a> {
@@ -59,107 +171,36 @@ impl IdentityCache {
         }
     }
 
-    fn get<'a>(&'a self, name: &str) -> Option<IdentityRef<'a>> {
-        let mut data = self.data.lock().unwrap();
+    fn get_by_domain<'a>(&'a self, domain: &str) -> Option<IdentityRef<'a>> {
+        let name = domain.to_lowercase();
 
-        let mut update = false;
+        // try to find a file named after the exact host, then try with a
+        //   wildcard pattern at the same subdomain level. the filename
+        //   format uses underscores instead of asterisks. so, a domain of
+        //   www.example.com will attempt to be matched against a file named
+        //   www.example.com.crt and _.example.com.crt. wildcards at other
+        //   levels are not supported
 
-        if let Some(value) = data.get(name) {
-            if let Some(modified) = value.modified {
-                update = match fs::metadata(&value.cert_fname) {
-                    Ok(md) => match md.modified() {
-                        Ok(t) => t > modified,
-                        Err(_) => false,
-                    },
-                    Err(_) => true,
-                };
-
-                if !update {
-                    update = match fs::metadata(&value.key_fname) {
-                        Ok(md) => match md.modified() {
-                            Ok(t) => t > modified,
-                            Err(_) => false,
-                        },
-                        Err(_) => true,
-                    };
-                }
-            }
-        } else {
-            update = true;
+        if let Some(identity) = self.get_by_name(&name) {
+            return Some(identity);
         }
 
-        if update {
-            let cert_fname = self.dir.join(Path::new(&format!("{}.crt", name)));
+        let pos = match name.find('.') {
+            Some(pos) => pos,
+            None => return None,
+        };
 
-            let cert_metadata = match fs::metadata(&cert_fname) {
-                Ok(md) => md,
-                Err(e) => {
-                    debug!("failed to read cert file metadata {:?}: {}", cert_fname, e);
-                    return None;
-                }
-            };
+        let name = format!("_{}", &name[pos..]);
 
-            let key_fname = self.dir.join(Path::new(&format!("{}.key", name)));
-
-            let key_metadata = match fs::metadata(&key_fname) {
-                Ok(md) => md,
-                Err(e) => {
-                    debug!("failed to read key file metadata {:?}: {}", key_fname, e);
-                    return None;
-                }
-            };
-
-            let cert_modified = cert_metadata.modified();
-            let key_modified = key_metadata.modified();
-
-            let modified = if cert_modified.is_ok() && key_modified.is_ok() {
-                let cert_modified = cert_modified.unwrap();
-                let key_modified = key_modified.unwrap();
-
-                Some(cmp::max(cert_modified, key_modified))
-            } else {
-                None
-            };
-
-            let mut ctx = match SslContextBuilder::new(SslMethod::tls()) {
-                Ok(ctx) => ctx,
-                Err(e) => {
-                    debug!("failed to create SSL context: {}", e);
-                    return None;
-                }
-            };
-
-            if let Err(e) = ctx.set_certificate_chain_file(&cert_fname) {
-                debug!("failed to read cert content {:?}: {}", cert_fname, e);
-                return None;
-            }
-
-            if let Err(e) = ctx.set_private_key_file(&key_fname, SslFiletype::PEM) {
-                debug!("failed to read key content {:?}: {}", key_fname, e);
-                return None;
-            }
-
-            if let Err(e) = ctx.check_private_key() {
-                debug!("failed to check private key for keypair {}: {}", name, e);
-                return None;
-            }
-
-            let ctx = ctx.build();
-
-            debug!("loaded cert: {}", name);
-
-            data.insert(
-                String::from(name),
-                Identity {
-                    ssl_context: ctx,
-                    cert_fname,
-                    key_fname,
-                    modified,
-                },
-            );
+        if let Some(identity) = self.get_by_name(&name) {
+            return Some(identity);
         }
 
-        mem::drop(data);
+        None
+    }
+
+    fn get_by_name<'a>(&'a self, name: &str) -> Option<IdentityRef<'a>> {
+        self.ensure_updated(name);
 
         let data = self.data.lock().unwrap();
 
@@ -175,6 +216,37 @@ impl IdentityCache {
             })
         } else {
             None
+        }
+    }
+
+    fn ensure_updated(&self, name: &str) {
+        let mut data = self.data.lock().unwrap();
+
+        let mut update = false;
+
+        if let Some(value) = data.get(name) {
+            if let Some(modified) = value.modified {
+                update = match modified_after(&[&value.cert_fname, &value.key_fname], modified) {
+                    Ok(b) => b,
+                    Err(_) => true,
+                };
+            }
+        } else {
+            update = true;
+        }
+
+        if update {
+            let identity = match Identity::from_name(&self.dir, name) {
+                Ok(identity) => identity,
+                Err(e) => {
+                    debug!("failed to load cert {}: {}", name, e);
+                    return;
+                }
+            };
+
+            data.insert(String::from(name), identity);
+
+            debug!("loaded cert: {}", name);
         }
     }
 }
@@ -200,10 +272,10 @@ impl TlsAcceptor {
                 Some(name) => {
                     debug!("tls server name: {}", name);
 
-                    match cache.get(name) {
+                    match cache.get_by_domain(name) {
                         Some(ctx) => ctx,
                         None => match &default_cert {
-                            Some(default_cert) => match cache.get(default_cert) {
+                            Some(default_cert) => match cache.get_by_name(default_cert) {
                                 Some(ctx) => ctx,
                                 None => return Err(SniError::ALERT_FATAL),
                             },
@@ -212,7 +284,7 @@ impl TlsAcceptor {
                     }
                 }
                 None => match &default_cert {
-                    Some(default_cert) => match cache.get(default_cert) {
+                    Some(default_cert) => match cache.get_by_name(default_cert) {
                         Some(ctx) => ctx,
                         None => return Err(SniError::ALERT_FATAL),
                     },
