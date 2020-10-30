@@ -29,6 +29,7 @@ use std::fs;
 use std::io;
 use std::io::{Read, Write};
 use std::mem;
+use std::path;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -84,7 +85,7 @@ impl Identity {
 
         // forbid control chars and '/', for safe filesystem usage
         for c in name.chars() {
-            if (c as u32) < 0x20 || c == '/' {
+            if (c as u32) < 0x20 || path::is_separator(c) {
                 return Err(IdentityError::InvalidName);
             }
         }
@@ -107,10 +108,7 @@ impl Identity {
         let key_modified = key_metadata.modified();
 
         let modified = if cert_modified.is_ok() && key_modified.is_ok() {
-            let cert_modified = cert_modified.unwrap();
-            let key_modified = key_modified.unwrap();
-
-            Some(cmp::max(cert_modified, key_modified))
+            Some(cmp::max(cert_modified.unwrap(), key_modified.unwrap()))
         } else {
             None
         };
