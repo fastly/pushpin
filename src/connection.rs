@@ -671,7 +671,6 @@ impl ServerReqConnection {
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                         let mut want = Want::nothing();
                         want.sock_read = true;
-                        want.sock_read = true;
                         want.sock_write = true;
                         want.timeout = self.exp_time;
                         return Some(Ok(want));
@@ -1432,7 +1431,6 @@ impl ServerStreamConnection {
                     Ok(()) => {}
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                         let mut want = Want::nothing();
-                        want.sock_read = true;
                         want.sock_read = true;
                         want.sock_write = true;
                         want.timeout = Self::timeout(&self.d);
