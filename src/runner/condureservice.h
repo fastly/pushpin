@@ -44,6 +44,7 @@ public:
 		const QString &ipcPrefix,
 		const QString &filePrefix,
 		int logLevel,
+		const QString &certsDir,
 		int clientBufferSize,
 		int maxconn,
 		const QList<ListenPort> &ports,

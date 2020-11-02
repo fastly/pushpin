@@ -535,17 +535,9 @@ public:
 			if(settings.contains("runner/condure_bin"))
 				condureBin = settings.value("runner/condure_bin").toString();
 
-			foreach(const ListenPort &p, ports)
-			{
-				if(p.ssl)
-				{
-					log_error("condure does not support ssl ports");
-					emit q->quit(1);
-					return;
-				}
-			}
+			QString certsDir = QDir(configDir).filePath("certs");
 
-			services += new CondureService(condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), clientBufferSize, clientMaxConnections, ports, this);
+			services += new CondureService(condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, ports, this);
 		}
 
 		if(serviceNames.contains("mongrel2"))

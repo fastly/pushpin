@@ -41,6 +41,7 @@ CondureService::CondureService(
 	const QString &ipcPrefix,
 	const QString &filePrefix,
 	int logLevel,
+	const QString &certsDir,
 	int clientBufferSize,
 	int maxconn,
 	const QList<ListenPort> &ports,
@@ -57,11 +58,22 @@ CondureService::CondureService(
 	if(logLevel >= 0)
 		args_ += "--log-level=" + QString::number(logLevel);
 
+	bool usingSsl = false;
+
 	foreach(const ListenPort &p, ports)
 	{
 		QString addr = !p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0");
 
-		args_ += "--listen=" + addr + ":" + QString::number(p.port) + ",stream";
+		QString arg = "--listen=" + addr + ":" + QString::number(p.port) + ",stream";
+
+		if(p.ssl)
+		{
+			usingSsl = true;
+
+			arg += ",tls,default-cert=default_" + QString::number(p.port);
+		}
+
+		args_ += arg;
 	}
 
 	args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "m2zhttp";
@@ -69,6 +81,9 @@ CondureService::CondureService(
 	args_ += "--buffer-size=" + QString::number(clientBufferSize);
 
 	args_ += "--stream-maxconn=" + QString::number(maxconn);
+
+	if(usingSsl)
+		args_ += "--tls-identities-dir=" + certsDir;
 
 	setName("condure");
 	setPidFile(QDir(runDir).filePath(filePrefix + "condure.pid"));
