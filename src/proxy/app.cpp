@@ -257,6 +257,14 @@ public:
 		if(!args.ipcPrefix.isEmpty())
 			settings.setIpcPrefix(args.ipcPrefix);
 
+		QStringList services = settings.value("runner/services").toStringList();
+
+		QStringList condure_in_specs = settings.value("proxy/condure_in_specs").toStringList();
+		trimlist(&condure_in_specs);
+		QStringList condure_in_stream_specs = settings.value("proxy/condure_in_stream_specs").toStringList();
+		trimlist(&condure_in_stream_specs);
+		QStringList condure_out_specs = settings.value("proxy/condure_out_specs").toStringList();
+		trimlist(&condure_out_specs);
 		QStringList m2a_in_specs = settings.value("proxy/m2a_in_specs").toStringList();
 		trimlist(&m2a_in_specs);
 		QStringList m2a_in_stream_specs = settings.value("proxy/m2a_in_stream_specs").toStringList();
@@ -314,9 +322,16 @@ public:
 		if(fi.isRelative())
 			routesFile = QFileInfo(QFileInfo(configFile).absoluteDir(), routesFile).filePath();
 
-		if(m2a_in_specs.isEmpty() || m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty() || zurl_out_specs.isEmpty() || zurl_out_stream_specs.isEmpty() || zurl_in_specs.isEmpty())
+		if(!(!condure_in_specs.isEmpty() && !condure_in_stream_specs.isEmpty() && !condure_out_specs.isEmpty()) && !(!m2a_in_specs.isEmpty() && !m2a_in_stream_specs.isEmpty() && !m2a_out_specs.isEmpty()))
 		{
-			log_error("must set m2a_in_specs, m2a_in_stream_specs, m2a_out_specs, zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
+			log_error("must set condure_in_specs, condure_in_stream_specs, and condure_out_specs, or m2a_in_specs, m2a_in_stream_specs, and m2a_out_specs");
+			emit q->quit();
+			return;
+		}
+
+		if(zurl_out_specs.isEmpty() || zurl_out_stream_specs.isEmpty() || zurl_in_specs.isEmpty())
+		{
+			log_error("must set zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
 			emit q->quit();
 			return;
 		}
@@ -327,9 +342,18 @@ public:
 		Engine::Configuration config;
 		config.appVersion = VERSION;
 		config.clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
-		config.serverInSpecs = m2a_in_specs;
-		config.serverInStreamSpecs = m2a_in_stream_specs;
-		config.serverOutSpecs = m2a_out_specs;
+		if(!services.contains("mongrel2") && (!condure_in_specs.isEmpty() || !condure_in_stream_specs.isEmpty() || !condure_out_specs.isEmpty()))
+		{
+			config.serverInSpecs = condure_in_specs;
+			config.serverInStreamSpecs = condure_in_stream_specs;
+			config.serverOutSpecs = condure_out_specs;
+		}
+		else
+		{
+			config.serverInSpecs = m2a_in_specs;
+			config.serverInStreamSpecs = m2a_in_stream_specs;
+			config.serverOutSpecs = m2a_out_specs;
+		}
 		config.clientOutSpecs = zurl_out_specs;
 		config.clientOutStreamSpecs = zurl_out_stream_specs;
 		config.clientInSpecs = zurl_in_specs;

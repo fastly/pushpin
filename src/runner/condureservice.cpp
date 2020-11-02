@@ -76,7 +76,7 @@ CondureService::CondureService(
 		args_ += arg;
 	}
 
-	args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "m2zhttp";
+	args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "condure";
 
 	args_ += "--buffer-size=" + QString::number(clientBufferSize);
 

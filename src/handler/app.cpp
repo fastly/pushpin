@@ -235,6 +235,12 @@ public:
 		if(args.portOffset != -1)
 			settings.setPortOffset(args.portOffset);
 
+		QStringList services = settings.value("runner/services").toStringList();
+
+		QStringList condure_in_stream_specs = settings.value("proxy/condure_in_stream_specs").toStringList();
+		trimlist(&condure_in_stream_specs);
+		QStringList condure_out_specs = settings.value("proxy/condure_out_specs").toStringList();
+		trimlist(&condure_out_specs);
 		QStringList m2a_in_stream_specs = settings.value("handler/m2a_in_stream_specs").toStringList();
 		trimlist(&m2a_in_stream_specs);
 		QStringList m2a_out_specs = settings.value("handler/m2a_out_specs").toStringList();
@@ -297,8 +303,16 @@ public:
 		Engine::Configuration config;
 		config.appVersion = VERSION;
 		config.instanceId = "pushpin-handler_" + QByteArray::number(QCoreApplication::applicationPid());
-		config.serverInStreamSpecs = m2a_in_stream_specs;
-		config.serverOutSpecs = m2a_out_specs;
+		if(!services.contains("mongrel2") && (!condure_in_stream_specs.isEmpty() || !condure_out_specs.isEmpty()))
+		{
+			config.serverInStreamSpecs = condure_in_stream_specs;
+			config.serverOutSpecs = condure_out_specs;
+		}
+		else
+		{
+			config.serverInStreamSpecs = m2a_in_stream_specs;
+			config.serverOutSpecs = m2a_out_specs;
+		}
 		config.clientOutSpecs = intreq_out_specs;
 		config.clientOutStreamSpecs = intreq_out_stream_specs;
 		config.clientInSpecs = intreq_in_specs;
