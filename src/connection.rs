@@ -1800,6 +1800,9 @@ impl ServerStreamConnection {
                 if proto.is_persistent() {
                     self.reset(args.now);
                 } else {
+                    // don't send cancel
+                    self.d.to_addr = None;
+
                     self.d.state = ServerStreamState::ShuttingDown;
                 }
             }
@@ -1899,6 +1902,9 @@ impl ServerStreamConnection {
                 Some(Ok(r.merge(&want)))
             }
             websocket::State::Finished => {
+                // don't send cancel
+                self.d.to_addr = None;
+
                 self.d.state = ServerStreamState::ShuttingDown;
 
                 None
