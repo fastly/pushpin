@@ -7,6 +7,10 @@ description = "HTTP/WebSocket connection manager"
 repository = "https://github.com/fanout/condure"
 readme = "README.md"
 edition = "2018"
+autobins = false
+
+[[bin]]
+name = "condure"
 
 [profile.dev]
 panic = "abort"
