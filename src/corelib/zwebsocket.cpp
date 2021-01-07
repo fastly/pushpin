@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -222,7 +222,13 @@ public:
 		if(multi)
 		{
 			if(keepAliveTimer->isActive())
+			{
+				// need to flush the current keepalive, since the
+				//   manager registration may extend the timeout
+				keepAlive_timeout();
+
 				keepAliveTimer->stop();
+			}
 
 			manager->registerKeepAlive(q);
 		}
