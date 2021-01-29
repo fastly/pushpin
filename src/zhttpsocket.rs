@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@
 
 use crate::arena;
 use crate::channel;
+use crate::event;
 use crate::list;
 use crate::tnetstring;
 use crate::zhttppacket::{Id, Response, ResponseScratch};
 use crate::zmq::{MultipartHeader, SpecInfo, ZmqSocket};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, log_enabled, trace, warn};
-use mio::unix::EventedFd;
+use mio::unix::SourceFd;
 use slab::Slab;
 use std::fmt;
 use std::io;
@@ -867,56 +868,56 @@ impl SocketManager {
             .set_subscribe(sub.as_bytes())
             .unwrap();
 
-        const CONTROL: mio::Token = mio::Token(0);
-        const CLIENT_REQ: mio::Token = mio::Token(1);
-        const CLIENT_STREAM_OUT: mio::Token = mio::Token(2);
-        const CLIENT_STREAM_OUT_STREAM: mio::Token = mio::Token(3);
-        const CLIENT_STREAM_IN: mio::Token = mio::Token(4);
+        const CONTROL: mio::Token = mio::Token(1);
+        const CLIENT_REQ: mio::Token = mio::Token(2);
+        const CLIENT_STREAM_OUT: mio::Token = mio::Token(3);
+        const CLIENT_STREAM_OUT_STREAM: mio::Token = mio::Token(4);
+        const CLIENT_STREAM_IN: mio::Token = mio::Token(5);
 
         const REQ_HANDLE_BASE: usize = 10;
         const STREAM_HANDLE_BASE: usize = REQ_HANDLE_BASE + (HANDLES_MAX * TOKENS_PER_HANDLE);
 
-        let poll = mio::Poll::new().unwrap();
+        let mut poller = event::Poller::new(1 + (HANDLES_MAX * TOKENS_PER_HANDLE * 2)).unwrap();
 
-        poll.register(
-            control_receiver.get_read_registration(),
-            CONTROL,
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                control_receiver.get_read_registration(),
+                CONTROL,
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            &EventedFd(&client_req.sock.sock.get_fd().unwrap()),
-            CLIENT_REQ,
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register(
+                &mut SourceFd(&client_req.sock.sock.get_fd().unwrap()),
+                CLIENT_REQ,
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            &EventedFd(&client_stream.out.sock.get_fd().unwrap()),
-            CLIENT_STREAM_OUT,
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register(
+                &mut SourceFd(&client_stream.out.sock.get_fd().unwrap()),
+                CLIENT_STREAM_OUT,
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            &EventedFd(&client_stream.out_stream.sock.get_fd().unwrap()),
-            CLIENT_STREAM_OUT_STREAM,
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register(
+                &mut SourceFd(&client_stream.out_stream.sock.get_fd().unwrap()),
+                CLIENT_STREAM_OUT_STREAM,
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            &EventedFd(&client_stream.in_.sock.get_fd().unwrap()),
-            CLIENT_STREAM_IN,
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register(
+                &mut SourceFd(&client_stream.in_.sock.get_fd().unwrap()),
+                CLIENT_STREAM_IN,
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
         let mut control_readable = true;
 
@@ -927,8 +928,6 @@ impl SocketManager {
         let mut stream_out_pending = None;
         let mut stream_out_stream_pending = None;
         let mut stream_out_stream_delay = None;
-
-        let mut events = mio::Events::with_capacity(1024);
 
         loop {
             if control_readable {
@@ -976,13 +975,15 @@ impl SocketManager {
 
                             if req_handles.len() + stream_handles.len() < HANDLES_MAX {
                                 req_handles.add(pe, filter, |p, key| {
-                                    poll.register(
-                                        p.pe.receiver.get_read_registration(),
-                                        mio::Token(REQ_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 0),
-                                        mio::Ready::readable(),
-                                        mio::PollOpt::edge(),
-                                    )
-                                    .unwrap();
+                                    poller
+                                        .register_custom(
+                                            p.pe.receiver.get_read_registration(),
+                                            mio::Token(
+                                                REQ_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 0,
+                                            ),
+                                            mio::Interest::READABLE,
+                                        )
+                                        .unwrap();
                                 });
                             } else {
                                 error!("cannot add more than {} handles", HANDLES_MAX);
@@ -993,25 +994,25 @@ impl SocketManager {
 
                             if req_handles.len() + stream_handles.len() < HANDLES_MAX {
                                 stream_handles.add(pe, filter, |p, key| {
-                                    poll.register(
-                                        p.pe.receiver_any.get_read_registration(),
-                                        mio::Token(
-                                            STREAM_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 0,
-                                        ),
-                                        mio::Ready::readable(),
-                                        mio::PollOpt::edge(),
-                                    )
-                                    .unwrap();
+                                    poller
+                                        .register_custom(
+                                            p.pe.receiver_any.get_read_registration(),
+                                            mio::Token(
+                                                STREAM_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 0,
+                                            ),
+                                            mio::Interest::READABLE,
+                                        )
+                                        .unwrap();
 
-                                    poll.register(
-                                        p.pe.receiver_addr.get_read_registration(),
-                                        mio::Token(
-                                            STREAM_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 1,
-                                        ),
-                                        mio::Ready::readable(),
-                                        mio::PollOpt::edge(),
-                                    )
-                                    .unwrap();
+                                    poller
+                                        .register_custom(
+                                            p.pe.receiver_addr.get_read_registration(),
+                                            mio::Token(
+                                                STREAM_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 1,
+                                            ),
+                                            mio::Interest::READABLE,
+                                        )
+                                        .unwrap();
                                 });
                             } else {
                                 error!("cannot add more than {} handles", HANDLES_MAX);
@@ -1032,7 +1033,8 @@ impl SocketManager {
 
                 req_handles.cleanup(|p| {
                     debug!("req handle disconnected: filter=[{}]", p.filter);
-                    poll.deregister(p.pe.receiver.get_read_registration())
+                    poller
+                        .deregister_custom(p.pe.receiver.get_read_registration())
                         .unwrap();
                 });
             }
@@ -1068,9 +1070,11 @@ impl SocketManager {
 
                 stream_handles.cleanup(|p| {
                     debug!("stream handle disconnected: filter=[{}]", p.filter);
-                    poll.deregister(p.pe.receiver_any.get_read_registration())
+                    poller
+                        .deregister_custom(p.pe.receiver_any.get_read_registration())
                         .unwrap();
-                    poll.deregister(p.pe.receiver_addr.get_read_registration())
+                    poller
+                        .deregister_custom(p.pe.receiver_addr.get_read_registration())
                         .unwrap();
                 });
             }
@@ -1104,9 +1108,11 @@ impl SocketManager {
 
                 stream_handles.cleanup(|p| {
                     debug!("stream handle disconnected: filter=[{}]", p.filter);
-                    poll.deregister(p.pe.receiver_any.get_read_registration())
+                    poller
+                        .deregister_custom(p.pe.receiver_any.get_read_registration())
                         .unwrap();
-                    poll.deregister(p.pe.receiver_addr.get_read_registration())
+                    poller
+                        .deregister_custom(p.pe.receiver_addr.get_read_registration())
                         .unwrap();
                 });
             }
@@ -1173,7 +1179,8 @@ impl SocketManager {
 
                         req_handles.cleanup(|p| {
                             debug!("req handle disconnected: filter=[{}]", p.filter);
-                            poll.deregister(p.pe.receiver.get_read_registration())
+                            poller
+                                .deregister_custom(p.pe.receiver.get_read_registration())
                                 .unwrap();
                         });
                     }
@@ -1202,9 +1209,11 @@ impl SocketManager {
 
                         stream_handles.cleanup(|p| {
                             debug!("stream handle disconnected: filter=[{}]", p.filter);
-                            poll.deregister(p.pe.receiver_any.get_read_registration())
+                            poller
+                                .deregister_custom(p.pe.receiver_any.get_read_registration())
                                 .unwrap();
-                            poll.deregister(p.pe.receiver_addr.get_read_registration())
+                            poller
+                                .deregister_custom(p.pe.receiver_addr.get_read_registration())
                                 .unwrap();
                         });
                     }
@@ -1252,9 +1261,9 @@ impl SocketManager {
                 timeout
             };
 
-            poll.poll(&mut events, timeout).unwrap();
+            poller.poll(timeout).unwrap();
 
-            for event in events.iter() {
+            for event in poller.iter_events() {
                 match event.token() {
                     CONTROL => {
                         control_readable = true;
@@ -1277,14 +1286,14 @@ impl SocketManager {
                         if token >= REQ_HANDLE_BASE && token < STREAM_HANDLE_BASE {
                             let key = (token - REQ_HANDLE_BASE) / TOKENS_PER_HANDLE;
 
-                            if event.readiness().is_readable() {
+                            if event.is_readable() {
                                 req_handles.set_readable(key);
                             }
                         } else if token >= STREAM_HANDLE_BASE {
                             let key = (token - STREAM_HANDLE_BASE) / TOKENS_PER_HANDLE;
                             let offset = (token - STREAM_HANDLE_BASE) % TOKENS_PER_HANDLE;
 
-                            if event.readiness().is_readable() {
+                            if event.is_readable() {
                                 if offset == 0 {
                                     stream_handles.set_readable_any(key);
                                 } else if offset == 1 {
@@ -1389,11 +1398,11 @@ pub struct ClientReqHandle {
 }
 
 impl ClientReqHandle {
-    pub fn get_read_registration(&self) -> &mio::Registration {
+    pub fn get_read_registration(&self) -> &event::Registration {
         self.receiver.get_read_registration()
     }
 
-    pub fn get_write_registration(&self) -> &mio::Registration {
+    pub fn get_write_registration(&self) -> &event::Registration {
         self.sender.get_write_registration()
     }
 
@@ -1425,15 +1434,15 @@ pub struct ClientStreamHandle {
 }
 
 impl ClientStreamHandle {
-    pub fn get_read_registration(&self) -> &mio::Registration {
+    pub fn get_read_registration(&self) -> &event::Registration {
         self.receiver.get_read_registration()
     }
 
-    pub fn get_write_any_registration(&self) -> &mio::Registration {
+    pub fn get_write_any_registration(&self) -> &event::Registration {
         self.sender_any.get_write_registration()
     }
 
-    pub fn get_write_addr_registration(&self) -> &mio::Registration {
+    pub fn get_write_addr_registration(&self) -> &event::Registration {
         self.sender_addr.get_write_registration()
     }
 
@@ -1476,30 +1485,29 @@ impl ClientStreamHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event;
     use crate::zhttppacket::ResponsePacket;
     use std::mem;
     use std::thread;
 
-    fn wait_readable(poll: &mio::Poll, token: mio::Token) {
+    fn wait_readable(poller: &mut event::Poller, token: mio::Token) {
         loop {
-            let mut events = mio::Events::with_capacity(1024);
-            poll.poll(&mut events, None).unwrap();
+            poller.poll(None).unwrap();
 
-            for event in events {
-                if event.token() == token && event.readiness().is_readable() {
+            for event in poller.iter_events() {
+                if event.token() == token && event.is_readable() {
                     return;
                 }
             }
         }
     }
 
-    fn wait_writable(poll: &mio::Poll, token: mio::Token) {
+    fn wait_writable(poller: &mut event::Poller, token: mio::Token) {
         loop {
-            let mut events = mio::Events::with_capacity(1024);
-            poll.poll(&mut events, None).unwrap();
+            poller.poll(None).unwrap();
 
-            for event in events {
-                if event.token() == token && event.readiness().is_writable() {
+            for event in poller.iter_events() {
+                if event.token() == token && event.is_writable() {
                     return;
                 }
             }
@@ -1534,15 +1542,15 @@ mod tests {
 
         let mut h = zsockman.client_stream_handle(b"a-");
 
-        let poll = mio::Poll::new().unwrap();
+        let mut poller = event::Poller::new(1024).unwrap();
 
-        poll.register(
-            h.get_write_addr_registration(),
-            mio::Token(0),
-            mio::Ready::writable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                h.get_write_addr_registration(),
+                mio::Token(1),
+                mio::Interest::WRITABLE,
+            )
+            .unwrap();
 
         // first write will always succeed
         h.send_to_addr(
@@ -1560,7 +1568,7 @@ mod tests {
                 zmq::Message::from("2".as_bytes()),
             ) {
                 Ok(()) => break,
-                Err(SendError::Full(_)) => wait_writable(&poll, mio::Token(0)),
+                Err(SendError::Full(_)) => wait_writable(&mut poller, mio::Token(1)),
                 Err(SendError::Io(e)) => panic!("{:?}", e),
             }
         }
@@ -1601,12 +1609,17 @@ mod tests {
         assert!(parts[1].is_empty());
         assert_eq!(parts[2], b"1");
 
-        // third write will succeed now
-        h.send_to_addr(
-            "test-handler".as_bytes(),
-            zmq::Message::from("3".as_bytes()),
-        )
-        .unwrap();
+        // third write will succeed eventually
+        loop {
+            match h.send_to_addr(
+                "test-handler".as_bytes(),
+                zmq::Message::from("3".as_bytes()),
+            ) {
+                Ok(()) => break,
+                Err(SendError::Full(_)) => wait_writable(&mut poller, mio::Token(1)),
+                Err(SendError::Io(e)) => panic!("{:?}", e),
+            }
+        }
     }
 
     #[test]
@@ -1626,23 +1639,23 @@ mod tests {
         let mut h1 = zsockman.client_req_handle(b"a-");
         let mut h2 = zsockman.client_req_handle(b"b-");
 
-        let poll = mio::Poll::new().unwrap();
+        let mut poller = event::Poller::new(1024).unwrap();
 
-        poll.register(
-            h1.get_read_registration(),
-            mio::Token(0),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                h1.get_read_registration(),
+                mio::Token(1),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            h2.get_read_registration(),
-            mio::Token(1),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                h2.get_read_registration(),
+                mio::Token(2),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
         let rep_sock = zmq_context.socket(zmq::REP).unwrap();
         rep_sock.connect("inproc://test-req").unwrap();
@@ -1665,7 +1678,7 @@ mod tests {
                     break;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    wait_readable(&poll, mio::Token(0));
+                    wait_readable(&mut poller, mio::Token(1));
                     continue;
                 }
                 Err(e) => panic!("recv: {}", e),
@@ -1700,7 +1713,7 @@ mod tests {
                     break;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    wait_readable(&poll, mio::Token(1));
+                    wait_readable(&mut poller, mio::Token(2));
                     continue;
                 }
                 Err(e) => panic!("recv: {}", e),
@@ -1751,23 +1764,23 @@ mod tests {
         let mut h1 = zsockman.client_stream_handle(b"a-");
         let mut h2 = zsockman.client_stream_handle(b"b-");
 
-        let poll = mio::Poll::new().unwrap();
+        let mut poller = event::Poller::new(1024).unwrap();
 
-        poll.register(
-            h1.get_read_registration(),
-            mio::Token(0),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                h1.get_read_registration(),
+                mio::Token(1),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            h2.get_read_registration(),
-            mio::Token(1),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                h2.get_read_registration(),
+                mio::Token(2),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
         let in_sock = zmq_context.socket(zmq::PULL).unwrap();
         in_sock.connect("inproc://test-out").unwrap();
@@ -1803,7 +1816,7 @@ mod tests {
                     break;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    wait_readable(&poll, mio::Token(0));
+                    wait_readable(&mut poller, mio::Token(1));
                     continue;
                 }
                 Err(e) => panic!("recv: {}", e),
@@ -1857,7 +1870,7 @@ mod tests {
                     break;
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    wait_readable(&poll, mio::Token(1));
+                    wait_readable(&mut poller, mio::Token(2));
                     continue;
                 }
                 Err(e) => panic!("recv: {}", e),

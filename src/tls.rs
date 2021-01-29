@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -325,10 +325,10 @@ pub struct TlsStream {
 }
 
 impl TlsStream {
-    pub fn get_tcp(&self) -> Option<&TcpStream> {
-        match &self.stream {
-            Some(Stream::Ssl(stream)) => Some(stream.get_ref()),
-            Some(Stream::MidHandshakeSsl(stream)) => Some(stream.get_ref()),
+    pub fn get_tcp(&mut self) -> Option<&mut TcpStream> {
+        match &mut self.stream {
+            Some(Stream::Ssl(stream)) => Some(stream.get_mut()),
+            Some(Stream::MidHandshakeSsl(stream)) => Some(stream.get_mut()),
             None => None,
         }
     }

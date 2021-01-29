@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@
 
 use crate::app::ListenConfig;
 use crate::arena;
-use crate::buffer::{TmpBuffer, WriteVectored, VECTORED_MAX};
+use crate::buffer::{TmpBuffer, WriteVectored};
 use crate::channel;
 use crate::connection::{
     ServerReqConnection, ServerState, ServerStreamConnection, Shutdown, Want, ZhttpSender,
 };
+use crate::event;
 use crate::list;
 use crate::listener::Listener;
 use crate::timer;
@@ -32,8 +33,8 @@ use crate::zmq::SpecInfo;
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
 use mio;
-use mio::net::{TcpListener, TcpStream};
-use mio::unix::EventedFd;
+use mio::net::{TcpListener, TcpSocket, TcpStream};
+use mio::unix::SourceFd;
 use slab::Slab;
 use std::cmp;
 use std::collections::VecDeque;
@@ -41,6 +42,7 @@ use std::convert::TryFrom;
 use std::io;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
+use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::path::Path;
 use std::rc::Rc;
 use std::str;
@@ -57,7 +59,6 @@ const CONN_BASE: usize = 16;
 const ACCEPT_PER_LOOP_MAX: usize = 100;
 const TICK_DURATION_MS: u64 = 10;
 const POLL_TIMEOUT_MAX: Duration = Duration::from_millis(100);
-const TCP_KEEPALIVE: Duration = Duration::from_secs(3_600); // 1 hour
 
 const KEEP_ALIVE_TIMEOUT_MS: usize = 45_000;
 const KEEP_ALIVE_BATCH_MS: usize = 100;
@@ -179,20 +180,23 @@ fn send_batched<'buf, 'ids>(
     }
 }
 
+fn set_socket_opts(stream: TcpStream) -> TcpStream {
+    if let Err(e) = stream.set_nodelay(true) {
+        error!("set nodelay failed: {:?}", e);
+    }
+
+    let socket = unsafe { TcpSocket::from_raw_fd(stream.into_raw_fd()) };
+
+    if let Err(e) = socket.set_keepalive(true) {
+        error!("set keepalive failed: {:?}", e);
+    }
+
+    unsafe { TcpStream::from_raw_fd(socket.into_raw_fd()) }
+}
+
 impl WriteVectored for TcpStream {
     fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
-        // IoVec does not allow 0-byte slices, so initialize using 1 byte
-        let mut arr = [(&b"X"[..]).into(); VECTORED_MAX];
-        let mut arr_len = 0;
-
-        for buf in bufs {
-            if buf.len() > 0 {
-                arr[arr_len] = buf.as_ref().into();
-                arr_len += 1;
-            }
-        }
-
-        TcpStream::write_bufs(self, &arr[..arr_len])
+        io::Write::write_vectored(self, bufs)
     }
 }
 
@@ -337,7 +341,7 @@ enum Stream {
 }
 
 impl Stream {
-    fn get_tcp(&self) -> Option<&TcpStream> {
+    fn get_tcp(&mut self) -> Option<&mut TcpStream> {
         match self {
             Stream::Plain(stream) => Some(stream),
             Stream::Tls(stream) => stream.get_tcp(),
@@ -365,14 +369,6 @@ impl Connection {
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
     ) -> Self {
-        if let Err(e) = stream.get_tcp().unwrap().set_nodelay(true) {
-            error!("set nodelay failed: {:?}", e);
-        }
-
-        if let Err(e) = stream.get_tcp().unwrap().set_keepalive(Some(TCP_KEEPALIVE)) {
-            error!("set keepalive failed: {:?}", e);
-        }
-
         let secure = match &stream {
             Stream::Plain(_) => false,
             Stream::Tls(_) => true,
@@ -423,7 +419,7 @@ impl Connection {
         }
     }
 
-    fn get_tcp(&self) -> Option<&TcpStream> {
+    fn get_tcp(&mut self) -> Option<&mut TcpStream> {
         self.stream.get_tcp()
     }
 
@@ -850,74 +846,75 @@ impl Worker {
 
         debug!("worker {}: allocating done", id);
 
-        let poll = mio::Poll::new().unwrap();
+        // register_custom is called 8 times
+        let mut poller = event::Poller::new(8).unwrap();
 
-        poll.register(
-            stop.get_read_registration(),
-            mio::Token(0),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                stop.get_read_registration(),
+                mio::Token(1),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            req_acceptor.get_read_registration(),
-            mio::Token(1),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                req_acceptor.get_read_registration(),
+                mio::Token(2),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            stream_acceptor.get_read_registration(),
-            mio::Token(2),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                stream_acceptor.get_read_registration(),
+                mio::Token(3),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
         let mut req_handle = zsockman.client_req_handle(format!("{}-", id).as_bytes());
         let stream_handle = zsockman.client_stream_handle(format!("{}-", id).as_bytes());
 
-        poll.register(
-            req_handle.get_read_registration(),
-            mio::Token(HANDLE_BASE + 0),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                req_handle.get_read_registration(),
+                mio::Token(HANDLE_BASE + 0),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            req_handle.get_write_registration(),
-            mio::Token(HANDLE_BASE + 1),
-            mio::Ready::writable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                req_handle.get_write_registration(),
+                mio::Token(HANDLE_BASE + 1),
+                mio::Interest::WRITABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            stream_handle.get_read_registration(),
-            mio::Token(HANDLE_BASE + 2),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                stream_handle.get_read_registration(),
+                mio::Token(HANDLE_BASE + 2),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            stream_handle.get_write_any_registration(),
-            mio::Token(HANDLE_BASE + 3),
-            mio::Ready::writable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                stream_handle.get_write_any_registration(),
+                mio::Token(HANDLE_BASE + 3),
+                mio::Interest::WRITABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            stream_handle.get_write_addr_registration(),
-            mio::Token(HANDLE_BASE + 4),
-            mio::Ready::writable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                stream_handle.get_write_addr_registration(),
+                mio::Token(HANDLE_BASE + 4),
+                mio::Interest::WRITABLE,
+            )
+            .unwrap();
 
         let mut stream_handle = ClientStreamHandle::new(stream_handle, ka_batch);
 
@@ -931,8 +928,6 @@ impl Worker {
 
         let mut last_keep_alive_time = Instant::now();
         let mut next_keep_alive_index = 0;
-
-        let mut events = mio::Events::with_capacity(1024);
 
         let start_time = Instant::now();
 
@@ -966,6 +961,8 @@ impl Worker {
                         break;
                     }
                 };
+
+                let stream = set_socket_opts(stream);
 
                 let stream = match &req_tls_acceptors[pos] {
                     Some(tls_acceptor) => match tls_acceptor.accept(stream) {
@@ -1012,15 +1009,15 @@ impl Worker {
                 let id = Self::gen_id(id, key, &mut next_cid);
                 c.start(id.as_ref());
 
-                let ready_flags = mio::Ready::readable() | mio::Ready::writable();
+                let ready_flags = mio::Interest::READABLE | mio::Interest::WRITABLE;
 
-                poll.register(
-                    c.get_tcp().unwrap(),
-                    mio::Token(CONN_BASE + (key * 4) + 0),
-                    ready_flags,
-                    mio::PollOpt::edge(),
-                )
-                .unwrap();
+                poller
+                    .register(
+                        c.get_tcp().unwrap(),
+                        mio::Token(CONN_BASE + (key * 4) + 0),
+                        ready_flags,
+                    )
+                    .unwrap();
 
                 needs_process.add(key);
             }
@@ -1037,6 +1034,8 @@ impl Worker {
                         break;
                     }
                 };
+
+                let stream = set_socket_opts(stream);
 
                 let stream = match &stream_tls_acceptors[pos] {
                     Some(tls_acceptor) => match tls_acceptor.accept(stream) {
@@ -1083,15 +1082,15 @@ impl Worker {
                 let id = Self::gen_id(id, key, &mut next_cid);
                 c.start(id.as_ref());
 
-                let ready_flags = mio::Ready::readable() | mio::Ready::writable();
+                let ready_flags = mio::Interest::READABLE | mio::Interest::WRITABLE;
 
-                poll.register(
-                    c.get_tcp().unwrap(),
-                    mio::Token(CONN_BASE + (key * 4) + 0),
-                    ready_flags,
-                    mio::PollOpt::edge(),
-                )
-                .unwrap();
+                poller
+                    .register(
+                        c.get_tcp().unwrap(),
+                        mio::Token(CONN_BASE + (key * 4) + 0),
+                        ready_flags,
+                    )
+                    .unwrap();
 
                 needs_process.add(key);
             }
@@ -1294,7 +1293,7 @@ impl Worker {
                     debug!("conn {}: destroying", c.id);
 
                     if let Some(stream) = c.get_tcp() {
-                        poll.deregister(stream).unwrap();
+                        poller.deregister(stream).unwrap();
                     }
 
                     if let Some(k) = c.zwrite_key.take() {
@@ -1554,23 +1553,23 @@ impl Worker {
                 POLL_TIMEOUT_MAX
             };
 
-            poll.poll(&mut events, Some(timeout)).unwrap();
+            poller.poll(Some(timeout)).unwrap();
 
             let mut done = false;
 
-            for event in events.iter() {
+            for event in poller.iter_events() {
                 match event.token() {
-                    mio::Token(0) => {
+                    mio::Token(1) => {
                         if stop.try_recv().is_ok() {
                             done = true;
                             break;
                         }
                     }
-                    mio::Token(1) => {
+                    mio::Token(2) => {
                         debug!("worker {}: req accept event", id);
                         can_req_accept = true;
                     }
-                    mio::Token(2) => {
+                    mio::Token(3) => {
                         debug!("worker {}: stream accept event", id);
                         can_stream_accept = true;
                     }
@@ -1604,8 +1603,8 @@ impl Worker {
                             _ => false,
                         };
 
-                        let readable = event.readiness().is_readable();
-                        let writable = event.readiness().is_writable();
+                        let readable = event.is_readable();
+                        let writable = event.is_writable();
 
                         if readable {
                             debug!("conn {}: sock read event", c.id);
@@ -1796,7 +1795,7 @@ impl Server {
         let mut addrs = Vec::new();
 
         for lc in listen_addrs.iter() {
-            let l = match TcpListener::bind(&lc.addr) {
+            let l = match TcpListener::bind(lc.addr) {
                 Ok(l) => l,
                 Err(e) => return Err(format!("failed to bind {}: {}", lc.addr, e)),
             };
@@ -2146,41 +2145,39 @@ impl TestServer {
         let out_sock = zmq_context.socket(zmq::PUB).unwrap();
         out_sock.connect("inproc://server-test-in").unwrap();
 
-        let poll = mio::Poll::new().unwrap();
+        let mut poller = event::Poller::new(1).unwrap();
 
-        poll.register(
-            stop.get_read_registration(),
-            mio::Token(0),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                stop.get_read_registration(),
+                mio::Token(1),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            &EventedFd(&rep_sock.get_fd().unwrap()),
-            mio::Token(1),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register(
+                &mut SourceFd(&rep_sock.get_fd().unwrap()),
+                mio::Token(2),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            &EventedFd(&in_sock.get_fd().unwrap()),
-            mio::Token(2),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register(
+                &mut SourceFd(&in_sock.get_fd().unwrap()),
+                mio::Token(3),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            &EventedFd(&in_stream_sock.get_fd().unwrap()),
-            mio::Token(3),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
-
-        let mut events = mio::Events::with_capacity(1024);
+        poller
+            .register(
+                &mut SourceFd(&in_stream_sock.get_fd().unwrap()),
+                mio::Token(4),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
         let mut rep_events = rep_sock.get_events().unwrap();
 
@@ -2356,25 +2353,25 @@ impl TestServer {
                 }
             }
 
-            poll.poll(&mut events, None).unwrap();
+            poller.poll(None).unwrap();
 
             let mut done = false;
 
-            for event in events.iter() {
+            for event in poller.iter_events() {
                 match event.token() {
-                    mio::Token(0) => {
+                    mio::Token(1) => {
                         if stop.try_recv().is_ok() {
                             done = true;
                             break;
                         }
                     }
-                    mio::Token(1) => {
+                    mio::Token(2) => {
                         rep_events = rep_sock.get_events().unwrap();
                     }
-                    mio::Token(2) => {
+                    mio::Token(3) => {
                         in_events = in_sock.get_events().unwrap();
                     }
-                    mio::Token(3) => {
+                    mio::Token(4) => {
                         in_stream_events = in_stream_sock.get_events().unwrap();
                     }
                     _ => unreachable!(),

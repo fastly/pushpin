@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -189,6 +189,7 @@ impl Drop for Listener {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event;
     use std::io::{Read, Write};
     use std::mem;
     use std::sync::mpsc;
@@ -202,7 +203,7 @@ mod tests {
 
         for _ in 0..2 {
             let addr = "127.0.0.1:0".parse().unwrap();
-            let l = TcpListener::bind(&addr).unwrap();
+            let l = TcpListener::bind(addr).unwrap();
             addrs.push(l.local_addr().unwrap());
             listeners.push(l);
 
@@ -213,31 +214,30 @@ mod tests {
 
         let _l = Listener::new(listeners, senders);
 
-        let poll = mio::Poll::new().unwrap();
+        let mut poller = event::Poller::new(1024).unwrap();
 
         let mut client = std::net::TcpStream::connect(&addrs[0]).unwrap();
 
-        poll.register(
-            receivers[0].get_read_registration(),
-            mio::Token(0),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                receivers[0].get_read_registration(),
+                mio::Token(1),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
         let result = receivers[0].try_recv();
         assert_eq!(result.is_err(), true);
         assert_eq!(result.unwrap_err(), mpsc::TryRecvError::Empty);
 
         loop {
-            let mut events = mio::Events::with_capacity(1024);
-            poll.poll(&mut events, None).unwrap();
+            poller.poll(None).unwrap();
 
             let mut done = false;
-            for event in events {
+            for event in poller.iter_events() {
                 match event.token() {
-                    mio::Token(0) => {
-                        assert_eq!(event.readiness().is_readable(), true);
+                    mio::Token(1) => {
+                        assert_eq!(event.is_readable(), true);
                         done = true;
                         break;
                     }

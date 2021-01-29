@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::event;
 use mio;
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,8 +23,8 @@ use std::sync::Arc;
 
 pub struct Sender<T> {
     sender: Option<mpsc::SyncSender<T>>,
-    read_set_readiness: mio::SetReadiness,
-    write_registration: mio::Registration,
+    read_set_readiness: event::SetReadiness,
+    write_registration: event::Registration,
     cts: Option<Arc<AtomicBool>>,
 }
 
@@ -36,7 +37,7 @@ impl<T> Sender<T> {
         }
     }
 
-    pub fn get_write_registration(&self) -> &mio::Registration {
+    pub fn get_write_registration(&self) -> &event::Registration {
         &self.write_registration
     }
 
@@ -57,7 +58,7 @@ impl<T> Sender<T> {
         match self.sender.as_ref().unwrap().try_send(t) {
             Ok(_) => {
                 self.read_set_readiness
-                    .set_readiness(mio::Ready::readable())
+                    .set_readiness(mio::Interest::READABLE)
                     .unwrap();
 
                 Ok(())
@@ -74,7 +75,7 @@ impl<T> Sender<T> {
         match self.sender.as_ref().unwrap().send(t) {
             Ok(_) => {
                 self.read_set_readiness
-                    .set_readiness(mio::Ready::readable())
+                    .set_readiness(mio::Interest::READABLE)
                     .unwrap();
 
                 Ok(())
@@ -89,20 +90,20 @@ impl<T> Drop for Sender<T> {
         mem::drop(self.sender.take().unwrap());
 
         self.read_set_readiness
-            .set_readiness(mio::Ready::readable())
+            .set_readiness(mio::Interest::READABLE)
             .unwrap();
     }
 }
 
 pub struct Receiver<T> {
     receiver: mpsc::Receiver<T>,
-    read_registration: mio::Registration,
-    write_set_readiness: mio::SetReadiness,
+    read_registration: event::Registration,
+    write_set_readiness: event::SetReadiness,
     cts: Option<Arc<AtomicBool>>,
 }
 
 impl<T> Receiver<T> {
-    pub fn get_read_registration(&self) -> &mio::Registration {
+    pub fn get_read_registration(&self) -> &event::Registration {
         &self.read_registration
     }
 
@@ -111,7 +112,7 @@ impl<T> Receiver<T> {
             Ok(t) => {
                 if self.cts.is_none() {
                     self.write_set_readiness
-                        .set_readiness(mio::Ready::writable())
+                        .set_readiness(mio::Interest::WRITABLE)
                         .unwrap();
                 }
 
@@ -124,7 +125,7 @@ impl<T> Receiver<T> {
 
                 if !ret {
                     self.write_set_readiness
-                        .set_readiness(mio::Ready::writable())
+                        .set_readiness(mio::Interest::WRITABLE)
                         .unwrap();
                 }
 
@@ -139,7 +140,7 @@ impl<T> Receiver<T> {
 
         if self.cts.is_none() {
             self.write_set_readiness
-                .set_readiness(mio::Ready::writable())
+                .set_readiness(mio::Interest::WRITABLE)
                 .unwrap();
         }
 
@@ -148,8 +149,8 @@ impl<T> Receiver<T> {
 }
 
 pub fn channel<T>(bound: usize) -> (Sender<T>, Receiver<T>) {
-    let (read_reg, read_sr) = mio::Registration::new2();
-    let (write_reg, write_sr) = mio::Registration::new2();
+    let (read_reg, read_sr) = event::Registration::new();
+    let (write_reg, write_sr) = event::Registration::new();
 
     // rendezvous channel
     if bound == 0 {
@@ -192,7 +193,7 @@ pub fn channel<T>(bound: usize) -> (Sender<T>, Receiver<T>) {
         // channel is immediately writable
         receiver
             .write_set_readiness
-            .set_readiness(mio::Ready::writable())
+            .set_readiness(mio::Interest::WRITABLE)
             .unwrap();
 
         (sender, receiver)
@@ -205,7 +206,7 @@ mod tests {
     use std::time;
 
     #[test]
-    fn test_send_recv_0() {
+    fn test_send_recv_bound0() {
         let (sender, receiver) = channel(0);
 
         assert_eq!(sender.can_send(), false);
@@ -242,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn test_send_recv_1() {
+    fn test_send_recv_bound1() {
         let (sender, receiver) = channel(1);
 
         let result = receiver.try_recv();
@@ -274,83 +275,58 @@ mod tests {
     }
 
     #[test]
-    fn test_notify_0() {
+    fn test_notify_bound0() {
         let (sender, receiver) = channel(0);
 
-        let poll = mio::Poll::new().unwrap();
+        let mut poller = event::Poller::new(2).unwrap();
 
-        poll.register(
-            sender.get_write_registration(),
-            mio::Token(0),
-            mio::Ready::writable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                sender.get_write_registration(),
+                mio::Token(1),
+                mio::Interest::WRITABLE,
+            )
+            .unwrap();
 
-        poll.register(
-            receiver.get_read_registration(),
-            mio::Token(1),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
+        poller
+            .register_custom(
+                receiver.get_read_registration(),
+                mio::Token(2),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
         assert_eq!(sender.can_send(), false);
 
-        let mut events = mio::Events::with_capacity(1024);
-        poll.poll(&mut events, Some(time::Duration::from_millis(0)))
-            .unwrap();
-        assert_eq!(events.iter().next(), None);
+        poller.poll(Some(time::Duration::from_millis(0))).unwrap();
+
+        assert_eq!(poller.iter_events().next(), None);
 
         let result = receiver.try_recv();
         assert_eq!(result.is_err(), true);
         assert_eq!(result.unwrap_err(), mpsc::TryRecvError::Empty);
 
-        loop {
-            let mut events = mio::Events::with_capacity(1024);
-            poll.poll(&mut events, None).unwrap();
+        poller.poll(None).unwrap();
 
-            let mut done = false;
-            for event in events {
-                match event.token() {
-                    mio::Token(0) => {
-                        assert_eq!(event.readiness().is_writable(), true);
-                        done = true;
-                        break;
-                    }
-                    _ => unreachable!(),
-                }
-            }
+        let mut it = poller.iter_events();
 
-            if done {
-                break;
-            }
-        }
+        let event = it.next().unwrap();
+        assert_eq!(event.token(), mio::Token(1));
+        assert_eq!(event.is_writable(), true);
+        assert_eq!(it.next(), None);
 
         assert_eq!(sender.can_send(), true);
 
         sender.try_send(42).unwrap();
 
-        loop {
-            let mut events = mio::Events::with_capacity(1024);
-            poll.poll(&mut events, None).unwrap();
+        poller.poll(None).unwrap();
 
-            let mut done = false;
-            for event in events {
-                match event.token() {
-                    mio::Token(1) => {
-                        assert_eq!(event.readiness().is_readable(), true);
-                        done = true;
-                        break;
-                    }
-                    _ => unreachable!(),
-                }
-            }
+        let mut it = poller.iter_events();
 
-            if done {
-                break;
-            }
-        }
+        let event = it.next().unwrap();
+        assert_eq!(event.token(), mio::Token(2));
+        assert_eq!(event.is_readable(), true);
+        assert_eq!(it.next(), None);
 
         let v = receiver.try_recv().unwrap();
 
@@ -358,84 +334,60 @@ mod tests {
 
         mem::drop(sender);
 
-        loop {
-            let mut events = mio::Events::with_capacity(1024);
-            poll.poll(&mut events, None).unwrap();
+        poller.poll(None).unwrap();
 
-            let mut done = false;
-            for event in events {
-                match event.token() {
-                    mio::Token(1) => {
-                        assert_eq!(event.readiness().is_readable(), true);
-                        done = true;
-                        break;
-                    }
-                    _ => unreachable!(),
-                }
-            }
+        let mut it = poller.iter_events();
 
-            if done {
-                break;
-            }
-        }
+        let event = it.next().unwrap();
+        assert_eq!(event.token(), mio::Token(2));
+        assert_eq!(event.is_readable(), true);
+        assert_eq!(it.next(), None);
 
         let e = receiver.try_recv().unwrap_err();
         assert_eq!(e, mpsc::TryRecvError::Disconnected);
     }
 
     #[test]
-    fn test_notify_1() {
+    fn test_notify_bound1() {
         let (sender, receiver) = channel(1);
 
-        let poll = mio::Poll::new().unwrap();
+        let mut poller = event::Poller::new(2).unwrap();
 
-        poll.register(
-            sender.get_write_registration(),
-            mio::Token(0),
-            mio::Ready::writable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
-
-        poll.register(
-            receiver.get_read_registration(),
-            mio::Token(1),
-            mio::Ready::readable(),
-            mio::PollOpt::edge(),
-        )
-        .unwrap();
-
-        let mut events = mio::Events::with_capacity(1024);
-        poll.poll(&mut events, Some(time::Duration::from_millis(0)))
+        poller
+            .register_custom(
+                sender.get_write_registration(),
+                mio::Token(1),
+                mio::Interest::WRITABLE,
+            )
             .unwrap();
-        let event = events.iter().next();
-        assert!(event.is_some());
-        let event = event.unwrap();
-        assert_eq!(event.token(), mio::Token(0));
-        assert!(event.readiness().is_writable());
+
+        poller
+            .register_custom(
+                receiver.get_read_registration(),
+                mio::Token(2),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
+
+        poller.poll(Some(time::Duration::from_millis(0))).unwrap();
+
+        let mut it = poller.iter_events();
+
+        let event = it.next().unwrap();
+        assert_eq!(event.token(), mio::Token(1));
+        assert_eq!(event.is_writable(), true);
+        assert_eq!(it.next(), None);
 
         sender.try_send(42).unwrap();
 
-        loop {
-            let mut events = mio::Events::with_capacity(1024);
-            poll.poll(&mut events, None).unwrap();
+        poller.poll(None).unwrap();
 
-            let mut done = false;
-            for event in events {
-                match event.token() {
-                    mio::Token(1) => {
-                        assert_eq!(event.readiness().is_readable(), true);
-                        done = true;
-                        break;
-                    }
-                    _ => unreachable!(),
-                }
-            }
+        let mut it = poller.iter_events();
 
-            if done {
-                break;
-            }
-        }
+        let event = it.next().unwrap();
+        assert_eq!(event.token(), mio::Token(2));
+        assert_eq!(event.is_readable(), true);
+        assert_eq!(it.next(), None);
 
         let v = receiver.try_recv().unwrap();
 
@@ -443,26 +395,14 @@ mod tests {
 
         mem::drop(sender);
 
-        loop {
-            let mut events = mio::Events::with_capacity(1024);
-            poll.poll(&mut events, None).unwrap();
+        poller.poll(None).unwrap();
 
-            let mut done = false;
-            for event in events {
-                match event.token() {
-                    mio::Token(1) => {
-                        assert_eq!(event.readiness().is_readable(), true);
-                        done = true;
-                        break;
-                    }
-                    _ => unreachable!(),
-                }
-            }
+        let mut it = poller.iter_events();
 
-            if done {
-                break;
-            }
-        }
+        let event = it.next().unwrap();
+        assert_eq!(event.token(), mio::Token(2));
+        assert_eq!(event.is_readable(), true);
+        assert_eq!(it.next(), None);
 
         let e = receiver.try_recv().unwrap_err();
         assert_eq!(e, mpsc::TryRecvError::Disconnected);

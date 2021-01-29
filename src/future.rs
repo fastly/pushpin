@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 
 use crate::channel;
+use crate::event;
 use crate::list;
 use mio;
 use mio::net::{TcpListener, TcpStream};
@@ -86,34 +87,32 @@ struct EventRegistration {
 
 struct MioReactorData {
     registrations: Slab<EventRegistration>,
-    events: mio::Events,
 }
 
 pub struct MioReactor {
     data: RefCell<MioReactorData>,
-    poll: mio::Poll,
+    poll: RefCell<event::Poller>,
 }
 
 impl MioReactor {
     pub fn new(registrations_max: usize) -> Self {
         let data = MioReactorData {
             registrations: Slab::with_capacity(registrations_max),
-            events: mio::Events::with_capacity(1024),
         };
 
         Self {
             data: RefCell::new(data),
-            poll: mio::Poll::new().unwrap(),
+            poll: RefCell::new(event::Poller::new(registrations_max).unwrap()),
         }
     }
 
     fn register<E>(
         reactor: &Rc<MioReactor>,
-        handle: &E,
-        interest: mio::Ready,
+        handle: &mut E,
+        interest: mio::Interest,
     ) -> Result<RegistrationHandle, io::Error>
     where
-        E: mio::Evented + ?Sized,
+        E: mio::event::Source + ?Sized,
     {
         let data = &mut *reactor.data.borrow_mut();
 
@@ -126,10 +125,42 @@ impl MioReactor {
             waker: None,
         });
 
-        if let Err(e) =
-            reactor
-                .poll
-                .register(handle, mio::Token(key), interest, mio::PollOpt::edge())
+        if let Err(e) = reactor
+            .poll
+            .borrow()
+            .register(handle, mio::Token(key + 1), interest)
+        {
+            data.registrations.remove(key);
+
+            return Err(e);
+        }
+
+        Ok(RegistrationHandle {
+            reactor: Rc::clone(reactor),
+            key,
+        })
+    }
+
+    fn register_custom(
+        reactor: &Rc<MioReactor>,
+        handle: &event::Registration,
+        interest: mio::Interest,
+    ) -> Result<RegistrationHandle, io::Error> {
+        let data = &mut *reactor.data.borrow_mut();
+
+        if data.registrations.len() == data.registrations.capacity() {
+            return Err(io::Error::from(io::ErrorKind::WriteZero));
+        }
+
+        let key = data.registrations.insert(EventRegistration {
+            ready: false,
+            waker: None,
+        });
+
+        if let Err(e) = reactor
+            .poll
+            .borrow()
+            .register_custom(handle, mio::Token(key + 1), interest)
         {
             data.registrations.remove(key);
 
@@ -147,10 +178,16 @@ impl Reactor for MioReactor {
     fn poll(&self) -> Result<(), io::Error> {
         let data = &mut *self.data.borrow_mut();
 
-        self.poll.poll(&mut data.events, None)?;
+        let poll = &mut *self.poll.borrow_mut();
 
-        for event in data.events.iter() {
+        poll.poll(None)?;
+
+        for event in poll.iter_events() {
             let key = usize::from(event.token());
+
+            assert!(key > 0);
+
+            let key = key - 1;
 
             if let Some(event_reg) = data.registrations.get_mut(key) {
                 event_reg.ready = true;
@@ -451,9 +488,12 @@ pub struct AsyncSender<T> {
 
 impl<T> AsyncSender<T> {
     pub fn new(s: channel::Sender<T>, reactor: &Rc<MioReactor>) -> Self {
-        let handle =
-            MioReactor::register(reactor, s.get_write_registration(), mio::Ready::writable())
-                .unwrap();
+        let handle = MioReactor::register_custom(
+            reactor,
+            s.get_write_registration(),
+            mio::Interest::WRITABLE,
+        )
+        .unwrap();
 
         let writable = s.can_send();
 
@@ -510,9 +550,12 @@ pub struct AsyncReceiver<T> {
 
 impl<T> AsyncReceiver<T> {
     pub fn new(r: channel::Receiver<T>, reactor: &Rc<MioReactor>) -> Self {
-        let handle =
-            MioReactor::register(reactor, r.get_read_registration(), mio::Ready::readable())
-                .unwrap();
+        let handle = MioReactor::register_custom(
+            reactor,
+            r.get_read_registration(),
+            mio::Interest::READABLE,
+        )
+        .unwrap();
 
         handle.set_ready(true);
 
@@ -530,8 +573,8 @@ pub struct AsyncTcpListener {
 }
 
 impl AsyncTcpListener {
-    pub fn new(l: TcpListener, reactor: &Rc<MioReactor>) -> Self {
-        let handle = MioReactor::register(reactor, &l, mio::Ready::readable()).unwrap();
+    pub fn new(mut l: TcpListener, reactor: &Rc<MioReactor>) -> Self {
+        let handle = MioReactor::register(reactor, &mut l, mio::Interest::READABLE).unwrap();
 
         handle.set_ready(true);
 
