@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,10 @@
 use std::cell::RefCell;
 use std::cmp;
 use std::io;
+use std::io::{Read, Write};
 use std::rc::Rc;
 
 pub const VECTORED_MAX: usize = 8;
-
-// TODO: when TcpStream implements Write::write_vectored we can remove this and just use Write
-pub trait WriteVectored {
-    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error>;
-}
 
 pub trait RefRead {
     fn get_ref(&self) -> &[u8];
@@ -75,7 +71,7 @@ impl RefRead for io::Cursor<&mut [u8]> {
 }
 
 pub fn write_vectored_offset(
-    writer: &mut dyn WriteVectored,
+    writer: &mut dyn Write,
     bufs: &[&[u8]],
     offset: usize,
 ) -> Result<usize, io::Error> {
@@ -195,7 +191,7 @@ impl Buffer {
 }
 
 #[cfg(test)]
-impl io::Read for Buffer {
+impl Read for Buffer {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         let src = self.read_buf();
         let size = cmp::min(src.len(), buf.len());
@@ -208,7 +204,7 @@ impl io::Read for Buffer {
     }
 }
 
-impl io::Write for Buffer {
+impl Write for Buffer {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
         if !buf.is_empty() && self.write_avail() == 0 {
             return Err(io::Error::from(io::ErrorKind::WriteZero));
@@ -271,7 +267,7 @@ impl RingBuffer {
         self.end = 0;
     }
 
-    pub fn write_from(&mut self, r: &mut dyn io::Read) -> Result<usize, io::Error> {
+    pub fn write_from(&mut self, r: &mut dyn Read) -> Result<usize, io::Error> {
         let size = match r.read(self.write_buf()) {
             Ok(size) => size,
             Err(e) => return Err(e),
@@ -397,7 +393,7 @@ impl RingBuffer {
 }
 
 #[cfg(test)]
-impl io::Read for RingBuffer {
+impl Read for RingBuffer {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         let mut pos = 0;
 
@@ -416,7 +412,7 @@ impl io::Read for RingBuffer {
     }
 }
 
-impl io::Write for RingBuffer {
+impl Write for RingBuffer {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
         if !buf.is_empty() && self.write_avail() == 0 {
             return Err(io::Error::from(io::ErrorKind::WriteZero));
@@ -518,7 +514,13 @@ mod tests {
             }
         }
 
-        impl WriteVectored for MyWriter {
+        impl Write for MyWriter {
+            fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+                self.bufs.push(String::from_utf8(buf.to_vec()).unwrap());
+
+                Ok(buf.len())
+            }
+
             fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
                 let mut total = 0;
 
@@ -528,6 +530,10 @@ mod tests {
                 }
 
                 Ok(total)
+            }
+
+            fn flush(&mut self) -> Result<(), io::Error> {
+                Ok(())
             }
         }
 

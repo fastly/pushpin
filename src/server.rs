@@ -16,7 +16,7 @@
 
 use crate::app::ListenConfig;
 use crate::arena;
-use crate::buffer::{TmpBuffer, WriteVectored};
+use crate::buffer::TmpBuffer;
 use crate::channel;
 use crate::connection::{
     ServerReqConnection, ServerState, ServerStreamConnection, Shutdown, Want, ZhttpSender,
@@ -194,30 +194,9 @@ fn set_socket_opts(stream: TcpStream) -> TcpStream {
     unsafe { TcpStream::from_raw_fd(socket.into_raw_fd()) }
 }
 
-impl WriteVectored for TcpStream {
-    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
-        io::Write::write_vectored(self, bufs)
-    }
-}
-
 impl Shutdown for TcpStream {
     fn shutdown(&mut self) -> Result<(), io::Error> {
         Ok(())
-    }
-}
-
-impl WriteVectored for TlsStream {
-    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
-        let mut total = 0;
-
-        for buf in bufs {
-            match self.write(&*buf) {
-                Ok(size) => total += size,
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(total)
     }
 }
 
@@ -522,7 +501,7 @@ impl Connection {
         }
     }
 
-    fn process_with_stream<S: Read + Write + WriteVectored + Shutdown>(
+    fn process_with_stream<S: Read + Write + Shutdown>(
         id: &ArrayString<[u8; 32]>,
         conn: &mut ServerConnection,
         want: &mut Want,

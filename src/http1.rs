@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::buffer::{write_vectored_offset, LimitBufs, WriteVectored, VECTORED_MAX};
+use crate::buffer::{write_vectored_offset, LimitBufs, VECTORED_MAX};
 use std::cmp;
 use std::convert::TryFrom;
 use std::io;
@@ -93,7 +93,7 @@ struct Chunk {
 fn write_chunk(
     content: &[&[u8]],
     footer: &[u8],
-    dest: &mut dyn WriteVectored,
+    dest: &mut dyn Write,
     chunk: &mut Option<Chunk>,
     max_size: usize,
 ) -> Result<usize, io::Error> {
@@ -580,7 +580,7 @@ impl<'buf, 'headers> ServerProtocol {
 
     pub fn send_body(
         &mut self,
-        writer: &mut dyn WriteVectored,
+        writer: &mut dyn Write,
         src: &[&[u8]],
         end: bool,
         headers: Option<&[u8]>,
@@ -685,12 +685,6 @@ mod tests {
             Ok(size)
         }
 
-        fn flush(&mut self) -> Result<(), io::Error> {
-            Ok(())
-        }
-    }
-
-    impl WriteVectored for MyBuffer {
         fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
             let mut total = 0;
 
@@ -713,6 +707,10 @@ mod tests {
             }
 
             Ok(total)
+        }
+
+        fn flush(&mut self) -> Result<(), io::Error> {
+            Ok(())
         }
     }
 

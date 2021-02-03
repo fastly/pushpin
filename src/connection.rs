@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-use crate::buffer::{
-    Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, WriteVectored, VECTORED_MAX,
-};
+use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, VECTORED_MAX};
 use crate::http1;
 use crate::websocket;
 use crate::zhttppacket;
@@ -374,7 +372,7 @@ impl MessageTracker {
 
 struct ServerProcessArgs<'a, S, Z>
 where
-    S: Read + Write + WriteVectored + Shutdown,
+    S: Read + Write + Shutdown,
     Z: ZhttpSender,
 {
     now: Instant,
@@ -485,7 +483,7 @@ impl ServerReqConnection {
         packet_buf: &mut [u8],
     ) -> Result<Want, ServerError>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         loop {
@@ -546,7 +544,7 @@ impl ServerReqConnection {
 
     fn after_request<S, Z>(&mut self, args: ServerProcessArgs<'_, S, Z>) -> Result<(), ServerError>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         let proto = &mut self.protocol;
@@ -648,7 +646,7 @@ impl ServerReqConnection {
         args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         // check expiration if not already shutting down
@@ -698,7 +696,7 @@ impl ServerReqConnection {
         args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         let mut want = Want::nothing();
@@ -1142,7 +1140,7 @@ impl ServerStreamConnection {
         tmp_buf: &mut [u8],
     ) -> Result<Want, ServerError>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         loop {
@@ -1207,7 +1205,7 @@ impl ServerStreamConnection {
         zreq: zhttppacket::Request,
     ) -> Result<(), io::Error>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         if !args.zsender.can_send_to() {
@@ -1276,7 +1274,7 @@ impl ServerStreamConnection {
         mut want: Want,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         let size = match args
@@ -1358,7 +1356,7 @@ impl ServerStreamConnection {
         mut args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         // check expiration if not already shutting down
@@ -1473,7 +1471,7 @@ impl ServerStreamConnection {
         mut args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         let mut want = Want::nothing();
@@ -1816,7 +1814,7 @@ impl ServerStreamConnection {
         mut args: ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         let mut want = Want::nothing();
@@ -1918,7 +1916,7 @@ impl ServerStreamConnection {
         tmp_buf: &mut [u8],
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         let proto = match &mut self.protocol {
@@ -2029,7 +2027,7 @@ impl ServerStreamConnection {
         args: &mut ServerProcessArgs<'_, S, Z>,
     ) -> Option<Result<Want, ServerError>>
     where
-        S: Read + Write + WriteVectored + Shutdown,
+        S: Read + Write + Shutdown,
         Z: ZhttpSender,
     {
         let proto = match &mut self.protocol {
@@ -2517,12 +2515,6 @@ mod tests {
             Ok(buf.len())
         }
 
-        fn flush(&mut self) -> Result<(), io::Error> {
-            Ok(())
-        }
-    }
-
-    impl WriteVectored for FakeSock {
         fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
             let mut total = 0;
 
@@ -2541,6 +2533,10 @@ mod tests {
             }
 
             Ok(total)
+        }
+
+        fn flush(&mut self) -> Result<(), io::Error> {
+            Ok(())
         }
     }
 

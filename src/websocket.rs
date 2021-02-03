@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-use crate::buffer::{write_vectored_offset, RefRead, WriteVectored, VECTORED_MAX};
+use crate::buffer::{write_vectored_offset, RefRead, VECTORED_MAX};
 use std::cmp;
 use std::io;
+use std::io::Write;
 
 pub const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -241,7 +242,7 @@ impl<'buf> Protocol {
 
     pub fn send_frame(
         &mut self,
-        writer: &mut dyn WriteVectored,
+        writer: &mut dyn Write,
         opcode: u8,
         src: &[&[u8]],
         fin: bool,
@@ -371,7 +372,7 @@ impl<'buf> Protocol {
 
     pub fn send_message_content(
         &mut self,
-        writer: &mut dyn WriteVectored,
+        writer: &mut dyn Write,
         src: &[&[u8]],
         end: bool,
     ) -> Result<(usize, bool), Error> {
@@ -524,7 +525,13 @@ mod tests {
         }
     }
 
-    impl WriteVectored for MyWriter {
+    impl Write for MyWriter {
+        fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+            self.data.extend_from_slice(buf.as_ref());
+
+            Ok(buf.len())
+        }
+
         fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
             let mut total = 0;
 
@@ -534,6 +541,10 @@ mod tests {
             }
 
             Ok(total)
+        }
+
+        fn flush(&mut self) -> Result<(), io::Error> {
+            Ok(())
         }
     }
 
