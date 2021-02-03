@@ -179,6 +179,5 @@ Condure was built for high performance. It uses numerous optimization techniques
 
 ## Future plans
 
-* TLS
 * HTTP/2
 * HTTP/3
