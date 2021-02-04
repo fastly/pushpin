@@ -20,10 +20,12 @@ use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
 use log::info;
 use signal_hook;
+use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
 use std::cmp;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -197,21 +199,26 @@ impl App {
     }
 
     pub fn wait_for_term(&self) {
-        let signal_types = &[signal_hook::SIGTERM, signal_hook::SIGINT];
+        let mut signals = Signals::new(TERM_SIGNALS).unwrap();
 
-        let signals = Signals::new(signal_types).unwrap();
+        let term_now = Arc::new(AtomicBool::new(false));
 
-        // remove the signal handlers after the first invocation
-        for s in signal_types.iter() {
-            signal_hook::cleanup::register(*s, signal_types.to_vec()).unwrap();
+        // ensure two term signals in a row causes the app to immediately exit
+        for signal_type in TERM_SIGNALS {
+            signal_hook::flag::register_conditional_shutdown(
+                *signal_type,
+                1, // exit code
+                Arc::clone(&term_now),
+            )
+            .unwrap();
+
+            signal_hook::flag::register(*signal_type, Arc::clone(&term_now)).unwrap();
         }
 
         // wait for termination
-        for signal in &signals {
+        for signal in &mut signals {
             match signal {
-                signal_hook::SIGTERM | signal_hook::SIGINT => {
-                    break;
-                }
+                signal_type if TERM_SIGNALS.contains(&signal_type) => break,
                 _ => unreachable!(),
             }
         }
