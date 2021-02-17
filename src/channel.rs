@@ -43,9 +43,10 @@ impl<T> Sender<T> {
 
     pub fn try_send(&self, t: T) -> Result<(), mpsc::TrySendError<T>> {
         if let Some(cts) = &self.cts {
-            let ret = cts.compare_and_swap(true, false, Ordering::Relaxed);
-
-            if !ret {
+            if cts
+                .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
+                .is_err()
+            {
                 return Err(mpsc::TrySendError::Full(t));
             }
 
@@ -121,9 +122,10 @@ impl<T> Receiver<T> {
             Err(mpsc::TryRecvError::Empty) if self.cts.is_some() => {
                 let cts = self.cts.as_ref().unwrap();
 
-                let ret = cts.compare_and_swap(false, true, Ordering::Relaxed);
-
-                if !ret {
+                if cts
+                    .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+                    .is_ok()
+                {
                     self.write_set_readiness
                         .set_readiness(mio::Interest::WRITABLE)
                         .unwrap();
