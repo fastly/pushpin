@@ -1,6 +1,11 @@
 Condure Changelog
 =================
 
+v. 1.2.0 (2021-05-04)
+
+  * Send PING/PONG frame data to clients.
+  * Port to mio 0.7.
+
 v. 1.1.0 (2020-11-02)
 
   * TLS support.
