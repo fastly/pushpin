@@ -120,10 +120,12 @@ pub struct CloseData<'a> {
 }
 
 pub struct PingData<'a> {
+    pub credits: u32,
     pub body: &'a [u8],
 }
 
 pub struct PongData<'a> {
+    pub credits: u32,
     pub body: &'a [u8],
 }
 
@@ -250,7 +252,7 @@ impl<'buf, 'ids, 'headers> Request<'buf, 'ids, 'headers> {
             from: from,
             ids: ids,
             multi: false,
-            ptype: RequestPacket::Ping(PingData { body }),
+            ptype: RequestPacket::Ping(PingData { credits: 0, body }),
         }
     }
 
@@ -259,7 +261,7 @@ impl<'buf, 'ids, 'headers> Request<'buf, 'ids, 'headers> {
             from: from,
             ids: ids,
             multi: false,
-            ptype: RequestPacket::Pong(PongData { body }),
+            ptype: RequestPacket::Pong(PongData { credits: 0, body }),
         }
     }
 
@@ -1005,8 +1007,38 @@ impl<'buf, 'scratch> Response<'_, '_, '_> {
                     ResponsePacket::Close(CloseData { status: None })
                 }
             }
-            "ping" => ResponsePacket::Ping(PingData { body: &b""[..] }),
-            "pong" => ResponsePacket::Pong(PongData { body: &b""[..] }),
+            "ping" | "pong" => {
+                let mut credits = 0;
+                let mut body = EMPTY_BYTES;
+
+                for e in root {
+                    let e = e?;
+
+                    match e.key {
+                        "credits" => {
+                            let x = tnetstring::parse_int(e.data).field("credits")?;
+
+                            if x < 0 {
+                                return Err(ParseError::NegativeInt("credits"));
+                            }
+
+                            credits = x as u32;
+                        }
+                        "body" => {
+                            let s = tnetstring::parse_string(e.data).field("body")?;
+
+                            body = s;
+                        }
+                        _ => {} // skip unknown fields
+                    }
+                }
+
+                match ptype_str {
+                    "ping" => ResponsePacket::Ping(PingData { credits, body }),
+                    "pong" => ResponsePacket::Pong(PongData { credits, body }),
+                    _ => unreachable!(),
+                }
+            }
             _ => ResponsePacket::Unknown,
         };
 

@@ -2268,6 +2268,8 @@ impl ServerStreamConnection {
                                 return Err(e);
                             }
 
+                            self.d.in_credits += rdata.credits;
+
                             let opcode = match &rdata.content_type {
                                 Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
                                 _ => websocket::OPCODE_TEXT,
@@ -2409,6 +2411,8 @@ impl ServerStreamConnection {
                             return Err(e);
                         }
 
+                        self.d.in_credits += pdata.credits;
+
                         if self.d.ws_in_tracker.start(websocket::OPCODE_PING).is_err() {
                             self.d.state = ServerStreamState::Finishing;
                             return Err(ServerError::BadFrame);
@@ -2428,6 +2432,8 @@ impl ServerStreamConnection {
                             self.d.state = ServerStreamState::Finishing;
                             return Err(e);
                         }
+
+                        self.d.in_credits += pdata.credits;
 
                         if self.d.ws_in_tracker.start(websocket::OPCODE_PONG).is_err() {
                             self.d.state = ServerStreamState::Finishing;
