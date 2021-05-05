@@ -1,0 +1,47 @@
+/*
+-----BEGIN QCMOD-----
+name: cargo >= 1.34.0
+-----END QCMOD-----
+*/
+class qc_cargo : public ConfObj
+{
+public:
+	qc_cargo(Conf *c) : ConfObj(c) {}
+	QString name() const { return "cargo >= 1.34.0"; }
+	QString shortname() const { return "cargo"; }
+	bool exec()
+	{
+		QByteArray out;
+		if(conf->doCommand("cargo", QStringList() << "version", &out) != 0)
+		{
+			return false;
+		}
+
+		QString line = QString::fromUtf8(out).trimmed();
+
+		QStringList parts = line.split(' ');
+
+		if(parts.isEmpty() || parts[0] != "cargo")
+		{
+			return false;
+		}
+
+		QStringList vparts = parts[1].split('.');
+
+		if(parts.count() < 2)
+		{
+			return false;
+		}
+
+		int ver_maj = vparts[0].toInt();
+		int ver_min = vparts[1].toInt();
+
+		if(ver_maj == 1 && ver_min >= 34)
+		{
+			conf->addExtra("CONFIG += use_cargo");
+			return true;
+		}
+
+		return false;
+	}
+};

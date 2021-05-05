@@ -9,6 +9,9 @@ moc_*
 *.pyc
 .qmake.stash
 target_wrapper.sh
+/target
+.cargo
+vendor
 
 /pushpin
 /bin/*
@@ -34,6 +37,7 @@ target_wrapper.sh
 /src/handler/tests/Makefile
 /src/handler/tests/*test/Makefile
 /src/handler/tests/*test/*test
+/src/rust/Makefile
 /src/runner/Makefile
 /src/runner/librunner/Makefile
 /src/runner/runner/Makefile

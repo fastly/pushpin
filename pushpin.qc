@@ -11,4 +11,5 @@
  <dep type='pkg' name='libzmq' pkgname='libzmq' version='>=2.0'>
   <required/>
  </dep>
+ <dep type='cargo'/>
 </qconf>
