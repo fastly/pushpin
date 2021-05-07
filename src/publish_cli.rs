@@ -31,7 +31,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::io;
-use std::io::Read;
+use std::io::{BufRead, Read, Write};
+use std::net;
+use std::str;
 
 enum TnValue {
     Null,
@@ -118,6 +120,228 @@ fn json_to_tnet(v: &serde_json::Value) -> Result<TnValue, io::Error> {
             Ok(TnValue::Map(out))
         }
     }
+}
+
+fn tnet_to_json(v: &TnValue) -> Result<serde_json::Value, io::Error> {
+    match v {
+        TnValue::Null => Ok(serde_json::Value::Null),
+        TnValue::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+        TnValue::Int(i) => {
+            let num = serde_json::Number::from(*i);
+
+            Ok(serde_json::Value::Number(num))
+        }
+        TnValue::Float(i) => {
+            let num = serde_json::Number::from_f64(*i).unwrap();
+
+            Ok(serde_json::Value::Number(num))
+        }
+        TnValue::String(s) => {
+            let s = match str::from_utf8(s) {
+                Ok(s) => s,
+                Err(_) => return Err(io::Error::from(io::ErrorKind::InvalidData)),
+            };
+
+            Ok(serde_json::Value::String(s.to_string()))
+        }
+        TnValue::Array(a) => {
+            let mut out = Vec::new();
+
+            for v in a {
+                out.push(tnet_to_json(v)?);
+            }
+
+            Ok(serde_json::Value::Array(out))
+        }
+        TnValue::Map(m) => {
+            let mut out = serde_json::Map::new();
+
+            for (k, v) in m {
+                if let TnValue::String(s) = v {
+                    if k == "body" || k == "content" {
+                        if str::from_utf8(s).is_err() {
+                            let k = k.to_owned() + "-bin";
+                            let v = base64::encode(s);
+                            out.insert(k, serde_json::Value::String(v));
+                            continue;
+                        }
+                    }
+                }
+
+                out.insert(k.clone(), tnet_to_json(v)?);
+            }
+
+            Ok(serde_json::Value::Object(out))
+        }
+    }
+}
+
+struct ParsedUrl {
+    scheme: String,
+    host: String,
+    path: String,
+    connect_host: String,
+    connect_port: u16,
+}
+
+fn parse_url(url: &str) -> Result<ParsedUrl, io::Error> {
+    let pos = match url.find(":") {
+        Some(pos) => pos,
+        None => return Err(io::Error::from(io::ErrorKind::InvalidData)),
+    };
+
+    let scheme = &url[..pos];
+
+    let s = &url[(pos + 1)..];
+
+    if !s.starts_with("//") {
+        return Err(io::Error::from(io::ErrorKind::InvalidData));
+    }
+
+    let s = &s[2..];
+
+    let pos = match s.find("/") {
+        Some(pos) => pos,
+        None => s.len(),
+    };
+
+    let host = &s[..pos];
+    let path = &s[pos..];
+
+    let (connect_host, connect_port) = match host.find(':') {
+        Some(pos) => {
+            let port = &host[(pos + 1)..];
+
+            let port = match port.parse() {
+                Ok(x) => x,
+                Err(_) => return Err(io::Error::from(io::ErrorKind::InvalidData)),
+            };
+
+            (&host[..pos], port)
+        }
+        None => {
+            let port = if scheme == "https" { 443 } else { 80 };
+
+            (host, port)
+        }
+    };
+
+    Ok(ParsedUrl {
+        scheme: scheme.into(),
+        host: host.into(),
+        path: path.into(),
+        connect_host: connect_host.into(),
+        connect_port,
+    })
+}
+
+fn publish_http(base_url: &str, item: &serde_json::Value) -> Result<(), Box<dyn Error>> {
+    let parsed_url = match parse_url(base_url) {
+        Ok(p) => p,
+        Err(_) => return Err("invalid URL".into()),
+    };
+
+    let path = parsed_url.path + "/publish/";
+
+    let mut items = Vec::new();
+    items.push(item.clone());
+
+    let mut data = serde_json::Map::new();
+    data.insert("items".into(), serde_json::Value::Array(items));
+
+    let data = serde_json::Value::Object(data);
+
+    let body = data.to_string().into_bytes();
+
+    let mut stream = if parsed_url.scheme == "https" {
+        return Err("https not supported".into());
+    } else {
+        net::TcpStream::connect((parsed_url.connect_host.as_str(), parsed_url.connect_port))?
+    };
+
+    let req = format!(
+        "POST {} HTTP/1.0\r\n\
+        Host: {}\r\n\
+        Content-Type: application/json\r\n\
+        Content-Length: {}\r\n\
+        \r\n",
+        path,
+        parsed_url.host,
+        body.len()
+    );
+
+    stream.write(req.as_bytes())?;
+
+    stream.write(&body)?;
+
+    let mut reader = io::BufReader::new(&mut stream);
+
+    let mut first = true;
+    let mut err = true;
+
+    loop {
+        let mut line = String::new();
+
+        let size = reader.read_line(&mut line)?;
+
+        if size == 0 {
+            return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into());
+        }
+
+        let line = line.trim();
+
+        if first {
+            first = false;
+
+            let pos = match line.find(' ') {
+                Some(pos) => pos,
+                None => return Err(io::Error::from(io::ErrorKind::InvalidData).into()),
+            };
+
+            let rest = &line[(pos + 1)..];
+
+            let pos = match rest.find(' ') {
+                Some(pos) => pos,
+                None => return Err(io::Error::from(io::ErrorKind::InvalidData).into()),
+            };
+
+            let code = &rest[..pos];
+
+            let code: u16 = match code.parse() {
+                Ok(x) => x,
+                Err(_) => return Err(io::Error::from(io::ErrorKind::InvalidData).into()),
+            };
+
+            if code == 200 {
+                err = false;
+            }
+        }
+
+        if line.is_empty() {
+            break;
+        }
+    }
+
+    let mut resp = String::new();
+
+    reader.read_to_string(&mut resp)?;
+
+    if err {
+        return Err(resp.trim().into());
+    }
+
+    Ok(())
+}
+
+fn publish_zmq(spec: &str, item: &TnValue) -> Result<(), Box<dyn Error>> {
+    let message = item.serialize()?;
+
+    let context = zmq::Context::new();
+    let sock = context.socket(zmq::PUSH)?;
+    sock.connect(spec)?;
+    sock.send(message, 0)?;
+
+    Ok(())
 }
 
 pub enum Content {
@@ -286,12 +510,15 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
         item.insert("no-seq".into(), TnValue::Bool(true));
     }
 
-    let message = TnValue::Map(item).serialize()?;
+    let item = TnValue::Map(item);
 
-    let context = zmq::Context::new();
-    let sock = context.socket(zmq::PUSH)?;
-    sock.connect(&config.spec)?;
-    sock.send(message, 0)?;
+    if config.spec.starts_with("https:") || config.spec.starts_with("http:") {
+        let item = tnet_to_json(&item)?;
+
+        publish_http(&config.spec, &item)?;
+    } else {
+        publish_zmq(&config.spec, &item)?;
+    }
 
     println!("Published");
 
