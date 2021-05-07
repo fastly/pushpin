@@ -28,10 +28,12 @@
 
 use clap::{crate_version, App, Arg};
 use pushpin::publish_cli::{run, Action, Config, Content, Message};
+use std::env;
 use std::error::Error;
 use std::process;
 
 const PROGRAM_NAME: &str = "pushpin-publish";
+const DEFAULT_SPEC: &str = "tcp://localhost:5560";
 
 struct Args {
     channel: String,
@@ -129,6 +131,11 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
+    let default_spec = match env::var("GRIP_URL") {
+        Ok(s) => s,
+        Err(_) => DEFAULT_SPEC.to_string(),
+    };
+
     let matches = App::new(PROGRAM_NAME)
         .version(crate_version!())
         .about("Publish messages to Pushpin")
@@ -222,8 +229,8 @@ fn main() {
                 .long("spec")
                 .takes_value(true)
                 .value_name("spec")
-                .help("ZeroMQ PUSH spec")
-                .default_value("tcp://localhost:5560"),
+                .help("GRIP URL or ZeroMQ PUSH spec")
+                .default_value(&default_spec),
         )
         .get_matches();
 
