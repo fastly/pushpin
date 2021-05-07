@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "pushpin"
-version = "1.31.0-dev"
+version = "1.32.0-dev"
 dependencies = [
  "base64",
  "clap",
