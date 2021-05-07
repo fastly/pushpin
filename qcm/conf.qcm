@@ -10,27 +10,24 @@ arg: logdir=[path],Directory for log files.  Default: /var/log
 */
 
 #include <QDateTime>
+#include <QSettings>
 
 static QString getVersion()
 {
-	QString str;
+	QSettings settings("Cargo.toml", QSettings::IniFormat);
 
+	QString version = settings.value("package/version").toString();
+
+	if(version.isEmpty())
+		return QString();
+
+	if(version.endsWith("-dev"))
 	{
-		QFile file("version");
-		if(file.open(QIODevice::ReadOnly | QIODevice::Text))
-		{
-			QTextStream ts(&file);
-			if(!ts.atEnd())
-				str = ts.readLine();
-		}
-
-		if(str.isEmpty())
-			str = "UnknownVersion";
+		QString nowstr = QDateTime::currentDateTime().toString("yyyyMMdd");
+		version += QString("-") + nowstr;
 	}
 
-	QString nowstr = QDateTime::currentDateTime().toString("yyyyMMdd");
-	str.replace("@@DATE@@", nowstr);
-	return str;
+	return version;
 }
 
 class qc_conf : public ConfObj
@@ -43,6 +40,8 @@ public:
 	bool exec()
 	{
 		QString version = getVersion();
+		if(version.isEmpty())
+			return false;
 
 		conf->addExtra(QString("APP_VERSION = %1").arg(version));
 

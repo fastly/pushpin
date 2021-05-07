@@ -26,7 +26,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-use clap::{crate_version, App, Arg};
+use clap::{App, Arg};
 use pushpin::publish_cli::{run, Action, Config, Content, Message};
 use std::env;
 use std::error::Error;
@@ -137,7 +137,7 @@ fn main() {
     };
 
     let matches = App::new(PROGRAM_NAME)
-        .version(crate_version!())
+        .version(env!("APP_VERSION"))
         .about("Publish messages to Pushpin")
         .arg(
             Arg::with_name("channel")
