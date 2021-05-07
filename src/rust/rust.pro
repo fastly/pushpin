@@ -3,6 +3,8 @@ OBJECTS_DIR = ./
 DESTDIR = ./
 CONFIG -= debug_and_release
 
+include($$OUT_PWD/../../conf.pri)
+
 bin_dir = $$PWD/../../bin
 root_dir = $$PWD/../..
 
@@ -31,3 +33,11 @@ QMAKE_EXTRA_TARGETS += \
 
 PRE_TARGETDEPS += \
 	$$bin_dir/pushpin-publish
+
+unix:!isEmpty(BINDIR) {
+	binfiles.path = $$BINDIR
+	binfiles.files = \
+		$$bin_dir/pushpin-publish
+
+	INSTALLS += binfiles
+}
