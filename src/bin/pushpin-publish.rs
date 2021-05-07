@@ -33,7 +33,7 @@ use std::error::Error;
 use std::process;
 
 const PROGRAM_NAME: &str = "pushpin-publish";
-const DEFAULT_SPEC: &str = "tcp://localhost:5560";
+const DEFAULT_SPEC: &str = "http://localhost:5561";
 
 struct Args {
     channel: String,
