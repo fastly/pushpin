@@ -386,7 +386,11 @@ impl Write for Stream {
     }
 }
 
-fn publish_http(base_url: &str, item: &serde_json::Value) -> Result<(), Box<dyn Error>> {
+fn publish_http(
+    base_url: &str,
+    basic_auth: Option<&str>,
+    item: &serde_json::Value,
+) -> Result<(), Box<dyn Error>> {
     let parsed_url = match parse_url(base_url) {
         Ok(p) => p,
         Err(_) => return Err("invalid URL".into()),
@@ -404,6 +408,26 @@ fn publish_http(base_url: &str, item: &serde_json::Value) -> Result<(), Box<dyn 
 
     let body = data.to_string().into_bytes();
 
+    let mut req = format!(
+        "POST {} HTTP/1.0\r\n\
+        Host: {}\r\n\
+        Content-Type: application/json\r\n\
+        Content-Length: {}\r\n",
+        path,
+        parsed_url.host,
+        body.len()
+    );
+
+    if let Some(s) = basic_auth {
+        if parsed_url.scheme != "https" {
+            return Err("Authentication requires https".into());
+        }
+
+        req.push_str(&format!("Authorization: Basic {}\r\n", base64::encode(s)));
+    }
+
+    req += "\r\n";
+
     let stream =
         net::TcpStream::connect((parsed_url.connect_host.as_str(), parsed_url.connect_port))?;
 
@@ -412,17 +436,6 @@ fn publish_http(base_url: &str, item: &serde_json::Value) -> Result<(), Box<dyn 
     } else {
         Stream::Plain(stream)
     };
-
-    let req = format!(
-        "POST {} HTTP/1.0\r\n\
-        Host: {}\r\n\
-        Content-Type: application/json\r\n\
-        Content-Length: {}\r\n\
-        \r\n",
-        path,
-        parsed_url.host,
-        body.len()
-    );
 
     stream.write(req.as_bytes())?;
 
@@ -516,6 +529,7 @@ pub enum Action {
 
 pub struct Config {
     pub spec: String,
+    pub basic_auth: Option<String>,
     pub channel: String,
     pub id: String,
     pub prev_id: String,
@@ -669,7 +683,9 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     if config.spec.starts_with("https:") || config.spec.starts_with("http:") {
         let item = tnet_to_json(&item)?;
 
-        publish_http(&config.spec, &item)?;
+        let basic_auth = config.basic_auth.as_ref().map(|s| s.as_str());
+
+        publish_http(&config.spec, basic_auth, &item)?;
     } else {
         publish_zmq(&config.spec, &item)?;
     }

@@ -50,6 +50,7 @@ struct Args {
     no_seq: bool,
     no_eol: bool,
     spec: String,
+    user: Option<String>,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -116,6 +117,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
 
     let config = Config {
         spec: args.spec,
+        basic_auth: args.user,
         channel: args.channel,
         id: args.id,
         prev_id: args.prev_id,
@@ -232,6 +234,14 @@ fn main() {
                 .help("GRIP URL or ZeroMQ PUSH spec")
                 .default_value(&default_spec),
         )
+        .arg(
+            Arg::with_name("user")
+                .short("u")
+                .long("user")
+                .takes_value(true)
+                .value_name("user:pass")
+                .help("Authenticate using basic auth"),
+        )
         .get_matches();
 
     let channel = matches.value_of("channel").unwrap();
@@ -282,6 +292,10 @@ fn main() {
 
     let spec = matches.value_of("spec").unwrap();
 
+    let user = matches
+        .value_of("user")
+        .map_or(None, |s| Some(String::from(s)));
+
     let args = Args {
         channel: channel.to_string(),
         content,
@@ -297,6 +311,7 @@ fn main() {
         no_seq,
         no_eol,
         spec: spec.to_string(),
+        user,
     };
 
     if let Err(e) = process_args_and_run(args) {
