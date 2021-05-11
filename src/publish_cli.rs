@@ -258,9 +258,12 @@ impl TlsStream {
         )?;
 
         let mut config = rustls::ClientConfig::new();
-        config
-            .root_store
-            .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+
+        config.root_store = match rustls_native_certs::load_native_certs() {
+            Ok(store) => store,
+            Err((Some(store), _)) => store,
+            Err((_, e)) => return Err(e.into()),
+        };
 
         let config = Arc::new(config);
 
