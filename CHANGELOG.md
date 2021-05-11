@@ -1,6 +1,13 @@
 Pushpin Changelog
 =================
 
+v. 1.32.0 (2021-05-11)
+
+  * pushpin-publish: support sending via HTTP, and do this by default.
+  * pushpin-publish: support authentication.
+  * pushpin-publish: use GRIP_URL environment variable if present.
+  * Add Rust code to the build process.
+
 v. 1.31.0 (2020-11-06)
 
   * Use Condure instead of Mongrel2, by default.
