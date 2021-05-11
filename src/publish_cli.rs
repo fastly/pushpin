@@ -27,7 +27,6 @@
  */
 
 use crate::tnetstring;
-use rustls::Session;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
@@ -238,25 +237,11 @@ fn parse_url(url: &str) -> Result<ParsedUrl, io::Error> {
 }
 
 struct TlsStream {
-    stream: mio::net::TcpStream,
-    poll: mio::Poll,
-    client: rustls::ClientSession,
-    peer_closed: bool,
+    stream: rustls::StreamOwned<rustls::ClientSession, net::TcpStream>,
 }
 
 impl TlsStream {
     fn new(stream: net::TcpStream, host: &str) -> Result<Self, Box<dyn Error>> {
-        stream.set_nonblocking(true).unwrap();
-
-        let mut stream = mio::net::TcpStream::from_std(stream);
-
-        let poll = mio::Poll::new()?;
-        poll.registry().register(
-            &mut stream,
-            mio::Token(0),
-            mio::Interest::READABLE | mio::Interest::WRITABLE,
-        )?;
-
         let mut config = rustls::ClientConfig::new();
 
         config.root_store = match rustls_native_certs::load_native_certs() {
@@ -272,90 +257,28 @@ impl TlsStream {
         let client = rustls::ClientSession::new(&config, dns_name);
 
         Ok(Self {
-            stream,
-            poll,
-            client,
-            peer_closed: false,
+            stream: rustls::StreamOwned::new(client, stream),
         })
-    }
-
-    fn wait_for_something(&mut self) -> Result<(), io::Error> {
-        let mut done = false;
-
-        let mut events = mio::Events::with_capacity(1024);
-
-        loop {
-            if self.client.wants_write() {
-                match self.client.write_tls(&mut self.stream) {
-                    Ok(_) => done = true,
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => return Err(e),
-                }
-            }
-
-            if self.client.wants_read() {
-                match self.client.read_tls(&mut self.stream) {
-                    Ok(ret) => {
-                        if ret == 0 && !self.peer_closed {
-                            return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
-                        }
-
-                        if self.client.process_new_packets().is_err() {
-                            return Err(io::Error::from(io::ErrorKind::InvalidData));
-                        }
-
-                        done = true;
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                    Err(e) => return Err(e),
-                }
-            }
-
-            if done {
-                break;
-            }
-
-            self.poll.poll(&mut events, None)?;
-        }
-
-        Ok(())
     }
 }
 
 impl Read for TlsStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        loop {
-            match self.client.read(buf) {
-                Ok(ret) if ret == 0 => self.wait_for_something()?,
-                Ok(ret) => return Ok(ret),
-                Err(e) if e.kind() == io::ErrorKind::ConnectionAborted => {
-                    self.peer_closed = true;
-                    return Ok(0);
-                }
-                Err(e) => return Err(e),
-            }
+        match self.stream.read(buf) {
+            Ok(ret) => return Ok(ret),
+            Err(e) if e.kind() == io::ErrorKind::ConnectionAborted => return Ok(0),
+            Err(e) => return Err(e),
         }
     }
 }
 
 impl Write for TlsStream {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-        loop {
-            match self.client.write(buf) {
-                Ok(ret) if ret == 0 => self.wait_for_something()?,
-                Ok(ret) => return Ok(ret),
-                Err(e) => return Err(e),
-            }
-        }
+        self.stream.write(buf)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
-        loop {
-            match self.client.flush() {
-                Ok(()) => return Ok(()),
-                Err(e) => return Err(e),
-            }
-        }
+        self.stream.flush()
     }
 }
 
