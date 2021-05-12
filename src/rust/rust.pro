@@ -20,7 +20,7 @@ rust_build.commands = cd "$$root_dir" && cargo build --offline $$cargo_flags
 
 publish_build.target = $$target_dir/pushpin-publish
 publish_build.depends = rust_build
-publish_build.commands = @/bin/true
+publish_build.commands = @:
 
 publish_bin.target = $$bin_dir/pushpin-publish
 publish_bin.depends = publish_build
