@@ -38,6 +38,7 @@ unix:!isEmpty(BINDIR) {
 	binfiles.path = $$BINDIR
 	binfiles.files = \
 		$$bin_dir/pushpin-publish
+	binfiles.CONFIG += no_check_exist
 
 	INSTALLS += binfiles
 }
