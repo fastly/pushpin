@@ -24,7 +24,7 @@ publish_build.commands = @:
 
 publish_bin.target = $$bin_dir/pushpin-publish
 publish_bin.depends = publish_build
-publish_bin.commands = cp -a $$target_dir/pushpin-publish $$bin_dir
+publish_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-publish $$bin_dir/pushpin-publish
 
 QMAKE_EXTRA_TARGETS += \
 	rust_build \
