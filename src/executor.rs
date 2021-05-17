@@ -22,12 +22,12 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-struct SharedWaker<'f> {
-    executor: *const Executor<'f>,
+struct SharedWaker {
+    executor: *const Executor,
     task_id: usize,
 }
 
-impl SharedWaker<'_> {
+impl SharedWaker {
     fn as_std_waker(&self) -> Waker {
         let executor = unsafe { self.executor.as_ref().unwrap() };
 
@@ -75,23 +75,23 @@ impl SharedWaker<'_> {
     }
 }
 
-struct Task<'f> {
-    fut: Option<Pin<Box<dyn Future<Output = ()> + 'f>>>,
-    waker: SharedWaker<'f>,
+struct Task {
+    fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
+    waker: SharedWaker,
     waker_refs: usize,
     awake: bool,
 }
 
-struct Tasks<'f> {
-    nodes: Slab<list::Node<Task<'f>>>,
+struct Tasks {
+    nodes: Slab<list::Node<Task>>,
     next: list::List,
 }
 
-pub struct Executor<'f> {
-    tasks: RefCell<Tasks<'f>>,
+pub struct Executor {
+    tasks: RefCell<Tasks>,
 }
 
-impl<'f> Executor<'f> {
+impl Executor {
     pub fn new(tasks_max: usize) -> Self {
         Self {
             tasks: RefCell::new(Tasks {
@@ -103,7 +103,7 @@ impl<'f> Executor<'f> {
 
     pub fn spawn<F>(&self, f: F) -> Result<(), ()>
     where
-        F: Future<Output = ()> + 'f,
+        F: Future<Output = ()> + 'static,
     {
         let tasks = &mut *self.tasks.borrow_mut();
 
