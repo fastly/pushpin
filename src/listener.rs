@@ -16,10 +16,12 @@
 
 use crate::arena::recycle_vec;
 use crate::channel;
+use crate::executor::Executor;
 use crate::future::{
     select_from_pair, select_from_slice, AcceptFuture, AsyncReceiver, AsyncSender,
-    AsyncTcpListener, Executor, MioReactor, WaitWritableFuture,
+    AsyncTcpListener, WaitWritableFuture,
 };
+use crate::reactor::MioReactor;
 use log::{debug, error};
 use mio;
 use mio::net::{TcpListener, TcpStream};
@@ -52,7 +54,7 @@ impl Listener {
                 .spawn(Self::run(Rc::clone(&reactor), r, listeners, senders))
                 .unwrap();
 
-            executor.exec(&*reactor).unwrap();
+            executor.run(|| reactor.poll()).unwrap();
         });
 
         Self {
