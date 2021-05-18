@@ -19,170 +19,244 @@ use slab::Slab;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
+use std::mem;
 use std::pin::Pin;
+use std::rc::{Rc, Weak};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
-struct SharedWaker {
-    executor: *const Executor,
+struct WakerData {
+    tasks: Weak<Tasks>,
     task_id: usize,
 }
 
-impl SharedWaker {
-    fn as_std_waker(&self) -> Waker {
-        let executor = unsafe { self.executor.as_ref().unwrap() };
-
-        executor.add_waker_ref(self.task_id);
-
-        let rw = RawWaker::new(self as *const Self as *const (), Self::vtable());
-
-        unsafe { Waker::from_raw(rw) }
+impl WakerData {
+    fn as_std_waker(self: &Rc<WakerData>) -> Waker {
+        unsafe { Waker::from_raw(raw_waker(Rc::clone(self))) }
     }
+}
 
-    unsafe fn clone(data: *const ()) -> RawWaker {
-        let s = (data as *const Self).as_ref().unwrap();
+fn raw_waker(waker: Rc<WakerData>) -> RawWaker {
+    unsafe fn clone_waker(data: *const ()) -> RawWaker {
+        let waker = mem::ManuallyDrop::new(Rc::from_raw(data as *const WakerData));
 
-        let executor = s.executor.as_ref().unwrap();
+        let waker = Rc::clone(&waker);
 
-        executor.add_waker_ref(s.task_id);
-
-        RawWaker::new(data, &Self::vtable())
+        RawWaker::new(
+            Rc::into_raw(waker) as *const (),
+            &RawWakerVTable::new(clone_waker, wake, wake_by_ref, drop_waker),
+        )
     }
 
     unsafe fn wake(data: *const ()) {
-        Self::wake_by_ref(data);
+        let waker = Rc::from_raw(data as *const WakerData);
 
-        Self::drop(data);
+        if let Some(tasks) = waker.tasks.upgrade() {
+            tasks.wake(waker.task_id);
+        }
     }
 
     unsafe fn wake_by_ref(data: *const ()) {
-        let s = (data as *const Self).as_ref().unwrap();
+        let waker = mem::ManuallyDrop::new(Rc::from_raw(data as *const WakerData));
 
-        let executor = s.executor.as_ref().unwrap();
-
-        executor.wake(s.task_id);
+        if let Some(tasks) = waker.tasks.upgrade() {
+            tasks.wake(waker.task_id);
+        }
     }
 
-    unsafe fn drop(data: *const ()) {
-        let s = (data as *const Self).as_ref().unwrap();
-
-        let executor = s.executor.as_ref().unwrap();
-
-        executor.remove_waker_ref(s.task_id);
+    unsafe fn drop_waker(data: *const ()) {
+        Rc::from_raw(data as *const WakerData);
     }
 
-    fn vtable() -> &'static RawWakerVTable {
-        &RawWakerVTable::new(Self::clone, Self::wake, Self::wake_by_ref, Self::drop)
+    RawWaker::new(
+        Rc::into_raw(waker) as *const (),
+        &RawWakerVTable::new(clone_waker, wake, wake_by_ref, drop_waker),
+    )
+}
+
+fn poll_fut(fut: &mut Pin<Box<dyn Future<Output = ()>>>, waker: Waker) -> bool {
+    // convert from Pin<Box> to Pin<&mut>
+    let fut: Pin<&mut dyn Future<Output = ()>> = fut.as_mut();
+
+    let mut cx = Context::from_waker(&waker);
+
+    match fut.poll(&mut cx) {
+        Poll::Ready(_) => true,
+        Poll::Pending => false,
     }
 }
 
 struct Task {
     fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
-    waker: SharedWaker,
-    waker_refs: usize,
     awake: bool,
 }
 
-struct Tasks {
+struct TasksData {
     nodes: Slab<list::Node<Task>>,
     next: list::List,
+    wakers: Vec<Rc<WakerData>>,
 }
 
-pub struct Executor {
-    tasks: RefCell<Tasks>,
+struct Tasks {
+    data: RefCell<TasksData>,
 }
 
-impl Executor {
-    pub fn new(tasks_max: usize) -> Self {
-        Self {
-            tasks: RefCell::new(Tasks {
-                nodes: Slab::with_capacity(tasks_max),
-                next: list::List::default(),
-            }),
+impl Tasks {
+    fn new(max: usize) -> Rc<Self> {
+        let data = TasksData {
+            nodes: Slab::with_capacity(max),
+            next: list::List::default(),
+            wakers: Vec::new(),
+        };
+
+        let tasks = Rc::new(Self {
+            data: RefCell::new(data),
+        });
+
+        {
+            let data = &mut *tasks.data.borrow_mut();
+
+            for task_id in 0..data.nodes.capacity() {
+                data.wakers.push(Rc::new(WakerData {
+                    tasks: Rc::downgrade(&tasks),
+                    task_id,
+                }));
+            }
         }
+
+        tasks
     }
 
-    pub fn spawn<F>(&self, f: F) -> Result<(), ()>
+    fn is_empty(&self) -> bool {
+        self.data.borrow().nodes.is_empty()
+    }
+
+    fn add<F>(&self, fut: F) -> Result<(), ()>
     where
         F: Future<Output = ()> + 'static,
     {
-        let tasks = &mut *self.tasks.borrow_mut();
+        let data = &mut *self.data.borrow_mut();
 
-        if tasks.nodes.len() == tasks.nodes.capacity() {
+        if data.nodes.len() == data.nodes.capacity() {
             return Err(());
         }
 
-        let entry = tasks.nodes.vacant_entry();
-        let key = entry.key();
-
-        let waker = SharedWaker {
-            executor: self,
-            task_id: key,
-        };
+        let entry = data.nodes.vacant_entry();
+        let nkey = entry.key();
 
         let task = Task {
-            fut: Some(Box::pin(f)),
-            waker,
-            waker_refs: 0,
+            fut: Some(Box::pin(fut)),
             awake: true,
         };
 
         entry.insert(list::Node::new(task));
 
-        tasks.next.push_back(&mut tasks.nodes, key);
+        data.next.push_back(&mut data.nodes, nkey);
 
         Ok(())
     }
 
+    fn remove(&self, task_id: usize) {
+        let nkey = task_id;
+
+        let data = &mut *self.data.borrow_mut();
+
+        let task = &mut data.nodes[nkey].value;
+
+        // drop the future. this should cause it to drop any owned wakers
+        task.fut = None;
+
+        // at this point, we should be the only remaining owner
+        assert_eq!(Rc::strong_count(&data.wakers[nkey]), 1);
+
+        data.next.remove(&mut data.nodes, nkey);
+        data.nodes.remove(nkey);
+    }
+
+    fn take_next(&self) -> Option<(usize, Pin<Box<dyn Future<Output = ()>>>, Waker)> {
+        let data = &mut *self.data.borrow_mut();
+
+        let nkey = match data.next.head {
+            Some(nkey) => nkey,
+            None => return None,
+        };
+
+        data.next.remove(&mut data.nodes, nkey);
+
+        let task = &mut data.nodes[nkey].value;
+
+        task.awake = false;
+
+        // both of these are cheap
+        let fut = task.fut.take().unwrap();
+        let waker = data.wakers[nkey].as_std_waker();
+
+        Some((nkey, fut, waker))
+    }
+
+    fn set_fut(&self, task_id: usize, fut: Pin<Box<dyn Future<Output = ()>>>) {
+        let nkey = task_id;
+
+        let data = &mut *self.data.borrow_mut();
+
+        let task = &mut data.nodes[nkey].value;
+
+        task.fut = Some(fut);
+    }
+
+    fn wake(&self, task_id: usize) {
+        let nkey = task_id;
+
+        let data = &mut *self.data.borrow_mut();
+
+        let task = &mut data.nodes[nkey].value;
+
+        if !task.awake {
+            task.awake = true;
+
+            data.next.remove(&mut data.nodes, nkey);
+            data.next.push_back(&mut data.nodes, nkey);
+        }
+    }
+}
+
+pub struct Executor {
+    tasks: Rc<Tasks>,
+}
+
+impl Executor {
+    pub fn new(tasks_max: usize) -> Self {
+        Self {
+            tasks: Tasks::new(tasks_max),
+        }
+    }
+
+    pub fn spawn<F>(&self, fut: F) -> Result<(), ()>
+    where
+        F: Future<Output = ()> + 'static,
+    {
+        self.tasks.add(fut)
+    }
+
     pub fn have_tasks(&self) -> bool {
-        !self.tasks.borrow().nodes.is_empty()
+        !self.tasks.is_empty()
     }
 
     pub fn run_until_stalled(&self) {
         loop {
-            let (nkey, task_ptr) = {
-                let tasks = &mut *self.tasks.borrow_mut();
+            match self.tasks.take_next() {
+                Some((task_id, mut fut, waker)) => {
+                    let done = poll_fut(&mut fut, waker);
 
-                let nkey = match tasks.next.head {
-                    Some(nkey) => nkey,
-                    None => break,
-                };
+                    // take_next() took the future out of the task, so we
+                    // could poll it without having to maintain a borrow of
+                    // the tasks set. we'll put it back now
+                    self.tasks.set_fut(task_id, fut);
 
-                tasks.next.remove(&mut tasks.nodes, nkey);
-
-                let task = &mut tasks.nodes[nkey].value;
-
-                task.awake = false;
-
-                (nkey, task as *mut Task)
-            };
-
-            // task won't move/drop while this pointer is in use
-            let task: &mut Task = unsafe { task_ptr.as_mut().unwrap() };
-
-            let done = {
-                let f: Pin<&mut dyn Future<Output = ()>> = task.fut.as_mut().unwrap().as_mut();
-
-                let w = task.waker.as_std_waker();
-
-                let mut cx = Context::from_waker(&w);
-
-                match f.poll(&mut cx) {
-                    Poll::Ready(_) => true,
-                    Poll::Pending => false,
+                    if done {
+                        self.tasks.remove(task_id);
+                    }
                 }
-            };
-
-            if done {
-                task.fut = None;
-
-                let tasks = &mut *self.tasks.borrow_mut();
-
-                let task = &mut tasks.nodes[nkey].value;
-
-                assert_eq!(task.waker_refs, 0);
-
-                tasks.next.remove(&mut tasks.nodes, nkey);
-                tasks.nodes.remove(nkey);
+                None => break,
             }
         }
     }
@@ -203,35 +277,164 @@ impl Executor {
 
         Ok(())
     }
+}
 
-    fn add_waker_ref(&self, task_id: usize) {
-        let tasks = &mut *self.tasks.borrow_mut();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
 
-        let task = &mut tasks.nodes[task_id].value;
-
-        task.waker_refs += 1;
+    struct TestFutureData {
+        ready: bool,
+        waker: Option<Waker>,
     }
 
-    fn remove_waker_ref(&self, task_id: usize) {
-        let tasks = &mut *self.tasks.borrow_mut();
-
-        let task = &mut tasks.nodes[task_id].value;
-
-        assert!(task.waker_refs > 0);
-
-        task.waker_refs -= 1;
+    struct TestFuture {
+        data: Rc<RefCell<TestFutureData>>,
     }
 
-    fn wake(&self, task_id: usize) {
-        let tasks = &mut *self.tasks.borrow_mut();
+    impl TestFuture {
+        fn new() -> Self {
+            let data = TestFutureData {
+                ready: false,
+                waker: None,
+            };
 
-        let task = &mut tasks.nodes[task_id].value;
-
-        if !task.awake {
-            task.awake = true;
-
-            tasks.next.remove(&mut tasks.nodes, task_id);
-            tasks.next.push_back(&mut tasks.nodes, task_id);
+            Self {
+                data: Rc::new(RefCell::new(data)),
+            }
         }
+
+        fn handle(&self) -> TestHandle {
+            TestHandle {
+                data: Rc::clone(&self.data),
+            }
+        }
+    }
+
+    impl Future for TestFuture {
+        type Output = ();
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+            let mut data = self.data.borrow_mut();
+
+            match data.ready {
+                true => Poll::Ready(()),
+                false => {
+                    data.waker = Some(cx.waker().clone());
+
+                    Poll::Pending
+                }
+            }
+        }
+    }
+
+    struct TestHandle {
+        data: Rc<RefCell<TestFutureData>>,
+    }
+
+    impl TestHandle {
+        fn set_ready(&self) {
+            let data = &mut *self.data.borrow_mut();
+
+            data.ready = true;
+
+            if let Some(waker) = data.waker.take() {
+                waker.wake();
+            }
+        }
+    }
+
+    #[test]
+    fn test_executor_step() {
+        let executor = Executor::new(1);
+
+        let fut1 = TestFuture::new();
+        let fut2 = TestFuture::new();
+
+        let handle1 = fut1.handle();
+        let handle2 = fut2.handle();
+
+        let started = Rc::new(Cell::new(false));
+        let fut1_done = Rc::new(Cell::new(false));
+        let finishing = Rc::new(Cell::new(false));
+
+        {
+            let started = Rc::clone(&started);
+            let fut1_done = Rc::clone(&fut1_done);
+            let finishing = Rc::clone(&finishing);
+
+            executor
+                .spawn(async move {
+                    started.set(true);
+
+                    fut1.await;
+
+                    fut1_done.set(true);
+
+                    fut2.await;
+
+                    finishing.set(true);
+                })
+                .unwrap();
+        }
+
+        // not started yet, no progress
+        assert_eq!(executor.have_tasks(), true);
+        assert_eq!(started.get(), false);
+
+        executor.run_until_stalled();
+
+        // started, but fut1 not ready
+        assert_eq!(executor.have_tasks(), true);
+        assert_eq!(started.get(), true);
+        assert_eq!(fut1_done.get(), false);
+
+        handle1.set_ready();
+        executor.run_until_stalled();
+
+        // fut1 finished
+        assert_eq!(executor.have_tasks(), true);
+        assert_eq!(fut1_done.get(), true);
+        assert_eq!(finishing.get(), false);
+
+        handle2.set_ready();
+        executor.run_until_stalled();
+
+        // fut2 finished, and thus the task finished
+        assert_eq!(finishing.get(), true);
+        assert_eq!(executor.have_tasks(), false);
+    }
+
+    #[test]
+    fn test_executor_run() {
+        let executor = Executor::new(1);
+
+        let fut = TestFuture::new();
+        let handle = fut.handle();
+
+        executor
+            .spawn(async move {
+                fut.await;
+            })
+            .unwrap();
+
+        executor
+            .run(|| {
+                handle.set_ready();
+
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(executor.have_tasks(), false);
+    }
+
+    #[test]
+    fn test_executor_spawn_error() {
+        let executor = Executor::new(1);
+
+        assert!(executor.spawn(async {}).is_ok());
+        assert!(executor.spawn(async {}).is_err());
     }
 }
