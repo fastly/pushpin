@@ -24,6 +24,10 @@ use std::pin::Pin;
 use std::rc::{Rc, Weak};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
+thread_local! {
+    static EXECUTOR: RefCell<Option<Weak<Tasks>>> = RefCell::new(None);
+}
+
 struct WakerData {
     tasks: Weak<Tasks>,
     task_id: usize,
@@ -217,9 +221,17 @@ pub struct Executor {
 
 impl Executor {
     pub fn new(tasks_max: usize) -> Self {
-        Self {
-            tasks: Tasks::new(tasks_max),
-        }
+        let tasks = Tasks::new(tasks_max);
+
+        EXECUTOR.with(|ex| {
+            if ex.borrow().is_some() {
+                panic!("thread already has an Executor");
+            }
+
+            ex.replace(Some(Rc::downgrade(&tasks)));
+        });
+
+        Self { tasks }
     }
 
     pub fn spawn<F>(&self, fut: F) -> Result<(), ()>
@@ -268,6 +280,25 @@ impl Executor {
         }
 
         Ok(())
+    }
+
+    pub fn current() -> Option<Self> {
+        EXECUTOR.with(|ex| match &mut *ex.borrow_mut() {
+            Some(tasks) => Some(Self {
+                tasks: tasks.upgrade().unwrap(),
+            }),
+            None => None,
+        })
+    }
+}
+
+impl Drop for Executor {
+    fn drop(&mut self) {
+        EXECUTOR.with(|ex| {
+            if Rc::strong_count(&self.tasks) == 1 {
+                ex.replace(None);
+            }
+        });
     }
 }
 
@@ -428,5 +459,49 @@ mod tests {
 
         assert!(executor.spawn(async {}).is_ok());
         assert!(executor.spawn(async {}).is_err());
+    }
+
+    #[test]
+    fn test_executor_current() {
+        assert!(Executor::current().is_none());
+
+        let executor = Executor::new(2);
+
+        let flag = Rc::new(Cell::new(false));
+
+        {
+            let flag = flag.clone();
+
+            executor
+                .spawn(async move {
+                    Executor::current()
+                        .unwrap()
+                        .spawn(async move {
+                            flag.set(true);
+                        })
+                        .unwrap();
+                })
+                .unwrap();
+        }
+
+        assert_eq!(flag.get(), false);
+
+        executor.run(|| Ok(())).unwrap();
+
+        assert_eq!(flag.get(), true);
+
+        let current = Executor::current().unwrap();
+
+        assert_eq!(executor.have_tasks(), false);
+        assert!(current.spawn(async {}).is_ok());
+        assert_eq!(executor.have_tasks(), true);
+
+        mem::drop(executor);
+
+        assert!(Executor::current().is_some());
+
+        mem::drop(current);
+
+        assert!(Executor::current().is_none());
     }
 }
