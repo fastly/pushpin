@@ -87,7 +87,6 @@ fn poll_fut(fut: &mut Pin<Box<dyn Future<Output = ()>>>, waker: Waker) -> bool {
 
 struct Task {
     fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
-    awake: bool,
 }
 
 struct TasksData {
@@ -145,7 +144,6 @@ impl Tasks {
 
         let task = Task {
             fut: Some(Box::pin(fut)),
-            awake: true,
         };
 
         entry.insert(list::Node::new(task));
@@ -184,8 +182,6 @@ impl Tasks {
 
         let task = &mut data.nodes[nkey].value;
 
-        task.awake = false;
-
         // both of these are cheap
         let fut = task.fut.take().unwrap();
         let waker = data.wakers[nkey].as_std_waker();
@@ -208,12 +204,7 @@ impl Tasks {
 
         let data = &mut *self.data.borrow_mut();
 
-        let task = &mut data.nodes[nkey].value;
-
-        if !task.awake {
-            task.awake = true;
-
-            data.next.remove(&mut data.nodes, nkey);
+        if data.nodes[nkey].prev.is_none() && data.next.head != Some(nkey)  {
             data.next.push_back(&mut data.nodes, nkey);
         }
     }
