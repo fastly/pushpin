@@ -104,7 +104,7 @@ impl Tasks {
         let data = TasksData {
             nodes: Slab::with_capacity(max),
             next: list::List::default(),
-            wakers: Vec::new(),
+            wakers: Vec::with_capacity(max),
         };
 
         let tasks = Rc::new(Self {
