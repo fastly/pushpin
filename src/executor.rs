@@ -204,7 +204,8 @@ impl Tasks {
 
         let data = &mut *self.data.borrow_mut();
 
-        if data.nodes[nkey].prev.is_none() && data.next.head != Some(nkey)  {
+        // add node to the list if it's not already present
+        if data.nodes[nkey].prev.is_none() && data.next.head != Some(nkey) {
             data.next.push_back(&mut data.nodes, nkey);
         }
     }
