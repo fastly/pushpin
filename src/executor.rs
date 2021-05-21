@@ -15,66 +15,30 @@
  */
 
 use crate::list;
+use crate::waker;
 use slab::Slab;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
-use std::mem;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use std::task::{Context, Poll, Waker};
 
 thread_local! {
     static EXECUTOR: RefCell<Option<Weak<Tasks>>> = RefCell::new(None);
 }
 
-struct WakerData {
+struct TaskWaker {
     tasks: Weak<Tasks>,
     task_id: usize,
 }
 
-impl WakerData {
-    fn as_std_waker(self: &Rc<WakerData>) -> Waker {
-        unsafe { Waker::from_raw(raw_waker(Rc::clone(self))) }
-    }
-}
-
-fn raw_waker(waker: Rc<WakerData>) -> RawWaker {
-    unsafe fn clone_waker(data: *const ()) -> RawWaker {
-        let waker = mem::ManuallyDrop::new(Rc::from_raw(data as *const WakerData));
-
-        let waker = Rc::clone(&waker);
-
-        RawWaker::new(
-            Rc::into_raw(waker) as *const (),
-            &RawWakerVTable::new(clone_waker, wake, wake_by_ref, drop_waker),
-        )
-    }
-
-    unsafe fn wake(data: *const ()) {
-        let waker = Rc::from_raw(data as *const WakerData);
-
-        if let Some(tasks) = waker.tasks.upgrade() {
-            tasks.wake(waker.task_id);
+impl waker::RcWake for TaskWaker {
+    fn wake(self: Rc<Self>) {
+        if let Some(tasks) = self.tasks.upgrade() {
+            tasks.wake(self.task_id);
         }
     }
-
-    unsafe fn wake_by_ref(data: *const ()) {
-        let waker = mem::ManuallyDrop::new(Rc::from_raw(data as *const WakerData));
-
-        if let Some(tasks) = waker.tasks.upgrade() {
-            tasks.wake(waker.task_id);
-        }
-    }
-
-    unsafe fn drop_waker(data: *const ()) {
-        Rc::from_raw(data as *const WakerData);
-    }
-
-    RawWaker::new(
-        Rc::into_raw(waker) as *const (),
-        &RawWakerVTable::new(clone_waker, wake, wake_by_ref, drop_waker),
-    )
 }
 
 fn poll_fut(fut: &mut Pin<Box<dyn Future<Output = ()>>>, waker: Waker) -> bool {
@@ -96,7 +60,7 @@ struct Task {
 struct TasksData {
     nodes: Slab<list::Node<Task>>,
     next: list::List,
-    wakers: Vec<Rc<WakerData>>,
+    wakers: Vec<Rc<TaskWaker>>,
 }
 
 struct Tasks {
@@ -119,7 +83,7 @@ impl Tasks {
             let data = &mut *tasks.data.borrow_mut();
 
             for task_id in 0..data.nodes.capacity() {
-                data.wakers.push(Rc::new(WakerData {
+                data.wakers.push(Rc::new(TaskWaker {
                     tasks: Rc::downgrade(&tasks),
                     task_id,
                 }));
@@ -188,7 +152,7 @@ impl Tasks {
 
         // both of these are cheap
         let fut = task.fut.take().unwrap();
-        let waker = data.wakers[nkey].as_std_waker();
+        let waker = waker::into_std(data.wakers[nkey].clone());
 
         Some((nkey, fut, waker))
     }
@@ -306,6 +270,7 @@ impl Drop for Executor {
 mod tests {
     use super::*;
     use std::cell::Cell;
+    use std::mem;
 
     struct TestFutureData {
         ready: bool,

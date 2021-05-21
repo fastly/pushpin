@@ -30,6 +30,7 @@ pub mod server;
 pub mod timer;
 pub mod tls;
 pub mod tnetstring;
+pub mod waker;
 pub mod websocket;
 pub mod zhttppacket;
 pub mod zhttpsocket;
