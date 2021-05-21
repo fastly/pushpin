@@ -76,3 +76,61 @@ fn raw_waker<W: RcWake>(waker: Rc<W>) -> RawWaker {
         ),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    struct TestWaker {
+        waked: Cell<u32>,
+    }
+
+    impl TestWaker {
+        fn new() -> Self {
+            TestWaker {
+                waked: Cell::new(0),
+            }
+        }
+
+        fn waked(&self) -> u32 {
+            self.waked.get()
+        }
+    }
+
+    impl RcWake for TestWaker {
+        fn wake(self: Rc<Self>) {
+            self.waked.set(self.waked.get() + 1);
+        }
+    }
+
+    #[test]
+    fn test_waker() {
+        let data = Rc::new(TestWaker::new());
+
+        assert_eq!(Rc::strong_count(&data), 1);
+
+        let waker = into_std(data.clone());
+
+        assert_eq!(Rc::strong_count(&data), 2);
+
+        let waker2 = waker.clone();
+
+        assert_eq!(Rc::strong_count(&data), 3);
+        assert_eq!(data.waked(), 0);
+
+        waker2.wake();
+
+        assert_eq!(Rc::strong_count(&data), 2);
+        assert_eq!(data.waked(), 1);
+
+        waker.wake_by_ref();
+
+        assert_eq!(Rc::strong_count(&data), 2);
+        assert_eq!(data.waked(), 2);
+
+        mem::drop(waker);
+
+        assert_eq!(Rc::strong_count(&data), 1);
+    }
+}
