@@ -215,7 +215,7 @@ impl TimerWheel {
         self.nodes.remove(key);
     }
 
-    pub fn timeout(&mut self) -> Option<u64> {
+    pub fn timeout(&self) -> Option<u64> {
         if !self.expired.is_empty() {
             return Some(0);
         }
