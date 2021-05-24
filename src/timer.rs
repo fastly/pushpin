@@ -27,61 +27,9 @@ const WHEEL_MAX: usize = WHEEL_LEN - 1;
 const WHEEL_MASK: u64 = (WHEEL_LEN as u64) - 1;
 const TIMEOUT_MAX: u64 = (1 << (WHEEL_BITS * WHEEL_NUM)) - 1;
 
-// count leading zeros
-fn clz64(x: u64) -> u8 {
-    if x == 0 {
-        return 64;
-    }
-
-    let mut t = 1 << 63;
-    let mut r = 0;
-
-    while x & t == 0 {
-        t >>= 1;
-        r += 1;
-    }
-
-    r
-}
-
-// count trailing zeros
-fn ctz64(x: u64) -> u8 {
-    if x == 0 {
-        return 64;
-    }
-
-    let mut t = 1;
-    let mut r = 0;
-
-    while x & t == 0 {
-        t <<= 1;
-        r += 1;
-    }
-
-    r
-}
-
 // find last set
-fn fls64(x: u64) -> u8 {
-    64 - clz64(x)
-}
-
-// rotate left
-fn rotl64(x: u64, count: u8) -> u64 {
-    if count & 0b111111 == 0 {
-        return x;
-    }
-
-    (x << count) | (x >> (64 - count))
-}
-
-// rotate right
-fn rotr64(x: u64, count: u8) -> u64 {
-    if count & 0b111111 == 0 {
-        return x;
-    }
-
-    (x >> count) | (x << (64 - count))
+fn fls64(x: u64) -> u32 {
+    64 - x.leading_zeros()
 }
 
 fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
@@ -114,9 +62,9 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
             };
 
             pending = if wheel > 0 {
-                rotl64((1 << d) - 1, old_slot as u8)
+                ((1 << d) - 1u64).rotate_left(old_slot as u32)
             } else {
-                rotl64((1 << d) - 1, (old_slot + 1) as u8)
+                ((1 << d) - 1u64).rotate_left((old_slot + 1) as u32)
             };
         }
 
@@ -230,13 +178,13 @@ impl TimerWheel {
             if self.pending[wheel] != 0 {
                 let slot = ((self.curtime >> trunc_bits) & WHEEL_MASK) as usize;
 
-                let pending = rotr64(self.pending[wheel], slot as u8);
+                let pending = self.pending[wheel].rotate_right(slot as u32);
 
                 // for higher order wheels, timeouts are one step in the future
                 let offset = if wheel > 0 { 1 } else { 0 };
 
                 // pending is guaranteed to be non-zero
-                let t = ((ctz64(pending) as u64) + offset) << trunc_bits;
+                let t = ((pending.trailing_zeros() as u64) + offset) << trunc_bits;
 
                 // reduce by how much lower wheels have progressed
                 let t = t - (relmask & self.curtime);
@@ -270,7 +218,7 @@ impl TimerWheel {
             // loop as long as we still have slots to process
             while pending & self.pending[wheel] != 0 {
                 // get rightmost (earliest) slot that needs processing
-                let slot = ctz64(pending & self.pending[wheel]) as usize;
+                let slot = (pending & self.pending[wheel]).trailing_zeros() as usize;
 
                 // move the timers out
                 l.concat(&mut self.nodes, &mut self.wheel[wheel][slot]);
@@ -399,48 +347,12 @@ mod tests {
     }
 
     #[test]
-    fn test_clz() {
-        assert_eq!(clz64(0), 64);
-        assert_eq!(clz64(0b1), 63);
-        assert_eq!(clz64(0b10), 62);
-        assert_eq!(clz64(0x4000000000000000), 1);
-        assert_eq!(clz64(0x8000000000000000), 0);
-    }
-
-    #[test]
-    fn test_ctz() {
-        assert_eq!(ctz64(0), 64);
-        assert_eq!(ctz64(0b1), 0);
-        assert_eq!(ctz64(0b10), 1);
-        assert_eq!(ctz64(0x4000000000000000), 62);
-        assert_eq!(ctz64(0x8000000000000000), 63);
-    }
-
-    #[test]
     fn test_fls() {
         assert_eq!(fls64(0), 0);
         assert_eq!(fls64(0b1), 1);
         assert_eq!(fls64(0b10), 2);
         assert_eq!(fls64(0x4000000000000000), 63);
         assert_eq!(fls64(0x8000000000000000), 64);
-    }
-
-    #[test]
-    fn test_rotl() {
-        assert_eq!(rotl64(0x0ffff00000000000, 0), 0x0ffff00000000000);
-        assert_eq!(rotl64(0x0ffff00000000000, 64), 0x0ffff00000000000);
-        assert_eq!(rotl64(0x0ffff00000000000, 4), 0xffff000000000000);
-        assert_eq!(rotl64(0x0ffff00000000000, 8), 0xfff000000000000f);
-        assert_eq!(rotl64(0x0ffff00000000000, 16), 0xf000000000000fff);
-    }
-
-    #[test]
-    fn test_rotr() {
-        assert_eq!(rotr64(0x00000000000ffff0, 0), 0x00000000000ffff0);
-        assert_eq!(rotr64(0x00000000000ffff0, 64), 0x00000000000ffff0);
-        assert_eq!(rotr64(0x00000000000ffff0, 4), 0x000000000000ffff);
-        assert_eq!(rotr64(0x00000000000ffff0, 8), 0xf000000000000fff);
-        assert_eq!(rotr64(0x00000000000ffff0, 16), 0xfff000000000000f);
     }
 
     #[test]
