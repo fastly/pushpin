@@ -45,7 +45,7 @@ pub struct Registration {
 
 impl Registration {
     pub fn is_ready(&self) -> bool {
-        let reactor = self.reactor.upgrade().unwrap();
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &*reactor.registrations.borrow();
 
         let reg_data = &registrations[self.key];
@@ -54,7 +54,7 @@ impl Registration {
     }
 
     pub fn set_ready(&self, ready: bool) {
-        let reactor = self.reactor.upgrade().unwrap();
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &mut *reactor.registrations.borrow_mut();
 
         let reg_data = &mut registrations[self.key];
@@ -63,7 +63,7 @@ impl Registration {
     }
 
     pub fn set_waker(&self, waker: Waker) {
-        let reactor = self.reactor.upgrade().unwrap();
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &mut *reactor.registrations.borrow_mut();
 
         let reg_data = &mut registrations[self.key];
@@ -72,7 +72,7 @@ impl Registration {
     }
 
     pub fn clear_waker(&self) {
-        let reactor = self.reactor.upgrade().unwrap();
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &mut *reactor.registrations.borrow_mut();
 
         let reg_data = &mut registrations[self.key];
@@ -81,7 +81,7 @@ impl Registration {
     }
 
     pub fn deregister_io<S: mio::event::Source>(&self, source: &mut S) -> Result<(), io::Error> {
-        let reactor = self.reactor.upgrade().unwrap();
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
         let poll = &reactor.poll.borrow();
 
         poll.deregister(source)
