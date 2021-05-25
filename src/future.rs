@@ -15,7 +15,7 @@
  */
 
 use crate::channel;
-use crate::reactor::{MioReactor, RegistrationHandle};
+use crate::reactor::{CustomEvented, IoEvented, Reactor};
 use mio;
 use mio::net::{TcpListener, TcpStream};
 use std::cell::Cell;
@@ -23,7 +23,6 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::sync::mpsc;
 use std::task::{Context, Poll};
 
@@ -96,37 +95,37 @@ where
 
 pub struct AsyncSender<T> {
     inner: channel::Sender<T>,
-    handle: RegistrationHandle,
+    evented: CustomEvented,
     writable: Cell<bool>,
 }
 
 impl<T> AsyncSender<T> {
-    pub fn new(s: channel::Sender<T>, reactor: &Rc<MioReactor>) -> Self {
-        let handle = MioReactor::register_custom(
-            reactor,
+    pub fn new(s: channel::Sender<T>) -> Self {
+        let evented = CustomEvented::new(
             s.get_write_registration(),
             mio::Interest::WRITABLE,
+            &Reactor::current().unwrap(),
         )
         .unwrap();
 
         let writable = s.can_send();
 
         // we know the state up front, so ready can start out unset
-        handle.set_ready(false);
+        evented.registration().set_ready(false);
 
         Self {
             inner: s,
-            handle,
+            evented,
             writable: Cell::new(writable),
         }
     }
 
     pub fn is_writable(&self) -> bool {
-        let dirty = self.handle.is_ready();
+        let dirty = self.evented.registration().is_ready();
 
         if dirty {
             self.writable.set(self.inner.can_send());
-            self.handle.set_ready(false);
+            self.evented.registration().set_ready(false);
         }
 
         self.writable.get()
@@ -159,21 +158,21 @@ impl<T> AsyncSender<T> {
 
 pub struct AsyncReceiver<T> {
     inner: channel::Receiver<T>,
-    handle: RegistrationHandle,
+    evented: CustomEvented,
 }
 
 impl<T> AsyncReceiver<T> {
-    pub fn new(r: channel::Receiver<T>, reactor: &Rc<MioReactor>) -> Self {
-        let handle = MioReactor::register_custom(
-            reactor,
+    pub fn new(r: channel::Receiver<T>) -> Self {
+        let evented = CustomEvented::new(
             r.get_read_registration(),
             mio::Interest::READABLE,
+            &Reactor::current().unwrap(),
         )
         .unwrap();
 
-        handle.set_ready(true);
+        evented.registration().set_ready(true);
 
-        Self { inner: r, handle }
+        Self { inner: r, evented }
     }
 
     pub fn recv<'a>(&'a mut self) -> RecvFuture<'a, T> {
@@ -182,17 +181,17 @@ impl<T> AsyncReceiver<T> {
 }
 
 pub struct AsyncTcpListener {
-    inner: TcpListener,
-    handle: RegistrationHandle,
+    evented: IoEvented<TcpListener>,
 }
 
 impl AsyncTcpListener {
-    pub fn new(mut l: TcpListener, reactor: &Rc<MioReactor>) -> Self {
-        let handle = MioReactor::register(reactor, &mut l, mio::Interest::READABLE).unwrap();
+    pub fn new(l: TcpListener) -> Self {
+        let evented =
+            IoEvented::new(l, mio::Interest::READABLE, &Reactor::current().unwrap()).unwrap();
 
-        handle.set_ready(true);
+        evented.registration().set_ready(true);
 
-        Self { inner: l, handle }
+        Self { evented }
     }
 
     pub fn accept<'a>(&'a mut self) -> AcceptFuture<'a> {
@@ -210,13 +209,13 @@ impl<T> Future for WaitWritableFuture<'_, T> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.handle.bind_waker(cx.waker().clone());
+        f.s.evented.registration().set_waker(cx.waker().clone());
 
-        let dirty = f.s.handle.is_ready();
+        let dirty = f.s.evented.registration().is_ready();
 
         if dirty {
             f.s.writable.set(f.s.inner.can_send());
-            f.s.handle.set_ready(false);
+            f.s.evented.registration().set_ready(false);
         }
 
         if f.s.writable.get() {
@@ -229,7 +228,7 @@ impl<T> Future for WaitWritableFuture<'_, T> {
 
 impl<T> Drop for WaitWritableFuture<'_, T> {
     fn drop(&mut self) {
-        self.s.handle.unbind_waker();
+        self.s.evented.registration().clear_waker();
     }
 }
 
@@ -243,16 +242,16 @@ impl<T> Future for RecvFuture<'_, T> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.r.handle.bind_waker(cx.waker().clone());
+        f.r.evented.registration().set_waker(cx.waker().clone());
 
-        if !f.r.handle.is_ready() {
+        if !f.r.evented.registration().is_ready() {
             return Poll::Pending;
         }
 
         match f.r.inner.try_recv() {
             Ok(v) => Poll::Ready(Ok(v)),
             Err(mpsc::TryRecvError::Empty) => {
-                f.r.handle.set_ready(false);
+                f.r.evented.registration().set_ready(false);
 
                 Poll::Pending
             }
@@ -263,7 +262,7 @@ impl<T> Future for RecvFuture<'_, T> {
 
 impl<T> Drop for RecvFuture<'_, T> {
     fn drop(&mut self) {
-        self.r.handle.unbind_waker();
+        self.r.evented.registration().clear_waker();
     }
 }
 
@@ -277,16 +276,16 @@ impl Future for AcceptFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.l.handle.bind_waker(cx.waker().clone());
+        f.l.evented.registration().set_waker(cx.waker().clone());
 
-        if !f.l.handle.is_ready() {
+        if !f.l.evented.registration().is_ready() {
             return Poll::Pending;
         }
 
-        match f.l.inner.accept() {
+        match f.l.evented.io().accept() {
             Ok((stream, peer_addr)) => Poll::Ready(Ok((stream, peer_addr))),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                f.l.handle.set_ready(false);
+                f.l.evented.registration().set_ready(false);
 
                 Poll::Pending
             }
@@ -297,6 +296,6 @@ impl Future for AcceptFuture<'_> {
 
 impl Drop for AcceptFuture<'_> {
     fn drop(&mut self) {
-        self.l.handle.unbind_waker();
+        self.l.evented.registration().clear_waker();
     }
 }

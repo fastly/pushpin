@@ -21,12 +21,11 @@ use crate::future::{
     select_from_pair, select_from_slice, AcceptFuture, AsyncReceiver, AsyncSender,
     AsyncTcpListener, WaitWritableFuture,
 };
-use crate::reactor::MioReactor;
+use crate::reactor::Reactor;
 use log::{debug, error};
 use mio;
 use mio::net::{TcpListener, TcpStream};
 use std::net::SocketAddr;
-use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 
@@ -46,13 +45,10 @@ impl Listener {
         let (s, r) = channel::channel(1);
 
         let thread = thread::spawn(move || {
-            let reactor = Rc::new(MioReactor::new(REACTOR_REGISTRATIONS_MAX));
-
+            let reactor = Reactor::new(REACTOR_REGISTRATIONS_MAX);
             let executor = Executor::new(EXECUTOR_TASKS_MAX);
 
-            executor
-                .spawn(Self::run(Rc::clone(&reactor), r, listeners, senders))
-                .unwrap();
+            executor.spawn(Self::run(r, listeners, senders)).unwrap();
 
             executor.run(|| reactor.poll()).unwrap();
         });
@@ -64,22 +60,19 @@ impl Listener {
     }
 
     async fn run(
-        reactor: Rc<MioReactor>,
         stop: channel::Receiver<()>,
         listeners: Vec<TcpListener>,
         senders: Vec<channel::Sender<(usize, TcpStream, SocketAddr)>>,
     ) {
-        let mut stop = AsyncReceiver::new(stop, &reactor);
+        let mut stop = AsyncReceiver::new(stop);
 
         let mut listeners: Vec<AsyncTcpListener> = listeners
             .into_iter()
-            .map(|l| AsyncTcpListener::new(l, &reactor))
+            .map(|l| AsyncTcpListener::new(l))
             .collect();
 
-        let mut senders: Vec<AsyncSender<(usize, TcpStream, SocketAddr)>> = senders
-            .into_iter()
-            .map(|s| AsyncSender::new(s, &reactor))
-            .collect();
+        let mut senders: Vec<AsyncSender<(usize, TcpStream, SocketAddr)>> =
+            senders.into_iter().map(|s| AsyncSender::new(s)).collect();
 
         let mut listeners_pos = 0;
         let mut senders_pos = 0;
