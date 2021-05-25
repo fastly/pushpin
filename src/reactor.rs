@@ -113,6 +113,7 @@ struct RegistrationData {
 struct TimerData {
     wheel: TimerWheel,
     start: Instant,
+    current_ticks: u64,
 }
 
 struct ReactorData {
@@ -135,6 +136,7 @@ impl Reactor {
         let timer_data = TimerData {
             wheel: TimerWheel::new(registrations_max),
             start: start_time,
+            current_ticks: 0,
         };
 
         let inner = Rc::new(ReactorData {
@@ -260,11 +262,22 @@ impl Reactor {
     }
 
     pub fn poll(&self) -> Result<(), io::Error> {
-        self.poll_with_time(Instant::now())
+        self.poll_for_events(self.advance_timers(Instant::now()))
     }
 
-    pub fn poll_with_time(&self, current_time: Instant) -> Result<(), io::Error> {
-        self.poll_for_events(self.advance_timers(current_time))
+    // return the timeout that would have been used for a blocking poll
+    pub fn poll_nonblocking(&self, current_time: Instant) -> Result<Option<Duration>, io::Error> {
+        let timeout = self.advance_timers(current_time);
+
+        self.poll_for_events(Some(Duration::from_millis(0)))?;
+
+        Ok(timeout)
+    }
+
+    pub fn now(&self) -> Instant {
+        let timer = &*self.inner.timer.borrow();
+
+        timer.start + ticks_to_duration(timer.current_ticks)
     }
 
     pub fn current() -> Option<Self> {
@@ -279,9 +292,9 @@ impl Reactor {
     fn advance_timers(&self, current_time: Instant) -> Option<Duration> {
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        let current_ticks = duration_to_ticks(current_time - timer.start);
+        timer.current_ticks = duration_to_ticks(current_time - timer.start);
 
-        timer.wheel.update(current_ticks);
+        timer.wheel.update(timer.current_ticks);
 
         match timer.wheel.timeout() {
             Some(ticks) => Some(ticks_to_duration(ticks)),
@@ -393,17 +406,25 @@ impl CustomEvented {
 
 pub struct TimerEvented {
     registration: Registration,
+    expires: Instant,
 }
 
 impl TimerEvented {
     pub fn new(expires: Instant, reactor: &Reactor) -> Result<Self, io::Error> {
         let registration = reactor.register_timer(expires)?;
 
-        Ok(Self { registration })
+        Ok(Self {
+            registration,
+            expires,
+        })
     }
 
     pub fn registration(&self) -> &Registration {
         &self.registration
+    }
+
+    pub fn expires(&self) -> Instant {
+        self.expires
     }
 }
 
@@ -527,17 +548,14 @@ mod tests {
         assert_eq!(waker.was_waked(), false);
 
         let timeout = reactor
-            .advance_timers(now + Duration::from_millis(20))
-            .unwrap();
-        reactor
-            .poll_for_events(Some(Duration::from_millis(0)))
+            .poll_nonblocking(now + Duration::from_millis(20))
             .unwrap();
 
-        assert_eq!(Some(timeout), Some(Duration::from_millis(80)));
+        assert_eq!(timeout, Some(Duration::from_millis(80)));
         assert_eq!(waker.was_waked(), false);
 
         reactor
-            .poll_with_time(now + Duration::from_millis(100))
+            .poll_nonblocking(now + Duration::from_millis(100))
             .unwrap();
 
         assert_eq!(waker.was_waked(), true);
