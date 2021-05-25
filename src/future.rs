@@ -15,7 +15,7 @@
  */
 
 use crate::channel;
-use crate::reactor::{CustomEvented, IoEvented, Reactor};
+use crate::reactor::{CustomEvented, IoEvented, Reactor, TimerEvented};
 use mio;
 use mio::net::{TcpListener, TcpStream};
 use std::cell::Cell;
@@ -25,6 +25,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::mpsc;
 use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 
 pub struct SelectFromSliceFuture<'a, F> {
     futures: &'a mut [F],
@@ -93,6 +94,11 @@ where
     SelectFromPairFuture { f1, f2 }
 }
 
+#[track_caller]
+fn get_reactor() -> Reactor {
+    Reactor::current().expect("no reactor in thread")
+}
+
 pub struct AsyncSender<T> {
     inner: channel::Sender<T>,
     evented: CustomEvented,
@@ -104,7 +110,7 @@ impl<T> AsyncSender<T> {
         let evented = CustomEvented::new(
             s.get_write_registration(),
             mio::Interest::WRITABLE,
-            &Reactor::current().unwrap(),
+            &get_reactor(),
         )
         .unwrap();
 
@@ -166,7 +172,7 @@ impl<T> AsyncReceiver<T> {
         let evented = CustomEvented::new(
             r.get_read_registration(),
             mio::Interest::READABLE,
-            &Reactor::current().unwrap(),
+            &get_reactor(),
         )
         .unwrap();
 
@@ -186,8 +192,7 @@ pub struct AsyncTcpListener {
 
 impl AsyncTcpListener {
     pub fn new(l: TcpListener) -> Self {
-        let evented =
-            IoEvented::new(l, mio::Interest::READABLE, &Reactor::current().unwrap()).unwrap();
+        let evented = IoEvented::new(l, mio::Interest::READABLE, &get_reactor()).unwrap();
 
         evented.registration().set_ready(true);
 
@@ -196,6 +201,24 @@ impl AsyncTcpListener {
 
     pub fn accept<'a>(&'a mut self) -> AcceptFuture<'a> {
         AcceptFuture { l: self }
+    }
+}
+
+pub struct AsyncSleep {
+    evented: TimerEvented,
+}
+
+impl AsyncSleep {
+    pub fn new(expires: Instant) -> Self {
+        let evented = TimerEvented::new(expires, &get_reactor()).unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self { evented }
+    }
+
+    pub fn sleep<'a>(&'a mut self) -> SleepFuture<'a> {
+        SleepFuture { s: self }
     }
 }
 
@@ -297,5 +320,81 @@ impl Future for AcceptFuture<'_> {
 impl Drop for AcceptFuture<'_> {
     fn drop(&mut self) {
         self.l.evented.registration().clear_waker();
+    }
+}
+
+pub struct SleepFuture<'a> {
+    s: &'a mut AsyncSleep,
+}
+
+impl Future for SleepFuture<'_> {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented.registration().set_waker(cx.waker().clone());
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        let now = get_reactor().now();
+
+        if now >= f.s.evented.expires() {
+            Poll::Ready(())
+        } else {
+            f.s.evented.registration().set_ready(false);
+
+            Poll::Pending
+        }
+    }
+}
+
+impl Drop for SleepFuture<'_> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+pub async fn sleep(duration: Duration) {
+    let now = get_reactor().now();
+
+    AsyncSleep::new(now + duration).sleep().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::executor::Executor;
+
+    #[test]
+    fn test_sleep() {
+        let now = Instant::now();
+
+        let executor = Executor::new(1);
+        let reactor = Reactor::new_with_time(1, now);
+
+        executor.spawn(sleep(Duration::from_millis(100))).unwrap();
+
+        executor.run_until_stalled();
+
+        reactor
+            .poll_nonblocking(now + Duration::from_millis(200))
+            .unwrap();
+
+        executor.run(|| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_sleep_ready() {
+        let now = Instant::now();
+
+        let executor = Executor::new(1);
+        let _reactor = Reactor::new_with_time(1, now);
+
+        executor.spawn(sleep(Duration::from_millis(0))).unwrap();
+
+        executor.run(|| Ok(())).unwrap();
     }
 }
