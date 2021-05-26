@@ -254,6 +254,12 @@ impl Executor {
             None => None,
         })
     }
+
+    pub fn spawner(&self) -> Spawner {
+        Spawner {
+            tasks: Rc::downgrade(&self.tasks),
+        }
+    }
 }
 
 impl Drop for Executor {
@@ -263,6 +269,26 @@ impl Drop for Executor {
                 ex.replace(None);
             }
         });
+    }
+}
+
+pub struct Spawner {
+    tasks: Weak<Tasks>,
+}
+
+impl Spawner {
+    pub fn spawn<F>(&self, fut: F) -> Result<(), ()>
+    where
+        F: Future<Output = ()> + 'static,
+    {
+        let tasks = match self.tasks.upgrade() {
+            Some(tasks) => tasks,
+            None => return Err(()),
+        };
+
+        let ex = Executor { tasks };
+
+        ex.spawn(fut)
     }
 }
 
@@ -468,5 +494,33 @@ mod tests {
         mem::drop(current);
 
         assert!(Executor::current().is_none());
+    }
+
+    #[test]
+    fn test_executor_spawner() {
+        let executor = Executor::new(2);
+
+        let flag = Rc::new(Cell::new(false));
+
+        {
+            let flag = flag.clone();
+            let spawner = executor.spawner();
+
+            executor
+                .spawn(async move {
+                    spawner
+                        .spawn(async move {
+                            flag.set(true);
+                        })
+                        .unwrap();
+                })
+                .unwrap();
+        }
+
+        assert_eq!(flag.get(), false);
+
+        executor.run(|| Ok(())).unwrap();
+
+        assert_eq!(flag.get(), true);
     }
 }
