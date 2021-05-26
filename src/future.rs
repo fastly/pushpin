@@ -200,6 +200,16 @@ impl AsyncTcpListener {
         Self { evented }
     }
 
+    pub fn bind(addr: SocketAddr) -> Result<Self, io::Error> {
+        let listener = TcpListener::bind(addr)?;
+
+        Ok(Self::new(listener))
+    }
+
+    pub fn local_addr(&self) -> Result<SocketAddr, io::Error> {
+        self.evented.io().local_addr()
+    }
+
     pub fn accept<'a>(&'a mut self) -> AcceptFuture<'a> {
         AcceptFuture { l: self }
     }
@@ -536,18 +546,18 @@ mod tests {
 
     #[test]
     fn test_tcpstream() {
-        let executor = Executor::new(2);
-        let reactor = Reactor::new(3);
+        let executor = Executor::new(2); // 2 tasks
+        let reactor = Reactor::new(3); // 3 registrations
+
+        let spawner = executor.spawner();
 
         executor
-            .spawn(async {
+            .spawn(async move {
                 let addr = "127.0.0.1:0".parse().unwrap();
-                let listener = TcpListener::bind(addr).unwrap();
+                let mut listener = AsyncTcpListener::bind(addr).expect("failed to bind");
                 let addr = listener.local_addr().unwrap();
-                let mut listener = AsyncTcpListener::new(listener);
 
-                Executor::current()
-                    .unwrap()
+                spawner
                     .spawn(async move {
                         let mut stream = AsyncTcpStream::connect(addr).await.unwrap();
 
