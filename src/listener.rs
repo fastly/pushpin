@@ -50,7 +50,7 @@ impl Listener {
 
             executor.spawn(Self::run(r, listeners, senders)).unwrap();
 
-            executor.run(|| reactor.poll()).unwrap();
+            executor.run(|timeout| reactor.poll(timeout)).unwrap();
         });
 
         Self {

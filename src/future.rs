@@ -589,7 +589,7 @@ mod tests {
             })
             .unwrap();
 
-        executor.run(|| reactor.poll()).unwrap();
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
 
     #[test]
@@ -607,7 +607,7 @@ mod tests {
             .poll_nonblocking(now + Duration::from_millis(200))
             .unwrap();
 
-        executor.run(|| Ok(())).unwrap();
+        executor.run(|_| Ok(())).unwrap();
     }
 
     #[test]
@@ -619,6 +619,6 @@ mod tests {
 
         executor.spawn(sleep(Duration::from_millis(0))).unwrap();
 
-        executor.run(|| Ok(())).unwrap();
+        executor.run(|_| Ok(())).unwrap();
     }
 }

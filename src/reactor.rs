@@ -261,8 +261,15 @@ impl Reactor {
         })
     }
 
-    pub fn poll(&self) -> Result<(), io::Error> {
-        self.poll_for_events(self.advance_timers(Instant::now()))
+    pub fn poll(&self, timeout: Option<Duration>) -> Result<(), io::Error> {
+        let timer_timeout = self.advance_timers(Instant::now());
+
+        let timeout = match timeout {
+            Some(t) => Some(t),
+            None => timer_timeout,
+        };
+
+        self.poll_for_events(timeout)
     }
 
     // return the timeout that would have been used for a blocking poll
@@ -484,7 +491,7 @@ mod tests {
 
         assert_eq!(waker.was_waked(), false);
 
-        reactor.poll().unwrap();
+        reactor.poll(None).unwrap();
 
         assert_eq!(waker.was_waked(), true);
 
@@ -526,7 +533,7 @@ mod tests {
 
         assert_eq!(waker.was_waked(), false);
 
-        reactor.poll().unwrap();
+        reactor.poll(None).unwrap();
 
         assert_eq!(waker.was_waked(), true);
 

@@ -23,6 +23,7 @@ use std::io;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 use std::task::{Context, Poll, Waker};
+use std::time::Duration;
 
 thread_local! {
     static EXECUTOR: RefCell<Option<Weak<Tasks>>> = RefCell::new(None);
@@ -55,6 +56,7 @@ fn poll_fut(fut: &mut Pin<Box<dyn Future<Output = ()>>>, waker: Waker) -> bool {
 
 struct Task {
     fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
+    processing: bool,
 }
 
 struct TasksData {
@@ -97,6 +99,10 @@ impl Tasks {
         self.data.borrow().nodes.is_empty()
     }
 
+    fn have_next(&self) -> bool {
+        !self.data.borrow().next.is_empty()
+    }
+
     fn add<F>(&self, fut: F) -> Result<(), ()>
     where
         F: Future<Output = ()> + 'static,
@@ -112,6 +118,7 @@ impl Tasks {
 
         let task = Task {
             fut: Some(Box::pin(fut)),
+            processing: false,
         };
 
         entry.insert(list::Node::new(task));
@@ -138,15 +145,36 @@ impl Tasks {
         data.nodes.remove(nkey);
     }
 
-    fn take_next(&self) -> Option<(usize, Pin<Box<dyn Future<Output = ()>>>, Waker)> {
+    fn take_next_list(&self) -> list::List {
         let data = &mut *self.data.borrow_mut();
 
-        let nkey = match data.next.head {
+        let mut l = list::List::default();
+        l.concat(&mut data.nodes, &mut data.next);
+
+        let mut cur = l.head;
+
+        while let Some(nkey) = cur {
+            let node = &mut data.nodes[nkey];
+            node.value.processing = true;
+
+            cur = node.next;
+        }
+
+        l
+    }
+
+    fn take_task(
+        &self,
+        l: &mut list::List,
+    ) -> Option<(usize, Pin<Box<dyn Future<Output = ()>>>, Waker)> {
+        let nkey = match l.head {
             Some(nkey) => nkey,
             None => return None,
         };
 
-        data.next.remove(&mut data.nodes, nkey);
+        let data = &mut *self.data.borrow_mut();
+
+        l.remove(&mut data.nodes, nkey);
 
         let task = &mut data.nodes[nkey].value;
 
@@ -154,7 +182,31 @@ impl Tasks {
         let fut = task.fut.take().unwrap();
         let waker = waker::into_std(data.wakers[nkey].clone());
 
+        task.processing = false;
+
         Some((nkey, fut, waker))
+    }
+
+    fn process_next(&self) {
+        let mut l = self.take_next_list();
+
+        loop {
+            match self.take_task(&mut l) {
+                Some((task_id, mut fut, waker)) => {
+                    let done = poll_fut(&mut fut, waker);
+
+                    // take_task() took the future out of the task, so we
+                    // could poll it without having to maintain a borrow of
+                    // the tasks set. we'll put it back now
+                    self.set_fut(task_id, fut);
+
+                    if done {
+                        self.remove(task_id);
+                    }
+                }
+                None => break,
+            }
+        }
     }
 
     fn set_fut(&self, task_id: usize, fut: Pin<Box<dyn Future<Output = ()>>>) {
@@ -172,10 +224,19 @@ impl Tasks {
 
         let data = &mut *self.data.borrow_mut();
 
-        // add node to the list if it's not already present
-        if data.nodes[nkey].prev.is_none() && data.next.head != Some(nkey) {
-            data.next.push_back(&mut data.nodes, nkey);
+        let node = &mut data.nodes[nkey];
+
+        // if the task is already in the processing list, don't do anything
+        if node.value.processing {
+            return;
         }
+
+        // if the task is already queued up in the next list, don't do anything
+        if node.prev.is_some() || data.next.head == Some(nkey) {
+            return;
+        }
+
+        data.next.push_back(&mut data.nodes, nkey);
     }
 }
 
@@ -210,37 +271,29 @@ impl Executor {
     }
 
     pub fn run_until_stalled(&self) {
-        loop {
-            match self.tasks.take_next() {
-                Some((task_id, mut fut, waker)) => {
-                    let done = poll_fut(&mut fut, waker);
-
-                    // take_next() took the future out of the task, so we
-                    // could poll it without having to maintain a borrow of
-                    // the tasks set. we'll put it back now
-                    self.tasks.set_fut(task_id, fut);
-
-                    if done {
-                        self.tasks.remove(task_id);
-                    }
-                }
-                None => break,
-            }
+        while self.tasks.have_next() {
+            self.tasks.process_next()
         }
     }
 
     pub fn run<F>(&self, mut park: F) -> Result<(), io::Error>
     where
-        F: FnMut() -> Result<(), io::Error>,
+        F: FnMut(Option<Duration>) -> Result<(), io::Error>,
     {
         loop {
-            self.run_until_stalled();
+            self.tasks.process_next();
 
             if !self.have_tasks() {
                 break;
             }
 
-            park()?;
+            let timeout = if self.tasks.have_next() {
+                Some(Duration::from_millis(0))
+            } else {
+                None
+            };
+
+            park(timeout)?;
         }
 
         Ok(())
@@ -359,6 +412,31 @@ mod tests {
         }
     }
 
+    struct EarlyWakeFuture {
+        done: bool,
+    }
+
+    impl EarlyWakeFuture {
+        fn new() -> Self {
+            Self { done: false }
+        }
+    }
+
+    impl Future for EarlyWakeFuture {
+        type Output = ();
+
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+            if !self.done {
+                self.done = true;
+                cx.waker().wake_by_ref();
+
+                return Poll::Pending;
+            }
+
+            Poll::Ready(())
+        }
+    }
+
     #[test]
     fn test_executor_step() {
         let executor = Executor::new(1);
@@ -434,7 +512,7 @@ mod tests {
             .unwrap();
 
         executor
-            .run(|| {
+            .run(|_| {
                 handle.set_ready();
 
                 Ok(())
@@ -477,7 +555,7 @@ mod tests {
 
         assert_eq!(flag.get(), false);
 
-        executor.run(|| Ok(())).unwrap();
+        executor.run(|_| Ok(())).unwrap();
 
         assert_eq!(flag.get(), true);
 
@@ -519,8 +597,33 @@ mod tests {
 
         assert_eq!(flag.get(), false);
 
-        executor.run(|| Ok(())).unwrap();
+        executor.run(|_| Ok(())).unwrap();
 
         assert_eq!(flag.get(), true);
+    }
+
+    #[test]
+    fn test_executor_early_wake() {
+        let executor = Executor::new(1);
+
+        let fut = EarlyWakeFuture::new();
+
+        executor
+            .spawn(async move {
+                fut.await;
+            })
+            .unwrap();
+
+        let mut park_count = 0;
+
+        executor
+            .run(|_| {
+                park_count += 1;
+
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(park_count, 1);
     }
 }
