@@ -21,6 +21,7 @@ use mio::net::{TcpListener, TcpStream};
 use std::cell::Cell;
 use std::future::Future;
 use std::io;
+use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::mpsc;
@@ -204,6 +205,37 @@ impl AsyncTcpListener {
     }
 }
 
+pub struct AsyncTcpStream {
+    evented: IoEvented<TcpStream>,
+}
+
+impl AsyncTcpStream {
+    pub fn new(s: TcpStream) -> Self {
+        let evented = IoEvented::new(
+            s,
+            mio::Interest::READABLE | mio::Interest::WRITABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self { evented }
+    }
+
+    pub fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> TcpReadFuture<'a> {
+        TcpReadFuture { s: self, buf }
+    }
+
+    pub fn write<'a>(&'a mut self, buf: &'a [u8]) -> TcpWriteFuture<'a> {
+        TcpWriteFuture {
+            s: self,
+            buf,
+            pos: 0,
+        }
+    }
+}
+
 pub struct AsyncSleep {
     evented: TimerEvented,
 }
@@ -323,6 +355,89 @@ impl Drop for AcceptFuture<'_> {
     }
 }
 
+pub struct TcpReadFuture<'a> {
+    s: &'a mut AsyncTcpStream,
+    buf: &'a mut [u8],
+}
+
+impl Future for TcpReadFuture<'_> {
+    type Output = Result<usize, io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented.registration().set_waker(cx.waker().clone());
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        match f.s.evented.io().read(f.buf) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.s.evented.registration().set_ready(false);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
+impl Drop for TcpReadFuture<'_> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+pub struct TcpWriteFuture<'a> {
+    s: &'a mut AsyncTcpStream,
+    buf: &'a [u8],
+    pos: usize,
+}
+
+impl Future for TcpWriteFuture<'_> {
+    type Output = Result<usize, io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented.registration().set_waker(cx.waker().clone());
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        // try to write all the data before producing a result, the same as
+        // what a blocking write would do
+        loop {
+            match f.s.evented.io().write(&f.buf[f.pos..]) {
+                Ok(size) => {
+                    f.pos += size;
+
+                    if f.pos >= f.buf.len() {
+                        break;
+                    }
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    f.s.evented.registration().set_ready(false);
+
+                    return Poll::Pending;
+                }
+                Err(e) => return Poll::Ready(Err(e)),
+            }
+        }
+
+        Poll::Ready(Ok(f.buf.len()))
+    }
+}
+
+impl Drop for TcpWriteFuture<'_> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
 pub struct SleepFuture<'a> {
     s: &'a mut AsyncSleep,
 }
@@ -367,6 +482,55 @@ pub async fn sleep(duration: Duration) {
 mod tests {
     use super::*;
     use crate::executor::Executor;
+
+    #[test]
+    fn test_tcpstream() {
+        let executor = Executor::new(2);
+        let reactor = Reactor::new(3);
+
+        executor
+            .spawn(async {
+                let addr = "127.0.0.1:0".parse().unwrap();
+                let listener = TcpListener::bind(addr).unwrap();
+                let addr = listener.local_addr().unwrap();
+                let mut listener = AsyncTcpListener::new(listener);
+
+                Executor::current()
+                    .unwrap()
+                    .spawn(async move {
+                        let stream = TcpStream::connect(addr).unwrap();
+                        let mut stream = AsyncTcpStream::new(stream);
+
+                        let size = stream.write("hello".as_bytes()).await.unwrap();
+                        assert_eq!(size, 5);
+                    })
+                    .unwrap();
+
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = AsyncTcpStream::new(stream);
+
+                let mut resp: Vec<u8> = Vec::new();
+
+                loop {
+                    let mut buf = [0; 1024];
+
+                    let size = stream.read(&mut buf).await.unwrap();
+                    if size == 0 {
+                        break;
+                    }
+
+                    let buf = &buf[..size];
+                    resp.extend(buf);
+                }
+
+                let resp = String::from_utf8(resp).unwrap();
+
+                assert_eq!(&resp, "hello");
+            })
+            .unwrap();
+
+        executor.run(|| reactor.poll()).unwrap();
+    }
 
     #[test]
     fn test_sleep() {
