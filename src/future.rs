@@ -218,9 +218,25 @@ impl AsyncTcpStream {
         )
         .unwrap();
 
+        // when constructing via new(), assume I/O operations are ready to be
+        // attempted
         evented.registration().set_ready(true);
 
         Self { evented }
+    }
+
+    pub async fn connect<'a>(addr: SocketAddr) -> Result<Self, io::Error> {
+        let stream = TcpStream::connect(addr)?;
+        let mut stream = Self::new(stream);
+
+        // when constructing via connect(), the ready state should start out
+        // false because we need to wait for a writability indication
+        stream.evented.registration().set_ready(false);
+
+        let fut = TcpConnectFuture { s: &mut stream };
+        fut.await?;
+
+        Ok(stream)
     }
 
     pub fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> TcpReadFuture<'a> {
@@ -352,6 +368,41 @@ impl Future for AcceptFuture<'_> {
 impl Drop for AcceptFuture<'_> {
     fn drop(&mut self) {
         self.l.evented.registration().clear_waker();
+    }
+}
+
+pub struct TcpConnectFuture<'a> {
+    s: &'a mut AsyncTcpStream,
+}
+
+impl Future for TcpConnectFuture<'_> {
+    type Output = Result<(), io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented.registration().set_waker(cx.waker().clone());
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        let maybe_error = match f.s.evented.io().take_error() {
+            Ok(me) => me,
+            Err(e) => return Poll::Ready(Err(e)),
+        };
+
+        if let Some(e) = maybe_error {
+            return Poll::Ready(Err(e));
+        }
+
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl Drop for TcpConnectFuture<'_> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
     }
 }
 
@@ -498,8 +549,7 @@ mod tests {
                 Executor::current()
                     .unwrap()
                     .spawn(async move {
-                        let stream = TcpStream::connect(addr).unwrap();
-                        let mut stream = AsyncTcpStream::new(stream);
+                        let mut stream = AsyncTcpStream::connect(addr).await.unwrap();
 
                         let size = stream.write("hello".as_bytes()).await.unwrap();
                         assert_eq!(size, 5);
