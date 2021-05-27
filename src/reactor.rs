@@ -86,6 +86,36 @@ impl Registration {
 
         poll.deregister(source)
     }
+
+    pub fn pull_from_budget(&self) -> bool {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+        let budget = &mut *reactor.budget.borrow_mut();
+
+        let ok = match budget {
+            Some(budget) => {
+                if *budget > 0 {
+                    *budget -= 1;
+
+                    true
+                } else {
+                    false
+                }
+            }
+            None => true,
+        };
+
+        // if no budget left, trigger the waker to try again soon
+        if !ok {
+            let registrations = &mut *reactor.registrations.borrow_mut();
+            let reg_data = &mut registrations[self.key];
+
+            if let Some(waker) = reg_data.waker.take() {
+                waker.wake();
+            }
+        }
+
+        ok
+    }
 }
 
 impl Drop for Registration {
@@ -120,6 +150,7 @@ struct ReactorData {
     registrations: RefCell<Slab<RegistrationData>>,
     poll: RefCell<event::Poller>,
     timer: RefCell<TimerData>,
+    budget: RefCell<Option<u32>>,
 }
 
 #[derive(Clone)]
@@ -143,6 +174,7 @@ impl Reactor {
             registrations: RefCell::new(Slab::with_capacity(registrations_max)),
             poll: RefCell::new(event::Poller::new(registrations_max).unwrap()),
             timer: RefCell::new(timer_data),
+            budget: RefCell::new(None),
         });
 
         REACTOR.with(|r| {
@@ -285,6 +317,10 @@ impl Reactor {
         let timer = &*self.inner.timer.borrow();
 
         timer.start + ticks_to_duration(timer.current_ticks)
+    }
+
+    pub fn set_budget(&self, budget: Option<u32>) {
+        *self.inner.budget.borrow_mut() = budget;
     }
 
     pub fn current() -> Option<Self> {
@@ -565,6 +601,38 @@ mod tests {
             .poll_nonblocking(now + Duration::from_millis(100))
             .unwrap();
 
+        assert_eq!(waker.was_waked(), true);
+    }
+
+    #[test]
+    fn test_reactor_budget() {
+        let reactor = Reactor::new(1);
+
+        let (reg, _) = event::Registration::new();
+
+        let evented = CustomEvented::new(&reg, mio::Interest::READABLE, &reactor).unwrap();
+
+        let waker = Rc::new(TestWaker::new());
+
+        evented.registration().set_waker(waker.clone().into_std());
+
+        assert_eq!(evented.registration().pull_from_budget(), true);
+        assert_eq!(waker.was_waked(), false);
+
+        reactor.set_budget(Some(0));
+
+        assert_eq!(evented.registration().pull_from_budget(), false);
+        assert_eq!(waker.was_waked(), true);
+
+        let waker = Rc::new(TestWaker::new());
+
+        reactor.set_budget(Some(1));
+        evented.registration().set_waker(waker.clone().into_std());
+
+        assert_eq!(evented.registration().pull_from_budget(), true);
+        assert_eq!(waker.was_waked(), false);
+
+        assert_eq!(evented.registration().pull_from_budget(), false);
         assert_eq!(waker.was_waked(), true);
     }
 }
