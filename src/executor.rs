@@ -67,6 +67,7 @@ struct TasksData {
 
 struct Tasks {
     data: RefCell<TasksData>,
+    pre_poll: RefCell<Option<Box<dyn FnMut()>>>,
 }
 
 impl Tasks {
@@ -79,6 +80,7 @@ impl Tasks {
 
         let tasks = Rc::new(Self {
             data: RefCell::new(data),
+            pre_poll: RefCell::new(None),
         });
 
         {
@@ -193,6 +195,8 @@ impl Tasks {
         loop {
             match self.take_task(&mut l) {
                 Some((task_id, mut fut, waker)) => {
+                    self.pre_poll();
+
                     let done = poll_fut(&mut fut, waker);
 
                     // take_task() took the future out of the task, so we
@@ -238,6 +242,21 @@ impl Tasks {
 
         data.next.push_back(&mut data.nodes, nkey);
     }
+
+    fn set_pre_poll<F>(&self, pre_poll_fn: F)
+    where
+        F: FnMut() + 'static,
+    {
+        *self.pre_poll.borrow_mut() = Some(Box::new(pre_poll_fn));
+    }
+
+    fn pre_poll(&self) {
+        let pre_poll = &mut *self.pre_poll.borrow_mut();
+
+        if let Some(f) = pre_poll {
+            f();
+        }
+    }
 }
 
 pub struct Executor {
@@ -264,6 +283,13 @@ impl Executor {
         F: Future<Output = ()> + 'static,
     {
         self.tasks.add(fut)
+    }
+
+    pub fn set_pre_poll<F>(&self, pre_poll_fn: F)
+    where
+        F: FnMut() + 'static,
+    {
+        self.tasks.set_pre_poll(pre_poll_fn);
     }
 
     pub fn have_tasks(&self) -> bool {
@@ -625,5 +651,28 @@ mod tests {
             .unwrap();
 
         assert_eq!(park_count, 1);
+    }
+
+    #[test]
+    fn test_executor_pre_poll() {
+        let executor = Executor::new(1);
+
+        let flag = Rc::new(Cell::new(false));
+
+        {
+            let flag = flag.clone();
+
+            executor.set_pre_poll(move || {
+                flag.set(true);
+            });
+        }
+
+        executor.spawn(async {}).unwrap();
+
+        assert_eq!(flag.get(), false);
+
+        executor.run(|_| Ok(())).unwrap();
+
+        assert_eq!(flag.get(), true);
     }
 }
