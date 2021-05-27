@@ -560,6 +560,7 @@ mod tests {
     use super::*;
     use crate::executor::Executor;
     use std::mem;
+    use std::str;
 
     #[test]
     fn test_tcpstream() {
@@ -586,7 +587,8 @@ mod tests {
                 let (stream, _) = listener.accept().await.unwrap();
                 let mut stream = AsyncTcpStream::new(stream);
 
-                let mut resp: Vec<u8> = Vec::new();
+                let mut resp = [0u8; 1024];
+                let mut resp = io::Cursor::new(&mut resp[..]);
 
                 loop {
                     let mut buf = [0; 1024];
@@ -596,13 +598,13 @@ mod tests {
                         break;
                     }
 
-                    let buf = &buf[..size];
-                    resp.extend(buf);
+                    resp.write(&buf[..size]).unwrap();
                 }
 
-                let resp = String::from_utf8(resp).unwrap();
+                let size = resp.position() as usize;
+                let resp = str::from_utf8(&resp.get_ref()[..size]).unwrap();
 
-                assert_eq!(&resp, "hello");
+                assert_eq!(resp, "hello");
             })
             .unwrap();
 
