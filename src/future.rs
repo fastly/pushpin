@@ -329,6 +329,10 @@ impl<T> Future for RecvFuture<'_, T> {
             return Poll::Pending;
         }
 
+        if !f.r.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
         match f.r.inner.try_recv() {
             Ok(v) => Poll::Ready(Ok(v)),
             Err(mpsc::TryRecvError::Empty) => {
@@ -360,6 +364,10 @@ impl Future for AcceptFuture<'_> {
         f.l.evented.registration().set_waker(cx.waker().clone());
 
         if !f.l.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        if !f.l.evented.registration().pull_from_budget() {
             return Poll::Pending;
         }
 
@@ -433,6 +441,10 @@ impl Future for TcpReadFuture<'_> {
             return Poll::Pending;
         }
 
+        if !f.s.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
         match f.s.evented.io().read(f.buf) {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -472,6 +484,10 @@ impl Future for TcpWriteFuture<'_> {
         // try to write all the data before producing a result, the same as
         // what a blocking write would do
         loop {
+            if !f.s.evented.registration().pull_from_budget() {
+                return Poll::Pending;
+            }
+
             match f.s.evented.io().write(&f.buf[f.pos..]) {
                 Ok(size) => {
                     f.pos += size;
@@ -543,6 +559,7 @@ pub async fn sleep(duration: Duration) {
 mod tests {
     use super::*;
     use crate::executor::Executor;
+    use std::mem;
 
     #[test]
     fn test_tcpstream() {
@@ -590,6 +607,86 @@ mod tests {
             .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_budget_unlimited() {
+        let executor = Executor::new(1);
+        let reactor = Reactor::new(1);
+
+        let (s, r) = channel::channel::<u32>(3);
+
+        s.send(1).unwrap();
+        s.send(2).unwrap();
+        s.send(3).unwrap();
+        mem::drop(s);
+
+        let mut r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Ok(2));
+                assert_eq!(r.recv().await, Ok(3));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        let mut park_count = 0;
+
+        executor
+            .run(|timeout| {
+                park_count += 1;
+
+                reactor.poll(timeout)
+            })
+            .unwrap();
+
+        assert_eq!(park_count, 0);
+    }
+
+    #[test]
+    fn test_budget_1() {
+        let executor = Executor::new(1);
+        let reactor = Reactor::new(1);
+
+        {
+            let reactor = reactor.clone();
+
+            executor.set_pre_poll(move || {
+                reactor.set_budget(Some(1));
+            });
+        }
+
+        let (s, r) = channel::channel::<u32>(3);
+
+        s.send(1).unwrap();
+        s.send(2).unwrap();
+        s.send(3).unwrap();
+        mem::drop(s);
+
+        let mut r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Ok(2));
+                assert_eq!(r.recv().await, Ok(3));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        let mut park_count = 0;
+
+        executor
+            .run(|timeout| {
+                park_count += 1;
+
+                reactor.poll(timeout)
+            })
+            .unwrap();
+
+        assert_eq!(park_count, 3);
     }
 
     #[test]
