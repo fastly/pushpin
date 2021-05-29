@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use std::cell::RefCell;
 use std::fmt;
 use std::fs;
 use std::io;
@@ -147,7 +148,7 @@ pub struct ZmqSocket {
     pub sock: zmq::Socket,
     pub events: zmq::PollEvents,
 
-    specs: Vec<ActiveSpec>,
+    specs: RefCell<Vec<ActiveSpec>>,
 }
 
 impl ZmqSocket {
@@ -155,7 +156,7 @@ impl ZmqSocket {
         Self {
             sock: ctx.socket(socket_type).unwrap(),
             events: zmq::PollEvents::empty(),
-            specs: Vec::new(),
+            specs: RefCell::new(Vec::new()),
         }
     }
 
@@ -269,9 +270,11 @@ impl ZmqSocket {
         Ok(msg)
     }
 
-    pub fn apply_specs(&mut self, new_specs: &[SpecInfo]) -> Result<(), ZmqSocketError> {
+    pub fn apply_specs(&self, new_specs: &[SpecInfo]) -> Result<(), ZmqSocketError> {
+        let mut specs = self.specs.borrow_mut();
+
         let mut to_remove = Vec::new();
-        for cur in self.specs.iter() {
+        for cur in specs.iter() {
             let mut found = false;
             for new in new_specs.iter() {
                 if cur.spec.spec == new.spec && cur.spec.bind == new.bind {
@@ -288,7 +291,7 @@ impl ZmqSocket {
         let mut to_update = Vec::new();
         for new in new_specs.iter() {
             let mut found = None;
-            for (ci, cur) in self.specs.iter().enumerate() {
+            for (ci, cur) in specs.iter().enumerate() {
                 if new.spec == cur.spec.spec && new.bind == cur.spec.bind {
                     found = Some(ci);
                     break;
@@ -296,7 +299,7 @@ impl ZmqSocket {
             }
             match found {
                 Some(ci) => {
-                    if new.ipc_file_mode != self.specs[ci].spec.ipc_file_mode {
+                    if new.ipc_file_mode != specs[ci].spec.ipc_file_mode {
                         to_update.push(new.clone());
                     }
                 }
@@ -375,7 +378,7 @@ impl ZmqSocket {
         }
 
         // move current specs aside
-        let prev_specs = std::mem::replace(&mut self.specs, Vec::new());
+        let prev_specs = std::mem::replace(&mut *specs, Vec::new());
 
         // recompute current specs
         for new in new_specs {
@@ -401,7 +404,7 @@ impl ZmqSocket {
 
             assert!(s.is_some());
 
-            self.specs.push(s.unwrap());
+            specs.push(s.unwrap());
         }
 
         Ok(())
@@ -410,11 +413,11 @@ impl ZmqSocket {
 
 impl Drop for ZmqSocket {
     fn drop(&mut self) {
-        for spec in self.specs.iter() {
+        let specs = self.specs.borrow();
+
+        for spec in specs.iter() {
             unsetup_spec(&self.sock, spec);
         }
-
-        self.specs.clear();
     }
 }
 
@@ -436,7 +439,7 @@ mod tests {
 
         assert_eq!(s.events.contains(zmq::POLLOUT), false);
 
-        let mut r = ZmqSocket::new(&zmq_context, zmq::REP);
+        let r = ZmqSocket::new(&zmq_context, zmq::REP);
         r.apply_specs(&[SpecInfo {
             spec: String::from("inproc://send-test"),
             bind: false,
