@@ -20,6 +20,7 @@ use mio;
 use slab::Slab;
 use std::cell::RefCell;
 use std::io;
+use std::os::unix::io::RawFd;
 use std::rc::{Rc, Weak};
 use std::task::Waker;
 use std::time::{Duration, Instant};
@@ -427,6 +428,35 @@ impl<S: mio::event::Source> Drop for IoEvented<S> {
     }
 }
 
+pub struct FdEvented {
+    registration: Registration,
+    fd: RawFd,
+}
+
+impl FdEvented {
+    pub fn new(fd: RawFd, interest: mio::Interest, reactor: &Reactor) -> Result<Self, io::Error> {
+        let registration = reactor.register_io(&mut mio::unix::SourceFd(&fd), interest)?;
+
+        Ok(Self { registration, fd })
+    }
+
+    pub fn registration(&self) -> &Registration {
+        &self.registration
+    }
+
+    pub fn fd(&self) -> &RawFd {
+        &self.fd
+    }
+}
+
+impl Drop for FdEvented {
+    fn drop(&mut self) {
+        self.registration()
+            .deregister_io(&mut mio::unix::SourceFd(&self.fd))
+            .unwrap();
+    }
+}
+
 pub struct CustomEvented {
     registration: Registration,
 }
@@ -477,6 +507,7 @@ mod tests {
     use crate::waker;
     use std::cell::Cell;
     use std::mem;
+    use std::os::unix::io::AsRawFd;
     use std::rc::Rc;
     use std::thread;
 
@@ -535,20 +566,32 @@ mod tests {
     }
 
     #[test]
-    fn test_reactor_current() {
-        assert!(Reactor::current().is_none());
-
+    fn test_reactor_fd() {
         let reactor = Reactor::new(1);
 
-        let current = Reactor::current().unwrap();
+        let addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let listener = std::net::TcpListener::bind(addr).unwrap();
 
-        mem::drop(reactor);
+        let evented =
+            FdEvented::new(listener.as_raw_fd(), mio::Interest::READABLE, &reactor).unwrap();
 
-        assert!(Reactor::current().is_some());
+        let addr = listener.local_addr().unwrap();
 
-        mem::drop(current);
+        let waker = Rc::new(TestWaker::new());
 
-        assert!(Reactor::current().is_none());
+        evented.registration().set_waker(waker.clone().into_std());
+
+        let thread = thread::spawn(move || {
+            std::net::TcpStream::connect(addr).unwrap();
+        });
+
+        assert_eq!(waker.was_waked(), false);
+
+        reactor.poll(None).unwrap();
+
+        assert_eq!(waker.was_waked(), true);
+
+        thread.join().unwrap();
     }
 
     #[test]
@@ -602,6 +645,23 @@ mod tests {
             .unwrap();
 
         assert_eq!(waker.was_waked(), true);
+    }
+
+    #[test]
+    fn test_reactor_current() {
+        assert!(Reactor::current().is_none());
+
+        let reactor = Reactor::new(1);
+
+        let current = Reactor::current().unwrap();
+
+        mem::drop(reactor);
+
+        assert!(Reactor::current().is_some());
+
+        mem::drop(current);
+
+        assert!(Reactor::current().is_none());
     }
 
     #[test]
