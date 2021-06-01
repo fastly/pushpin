@@ -834,37 +834,37 @@ impl SocketManager {
 
         let messages_memory = Arc::new(arena::Memory::new(arena_size));
 
-        let mut client_req = ClientReqSockets {
+        let client_req = ClientReqSockets {
             sock: ZmqSocket::new(&ctx, zmq::DEALER),
         };
 
-        let mut client_stream = ClientStreamSockets {
+        let client_stream = ClientStreamSockets {
             out: ZmqSocket::new(&ctx, zmq::PUSH),
             out_stream: ZmqSocket::new(&ctx, zmq::ROUTER),
             in_: ZmqSocket::new(&ctx, zmq::SUB),
         };
 
-        client_req.sock.sock.set_sndhwm(hwm as i32).unwrap();
-        client_req.sock.sock.set_rcvhwm(hwm as i32).unwrap();
+        client_req.sock.inner().set_sndhwm(hwm as i32).unwrap();
+        client_req.sock.inner().set_rcvhwm(hwm as i32).unwrap();
 
-        client_stream.out.sock.set_sndhwm(hwm as i32).unwrap();
+        client_stream.out.inner().set_sndhwm(hwm as i32).unwrap();
         client_stream
             .out_stream
-            .sock
+            .inner()
             .set_sndhwm(hwm as i32)
             .unwrap();
-        client_stream.in_.sock.set_rcvhwm(hwm as i32).unwrap();
+        client_stream.in_.inner().set_rcvhwm(hwm as i32).unwrap();
 
         client_stream
             .out_stream
-            .sock
+            .inner()
             .set_router_mandatory(true)
             .unwrap();
 
         let sub = format!("{} ", instance_id);
         client_stream
             .in_
-            .sock
+            .inner()
             .set_subscribe(sub.as_bytes())
             .unwrap();
 
@@ -889,7 +889,7 @@ impl SocketManager {
 
         poller
             .register(
-                &mut SourceFd(&client_req.sock.sock.get_fd().unwrap()),
+                &mut SourceFd(&client_req.sock.inner().get_fd().unwrap()),
                 CLIENT_REQ,
                 mio::Interest::READABLE,
             )
@@ -897,7 +897,7 @@ impl SocketManager {
 
         poller
             .register(
-                &mut SourceFd(&client_stream.out.sock.get_fd().unwrap()),
+                &mut SourceFd(&client_stream.out.inner().get_fd().unwrap()),
                 CLIENT_STREAM_OUT,
                 mio::Interest::READABLE,
             )
@@ -905,7 +905,7 @@ impl SocketManager {
 
         poller
             .register(
-                &mut SourceFd(&client_stream.out_stream.sock.get_fd().unwrap()),
+                &mut SourceFd(&client_stream.out_stream.inner().get_fd().unwrap()),
                 CLIENT_STREAM_OUT_STREAM,
                 mio::Interest::READABLE,
             )
@@ -913,7 +913,7 @@ impl SocketManager {
 
         poller
             .register(
-                &mut SourceFd(&client_stream.in_.sock.get_fd().unwrap()),
+                &mut SourceFd(&client_stream.in_.inner().get_fd().unwrap()),
                 CLIENT_STREAM_IN,
                 mio::Interest::READABLE,
             )
@@ -1040,7 +1040,7 @@ impl SocketManager {
             }
 
             if let Some(msg) = &req_pending {
-                if client_req.sock.events.contains(zmq::POLLOUT) {
+                if client_req.sock.events().contains(zmq::POLLOUT) {
                     let h = MultipartHeader::new();
 
                     if log_enabled!(log::Level::Trace) {
@@ -1053,7 +1053,7 @@ impl SocketManager {
 
                     let mut retry = false;
 
-                    match client_req.sock.send_to(h, tmp) {
+                    match client_req.sock.send_to(&h, tmp) {
                         Ok(_) => {}
                         Err(zmq::Error::EAGAIN) => retry = true,
                         Err(e) => error!("req zmq send: {}", e),
@@ -1080,7 +1080,7 @@ impl SocketManager {
             }
 
             if let Some(msg) = &stream_out_pending {
-                if client_stream.out.events.contains(zmq::POLLOUT) {
+                if client_stream.out.events().contains(zmq::POLLOUT) {
                     if log_enabled!(log::Level::Trace) {
                         trace!("OUT stream {}", packet_to_string(&msg));
                     }
@@ -1132,7 +1132,7 @@ impl SocketManager {
                     false
                 };
 
-                if !wait && client_stream.out_stream.events.contains(zmq::POLLOUT) {
+                if !wait && client_stream.out_stream.events().contains(zmq::POLLOUT) {
                     let mut h = MultipartHeader::new();
                     h.push(zmq::Message::from(addr.as_ref()));
 
@@ -1146,14 +1146,14 @@ impl SocketManager {
 
                     let mut retry = false;
 
-                    match client_stream.out_stream.send_to(h, tmp) {
+                    match client_stream.out_stream.send_to(&h, tmp) {
                         Ok(_) => {}
                         Err(zmq::Error::EAGAIN) => retry = true,
                         Err(e) => error!("stream zmq send: {}", e),
                     }
 
                     if retry {
-                        if client_stream.out_stream.events.contains(zmq::POLLOUT) {
+                        if client_stream.out_stream.events().contains(zmq::POLLOUT) {
                             // if the socket is still writable after EAGAIN,
                             //   it could mean that a different peer than the
                             //   one we tried to write to is writable. in that
@@ -1168,7 +1168,7 @@ impl SocketManager {
                 }
             }
 
-            if client_req.sock.events.contains(zmq::POLLIN) {
+            if client_req.sock.events().contains(zmq::POLLIN) {
                 match client_req.sock.recv_routed() {
                     Ok(msg) => {
                         if log_enabled!(log::Level::Trace) {
@@ -1193,7 +1193,7 @@ impl SocketManager {
                 }
             }
 
-            if client_stream.in_.events.contains(zmq::POLLIN) {
+            if client_stream.in_.events().contains(zmq::POLLIN) {
                 match client_stream.in_.recv() {
                     Ok(msg) => {
                         if log_enabled!(log::Level::Trace) {
@@ -1230,16 +1230,17 @@ impl SocketManager {
 
             let timeout = if control_readable
                 || (req_handles.any_readable() && req_pending.is_none())
-                || (req_pending.is_some() && client_req.sock.events.contains(zmq::POLLOUT))
+                || (req_pending.is_some() && client_req.sock.events().contains(zmq::POLLOUT))
                 || (stream_handles.any_readable_any() && stream_out_pending.is_none())
-                || (stream_out_pending.is_some() && client_stream.out.events.contains(zmq::POLLOUT))
+                || (stream_out_pending.is_some()
+                    && client_stream.out.events().contains(zmq::POLLOUT))
                 || (stream_handles.any_readable_addr() && stream_out_stream_pending.is_none())
                 || (stream_out_stream_pending.is_some()
-                    && client_stream.out_stream.events.contains(zmq::POLLOUT)
+                    && client_stream.out_stream.events().contains(zmq::POLLOUT)
                     && (stream_out_stream_delay.is_none()
                         || now >= stream_out_stream_delay.unwrap()))
-                || client_req.sock.events.contains(zmq::POLLIN)
-                || client_stream.in_.events.contains(zmq::POLLIN)
+                || client_req.sock.events().contains(zmq::POLLIN)
+                || client_stream.in_.events().contains(zmq::POLLIN)
             {
                 // if there are other things we could do, poll without waiting
                 Some(std::time::Duration::from_millis(0))

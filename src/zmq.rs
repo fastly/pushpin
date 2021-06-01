@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::fmt;
 use std::fs;
@@ -145,26 +146,29 @@ impl MultipartHeader {
 }
 
 pub struct ZmqSocket {
-    pub sock: zmq::Socket,
-    pub events: zmq::PollEvents,
-
+    inner: zmq::Socket,
+    events: Cell<zmq::PollEvents>,
     specs: RefCell<Vec<ActiveSpec>>,
 }
 
 impl ZmqSocket {
     pub fn new(ctx: &zmq::Context, socket_type: zmq::SocketType) -> Self {
         Self {
-            sock: ctx.socket(socket_type).unwrap(),
-            events: zmq::PollEvents::empty(),
+            inner: ctx.socket(socket_type).unwrap(),
+            events: Cell::new(zmq::PollEvents::empty()),
             specs: RefCell::new(Vec::new()),
         }
     }
 
-    pub fn update_events(&mut self) {
+    pub fn inner(&self) -> &zmq::Socket {
+        &self.inner
+    }
+
+    pub fn update_events(&self) {
         loop {
-            match self.sock.get_events() {
+            match self.inner.get_events() {
                 Ok(events) => {
-                    self.events = events;
+                    self.events.set(events);
                     break;
                 }
                 Err(zmq::Error::EINTR) => continue,
@@ -173,8 +177,12 @@ impl ZmqSocket {
         }
     }
 
-    pub fn send(&mut self, msg: zmq::Message) -> Result<(), zmq::Error> {
-        if let Err(e) = self.sock.send(msg, zmq::DONTWAIT) {
+    pub fn events(&self) -> zmq::PollEvents {
+        self.events.get()
+    }
+
+    pub fn send(&self, msg: zmq::Message) -> Result<(), zmq::Error> {
+        if let Err(e) = self.inner.send(msg, zmq::DONTWAIT) {
             self.update_events();
             return Err(e);
         }
@@ -185,21 +193,32 @@ impl ZmqSocket {
     }
 
     pub fn send_to(
-        &mut self,
-        header: MultipartHeader,
+        &self,
+        header: &MultipartHeader,
         content: zmq::Message,
     ) -> Result<(), zmq::Error> {
-        let mut header = header;
+        if header.len + 2 > 8 {
+            panic!("cannot send more than 8 parts")
+        }
+
+        let mut headers: [&[u8]; 8] = [b""; 8];
+
         for i in 0..header.len {
-            let msg = header.parts[i].take().unwrap();
-            if let Err(e) = self.sock.send(msg, zmq::SNDMORE | zmq::DONTWAIT) {
-                self.update_events();
-                return Err(e);
-            }
+            headers[i] = &header.parts[i].as_ref().unwrap();
+        }
+
+        let headers = &headers[..header.len];
+
+        if let Err(e) = self
+            .inner
+            .send_multipart(headers, zmq::SNDMORE | zmq::DONTWAIT)
+        {
+            self.update_events();
+            return Err(e);
         }
 
         if let Err(e) = self
-            .sock
+            .inner
             .send(zmq::Message::new(), zmq::SNDMORE | zmq::DONTWAIT)
         {
             self.update_events();
@@ -209,9 +228,9 @@ impl ZmqSocket {
         self.send(content)
     }
 
-    pub fn recv(&mut self) -> Result<zmq::Message, zmq::Error> {
+    pub fn recv(&self) -> Result<zmq::Message, zmq::Error> {
         // get the first part
-        let msg = match self.sock.recv_msg(zmq::DONTWAIT) {
+        let msg = match self.inner.recv_msg(zmq::DONTWAIT) {
             Ok(msg) => msg,
             Err(e) => {
                 self.update_events();
@@ -220,8 +239,8 @@ impl ZmqSocket {
         };
 
         // eat the rest of the parts
-        while self.sock.get_rcvmore().unwrap() {
-            self.sock.recv_msg(0).unwrap();
+        while self.inner.get_rcvmore().unwrap() {
+            self.inner.recv_msg(0).unwrap();
         }
 
         self.update_events();
@@ -229,10 +248,10 @@ impl ZmqSocket {
         Ok(msg)
     }
 
-    pub fn recv_routed(&mut self) -> Result<zmq::Message, zmq::Error> {
+    pub fn recv_routed(&self) -> Result<zmq::Message, zmq::Error> {
         loop {
             // eat parts until we reach the separator
-            match self.sock.recv_msg(zmq::DONTWAIT) {
+            match self.inner.recv_msg(zmq::DONTWAIT) {
                 Ok(msg) => {
                     if msg.is_empty() {
                         break;
@@ -247,12 +266,12 @@ impl ZmqSocket {
 
         // if we get here, we've read the separator. content parts should follow
 
-        if !self.sock.get_rcvmore().unwrap() {
+        if !self.inner.get_rcvmore().unwrap() {
             return Err(zmq::Error::EINVAL);
         }
 
         // get the first part of the content
-        let msg = match self.sock.recv_msg(0) {
+        let msg = match self.inner.recv_msg(0) {
             Ok(msg) => msg,
             Err(e) => {
                 self.update_events();
@@ -261,8 +280,8 @@ impl ZmqSocket {
         };
 
         // eat the rest of the parts
-        while self.sock.get_rcvmore().unwrap() {
-            self.sock.recv_msg(0).unwrap();
+        while self.inner.get_rcvmore().unwrap() {
+            self.inner.recv_msg(0).unwrap();
         }
 
         self.update_events();
@@ -313,7 +332,7 @@ impl ZmqSocket {
 
         // add specs we dont have. on fail, undo them
         for spec in to_add.iter() {
-            match setup_spec(&self.sock, spec) {
+            match setup_spec(&self.inner, spec) {
                 Ok(endpoint) => {
                     added.push(ActiveSpec {
                         spec: spec.clone(),
@@ -323,7 +342,7 @@ impl ZmqSocket {
                 Err(e) => {
                     // undo previous adds
                     for spec in added.iter().rev() {
-                        unsetup_spec(&self.sock, spec);
+                        unsetup_spec(&self.inner, spec);
                     }
                     return Err(e);
                 }
@@ -366,7 +385,7 @@ impl ZmqSocket {
 
                 // undo previous adds
                 for spec in added.iter().rev() {
-                    unsetup_spec(&self.sock, spec);
+                    unsetup_spec(&self.inner, spec);
                 }
 
                 return Err(err);
@@ -374,7 +393,7 @@ impl ZmqSocket {
         }
 
         for spec in to_remove.iter() {
-            unsetup_spec(&self.sock, spec);
+            unsetup_spec(&self.inner, spec);
         }
 
         // move current specs aside
@@ -416,7 +435,7 @@ impl Drop for ZmqSocket {
         let specs = self.specs.borrow();
 
         for spec in specs.iter() {
-            unsetup_spec(&self.sock, spec);
+            unsetup_spec(&self.inner, spec);
         }
     }
 }
@@ -429,7 +448,7 @@ mod tests {
     fn test_send_after_disconnect() {
         let zmq_context = zmq::Context::new();
 
-        let mut s = ZmqSocket::new(&zmq_context, zmq::REQ);
+        let s = ZmqSocket::new(&zmq_context, zmq::REQ);
         s.apply_specs(&[SpecInfo {
             spec: String::from("inproc://send-test"),
             bind: true,
@@ -437,7 +456,7 @@ mod tests {
         }])
         .unwrap();
 
-        assert_eq!(s.events.contains(zmq::POLLOUT), false);
+        assert_eq!(s.events().contains(zmq::POLLOUT), false);
 
         let r = ZmqSocket::new(&zmq_context, zmq::REP);
         r.apply_specs(&[SpecInfo {
@@ -449,12 +468,12 @@ mod tests {
 
         s.update_events();
 
-        assert_eq!(s.events.contains(zmq::POLLOUT), true);
+        assert_eq!(s.events().contains(zmq::POLLOUT), true);
 
         drop(r);
 
         assert_eq!(s.send((&b"test"[..]).into()), Err(zmq::Error::EAGAIN));
 
-        assert_eq!(s.events.contains(zmq::POLLOUT), false);
+        assert_eq!(s.events().contains(zmq::POLLOUT), false);
     }
 }
