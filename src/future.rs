@@ -16,6 +16,7 @@
 
 use crate::channel;
 use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, TimerEvented};
+use crate::shuffle::shuffle;
 use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio;
 use mio::net::{TcpListener, TcpStream};
@@ -28,22 +29,55 @@ use std::sync::mpsc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-pub struct SelectFromSliceFuture<'a, F> {
-    futures: &'a mut [F],
+const SELECT_SLICE_MAX: usize = 32;
+
+fn range_unordered(dest: &mut [usize]) -> &[usize] {
+    for i in 0..dest.len() {
+        dest[i] = i;
+    }
+
+    shuffle(dest);
+
+    dest
 }
 
-impl<F, O> Future for SelectFromSliceFuture<'_, F>
+pub enum Select2<O1, O2> {
+    First(O1),
+    Second(O2),
+}
+
+pub struct Select2Future<'a, F1, F2> {
+    f1: &'a mut F1,
+    f2: &'a mut F2,
+}
+
+impl<'a, F1, F2, O1, O2> Future for Select2Future<'a, F1, F2>
 where
-    F: Future<Output = O>,
+    F1: Future<Output = O1>,
+    F2: Future<Output = O2>,
 {
-    type Output = (usize, F::Output);
+    type Output = Select2<F1::Output, F2::Output>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        for (i, f) in self.futures.iter_mut().enumerate() {
-            let p = unsafe { Pin::new_unchecked(f) };
+        let mut indexes = [0; 2];
 
-            if let Poll::Ready(v) = p.poll(cx) {
-                return Poll::Ready((i, v));
+        for i in range_unordered(&mut indexes) {
+            match i {
+                0 => {
+                    let f1 = unsafe { self.as_mut().map_unchecked_mut(|s| s.f1) };
+
+                    if let Poll::Ready(v) = f1.poll(cx) {
+                        return Poll::Ready(Select2::First(v));
+                    }
+                }
+                1 => {
+                    let f2 = unsafe { self.as_mut().map_unchecked_mut(|s| s.f2) };
+
+                    if let Poll::Ready(v) = f2.poll(cx) {
+                        return Poll::Ready(Select2::Second(v));
+                    }
+                }
+                _ => unreachable!(),
             }
         }
 
@@ -51,48 +85,51 @@ where
     }
 }
 
-pub fn select_from_slice<'a, F, O>(futures: &'a mut [F]) -> SelectFromSliceFuture<'a, F>
-where
-    F: Future<Output = O>,
-{
-    SelectFromSliceFuture { futures }
-}
-
-pub struct SelectFromPairFuture<F1, F2> {
-    f1: F1,
-    f2: F2,
-}
-
-impl<F1, F2, O1, O2> Future for SelectFromPairFuture<F1, F2>
+pub fn select_2<'a, F1, F2, O1, O2>(f1: &'a mut F1, f2: &'a mut F2) -> Select2Future<'a, F1, F2>
 where
     F1: Future<Output = O1>,
     F2: Future<Output = O2>,
 {
-    type Output = (Option<F1::Output>, Option<F2::Output>);
+    Select2Future { f1, f2 }
+}
+
+pub struct SelectSliceFuture<'a, F> {
+    futures: &'a mut [F],
+}
+
+impl<F, O> Future for SelectSliceFuture<'_, F>
+where
+    F: Future<Output = O>,
+{
+    type Output = (usize, F::Output);
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f1 = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.f1) };
-
-        if let Poll::Ready(v) = f1.poll(cx) {
-            return Poll::Ready((Some(v), None));
+        if self.futures.len() > SELECT_SLICE_MAX {
+            panic!(
+                "cannot use select_slice on more than {} futures",
+                self.futures.len()
+            );
         }
 
-        let f2 = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.f2) };
+        let mut indexes = [0; SELECT_SLICE_MAX];
 
-        if let Poll::Ready(v) = f2.poll(cx) {
-            return Poll::Ready((None, Some(v)));
+        for i in range_unordered(&mut indexes[..self.futures.len()]) {
+            let f = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.futures[*i]) };
+
+            if let Poll::Ready(v) = f.poll(cx) {
+                return Poll::Ready((*i, v));
+            }
         }
 
         Poll::Pending
     }
 }
 
-pub fn select_from_pair<F1, F2, O1, O2>(f1: F1, f2: F2) -> SelectFromPairFuture<F1, F2>
+pub fn select_slice<'a, F, O>(futures: &'a mut [F]) -> SelectSliceFuture<'a, F>
 where
-    F1: Future<Output = O1>,
-    F2: Future<Output = O2>,
+    F: Future<Output = O>,
 {
-    SelectFromPairFuture { f1, f2 }
+    SelectSliceFuture { futures }
 }
 
 #[track_caller]

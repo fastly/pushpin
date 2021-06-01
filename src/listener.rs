@@ -18,8 +18,8 @@ use crate::arena::recycle_vec;
 use crate::channel;
 use crate::executor::Executor;
 use crate::future::{
-    select_from_pair, select_from_slice, AcceptFuture, AsyncReceiver, AsyncSender,
-    AsyncTcpListener, WaitWritableFuture,
+    select_2, select_slice, AcceptFuture, AsyncReceiver, AsyncSender, AsyncTcpListener, Select2,
+    WaitWritableFuture,
 };
 use crate::reactor::Reactor;
 use log::{debug, error};
@@ -82,7 +82,9 @@ impl Listener {
 
         let mut listener_tasks_mem: Vec<AcceptFuture> = Vec::with_capacity(listeners.len());
 
-        loop {
+        let mut stop_recv = stop.recv();
+
+        'accept: loop {
             // wait for a sender to become writable
 
             let mut sender_tasks = recycle_vec(sender_tasks_mem);
@@ -91,14 +93,13 @@ impl Listener {
                 sender_tasks.push(s.wait_writable());
             }
 
-            let result = select_from_pair(stop.recv(), select_from_slice(&mut sender_tasks)).await;
+            let result = select_2(&mut stop_recv, &mut select_slice(&mut sender_tasks)).await;
 
             sender_tasks_mem = recycle_vec(sender_tasks);
 
             match result {
-                (Some(_), None) => break,
-                (None, Some(_)) => {}
-                _ => unreachable!(),
+                Select2::First(_) => break,
+                Select2::Second(_) => {}
             }
 
             // accept a connection
@@ -111,25 +112,17 @@ impl Listener {
                 listener_tasks.push(l.accept());
             }
 
-            let result;
-
-            loop {
-                match select_from_pair(stop.recv(), select_from_slice(&mut listener_tasks)).await {
-                    (None, Some((_, Err(e)))) => error!("accept error: {:?}", e),
-                    r => {
-                        result = r;
-                        break;
-                    }
+            let (pos, stream, peer_addr) = loop {
+                match select_2(&mut stop_recv, &mut select_slice(&mut listener_tasks)).await {
+                    Select2::First(_) => break 'accept,
+                    Select2::Second((pos, result)) => match result {
+                        Ok((stream, peer_addr)) => break (pos, stream, peer_addr),
+                        Err(e) => error!("accept error: {:?}", e),
+                    },
                 }
-            }
+            };
 
             listener_tasks_mem = recycle_vec(listener_tasks);
-
-            let (pos, stream, peer_addr) = match result {
-                (Some(_), None) => break,
-                (None, Some((pos, Ok((stream, peer_addr))))) => (pos, stream, peer_addr),
-                _ => unreachable!(),
-            };
 
             let pos = (listeners_pos + pos) % listeners.len();
 

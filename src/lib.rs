@@ -27,6 +27,7 @@ pub mod list;
 pub mod listener;
 pub mod reactor;
 pub mod server;
+pub mod shuffle;
 pub mod timer;
 pub mod tls;
 pub mod tnetstring;
