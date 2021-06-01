@@ -17,26 +17,38 @@
 use crate::arena;
 use crate::channel;
 use crate::event;
+use crate::executor::Executor;
+use crate::future::{
+    select_9, select_option, select_slice, AsyncReceiver, AsyncSender, AsyncZmqSocket, RecvFuture,
+    Select9, ZmqSendFuture, ZmqSendToFuture, REGISTRATIONS_PER_CHANNEL,
+    REGISTRATIONS_PER_ZMQSOCKET,
+};
 use crate::list;
+use crate::reactor::Reactor;
 use crate::tnetstring;
 use crate::zhttppacket::{Id, Response, ResponseScratch};
 use crate::zmq::{MultipartHeader, SpecInfo, ZmqSocket};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, log_enabled, trace, warn};
-use mio::unix::SourceFd;
 use slab::Slab;
+use std::cell::{Cell, RefCell};
 use std::fmt;
+use std::future::Future;
 use std::io;
+use std::marker;
+use std::pin::Pin;
 use std::str;
 use std::str::FromStr;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::task::{Context, Poll};
+use std::thread;
+use std::time::Duration;
 
 const HANDLES_MAX: usize = 1_024;
-const TOKENS_PER_HANDLE: usize = 2;
 const STREAM_OUT_STREAM_DELAY: Duration = Duration::from_millis(50);
 const LOG_METADATA_MAX: usize = 1_000;
 const LOG_CONTENT_MAX: usize = 1_000;
+const EXECUTOR_TASKS_MAX: usize = 1;
 
 fn trim(s: &str, max: usize) -> String {
     // NOTE: O(n)
@@ -265,13 +277,13 @@ fn packet_to_string(data: &[u8]) -> String {
 }
 
 struct ClientReqSockets {
-    sock: ZmqSocket,
+    sock: AsyncZmqSocket,
 }
 
 struct ClientStreamSockets {
-    out: ZmqSocket,
-    out_stream: ZmqSocket,
-    in_: ZmqSocket,
+    out: AsyncZmqSocket,
+    out_stream: AsyncZmqSocket,
+    in_: AsyncZmqSocket,
 }
 
 struct ReqPipeEnd {
@@ -285,6 +297,17 @@ struct StreamPipeEnd {
     receiver_addr: channel::Receiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
 }
 
+struct AsyncReqPipeEnd {
+    sender: AsyncSender<arena::Rc<zmq::Message>>,
+    receiver: AsyncReceiver<zmq::Message>,
+}
+
+struct AsyncStreamPipeEnd {
+    sender: AsyncSender<arena::Rc<zmq::Message>>,
+    receiver_any: AsyncReceiver<zmq::Message>,
+    receiver_addr: AsyncReceiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
+}
+
 enum ControlRequest {
     Stop,
     SetClientReq(Vec<SpecInfo>),
@@ -296,24 +319,69 @@ enum ControlRequest {
 type ControlResponse = Result<(), String>;
 
 struct ReqPipe {
-    pe: ReqPipeEnd,
+    pe: AsyncReqPipeEnd,
     filter: ArrayString<[u8; 8]>,
-    valid: bool,
-    readable: bool,
+    valid: Cell<bool>,
 }
 
 struct StreamPipe {
-    pe: StreamPipeEnd,
+    pe: AsyncStreamPipeEnd,
     filter: ArrayString<[u8; 8]>,
-    valid: bool,
-    readable_any: bool,
-    readable_addr: bool,
+    valid: Cell<bool>,
+}
+
+struct RecvWrapperFuture<'a, T> {
+    fut: RecvFuture<'a, T>,
+    nkey: usize,
+}
+
+impl<T> Future for RecvWrapperFuture<'_, T> {
+    type Output = (usize, Result<T, mpsc::RecvError>);
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let nkey = self.nkey;
+        let fut = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.fut) };
+
+        match fut.poll(cx) {
+            Poll::Ready(result) => match result {
+                Ok(value) => Poll::Ready((nkey, Ok(value))),
+                Err(mpsc::RecvError) => Poll::Ready((nkey, Err(mpsc::RecvError))),
+            },
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+struct RecvScratch<T> {
+    tasks: arena::ReusableVec,
+    slice_scratch: Vec<usize>,
+    _marker: marker::PhantomData<T>,
+}
+
+impl<T> RecvScratch<T> {
+    fn new(capacity: usize) -> Self {
+        Self {
+            tasks: arena::ReusableVec::new::<RecvWrapperFuture<T>>(capacity),
+            slice_scratch: Vec::with_capacity(capacity),
+            _marker: marker::PhantomData,
+        }
+    }
+
+    fn get<'a>(
+        &mut self,
+    ) -> (
+        arena::ReusableVecHandle<RecvWrapperFuture<'a, T>>,
+        &mut Vec<usize>,
+    ) {
+        (self.tasks.get_as_new(), &mut self.slice_scratch)
+    }
 }
 
 struct ReqHandles {
     nodes: Slab<list::Node<ReqPipe>>,
     list: list::List,
-    cur: Option<usize>,
+    recv_scratch: RefCell<RecvScratch<zmq::Message>>,
+    need_cleanup: Cell<bool>,
 }
 
 impl ReqHandles {
@@ -321,7 +389,8 @@ impl ReqHandles {
         Self {
             nodes: Slab::with_capacity(capacity),
             list: list::List::default(),
-            cur: None,
+            recv_scratch: RefCell::new(RecvScratch::new(capacity)),
+            need_cleanup: Cell::new(false),
         }
     }
 
@@ -329,105 +398,62 @@ impl ReqHandles {
         self.nodes.len()
     }
 
-    fn add<F>(&mut self, pe: ReqPipeEnd, filter: ArrayString<[u8; 8]>, f: F)
-    where
-        F: Fn(&ReqPipe, usize),
-    {
+    fn add(&mut self, pe: AsyncReqPipeEnd, filter: ArrayString<[u8; 8]>) {
+        assert!(self.nodes.len() < self.nodes.capacity());
+
         let key = self.nodes.insert(list::Node::new(ReqPipe {
             pe,
             filter,
-            valid: true,
-            readable: true,
+            valid: Cell::new(true),
         }));
 
         self.list.push_back(&mut self.nodes, key);
-        self.cur = self.list.head;
-
-        let n = &self.nodes[key];
-        let p = &n.value;
-
-        f(p, key);
     }
 
-    fn cur_next(&mut self) {
-        if let Some(nkey) = self.cur {
-            let n = &self.nodes[nkey];
+    async fn recv(&self) -> zmq::Message {
+        let mut scratch = self.recv_scratch.borrow_mut();
 
-            if let Some(nkey) = n.next {
-                self.cur = Some(nkey);
-            } else {
-                // wrap around
-                self.cur = self.list.head;
-            }
-        }
-    }
+        let (mut tasks, slice_scratch) = scratch.get();
 
-    fn any_readable(&self) -> bool {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
             let p = &n.value;
 
-            if p.readable {
-                return true;
+            if p.valid.get() {
+                assert!(tasks.len() < tasks.capacity());
+
+                tasks.push(RecvWrapperFuture {
+                    fut: p.pe.receiver.recv(),
+                    nkey,
+                });
             }
 
             next = n.next;
         }
 
-        false
-    }
-
-    fn set_readable(&mut self, key: usize) {
-        let n = &mut self.nodes[key];
-        let p = &mut n.value;
-
-        p.readable = true;
-    }
-
-    fn recv(&mut self) -> Option<zmq::Message> {
-        if self.cur.is_none() {
-            return None;
-        }
-
-        let end = self.cur.unwrap();
-
         loop {
-            let nkey = self.cur.unwrap();
-            self.cur_next();
+            match select_slice(&mut tasks, slice_scratch).await {
+                (_, (_, Ok(msg))) => return msg,
+                (pos, (nkey, Err(mpsc::RecvError))) => {
+                    tasks.remove(pos);
 
-            let n = &mut self.nodes[nkey];
-            let p = &mut n.value;
+                    let p = &self.nodes[nkey].value;
+                    p.valid.set(false);
 
-            if p.valid && p.readable {
-                match p.pe.receiver.try_recv() {
-                    Ok(msg) => {
-                        return Some(msg);
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {
-                        p.readable = false;
-                    }
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        p.valid = false;
-                    }
-                };
-            }
-
-            if self.cur.is_none() || self.cur.unwrap() == end {
-                break;
+                    self.need_cleanup.set(true);
+                }
             }
         }
-
-        None
     }
 
-    fn send(&mut self, msg: &arena::Rc<zmq::Message>, ids: &[Id]) {
+    async fn send(&self, msg: &arena::Rc<zmq::Message>, ids: &[Id<'_>]) {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
-            let n = &mut self.nodes[nkey];
-            let p = &mut n.value;
+            let n = &self.nodes[nkey];
+            let p = &n.value;
 
             let mut do_send = false;
 
@@ -438,19 +464,25 @@ impl ReqHandles {
                 }
             }
 
-            if p.valid && do_send {
+            if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
                 //   without downstream backpressure
-                match p.pe.sender.send(arena::Rc::clone(msg)) {
+                match p.pe.sender.send(arena::Rc::clone(msg)).await {
                     Ok(_) => {}
                     Err(_) => {
-                        p.valid = false;
+                        p.valid.set(false);
+
+                        self.need_cleanup.set(true);
                     }
                 }
             }
 
             next = n.next;
         }
+    }
+
+    fn need_cleanup(&self) -> bool {
+        self.need_cleanup.get()
     }
 
     fn cleanup<F>(&mut self, f: F)
@@ -465,21 +497,24 @@ impl ReqHandles {
 
             next = n.next;
 
-            if !p.valid {
+            if !p.valid.get() {
                 f(p);
 
                 self.list.remove(&mut self.nodes, nkey);
                 self.nodes.remove(nkey);
-                self.cur = self.list.head;
             }
         }
+
+        self.need_cleanup.set(false);
     }
 }
 
 struct StreamHandles {
     nodes: Slab<list::Node<StreamPipe>>,
     list: list::List,
-    cur: Option<usize>,
+    recv_any_scratch: RefCell<RecvScratch<zmq::Message>>,
+    recv_addr_scratch: RefCell<RecvScratch<(ArrayVec<[u8; 64]>, zmq::Message)>>,
+    need_cleanup: Cell<bool>,
 }
 
 impl StreamHandles {
@@ -487,7 +522,9 @@ impl StreamHandles {
         Self {
             nodes: Slab::with_capacity(capacity),
             list: list::List::default(),
-            cur: None,
+            recv_any_scratch: RefCell::new(RecvScratch::new(capacity)),
+            recv_addr_scratch: RefCell::new(RecvScratch::new(capacity)),
+            need_cleanup: Cell::new(false),
         }
     }
 
@@ -495,166 +532,100 @@ impl StreamHandles {
         self.nodes.len()
     }
 
-    fn add<F>(&mut self, pe: StreamPipeEnd, filter: ArrayString<[u8; 8]>, f: F)
-    where
-        F: Fn(&StreamPipe, usize),
-    {
+    fn add(&mut self, pe: AsyncStreamPipeEnd, filter: ArrayString<[u8; 8]>) {
+        assert!(self.nodes.len() < self.nodes.capacity());
+
         let key = self.nodes.insert(list::Node::new(StreamPipe {
             pe,
             filter,
-            valid: true,
-            readable_any: true,
-            readable_addr: true,
+            valid: Cell::new(true),
         }));
 
         self.list.push_back(&mut self.nodes, key);
-        self.cur = self.list.head;
-
-        let n = &self.nodes[key];
-        let p = &n.value;
-
-        f(p, key);
     }
 
-    fn cur_next(&mut self) {
-        if let Some(nkey) = self.cur {
-            let n = &self.nodes[nkey];
+    async fn recv_any(&self) -> zmq::Message {
+        let mut scratch = self.recv_any_scratch.borrow_mut();
 
-            if let Some(nkey) = n.next {
-                self.cur = Some(nkey);
-            } else {
-                // wrap around
-                self.cur = self.list.head;
-            }
-        }
-    }
+        let (mut tasks, slice_scratch) = scratch.get();
 
-    fn any_readable_any(&self) -> bool {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
             let p = &n.value;
 
-            if p.readable_any {
-                return true;
+            if p.valid.get() {
+                assert!(tasks.len() < tasks.capacity());
+
+                tasks.push(RecvWrapperFuture {
+                    fut: p.pe.receiver_any.recv(),
+                    nkey,
+                });
             }
 
             next = n.next;
         }
 
-        false
+        loop {
+            match select_slice(&mut tasks, slice_scratch).await {
+                (_, (_, Ok(msg))) => return msg,
+                (pos, (nkey, Err(mpsc::RecvError))) => {
+                    tasks.remove(pos);
+
+                    let p = &self.nodes[nkey].value;
+                    p.valid.set(false);
+
+                    self.need_cleanup.set(true);
+                }
+            }
+        }
     }
 
-    fn any_readable_addr(&self) -> bool {
+    async fn recv_addr(&self) -> (ArrayVec<[u8; 64]>, zmq::Message) {
+        let mut scratch = self.recv_addr_scratch.borrow_mut();
+
+        let (mut tasks, slice_scratch) = scratch.get();
+
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
             let n = &self.nodes[nkey];
             let p = &n.value;
 
-            if p.readable_addr {
-                return true;
+            if p.valid.get() {
+                assert!(tasks.len() < tasks.capacity());
+
+                tasks.push(RecvWrapperFuture {
+                    fut: p.pe.receiver_addr.recv(),
+                    nkey,
+                });
             }
 
             next = n.next;
         }
 
-        false
-    }
-
-    fn set_readable_any(&mut self, key: usize) {
-        let n = &mut self.nodes[key];
-        let p = &mut n.value;
-
-        p.readable_any = true;
-    }
-
-    fn set_readable_addr(&mut self, key: usize) {
-        let n = &mut self.nodes[key];
-        let p = &mut n.value;
-
-        p.readable_addr = true;
-    }
-
-    fn recv_any(&mut self) -> Option<zmq::Message> {
-        if self.cur.is_none() {
-            return None;
-        }
-
-        let end = self.cur.unwrap();
-
         loop {
-            let nkey = self.cur.unwrap();
-            self.cur_next();
+            match select_slice(&mut tasks, slice_scratch).await {
+                (_, (_, Ok(ret))) => return ret,
+                (pos, (nkey, Err(mpsc::RecvError))) => {
+                    tasks.remove(pos);
 
-            let n = &mut self.nodes[nkey];
-            let p = &mut n.value;
+                    let p = &self.nodes[nkey].value;
+                    p.valid.set(false);
 
-            if p.valid && p.readable_any {
-                match p.pe.receiver_any.try_recv() {
-                    Ok(msg) => {
-                        return Some(msg);
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {
-                        p.readable_any = false;
-                    }
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        p.valid = false;
-                    }
-                };
-            }
-
-            if self.cur.is_none() || self.cur.unwrap() == end {
-                break;
+                    self.need_cleanup.set(true);
+                }
             }
         }
-
-        None
     }
 
-    fn recv_addr(&mut self) -> Option<(ArrayVec<[u8; 64]>, zmq::Message)> {
-        if self.cur.is_none() {
-            return None;
-        }
-
-        let end = self.cur.unwrap();
-
-        loop {
-            let nkey = self.cur.unwrap();
-            self.cur_next();
-
-            let n = &mut self.nodes[nkey];
-            let p = &mut n.value;
-
-            if p.valid && p.readable_addr {
-                match p.pe.receiver_addr.try_recv() {
-                    Ok(ret) => {
-                        return Some(ret);
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {
-                        p.readable_addr = false;
-                    }
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        p.valid = false;
-                    }
-                };
-            }
-
-            if self.cur.is_none() || self.cur.unwrap() == end {
-                break;
-            }
-        }
-
-        None
-    }
-
-    fn send(&mut self, msg: &arena::Rc<zmq::Message>, ids: &[Id]) {
+    async fn send(&self, msg: &arena::Rc<zmq::Message>, ids: &[Id<'_>]) {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
-            let n = &mut self.nodes[nkey];
-            let p = &mut n.value;
+            let n = &self.nodes[nkey];
+            let p = &n.value;
 
             let mut do_send = false;
 
@@ -665,19 +636,25 @@ impl StreamHandles {
                 }
             }
 
-            if p.valid && do_send {
+            if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
                 //   without downstream backpressure
-                match p.pe.sender.send(arena::Rc::clone(msg)) {
+                match p.pe.sender.send(arena::Rc::clone(msg)).await {
                     Ok(_) => {}
                     Err(_) => {
-                        p.valid = false;
+                        p.valid.set(false);
+
+                        self.need_cleanup.set(true);
                     }
                 }
             }
 
             next = n.next;
         }
+    }
+
+    fn need_cleanup(&self) -> bool {
+        self.need_cleanup.get()
     }
 
     fn cleanup<F>(&mut self, f: F)
@@ -692,20 +669,21 @@ impl StreamHandles {
 
             next = n.next;
 
-            if !p.valid {
+            if !p.valid.get() {
                 f(p);
 
                 self.list.remove(&mut self.nodes, nkey);
                 self.nodes.remove(nkey);
-                self.cur = self.list.head;
             }
         }
+
+        self.need_cleanup.set(false);
     }
 }
 
 pub struct SocketManager {
     handle_bound: usize,
-    thread: Option<std::thread::JoinHandle<()>>,
+    thread: Option<thread::JoinHandle<()>>,
     control_pipe: Mutex<(
         channel::Sender<ControlRequest>,
         channel::Receiver<ControlResponse>,
@@ -732,8 +710,27 @@ impl SocketManager {
 
         let instance_id = String::from(instance_id);
 
-        let thread = std::thread::spawn(move || {
-            Self::run(ctx, s1, r2, instance_id, retained_max, hwm);
+        let thread = thread::spawn(move || {
+            debug!("manager thread start");
+
+            // 2 control channels, 3 channels per handle, 4 zmq sockets
+            let channels = 2 + (HANDLES_MAX * 3);
+            let zmqsockets = 4;
+
+            let registrations_max =
+                (channels * REGISTRATIONS_PER_CHANNEL) + (zmqsockets * REGISTRATIONS_PER_ZMQSOCKET);
+
+            let reactor = Reactor::new(registrations_max);
+
+            let executor = Executor::new(EXECUTOR_TASKS_MAX);
+
+            executor
+                .spawn(Self::run(ctx, s1, r2, instance_id, retained_max, hwm))
+                .unwrap();
+
+            executor.run(|timeout| reactor.poll(timeout)).unwrap();
+
+            debug!("manager thread end");
         });
 
         Self {
@@ -816,7 +813,7 @@ impl SocketManager {
         pipe.1.recv().unwrap()
     }
 
-    fn run(
+    async fn run(
         ctx: Arc<zmq::Context>,
         control_sender: channel::Sender<ControlResponse>,
         control_receiver: channel::Receiver<ControlRequest>,
@@ -824,7 +821,8 @@ impl SocketManager {
         retained_max: usize,
         hwm: usize,
     ) {
-        debug!("manager thread start");
+        let control_sender = AsyncSender::new(control_sender);
+        let control_receiver = AsyncReceiver::new(control_receiver);
 
         // the messages arena needs to fit the max number of potential incoming messages that
         //   still need to be processed. this is the entire channel queue for every handle, plus
@@ -835,116 +833,123 @@ impl SocketManager {
         let messages_memory = Arc::new(arena::Memory::new(arena_size));
 
         let client_req = ClientReqSockets {
-            sock: ZmqSocket::new(&ctx, zmq::DEALER),
+            sock: AsyncZmqSocket::new(ZmqSocket::new(&ctx, zmq::DEALER)),
         };
 
         let client_stream = ClientStreamSockets {
-            out: ZmqSocket::new(&ctx, zmq::PUSH),
-            out_stream: ZmqSocket::new(&ctx, zmq::ROUTER),
-            in_: ZmqSocket::new(&ctx, zmq::SUB),
+            out: AsyncZmqSocket::new(ZmqSocket::new(&ctx, zmq::PUSH)),
+            out_stream: AsyncZmqSocket::new(ZmqSocket::new(&ctx, zmq::ROUTER)),
+            in_: AsyncZmqSocket::new(ZmqSocket::new(&ctx, zmq::SUB)),
         };
 
-        client_req.sock.inner().set_sndhwm(hwm as i32).unwrap();
-        client_req.sock.inner().set_rcvhwm(hwm as i32).unwrap();
-
-        client_stream.out.inner().set_sndhwm(hwm as i32).unwrap();
-        client_stream
-            .out_stream
+        client_req
+            .sock
+            .inner()
             .inner()
             .set_sndhwm(hwm as i32)
             .unwrap();
-        client_stream.in_.inner().set_rcvhwm(hwm as i32).unwrap();
+        client_req
+            .sock
+            .inner()
+            .inner()
+            .set_rcvhwm(hwm as i32)
+            .unwrap();
+
+        client_stream
+            .out
+            .inner()
+            .inner()
+            .set_sndhwm(hwm as i32)
+            .unwrap();
+        client_stream
+            .out_stream
+            .inner()
+            .inner()
+            .set_sndhwm(hwm as i32)
+            .unwrap();
+        client_stream
+            .in_
+            .inner()
+            .inner()
+            .set_rcvhwm(hwm as i32)
+            .unwrap();
 
         client_stream
             .out_stream
             .inner()
+            .inner()
             .set_router_mandatory(true)
             .unwrap();
+
+        // a ROUTER socket may still be writable after returning EAGAIN, which
+        // could mean that a different peer than the one we tried to write to
+        // is writable. there's no way to know when the desired peer will be
+        // writable, so we'll keep trying again after a delay
+        client_stream
+            .out_stream
+            .set_retry_timeout(Some(STREAM_OUT_STREAM_DELAY));
 
         let sub = format!("{} ", instance_id);
         client_stream
             .in_
             .inner()
+            .inner()
             .set_subscribe(sub.as_bytes())
             .unwrap();
-
-        const CONTROL: mio::Token = mio::Token(1);
-        const CLIENT_REQ: mio::Token = mio::Token(2);
-        const CLIENT_STREAM_OUT: mio::Token = mio::Token(3);
-        const CLIENT_STREAM_OUT_STREAM: mio::Token = mio::Token(4);
-        const CLIENT_STREAM_IN: mio::Token = mio::Token(5);
-
-        const REQ_HANDLE_BASE: usize = 10;
-        const STREAM_HANDLE_BASE: usize = REQ_HANDLE_BASE + (HANDLES_MAX * TOKENS_PER_HANDLE);
-
-        let mut poller = event::Poller::new(1 + (HANDLES_MAX * TOKENS_PER_HANDLE * 2)).unwrap();
-
-        poller
-            .register_custom(
-                control_receiver.get_read_registration(),
-                CONTROL,
-                mio::Interest::READABLE,
-            )
-            .unwrap();
-
-        poller
-            .register(
-                &mut SourceFd(&client_req.sock.inner().get_fd().unwrap()),
-                CLIENT_REQ,
-                mio::Interest::READABLE,
-            )
-            .unwrap();
-
-        poller
-            .register(
-                &mut SourceFd(&client_stream.out.inner().get_fd().unwrap()),
-                CLIENT_STREAM_OUT,
-                mio::Interest::READABLE,
-            )
-            .unwrap();
-
-        poller
-            .register(
-                &mut SourceFd(&client_stream.out_stream.inner().get_fd().unwrap()),
-                CLIENT_STREAM_OUT_STREAM,
-                mio::Interest::READABLE,
-            )
-            .unwrap();
-
-        poller
-            .register(
-                &mut SourceFd(&client_stream.in_.inner().get_fd().unwrap()),
-                CLIENT_STREAM_IN,
-                mio::Interest::READABLE,
-            )
-            .unwrap();
-
-        let mut control_readable = true;
 
         let mut req_handles = ReqHandles::new(HANDLES_MAX);
         let mut stream_handles = StreamHandles::new(HANDLES_MAX);
 
-        let mut req_pending = None;
-        let mut stream_out_pending = None;
-        let mut stream_out_stream_pending = None;
-        let mut stream_out_stream_delay = None;
+        let mut req_send: Option<ZmqSendToFuture> = None;
+        let mut stream_out_send: Option<ZmqSendFuture> = None;
+        let mut stream_out_stream_send: Option<ZmqSendToFuture> = None;
 
         loop {
-            if control_readable {
-                match control_receiver.try_recv() {
+            let req_handles_recv = if req_send.is_none() {
+                Some(req_handles.recv())
+            } else {
+                None
+            };
+
+            let stream_handles_recv_any = if stream_out_send.is_none() {
+                Some(stream_handles.recv_any())
+            } else {
+                None
+            };
+
+            let stream_handles_recv_addr = if stream_out_stream_send.is_none() {
+                Some(stream_handles.recv_addr())
+            } else {
+                None
+            };
+
+            let result = select_9(
+                control_receiver.recv(),
+                select_option(req_handles_recv),
+                select_option(req_send.as_mut()),
+                client_req.sock.recv_routed(),
+                select_option(stream_handles_recv_any),
+                select_option(stream_out_send.as_mut()),
+                select_option(stream_handles_recv_addr),
+                select_option(stream_out_stream_send.as_mut()),
+                client_stream.in_.recv(),
+            )
+            .await;
+
+            match result {
+                // control_receiver.recv
+                Select9::R1(result) => match result {
                     Ok(req) => match req {
-                        ControlRequest::Stop => {
-                            break;
-                        }
+                        ControlRequest::Stop => break,
                         ControlRequest::SetClientReq(specs) => {
                             debug!("applying req specs: {:?}", specs);
 
-                            if let Err(e) = client_req.sock.apply_specs(&specs) {
-                                control_sender.send(Err(e.to_string())).unwrap();
-                                continue;
-                            }
+                            let result = Self::apply_req_specs(&client_req, &specs);
 
-                            control_sender.send(Ok(())).unwrap();
+                            control_sender
+                                .send(result)
+                                .await
+                                .expect("failed to send control response");
                         }
                         ControlRequest::SetClientStream(out_specs, out_stream_specs, in_specs) => {
                             debug!(
@@ -952,39 +957,29 @@ impl SocketManager {
                                 out_specs, out_stream_specs, in_specs
                             );
 
-                            if let Err(e) = client_stream.out.apply_specs(&out_specs) {
-                                control_sender.send(Err(e.to_string())).unwrap();
-                                continue;
-                            }
+                            let result = Self::apply_stream_specs(
+                                &client_stream,
+                                &out_specs,
+                                &out_stream_specs,
+                                &in_specs,
+                            );
 
-                            if let Err(e) = client_stream.out_stream.apply_specs(&out_stream_specs)
-                            {
-                                control_sender.send(Err(e.to_string())).unwrap();
-                                continue;
-                            }
-
-                            if let Err(e) = client_stream.in_.apply_specs(&in_specs) {
-                                control_sender.send(Err(e.to_string())).unwrap();
-                                continue;
-                            }
-
-                            control_sender.send(Ok(())).unwrap();
+                            control_sender
+                                .send(result)
+                                .await
+                                .expect("failed to send control response");
                         }
                         ControlRequest::AddClientReqHandle(pe, filter) => {
                             debug!("adding req handle: filter=[{}]", filter);
 
                             if req_handles.len() + stream_handles.len() < HANDLES_MAX {
-                                req_handles.add(pe, filter, |p, key| {
-                                    poller
-                                        .register_custom(
-                                            p.pe.receiver.get_read_registration(),
-                                            mio::Token(
-                                                REQ_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 0,
-                                            ),
-                                            mio::Interest::READABLE,
-                                        )
-                                        .unwrap();
-                                });
+                                req_handles.add(
+                                    AsyncReqPipeEnd {
+                                        sender: AsyncSender::new(pe.sender),
+                                        receiver: AsyncReceiver::new(pe.receiver),
+                                    },
+                                    filter,
+                                );
                             } else {
                                 error!("cannot add more than {} handles", HANDLES_MAX);
                             }
@@ -993,146 +988,62 @@ impl SocketManager {
                             debug!("adding stream handle: filter=[{}]", filter);
 
                             if req_handles.len() + stream_handles.len() < HANDLES_MAX {
-                                stream_handles.add(pe, filter, |p, key| {
-                                    poller
-                                        .register_custom(
-                                            p.pe.receiver_any.get_read_registration(),
-                                            mio::Token(
-                                                STREAM_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 0,
-                                            ),
-                                            mio::Interest::READABLE,
-                                        )
-                                        .unwrap();
-
-                                    poller
-                                        .register_custom(
-                                            p.pe.receiver_addr.get_read_registration(),
-                                            mio::Token(
-                                                STREAM_HANDLE_BASE + (key * TOKENS_PER_HANDLE) + 1,
-                                            ),
-                                            mio::Interest::READABLE,
-                                        )
-                                        .unwrap();
-                                });
+                                stream_handles.add(
+                                    AsyncStreamPipeEnd {
+                                        sender: AsyncSender::new(pe.sender),
+                                        receiver_any: AsyncReceiver::new(pe.receiver_any),
+                                        receiver_addr: AsyncReceiver::new(pe.receiver_addr),
+                                    },
+                                    filter,
+                                );
                             } else {
                                 error!("cannot add more than {} handles", HANDLES_MAX);
                             }
                         }
                     },
-                    Err(mpsc::TryRecvError::Empty) => {
-                        control_readable = false;
-                    }
-                    Err(e) => {
-                        error!("control recv: {}", e);
-                    }
-                }
-            }
-
-            if req_pending.is_none() {
-                req_pending = req_handles.recv();
-
-                req_handles.cleanup(|p| {
-                    debug!("req handle disconnected: filter=[{}]", p.filter);
-                    poller
-                        .deregister_custom(p.pe.receiver.get_read_registration())
-                        .unwrap();
-                });
-            }
-
-            if let Some(msg) = &req_pending {
-                if client_req.sock.events().contains(zmq::POLLOUT) {
-                    let h = MultipartHeader::new();
-
+                    Err(e) => error!("control recv: {}", e),
+                },
+                // req_handles_recv
+                Select9::R2(msg) => {
                     if log_enabled!(log::Level::Trace) {
                         trace!("OUT req {}", packet_to_string(&msg));
                     }
 
-                    // NOTE: when rust-zmq allows resending messages we can
-                    //   avoid this copy
-                    let tmp = zmq::Message::from(&msg[..]);
+                    let h = MultipartHeader::new();
 
-                    let mut retry = false;
-
-                    match client_req.sock.send_to(&h, tmp, zmq::DONTWAIT) {
-                        Ok(_) => {}
-                        Err(zmq::Error::EAGAIN) => retry = true,
-                        Err(e) => error!("req zmq send: {}", e),
-                    }
-
-                    if !retry {
-                        req_pending = None;
-                    }
+                    req_send = Some(client_req.sock.send_to(h, msg));
                 }
-            }
+                // req_send
+                Select9::R3(result) => match result {
+                    Ok(()) => req_send = None,
+                    Err(e) => error!("req zmq send: {}", e),
+                },
+                // client_req.sock.recv_routed
+                Select9::R4(result) => match result {
+                    Ok(msg) => {
+                        if log_enabled!(log::Level::Trace) {
+                            trace!("IN req {}", packet_to_string(&msg));
+                        }
 
-            if stream_out_pending.is_none() {
-                stream_out_pending = stream_handles.recv_any();
-
-                stream_handles.cleanup(|p| {
-                    debug!("stream handle disconnected: filter=[{}]", p.filter);
-                    poller
-                        .deregister_custom(p.pe.receiver_any.get_read_registration())
-                        .unwrap();
-                    poller
-                        .deregister_custom(p.pe.receiver_addr.get_read_registration())
-                        .unwrap();
-                });
-            }
-
-            if let Some(msg) = &stream_out_pending {
-                if client_stream.out.events().contains(zmq::POLLOUT) {
+                        Self::handle_req_message(msg, &messages_memory, &mut req_handles).await;
+                    }
+                    Err(e) => error!("req zmq recv: {}", e),
+                },
+                // stream_handles_recv_any
+                Select9::R5(msg) => {
                     if log_enabled!(log::Level::Trace) {
                         trace!("OUT stream {}", packet_to_string(&msg));
                     }
 
-                    // NOTE: when rust-zmq allows resending messages we can
-                    //   avoid this copy
-                    let tmp = zmq::Message::from(&msg[..]);
-
-                    let mut retry = false;
-
-                    match client_stream.out.send(tmp, zmq::DONTWAIT) {
-                        Ok(_) => {}
-                        Err(zmq::Error::EAGAIN) => retry = true,
-                        Err(e) => error!("stream zmq send: {}", e),
-                    }
-
-                    if !retry {
-                        stream_out_pending = None;
-                    }
+                    stream_out_send = Some(client_stream.out.send(msg));
                 }
-            }
-
-            if stream_out_stream_pending.is_none() {
-                stream_out_stream_pending = stream_handles.recv_addr();
-
-                stream_handles.cleanup(|p| {
-                    debug!("stream handle disconnected: filter=[{}]", p.filter);
-                    poller
-                        .deregister_custom(p.pe.receiver_any.get_read_registration())
-                        .unwrap();
-                    poller
-                        .deregister_custom(p.pe.receiver_addr.get_read_registration())
-                        .unwrap();
-                });
-            }
-
-            if let Some((addr, msg)) = &stream_out_stream_pending {
-                let now = Instant::now();
-
-                let wait = if let Some(t) = stream_out_stream_delay {
-                    if now < t {
-                        true
-                    } else {
-                        stream_out_stream_delay = None;
-
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                if !wait && client_stream.out_stream.events().contains(zmq::POLLOUT) {
+                // stream_out_send
+                Select9::R6(result) => match result {
+                    Ok(()) => stream_out_send = None,
+                    Err(e) => error!("stream zmq send: {}", e),
+                },
+                // stream_handles_recv_addr
+                Select9::R7((addr, msg)) => {
                     let mut h = MultipartHeader::new();
                     h.push(zmq::Message::from(addr.as_ref()));
 
@@ -1140,61 +1051,15 @@ impl SocketManager {
                         trace!("OUT stream to {}", packet_to_string(&msg));
                     }
 
-                    // NOTE: when rust-zmq allows resending messages we can
-                    //   avoid this copy
-                    let tmp = zmq::Message::from(&msg[..]);
-
-                    let mut retry = false;
-
-                    match client_stream.out_stream.send_to(&h, tmp, zmq::DONTWAIT) {
-                        Ok(_) => {}
-                        Err(zmq::Error::EAGAIN) => retry = true,
-                        Err(e) => error!("stream zmq send: {}", e),
-                    }
-
-                    if retry {
-                        if client_stream.out_stream.events().contains(zmq::POLLOUT) {
-                            // if the socket is still writable after EAGAIN,
-                            //   it could mean that a different peer than the
-                            //   one we tried to write to is writable. in that
-                            //   case, there's no way to know when the desired
-                            //   peer will be writable, so we'll just try again
-                            //   after a delay
-                            stream_out_stream_delay = Some(now + STREAM_OUT_STREAM_DELAY);
-                        }
-                    } else {
-                        stream_out_stream_pending = None;
-                    }
+                    stream_out_stream_send = Some(client_stream.out_stream.send_to(h, msg));
                 }
-            }
-
-            if client_req.sock.events().contains(zmq::POLLIN) {
-                match client_req.sock.recv_routed(zmq::DONTWAIT) {
-                    Ok(msg) => {
-                        if log_enabled!(log::Level::Trace) {
-                            trace!("IN req {}", packet_to_string(&msg));
-                        }
-
-                        Self::handle_req_message(msg, &messages_memory, &mut req_handles);
-
-                        req_handles.cleanup(|p| {
-                            debug!("req handle disconnected: filter=[{}]", p.filter);
-                            poller
-                                .deregister_custom(p.pe.receiver.get_read_registration())
-                                .unwrap();
-                        });
-                    }
-                    Err(zmq::Error::EAGAIN) => {
-                        // nothing to do here. socket events should have been updated
-                    }
-                    Err(e) => {
-                        error!("req zmq recv: {}", e);
-                    }
-                }
-            }
-
-            if client_stream.in_.events().contains(zmq::POLLIN) {
-                match client_stream.in_.recv(zmq::DONTWAIT) {
+                // stream_out_stream_send
+                Select9::R8(result) => match result {
+                    Ok(()) => stream_out_stream_send = None,
+                    Err(e) => error!("stream zmq send to: {}", e),
+                },
+                // client_stream.in_.recv
+                Select9::R9(result) => match result {
                     Ok(msg) => {
                         if log_enabled!(log::Level::Trace) {
                             trace!("IN stream {}", packet_to_string(&msg));
@@ -1205,112 +1070,61 @@ impl SocketManager {
                             &messages_memory,
                             &instance_id,
                             &mut stream_handles,
-                        );
-
-                        stream_handles.cleanup(|p| {
-                            debug!("stream handle disconnected: filter=[{}]", p.filter);
-                            poller
-                                .deregister_custom(p.pe.receiver_any.get_read_registration())
-                                .unwrap();
-                            poller
-                                .deregister_custom(p.pe.receiver_addr.get_read_registration())
-                                .unwrap();
-                        });
+                        )
+                        .await;
                     }
-                    Err(zmq::Error::EAGAIN) => {
-                        // nothing to do here. socket events should have been updated
-                    }
-                    Err(e) => {
-                        error!("stream zmq recv: {}", e);
-                    }
-                }
+                    Err(e) => error!("stream zmq recv: {}", e),
+                },
             }
 
-            let now = Instant::now();
+            if req_handles.need_cleanup() {
+                req_handles.cleanup(|p| {
+                    debug!("req handle disconnected: filter=[{}]", p.filter);
+                });
+            }
 
-            let timeout = if control_readable
-                || (req_handles.any_readable() && req_pending.is_none())
-                || (req_pending.is_some() && client_req.sock.events().contains(zmq::POLLOUT))
-                || (stream_handles.any_readable_any() && stream_out_pending.is_none())
-                || (stream_out_pending.is_some()
-                    && client_stream.out.events().contains(zmq::POLLOUT))
-                || (stream_handles.any_readable_addr() && stream_out_stream_pending.is_none())
-                || (stream_out_stream_pending.is_some()
-                    && client_stream.out_stream.events().contains(zmq::POLLOUT)
-                    && (stream_out_stream_delay.is_none()
-                        || now >= stream_out_stream_delay.unwrap()))
-                || client_req.sock.events().contains(zmq::POLLIN)
-                || client_stream.in_.events().contains(zmq::POLLIN)
-            {
-                // if there are other things we could do, poll without waiting
-                Some(std::time::Duration::from_millis(0))
-            } else {
-                // otherwise wait for something
-
-                let mut timeout = None;
-
-                if stream_out_stream_pending.is_some() {
-                    if let Some(t) = stream_out_stream_delay {
-                        if now >= t {
-                            timeout = Some(std::time::Duration::from_millis(0));
-                        } else {
-                            timeout = Some(t - now);
-                        }
-                    }
-                }
-
-                timeout
-            };
-
-            poller.poll(timeout).unwrap();
-
-            for event in poller.iter_events() {
-                match event.token() {
-                    CONTROL => {
-                        control_readable = true;
-                    }
-                    CLIENT_REQ => {
-                        client_req.sock.update_events();
-                    }
-                    CLIENT_STREAM_OUT => {
-                        client_stream.out.update_events();
-                    }
-                    CLIENT_STREAM_OUT_STREAM => {
-                        client_stream.out_stream.update_events();
-                    }
-                    CLIENT_STREAM_IN => {
-                        client_stream.in_.update_events();
-                    }
-                    token => {
-                        let token = usize::from(token);
-
-                        if token >= REQ_HANDLE_BASE && token < STREAM_HANDLE_BASE {
-                            let key = (token - REQ_HANDLE_BASE) / TOKENS_PER_HANDLE;
-
-                            if event.is_readable() {
-                                req_handles.set_readable(key);
-                            }
-                        } else if token >= STREAM_HANDLE_BASE {
-                            let key = (token - STREAM_HANDLE_BASE) / TOKENS_PER_HANDLE;
-                            let offset = (token - STREAM_HANDLE_BASE) % TOKENS_PER_HANDLE;
-
-                            if event.is_readable() {
-                                if offset == 0 {
-                                    stream_handles.set_readable_any(key);
-                                } else if offset == 1 {
-                                    stream_handles.set_readable_addr(key);
-                                }
-                            }
-                        }
-                    }
-                }
+            if stream_handles.need_cleanup() {
+                stream_handles.cleanup(|p| {
+                    debug!("stream handle disconnected: filter=[{}]", p.filter);
+                });
             }
         }
-
-        debug!("manager thread end");
     }
 
-    fn handle_req_message(
+    fn apply_req_specs(client_req: &ClientReqSockets, specs: &[SpecInfo]) -> Result<(), String> {
+        if let Err(e) = client_req.sock.inner().apply_specs(&specs) {
+            return Err(e.to_string());
+        }
+
+        return Ok(());
+    }
+
+    fn apply_stream_specs(
+        client_stream: &ClientStreamSockets,
+        out_specs: &[SpecInfo],
+        out_stream_specs: &[SpecInfo],
+        in_specs: &[SpecInfo],
+    ) -> Result<(), String> {
+        if let Err(e) = client_stream.out.inner().apply_specs(&out_specs) {
+            return Err(e.to_string());
+        }
+
+        if let Err(e) = client_stream
+            .out_stream
+            .inner()
+            .apply_specs(&out_stream_specs)
+        {
+            return Err(e.to_string());
+        }
+
+        if let Err(e) = client_stream.in_.inner().apply_specs(&in_specs) {
+            return Err(e.to_string());
+        }
+
+        Ok(())
+    }
+
+    async fn handle_req_message(
         msg: zmq::Message,
         messages_memory: &Arc<arena::RcMemory<zmq::Message>>,
         handles: &mut ReqHandles,
@@ -1327,16 +1141,16 @@ impl SocketManager {
             }
         };
 
-        handles.send(&msg, ids);
+        handles.send(&msg, ids).await;
     }
 
-    fn handle_stream_message(
+    async fn handle_stream_message(
         msg: zmq::Message,
         messages_memory: &Arc<arena::RcMemory<zmq::Message>>,
         instance_id: &str,
         handles: &mut StreamHandles,
     ) {
-        let msg = arena::Rc::new(msg, &messages_memory).unwrap();
+        let msg = arena::Rc::new(msg, messages_memory).unwrap();
 
         let buf = msg.get();
 
@@ -1374,7 +1188,7 @@ impl SocketManager {
             }
         };
 
-        handles.send(&msg, ids);
+        handles.send(&msg, ids).await;
     }
 }
 
@@ -1489,7 +1303,6 @@ mod tests {
     use crate::event;
     use crate::zhttppacket::ResponsePacket;
     use std::mem;
-    use std::thread;
 
     fn wait_readable(poller: &mut event::Poller, token: mio::Token) {
         loop {

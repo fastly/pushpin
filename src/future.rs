@@ -30,6 +30,11 @@ use std::sync::mpsc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
+pub const REGISTRATIONS_PER_CHANNEL: usize = 1;
+
+// 1 for the zmq fd, and potentially 1 for the retry timer
+pub const REGISTRATIONS_PER_ZMQSOCKET: usize = 2;
+
 fn range_unordered(dest: &mut [usize]) -> &[usize] {
     for i in 0..dest.len() {
         dest[i] = i;
