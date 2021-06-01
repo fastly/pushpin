@@ -18,7 +18,6 @@ use crate::channel;
 use crate::reactor::{CustomEvented, IoEvented, Reactor, TimerEvented};
 use mio;
 use mio::net::{TcpListener, TcpStream};
-use std::cell::Cell;
 use std::future::Future;
 use std::io;
 use std::io::{Read, Write};
@@ -103,7 +102,6 @@ fn get_reactor() -> Reactor {
 pub struct AsyncSender<T> {
     inner: channel::Sender<T>,
     evented: CustomEvented,
-    writable: Cell<bool>,
 }
 
 impl<T> AsyncSender<T> {
@@ -115,27 +113,15 @@ impl<T> AsyncSender<T> {
         )
         .unwrap();
 
-        let writable = s.can_send();
+        // assume we can write, unless can_send() returns false. note that
+        // if can_send() returns true, it doesn't mean we can actually write
+        evented.registration().set_ready(s.can_send());
 
-        // we know the state up front, so ready can start out unset
-        evented.registration().set_ready(false);
-
-        Self {
-            inner: s,
-            evented,
-            writable: Cell::new(writable),
-        }
+        Self { inner: s, evented }
     }
 
     pub fn is_writable(&self) -> bool {
-        let dirty = self.evented.registration().is_ready();
-
-        if dirty {
-            self.writable.set(self.inner.can_send());
-            self.evented.registration().set_ready(false);
-        }
-
-        self.writable.get()
+        self.evented.registration().is_ready()
     }
 
     pub fn wait_writable<'a>(&'a mut self) -> WaitWritableFuture<'a, T> {
@@ -145,20 +131,26 @@ impl<T> AsyncSender<T> {
     pub fn try_send(&mut self, t: T) -> Result<(), mpsc::TrySendError<T>> {
         match self.inner.try_send(t) {
             Ok(_) => {
-                self.writable.set(self.inner.can_send());
+                // if can_send() returns false, then we know we can't write
+                if !self.inner.can_send() {
+                    self.evented.registration().set_ready(false);
+                }
 
                 Ok(())
             }
             Err(mpsc::TrySendError::Full(t)) => {
-                self.writable.set(self.inner.can_send());
+                self.evented.registration().set_ready(false);
 
                 Err(mpsc::TrySendError::Full(t))
             }
-            Err(mpsc::TrySendError::Disconnected(t)) => {
-                self.writable.set(false);
+            Err(mpsc::TrySendError::Disconnected(t)) => Err(mpsc::TrySendError::Disconnected(t)),
+        }
+    }
 
-                Err(mpsc::TrySendError::Disconnected(t))
-            }
+    pub fn send<'a>(&'a mut self, t: T) -> SendFuture<'a, T> {
+        SendFuture {
+            s: self,
+            t: Some(t),
         }
     }
 }
@@ -292,22 +284,57 @@ impl<T> Future for WaitWritableFuture<'_, T> {
 
         f.s.evented.registration().set_waker(cx.waker().clone());
 
-        let dirty = f.s.evented.registration().is_ready();
-
-        if dirty {
-            f.s.writable.set(f.s.inner.can_send());
-            f.s.evented.registration().set_ready(false);
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
         }
 
-        if f.s.writable.get() {
-            Poll::Ready(())
-        } else {
-            Poll::Pending
-        }
+        Poll::Ready(())
     }
 }
 
 impl<T> Drop for WaitWritableFuture<'_, T> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+pub struct SendFuture<'a, T> {
+    s: &'a mut AsyncSender<T>,
+    t: Option<T>,
+}
+
+impl<T> Future for SendFuture<'_, T>
+where
+    T: Unpin,
+{
+    type Output = Result<(), mpsc::SendError<T>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented.registration().set_waker(cx.waker().clone());
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        let t = f.t.take().unwrap();
+
+        // try_send will update the registration readiness, so we don't need
+        // to do that here
+        match f.s.try_send(t) {
+            Ok(()) => Poll::Ready(Ok(())),
+            Err(mpsc::TrySendError::Full(t)) => {
+                f.t = Some(t);
+
+                Poll::Pending
+            }
+            Err(mpsc::TrySendError::Disconnected(t)) => Poll::Ready(Err(mpsc::SendError(t))),
+        }
+    }
+}
+
+impl<T> Drop for SendFuture<'_, T> {
     fn drop(&mut self) {
         self.s.evented.registration().clear_waker();
     }
@@ -561,6 +588,128 @@ mod tests {
     use crate::executor::Executor;
     use std::mem;
     use std::str;
+
+    #[test]
+    fn test_channel_send_bound0() {
+        let executor = Executor::new(2);
+        let reactor = Reactor::new(2);
+
+        let (s, r) = channel::channel::<u32>(0);
+
+        let mut s = AsyncSender::new(s);
+        let mut r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+
+                assert_eq!(s.is_writable(), false);
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_channel_send_bound1() {
+        let executor = Executor::new(1);
+        let reactor = Reactor::new(2);
+
+        let (s, r) = channel::channel::<u32>(1);
+
+        let mut s = AsyncSender::new(s);
+        let mut r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+
+                assert_eq!(s.is_writable(), true);
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), false);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_channel_recv() {
+        let executor = Executor::new(2);
+        let reactor = Reactor::new(2);
+
+        let (s, r) = channel::channel::<u32>(0);
+
+        let mut s = AsyncSender::new(s);
+        let mut r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_channel_writable() {
+        let executor = Executor::new(1);
+        let reactor = Reactor::new(1);
+
+        let (s, r) = channel::channel::<u32>(0);
+
+        let mut s = AsyncSender::new(s);
+
+        executor
+            .spawn(async move {
+                assert_eq!(s.is_writable(), false);
+
+                s.wait_writable().await;
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        // attempting to receive on a rendezvous channel will make the
+        // sender writable
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
 
     #[test]
     fn test_tcpstream() {
