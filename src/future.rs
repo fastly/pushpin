@@ -15,7 +15,8 @@
  */
 
 use crate::channel;
-use crate::reactor::{CustomEvented, IoEvented, Reactor, TimerEvented};
+use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, TimerEvented};
+use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio;
 use mio::net::{TcpListener, TcpStream};
 use std::future::Future;
@@ -269,6 +270,51 @@ impl AsyncSleep {
 
     pub fn sleep<'a>(&'a mut self) -> SleepFuture<'a> {
         SleepFuture { s: self }
+    }
+}
+
+pub struct AsyncZmqSocket {
+    inner: ZmqSocket,
+    evented: FdEvented,
+}
+
+impl AsyncZmqSocket {
+    pub fn new(s: ZmqSocket) -> Self {
+        let evented = FdEvented::new(
+            s.inner().get_fd().unwrap(),
+            mio::Interest::READABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        // zmq events are used for readiness, and registration readiness is
+        // used to tell us when to call update_events(). we'll call that
+        // below, so registration readiness can start out false
+        evented.registration().set_ready(false);
+
+        s.update_events();
+
+        Self { inner: s, evented }
+    }
+
+    pub fn inner(&self) -> &ZmqSocket {
+        &self.inner
+    }
+
+    pub fn send_to<'a>(
+        &'a self,
+        header: &'a MultipartHeader,
+        content: zmq::Message,
+    ) -> SendToFuture<'a> {
+        SendToFuture {
+            s: self,
+            header,
+            content,
+        }
+    }
+
+    pub fn recv_routed<'a>(&'a self) -> RecvRoutedFuture<'a> {
+        RecvRoutedFuture { s: self }
     }
 }
 
@@ -582,6 +628,83 @@ pub async fn sleep(duration: Duration) {
     AsyncSleep::new(now + duration).sleep().await
 }
 
+pub struct SendToFuture<'a> {
+    s: &'a AsyncZmqSocket,
+    header: &'a MultipartHeader,
+    content: zmq::Message,
+}
+
+impl Future for SendToFuture<'_> {
+    type Output = Result<(), zmq::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented.registration().set_waker(cx.waker().clone());
+
+        if f.s.evented.registration().is_ready() {
+            f.s.inner.update_events();
+            f.s.evented.registration().set_ready(false);
+        }
+
+        if !f.s.inner.events().contains(zmq::POLLOUT) {
+            return Poll::Pending;
+        }
+
+        // NOTE: when rust-zmq allows resending messages we can
+        //   avoid this copy
+
+        let content = zmq::Message::from(&f.content[..]);
+
+        match f.s.inner.send_to(&f.header, content) {
+            Ok(()) => Poll::Ready(Ok(())),
+            Err(zmq::Error::EAGAIN) => Poll::Pending,
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
+impl Drop for SendToFuture<'_> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+pub struct RecvRoutedFuture<'a> {
+    s: &'a AsyncZmqSocket,
+}
+
+impl Future for RecvRoutedFuture<'_> {
+    type Output = Result<zmq::Message, zmq::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented.registration().set_waker(cx.waker().clone());
+
+        if f.s.evented.registration().is_ready() {
+            f.s.inner.update_events();
+            f.s.evented.registration().set_ready(false);
+        }
+
+        if !f.s.inner.events().contains(zmq::POLLIN) {
+            return Poll::Pending;
+        }
+
+        match f.s.inner.recv_routed() {
+            Ok(msg) => Poll::Ready(Ok(msg)),
+            Err(zmq::Error::EAGAIN) => Poll::Pending,
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
+impl Drop for RecvRoutedFuture<'_> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -754,6 +877,46 @@ mod tests {
                 let resp = str::from_utf8(&resp.get_ref()[..size]).unwrap();
 
                 assert_eq!(resp, "hello");
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_zmq() {
+        let executor = Executor::new(2);
+        let reactor = Reactor::new(2);
+
+        let spec = "inproc://futures::tests::test_zmq";
+
+        let context = zmq::Context::new();
+
+        let s = AsyncZmqSocket::new(ZmqSocket::new(&context, zmq::DEALER));
+        let r = AsyncZmqSocket::new(ZmqSocket::new(&context, zmq::ROUTER));
+
+        s.inner().inner().bind(spec).unwrap();
+        s.inner().inner().set_sndhwm(1).unwrap();
+
+        executor
+            .spawn(async move {
+                let h = MultipartHeader::new();
+
+                s.send_to(&h, zmq::Message::from(&b"1"[..])).await.unwrap();
+                s.send_to(&h, zmq::Message::from(&b"2"[..])).await.unwrap();
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        r.inner().inner().connect(spec).unwrap();
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv_routed().await, Ok(zmq::Message::from(&b"1"[..])));
+                assert_eq!(r.recv_routed().await, Ok(zmq::Message::from(&b"2"[..])));
             })
             .unwrap();
 
