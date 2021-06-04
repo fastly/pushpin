@@ -367,6 +367,13 @@ impl<T> Future for WaitWritableFuture<'_, T> {
 
         f.s.evented.registration().set_waker(cx.waker().clone());
 
+        // if can_send() returns false, then we know we can't write. this
+        // check prevents spurious wakups of a rendezvous channel from
+        // indicating writability when the channel is not actually writable
+        if !f.s.inner.can_send() {
+            f.s.evented.registration().set_ready(false);
+        }
+
         if !f.s.evented.registration().is_ready() {
             return Poll::Pending;
         }
