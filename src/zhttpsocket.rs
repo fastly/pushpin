@@ -1792,8 +1792,12 @@ mod tests {
             .unwrap();
         in_stream_sock.connect("inproc://test-out-stream").unwrap();
 
-        let out_sock = zmq_context.socket(zmq::PUB).unwrap();
+        let out_sock = zmq_context.socket(zmq::XPUB).unwrap();
         out_sock.connect("inproc://test-in").unwrap();
+
+        // ensure zsockman is subscribed
+        let msg = out_sock.recv_msg(0).unwrap();
+        assert_eq!(&msg[..], b"\x01test ");
 
         h1.send_to_any(zmq::Message::from("hello a".as_bytes()))
             .unwrap();

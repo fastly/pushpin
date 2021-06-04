@@ -1919,16 +1919,20 @@ impl TestServer {
         )
         .unwrap();
 
-        let (s, r) = channel::channel(1);
+        let (started_s, started_r) = channel::channel(1);
+        let (stop_s, stop_r) = channel::channel(1);
 
         let thread = thread::spawn(move || {
-            Self::run(r, zmq_context);
+            Self::run(started_s, stop_r, zmq_context);
         });
+
+        // wait for handler thread to start
+        started_r.recv().unwrap();
 
         Self {
             server,
             thread: Some(thread),
-            stop: s,
+            stop: stop_s,
         }
     }
 
@@ -2108,7 +2112,11 @@ impl TestServer {
         Ok(zmq::Message::from(&dest[..size]))
     }
 
-    fn run(stop: channel::Receiver<()>, zmq_context: Arc<zmq::Context>) {
+    fn run(
+        started: channel::Sender<()>,
+        stop: channel::Receiver<()>,
+        zmq_context: Arc<zmq::Context>,
+    ) {
         let rep_sock = zmq_context.socket(zmq::REP).unwrap();
         rep_sock.connect("inproc://server-test").unwrap();
 
@@ -2121,8 +2129,14 @@ impl TestServer {
             .connect("inproc://server-test-out-stream")
             .unwrap();
 
-        let out_sock = zmq_context.socket(zmq::PUB).unwrap();
+        let out_sock = zmq_context.socket(zmq::XPUB).unwrap();
         out_sock.connect("inproc://server-test-in").unwrap();
+
+        // ensure zsockman is subscribed
+        let msg = out_sock.recv_msg(0).unwrap();
+        assert_eq!(&msg[..], b"\x01test ");
+
+        started.send(()).unwrap();
 
         let mut poller = event::Poller::new(1).unwrap();
 
