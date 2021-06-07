@@ -25,6 +25,7 @@ use crate::reactor::Reactor;
 use log::{debug, error};
 use mio;
 use mio::net::{TcpListener, TcpStream};
+use std::cmp;
 use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::thread;
@@ -82,6 +83,8 @@ impl Listener {
 
         let mut listener_tasks_mem: Vec<AcceptFuture> = Vec::with_capacity(listeners.len());
 
+        let mut slice_scratch = Vec::with_capacity(cmp::max(senders.len(), listeners.len()));
+
         let mut stop_recv = stop.recv();
 
         'accept: loop {
@@ -93,13 +96,17 @@ impl Listener {
                 sender_tasks.push(s.wait_writable());
             }
 
-            let result = select_2(&mut stop_recv, &mut select_slice(&mut sender_tasks)).await;
+            let result = select_2(
+                &mut stop_recv,
+                select_slice(&mut sender_tasks, &mut slice_scratch),
+            )
+            .await;
 
             sender_tasks_mem = recycle_vec(sender_tasks);
 
             match result {
-                Select2::First(_) => break,
-                Select2::Second(_) => {}
+                Select2::R1(_) => break,
+                Select2::R2(_) => {}
             }
 
             // accept a connection
@@ -113,9 +120,14 @@ impl Listener {
             }
 
             let (pos, stream, peer_addr) = loop {
-                match select_2(&mut stop_recv, &mut select_slice(&mut listener_tasks)).await {
-                    Select2::First(_) => break 'accept,
-                    Select2::Second((pos, result)) => match result {
+                match select_2(
+                    &mut stop_recv,
+                    select_slice(&mut listener_tasks, &mut slice_scratch),
+                )
+                .await
+                {
+                    Select2::R1(_) => break 'accept,
+                    Select2::R2((pos, result)) => match result {
                         Ok((stream, peer_addr)) => break (pos, stream, peer_addr),
                         Err(e) => error!("accept error: {:?}", e),
                     },

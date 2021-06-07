@@ -30,8 +30,6 @@ use std::sync::mpsc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-const SELECT_SLICE_MAX: usize = 32;
-
 fn range_unordered(dest: &mut [usize]) -> &[usize] {
     for i in 0..dest.len() {
         dest[i] = i;
@@ -42,20 +40,34 @@ fn range_unordered(dest: &mut [usize]) -> &[usize] {
     dest
 }
 
-pub enum Select2<O1, O2> {
-    First(O1),
-    Second(O2),
-}
-
-pub struct Select2Future<'a, F1, F2> {
-    f1: &'a mut F1,
-    f2: &'a mut F2,
-}
-
-impl<'a, F1, F2, O1, O2> Future for Select2Future<'a, F1, F2>
+fn map_poll<T, F, M, W, V>(p: Pin<&mut T>, cx: &mut Context, map_func: M, wrap_func: W) -> Poll<V>
 where
-    F1: Future<Output = O1>,
-    F2: Future<Output = O2>,
+    F: Future,
+    M: FnOnce(&mut T) -> &mut F,
+    W: FnOnce(F::Output) -> V,
+{
+    let f = unsafe { p.map_unchecked_mut(map_func) };
+
+    match f.poll(cx) {
+        Poll::Ready(v) => Poll::Ready(wrap_func(v)),
+        Poll::Pending => Poll::Pending,
+    }
+}
+
+pub enum Select2<O1, O2> {
+    R1(O1),
+    R2(O2),
+}
+
+pub struct Select2Future<F1, F2> {
+    f1: F1,
+    f2: F2,
+}
+
+impl<F1, F2> Future for Select2Future<F1, F2>
+where
+    F1: Future,
+    F2: Future,
 {
     type Output = Select2<F1::Output, F2::Output>;
 
@@ -63,22 +75,16 @@ where
         let mut indexes = [0; 2];
 
         for i in range_unordered(&mut indexes) {
-            match i {
-                0 => {
-                    let f1 = unsafe { self.as_mut().map_unchecked_mut(|s| s.f1) };
+            let s = self.as_mut();
 
-                    if let Poll::Ready(v) = f1.poll(cx) {
-                        return Poll::Ready(Select2::First(v));
-                    }
-                }
-                1 => {
-                    let f2 = unsafe { self.as_mut().map_unchecked_mut(|s| s.f2) };
-
-                    if let Poll::Ready(v) = f2.poll(cx) {
-                        return Poll::Ready(Select2::Second(v));
-                    }
-                }
+            let p = match i {
+                0 => map_poll(s, cx, |s| &mut s.f1, |v| Select2::R1(v)),
+                1 => map_poll(s, cx, |s| &mut s.f2, |v| Select2::R2(v)),
                 _ => unreachable!(),
+            };
+
+            if p.is_ready() {
+                return p;
             }
         }
 
@@ -86,16 +92,129 @@ where
     }
 }
 
-pub fn select_2<'a, F1, F2, O1, O2>(f1: &'a mut F1, f2: &'a mut F2) -> Select2Future<'a, F1, F2>
+pub enum Select9<O1, O2, O3, O4, O5, O6, O7, O8, O9> {
+    R1(O1),
+    R2(O2),
+    R3(O3),
+    R4(O4),
+    R5(O5),
+    R6(O6),
+    R7(O7),
+    R8(O8),
+    R9(O9),
+}
+
+pub struct Select9Future<F1, F2, F3, F4, F5, F6, F7, F8, F9> {
+    f1: F1,
+    f2: F2,
+    f3: F3,
+    f4: F4,
+    f5: F5,
+    f6: F6,
+    f7: F7,
+    f8: F8,
+    f9: F9,
+}
+
+impl<F1, F2, F3, F4, F5, F6, F7, F8, F9> Future
+    for Select9Future<F1, F2, F3, F4, F5, F6, F7, F8, F9>
 where
-    F1: Future<Output = O1>,
-    F2: Future<Output = O2>,
+    F1: Future,
+    F2: Future,
+    F3: Future,
+    F4: Future,
+    F5: Future,
+    F6: Future,
+    F7: Future,
+    F8: Future,
+    F9: Future,
+{
+    type Output = Select9<
+        F1::Output,
+        F2::Output,
+        F3::Output,
+        F4::Output,
+        F5::Output,
+        F6::Output,
+        F7::Output,
+        F8::Output,
+        F9::Output,
+    >;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let mut indexes = [0; 9];
+
+        for i in range_unordered(&mut indexes) {
+            let s = self.as_mut();
+
+            let p = match i {
+                0 => map_poll(s, cx, |s| &mut s.f1, |v| Select9::R1(v)),
+                1 => map_poll(s, cx, |s| &mut s.f2, |v| Select9::R2(v)),
+                2 => map_poll(s, cx, |s| &mut s.f3, |v| Select9::R3(v)),
+                3 => map_poll(s, cx, |s| &mut s.f4, |v| Select9::R4(v)),
+                4 => map_poll(s, cx, |s| &mut s.f5, |v| Select9::R5(v)),
+                5 => map_poll(s, cx, |s| &mut s.f6, |v| Select9::R6(v)),
+                6 => map_poll(s, cx, |s| &mut s.f7, |v| Select9::R7(v)),
+                7 => map_poll(s, cx, |s| &mut s.f8, |v| Select9::R8(v)),
+                8 => map_poll(s, cx, |s| &mut s.f9, |v| Select9::R9(v)),
+                _ => unreachable!(),
+            };
+
+            if p.is_ready() {
+                return p;
+            }
+        }
+
+        Poll::Pending
+    }
+}
+
+pub fn select_2<F1, F2>(f1: F1, f2: F2) -> Select2Future<F1, F2>
+where
+    F1: Future,
+    F2: Future,
 {
     Select2Future { f1, f2 }
 }
 
+pub fn select_9<F1, F2, F3, F4, F5, F6, F7, F8, F9>(
+    f1: F1,
+    f2: F2,
+    f3: F3,
+    f4: F4,
+    f5: F5,
+    f6: F6,
+    f7: F7,
+    f8: F8,
+    f9: F9,
+) -> Select9Future<F1, F2, F3, F4, F5, F6, F7, F8, F9>
+where
+    F1: Future,
+    F2: Future,
+    F3: Future,
+    F4: Future,
+    F5: Future,
+    F6: Future,
+    F7: Future,
+    F8: Future,
+    F9: Future,
+{
+    Select9Future {
+        f1,
+        f2,
+        f3,
+        f4,
+        f5,
+        f6,
+        f7,
+        f8,
+        f9,
+    }
+}
+
 pub struct SelectSliceFuture<'a, F> {
     futures: &'a mut [F],
+    scratch: &'a mut Vec<usize>,
 }
 
 impl<F, O> Future for SelectSliceFuture<'_, F>
@@ -105,17 +224,13 @@ where
     type Output = (usize, F::Output);
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        if self.futures.len() > SELECT_SLICE_MAX {
-            panic!(
-                "cannot use select_slice on more than {} futures",
-                self.futures.len()
-            );
-        }
+        let s = &mut *self;
 
-        let mut indexes = [0; SELECT_SLICE_MAX];
+        let indexes = &mut s.scratch;
+        indexes.resize(s.futures.len(), 0);
 
-        for i in range_unordered(&mut indexes[..self.futures.len()]) {
-            let f = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.futures[*i]) };
+        for i in range_unordered(&mut indexes[..s.futures.len()]) {
+            let f = unsafe { Pin::new_unchecked(&mut s.futures[*i]) };
 
             if let Poll::Ready(v) = f.poll(cx) {
                 return Poll::Ready((*i, v));
@@ -126,11 +241,49 @@ where
     }
 }
 
-pub fn select_slice<'a, F, O>(futures: &'a mut [F]) -> SelectSliceFuture<'a, F>
+pub fn select_slice<'a, F, O>(
+    futures: &'a mut [F],
+    scratch: &'a mut Vec<usize>,
+) -> SelectSliceFuture<'a, F>
 where
     F: Future<Output = O>,
 {
-    SelectSliceFuture { futures }
+    if futures.len() > scratch.capacity() {
+        panic!(
+            "select_slice scratch is not large enough: {}, need {}",
+            scratch.capacity(),
+            futures.len()
+        );
+    }
+
+    SelectSliceFuture { futures, scratch }
+}
+
+pub struct SelectOptionFuture<F> {
+    fut: Option<F>,
+}
+
+impl<F, O> Future for SelectOptionFuture<F>
+where
+    F: Future<Output = O>,
+{
+    type Output = O;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.fut) };
+
+        match f.as_pin_mut() {
+            Some(f) => f.poll(cx),
+            None => Poll::Pending,
+        }
+    }
+}
+
+pub fn select_option<F, O>(fut: Option<F>) -> SelectOptionFuture<F>
+where
+    F: Future<Output = O>,
+{
+    SelectOptionFuture { fut }
 }
 
 #[track_caller]
