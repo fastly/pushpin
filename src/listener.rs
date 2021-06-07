@@ -64,7 +64,7 @@ impl Listener {
         listeners: Vec<TcpListener>,
         senders: Vec<channel::Sender<(usize, TcpStream, SocketAddr)>>,
     ) {
-        let mut stop = AsyncReceiver::new(stop);
+        let stop = AsyncReceiver::new(stop);
 
         let mut listeners: Vec<AsyncTcpListener> = listeners
             .into_iter()

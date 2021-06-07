@@ -162,11 +162,11 @@ impl<T> AsyncSender<T> {
         self.evented.registration().is_ready()
     }
 
-    pub fn wait_writable<'a>(&'a mut self) -> WaitWritableFuture<'a, T> {
+    pub fn wait_writable<'a>(&'a self) -> WaitWritableFuture<'a, T> {
         WaitWritableFuture { s: self }
     }
 
-    pub fn try_send(&mut self, t: T) -> Result<(), mpsc::TrySendError<T>> {
+    pub fn try_send(&self, t: T) -> Result<(), mpsc::TrySendError<T>> {
         match self.inner.try_send(t) {
             Ok(_) => {
                 // if can_send() returns false, then we know we can't write
@@ -185,7 +185,7 @@ impl<T> AsyncSender<T> {
         }
     }
 
-    pub fn send<'a>(&'a mut self, t: T) -> SendFuture<'a, T> {
+    pub fn send<'a>(&'a self, t: T) -> SendFuture<'a, T> {
         SendFuture {
             s: self,
             t: Some(t),
@@ -212,7 +212,7 @@ impl<T> AsyncReceiver<T> {
         Self { inner: r, evented }
     }
 
-    pub fn recv<'a>(&'a mut self) -> RecvFuture<'a, T> {
+    pub fn recv<'a>(&'a self) -> RecvFuture<'a, T> {
         RecvFuture { r: self }
     }
 }
@@ -240,7 +240,7 @@ impl AsyncTcpListener {
         self.evented.io().local_addr()
     }
 
-    pub fn accept<'a>(&'a mut self) -> AcceptFuture<'a> {
+    pub fn accept<'a>(&'a self) -> AcceptFuture<'a> {
         AcceptFuture { l: self }
     }
 }
@@ -356,14 +356,14 @@ impl AsyncZmqSocket {
 }
 
 pub struct WaitWritableFuture<'a, T> {
-    s: &'a mut AsyncSender<T>,
+    s: &'a AsyncSender<T>,
 }
 
 impl<T> Future for WaitWritableFuture<'_, T> {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = &mut *self;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
 
         f.s.evented.registration().set_waker(cx.waker().clone());
 
@@ -389,7 +389,7 @@ impl<T> Drop for WaitWritableFuture<'_, T> {
 }
 
 pub struct SendFuture<'a, T> {
-    s: &'a mut AsyncSender<T>,
+    s: &'a AsyncSender<T>,
     t: Option<T>,
 }
 
@@ -431,14 +431,14 @@ impl<T> Drop for SendFuture<'_, T> {
 }
 
 pub struct RecvFuture<'a, T> {
-    r: &'a mut AsyncReceiver<T>,
+    r: &'a AsyncReceiver<T>,
 }
 
 impl<T> Future for RecvFuture<'_, T> {
     type Output = Result<T, mpsc::RecvError>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = &mut *self;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
 
         f.r.evented.registration().set_waker(cx.waker().clone());
 
@@ -469,7 +469,7 @@ impl<T> Drop for RecvFuture<'_, T> {
 }
 
 pub struct AcceptFuture<'a> {
-    l: &'a mut AsyncTcpListener,
+    l: &'a AsyncTcpListener,
 }
 
 impl Future for AcceptFuture<'_> {
@@ -763,8 +763,8 @@ mod tests {
 
         let (s, r) = channel::channel::<u32>(0);
 
-        let mut s = AsyncSender::new(s);
-        let mut r = AsyncReceiver::new(r);
+        let s = AsyncSender::new(s);
+        let r = AsyncReceiver::new(r);
 
         executor
             .spawn(async move {
@@ -795,8 +795,8 @@ mod tests {
 
         let (s, r) = channel::channel::<u32>(1);
 
-        let mut s = AsyncSender::new(s);
-        let mut r = AsyncReceiver::new(r);
+        let s = AsyncSender::new(s);
+        let r = AsyncReceiver::new(r);
 
         executor
             .spawn(async move {
@@ -827,8 +827,8 @@ mod tests {
 
         let (s, r) = channel::channel::<u32>(0);
 
-        let mut s = AsyncSender::new(s);
-        let mut r = AsyncReceiver::new(r);
+        let s = AsyncSender::new(s);
+        let r = AsyncReceiver::new(r);
 
         executor
             .spawn(async move {
@@ -857,7 +857,7 @@ mod tests {
 
         let (s, r) = channel::channel::<u32>(0);
 
-        let mut s = AsyncSender::new(s);
+        let s = AsyncSender::new(s);
 
         executor
             .spawn(async move {
@@ -888,7 +888,7 @@ mod tests {
         executor
             .spawn(async move {
                 let addr = "127.0.0.1:0".parse().unwrap();
-                let mut listener = AsyncTcpListener::bind(addr).expect("failed to bind");
+                let listener = AsyncTcpListener::bind(addr).expect("failed to bind");
                 let addr = listener.local_addr().unwrap();
 
                 spawner
@@ -979,7 +979,7 @@ mod tests {
         s.send(3).unwrap();
         mem::drop(s);
 
-        let mut r = AsyncReceiver::new(r);
+        let r = AsyncReceiver::new(r);
 
         executor
             .spawn(async move {
@@ -1023,7 +1023,7 @@ mod tests {
         s.send(3).unwrap();
         mem::drop(s);
 
-        let mut r = AsyncReceiver::new(r);
+        let r = AsyncReceiver::new(r);
 
         executor
             .spawn(async move {
