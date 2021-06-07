@@ -700,7 +700,7 @@ impl Future for SendToFuture<'_> {
 
         let content = zmq::Message::from(&f.content[..]);
 
-        match f.s.inner.send_to(&f.header, content) {
+        match f.s.inner.send_to(&f.header, content, zmq::DONTWAIT) {
             Ok(()) => Poll::Ready(Ok(())),
             Err(zmq::Error::EAGAIN) => Poll::Pending,
             Err(e) => Poll::Ready(Err(e)),
@@ -735,7 +735,7 @@ impl Future for RecvRoutedFuture<'_> {
             return Poll::Pending;
         }
 
-        match f.s.inner.recv_routed() {
+        match f.s.inner.recv_routed(zmq::DONTWAIT) {
             Ok(msg) => Poll::Ready(Ok(msg)),
             Err(zmq::Error::EAGAIN) => Poll::Pending,
             Err(e) => Poll::Ready(Err(e)),
@@ -945,7 +945,6 @@ mod tests {
         executor
             .spawn(async move {
                 let h = MultipartHeader::new();
-
                 s.send_to(&h, zmq::Message::from(&b"1"[..])).await.unwrap();
                 s.send_to(&h, zmq::Message::from(&b"2"[..])).await.unwrap();
             })

@@ -181,8 +181,10 @@ impl ZmqSocket {
         self.events.get()
     }
 
-    pub fn send(&self, msg: zmq::Message) -> Result<(), zmq::Error> {
-        if let Err(e) = self.inner.send(msg, zmq::DONTWAIT) {
+    pub fn send(&self, msg: zmq::Message, flags: i32) -> Result<(), zmq::Error> {
+        let flags = flags & zmq::DONTWAIT;
+
+        if let Err(e) = self.inner.send(msg, flags) {
             self.update_events();
             return Err(e);
         }
@@ -196,6 +198,7 @@ impl ZmqSocket {
         &self,
         header: &MultipartHeader,
         content: zmq::Message,
+        flags: i32,
     ) -> Result<(), zmq::Error> {
         if header.len + 2 > 8 {
             panic!("cannot send more than 8 parts")
@@ -209,28 +212,26 @@ impl ZmqSocket {
 
         let headers = &headers[..header.len];
 
-        if let Err(e) = self
-            .inner
-            .send_multipart(headers, zmq::SNDMORE | zmq::DONTWAIT)
-        {
+        let flags = flags & zmq::DONTWAIT;
+
+        if let Err(e) = self.inner.send_multipart(headers, flags | zmq::SNDMORE) {
             self.update_events();
             return Err(e);
         }
 
-        if let Err(e) = self
-            .inner
-            .send(zmq::Message::new(), zmq::SNDMORE | zmq::DONTWAIT)
-        {
+        if let Err(e) = self.inner.send(zmq::Message::new(), flags | zmq::SNDMORE) {
             self.update_events();
             return Err(e);
         }
 
-        self.send(content)
+        self.send(content, flags)
     }
 
-    pub fn recv(&self) -> Result<zmq::Message, zmq::Error> {
+    pub fn recv(&self, flags: i32) -> Result<zmq::Message, zmq::Error> {
+        let flags = flags & zmq::DONTWAIT;
+
         // get the first part
-        let msg = match self.inner.recv_msg(zmq::DONTWAIT) {
+        let msg = match self.inner.recv_msg(flags) {
             Ok(msg) => msg,
             Err(e) => {
                 self.update_events();
@@ -238,9 +239,11 @@ impl ZmqSocket {
             }
         };
 
+        let flags = 0;
+
         // eat the rest of the parts
         while self.inner.get_rcvmore().unwrap() {
-            self.inner.recv_msg(0).unwrap();
+            self.inner.recv_msg(flags).unwrap();
         }
 
         self.update_events();
@@ -248,10 +251,12 @@ impl ZmqSocket {
         Ok(msg)
     }
 
-    pub fn recv_routed(&self) -> Result<zmq::Message, zmq::Error> {
+    pub fn recv_routed(&self, flags: i32) -> Result<zmq::Message, zmq::Error> {
+        let flags = flags & zmq::DONTWAIT;
+
         loop {
             // eat parts until we reach the separator
-            match self.inner.recv_msg(zmq::DONTWAIT) {
+            match self.inner.recv_msg(flags) {
                 Ok(msg) => {
                     if msg.is_empty() {
                         break;
@@ -264,6 +269,8 @@ impl ZmqSocket {
             }
         }
 
+        let flags = 0;
+
         // if we get here, we've read the separator. content parts should follow
 
         if !self.inner.get_rcvmore().unwrap() {
@@ -271,7 +278,7 @@ impl ZmqSocket {
         }
 
         // get the first part of the content
-        let msg = match self.inner.recv_msg(0) {
+        let msg = match self.inner.recv_msg(flags) {
             Ok(msg) => msg,
             Err(e) => {
                 self.update_events();
@@ -281,7 +288,7 @@ impl ZmqSocket {
 
         // eat the rest of the parts
         while self.inner.get_rcvmore().unwrap() {
-            self.inner.recv_msg(0).unwrap();
+            self.inner.recv_msg(flags).unwrap();
         }
 
         self.update_events();
@@ -472,7 +479,10 @@ mod tests {
 
         drop(r);
 
-        assert_eq!(s.send((&b"test"[..]).into()), Err(zmq::Error::EAGAIN));
+        assert_eq!(
+            s.send((&b"test"[..]).into(), zmq::DONTWAIT),
+            Err(zmq::Error::EAGAIN)
+        );
 
         assert_eq!(s.events().contains(zmq::POLLOUT), false);
     }

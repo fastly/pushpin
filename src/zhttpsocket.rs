@@ -1053,7 +1053,7 @@ impl SocketManager {
 
                     let mut retry = false;
 
-                    match client_req.sock.send_to(&h, tmp) {
+                    match client_req.sock.send_to(&h, tmp, zmq::DONTWAIT) {
                         Ok(_) => {}
                         Err(zmq::Error::EAGAIN) => retry = true,
                         Err(e) => error!("req zmq send: {}", e),
@@ -1091,7 +1091,7 @@ impl SocketManager {
 
                     let mut retry = false;
 
-                    match client_stream.out.send(tmp) {
+                    match client_stream.out.send(tmp, zmq::DONTWAIT) {
                         Ok(_) => {}
                         Err(zmq::Error::EAGAIN) => retry = true,
                         Err(e) => error!("stream zmq send: {}", e),
@@ -1146,7 +1146,7 @@ impl SocketManager {
 
                     let mut retry = false;
 
-                    match client_stream.out_stream.send_to(&h, tmp) {
+                    match client_stream.out_stream.send_to(&h, tmp, zmq::DONTWAIT) {
                         Ok(_) => {}
                         Err(zmq::Error::EAGAIN) => retry = true,
                         Err(e) => error!("stream zmq send: {}", e),
@@ -1169,7 +1169,7 @@ impl SocketManager {
             }
 
             if client_req.sock.events().contains(zmq::POLLIN) {
-                match client_req.sock.recv_routed() {
+                match client_req.sock.recv_routed(zmq::DONTWAIT) {
                     Ok(msg) => {
                         if log_enabled!(log::Level::Trace) {
                             trace!("IN req {}", packet_to_string(&msg));
@@ -1194,7 +1194,7 @@ impl SocketManager {
             }
 
             if client_stream.in_.events().contains(zmq::POLLIN) {
-                match client_stream.in_.recv() {
+                match client_stream.in_.recv(zmq::DONTWAIT) {
                     Ok(msg) => {
                         if log_enabled!(log::Level::Trace) {
                             trace!("IN stream {}", packet_to_string(&msg));
