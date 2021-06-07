@@ -45,6 +45,12 @@ pub struct Registration {
 }
 
 impl Registration {
+    pub fn reactor(&self) -> Reactor {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+
+        Reactor { inner: reactor }
+    }
+
     pub fn is_ready(&self) -> bool {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &*reactor.registrations.borrow();
