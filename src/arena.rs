@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -283,6 +283,85 @@ pub fn recycle_vec<T, U>(mut v: Vec<T>) -> Vec<U> {
     unsafe { Vec::from_raw_parts(ptr, 0, capacity) }
 }
 
+// ReusableVec inspired by recycle_vec
+
+pub struct ReusableVecHandle<'a, T> {
+    vec: &'a mut Vec<T>,
+}
+
+impl<T> ReusableVecHandle<'_, T> {
+    pub fn get_ref(&self) -> &Vec<T> {
+        &self.vec
+    }
+
+    pub fn get_mut(&mut self) -> &mut Vec<T> {
+        &mut self.vec
+    }
+}
+
+impl<T> Drop for ReusableVecHandle<'_, T> {
+    fn drop(&mut self) {
+        self.vec.clear();
+    }
+}
+
+impl<T> Deref for ReusableVecHandle<'_, T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        self.get_ref()
+    }
+}
+
+impl<T> DerefMut for ReusableVecHandle<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.get_mut()
+    }
+}
+
+pub struct ReusableVec {
+    vec: Vec<()>,
+    size: usize,
+    align: usize,
+}
+
+impl ReusableVec {
+    pub fn new<T>(capacity: usize) -> Self {
+        let size = mem::size_of::<T>();
+        let align = mem::align_of::<T>();
+
+        let vec: Vec<T> = Vec::with_capacity(capacity);
+
+        // safety: we must cast to Vec<U> before using, where U has the same
+        // size and alignment as T
+        let vec: Vec<()> = unsafe { mem::transmute(vec) };
+
+        Self { vec, size, align }
+    }
+
+    pub fn get_as_new<'a, U>(&'a mut self) -> ReusableVecHandle<'a, U> {
+        let size = mem::size_of::<U>();
+        let align = mem::align_of::<U>();
+
+        // if these don't match, panic. it's up the user to ensure the type
+        // is acceptable
+        assert_eq!(self.size, size);
+        assert_eq!(self.align, align);
+
+        let vec: &mut Vec<()> = &mut self.vec;
+
+        // safety: U has the expected size and alignment
+        let vec: &mut Vec<U> = unsafe { mem::transmute(vec) };
+
+        // the vec starts empty, and is always cleared when the handle drops.
+        // get_as_new() borrows self mutably, so it's not possible to create
+        // a handle when one already exists
+        assert!(vec.is_empty());
+
+        ReusableVecHandle { vec }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +426,25 @@ mod tests {
 
         mem::drop(e1a);
         assert_eq!(memory.len(), 0);
+    }
+
+    #[test]
+    fn test_reusable_vec() {
+        let mut vec_mem = ReusableVec::new::<u32>(100);
+
+        let mut vec = vec_mem.get_as_new::<u32>();
+
+        assert_eq!(vec.capacity(), 100);
+        assert_eq!(vec.len(), 0);
+
+        vec.push(1);
+        assert_eq!(vec.len(), 1);
+
+        mem::drop(vec);
+
+        let vec = vec_mem.get_as_new::<u32>();
+
+        assert_eq!(vec.capacity(), 100);
+        assert_eq!(vec.len(), 0);
     }
 }
