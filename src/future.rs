@@ -292,8 +292,8 @@ fn get_reactor() -> Reactor {
 }
 
 pub struct AsyncSender<T> {
-    inner: channel::Sender<T>,
     evented: CustomEvented,
+    inner: channel::Sender<T>,
 }
 
 impl<T> AsyncSender<T> {
@@ -309,7 +309,7 @@ impl<T> AsyncSender<T> {
         // if can_send() returns true, it doesn't mean we can actually write
         evented.registration().set_ready(s.can_send());
 
-        Self { inner: s, evented }
+        Self { evented, inner: s }
     }
 
     pub fn is_writable(&self) -> bool {
@@ -348,8 +348,8 @@ impl<T> AsyncSender<T> {
 }
 
 pub struct AsyncReceiver<T> {
-    inner: channel::Receiver<T>,
     evented: CustomEvented,
+    inner: channel::Receiver<T>,
 }
 
 impl<T> AsyncReceiver<T> {
@@ -363,7 +363,7 @@ impl<T> AsyncReceiver<T> {
 
         evented.registration().set_ready(true);
 
-        Self { inner: r, evented }
+        Self { evented, inner: r }
     }
 
     pub fn recv<'a>(&'a self) -> RecvFuture<'a, T> {
@@ -465,8 +465,8 @@ impl AsyncSleep {
 }
 
 pub struct AsyncZmqSocket {
-    inner: ZmqSocket,
     evented: FdEvented,
+    inner: ZmqSocket,
     timeout: Cell<Option<Duration>>,
 }
 
@@ -487,8 +487,8 @@ impl AsyncZmqSocket {
         s.update_events();
 
         Self {
-            inner: s,
             evented,
+            inner: s,
             timeout: Cell::new(None),
         }
     }
