@@ -509,8 +509,8 @@ impl AsyncZmqSocket {
         &'a self,
         header: MultipartHeader,
         content: zmq::Message,
-    ) -> SendToFuture<'a> {
-        SendToFuture {
+    ) -> ZmqSendToFuture<'a> {
+        ZmqSendToFuture {
             s: self,
             header,
             content,
@@ -522,8 +522,8 @@ impl AsyncZmqSocket {
         ZmqRecvFuture { s: self }
     }
 
-    pub fn recv_routed<'a>(&'a self) -> RecvRoutedFuture<'a> {
-        RecvRoutedFuture { s: self }
+    pub fn recv_routed<'a>(&'a self) -> ZmqRecvRoutedFuture<'a> {
+        ZmqRecvRoutedFuture { s: self }
     }
 }
 
@@ -885,14 +885,14 @@ impl Drop for ZmqSendFuture<'_> {
     }
 }
 
-pub struct SendToFuture<'a> {
+pub struct ZmqSendToFuture<'a> {
     s: &'a AsyncZmqSocket,
     header: MultipartHeader,
     content: zmq::Message,
     timer_evented: Option<TimerEvented>,
 }
 
-impl Future for SendToFuture<'_> {
+impl Future for ZmqSendToFuture<'_> {
     type Output = Result<(), zmq::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -952,7 +952,7 @@ impl Future for SendToFuture<'_> {
     }
 }
 
-impl Drop for SendToFuture<'_> {
+impl Drop for ZmqSendToFuture<'_> {
     fn drop(&mut self) {
         self.s.evented.registration().clear_waker();
     }
@@ -993,11 +993,11 @@ impl Drop for ZmqRecvFuture<'_> {
     }
 }
 
-pub struct RecvRoutedFuture<'a> {
+pub struct ZmqRecvRoutedFuture<'a> {
     s: &'a AsyncZmqSocket,
 }
 
-impl Future for RecvRoutedFuture<'_> {
+impl Future for ZmqRecvRoutedFuture<'_> {
     type Output = Result<zmq::Message, zmq::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -1022,7 +1022,7 @@ impl Future for RecvRoutedFuture<'_> {
     }
 }
 
-impl Drop for RecvRoutedFuture<'_> {
+impl Drop for ZmqRecvRoutedFuture<'_> {
     fn drop(&mut self) {
         self.s.evented.registration().clear_waker();
     }
