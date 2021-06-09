@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Fanout, Inc.
+ * Copyright (C) 2015-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -264,7 +264,6 @@ public:
 		}
 		else
 		{
-			connect(sock, &ZWebSocket::connected, this, &Private::sock_connected);
 			connect(sock, &ZWebSocket::readyRead, this, &Private::sock_readyRead);
 			connect(sock, &ZWebSocket::framesWritten, this, &Private::sock_framesWritten);
 			connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
@@ -447,11 +446,15 @@ public:
 
 			sock->respondSuccess(reason, headers);
 
+			state = Connected;
+
 			if(mode == WebSocketFramed)
 			{
 				Frame f(Frame::Text, "o", false);
 				pendingWrites += WriteItem(WriteItem::Transport);
 				sock->writeFrame(f);
+
+				keepAliveTimer->start(KEEPALIVE_TIMEOUT * 1000);
 			}
 		}
 	}
@@ -948,16 +951,6 @@ private slots:
 		{
 			removeRequestItem(ri);
 		}
-	}
-
-	void sock_connected()
-	{
-		state = Connected;
-
-		if(mode == WebSocketFramed)
-			keepAliveTimer->start(KEEPALIVE_TIMEOUT * 1000);
-
-		emit q->connected();
 	}
 
 	void sock_readyRead()
