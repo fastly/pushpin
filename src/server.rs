@@ -36,6 +36,7 @@ use mio;
 use mio::net::{TcpListener, TcpSocket, TcpStream};
 use mio::unix::SourceFd;
 use slab::Slab;
+use std::cell::Cell;
 use std::cmp;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
@@ -47,6 +48,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::str;
 use std::str::FromStr;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -56,6 +58,7 @@ pub const MSG_RETAINED_MAX: usize = 1;
 
 const HANDLE_BASE: usize = 4;
 const CONN_BASE: usize = 16;
+const TOKENS_PER_CONN: usize = 8;
 const ACCEPT_PER_LOOP_MAX: usize = 100;
 const TICK_DURATION_MS: u64 = 10;
 const POLL_TIMEOUT_MAX: Duration = Duration::from_millis(100);
@@ -137,7 +140,7 @@ fn get_key(id: &[u8]) -> Result<usize, ()> {
 fn send_batched<'buf, 'ids>(
     mut zreq: zhttppacket::Request<'buf, 'ids, '_>,
     ids: &'ids [zhttppacket::Id<'buf>],
-    handle: &mut ClientStreamHandle,
+    handle: &mut zhttpsocket::ClientStreamHandle,
     to_addr: &[u8],
 ) {
     zreq.multi = true;
@@ -168,7 +171,7 @@ fn send_batched<'buf, 'ids>(
         let buf = &data[..size];
         let msg = zmq::Message::from(buf);
 
-        if let Err(e) = handle.send_to(to_addr, msg) {
+        if let Err(e) = handle.send_to_addr(to_addr, msg) {
             let e = match e {
                 zhttpsocket::SendError::Full(_) => io::Error::from(io::ErrorKind::WriteZero),
                 zhttpsocket::SendError::Io(e) => e,
@@ -206,14 +209,20 @@ impl Shutdown for TlsStream {
     }
 }
 
-impl ZhttpSender for zhttpsocket::ClientReqHandle {
+impl ZhttpSender for channel::LocalSender<zmq::Message> {
     fn can_send_to(&self) -> bool {
         // req mode doesn't use this
         unimplemented!();
     }
 
     fn send(&mut self, message: zmq::Message) -> Result<(), zhttpsocket::SendError> {
-        self.send(message)
+        match self.try_send(message) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full(msg)) => Err(zhttpsocket::SendError::Full(msg)),
+            Err(mpsc::TrySendError::Disconnected(_)) => Err(zhttpsocket::SendError::Io(
+                io::Error::from(io::ErrorKind::BrokenPipe),
+            )),
+        }
     }
 
     fn send_to(
@@ -226,52 +235,50 @@ impl ZhttpSender for zhttpsocket::ClientReqHandle {
     }
 }
 
-struct ClientStreamHandle {
-    inner: zhttpsocket::ClientStreamHandle,
-    out: VecDeque<(ArrayVec<[u8; 64]>, zmq::Message)>,
-    send_to_allowed: bool,
+struct StreamLocalSenders {
+    out: channel::LocalSender<zmq::Message>,
+    out_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    out_stream_can_write: Cell<bool>,
 }
 
-impl ClientStreamHandle {
-    fn new(handle: zhttpsocket::ClientStreamHandle, queue_size: usize) -> Self {
+impl StreamLocalSenders {
+    fn new(
+        out: channel::LocalSender<zmq::Message>,
+        out_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    ) -> Self {
         Self {
-            inner: handle,
-            out: VecDeque::with_capacity(queue_size),
-            send_to_allowed: false,
+            out,
+            out_stream,
+            out_stream_can_write: Cell::new(true),
         }
     }
 
-    fn pending_send_to(&self) -> usize {
-        self.out.len()
-    }
-
-    fn set_send_to_allowed(&mut self, allowed: bool) {
-        self.send_to_allowed = allowed;
-    }
-
-    fn flush_send_to(&mut self) -> Result<(), io::Error> {
-        while let Some((addr, msg)) = self.out.pop_front() {
-            match self.inner.send_to_addr(addr.as_ref(), msg) {
-                Ok(_) => {}
-                Err(zhttpsocket::SendError::Full(msg)) => {
-                    self.out.push_front((addr, msg));
-                    return Err(io::Error::from(io::ErrorKind::WouldBlock));
-                }
-                Err(zhttpsocket::SendError::Io(e)) => return Err(e),
-            }
-        }
-
-        Ok(())
+    fn set_out_stream_can_write(&self) {
+        self.out_stream_can_write.set(true);
     }
 }
 
-impl ZhttpSender for ClientStreamHandle {
+impl ZhttpSender for StreamLocalSenders {
     fn can_send_to(&self) -> bool {
-        self.out.len() < self.out.capacity() && self.send_to_allowed
+        if self.out_stream_can_write.get() {
+            if self.out_stream.check_send() {
+                return true;
+            }
+
+            self.out_stream_can_write.set(false);
+        }
+
+        false
     }
 
     fn send(&mut self, message: zmq::Message) -> Result<(), zhttpsocket::SendError> {
-        self.inner.send_to_any(message)
+        match self.out.try_send(message) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full(msg)) => Err(zhttpsocket::SendError::Full(msg)),
+            Err(mpsc::TrySendError::Disconnected(_)) => Err(zhttpsocket::SendError::Io(
+                io::Error::from(io::ErrorKind::BrokenPipe),
+            )),
+        }
     }
 
     fn send_to(
@@ -279,10 +286,6 @@ impl ZhttpSender for ClientStreamHandle {
         addr: &[u8],
         message: zmq::Message,
     ) -> Result<(), zhttpsocket::SendError> {
-        if !self.can_send_to() {
-            return Err(zhttpsocket::SendError::Full(message));
-        }
-
         let mut a = ArrayVec::new();
         if a.try_extend_from_slice(addr).is_err() {
             return Err(zhttpsocket::SendError::Io(io::Error::from(
@@ -290,28 +293,25 @@ impl ZhttpSender for ClientStreamHandle {
             )));
         }
 
-        self.out.push_back((a, message));
-
-        Ok(())
+        match self.out_stream.try_send((a, message)) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full((_, msg))) => Err(zhttpsocket::SendError::Full(msg)),
+            Err(mpsc::TrySendError::Disconnected(_)) => Err(zhttpsocket::SendError::Io(
+                io::Error::from(io::ErrorKind::BrokenPipe),
+            )),
+        }
     }
 }
 
 enum ServerConnection {
-    Req(ServerReqConnection),
-    Stream(ServerStreamConnection),
+    Req(ServerReqConnection, channel::LocalSender<zmq::Message>),
+    Stream(ServerStreamConnection, StreamLocalSenders),
 }
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum ZhttpMode {
     Req,
     Stream,
-}
-
-#[derive(Copy, Clone)]
-enum ZWriteKey {
-    Req(usize),
-    Stream(usize),
-    StreamTo(usize),
 }
 
 enum Stream {
@@ -334,72 +334,114 @@ struct Connection {
     conn: ServerConnection,
     want: Want,
     timer: Option<(usize, u64)>, // timer id, exp time
-    zwrite_key: Option<ZWriteKey>,
 }
 
 impl Connection {
-    fn new(
+    fn new_req(
         stream: Stream,
         peer_addr: SocketAddr,
-        zmode: ZhttpMode,
         buffer_size: usize,
         body_buffer_size: usize,
-        messages_max: usize,
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
+        sender: channel::LocalSender<zmq::Message>,
     ) -> Self {
         let secure = match &stream {
             Stream::Plain(_) => false,
             Stream::Tls(_) => true,
         };
 
-        let conn = match zmode {
-            ZhttpMode::Req => ServerConnection::Req(ServerReqConnection::new(
-                Instant::now(),
-                Some(peer_addr),
-                secure,
-                buffer_size,
-                body_buffer_size,
-                rb_tmp,
-                timeout,
-            )),
-            ZhttpMode::Stream => ServerConnection::Stream(ServerStreamConnection::new(
-                Instant::now(),
-                Some(peer_addr),
-                secure,
-                buffer_size,
-                messages_max,
-                rb_tmp,
-                timeout,
-            )),
+        Self {
+            id: ArrayString::new(),
+            stream,
+            conn: ServerConnection::Req(
+                ServerReqConnection::new(
+                    Instant::now(),
+                    Some(peer_addr),
+                    secure,
+                    buffer_size,
+                    body_buffer_size,
+                    rb_tmp,
+                    timeout,
+                ),
+                sender,
+            ),
+            want: Want::nothing(),
+            timer: None,
+        }
+    }
+
+    fn new_stream(
+        stream: Stream,
+        peer_addr: SocketAddr,
+        buffer_size: usize,
+        messages_max: usize,
+        rb_tmp: &Rc<TmpBuffer>,
+        timeout: Duration,
+        senders: StreamLocalSenders,
+    ) -> Self {
+        let secure = match &stream {
+            Stream::Plain(_) => false,
+            Stream::Tls(_) => true,
         };
 
         Self {
             id: ArrayString::new(),
             stream,
-            conn,
+            conn: ServerConnection::Stream(
+                ServerStreamConnection::new(
+                    Instant::now(),
+                    Some(peer_addr),
+                    secure,
+                    buffer_size,
+                    messages_max,
+                    rb_tmp,
+                    timeout,
+                ),
+                senders,
+            ),
             want: Want::nothing(),
             timer: None,
-            zwrite_key: None,
         }
     }
 
     fn mode(&self) -> ZhttpMode {
         match &self.conn {
-            ServerConnection::Req(_) => ZhttpMode::Req,
-            ServerConnection::Stream(_) => ZhttpMode::Stream,
+            ServerConnection::Req(_, _) => ZhttpMode::Req,
+            ServerConnection::Stream(_, _) => ZhttpMode::Stream,
         }
     }
 
     fn state(&self) -> ServerState {
         match &self.conn {
-            ServerConnection::Req(conn) => conn.state(),
-            ServerConnection::Stream(conn) => conn.state(),
+            ServerConnection::Req(conn, _) => conn.state(),
+            ServerConnection::Stream(conn, _) => conn.state(),
         }
     }
 
     fn get_tcp(&mut self) -> Option<&mut TcpStream> {
         self.stream.get_tcp()
+    }
+
+    fn get_zreq_sender(&self) -> &channel::LocalSender<zmq::Message> {
+        match &self.conn {
+            ServerConnection::Req(_, sender) => sender,
+            ServerConnection::Stream(_, _) => panic!("not req conn"),
+        }
+    }
+
+    fn get_zstream_senders(&self) -> &StreamLocalSenders {
+        match &self.conn {
+            ServerConnection::Req(_, _) => panic!("not stream conn"),
+            ServerConnection::Stream(_, senders) => senders,
+        }
+    }
+
+    fn set_out_stream_can_write(&self) {
+        match &self.conn {
+            ServerConnection::Req(_, _) => panic!("not stream conn"),
+            ServerConnection::Stream(_, senders) => senders.set_out_stream_can_write(),
+        }
     }
 
     fn start(&mut self, id: &str) {
@@ -412,15 +454,15 @@ impl Connection {
         debug!("conn {}: assigning id", self.id);
 
         match &mut self.conn {
-            ServerConnection::Req(conn) => conn.start(self.id.as_ref()),
-            ServerConnection::Stream(conn) => conn.start(self.id.as_ref()),
+            ServerConnection::Req(conn, _) => conn.start(self.id.as_ref()),
+            ServerConnection::Stream(conn, _) => conn.start(self.id.as_ref()),
         }
     }
 
     fn set_sock_readable(&mut self) {
         match &mut self.conn {
-            ServerConnection::Req(conn) => conn.set_sock_readable(),
-            ServerConnection::Stream(conn) => conn.set_sock_readable(),
+            ServerConnection::Req(conn, _) => conn.set_sock_readable(),
+            ServerConnection::Stream(conn, _) => conn.set_sock_readable(),
         }
     }
 
@@ -437,13 +479,13 @@ impl Connection {
         }
 
         match &mut self.conn {
-            ServerConnection::Req(conn) => {
+            ServerConnection::Req(conn, _) => {
                 if let Err(e) = conn.apply_zhttp_response(zresp) {
                     debug!("conn {}: apply error {:?}", self.id, e);
                     return Err(());
                 }
             }
-            ServerConnection::Stream(conn) => {
+            ServerConnection::Stream(conn, _) => {
                 if let Err(e) = conn.apply_zhttp_response(now, zresp, seq) {
                     debug!("conn {}: apply error {:?}", self.id, e);
                     return Err(());
@@ -458,8 +500,6 @@ impl Connection {
         &mut self,
         now: Instant,
         instance_id: &str,
-        req_handle: &mut zhttpsocket::ClientReqHandle,
-        stream_handle: &mut ClientStreamHandle,
         packet_buf: &mut [u8],
         tmp_buf: &mut [u8],
     ) -> bool {
@@ -471,8 +511,6 @@ impl Connection {
                 stream,
                 now,
                 instance_id,
-                req_handle,
-                stream_handle,
                 packet_buf,
                 tmp_buf,
             ),
@@ -484,8 +522,6 @@ impl Connection {
                     stream,
                     now,
                     instance_id,
-                    req_handle,
-                    stream_handle,
                     packet_buf,
                     tmp_buf,
                 );
@@ -508,14 +544,12 @@ impl Connection {
         stream: &mut S,
         now: Instant,
         instance_id: &str,
-        req_handle: &mut zhttpsocket::ClientReqHandle,
-        stream_handle: &mut ClientStreamHandle,
         packet_buf: &mut [u8],
         tmp_buf: &mut [u8],
     ) -> bool {
         match conn {
-            ServerConnection::Req(conn) => {
-                match conn.process(now, stream, req_handle, packet_buf) {
+            ServerConnection::Req(conn, sender) => {
+                match conn.process(now, stream, sender, packet_buf) {
                     Ok(w) => *want = w,
                     Err(e) => {
                         debug!("conn {}: process error: {:?}", id, e);
@@ -527,8 +561,8 @@ impl Connection {
                     return true;
                 }
             }
-            ServerConnection::Stream(conn) => {
-                match conn.process(now, instance_id, stream, stream_handle, packet_buf, tmp_buf) {
+            ServerConnection::Stream(conn, senders) => {
+                match conn.process(now, instance_id, stream, senders, packet_buf, tmp_buf) {
                     Ok(w) => *want = w,
                     Err(e) => {
                         debug!("conn {}: process error: {:?}", id, e);
@@ -543,6 +577,28 @@ impl Connection {
         }
 
         false
+    }
+
+    fn deregister(&mut self, poller: &event::Poller) {
+        if let Some(stream) = self.stream.get_tcp() {
+            poller.deregister(stream).unwrap();
+        }
+
+        match &self.conn {
+            ServerConnection::Req(_, sender) => {
+                poller
+                    .deregister_custom(sender.get_write_registration())
+                    .unwrap();
+            }
+            ServerConnection::Stream(_, senders) => {
+                poller
+                    .deregister_custom(&senders.out.get_write_registration())
+                    .unwrap();
+                poller
+                    .deregister_custom(&senders.out_stream.get_write_registration())
+                    .unwrap();
+            }
+        }
     }
 }
 
@@ -586,11 +642,6 @@ impl KeySet {
             None => None,
         }
     }
-}
-
-enum ZWrite {
-    Server,
-    Connection(usize),
 }
 
 struct Worker {
@@ -672,83 +723,6 @@ impl Worker {
         ArrayString::from_str(s).unwrap()
     }
 
-    fn flush_send_to(
-        can_zstream_out_stream_write: &mut bool,
-        stream_handle: &mut ClientStreamHandle,
-    ) {
-        match stream_handle.flush_send_to() {
-            Ok(_) => {}
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                *can_zstream_out_stream_write = false
-            }
-            Err(e) => error!("zhttp write error: {:?}", e),
-        }
-    }
-
-    fn zwrite_queue_next(
-        can_zreq_write: bool,
-        can_zstream_out_write: bool,
-        zwrite_nodes: &Slab<list::Node<ZWrite>>,
-        zwrite_req: &list::List,
-        zwrite_stream: &list::List,
-        zwrite_stream_to: &list::List,
-        stream_handle: &ClientStreamHandle,
-        needs_process: &mut KeySet,
-    ) {
-        if can_zreq_write {
-            if let Some(nkey) = zwrite_req.head {
-                let n = &zwrite_nodes[nkey];
-                match n.value {
-                    ZWrite::Connection(key) => needs_process.add(key),
-                    ZWrite::Server => {}
-                }
-            }
-        }
-
-        if can_zstream_out_write {
-            if let Some(nkey) = zwrite_stream.head {
-                let n = &zwrite_nodes[nkey];
-                match n.value {
-                    ZWrite::Connection(key) => needs_process.add(key),
-                    ZWrite::Server => {}
-                }
-            }
-        }
-
-        if stream_handle.pending_send_to() == 0 {
-            if let Some(nkey) = zwrite_stream_to.head {
-                let n = &zwrite_nodes[nkey];
-                match n.value {
-                    ZWrite::Connection(key) => needs_process.add(key),
-                    ZWrite::Server => {}
-                }
-            }
-        }
-    }
-
-    fn zwrite_remove(
-        k: ZWriteKey,
-        zwrite_nodes: &mut Slab<list::Node<ZWrite>>,
-        zwrite_req: &mut list::List,
-        zwrite_stream: &mut list::List,
-        zwrite_stream_to: &mut list::List,
-    ) {
-        match k {
-            ZWriteKey::Req(nkey) => {
-                zwrite_req.remove(zwrite_nodes, nkey);
-                zwrite_nodes.remove(nkey);
-            }
-            ZWriteKey::Stream(nkey) => {
-                zwrite_stream.remove(zwrite_nodes, nkey);
-                zwrite_nodes.remove(nkey);
-            }
-            ZWriteKey::StreamTo(nkey) => {
-                zwrite_stream_to.remove(zwrite_nodes, nkey);
-                zwrite_nodes.remove(nkey);
-            }
-        }
-    }
-
     fn run(
         instance_id: String,
         id: usize,
@@ -795,12 +769,6 @@ impl Worker {
         let mut ka_addrs: Vec<(ArrayVec<[u8; 64]>, list::List)> = Vec::with_capacity(ka_batch);
         let mut ka_ids_mem: Vec<zhttppacket::Id> = Vec::with_capacity(ka_batch);
 
-        let mut zwrite_nodes: Slab<list::Node<ZWrite>> = Slab::with_capacity(maxconn + 1);
-        let mut zwrite_req = list::List::default();
-        let mut zwrite_stream = list::List::default();
-        let mut zwrite_stream_to = list::List::default();
-        let mut server_zwrite_key = None;
-
         let mut req_tls_acceptors = Vec::new();
 
         for config in req_acceptor_tls {
@@ -825,8 +793,8 @@ impl Worker {
 
         debug!("worker {}: allocating done", id);
 
-        // register_custom is called 8 times
-        let mut poller = event::Poller::new(8).unwrap();
+        // register_custom is called 12 times + 1 per req connection + 2 per stream connection
+        let mut poller = event::Poller::new(12 + req_maxconn + (stream_maxconn * 2)).unwrap();
 
         poller
             .register_custom(
@@ -853,7 +821,7 @@ impl Worker {
             .unwrap();
 
         let mut req_handle = zsockman.client_req_handle(format!("{}-", id).as_bytes());
-        let stream_handle = zsockman.client_stream_handle(format!("{}-", id).as_bytes());
+        let mut stream_handle = zsockman.client_stream_handle(format!("{}-", id).as_bytes());
 
         poller
             .register_custom(
@@ -895,7 +863,53 @@ impl Worker {
             )
             .unwrap();
 
-        let mut stream_handle = ClientStreamHandle::new(stream_handle, ka_batch);
+        // bound is 1, for fairness. sends from multiple connections will be interleaved
+        // max_senders is 1 per connection + 1 for the worker itself
+        let (zreq_sender, zreq_receiver) = channel::local_channel(1, req_maxconn + 1);
+        let (zstream_out_sender, zstream_out_receiver) =
+            channel::local_channel(1, stream_maxconn + 1);
+        let (zstream_out_stream_sender, zstream_out_stream_receiver) =
+            channel::local_channel(1, stream_maxconn + 1);
+
+        poller
+            .register_custom(
+                zreq_receiver.get_read_registration(),
+                mio::Token(HANDLE_BASE + 5),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
+
+        poller
+            .register_custom(
+                zstream_out_receiver.get_read_registration(),
+                mio::Token(HANDLE_BASE + 6),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
+
+        poller
+            .register_custom(
+                zstream_out_stream_receiver.get_read_registration(),
+                mio::Token(HANDLE_BASE + 7),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
+
+        poller
+            .register_custom(
+                zstream_out_stream_sender.get_write_registration(),
+                mio::Token(HANDLE_BASE + 8),
+                mio::Interest::WRITABLE,
+            )
+            .unwrap();
+
+        let mut zreq_receiver_ready = true;
+        let mut zstream_out_receiver_ready = true;
+        let mut zstream_out_stream_receiver_ready = true;
+        let mut zstream_out_stream_sender_ready = true;
+        let mut req_send_pending = None;
+        let mut stream_out_send_pending = None;
+        let mut stream_out_stream_send_pending = None;
 
         let mut can_req_accept = true;
         let mut can_stream_accept = true;
@@ -962,18 +976,19 @@ impl Worker {
 
                 assert!(conns.len() < conns.capacity());
 
+                let zreq_sender = zreq_sender.try_clone().unwrap();
+
                 let entry = conns.vacant_entry();
                 let key = entry.key();
 
-                let c = Connection::new(
+                let c = Connection::new_req(
                     stream,
                     peer_addr,
-                    ZhttpMode::Req,
                     buffer_size,
                     body_buffer_size,
-                    messages_max,
                     &rb_tmp,
                     req_timeout,
+                    zreq_sender,
                 );
 
                 entry.insert(c);
@@ -993,8 +1008,16 @@ impl Worker {
                 poller
                     .register(
                         c.get_tcp().unwrap(),
-                        mio::Token(CONN_BASE + (key * 4) + 0),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 0),
                         ready_flags,
+                    )
+                    .unwrap();
+
+                poller
+                    .register_custom(
+                        c.get_zreq_sender().get_write_registration(),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 1),
+                        mio::Interest::WRITABLE,
                     )
                     .unwrap();
 
@@ -1035,18 +1058,22 @@ impl Worker {
 
                 assert!(conns.len() < conns.capacity());
 
+                let zstream_senders = StreamLocalSenders::new(
+                    zstream_out_sender.try_clone().unwrap(),
+                    zstream_out_stream_sender.try_clone().unwrap(),
+                );
+
                 let entry = conns.vacant_entry();
                 let key = entry.key();
 
-                let c = Connection::new(
+                let c = Connection::new_stream(
                     stream,
                     peer_addr,
-                    ZhttpMode::Stream,
                     buffer_size,
-                    body_buffer_size,
                     messages_max,
                     &rb_tmp,
                     stream_timeout,
+                    zstream_senders,
                 );
 
                 entry.insert(c);
@@ -1066,8 +1093,24 @@ impl Worker {
                 poller
                     .register(
                         c.get_tcp().unwrap(),
-                        mio::Token(CONN_BASE + (key * 4) + 0),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 0),
                         ready_flags,
+                    )
+                    .unwrap();
+
+                poller
+                    .register_custom(
+                        c.get_zstream_senders().out.get_write_registration(),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 1),
+                        mio::Interest::WRITABLE,
+                    )
+                    .unwrap();
+
+                poller
+                    .register_custom(
+                        c.get_zstream_senders().out_stream.get_write_registration(),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 2),
+                        mio::Interest::WRITABLE,
                     )
                     .unwrap();
 
@@ -1145,7 +1188,7 @@ impl Worker {
                 //   flag things to do later in c.process()
 
                 loop {
-                    let msg = match stream_handle.inner.recv() {
+                    let msg = match stream_handle.recv() {
                         Ok(msg) => msg,
                         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                             break;
@@ -1217,73 +1260,13 @@ impl Worker {
                 can_zstream_in_read = false;
             }
 
-            Self::flush_send_to(&mut can_zstream_out_stream_write, &mut stream_handle);
-
-            Self::zwrite_queue_next(
-                can_zreq_write,
-                can_zstream_out_write,
-                &zwrite_nodes,
-                &zwrite_req,
-                &zwrite_stream,
-                &zwrite_stream_to,
-                &stream_handle,
-                &mut needs_process,
-            );
-
             while let Some(key) = needs_process.take() {
                 let c = &mut conns[key];
 
-                stream_handle.set_send_to_allowed(false);
-
-                if let Some(k) = c.zwrite_key {
-                    let (at_head, is_stream_to) = match k {
-                        ZWriteKey::Req(nkey) => (zwrite_req.head == Some(nkey), false),
-                        ZWriteKey::Stream(nkey) => (zwrite_stream.head == Some(nkey), false),
-                        ZWriteKey::StreamTo(nkey) => (zwrite_stream_to.head == Some(nkey), true),
-                    };
-
-                    // remove from zwrite before processing. if it's still
-                    //   needed it will be re-added
-                    if at_head {
-                        if is_stream_to {
-                            stream_handle.set_send_to_allowed(true);
-                        }
-
-                        c.zwrite_key = None;
-
-                        Self::zwrite_remove(
-                            k,
-                            &mut zwrite_nodes,
-                            &mut zwrite_req,
-                            &mut zwrite_stream,
-                            &mut zwrite_stream_to,
-                        );
-                    }
-                }
-
-                if c.process(
-                    now,
-                    &instance_id,
-                    &mut req_handle,
-                    &mut stream_handle,
-                    &mut packet_buf,
-                    &mut tmp_buf,
-                ) {
+                if c.process(now, &instance_id, &mut packet_buf, &mut tmp_buf) {
                     debug!("conn {}: destroying", c.id);
 
-                    if let Some(stream) = c.get_tcp() {
-                        poller.deregister(stream).unwrap();
-                    }
-
-                    if let Some(k) = c.zwrite_key.take() {
-                        Self::zwrite_remove(
-                            k,
-                            &mut zwrite_nodes,
-                            &mut zwrite_req,
-                            &mut zwrite_stream,
-                            &mut zwrite_stream_to,
-                        );
-                    }
+                    c.deregister(&poller);
 
                     if let Some((timer_id, _)) = c.timer {
                         timers.remove(timer_id);
@@ -1305,50 +1288,6 @@ impl Worker {
                     needs_process.add(key);
                     continue;
                 }
-
-                if c.want.zhttp_write {
-                    match c.mode() {
-                        ZhttpMode::Req => {
-                            can_zreq_write = false;
-                        }
-                        ZhttpMode::Stream => {
-                            can_zstream_out_write = false;
-                        }
-                    }
-                }
-
-                if c.zwrite_key.is_none() && (c.want.zhttp_write || c.want.zhttp_write_to) {
-                    let nkey = zwrite_nodes.insert(list::Node::new(ZWrite::Connection(key)));
-
-                    match c.mode() {
-                        ZhttpMode::Req => {
-                            c.zwrite_key = Some(ZWriteKey::Req(nkey));
-                            zwrite_req.push_back(&mut zwrite_nodes, nkey);
-                        }
-                        ZhttpMode::Stream => {
-                            if c.want.zhttp_write_to {
-                                c.zwrite_key = Some(ZWriteKey::StreamTo(nkey));
-                                zwrite_stream_to.push_back(&mut zwrite_nodes, nkey);
-                            } else {
-                                c.zwrite_key = Some(ZWriteKey::Stream(nkey));
-                                zwrite_stream.push_back(&mut zwrite_nodes, nkey);
-                            }
-                        }
-                    }
-                }
-
-                Self::flush_send_to(&mut can_zstream_out_stream_write, &mut stream_handle);
-
-                Self::zwrite_queue_next(
-                    can_zreq_write,
-                    can_zstream_out_write,
-                    &zwrite_nodes,
-                    &zwrite_req,
-                    &zwrite_stream,
-                    &zwrite_stream_to,
-                    &stream_handle,
-                    &mut needs_process,
-                );
 
                 if let Some(want_exp_time) = c.want.timeout {
                     // convert to ticks
@@ -1377,31 +1316,16 @@ impl Worker {
                 }
             }
 
-            if now >= last_keep_alive_time + KEEP_ALIVE_INTERVAL && server_zwrite_key.is_none() {
-                let nkey = zwrite_nodes.insert(list::Node::new(ZWrite::Server));
-                server_zwrite_key = Some(nkey);
-                zwrite_stream_to.push_back(&mut zwrite_nodes, nkey);
-            }
-
             let mut do_keep_alives = false;
 
-            stream_handle.set_send_to_allowed(true);
-
-            // is there room to write and the server is up next?
-            if stream_handle.pending_send_to() == 0 {
-                if let Some(nkey) = zwrite_stream_to.head {
-                    let n = &zwrite_nodes[nkey];
-                    match n.value {
-                        ZWrite::Connection(_) => {}
-                        ZWrite::Server => {
-                            zwrite_stream_to.remove(&mut zwrite_nodes, nkey);
-
-                            server_zwrite_key = None;
-                            zwrite_nodes.remove(nkey);
-
-                            do_keep_alives = true;
-                        }
-                    }
+            if now >= last_keep_alive_time + KEEP_ALIVE_INTERVAL && zstream_out_stream_sender_ready
+            {
+                if zstream_out_stream_sender.check_send() {
+                    // if check_send returns true, we are guaranteed to be able to send
+                    do_keep_alives = true;
+                } else {
+                    // if check_send returns false, we'll be on the waitlist for a notification
+                    zstream_out_stream_sender_ready = false;
                 }
             }
 
@@ -1421,7 +1345,7 @@ impl Worker {
                     if let Some(c) = conns.get(key) {
                         // only send keep-alives to stream connections
                         let conn = match &c.conn {
-                            ServerConnection::Stream(conn) => conn,
+                            ServerConnection::Stream(conn, _) => conn,
                             _ => continue,
                         };
 
@@ -1466,7 +1390,7 @@ impl Worker {
 
                         // this must succeed since we checked it earlier
                         let conn = match &c.conn {
-                            ServerConnection::Stream(conn) => conn,
+                            ServerConnection::Stream(conn, _) => conn,
                             _ => unreachable!(),
                         };
 
@@ -1499,7 +1423,7 @@ impl Worker {
 
                         // this must succeed since we checked it earlier
                         let conn = match &mut c.conn {
-                            ServerConnection::Stream(conn) => conn,
+                            ServerConnection::Stream(conn, _) => conn,
                             _ => unreachable!(),
                         };
 
@@ -1518,12 +1442,84 @@ impl Worker {
                 }
             }
 
+            if req_send_pending.is_none() && zreq_receiver_ready {
+                match zreq_receiver.try_recv() {
+                    Ok(msg) => req_send_pending = Some(msg),
+                    Err(mpsc::TryRecvError::Empty) => zreq_receiver_ready = false,
+                    Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
+                }
+            }
+
+            if can_zreq_write {
+                if let Some(msg) = req_send_pending.take() {
+                    match req_handle.send(msg) {
+                        Ok(()) => {}
+                        Err(zhttpsocket::SendError::Full(msg)) => {
+                            req_send_pending = Some(msg);
+
+                            can_zreq_write = false;
+                        }
+                        Err(zhttpsocket::SendError::Io(e)) => error!("req send error: {}", e),
+                    }
+                }
+            }
+
+            if stream_out_send_pending.is_none() && zstream_out_receiver_ready {
+                match zstream_out_receiver.try_recv() {
+                    Ok(msg) => stream_out_send_pending = Some(msg),
+                    Err(mpsc::TryRecvError::Empty) => zstream_out_receiver_ready = false,
+                    Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
+                }
+            }
+
+            if can_zstream_out_write {
+                if let Some(msg) = stream_out_send_pending.take() {
+                    match stream_handle.send_to_any(msg) {
+                        Ok(()) => {}
+                        Err(zhttpsocket::SendError::Full(msg)) => {
+                            stream_out_send_pending = Some(msg);
+
+                            can_zstream_out_write = false;
+                        }
+                        Err(zhttpsocket::SendError::Io(e)) => {
+                            error!("stream out send error: {}", e)
+                        }
+                    }
+                }
+            }
+
+            if stream_out_stream_send_pending.is_none() && zstream_out_stream_receiver_ready {
+                match zstream_out_stream_receiver.try_recv() {
+                    Ok(msg) => stream_out_stream_send_pending = Some(msg),
+                    Err(mpsc::TryRecvError::Empty) => zstream_out_stream_receiver_ready = false,
+                    Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
+                }
+            }
+
+            if can_zstream_out_stream_write {
+                if let Some((addr, msg)) = stream_out_stream_send_pending.take() {
+                    match stream_handle.send_to_addr(&addr, msg) {
+                        Ok(()) => {}
+                        Err(zhttpsocket::SendError::Full(msg)) => {
+                            stream_out_stream_send_pending = Some((addr, msg));
+
+                            can_zstream_out_stream_write = false;
+                        }
+                        Err(zhttpsocket::SendError::Io(e)) => {
+                            error!("stream out stream send error: {}", e)
+                        }
+                    }
+                }
+            }
+
             let timeout = if (can_req_accept && req_count < req_maxconn)
                 || (can_stream_accept && stream_count < stream_maxconn)
-                || (can_zreq_write && !zwrite_req.is_empty())
-                || (can_zstream_out_write && !zwrite_stream.is_empty())
-                || (stream_handle.pending_send_to() == 0 && !zwrite_stream_to.is_empty())
-                || (can_zstream_out_stream_write && stream_handle.pending_send_to() > 0)
+                || (req_send_pending.is_none() && zreq_receiver_ready)
+                || (can_zreq_write && req_send_pending.is_some())
+                || (stream_out_send_pending.is_none() && zstream_out_receiver_ready)
+                || (can_zstream_out_write && stream_out_send_pending.is_some())
+                || (stream_out_stream_send_pending.is_none() && zstream_out_stream_receiver_ready)
+                || (can_zstream_out_stream_write && stream_out_stream_send_pending.is_some())
             {
                 Duration::from_millis(0)
             } else if let Some(t) = timers.timeout() {
@@ -1572,34 +1568,65 @@ impl Worker {
                         debug!("worker {}: zhttp stream out stream write event", id);
                         can_zstream_out_stream_write = true;
                     }
+                    mio::Token(9) => {
+                        debug!("worker {}: zreq receiver ready", id);
+                        zreq_receiver_ready = true;
+                    }
+                    mio::Token(10) => {
+                        debug!("worker {}: zstream out receiver ready", id);
+                        zstream_out_receiver_ready = true;
+                    }
+                    mio::Token(11) => {
+                        debug!("worker {}: zstream out stream receiver ready", id);
+                        zstream_out_stream_receiver_ready = true;
+                    }
+                    mio::Token(12) => {
+                        debug!("worker {}: zstream out stream sender ready", id);
+                        zstream_out_stream_sender_ready = true;
+                    }
                     token => {
-                        let key = (usize::from(token) - CONN_BASE) / 4;
+                        let key = (usize::from(token) - CONN_BASE) / TOKENS_PER_CONN;
+                        let subkey = (usize::from(token) - CONN_BASE) % TOKENS_PER_CONN;
 
                         let c = &mut conns[key];
 
-                        let using_tls = match &c.stream {
-                            Stream::Tls(_) => true,
-                            _ => false,
-                        };
+                        if subkey == 0 {
+                            let using_tls = match &c.stream {
+                                Stream::Tls(_) => true,
+                                _ => false,
+                            };
 
-                        let readable = event.is_readable();
-                        let writable = event.is_writable();
+                            let readable = event.is_readable();
+                            let writable = event.is_writable();
 
-                        if readable {
-                            debug!("conn {}: sock read event", c.id);
-                        }
+                            if readable {
+                                debug!("conn {}: sock read event", c.id);
+                            }
 
-                        // for TLS, set readable on all events
-                        if readable || using_tls {
-                            c.set_sock_readable();
-                        }
+                            // for TLS, set readable on all events
+                            if readable || using_tls {
+                                c.set_sock_readable();
+                            }
 
-                        if writable {
-                            debug!("conn {}: sock write event", c.id);
-                        }
+                            if writable {
+                                debug!("conn {}: sock write event", c.id);
+                            }
 
-                        if (readable && c.want.sock_read) || (writable && c.want.sock_write) {
-                            needs_process.add(key);
+                            if (readable && c.want.sock_read) || (writable && c.want.sock_write) {
+                                needs_process.add(key);
+                            }
+                        } else if subkey == 1 {
+                            // zhttp sender req/out ready
+                            if c.want.zhttp_write {
+                                needs_process.add(key);
+                            }
+                        } else if subkey == 2 {
+                            c.set_out_stream_can_write();
+
+                            // zhttp sender out_stream ready
+                            if c.want.zhttp_write_to {
+                                needs_process.add(key);
+                            }
                         }
                     }
                 }
@@ -1630,7 +1657,7 @@ impl Worker {
                 if let Some(c) = conns.get(key) {
                     // only send cancels to stream connections
                     let conn = match &c.conn {
-                        ServerConnection::Stream(conn) => conn,
+                        ServerConnection::Stream(conn, _) => conn,
                         _ => continue,
                     };
 
@@ -1675,7 +1702,7 @@ impl Worker {
 
                     // this must succeed since we checked it earlier
                     let conn = match &c.conn {
-                        ServerConnection::Stream(conn) => conn,
+                        ServerConnection::Stream(conn, _) => conn,
                         _ => unreachable!(),
                     };
 
@@ -1708,7 +1735,7 @@ impl Worker {
 
                     // this must succeed since we checked it earlier
                     let conn = match &mut c.conn {
-                        ServerConnection::Stream(conn) => conn,
+                        ServerConnection::Stream(conn, _) => conn,
                         _ => unreachable!(),
                     };
 
@@ -1717,8 +1744,6 @@ impl Worker {
                     next = n.next;
                 }
             }
-
-            Self::flush_send_to(&mut can_zstream_out_stream_write, &mut stream_handle);
 
             // give zsockman some time to process pending messages
             thread::sleep(Duration::from_millis(10));
