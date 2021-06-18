@@ -15,8 +15,13 @@
  */
 
 use crate::event;
+use crate::list;
 use mio;
+use slab::Slab;
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::mem;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -200,6 +205,244 @@ pub fn channel<T>(bound: usize) -> (Sender<T>, Receiver<T>) {
 
         (sender, receiver)
     }
+}
+
+struct LocalSenderData {
+    notified: bool,
+    write_set_readiness: event::SetReadiness,
+}
+
+struct LocalSenders {
+    nodes: Slab<list::Node<LocalSenderData>>,
+    waiting: list::List,
+}
+
+struct LocalChannel<T> {
+    queue: RefCell<VecDeque<T>>,
+    senders: RefCell<LocalSenders>,
+    read_set_readiness: RefCell<Option<event::SetReadiness>>,
+}
+
+impl<T> LocalChannel<T> {
+    fn senders_is_empty(&self) -> bool {
+        self.senders.borrow().nodes.is_empty()
+    }
+
+    fn add_sender(&self, write_sr: event::SetReadiness) -> Result<usize, ()> {
+        let mut senders = self.senders.borrow_mut();
+
+        if senders.nodes.len() == senders.nodes.capacity() {
+            return Err(());
+        }
+
+        let key = senders.nodes.insert(list::Node::new(LocalSenderData {
+            notified: false,
+            write_set_readiness: write_sr,
+        }));
+
+        Ok(key)
+    }
+
+    fn remove_sender(&self, key: usize) {
+        let senders = &mut *self.senders.borrow_mut();
+
+        senders.waiting.remove(&mut senders.nodes, key);
+        senders.nodes.remove(key);
+
+        if senders.nodes.is_empty() {
+            if let Some(read_sr) = &*self.read_set_readiness.borrow() {
+                // notify for disconnect
+                read_sr.set_readiness(mio::Interest::READABLE).unwrap();
+            }
+        }
+    }
+
+    fn set_sender_waiting(&self, key: usize) {
+        let senders = &mut *self.senders.borrow_mut();
+
+        // add if not already present
+        if senders.nodes[key].prev.is_none() && senders.waiting.head != Some(key) {
+            senders.waiting.push_back(&mut senders.nodes, key);
+        }
+    }
+
+    fn notify_one_sender(&self) {
+        let senders = &mut *self.senders.borrow_mut();
+
+        // notify next waiting sender, if any
+        if let Some(key) = senders.waiting.pop_front(&mut senders.nodes) {
+            let sender = &mut senders.nodes[key].value;
+
+            sender.notified = true;
+            sender
+                .write_set_readiness
+                .set_readiness(mio::Interest::WRITABLE)
+                .unwrap();
+        }
+    }
+
+    fn sender_is_notified(&self, key: usize) -> bool {
+        self.senders.borrow().nodes[key].value.notified
+    }
+
+    fn clear_sender_notified(&self, key: usize) {
+        self.senders.borrow_mut().nodes[key].value.notified = false;
+    }
+}
+
+pub struct LocalSender<T> {
+    channel: Rc<LocalChannel<T>>,
+    key: usize,
+    write_registration: event::Registration,
+}
+
+impl<T> LocalSender<T> {
+    pub fn get_write_registration(&self) -> &event::Registration {
+        &self.write_registration
+    }
+
+    // if this returns true, then the next call to try_send() by any sender
+    // is guaranteed to not return TrySendError::Full.
+    // if this returns false, the sender is added to the wait list
+    pub fn check_send(&self) -> bool {
+        let queue = self.channel.queue.borrow();
+
+        let can_send = queue.len() < queue.capacity();
+
+        if !can_send {
+            self.channel.set_sender_waiting(self.key);
+        }
+
+        can_send
+    }
+
+    pub fn try_send(&self, t: T) -> Result<(), mpsc::TrySendError<T>> {
+        // we are acting, so clear the notified flag
+        self.channel.clear_sender_notified(self.key);
+
+        let read_sr = &*self.channel.read_set_readiness.borrow();
+
+        let read_sr = match read_sr {
+            Some(sr) => sr,
+            None => {
+                // receiver is disconnected
+                return Err(mpsc::TrySendError::Disconnected(t));
+            }
+        };
+
+        let mut queue = self.channel.queue.borrow_mut();
+
+        if queue.len() < queue.capacity() {
+            queue.push_back(t);
+
+            read_sr.set_readiness(mio::Interest::READABLE).unwrap();
+
+            Ok(())
+        } else {
+            self.channel.set_sender_waiting(self.key);
+
+            Err(mpsc::TrySendError::Full(t))
+        }
+    }
+
+    pub fn cancel(&self) {
+        // if we were notified but never acted on it, notify the next waiting sender, if any
+        if self.channel.sender_is_notified(self.key) {
+            self.channel.clear_sender_notified(self.key);
+
+            self.channel.notify_one_sender();
+        }
+    }
+
+    pub fn try_clone(&self) -> Result<Self, ()> {
+        let (write_reg, write_sr) = event::Registration::new();
+
+        let key = self.channel.add_sender(write_sr)?;
+
+        Ok(Self {
+            channel: self.channel.clone(),
+            key,
+            write_registration: write_reg,
+        })
+    }
+}
+
+impl<T> Drop for LocalSender<T> {
+    fn drop(&mut self) {
+        self.cancel();
+
+        self.channel.remove_sender(self.key);
+    }
+}
+
+pub struct LocalReceiver<T> {
+    channel: Rc<LocalChannel<T>>,
+    read_registration: event::Registration,
+}
+
+impl<T> LocalReceiver<T> {
+    pub fn get_read_registration(&self) -> &event::Registration {
+        &self.read_registration
+    }
+
+    pub fn try_recv(&self) -> Result<T, mpsc::TryRecvError> {
+        if self.channel.senders_is_empty() {
+            return Err(mpsc::TryRecvError::Disconnected);
+        }
+
+        let mut queue = self.channel.queue.borrow_mut();
+
+        if !queue.is_empty() {
+            let value = queue.pop_front().unwrap();
+
+            self.channel.notify_one_sender();
+
+            Ok(value)
+        } else {
+            Err(mpsc::TryRecvError::Empty)
+        }
+    }
+}
+
+impl<T> Drop for LocalReceiver<T> {
+    fn drop(&mut self) {
+        *self.channel.read_set_readiness.borrow_mut() = None;
+    }
+}
+
+pub fn local_channel<T>(bound: usize, max_senders: usize) -> (LocalSender<T>, LocalReceiver<T>) {
+    let (read_reg, read_sr) = event::Registration::new();
+    let (write_reg, write_sr) = event::Registration::new();
+
+    // no support for rendezvous channels
+    assert!(bound > 0);
+
+    // need to support at least one sender
+    assert!(max_senders > 0);
+
+    let channel = Rc::new(LocalChannel {
+        queue: RefCell::new(VecDeque::with_capacity(bound)),
+        senders: RefCell::new(LocalSenders {
+            nodes: Slab::with_capacity(max_senders),
+            waiting: list::List::default(),
+        }),
+        read_set_readiness: RefCell::new(Some(read_sr)),
+    });
+
+    let key = channel.add_sender(write_sr).unwrap();
+
+    let sender = LocalSender {
+        channel: channel.clone(),
+        key,
+        write_registration: write_reg,
+    };
+
+    let receiver = LocalReceiver {
+        channel: channel.clone(),
+        read_registration: read_reg,
+    };
+
+    (sender, receiver)
 }
 
 #[cfg(test)]
@@ -408,5 +651,163 @@ mod tests {
 
         let e = receiver.try_recv().unwrap_err();
         assert_eq!(e, mpsc::TryRecvError::Disconnected);
+    }
+
+    #[test]
+    fn test_local_send_recv() {
+        let (sender1, receiver) = local_channel(1, 2);
+
+        assert_eq!(receiver.try_recv(), Err(mpsc::TryRecvError::Empty));
+
+        assert_eq!(sender1.try_send(1), Ok(()));
+
+        assert_eq!(receiver.try_recv(), Ok(1));
+
+        let sender2 = sender1.try_clone().unwrap();
+
+        assert_eq!(sender1.try_send(2), Ok(()));
+
+        let channel = sender2.channel.clone();
+
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), true);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender2.key].value.notified,
+            false
+        );
+
+        assert_eq!(sender2.try_send(3), Err(mpsc::TrySendError::Full(3)));
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), false);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender2.key].value.notified,
+            false
+        );
+
+        assert_eq!(receiver.try_recv(), Ok(2));
+
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), true);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender2.key].value.notified,
+            true
+        );
+
+        assert_eq!(sender2.try_send(3), Ok(()));
+        assert_eq!(
+            channel.senders.borrow().nodes[sender2.key].value.notified,
+            false
+        );
+
+        assert_eq!(receiver.try_recv(), Ok(3));
+
+        mem::drop(sender1);
+        mem::drop(sender2);
+
+        assert_eq!(receiver.try_recv(), Err(mpsc::TryRecvError::Disconnected));
+    }
+
+    #[test]
+    fn test_local_send_disc() {
+        let (sender, receiver) = local_channel(1, 1);
+
+        mem::drop(receiver);
+
+        assert_eq!(sender.try_send(1), Err(mpsc::TrySendError::Disconnected(1)));
+    }
+
+    #[test]
+    fn test_local_cancel() {
+        let (sender1, receiver) = local_channel(1, 2);
+
+        let sender2 = sender1.try_clone().unwrap();
+        let channel = sender2.channel.clone();
+
+        assert_eq!(sender1.try_send(1), Ok(()));
+
+        assert_eq!(sender2.try_send(2), Err(mpsc::TrySendError::Full(2)));
+        assert_eq!(sender1.try_send(3), Err(mpsc::TrySendError::Full(3)));
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), false);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender1.key].value.notified,
+            false
+        );
+        assert_eq!(
+            channel.senders.borrow().nodes[sender2.key].value.notified,
+            false
+        );
+
+        assert_eq!(receiver.try_recv(), Ok(1));
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), false);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender1.key].value.notified,
+            false
+        );
+        assert_eq!(
+            channel.senders.borrow().nodes[sender2.key].value.notified,
+            true
+        );
+
+        sender2.cancel();
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), true);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender1.key].value.notified,
+            true
+        );
+        assert_eq!(
+            channel.senders.borrow().nodes[sender2.key].value.notified,
+            false
+        );
+
+        assert_eq!(sender1.try_send(3), Ok(()));
+        assert_eq!(
+            channel.senders.borrow().nodes[sender1.key].value.notified,
+            false
+        );
+
+        assert_eq!(receiver.try_recv(), Ok(3));
+    }
+
+    #[test]
+    fn test_local_check_send() {
+        let (sender, receiver) = local_channel(1, 1);
+
+        assert_eq!(receiver.try_recv(), Err(mpsc::TryRecvError::Empty));
+
+        let channel = sender.channel.clone();
+
+        assert_eq!(sender.check_send(), true);
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), true);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender.key].value.notified,
+            false
+        );
+
+        assert_eq!(sender.try_send(1), Ok(()));
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), true);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender.key].value.notified,
+            false
+        );
+
+        assert_eq!(sender.check_send(), false);
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), false);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender.key].value.notified,
+            false
+        );
+
+        assert_eq!(receiver.try_recv(), Ok(1));
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), true);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender.key].value.notified,
+            true
+        );
+
+        assert_eq!(sender.try_send(2), Ok(()));
+        assert_eq!(channel.senders.borrow().waiting.is_empty(), true);
+        assert_eq!(
+            channel.senders.borrow().nodes[sender.key].value.notified,
+            false
+        );
+
+        assert_eq!(receiver.try_recv(), Ok(2));
     }
 }
