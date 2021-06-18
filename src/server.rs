@@ -56,7 +56,20 @@ use std::time::{Duration, Instant};
 // we read and process each message one at a time, dropping each message before reading the next
 pub const MSG_RETAINED_MAX: usize = 1;
 
-const HANDLE_BASE: usize = 4;
+const STOP_TOKEN: mio::Token = mio::Token(1);
+const REQ_ACCEPTOR_TOKEN: mio::Token = mio::Token(2);
+const STREAM_ACCEPTOR_TOKEN: mio::Token = mio::Token(3);
+const REQ_HANDLE_READ_TOKEN: mio::Token = mio::Token(4);
+const REQ_HANDLE_WRITE_TOKEN: mio::Token = mio::Token(5);
+const STREAM_HANDLE_READ_TOKEN: mio::Token = mio::Token(6);
+const STREAM_HANDLE_WRITE_ANY_TOKEN: mio::Token = mio::Token(7);
+const STREAM_HANDLE_WRITE_ADDR_TOKEN: mio::Token = mio::Token(8);
+const ZREQ_RECEIVER_TOKEN: mio::Token = mio::Token(9);
+const ZSTREAM_OUT_RECEIVER_TOKEN: mio::Token = mio::Token(10);
+const ZSTREAM_OUT_STREAM_RECEIVER_TOKEN: mio::Token = mio::Token(11);
+const ZSTREAM_OUT_STREAM_SENDER_TOKEN: mio::Token = mio::Token(12);
+
+const BASE_TOKENS: usize = 12;
 const CONN_BASE: usize = 16;
 const TOKENS_PER_CONN: usize = 8;
 const ACCEPT_PER_LOOP_MAX: usize = 100;
@@ -793,13 +806,14 @@ impl Worker {
 
         debug!("worker {}: allocating done", id);
 
-        // register_custom is called 12 times + 1 per req connection + 2 per stream connection
-        let mut poller = event::Poller::new(12 + req_maxconn + (stream_maxconn * 2)).unwrap();
+        // BASE_TOKENS + 1 per req connection + 2 per stream connection
+        let mut poller =
+            event::Poller::new(BASE_TOKENS + req_maxconn + (stream_maxconn * 2)).unwrap();
 
         poller
             .register_custom(
                 stop.get_read_registration(),
-                mio::Token(1),
+                STOP_TOKEN,
                 mio::Interest::READABLE,
             )
             .unwrap();
@@ -807,7 +821,7 @@ impl Worker {
         poller
             .register_custom(
                 req_acceptor.get_read_registration(),
-                mio::Token(2),
+                REQ_ACCEPTOR_TOKEN,
                 mio::Interest::READABLE,
             )
             .unwrap();
@@ -815,7 +829,7 @@ impl Worker {
         poller
             .register_custom(
                 stream_acceptor.get_read_registration(),
-                mio::Token(3),
+                STREAM_ACCEPTOR_TOKEN,
                 mio::Interest::READABLE,
             )
             .unwrap();
@@ -826,7 +840,7 @@ impl Worker {
         poller
             .register_custom(
                 req_handle.get_read_registration(),
-                mio::Token(HANDLE_BASE + 0),
+                REQ_HANDLE_READ_TOKEN,
                 mio::Interest::READABLE,
             )
             .unwrap();
@@ -834,7 +848,7 @@ impl Worker {
         poller
             .register_custom(
                 req_handle.get_write_registration(),
-                mio::Token(HANDLE_BASE + 1),
+                REQ_HANDLE_WRITE_TOKEN,
                 mio::Interest::WRITABLE,
             )
             .unwrap();
@@ -842,7 +856,7 @@ impl Worker {
         poller
             .register_custom(
                 stream_handle.get_read_registration(),
-                mio::Token(HANDLE_BASE + 2),
+                STREAM_HANDLE_READ_TOKEN,
                 mio::Interest::READABLE,
             )
             .unwrap();
@@ -850,7 +864,7 @@ impl Worker {
         poller
             .register_custom(
                 stream_handle.get_write_any_registration(),
-                mio::Token(HANDLE_BASE + 3),
+                STREAM_HANDLE_WRITE_ANY_TOKEN,
                 mio::Interest::WRITABLE,
             )
             .unwrap();
@@ -858,7 +872,7 @@ impl Worker {
         poller
             .register_custom(
                 stream_handle.get_write_addr_registration(),
-                mio::Token(HANDLE_BASE + 4),
+                STREAM_HANDLE_WRITE_ADDR_TOKEN,
                 mio::Interest::WRITABLE,
             )
             .unwrap();
@@ -874,7 +888,7 @@ impl Worker {
         poller
             .register_custom(
                 zreq_receiver.get_read_registration(),
-                mio::Token(HANDLE_BASE + 5),
+                ZREQ_RECEIVER_TOKEN,
                 mio::Interest::READABLE,
             )
             .unwrap();
@@ -882,7 +896,7 @@ impl Worker {
         poller
             .register_custom(
                 zstream_out_receiver.get_read_registration(),
-                mio::Token(HANDLE_BASE + 6),
+                ZSTREAM_OUT_RECEIVER_TOKEN,
                 mio::Interest::READABLE,
             )
             .unwrap();
@@ -890,7 +904,7 @@ impl Worker {
         poller
             .register_custom(
                 zstream_out_stream_receiver.get_read_registration(),
-                mio::Token(HANDLE_BASE + 7),
+                ZSTREAM_OUT_STREAM_RECEIVER_TOKEN,
                 mio::Interest::READABLE,
             )
             .unwrap();
@@ -898,7 +912,7 @@ impl Worker {
         poller
             .register_custom(
                 zstream_out_stream_sender.get_write_registration(),
-                mio::Token(HANDLE_BASE + 8),
+                ZSTREAM_OUT_STREAM_SENDER_TOKEN,
                 mio::Interest::WRITABLE,
             )
             .unwrap();
@@ -1534,53 +1548,53 @@ impl Worker {
 
             for event in poller.iter_events() {
                 match event.token() {
-                    mio::Token(1) => {
+                    STOP_TOKEN => {
                         if stop.try_recv().is_ok() {
                             done = true;
                             break;
                         }
                     }
-                    mio::Token(2) => {
+                    REQ_ACCEPTOR_TOKEN => {
                         debug!("worker {}: req accept event", id);
                         can_req_accept = true;
                     }
-                    mio::Token(3) => {
+                    STREAM_ACCEPTOR_TOKEN => {
                         debug!("worker {}: stream accept event", id);
                         can_stream_accept = true;
                     }
-                    mio::Token(4) => {
+                    REQ_HANDLE_READ_TOKEN => {
                         debug!("worker {}: zhttp req read event", id);
                         can_zreq_read = true;
                     }
-                    mio::Token(5) => {
+                    REQ_HANDLE_WRITE_TOKEN => {
                         debug!("worker {}: zhttp req write event", id);
                         can_zreq_write = true;
                     }
-                    mio::Token(6) => {
+                    STREAM_HANDLE_READ_TOKEN => {
                         debug!("worker {}: zhttp stream in read event", id);
                         can_zstream_in_read = true;
                     }
-                    mio::Token(7) => {
+                    STREAM_HANDLE_WRITE_ANY_TOKEN => {
                         debug!("worker {}: zhttp stream out write event", id);
                         can_zstream_out_write = true;
                     }
-                    mio::Token(8) => {
+                    STREAM_HANDLE_WRITE_ADDR_TOKEN => {
                         debug!("worker {}: zhttp stream out stream write event", id);
                         can_zstream_out_stream_write = true;
                     }
-                    mio::Token(9) => {
+                    ZREQ_RECEIVER_TOKEN => {
                         debug!("worker {}: zreq receiver ready", id);
                         zreq_receiver_ready = true;
                     }
-                    mio::Token(10) => {
+                    ZSTREAM_OUT_RECEIVER_TOKEN => {
                         debug!("worker {}: zstream out receiver ready", id);
                         zstream_out_receiver_ready = true;
                     }
-                    mio::Token(11) => {
+                    ZSTREAM_OUT_STREAM_RECEIVER_TOKEN => {
                         debug!("worker {}: zstream out stream receiver ready", id);
                         zstream_out_stream_receiver_ready = true;
                     }
-                    mio::Token(12) => {
+                    ZSTREAM_OUT_STREAM_SENDER_TOKEN => {
                         debug!("worker {}: zstream out stream sender ready", id);
                         zstream_out_stream_sender_ready = true;
                     }
