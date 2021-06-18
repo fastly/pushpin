@@ -112,10 +112,14 @@ impl CustomSourcesInner {
         item.readiness.merge(readiness);
 
         if item.readiness != orig {
+            let need_wake = sources.ready.is_empty();
+
             sources.ready.remove(&mut sources.nodes, key);
             sources.ready.push_back(&mut sources.nodes, key);
 
-            self.waker.wake()?
+            if need_wake {
+                self.waker.wake()?;
+            }
         }
 
         Ok(())
