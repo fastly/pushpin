@@ -287,23 +287,23 @@ struct ClientStreamSockets {
 }
 
 struct ReqPipeEnd {
-    sender: channel::Sender<arena::Rc<zmq::Message>>,
+    sender: channel::Sender<arena::Arc<zmq::Message>>,
     receiver: channel::Receiver<zmq::Message>,
 }
 
 struct StreamPipeEnd {
-    sender: channel::Sender<arena::Rc<zmq::Message>>,
+    sender: channel::Sender<arena::Arc<zmq::Message>>,
     receiver_any: channel::Receiver<zmq::Message>,
     receiver_addr: channel::Receiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
 }
 
 struct AsyncReqPipeEnd {
-    sender: AsyncSender<arena::Rc<zmq::Message>>,
+    sender: AsyncSender<arena::Arc<zmq::Message>>,
     receiver: AsyncReceiver<zmq::Message>,
 }
 
 struct AsyncStreamPipeEnd {
-    sender: AsyncSender<arena::Rc<zmq::Message>>,
+    sender: AsyncSender<arena::Arc<zmq::Message>>,
     receiver_any: AsyncReceiver<zmq::Message>,
     receiver_addr: AsyncReceiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
 }
@@ -448,7 +448,7 @@ impl ReqHandles {
         }
     }
 
-    async fn send(&self, msg: &arena::Rc<zmq::Message>, ids: &[Id<'_>]) {
+    async fn send(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>]) {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
@@ -467,7 +467,7 @@ impl ReqHandles {
             if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
                 //   without downstream backpressure
-                match p.pe.sender.send(arena::Rc::clone(msg)).await {
+                match p.pe.sender.send(arena::Arc::clone(msg)).await {
                     Ok(_) => {}
                     Err(_) => {
                         p.valid.set(false);
@@ -620,7 +620,7 @@ impl StreamHandles {
         }
     }
 
-    async fn send(&self, msg: &arena::Rc<zmq::Message>, ids: &[Id<'_>]) {
+    async fn send(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>]) {
         let mut next = self.list.head;
 
         while let Some(nkey) = next {
@@ -639,7 +639,7 @@ impl StreamHandles {
             if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
                 //   without downstream backpressure
-                match p.pe.sender.send(arena::Rc::clone(msg)).await {
+                match p.pe.sender.send(arena::Arc::clone(msg)).await {
                     Ok(_) => {}
                     Err(_) => {
                         p.valid.set(false);
@@ -830,7 +830,7 @@ impl SocketManager {
         //   we are preparing to send to the handles
         let arena_size = (HANDLES_MAX * hwm) + retained_max + 1;
 
-        let messages_memory = Arc::new(arena::Memory::new(arena_size));
+        let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
 
         let client_req = ClientReqSockets {
             sock: AsyncZmqSocket::new(ZmqSocket::new(&ctx, zmq::DEALER)),
@@ -1126,10 +1126,10 @@ impl SocketManager {
 
     async fn handle_req_message(
         msg: zmq::Message,
-        messages_memory: &Arc<arena::RcMemory<zmq::Message>>,
+        messages_memory: &Arc<arena::ArcMemory<zmq::Message>>,
         handles: &mut ReqHandles,
     ) {
-        let msg = arena::Rc::new(msg, messages_memory).unwrap();
+        let msg = arena::Arc::new(msg, messages_memory).unwrap();
 
         let mut scratch = ResponseScratch::new();
 
@@ -1146,11 +1146,11 @@ impl SocketManager {
 
     async fn handle_stream_message(
         msg: zmq::Message,
-        messages_memory: &Arc<arena::RcMemory<zmq::Message>>,
+        messages_memory: &Arc<arena::ArcMemory<zmq::Message>>,
         instance_id: &str,
         handles: &mut StreamHandles,
     ) {
-        let msg = arena::Rc::new(msg, messages_memory).unwrap();
+        let msg = arena::Arc::new(msg, messages_memory).unwrap();
 
         let buf = msg.get();
 
@@ -1209,7 +1209,7 @@ pub enum SendError {
 
 pub struct ClientReqHandle {
     sender: channel::Sender<zmq::Message>,
-    receiver: channel::Receiver<arena::Rc<zmq::Message>>,
+    receiver: channel::Receiver<arena::Arc<zmq::Message>>,
 }
 
 impl ClientReqHandle {
@@ -1221,7 +1221,7 @@ impl ClientReqHandle {
         self.sender.get_write_registration()
     }
 
-    pub fn recv(&mut self) -> Result<arena::Rc<zmq::Message>, io::Error> {
+    pub fn recv(&mut self) -> Result<arena::Arc<zmq::Message>, io::Error> {
         match self.receiver.try_recv() {
             Ok(msg) => Ok(msg),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
@@ -1245,7 +1245,7 @@ impl ClientReqHandle {
 pub struct ClientStreamHandle {
     sender_any: channel::Sender<zmq::Message>,
     sender_addr: channel::Sender<(ArrayVec<[u8; 64]>, zmq::Message)>,
-    receiver: channel::Receiver<arena::Rc<zmq::Message>>,
+    receiver: channel::Receiver<arena::Arc<zmq::Message>>,
 }
 
 impl ClientStreamHandle {
@@ -1261,7 +1261,7 @@ impl ClientStreamHandle {
         self.sender_addr.get_write_registration()
     }
 
-    pub fn recv(&mut self) -> Result<arena::Rc<zmq::Message>, io::Error> {
+    pub fn recv(&mut self) -> Result<arena::Arc<zmq::Message>, io::Error> {
         match self.receiver.try_recv() {
             Ok(msg) => Ok(msg),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),

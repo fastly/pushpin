@@ -15,12 +15,13 @@
  */
 
 use slab::Slab;
+use std::cell::{RefCell, RefMut};
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard};
 
 pub struct EntryGuard<'a, T> {
-    entries: MutexGuard<'a, Slab<T>>,
+    entries: RefMut<'a, Slab<T>>,
     entry: &'a mut T,
     key: usize,
 }
@@ -45,15 +46,111 @@ impl<T> DerefMut for EntryGuard<'_, T> {
     }
 }
 
+// this is essentially a sharable slab for use within a single thread.
+//   operations are protected by a RefCell. when an element is retrieved for
+//   reading or modification, it is wrapped in a EntryGuard which keeps the
+//   entire slab borrowed until the caller is done working with the element
+pub struct Memory<T> {
+    entries: RefCell<Slab<T>>,
+}
+
+impl<T> Memory<T> {
+    pub fn new(capacity: usize) -> Self {
+        // allocate the slab with fixed capacity
+        let s = Slab::with_capacity(capacity);
+
+        Self {
+            entries: RefCell::new(s),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        let entries = self.entries.borrow();
+
+        entries.len()
+    }
+
+    fn insert(&self, e: T) -> Result<usize, ()> {
+        let mut entries = self.entries.borrow_mut();
+
+        // out of capacity. by preventing inserts beyond the capacity, we
+        //   ensure the underlying memory won't get moved due to a realloc
+        if entries.len() == entries.capacity() {
+            return Err(());
+        }
+
+        Ok(entries.insert(e))
+    }
+
+    fn get<'a>(&'a self, key: usize) -> Option<EntryGuard<'a, T>> {
+        let mut entries = self.entries.borrow_mut();
+
+        let entry = entries.get_mut(key)?;
+
+        // slab element addresses are guaranteed to be stable once created,
+        //   and the only place we remove the element is in EntryGuard's
+        //   remove method which consumes itself, therefore it is safe to
+        //   assume the element will live at least as long as the EntryGuard
+        //   and we can extend the lifetime of the reference beyond the
+        //   RefMut
+        let entry = unsafe { mem::transmute::<&mut T, &'a mut T>(entry) };
+
+        Some(EntryGuard {
+            entries,
+            entry,
+            key,
+        })
+    }
+
+    // for tests, as a way to confirm the memory isn't moving. be careful
+    //   with this. the very first element inserted will be at index 0, but
+    //   if the slab has been used and cleared, then the next element
+    //   inserted may not be at index 0 and calling this method afterward
+    //   will panic
+    #[cfg(test)]
+    fn entry0_ptr(&self) -> *const T {
+        let entries = self.entries.borrow();
+
+        entries.get(0).unwrap() as *const T
+    }
+}
+
+pub struct SyncEntryGuard<'a, T> {
+    entries: MutexGuard<'a, Slab<T>>,
+    entry: &'a mut T,
+    key: usize,
+}
+
+impl<T> SyncEntryGuard<'_, T> {
+    fn remove(mut self) {
+        self.entries.remove(self.key);
+    }
+}
+
+impl<T> Deref for SyncEntryGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.entry
+    }
+}
+
+impl<T> DerefMut for SyncEntryGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.entry
+    }
+}
+
 // this is essentially a thread-safe slab. operations are protected by a
 //   mutex. when an element is retrieved for reading or modification, it is
 //   wrapped in a EntryGuard which keeps the entire slab locked until the
 //   caller is done working with the element
-pub struct Memory<T> {
+pub struct SyncMemory<T> {
     entries: Mutex<Slab<T>>,
 }
 
-impl<T> Memory<T> {
+impl<T> SyncMemory<T> {
     pub fn new(capacity: usize) -> Self {
         // allocate the slab with fixed capacity
         let s = Slab::with_capacity(capacity);
@@ -82,20 +179,20 @@ impl<T> Memory<T> {
         Ok(entries.insert(e))
     }
 
-    fn get<'a>(&'a self, key: usize) -> Option<EntryGuard<'a, T>> {
+    fn get<'a>(&'a self, key: usize) -> Option<SyncEntryGuard<'a, T>> {
         let mut entries = self.entries.lock().unwrap();
 
         let entry = entries.get_mut(key)?;
 
         // slab element addresses are guaranteed to be stable once created,
-        //   and the only place we remove the element is in EntryGuard's
+        //   and the only place we remove the element is in SyncEntryGuard's
         //   remove method which consumes itself, therefore it is safe to
-        //   assume the element will live at least as long as the EntryGuard
+        //   assume the element will live at least as long as the SyncEntryGuard
         //   and we can extend the lifetime of the reference beyond the
         //   MutexGuard
         let entry = unsafe { mem::transmute::<&mut T, &'a mut T>(entry) };
 
-        Some(EntryGuard {
+        Some(SyncEntryGuard {
             entries,
             entry,
             key,
@@ -116,7 +213,7 @@ impl<T> Memory<T> {
 }
 
 pub struct ReusableValue<T> {
-    reusable: Arc<Reusable<T>>,
+    reusable: std::sync::Arc<Reusable<T>>,
     value: *mut T,
     key: usize,
 }
@@ -190,7 +287,7 @@ impl<T> Reusable<T> {
         entries.0.len()
     }
 
-    pub fn reserve(self: &Arc<Self>) -> Result<ReusableValue<T>, ()> {
+    pub fn reserve(self: &std::sync::Arc<Self>) -> Result<ReusableValue<T>, ()> {
         let mut entries = self.entries.lock().unwrap();
 
         // out of capacity. the number of buffers is fixed
@@ -203,7 +300,7 @@ impl<T> Reusable<T> {
         let value = &mut entries.1[key] as *mut T;
 
         Ok(ReusableValue {
-            reusable: Arc::clone(self),
+            reusable: self.clone(),
             value,
             key,
         })
@@ -218,16 +315,16 @@ pub struct RcEntry<T> {
 pub type RcMemory<T> = Memory<RcEntry<T>>;
 
 pub struct Rc<T> {
-    memory: Arc<RcMemory<T>>,
+    memory: std::rc::Rc<RcMemory<T>>,
     key: usize,
 }
 
 impl<T> Rc<T> {
-    pub fn new(v: T, memory: &Arc<RcMemory<T>>) -> Result<Self, ()> {
+    pub fn new(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, ()> {
         let key = memory.insert(RcEntry { value: v, refs: 1 })?;
 
         Ok(Self {
-            memory: Arc::clone(memory),
+            memory: std::rc::Rc::clone(memory),
             key,
         })
     }
@@ -238,7 +335,7 @@ impl<T> Rc<T> {
         e.refs += 1;
 
         Self {
-            memory: Arc::clone(&rc.memory),
+            memory: rc.memory.clone(),
             key: rc.key,
         }
     }
@@ -259,6 +356,62 @@ impl<T> Rc<T> {
 }
 
 impl<T> Drop for Rc<T> {
+    fn drop(&mut self) {
+        let mut e = self.memory.get(self.key).unwrap();
+
+        if e.refs == 1 {
+            e.remove();
+            return;
+        }
+
+        e.refs -= 1;
+    }
+}
+
+pub type ArcMemory<T> = SyncMemory<RcEntry<T>>;
+
+pub struct Arc<T> {
+    memory: std::sync::Arc<ArcMemory<T>>,
+    key: usize,
+}
+
+impl<T> Arc<T> {
+    pub fn new(v: T, memory: &std::sync::Arc<ArcMemory<T>>) -> Result<Self, ()> {
+        let key = memory.insert(RcEntry { value: v, refs: 1 })?;
+
+        Ok(Self {
+            memory: memory.clone(),
+            key,
+        })
+    }
+
+    pub fn clone(rc: &Arc<T>) -> Self {
+        let mut e = rc.memory.get(rc.key).unwrap();
+
+        e.refs += 1;
+
+        Self {
+            memory: rc.memory.clone(),
+            key: rc.key,
+        }
+    }
+
+    pub fn get<'a>(&'a self) -> &'a T {
+        let e = self.memory.get(self.key).unwrap();
+
+        // get a reference to the inner value
+        let value = &e.value;
+
+        // entry addresses are guaranteed to be stable once created, and the
+        //   entry managed by this Arc won't be dropped until this Arc drops,
+        //   therefore it is safe to assume the entry managed by this Arc will
+        //   live at least as long as this Arc, and we can extend the lifetime
+        //   of the reference beyond the SyncEntryGuard
+        unsafe { mem::transmute::<&T, &'a T>(value) }
+    }
+}
+
+impl<T> Drop for Arc<T> {
     fn drop(&mut self) {
         let mut e = self.memory.get(self.key).unwrap();
 
@@ -368,7 +521,7 @@ mod tests {
 
     #[test]
     fn test_reusable() {
-        let reusable = Arc::new(Reusable::new(2, || vec![0; 128]));
+        let reusable = std::sync::Arc::new(Reusable::new(2, || vec![0; 128]));
         assert_eq!(reusable.len(), 0);
 
         let mut buf1 = reusable.reserve().unwrap();
@@ -395,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_rc() {
-        let memory = Arc::new(RcMemory::new(2));
+        let memory = std::rc::Rc::new(RcMemory::new(2));
         assert_eq!(memory.len(), 0);
 
         let e0a = Rc::new(123 as i32, &memory).unwrap();
@@ -412,6 +565,41 @@ mod tests {
 
         // no room
         assert!(Rc::new(789 as i32, &memory).is_err());
+
+        assert_eq!(*e0a.get(), 123);
+        assert_eq!(*e0b.get(), 123);
+        assert_eq!(*e1a.get(), 456);
+
+        mem::drop(e0b);
+        assert_eq!(memory.len(), 2);
+        assert_eq!(memory.entry0_ptr(), p);
+
+        mem::drop(e0a);
+        assert_eq!(memory.len(), 1);
+
+        mem::drop(e1a);
+        assert_eq!(memory.len(), 0);
+    }
+
+    #[test]
+    fn test_arc() {
+        let memory = std::sync::Arc::new(ArcMemory::new(2));
+        assert_eq!(memory.len(), 0);
+
+        let e0a = Arc::new(123 as i32, &memory).unwrap();
+        assert_eq!(memory.len(), 1);
+        let p = memory.entry0_ptr();
+
+        let e0b = Arc::clone(&e0a);
+        assert_eq!(memory.len(), 1);
+        assert_eq!(memory.entry0_ptr(), p);
+
+        let e1a = Arc::new(456 as i32, &memory).unwrap();
+        assert_eq!(memory.len(), 2);
+        assert_eq!(memory.entry0_ptr(), p);
+
+        // no room
+        assert!(Arc::new(789 as i32, &memory).is_err());
 
         assert_eq!(*e0a.get(), 123);
         assert_eq!(*e0b.get(), 123);
