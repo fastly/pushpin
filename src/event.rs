@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
+use crate::arena;
 use crate::list;
 use mio::event::Source;
 use mio::{Events, Interest, Poll, Token, Waker};
 use slab::Slab;
+use std::cell::RefCell;
 use std::io;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -50,12 +53,101 @@ struct RegisteredSources {
     ready: list::List,
 }
 
-struct CustomSourcesInner {
+struct LocalSources {
+    registered_sources: RefCell<RegisteredSources>,
+}
+
+impl LocalSources {
+    fn new(max_sources: usize) -> Self {
+        Self {
+            registered_sources: RefCell::new(RegisteredSources {
+                nodes: Slab::with_capacity(max_sources),
+                ready: list::List::default(),
+            }),
+        }
+    }
+
+    fn register(&self, subtoken: Token, interests: Interest) -> Result<usize, io::Error> {
+        let sources = &mut *self.registered_sources.borrow_mut();
+
+        if sources.nodes.len() == sources.nodes.capacity() {
+            return Err(io::Error::from(io::ErrorKind::WriteZero));
+        }
+
+        Ok(sources.nodes.insert(list::Node::new(SourceItem {
+            subtoken,
+            interests,
+            readiness: None,
+        })))
+    }
+
+    fn deregister(&self, key: usize) -> Result<(), io::Error> {
+        let sources = &mut *self.registered_sources.borrow_mut();
+
+        if sources.nodes.contains(key) {
+            sources.ready.remove(&mut sources.nodes, key);
+            sources.nodes.remove(key);
+        }
+
+        Ok(())
+    }
+
+    fn set_readiness(&self, key: usize, readiness: Interest) -> Result<(), io::Error> {
+        let sources = &mut *self.registered_sources.borrow_mut();
+
+        if !sources.nodes.contains(key) {
+            return Err(io::Error::from(io::ErrorKind::NotFound));
+        }
+
+        let item = &mut sources.nodes[key].value;
+
+        if !(item.interests.is_readable() && readiness.is_readable())
+            && !(item.interests.is_writable() && readiness.is_writable())
+        {
+            // not of interest
+            return Ok(());
+        }
+
+        let orig = item.readiness;
+
+        item.readiness.merge(readiness);
+
+        if item.readiness != orig {
+            sources.ready.remove(&mut sources.nodes, key);
+            sources.ready.push_back(&mut sources.nodes, key);
+        }
+
+        Ok(())
+    }
+
+    fn has_events(&self) -> bool {
+        let sources = &*self.registered_sources.borrow();
+
+        !sources.ready.is_empty()
+    }
+
+    fn next_event(&self) -> Option<(Token, Interest)> {
+        let sources = &mut *self.registered_sources.borrow_mut();
+
+        match sources.ready.pop_front(&mut sources.nodes) {
+            Some(key) => {
+                let item = &mut sources.nodes[key].value;
+
+                let readiness = item.readiness.take().unwrap();
+
+                Some((item.subtoken, readiness))
+            }
+            None => None,
+        }
+    }
+}
+
+struct SyncSources {
     registered_sources: Mutex<RegisteredSources>,
     waker: Waker,
 }
 
-impl CustomSourcesInner {
+impl SyncSources {
     fn new(max_sources: usize, waker: Waker) -> Self {
         Self {
             registered_sources: Mutex::new(RegisteredSources {
@@ -126,7 +218,7 @@ impl CustomSourcesInner {
     }
 
     fn has_events(&self) -> bool {
-        let sources = &mut *self.registered_sources.lock().unwrap();
+        let sources = &*self.registered_sources.lock().unwrap();
 
         !sources.ready.is_empty()
     }
@@ -148,7 +240,8 @@ impl CustomSourcesInner {
 }
 
 pub struct CustomSources {
-    inner: Arc<CustomSourcesInner>,
+    local: Rc<LocalSources>,
+    sync: Arc<SyncSources>,
 }
 
 impl CustomSources {
@@ -156,8 +249,44 @@ impl CustomSources {
         let waker = Waker::new(poll.registry(), token)?;
 
         Ok(Self {
-            inner: Arc::new(CustomSourcesInner::new(max_sources, waker)),
+            local: Rc::new(LocalSources::new(max_sources)),
+            sync: Arc::new(SyncSources::new(max_sources, waker)),
         })
+    }
+
+    pub fn register_local(
+        &self,
+        registration: &LocalRegistration,
+        subtoken: Token,
+        interests: Interest,
+    ) -> Result<(), io::Error> {
+        let mut reg = registration.entry.get().data.borrow_mut();
+
+        if reg.data.is_none() {
+            let key = self.local.register(subtoken, interests)?;
+
+            reg.data = Some((key, self.local.clone()));
+
+            if let Some(readiness) = reg.readiness {
+                self.local.set_readiness(key, readiness).unwrap();
+
+                reg.readiness = None;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn deregister_local(&self, registration: &LocalRegistration) -> Result<(), io::Error> {
+        let mut reg = registration.entry.get().data.borrow_mut();
+
+        if let Some((key, _)) = reg.data {
+            self.local.deregister(key)?;
+
+            reg.data = None;
+        }
+
+        Ok(())
     }
 
     pub fn register(
@@ -169,12 +298,12 @@ impl CustomSources {
         let mut reg = registration.inner.lock().unwrap();
 
         if reg.data.is_none() {
-            let key = self.inner.register(subtoken, interests)?;
+            let key = self.sync.register(subtoken, interests)?;
 
-            reg.data = Some((key, self.inner.clone()));
+            reg.data = Some((key, self.sync.clone()));
 
             if let Some(readiness) = reg.readiness {
-                self.inner.set_readiness(key, readiness).unwrap();
+                self.sync.set_readiness(key, readiness).unwrap();
 
                 reg.readiness = None;
             }
@@ -187,7 +316,7 @@ impl CustomSources {
         let mut reg = registration.inner.lock().unwrap();
 
         if let Some((key, _)) = reg.data {
-            self.inner.deregister(key)?;
+            self.sync.deregister(key)?;
 
             reg.data = None;
         }
@@ -196,16 +325,24 @@ impl CustomSources {
     }
 
     fn has_events(&self) -> bool {
-        self.inner.has_events()
+        self.local.has_events() || self.sync.has_events()
     }
 
     pub fn next_event(&self) -> Option<(Token, Interest)> {
-        self.inner.next_event()
+        if let Some(e) = self.local.next_event() {
+            return Some(e);
+        }
+
+        if let Some(e) = self.sync.next_event() {
+            return Some(e);
+        }
+
+        None
     }
 }
 
 struct RegistrationInner {
-    data: Option<(usize, Arc<CustomSourcesInner>)>,
+    data: Option<(usize, Arc<SyncSources>)>,
     readiness: Readiness,
 }
 
@@ -257,6 +394,71 @@ impl SetReadiness {
     }
 }
 
+struct LocalRegistrationData {
+    data: Option<(usize, Rc<LocalSources>)>,
+    readiness: Readiness,
+}
+
+pub struct LocalRegistrationEntry {
+    data: RefCell<LocalRegistrationData>,
+}
+
+pub struct LocalRegistration {
+    entry: arena::Rc<LocalRegistrationEntry>,
+}
+
+impl LocalRegistration {
+    pub fn new(memory: &Rc<arena::RcMemory<LocalRegistrationEntry>>) -> (Self, LocalSetReadiness) {
+        let reg = arena::Rc::new(
+            LocalRegistrationEntry {
+                data: RefCell::new(LocalRegistrationData {
+                    data: None,
+                    readiness: None,
+                }),
+            },
+            memory,
+        )
+        .unwrap();
+
+        let registration = Self {
+            entry: arena::Rc::clone(&reg),
+        };
+
+        let set_readiness = LocalSetReadiness { entry: reg };
+
+        (registration, set_readiness)
+    }
+}
+
+impl Drop for LocalRegistration {
+    fn drop(&mut self) {
+        let mut reg = self.entry.get().data.borrow_mut();
+
+        if let Some((key, sources)) = &reg.data {
+            sources.deregister(*key).unwrap();
+
+            reg.data = None;
+        }
+    }
+}
+
+pub struct LocalSetReadiness {
+    entry: arena::Rc<LocalRegistrationEntry>,
+}
+
+impl LocalSetReadiness {
+    pub fn set_readiness(&self, readiness: Interest) -> Result<(), io::Error> {
+        let mut reg = self.entry.get().data.borrow_mut();
+
+        match &reg.data {
+            Some((key, sources)) => sources.set_readiness(*key, readiness)?,
+            None => reg.readiness.merge(readiness),
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Event {
     token: Token,
@@ -281,6 +483,7 @@ pub struct Poller {
     poll: Poll,
     events: Events,
     custom_sources: CustomSources,
+    local_registration_memory: Rc<arena::RcMemory<LocalRegistrationEntry>>,
 }
 
 impl Poller {
@@ -293,6 +496,7 @@ impl Poller {
             poll,
             events,
             custom_sources,
+            local_registration_memory: Rc::new(arena::RcMemory::new(max_custom_sources)),
         })
     }
 
@@ -334,6 +538,31 @@ impl Poller {
 
     pub fn deregister_custom(&self, registration: &Registration) -> Result<(), io::Error> {
         self.custom_sources.deregister(registration)
+    }
+
+    pub fn local_registration_memory(&self) -> &Rc<arena::RcMemory<LocalRegistrationEntry>> {
+        &self.local_registration_memory
+    }
+
+    pub fn register_custom_local(
+        &self,
+        registration: &LocalRegistration,
+        token: Token,
+        interests: Interest,
+    ) -> Result<(), io::Error> {
+        if token == Token(0) {
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        }
+
+        self.custom_sources
+            .register_local(registration, token, interests)
+    }
+
+    pub fn deregister_custom_local(
+        &self,
+        registration: &LocalRegistration,
+    ) -> Result<(), io::Error> {
+        self.custom_sources.deregister_local(registration)
     }
 
     pub fn poll(&mut self, timeout: Option<Duration>) -> Result<(), io::Error> {
@@ -479,6 +708,42 @@ mod tests {
 
         let event = event.unwrap();
         assert_eq!(event.token(), token);
+
+        assert_eq!(sources.has_events(), true);
+        assert_eq!(sources.next_event(), Some((subtoken, Interest::READABLE)));
+
+        assert_eq!(sources.has_events(), false);
+        assert_eq!(sources.next_event(), None);
+    }
+
+    #[test]
+    fn test_readiness_local() {
+        let poller = Poller::new(1).unwrap();
+
+        let token = Token(123);
+        let subtoken = Token(456);
+
+        let mut poll = Poll::new().unwrap();
+
+        let sources = CustomSources::new(&poll, token, 1).unwrap();
+
+        assert_eq!(sources.has_events(), false);
+        assert_eq!(sources.next_event(), None);
+
+        let (reg, sr) = LocalRegistration::new(poller.local_registration_memory());
+
+        sources
+            .register_local(&reg, subtoken, Interest::READABLE)
+            .unwrap();
+
+        let mut events = Events::with_capacity(1024);
+
+        poll.poll(&mut events, Some(Duration::from_millis(0)))
+            .unwrap();
+
+        assert!(events.is_empty());
+
+        sr.set_readiness(Interest::READABLE).unwrap();
 
         assert_eq!(sources.has_events(), true);
         assert_eq!(sources.next_event(), Some((subtoken, Interest::READABLE)));
