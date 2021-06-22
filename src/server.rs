@@ -679,6 +679,7 @@ impl Worker {
         stream_acceptor_tls: &Vec<(bool, Option<String>)>,
         identities: &Arc<IdentityCache>,
         zsockman: &Arc<zhttpsocket::SocketManager>,
+        handle_bound: usize,
     ) -> Self {
         debug!("worker {}: starting", id);
 
@@ -709,6 +710,7 @@ impl Worker {
                 &stream_acceptor_tls,
                 identities,
                 zsockman,
+                handle_bound,
                 rs,
             );
         });
@@ -753,6 +755,7 @@ impl Worker {
         stream_acceptor_tls: &[(bool, Option<String>)],
         identities: Arc<IdentityCache>,
         zsockman: Arc<zhttpsocket::SocketManager>,
+        handle_bound: usize,
         ready_sender: channel::Sender<()>,
     ) {
         let maxconn = req_maxconn + stream_maxconn;
@@ -877,14 +880,22 @@ impl Worker {
             )
             .unwrap();
 
-        // bound is 1, for fairness. sends from multiple connections will be interleaved
         // max_senders is 1 per connection + 1 for the worker itself
-        let (zreq_sender, zreq_receiver) =
-            channel::local_channel(1, req_maxconn + 1, poller.local_registration_memory());
-        let (zstream_out_sender, zstream_out_receiver) =
-            channel::local_channel(1, stream_maxconn + 1, poller.local_registration_memory());
-        let (zstream_out_stream_sender, zstream_out_stream_receiver) =
-            channel::local_channel(1, stream_maxconn + 1, poller.local_registration_memory());
+        let (zreq_sender, zreq_receiver) = channel::local_channel(
+            handle_bound,
+            req_maxconn + 1,
+            poller.local_registration_memory(),
+        );
+        let (zstream_out_sender, zstream_out_receiver) = channel::local_channel(
+            handle_bound,
+            stream_maxconn + 1,
+            poller.local_registration_memory(),
+        );
+        let (zstream_out_stream_sender, zstream_out_stream_receiver) = channel::local_channel(
+            handle_bound,
+            stream_maxconn + 1,
+            poller.local_registration_memory(),
+        );
 
         poller
             .register_custom_local(
@@ -1806,6 +1817,7 @@ impl Server {
         listen_addrs: &[ListenConfig],
         certs_dir: &Path,
         zsockman: zhttpsocket::SocketManager,
+        handle_bound: usize,
     ) -> Result<Self, String> {
         let identities = Arc::new(IdentityCache::new(certs_dir));
 
@@ -1867,6 +1879,7 @@ impl Server {
                 &stream_acceptor_tls,
                 &identities,
                 &zsockman,
+                handle_bound,
             );
             workers.push(w);
         }
@@ -1962,6 +1975,7 @@ impl TestServer {
             ],
             Path::new("."),
             zsockman,
+            100,
         )
         .unwrap();
 

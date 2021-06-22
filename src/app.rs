@@ -93,12 +93,14 @@ impl App {
         // set hwm to 5% of maxconn
         let hwm = cmp::max((config.req_maxconn + config.stream_maxconn) / 20, 1);
 
+        let handle_bound = cmp::max(hwm / config.workers, 1);
+
         let mut zsockman = zhttpsocket::SocketManager::new(
             Arc::clone(&zmq_context),
             &config.instance_id,
             MSG_RETAINED_MAX * config.workers,
             hwm,
-            cmp::max(hwm / config.workers, 1),
+            handle_bound,
         );
 
         let mut any_req = false;
@@ -193,6 +195,7 @@ impl App {
             &config.listen,
             config.certs_dir.as_path(),
             zsockman,
+            handle_bound,
         )?;
 
         Ok(Self { _server: server })
