@@ -1474,74 +1474,86 @@ impl Worker {
                 }
             }
 
-            if req_send_pending.is_none() && zreq_receiver_ready {
-                match zreq_receiver.try_recv() {
-                    Ok(msg) => req_send_pending = Some(msg),
-                    Err(mpsc::TryRecvError::Empty) => zreq_receiver_ready = false,
-                    Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
-                }
-            }
-
-            if can_zreq_write {
-                if let Some(msg) = req_send_pending.take() {
-                    match req_handle.send(msg) {
-                        Ok(()) => {}
-                        Err(zhttpsocket::SendError::Full(msg)) => {
-                            req_send_pending = Some(msg);
-
-                            can_zreq_write = false;
-                        }
-                        Err(zhttpsocket::SendError::Io(e)) => error!("req send error: {}", e),
+            loop {
+                if req_send_pending.is_none() {
+                    match zreq_receiver.try_recv() {
+                        Ok(msg) => req_send_pending = Some(msg),
+                        Err(mpsc::TryRecvError::Empty) => zreq_receiver_ready = false,
+                        Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
                     }
                 }
-            }
 
-            if stream_out_send_pending.is_none() && zstream_out_receiver_ready {
-                match zstream_out_receiver.try_recv() {
-                    Ok(msg) => stream_out_send_pending = Some(msg),
-                    Err(mpsc::TryRecvError::Empty) => zstream_out_receiver_ready = false,
-                    Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
-                }
-            }
+                if can_zreq_write {
+                    if let Some(msg) = req_send_pending.take() {
+                        match req_handle.send(msg) {
+                            Ok(()) => continue,
+                            Err(zhttpsocket::SendError::Full(msg)) => {
+                                req_send_pending = Some(msg);
 
-            if can_zstream_out_write {
-                if let Some(msg) = stream_out_send_pending.take() {
-                    match stream_handle.send_to_any(msg) {
-                        Ok(()) => {}
-                        Err(zhttpsocket::SendError::Full(msg)) => {
-                            stream_out_send_pending = Some(msg);
-
-                            can_zstream_out_write = false;
-                        }
-                        Err(zhttpsocket::SendError::Io(e)) => {
-                            error!("stream out send error: {}", e)
+                                can_zreq_write = false;
+                            }
+                            Err(zhttpsocket::SendError::Io(e)) => error!("req send error: {}", e),
                         }
                     }
                 }
+
+                break;
             }
 
-            if stream_out_stream_send_pending.is_none() && zstream_out_stream_receiver_ready {
-                match zstream_out_stream_receiver.try_recv() {
-                    Ok(msg) => stream_out_stream_send_pending = Some(msg),
-                    Err(mpsc::TryRecvError::Empty) => zstream_out_stream_receiver_ready = false,
-                    Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
+            loop {
+                if stream_out_send_pending.is_none() {
+                    match zstream_out_receiver.try_recv() {
+                        Ok(msg) => stream_out_send_pending = Some(msg),
+                        Err(mpsc::TryRecvError::Empty) => zstream_out_receiver_ready = false,
+                        Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
+                    }
                 }
-            }
 
-            if can_zstream_out_stream_write {
-                if let Some((addr, msg)) = stream_out_stream_send_pending.take() {
-                    match stream_handle.send_to_addr(&addr, msg) {
-                        Ok(()) => {}
-                        Err(zhttpsocket::SendError::Full(msg)) => {
-                            stream_out_stream_send_pending = Some((addr, msg));
+                if can_zstream_out_write {
+                    if let Some(msg) = stream_out_send_pending.take() {
+                        match stream_handle.send_to_any(msg) {
+                            Ok(()) => continue,
+                            Err(zhttpsocket::SendError::Full(msg)) => {
+                                stream_out_send_pending = Some(msg);
 
-                            can_zstream_out_stream_write = false;
-                        }
-                        Err(zhttpsocket::SendError::Io(e)) => {
-                            error!("stream out stream send error: {}", e)
+                                can_zstream_out_write = false;
+                            }
+                            Err(zhttpsocket::SendError::Io(e)) => {
+                                error!("stream out send error: {}", e)
+                            }
                         }
                     }
                 }
+
+                break;
+            }
+
+            loop {
+                if stream_out_stream_send_pending.is_none() {
+                    match zstream_out_stream_receiver.try_recv() {
+                        Ok(msg) => stream_out_stream_send_pending = Some(msg),
+                        Err(mpsc::TryRecvError::Empty) => zstream_out_stream_receiver_ready = false,
+                        Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
+                    }
+                }
+
+                if can_zstream_out_stream_write {
+                    if let Some((addr, msg)) = stream_out_stream_send_pending.take() {
+                        match stream_handle.send_to_addr(&addr, msg) {
+                            Ok(()) => continue,
+                            Err(zhttpsocket::SendError::Full(msg)) => {
+                                stream_out_stream_send_pending = Some((addr, msg));
+
+                                can_zstream_out_stream_write = false;
+                            }
+                            Err(zhttpsocket::SendError::Io(e)) => {
+                                error!("stream out stream send error: {}", e)
+                            }
+                        }
+                    }
+                }
+
+                break;
             }
 
             let timeout = if (can_req_accept && req_count < req_maxconn)
