@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::arena;
 use crate::event;
 use crate::list;
 use mio;
@@ -209,7 +210,7 @@ pub fn channel<T>(bound: usize) -> (Sender<T>, Receiver<T>) {
 
 struct LocalSenderData {
     notified: bool,
-    write_set_readiness: event::SetReadiness,
+    write_set_readiness: event::LocalSetReadiness,
 }
 
 struct LocalSenders {
@@ -220,7 +221,7 @@ struct LocalSenders {
 struct LocalChannel<T> {
     queue: RefCell<VecDeque<T>>,
     senders: RefCell<LocalSenders>,
-    read_set_readiness: RefCell<Option<event::SetReadiness>>,
+    read_set_readiness: RefCell<Option<event::LocalSetReadiness>>,
 }
 
 impl<T> LocalChannel<T> {
@@ -228,7 +229,7 @@ impl<T> LocalChannel<T> {
         self.senders.borrow().nodes.is_empty()
     }
 
-    fn add_sender(&self, write_sr: event::SetReadiness) -> Result<usize, ()> {
+    fn add_sender(&self, write_sr: event::LocalSetReadiness) -> Result<usize, ()> {
         let mut senders = self.senders.borrow_mut();
 
         if senders.nodes.len() == senders.nodes.capacity() {
@@ -293,11 +294,11 @@ impl<T> LocalChannel<T> {
 pub struct LocalSender<T> {
     channel: Rc<LocalChannel<T>>,
     key: usize,
-    write_registration: event::Registration,
+    write_registration: event::LocalRegistration,
 }
 
 impl<T> LocalSender<T> {
-    pub fn get_write_registration(&self) -> &event::Registration {
+    pub fn get_write_registration(&self) -> &event::LocalRegistration {
         &self.write_registration
     }
 
@@ -354,8 +355,11 @@ impl<T> LocalSender<T> {
         }
     }
 
-    pub fn try_clone(&self) -> Result<Self, ()> {
-        let (write_reg, write_sr) = event::Registration::new();
+    pub fn try_clone(
+        &self,
+        memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
+    ) -> Result<Self, ()> {
+        let (write_reg, write_sr) = event::LocalRegistration::new(memory);
 
         let key = self.channel.add_sender(write_sr)?;
 
@@ -377,11 +381,11 @@ impl<T> Drop for LocalSender<T> {
 
 pub struct LocalReceiver<T> {
     channel: Rc<LocalChannel<T>>,
-    read_registration: event::Registration,
+    read_registration: event::LocalRegistration,
 }
 
 impl<T> LocalReceiver<T> {
-    pub fn get_read_registration(&self) -> &event::Registration {
+    pub fn get_read_registration(&self) -> &event::LocalRegistration {
         &self.read_registration
     }
 
@@ -410,9 +414,13 @@ impl<T> Drop for LocalReceiver<T> {
     }
 }
 
-pub fn local_channel<T>(bound: usize, max_senders: usize) -> (LocalSender<T>, LocalReceiver<T>) {
-    let (read_reg, read_sr) = event::Registration::new();
-    let (write_reg, write_sr) = event::Registration::new();
+pub fn local_channel<T>(
+    bound: usize,
+    max_senders: usize,
+    memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
+) -> (LocalSender<T>, LocalReceiver<T>) {
+    let (read_reg, read_sr) = event::LocalRegistration::new(memory);
+    let (write_reg, write_sr) = event::LocalRegistration::new(memory);
 
     // no support for rendezvous channels
     assert!(bound > 0);
@@ -655,7 +663,9 @@ mod tests {
 
     #[test]
     fn test_local_send_recv() {
-        let (sender1, receiver) = local_channel(1, 2);
+        let poller = event::Poller::new(6).unwrap();
+
+        let (sender1, receiver) = local_channel(1, 2, poller.local_registration_memory());
 
         assert_eq!(receiver.try_recv(), Err(mpsc::TryRecvError::Empty));
 
@@ -663,7 +673,9 @@ mod tests {
 
         assert_eq!(receiver.try_recv(), Ok(1));
 
-        let sender2 = sender1.try_clone().unwrap();
+        let sender2 = sender1
+            .try_clone(poller.local_registration_memory())
+            .unwrap();
 
         assert_eq!(sender1.try_send(2), Ok(()));
 
@@ -706,7 +718,9 @@ mod tests {
 
     #[test]
     fn test_local_send_disc() {
-        let (sender, receiver) = local_channel(1, 1);
+        let poller = event::Poller::new(4).unwrap();
+
+        let (sender, receiver) = local_channel(1, 1, poller.local_registration_memory());
 
         mem::drop(receiver);
 
@@ -715,9 +729,13 @@ mod tests {
 
     #[test]
     fn test_local_cancel() {
-        let (sender1, receiver) = local_channel(1, 2);
+        let poller = event::Poller::new(6).unwrap();
 
-        let sender2 = sender1.try_clone().unwrap();
+        let (sender1, receiver) = local_channel(1, 2, poller.local_registration_memory());
+
+        let sender2 = sender1
+            .try_clone(poller.local_registration_memory())
+            .unwrap();
         let channel = sender2.channel.clone();
 
         assert_eq!(sender1.try_send(1), Ok(()));
@@ -767,7 +785,9 @@ mod tests {
 
     #[test]
     fn test_local_check_send() {
-        let (sender, receiver) = local_channel(1, 1);
+        let poller = event::Poller::new(4).unwrap();
+
+        let (sender, receiver) = local_channel(1, 1, poller.local_registration_memory());
 
         assert_eq!(receiver.try_recv(), Err(mpsc::TryRecvError::Empty));
 

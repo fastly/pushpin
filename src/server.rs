@@ -600,15 +600,15 @@ impl Connection {
         match &self.conn {
             ServerConnection::Req(_, sender) => {
                 poller
-                    .deregister_custom(sender.get_write_registration())
+                    .deregister_custom_local(sender.get_write_registration())
                     .unwrap();
             }
             ServerConnection::Stream(_, senders) => {
                 poller
-                    .deregister_custom(&senders.out.get_write_registration())
+                    .deregister_custom_local(&senders.out.get_write_registration())
                     .unwrap();
                 poller
-                    .deregister_custom(&senders.out_stream.get_write_registration())
+                    .deregister_custom_local(&senders.out_stream.get_write_registration())
                     .unwrap();
             }
         }
@@ -879,14 +879,15 @@ impl Worker {
 
         // bound is 1, for fairness. sends from multiple connections will be interleaved
         // max_senders is 1 per connection + 1 for the worker itself
-        let (zreq_sender, zreq_receiver) = channel::local_channel(1, req_maxconn + 1);
+        let (zreq_sender, zreq_receiver) =
+            channel::local_channel(1, req_maxconn + 1, poller.local_registration_memory());
         let (zstream_out_sender, zstream_out_receiver) =
-            channel::local_channel(1, stream_maxconn + 1);
+            channel::local_channel(1, stream_maxconn + 1, poller.local_registration_memory());
         let (zstream_out_stream_sender, zstream_out_stream_receiver) =
-            channel::local_channel(1, stream_maxconn + 1);
+            channel::local_channel(1, stream_maxconn + 1, poller.local_registration_memory());
 
         poller
-            .register_custom(
+            .register_custom_local(
                 zreq_receiver.get_read_registration(),
                 ZREQ_RECEIVER_TOKEN,
                 mio::Interest::READABLE,
@@ -894,7 +895,7 @@ impl Worker {
             .unwrap();
 
         poller
-            .register_custom(
+            .register_custom_local(
                 zstream_out_receiver.get_read_registration(),
                 ZSTREAM_OUT_RECEIVER_TOKEN,
                 mio::Interest::READABLE,
@@ -902,7 +903,7 @@ impl Worker {
             .unwrap();
 
         poller
-            .register_custom(
+            .register_custom_local(
                 zstream_out_stream_receiver.get_read_registration(),
                 ZSTREAM_OUT_STREAM_RECEIVER_TOKEN,
                 mio::Interest::READABLE,
@@ -910,7 +911,7 @@ impl Worker {
             .unwrap();
 
         poller
-            .register_custom(
+            .register_custom_local(
                 zstream_out_stream_sender.get_write_registration(),
                 ZSTREAM_OUT_STREAM_SENDER_TOKEN,
                 mio::Interest::WRITABLE,
@@ -990,7 +991,9 @@ impl Worker {
 
                 assert!(conns.len() < conns.capacity());
 
-                let zreq_sender = zreq_sender.try_clone().unwrap();
+                let zreq_sender = zreq_sender
+                    .try_clone(poller.local_registration_memory())
+                    .unwrap();
 
                 let entry = conns.vacant_entry();
                 let key = entry.key();
@@ -1028,7 +1031,7 @@ impl Worker {
                     .unwrap();
 
                 poller
-                    .register_custom(
+                    .register_custom_local(
                         c.get_zreq_sender().get_write_registration(),
                         mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 1),
                         mio::Interest::WRITABLE,
@@ -1073,8 +1076,12 @@ impl Worker {
                 assert!(conns.len() < conns.capacity());
 
                 let zstream_senders = StreamLocalSenders::new(
-                    zstream_out_sender.try_clone().unwrap(),
-                    zstream_out_stream_sender.try_clone().unwrap(),
+                    zstream_out_sender
+                        .try_clone(poller.local_registration_memory())
+                        .unwrap(),
+                    zstream_out_stream_sender
+                        .try_clone(poller.local_registration_memory())
+                        .unwrap(),
                 );
 
                 let entry = conns.vacant_entry();
@@ -1113,7 +1120,7 @@ impl Worker {
                     .unwrap();
 
                 poller
-                    .register_custom(
+                    .register_custom_local(
                         c.get_zstream_senders().out.get_write_registration(),
                         mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 1),
                         mio::Interest::WRITABLE,
@@ -1121,7 +1128,7 @@ impl Worker {
                     .unwrap();
 
                 poller
-                    .register_custom(
+                    .register_custom_local(
                         c.get_zstream_senders().out_stream.get_write_registration(),
                         mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 2),
                         mio::Interest::WRITABLE,
