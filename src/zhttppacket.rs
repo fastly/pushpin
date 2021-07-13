@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
+use crate::arena;
 use crate::tnetstring;
+use std::cell::RefCell;
 use std::fmt;
 use std::io;
+use std::mem;
 use std::str;
 
 pub const IDS_MAX: usize = 128;
@@ -1052,9 +1055,62 @@ impl<'buf, 'scratch> Response<'_, '_, '_> {
     }
 }
 
+pub struct OwnedResponse {
+    _src: arena::Arc<zmq::Message>,
+    _scratch: arena::Rc<RefCell<ResponseScratch<'static>>>,
+    resp: Response<'static, 'static, 'static>,
+}
+
+impl OwnedResponse {
+    pub fn parse(
+        src: arena::Arc<zmq::Message>,
+        offset: usize,
+        scratch: arena::Rc<RefCell<ResponseScratch<'static>>>,
+    ) -> Result<Self, ParseError> {
+        let src_ref: &[u8] = &src.get()[offset..];
+
+        // safety: Self will take ownership of src, and the bytes referred to
+        // by src_ref are on the heap, and src will not be modified or
+        // dropped until Self is dropped, so the bytes referred to by src_ref
+        // will remain valid for the lifetime of Self
+        let src_ref: &'static [u8] = unsafe { mem::transmute(src_ref) };
+
+        // safety: Self will take ownership of scratch, and the location
+        // referred to by scratch_mut is in an arena, and scratch will not
+        // be dropped until Self is dropped, so the location referred to by
+        // scratch_mut will remain valid for the lifetime of Self
+        //
+        // further, it is safe for Response::parse() to write references to
+        // src_ref into scratch_mut, because src_ref and scratch_mut have
+        // the same lifetime
+        let scratch_mut: &'static mut ResponseScratch<'static> =
+            unsafe { scratch.get().as_ptr().as_mut().unwrap() };
+
+        let resp = Response::parse(src_ref, scratch_mut)?;
+
+        Ok(Self {
+            _src: src,
+            _scratch: scratch,
+            resp,
+        })
+    }
+
+    pub fn get<'a>(&'a self) -> &'a Response<'a, 'a, 'a> {
+        let resp = &self.resp;
+
+        // safety: here we simply reduce the inner lifetimes to that of the owning
+        // object, which is fine
+        let resp: &'a Response<'a, 'a, 'a> = unsafe { mem::transmute(resp) };
+
+        resp
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::rc::Rc;
+    use std::sync::Arc;
 
     #[test]
     fn test_serialize() {
@@ -1168,5 +1224,32 @@ mod tests {
 
         let ctype = rdata.content_type.unwrap();
         assert_eq!(ctype, ContentType::Binary);
+    }
+
+    #[test]
+    fn test_owned_parse() {
+        let data = concat!(
+            "addr T208:4:more,4:true!7:headers,34:30:12:Content-Type,10:te",
+            "xt/plain,]]12:content-type,6:binary,4:from,6:server,2:id,1:1,",
+            "6:reason,2:OK,7:credits,3:100#9:user-data,12:3:foo,3:bar,}3:s",
+            "eq,1:0#4:code,3:200#4:body,5:hello,}"
+        )
+        .as_bytes();
+
+        let msg_memory = Arc::new(arena::ArcMemory::new(1));
+        let scratch_memory = Rc::new(arena::RcMemory::new(1));
+
+        let msg = arena::Arc::new(zmq::Message::from(data), &msg_memory).unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(ResponseScratch::new()), &scratch_memory).unwrap();
+
+        let resp = OwnedResponse::parse(msg, 5, scratch).unwrap();
+
+        let resp = resp.get();
+
+        assert_eq!(resp.from, b"server");
+        assert_eq!(resp.ids.len(), 1);
+        assert_eq!(resp.ids[0].id, b"1");
+        assert_eq!(resp.ids[0].seq, Some(0));
     }
 }
