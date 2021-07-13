@@ -239,13 +239,13 @@ impl SyncSources {
     }
 }
 
-pub struct CustomSources {
+struct CustomSources {
     local: Rc<LocalSources>,
     sync: Arc<SyncSources>,
 }
 
 impl CustomSources {
-    pub fn new(poll: &Poll, token: Token, max_sources: usize) -> Result<Self, io::Error> {
+    fn new(poll: &Poll, token: Token, max_sources: usize) -> Result<Self, io::Error> {
         let waker = Waker::new(poll.registry(), token)?;
 
         Ok(Self {
@@ -254,7 +254,7 @@ impl CustomSources {
         })
     }
 
-    pub fn register_local(
+    fn register_local(
         &self,
         registration: &LocalRegistration,
         subtoken: Token,
@@ -277,7 +277,7 @@ impl CustomSources {
         Ok(())
     }
 
-    pub fn deregister_local(&self, registration: &LocalRegistration) -> Result<(), io::Error> {
+    fn deregister_local(&self, registration: &LocalRegistration) -> Result<(), io::Error> {
         let mut reg = registration.entry.get().data.borrow_mut();
 
         if let Some((key, _)) = reg.data {
@@ -289,7 +289,7 @@ impl CustomSources {
         Ok(())
     }
 
-    pub fn register(
+    fn register(
         &self,
         registration: &Registration,
         subtoken: Token,
@@ -312,7 +312,7 @@ impl CustomSources {
         Ok(())
     }
 
-    pub fn deregister(&self, registration: &Registration) -> Result<(), io::Error> {
+    fn deregister(&self, registration: &Registration) -> Result<(), io::Error> {
         let mut reg = registration.inner.lock().unwrap();
 
         if let Some((key, _)) = reg.data {
@@ -328,7 +328,7 @@ impl CustomSources {
         self.local.has_events() || self.sync.has_events()
     }
 
-    pub fn next_event(&self) -> Option<(Token, Interest)> {
+    fn next_event(&self) -> Option<(Token, Interest)> {
         if let Some(e) = self.local.next_event() {
             return Some(e);
         }
