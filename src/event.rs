@@ -19,13 +19,14 @@ use crate::list;
 use mio::event::Source;
 use mio::{Events, Interest, Poll, Token, Waker};
 use slab::Slab;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const EVENTS_MAX: usize = 1024;
+const LOCAL_BUDGET: u32 = 10;
 
 type Readiness = Option<Interest>;
 
@@ -242,6 +243,7 @@ impl SyncSources {
 struct CustomSources {
     local: Rc<LocalSources>,
     sync: Arc<SyncSources>,
+    next_local_only: Cell<bool>,
 }
 
 impl CustomSources {
@@ -251,7 +253,12 @@ impl CustomSources {
         Ok(Self {
             local: Rc::new(LocalSources::new(max_sources)),
             sync: Arc::new(SyncSources::new(max_sources, waker)),
+            next_local_only: Cell::new(false),
         })
+    }
+
+    fn set_next_local_only(&self, enabled: bool) {
+        self.next_local_only.set(enabled);
     }
 
     fn register_local(
@@ -324,13 +331,29 @@ impl CustomSources {
         Ok(())
     }
 
+    fn has_local_events(&self) -> bool {
+        self.local.has_events()
+    }
+
     fn has_events(&self) -> bool {
-        self.local.has_events() || self.sync.has_events()
+        if self.local.has_events() {
+            return true;
+        }
+
+        if self.next_local_only.get() {
+            return false;
+        }
+
+        self.sync.has_events()
     }
 
     fn next_event(&self) -> Option<(Token, Interest)> {
         if let Some(e) = self.local.next_event() {
             return Some(e);
+        }
+
+        if self.next_local_only.get() {
+            return None;
         }
 
         if let Some(e) = self.sync.next_event() {
@@ -484,6 +507,7 @@ pub struct Poller {
     events: Events,
     custom_sources: CustomSources,
     local_registration_memory: Rc<arena::RcMemory<LocalRegistrationEntry>>,
+    local_budget: u32,
 }
 
 impl Poller {
@@ -497,6 +521,7 @@ impl Poller {
             events,
             custom_sources,
             local_registration_memory: Rc::new(arena::RcMemory::new(max_custom_sources)),
+            local_budget: LOCAL_BUDGET,
         })
     }
 
@@ -566,6 +591,17 @@ impl Poller {
     }
 
     pub fn poll(&mut self, timeout: Option<Duration>) -> Result<(), io::Error> {
+        if self.custom_sources.has_local_events() && self.local_budget > 0 {
+            self.local_budget -= 1;
+            self.custom_sources.set_next_local_only(true);
+            self.events.clear(); // don't reread previous mio events
+
+            return Ok(());
+        }
+
+        self.local_budget = LOCAL_BUDGET;
+        self.custom_sources.set_next_local_only(false);
+
         let timeout = if self.custom_sources.has_events() {
             Some(Duration::from_millis(0))
         } else {
