@@ -36,7 +36,7 @@ use mio;
 use mio::net::{TcpListener, TcpSocket, TcpStream};
 use mio::unix::SourceFd;
 use slab::Slab;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::cmp;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
@@ -53,8 +53,17 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-// we read and process each message one at a time, dropping each message before reading the next
-pub const MSG_RETAINED_MAX: usize = 1;
+const RESP_SENDER_BOUND: usize = 1;
+
+// we read and process each response message one at a time, wrapping it in an
+// rc, and sending it out to per-connection channels. on the other side of
+// each channel, the message is received and processed immediately. we don't
+// read the next message until it has been sent to all the channels. this
+// means the max number of received messages retained at a time is the one
+// message we have just read and are trying to send to all the channels, plus
+// up to N messages sitting in any channels/connections pending processing,
+// where N is the channel bound
+pub const MSG_RETAINED_MAX: usize = 1 + RESP_SENDER_BOUND;
 
 const STOP_TOKEN: mio::Token = mio::Token(1);
 const REQ_ACCEPTOR_TOKEN: mio::Token = mio::Token(2);
@@ -90,7 +99,7 @@ fn ticks_to_duration(t: u64) -> Duration {
     Duration::from_millis(t * TICK_DURATION_MS)
 }
 
-fn get_addr_and_buf(msg: &[u8]) -> Result<(&str, &[u8]), ()> {
+fn get_addr_and_offset(msg: &[u8]) -> Result<(&str, usize), ()> {
     let mut pos = None;
     for (i, b) in msg.iter().enumerate() {
         if *b == b' ' {
@@ -109,7 +118,7 @@ fn get_addr_and_buf(msg: &[u8]) -> Result<(&str, &[u8]), ()> {
         Err(_) => return Err(()),
     };
 
-    Ok((addr, &msg[(pos + 1)..]))
+    Ok((addr, pos + 1))
 }
 
 fn get_key(id: &[u8]) -> Result<usize, ()> {
@@ -347,6 +356,7 @@ struct Connection {
     conn: ServerConnection,
     want: Want,
     timer: Option<(usize, u64)>, // timer id, exp time
+    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
 }
 
 impl Connection {
@@ -358,6 +368,7 @@ impl Connection {
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
         sender: channel::LocalSender<zmq::Message>,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
     ) -> Self {
         let secure = match &stream {
             Stream::Plain(_) => false,
@@ -381,6 +392,7 @@ impl Connection {
             ),
             want: Want::nothing(),
             timer: None,
+            zreceiver,
         }
     }
 
@@ -392,6 +404,7 @@ impl Connection {
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
         senders: StreamLocalSenders,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
     ) -> Self {
         let secure = match &stream {
             Stream::Plain(_) => false,
@@ -415,6 +428,7 @@ impl Connection {
             ),
             want: Want::nothing(),
             timer: None,
+            zreceiver,
         }
     }
 
@@ -448,6 +462,12 @@ impl Connection {
             ServerConnection::Req(_, _) => panic!("not stream conn"),
             ServerConnection::Stream(_, senders) => senders,
         }
+    }
+
+    fn get_zreceiver(
+        &self,
+    ) -> &channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)> {
+        &self.zreceiver
     }
 
     fn set_out_stream_can_write(&self) {
@@ -516,6 +536,11 @@ impl Connection {
         packet_buf: &mut [u8],
         tmp_buf: &mut [u8],
     ) -> bool {
+        if let Ok((resp, seq)) = self.zreceiver.try_recv() {
+            // if error, keep going
+            let _ = self.handle_packet(now, resp.get().get(), seq);
+        }
+
         match &mut self.stream {
             Stream::Plain(stream) => Self::process_with_stream(
                 &self.id,
@@ -612,7 +637,16 @@ impl Connection {
                     .unwrap();
             }
         }
+
+        poller
+            .deregister_custom_local(self.zreceiver.get_read_registration())
+            .unwrap();
     }
+}
+
+struct ConnectionData {
+    zreceiver_sender: channel::LocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    resp_sending_key: Option<usize>,
 }
 
 struct KeySet {
@@ -809,9 +843,9 @@ impl Worker {
 
         debug!("worker {}: allocating done", id);
 
-        // BASE_TOKENS + 1 per req connection + 2 per stream connection
+        // BASE_TOKENS + 3 per req connection + 4 per stream connection
         let mut poller =
-            event::Poller::new(BASE_TOKENS + req_maxconn + (stream_maxconn * 2)).unwrap();
+            event::Poller::new(BASE_TOKENS + (req_maxconn * 3) + (stream_maxconn * 4)).unwrap();
 
         poller
             .register_custom(
@@ -945,6 +979,27 @@ impl Worker {
         let mut can_zstream_out_write = true;
         let mut can_zstream_out_stream_write = true;
 
+        let req_scratch_mem = Rc::new(arena::RcMemory::new(MSG_RETAINED_MAX));
+        let req_resp_mem = Rc::new(arena::RcMemory::new(req_maxconn));
+        let mut req_resp_pending = None;
+        let mut req_resp_sending_nodes: Slab<list::Node<(usize, Option<u32>)>> =
+            Slab::with_capacity(req_maxconn);
+        let mut req_resp_sending = list::List::default();
+        let mut req_resp_waiting = list::List::default();
+
+        let stream_scratch_mem = Rc::new(arena::RcMemory::new(MSG_RETAINED_MAX));
+        let stream_resp_mem = Rc::new(arena::RcMemory::new(stream_maxconn));
+        let mut stream_resp_pending = None;
+        let mut stream_resp_sending_nodes: Slab<list::Node<(usize, Option<u32>)>> =
+            Slab::with_capacity(stream_maxconn);
+        let mut stream_resp_sending = list::List::default();
+        let mut stream_resp_waiting = list::List::default();
+
+        let mut conns_data: Vec<Option<ConnectionData>> = Vec::with_capacity(maxconn);
+        for _ in 0..maxconn {
+            conns_data.push(None);
+        }
+
         let mut last_keep_alive_time = Instant::now();
         let mut next_keep_alive_index = 0;
 
@@ -1006,6 +1061,12 @@ impl Worker {
                     .try_clone(poller.local_registration_memory())
                     .unwrap();
 
+                let (zreq_receiver_sender, zreq_receiver) = channel::local_channel(
+                    RESP_SENDER_BOUND,
+                    1,
+                    poller.local_registration_memory(),
+                );
+
                 let entry = conns.vacant_entry();
                 let key = entry.key();
 
@@ -1017,6 +1078,7 @@ impl Worker {
                     &rb_tmp,
                     req_timeout,
                     zreq_sender,
+                    zreq_receiver,
                 );
 
                 entry.insert(c);
@@ -1048,6 +1110,27 @@ impl Worker {
                         mio::Interest::WRITABLE,
                     )
                     .unwrap();
+
+                poller
+                    .register_custom_local(
+                        c.get_zreceiver().get_read_registration(),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 3),
+                        mio::Interest::READABLE,
+                    )
+                    .unwrap();
+
+                poller
+                    .register_custom_local(
+                        zreq_receiver_sender.get_write_registration(),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 4),
+                        mio::Interest::WRITABLE,
+                    )
+                    .unwrap();
+
+                conns_data[key] = Some(ConnectionData {
+                    zreceiver_sender: zreq_receiver_sender,
+                    resp_sending_key: None,
+                });
 
                 needs_process.add(key);
             }
@@ -1095,6 +1178,12 @@ impl Worker {
                         .unwrap(),
                 );
 
+                let (zstream_receiver_sender, zstream_receiver) = channel::local_channel(
+                    RESP_SENDER_BOUND,
+                    1,
+                    poller.local_registration_memory(),
+                );
+
                 let entry = conns.vacant_entry();
                 let key = entry.key();
 
@@ -1106,6 +1195,7 @@ impl Worker {
                     &rb_tmp,
                     stream_timeout,
                     zstream_senders,
+                    zstream_receiver,
                 );
 
                 entry.insert(c);
@@ -1146,150 +1236,237 @@ impl Worker {
                     )
                     .unwrap();
 
+                poller
+                    .register_custom_local(
+                        c.get_zreceiver().get_read_registration(),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 3),
+                        mio::Interest::READABLE,
+                    )
+                    .unwrap();
+
+                poller
+                    .register_custom_local(
+                        zstream_receiver_sender.get_write_registration(),
+                        mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 4),
+                        mio::Interest::WRITABLE,
+                    )
+                    .unwrap();
+
+                conns_data[key] = Some(ConnectionData {
+                    zreceiver_sender: zstream_receiver_sender,
+                    resp_sending_key: None,
+                });
+
                 needs_process.add(key);
             }
 
-            if can_zreq_read {
-                // here we try to read and process packets as fast as
-                //   possible. we should really only copy buffers or
-                //   flag things to do later in c.process()
-
-                loop {
-                    let msg = match req_handle.recv() {
-                        Ok(msg) => msg,
-                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            break;
-                        }
-                        Err(e) => {
-                            debug!("worker {}: handle read error {}", id, e);
-                            break;
-                        }
-                    };
-
-                    let msg = &msg.get()[..];
-
-                    let mut scratch = zhttppacket::ResponseScratch::new();
-                    let zresp = match zhttppacket::Response::parse(msg, &mut scratch) {
-                        Ok(zresp) => zresp,
-                        Err(e) => {
-                            warn!("worker {}: zhttp parse error: {}", id, e);
-                            continue;
-                        }
-                    };
-
-                    let mut handled = 0;
-
-                    for id in zresp.ids {
-                        let key = match get_key(&id.id) {
-                            Ok(key) => key,
-                            Err(_) => continue,
-                        };
-
-                        let c = match conns.get_mut(key) {
-                            Some(c) => c,
-                            None => continue,
-                        };
-
-                        if c.id.as_ref().as_bytes() != id.id {
-                            // key found but cid mismatch
-                            continue;
-                        }
-
-                        handled += 1;
-
-                        if c.handle_packet(now, &zresp, None).is_err() {
-                            continue;
-                        }
-
-                        if c.mode() == ZhttpMode::Req && c.want.zhttp_read {
-                            needs_process.add(key);
-                        }
+            while req_resp_pending.is_none() && can_zreq_read {
+                let msg = match req_handle.recv() {
+                    Ok(msg) => msg,
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        can_zreq_read = false;
+                        break;
                     }
+                    Err(e) => panic!("worker {}: handle read error {}", id, e),
+                };
 
-                    if handled == 0 {
-                        debug!("worker {}: no conn for zmq message", id);
+                let scratch = arena::Rc::new(
+                    RefCell::new(zhttppacket::ResponseScratch::new()),
+                    &req_scratch_mem,
+                )
+                .unwrap();
+
+                let zresp = match zhttppacket::OwnedResponse::parse(msg, 0, scratch) {
+                    Ok(zresp) => zresp,
+                    Err(e) => {
+                        warn!("worker {}: zhttp parse error: {}", id, e);
+                        continue;
                     }
-                }
+                };
 
-                can_zreq_read = false;
-            }
+                let zresp = arena::Rc::new(zresp, &req_resp_mem).unwrap();
 
-            if can_zstream_in_read {
-                // here we try to read and process packets as fast as
-                //   possible. we should really only copy buffers or
-                //   flag things to do later in c.process()
+                req_resp_pending = Some(arena::Rc::clone(&zresp));
 
-                loop {
-                    let msg = match stream_handle.recv() {
-                        Ok(msg) => msg,
-                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            break;
-                        }
-                        Err(e) => {
-                            debug!("worker {}: handle read error {}", id, e);
-                            break;
-                        }
+                let mut count = 0;
+
+                for id in zresp.get().get().ids {
+                    let key = match get_key(&id.id) {
+                        Ok(key) => key,
+                        Err(_) => continue,
                     };
 
-                    let msg = &msg.get()[..];
-
-                    let (addr, buf) = match get_addr_and_buf(&msg) {
-                        Ok(ret) => ret,
-                        Err(_) => {
-                            warn!("worker {}: packet has unexpected format", id);
-                            continue;
-                        }
+                    let c = match conns.get_mut(key) {
+                        Some(c) => c,
+                        None => continue,
                     };
 
-                    if addr != instance_id {
-                        warn!("worker {}: packet not for us", id);
+                    if c.id.as_ref().as_bytes() != id.id {
+                        // key found but cid mismatch
                         continue;
                     }
 
-                    let mut scratch = zhttppacket::ResponseScratch::new();
-                    let zresp = match zhttppacket::Response::parse(&buf, &mut scratch) {
-                        Ok(zresp) => zresp,
-                        Err(e) => {
-                            warn!("worker {}: zhttp parse error: {}", id, e);
-                            continue;
-                        }
+                    count += 1;
+
+                    let cdata = conns_data[key].as_mut().unwrap();
+
+                    let nkey = req_resp_sending_nodes.insert(list::Node::new((key, None)));
+
+                    cdata.resp_sending_key = Some(nkey);
+
+                    req_resp_sending.push_back(&mut req_resp_sending_nodes, nkey);
+                }
+
+                debug!("worker {}: queued zmq message for {} conns", id, count);
+            }
+
+            while stream_resp_pending.is_none() && can_zstream_in_read {
+                let msg = match stream_handle.recv() {
+                    Ok(msg) => msg,
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        can_zstream_in_read = false;
+                        break;
+                    }
+                    Err(e) => panic!("worker {}: handle read error {}", id, e),
+                };
+
+                let msg_data = &msg.get()[..];
+
+                let (addr, offset) = match get_addr_and_offset(msg_data) {
+                    Ok(ret) => ret,
+                    Err(_) => {
+                        warn!("worker {}: packet has unexpected format", id);
+                        continue;
+                    }
+                };
+
+                if addr != instance_id {
+                    warn!("worker {}: packet not for us", id);
+                    continue;
+                }
+
+                let scratch = arena::Rc::new(
+                    RefCell::new(zhttppacket::ResponseScratch::new()),
+                    &stream_scratch_mem,
+                )
+                .unwrap();
+
+                let zresp = match zhttppacket::OwnedResponse::parse(msg, offset, scratch) {
+                    Ok(zresp) => zresp,
+                    Err(e) => {
+                        warn!("worker {}: zhttp parse error: {}", id, e);
+                        continue;
+                    }
+                };
+
+                let zresp = arena::Rc::new(zresp, &stream_resp_mem).unwrap();
+
+                stream_resp_pending = Some(arena::Rc::clone(&zresp));
+
+                let mut count = 0;
+
+                for id in zresp.get().get().ids {
+                    let key = match get_key(&id.id) {
+                        Ok(key) => key,
+                        Err(_) => continue,
                     };
 
-                    let mut handled = 0;
+                    let c = match conns.get_mut(key) {
+                        Some(c) => c,
+                        None => continue,
+                    };
 
-                    for id in zresp.ids {
-                        let key = match get_key(&id.id) {
-                            Ok(key) => key,
-                            Err(_) => continue,
-                        };
-
-                        let c = match conns.get_mut(key) {
-                            Some(c) => c,
-                            None => continue,
-                        };
-
-                        if c.id.as_ref().as_bytes() != id.id {
-                            // key found but cid mismatch
-                            continue;
-                        }
-
-                        handled += 1;
-
-                        if c.handle_packet(now, &zresp, id.seq).is_err() {
-                            continue;
-                        }
-
-                        if c.mode() == ZhttpMode::Stream && c.want.zhttp_read {
-                            needs_process.add(key);
-                        }
+                    if c.id.as_ref().as_bytes() != id.id {
+                        // key found but cid mismatch
+                        continue;
                     }
 
-                    if handled == 0 {
-                        debug!("worker {}: no conn for zmq message", id);
+                    count += 1;
+
+                    let cdata = conns_data[key].as_mut().unwrap();
+
+                    let nkey = stream_resp_sending_nodes.insert(list::Node::new((key, id.seq)));
+
+                    cdata.resp_sending_key = Some(nkey);
+
+                    stream_resp_sending.push_back(&mut stream_resp_sending_nodes, nkey);
+                }
+
+                debug!("worker {}: queued zmq message for {} conns", id, count);
+            }
+
+            if let Some(resp) = &req_resp_pending {
+                let mut cur = req_resp_sending.head;
+
+                while let Some(nkey) = cur {
+                    let node = &req_resp_sending_nodes[nkey];
+                    let (ckey, seq) = node.value;
+
+                    let value = (arena::Rc::clone(resp), seq);
+
+                    let cdata = conns_data[ckey].as_mut().unwrap();
+                    let sender = &cdata.zreceiver_sender;
+
+                    cur = node.next;
+
+                    debug!("worker {}: passing zmq message to conn {}", id, ckey);
+
+                    match sender.try_send(value) {
+                        Ok(()) => {
+                            req_resp_sending.remove(&mut req_resp_sending_nodes, nkey);
+                            req_resp_sending_nodes.remove(nkey);
+                            cdata.resp_sending_key = None;
+                        }
+                        Err(mpsc::TrySendError::Full(_)) => {
+                            req_resp_sending.remove(&mut req_resp_sending_nodes, nkey);
+                            req_resp_waiting.push_back(&mut req_resp_sending_nodes, nkey);
+                        }
+                        Err(mpsc::TrySendError::Disconnected(_)) => {
+                            panic!("zreceiver sender disconnected")
+                        }
                     }
                 }
 
-                can_zstream_in_read = false;
+                if req_resp_sending.is_empty() && req_resp_waiting.is_empty() {
+                    req_resp_pending = None;
+                }
+            }
+
+            if let Some(resp) = &stream_resp_pending {
+                let mut cur = stream_resp_sending.head;
+
+                while let Some(nkey) = cur {
+                    let node = &stream_resp_sending_nodes[nkey];
+                    let (ckey, seq) = node.value;
+
+                    let value = (arena::Rc::clone(resp), seq);
+
+                    let cdata = conns_data[ckey].as_mut().unwrap();
+                    let sender = &cdata.zreceiver_sender;
+
+                    cur = node.next;
+
+                    debug!("worker {}: passing zmq message to conn {}", id, ckey);
+
+                    match sender.try_send(value) {
+                        Ok(()) => {
+                            stream_resp_sending.remove(&mut stream_resp_sending_nodes, nkey);
+                            stream_resp_sending_nodes.remove(nkey);
+                            cdata.resp_sending_key = None;
+                        }
+                        Err(mpsc::TrySendError::Full(_)) => {
+                            stream_resp_sending.remove(&mut stream_resp_sending_nodes, nkey);
+                            stream_resp_waiting.push_back(&mut stream_resp_sending_nodes, nkey);
+                        }
+                        Err(mpsc::TrySendError::Disconnected(_)) => {
+                            panic!("zreceiver sender disconnected")
+                        }
+                    }
+                }
+
+                if stream_resp_sending.is_empty() && stream_resp_waiting.is_empty() {
+                    stream_resp_pending = None;
+                }
             }
 
             while let Some(key) = needs_process.take() {
@@ -1297,6 +1474,29 @@ impl Worker {
 
                 if c.process(now, &instance_id, &mut packet_buf, &mut tmp_buf) {
                     debug!("conn {}: destroying", c.id);
+
+                    let cdata = conns_data[key].as_mut().unwrap();
+
+                    if let Some(nkey) = cdata.resp_sending_key {
+                        match c.mode() {
+                            ZhttpMode::Req => {
+                                req_resp_waiting.remove(&mut req_resp_sending_nodes, nkey);
+                                req_resp_sending_nodes.remove(nkey);
+                            }
+                            ZhttpMode::Stream => {
+                                stream_resp_waiting.remove(&mut stream_resp_sending_nodes, nkey);
+                                stream_resp_sending_nodes.remove(nkey);
+                            }
+                        }
+
+                        cdata.resp_sending_key = None;
+                    }
+
+                    poller
+                        .deregister_custom_local(cdata.zreceiver_sender.get_write_registration())
+                        .unwrap();
+
+                    conns_data[key] = None;
 
                     c.deregister(&poller);
 
@@ -1558,6 +1758,10 @@ impl Worker {
 
             let timeout = if (can_req_accept && req_count < req_maxconn)
                 || (can_stream_accept && stream_count < stream_maxconn)
+                || (req_resp_pending.is_none() && can_zreq_read)
+                || (stream_resp_pending.is_none() && can_zstream_in_read)
+                || (req_resp_pending.is_some() && !req_resp_sending.is_empty())
+                || (stream_resp_pending.is_some() && !stream_resp_sending.is_empty())
                 || (req_send_pending.is_none() && zreq_receiver_ready)
                 || (can_zreq_write && req_send_pending.is_some())
                 || (stream_out_send_pending.is_none() && zstream_out_receiver_ready)
@@ -1632,7 +1836,16 @@ impl Worker {
                         let key = (usize::from(token) - CONN_BASE) / TOKENS_PER_CONN;
                         let subkey = (usize::from(token) - CONN_BASE) % TOKENS_PER_CONN;
 
-                        let c = &mut conns[key];
+                        let c = match conns.get_mut(key) {
+                            Some(c) => c,
+                            None => {
+                                // mio assures this never happens
+                                panic!(
+                                    "worker {}: event for unknown conn {}, subkey {}",
+                                    id, key, subkey
+                                );
+                            }
+                        };
 
                         if subkey == 0 {
                             let using_tls = match &c.stream {
@@ -1670,6 +1883,31 @@ impl Worker {
                             // zhttp sender out_stream ready
                             if c.want.zhttp_write_to {
                                 needs_process.add(key);
+                            }
+                        } else if subkey == 3 {
+                            // zhttp receiver ready
+                            if c.want.zhttp_read {
+                                needs_process.add(key);
+                            }
+                        } else if subkey == 4 {
+                            // zhttp resp sender ready
+
+                            let cdata = conns_data[key].as_ref().unwrap();
+
+                            if let Some(nkey) = cdata.resp_sending_key {
+                                match c.mode() {
+                                    ZhttpMode::Req => {
+                                        req_resp_waiting.remove(&mut req_resp_sending_nodes, nkey);
+                                        req_resp_sending
+                                            .push_back(&mut req_resp_sending_nodes, nkey);
+                                    }
+                                    ZhttpMode::Stream => {
+                                        stream_resp_waiting
+                                            .remove(&mut stream_resp_sending_nodes, nkey);
+                                        stream_resp_sending
+                                            .push_back(&mut stream_resp_sending_nodes, nkey);
+                                    }
+                                }
                             }
                         }
                     }
