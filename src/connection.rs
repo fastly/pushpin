@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::arena;
 use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, VECTORED_MAX};
 use crate::http1;
 use crate::websocket;
@@ -21,6 +22,7 @@ use crate::zhttppacket;
 use crate::zhttpsocket;
 use arrayvec::{ArrayString, ArrayVec};
 use log::debug;
+use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::VecDeque;
 use std::io;
@@ -982,6 +984,68 @@ enum ServerStreamState {
     Finished,
 }
 
+struct ServerStreamSharedDataInner {
+    to_addr: Option<ArrayVec<[u8; 64]>>,
+    out_seq: u32,
+}
+
+pub struct AddrRef<'a> {
+    s: Ref<'a, ServerStreamSharedDataInner>,
+}
+
+impl<'a> AddrRef<'a> {
+    pub fn get(&self) -> Option<&[u8]> {
+        match &self.s.to_addr {
+            Some(addr) => Some(addr.as_ref()),
+            None => None,
+        }
+    }
+}
+
+pub struct ServerStreamSharedData {
+    inner: RefCell<ServerStreamSharedDataInner>,
+}
+
+impl ServerStreamSharedData {
+    pub fn new() -> Self {
+        Self {
+            inner: RefCell::new(ServerStreamSharedDataInner {
+                to_addr: None,
+                out_seq: 0,
+            }),
+        }
+    }
+
+    fn reset(&self) {
+        let s = &mut *self.inner.borrow_mut();
+
+        s.to_addr = None;
+        s.out_seq = 0;
+    }
+
+    fn set_to_addr(&self, addr: Option<ArrayVec<[u8; 64]>>) {
+        let s = &mut *self.inner.borrow_mut();
+
+        s.to_addr = addr;
+    }
+
+    pub fn to_addr(&self) -> AddrRef {
+        AddrRef {
+            s: self.inner.borrow(),
+        }
+    }
+
+    pub fn out_seq(&self) -> u32 {
+        self.inner.borrow().out_seq
+    }
+
+    pub fn inc_out_seq(&self) {
+        let s = &mut *self.inner.borrow_mut();
+
+        s.out_seq += 1;
+    }
+}
+
 struct ServerStreamData {
     id: ArrayString<[u8; 32]>,
     peer_addr: Option<SocketAddr>,
@@ -994,11 +1058,9 @@ struct ServerStreamData {
     cont: [u8; 32],
     cont_len: usize,
     cont_left: usize,
-    to_addr: Option<ArrayVec<[u8; 64]>>,
     websocket: bool,
     ws_accept: Option<ArrayString<[u8; 28]>>, // base64_encode(sha1_hash) = 28 bytes
     in_seq: u32,
-    out_seq: u32,
     in_credits: u32,
     out_credits: u32,
     resp_header_left: usize,
@@ -1012,6 +1074,7 @@ struct ServerStreamData {
 
 pub struct ServerStreamConnection {
     d: ServerStreamData,
+    shared: arena::Rc<ServerStreamSharedData>,
     protocol: ServerProtocol,
     buf1: RingBuffer,
     buf2: RingBuffer,
@@ -1027,6 +1090,7 @@ impl ServerStreamConnection {
         messages_max: usize,
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
+        shared: arena::Rc<ServerStreamSharedData>,
     ) -> Self {
         let buf1 = RingBuffer::new(buffer_size, &rb_tmp);
         let buf2 = RingBuffer::new(buffer_size, &rb_tmp);
@@ -1045,11 +1109,9 @@ impl ServerStreamConnection {
                 cont: [0; 32],
                 cont_len: 0,
                 cont_left: 0,
-                to_addr: None,
                 websocket: false,
                 ws_accept: None,
                 in_seq: 0,
-                out_seq: 0,
                 in_credits: 0,
                 out_credits: 0,
                 resp_header_left: 0,
@@ -1060,6 +1122,7 @@ impl ServerStreamConnection {
                 pending_msg: None,
                 handoff_requested: false,
             },
+            shared,
             protocol: ServerProtocol::Http(http1::ServerProtocol::new()),
             buf1,
             buf2,
@@ -1076,11 +1139,9 @@ impl ServerStreamConnection {
 
         self.d.state = ServerStreamState::Ready;
         self.d.zhttp_exp_time = None;
-        self.d.to_addr = None;
         self.d.websocket = false;
         self.d.ws_accept = None;
         self.d.in_seq = 0;
-        self.d.out_seq = 0;
         self.d.in_credits = 0;
         self.d.out_credits = 0;
         self.d.resp_header_left = 0;
@@ -1090,6 +1151,8 @@ impl ServerStreamConnection {
         self.d.sock_readable = true;
         self.d.pending_msg = None;
         self.d.handoff_requested = false;
+
+        self.shared.get().reset();
 
         Self::refresh_client_timeout(&mut self.d, now);
 
@@ -1104,21 +1167,6 @@ impl ServerStreamConnection {
             ServerStreamState::Finished => ServerState::Finished,
             _ => ServerState::Connected,
         }
-    }
-
-    pub fn to_addr(&self) -> Option<&[u8]> {
-        match &self.d.to_addr {
-            Some(addr) => Some(addr.as_ref()),
-            None => None,
-        }
-    }
-
-    pub fn out_seq(&self) -> u32 {
-        self.d.out_seq
-    }
-
-    pub fn inc_out_seq(&mut self) {
-        self.d.out_seq += 1;
     }
 
     pub fn start(&mut self, id: &str) {
@@ -1201,6 +1249,7 @@ impl ServerStreamConnection {
 
     fn zsend<S, Z>(
         d: &mut ServerStreamData,
+        shared: &ServerStreamSharedData,
         args: &mut ServerProcessArgs<'_, S, Z>,
         zreq: zhttppacket::Request,
     ) -> Result<(), io::Error>
@@ -1217,7 +1266,7 @@ impl ServerStreamConnection {
 
             let ids = [zhttppacket::Id {
                 id: d.id.as_bytes(),
-                seq: Some(d.out_seq),
+                seq: Some(shared.out_seq()),
             }];
 
             zreq.from = args.instance.as_bytes();
@@ -1229,10 +1278,7 @@ impl ServerStreamConnection {
             zmq::Message::from(&args.packet_buf[..size])
         };
 
-        match args
-            .zsender
-            .send_to(d.to_addr.as_ref().unwrap().as_ref(), msg)
-        {
+        match args.zsender.send_to(shared.to_addr().get().unwrap(), msg) {
             Ok(()) => {}
             Err(zhttpsocket::SendError::Full(_)) => {
                 return Err(io::Error::from(io::ErrorKind::WriteZero));
@@ -1240,7 +1286,7 @@ impl ServerStreamConnection {
             Err(zhttpsocket::SendError::Io(e)) => return Err(e),
         }
 
-        d.out_seq += 1;
+        shared.inc_out_seq();
 
         Ok(())
     }
@@ -1382,7 +1428,7 @@ impl ServerStreamConnection {
 
                     let zreq = zhttppacket::Request::new_credit(b"", &[], self.d.out_credits);
 
-                    if let Err(e) = Self::zsend(&mut self.d, &mut args, zreq) {
+                    if let Err(e) = Self::zsend(&mut self.d, self.shared.get(), &mut args, zreq) {
                         return Some(Err(e.into()));
                     }
 
@@ -1398,12 +1444,12 @@ impl ServerStreamConnection {
 
                     let zreq = zhttppacket::Request::new_handoff_proceed(b"", &[]);
 
-                    if let Err(e) = Self::zsend(&mut self.d, &mut args, zreq) {
+                    if let Err(e) = Self::zsend(&mut self.d, self.shared.get(), &mut args, zreq) {
                         return Some(Err(e.into()));
                     }
 
                     self.d.state = ServerStreamState::Paused;
-                    self.d.to_addr = None;
+                    self.shared.get().set_to_addr(None);
                     self.d.handoff_requested = false;
 
                     return None;
@@ -1442,7 +1488,7 @@ impl ServerStreamConnection {
                 return None;
             }
             ServerStreamState::Finishing => {
-                if self.d.to_addr.is_some() {
+                if self.shared.get().to_addr().get().is_some() {
                     if !args.zsender.can_send_to() {
                         let mut want = Want::nothing();
                         want.zhttp_write_to = true;
@@ -1451,7 +1497,7 @@ impl ServerStreamConnection {
 
                     let zreq = zhttppacket::Request::new_cancel(b"", &[]);
 
-                    if let Err(e) = Self::zsend(&mut self.d, &mut args, zreq) {
+                    if let Err(e) = Self::zsend(&mut self.d, self.shared.get(), &mut args, zreq) {
                         return Some(Err(e.into()));
                     }
                 }
@@ -1508,7 +1554,7 @@ impl ServerStreamConnection {
                 Err(zhttpsocket::SendError::Io(e)) => return Some(Err(e.into())),
             }
 
-            self.d.out_seq += 1;
+            self.shared.get().inc_out_seq();
 
             Self::refresh_zhttp_timeout(&mut self.d, args.now);
 
@@ -1633,7 +1679,7 @@ impl ServerStreamConnection {
 
                 let ids = [zhttppacket::Id {
                     id: self.d.id.as_bytes(),
-                    seq: Some(self.d.out_seq),
+                    seq: Some(self.shared.get().out_seq()),
                 }];
 
                 let (mode, more) = if self.d.websocket {
@@ -1690,7 +1736,7 @@ impl ServerStreamConnection {
                     return None;
                 }
 
-                if self.d.to_addr.is_none() || self.d.in_credits == 0 {
+                if self.shared.get().to_addr().get().is_none() || self.d.in_credits == 0 {
                     return Some(Ok(want));
                 }
 
@@ -1753,7 +1799,7 @@ impl ServerStreamConnection {
 
                 let zreq = zhttppacket::Request::new_data(b"", &[], rdata);
 
-                if let Err(e) = Self::zsend(&mut self.d, &mut args, zreq) {
+                if let Err(e) = Self::zsend(&mut self.d, self.shared.get(), &mut args, zreq) {
                     return Some(Err(e.into()));
                 }
             }
@@ -1799,7 +1845,7 @@ impl ServerStreamConnection {
                     self.reset(args.now);
                 } else {
                     // don't send cancel
-                    self.d.to_addr = None;
+                    self.shared.get().set_to_addr(None);
 
                     self.d.state = ServerStreamState::ShuttingDown;
                 }
@@ -1901,7 +1947,7 @@ impl ServerStreamConnection {
             }
             websocket::State::Finished => {
                 // don't send cancel
-                self.d.to_addr = None;
+                self.shared.get().set_to_addr(None);
 
                 self.d.state = ServerStreamState::ShuttingDown;
 
@@ -1998,7 +2044,7 @@ impl ServerStreamConnection {
 
                 self.d.in_credits -= size as u32;
 
-                if let Err(e) = Self::zsend(&mut self.d, args, zreq) {
+                if let Err(e) = Self::zsend(&mut self.d, self.shared.get(), args, zreq) {
                     return Some(Err(e.into()));
                 }
 
@@ -2129,7 +2175,7 @@ impl ServerStreamConnection {
             return Err(ServerError::BadMessage);
         }
 
-        self.d.to_addr = Some(addr);
+        self.shared.get().set_to_addr(Some(addr));
 
         Self::refresh_zhttp_timeout(&mut self.d, now);
 
@@ -3278,6 +3324,9 @@ mod tests {
 
         let timeout = Duration::from_millis(5_000);
 
+        let shared_mem = Rc::new(arena::RcMemory::new(1));
+        let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+
         let mut c = ServerStreamConnection::new(
             Instant::now(),
             None,
@@ -3286,6 +3335,7 @@ mod tests {
             messages_max,
             &rb_tmp,
             timeout,
+            shared,
         );
         c.start("1");
 
@@ -3446,6 +3496,9 @@ mod tests {
 
         let timeout = Duration::from_millis(5_000);
 
+        let shared_mem = Rc::new(arena::RcMemory::new(1));
+        let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+
         let mut c = ServerStreamConnection::new(
             Instant::now(),
             None,
@@ -3454,6 +3507,7 @@ mod tests {
             messages_max,
             &rb_tmp,
             timeout,
+            shared,
         );
         c.start("1");
 
@@ -3665,6 +3719,9 @@ mod tests {
 
         let timeout = Duration::from_millis(5_000);
 
+        let shared_mem = Rc::new(arena::RcMemory::new(1));
+        let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+
         let mut c = ServerStreamConnection::new(
             Instant::now(),
             None,
@@ -3673,6 +3730,7 @@ mod tests {
             messages_max,
             &rb_tmp,
             timeout,
+            shared,
         );
         c.start("1");
 
@@ -3864,6 +3922,9 @@ mod tests {
 
         let timeout = Duration::from_millis(5_000);
 
+        let shared_mem = Rc::new(arena::RcMemory::new(1));
+        let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+
         let mut c = ServerStreamConnection::new(
             Instant::now(),
             None,
@@ -3872,6 +3933,7 @@ mod tests {
             messages_max,
             &rb_tmp,
             timeout,
+            shared,
         );
         c.start("1");
 

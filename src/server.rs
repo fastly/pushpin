@@ -19,7 +19,8 @@ use crate::arena;
 use crate::buffer::TmpBuffer;
 use crate::channel;
 use crate::connection::{
-    ServerReqConnection, ServerState, ServerStreamConnection, Shutdown, Want, ZhttpSender,
+    ServerReqConnection, ServerState, ServerStreamConnection, ServerStreamSharedData, Shutdown,
+    Want, ZhttpSender,
 };
 use crate::event;
 use crate::list;
@@ -405,6 +406,7 @@ impl Connection {
         timeout: Duration,
         senders: StreamLocalSenders,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        shared: arena::Rc<ServerStreamSharedData>,
     ) -> Self {
         let secure = match &stream {
             Stream::Plain(_) => false,
@@ -423,6 +425,7 @@ impl Connection {
                     messages_max,
                     rb_tmp,
                     timeout,
+                    shared,
                 ),
                 senders,
             ),
@@ -645,6 +648,7 @@ impl Connection {
 }
 
 struct ConnectionData {
+    shared: Option<arena::Rc<ServerStreamSharedData>>,
     zreceiver_sender: channel::LocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
     resp_sending_key: Option<usize>,
 }
@@ -1000,6 +1004,8 @@ impl Worker {
             conns_data.push(None);
         }
 
+        let stream_shared_mem = Rc::new(arena::RcMemory::new(stream_maxconn));
+
         let mut last_keep_alive_time = Instant::now();
         let mut next_keep_alive_index = 0;
 
@@ -1128,6 +1134,7 @@ impl Worker {
                     .unwrap();
 
                 conns_data[key] = Some(ConnectionData {
+                    shared: None,
                     zreceiver_sender: zreq_receiver_sender,
                     resp_sending_key: None,
                 });
@@ -1184,6 +1191,9 @@ impl Worker {
                     poller.local_registration_memory(),
                 );
 
+                let shared =
+                    arena::Rc::new(ServerStreamSharedData::new(), &stream_shared_mem).unwrap();
+
                 let entry = conns.vacant_entry();
                 let key = entry.key();
 
@@ -1196,6 +1206,7 @@ impl Worker {
                     stream_timeout,
                     zstream_senders,
                     zstream_receiver,
+                    arena::Rc::clone(&shared),
                 );
 
                 entry.insert(c);
@@ -1253,6 +1264,7 @@ impl Worker {
                     .unwrap();
 
                 conns_data[key] = Some(ConnectionData {
+                    shared: Some(shared),
                     zreceiver_sender: zstream_receiver_sender,
                     resp_sending_key: None,
                 });
@@ -1576,13 +1588,17 @@ impl Worker {
 
                     if let Some(c) = conns.get(key) {
                         // only send keep-alives to stream connections
-                        let conn = match &c.conn {
-                            ServerConnection::Stream(conn, _) => conn,
+                        match &c.conn {
+                            ServerConnection::Stream(_, _) => {}
                             _ => continue,
-                        };
+                        }
+
+                        let cdata = conns_data[key].as_ref().unwrap();
+                        let cshared = cdata.shared.as_ref().unwrap().get();
 
                         // only send keep-alives to connections with known handler addresses
-                        let addr = match conn.to_addr() {
+                        let addr_ref = cshared.to_addr();
+                        let addr = match addr_ref.get() {
                             Some(addr) => addr,
                             None => continue,
                         };
@@ -1620,15 +1636,12 @@ impl Worker {
 
                         let c = &conns[n.value];
 
-                        // this must succeed since we checked it earlier
-                        let conn = match &c.conn {
-                            ServerConnection::Stream(conn, _) => conn,
-                            _ => unreachable!(),
-                        };
+                        let cdata = conns_data[n.value].as_ref().unwrap();
+                        let cshared = cdata.shared.as_ref().unwrap().get();
 
                         ka_ids.push(zhttppacket::Id {
                             id: c.id.as_bytes(),
-                            seq: Some(conn.out_seq()),
+                            seq: Some(cshared.out_seq()),
                         });
 
                         next = n.next;
@@ -1651,15 +1664,10 @@ impl Worker {
                     while let Some(nkey) = next {
                         let n = &ka_nodes[nkey];
 
-                        let c = &mut conns[n.value];
+                        let cdata = conns_data[n.value].as_ref().unwrap();
+                        let cshared = cdata.shared.as_ref().unwrap().get();
 
-                        // this must succeed since we checked it earlier
-                        let conn = match &mut c.conn {
-                            ServerConnection::Stream(conn, _) => conn,
-                            _ => unreachable!(),
-                        };
-
-                        conn.inc_out_seq();
+                        cshared.inc_out_seq();
 
                         next = n.next;
                     }
@@ -1938,13 +1946,17 @@ impl Worker {
 
                 if let Some(c) = conns.get(key) {
                     // only send cancels to stream connections
-                    let conn = match &c.conn {
-                        ServerConnection::Stream(conn, _) => conn,
+                    match &c.conn {
+                        ServerConnection::Stream(_, _) => {}
                         _ => continue,
-                    };
+                    }
+
+                    let cdata = conns_data[key].as_ref().unwrap();
+                    let cshared = cdata.shared.as_ref().unwrap().get();
 
                     // only send cancels to connections with known handler addresses
-                    let addr = match conn.to_addr() {
+                    let addr_ref = cshared.to_addr();
+                    let addr = match addr_ref.get() {
                         Some(addr) => addr,
                         None => continue,
                     };
@@ -1982,15 +1994,12 @@ impl Worker {
 
                     let c = &conns[n.value];
 
-                    // this must succeed since we checked it earlier
-                    let conn = match &c.conn {
-                        ServerConnection::Stream(conn, _) => conn,
-                        _ => unreachable!(),
-                    };
+                    let cdata = conns_data[n.value].as_ref().unwrap();
+                    let cshared = cdata.shared.as_ref().unwrap().get();
 
                     ka_ids.push(zhttppacket::Id {
                         id: c.id.as_bytes(),
-                        seq: Some(conn.out_seq()),
+                        seq: Some(cshared.out_seq()),
                     });
 
                     next = n.next;
@@ -2013,15 +2022,10 @@ impl Worker {
                 while let Some(nkey) = next {
                     let n = &ka_nodes[nkey];
 
-                    let c = &mut conns[n.value];
+                    let cdata = conns_data[n.value].as_ref().unwrap();
+                    let cshared = cdata.shared.as_ref().unwrap().get();
 
-                    // this must succeed since we checked it earlier
-                    let conn = match &mut c.conn {
-                        ServerConnection::Stream(conn, _) => conn,
-                        _ => unreachable!(),
-                    };
-
-                    conn.inc_out_seq();
+                    cshared.inc_out_seq();
 
                     next = n.next;
                 }
