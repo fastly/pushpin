@@ -1251,6 +1251,34 @@ impl ClientReqHandle {
     }
 }
 
+pub struct AsyncClientReqHandle {
+    sender: AsyncSender<zmq::Message>,
+    receiver: AsyncReceiver<arena::Arc<zmq::Message>>,
+}
+
+impl AsyncClientReqHandle {
+    pub fn new(h: ClientReqHandle) -> Self {
+        Self {
+            sender: AsyncSender::new(h.sender),
+            receiver: AsyncReceiver::new(h.receiver),
+        }
+    }
+
+    pub async fn recv(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+        match self.receiver.recv().await {
+            Ok(msg) => Ok(msg),
+            Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
+        }
+    }
+
+    pub async fn send(&self, msg: zmq::Message) -> Result<(), io::Error> {
+        match self.sender.send(msg).await {
+            Ok(_) => Ok(()),
+            Err(mpsc::SendError(_)) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
+        }
+    }
+}
+
 pub struct ClientStreamHandle {
     sender_any: channel::Sender<zmq::Message>,
     sender_addr: channel::Sender<(ArrayVec<[u8; 64]>, zmq::Message)>,
@@ -1302,6 +1330,48 @@ impl ClientStreamHandle {
             Err(mpsc::TrySendError::Disconnected(_)) => {
                 Err(SendError::Io(io::Error::from(io::ErrorKind::BrokenPipe)))
             }
+        }
+    }
+}
+
+pub struct AsyncClientStreamHandle {
+    sender_any: AsyncSender<zmq::Message>,
+    sender_addr: AsyncSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    receiver: AsyncReceiver<arena::Arc<zmq::Message>>,
+}
+
+impl AsyncClientStreamHandle {
+    pub fn new(h: ClientStreamHandle) -> Self {
+        Self {
+            sender_any: AsyncSender::new(h.sender_any),
+            sender_addr: AsyncSender::new(h.sender_addr),
+            receiver: AsyncReceiver::new(h.receiver),
+        }
+    }
+
+    pub async fn recv(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+        match self.receiver.recv().await {
+            Ok(msg) => Ok(msg),
+            Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
+        }
+    }
+
+    pub async fn send_to_any(&self, msg: zmq::Message) -> Result<(), io::Error> {
+        match self.sender_any.send(msg).await {
+            Ok(_) => Ok(()),
+            Err(mpsc::SendError(_)) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
+        }
+    }
+
+    pub async fn send_to_addr(&self, addr: &[u8], msg: zmq::Message) -> Result<(), io::Error> {
+        let mut a = ArrayVec::new();
+        if a.try_extend_from_slice(addr).is_err() {
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        }
+
+        match self.sender_addr.send((a, msg)).await {
+            Ok(_) => Ok(()),
+            Err(mpsc::SendError(_)) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
         }
     }
 }
