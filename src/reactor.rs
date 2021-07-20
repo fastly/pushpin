@@ -31,8 +31,12 @@ thread_local! {
     static REACTOR: RefCell<Option<Weak<ReactorData>>> = RefCell::new(None);
 }
 
-fn duration_to_ticks(d: Duration) -> u64 {
+fn duration_to_ticks_round_down(d: Duration) -> u64 {
     (d.as_millis() / (TICK_DURATION_MS as u128)) as u64
+}
+
+fn duration_to_ticks_round_up(d: Duration) -> u64 {
+    ((d.as_millis() + (TICK_DURATION_MS as u128) - 1) / (TICK_DURATION_MS as u128)) as u64
 }
 
 fn ticks_to_duration(t: u64) -> Duration {
@@ -281,7 +285,7 @@ impl Reactor {
 
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        let expires_ticks = duration_to_ticks(expires - timer.start);
+        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
 
         let timer_key = match timer.wheel.add(expires_ticks, key) {
             Ok(timer_key) => timer_key,
@@ -342,7 +346,7 @@ impl Reactor {
     fn advance_timers(&self, current_time: Instant) -> Option<Duration> {
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        timer.current_ticks = duration_to_ticks(current_time - timer.start);
+        timer.current_ticks = duration_to_ticks_round_down(current_time - timer.start);
 
         timer.wheel.update(timer.current_ticks);
 
