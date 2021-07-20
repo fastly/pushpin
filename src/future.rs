@@ -16,7 +16,7 @@
 
 use crate::channel;
 use crate::event::ReadinessExt;
-use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, TimerEvented};
+use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented};
 use crate::shuffle::shuffle;
 use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio;
@@ -838,6 +838,20 @@ impl AsyncZmqSocket {
     }
 }
 
+pub struct EventWaiter<'a> {
+    registration: &'a Registration,
+}
+
+impl<'a> EventWaiter<'a> {
+    pub fn new(registration: &'a Registration) -> Self {
+        Self { registration }
+    }
+
+    pub fn wait(&'a self, interest: mio::Interest) -> WaitFuture<'a> {
+        WaitFuture { w: self, interest }
+    }
+}
+
 pub struct WaitWritableFuture<'a, T> {
     s: &'a AsyncSender<T>,
 }
@@ -1474,6 +1488,50 @@ impl Drop for ZmqRecvRoutedFuture<'_> {
     }
 }
 
+pub struct WaitFuture<'a> {
+    w: &'a EventWaiter<'a>,
+    interest: mio::Interest,
+}
+
+impl Future for WaitFuture<'_> {
+    type Output = mio::Interest;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
+
+        f.w.registration.set_waker(cx.waker().clone(), f.interest);
+
+        if !f.w.registration.readiness().contains_any(f.interest) {
+            return Poll::Pending;
+        }
+
+        let readiness = f.w.registration.readiness().unwrap();
+
+        // mask with the interest
+        let readable = readiness.is_readable() && f.interest.is_readable();
+        let writable = readiness.is_writable() && f.interest.is_writable();
+        let readiness = if readable && writable {
+            mio::Interest::READABLE | mio::Interest::WRITABLE
+        } else if readable {
+            mio::Interest::READABLE
+        } else {
+            mio::Interest::WRITABLE
+        };
+
+        Poll::Ready(readiness)
+    }
+}
+
+impl Drop for WaitFuture<'_> {
+    fn drop(&mut self) {
+        self.w.registration.clear_waker();
+    }
+}
+
+pub async fn event_wait(registration: &Registration, interest: mio::Interest) -> mio::Interest {
+    EventWaiter::new(registration).wait(interest).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2006,5 +2064,42 @@ mod tests {
         executor.spawn(sleep(Duration::from_millis(0))).unwrap();
 
         executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_event_wait() {
+        let executor = Executor::new(2);
+        let reactor = Reactor::new(2);
+
+        let (s, r) = channel::local_channel::<u32>(1, 1, &reactor.local_registration_memory());
+
+        let s = AsyncLocalSender::new(s);
+
+        executor
+            .spawn(async move {
+                let reactor = Reactor::current().unwrap();
+
+                let reg = reactor
+                    .register_custom_local(r.get_read_registration(), mio::Interest::READABLE)
+                    .unwrap();
+
+                assert_eq!(
+                    event_wait(&reg, mio::Interest::READABLE).await,
+                    mio::Interest::READABLE
+                );
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
 }
