@@ -631,6 +631,57 @@ impl<T> AsyncReceiver<T> {
     }
 }
 
+pub struct AsyncLocalSender<T> {
+    evented: CustomEvented,
+    inner: channel::LocalSender<T>,
+}
+
+impl<T> AsyncLocalSender<T> {
+    pub fn new(s: channel::LocalSender<T>) -> Self {
+        let evented = CustomEvented::new_local(
+            s.get_write_registration(),
+            mio::Interest::WRITABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self { evented, inner: s }
+    }
+
+    pub fn send<'a>(&'a self, t: T) -> LocalSendFuture<'a, T> {
+        LocalSendFuture {
+            s: self,
+            t: Some(t),
+        }
+    }
+}
+
+pub struct AsyncLocalReceiver<T> {
+    evented: CustomEvented,
+    inner: channel::LocalReceiver<T>,
+}
+
+impl<T> AsyncLocalReceiver<T> {
+    pub fn new(r: channel::LocalReceiver<T>) -> Self {
+        let evented = CustomEvented::new_local(
+            r.get_read_registration(),
+            mio::Interest::READABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self { evented, inner: r }
+    }
+
+    pub fn recv<'a>(&'a self) -> LocalRecvFuture<'a, T> {
+        LocalRecvFuture { r: self }
+    }
+}
+
 pub struct AsyncTcpListener {
     evented: IoEvented<TcpListener>,
 }
@@ -905,6 +956,93 @@ impl<T> Future for RecvFuture<'_, T> {
 }
 
 impl<T> Drop for RecvFuture<'_, T> {
+    fn drop(&mut self) {
+        self.r.evented.registration().clear_waker();
+    }
+}
+
+pub struct LocalSendFuture<'a, T> {
+    s: &'a AsyncLocalSender<T>,
+    t: Option<T>,
+}
+
+impl<T> Future for LocalSendFuture<'_, T>
+where
+    T: Unpin,
+{
+    type Output = Result<(), mpsc::SendError<T>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::WRITABLE);
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        if !f.s.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        let t = f.t.take().unwrap();
+
+        match f.s.inner.try_send(t) {
+            Ok(()) => Poll::Ready(Ok(())),
+            Err(mpsc::TrySendError::Full(t)) => {
+                f.s.evented.registration().set_ready(false);
+                f.t = Some(t);
+
+                Poll::Pending
+            }
+            Err(mpsc::TrySendError::Disconnected(t)) => Poll::Ready(Err(mpsc::SendError(t))),
+        }
+    }
+}
+
+impl<T> Drop for LocalSendFuture<'_, T> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+pub struct LocalRecvFuture<'a, T> {
+    r: &'a AsyncLocalReceiver<T>,
+}
+
+impl<T> Future for LocalRecvFuture<'_, T> {
+    type Output = Result<T, mpsc::RecvError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
+
+        f.r.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
+
+        if !f.r.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        if !f.r.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.r.inner.try_recv() {
+            Ok(v) => Poll::Ready(Ok(v)),
+            Err(mpsc::TryRecvError::Empty) => {
+                f.r.evented.registration().set_ready(false);
+
+                Poll::Pending
+            }
+            Err(mpsc::TryRecvError::Disconnected) => Poll::Ready(Err(mpsc::RecvError)),
+        }
+    }
+}
+
+impl<T> Drop for LocalRecvFuture<'_, T> {
     fn drop(&mut self) {
         self.r.evented.registration().clear_waker();
     }
@@ -1486,6 +1624,36 @@ mod tests {
         // attempting to receive on a rendezvous channel will make the
         // sender writable
         assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_local_channel() {
+        let executor = Executor::new(2);
+        let reactor = Reactor::new(2);
+
+        let (s, r) = channel::local_channel::<u32>(1, 1, &reactor.local_registration_memory());
+
+        let s = AsyncLocalSender::new(s);
+        let r = AsyncLocalReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+            })
+            .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
