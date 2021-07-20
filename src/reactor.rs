@@ -15,6 +15,7 @@
  */
 
 use crate::event;
+use crate::event::ReadinessExt;
 use crate::timer::TimerWheel;
 use mio;
 use slab::Slab;
@@ -55,31 +56,56 @@ impl Registration {
         Reactor { inner: reactor }
     }
 
-    pub fn is_ready(&self) -> bool {
+    pub fn readiness(&self) -> event::Readiness {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &*reactor.registrations.borrow();
 
         let reg_data = &registrations[self.key];
 
-        reg_data.ready
+        reg_data.readiness
+    }
+
+    pub fn set_readiness(&self, readiness: event::Readiness) {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+        let registrations = &mut *reactor.registrations.borrow_mut();
+
+        let reg_data = &mut registrations[self.key];
+
+        reg_data.readiness = readiness;
+    }
+
+    pub fn clear_readiness(&self, readiness: mio::Interest) {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+        let registrations = &mut *reactor.registrations.borrow_mut();
+
+        let reg_data = &mut registrations[self.key];
+
+        if let Some(cur) = reg_data.readiness.take() {
+            reg_data.readiness = cur.remove(readiness);
+        }
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.readiness().is_some()
     }
 
     pub fn set_ready(&self, ready: bool) {
-        let reactor = self.reactor.upgrade().expect("reactor is gone");
-        let registrations = &mut *reactor.registrations.borrow_mut();
+        let readiness = if ready {
+            Some(mio::Interest::READABLE)
+        } else {
+            None
+        };
 
-        let reg_data = &mut registrations[self.key];
-
-        reg_data.ready = ready;
+        self.set_readiness(readiness);
     }
 
-    pub fn set_waker(&self, waker: Waker) {
+    pub fn set_waker(&self, waker: Waker, interest: mio::Interest) {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &mut *reactor.registrations.borrow_mut();
 
         let reg_data = &mut registrations[self.key];
 
-        reg_data.waker = Some(waker);
+        reg_data.waker = Some((waker, interest));
     }
 
     pub fn clear_waker(&self) {
@@ -120,7 +146,7 @@ impl Registration {
             let registrations = &mut *reactor.registrations.borrow_mut();
             let reg_data = &mut registrations[self.key];
 
-            if let Some(waker) = reg_data.waker.take() {
+            if let Some((waker, _)) = reg_data.waker.take() {
                 waker.wake();
             }
         }
@@ -146,8 +172,8 @@ impl Drop for Registration {
 }
 
 struct RegistrationData {
-    ready: bool,
-    waker: Option<Waker>,
+    readiness: event::Readiness,
+    waker: Option<(Waker, mio::Interest)>,
     timer_key: Option<usize>,
 }
 
@@ -214,7 +240,7 @@ impl Reactor {
         }
 
         let key = registrations.insert(RegistrationData {
-            ready: false,
+            readiness: None,
             waker: None,
             timer_key: None,
         });
@@ -248,7 +274,7 @@ impl Reactor {
         }
 
         let key = registrations.insert(RegistrationData {
-            ready: false,
+            readiness: None,
             waker: None,
             timer_key: None,
         });
@@ -278,7 +304,7 @@ impl Reactor {
         }
 
         let key = registrations.insert(RegistrationData {
-            ready: false,
+            readiness: None,
             waker: None,
             timer_key: None,
         });
@@ -371,10 +397,24 @@ impl Reactor {
             let key = key - 1;
 
             if let Some(event_reg) = registrations.get_mut(key) {
-                event_reg.ready = true;
+                let changed = {
+                    let readiness = event_reg.readiness;
+                    event_reg.readiness.merge(event.readiness());
 
-                if let Some(waker) = event_reg.waker.take() {
-                    waker.wake();
+                    readiness != event_reg.readiness
+                };
+
+                if changed {
+                    if let Some((_, interest)) = &event_reg.waker {
+                        let readiness = event.readiness();
+
+                        if (readiness.is_readable() && interest.is_readable())
+                            || (readiness.is_writable() && interest.is_writable())
+                        {
+                            let (waker, _) = event_reg.waker.take().unwrap();
+                            waker.wake();
+                        }
+                    }
                 }
             }
         }
@@ -383,10 +423,10 @@ impl Reactor {
 
         while let Some((_, key)) = timer.wheel.take_expired() {
             if let Some(event_reg) = registrations.get_mut(key) {
-                event_reg.ready = true;
+                event_reg.readiness = Some(mio::Interest::READABLE);
                 event_reg.timer_key = None;
 
-                if let Some(waker) = event_reg.waker.take() {
+                if let Some((waker, _)) = event_reg.waker.take() {
                     waker.wake();
                 }
             }
@@ -560,7 +600,9 @@ mod tests {
 
         let waker = Rc::new(TestWaker::new());
 
-        evented.registration().set_waker(waker.clone().into_std());
+        evented
+            .registration()
+            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
 
         let thread = thread::spawn(move || {
             std::net::TcpStream::connect(addr).unwrap();
@@ -589,7 +631,9 @@ mod tests {
 
         let waker = Rc::new(TestWaker::new());
 
-        evented.registration().set_waker(waker.clone().into_std());
+        evented
+            .registration()
+            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
 
         let thread = thread::spawn(move || {
             std::net::TcpStream::connect(addr).unwrap();
@@ -614,7 +658,9 @@ mod tests {
 
         let waker = Rc::new(TestWaker::new());
 
-        evented.registration().set_waker(waker.clone().into_std());
+        evented
+            .registration()
+            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
 
         let thread = thread::spawn(move || {
             sr.set_readiness(mio::Interest::READABLE).unwrap();
@@ -639,7 +685,9 @@ mod tests {
 
         let waker = Rc::new(TestWaker::new());
 
-        evented.registration().set_waker(waker.clone().into_std());
+        evented
+            .registration()
+            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
 
         assert_eq!(waker.was_waked(), false);
 
@@ -684,7 +732,9 @@ mod tests {
 
         let waker = Rc::new(TestWaker::new());
 
-        evented.registration().set_waker(waker.clone().into_std());
+        evented
+            .registration()
+            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
 
         assert_eq!(evented.registration().pull_from_budget(), true);
         assert_eq!(waker.was_waked(), false);
@@ -697,7 +747,9 @@ mod tests {
         let waker = Rc::new(TestWaker::new());
 
         reactor.set_budget(Some(1));
-        evented.registration().set_waker(waker.clone().into_std());
+        evented
+            .registration()
+            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
 
         assert_eq!(evented.registration().pull_from_budget(), true);
         assert_eq!(waker.was_waked(), false);

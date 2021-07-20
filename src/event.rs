@@ -28,13 +28,24 @@ use std::time::Duration;
 const EVENTS_MAX: usize = 1024;
 const LOCAL_BUDGET: u32 = 10;
 
-type Readiness = Option<Interest>;
+pub type Readiness = Option<Interest>;
 
-trait MergeReadiness {
+pub trait ReadinessExt {
+    fn contains_any(&self, readiness: Interest) -> bool;
     fn merge(&mut self, readiness: Interest);
 }
 
-impl MergeReadiness for Readiness {
+impl ReadinessExt for Readiness {
+    fn contains_any(&self, readiness: Interest) -> bool {
+        match *self {
+            Some(cur) => {
+                (readiness.is_readable() && cur.is_readable())
+                    || (readiness.is_writable() && cur.is_writable())
+            }
+            None => false,
+        }
+    }
+
     fn merge(&mut self, readiness: Interest) {
         match *self {
             Some(cur) => *self = Some(cur.add(readiness)),
@@ -491,6 +502,10 @@ pub struct Event {
 impl Event {
     pub fn token(&self) -> Token {
         self.token
+    }
+
+    pub fn readiness(&self) -> Interest {
+        self.readiness
     }
 
     pub fn is_readable(&self) -> bool {

@@ -15,6 +15,7 @@
  */
 
 use crate::channel;
+use crate::event::ReadinessExt;
 use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, TimerEvented};
 use crate::shuffle::shuffle;
 use crate::zmq::{MultipartHeader, ZmqSocket};
@@ -542,7 +543,9 @@ impl<T> Future for WaitWritableFuture<'_, T> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &*self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::WRITABLE);
 
         // if can_send() returns false, then we know we can't write. this
         // check prevents spurious wakups of a rendezvous channel from
@@ -579,7 +582,9 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::WRITABLE);
 
         if !f.s.evented.registration().is_ready() {
             return Poll::Pending;
@@ -617,7 +622,9 @@ impl<T> Future for RecvFuture<'_, T> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &*self;
 
-        f.r.evented.registration().set_waker(cx.waker().clone());
+        f.r.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
         if !f.r.evented.registration().is_ready() {
             return Poll::Pending;
@@ -655,7 +662,9 @@ impl Future for AcceptFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.l.evented.registration().set_waker(cx.waker().clone());
+        f.l.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
         if !f.l.evented.registration().is_ready() {
             return Poll::Pending;
@@ -693,7 +702,9 @@ impl Future for TcpConnectFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::WRITABLE);
 
         if !f.s.evented.registration().is_ready() {
             return Poll::Pending;
@@ -729,9 +740,17 @@ impl Future for TcpReadFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
-        if !f.s.evented.registration().is_ready() {
+        if !f
+            .s
+            .evented
+            .registration()
+            .readiness()
+            .contains_any(mio::Interest::READABLE)
+        {
             return Poll::Pending;
         }
 
@@ -742,7 +761,9 @@ impl Future for TcpReadFuture<'_> {
         match f.s.evented.io().read(f.buf) {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                f.s.evented.registration().set_ready(false);
+                f.s.evented
+                    .registration()
+                    .clear_readiness(mio::Interest::READABLE);
 
                 Poll::Pending
             }
@@ -769,9 +790,17 @@ impl Future for TcpWriteFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::WRITABLE);
 
-        if !f.s.evented.registration().is_ready() {
+        if !f
+            .s
+            .evented
+            .registration()
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
+        {
             return Poll::Pending;
         }
 
@@ -791,7 +820,9 @@ impl Future for TcpWriteFuture<'_> {
                     }
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    f.s.evented.registration().set_ready(false);
+                    f.s.evented
+                        .registration()
+                        .clear_readiness(mio::Interest::WRITABLE);
 
                     return Poll::Pending;
                 }
@@ -819,7 +850,9 @@ impl Future for SleepFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
         if !f.s.evented.registration().is_ready() {
             return Poll::Pending;
@@ -860,7 +893,9 @@ impl Future for ZmqSendFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
         if f.s.evented.registration().is_ready() {
             f.s.inner.update_events();
@@ -906,7 +941,9 @@ impl Future for ZmqSendToFuture<'_> {
         let reactor = f.s.evented.registration().reactor();
 
         if let Some(timer_evented) = &f.timer_evented {
-            timer_evented.registration().set_waker(cx.waker().clone());
+            timer_evented
+                .registration()
+                .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
             if reactor.now() < timer_evented.expires() {
                 timer_evented.registration().set_ready(false);
@@ -919,7 +956,9 @@ impl Future for ZmqSendToFuture<'_> {
 
         assert!(f.timer_evented.is_none());
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
         if f.s.evented.registration().is_ready() {
             f.s.inner.update_events();
@@ -945,7 +984,9 @@ impl Future for ZmqSendToFuture<'_> {
                     f.s.evented.registration().clear_waker();
 
                     timer_evented.registration().set_ready(true);
-                    timer_evented.registration().set_waker(cx.waker().clone());
+                    timer_evented
+                        .registration()
+                        .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
                     f.timer_evented = Some(timer_evented);
                 }
@@ -973,7 +1014,9 @@ impl Future for ZmqRecvFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
         if f.s.evented.registration().is_ready() {
             f.s.inner.update_events();
@@ -1008,7 +1051,9 @@ impl Future for ZmqRecvRoutedFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.evented.registration().set_waker(cx.waker().clone());
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
         if f.s.evented.registration().is_ready() {
             f.s.inner.update_events();
