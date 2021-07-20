@@ -163,7 +163,7 @@ fn get_key(id: &[u8]) -> Result<usize, ()> {
 fn send_batched<'buf, 'ids>(
     mut zreq: zhttppacket::Request<'buf, 'ids, '_>,
     ids: &'ids [zhttppacket::Id<'buf>],
-    handle: &mut zhttpsocket::ClientStreamHandle,
+    handle: &zhttpsocket::ClientStreamHandle,
     to_addr: &[u8],
 ) {
     zreq.multi = true;
@@ -875,8 +875,8 @@ impl Worker {
             )
             .unwrap();
 
-        let mut req_handle = zsockman.client_req_handle(format!("{}-", id).as_bytes());
-        let mut stream_handle = zsockman.client_stream_handle(format!("{}-", id).as_bytes());
+        let req_handle = zsockman.client_req_handle(format!("{}-", id).as_bytes());
+        let stream_handle = zsockman.client_stream_handle(format!("{}-", id).as_bytes());
 
         poller
             .register_custom(
@@ -1655,7 +1655,7 @@ impl Worker {
 
                     let zreq = zhttppacket::Request::new_keep_alive(instance_id.as_bytes(), &[]);
 
-                    send_batched(zreq, &ka_ids, &mut stream_handle, addr);
+                    send_batched(zreq, &ka_ids, &stream_handle, addr);
 
                     ka_ids_mem = arena::recycle_vec(ka_ids);
 
@@ -2013,7 +2013,7 @@ impl Worker {
 
                 let zreq = zhttppacket::Request::new_cancel(instance_id.as_bytes(), &[]);
 
-                send_batched(zreq, &ka_ids, &mut stream_handle, addr);
+                send_batched(zreq, &ka_ids, &stream_handle, addr);
 
                 ka_ids_mem = arena::recycle_vec(ka_ids);
 

@@ -1230,7 +1230,7 @@ impl ClientReqHandle {
         self.sender.get_write_registration()
     }
 
-    pub fn recv(&mut self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub fn recv(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
         match self.receiver.try_recv() {
             Ok(msg) => Ok(msg),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
@@ -1240,7 +1240,7 @@ impl ClientReqHandle {
         }
     }
 
-    pub fn send(&mut self, msg: zmq::Message) -> Result<(), SendError> {
+    pub fn send(&self, msg: zmq::Message) -> Result<(), SendError> {
         match self.sender.try_send(msg) {
             Ok(_) => Ok(()),
             Err(mpsc::TrySendError::Full(msg)) => Err(SendError::Full(msg)),
@@ -1298,7 +1298,7 @@ impl ClientStreamHandle {
         self.sender_addr.get_write_registration()
     }
 
-    pub fn recv(&mut self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub fn recv(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
         match self.receiver.try_recv() {
             Ok(msg) => Ok(msg),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
@@ -1308,7 +1308,7 @@ impl ClientStreamHandle {
         }
     }
 
-    pub fn send_to_any(&mut self, msg: zmq::Message) -> Result<(), SendError> {
+    pub fn send_to_any(&self, msg: zmq::Message) -> Result<(), SendError> {
         match self.sender_any.try_send(msg) {
             Ok(_) => Ok(()),
             Err(mpsc::TrySendError::Full(msg)) => Err(SendError::Full(msg)),
@@ -1318,7 +1318,7 @@ impl ClientStreamHandle {
         }
     }
 
-    pub fn send_to_addr(&mut self, addr: &[u8], msg: zmq::Message) -> Result<(), SendError> {
+    pub fn send_to_addr(&self, addr: &[u8], msg: zmq::Message) -> Result<(), SendError> {
         let mut a = ArrayVec::new();
         if a.try_extend_from_slice(addr).is_err() {
             return Err(SendError::Io(io::Error::from(io::ErrorKind::InvalidInput)));
@@ -1443,7 +1443,7 @@ mod tests {
             .connect("inproc://flow-test-out-stream")
             .unwrap();
 
-        let mut h = zsockman.client_stream_handle(b"a-");
+        let h = zsockman.client_stream_handle(b"a-");
 
         let mut poller = event::Poller::new(1024).unwrap();
 
@@ -1532,8 +1532,8 @@ mod tests {
             }])
             .unwrap();
 
-        let mut h1 = zsockman.client_req_handle(b"a-");
-        let mut h2 = zsockman.client_req_handle(b"b-");
+        let h1 = zsockman.client_req_handle(b"a-");
+        let h2 = zsockman.client_req_handle(b"b-");
 
         let mut poller = event::Poller::new(1024).unwrap();
 
@@ -1657,8 +1657,8 @@ mod tests {
             )
             .unwrap();
 
-        let mut h1 = zsockman.client_stream_handle(b"a-");
-        let mut h2 = zsockman.client_stream_handle(b"b-");
+        let h1 = zsockman.client_stream_handle(b"a-");
+        let h2 = zsockman.client_stream_handle(b"b-");
 
         let mut poller = event::Poller::new(1024).unwrap();
 
