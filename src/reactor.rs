@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::arena;
 use crate::event;
 use crate::event::ReadinessExt;
 use crate::timer::TimerWheel;
@@ -296,6 +297,40 @@ impl Reactor {
         })
     }
 
+    pub fn register_custom_local(
+        &self,
+        handle: &event::LocalRegistration,
+        interest: mio::Interest,
+    ) -> Result<Registration, io::Error> {
+        let registrations = &mut *self.inner.registrations.borrow_mut();
+
+        if registrations.len() == registrations.capacity() {
+            return Err(io::Error::from(io::ErrorKind::WriteZero));
+        }
+
+        let key = registrations.insert(RegistrationData {
+            readiness: None,
+            waker: None,
+            timer_key: None,
+        });
+
+        if let Err(e) =
+            self.inner
+                .poll
+                .borrow()
+                .register_custom_local(handle, mio::Token(key + 1), interest)
+        {
+            registrations.remove(key);
+
+            return Err(e);
+        }
+
+        Ok(Registration {
+            reactor: Rc::downgrade(&self.inner),
+            key,
+        })
+    }
+
     pub fn register_timer(&self, expires: Instant) -> Result<Registration, io::Error> {
         let registrations = &mut *self.inner.registrations.borrow_mut();
 
@@ -367,6 +402,10 @@ impl Reactor {
             }),
             None => None,
         })
+    }
+
+    pub fn local_registration_memory(&self) -> Rc<arena::RcMemory<event::LocalRegistrationEntry>> {
+        self.inner.poll.borrow().local_registration_memory().clone()
     }
 
     fn advance_timers(&self, current_time: Instant) -> Option<Duration> {
@@ -518,6 +557,16 @@ impl CustomEvented {
         reactor: &Reactor,
     ) -> Result<Self, io::Error> {
         let registration = reactor.register_custom(event_reg, interest)?;
+
+        Ok(Self { registration })
+    }
+
+    pub fn new_local(
+        event_reg: &event::LocalRegistration,
+        interest: mio::Interest,
+        reactor: &Reactor,
+    ) -> Result<Self, io::Error> {
+        let registration = reactor.register_custom_local(event_reg, interest)?;
 
         Ok(Self { registration })
     }
