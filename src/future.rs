@@ -844,6 +844,10 @@ where
             return Poll::Pending;
         }
 
+        if !f.s.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
         let t = f.t.take().unwrap();
 
         // try_send will update the registration readiness, so we don't need
