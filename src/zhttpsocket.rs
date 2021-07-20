@@ -1014,10 +1014,13 @@ impl SocketManager {
                     req_send = Some(client_req.sock.send_to(h, msg));
                 }
                 // req_send
-                Select9::R3(result) => match result {
-                    Ok(()) => req_send = None,
-                    Err(e) => error!("req zmq send: {}", e),
-                },
+                Select9::R3(result) => {
+                    if let Err(e) = result {
+                        error!("req zmq send: {}", e);
+                    }
+
+                    req_send = None;
+                }
                 // client_req.sock.recv_routed
                 Select9::R4(result) => match result {
                     Ok(msg) => {
@@ -1038,10 +1041,13 @@ impl SocketManager {
                     stream_out_send = Some(client_stream.out.send(msg));
                 }
                 // stream_out_send
-                Select9::R6(result) => match result {
-                    Ok(()) => stream_out_send = None,
-                    Err(e) => error!("stream zmq send: {}", e),
-                },
+                Select9::R6(result) => {
+                    if let Err(e) = result {
+                        error!("stream zmq send: {}", e);
+                    }
+
+                    stream_out_send = None;
+                }
                 // stream_handles_recv_addr
                 Select9::R7((addr, msg)) => {
                     let mut h = MultipartHeader::new();
@@ -1054,10 +1060,13 @@ impl SocketManager {
                     stream_out_stream_send = Some(client_stream.out_stream.send_to(h, msg));
                 }
                 // stream_out_stream_send
-                Select9::R8(result) => match result {
-                    Ok(()) => stream_out_stream_send = None,
-                    Err(e) => error!("stream zmq send to: {}", e),
-                },
+                Select9::R8(result) => {
+                    if let Err(e) = result {
+                        error!("stream zmq send to: {}", e);
+                    }
+
+                    stream_out_stream_send = None;
+                }
                 // client_stream.in_.recv
                 Select9::R9(result) => match result {
                     Ok(msg) => {
@@ -1354,6 +1363,16 @@ mod tests {
             )
             .unwrap();
 
+        // connect an out-stream receiver. the other sockets we'll leave alone
+        let in_stream_sock = zmq_context.socket(zmq::ROUTER).unwrap();
+        in_stream_sock
+            .set_identity("test-handler".as_bytes())
+            .unwrap();
+        in_stream_sock.set_rcvhwm(1).unwrap();
+        in_stream_sock
+            .connect("inproc://flow-test-out-stream")
+            .unwrap();
+
         let mut h = zsockman.client_stream_handle(b"a-");
 
         let mut poller = event::Poller::new(1024).unwrap();
@@ -1366,38 +1385,33 @@ mod tests {
             )
             .unwrap();
 
-        // first write will always succeed
-        h.send_to_addr(
-            "test-handler".as_bytes(),
-            zmq::Message::from("1".as_bytes()),
-        )
-        .unwrap();
-
-        // second write will always succeed eventually. we may need to wait
-        //   for the manager to read the first message from the handle into
-        //   a temporary variable
-        loop {
-            match h.send_to_addr(
-                "test-handler".as_bytes(),
-                zmq::Message::from("2".as_bytes()),
-            ) {
-                Ok(()) => break,
-                Err(SendError::Full(_)) => wait_writable(&mut poller, mio::Token(1)),
-                Err(SendError::Io(e)) => panic!("{:?}", e),
+        // write four times, which will all succeed eventually. after this
+        //   we'll have filled the handle, the manager's temporary variable,
+        //   and the HWMs of both the sending and receiving zmq sockets
+        for i in 1..=4 {
+            loop {
+                match h.send_to_addr(
+                    "test-handler".as_bytes(),
+                    zmq::Message::from(format!("{}", i).into_bytes()),
+                ) {
+                    Ok(()) => break,
+                    Err(SendError::Full(_)) => wait_writable(&mut poller, mio::Token(1)),
+                    Err(SendError::Io(e)) => panic!("{:?}", e),
+                }
             }
         }
 
-        // once we were able to write a second time, this means the manager
-        //   has started processing the first message. let's wait a short bit
-        //   for the manager to attempt to send the first message to the zmq
-        //   socket and fail
+        // once we were able to write a fourth time, this means the manager
+        //   has started processing the third message. let's wait a short bit
+        //   for the manager to attempt to send the third message to the zmq
+        //   socket and fail with EAGAIN
         thread::sleep(Duration::from_millis(10));
 
-        // third write will fail. there's no room
+        // fifth write will fail. there's no room
         let e = h
             .send_to_addr(
                 "test-handler".as_bytes(),
-                zmq::Message::from("3".as_bytes()),
+                zmq::Message::from("5".as_bytes()),
             )
             .unwrap_err();
 
@@ -1405,34 +1419,32 @@ mod tests {
             SendError::Full(msg) => msg,
             _ => panic!("unexpected error"),
         };
-        assert_eq!(str::from_utf8(&msg).unwrap(), "3");
+        assert_eq!(str::from_utf8(&msg).unwrap(), "5");
 
-        // connect to the manager's zmq socket so at least one message can flow
-        let in_stream_sock = zmq_context.socket(zmq::ROUTER).unwrap();
-        in_stream_sock
-            .set_identity("test-handler".as_bytes())
-            .unwrap();
-        in_stream_sock.set_rcvhwm(1).unwrap();
-        in_stream_sock
-            .connect("inproc://flow-test-out-stream")
-            .unwrap();
-
-        // blocking read for the message
+        // blocking read from the zmq socket so another message can flow
         let parts = in_stream_sock.recv_multipart(0).unwrap();
         assert_eq!(parts.len(), 3);
         assert!(parts[1].is_empty());
         assert_eq!(parts[2], b"1");
 
-        // third write will succeed eventually
+        // fifth write will now succeed, eventually
         loop {
             match h.send_to_addr(
                 "test-handler".as_bytes(),
-                zmq::Message::from("3".as_bytes()),
+                zmq::Message::from("5".as_bytes()),
             ) {
                 Ok(()) => break,
                 Err(SendError::Full(_)) => wait_writable(&mut poller, mio::Token(1)),
                 Err(SendError::Io(e)) => panic!("{:?}", e),
             }
+        }
+
+        // read the rest of the messages
+        for i in 2..=5 {
+            let parts = in_stream_sock.recv_multipart(0).unwrap();
+            assert_eq!(parts.len(), 3);
+            assert!(parts[1].is_empty());
+            assert_eq!(parts[2], format!("{}", i).as_bytes());
         }
     }
 
