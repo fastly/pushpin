@@ -390,21 +390,21 @@ impl<T> LocalReceiver<T> {
     }
 
     pub fn try_recv(&self) -> Result<T, mpsc::TryRecvError> {
-        if self.channel.senders_is_empty() {
-            return Err(mpsc::TryRecvError::Disconnected);
-        }
-
         let mut queue = self.channel.queue.borrow_mut();
 
-        if !queue.is_empty() {
-            let value = queue.pop_front().unwrap();
+        if queue.is_empty() {
+            if self.channel.senders_is_empty() {
+                return Err(mpsc::TryRecvError::Disconnected);
+            }
 
-            self.channel.notify_one_sender();
-
-            Ok(value)
-        } else {
-            Err(mpsc::TryRecvError::Empty)
+            return Err(mpsc::TryRecvError::Empty);
         }
+
+        let value = queue.pop_front().unwrap();
+
+        self.channel.notify_one_sender();
+
+        Ok(value)
     }
 }
 
