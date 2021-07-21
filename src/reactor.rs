@@ -21,6 +21,7 @@ use crate::timer::TimerWheel;
 use mio;
 use slab::Slab;
 use std::cell::RefCell;
+use std::cmp;
 use std::io;
 use std::os::unix::io::RawFd;
 use std::rc::{Rc, Weak};
@@ -365,22 +366,24 @@ impl Reactor {
         })
     }
 
+    // we advance time after polling. this way, Reactor::now() is accurate
+    // during task processing. we assume the actual time doesn't change much
+    // between task processing and the next poll
     pub fn poll(&self, timeout: Option<Duration>) -> Result<(), io::Error> {
-        let timer_timeout = self.advance_timers(Instant::now());
+        self.poll_for_events(self.next_timeout(timeout))?;
+        self.advance_time(Instant::now());
+        self.process_events();
 
-        let timeout = match timeout {
-            Some(t) => Some(t),
-            None => timer_timeout,
-        };
-
-        self.poll_for_events(timeout)
+        Ok(())
     }
 
     // return the timeout that would have been used for a blocking poll
     pub fn poll_nonblocking(&self, current_time: Instant) -> Result<Option<Duration>, io::Error> {
-        let timeout = self.advance_timers(current_time);
+        let timeout = self.next_timeout(None);
 
         self.poll_for_events(Some(Duration::from_millis(0)))?;
+        self.advance_time(current_time);
+        self.process_events();
 
         Ok(timeout)
     }
@@ -408,24 +411,38 @@ impl Reactor {
         self.inner.poll.borrow().local_registration_memory().clone()
     }
 
-    fn advance_timers(&self, current_time: Instant) -> Option<Duration> {
+    fn next_timeout(&self, user_timeout: Option<Duration>) -> Option<Duration> {
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        timer.current_ticks = duration_to_ticks_round_down(current_time - timer.start);
-
-        timer.wheel.update(timer.current_ticks);
-
-        match timer.wheel.timeout() {
+        let timer_timeout = match timer.wheel.timeout() {
             Some(ticks) => Some(ticks_to_duration(ticks)),
             None => None,
+        };
+
+        match user_timeout {
+            Some(user_timeout) => Some(match timer_timeout {
+                Some(timer_timeout) => cmp::min(user_timeout, timer_timeout),
+                None => user_timeout,
+            }),
+            None => timer_timeout,
         }
     }
 
     fn poll_for_events(&self, timeout: Option<Duration>) -> Result<(), io::Error> {
         let poll = &mut *self.inner.poll.borrow_mut();
 
-        poll.poll(timeout)?;
+        poll.poll(timeout)
+    }
 
+    fn advance_time(&self, current_time: Instant) {
+        let timer = &mut *self.inner.timer.borrow_mut();
+
+        timer.current_ticks = duration_to_ticks_round_down(current_time - timer.start);
+        timer.wheel.update(timer.current_ticks);
+    }
+
+    fn process_events(&self) {
+        let poll = &mut *self.inner.poll.borrow_mut();
         let registrations = &mut *self.inner.registrations.borrow_mut();
 
         for event in poll.iter_events() {
@@ -470,8 +487,6 @@ impl Reactor {
                 }
             }
         }
-
-        Ok(())
     }
 }
 
@@ -739,19 +754,31 @@ mod tests {
             .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
 
         assert_eq!(waker.was_waked(), false);
+        assert_eq!(reactor.now(), now);
 
         let timeout = reactor
             .poll_nonblocking(now + Duration::from_millis(20))
             .unwrap();
 
-        assert_eq!(timeout, Some(Duration::from_millis(80)));
+        assert_eq!(timeout, Some(Duration::from_millis(100)));
+        assert_eq!(reactor.now(), now + Duration::from_millis(20));
         assert_eq!(waker.was_waked(), false);
 
-        reactor
+        let timeout = reactor
+            .poll_nonblocking(now + Duration::from_millis(40))
+            .unwrap();
+
+        assert_eq!(timeout, Some(Duration::from_millis(80)));
+        assert_eq!(reactor.now(), now + Duration::from_millis(40));
+        assert_eq!(waker.was_waked(), false);
+
+        let timeout = reactor
             .poll_nonblocking(now + Duration::from_millis(100))
             .unwrap();
 
+        assert_eq!(timeout, Some(Duration::from_millis(60)));
         assert_eq!(waker.was_waked(), true);
+        assert_eq!(reactor.now(), now + Duration::from_millis(100));
     }
 
     #[test]
