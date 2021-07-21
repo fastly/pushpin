@@ -160,50 +160,64 @@ fn get_key(id: &[u8]) -> Result<usize, ()> {
     Ok(key)
 }
 
-fn send_batched<'buf, 'ids>(
+trait RoutedSender {
+    fn try_send(&self, to_addr: &[u8], msg: zmq::Message);
+}
+
+impl RoutedSender for channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)> {
+    fn try_send(&self, to_addr: &[u8], msg: zmq::Message) {
+        let mut a = ArrayVec::new();
+        if a.try_extend_from_slice(to_addr).is_err() {
+            error!("failed to prepare to_addr");
+            return;
+        }
+
+        if let Err(e) = self.try_send((a, msg)) {
+            error!("zhttp write error: {}", e);
+            return;
+        }
+    }
+}
+
+impl RoutedSender for zhttpsocket::ClientStreamHandle {
+    fn try_send(&self, to_addr: &[u8], msg: zmq::Message) {
+        if let Err(e) = self.send_to_addr(to_addr, msg) {
+            error!("zhttp write error: {:?}", e);
+            return;
+        }
+    }
+}
+
+fn send_batched<'buf, 'ids, S: RoutedSender>(
     mut zreq: zhttppacket::Request<'buf, 'ids, '_>,
     ids: &'ids [zhttppacket::Id<'buf>],
-    handle: &zhttpsocket::ClientStreamHandle,
+    sender: &S,
     to_addr: &[u8],
 ) {
     zreq.multi = true;
 
-    let ids_per_msg = zhttppacket::IDS_MAX;
-    let msg_count = (ids.len() + (ids_per_msg - 1)) / ids_per_msg;
+    assert!(ids.len() <= zhttppacket::IDS_MAX);
 
-    for i in 0..msg_count {
-        let start = i * ids_per_msg;
-        let len = cmp::min(ids_per_msg, ids.len() - start);
+    zreq.ids = ids;
 
-        zreq.ids = &ids[start..(start + len)];
+    let mut data = [0; BULK_PACKET_SIZE_MAX];
 
-        let mut data = [0; BULK_PACKET_SIZE_MAX];
-
-        let size = match zreq.serialize(&mut data) {
-            Ok(size) => size,
-            Err(e) => {
-                error!(
-                    "failed to serialize keep-alive packet with {} ids: {}",
-                    zreq.ids.len(),
-                    e
-                );
-                break;
-            }
-        };
-
-        let buf = &data[..size];
-        let msg = zmq::Message::from(buf);
-
-        if let Err(e) = handle.send_to_addr(to_addr, msg) {
-            let e = match e {
-                zhttpsocket::SendError::Full(_) => io::Error::from(io::ErrorKind::WriteZero),
-                zhttpsocket::SendError::Io(e) => e,
-            };
-
-            error!("zhttp write error: {:?}", e);
-            break;
+    let size = match zreq.serialize(&mut data) {
+        Ok(size) => size,
+        Err(e) => {
+            error!(
+                "failed to serialize keep-alive packet with {} ids: {}",
+                zreq.ids.len(),
+                e
+            );
+            return;
         }
-    }
+    };
+
+    let buf = &data[..size];
+    let msg = zmq::Message::from(buf);
+
+    sender.try_send(to_addr, msg);
 }
 
 fn set_socket_opts(stream: TcpStream) -> TcpStream {
@@ -358,6 +372,7 @@ struct Connection {
     want: Want,
     timer: Option<(usize, u64)>, // timer id, exp time
     zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    keep_alive: Option<BatchKey>,
 }
 
 impl Connection {
@@ -394,6 +409,7 @@ impl Connection {
             want: Want::nothing(),
             timer: None,
             zreceiver,
+            keep_alive: None,
         }
     }
 
@@ -432,6 +448,7 @@ impl Connection {
             want: Want::nothing(),
             timer: None,
             zreceiver,
+            keep_alive: None,
         }
     }
 
@@ -695,6 +712,146 @@ impl KeySet {
     }
 }
 
+struct BatchKey {
+    addr_index: usize,
+    nkey: usize,
+}
+
+struct BatchGroup<'a, 'b> {
+    addr: &'b [u8],
+    ids: arena::ReusableVecHandle<'b, zhttppacket::Id<'a>>,
+}
+
+impl<'a> BatchGroup<'a, '_> {
+    fn addr(&self) -> &[u8] {
+        self.addr
+    }
+
+    fn ids(&self) -> &[zhttppacket::Id<'a>] {
+        &*self.ids
+    }
+}
+
+struct Batch {
+    nodes: Slab<list::Node<usize>>,
+    addrs: Vec<(ArrayVec<[u8; 64]>, list::List)>,
+    addr_index: usize,
+    group_ids: arena::ReusableVec,
+    last_group_ckeys: Vec<usize>,
+}
+
+impl Batch {
+    fn new(capacity: usize) -> Self {
+        Self {
+            nodes: Slab::with_capacity(capacity),
+            addrs: Vec::with_capacity(capacity),
+            addr_index: 0,
+            group_ids: arena::ReusableVec::new::<zhttppacket::Id>(capacity),
+            last_group_ckeys: Vec::with_capacity(capacity),
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    fn capacity(&self) -> usize {
+        self.nodes.capacity()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    fn clear(&mut self) {
+        self.addrs.clear();
+        self.nodes.clear();
+        self.addr_index = 0;
+    }
+
+    fn add(&mut self, to_addr: &[u8], ckey: usize) -> Result<BatchKey, ()> {
+        let mut pos = self.addrs.len();
+
+        for (i, a) in self.addrs.iter().enumerate() {
+            if a.0.as_ref() == to_addr {
+                pos = i;
+            }
+        }
+
+        if pos == self.addrs.len() {
+            // connection limits to_addr to 64 so this is guaranteed to succeed
+            let mut a = ArrayVec::new();
+            a.try_extend_from_slice(to_addr).unwrap();
+
+            self.addrs.push((a, list::List::default()));
+        }
+
+        if self.nodes.len() == self.nodes.capacity() {
+            return Err(());
+        }
+
+        let nkey = self.nodes.insert(list::Node::new(ckey));
+        self.addrs[pos].1.push_back(&mut self.nodes, nkey);
+
+        Ok(BatchKey {
+            addr_index: pos,
+            nkey,
+        })
+    }
+
+    fn remove(&mut self, key: BatchKey) {
+        self.addrs[key.addr_index]
+            .1
+            .remove(&mut self.nodes, key.nkey);
+        self.nodes.remove(key.nkey);
+    }
+
+    fn take_group<'a, 'b: 'a, F>(&'a mut self, get_ids: F) -> Option<BatchGroup>
+    where
+        F: Fn(usize) -> (&'b [u8], u32),
+    {
+        // find the next addr with items
+        while self.addr_index < self.addrs.len() && self.addrs[self.addr_index].1.is_empty() {
+            self.addr_index += 1;
+        }
+
+        // if all are empty, we're done
+        if self.addr_index == self.addrs.len() {
+            self.clear();
+
+            return None;
+        }
+
+        let (addr, keys) = &mut self.addrs[self.addr_index];
+
+        self.last_group_ckeys.clear();
+
+        let mut ids = self.group_ids.get_as_new();
+
+        // get ids/seqs
+        while ids.len() < zhttppacket::IDS_MAX {
+            let nkey = match keys.pop_front(&mut self.nodes) {
+                Some(nkey) => nkey,
+                None => break,
+            };
+
+            let ckey = self.nodes[nkey].value;
+            self.nodes.remove(nkey);
+
+            let (id, seq) = get_ids(ckey);
+
+            self.last_group_ckeys.push(ckey);
+            ids.push(zhttppacket::Id { id, seq: Some(seq) });
+        }
+
+        Some(BatchGroup { addr, ids })
+    }
+
+    fn last_group_ckeys(&self) -> &[usize] {
+        &self.last_group_ckeys
+    }
+}
+
 struct Worker {
     thread: Option<thread::JoinHandle<()>>,
     stop: channel::Sender<()>,
@@ -819,9 +976,7 @@ impl Worker {
 
         let ka_batch = (stream_maxconn + (KEEP_ALIVE_BATCHES - 1)) / KEEP_ALIVE_BATCHES;
 
-        let mut ka_nodes: Slab<list::Node<usize>> = Slab::with_capacity(ka_batch);
-        let mut ka_addrs: Vec<(ArrayVec<[u8; 64]>, list::List)> = Vec::with_capacity(ka_batch);
-        let mut ka_ids_mem: Vec<zhttppacket::Id> = Vec::with_capacity(ka_batch);
+        let mut batch = Batch::new(ka_batch);
 
         let mut req_tls_acceptors = Vec::new();
 
@@ -1487,6 +1642,11 @@ impl Worker {
                 if c.process(now, &instance_id, &mut packet_buf, &mut tmp_buf) {
                     debug!("conn {}: destroying", c.id);
 
+                    // clear active keep alive
+                    if let Some(bkey) = c.keep_alive.take() {
+                        batch.remove(bkey);
+                    }
+
                     let cdata = conns_data[key].as_mut().unwrap();
 
                     if let Some(nkey) = cdata.resp_sending_key {
@@ -1526,6 +1686,11 @@ impl Worker {
                 }
 
                 if c.state() == ServerState::Ready {
+                    // clear active keep alive
+                    if let Some(bkey) = c.keep_alive.take() {
+                        batch.remove(bkey);
+                    }
+
                     let id = Self::gen_id(id, key, &mut next_cid);
                     c.start(id.as_ref());
 
@@ -1560,33 +1725,24 @@ impl Worker {
                 }
             }
 
-            let mut do_keep_alives = false;
+            if batch.is_empty() && now >= last_keep_alive_time + KEEP_ALIVE_INTERVAL {
+                let mut wrapped = false;
 
-            if now >= last_keep_alive_time + KEEP_ALIVE_INTERVAL && zstream_out_stream_sender_ready
-            {
-                if zstream_out_stream_sender.check_send() {
-                    // if check_send returns true, we are guaranteed to be able to send
-                    do_keep_alives = true;
-                } else {
-                    // if check_send returns false, we'll be on the waitlist for a notification
-                    zstream_out_stream_sender_ready = false;
-                }
-            }
-
-            if do_keep_alives {
-                ka_nodes.clear();
-                ka_addrs.clear();
-
-                for _ in 0..ka_nodes.capacity() {
-                    let key = next_keep_alive_index;
-                    if key == conns.capacity() {
-                        next_keep_alive_index = 0;
+                for _ in 0..batch.capacity() {
+                    if wrapped {
                         break;
                     }
 
+                    let key = next_keep_alive_index;
+
                     next_keep_alive_index += 1;
 
-                    if let Some(c) = conns.get(key) {
+                    if next_keep_alive_index == conns.capacity() {
+                        next_keep_alive_index = 0;
+                        wrapped = true;
+                    }
+
+                    if let Some(c) = conns.get_mut(key) {
                         // only send keep-alives to stream connections
                         match &c.conn {
                             ServerConnection::Stream(_, _) => {}
@@ -1603,82 +1759,59 @@ impl Worker {
                             None => continue,
                         };
 
-                        let mut pos = ka_addrs.len();
-
-                        for (i, a) in ka_addrs.iter().enumerate() {
-                            if a.0.as_ref() == addr {
-                                pos = i;
-                            }
-                        }
-
-                        if pos == ka_addrs.len() {
-                            // connection limits to_addr to 64 so this is guaranteed to succeed
-                            let mut a = ArrayVec::new();
-                            a.try_extend_from_slice(addr).unwrap();
-
-                            ka_addrs.push((a, list::List::default()));
-                        }
-
-                        let node = ka_nodes.insert(list::Node::new(key));
-                        ka_addrs[pos].1.push_back(&mut ka_nodes, node);
+                        c.keep_alive = Some(batch.add(addr, key).unwrap());
                     }
                 }
+            }
 
-                for (addr, keys) in ka_addrs.iter() {
-                    let addr = addr.as_ref();
-
-                    let mut ka_ids = arena::recycle_vec(ka_ids_mem);
-
-                    // get ids/seqs
-                    let mut next = keys.head;
-                    while let Some(nkey) = next {
-                        let n = &ka_nodes[nkey];
-
-                        let c = &conns[n.value];
-
-                        let cdata = conns_data[n.value].as_ref().unwrap();
-                        let cshared = cdata.shared.as_ref().unwrap().get();
-
-                        ka_ids.push(zhttppacket::Id {
-                            id: c.id.as_bytes(),
-                            seq: Some(cshared.out_seq()),
-                        });
-
-                        next = n.next;
-                    }
-
-                    debug!(
-                        "worker {}: sending keep alives for {} sessions",
-                        id,
-                        ka_ids.len()
-                    );
-
-                    let zreq = zhttppacket::Request::new_keep_alive(instance_id.as_bytes(), &[]);
-
-                    send_batched(zreq, &ka_ids, &stream_handle, addr);
-
-                    ka_ids_mem = arena::recycle_vec(ka_ids);
-
-                    // inc seqs
-                    let mut next = keys.head;
-                    while let Some(nkey) = next {
-                        let n = &ka_nodes[nkey];
-
-                        let cdata = conns_data[n.value].as_ref().unwrap();
-                        let cshared = cdata.shared.as_ref().unwrap().get();
-
-                        cshared.inc_out_seq();
-
-                        next = n.next;
-                    }
+            while !batch.is_empty() && zstream_out_stream_sender_ready {
+                if !zstream_out_stream_sender.check_send() {
+                    // if check_send returns false, we'll be on the waitlist for a notification
+                    zstream_out_stream_sender_ready = false;
+                    break;
                 }
 
-                if now - last_keep_alive_time >= KEEP_ALIVE_INTERVAL * 2 {
-                    // got really behind somehow. just skip ahead
-                    last_keep_alive_time = now;
-                } else {
-                    // keep steady pace
-                    last_keep_alive_time += KEEP_ALIVE_INTERVAL;
+                // if check_send returns true, we are guaranteed to be able to send
+
+                let group = batch
+                    .take_group(|ckey| {
+                        let c = &conns[ckey];
+                        let cdata = conns_data[ckey].as_ref().unwrap();
+                        let cshared = cdata.shared.as_ref().unwrap().get();
+
+                        (c.id.as_bytes(), cshared.out_seq())
+                    })
+                    .unwrap();
+
+                debug!(
+                    "worker {}: sending keep alives for {} sessions",
+                    id,
+                    group.ids().len()
+                );
+
+                let zreq = zhttppacket::Request::new_keep_alive(instance_id.as_bytes(), &[]);
+
+                send_batched(zreq, group.ids(), &zstream_out_stream_sender, group.addr());
+
+                drop(group);
+
+                for &ckey in batch.last_group_ckeys() {
+                    let c = &mut conns[ckey];
+                    let cdata = conns_data[ckey].as_ref().unwrap();
+                    let cshared = cdata.shared.as_ref().unwrap().get();
+
+                    cshared.inc_out_seq();
+                    c.keep_alive = None;
+                }
+
+                if batch.is_empty() {
+                    if now - last_keep_alive_time >= KEEP_ALIVE_INTERVAL * 2 {
+                        // got really behind somehow. just skip ahead
+                        last_keep_alive_time = now;
+                    } else {
+                        // keep steady pace
+                        last_keep_alive_time += KEEP_ALIVE_INTERVAL;
+                    }
                 }
             }
 
@@ -1776,6 +1909,7 @@ impl Worker {
                 || (can_zstream_out_write && stream_out_send_pending.is_some())
                 || (stream_out_stream_send_pending.is_none() && zstream_out_stream_receiver_ready)
                 || (can_zstream_out_stream_write && stream_out_stream_send_pending.is_some())
+                || (!batch.is_empty() && zstream_out_stream_sender_ready)
             {
                 Duration::from_millis(0)
             } else if let Some(t) = timers.timeout() {
@@ -1927,24 +2061,19 @@ impl Worker {
             }
         }
 
-        // reuse ka_* vars to send cancels
+        // send cancels
+
+        batch.clear();
 
         let mut next_cancel_index = 0;
 
         while next_cancel_index < conns.capacity() {
-            ka_nodes.clear();
-            ka_addrs.clear();
-
-            while ka_nodes.len() < ka_nodes.capacity() {
+            while batch.len() < batch.capacity() && next_cancel_index < conns.capacity() {
                 let key = next_cancel_index;
 
                 next_cancel_index += 1;
 
-                if next_cancel_index == conns.capacity() {
-                    break;
-                }
-
-                if let Some(c) = conns.get(key) {
+                if let Some(c) = conns.get_mut(key) {
                     // only send cancels to stream connections
                     match &c.conn {
                         ServerConnection::Stream(_, _) => {}
@@ -1961,74 +2090,26 @@ impl Worker {
                         None => continue,
                     };
 
-                    let mut pos = ka_addrs.len();
-
-                    for (i, a) in ka_addrs.iter().enumerate() {
-                        if a.0.as_ref() == addr {
-                            pos = i;
-                        }
-                    }
-
-                    if pos == ka_addrs.len() {
-                        // connection limits to_addr to 64 so this is guaranteed to succeed
-                        let mut a = ArrayVec::new();
-                        a.try_extend_from_slice(addr).unwrap();
-
-                        ka_addrs.push((a, list::List::default()));
-                    }
-
-                    let node = ka_nodes.insert(list::Node::new(key));
-                    ka_addrs[pos].1.push_back(&mut ka_nodes, node);
+                    batch.add(addr, key).unwrap();
                 }
             }
 
-            for (addr, keys) in ka_addrs.iter() {
-                let addr = addr.as_ref();
+            while let Some(group) = batch.take_group(|ckey| {
+                let c = &conns[ckey];
+                let cdata = conns_data[ckey].as_ref().unwrap();
+                let cshared = cdata.shared.as_ref().unwrap().get();
 
-                let mut ka_ids = arena::recycle_vec(ka_ids_mem);
-
-                // get ids/seqs
-                let mut next = keys.head;
-                while let Some(nkey) = next {
-                    let n = &ka_nodes[nkey];
-
-                    let c = &conns[n.value];
-
-                    let cdata = conns_data[n.value].as_ref().unwrap();
-                    let cshared = cdata.shared.as_ref().unwrap().get();
-
-                    ka_ids.push(zhttppacket::Id {
-                        id: c.id.as_bytes(),
-                        seq: Some(cshared.out_seq()),
-                    });
-
-                    next = n.next;
-                }
-
+                (c.id.as_bytes(), cshared.out_seq())
+            }) {
                 debug!(
                     "worker {}: sending cancels for {} sessions",
                     id,
-                    ka_ids.len()
+                    group.ids().len()
                 );
 
                 let zreq = zhttppacket::Request::new_cancel(instance_id.as_bytes(), &[]);
 
-                send_batched(zreq, &ka_ids, &stream_handle, addr);
-
-                ka_ids_mem = arena::recycle_vec(ka_ids);
-
-                // inc seqs
-                let mut next = keys.head;
-                while let Some(nkey) = next {
-                    let n = &ka_nodes[nkey];
-
-                    let cdata = conns_data[n.value].as_ref().unwrap();
-                    let cshared = cdata.shared.as_ref().unwrap().get();
-
-                    cshared.inc_out_seq();
-
-                    next = n.next;
-                }
+                send_batched(zreq, group.ids(), &stream_handle, group.addr());
             }
 
             // give zsockman some time to process pending messages
@@ -2706,6 +2787,55 @@ pub mod tests {
     use super::*;
     use crate::websocket;
     use std::io::Read;
+
+    #[test]
+    fn test_batch() {
+        let mut batch = Batch::new(3);
+
+        assert_eq!(batch.capacity(), 3);
+        assert_eq!(batch.len(), 0);
+        assert_eq!(batch.last_group_ckeys(), &[]);
+
+        assert!(batch.add(b"addr-a", 1).is_ok());
+        assert!(batch.add(b"addr-a", 2).is_ok());
+        assert!(batch.add(b"addr-b", 3).is_ok());
+        assert_eq!(batch.len(), 3);
+
+        assert!(batch.add(b"addr-c", 4).is_err());
+        assert_eq!(batch.len(), 3);
+        assert_eq!(batch.is_empty(), false);
+
+        let ids = ["id-1", "id-2", "id-3"];
+
+        let group = batch
+            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .unwrap();
+        assert_eq!(group.ids().len(), 2);
+        assert_eq!(group.ids()[0].id, b"id-1");
+        assert_eq!(group.ids()[0].seq, Some(0));
+        assert_eq!(group.ids()[1].id, b"id-2");
+        assert_eq!(group.ids()[1].seq, Some(0));
+        assert_eq!(group.addr(), b"addr-a");
+        drop(group);
+        assert_eq!(batch.is_empty(), false);
+        assert_eq!(batch.last_group_ckeys(), &[1, 2]);
+
+        let group = batch
+            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .unwrap();
+        assert_eq!(group.ids().len(), 1);
+        assert_eq!(group.ids()[0].id, b"id-3");
+        assert_eq!(group.ids()[0].seq, Some(0));
+        assert_eq!(group.addr(), b"addr-b");
+        drop(group);
+        assert_eq!(batch.is_empty(), true);
+        assert_eq!(batch.last_group_ckeys(), &[3]);
+
+        assert!(batch
+            .take_group(|ckey| { (ids[ckey - 1].as_bytes(), 0) })
+            .is_none());
+        assert_eq!(batch.last_group_ckeys(), &[3]);
+    }
 
     #[test]
     fn test_server() {
