@@ -1161,7 +1161,7 @@ impl Worker {
 
         let stream_shared_mem = Rc::new(arena::RcMemory::new(stream_maxconn));
 
-        let mut last_keep_alive_time = Instant::now();
+        let mut next_keep_alive_time = Instant::now() + KEEP_ALIVE_INTERVAL;
         let mut next_keep_alive_index = 0;
 
         let start_time = Instant::now();
@@ -1725,7 +1725,7 @@ impl Worker {
                 }
             }
 
-            if batch.is_empty() && now >= last_keep_alive_time + KEEP_ALIVE_INTERVAL {
+            if batch.is_empty() && now >= next_keep_alive_time {
                 let mut wrapped = false;
 
                 for _ in 0..batch.capacity() {
@@ -1762,6 +1762,9 @@ impl Worker {
                         c.keep_alive = Some(batch.add(addr, key).unwrap());
                     }
                 }
+
+                // keep steady pace
+                next_keep_alive_time += KEEP_ALIVE_INTERVAL;
             }
 
             while !batch.is_empty() && zstream_out_stream_sender_ready {
@@ -1805,12 +1808,9 @@ impl Worker {
                 }
 
                 if batch.is_empty() {
-                    if now - last_keep_alive_time >= KEEP_ALIVE_INTERVAL * 2 {
+                    if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
                         // got really behind somehow. just skip ahead
-                        last_keep_alive_time = now;
-                    } else {
-                        // keep steady pace
-                        last_keep_alive_time += KEEP_ALIVE_INTERVAL;
+                        next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
                     }
                 }
             }
