@@ -83,6 +83,14 @@ pub struct App {
 
 impl App {
     pub fn new(config: &Config) -> Result<Self, String> {
+        if config.req_maxconn < config.workers {
+            return Err("req maxconn must be >= workers".into());
+        }
+
+        if config.stream_maxconn < config.workers {
+            return Err("stream maxconn must be >= workers".into());
+        }
+
         let zmq_context = Arc::new(zmq::Context::new());
 
         // set hwm to 5% of maxconn
