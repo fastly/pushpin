@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 
 use crate::server::{Server, MSG_RETAINED_MAX};
-use crate::zhttppacket;
 use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
 use log::info;
@@ -84,10 +83,6 @@ pub struct App {
 
 impl App {
     pub fn new(config: &Config) -> Result<Self, String> {
-        // usage to avoid dead code warnings elsewhere
-        zhttppacket::Request::new_error(b"", &[], "bogus");
-        zhttppacket::Request::new_handoff_start(b"", &[]);
-
         let zmq_context = Arc::new(zmq::Context::new());
 
         // set hwm to 5% of maxconn
