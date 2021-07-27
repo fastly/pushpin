@@ -1161,6 +1161,7 @@ impl Worker {
 
         let stream_shared_mem = Rc::new(arena::RcMemory::new(stream_maxconn));
 
+        let mut keep_alive_count = 0;
         let mut next_keep_alive_time = Instant::now() + KEEP_ALIVE_INTERVAL;
         let mut next_keep_alive_index = 0;
 
@@ -1726,21 +1727,14 @@ impl Worker {
             }
 
             if batch.is_empty() && now >= next_keep_alive_time {
-                let mut wrapped = false;
-
                 for _ in 0..batch.capacity() {
-                    if wrapped {
+                    if next_keep_alive_index >= conns.capacity() {
                         break;
                     }
 
                     let key = next_keep_alive_index;
 
                     next_keep_alive_index += 1;
-
-                    if next_keep_alive_index == conns.capacity() {
-                        next_keep_alive_index = 0;
-                        wrapped = true;
-                    }
 
                     if let Some(c) = conns.get_mut(key) {
                         // only send keep-alives to stream connections
@@ -1761,6 +1755,13 @@ impl Worker {
 
                         c.keep_alive = Some(batch.add(addr, key).unwrap());
                     }
+                }
+
+                keep_alive_count += 1;
+
+                if keep_alive_count >= KEEP_ALIVE_BATCHES {
+                    keep_alive_count = 0;
+                    next_keep_alive_index = 0;
                 }
 
                 // keep steady pace
