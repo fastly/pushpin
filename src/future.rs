@@ -546,6 +546,35 @@ where
     SelectOptionFuture { fut }
 }
 
+pub struct SelectOptionRefFuture<'a, F> {
+    fut: Option<&'a mut F>,
+}
+
+impl<'a, F, O> Future for SelectOptionRefFuture<'a, F>
+where
+    F: Future<Output = O>,
+{
+    type Output = O;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        match self.fut.as_mut() {
+            Some(f) => {
+                let f: Pin<&mut F> = unsafe { Pin::new_unchecked(*f) };
+
+                f.poll(cx)
+            }
+            None => Poll::Pending,
+        }
+    }
+}
+
+pub fn select_option_ref<F, O>(fut: Option<&mut F>) -> SelectOptionRefFuture<F>
+where
+    F: Future<Output = O>,
+{
+    SelectOptionRefFuture { fut }
+}
+
 #[track_caller]
 fn get_reactor() -> Reactor {
     Reactor::current().expect("no reactor in thread")
