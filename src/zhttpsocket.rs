@@ -1363,13 +1363,12 @@ impl AsyncClientStreamHandle {
         }
     }
 
-    pub async fn send_to_addr(&self, addr: &[u8], msg: zmq::Message) -> Result<(), io::Error> {
-        let mut a = ArrayVec::new();
-        if a.try_extend_from_slice(addr).is_err() {
-            return Err(io::Error::from(io::ErrorKind::InvalidInput));
-        }
-
-        match self.sender_addr.send((a, msg)).await {
+    pub async fn send_to_addr(
+        &self,
+        addr: ArrayVec<[u8; 64]>,
+        msg: zmq::Message,
+    ) -> Result<(), io::Error> {
+        match self.sender_addr.send((addr, msg)).await {
             Ok(_) => Ok(()),
             Err(mpsc::SendError(_)) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
         }
