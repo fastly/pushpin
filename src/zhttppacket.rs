@@ -1056,9 +1056,9 @@ impl<'buf, 'scratch> Response<'_, '_, '_> {
 }
 
 pub struct OwnedResponse {
-    _src: arena::Arc<zmq::Message>,
-    _scratch: arena::Rc<RefCell<ResponseScratch<'static>>>,
     resp: Response<'static, 'static, 'static>,
+    _scratch: arena::Rc<RefCell<ResponseScratch<'static>>>,
+    _src: arena::Arc<zmq::Message>,
 }
 
 impl OwnedResponse {
@@ -1089,9 +1089,9 @@ impl OwnedResponse {
         let resp = Response::parse(src_ref, scratch_mut)?;
 
         Ok(Self {
-            _src: src,
-            _scratch: scratch,
             resp,
+            _scratch: scratch,
+            _src: src,
         })
     }
 
