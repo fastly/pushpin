@@ -249,9 +249,10 @@ impl IdentityCache {
     }
 }
 
-enum Stream {
-    Ssl(SslStream<TcpStream>),
-    MidHandshakeSsl(MidHandshakeSslStream<TcpStream>),
+enum Stream<'a> {
+    Ssl(SslStream<&'a mut TcpStream>),
+    MidHandshakeSsl(MidHandshakeSslStream<&'a mut TcpStream>),
+    NoSsl,
 }
 
 pub struct TlsAcceptor {
@@ -305,7 +306,20 @@ impl TlsAcceptor {
     }
 
     pub fn accept(&self, stream: TcpStream) -> Result<TlsStream, ErrorStack> {
-        let stream = match self.acceptor.accept(stream) {
+        let mut tcp_stream_boxed = Box::new(stream);
+
+        let tcp_stream: &mut TcpStream = &mut tcp_stream_boxed;
+
+        // safety: TlsStream will take ownership of tcp_stream, and the value
+        // referred to by tcp_stream is on the heap, and tcp_stream will not
+        // be dropped until TlsStream is dropped, so the value referred to
+        // by tcp_stream will remain valid for the lifetime of TlsStream.
+        // further, tcp_stream is a mutable reference, and will only ever
+        // be exclusively mutably accessed, either when wrapped by SslStream
+        // or MidHandshakeSslStream, or when known to be not wrapped
+        let tcp_stream: &'static mut TcpStream = unsafe { mem::transmute(tcp_stream) };
+
+        let stream = match self.acceptor.accept(tcp_stream) {
             Ok(stream) => Stream::Ssl(stream),
             Err(HandshakeError::SetupFailure(e)) => return Err(e),
             Err(HandshakeError::Failure(stream)) => Stream::MidHandshakeSsl(stream),
@@ -313,23 +327,25 @@ impl TlsAcceptor {
         };
 
         Ok(TlsStream {
-            stream: Some(stream),
+            stream,
+            tcp_stream: tcp_stream_boxed,
             id: ArrayString::new(),
         })
     }
 }
 
 pub struct TlsStream {
-    stream: Option<Stream>,
+    stream: Stream<'static>,
+    tcp_stream: Box<TcpStream>,
     id: ArrayString<[u8; 32]>,
 }
 
 impl TlsStream {
-    pub fn get_tcp(&mut self) -> Option<&mut TcpStream> {
+    pub fn get_tcp(&mut self) -> &mut TcpStream {
         match &mut self.stream {
-            Some(Stream::Ssl(stream)) => Some(stream.get_mut()),
-            Some(Stream::MidHandshakeSsl(stream)) => Some(stream.get_mut()),
-            None => None,
+            Stream::Ssl(stream) => stream.get_mut(),
+            Stream::MidHandshakeSsl(stream) => stream.get_mut(),
+            Stream::NoSsl => &mut self.tcp_stream,
         }
     }
 
@@ -339,7 +355,7 @@ impl TlsStream {
 
     pub fn shutdown(&mut self) -> Result<(), io::Error> {
         match &mut self.stream {
-            Some(Stream::Ssl(stream)) => match stream.shutdown() {
+            Stream::Ssl(stream) => match stream.shutdown() {
                 Ok(_) => {
                     debug!("conn {}: tls shutdown sent", self.id);
 
@@ -356,12 +372,12 @@ impl TlsStream {
 
     fn ensure_handshake(&mut self) -> Result<(), io::Error> {
         match &self.stream {
-            Some(Stream::Ssl(_)) => Ok(()),
-            Some(Stream::MidHandshakeSsl(_)) => match self.stream.take().unwrap() {
+            Stream::Ssl(_) => Ok(()),
+            Stream::MidHandshakeSsl(_) => match mem::replace(&mut self.stream, Stream::NoSsl) {
                 Stream::MidHandshakeSsl(stream) => match stream.handshake() {
                     Ok(stream) => {
                         debug!("conn {}: tls handshake success", self.id);
-                        self.stream = Some(Stream::Ssl(stream));
+                        self.stream = Stream::Ssl(stream);
 
                         Ok(())
                     }
@@ -370,14 +386,14 @@ impl TlsStream {
                     }
                     Err(HandshakeError::Failure(_)) => Err(io::Error::from(io::ErrorKind::Other)),
                     Err(HandshakeError::WouldBlock(stream)) => {
-                        self.stream = Some(Stream::MidHandshakeSsl(stream));
+                        self.stream = Stream::MidHandshakeSsl(stream);
 
                         Err(io::Error::from(io::ErrorKind::WouldBlock))
                     }
                 },
                 _ => unreachable!(),
             },
-            None => Err(io::Error::from(io::ErrorKind::Other)),
+            Stream::NoSsl => Err(io::Error::from(io::ErrorKind::Other)),
         }
     }
 }
@@ -387,7 +403,7 @@ impl Read for TlsStream {
         self.ensure_handshake()?;
 
         match &mut self.stream {
-            Some(Stream::Ssl(stream)) => SslStream::read(stream, buf),
+            Stream::Ssl(stream) => SslStream::read(stream, buf),
             _ => unreachable!(),
         }
     }
@@ -398,7 +414,7 @@ impl Write for TlsStream {
         self.ensure_handshake()?;
 
         match &mut self.stream {
-            Some(Stream::Ssl(stream)) => SslStream::write(stream, buf),
+            Stream::Ssl(stream) => SslStream::write(stream, buf),
             _ => unreachable!(),
         }
     }

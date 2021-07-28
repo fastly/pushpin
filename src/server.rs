@@ -357,9 +357,9 @@ enum Stream {
 }
 
 impl Stream {
-    fn get_tcp(&mut self) -> Option<&mut TcpStream> {
+    fn get_tcp(&mut self) -> &mut TcpStream {
         match self {
-            Stream::Plain(stream) => Some(stream),
+            Stream::Plain(stream) => stream,
             Stream::Tls(stream) => stream.get_tcp(),
         }
     }
@@ -466,7 +466,7 @@ impl Connection {
         }
     }
 
-    fn get_tcp(&mut self) -> Option<&mut TcpStream> {
+    fn get_tcp(&mut self) -> &mut TcpStream {
         self.stream.get_tcp()
     }
 
@@ -638,9 +638,7 @@ impl Connection {
     }
 
     fn deregister(&mut self, poller: &event::Poller) {
-        if let Some(stream) = self.stream.get_tcp() {
-            poller.deregister(stream).unwrap();
-        }
+        poller.deregister(self.stream.get_tcp()).unwrap();
 
         match &self.conn {
             ServerConnection::Req(_, sender) => {
@@ -1259,7 +1257,7 @@ impl Worker {
 
                 poller
                     .register(
-                        c.get_tcp().unwrap(),
+                        c.get_tcp(),
                         mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 0),
                         ready_flags,
                     )
@@ -1381,7 +1379,7 @@ impl Worker {
 
                 poller
                     .register(
-                        c.get_tcp().unwrap(),
+                        c.get_tcp(),
                         mio::Token(CONN_BASE + (key * TOKENS_PER_CONN) + 0),
                         ready_flags,
                     )
