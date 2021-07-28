@@ -58,13 +58,15 @@ const RESP_SENDER_BOUND: usize = 1;
 
 // we read and process each response message one at a time, wrapping it in an
 // rc, and sending it out to per-connection channels. on the other side of
-// each channel, the message is received and processed immediately. we don't
-// read the next message until it has been sent to all the channels. this
-// means the max number of received messages retained at a time is the one
-// message we have just read and are trying to send to all the channels, plus
-// up to N messages sitting in any channels/connections pending processing,
-// where N is the channel bound
-pub const MSG_RETAINED_MAX: usize = 1 + RESP_SENDER_BOUND;
+// each channel, the message is received and processed immediately. this
+// means the max number of messages retained per connection is the channel
+// bound per connection
+pub const MSG_RETAINED_PER_CONNECTION_MAX: usize = RESP_SENDER_BOUND;
+
+// the max number of messages retained outside of connections is one per
+// handle we read from (req and stream), in preparation for sending to any
+// connections
+pub const MSG_RETAINED_PER_WORKER_MAX: usize = 2;
 
 const STOP_TOKEN: mio::Token = mio::Token(1);
 const REQ_ACCEPTOR_TOKEN: mio::Token = mio::Token(2);
@@ -1136,7 +1138,9 @@ impl Worker {
         let mut can_zstream_out_write = true;
         let mut can_zstream_out_stream_write = true;
 
-        let req_scratch_mem = Rc::new(arena::RcMemory::new(MSG_RETAINED_MAX));
+        let req_scratch_mem = Rc::new(arena::RcMemory::new(
+            1 + (MSG_RETAINED_PER_CONNECTION_MAX * req_maxconn),
+        ));
         let req_resp_mem = Rc::new(arena::RcMemory::new(req_maxconn));
         let mut req_resp_pending = None;
         let mut req_resp_sending_nodes: Slab<list::Node<(usize, Option<u32>)>> =
@@ -1144,7 +1148,9 @@ impl Worker {
         let mut req_resp_sending = list::List::default();
         let mut req_resp_waiting = list::List::default();
 
-        let stream_scratch_mem = Rc::new(arena::RcMemory::new(MSG_RETAINED_MAX));
+        let stream_scratch_mem = Rc::new(arena::RcMemory::new(
+            1 + (MSG_RETAINED_PER_CONNECTION_MAX * stream_maxconn),
+        ));
         let stream_resp_mem = Rc::new(arena::RcMemory::new(stream_maxconn));
         let mut stream_resp_pending = None;
         let mut stream_resp_sending_nodes: Slab<list::Node<(usize, Option<u32>)>> =
@@ -2244,10 +2250,15 @@ impl TestServer {
     pub fn new(workers: usize) -> Self {
         let zmq_context = Arc::new(zmq::Context::new());
 
+        let req_maxconn = 100;
+        let stream_maxconn = 100;
+
+        let maxconn = req_maxconn + stream_maxconn;
+
         let mut zsockman = zhttpsocket::SocketManager::new(
             Arc::clone(&zmq_context),
             "test",
-            MSG_RETAINED_MAX * workers,
+            (MSG_RETAINED_PER_CONNECTION_MAX * maxconn) + (MSG_RETAINED_PER_WORKER_MAX * workers),
             100,
             100,
         );
@@ -2286,8 +2297,8 @@ impl TestServer {
         let server = Server::new(
             "test",
             workers,
-            100,
-            100,
+            req_maxconn,
+            stream_maxconn,
             1024,
             1024,
             10,

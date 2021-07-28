@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::server::{Server, MSG_RETAINED_MAX};
+use crate::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WORKER_MAX};
 use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
 use log::info;
@@ -98,10 +98,13 @@ impl App {
 
         let handle_bound = cmp::max(hwm / config.workers, 1);
 
+        let maxconn = config.req_maxconn + config.stream_maxconn;
+
         let mut zsockman = zhttpsocket::SocketManager::new(
             Arc::clone(&zmq_context),
             &config.instance_id,
-            MSG_RETAINED_MAX * config.workers,
+            (MSG_RETAINED_PER_CONNECTION_MAX * maxconn)
+                + (MSG_RETAINED_PER_WORKER_MAX * config.workers),
             hwm,
             handle_bound,
         );
