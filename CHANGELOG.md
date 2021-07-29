@@ -1,6 +1,10 @@
 Condure Changelog
 =================
 
+v. 1.3.0 (2021-07-29)
+
+  * Port to async/await.
+
 v. 1.2.0 (2021-05-04)
 
   * Send PING/PONG frame data to clients.
