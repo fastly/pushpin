@@ -26,8 +26,24 @@
  * $FANOUT_END_LICENSE$
  */
 
-pub mod ffi;
-pub mod list;
-pub mod publish_cli;
-pub mod timer;
-pub mod tnetstring;
+#ifndef RUST_TIMER_H
+#define RUST_TIMER_H
+
+extern "C"
+{
+	struct ExpiredTimer
+	{
+		int key;
+		size_t user_data;
+	};
+
+	void *timer_wheel_create(unsigned int capacity);
+	void timer_wheel_destroy(void *wheel);
+	int timer_add(void *wheel, quint64 expires, size_t user_data);
+	void timer_remove(void *wheel, int key);
+	qint64 timer_wheel_timeout(void *wheel);
+	void timer_wheel_update(void *wheel, quint64 curtime);
+	ExpiredTimer timer_wheel_take_expired(void *wheel);
+}
+
+#endif

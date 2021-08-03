@@ -24,9 +24,6 @@ Project options:
   --rundir=[path]       Directory for runtime files.  Default: /var/run
   --logdir=[path]       Directory for log files.  Default: /var/log
 
-Dependency options:
-  --disable-cargo    Disable use of cargo >= 1.34.0
-
 EOT
 }
 
@@ -164,16 +161,6 @@ while [ $# -gt 0 ]; do
 			shift
 			;;
 
-		--disable-cargo)
-			QC_DISABLE_cargo="Y"
-			shift
-			;;
-
-		--enable-cargo)
-			QC_DEFAULT_ENABLE_cargo="Y"
-			shift
-			;;
-
 		--verbose)
 			QC_VERBOSE="Y"
 			shift
@@ -202,8 +189,6 @@ echo QC_LIBDIR=$QC_LIBDIR
 echo QC_CONFIGDIR=$QC_CONFIGDIR
 echo QC_RUNDIR=$QC_RUNDIR
 echo QC_LOGDIR=$QC_LOGDIR
-echo QC_DISABLE_cargo=$QC_DISABLE_cargo
-echo QC_DEFAULT_ENABLE_cargo=$QC_DEFAULT_ENABLE_cargo
 echo
 fi
 
@@ -580,7 +565,7 @@ cat >"$1/modules_new.cpp" <<EOT
     o->required = true;
     o->disabled = false;
     o = new qc_cargo(conf);
-    o->required = false;
+    o->required = true;
     o->disabled = false;
 
 EOT
@@ -1758,8 +1743,6 @@ export QC_LIBDIR
 export QC_CONFIGDIR
 export QC_RUNDIR
 export QC_LOGDIR
-export QC_DISABLE_cargo
-export QC_DEFAULT_ENABLE_cargo
 export QC_VERBOSE
 export QC_QTSELECT
 rm -rf ".qconftemp"

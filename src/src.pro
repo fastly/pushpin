@@ -2,7 +2,10 @@ TEMPLATE = subdirs
 
 include($$OUT_PWD/../conf.pri)
 
+rust.subdir = rust
+
 corelib.subdir = corelib
+corelib.depends = rust
 
 m2adapter.subdir = m2adapter
 m2adapter.depends = corelib
@@ -16,19 +19,14 @@ handler.depends = corelib
 runner.subdir = runner
 runner.depends = corelib
 
-rust.subdir = rust
-
 pushpin.subdir = pushpin
 
 SUBDIRS += \
+	rust \
 	corelib \
 	m2adapter \
 	proxy \
 	handler \
-
-CONFIG(use_cargo) {
-	SUBDIRS += rust
-}
 
 SUBDIRS += \
 	runner \
