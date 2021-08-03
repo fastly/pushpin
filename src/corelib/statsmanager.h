@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -52,7 +52,7 @@ public:
 		JsonFormat
 	};
 
-	StatsManager(QObject *parent = 0);
+	StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent = 0);
 	~StatsManager();
 
 	void setInstanceId(const QByteArray &instanceId);

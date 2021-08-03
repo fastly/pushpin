@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Fanout, Inc.
+ * Copyright (C) 2015-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -279,6 +279,7 @@ public:
 		int messageHwm = settings.value("handler/message_hwm", -1).toInt();
 		int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
 		int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
+		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int connectionSubscriptionMax = settings.value("handler/connection_subscription_max", 20).toInt();
 		int subscriptionLinger = settings.value("handler/subscription_linger", 60).toInt();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
@@ -339,6 +340,7 @@ public:
 		config.messageHwm = messageHwm;
 		config.messageBlockSize = messageBlockSize;
 		config.idCacheTtl = idCacheTtl;
+		config.connectionsMax = clientMaxconn;
 		config.connectionSubscriptionMax = connectionSubscriptionMax;
 		config.subscriptionLinger = subscriptionLinger;
 		config.statsConnectionTtl = statsConnectionTtl;

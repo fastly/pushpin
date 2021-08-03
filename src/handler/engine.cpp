@@ -1424,7 +1424,7 @@ public:
 			log_info("ws control out: %s", qPrintable(config.wsControlOutSpec));
 		}
 
-		stats = new StatsManager(this);
+		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, this);
 		connect(stats, &StatsManager::connectionsRefreshed, this, &Private::stats_connectionsRefreshed);
 		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
 		connect(stats, &StatsManager::reported, this, &Private::stats_reported);

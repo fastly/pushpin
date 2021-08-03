@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2012-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -82,6 +82,7 @@ public:
 		QString updatesCheck;
 		QString organizationName;
 		bool quietCheck;
+		int connectionsMax;
 		int statsConnectionTtl;
 
 		Configuration() :
@@ -98,6 +99,7 @@ public:
 			logUserAgent(false),
 			updatesCheck("check"),
 			quietCheck(false),
+			connectionsMax(-1),
 			statsConnectionTtl(-1)
 		{
 		}

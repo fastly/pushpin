@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2019 Fanout, Inc.
+ * Copyright (C) 2012-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -298,7 +298,7 @@ public:
 
 		if(!config.statsSpec.isEmpty())
 		{
-			stats = new StatsManager(this);
+			stats = new StatsManager(config.connectionsMax, 0, this);
 
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);

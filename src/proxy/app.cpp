@@ -312,6 +312,7 @@ public:
 		QString sockJsUrl = settings.value("proxy/sockjs_url").toString();
 		QString updatesCheck = settings.value("proxy/updates_check").toString();
 		QString organizationName = settings.value("proxy/organization_name").toString();
+		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
 
 		QList<QByteArray> origHeadersNeedMark;
@@ -391,6 +392,7 @@ public:
 		config.updatesCheck = updatesCheck;
 		config.organizationName = organizationName;
 		config.quietCheck = args.quietCheck;
+		config.connectionsMax = clientMaxconn;
 		config.statsConnectionTtl = statsConnectionTtl;
 
 		engine = new Engine(this);

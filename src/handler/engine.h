@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Fanout, Inc.
+ * Copyright (C) 2015-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -71,6 +71,7 @@ public:
 		int messageHwm;
 		int messageBlockSize;
 		int idCacheTtl;
+		int connectionsMax;
 		int connectionSubscriptionMax;
 		int subscriptionLinger;
 		int statsConnectionTtl;
@@ -89,6 +90,7 @@ public:
 			messageHwm(-1),
 			messageBlockSize(-1),
 			idCacheTtl(-1),
+			connectionsMax(-1),
 			connectionSubscriptionMax(-1),
 			subscriptionLinger(-1),
 			statsConnectionTtl(-1),

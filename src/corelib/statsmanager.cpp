@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -36,6 +36,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qzmqsocket.h"
+#include "timerwheel.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "packet/statspacket.h"
@@ -48,14 +49,44 @@
 #define REFRESH_INTERVAL 1000
 
 #define SHOULD_PROCESS_TIME(x) (x * 3 / 4)
-#define MUST_PROCESS_TIME(x) (x * 4 / 5)
+
+#define TICK_DURATION_MS 10
+
+qint64 durationToTicksRoundDown(qint64 msec)
+{
+	return msec / TICK_DURATION_MS;
+}
+
+qint64 durationToTicksRoundUp(qint64 msec)
+{
+	return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
+}
 
 class StatsManager::Private : public QObject
 {
 	Q_OBJECT
 
 public:
-	class ConnectionInfo
+	class TimerBase
+	{
+	public:
+		enum Type
+		{
+			Connection,
+			ExternalConnection,
+			Subscription,
+		};
+
+		Type timerType;
+		int timerId;
+
+		TimerBase() :
+			timerId(-1)
+		{
+		}
+	};
+
+	class ConnectionInfo : public TimerBase
 	{
 	public:
 		QByteArray id;
@@ -83,7 +114,7 @@ public:
 		}
 	};
 
-	class Subscription
+	class Subscription : public TimerBase
 	{
 	public:
 		QString mode;
@@ -146,6 +177,8 @@ public:
 	typedef QPair<QString, QString> SubscriptionKey;
 
 	StatsManager *q;
+	int connectionsMax;
+	int subscriptionsMax;
 	QByteArray instanceId;
 	int ipcFileMode;
 	QString spec;
@@ -159,24 +192,25 @@ public:
 	QHash<QByteArray, int> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
 	QHash<QByteArray, QSet<ConnectionInfo*> > connectionInfoByRoute;
-	QMap<QPair<qint64, ConnectionInfo*>, ConnectionInfo*> connectionInfoByLastRefresh;
 	QVector<QSet<ConnectionInfo*> > connectionInfoRefreshBuckets;
 	int currentConnectionInfoRefreshBucket;
 	QHash<QByteArray, QHash<QByteArray, ConnectionInfo*> > externalConnectionInfoByFrom;
 	QHash<QByteArray, QSet<ConnectionInfo*> > externalConnectionInfoByRoute;
-	QMap<QPair<qint64, ConnectionInfo*>, ConnectionInfo*> externalConnectionInfoByLastActive;
 	QHash<SubscriptionKey, Subscription*> subscriptionsByKey;
-	QMap<QPair<qint64, Subscription*>, Subscription*> subscriptionsByLastRefresh;
 	QVector<QSet<Subscription*> > subscriptionRefreshBuckets;
 	int currentSubscriptionRefreshBucket;
+	TimerWheel wheel;
+	qint64 startTime;
 	QHash<QByteArray, Report*> reports;
 	QTimer *activityTimer;
 	QTimer *reportTimer;
 	QTimer *refreshTimer;
 
-	Private(StatsManager *_q) :
+	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
 		QObject(_q),
 		q(_q),
+		connectionsMax(_connectionsMax),
+		subscriptionsMax(_subscriptionsMax),
 		ipcFileMode(-1),
 		outputFormat(TnetStringFormat),
 		connectionTtl(120 * 1000),
@@ -187,6 +221,7 @@ public:
 		sock(0),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
+		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)),
 		reportTimer(0)
 	{
 		activityTimer = new QTimer(this);
@@ -199,6 +234,8 @@ public:
 
 		setupConnectionBuckets();
 		setupSubscriptionBuckets();
+
+		startTime = QDateTime::currentMSecsSinceEpoch();
 	}
 
 	~Private()
@@ -354,6 +391,34 @@ public:
 		return best;
 	}
 
+	void wheelAdd(qint64 timeoutTime, TimerBase *obj)
+	{
+		if(timeoutTime < startTime)
+		{
+			timeoutTime = startTime;
+		}
+
+		if(obj->timerId >= 0)
+		{
+			wheel.remove(obj->timerId);
+		}
+
+		int id = wheel.add(durationToTicksRoundUp(timeoutTime - startTime), (size_t)obj);
+		assert(id >= 0);
+
+		obj->timerId = id;
+	}
+
+	void wheelRemove(TimerBase *obj)
+	{
+		if(obj->timerId >= 0)
+		{
+			wheel.remove(obj->timerId);
+		}
+
+		obj->timerId = -1;
+	}
+
 	void insertConnection(ConnectionInfo *c)
 	{
 		connectionInfoById[c->id] = c;
@@ -362,7 +427,7 @@ public:
 		cs += c;
 
 		assert(c->lastRefresh >= 0);
-		connectionInfoByLastRefresh.insert(QPair<qint64, ConnectionInfo*>(c->lastRefresh, c), c);
+		wheelAdd(c->lastRefresh + SHOULD_PROCESS_TIME(connectionTtl), c);
 
 		c->refreshBucket = smallestConnectionInfoRefreshBucket();
 		connectionInfoRefreshBuckets[c->refreshBucket] += c;
@@ -383,7 +448,7 @@ public:
 
 		if(c->lastRefresh >= 0)
 		{
-			connectionInfoByLastRefresh.remove(QPair<qint64, ConnectionInfo*>(c->lastRefresh, c));
+			wheelRemove(c);
 			connectionInfoRefreshBuckets[c->refreshBucket].remove(c);
 		}
 	}
@@ -397,7 +462,7 @@ public:
 		cs += c;
 
 		assert(c->lastActive >= 0);
-		externalConnectionInfoByLastActive.insert(QPair<qint64, ConnectionInfo*>(c->lastActive, c), c);
+		wheelAdd(c->lastActive + connectionTtl, c);
 
 		assert(c->lastRefresh == -1);
 		assert(c->refreshBucket == -1);
@@ -422,8 +487,7 @@ public:
 				externalConnectionInfoByRoute.remove(c->routeId);
 		}
 
-		if(c->lastActive >= 0)
-			externalConnectionInfoByLastActive.remove(QPair<qint64, ConnectionInfo*>(c->lastActive, c));
+		wheelRemove(c);
 	}
 
 	void insertSubscription(Subscription *s)
@@ -433,7 +497,7 @@ public:
 		subscriptionsByKey[subKey] = s;
 
 		assert(s->lastRefresh >= 0);
-		subscriptionsByLastRefresh.insert(QPair<qint64, Subscription*>(s->lastRefresh, s), s);
+		wheelAdd(s->lastRefresh + SHOULD_PROCESS_TIME(subscriptionTtl), s);
 
 		s->refreshBucket = smallestSubscriptionRefreshBucket();
 		subscriptionRefreshBuckets[s->refreshBucket] += s;
@@ -447,7 +511,7 @@ public:
 
 		if(s->lastRefresh >= 0)
 		{
-			subscriptionsByLastRefresh.remove(QPair<qint64, Subscription*>(s->lastRefresh, s));
+			wheelRemove(s);
 			subscriptionRefreshBuckets[s->refreshBucket].remove(s);
 		}
 	}
@@ -639,10 +703,113 @@ public:
 		}
 	}
 
+	void handleExpirations(qint64 now)
+	{
+		QList<QByteArray> refreshedConnIds;
+		QSet<QByteArray> routesUpdated;
+
+		while(true)
+		{
+			TimerWheel::Expired expired = wheel.takeExpired();
+
+			if(expired.key < 0)
+			{
+				break;
+			}
+
+			TimerBase *obj = (TimerBase *)expired.userData;
+
+			obj->timerId = -1;
+
+			switch(obj->timerType)
+			{
+				case TimerBase::Type::Connection:
+				{
+					ConnectionInfo *c = static_cast<ConnectionInfo*>(obj);
+
+					if(c->linger)
+					{
+						// in linger mode, next refresh is set to the time we should
+						//   delete the connection rather than refresh
+
+						connectionInfoRefreshBuckets[c->refreshBucket].remove(c);
+						c->lastRefresh = -1;
+
+						// note: we don't send a disconnect message when the
+						//   linger expires. the assumption is that the handler
+						//   owns the connection now
+
+						removeConnection(c);
+						delete c;
+					}
+					else
+					{
+						c->lastRefresh = now;
+						wheelAdd(c->lastRefresh + SHOULD_PROCESS_TIME(connectionTtl), c);
+
+						refreshedConnIds += c->id;
+
+						updateConnectionsMinutes(c, now);
+						sendConnected(c);
+					}
+
+					break;
+				}
+				case TimerBase::Type::ExternalConnection:
+				{
+					ConnectionInfo *c = static_cast<ConnectionInfo*>(obj);
+
+					routesUpdated += c->routeId;
+					updateConnectionsMinutes(c, now);
+					removeExternalConnection(c);
+					delete c;
+
+					break;
+				}
+				case TimerBase::Type::Subscription:
+				{
+					Subscription *s = static_cast<Subscription*>(obj);
+
+					if(s->linger)
+					{
+						// in linger mode, next refresh is set to the time we should
+						//   delete the subscription rather than refresh
+
+						subscriptionRefreshBuckets[s->refreshBucket].remove(s);
+						s->lastRefresh = -1;
+
+						QString mode = s->mode;
+						QString channel = s->channel;
+
+						sendUnsubscribed(s);
+						removeSubscription(s);
+						delete s;
+
+						emit q->unsubscribed(mode, channel);
+					}
+					else
+					{
+						s->lastRefresh = now;
+						wheelAdd(s->lastRefresh + SHOULD_PROCESS_TIME(subscriptionTtl), s);
+
+						sendSubscribed(s);
+					}
+
+					break;
+				}
+			}
+		}
+
+		if(!refreshedConnIds.isEmpty())
+			emit q->connectionsRefreshed(refreshedConnIds);
+
+		foreach(const QByteArray &routeId, routesUpdated)
+			updateConnectionsMax(routeId, now);
+	}
+
 	void refreshConnections(qint64 now)
 	{
-		QList<ConnectionInfo*> toRefresh;
-		QList<ConnectionInfo*> toDelete;
+		QList<QByteArray> refreshedIds;
 
 		// process the current bucket
 		const QSet<ConnectionInfo*> &bucket = connectionInfoRefreshBuckets[currentConnectionInfoRefreshBucket];
@@ -652,64 +819,13 @@ public:
 			if(c->linger)
 				continue;
 
-			// move to the end
-			QPair<qint64, ConnectionInfo*> k(c->lastRefresh, c);
-			connectionInfoByLastRefresh.remove(k);
 			c->lastRefresh = now;
-			connectionInfoByLastRefresh.insert(QPair<qint64, ConnectionInfo*>(c->lastRefresh, c), c);
+			wheelAdd(c->lastRefresh + SHOULD_PROCESS_TIME(connectionTtl), c);
 
-			toRefresh += c;
-		}
-
-		// process any others
-		qint64 threshold = now - MUST_PROCESS_TIME(connectionTtl);
-		while(!connectionInfoByLastRefresh.isEmpty())
-		{
-			QMap<QPair<qint64, ConnectionInfo*>, ConnectionInfo*>::iterator it = connectionInfoByLastRefresh.begin();
-			ConnectionInfo *c = it.value();
-
-			if(c->lastRefresh > threshold)
-				break;
-
-			if(c->linger)
-			{
-				// in linger mode, next refresh is set to the time we should
-				//   delete the connection rather than refresh
-				toDelete += c;
-
-				// need to remove from map to avoid reprocessing
-				connectionInfoByLastRefresh.erase(it);
-				connectionInfoRefreshBuckets[c->refreshBucket].remove(c);
-				c->lastRefresh = -1;
-			}
-			else
-			{
-				// move to the end
-				connectionInfoByLastRefresh.erase(it);
-				c->lastRefresh = now;
-				connectionInfoByLastRefresh.insert(QPair<qint64, ConnectionInfo*>(c->lastRefresh, c), c);
-
-				toRefresh += c;
-			}
-		}
-
-		QList<QByteArray> refreshedIds;
-		foreach(ConnectionInfo *c, toRefresh)
-		{
 			refreshedIds += c->id;
 
 			updateConnectionsMinutes(c, now);
 			sendConnected(c);
-		}
-
-		foreach(ConnectionInfo *c, toDelete)
-		{
-			// note: we don't send a disconnect message when the
-			//   linger expires. the assumption is that the handler
-			//   owns the connection now
-
-			removeConnection(c);
-			delete c;
 		}
 
 		if(!refreshedIds.isEmpty())
@@ -720,38 +836,8 @@ public:
 			currentConnectionInfoRefreshBucket = 0;
 	}
 
-	void expireExternalConnections(qint64 now)
-	{
-		// external connections should only be tracked if reporting is enabled
-		if(reportInterval <= 0)
-			return;
-
-		QSet<QByteArray> routesUpdated;
-
-		qint64 threshold = now - connectionTtl;
-		while(!externalConnectionInfoByLastActive.isEmpty())
-		{
-			QMap<QPair<qint64, ConnectionInfo*>, ConnectionInfo*>::iterator it = externalConnectionInfoByLastActive.begin();
-			ConnectionInfo *c = it.value();
-
-			if(c->lastActive > threshold)
-				break;
-
-			routesUpdated += c->routeId;
-			updateConnectionsMinutes(c, now);
-			removeExternalConnection(c);
-			delete c;
-		}
-
-		foreach(const QByteArray &routeId, routesUpdated)
-			updateConnectionsMax(routeId, now);
-	}
-
 	void refreshSubscriptions(qint64 now)
 	{
-		QList<Subscription*> toRefresh;
-		QList<Subscription*> toDelete;
-
 		// process the current bucket
 		const QSet<Subscription*> &bucket = subscriptionRefreshBuckets[currentSubscriptionRefreshBucket];
 		foreach(Subscription *s, bucket)
@@ -760,60 +846,10 @@ public:
 			if(s->linger)
 				continue;
 
-			// move to the end
-			QPair<qint64, Subscription*> k(s->lastRefresh, s);
-			subscriptionsByLastRefresh.remove(k);
 			s->lastRefresh = now;
-			subscriptionsByLastRefresh.insert(QPair<qint64, Subscription*>(s->lastRefresh, s), s);
+			wheelAdd(s->lastRefresh + SHOULD_PROCESS_TIME(subscriptionTtl), s);
 
-			toRefresh += s;
-		}
-
-		// process any others
-		qint64 threshold = now - MUST_PROCESS_TIME(subscriptionTtl);
-		while(!subscriptionsByLastRefresh.isEmpty())
-		{
-			QMap<QPair<qint64, Subscription*>, Subscription*>::iterator it = subscriptionsByLastRefresh.begin();
-			Subscription *s = it.value();
-
-			if(s->lastRefresh > threshold)
-				break;
-
-			if(s->linger)
-			{
-				// in linger mode, next refresh is set to the time we should
-				//   delete the subscription rather than refresh
-				toDelete += s;
-
-				// need to remove from map to avoid reprocessing
-				subscriptionsByLastRefresh.erase(it);
-				subscriptionRefreshBuckets[s->refreshBucket].remove(s);
-				s->lastRefresh = -1;
-			}
-			else
-			{
-				// move to the end
-				subscriptionsByLastRefresh.erase(it);
-				s->lastRefresh = now;
-				subscriptionsByLastRefresh.insert(QPair<qint64, Subscription*>(s->lastRefresh, s), s);
-
-				toRefresh += s;
-			}
-		}
-
-		foreach(Subscription *s, toRefresh)
 			sendSubscribed(s);
-
-		foreach(Subscription *s, toDelete)
-		{
-			QString mode = s->mode;
-			QString channel = s->channel;
-
-			sendUnsubscribed(s);
-			removeSubscription(s);
-			delete s;
-
-			emit q->unsubscribed(mode, channel);
 		}
 
 		++currentSubscriptionRefreshBucket;
@@ -901,18 +937,27 @@ private slots:
 
 	void refresh_timeout()
 	{
-		qint64 now = QDateTime::currentMSecsSinceEpoch();
+		qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
 
-		refreshConnections(now);
-		expireExternalConnections(now);
-		refreshSubscriptions(now);
+		// time must go forward
+		if(currentTime > startTime)
+		{
+			quint64 currentTicks = (quint64)durationToTicksRoundDown(currentTime - startTime);
+
+			wheel.update(currentTicks);
+		}
+
+		handleExpirations(currentTime);
+
+		refreshConnections(currentTime);
+		refreshSubscriptions(currentTime);
 	}
 };
 
-StatsManager::StatsManager(QObject *parent) :
+StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = new Private(this, connectionsMax, subscriptionsMax);
 }
 
 StatsManager::~StatsManager()
@@ -1030,6 +1075,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 	}
 
 	c = new Private::ConnectionInfo;
+	c->timerType = Private::TimerBase::Type::Connection;
 	c->id = id;
 	c->routeId = routeId;
 	c->type = type;
@@ -1074,12 +1120,10 @@ void StatsManager::removeConnection(const QByteArray &id, bool linger)
 			c->linger = true;
 
 			// hack to ensure full linger time honored by refresh processing
-			qint64 lingerStartTime = now + (d->connectionLinger - MUST_PROCESS_TIME(d->connectionTtl));
+			qint64 lingerStartTime = now + (d->connectionLinger - SHOULD_PROCESS_TIME(d->connectionTtl));
 
-			// move to the end
-			d->connectionInfoByLastRefresh.remove(QPair<qint64, Private::ConnectionInfo*>(c->lastRefresh, c));
 			c->lastRefresh = lingerStartTime;
-			d->connectionInfoByLastRefresh.insert(QPair<qint64, Private::ConnectionInfo*>(c->lastRefresh, c), c);
+			d->wheelAdd(c->lastRefresh + SHOULD_PROCESS_TIME(d->connectionTtl), c);
 		}
 	}
 	else
@@ -1112,6 +1156,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel, 
 
 		// add the subscription if we didn't have it
 		s = new Private::Subscription;
+		s->timerType = Private::TimerBase::Type::Subscription;
 		s->mode = mode;
 		s->channel = channel;
 		s->subscriberCount = subscriberCount;
@@ -1133,10 +1178,8 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel, 
 			// if this was a lingering subscription, return it to normal
 			s->linger = false;
 
-			// move to the end
-			d->subscriptionsByLastRefresh.remove(QPair<qint64, Private::Subscription*>(s->lastRefresh, s));
 			s->lastRefresh = now;
-			d->subscriptionsByLastRefresh.insert(QPair<qint64, Private::Subscription*>(s->lastRefresh, s), s);
+			d->wheelAdd(s->lastRefresh + SHOULD_PROCESS_TIME(d->subscriptionTtl), s);
 
 			d->sendSubscribed(s);
 		}
@@ -1145,9 +1188,8 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel, 
 			qint64 now = QDateTime::currentMSecsSinceEpoch();
 
 			// process soon
-			d->subscriptionsByLastRefresh.remove(QPair<qint64, Private::Subscription*>(s->lastRefresh, s));
-			s->lastRefresh = now - MUST_PROCESS_TIME(d->subscriptionTtl);
-			d->subscriptionsByLastRefresh.insert(QPair<qint64, Private::Subscription*>(s->lastRefresh, s), s);
+			s->lastRefresh = now - SHOULD_PROCESS_TIME(d->subscriptionTtl);
+			d->wheelAdd(s->lastRefresh + SHOULD_PROCESS_TIME(d->subscriptionTtl), s);
 		}
 	}
 }
@@ -1168,12 +1210,10 @@ void StatsManager::removeSubscription(const QString &mode, const QString &channe
 			s->linger = true;
 
 			// hack to ensure full linger time honored by refresh processing
-			qint64 lingerStartTime = now + (d->subscriptionLinger - MUST_PROCESS_TIME(d->subscriptionTtl));
+			qint64 lingerStartTime = now + (d->subscriptionLinger - SHOULD_PROCESS_TIME(d->subscriptionTtl));
 
-			// move to the end
-			d->subscriptionsByLastRefresh.remove(QPair<qint64, Private::Subscription*>(s->lastRefresh, s));
 			s->lastRefresh = lingerStartTime;
-			d->subscriptionsByLastRefresh.insert(QPair<qint64, Private::Subscription*>(s->lastRefresh, s), s);
+			d->wheelAdd(s->lastRefresh + SHOULD_PROCESS_TIME(d->subscriptionTtl), s);
 		}
 	}
 	else
@@ -1304,6 +1344,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet)
 		if(!c)
 		{
 			c = new Private::ConnectionInfo;
+			c->timerType = Private::TimerBase::Type::ExternalConnection;
 			c->id = packet.connectionId;
 			c->routeId = packet.route;
 			c->type = packet.connectionType == StatsPacket::Http ? Http : WebSocket;
@@ -1327,10 +1368,8 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet)
 		{
 			c->ttl = packet.ttl;
 
-			// move to the end
-			d->externalConnectionInfoByLastActive.remove(QPair<qint64, Private::ConnectionInfo*>(c->lastActive, c));
 			c->lastActive = now;
-			d->externalConnectionInfoByLastActive.insert(QPair<qint64, Private::ConnectionInfo*>(c->lastActive, c), c);
+			d->wheelAdd(c->lastActive + d->connectionTtl, c);
 		}
 
 		d->updateConnectionsMinutes(c, now);
