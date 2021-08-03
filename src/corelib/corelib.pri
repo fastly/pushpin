@@ -47,6 +47,7 @@ SOURCES += \
 	$$PWD/packet/zrpcresponsepacket.cpp
 
 HEADERS += \
+	$$PWD/timerwheel.h \
 	$$PWD/logutil.h \
 	$$PWD/uuidutil.h \
 	$$PWD/zutil.h \
@@ -64,6 +65,7 @@ HEADERS += \
 	$$PWD/settings.h
 
 SOURCES += \
+	$$PWD/timerwheel.cpp \
 	$$PWD/logutil.cpp \
 	$$PWD/uuidutil.cpp \
 	$$PWD/zutil.cpp \
