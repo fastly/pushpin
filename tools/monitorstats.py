@@ -6,7 +6,12 @@ import zmq
 ctx = zmq.Context()
 sock = ctx.socket(zmq.SUB)
 sock.connect(sys.argv[1])
-sock.setsockopt(zmq.SUBSCRIBE, '')
+
+if len(sys.argv) >= 3:
+	for mtype in sys.argv[2].split(','):
+		sock.setsockopt(zmq.SUBSCRIBE, '{} '.format(mtype))
+else:
+	sock.setsockopt(zmq.SUBSCRIBE, '')
 
 while True:
 	m_raw = sock.recv()
