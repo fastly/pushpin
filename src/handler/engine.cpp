@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Fanout, Inc.
+ * Copyright (C) 2015-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1814,6 +1814,27 @@ private:
 			removeSessionChannel(s, channel);
 	}
 
+	static void hs_subscribe_cb(void *data, HttpSession *hs, const QString &channel)
+	{
+		Private *self = (Private *)data;
+
+		self->hs_subscribe(hs, channel);
+	}
+
+	static void hs_unsubscribe_cb(void *data, HttpSession *hs, const QString &channel)
+	{
+		Private *self = (Private *)data;
+
+		self->hs_unsubscribe(hs, channel);
+	}
+
+	static void hs_finished_cb(void *data, HttpSession *hs)
+	{
+		Private *self = (Private *)data;
+
+		self->hs_finished(hs);
+	}
+
 private slots:
 	void sequencer_itemReady(const PublishItem &item)
 	{
@@ -2771,10 +2792,13 @@ private slots:
 		QList<HttpSession*> sessions = w->takeSessions();
 		foreach(HttpSession *hs, sessions)
 		{
-			hs->setParent(this);
-			connect(hs, &HttpSession::subscribe, this, &Private::hs_subscribe);
-			connect(hs, &HttpSession::unsubscribe, this, &Private::hs_unsubscribe);
-			connect(hs, &HttpSession::finished, this, &Private::hs_finished);
+			// NOTE: for performance reasons we do not call hs->setParent and
+			// instead leave the object unparented
+
+			hs->setSubscribeCallback(Private::hs_subscribe_cb, this);
+			hs->setUnsubscribeCallback(Private::hs_unsubscribe_cb, this);
+			hs->setFinishedCallback(Private::hs_finished_cb, this);
+
 			cs.httpSessions.insert(hs->rid(), hs);
 
 			hs->start();
@@ -2786,10 +2810,8 @@ private slots:
 		writeRetryPacket(packet);
 	}
 
-	void hs_subscribe(const QString &channel)
+	void hs_subscribe(HttpSession *hs, const QString &channel)
 	{
-		HttpSession *hs = (HttpSession *)sender();
-
 		Instruct::HoldMode mode = hs->holdMode();
 		assert(mode == Instruct::ResponseHold || mode == Instruct::StreamHold);
 
@@ -2826,17 +2848,13 @@ private slots:
 		log_info("%s", qPrintable(msg));
 	}
 
-	void hs_unsubscribe(const QString &channel)
+	void hs_unsubscribe(HttpSession *hs, const QString &channel)
 	{
-		HttpSession *hs = (HttpSession *)sender();
-
 		removeSessionChannel(hs, channel);
 	}
 
-	void hs_finished()
+	void hs_finished(HttpSession *hs)
 	{
-		HttpSession *hs = (HttpSession *)sender();
-
 		RetryRequestPacket rp = hs->retryPacket();
 
 		cs.httpSessions.remove(hs->rid());

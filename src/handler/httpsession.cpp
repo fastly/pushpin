@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2020 Fanout, Inc.
+ * Copyright (C) 2016-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -176,6 +176,12 @@ public:
 	FilterStack *responseFilters;
 	QSet<QString> activeChannels;
 	int connectionSubscriptionMax;
+	SubscribeFunc subscribeCallback;
+	void *subscribeData;
+	UnsubscribeFunc unsubscribeCallback;
+	void *unsubscribeData;
+	FinishedFunc finishedCallback;
+	void *finishedData;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -193,7 +199,13 @@ public:
 		needUpdate(false),
 		pendingAction(0),
 		responseFilters(0),
-		connectionSubscriptionMax(_connectionSubscriptionMax)
+		connectionSubscriptionMax(_connectionSubscriptionMax),
+		subscribeCallback(0),
+		subscribeData(0),
+		unsubscribeCallback(0),
+		unsubscribeData(0),
+		finishedCallback(0),
+		finishedData(0)
 	{
 		state = NotStarted;
 
@@ -250,7 +262,10 @@ public:
 
 				channels.insert(name, c);
 
-				emit q->subscribe(name);
+				if(subscribeCallback)
+				{
+					subscribeCallback(subscribeData, q, name);
+				}
 
 				assert(self); // deleting here would leak subscriptions/connections
 			}
@@ -665,14 +680,20 @@ private:
 
 		foreach(const QString &channel, channelsRemoved)
 		{
-			emit q->unsubscribe(channel);
+			if(unsubscribeCallback)
+			{
+				unsubscribeCallback(unsubscribeData, q, channel);
+			}
 
 			assert(self); // deleting here would leak subscriptions/connections
 		}
 
 		foreach(const QString &channel, channelsAdded)
 		{
-			emit q->subscribe(channel);
+			if(subscribeCallback)
+			{
+				subscribeCallback(subscribeData, q, channel);
+			}
 
 			assert(self); // deleting here would leak subscriptions/connections
 		}
@@ -1048,7 +1069,10 @@ private:
 			it.next();
 			const QString &channel = it.key();
 
-			emit q->unsubscribe(channel);
+			if(unsubscribeCallback)
+			{
+				unsubscribeCallback(unsubscribeData, q, channel);
+			}
 
 			assert(self); // deleting here would leak subscriptions/connections
 		}
@@ -1117,7 +1141,10 @@ private:
 			stats->removeConnection(cid, false);
 		}
 
-		emit q->finished();
+		if(finishedCallback)
+		{
+			finishedCallback(finishedData, q);
+		}
 	}
 
 	void requestNextLink()
@@ -1575,6 +1602,24 @@ void HttpSession::update()
 void HttpSession::publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 {
 	d->publish(item, exposeHeaders);
+}
+
+void HttpSession::setSubscribeCallback(SubscribeFunc cb, void *data)
+{
+	d->subscribeCallback = cb;
+	d->subscribeData = data;
+}
+
+void HttpSession::setUnsubscribeCallback(UnsubscribeFunc cb, void *data)
+{
+	d->unsubscribeCallback = cb;
+	d->unsubscribeData = data;
+}
+
+void HttpSession::setFinishedCallback(FinishedFunc cb, void *data)
+{
+	d->finishedCallback = cb;
+	d->finishedData = data;
 }
 
 #include "httpsession.moc"

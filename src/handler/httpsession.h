@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -44,6 +44,12 @@ class RateLimiter;
 class PublishLastIds;
 class HttpSessionUpdateManager;
 class RetryRequestPacket;
+
+class HttpSession;
+
+typedef void (*SubscribeFunc)(void *data, HttpSession *hs, const QString &channel);
+typedef void (*UnsubscribeFunc)(void *data, HttpSession *hs, const QString &channel);
+typedef void (*FinishedFunc)(void *data, HttpSession *hs);
 
 class HttpSession : public QObject
 {
@@ -100,10 +106,10 @@ public:
 	void update();
 	void publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
 
-signals:
-	void subscribe(const QString &channel);
-	void unsubscribe(const QString &channel);
-	void finished();
+	// NOTE: for performance reasons we use callbacks instead of signals/slots
+	void setSubscribeCallback(SubscribeFunc cb, void *data);
+	void setUnsubscribeCallback(UnsubscribeFunc cb, void *data);
+	void setFinishedCallback(FinishedFunc cb, void *data);
 
 private:
 	class Private;
