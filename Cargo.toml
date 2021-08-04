@@ -53,3 +53,12 @@ The project was inspired by Mongrel2.
 """
 separate-debug-symbols = true
 build-depends = "pkg-config, libzmq3-dev"
+
+[package.metadata.rpm]
+package = "condure"
+
+[package.metadata.rpm.cargo]
+buildflags = ["--release"]
+
+[package.metadata.rpm.targets]
+condure = { path = "/usr/bin/condure" }
