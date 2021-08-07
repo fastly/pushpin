@@ -39,6 +39,7 @@
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
+#include "rtimer.h"
 #include "log.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -1246,6 +1247,9 @@ public:
 	bool start(const Configuration &_config)
 	{
 		config = _config;
+
+		// up to 10 timers per connection
+		RTimer::init(config.connectionsMax * 10);
 
 		publishLimiter->setRate(config.messageRate);
 		publishLimiter->setHwm(config.messageHwm);

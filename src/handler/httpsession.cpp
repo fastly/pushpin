@@ -29,11 +29,11 @@
 #include "httpsession.h"
 
 #include <assert.h>
-#include <QTimer>
 #include <QPointer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include "rtimer.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/retryrequestpacket.h"
@@ -152,8 +152,8 @@ public:
 	AcceptData adata;
 	Instruct instruct;
 	QHash<QString, Instruct::Channel> channels;
-	QTimer *timer;
-	QTimer *retryTimer;
+	RTimer *timer;
+	RTimer *retryTimer;
 	StatsManager *stats;
 	ZhttpManager *outZhttp;
 	ZhttpRequest *outReq; // for fetching next links
@@ -213,11 +213,11 @@ public:
 		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
 		connect(req, &ZhttpRequest::error, this, &Private::req_error);
 
-		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
+		timer = new RTimer(this);
+		connect(timer, &RTimer::timeout, this, &Private::timer_timeout);
 
-		retryTimer = new QTimer(this);
-		connect(retryTimer, &QTimer::timeout, this, &Private::retryTimer_timeout);
+		retryTimer = new RTimer(this);
+		connect(retryTimer, &RTimer::timeout, this, &Private::retryTimer_timeout);
 		retryTimer->setSingleShot(true);
 
 		adata = _adata;

@@ -29,12 +29,12 @@
 #include "zhttprequest.h"
 
 #include <assert.h>
-#include <QTimer>
 #include <QPointer>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "bufferlist.h"
 #include "log.h"
+#include "rtimer.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 
@@ -102,8 +102,8 @@ public:
 	bool needPause;
 	bool errored;
 	ErrorCondition errorCondition;
-	QTimer *expireTimer;
-	QTimer *keepAliveTimer;
+	RTimer *expireTimer;
+	RTimer *keepAliveTimer;
 	bool multi;
 	bool quiet;
 
@@ -136,12 +136,12 @@ public:
 		multi(false),
 		quiet(false)
 	{
-		expireTimer = new QTimer(this);
-		connect(expireTimer, &QTimer::timeout, this, &Private::expire_timeout);
+		expireTimer = new RTimer(this);
+		connect(expireTimer, &RTimer::timeout, this, &Private::expire_timeout);
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAlive_timeout);
+		keepAliveTimer = new RTimer(this);
+		connect(keepAliveTimer, &RTimer::timeout, this, &Private::keepAlive_timeout);
 	}
 
 	~Private()

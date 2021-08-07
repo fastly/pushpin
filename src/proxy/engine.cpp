@@ -35,6 +35,7 @@
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
 #include "packet/statspacket.h"
+#include "rtimer.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "zhttpmanager.h"
@@ -178,6 +179,9 @@ public:
 	bool start(const Configuration &_config)
 	{
 		config = _config;
+
+		// up to 10 timers per connection
+		RTimer::init(config.connectionsMax * 10);
 
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
