@@ -370,9 +370,17 @@ mod tests {
         result
     }
 
-    // reverse order of array for human readability
-    fn rev(a: [u64; WHEEL_NUM]) -> [u64; WHEEL_NUM] {
-        [a[3], a[2], a[1], a[0]]
+    // convert wheel ranges of the form "x:x:x:x", where each part is a range
+    fn r2w(s: &str) -> [u64; WHEEL_NUM] {
+        let mut result = [0; WHEEL_NUM];
+
+        for (i, part) in s.rsplit(":").enumerate() {
+            if !part.is_empty() {
+                result[i] = r2b(part);
+            }
+        }
+
+        result
     }
 
     #[test]
@@ -421,38 +429,34 @@ mod tests {
         struct Test {
             curtime: &'static str,
             newtime: &'static str,
-            expected_rev: [u64; WHEEL_NUM],
+            expected: &'static str,
         }
 
-        fn t(curtime: &'static str, newtime: &'static str, expected_rev: [u64; WHEEL_NUM]) -> Test {
+        fn t(curtime: &'static str, newtime: &'static str, expected: &'static str) -> Test {
             Test {
                 curtime,
                 newtime,
-                expected_rev,
+                expected,
             }
         }
 
         let table = [
-            t("00:00", "00:00", [0, 0, 0, 0]),
-            t("00:00", "00:01", [0, 0, 0, r2b("01-01")]),
-            t("00:01", "00:02", [0, 0, 0, r2b("02-02")]),
-            t("00:02", "00:63", [0, 0, 0, r2b("03-63")]),
-            t("00:63", "01:00", [0, 0, r2b("00-00"), r2b("00-00")]),
-            t("01:00", "01:02", [0, 0, 0, r2b("01-02")]),
-            t("01:02", "05:01", [0, 0, r2b("01-04"), r2b("00-63")]),
-            t("05:01", "05:02", [0, 0, 0, r2b("02-02")]),
-            t("05:02", "06:01", [0, 0, r2b("05-05"), r2b("03-01")]),
-            t(
-                "00:63:63",
-                "01:00:00",
-                [0, r2b("00-00"), r2b("63-63"), r2b("00-00")],
-            ),
+            t("00:00", "00:00", ""),
+            t("00:00", "00:01", "01-01"),
+            t("00:01", "00:02", "02-02"),
+            t("00:02", "00:63", "03-63"),
+            t("00:63", "01:00", "00-00:00-00"),
+            t("01:00", "01:02", "01-02"),
+            t("01:02", "05:01", "01-04:00-63"),
+            t("05:01", "05:02", "02-02"),
+            t("05:02", "06:01", "05-05:03-01"),
+            t("00:63:63", "01:00:00", "00-00:63-63:00-00"),
         ];
 
         for (row, t) in table.iter().enumerate() {
             let curtime = ts(t.curtime);
             let newtime = ts(t.newtime);
-            let expected = rev(t.expected_rev);
+            let expected = r2w(t.expected);
 
             // ensure the simple algorithm returns what we expect
             assert_eq!(
