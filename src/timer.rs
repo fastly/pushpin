@@ -55,13 +55,15 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
             let old_slot = (curtime >> trunc_bits) & WHEEL_MASK;
             let new_slot = (newtime >> trunc_bits) & WHEEL_MASK;
 
-            let d = if new_slot >= old_slot {
+            let d = if new_slot > old_slot {
                 new_slot - old_slot
             } else {
                 (WHEEL_LEN as u64) - old_slot + new_slot
             };
 
-            pending = if wheel > 0 {
+            pending = if d >= WHEEL_LEN as u64 {
+                !0
+            } else if wheel > 0 {
                 ((1 << d) - 1u64).rotate_left(old_slot as u32)
             } else {
                 ((1 << d) - 1u64).rotate_left((old_slot + 1) as u32)
@@ -451,6 +453,14 @@ mod tests {
             t("05:01", "05:02", "02-02"),
             t("05:02", "06:01", "05-05:03-01"),
             t("00:63:63", "01:00:00", "00-00:63-63:00-00"),
+            t("08:00:00", "08:01:00", "00-00:00-63"),
+            t("04:00:02", "05:01:00", "04-04:00-63:00-63"),
+            t("04:01:02", "05:00:00", "04-04:01-63:00-63"),
+            t("04:00:03", "05:00:00", "04-04:00-63:00-63"),
+            t("04:00:02", "05:00:00", "04-04:00-63:00-63"),
+            t("08:00:19", "08:62:63", "00-61:00-63"),
+            t("08:00:19", "08:63:63", "00-62:00-63"),
+            t("09:00:00", "09:63:62", "00-62:00-63"),
         ];
 
         for (row, t) in table.iter().enumerate() {
