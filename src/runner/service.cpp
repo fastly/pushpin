@@ -159,6 +159,9 @@ public:
 		state = Starting;
 
 		QStringList args = q->arguments();
+
+		log_debug("running: %s", qPrintable(args.join(' ')));
+
 		proc->start(args[0], args.mid(1));
 	}
 
