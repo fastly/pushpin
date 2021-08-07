@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2021 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,6 +86,35 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
 
         // ensure the elapsed time includes the current slot of the next wheel
         elapsed = cmp::max(elapsed, (WHEEL_LEN << (wheel * WHEEL_BITS)) as u64);
+    }
+
+    result
+}
+
+#[cfg(test)]
+fn need_resched_simple(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
+    let mut result = [0; WHEEL_NUM];
+
+    // no time elapsed
+    if newtime <= curtime {
+        return result;
+    }
+
+    for curtime in curtime..newtime {
+        for wheel in 0..WHEEL_NUM {
+            let trunc_bits = (wheel * WHEEL_BITS) as u64;
+
+            let old_slot = (curtime >> trunc_bits) & WHEEL_MASK;
+            let new_slot = ((curtime + 1) >> trunc_bits) & WHEEL_MASK;
+
+            if old_slot != new_slot {
+                if wheel > 0 {
+                    result[wheel] |= 1 << old_slot;
+                } else {
+                    result[wheel] |= 1 << new_slot;
+                }
+            }
+        }
     }
 
     result
@@ -389,62 +418,62 @@ mod tests {
 
     #[test]
     fn test_need_resched() {
-        // 00:00 -> 00:00 []:[]
-        assert_eq!(need_resched(ts("00:00"), ts("00:00")), [0, 0, 0, 0]);
+        struct Test {
+            curtime: &'static str,
+            newtime: &'static str,
+            expected_rev: [u64; WHEEL_NUM],
+        }
 
-        // 00:00 -> 00:01 []:[01-01]
-        assert_eq!(
-            need_resched(ts("00:00"), ts("00:01")),
-            rev([0, 0, 0, r2b("01-01")])
-        );
+        fn t(curtime: &'static str, newtime: &'static str, expected_rev: [u64; WHEEL_NUM]) -> Test {
+            Test {
+                curtime,
+                newtime,
+                expected_rev,
+            }
+        }
 
-        // 00:01 -> 00:02 []:[02-02]
-        assert_eq!(
-            need_resched(ts("00:01"), ts("00:02")),
-            rev([0, 0, 0, r2b("02-02")])
-        );
+        let table = [
+            t("00:00", "00:00", [0, 0, 0, 0]),
+            t("00:00", "00:01", [0, 0, 0, r2b("01-01")]),
+            t("00:01", "00:02", [0, 0, 0, r2b("02-02")]),
+            t("00:02", "00:63", [0, 0, 0, r2b("03-63")]),
+            t("00:63", "01:00", [0, 0, r2b("00-00"), r2b("00-00")]),
+            t("01:00", "01:02", [0, 0, 0, r2b("01-02")]),
+            t("01:02", "05:01", [0, 0, r2b("01-04"), r2b("00-63")]),
+            t("05:01", "05:02", [0, 0, 0, r2b("02-02")]),
+            t("05:02", "06:01", [0, 0, r2b("05-05"), r2b("03-01")]),
+            t(
+                "00:63:63",
+                "01:00:00",
+                [0, r2b("00-00"), r2b("63-63"), r2b("00-00")],
+            ),
+        ];
 
-        // 00:02 -> 00:63 []:[03-63]
-        assert_eq!(
-            need_resched(ts("00:02"), ts("00:63")),
-            rev([0, 0, 0, r2b("03-63")])
-        );
+        for (row, t) in table.iter().enumerate() {
+            let curtime = ts(t.curtime);
+            let newtime = ts(t.newtime);
+            let expected = rev(t.expected_rev);
 
-        // 00:63 -> 01:00 [00-00]:[00-00]
-        assert_eq!(
-            need_resched(ts("00:63"), ts("01:00")),
-            rev([0, 0, r2b("00-00"), r2b("00-00")])
-        );
+            // ensure the simple algorithm returns what we expect
+            assert_eq!(
+                need_resched_simple(curtime, newtime),
+                expected,
+                "row={} curtime={} newtime={}",
+                row,
+                curtime,
+                newtime
+            );
 
-        // 01:00 -> 01:02 []:[01-02]
-        assert_eq!(
-            need_resched(ts("01:00"), ts("01:02")),
-            rev([0, 0, 0, r2b("01-02")])
-        );
-
-        // 01:02 -> 05:01 [01-04]:[00-63]
-        assert_eq!(
-            need_resched(ts("01:02"), ts("05:01")),
-            rev([0, 0, r2b("01-04"), r2b("00-63")])
-        );
-
-        // 05:01 -> 05:02 []:[02-02]
-        assert_eq!(
-            need_resched(ts("05:01"), ts("05:02")),
-            rev([0, 0, 0, r2b("02-02")])
-        );
-
-        // 05:02 -> 06:01 [05-05]:[03-01]
-        assert_eq!(
-            need_resched(ts("05:02"), ts("06:01")),
-            rev([0, 0, r2b("05-05"), r2b("03-01")])
-        );
-
-        // 00:63:63 -> 01:00:00 [00-00]:[63-63]:[00-00]
-        assert_eq!(
-            need_resched(ts("00:63:63"), ts("01:00:00")),
-            rev([0, r2b("00-00"), r2b("63-63"), r2b("00-00")])
-        );
+            // ensure the optimized algorithm returns matching results
+            assert_eq!(
+                need_resched(curtime, newtime),
+                expected,
+                "row={} curtime={} newtime={}",
+                row,
+                curtime,
+                newtime
+            );
+        }
     }
 
     #[test]
