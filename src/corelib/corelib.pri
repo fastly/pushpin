@@ -48,6 +48,7 @@ SOURCES += \
 
 HEADERS += \
 	$$PWD/timerwheel.h \
+	$$PWD/rtimer.h \
 	$$PWD/logutil.h \
 	$$PWD/uuidutil.h \
 	$$PWD/zutil.h \
@@ -66,6 +67,7 @@ HEADERS += \
 
 SOURCES += \
 	$$PWD/timerwheel.cpp \
+	$$PWD/rtimer.cpp \
 	$$PWD/logutil.cpp \
 	$$PWD/uuidutil.cpp \
 	$$PWD/zutil.cpp \
