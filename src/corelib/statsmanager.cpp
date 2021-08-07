@@ -52,12 +52,12 @@
 
 #define TICK_DURATION_MS 10
 
-qint64 durationToTicksRoundDown(qint64 msec)
+static qint64 durationToTicksRoundDown(qint64 msec)
 {
 	return msec / TICK_DURATION_MS;
 }
 
-qint64 durationToTicksRoundUp(qint64 msec)
+static qint64 durationToTicksRoundUp(qint64 msec)
 {
 	return (msec + TICK_DURATION_MS - 1) / TICK_DURATION_MS;
 }
