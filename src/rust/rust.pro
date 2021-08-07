@@ -1,19 +1,19 @@
 TEMPLATE = aux
 OBJECTS_DIR = ./
 DESTDIR = ./
-CONFIG -= debug_and_release
+CONFIG -= debug_and_release debug
 
 include($$OUT_PWD/../../conf.pri)
 
 bin_dir = $$PWD/../../bin
 root_dir = $$PWD/../..
 
-CONFIG(release) {
-	cargo_flags = --release
-	target_dir = $$PWD/../../target/release
-} else {
+CONFIG(debug) {
 	cargo_flags =
 	target_dir = $$PWD/../../target/debug
+} else {
+	cargo_flags = --release
+	target_dir = $$PWD/../../target/release
 }
 
 rust_build.commands = cd "$$root_dir" && cargo build --offline $$cargo_flags
