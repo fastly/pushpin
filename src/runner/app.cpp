@@ -391,7 +391,8 @@ public:
 		QStringList serviceNames = settings.value("runner/services").toStringList();
 		trimlist(&serviceNames);
 
-		QString httpPortStr = settings.value("runner/http_port").toString();
+		QStringList httpPortStrs = settings.value("runner/http_port").toStringList();
+		trimlist(&httpPortStrs);
 
 		QStringList httpsPortStrs = settings.value("runner/https_ports").toStringList();
 		trimlist(&httpsPortStrs);
@@ -481,7 +482,7 @@ public:
 		}
 		else
 		{
-			if(!httpPortStr.isEmpty())
+			foreach(const QString &httpPortStr, httpPortStrs)
 			{
 				QPair<QHostAddress, int> p = parsePort(httpPortStr);
 				if(p.second < 1)
