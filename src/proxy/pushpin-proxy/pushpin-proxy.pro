@@ -15,15 +15,7 @@ LIBS += -L$$PWD/../../corelib -lpushpin-core
 PRE_TARGETDEPS += $$PWD/../../corelib/libpushpin-core.a
 
 include($$OUT_PWD/../../../conf.pri)
-
-CONFIG(debug, debug|release) {
-	LIBS += -L$$PWD/../../../target/debug -lpushpin -ldl
-	PRE_TARGETDEPS += $$PWD/../../../target/debug/libpushpin.a
-} else {
-	LIBS += -L$$PWD/../../../target/release -lpushpin -ldl
-	PRE_TARGETDEPS += $$PWD/../../../target/release/libpushpin.a
-}
-
+include($$OUT_PWD/../../rust/lib.pri)
 include(pushpin-proxy.pri)
 
 unix:!isEmpty(BINDIR) {
