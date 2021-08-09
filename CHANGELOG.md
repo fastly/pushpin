@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.33.1 (2021-08-09)
+
+  * Build system fixes.
+
 v. 1.33.0 (2021-08-08)
 
   * Performance optimizations.
