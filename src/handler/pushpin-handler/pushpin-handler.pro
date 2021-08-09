@@ -13,6 +13,8 @@ PRE_TARGETDEPS += $$PWD/../libpushpin-handler.a
 LIBS += -L$$PWD/../../corelib -lpushpin-core
 PRE_TARGETDEPS += $$PWD/../../corelib/libpushpin-core.a
 
+include($$OUT_PWD/../../../conf.pri)
+
 CONFIG(debug) {
 	LIBS += -L$$PWD/../../../target/debug -lpushpin -ldl
 	PRE_TARGETDEPS += $$PWD/../../../target/debug/libpushpin.a
@@ -21,7 +23,6 @@ CONFIG(debug) {
 	PRE_TARGETDEPS += $$PWD/../../../target/release/libpushpin.a
 }
 
-include($$OUT_PWD/../../../conf.pri)
 include(pushpin-handler.pri)
 
 unix:!isEmpty(BINDIR) {
