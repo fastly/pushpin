@@ -1,6 +1,6 @@
 [package]
 name = "pushpin"
-version = "1.33.0-dev"
+version = "1.34.0-dev"
 authors = ["Justin Karneges <justin@karneges.com>"]
 edition = "2018"
 
