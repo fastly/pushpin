@@ -1,6 +1,11 @@
 Pushpin Changelog
 =================
 
+v. 1.33.0 (2021-08-08)
+
+  * Performance optimizations.
+  * New config option: sig_iss.
+
 v. 1.32.2 (2021-06-09)
 
   * Fix publishing to SockJS WebSocket connections.
