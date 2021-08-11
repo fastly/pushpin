@@ -496,7 +496,7 @@ impl Connection {
         packet_buf: &mut [u8],
         tmp_buf: &mut [u8],
     ) -> bool {
-        if let Ok((resp, seq)) = self.zreceiver.try_recv() {
+        while let Ok((resp, seq)) = self.zreceiver.try_recv() {
             // if error, keep going
             let _ = self.handle_packet(now, resp.get().get(), seq);
         }
@@ -2009,11 +2009,9 @@ impl Worker {
                     None
                 };
 
-                let zreceiver_wait = if c.want.zhttp_read {
-                    Some(event_wait(&zreceiver_registration, mio::Interest::READABLE))
-                } else {
-                    None
-                };
+                // always read zhttp response packets so they can be applied immediately,
+                // even if c.want.zhttp_read is false
+                let zreceiver_wait = event_wait(&zreceiver_registration, mio::Interest::READABLE);
 
                 let zsender1_wait = if c.want.zhttp_write {
                     Some(event_wait(&zsender1_registration, mio::Interest::WRITABLE))
@@ -2040,7 +2038,7 @@ impl Worker {
                 match select_6(
                     stop.recv(),
                     select_option(stream_wait),
-                    select_option(zreceiver_wait),
+                    zreceiver_wait,
                     select_option(zsender1_wait),
                     select_option(zsender2_wait),
                     select_option(sleep),
