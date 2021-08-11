@@ -1579,11 +1579,11 @@ impl Worker {
             }
         }
 
-        conns.stop_all(|ckey| debug!("worker {}: stopping {}", id, ckey));
-
         drop(s_cdone);
 
-        let _ = cdone.recv().await;
+        conns.stop_all(|ckey| debug!("worker {}: stopping {}", id, ckey));
+
+        while cdone.recv().await.is_ok() {}
 
         debug!("worker {}: task stopped: {}", id, name);
     }
