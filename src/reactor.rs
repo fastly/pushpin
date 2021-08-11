@@ -128,6 +128,14 @@ impl Registration {
 
     pub fn pull_from_budget(&self) -> bool {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
+
+        let registrations = &mut *reactor.registrations.borrow_mut();
+        let reg_data = &mut registrations[self.key];
+
+        if reg_data.waker.is_none() {
+            panic!("pull_from_budget requires a waker to be set");
+        }
+
         let budget = &mut *reactor.budget.borrow_mut();
 
         let ok = match budget {
@@ -145,12 +153,9 @@ impl Registration {
 
         // if no budget left, trigger the waker to try again soon
         if !ok {
-            let registrations = &mut *reactor.registrations.borrow_mut();
-            let reg_data = &mut registrations[self.key];
+            let (waker, _) = reg_data.waker.take().unwrap();
 
-            if let Some((waker, _)) = reg_data.waker.take() {
-                waker.wake();
-            }
+            waker.wake();
         }
 
         ok
