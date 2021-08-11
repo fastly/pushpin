@@ -1,6 +1,10 @@
 Condure Changelog
 =================
 
+v. 1.3.1 (2021-08-11)
+
+  * Fixes for high load.
+
 v. 1.3.0 (2021-07-29)
 
   * Port to async/await.
