@@ -249,7 +249,7 @@ Pushpin is horizontally scalable. Instances don’t talk to each other, and stic
 
 Optionally, ZeroMQ PUB/SUB can be used to send data to Pushpin instead of using HTTP POST. When this method is used, subscription information is forwarded to each publisher, such that data will only be published to instances that have listeners.
 
-As for vertical scalability, Pushpin has been tested reliably with 10,000 concurrent connections running on a single Amazon EC2 m3.xlarge instance. 20,000 connections and beyond are possible with some latency degradation. We definitely want to increase this number, but the important thing is that Pushpin is horizontally scalable which is effectively limitless.
+As for vertical scalability, Pushpin has been tested with up to [1 million concurrent connections](https://github.com/fanout/pushpin-c1m) running on a single DigitalOcean droplet with 8 CPU cores. In practice, you may want to plan for fewer connections per instance, depending on your throughput. The new connection accept rate is about 800/sec (though this also depends on the speed of your backend), and the message throughput is about 8,000/sec. The important thing is that Pushpin is horizontally scalable which is effectively limitless.
 
 ## What does the name mean?
 
