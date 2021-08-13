@@ -10,7 +10,7 @@ Pushpin is a reverse proxy server written in C++ that makes it easy to implement
 Pushpin is placed in the network path between the backend and any clients:
 
 <p align="center">
-  <img src="http://pushpin.org/image/pushpin-abstract.png" alt="pushpin-abstract"/>
+  <img src="https://pushpin.org/image/pushpin-abstract.png" alt="pushpin-abstract"/>
 </p>
 
 Pushpin communicates with backend web applications using regular, short-lived HTTP requests. This allows backend applications to be written in any language and use any webserver. There are two main integration points:
@@ -18,7 +18,7 @@ Pushpin communicates with backend web applications using regular, short-lived HT
 1. The backend must handle proxied requests. For HTTP, each incoming request is proxied to the backend. For WebSockets, the activity of each connection is translated into a series of HTTP requests<sup>[1](#proxy-modes)</sup> sent to the backend. Pushpin's behavior is determined by how the backend responds to these requests.
 2. The backend must tell Pushpin to push data. Regardless of how clients are connected, data may be pushed to them by making an HTTP POST request to Pushpin's private control API (`http://localhost:5561/publish/` by default). Pushpin will inject this data into any client connections as necessary.
 
-To assist with integration, there are [libraries](http://pushpin.org/docs/usage/#libraries) for many backend languages and frameworks. Pushpin has no libraries on the client side because it is transparent to clients.
+To assist with integration, there are [libraries](https://pushpin.org/docs/usage/#libraries) for many backend languages and frameworks. Pushpin has no libraries on the client side because it is transparent to clients.
 
 ## Example
 
@@ -57,11 +57,11 @@ curl -d '{ "items": [ { "channel": "test", "formats": { "http-stream": \
 
 The client would then see the line "hello there" appended to the response stream. Ta-da, transparent realtime push!
 
-For more details, see the [HTTP streaming](http://pushpin.org/docs/usage/#http-streaming) section of the documentation. Pushpin also supports [HTTP long-polling](http://pushpin.org/docs/usage/#http-long-polling) and [WebSockets](http://pushpin.org/docs/usage/#websockets).
+For more details, see the [HTTP streaming](https://pushpin.org/docs/usage/#http-streaming) section of the documentation. Pushpin also supports [HTTP long-polling](https://pushpin.org/docs/usage/#http-long-polling) and [WebSockets](https://pushpin.org/docs/usage/#websockets).
 
 ## Example using a library
 
-Using a library on the backend makes integration is even easier. Here's another HTTP streaming example, similar to the one shown above, except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](http://pushpin.org/docs/usage/#libraries).
+Using a library on the backend makes integration is even easier. Here's another HTTP streaming example, similar to the one shown above, except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](https://pushpin.org/docs/usage/#libraries).
 
 The Django library requires configuration in `settings.py`:
 ```python
@@ -98,7 +98,7 @@ publish('test', HttpStreamFormat('hello there\n'))
 
 ## Example using WebSockets
 
-Pushpin supports WebSockets by converting connection activity/messages into HTTP requests and sending them to the backend. For this example, we'll use Pushpin's [Express library](https://github.com/fanout/express-grip). As before, please note that Pushpin is not Node/Express-specific and there are backend libraries for [other languages/frameworks, too](http://pushpin.org/docs/usage/#libraries).
+Pushpin supports WebSockets by converting connection activity/messages into HTTP requests and sending them to the backend. For this example, we'll use Pushpin's [Express library](https://github.com/fanout/express-grip). As before, please note that Pushpin is not Node/Express-specific and there are backend libraries for [other languages/frameworks, too](https://pushpin.org/docs/usage/#libraries).
 
 The Express library requires configuration and setting up middleware handlers before and after any endpoints:
 ```javascript
@@ -164,7 +164,7 @@ What's particularly noteworthy is that the above endpoint is stateless. The app 
 
 The `while` loop is deceptive. It looks like it's looping for the lifetime of the WebSocket connection, but what it's really doing is looping through a batch of WebSocket messages that was just received via HTTP. Often this will be one message, and so the loop performs one iteration and then exits. Similarly, the `ws` object only exists for the duration of the handler invocation, rather than for the lifetime of the connection as you might expect. It may look like socket code, but it's all an illusion. :tophat:
 
-For details on the underlying protocol conversion, see the [WebSocket-Over-HTTP Protocol spec](http://pushpin.org/docs/protocols/websocket-over-http/).
+For details on the underlying protocol conversion, see the [WebSocket-Over-HTTP Protocol spec](https://pushpin.org/docs/protocols/websocket-over-http/).
 
 ## Example without a webserver
 
@@ -223,9 +223,9 @@ On a practical level, there are many benefits to Pushpin that you don't see anyw
 
 ## Install
 
-Check out the [the Install guide](http://pushpin.org/docs/install/), which covers how to install and run. There are packages available for Linux (Debian, Ubuntu, CentOS, Red Hat), Mac (Homebrew), or you can build from source.
+Check out the [the Install guide](https://pushpin.org/docs/install/), which covers how to install and run. There are packages available for Linux (Debian, Ubuntu, CentOS, Red Hat), Mac (Homebrew), or you can build from source.
 
-By default, Pushpin listens on port 7999 and requests are handled by its internal test handler. You can confirm the server is working by browsing to `http://localhost:7999/`. Next, you should modify the `routes` config file to route requests to your backend webserver. See [Configuration](http://pushpin.org/docs/configuration/).
+By default, Pushpin listens on port 7999 and requests are handled by its internal test handler. You can confirm the server is working by browsing to `http://localhost:7999/`. Next, you should modify the `routes` config file to route requests to your backend webserver. See [Configuration](https://pushpin.org/docs/configuration/).
 
 ## Scalability
 
@@ -247,4 +247,4 @@ Pushpin is offered under the GNU AGPL. See the COPYING file.
 
 <a name="proxy-modes">1</a>: Pushpin can communicate WebSocket activity to the backend using either HTTP or WebSockets. Conversion to HTTP is generally recommended as it makes the backend easier to reason about.
 
-<a name="grip">2</a>: GRIP (Generic Realtime Intermediary Protocol) is the name of Pushpin's backend protocol. More about that [here](http://pushpin.org/docs/protocols/grip/).
+<a name="grip">2</a>: GRIP (Generic Realtime Intermediary Protocol) is the name of Pushpin's backend protocol. More about that [here](https://pushpin.org/docs/protocols/grip/).
