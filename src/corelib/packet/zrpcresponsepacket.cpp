@@ -39,13 +39,22 @@ QVariant ZrpcResponsePacket::toVariant() const
 
 	if(success)
 	{
-		obj["value"] = value;
+		if(value.type() == QVariant::String)
+			obj["value"] = value.toString().toUtf8();
+		else
+			obj["value"] = value;
 	}
 	else
 	{
 		obj["condition"] = condition;
+
 		if(value.isValid())
-			obj["value"] = value;
+		{
+			if(value.type() == QVariant::String)
+				obj["value"] = value.toString().toUtf8();
+			else
+				obj["value"] = value;
+		}
 	}
 
 	return obj;
