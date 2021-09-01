@@ -92,7 +92,7 @@
 
 using namespace VariantUtil;
 
-static QList<PublishItem> parseHttpItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
+static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
 {
 	QList<PublishItem> out;
 
@@ -2121,6 +2121,42 @@ private slots:
 			connect(w, &RefreshWorker::finished, this, &Private::deferred_finished);
 			deferreds += w;
 		}
+		else if(req->method() == "publish")
+		{
+			QVariantHash args = req->args();
+
+			if(!args.contains("items"))
+			{
+				req->respondError("bad-request", "Invalid format: object does not contain 'items'");
+				delete req;
+				return;
+			}
+
+			if(args["items"].type() != QVariant::List)
+			{
+				req->respondError("bad-request", "Invalid format: object contains 'items' with wrong type");
+				delete req;
+				return;
+			}
+
+			QVariantList vitems = args["items"].toList();
+
+			bool ok;
+			QString errorMessage;
+			QList<PublishItem> items = parseItems(vitems, &ok, &errorMessage);
+			if(!ok)
+			{
+				req->respondError("bad-request", QString("Invalid format: %1").arg(errorMessage));
+				delete req;
+				return;
+			}
+
+			req->respond();
+			delete req;
+
+			foreach(const PublishItem &item, items)
+				handlePublishItem(item);
+		}
 		else
 		{
 			req->respondError("method-not-found");
@@ -2687,7 +2723,7 @@ private slots:
 
 				bool ok;
 				QString errorMessage;
-				QList<PublishItem> items = parseHttpItems(vitems, &ok, &errorMessage);
+				QList<PublishItem> items = parseItems(vitems, &ok, &errorMessage);
 				if(!ok)
 				{
 					httpControlRespond(req, 400, "Bad Request", QString("Invalid format: %1\n").arg(errorMessage));
