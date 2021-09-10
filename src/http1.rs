@@ -858,11 +858,35 @@ mod tests {
 
             body_out.max += write_size;
 
-            let size = match p.send_body(&mut body_out, &[&resp.body[sent..]], true, None) {
-                Ok(size) => size,
-                Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::WriteZero => 0,
-                Err(_) => panic!("send_body failed"),
+            let trailing_headers = if !resp.trailing_headers.is_empty() {
+                let mut buf = Vec::new();
+
+                for (name, value) in resp.trailing_headers.iter() {
+                    write!(buf, "{}: ", name).unwrap();
+                    buf.write(value).unwrap();
+                    write!(buf, "\r\n").unwrap();
+                }
+
+                write!(buf, "\r\n").unwrap();
+
+                Some(buf)
+            } else {
+                None
             };
+
+            let trailing_headers: Option<&[u8]> = if let Some(trailing_headers) = &trailing_headers
+            {
+                Some(trailing_headers)
+            } else {
+                None
+            };
+
+            let size =
+                match p.send_body(&mut body_out, &[&resp.body[sent..]], true, trailing_headers) {
+                    Ok(size) => size,
+                    Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::WriteZero => 0,
+                    Err(_) => panic!("send_body failed"),
+                };
 
             sent += size;
         }
@@ -2601,6 +2625,35 @@ mod tests {
             "Transfer-Encoding: chunked\r\n",
             "\r\n",
             "6\r\nhello\n\r\n0\r\n\r\n",
+        );
+
+        assert_eq!(str::from_utf8(&out).unwrap(), data);
+
+        let data = "GET /foo HTTP/1.1\r\nHost: example.com\r\n\r\n";
+
+        let mut p = ServerProtocol::new();
+        read_req(&mut p, data.as_bytes(), 2);
+
+        let mut resp = TestResponse::new();
+        resp.code = 200;
+        resp.reason = String::from("OK");
+        resp.headers = vec![(String::from("Content-Type"), b"text/plain".to_vec())];
+        resp.body = b"hello\n".to_vec();
+        resp.chunked = true;
+        resp.trailing_headers = vec![(String::from("Foo"), b"bar".to_vec())];
+
+        let out = write_resp(&mut p, resp, 2);
+
+        let data = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Connection: Transfer-Encoding\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+            "6\r\nhello\n\r\n",
+            "0\r\n",
+            "Foo: bar\r\n",
+            "\r\n"
         );
 
         assert_eq!(str::from_utf8(&out).unwrap(), data);
