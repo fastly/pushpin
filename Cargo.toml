@@ -23,7 +23,6 @@ arrayvec = "0.5"
 base64 = "0.12"
 clap = { version = "2.33", features = ["wrap_help"] }
 httparse = "1.3"
-iovec = "0.1"
 log = "0.4"
 mio = { version = "0.7", features = ["os-poll", "os-ext", "net"] }
 openssl = "0.10"
