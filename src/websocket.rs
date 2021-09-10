@@ -138,18 +138,18 @@ pub fn write_header(
     } else if payload_size < PSIZE_9BYTE {
         buf[1] = PSIZE_3BYTE as u8;
         let arr = (payload_size as u16).to_be_bytes();
-        &buf[2..4].copy_from_slice(&arr);
+        buf[2..4].copy_from_slice(&arr);
         4
     } else {
         buf[1] = 0x7f;
         let arr = (payload_size as u64).to_be_bytes();
-        &buf[2..10].copy_from_slice(&arr);
+        buf[2..10].copy_from_slice(&arr);
         10
     };
 
     if let Some(mask) = mask {
         buf[1] |= 0x80;
-        &buf[hsize..hsize + 4].copy_from_slice(&mask);
+        buf[hsize..hsize + 4].copy_from_slice(&mask);
         Ok(hsize + 4)
     } else {
         Ok(hsize)
@@ -478,7 +478,7 @@ impl<'buf> Protocol {
 
         let size = cmp::min(cmp::min(left, buf.len()), dest.len());
 
-        &mut dest[..size].copy_from_slice(&buf[..size]);
+        dest[..size].copy_from_slice(&buf[..size]);
 
         rbuf.consume(size);
 
@@ -597,7 +597,7 @@ mod tests {
 
         let offset = r.unwrap();
         assert_eq!(offset, 6);
-        &buf2[offset..offset + payload.len()].copy_from_slice(payload);
+        buf2[offset..offset + payload.len()].copy_from_slice(payload);
         assert_eq!(buf2, buf);
     }
 

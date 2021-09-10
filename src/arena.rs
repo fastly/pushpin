@@ -533,8 +533,8 @@ mod tests {
         // no room
         assert!(reusable.reserve().is_err());
 
-        &mut buf1[..5].copy_from_slice(b"hello");
-        &mut buf2[..5].copy_from_slice(b"world");
+        buf1[..5].copy_from_slice(b"hello");
+        buf2[..5].copy_from_slice(b"world");
 
         assert_eq!(&buf1[..5], b"hello");
         assert_eq!(&buf2[..5], b"world");

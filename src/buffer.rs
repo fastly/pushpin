@@ -196,7 +196,7 @@ impl Read for Buffer {
         let src = self.read_buf();
         let size = cmp::min(src.len(), buf.len());
 
-        &buf[..size].copy_from_slice(&src[..size]);
+        buf[..size].copy_from_slice(&src[..size]);
 
         self.read_commit(size);
 
@@ -213,7 +213,7 @@ impl Write for Buffer {
         let dest = self.write_buf();
         let size = cmp::min(dest.len(), buf.len());
 
-        &dest[..size].copy_from_slice(&buf[..size]);
+        dest[..size].copy_from_slice(&buf[..size]);
 
         self.write_commit(size);
 
@@ -380,9 +380,9 @@ impl RingBuffer {
 
             let mut tmp = self.tmp.0.borrow_mut();
 
-            &mut tmp[..lsize].copy_from_slice(&self.buf[lsrc..(lsrc + lsize)]);
+            tmp[..lsize].copy_from_slice(&self.buf[lsrc..(lsrc + lsize)]);
             self.buf.copy_within(hsrc..(hsrc + hsize), hdest);
-            &mut self.buf[ldest..(ldest + lsize)].copy_from_slice(&mut tmp[..lsize]);
+            self.buf[ldest..(ldest + lsize)].copy_from_slice(&mut tmp[..lsize]);
         }
 
         self.start = 0;
@@ -401,7 +401,7 @@ impl Read for RingBuffer {
             let src = self.read_buf();
             let size = cmp::min(src.len(), buf.len() - pos);
 
-            &buf[pos..(pos + size)].copy_from_slice(&src[..size]);
+            buf[pos..(pos + size)].copy_from_slice(&src[..size]);
 
             self.read_commit(size);
 
@@ -424,7 +424,7 @@ impl Write for RingBuffer {
             let dest = self.write_buf();
             let size = cmp::min(dest.len(), buf.len() - pos);
 
-            &dest[..size].copy_from_slice(&buf[pos..(pos + size)]);
+            dest[..size].copy_from_slice(&buf[pos..(pos + size)]);
 
             self.write_commit(size);
 

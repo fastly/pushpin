@@ -3022,7 +3022,7 @@ pub mod tests {
         let size =
             websocket::write_header(true, websocket::OPCODE_TEXT, body.len(), None, &mut data)
                 .unwrap();
-        &mut data[size..(size + body.len())].copy_from_slice(body);
+        data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
         // recv message
@@ -3107,7 +3107,7 @@ pub mod tests {
         let size =
             websocket::write_header(true, websocket::OPCODE_BINARY, body.len(), None, &mut data)
                 .unwrap();
-        &mut data[size..(size + body.len())].copy_from_slice(body);
+        data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
         // recv binary
@@ -3182,7 +3182,7 @@ pub mod tests {
         let size =
             websocket::write_header(true, websocket::OPCODE_CLOSE, body.len(), None, &mut data)
                 .unwrap();
-        &mut data[size..(size + body.len())].copy_from_slice(body);
+        data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
         // recv close

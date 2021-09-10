@@ -1655,8 +1655,8 @@ impl ServerStreamConnection {
                             return Some(Err(ServerError::InvalidWebSocketRequest));
                         }
 
-                        &mut input[..ws_key.len()].copy_from_slice(ws_key);
-                        &mut input[ws_key.len()..input_len]
+                        input[..ws_key.len()].copy_from_slice(ws_key);
+                        input[ws_key.len()..input_len]
                             .copy_from_slice(&websocket::WS_GUID.as_bytes());
 
                         let input = &input[..input_len];
@@ -2015,7 +2015,7 @@ impl ServerStreamConnection {
                     websocket::OPCODE_CLOSE => {
                         let status = if body.len() >= 2 {
                             let mut arr = [0; 2];
-                            &mut arr[..].copy_from_slice(&body[..2]);
+                            arr[..].copy_from_slice(&body[..2]);
 
                             let code = u16::from_be_bytes(arr);
 
@@ -2543,7 +2543,7 @@ mod tests {
 
             let size = cmp::min(buf.len(), self.inbuf.len());
 
-            &mut buf[..size].copy_from_slice(&self.inbuf[..size]);
+            buf[..size].copy_from_slice(&self.inbuf[..size]);
 
             let mut rest = self.inbuf.split_off(size);
             mem::swap(&mut self.inbuf, &mut rest);
