@@ -24,6 +24,7 @@ use crate::future::{
     REGISTRATIONS_PER_ZMQSOCKET,
 };
 use crate::list;
+use crate::pin_mut;
 use crate::reactor::Reactor;
 use crate::tnetstring;
 use crate::zhttppacket::{Id, Response, ResponseScratch};
@@ -339,13 +340,12 @@ impl<T> Future for RecvWrapperFuture<'_, T> {
     type Output = (usize, Result<T, mpsc::RecvError>);
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let nkey = self.nkey;
-        let fut = unsafe { self.as_mut().map_unchecked_mut(|s| &mut s.fut) };
+        let r = &mut *self;
 
-        match fut.poll(cx) {
+        match Pin::new(&mut r.fut).poll(cx) {
             Poll::Ready(result) => match result {
-                Ok(value) => Poll::Ready((nkey, Ok(value))),
-                Err(mpsc::RecvError) => Poll::Ready((nkey, Err(mpsc::RecvError))),
+                Ok(value) => Poll::Ready((r.nkey, Ok(value))),
+                Err(mpsc::RecvError) => Poll::Ready((r.nkey, Err(mpsc::RecvError))),
             },
             Poll::Pending => Poll::Pending,
         }
@@ -923,18 +923,26 @@ impl SocketManager {
                 None
             };
 
-            let result = select_9(
-                control_receiver.recv(),
-                select_option(req_handles_recv),
-                select_option(req_send.as_mut()),
-                client_req.sock.recv_routed(),
-                select_option(stream_handles_recv_any),
-                select_option(stream_out_send.as_mut()),
-                select_option(stream_handles_recv_addr),
-                select_option(stream_out_stream_send.as_mut()),
-                client_stream.in_.recv(),
-            )
-            .await;
+            let result = {
+                pin_mut!(
+                    req_handles_recv,
+                    stream_handles_recv_any,
+                    stream_handles_recv_addr
+                );
+
+                select_9(
+                    control_receiver.recv(),
+                    select_option(req_handles_recv.as_pin_mut()),
+                    select_option(req_send.as_mut()),
+                    client_req.sock.recv_routed(),
+                    select_option(stream_handles_recv_any.as_pin_mut()),
+                    select_option(stream_out_send.as_mut()),
+                    select_option(stream_handles_recv_addr.as_pin_mut()),
+                    select_option(stream_out_stream_send.as_mut()),
+                    client_stream.in_.recv(),
+                )
+                .await
+            };
 
             match result {
                 // control_receiver.recv

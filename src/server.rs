@@ -25,12 +25,12 @@ use crate::connection::{
 use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
-    event_wait, select_2, select_3, select_4, select_6, select_option, select_option_ref,
-    AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver, AsyncSleep, Select2, Select3, Select4,
-    Select6,
+    event_wait, select_2, select_3, select_4, select_6, select_option, AsyncLocalReceiver,
+    AsyncLocalSender, AsyncReceiver, AsyncSleep, Select2, Select3, Select4, Select6,
 };
 use crate::list;
 use crate::listener::Listener;
+use crate::pin_mut;
 use crate::reactor::Reactor;
 use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
 use crate::tnetstring;
@@ -49,6 +49,7 @@ use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::path::Path;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::str::FromStr;
@@ -1604,7 +1605,9 @@ impl Worker {
 
         debug!("worker {}: task started: req_handle", id);
 
-        let mut handle_send = None;
+        let handle_send = None;
+
+        pin_mut!(handle_send);
 
         'main: loop {
             let receiver_recv = if handle_send.is_none() {
@@ -1613,11 +1616,15 @@ impl Worker {
                 None
             };
 
+            let handle_recv = req_handle.recv();
+
+            pin_mut!(handle_recv);
+
             match select_4(
                 stop.recv(),
                 select_option(receiver_recv),
-                select_option_ref(handle_send.as_mut()),
-                req_handle.recv(),
+                select_option(handle_send.as_mut().as_pin_mut()),
+                handle_recv,
             )
             .await
             {
@@ -1625,12 +1632,12 @@ impl Worker {
                 Select4::R1(_) => break,
                 // receiver_recv
                 Select4::R2(result) => match result {
-                    Ok(msg) => handle_send = Some(req_handle.send(msg)),
+                    Ok(msg) => handle_send.set(Some(req_handle.send(msg))),
                     Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
                 },
                 // handle_send
                 Select4::R3(result) => {
-                    handle_send = None;
+                    handle_send.set(None);
 
                     if let Err(e) = result {
                         error!("req send error: {}", e);
@@ -1717,139 +1724,145 @@ impl Worker {
 
         debug!("worker {}: task started: stream_handle", id);
 
-        let mut handle_send_to_any = None;
-        let mut handle_send_to_addr = None;
+        {
+            let handle_send_to_any = None;
+            let handle_send_to_addr = None;
 
-        'main: loop {
-            let receiver_recv = if handle_send_to_any.is_none() {
-                Some(zstream_out_receiver.recv())
-            } else {
-                None
-            };
+            pin_mut!(handle_send_to_any, handle_send_to_addr);
 
-            let stream_receiver_recv = if handle_send_to_addr.is_none() {
-                Some(zstream_out_stream_receiver.recv())
-            } else {
-                None
-            };
+            'main: loop {
+                let receiver_recv = if handle_send_to_any.is_none() {
+                    Some(zstream_out_receiver.recv())
+                } else {
+                    None
+                };
 
-            match select_6(
-                stop.recv(),
-                select_option(receiver_recv),
-                select_option_ref(handle_send_to_any.as_mut()),
-                select_option(stream_receiver_recv),
-                select_option_ref(handle_send_to_addr.as_mut()),
-                stream_handle.recv(),
-            )
-            .await
-            {
-                // stop.recv
-                Select6::R1(_) => break,
-                // receiver_recv
-                Select6::R2(result) => match result {
-                    Ok(msg) => handle_send_to_any = Some(stream_handle.send_to_any(msg)),
-                    Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
-                },
-                // handle_send_to_any
-                Select6::R3(result) => {
-                    handle_send_to_any = None;
+                let stream_receiver_recv = if handle_send_to_addr.is_none() {
+                    Some(zstream_out_stream_receiver.recv())
+                } else {
+                    None
+                };
 
-                    if let Err(e) = result {
-                        error!("stream out send error: {}", e);
-                    }
-                }
-                // stream_receiver_recv
-                Select6::R4(result) => match result {
-                    Ok((addr, msg)) => {
-                        handle_send_to_addr = Some(stream_handle.send_to_addr(addr, msg))
-                    }
-                    Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
-                },
-                // handle_send_to_addr
-                Select6::R5(result) => {
-                    handle_send_to_addr = None;
+                let handle_recv = stream_handle.recv();
 
-                    if let Err(e) = result {
-                        error!("stream out stream send error: {}", e);
-                    }
-                }
-                // stream_handle.recv
-                Select6::R6(result) => match result {
-                    Ok(msg) => {
-                        let msg_data = &msg.get()[..];
+                pin_mut!(handle_recv);
 
-                        let (addr, offset) = match get_addr_and_offset(msg_data) {
-                            Ok(ret) => ret,
-                            Err(_) => {
-                                warn!("worker {}: packet has unexpected format", id);
-                                continue;
-                            }
-                        };
+                match select_6(
+                    stop.recv(),
+                    select_option(receiver_recv),
+                    select_option(handle_send_to_any.as_mut().as_pin_mut()),
+                    select_option(stream_receiver_recv),
+                    select_option(handle_send_to_addr.as_mut().as_pin_mut()),
+                    handle_recv,
+                )
+                .await
+                {
+                    // stop.recv
+                    Select6::R1(_) => break,
+                    // receiver_recv
+                    Select6::R2(result) => match result {
+                        Ok(msg) => handle_send_to_any.set(Some(stream_handle.send_to_any(msg))),
+                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                    },
+                    // handle_send_to_any
+                    Select6::R3(result) => {
+                        handle_send_to_any.set(None);
 
-                        if addr != &*instance_id {
-                            warn!("worker {}: packet not for us", id);
-                            continue;
+                        if let Err(e) = result {
+                            error!("stream out send error: {}", e);
                         }
+                    }
+                    // stream_receiver_recv
+                    Select6::R4(result) => match result {
+                        Ok((addr, msg)) => {
+                            handle_send_to_addr.set(Some(stream_handle.send_to_addr(addr, msg)))
+                        }
+                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                    },
+                    // handle_send_to_addr
+                    Select6::R5(result) => {
+                        handle_send_to_addr.set(None);
 
-                        let scratch = arena::Rc::new(
-                            RefCell::new(zhttppacket::ResponseScratch::new()),
-                            &stream_scratch_mem,
-                        )
-                        .unwrap();
+                        if let Err(e) = result {
+                            error!("stream out stream send error: {}", e);
+                        }
+                    }
+                    // stream_handle.recv
+                    Select6::R6(result) => match result {
+                        Ok(msg) => {
+                            let msg_data = &msg.get()[..];
 
-                        let zresp = match zhttppacket::OwnedResponse::parse(msg, offset, scratch) {
-                            Ok(zresp) => zresp,
-                            Err(e) => {
-                                warn!("worker {}: zhttp parse error: {}", id, e);
-                                continue;
-                            }
-                        };
-
-                        let zresp = arena::Rc::new(zresp, &stream_resp_mem).unwrap();
-
-                        let mut count = 0;
-
-                        for id in zresp.get().get().ids {
-                            let key = match get_key(&id.id) {
-                                Ok(key) => key,
-                                Err(_) => continue,
+                            let (addr, offset) = match get_addr_and_offset(msg_data) {
+                                Ok(ret) => ret,
+                                Err(_) => {
+                                    warn!("worker {}: packet has unexpected format", id);
+                                    continue;
+                                }
                             };
 
-                            if !conns.check_id(key, id.id) {
-                                // key found but cid mismatch
+                            if addr != &*instance_id {
+                                warn!("worker {}: packet not for us", id);
                                 continue;
                             }
 
-                            if let Some(sender) = conns.take_zreceiver_sender(key) {
-                                match select_2(
-                                    stop.recv(),
-                                    sender.send((arena::Rc::clone(&zresp), id.seq)),
-                                )
-                                .await
-                                {
-                                    Select2::R1(_) => break 'main,
-                                    Select2::R2(result) => match result {
-                                        Ok(()) => count += 1,
-                                        Err(_) => {}
-                                    },
+                            let scratch = arena::Rc::new(
+                                RefCell::new(zhttppacket::ResponseScratch::new()),
+                                &stream_scratch_mem,
+                            )
+                            .unwrap();
+
+                            let zresp =
+                                match zhttppacket::OwnedResponse::parse(msg, offset, scratch) {
+                                    Ok(zresp) => zresp,
+                                    Err(e) => {
+                                        warn!("worker {}: zhttp parse error: {}", id, e);
+                                        continue;
+                                    }
+                                };
+
+                            let zresp = arena::Rc::new(zresp, &stream_resp_mem).unwrap();
+
+                            let mut count = 0;
+
+                            for id in zresp.get().get().ids {
+                                let key = match get_key(&id.id) {
+                                    Ok(key) => key,
+                                    Err(_) => continue,
+                                };
+
+                                if !conns.check_id(key, id.id) {
+                                    // key found but cid mismatch
+                                    continue;
                                 }
 
-                                // need to re-check for validity after await
-                                if conns.check_id(key, id.id) {
-                                    conns.set_zreceiver_sender(key, sender);
+                                if let Some(sender) = conns.take_zreceiver_sender(key) {
+                                    match select_2(
+                                        stop.recv(),
+                                        sender.send((arena::Rc::clone(&zresp), id.seq)),
+                                    )
+                                    .await
+                                    {
+                                        Select2::R1(_) => break 'main,
+                                        Select2::R2(result) => match result {
+                                            Ok(()) => count += 1,
+                                            Err(_) => {}
+                                        },
+                                    }
+
+                                    // need to re-check for validity after await
+                                    if conns.check_id(key, id.id) {
+                                        conns.set_zreceiver_sender(key, sender);
+                                    }
                                 }
                             }
-                        }
 
-                        debug!("worker {}: queued zmq message for {} conns", id, count);
-                    }
-                    Err(e) => panic!("worker {}: handle read error {}", id, e),
-                },
+                            debug!("worker {}: queued zmq message for {} conns", id, count);
+                        }
+                        Err(e) => panic!("worker {}: handle read error {}", id, e),
+                    },
+                }
             }
         }
-
-        drop(handle_send_to_any);
-        drop(handle_send_to_addr);
 
         // give the handle back
         done.send(stream_handle).await.unwrap();
@@ -2035,13 +2048,21 @@ impl Worker {
                     None
                 };
 
+                pin_mut!(
+                    stream_wait,
+                    zreceiver_wait,
+                    zsender1_wait,
+                    zsender2_wait,
+                    sleep
+                );
+
                 match select_6(
                     stop.recv(),
-                    select_option(stream_wait),
+                    select_option(stream_wait.as_pin_mut()),
                     zreceiver_wait,
-                    select_option(zsender1_wait),
-                    select_option(zsender2_wait),
-                    select_option(sleep),
+                    select_option(zsender1_wait.as_pin_mut()),
+                    select_option(zsender2_wait.as_pin_mut()),
+                    select_option(sleep.as_pin_mut()),
                 )
                 .await
                 {
@@ -2164,12 +2185,10 @@ impl Worker {
                 next_keep_alive = AsyncSleep::new(next_keep_alive_time);
             }
 
-            match select_2(
-                stop.recv(),
-                event_wait(&sender_registration, mio::Interest::WRITABLE),
-            )
-            .await
-            {
+            let wait = event_wait(&sender_registration, mio::Interest::WRITABLE);
+            pin_mut!(wait);
+
+            match select_2(stop.recv(), wait).await {
                 Select2::R1(_) => break,
                 Select2::R2(_) => {}
             }
