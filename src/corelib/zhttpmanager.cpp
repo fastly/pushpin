@@ -557,17 +557,7 @@ public slots:
 				continue;
 			}
 
-			log_debug("zhttp/zws client: received message for unknown request id, canceling");
-
-			// if this was not an error packet, send cancel
-			if(p.type != ZhttpResponsePacket::Error && p.type != ZhttpResponsePacket::Cancel && !p.from.isEmpty())
-			{
-				ZhttpRequestPacket out;
-				out.from = instanceId;
-				out.ids += ZhttpRequestPacket::Id(id.id);
-				out.type = ZhttpRequestPacket::Cancel;
-				write(UnknownSession, out, p.from);
-			}
+			log_debug("zhttp/zws client: received message for unknown request id, skipping");
 		}
 	}
 
@@ -796,17 +786,7 @@ public slots:
 				continue;
 			}
 
-			log_debug("zhttp/zws server: received message for unknown request id, canceling");
-
-			// if this was not an error packet, send cancel
-			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel && !p.from.isEmpty())
-			{
-				ZhttpResponsePacket out;
-				out.from = instanceId;
-				out.ids += ZhttpResponsePacket::Id(id.id);
-				out.type = ZhttpResponsePacket::Cancel;
-				write(UnknownSession, out, p.from);
-			}
+			log_debug("zhttp/zws server: received message for unknown request id, skipping");
 		}
 	}
 
