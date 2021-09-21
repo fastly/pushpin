@@ -21,6 +21,7 @@ use crate::shuffle::shuffle;
 use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio;
 use mio::net::{TcpListener, TcpStream};
+use paste::paste;
 use std::cell::Cell;
 use std::future::Future;
 use std::io;
@@ -57,417 +58,76 @@ where
     }
 }
 
-pub enum Select2<O1, O2> {
-    R1(O1),
-    R2(O2),
-}
+macro_rules! declare_select {
+    ($count: literal, ( $($num:literal),* )) => {
+        paste! {
+            pub enum [<Select $count>]<$([<O $num>], )*> {
+                $(
+                    [<R $num>]([<O $num>]),
+                )*
+            }
 
-pub struct Select2Future<F1, F2> {
-    f1: F1,
-    f2: F2,
-}
+            pub struct [<Select $count Future>]<$([<F $num>], )*> {
+                $(
+                    [<f $num>]: [<F $num>],
+                )*
+            }
 
-impl<F1, F2> Future for Select2Future<F1, F2>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-{
-    type Output = Select2<F1::Output, F2::Output>;
+            impl<$([<F $num>], )*> Future for [<Select $count Future>]<$([<F $num>], )*>
+            where
+                $(
+                    [<F $num>]: Future + Unpin,
+                )*
+            {
+                type Output = [<Select $count>]<$([<F $num>]::Output, )*>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut indexes = [0; 2];
+                fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+                    let mut indexes = [0; $count];
 
-        for i in range_unordered(&mut indexes) {
-            let s = &mut *self;
+                    for i in range_unordered(&mut indexes) {
+                        let s = &mut *self;
 
-            let p = match i {
-                0 => map_poll(cx, &mut s.f1, |v| Select2::R1(v)),
-                1 => map_poll(cx, &mut s.f2, |v| Select2::R2(v)),
-                _ => unreachable!(),
-            };
+                        let p = match i + 1 {
+                            $(
+                                $num => map_poll(cx, &mut s.[<f $num>], |v| [<Select $count>]::[<R $num>](v)),
+                            )*
+                            _ => unreachable!(),
+                        };
 
-            if p.is_ready() {
-                return p;
+                        if p.is_ready() {
+                            return p;
+                        }
+                    }
+
+                    Poll::Pending
+                }
+            }
+
+            pub fn [<select_ $count>]<$([<F $num>], )*>(
+                $(
+                    [<f $num>]: [<F $num>],
+                )*
+            ) -> [<Select $count Future>]<$([<F $num>], )*>
+            where
+                $(
+                    [<F $num>]: Future + Unpin,
+                )*
+            {
+                [<Select $count Future>] {
+                    $(
+                        [<f $num>],
+                    )*
+                }
             }
         }
-
-        Poll::Pending
     }
 }
 
-pub enum Select3<O1, O2, O3> {
-    R1(O1),
-    R2(O2),
-    R3(O3),
-}
-
-pub struct Select3Future<F1, F2, F3> {
-    f1: F1,
-    f2: F2,
-    f3: F3,
-}
-
-impl<F1, F2, F3> Future for Select3Future<F1, F2, F3>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-{
-    type Output = Select3<F1::Output, F2::Output, F3::Output>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut indexes = [0; 3];
-
-        for i in range_unordered(&mut indexes) {
-            let s = &mut *self;
-
-            let p = match i {
-                0 => map_poll(cx, &mut s.f1, |v| Select3::R1(v)),
-                1 => map_poll(cx, &mut s.f2, |v| Select3::R2(v)),
-                2 => map_poll(cx, &mut s.f3, |v| Select3::R3(v)),
-                _ => unreachable!(),
-            };
-
-            if p.is_ready() {
-                return p;
-            }
-        }
-
-        Poll::Pending
-    }
-}
-
-pub enum Select4<O1, O2, O3, O4> {
-    R1(O1),
-    R2(O2),
-    R3(O3),
-    R4(O4),
-}
-
-pub struct Select4Future<F1, F2, F3, F4> {
-    f1: F1,
-    f2: F2,
-    f3: F3,
-    f4: F4,
-}
-
-impl<F1, F2, F3, F4> Future for Select4Future<F1, F2, F3, F4>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-    F4: Future + Unpin,
-{
-    type Output = Select4<F1::Output, F2::Output, F3::Output, F4::Output>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut indexes = [0; 4];
-
-        for i in range_unordered(&mut indexes) {
-            let s = &mut *self;
-
-            let p = match i {
-                0 => map_poll(cx, &mut s.f1, |v| Select4::R1(v)),
-                1 => map_poll(cx, &mut s.f2, |v| Select4::R2(v)),
-                2 => map_poll(cx, &mut s.f3, |v| Select4::R3(v)),
-                3 => map_poll(cx, &mut s.f4, |v| Select4::R4(v)),
-                _ => unreachable!(),
-            };
-
-            if p.is_ready() {
-                return p;
-            }
-        }
-
-        Poll::Pending
-    }
-}
-
-pub enum Select5<O1, O2, O3, O4, O5> {
-    R1(O1),
-    R2(O2),
-    R3(O3),
-    R4(O4),
-    R5(O5),
-}
-
-pub struct Select5Future<F1, F2, F3, F4, F5> {
-    f1: F1,
-    f2: F2,
-    f3: F3,
-    f4: F4,
-    f5: F5,
-}
-
-impl<F1, F2, F3, F4, F5> Future for Select5Future<F1, F2, F3, F4, F5>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-    F4: Future + Unpin,
-    F5: Future + Unpin,
-{
-    type Output = Select5<F1::Output, F2::Output, F3::Output, F4::Output, F5::Output>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut indexes = [0; 5];
-
-        for i in range_unordered(&mut indexes) {
-            let s = &mut *self;
-
-            let p = match i {
-                0 => map_poll(cx, &mut s.f1, |v| Select5::R1(v)),
-                1 => map_poll(cx, &mut s.f2, |v| Select5::R2(v)),
-                2 => map_poll(cx, &mut s.f3, |v| Select5::R3(v)),
-                3 => map_poll(cx, &mut s.f4, |v| Select5::R4(v)),
-                4 => map_poll(cx, &mut s.f5, |v| Select5::R5(v)),
-                _ => unreachable!(),
-            };
-
-            if p.is_ready() {
-                return p;
-            }
-        }
-
-        Poll::Pending
-    }
-}
-
-pub enum Select6<O1, O2, O3, O4, O5, O6> {
-    R1(O1),
-    R2(O2),
-    R3(O3),
-    R4(O4),
-    R5(O5),
-    R6(O6),
-}
-
-pub struct Select6Future<F1, F2, F3, F4, F5, F6> {
-    f1: F1,
-    f2: F2,
-    f3: F3,
-    f4: F4,
-    f5: F5,
-    f6: F6,
-}
-
-impl<F1, F2, F3, F4, F5, F6> Future for Select6Future<F1, F2, F3, F4, F5, F6>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-    F4: Future + Unpin,
-    F5: Future + Unpin,
-    F6: Future + Unpin,
-{
-    type Output = Select6<F1::Output, F2::Output, F3::Output, F4::Output, F5::Output, F6::Output>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut indexes = [0; 6];
-
-        for i in range_unordered(&mut indexes) {
-            let s = &mut *self;
-
-            let p = match i {
-                0 => map_poll(cx, &mut s.f1, |v| Select6::R1(v)),
-                1 => map_poll(cx, &mut s.f2, |v| Select6::R2(v)),
-                2 => map_poll(cx, &mut s.f3, |v| Select6::R3(v)),
-                3 => map_poll(cx, &mut s.f4, |v| Select6::R4(v)),
-                4 => map_poll(cx, &mut s.f5, |v| Select6::R5(v)),
-                5 => map_poll(cx, &mut s.f6, |v| Select6::R6(v)),
-                _ => unreachable!(),
-            };
-
-            if p.is_ready() {
-                return p;
-            }
-        }
-
-        Poll::Pending
-    }
-}
-
-pub enum Select9<O1, O2, O3, O4, O5, O6, O7, O8, O9> {
-    R1(O1),
-    R2(O2),
-    R3(O3),
-    R4(O4),
-    R5(O5),
-    R6(O6),
-    R7(O7),
-    R8(O8),
-    R9(O9),
-}
-
-pub struct Select9Future<F1, F2, F3, F4, F5, F6, F7, F8, F9> {
-    f1: F1,
-    f2: F2,
-    f3: F3,
-    f4: F4,
-    f5: F5,
-    f6: F6,
-    f7: F7,
-    f8: F8,
-    f9: F9,
-}
-
-impl<F1, F2, F3, F4, F5, F6, F7, F8, F9> Future
-    for Select9Future<F1, F2, F3, F4, F5, F6, F7, F8, F9>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-    F4: Future + Unpin,
-    F5: Future + Unpin,
-    F6: Future + Unpin,
-    F7: Future + Unpin,
-    F8: Future + Unpin,
-    F9: Future + Unpin,
-{
-    type Output = Select9<
-        F1::Output,
-        F2::Output,
-        F3::Output,
-        F4::Output,
-        F5::Output,
-        F6::Output,
-        F7::Output,
-        F8::Output,
-        F9::Output,
-    >;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut indexes = [0; 9];
-
-        for i in range_unordered(&mut indexes) {
-            let s = &mut *self;
-
-            let p = match i {
-                0 => map_poll(cx, &mut s.f1, |v| Select9::R1(v)),
-                1 => map_poll(cx, &mut s.f2, |v| Select9::R2(v)),
-                2 => map_poll(cx, &mut s.f3, |v| Select9::R3(v)),
-                3 => map_poll(cx, &mut s.f4, |v| Select9::R4(v)),
-                4 => map_poll(cx, &mut s.f5, |v| Select9::R5(v)),
-                5 => map_poll(cx, &mut s.f6, |v| Select9::R6(v)),
-                6 => map_poll(cx, &mut s.f7, |v| Select9::R7(v)),
-                7 => map_poll(cx, &mut s.f8, |v| Select9::R8(v)),
-                8 => map_poll(cx, &mut s.f9, |v| Select9::R9(v)),
-                _ => unreachable!(),
-            };
-
-            if p.is_ready() {
-                return p;
-            }
-        }
-
-        Poll::Pending
-    }
-}
-
-pub fn select_2<F1, F2>(f1: F1, f2: F2) -> Select2Future<F1, F2>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-{
-    Select2Future { f1, f2 }
-}
-
-pub fn select_3<F1, F2, F3>(f1: F1, f2: F2, f3: F3) -> Select3Future<F1, F2, F3>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-{
-    Select3Future { f1, f2, f3 }
-}
-
-pub fn select_4<F1, F2, F3, F4>(f1: F1, f2: F2, f3: F3, f4: F4) -> Select4Future<F1, F2, F3, F4>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-    F4: Future + Unpin,
-{
-    Select4Future { f1, f2, f3, f4 }
-}
-
-pub fn select_5<F1, F2, F3, F4, F5>(
-    f1: F1,
-    f2: F2,
-    f3: F3,
-    f4: F4,
-    f5: F5,
-) -> Select5Future<F1, F2, F3, F4, F5>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-    F4: Future + Unpin,
-    F5: Future + Unpin,
-{
-    Select5Future { f1, f2, f3, f4, f5 }
-}
-
-pub fn select_6<F1, F2, F3, F4, F5, F6>(
-    f1: F1,
-    f2: F2,
-    f3: F3,
-    f4: F4,
-    f5: F5,
-    f6: F6,
-) -> Select6Future<F1, F2, F3, F4, F5, F6>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-    F4: Future + Unpin,
-    F5: Future + Unpin,
-    F6: Future + Unpin,
-{
-    Select6Future {
-        f1,
-        f2,
-        f3,
-        f4,
-        f5,
-        f6,
-    }
-}
-
-pub fn select_9<F1, F2, F3, F4, F5, F6, F7, F8, F9>(
-    f1: F1,
-    f2: F2,
-    f3: F3,
-    f4: F4,
-    f5: F5,
-    f6: F6,
-    f7: F7,
-    f8: F8,
-    f9: F9,
-) -> Select9Future<F1, F2, F3, F4, F5, F6, F7, F8, F9>
-where
-    F1: Future + Unpin,
-    F2: Future + Unpin,
-    F3: Future + Unpin,
-    F4: Future + Unpin,
-    F5: Future + Unpin,
-    F6: Future + Unpin,
-    F7: Future + Unpin,
-    F8: Future + Unpin,
-    F9: Future + Unpin,
-{
-    Select9Future {
-        f1,
-        f2,
-        f3,
-        f4,
-        f5,
-        f6,
-        f7,
-        f8,
-        f9,
-    }
-}
+declare_select!(2, (1, 2));
+declare_select!(3, (1, 2, 3));
+declare_select!(4, (1, 2, 3, 4));
+declare_select!(6, (1, 2, 3, 4, 5, 6));
+declare_select!(9, (1, 2, 3, 4, 5, 6, 7, 8, 9));
 
 pub struct SelectSliceFuture<'a, F> {
     futures: &'a mut [F],
