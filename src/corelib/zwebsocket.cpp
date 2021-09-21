@@ -1054,8 +1054,6 @@ public slots:
 
 	void expire_timeout()
 	{
-		tryCancel();
-
 		state = Idle;
 		errorCondition = ErrorTimeout;
 		cleanup();
