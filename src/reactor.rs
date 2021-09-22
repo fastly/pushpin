@@ -29,6 +29,7 @@ use std::task::Waker;
 use std::time::{Duration, Instant};
 
 const TICK_DURATION_MS: u64 = 10;
+const EXPIRE_MAX: usize = 100;
 
 thread_local! {
     static REACTOR: RefCell<Option<Weak<ReactorData>>> = RefCell::new(None);
@@ -482,6 +483,8 @@ impl Reactor {
 
         let timer = &mut *self.inner.timer.borrow_mut();
 
+        let mut expire_count = 0;
+
         while let Some((_, key)) = timer.wheel.take_expired() {
             if let Some(event_reg) = registrations.get_mut(key) {
                 event_reg.readiness = Some(mio::Interest::READABLE);
@@ -490,6 +493,12 @@ impl Reactor {
                 if let Some((waker, _)) = event_reg.waker.take() {
                     waker.wake();
                 }
+            }
+
+            expire_count += 1;
+
+            if expire_count >= EXPIRE_MAX {
+                break;
             }
         }
     }
