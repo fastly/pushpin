@@ -1152,6 +1152,10 @@ impl Worker {
         }
     }
 
+    fn stop(&mut self) {
+        self.stop = None;
+    }
+
     async fn run(
         stop: channel::Receiver<()>,
         ready: channel::Sender<()>,
@@ -2234,7 +2238,7 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        self.stop = None;
+        self.stop();
 
         let thread = self.thread.take().unwrap();
         thread.join().unwrap();
@@ -2243,9 +2247,9 @@ impl Drop for Worker {
 
 pub struct Server {
     addrs: Vec<SocketAddr>,
+    workers: Vec<Worker>,
 
     // underscore-prefixed because we never reference after construction
-    _workers: Vec<Worker>,
     _req_listener: Listener,
     _stream_listener: Listener,
 }
@@ -2335,8 +2339,8 @@ impl Server {
         let stream_listener = Listener::new(stream_tcp_listeners, stream_lsenders);
 
         Ok(Self {
-            addrs: addrs,
-            _workers: workers,
+            addrs,
+            workers,
             _req_listener: req_listener,
             _stream_listener: stream_listener,
         })
@@ -2344,6 +2348,14 @@ impl Server {
 
     pub fn addrs(&self) -> &[SocketAddr] {
         &self.addrs
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        for w in self.workers.iter_mut() {
+            w.stop();
+        }
     }
 }
 
