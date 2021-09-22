@@ -94,6 +94,7 @@ const KEEP_ALIVE_BATCH_MS: usize = 100;
 const KEEP_ALIVE_INTERVAL: Duration = Duration::from_millis(KEEP_ALIVE_BATCH_MS as u64);
 const KEEP_ALIVE_BATCHES: usize = KEEP_ALIVE_TIMEOUT_MS / KEEP_ALIVE_BATCH_MS;
 const BULK_PACKET_SIZE_MAX: usize = 65_000;
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(10_000);
 
 fn get_addr_and_offset(msg: &[u8]) -> Result<(&str, usize), ()> {
     let mut pos = None;
@@ -1365,9 +1366,12 @@ impl Worker {
 
         stream_conns.batch_clear();
 
+        let now = Reactor::current().unwrap().now();
+        let mut shutdown_timer = AsyncSleep::new(now + SHUTDOWN_TIMEOUT);
+
         let mut next_cancel_index = 0;
 
-        while next_cancel_index < stream_conns.items_capacity() {
+        'outer: while next_cancel_index < stream_conns.items_capacity() {
             while stream_conns.batch_len() < stream_conns.batch_capacity()
                 && next_cancel_index < stream_conns.items_capacity()
             {
@@ -1386,7 +1390,14 @@ impl Worker {
             {
                 debug!("worker {}: sending cancels for {} sessions", id, count);
 
-                stream_handle.send_to_addr(addr, msg).await.unwrap();
+                let send = stream_handle.send_to_addr(addr, msg);
+
+                pin_mut!(send);
+
+                match select_2(send, shutdown_timer.sleep()).await {
+                    Select2::R1(r) => r.unwrap(),
+                    Select2::R2(_) => break 'outer,
+                }
             }
 
             stream_conns.batch_clear();
