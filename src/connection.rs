@@ -1489,16 +1489,13 @@ impl ServerStreamConnection {
             }
             ServerStreamState::Finishing => {
                 if self.shared.get().to_addr().get().is_some() {
-                    if !args.zsender.can_send_to() {
-                        let mut want = Want::nothing();
-                        want.zhttp_write_to = true;
-                        return Some(Ok(want));
-                    }
+                    if args.zsender.can_send_to() {
+                        let zreq = zhttppacket::Request::new_cancel(b"", &[]);
 
-                    let zreq = zhttppacket::Request::new_cancel(b"", &[]);
-
-                    if let Err(e) = Self::zsend(&mut self.d, self.shared.get(), &mut args, zreq) {
-                        return Some(Err(e.into()));
+                        if let Err(e) = Self::zsend(&mut self.d, self.shared.get(), &mut args, zreq)
+                        {
+                            return Some(Err(e.into()));
+                        }
                     }
                 }
 
