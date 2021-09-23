@@ -22,7 +22,7 @@ use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio;
 use mio::net::{TcpListener, TcpStream};
 use paste::paste;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::io;
 use std::io::{Read, Write};
@@ -199,6 +199,81 @@ where
     F: Future<Output = O>,
 {
     SelectOptionFuture { fut }
+}
+
+pub trait AsyncRead: Unpin {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize, io::Error>>;
+
+    fn cancel(&mut self) {}
+}
+
+pub trait AsyncWrite: Unpin {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>>;
+
+    fn cancel(&mut self) {}
+}
+
+pub trait AsyncReadExt: AsyncRead {
+    fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> ReadFuture<'a, Self> {
+        ReadFuture { r: self, buf }
+    }
+}
+
+pub trait AsyncWriteExt: AsyncWrite {
+    fn write<'a>(&'a mut self, buf: &'a [u8]) -> WriteFuture<'a, Self> {
+        WriteFuture {
+            w: self,
+            buf,
+            pos: 0,
+        }
+    }
+}
+
+impl<R: AsyncRead + ?Sized> AsyncReadExt for R {}
+impl<W: AsyncWrite + ?Sized> AsyncWriteExt for W {}
+
+pub struct ReadHalf<'a, T: AsyncRead> {
+    handle: &'a RefCell<T>,
+}
+
+impl<T: AsyncRead> AsyncRead for ReadHalf<'_, T> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let mut handle = self.handle.borrow_mut();
+
+        Pin::new(&mut *handle).poll_read(cx, buf)
+    }
+}
+
+pub struct WriteHalf<'a, T: AsyncWrite> {
+    handle: &'a RefCell<T>,
+}
+
+impl<T: AsyncWrite> AsyncWrite for WriteHalf<'_, T> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let mut handle = self.handle.borrow_mut();
+
+        Pin::new(&mut *handle).poll_write(cx, buf)
+    }
+}
+
+pub fn io_split<T: AsyncRead + AsyncWrite>(handle: &RefCell<T>) -> (ReadHalf<T>, WriteHalf<T>) {
+    (ReadHalf { handle }, WriteHalf { handle })
 }
 
 #[track_caller]
@@ -397,18 +472,6 @@ impl AsyncTcpStream {
         fut.await?;
 
         Ok(stream)
-    }
-
-    pub fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> TcpReadFuture<'a> {
-        TcpReadFuture { s: self, buf }
-    }
-
-    pub fn write<'a>(&'a mut self, buf: &'a [u8]) -> TcpWriteFuture<'a> {
-        TcpWriteFuture {
-            s: self,
-            buf,
-            pos: 0,
-        }
     }
 }
 
@@ -757,6 +820,65 @@ impl Drop for AcceptFuture<'_> {
     }
 }
 
+pub struct ReadFuture<'a, R: AsyncRead + ?Sized> {
+    r: &'a mut R,
+    buf: &'a mut [u8],
+}
+
+impl<'a, R: AsyncRead + ?Sized> Future for ReadFuture<'a, R> {
+    type Output = Result<usize, io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        let r: Pin<&mut R> = Pin::new(f.r);
+
+        r.poll_read(cx, f.buf)
+    }
+}
+
+impl<'a, R: AsyncRead + ?Sized> Drop for ReadFuture<'a, R> {
+    fn drop(&mut self) {
+        self.r.cancel();
+    }
+}
+
+pub struct WriteFuture<'a, W: AsyncWrite + ?Sized + Unpin> {
+    w: &'a mut W,
+    buf: &'a [u8],
+    pos: usize,
+}
+
+impl<'a, W: AsyncWrite + ?Sized> Future for WriteFuture<'a, W> {
+    type Output = Result<usize, io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        let mut w: Pin<&mut W> = Pin::new(f.w);
+
+        // try to write all the data before producing a result, the same as
+        // what a blocking write would do
+        while f.pos < f.buf.len() {
+            match w.as_mut().poll_write(cx, &f.buf[f.pos..]) {
+                Poll::Ready(result) => match result {
+                    Ok(size) => f.pos += size,
+                    Err(e) => return Poll::Ready(Err(e)),
+                },
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+
+        Poll::Ready(Ok(f.buf.len()))
+    }
+}
+
+impl<'a, W: AsyncWrite + ?Sized> Drop for WriteFuture<'a, W> {
+    fn drop(&mut self) {
+        self.w.cancel();
+    }
+}
+
 pub struct TcpConnectFuture<'a> {
     s: &'a mut AsyncTcpStream,
 }
@@ -794,23 +916,19 @@ impl Drop for TcpConnectFuture<'_> {
     }
 }
 
-pub struct TcpReadFuture<'a> {
-    s: &'a mut AsyncTcpStream,
-    buf: &'a mut [u8],
-}
-
-impl Future for TcpReadFuture<'_> {
-    type Output = Result<usize, io::Error>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+impl AsyncRead for AsyncTcpStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize, io::Error>> {
         let f = &mut *self;
 
-        f.s.evented
+        f.evented
             .registration()
             .set_waker(cx.waker().clone(), mio::Interest::READABLE);
 
         if !f
-            .s
             .evented
             .registration()
             .readiness()
@@ -819,14 +937,14 @@ impl Future for TcpReadFuture<'_> {
             return Poll::Pending;
         }
 
-        if !f.s.evented.registration().pull_from_budget() {
+        if !f.evented.registration().pull_from_budget() {
             return Poll::Pending;
         }
 
-        match f.s.evented.io().read(f.buf) {
+        match f.evented.io().read(buf) {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                f.s.evented
+                f.evented
                     .registration()
                     .clear_readiness(mio::Interest::READABLE);
 
@@ -835,32 +953,27 @@ impl Future for TcpReadFuture<'_> {
             Err(e) => Poll::Ready(Err(e)),
         }
     }
-}
 
-impl Drop for TcpReadFuture<'_> {
-    fn drop(&mut self) {
-        self.s.evented.registration().clear_waker();
+    fn cancel(&mut self) {
+        self.evented
+            .registration()
+            .clear_waker_interest(mio::Interest::READABLE);
     }
 }
 
-pub struct TcpWriteFuture<'a> {
-    s: &'a mut AsyncTcpStream,
-    buf: &'a [u8],
-    pos: usize,
-}
-
-impl Future for TcpWriteFuture<'_> {
-    type Output = Result<usize, io::Error>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+impl AsyncWrite for AsyncTcpStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
         let f = &mut *self;
 
-        f.s.evented
+        f.evented
             .registration()
             .set_waker(cx.waker().clone(), mio::Interest::WRITABLE);
 
         if !f
-            .s
             .evented
             .registration()
             .readiness()
@@ -869,39 +982,27 @@ impl Future for TcpWriteFuture<'_> {
             return Poll::Pending;
         }
 
-        // try to write all the data before producing a result, the same as
-        // what a blocking write would do
-        loop {
-            if !f.s.evented.registration().pull_from_budget() {
-                return Poll::Pending;
-            }
-
-            match f.s.evented.io().write(&f.buf[f.pos..]) {
-                Ok(size) => {
-                    f.pos += size;
-
-                    if f.pos >= f.buf.len() {
-                        break;
-                    }
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    f.s.evented
-                        .registration()
-                        .clear_readiness(mio::Interest::WRITABLE);
-
-                    return Poll::Pending;
-                }
-                Err(e) => return Poll::Ready(Err(e)),
-            }
+        if !f.evented.registration().pull_from_budget() {
+            return Poll::Pending;
         }
 
-        Poll::Ready(Ok(f.buf.len()))
-    }
-}
+        match f.evented.io().write(buf) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.evented
+                    .registration()
+                    .clear_readiness(mio::Interest::WRITABLE);
 
-impl Drop for TcpWriteFuture<'_> {
-    fn drop(&mut self) {
-        self.s.evented.registration().clear_waker();
+                return Poll::Pending;
+            }
+            Err(e) => return Poll::Ready(Err(e)),
+        }
+    }
+
+    fn cancel(&mut self) {
+        self.evented
+            .registration()
+            .clear_waker_interest(mio::Interest::WRITABLE);
     }
 }
 
@@ -1192,17 +1293,18 @@ mod tests {
     use super::*;
     use crate::executor::Executor;
     use crate::zmq::SpecInfo;
+    use std::cmp;
     use std::mem;
     use std::rc::Rc;
     use std::str;
     use std::task::Context;
     use std::thread;
 
-    struct PollFuture<'a, F> {
-        fut: &'a mut F,
+    struct PollFuture<F> {
+        fut: F,
     }
 
-    impl<F> Future for PollFuture<'_, F>
+    impl<F> Future for PollFuture<F>
     where
         F: Future + Unpin,
     {
@@ -1215,11 +1317,51 @@ mod tests {
         }
     }
 
-    fn poll_fut_async<'a, F>(fut: &'a mut F) -> PollFuture<'a, F>
+    fn poll_fut_async<F>(fut: F) -> PollFuture<F>
     where
         F: Future + Unpin,
     {
         PollFuture { fut }
+    }
+
+    struct TestBuffer {
+        data: Vec<u8>,
+    }
+
+    impl TestBuffer {
+        fn new() -> Self {
+            Self { data: Vec::new() }
+        }
+    }
+
+    impl AsyncRead for TestBuffer {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context,
+            buf: &mut [u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            let size = cmp::min(buf.len(), self.data.len());
+
+            let left = self.data.split_off(size);
+
+            (&mut buf[..size]).copy_from_slice(&self.data);
+
+            self.data = left;
+
+            Poll::Ready(Ok(size))
+        }
+    }
+
+    impl AsyncWrite for TestBuffer {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context,
+            buf: &[u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            let size = self.data.write(buf).unwrap();
+
+            Poll::Ready(Ok(size))
+        }
     }
 
     #[test]
@@ -1372,6 +1514,49 @@ mod tests {
             .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_read_write() {
+        let executor = Executor::new(1);
+
+        executor
+            .spawn(async {
+                let mut buf = TestBuffer::new();
+
+                let mut data = [0; 16];
+
+                assert_eq!(buf.read(&mut data).await.unwrap(), 0);
+                assert_eq!(buf.write(b"hello").await.unwrap(), 5);
+                assert_eq!(buf.read(&mut data).await.unwrap(), 5);
+                assert_eq!(&data[..5], b"hello");
+            })
+            .unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_read_write_concurrent() {
+        let executor = Executor::new(1);
+
+        executor
+            .spawn(async {
+                let buf = RefCell::new(TestBuffer::new());
+                let (mut r, mut w) = io_split(&buf);
+
+                let mut data = [0; 16];
+
+                let write_fut = w.write(b"hello");
+                let read_fut = r.read(&mut data);
+
+                assert_eq!(write_fut.await.unwrap(), 5);
+                assert_eq!(read_fut.await.unwrap(), 5);
+                assert_eq!(&data[..5], b"hello");
+            })
+            .unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
     }
 
     #[test]
