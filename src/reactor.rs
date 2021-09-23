@@ -120,6 +120,20 @@ impl Registration {
         reg_data.waker = None;
     }
 
+    pub fn clear_waker_interest(&self, interest: mio::Interest) {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+        let registrations = &mut *reactor.registrations.borrow_mut();
+
+        let reg_data = &mut registrations[self.key];
+
+        if let Some((waker, cur)) = reg_data.waker.take() {
+            match cur.remove(interest) {
+                Some(interest) => reg_data.waker = Some((waker, interest)),
+                None => reg_data.waker = None,
+            }
+        }
+    }
+
     pub fn deregister_io<S: mio::event::Source>(&self, source: &mut S) -> Result<(), io::Error> {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
         let poll = &reactor.poll.borrow();
