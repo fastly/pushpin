@@ -1412,6 +1412,10 @@ impl ServerStreamConnection {
                 let exp_time = Self::timeout(&self.d);
                 if exp_time.is_some() && args.now >= exp_time.unwrap() {
                     debug!("conn {}: timed out", self.d.id);
+
+                    // don't send cancel
+                    self.shared.get().set_to_addr(None);
+
                     self.d.state = ServerStreamState::Finishing;
                 }
             }
