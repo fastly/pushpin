@@ -455,7 +455,9 @@ impl AsyncTcpStream {
 
         // when constructing via new(), assume I/O operations are ready to be
         // attempted
-        evented.registration().set_ready(true);
+        evented
+            .registration()
+            .set_readiness(Some(mio::Interest::READABLE | mio::Interest::WRITABLE));
 
         Self { evented }
     }
@@ -993,9 +995,9 @@ impl AsyncWrite for AsyncTcpStream {
                     .registration()
                     .clear_readiness(mio::Interest::WRITABLE);
 
-                return Poll::Pending;
+                Poll::Pending
             }
-            Err(e) => return Poll::Ready(Err(e)),
+            Err(e) => Poll::Ready(Err(e)),
         }
     }
 
