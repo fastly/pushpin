@@ -18,6 +18,7 @@ use crate::channel;
 use crate::event::ReadinessExt;
 use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented};
 use crate::shuffle::shuffle;
+use crate::tls::TlsStream;
 use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio;
 use mio::net::{TcpListener, TcpStream};
@@ -474,6 +475,41 @@ impl AsyncTcpStream {
         fut.await?;
 
         Ok(stream)
+    }
+}
+
+pub struct AsyncTlsStream {
+    registration: Registration,
+    stream: TlsStream,
+}
+
+impl AsyncTlsStream {
+    pub fn new(mut s: TlsStream) -> Self {
+        let registration = get_reactor()
+            .register_io(
+                s.get_tcp(),
+                mio::Interest::READABLE | mio::Interest::WRITABLE,
+            )
+            .unwrap();
+
+        // assume I/O operations are ready to be attempted
+        registration.set_readiness(Some(mio::Interest::READABLE | mio::Interest::WRITABLE));
+
+        // process TLS reads/writes after any socket event
+        registration.set_any_as_all(true);
+
+        Self {
+            registration,
+            stream: s,
+        }
+    }
+}
+
+impl Drop for AsyncTlsStream {
+    fn drop(&mut self) {
+        self.registration
+            .deregister_io(self.stream.get_tcp())
+            .unwrap();
     }
 }
 
@@ -1004,6 +1040,86 @@ impl AsyncWrite for AsyncTcpStream {
     fn cancel(&mut self) {
         self.evented
             .registration()
+            .clear_waker_interest(mio::Interest::WRITABLE);
+    }
+}
+
+impl AsyncRead for AsyncTlsStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let f = &mut *self;
+
+        f.registration
+            .set_waker(cx.waker().clone(), mio::Interest::READABLE);
+
+        if !f
+            .registration
+            .readiness()
+            .contains_any(mio::Interest::READABLE)
+        {
+            return Poll::Pending;
+        }
+
+        if !f.registration.pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.stream.read(buf) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.registration.clear_readiness(mio::Interest::READABLE);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    fn cancel(&mut self) {
+        self.registration
+            .clear_waker_interest(mio::Interest::READABLE);
+    }
+}
+
+impl AsyncWrite for AsyncTlsStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let f = &mut *self;
+
+        f.registration
+            .set_waker(cx.waker().clone(), mio::Interest::WRITABLE);
+
+        if !f
+            .registration
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
+        {
+            return Poll::Pending;
+        }
+
+        if !f.registration.pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.stream.write(buf) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.registration.clear_readiness(mio::Interest::WRITABLE);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    fn cancel(&mut self) {
+        self.registration
             .clear_waker_interest(mio::Interest::WRITABLE);
     }
 }
