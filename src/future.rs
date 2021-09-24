@@ -233,11 +233,7 @@ pub trait AsyncWrite: Unpin {
         self.poll_write(cx, &[])
     }
 
-    fn cancel(&mut self) {}
-}
-
-pub trait AsyncShutdown: Unpin {
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>>;
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>>;
 
     fn cancel(&mut self) {}
 }
@@ -267,17 +263,14 @@ pub trait AsyncWriteExt: AsyncWrite {
             pos: 0,
         }
     }
-}
 
-pub trait AsyncShutdownExt: AsyncShutdown {
-    fn shutdown<'a>(&'a mut self) -> ShutdownFuture<'a, Self> {
-        ShutdownFuture { s: self }
+    fn close<'a>(&'a mut self) -> CloseFuture<'a, Self> {
+        CloseFuture { w: self }
     }
 }
 
 impl<R: AsyncRead + ?Sized> AsyncReadExt for R {}
 impl<W: AsyncWrite + ?Sized> AsyncWriteExt for W {}
-impl<S: AsyncShutdown + ?Sized> AsyncShutdownExt for S {}
 
 pub struct ReadHalf<'a, T: AsyncRead> {
     handle: &'a RefCell<T>,
@@ -318,6 +311,12 @@ impl<T: AsyncWrite> AsyncWrite for WriteHalf<'_, T> {
         let mut handle = self.handle.borrow_mut();
 
         Pin::new(&mut *handle).poll_write_vectored(cx, bufs)
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        let mut handle = self.handle.borrow_mut();
+
+        Pin::new(&mut *handle).poll_close(cx)
     }
 }
 
@@ -964,25 +963,25 @@ impl<'a, W: AsyncWrite + ?Sized> Drop for WriteFuture<'a, W> {
     }
 }
 
-pub struct ShutdownFuture<'a, S: AsyncShutdown + ?Sized> {
-    s: &'a mut S,
+pub struct CloseFuture<'a, W: AsyncWrite + ?Sized> {
+    w: &'a mut W,
 }
 
-impl<'a, S: AsyncShutdown + ?Sized> Future for ShutdownFuture<'a, S> {
+impl<'a, W: AsyncWrite + ?Sized> Future for CloseFuture<'a, W> {
     type Output = Result<(), io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        let s: Pin<&mut S> = Pin::new(f.s);
+        let w: Pin<&mut W> = Pin::new(f.w);
 
-        s.poll_shutdown(cx)
+        w.poll_close(cx)
     }
 }
 
-impl<'a, S: AsyncShutdown + ?Sized> Drop for ShutdownFuture<'a, S> {
+impl<'a, W: AsyncWrite + ?Sized> Drop for CloseFuture<'a, W> {
     fn drop(&mut self) {
-        self.s.cancel();
+        self.w.cancel();
     }
 }
 
@@ -1173,16 +1172,14 @@ impl AsyncWrite for AsyncTcpStream {
         }
     }
 
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
     fn cancel(&mut self) {
         self.evented
             .registration()
             .clear_waker_interest(mio::Interest::WRITABLE);
-    }
-}
-
-impl AsyncShutdown for AsyncTcpStream {
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
-        Poll::Ready(Ok(()))
     }
 }
 
@@ -1260,14 +1257,7 @@ impl AsyncWrite for AsyncTlsStream {
         }
     }
 
-    fn cancel(&mut self) {
-        self.registration
-            .clear_waker_interest(mio::Interest::WRITABLE);
-    }
-}
-
-impl AsyncShutdown for AsyncTlsStream {
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         let f = &mut *self;
 
         f.registration
@@ -1657,6 +1647,10 @@ mod tests {
             let size = self.data.write(buf).unwrap();
 
             Poll::Ready(Ok(size))
+        }
+
+        fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
+            Poll::Ready(Ok(()))
         }
     }
 
