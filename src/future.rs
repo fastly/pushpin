@@ -219,6 +219,20 @@ pub trait AsyncWrite: Unpin {
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>>;
 
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        for b in bufs {
+            if !b.is_empty() {
+                return self.poll_write(cx, b);
+            }
+        }
+
+        self.poll_write(cx, &[])
+    }
+
     fn cancel(&mut self) {}
 }
 
@@ -239,6 +253,17 @@ pub trait AsyncWriteExt: AsyncWrite {
         WriteFuture {
             w: self,
             buf,
+            pos: 0,
+        }
+    }
+
+    fn write_vectored<'a>(
+        &'a mut self,
+        bufs: &'a [io::IoSlice<'a>],
+    ) -> WriteVectoredFuture<'a, Self> {
+        WriteVectoredFuture {
+            w: self,
+            bufs,
             pos: 0,
         }
     }
@@ -283,6 +308,16 @@ impl<T: AsyncWrite> AsyncWrite for WriteHalf<'_, T> {
         let mut handle = self.handle.borrow_mut();
 
         Pin::new(&mut *handle).poll_write(cx, buf)
+    }
+
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        let mut handle = self.handle.borrow_mut();
+
+        Pin::new(&mut *handle).poll_write_vectored(cx, bufs)
     }
 }
 
@@ -908,8 +943,7 @@ impl<'a, W: AsyncWrite + ?Sized> Future for WriteFuture<'a, W> {
 
         let mut w: Pin<&mut W> = Pin::new(f.w);
 
-        // try to write all the data before producing a result, the same as
-        // what a blocking write would do
+        // try to write all the data before producing a result
         while f.pos < f.buf.len() {
             match w.as_mut().poll_write(cx, &f.buf[f.pos..]) {
                 Poll::Ready(result) => match result {
@@ -949,6 +983,73 @@ impl<'a, S: AsyncShutdown + ?Sized> Future for ShutdownFuture<'a, S> {
 impl<'a, S: AsyncShutdown + ?Sized> Drop for ShutdownFuture<'a, S> {
     fn drop(&mut self) {
         self.s.cancel();
+    }
+}
+
+fn get_start_offset(bufs: &[io::IoSlice], pos: usize) -> (usize, usize) {
+    let mut start = 0;
+    let mut offset = pos;
+
+    for buf in bufs {
+        if offset < buf.len() {
+            break;
+        }
+
+        start += 1;
+        offset -= buf.len();
+    }
+
+    (start, offset)
+}
+
+pub struct WriteVectoredFuture<'a, W: AsyncWrite + ?Sized + Unpin> {
+    w: &'a mut W,
+    bufs: &'a [io::IoSlice<'a>],
+    pos: usize,
+}
+
+impl<'a, W: AsyncWrite + ?Sized> Future for WriteVectoredFuture<'a, W> {
+    type Output = Result<usize, io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        let mut w: Pin<&mut W> = Pin::new(f.w);
+
+        // try to write all the data before producing a result
+        loop {
+            let (start, offset) = get_start_offset(f.bufs, f.pos);
+
+            if start >= f.bufs.len() {
+                break;
+            }
+
+            if offset == 0 {
+                match w.as_mut().poll_write_vectored(cx, &f.bufs[start..]) {
+                    Poll::Ready(result) => match result {
+                        Ok(size) => f.pos += size,
+                        Err(e) => return Poll::Ready(Err(e)),
+                    },
+                    Poll::Pending => return Poll::Pending,
+                }
+            } else {
+                match w.as_mut().poll_write(cx, &f.bufs[start][offset..]) {
+                    Poll::Ready(result) => match result {
+                        Ok(size) => f.pos += size,
+                        Err(e) => return Poll::Ready(Err(e)),
+                    },
+                    Poll::Pending => return Poll::Pending,
+                }
+            }
+        }
+
+        Poll::Ready(Ok(f.pos))
+    }
+}
+
+impl<'a, W: AsyncWrite + ?Sized> Drop for WriteVectoredFuture<'a, W> {
+    fn drop(&mut self) {
+        self.w.cancel();
     }
 }
 
@@ -1747,6 +1848,35 @@ mod tests {
 
                 assert_eq!(write_fut.await.unwrap(), 5);
                 assert_eq!(read_fut.await.unwrap(), 5);
+                assert_eq!(&data[..5], b"hello");
+            })
+            .unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_write_vectored() {
+        let executor = Executor::new(1);
+
+        executor
+            .spawn(async {
+                let mut buf = TestBuffer::new();
+
+                let mut data = [0; 16];
+
+                assert_eq!(buf.read(&mut data).await.unwrap(), 0);
+                assert_eq!(
+                    buf.write_vectored(&[
+                        io::IoSlice::new(b"he"),
+                        io::IoSlice::new(b"l"),
+                        io::IoSlice::new(b"lo")
+                    ])
+                    .await
+                    .unwrap(),
+                    5
+                );
+                assert_eq!(buf.read(&mut data).await.unwrap(), 5);
                 assert_eq!(&data[..5], b"hello");
             })
             .unwrap();
