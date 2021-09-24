@@ -59,6 +59,15 @@ impl Registration {
         Reactor { inner: reactor }
     }
 
+    pub fn set_any_as_all(&self, enabled: bool) {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+        let registrations = &mut *reactor.registrations.borrow_mut();
+
+        let reg_data = &mut registrations[self.key];
+
+        reg_data.any_as_all = enabled;
+    }
+
     pub fn readiness(&self) -> event::Readiness {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &*reactor.registrations.borrow();
@@ -197,6 +206,7 @@ struct RegistrationData {
     readiness: event::Readiness,
     waker: Option<(Waker, mio::Interest)>,
     timer_key: Option<usize>,
+    any_as_all: bool,
 }
 
 struct TimerData {
@@ -265,6 +275,7 @@ impl Reactor {
             readiness: None,
             waker: None,
             timer_key: None,
+            any_as_all: false,
         });
 
         if let Err(e) = self
@@ -299,6 +310,7 @@ impl Reactor {
             readiness: None,
             waker: None,
             timer_key: None,
+            any_as_all: false,
         });
 
         if let Err(e) =
@@ -333,6 +345,7 @@ impl Reactor {
             readiness: None,
             waker: None,
             timer_key: None,
+            any_as_all: false,
         });
 
         if let Err(e) =
@@ -363,6 +376,7 @@ impl Reactor {
             readiness: None,
             waker: None,
             timer_key: None,
+            any_as_all: false,
         });
 
         let timer = &mut *self.inner.timer.borrow_mut();
@@ -473,19 +487,29 @@ impl Reactor {
             let key = key - 1;
 
             if let Some(event_reg) = registrations.get_mut(key) {
-                let changed = {
-                    let readiness = event_reg.readiness;
-                    event_reg.readiness.merge(event.readiness());
-
-                    readiness != event_reg.readiness
+                let event_readiness = if event_reg.any_as_all {
+                    mio::Interest::READABLE | mio::Interest::WRITABLE
+                } else {
+                    event.readiness()
                 };
 
-                if changed {
-                    if let Some((_, interest)) = &event_reg.waker {
-                        let readiness = event.readiness();
+                let (became_readable, became_writable) = {
+                    let prev_readiness = event_reg.readiness;
 
-                        if (readiness.is_readable() && interest.is_readable())
-                            || (readiness.is_writable() && interest.is_writable())
+                    event_reg.readiness.merge(event_readiness);
+
+                    (
+                        !prev_readiness.contains_any(mio::Interest::READABLE)
+                            && event_reg.readiness.contains_any(mio::Interest::READABLE),
+                        !prev_readiness.contains_any(mio::Interest::WRITABLE)
+                            && event_reg.readiness.contains_any(mio::Interest::WRITABLE),
+                    )
+                };
+
+                if became_readable || became_writable {
+                    if let Some((_, interest)) = &event_reg.waker {
+                        if (became_readable && interest.is_readable())
+                            || (became_writable && interest.is_writable())
                         {
                             let (waker, _) = event_reg.waker.take().unwrap();
                             waker.wake();
