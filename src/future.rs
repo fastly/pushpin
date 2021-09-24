@@ -222,6 +222,12 @@ pub trait AsyncWrite: Unpin {
     fn cancel(&mut self) {}
 }
 
+pub trait AsyncShutdown: Unpin {
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>>;
+
+    fn cancel(&mut self) {}
+}
+
 pub trait AsyncReadExt: AsyncRead {
     fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> ReadFuture<'a, Self> {
         ReadFuture { r: self, buf }
@@ -238,8 +244,15 @@ pub trait AsyncWriteExt: AsyncWrite {
     }
 }
 
+pub trait AsyncShutdownExt: AsyncShutdown {
+    fn shutdown<'a>(&'a mut self) -> ShutdownFuture<'a, Self> {
+        ShutdownFuture { s: self }
+    }
+}
+
 impl<R: AsyncRead + ?Sized> AsyncReadExt for R {}
 impl<W: AsyncWrite + ?Sized> AsyncWriteExt for W {}
+impl<S: AsyncShutdown + ?Sized> AsyncShutdownExt for S {}
 
 pub struct ReadHalf<'a, T: AsyncRead> {
     handle: &'a RefCell<T>,
@@ -917,6 +930,28 @@ impl<'a, W: AsyncWrite + ?Sized> Drop for WriteFuture<'a, W> {
     }
 }
 
+pub struct ShutdownFuture<'a, S: AsyncShutdown + ?Sized> {
+    s: &'a mut S,
+}
+
+impl<'a, S: AsyncShutdown + ?Sized> Future for ShutdownFuture<'a, S> {
+    type Output = Result<(), io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        let s: Pin<&mut S> = Pin::new(f.s);
+
+        s.poll_shutdown(cx)
+    }
+}
+
+impl<'a, S: AsyncShutdown + ?Sized> Drop for ShutdownFuture<'a, S> {
+    fn drop(&mut self) {
+        self.s.cancel();
+    }
+}
+
 pub struct TcpConnectFuture<'a> {
     s: &'a mut AsyncTcpStream,
 }
@@ -1044,6 +1079,12 @@ impl AsyncWrite for AsyncTcpStream {
     }
 }
 
+impl AsyncShutdown for AsyncTcpStream {
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
 impl AsyncRead for AsyncTlsStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -1108,6 +1149,42 @@ impl AsyncWrite for AsyncTlsStream {
         }
 
         match f.stream.write(buf) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.registration.clear_readiness(mio::Interest::WRITABLE);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    fn cancel(&mut self) {
+        self.registration
+            .clear_waker_interest(mio::Interest::WRITABLE);
+    }
+}
+
+impl AsyncShutdown for AsyncTlsStream {
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
+        let f = &mut *self;
+
+        f.registration
+            .set_waker(cx.waker().clone(), mio::Interest::WRITABLE);
+
+        if !f
+            .registration
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
+        {
+            return Poll::Pending;
+        }
+
+        if !f.registration.pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.stream.shutdown() {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 f.registration.clear_readiness(mio::Interest::WRITABLE);
