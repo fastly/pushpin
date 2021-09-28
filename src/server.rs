@@ -19,8 +19,8 @@ use crate::arena;
 use crate::buffer::TmpBuffer;
 use crate::channel;
 use crate::connection::{
-    ServerReqConnection, ServerState, ServerStreamConnection, ServerStreamSharedData, Shutdown,
-    Want, ZhttpSender,
+    CidProvider, Identify, ServerReqConnection, ServerState, ServerStreamConnection,
+    ServerStreamSharedData, Shutdown, Want, ZhttpSender,
 };
 use crate::event;
 use crate::executor::{Executor, Spawner};
@@ -31,6 +31,7 @@ use crate::future::{
 use crate::list;
 use crate::listener::Listener;
 use crate::pin_mut;
+use crate::reactor;
 use crate::reactor::Reactor;
 use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
 use crate::tnetstring;
@@ -335,20 +336,33 @@ impl Stream {
     }
 }
 
-struct Connection {
+impl Identify for TcpStream {
+    fn set_id(&mut self, _id: &str) {
+        // do nothing
+    }
+}
+
+impl Identify for TlsStream {
+    fn set_id(&mut self, id: &str) {
+        TlsStream::set_id(self, id);
+    }
+}
+
+struct Connection<'a, S> {
     id: ArrayString<[u8; 32]>,
-    stream: Stream,
+    stream: &'a mut S,
     conn: ServerConnection,
     want: Want,
     timer: Option<Instant>,
     zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
 }
 
-impl Connection {
+impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
     fn new_req(
         now: Instant,
-        stream: Stream,
+        stream: &'a mut S,
         peer_addr: SocketAddr,
+        secure: bool,
         buffer_size: usize,
         body_buffer_size: usize,
         rb_tmp: &Rc<TmpBuffer>,
@@ -356,11 +370,6 @@ impl Connection {
         sender: channel::LocalSender<zmq::Message>,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
     ) -> Self {
-        let secure = match &stream {
-            Stream::Plain(_) => false,
-            Stream::Tls(_) => true,
-        };
-
         Self {
             id: ArrayString::new(),
             stream,
@@ -384,8 +393,9 @@ impl Connection {
 
     fn new_stream(
         now: Instant,
-        stream: Stream,
+        stream: &'a mut S,
         peer_addr: SocketAddr,
+        secure: bool,
         buffer_size: usize,
         messages_max: usize,
         rb_tmp: &Rc<TmpBuffer>,
@@ -394,11 +404,6 @@ impl Connection {
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
         shared: arena::Rc<ServerStreamSharedData>,
     ) -> Self {
-        let secure = match &stream {
-            Stream::Plain(_) => false,
-            Stream::Tls(_) => true,
-        };
-
         Self {
             id: ArrayString::new(),
             stream,
@@ -428,10 +433,6 @@ impl Connection {
         }
     }
 
-    fn get_tcp(&mut self) -> &mut TcpStream {
-        self.stream.get_tcp()
-    }
-
     fn set_sock_readable(&mut self) {
         match &mut self.conn {
             ServerConnection::Req(conn, _) => conn.set_sock_readable(),
@@ -449,9 +450,7 @@ impl Connection {
     fn start(&mut self, id: &str) {
         self.id = ArrayString::from_str(id).unwrap();
 
-        if let Stream::Tls(stream) = &mut self.stream {
-            stream.set_id(id);
-        }
+        self.stream.set_id(id);
 
         debug!("conn {}: assigning id", self.id);
 
@@ -503,56 +502,12 @@ impl Connection {
             let _ = self.handle_packet(now, resp.get().get(), seq);
         }
 
-        match &mut self.stream {
-            Stream::Plain(stream) => Self::process_with_stream(
-                &self.id,
-                &mut self.conn,
-                &mut self.want,
-                stream,
-                now,
-                instance_id,
-                packet_buf,
-                tmp_buf,
-            ),
-            Stream::Tls(stream) => {
-                let done = Self::process_with_stream(
-                    &self.id,
-                    &mut self.conn,
-                    &mut self.want,
-                    stream,
-                    now,
-                    instance_id,
-                    packet_buf,
-                    tmp_buf,
-                );
-
-                // for TLS, wake on all socket events
-                if self.want.sock_read || self.want.sock_write {
-                    self.want.sock_read = true;
-                    self.want.sock_write = true;
-                }
-
-                done
-            }
-        }
-    }
-
-    fn process_with_stream<S: Read + Write + Shutdown>(
-        id: &ArrayString<[u8; 32]>,
-        conn: &mut ServerConnection,
-        want: &mut Want,
-        stream: &mut S,
-        now: Instant,
-        instance_id: &str,
-        packet_buf: &mut [u8],
-        tmp_buf: &mut [u8],
-    ) -> bool {
-        match conn {
+        match &mut self.conn {
             ServerConnection::Req(conn, sender) => {
-                match conn.process(now, stream, sender, packet_buf) {
-                    Ok(w) => *want = w,
+                match conn.process(now, self.stream, sender, packet_buf) {
+                    Ok(w) => self.want = w,
                     Err(e) => {
-                        debug!("conn {}: process error: {:?}", id, e);
+                        debug!("conn {}: process error: {:?}", self.id, e);
                         return true;
                     }
                 }
@@ -562,10 +517,10 @@ impl Connection {
                 }
             }
             ServerConnection::Stream(conn, senders) => {
-                match conn.process(now, instance_id, stream, senders, packet_buf, tmp_buf) {
-                    Ok(w) => *want = w,
+                match conn.process(now, instance_id, self.stream, senders, packet_buf, tmp_buf) {
+                    Ok(w) => self.want = w,
                     Err(e) => {
-                        debug!("conn {}: process error: {:?}", id, e);
+                        debug!("conn {}: process error: {:?}", self.id, e);
                         return true;
                     }
                 }
@@ -1032,6 +987,28 @@ impl Connections {
         }
 
         None
+    }
+}
+
+struct ConnectionCid<'a> {
+    worker_id: usize,
+    ckey: usize,
+    conns: &'a Connections,
+}
+
+impl<'a> ConnectionCid<'a> {
+    fn new(worker_id: usize, ckey: usize, conns: &'a Connections) -> Self {
+        Self {
+            worker_id,
+            ckey,
+            conns,
+        }
+    }
+}
+
+impl CidProvider for ConnectionCid<'_> {
+    fn get_new_assigned_cid(&mut self) -> ArrayString<[u8; 32]> {
+        self.conns.regen_id(self.worker_id, self.ckey)
     }
 }
 
@@ -1885,99 +1862,21 @@ impl Worker {
         debug!("worker {}: task stopped: stream_handle", id);
     }
 
-    async fn connection_task(
+    async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identify>(
         stop: AsyncLocalReceiver<()>,
-        done: channel::LocalSender<usize>,
-        worker_id: usize,
-        ckey: usize,
         mut cid: ArrayString<[u8; 32]>,
-        mut stream: Stream,
-        peer_addr: SocketAddr,
-        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
-        conns: Rc<Connections>,
-        opts: ConnectionOpts,
-        mode_opts: ConnectionModeOpts,
-        shared: Option<arena::Rc<ServerStreamSharedData>>,
+        cid_provider: &mut P,
+        mut c: Connection<'_, S>,
+        secure: bool,
+        stream_registration: &reactor::Registration,
+        zsender1_registration: reactor::Registration,
+        zsender2_registration: Option<reactor::Registration>,
+        zreceiver_registration: reactor::Registration,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+        tmp_buf: Rc<RefCell<Vec<u8>>>,
+        instance_id: &str,
+        reactor: &Reactor,
     ) {
-        let done = AsyncLocalSender::new(done);
-
-        debug!("worker {}: task started: connection-{}", worker_id, ckey);
-
-        let reactor = Reactor::current().unwrap();
-
-        let stream_registration = reactor
-            .register_io(
-                stream.get_tcp(),
-                mio::Interest::READABLE | mio::Interest::WRITABLE,
-            )
-            .unwrap();
-
-        let zreceiver_registration = reactor
-            .register_custom_local(zreceiver.get_read_registration(), mio::Interest::READABLE)
-            .unwrap();
-
-        let (zsender1_registration, zsender2_registration, mut c) = {
-            match mode_opts {
-                ConnectionModeOpts::Req(req_opts) => {
-                    let zsender_registration = reactor
-                        .register_custom_local(
-                            req_opts.sender.get_write_registration(),
-                            mio::Interest::WRITABLE,
-                        )
-                        .unwrap();
-
-                    let c = Connection::new_req(
-                        reactor.now(),
-                        stream,
-                        peer_addr,
-                        opts.buffer_size,
-                        req_opts.body_buffer_size,
-                        &opts.rb_tmp,
-                        opts.timeout,
-                        req_opts.sender,
-                        zreceiver,
-                    );
-
-                    (zsender_registration, None, c)
-                }
-                ConnectionModeOpts::Stream(stream_opts) => {
-                    let zsender_registration = reactor
-                        .register_custom_local(
-                            stream_opts.sender.get_write_registration(),
-                            mio::Interest::WRITABLE,
-                        )
-                        .unwrap();
-
-                    let zsender_stream_registration = reactor
-                        .register_custom_local(
-                            stream_opts.sender_stream.get_write_registration(),
-                            mio::Interest::WRITABLE,
-                        )
-                        .unwrap();
-
-                    let c = Connection::new_stream(
-                        reactor.now(),
-                        stream,
-                        peer_addr,
-                        opts.buffer_size,
-                        stream_opts.messages_max,
-                        &opts.rb_tmp,
-                        opts.timeout,
-                        StreamLocalSenders::new(stream_opts.sender, stream_opts.sender_stream),
-                        zreceiver,
-                        shared.unwrap(),
-                    );
-
-                    (zsender_registration, Some(zsender_stream_registration), c)
-                }
-            }
-        };
-
-        let using_tls = match &c.stream {
-            Stream::Tls(_) => true,
-            _ => false,
-        };
-
         c.start(cid.as_ref());
 
         let mut sleep = None;
@@ -1987,15 +1886,21 @@ impl Worker {
 
             if c.process(
                 reactor.now(),
-                &opts.instance_id,
-                &mut *opts.packet_buf.borrow_mut(),
-                &mut *opts.tmp_buf.borrow_mut(),
+                instance_id,
+                &mut *packet_buf.borrow_mut(),
+                &mut *tmp_buf.borrow_mut(),
             ) {
                 break;
             }
 
+            // for TLS, wake on all socket events
+            if secure && (c.want.sock_read || c.want.sock_write) {
+                c.want.sock_read = true;
+                c.want.sock_write = true;
+            }
+
             if c.state() == ServerState::Ready {
-                cid = conns.regen_id(worker_id, ckey);
+                cid = cid_provider.get_new_assigned_cid();
                 c.start(cid.as_ref());
                 continue;
             }
@@ -2095,7 +2000,7 @@ impl Worker {
                         }
 
                         // for TLS, set readable on all events
-                        if readable || using_tls {
+                        if readable || secure {
                             c.set_sock_readable();
                         }
 
@@ -2134,8 +2039,267 @@ impl Worker {
                 }
             }
         }
+    }
 
-        stream_registration.deregister_io(c.get_tcp()).unwrap();
+    async fn req_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
+        stop: AsyncLocalReceiver<()>,
+        cid: ArrayString<[u8; 32]>,
+        cid_provider: &mut P,
+        stream: &mut S,
+        stream_registration: &reactor::Registration,
+        peer_addr: SocketAddr,
+        secure: bool,
+        buffer_size: usize,
+        body_buffer_size: usize,
+        rb_tmp: &Rc<TmpBuffer>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+        tmp_buf: Rc<RefCell<Vec<u8>>>,
+        timeout: Duration,
+        instance_id: &str,
+        zsender: channel::LocalSender<zmq::Message>,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        reactor: &Reactor,
+    ) {
+        let zreceiver_registration = reactor
+            .register_custom_local(zreceiver.get_read_registration(), mio::Interest::READABLE)
+            .unwrap();
+
+        let zsender_registration = reactor
+            .register_custom_local(zsender.get_write_registration(), mio::Interest::WRITABLE)
+            .unwrap();
+
+        let c = Connection::new_req(
+            reactor.now(),
+            stream,
+            peer_addr,
+            secure,
+            buffer_size,
+            body_buffer_size,
+            rb_tmp,
+            timeout,
+            zsender,
+            zreceiver,
+        );
+
+        Self::connection_process(
+            stop,
+            cid,
+            cid_provider,
+            c,
+            secure,
+            stream_registration,
+            zsender_registration,
+            None,
+            zreceiver_registration,
+            packet_buf,
+            tmp_buf,
+            instance_id,
+            reactor,
+        )
+        .await;
+    }
+
+    async fn stream_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
+        stop: AsyncLocalReceiver<()>,
+        cid: ArrayString<[u8; 32]>,
+        cid_provider: &mut P,
+        stream: &mut S,
+        stream_registration: &reactor::Registration,
+        peer_addr: SocketAddr,
+        secure: bool,
+        buffer_size: usize,
+        messages_max: usize,
+        rb_tmp: &Rc<TmpBuffer>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+        tmp_buf: Rc<RefCell<Vec<u8>>>,
+        timeout: Duration,
+        instance_id: &str,
+        zsender: channel::LocalSender<zmq::Message>,
+        zsender_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        shared: arena::Rc<ServerStreamSharedData>,
+        reactor: &Reactor,
+    ) {
+        let zreceiver_registration = reactor
+            .register_custom_local(zreceiver.get_read_registration(), mio::Interest::READABLE)
+            .unwrap();
+
+        let zsender_registration = reactor
+            .register_custom_local(zsender.get_write_registration(), mio::Interest::WRITABLE)
+            .unwrap();
+
+        let zsender_stream_registration = reactor
+            .register_custom_local(
+                zsender_stream.get_write_registration(),
+                mio::Interest::WRITABLE,
+            )
+            .unwrap();
+
+        let c = Connection::new_stream(
+            reactor.now(),
+            stream,
+            peer_addr,
+            secure,
+            buffer_size,
+            messages_max,
+            rb_tmp,
+            timeout,
+            StreamLocalSenders::new(zsender, zsender_stream),
+            zreceiver,
+            shared,
+        );
+
+        Self::connection_process(
+            stop,
+            cid,
+            cid_provider,
+            c,
+            secure,
+            stream_registration,
+            zsender_registration,
+            Some(zsender_stream_registration),
+            zreceiver_registration,
+            packet_buf,
+            tmp_buf,
+            instance_id,
+            reactor,
+        )
+        .await;
+    }
+
+    async fn connection_task(
+        stop: AsyncLocalReceiver<()>,
+        done: channel::LocalSender<usize>,
+        worker_id: usize,
+        ckey: usize,
+        cid: ArrayString<[u8; 32]>,
+        mut stream: Stream,
+        peer_addr: SocketAddr,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        conns: Rc<Connections>,
+        opts: ConnectionOpts,
+        mode_opts: ConnectionModeOpts,
+        shared: Option<arena::Rc<ServerStreamSharedData>>,
+    ) {
+        let done = AsyncLocalSender::new(done);
+
+        let mut cid_provider = ConnectionCid::new(worker_id, ckey, &conns);
+
+        debug!("worker {}: task started: connection-{}", worker_id, ckey);
+
+        let reactor = reactor::Reactor::current().unwrap();
+
+        let stream_registration = reactor
+            .register_io(
+                stream.get_tcp(),
+                mio::Interest::READABLE | mio::Interest::WRITABLE,
+            )
+            .unwrap();
+
+        match mode_opts {
+            ConnectionModeOpts::Req(req_opts) => match &mut stream {
+                Stream::Plain(stream) => {
+                    Self::req_connection(
+                        stop,
+                        cid,
+                        &mut cid_provider,
+                        stream,
+                        &stream_registration,
+                        peer_addr,
+                        false,
+                        opts.buffer_size,
+                        req_opts.body_buffer_size,
+                        &opts.rb_tmp,
+                        opts.packet_buf,
+                        opts.tmp_buf,
+                        opts.timeout,
+                        &opts.instance_id,
+                        req_opts.sender,
+                        zreceiver,
+                        &reactor,
+                    )
+                    .await
+                }
+                Stream::Tls(stream) => {
+                    Self::req_connection(
+                        stop,
+                        cid,
+                        &mut cid_provider,
+                        stream,
+                        &stream_registration,
+                        peer_addr,
+                        true,
+                        opts.buffer_size,
+                        req_opts.body_buffer_size,
+                        &opts.rb_tmp,
+                        opts.packet_buf,
+                        opts.tmp_buf,
+                        opts.timeout,
+                        &opts.instance_id,
+                        req_opts.sender,
+                        zreceiver,
+                        &reactor,
+                    )
+                    .await
+                }
+            },
+            ConnectionModeOpts::Stream(stream_opts) => {
+                let shared = shared.unwrap();
+
+                match &mut stream {
+                    Stream::Plain(stream) => {
+                        Self::stream_connection(
+                            stop,
+                            cid,
+                            &mut cid_provider,
+                            stream,
+                            &stream_registration,
+                            peer_addr,
+                            false,
+                            opts.buffer_size,
+                            stream_opts.messages_max,
+                            &opts.rb_tmp,
+                            opts.packet_buf,
+                            opts.tmp_buf,
+                            opts.timeout,
+                            &opts.instance_id,
+                            stream_opts.sender,
+                            stream_opts.sender_stream,
+                            zreceiver,
+                            shared,
+                            &reactor,
+                        )
+                        .await
+                    }
+                    Stream::Tls(stream) => {
+                        Self::stream_connection(
+                            stop,
+                            cid,
+                            &mut cid_provider,
+                            stream,
+                            &stream_registration,
+                            peer_addr,
+                            true,
+                            opts.buffer_size,
+                            stream_opts.messages_max,
+                            &opts.rb_tmp,
+                            opts.packet_buf,
+                            opts.tmp_buf,
+                            opts.timeout,
+                            &opts.instance_id,
+                            stream_opts.sender,
+                            stream_opts.sender_stream,
+                            zreceiver,
+                            shared,
+                            &reactor,
+                        )
+                        .await
+                    }
+                }
+            }
+        }
+
+        stream_registration.deregister_io(stream.get_tcp()).unwrap();
 
         done.send(ckey).await.unwrap();
 

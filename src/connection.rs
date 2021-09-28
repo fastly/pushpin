@@ -48,6 +48,14 @@ pub trait ZhttpSender {
         -> Result<(), zhttpsocket::SendError>;
 }
 
+pub trait CidProvider {
+    fn get_new_assigned_cid(&mut self) -> ArrayString<[u8; 32]>;
+}
+
+pub trait Identify {
+    fn set_id(&mut self, id: &str);
+}
+
 #[derive(PartialEq)]
 enum Mode {
     HttpReq,
