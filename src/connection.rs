@@ -16,21 +16,28 @@
 
 use crate::arena;
 use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, VECTORED_MAX};
+use crate::channel;
+use crate::future::{event_wait, select_6, select_option, AsyncLocalReceiver, AsyncSleep, Select6};
 use crate::http1;
+use crate::pin_mut;
+use crate::reactor;
+use crate::reactor::Reactor;
 use crate::websocket;
 use crate::zhttppacket;
 use crate::zhttpsocket;
 use arrayvec::{ArrayString, ArrayVec};
 use log::debug;
-use std::cell::{Ref, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::cmp;
 use std::collections::VecDeque;
 use std::io;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::str::FromStr;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 const URI_SIZE_MAX: usize = 4096;
@@ -165,17 +172,17 @@ fn make_zhttp_request(
     Ok(zmq::Message::from(&packet_buf[..size]))
 }
 
-pub struct Want {
-    pub sock_read: bool,
-    pub sock_write: bool,
-    pub zhttp_read: bool,
-    pub zhttp_write: bool,
-    pub zhttp_write_to: bool,
-    pub timeout: Option<Instant>,
+struct Want {
+    sock_read: bool,
+    sock_write: bool,
+    zhttp_read: bool,
+    zhttp_write: bool,
+    zhttp_write_to: bool,
+    timeout: Option<Instant>,
 }
 
 impl Want {
-    pub fn nothing() -> Self {
+    fn nothing() -> Self {
         Self {
             sock_read: false,
             sock_write: false,
@@ -186,7 +193,7 @@ impl Want {
         }
     }
 
-    pub fn merge(&self, other: &Want) -> Want {
+    fn merge(&self, other: &Want) -> Want {
         let timeout = if self.timeout.is_some() && other.timeout.is_some() {
             let a = self.timeout.unwrap();
             let b = other.timeout.unwrap();
@@ -212,7 +219,7 @@ impl Want {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum ServerState {
+enum ServerState {
     // call: start
     Ready,
 
@@ -225,7 +232,7 @@ pub enum ServerState {
 }
 
 #[derive(Debug)]
-pub enum ServerError {
+enum ServerError {
     Io(io::Error),
     Utf8(str::Utf8Error),
     Http(http1::ServerError),
@@ -310,29 +317,29 @@ struct MessageItem {
     avail: usize,
 }
 
-pub struct MessageTracker {
+struct MessageTracker {
     items: VecDeque<MessageItem>,
     last_partial: bool,
 }
 
 impl MessageTracker {
-    pub fn new(max_messages: usize) -> Self {
+    fn new(max_messages: usize) -> Self {
         Self {
             items: VecDeque::with_capacity(max_messages),
             last_partial: false,
         }
     }
 
-    pub fn clear(&mut self) {
+    fn clear(&mut self) {
         self.items.clear();
         self.last_partial = false;
     }
 
-    pub fn in_progress(&self) -> bool {
+    fn in_progress(&self) -> bool {
         self.last_partial
     }
 
-    pub fn start(&mut self, mtype: u8) -> Result<(), ()> {
+    fn start(&mut self, mtype: u8) -> Result<(), ()> {
         if self.last_partial || self.items.len() == self.items.capacity() {
             return Err(());
         }
@@ -344,18 +351,18 @@ impl MessageTracker {
         Ok(())
     }
 
-    pub fn extend(&mut self, amt: usize) {
+    fn extend(&mut self, amt: usize) {
         assert_eq!(self.last_partial, true);
 
         self.items.back_mut().unwrap().avail += amt;
     }
 
-    pub fn done(&mut self) {
+    fn done(&mut self) {
         self.last_partial = false;
     }
 
     // type, avail, done
-    pub fn current(&self) -> Option<(u8, usize, bool)> {
+    fn current(&self) -> Option<(u8, usize, bool)> {
         if self.items.len() > 1 {
             let m = self.items.front().unwrap();
             Some((m.mtype, m.avail, true))
@@ -367,7 +374,7 @@ impl MessageTracker {
         }
     }
 
-    pub fn consumed(&mut self, amt: usize, done: bool) {
+    fn consumed(&mut self, amt: usize, done: bool) {
         assert!(amt <= self.items[0].avail);
 
         self.items[0].avail -= amt;
@@ -402,7 +409,7 @@ enum ServerReqState {
     Finished,
 }
 
-pub struct ServerReqConnection {
+struct ServerReqConnection {
     id: ArrayString<[u8; 32]>,
     peer_addr: Option<SocketAddr>,
     secure: bool,
@@ -422,7 +429,7 @@ pub struct ServerReqConnection {
 }
 
 impl ServerReqConnection {
-    pub fn new(
+    fn new(
         now: Instant,
         peer_addr: Option<SocketAddr>,
         secure: bool,
@@ -468,7 +475,7 @@ impl ServerReqConnection {
         self.sock_readable = true;
     }
 
-    pub fn state(&self) -> ServerState {
+    fn state(&self) -> ServerState {
         match self.state {
             ServerReqState::Ready => ServerState::Ready,
             ServerReqState::Finished => ServerState::Finished,
@@ -476,16 +483,16 @@ impl ServerReqConnection {
         }
     }
 
-    pub fn start(&mut self, id: &str) {
+    fn start(&mut self, id: &str) {
         self.id = ArrayString::from_str(id).unwrap();
         self.state = ServerReqState::Active;
     }
 
-    pub fn set_sock_readable(&mut self) {
+    fn set_sock_readable(&mut self) {
         self.sock_readable = true;
     }
 
-    pub fn process<S, Z>(
+    fn process<S, Z>(
         &mut self,
         now: Instant,
         sock: &mut S,
@@ -922,10 +929,7 @@ impl ServerReqConnection {
         None
     }
 
-    pub fn apply_zhttp_response(
-        &mut self,
-        zresp: &zhttppacket::Response,
-    ) -> Result<(), ServerError> {
+    fn apply_zhttp_response(&mut self, zresp: &zhttppacket::Response) -> Result<(), ServerError> {
         let proto = &mut self.protocol;
 
         if proto.state() != http1::ServerState::AwaitingResponse || self.pending_msg.is_some() {
@@ -1090,7 +1094,7 @@ pub struct ServerStreamConnection {
 }
 
 impl ServerStreamConnection {
-    pub fn new(
+    fn new(
         now: Instant,
         peer_addr: Option<SocketAddr>,
         secure: bool,
@@ -1169,7 +1173,7 @@ impl ServerStreamConnection {
         self.buf2.clear();
     }
 
-    pub fn state(&self) -> ServerState {
+    fn state(&self) -> ServerState {
         match self.d.state {
             ServerStreamState::Ready => ServerState::Ready,
             ServerStreamState::Finished => ServerState::Finished,
@@ -1177,16 +1181,16 @@ impl ServerStreamConnection {
         }
     }
 
-    pub fn start(&mut self, id: &str) {
+    fn start(&mut self, id: &str) {
         self.d.id = ArrayString::from_str(id).unwrap();
         self.d.state = ServerStreamState::Active;
     }
 
-    pub fn set_sock_readable(&mut self) {
+    fn set_sock_readable(&mut self) {
         self.d.sock_readable = true;
     }
 
-    pub fn process<S, Z>(
+    fn process<S, Z>(
         &mut self,
         now: Instant,
         instance: &str,
@@ -2134,7 +2138,7 @@ impl ServerStreamConnection {
         }
     }
 
-    pub fn apply_zhttp_response(
+    fn apply_zhttp_response(
         &mut self,
         now: Instant,
         zresp: &zhttppacket::Response,
@@ -2507,6 +2511,571 @@ impl ServerStreamConnection {
 
         Ok(())
     }
+}
+
+struct StreamLocalSenders {
+    out: channel::LocalSender<zmq::Message>,
+    out_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    out_stream_can_write: Cell<bool>,
+}
+
+impl StreamLocalSenders {
+    fn new(
+        out: channel::LocalSender<zmq::Message>,
+        out_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    ) -> Self {
+        Self {
+            out,
+            out_stream,
+            out_stream_can_write: Cell::new(true),
+        }
+    }
+
+    fn set_out_stream_can_write(&self) {
+        self.out_stream_can_write.set(true);
+    }
+}
+
+impl ZhttpSender for StreamLocalSenders {
+    fn can_send_to(&self) -> bool {
+        if self.out_stream_can_write.get() {
+            if self.out_stream.check_send() {
+                return true;
+            }
+
+            self.out_stream_can_write.set(false);
+        }
+
+        false
+    }
+
+    fn send(&mut self, message: zmq::Message) -> Result<(), zhttpsocket::SendError> {
+        match self.out.try_send(message) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full(msg)) => Err(zhttpsocket::SendError::Full(msg)),
+            Err(mpsc::TrySendError::Disconnected(_)) => Err(zhttpsocket::SendError::Io(
+                io::Error::from(io::ErrorKind::BrokenPipe),
+            )),
+        }
+    }
+
+    fn send_to(
+        &mut self,
+        addr: &[u8],
+        message: zmq::Message,
+    ) -> Result<(), zhttpsocket::SendError> {
+        let mut a = ArrayVec::new();
+        if a.try_extend_from_slice(addr).is_err() {
+            return Err(zhttpsocket::SendError::Io(io::Error::from(
+                io::ErrorKind::InvalidInput,
+            )));
+        }
+
+        match self.out_stream.try_send((a, message)) {
+            Ok(()) => Ok(()),
+            Err(mpsc::TrySendError::Full((_, msg))) => Err(zhttpsocket::SendError::Full(msg)),
+            Err(mpsc::TrySendError::Disconnected(_)) => Err(zhttpsocket::SendError::Io(
+                io::Error::from(io::ErrorKind::BrokenPipe),
+            )),
+        }
+    }
+}
+
+enum ServerConnection {
+    Req(ServerReqConnection, channel::LocalSender<zmq::Message>),
+    Stream(ServerStreamConnection, StreamLocalSenders),
+}
+
+struct Connection<'a, S> {
+    id: ArrayString<[u8; 32]>,
+    stream: &'a mut S,
+    conn: ServerConnection,
+    want: Want,
+    timer: Option<Instant>,
+    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+}
+
+impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
+    fn new_req(
+        now: Instant,
+        stream: &'a mut S,
+        peer_addr: SocketAddr,
+        secure: bool,
+        buffer_size: usize,
+        body_buffer_size: usize,
+        rb_tmp: &Rc<TmpBuffer>,
+        timeout: Duration,
+        sender: channel::LocalSender<zmq::Message>,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    ) -> Self {
+        Self {
+            id: ArrayString::new(),
+            stream,
+            conn: ServerConnection::Req(
+                ServerReqConnection::new(
+                    now,
+                    Some(peer_addr),
+                    secure,
+                    buffer_size,
+                    body_buffer_size,
+                    rb_tmp,
+                    timeout,
+                ),
+                sender,
+            ),
+            want: Want::nothing(),
+            timer: None,
+            zreceiver,
+        }
+    }
+
+    fn new_stream(
+        now: Instant,
+        stream: &'a mut S,
+        peer_addr: SocketAddr,
+        secure: bool,
+        buffer_size: usize,
+        messages_max: usize,
+        rb_tmp: &Rc<TmpBuffer>,
+        timeout: Duration,
+        senders: StreamLocalSenders,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        shared: arena::Rc<ServerStreamSharedData>,
+    ) -> Self {
+        Self {
+            id: ArrayString::new(),
+            stream,
+            conn: ServerConnection::Stream(
+                ServerStreamConnection::new(
+                    now,
+                    Some(peer_addr),
+                    secure,
+                    buffer_size,
+                    messages_max,
+                    rb_tmp,
+                    timeout,
+                    shared,
+                ),
+                senders,
+            ),
+            want: Want::nothing(),
+            timer: None,
+            zreceiver,
+        }
+    }
+
+    fn state(&self) -> ServerState {
+        match &self.conn {
+            ServerConnection::Req(conn, _) => conn.state(),
+            ServerConnection::Stream(conn, _) => conn.state(),
+        }
+    }
+
+    fn set_sock_readable(&mut self) {
+        match &mut self.conn {
+            ServerConnection::Req(conn, _) => conn.set_sock_readable(),
+            ServerConnection::Stream(conn, _) => conn.set_sock_readable(),
+        }
+    }
+
+    fn set_out_stream_can_write(&self) {
+        match &self.conn {
+            ServerConnection::Req(_, _) => panic!("not stream conn"),
+            ServerConnection::Stream(_, senders) => senders.set_out_stream_can_write(),
+        }
+    }
+
+    fn start(&mut self, id: &str) {
+        self.id = ArrayString::from_str(id).unwrap();
+
+        self.stream.set_id(id);
+
+        debug!("conn {}: assigning id", self.id);
+
+        match &mut self.conn {
+            ServerConnection::Req(conn, _) => conn.start(self.id.as_ref()),
+            ServerConnection::Stream(conn, _) => conn.start(self.id.as_ref()),
+        }
+    }
+
+    fn handle_packet(
+        &mut self,
+        now: Instant,
+        zresp: &zhttppacket::Response,
+        seq: Option<u32>,
+    ) -> Result<(), ()> {
+        if !zresp.ptype_str.is_empty() {
+            debug!("conn {}: handle packet: {}", self.id, zresp.ptype_str);
+        } else {
+            debug!("conn {}: handle packet: (data)", self.id);
+        }
+
+        match &mut self.conn {
+            ServerConnection::Req(conn, _) => {
+                if let Err(e) = conn.apply_zhttp_response(zresp) {
+                    debug!("conn {}: apply error {:?}", self.id, e);
+                    return Err(());
+                }
+            }
+            ServerConnection::Stream(conn, _) => {
+                if let Err(e) = conn.apply_zhttp_response(now, zresp, seq) {
+                    debug!("conn {}: apply error {:?}", self.id, e);
+                    return Err(());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn process(
+        &mut self,
+        now: Instant,
+        instance_id: &str,
+        packet_buf: &mut [u8],
+        tmp_buf: &mut [u8],
+    ) -> bool {
+        while let Ok((resp, seq)) = self.zreceiver.try_recv() {
+            // if error, keep going
+            let _ = self.handle_packet(now, resp.get().get(), seq);
+        }
+
+        match &mut self.conn {
+            ServerConnection::Req(conn, sender) => {
+                match conn.process(now, self.stream, sender, packet_buf) {
+                    Ok(w) => self.want = w,
+                    Err(e) => {
+                        debug!("conn {}: process error: {:?}", self.id, e);
+                        return true;
+                    }
+                }
+
+                if conn.state() == ServerState::Finished {
+                    return true;
+                }
+            }
+            ServerConnection::Stream(conn, senders) => {
+                match conn.process(now, instance_id, self.stream, senders, packet_buf, tmp_buf) {
+                    Ok(w) => self.want = w,
+                    Err(e) => {
+                        debug!("conn {}: process error: {:?}", self.id, e);
+                        return true;
+                    }
+                }
+
+                if conn.state() == ServerState::Finished {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+}
+
+async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identify>(
+    stop: AsyncLocalReceiver<()>,
+    mut cid: ArrayString<[u8; 32]>,
+    cid_provider: &mut P,
+    mut c: Connection<'_, S>,
+    secure: bool,
+    stream_registration: &reactor::Registration,
+    zsender1_registration: reactor::Registration,
+    zsender2_registration: Option<reactor::Registration>,
+    zreceiver_registration: reactor::Registration,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    tmp_buf: Rc<RefCell<Vec<u8>>>,
+    instance_id: &str,
+    reactor: &Reactor,
+) {
+    c.start(cid.as_ref());
+
+    let mut sleep = None;
+
+    'main: loop {
+        debug!("conn {}: process", c.id);
+
+        if c.process(
+            reactor.now(),
+            instance_id,
+            &mut *packet_buf.borrow_mut(),
+            &mut *tmp_buf.borrow_mut(),
+        ) {
+            break;
+        }
+
+        // for TLS, wake on all socket events
+        if secure && (c.want.sock_read || c.want.sock_write) {
+            c.want.sock_read = true;
+            c.want.sock_write = true;
+        }
+
+        if c.state() == ServerState::Ready {
+            cid = cid_provider.get_new_assigned_cid();
+            c.start(cid.as_ref());
+            continue;
+        }
+
+        if let Some(want_exp_time) = c.want.timeout {
+            let mut add = false;
+
+            if let Some(exp_time) = c.timer {
+                if want_exp_time != exp_time {
+                    add = true;
+                }
+            } else {
+                add = true;
+            }
+
+            if add {
+                sleep = Some(AsyncSleep::new(want_exp_time));
+                c.timer = Some(want_exp_time);
+            }
+        } else {
+            if c.timer.is_some() {
+                sleep = None;
+                c.timer = None;
+            }
+        }
+
+        loop {
+            let stream_wait = if c.want.sock_read || c.want.sock_write {
+                let interest = if c.want.sock_read && c.want.sock_write {
+                    mio::Interest::READABLE | mio::Interest::WRITABLE
+                } else if c.want.sock_read {
+                    mio::Interest::READABLE
+                } else {
+                    mio::Interest::WRITABLE
+                };
+
+                Some(event_wait(&stream_registration, interest))
+            } else {
+                None
+            };
+
+            // always read zhttp response packets so they can be applied immediately,
+            // even if c.want.zhttp_read is false
+            let zreceiver_wait = event_wait(&zreceiver_registration, mio::Interest::READABLE);
+
+            let zsender1_wait = if c.want.zhttp_write {
+                Some(event_wait(&zsender1_registration, mio::Interest::WRITABLE))
+            } else {
+                None
+            };
+
+            let zsender2_wait = if let Some(reg) = &zsender2_registration {
+                if c.want.zhttp_write_to {
+                    Some(event_wait(reg, mio::Interest::WRITABLE))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let sleep = if let Some(sleep) = &mut sleep {
+                Some(sleep.sleep())
+            } else {
+                None
+            };
+
+            pin_mut!(
+                stream_wait,
+                zreceiver_wait,
+                zsender1_wait,
+                zsender2_wait,
+                sleep
+            );
+
+            match select_6(
+                stop.recv(),
+                select_option(stream_wait.as_pin_mut()),
+                zreceiver_wait,
+                select_option(zsender1_wait.as_pin_mut()),
+                select_option(zsender2_wait.as_pin_mut()),
+                select_option(sleep.as_pin_mut()),
+            )
+            .await
+            {
+                // stop.recv
+                Select6::R1(_) => break 'main,
+                // stream_wait
+                Select6::R2(readiness) => {
+                    stream_registration.set_ready(false);
+
+                    let readable = readiness.is_readable();
+                    let writable = readiness.is_writable();
+
+                    if readable {
+                        debug!("conn {}: sock read event", c.id);
+                    }
+
+                    // for TLS, set readable on all events
+                    if readable || secure {
+                        c.set_sock_readable();
+                    }
+
+                    if writable {
+                        debug!("conn {}: sock write event", c.id);
+                    }
+
+                    if (readable && c.want.sock_read) || (writable && c.want.sock_write) {
+                        break;
+                    }
+                }
+                // zreceiver_wait
+                Select6::R3(_) => {
+                    debug!("conn {}: zreceiver event", c.id);
+                    zreceiver_registration.set_ready(false);
+                    break;
+                }
+                // zsender1_wait
+                Select6::R4(_) => {
+                    debug!("conn {}: zsender1 event", c.id);
+                    zsender1_registration.set_ready(false);
+                    break;
+                }
+                // zsender2_wait
+                Select6::R5(_) => {
+                    debug!("conn {}: zsender2 event", c.id);
+                    zsender2_registration.as_ref().unwrap().set_ready(false);
+                    c.set_out_stream_can_write();
+                    break;
+                }
+                // sleep
+                Select6::R6(_) => {
+                    debug!("conn {}: timeout", c.id);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+pub async fn server_req_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
+    stop: AsyncLocalReceiver<()>,
+    cid: ArrayString<[u8; 32]>,
+    cid_provider: &mut P,
+    stream: &mut S,
+    stream_registration: &reactor::Registration,
+    peer_addr: SocketAddr,
+    secure: bool,
+    buffer_size: usize,
+    body_buffer_size: usize,
+    rb_tmp: &Rc<TmpBuffer>,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    tmp_buf: Rc<RefCell<Vec<u8>>>,
+    timeout: Duration,
+    instance_id: &str,
+    zsender: channel::LocalSender<zmq::Message>,
+    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    reactor: &Reactor,
+) {
+    let zreceiver_registration = reactor
+        .register_custom_local(zreceiver.get_read_registration(), mio::Interest::READABLE)
+        .unwrap();
+
+    let zsender_registration = reactor
+        .register_custom_local(zsender.get_write_registration(), mio::Interest::WRITABLE)
+        .unwrap();
+
+    let c = Connection::new_req(
+        reactor.now(),
+        stream,
+        peer_addr,
+        secure,
+        buffer_size,
+        body_buffer_size,
+        rb_tmp,
+        timeout,
+        zsender,
+        zreceiver,
+    );
+
+    connection_process(
+        stop,
+        cid,
+        cid_provider,
+        c,
+        secure,
+        stream_registration,
+        zsender_registration,
+        None,
+        zreceiver_registration,
+        packet_buf,
+        tmp_buf,
+        instance_id,
+        reactor,
+    )
+    .await;
+}
+
+pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
+    stop: AsyncLocalReceiver<()>,
+    cid: ArrayString<[u8; 32]>,
+    cid_provider: &mut P,
+    stream: &mut S,
+    stream_registration: &reactor::Registration,
+    peer_addr: SocketAddr,
+    secure: bool,
+    buffer_size: usize,
+    messages_max: usize,
+    rb_tmp: &Rc<TmpBuffer>,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    tmp_buf: Rc<RefCell<Vec<u8>>>,
+    timeout: Duration,
+    instance_id: &str,
+    zsender: channel::LocalSender<zmq::Message>,
+    zsender_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    shared: arena::Rc<ServerStreamSharedData>,
+    reactor: &Reactor,
+) {
+    let zreceiver_registration = reactor
+        .register_custom_local(zreceiver.get_read_registration(), mio::Interest::READABLE)
+        .unwrap();
+
+    let zsender_registration = reactor
+        .register_custom_local(zsender.get_write_registration(), mio::Interest::WRITABLE)
+        .unwrap();
+
+    let zsender_stream_registration = reactor
+        .register_custom_local(
+            zsender_stream.get_write_registration(),
+            mio::Interest::WRITABLE,
+        )
+        .unwrap();
+
+    let c = Connection::new_stream(
+        reactor.now(),
+        stream,
+        peer_addr,
+        secure,
+        buffer_size,
+        messages_max,
+        rb_tmp,
+        timeout,
+        StreamLocalSenders::new(zsender, zsender_stream),
+        zreceiver,
+        shared,
+    );
+
+    connection_process(
+        stop,
+        cid,
+        cid_provider,
+        c,
+        secure,
+        stream_registration,
+        zsender_registration,
+        Some(zsender_stream_registration),
+        zreceiver_registration,
+        packet_buf,
+        tmp_buf,
+        instance_id,
+        reactor,
+    )
+    .await;
 }
 
 #[cfg(test)]
