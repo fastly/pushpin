@@ -623,7 +623,12 @@ impl Poller {
             timeout
         };
 
-        self.poll.poll(&mut self.events, timeout)
+        loop {
+            match self.poll.poll(&mut self.events, timeout) {
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                ret => break ret,
+            }
+        }
     }
 
     pub fn iter_events(&self) -> EventsIterator<'_, '_> {
