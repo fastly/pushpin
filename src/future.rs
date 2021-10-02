@@ -428,6 +428,18 @@ impl<T> AsyncLocalSender<T> {
         Self { evented, inner: s }
     }
 
+    pub fn into_inner(self) -> channel::LocalSender<T> {
+        // normally, the poll registration would be deregistered when the
+        // sender drops, but here we are keeping the sender alive, so we need
+        // to explicitly deregister
+        self.evented
+            .registration()
+            .deregister_custom_local(self.inner.get_write_registration())
+            .unwrap();
+
+        self.inner
+    }
+
     pub fn send<'a>(&'a self, t: T) -> LocalSendFuture<'a, T> {
         LocalSendFuture {
             s: self,
@@ -453,6 +465,18 @@ impl<T> AsyncLocalReceiver<T> {
         evented.registration().set_ready(true);
 
         Self { evented, inner: r }
+    }
+
+    pub fn into_inner(self) -> channel::LocalReceiver<T> {
+        // normally, the poll registration would be deregistered when the
+        // receiver drops, but here we are keeping the receiver alive, so we
+        // need to explicitly deregister
+        self.evented
+            .registration()
+            .deregister_custom_local(self.inner.get_read_registration())
+            .unwrap();
+
+        self.inner
     }
 
     pub fn recv<'a>(&'a self) -> LocalRecvFuture<'a, T> {

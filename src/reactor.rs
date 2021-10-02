@@ -150,6 +150,16 @@ impl Registration {
         poll.deregister(source)
     }
 
+    pub fn deregister_custom_local(
+        &self,
+        handle: &event::LocalRegistration,
+    ) -> Result<(), io::Error> {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+        let poll = &reactor.poll.borrow();
+
+        poll.deregister_custom_local(handle)
+    }
+
     pub fn pull_from_budget(&self) -> bool {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
 
