@@ -111,11 +111,24 @@ impl Registration {
         self.set_readiness(readiness);
     }
 
-    pub fn set_waker(&self, waker: Waker, interest: mio::Interest) {
+    pub fn set_waker(&self, waker: &Waker, interest: mio::Interest) {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &mut *reactor.registrations.borrow_mut();
 
         let reg_data = &mut registrations[self.key];
+
+        let waker = if let Some((current_waker, _)) = reg_data.waker.take() {
+            if current_waker.will_wake(waker) {
+                // keep the current waker
+                current_waker
+            } else {
+                // switch to the new waker
+                waker.clone()
+            }
+        } else {
+            // we didn't have a waker yet, so we'll use this one
+            waker.clone()
+        };
 
         reg_data.waker = Some((waker, interest));
     }
@@ -728,7 +741,7 @@ mod tests {
 
         evented
             .registration()
-            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
+            .set_waker(&waker.clone().into_std(), mio::Interest::READABLE);
 
         let thread = thread::spawn(move || {
             std::net::TcpStream::connect(addr).unwrap();
@@ -759,7 +772,7 @@ mod tests {
 
         evented
             .registration()
-            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
+            .set_waker(&waker.clone().into_std(), mio::Interest::READABLE);
 
         let thread = thread::spawn(move || {
             std::net::TcpStream::connect(addr).unwrap();
@@ -786,7 +799,7 @@ mod tests {
 
         evented
             .registration()
-            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
+            .set_waker(&waker.clone().into_std(), mio::Interest::READABLE);
 
         let thread = thread::spawn(move || {
             sr.set_readiness(mio::Interest::READABLE).unwrap();
@@ -813,7 +826,7 @@ mod tests {
 
         evented
             .registration()
-            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
+            .set_waker(&waker.clone().into_std(), mio::Interest::READABLE);
 
         assert_eq!(waker.was_waked(), false);
         assert_eq!(reactor.now(), now);
@@ -872,7 +885,7 @@ mod tests {
 
         evented
             .registration()
-            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
+            .set_waker(&waker.clone().into_std(), mio::Interest::READABLE);
 
         assert_eq!(evented.registration().pull_from_budget(), true);
         assert_eq!(waker.was_waked(), false);
@@ -887,7 +900,7 @@ mod tests {
         reactor.set_budget(Some(1));
         evented
             .registration()
-            .set_waker(waker.clone().into_std(), mio::Interest::READABLE);
+            .set_waker(&waker.clone().into_std(), mio::Interest::READABLE);
 
         assert_eq!(evented.registration().pull_from_budget(), true);
         assert_eq!(waker.was_waked(), false);
