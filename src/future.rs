@@ -602,6 +602,45 @@ impl AsyncSleep {
     }
 }
 
+struct TimeoutInner {
+    evented: Option<TimerEvented>,
+}
+
+pub struct Timeout {
+    inner: RefCell<TimeoutInner>,
+}
+
+impl Timeout {
+    fn new(deadline: Instant) -> Self {
+        let evented = TimerEvented::new(deadline, &get_reactor()).unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self {
+            inner: RefCell::new(TimeoutInner {
+                evented: Some(evented),
+            }),
+        }
+    }
+
+    fn set_deadline(&self, deadline: Instant) {
+        let inner = &mut *self.inner.borrow_mut();
+
+        // destroy previous timer registration before creating a new one
+        inner.evented = None;
+
+        let evented = TimerEvented::new(deadline, &get_reactor()).unwrap();
+
+        evented.registration().set_ready(true);
+
+        inner.evented = Some(evented);
+    }
+
+    fn elapsed<'a>(&'a self) -> TimeoutFuture<'a> {
+        TimeoutFuture { t: self }
+    }
+}
+
 pub struct AsyncZmqSocket {
     evented: FdEvented,
     inner: ZmqSocket,
@@ -1356,6 +1395,46 @@ pub async fn sleep(duration: Duration) {
     let now = get_reactor().now();
 
     AsyncSleep::new(now + duration).sleep().await
+}
+
+pub struct TimeoutFuture<'a> {
+    t: &'a Timeout,
+}
+
+impl Future for TimeoutFuture<'_> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let inner = &*self.t.inner.borrow();
+
+        let evented = inner.evented.as_ref().unwrap();
+
+        evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::READABLE);
+
+        if !evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        let now = get_reactor().now();
+
+        if now >= evented.expires() {
+            Poll::Ready(())
+        } else {
+            evented.registration().set_ready(false);
+
+            Poll::Pending
+        }
+    }
+}
+
+impl Drop for TimeoutFuture<'_> {
+    fn drop(&mut self) {
+        if let Some(evented) = &self.t.inner.borrow().evented {
+            evented.registration().clear_waker();
+        }
+    }
 }
 
 pub struct ZmqSendFuture<'a> {
@@ -2248,6 +2327,68 @@ mod tests {
         let _reactor = Reactor::new_with_time(1, now);
 
         executor.spawn(sleep(Duration::from_millis(0))).unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_timeout() {
+        let now = Instant::now();
+
+        let executor = Executor::new(1);
+        let reactor = Reactor::new_with_time(1, now);
+
+        executor
+            .spawn(async {
+                let timeout = Timeout::new(get_reactor().now() + Duration::from_millis(100));
+                timeout.elapsed().await;
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        reactor
+            .poll_nonblocking(now + Duration::from_millis(200))
+            .unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_timeout_ready() {
+        let now = Instant::now();
+
+        let executor = Executor::new(1);
+        let _reactor = Reactor::new_with_time(1, now);
+
+        executor
+            .spawn(async {
+                let timeout = Timeout::new(get_reactor().now());
+                timeout.elapsed().await;
+            })
+            .unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_timeout_change_ready() {
+        let now = Instant::now();
+
+        let executor = Executor::new(1);
+        let _reactor = Reactor::new_with_time(1, now);
+
+        executor
+            .spawn(async {
+                let timeout = Timeout::new(get_reactor().now() + Duration::from_millis(100));
+
+                let mut fut = timeout.elapsed();
+                assert_eq!(poll_fut_async(&mut fut).await, Poll::Pending);
+
+                timeout.set_deadline(get_reactor().now());
+                assert_eq!(poll_fut_async(&mut fut).await, Poll::Ready(()));
+            })
+            .unwrap();
 
         executor.run(|_| Ok(())).unwrap();
     }
