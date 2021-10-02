@@ -17,7 +17,7 @@
 use crate::arena;
 use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, VECTORED_MAX};
 use crate::channel;
-use crate::future::{event_wait, select_6, select_option, AsyncLocalReceiver, AsyncSleep, Select6};
+use crate::future::{event_wait, select_6, select_option, AsyncLocalReceiver, Select6, Timeout};
 use crate::http1;
 use crate::pin_mut;
 use crate::reactor;
@@ -2790,7 +2790,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
 ) {
     c.start(cid.as_ref());
 
-    let mut sleep = None;
+    let mut timeout = None;
 
     'main: loop {
         debug!("conn {}: process", c.id);
@@ -2828,12 +2828,12 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
             }
 
             if add {
-                sleep = Some(AsyncSleep::new(want_exp_time));
+                timeout = Some(Timeout::new(want_exp_time));
                 c.timer = Some(want_exp_time);
             }
         } else {
             if c.timer.is_some() {
-                sleep = None;
+                timeout = None;
                 c.timer = None;
             }
         }
@@ -2873,8 +2873,8 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
                 None
             };
 
-            let sleep = if let Some(sleep) = &mut sleep {
-                Some(sleep.sleep())
+            let timeout_elapsed = if let Some(timeout) = &timeout {
+                Some(timeout.elapsed())
             } else {
                 None
             };
@@ -2884,7 +2884,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
                 zreceiver_wait,
                 zsender1_wait,
                 zsender2_wait,
-                sleep
+                timeout_elapsed,
             );
 
             match select_6(
@@ -2893,7 +2893,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
                 zreceiver_wait,
                 select_option(zsender1_wait.as_pin_mut()),
                 select_option(zsender2_wait.as_pin_mut()),
-                select_option(sleep.as_pin_mut()),
+                select_option(timeout_elapsed.as_pin_mut()),
             )
             .await
             {
@@ -2942,7 +2942,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
                     c.set_out_stream_can_write();
                     break;
                 }
-                // sleep
+                // timeout_elapsed
                 Select6::R6(_) => {
                     debug!("conn {}: timeout", c.id);
                     break;

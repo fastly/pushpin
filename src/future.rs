@@ -584,24 +584,6 @@ impl Drop for AsyncTlsStream {
     }
 }
 
-pub struct AsyncSleep {
-    evented: TimerEvented,
-}
-
-impl AsyncSleep {
-    pub fn new(expires: Instant) -> Self {
-        let evented = TimerEvented::new(expires, &get_reactor()).unwrap();
-
-        evented.registration().set_ready(true);
-
-        Self { evented }
-    }
-
-    pub fn sleep<'a>(&'a mut self) -> SleepFuture<'a> {
-        SleepFuture { s: self }
-    }
-}
-
 struct TimeoutInner {
     evented: Option<TimerEvented>,
 }
@@ -611,7 +593,7 @@ pub struct Timeout {
 }
 
 impl Timeout {
-    fn new(deadline: Instant) -> Self {
+    pub fn new(deadline: Instant) -> Self {
         let evented = TimerEvented::new(deadline, &get_reactor()).unwrap();
 
         evented.registration().set_ready(true);
@@ -623,7 +605,7 @@ impl Timeout {
         }
     }
 
-    fn set_deadline(&self, deadline: Instant) {
+    pub fn set_deadline(&self, deadline: Instant) {
         let inner = &mut *self.inner.borrow_mut();
 
         // destroy previous timer registration before creating a new one
@@ -636,7 +618,7 @@ impl Timeout {
         inner.evented = Some(evented);
     }
 
-    fn elapsed<'a>(&'a self) -> TimeoutFuture<'a> {
+    pub fn elapsed<'a>(&'a self) -> TimeoutFuture<'a> {
         TimeoutFuture { t: self }
     }
 }
@@ -1353,48 +1335,6 @@ impl AsyncWrite for AsyncTlsStream {
         self.registration
             .clear_waker_interest(mio::Interest::WRITABLE);
     }
-}
-
-pub struct SleepFuture<'a> {
-    s: &'a mut AsyncSleep,
-}
-
-impl Future for SleepFuture<'_> {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = &mut *self;
-
-        f.s.evented
-            .registration()
-            .set_waker(cx.waker(), mio::Interest::READABLE);
-
-        if !f.s.evented.registration().is_ready() {
-            return Poll::Pending;
-        }
-
-        let now = get_reactor().now();
-
-        if now >= f.s.evented.expires() {
-            Poll::Ready(())
-        } else {
-            f.s.evented.registration().set_ready(false);
-
-            Poll::Pending
-        }
-    }
-}
-
-impl Drop for SleepFuture<'_> {
-    fn drop(&mut self) {
-        self.s.evented.registration().clear_waker();
-    }
-}
-
-pub async fn sleep(duration: Duration) {
-    let now = get_reactor().now();
-
-    AsyncSleep::new(now + duration).sleep().await
 }
 
 pub struct TimeoutFuture<'a> {
@@ -2299,36 +2239,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(park_count, 3);
-    }
-
-    #[test]
-    fn test_sleep() {
-        let now = Instant::now();
-
-        let executor = Executor::new(1);
-        let reactor = Reactor::new_with_time(1, now);
-
-        executor.spawn(sleep(Duration::from_millis(100))).unwrap();
-
-        executor.run_until_stalled();
-
-        reactor
-            .poll_nonblocking(now + Duration::from_millis(200))
-            .unwrap();
-
-        executor.run(|_| Ok(())).unwrap();
-    }
-
-    #[test]
-    fn test_sleep_ready() {
-        let now = Instant::now();
-
-        let executor = Executor::new(1);
-        let _reactor = Reactor::new_with_time(1, now);
-
-        executor.spawn(sleep(Duration::from_millis(0))).unwrap();
-
-        executor.run(|_| Ok(())).unwrap();
     }
 
     #[test]

@@ -26,7 +26,7 @@ use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
     event_wait, select_2, select_3, select_4, select_6, select_option, AsyncLocalReceiver,
-    AsyncLocalSender, AsyncReceiver, AsyncSleep, Select2, Select3, Select4, Select6,
+    AsyncLocalSender, AsyncReceiver, Select2, Select3, Select4, Select6, Timeout,
 };
 use crate::list;
 use crate::listener::Listener;
@@ -1084,7 +1084,7 @@ impl Worker {
         stream_conns.batch_clear();
 
         let now = Reactor::current().unwrap().now();
-        let mut shutdown_timer = AsyncSleep::new(now + SHUTDOWN_TIMEOUT);
+        let shutdown_timeout = Timeout::new(now + SHUTDOWN_TIMEOUT);
 
         let mut next_cancel_index = 0;
 
@@ -1111,7 +1111,7 @@ impl Worker {
 
                 pin_mut!(send);
 
-                match select_2(send, shutdown_timer.sleep()).await {
+                match select_2(send, shutdown_timeout.elapsed()).await {
                     Select2::R1(r) => r.unwrap(),
                     Select2::R2(_) => break 'outer,
                 }
@@ -1755,7 +1755,7 @@ impl Worker {
 
         let mut keep_alive_count = 0;
         let mut next_keep_alive_time = reactor.now() + KEEP_ALIVE_INTERVAL;
-        let mut next_keep_alive = AsyncSleep::new(next_keep_alive_time);
+        let next_keep_alive_timeout = Timeout::new(next_keep_alive_time);
         let mut next_keep_alive_index = 0;
 
         let sender_registration = reactor
@@ -1767,7 +1767,7 @@ impl Worker {
         'main: loop {
             while conns.batch_is_empty() {
                 // wait for next keep alive time
-                match select_2(stop.recv(), next_keep_alive.sleep()).await {
+                match select_2(stop.recv(), next_keep_alive_timeout.elapsed()).await {
                     Select2::R1(_) => break 'main,
                     Select2::R2(_) => {}
                 }
@@ -1796,7 +1796,7 @@ impl Worker {
 
                 // keep steady pace
                 next_keep_alive_time += KEEP_ALIVE_INTERVAL;
-                next_keep_alive = AsyncSleep::new(next_keep_alive_time);
+                next_keep_alive_timeout.set_deadline(next_keep_alive_time);
             }
 
             let wait = event_wait(&sender_registration, mio::Interest::WRITABLE);
@@ -1837,7 +1837,7 @@ impl Worker {
                 if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
                     // got really behind somehow. just skip ahead
                     next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
-                    next_keep_alive = AsyncSleep::new(next_keep_alive_time);
+                    next_keep_alive_timeout.set_deadline(next_keep_alive_time);
                 }
             }
         }
