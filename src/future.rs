@@ -626,18 +626,12 @@ impl Timeout {
     }
 }
 
-struct CancellationInner {
-    cancelled: Cell<bool>,
-}
-
 pub struct CancellationSender {
     read_set_readiness: event::LocalSetReadiness,
-    inner: Rc<CancellationInner>,
 }
 
 impl CancellationSender {
     fn cancel(&self) {
-        self.inner.cancelled.set(true);
         self.read_set_readiness
             .set_readiness(mio::Interest::READABLE)
             .unwrap();
@@ -653,7 +647,6 @@ impl Drop for CancellationSender {
 pub struct CancellationToken {
     evented: CustomEvented,
     _read_registration: event::LocalRegistration,
-    inner: Rc<CancellationInner>,
 }
 
 impl CancellationToken {
@@ -667,19 +660,13 @@ impl CancellationToken {
 
         evented.registration().set_ready(false);
 
-        let inner = Rc::new(CancellationInner {
-            cancelled: Cell::new(false),
-        });
-
         let sender = CancellationSender {
             read_set_readiness: read_sr,
-            inner: inner.clone(),
         };
 
         let token = Self {
             evented,
             _read_registration: read_reg,
-            inner,
         };
 
         (sender, token)
@@ -1454,11 +1441,9 @@ impl Future for CancelledFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        if f.t.inner.cancelled.get() {
+        if f.t.evented.registration().is_ready() {
             return Poll::Ready(());
         }
-
-        f.t.evented.registration().set_ready(false);
 
         f.t.evented
             .registration()
@@ -2403,7 +2388,7 @@ mod tests {
     #[test]
     fn test_cancellation_token() {
         let executor = Executor::new(1);
-        let _reactor = Reactor::new(1);
+        let reactor = Reactor::new(1);
 
         executor
             .spawn(async {
@@ -2414,11 +2399,11 @@ mod tests {
                 assert_eq!(poll_fut_async(&mut fut).await, Poll::Pending);
 
                 drop(sender);
-                assert_eq!(poll_fut_async(&mut fut).await, Poll::Ready(()));
+                token.cancelled().await;
             })
             .unwrap();
 
-        executor.run(|_| Ok(())).unwrap();
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
 
     #[test]
