@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
+use crate::arena;
 use crate::channel;
+use crate::event;
 use crate::event::ReadinessExt;
 use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented};
 use crate::shuffle::shuffle;
@@ -29,6 +31,7 @@ use std::io;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -620,6 +623,70 @@ impl Timeout {
 
     pub fn elapsed<'a>(&'a self) -> TimeoutFuture<'a> {
         TimeoutFuture { t: self }
+    }
+}
+
+struct CancellationInner {
+    cancelled: Cell<bool>,
+}
+
+pub struct CancellationSender {
+    read_set_readiness: event::LocalSetReadiness,
+    inner: Rc<CancellationInner>,
+}
+
+impl CancellationSender {
+    fn cancel(&self) {
+        self.inner.cancelled.set(true);
+        self.read_set_readiness
+            .set_readiness(mio::Interest::READABLE)
+            .unwrap();
+    }
+}
+
+impl Drop for CancellationSender {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+pub struct CancellationToken {
+    evented: CustomEvented,
+    _read_registration: event::LocalRegistration,
+    inner: Rc<CancellationInner>,
+}
+
+impl CancellationToken {
+    pub fn new(
+        memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
+    ) -> (CancellationSender, Self) {
+        let (read_reg, read_sr) = event::LocalRegistration::new(memory);
+
+        let evented =
+            CustomEvented::new_local(&read_reg, mio::Interest::READABLE, &get_reactor()).unwrap();
+
+        evented.registration().set_ready(false);
+
+        let inner = Rc::new(CancellationInner {
+            cancelled: Cell::new(false),
+        });
+
+        let sender = CancellationSender {
+            read_set_readiness: read_sr,
+            inner: inner.clone(),
+        };
+
+        let token = Self {
+            evented,
+            _read_registration: read_reg,
+            inner,
+        };
+
+        (sender, token)
+    }
+
+    pub fn cancelled<'a>(&'a self) -> CancelledFuture<'a> {
+        CancelledFuture { t: self }
     }
 }
 
@@ -1374,6 +1441,36 @@ impl Drop for TimeoutFuture<'_> {
         if let Some(evented) = &self.t.inner.borrow().evented {
             evented.registration().clear_waker();
         }
+    }
+}
+
+pub struct CancelledFuture<'a> {
+    t: &'a CancellationToken,
+}
+
+impl Future for CancelledFuture<'_> {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        if f.t.inner.cancelled.get() {
+            return Poll::Ready(());
+        }
+
+        f.t.evented.registration().set_ready(false);
+
+        f.t.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::READABLE);
+
+        Poll::Pending
+    }
+}
+
+impl Drop for CancelledFuture<'_> {
+    fn drop(&mut self) {
+        self.t.evented.registration().clear_waker();
     }
 }
 
@@ -2296,6 +2393,27 @@ mod tests {
                 assert_eq!(poll_fut_async(&mut fut).await, Poll::Pending);
 
                 timeout.set_deadline(get_reactor().now());
+                assert_eq!(poll_fut_async(&mut fut).await, Poll::Ready(()));
+            })
+            .unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_cancellation_token() {
+        let executor = Executor::new(1);
+        let _reactor = Reactor::new(1);
+
+        executor
+            .spawn(async {
+                let (sender, token) =
+                    CancellationToken::new(&get_reactor().local_registration_memory());
+
+                let mut fut = token.cancelled();
+                assert_eq!(poll_fut_async(&mut fut).await, Poll::Pending);
+
+                drop(sender);
                 assert_eq!(poll_fut_async(&mut fut).await, Poll::Ready(()));
             })
             .unwrap();

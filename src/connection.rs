@@ -17,7 +17,7 @@
 use crate::arena;
 use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, VECTORED_MAX};
 use crate::channel;
-use crate::future::{event_wait, select_6, select_option, AsyncLocalReceiver, Select6, Timeout};
+use crate::future::{event_wait, select_6, select_option, CancellationToken, Select6, Timeout};
 use crate::http1;
 use crate::pin_mut;
 use crate::reactor;
@@ -2774,7 +2774,7 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
 }
 
 async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identify>(
-    stop: AsyncLocalReceiver<()>,
+    token: CancellationToken,
     mut cid: ArrayString<[u8; 32]>,
     cid_provider: &mut P,
     mut c: Connection<'_, S>,
@@ -2888,7 +2888,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
             );
 
             match select_6(
-                stop.recv(),
+                token.cancelled(),
                 select_option(stream_wait.as_pin_mut()),
                 zreceiver_wait,
                 select_option(zsender1_wait.as_pin_mut()),
@@ -2897,7 +2897,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
             )
             .await
             {
-                // stop.recv
+                // token.cancelled
                 Select6::R1(_) => break 'main,
                 // stream_wait
                 Select6::R2(readiness) => {
@@ -2953,7 +2953,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
 }
 
 pub async fn server_req_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
-    stop: AsyncLocalReceiver<()>,
+    stop: CancellationToken,
     cid: ArrayString<[u8; 32]>,
     cid_provider: &mut P,
     stream: &mut S,
@@ -3011,7 +3011,7 @@ pub async fn server_req_connection<P: CidProvider, S: Read + Write + Shutdown + 
 }
 
 pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
-    stop: AsyncLocalReceiver<()>,
+    stop: CancellationToken,
     cid: ArrayString<[u8; 32]>,
     cid_provider: &mut P,
     stream: &mut S,

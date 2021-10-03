@@ -26,7 +26,8 @@ use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
     event_wait, select_2, select_3, select_4, select_6, select_option, AsyncLocalReceiver,
-    AsyncLocalSender, AsyncReceiver, Select2, Select3, Select4, Select6, Timeout,
+    AsyncLocalSender, AsyncReceiver, CancellationSender, CancellationToken, Select2, Select3,
+    Select4, Select6, Timeout,
 };
 use crate::list;
 use crate::listener::Listener;
@@ -420,7 +421,7 @@ enum BatchType {
 
 struct ConnectionItem {
     id: ArrayString<[u8; 32]>,
-    stop: Option<AsyncLocalSender<()>>,
+    stop: Option<CancellationSender>,
     zreceiver_sender:
         Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>>,
     shared: Option<arena::Rc<ServerStreamSharedData>>,
@@ -477,7 +478,7 @@ impl Connections {
     fn add(
         &self,
         worker_id: usize,
-        stop: AsyncLocalSender<()>,
+        stop: CancellationSender,
         zreceiver_sender: AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
         shared: Option<arena::Rc<ServerStreamSharedData>>,
     ) -> Result<(usize, ArrayString<[u8; 32]>), ()> {
@@ -1206,7 +1207,7 @@ impl Worker {
                 }
             };
 
-            let (cstop, r_cstop) = async_local_channel(1, 1);
+            let (cstop, r_cstop) = CancellationToken::new(&reactor.local_registration_memory());
 
             let s_cdone = s_cdone
                 .try_clone(&reactor.local_registration_memory())
@@ -1603,7 +1604,7 @@ impl Worker {
     }
 
     async fn connection_task(
-        stop: AsyncLocalReceiver<()>,
+        stop: CancellationToken,
         done: channel::LocalSender<usize>,
         worker_id: usize,
         ckey: usize,
