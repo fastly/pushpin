@@ -2592,7 +2592,7 @@ struct Connection<'a, S> {
     conn: ServerConnection,
     want: Want,
     timer: Option<Instant>,
-    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
 }
 
 impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
@@ -2606,7 +2606,7 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
         sender: channel::LocalSender<zmq::Message>,
-        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
     ) -> Self {
         Self {
             id: ArrayString::new(),
@@ -2639,7 +2639,7 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
         senders: StreamLocalSenders,
-        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
         shared: arena::Rc<ServerStreamSharedData>,
     ) -> Self {
         Self {
@@ -2782,7 +2782,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
     stream_registration: &reactor::Registration,
     zsender1_registration: reactor::Registration,
     zsender2_registration: Option<reactor::Registration>,
-    zreceiver_registration: reactor::Registration,
+    zreceiver_registration: &reactor::Registration,
     packet_buf: Rc<RefCell<Vec<u8>>>,
     tmp_buf: Rc<RefCell<Vec<u8>>>,
     instance_id: &str,
@@ -2855,7 +2855,7 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
 
             // always read zhttp response packets so they can be applied immediately,
             // even if c.want.zhttp_read is false
-            let zreceiver_wait = event_wait(&zreceiver_registration, mio::Interest::READABLE);
+            let zreceiver_wait = event_wait(zreceiver_registration, mio::Interest::READABLE);
 
             let zsender1_wait = if c.want.zhttp_write {
                 Some(event_wait(&zsender1_registration, mio::Interest::WRITABLE))
@@ -2968,7 +2968,7 @@ pub async fn server_req_connection<P: CidProvider, S: Read + Write + Shutdown + 
     timeout: Duration,
     instance_id: &str,
     zsender: channel::LocalSender<zmq::Message>,
-    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: &channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
     reactor: &Reactor,
 ) {
     let zreceiver_registration = reactor
@@ -3001,13 +3001,17 @@ pub async fn server_req_connection<P: CidProvider, S: Read + Write + Shutdown + 
         stream_registration,
         zsender_registration,
         None,
-        zreceiver_registration,
+        &zreceiver_registration,
         packet_buf,
         tmp_buf,
         instance_id,
         reactor,
     )
     .await;
+
+    zreceiver_registration
+        .deregister_custom_local(zreceiver.get_read_registration())
+        .unwrap();
 }
 
 pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
@@ -3027,7 +3031,7 @@ pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown
     instance_id: &str,
     zsender: channel::LocalSender<zmq::Message>,
     zsender_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
-    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: &channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
     shared: arena::Rc<ServerStreamSharedData>,
     reactor: &Reactor,
 ) {
@@ -3069,13 +3073,17 @@ pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown
         stream_registration,
         zsender_registration,
         Some(zsender_stream_registration),
-        zreceiver_registration,
+        &zreceiver_registration,
         packet_buf,
         tmp_buf,
         instance_id,
         reactor,
     )
     .await;
+
+    zreceiver_registration
+        .deregister_custom_local(zreceiver.get_read_registration())
+        .unwrap();
 }
 
 #[cfg(test)]

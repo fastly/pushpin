@@ -406,6 +406,11 @@ impl<T> LocalReceiver<T> {
 
         Ok(value)
     }
+
+    pub fn clear(&self) {
+        // loop over try_recv() in order to notify senders
+        while self.try_recv().is_ok() {}
+    }
 }
 
 impl<T> Drop for LocalReceiver<T> {

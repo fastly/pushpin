@@ -46,6 +46,7 @@ use mio::net::{TcpListener, TcpSocket, TcpStream};
 use mio::unix::SourceFd;
 use slab::Slab;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::io;
 use std::io::Write;
 use std::net::SocketAddr;
@@ -419,6 +420,35 @@ enum BatchType {
     Cancel,
 }
 
+struct ChannelPool<T> {
+    items: RefCell<VecDeque<(channel::LocalSender<T>, channel::LocalReceiver<T>)>>,
+}
+
+impl<T> ChannelPool<T> {
+    fn new(capacity: usize) -> Self {
+        Self {
+            items: RefCell::new(VecDeque::with_capacity(capacity)),
+        }
+    }
+
+    fn take(&self) -> Option<(channel::LocalSender<T>, channel::LocalReceiver<T>)> {
+        let p = &mut *self.items.borrow_mut();
+
+        p.pop_back()
+    }
+
+    fn push(&self, pair: (channel::LocalSender<T>, channel::LocalReceiver<T>)) {
+        let p = &mut *self.items.borrow_mut();
+
+        p.push_back(pair);
+    }
+}
+
+struct ConnectionDone {
+    ckey: usize,
+    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+}
+
 struct ConnectionItem {
     id: ArrayString<[u8; 32]>,
     stop: Option<CancellationSender>,
@@ -505,7 +535,11 @@ impl Connections {
         Ok((nkey, items.nodes[nkey].value.id))
     }
 
-    fn remove(&self, ckey: usize) {
+    // return zreceiver_sender
+    fn remove(
+        &self,
+        ckey: usize,
+    ) -> channel::LocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)> {
         let nkey = ckey;
 
         let items = &mut *self.items.borrow_mut();
@@ -520,7 +554,9 @@ impl Connections {
         c.active.remove(&mut items.nodes, nkey);
         c.count -= 1;
 
-        items.nodes.remove(nkey);
+        let ci = items.nodes.remove(nkey).value;
+
+        ci.zreceiver_sender.unwrap().into_inner()
     }
 
     fn regen_id(&self, worker_id: usize, ckey: usize) -> ArrayString<[u8; 32]> {
@@ -916,10 +952,9 @@ impl Worker {
 
         let batch = Batch::new(ka_batch);
 
-        let conn_items = Rc::new(RefCell::new(ConnectionItems::new(
-            req_maxconn + stream_maxconn,
-            batch,
-        )));
+        let maxconn = req_maxconn + stream_maxconn;
+
+        let conn_items = Rc::new(RefCell::new(ConnectionItems::new(maxconn, batch)));
 
         let req_conns = Rc::new(Connections::new(conn_items.clone(), req_maxconn));
         let stream_conns = Rc::new(Connections::new(conn_items.clone(), stream_maxconn));
@@ -961,6 +996,11 @@ impl Worker {
 
         let stream_shared_mem = Rc::new(arena::RcMemory::new(stream_maxconn));
 
+        let zreceiver_pool = Rc::new(ChannelPool::new(maxconn));
+        for _ in 0..maxconn {
+            zreceiver_pool.push(local_channel(RESP_SENDER_BOUND, 1));
+        }
+
         executor
             .spawn(Self::accept_task(
                 "req_accept",
@@ -971,6 +1011,7 @@ impl Worker {
                 req_acceptor_tls,
                 identities.clone(),
                 executor.spawner(),
+                zreceiver_pool.clone(),
                 req_conns.clone(),
                 ConnectionOpts {
                     instance_id: instance_id.clone(),
@@ -1002,6 +1043,7 @@ impl Worker {
                     stream_acceptor_tls,
                     identities.clone(),
                     executor.spawner(),
+                    zreceiver_pool.clone(),
                     stream_conns.clone(),
                     ConnectionOpts {
                         instance_id: instance_id.clone(),
@@ -1131,6 +1173,7 @@ impl Worker {
         acceptor_tls: Vec<(bool, Option<String>)>,
         identities: Arc<IdentityCache>,
         spawner: Spawner,
+        zreceiver_pool: Rc<ChannelPool<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         mode_opts: ConnectionModeOpts,
@@ -1150,7 +1193,7 @@ impl Worker {
 
         // bound is 1 per connection, so all connections can indicate done at once
         // max_senders is 1 per connection + 1 for this task
-        let (s_cdone, cdone) = channel::local_channel(
+        let (s_cdone, cdone) = channel::local_channel::<ConnectionDone>(
             conns.max(),
             conns.max() + 1,
             &reactor.local_registration_memory(),
@@ -1173,8 +1216,13 @@ impl Worker {
                     Select3::R1(_) => break,
                     // cdone.recv
                     Select3::R2(result) => match result {
-                        Ok(cid) => {
-                            conns.remove(cid);
+                        Ok(done) => {
+                            let zreceiver_sender = conns.remove(done.ckey);
+
+                            done.zreceiver.clear();
+
+                            zreceiver_pool.push((zreceiver_sender, done.zreceiver));
+
                             continue;
                         }
                         Err(e) => panic!("cdone channel error: {}", e),
@@ -1220,7 +1268,7 @@ impl Worker {
                         .try_clone(&reactor.local_registration_memory())
                         .unwrap();
 
-                    let (zreq_receiver_sender, zreq_receiver) = local_channel(RESP_SENDER_BOUND, 1);
+                    let (zreq_receiver_sender, zreq_receiver) = zreceiver_pool.take().unwrap();
 
                     let zreq_receiver_sender = AsyncLocalSender::new(zreq_receiver_sender);
 
@@ -1252,7 +1300,7 @@ impl Worker {
                         .unwrap();
 
                     let (zstream_receiver_sender, zstream_receiver) =
-                        local_channel(RESP_SENDER_BOUND, 1);
+                        zreceiver_pool.take().unwrap();
 
                     let zstream_receiver_sender = AsyncLocalSender::new(zstream_receiver_sender);
 
@@ -1605,7 +1653,7 @@ impl Worker {
 
     async fn connection_task(
         stop: CancellationToken,
-        done: channel::LocalSender<usize>,
+        done: channel::LocalSender<ConnectionDone>,
         worker_id: usize,
         ckey: usize,
         cid: ArrayString<[u8; 32]>,
@@ -1651,7 +1699,7 @@ impl Worker {
                         opts.timeout,
                         &opts.instance_id,
                         req_opts.sender,
-                        zreceiver,
+                        &zreceiver,
                         &reactor,
                     )
                     .await
@@ -1673,7 +1721,7 @@ impl Worker {
                         opts.timeout,
                         &opts.instance_id,
                         req_opts.sender,
-                        zreceiver,
+                        &zreceiver,
                         &reactor,
                     )
                     .await
@@ -1701,7 +1749,7 @@ impl Worker {
                             &opts.instance_id,
                             stream_opts.sender,
                             stream_opts.sender_stream,
-                            zreceiver,
+                            &zreceiver,
                             shared,
                             &reactor,
                         )
@@ -1725,7 +1773,7 @@ impl Worker {
                             &opts.instance_id,
                             stream_opts.sender,
                             stream_opts.sender_stream,
-                            zreceiver,
+                            &zreceiver,
                             shared,
                             &reactor,
                         )
@@ -1737,7 +1785,7 @@ impl Worker {
 
         stream_registration.deregister_io(stream.get_tcp()).unwrap();
 
-        done.send(ckey).await.unwrap();
+        done.send(ConnectionDone { ckey, zreceiver }).await.unwrap();
 
         debug!("worker {}: task stopped: connection-{}", worker_id, ckey);
     }
