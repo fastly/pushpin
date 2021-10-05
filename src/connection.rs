@@ -17,7 +17,10 @@
 use crate::arena;
 use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, VECTORED_MAX};
 use crate::channel;
-use crate::future::{event_wait, select_6, select_option, CancellationToken, Select6, Timeout};
+use crate::future::{
+    event_wait, select_3, select_6, select_option, AsyncLocalReceiver, AsyncLocalSender, AsyncRead,
+    AsyncReadExt, AsyncWrite, AsyncWriteExt, CancellationToken, Select3, Select6, Timeout,
+};
 use crate::http1;
 use crate::pin_mut;
 use crate::reactor;
@@ -241,6 +244,8 @@ enum ServerError {
     BadMessage,
     BufferExceeded,
     BadFrame,
+    Timeout,
+    Stopped,
 }
 
 impl From<io::Error> for ServerError {
@@ -398,587 +403,6 @@ where
     zsender: &'a mut Z,
     packet_buf: &'a mut [u8],
     tmp_buf: &'a mut [u8],
-}
-
-#[derive(Debug, PartialEq)]
-enum ServerReqState {
-    Ready,
-    Active,
-    ShuttingDown,
-    Finishing,
-    Finished,
-}
-
-struct ServerReqConnection {
-    id: ArrayString<[u8; 32]>,
-    peer_addr: Option<SocketAddr>,
-    secure: bool,
-    timeout: Duration,
-    state: ServerReqState,
-    protocol: http1::ServerProtocol,
-    exp_time: Option<Instant>,
-    req: Option<RequestHeaderRanges>,
-    buf1: RingBuffer,
-    buf2: RingBuffer,
-    body_buf: Buffer,
-    cont: [u8; 32],
-    cont_len: usize,
-    cont_left: usize,
-    pending_msg: Option<zmq::Message>,
-    sock_readable: bool,
-}
-
-impl ServerReqConnection {
-    fn new(
-        now: Instant,
-        peer_addr: Option<SocketAddr>,
-        secure: bool,
-        buffer_size: usize,
-        body_buffer_size: usize,
-        rb_tmp: &Rc<TmpBuffer>,
-        timeout: Duration,
-    ) -> Self {
-        let buf1 = RingBuffer::new(buffer_size, rb_tmp);
-        let buf2 = RingBuffer::new(buffer_size, rb_tmp);
-        let body_buf = Buffer::new(body_buffer_size);
-
-        Self {
-            id: ArrayString::new(),
-            peer_addr,
-            secure,
-            timeout,
-            state: ServerReqState::Ready,
-            protocol: http1::ServerProtocol::new(),
-            exp_time: Some(now + timeout),
-            req: None,
-            buf1,
-            buf2,
-            body_buf,
-            cont: [0; 32],
-            cont_len: 0,
-            cont_left: 0,
-            pending_msg: None,
-            sock_readable: true,
-        }
-    }
-
-    fn reset(&mut self, now: Instant) {
-        // note: buf1 is not cleared as there may be data to read
-
-        self.state = ServerReqState::Ready;
-        self.protocol = http1::ServerProtocol::new();
-        self.exp_time = Some(now + self.timeout);
-        self.req = None;
-        self.buf2.clear();
-        self.body_buf.clear();
-        self.pending_msg = None;
-        self.sock_readable = true;
-    }
-
-    fn state(&self) -> ServerState {
-        match self.state {
-            ServerReqState::Ready => ServerState::Ready,
-            ServerReqState::Finished => ServerState::Finished,
-            _ => ServerState::Connected,
-        }
-    }
-
-    fn start(&mut self, id: &str) {
-        self.id = ArrayString::from_str(id).unwrap();
-        self.state = ServerReqState::Active;
-    }
-
-    fn set_sock_readable(&mut self) {
-        self.sock_readable = true;
-    }
-
-    fn process<S, Z>(
-        &mut self,
-        now: Instant,
-        sock: &mut S,
-        zsender: &mut Z,
-        packet_buf: &mut [u8],
-    ) -> Result<Want, ServerError>
-    where
-        S: Read + Write + Shutdown,
-        Z: ZhttpSender,
-    {
-        loop {
-            let args = ServerProcessArgs {
-                now,
-                instance: "",
-                sock,
-                zsender,
-                packet_buf,
-                tmp_buf: &mut [0; 0],
-            };
-
-            if let Some(r) = self.process_step(args) {
-                if let Err(e) = &r {
-                    match self.state {
-                        ServerReqState::Finishing | ServerReqState::Finished => {}
-                        _ => {
-                            debug!("conn {}: error: {:?}", self.id, e);
-                            self.state = ServerReqState::Finishing;
-                            continue;
-                        }
-                    }
-                }
-
-                return r;
-            }
-        }
-    }
-
-    fn try_recv(&mut self, sock: &mut dyn io::Read) -> Result<bool, io::Error> {
-        if self.buf1.write_avail() == 0 {
-            return Err(io::Error::from(io::ErrorKind::WriteZero));
-        }
-
-        if !self.sock_readable {
-            return Err(io::Error::from(io::ErrorKind::WouldBlock));
-        }
-
-        let size = match self.buf1.write_from(sock) {
-            Ok(size) => size,
-            Err(e) => {
-                if e.kind() == io::ErrorKind::WouldBlock {
-                    self.sock_readable = false;
-                }
-
-                return Err(e);
-            }
-        };
-
-        let closed = size == 0;
-
-        if closed {
-            self.state = ServerReqState::ShuttingDown;
-        }
-
-        Ok(closed)
-    }
-
-    fn after_request<S, Z>(&mut self, args: ServerProcessArgs<'_, S, Z>) -> Result<(), ServerError>
-    where
-        S: Read + Write + Shutdown,
-        Z: ZhttpSender,
-    {
-        let proto = &mut self.protocol;
-
-        let hbuf = self.buf2.read_buf();
-        let ranges = self.req.unwrap();
-
-        let method = unsafe { range_to_str_unchecked(hbuf, ranges.method) };
-        let path = unsafe { range_to_str_unchecked(hbuf, ranges.uri) };
-
-        let mut headers = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
-
-        for (i, h) in ranges.headers.iter().enumerate() {
-            headers[i].name = unsafe { range_to_str_unchecked(hbuf, h.name) };
-            headers[i].value = range_to_slice(hbuf, h.value);
-        }
-
-        let headers = &headers[..ranges.headers_count];
-
-        let mut websocket = false;
-
-        for h in headers.iter() {
-            if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
-                websocket = true;
-                break;
-            }
-        }
-
-        if websocket {
-            // header consumed
-            self.buf2.clear();
-
-            // body sent
-            self.body_buf.clear();
-
-            let mut hbuf = io::Cursor::new(self.buf2.write_buf());
-
-            let headers = &[http1::Header {
-                name: "Content-Type",
-                value: b"text/plain",
-            }];
-
-            let body = "WebSockets not supported on req mode interface.\n";
-
-            if let Err(e) = proto.send_response(
-                &mut hbuf,
-                400,
-                "Bad Request",
-                headers,
-                http1::BodySize::Known(body.len()),
-            ) {
-                return Err(e.into());
-            }
-
-            let size = hbuf.position() as usize;
-            self.buf2.write_commit(size);
-
-            if let Err(e) = self.body_buf.write_all(body.as_bytes()) {
-                return Err(ServerError::Io(e));
-            }
-
-            return Ok(());
-        }
-
-        let ids = [zhttppacket::Id {
-            id: self.id.as_bytes(),
-            seq: None,
-        }];
-
-        let msg = match make_zhttp_request(
-            "",
-            &ids,
-            method,
-            path,
-            headers,
-            self.body_buf.read_buf(),
-            false,
-            Mode::HttpReq,
-            0,
-            self.peer_addr,
-            self.secure,
-            args.packet_buf,
-        ) {
-            Ok(msg) => msg,
-            Err(e) => return Err(e.into()),
-        };
-
-        // header and body consumed
-        self.buf2.clear();
-        self.body_buf.clear();
-
-        self.pending_msg = Some(msg);
-
-        Ok(())
-    }
-
-    fn process_step<S, Z>(
-        &mut self,
-        args: ServerProcessArgs<'_, S, Z>,
-    ) -> Option<Result<Want, ServerError>>
-    where
-        S: Read + Write + Shutdown,
-        Z: ZhttpSender,
-    {
-        // check expiration if not already shutting down
-        match self.state {
-            ServerReqState::Finishing | ServerReqState::Finished => {}
-            _ => {
-                if self.exp_time.is_some() && args.now >= self.exp_time.unwrap() {
-                    self.state = ServerReqState::Finishing;
-                }
-            }
-        }
-
-        match self.state {
-            ServerReqState::Active => {
-                return self.process_http(args);
-            }
-            ServerReqState::ShuttingDown => {
-                match args.sock.shutdown() {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        let mut want = Want::nothing();
-                        want.sock_read = true;
-                        want.sock_write = true;
-                        want.timeout = self.exp_time;
-                        return Some(Ok(want));
-                    }
-                    Err(e) => return Some(Err(e.into())),
-                }
-
-                self.state = ServerReqState::Finishing;
-
-                return None;
-            }
-            ServerReqState::Finishing => {
-                self.state = ServerReqState::Finished;
-
-                return None;
-            }
-            ServerReqState::Ready | ServerReqState::Finished => {
-                return Some(Ok(Want::nothing()));
-            }
-        }
-    }
-
-    fn process_http<S, Z>(
-        &mut self,
-        args: ServerProcessArgs<'_, S, Z>,
-    ) -> Option<Result<Want, ServerError>>
-    where
-        S: Read + Write + Shutdown,
-        Z: ZhttpSender,
-    {
-        let mut want = Want::nothing();
-        want.sock_read = true;
-        want.timeout = self.exp_time;
-
-        // always read if possible, to detect disconnects
-        match self.try_recv(args.sock) {
-            Ok(closed) => {
-                if closed {
-                    return None;
-                }
-            }
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {} // ok
-            Err(e) if e.kind() == io::ErrorKind::WriteZero => want.sock_read = false,
-            Err(e) => return Some(Err(e.into())),
-        }
-
-        let proto = &mut self.protocol;
-
-        match proto.state() {
-            http1::ServerState::ReceivingRequest => {
-                self.buf1.align();
-
-                let mut hbuf = io::Cursor::new(self.buf1.read_buf());
-
-                let mut headers = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
-
-                let req = match proto.recv_request(&mut hbuf, &mut headers) {
-                    Some(Ok(req)) => req,
-                    Some(Err(e)) => return Some(Err(e.into())),
-                    None => match self.try_recv(args.sock) {
-                        Ok(_) => return None,
-                        Err(e) if e.kind() == io::ErrorKind::WriteZero => {
-                            return Some(Err(ServerError::BufferExceeded));
-                        }
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            want.sock_read = true;
-                            return Some(Ok(want));
-                        }
-                        Err(e) => return Some(Err(e.into())),
-                    },
-                };
-
-                let hsize = hbuf.position() as usize;
-
-                let host = get_host(req.headers);
-
-                let scheme = if self.secure { "https" } else { "http" };
-
-                debug!(
-                    "conn {}: request: {} {}://{}{}",
-                    self.id, req.method, scheme, host, req.uri
-                );
-
-                let hbuf = self.buf1.read_buf();
-
-                let mut ranges = RequestHeaderRanges {
-                    method: slice_to_range(hbuf, req.method),
-                    uri: slice_to_range(hbuf, req.uri),
-                    headers: [EMPTY_HEADER_RANGES; http1::HEADERS_MAX],
-                    headers_count: req.headers.len(),
-                };
-
-                for (i, h) in req.headers.iter().enumerate() {
-                    ranges.headers[i].name = slice_to_range(hbuf, h.name);
-                    ranges.headers[i].value = slice_to_range(hbuf, h.value);
-                }
-
-                self.req = Some(ranges);
-
-                // move header data to buf2
-                if let Err(e) = self.buf2.write_all(&hbuf[..hsize]) {
-                    return Some(Err(e.into()));
-                }
-
-                if req.expect_100 {
-                    let mut cont = io::Cursor::new(&mut self.cont[..]);
-
-                    if let Err(e) = proto.send_100_continue(&mut cont) {
-                        return Some(Err(e.into()));
-                    }
-
-                    self.cont_len = cont.position() as usize;
-                    self.cont_left = self.cont_len;
-                }
-
-                self.buf1.read_commit(hsize);
-
-                if proto.state() == http1::ServerState::AwaitingResponse {
-                    if let Err(e) = self.after_request(args) {
-                        return Some(Err(e));
-                    }
-                }
-            }
-            http1::ServerState::ReceivingBody => {
-                if self.cont_left > 0 {
-                    let pos = self.cont_len - self.cont_left;
-
-                    let size = match args.sock.write(&self.cont[pos..self.cont_len]) {
-                        Ok(size) => size,
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            want.sock_write = true;
-                            return Some(Ok(want));
-                        }
-                        Err(e) => return Some(Err(e.into())),
-                    };
-
-                    self.cont_left -= size;
-
-                    return None;
-                }
-
-                self.buf1.align();
-
-                let mut buf = io::Cursor::new(self.buf1.read_buf());
-
-                let mut headers = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
-
-                let (size, _) =
-                    match proto.recv_body(&mut buf, self.body_buf.write_buf(), &mut headers) {
-                        Ok((size, headers)) => (size, headers),
-                        Err(e) => return Some(Err(e.into())),
-                    };
-
-                let read_size = buf.position() as usize;
-
-                if proto.state() == http1::ServerState::ReceivingBody && read_size == 0 {
-                    match self.try_recv(args.sock) {
-                        Ok(_) => return None,
-                        Err(e) if e.kind() == io::ErrorKind::WriteZero => {
-                            return Some(Err(ServerError::BufferExceeded));
-                        }
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            want.sock_read = true;
-                            return Some(Ok(want));
-                        }
-                        Err(e) => return Some(Err(e.into())),
-                    }
-                }
-
-                self.buf1.read_commit(read_size);
-
-                self.body_buf.write_commit(size);
-
-                if proto.state() == http1::ServerState::ReceivingBody
-                    && self.body_buf.write_avail() == 0
-                {
-                    return Some(Err(ServerError::BufferExceeded));
-                }
-
-                if proto.state() == http1::ServerState::AwaitingResponse {
-                    if let Err(e) = self.after_request(args) {
-                        return Some(Err(e));
-                    }
-                }
-            }
-            http1::ServerState::AwaitingResponse => {
-                if let Some(msg) = self.pending_msg.take() {
-                    match args.zsender.send(msg) {
-                        Ok(()) => {}
-                        Err(zhttpsocket::SendError::Full(msg)) => {
-                            self.pending_msg = Some(msg);
-                            want.zhttp_write = true;
-                            return Some(Ok(want));
-                        }
-                        Err(zhttpsocket::SendError::Io(e)) => return Some(Err(e.into())),
-                    }
-                } else {
-                    want.zhttp_read = true;
-                    return Some(Ok(want));
-                }
-            }
-            http1::ServerState::SendingBody => {
-                if self.buf2.read_avail() > 0 {
-                    let size = match args.sock.write(self.buf2.read_buf()) {
-                        Ok(size) => size,
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            want.sock_write = true;
-                            return Some(Ok(want));
-                        }
-                        Err(e) => return Some(Err(e.into())),
-                    };
-
-                    self.buf2.read_commit(size);
-
-                    return None;
-                }
-
-                let size = match proto.send_body(args.sock, &[self.body_buf.read_buf()], true, None)
-                {
-                    Ok(size) => size,
-                    Err(http1::ServerError::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
-                        want.sock_write = true;
-                        return Some(Ok(want));
-                    }
-                    Err(e) => return Some(Err(e.into())),
-                };
-
-                self.body_buf.read_commit(size);
-            }
-            http1::ServerState::Finished => {
-                debug!("conn {}: finished", self.id);
-
-                if proto.is_persistent() {
-                    self.reset(args.now);
-                } else {
-                    self.state = ServerReqState::ShuttingDown;
-                }
-            }
-        }
-
-        None
-    }
-
-    fn apply_zhttp_response(&mut self, zresp: &zhttppacket::Response) -> Result<(), ServerError> {
-        let proto = &mut self.protocol;
-
-        if proto.state() != http1::ServerState::AwaitingResponse || self.pending_msg.is_some() {
-            // not expecting anything
-            return Ok(());
-        }
-
-        match &zresp.ptype {
-            zhttppacket::ResponsePacket::Data(rdata) => {
-                let mut hbuf = io::Cursor::new(self.buf2.write_buf());
-
-                let mut headers = [http1::EMPTY_HEADER; http1::HEADERS_MAX];
-                let mut headers_len = 0;
-
-                for h in rdata.headers.iter() {
-                    headers[headers_len] = http1::Header {
-                        name: h.name,
-                        value: h.value,
-                    };
-                    headers_len += 1;
-                }
-
-                if let Err(e) = proto.send_response(
-                    &mut hbuf,
-                    rdata.code,
-                    rdata.reason,
-                    &headers[..headers_len],
-                    http1::BodySize::Known(rdata.body.len()),
-                ) {
-                    self.state = ServerReqState::Finishing;
-                    return Err(e.into());
-                }
-
-                let size = hbuf.position() as usize;
-                self.buf2.write_commit(size);
-
-                if let Err(e) = self.body_buf.write_all(&rdata.body) {
-                    self.state = ServerReqState::Finishing;
-                    return Err(ServerError::Io(e));
-                }
-            }
-            _ => debug!(
-                "conn {}: unexpected packet in req mode: {}",
-                self.id, zresp.ptype_str
-            ),
-        }
-
-        Ok(())
-    }
 }
 
 enum ServerProtocol {
@@ -2581,54 +2005,17 @@ impl ZhttpSender for StreamLocalSenders {
     }
 }
 
-enum ServerConnection {
-    Req(ServerReqConnection, channel::LocalSender<zmq::Message>),
-    Stream(ServerStreamConnection, StreamLocalSenders),
-}
-
 struct Connection<'a, S> {
     id: ArrayString<[u8; 32]>,
     stream: &'a mut S,
-    conn: ServerConnection,
+    conn: ServerStreamConnection,
+    senders: StreamLocalSenders,
     want: Want,
     timer: Option<Instant>,
     zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
 }
 
 impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
-    fn new_req(
-        now: Instant,
-        stream: &'a mut S,
-        peer_addr: SocketAddr,
-        secure: bool,
-        buffer_size: usize,
-        body_buffer_size: usize,
-        rb_tmp: &Rc<TmpBuffer>,
-        timeout: Duration,
-        sender: channel::LocalSender<zmq::Message>,
-        zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
-    ) -> Self {
-        Self {
-            id: ArrayString::new(),
-            stream,
-            conn: ServerConnection::Req(
-                ServerReqConnection::new(
-                    now,
-                    Some(peer_addr),
-                    secure,
-                    buffer_size,
-                    body_buffer_size,
-                    rb_tmp,
-                    timeout,
-                ),
-                sender,
-            ),
-            want: Want::nothing(),
-            timer: None,
-            zreceiver,
-        }
-    }
-
     fn new_stream(
         now: Instant,
         stream: &'a mut S,
@@ -2645,19 +2032,17 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
         Self {
             id: ArrayString::new(),
             stream,
-            conn: ServerConnection::Stream(
-                ServerStreamConnection::new(
-                    now,
-                    Some(peer_addr),
-                    secure,
-                    buffer_size,
-                    messages_max,
-                    rb_tmp,
-                    timeout,
-                    shared,
-                ),
-                senders,
+            conn: ServerStreamConnection::new(
+                now,
+                Some(peer_addr),
+                secure,
+                buffer_size,
+                messages_max,
+                rb_tmp,
+                timeout,
+                shared,
             ),
+            senders,
             want: Want::nothing(),
             timer: None,
             zreceiver,
@@ -2665,24 +2050,15 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
     }
 
     fn state(&self) -> ServerState {
-        match &self.conn {
-            ServerConnection::Req(conn, _) => conn.state(),
-            ServerConnection::Stream(conn, _) => conn.state(),
-        }
+        self.conn.state()
     }
 
     fn set_sock_readable(&mut self) {
-        match &mut self.conn {
-            ServerConnection::Req(conn, _) => conn.set_sock_readable(),
-            ServerConnection::Stream(conn, _) => conn.set_sock_readable(),
-        }
+        self.conn.set_sock_readable();
     }
 
     fn set_out_stream_can_write(&self) {
-        match &self.conn {
-            ServerConnection::Req(_, _) => panic!("not stream conn"),
-            ServerConnection::Stream(_, senders) => senders.set_out_stream_can_write(),
-        }
+        self.senders.set_out_stream_can_write();
     }
 
     fn start(&mut self, id: &str) {
@@ -2692,10 +2068,7 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
 
         debug!("conn {}: assigning id", self.id);
 
-        match &mut self.conn {
-            ServerConnection::Req(conn, _) => conn.start(self.id.as_ref()),
-            ServerConnection::Stream(conn, _) => conn.start(self.id.as_ref()),
-        }
+        self.conn.start(self.id.as_ref());
     }
 
     fn handle_packet(
@@ -2710,19 +2083,9 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
             debug!("conn {}: handle packet: (data)", self.id);
         }
 
-        match &mut self.conn {
-            ServerConnection::Req(conn, _) => {
-                if let Err(e) = conn.apply_zhttp_response(zresp) {
-                    debug!("conn {}: apply error {:?}", self.id, e);
-                    return Err(());
-                }
-            }
-            ServerConnection::Stream(conn, _) => {
-                if let Err(e) = conn.apply_zhttp_response(now, zresp, seq) {
-                    debug!("conn {}: apply error {:?}", self.id, e);
-                    return Err(());
-                }
-            }
+        if let Err(e) = self.conn.apply_zhttp_response(now, zresp, seq) {
+            debug!("conn {}: apply error {:?}", self.id, e);
+            return Err(());
         }
 
         Ok(())
@@ -2740,33 +2103,23 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
             let _ = self.handle_packet(now, resp.get().get(), seq);
         }
 
-        match &mut self.conn {
-            ServerConnection::Req(conn, sender) => {
-                match conn.process(now, self.stream, sender, packet_buf) {
-                    Ok(w) => self.want = w,
-                    Err(e) => {
-                        debug!("conn {}: process error: {:?}", self.id, e);
-                        return true;
-                    }
-                }
-
-                if conn.state() == ServerState::Finished {
-                    return true;
-                }
+        match self.conn.process(
+            now,
+            instance_id,
+            self.stream,
+            &mut self.senders,
+            packet_buf,
+            tmp_buf,
+        ) {
+            Ok(w) => self.want = w,
+            Err(e) => {
+                debug!("conn {}: process error: {:?}", self.id, e);
+                return true;
             }
-            ServerConnection::Stream(conn, senders) => {
-                match conn.process(now, instance_id, self.stream, senders, packet_buf, tmp_buf) {
-                    Ok(w) => self.want = w,
-                    Err(e) => {
-                        debug!("conn {}: process error: {:?}", self.id, e);
-                        return true;
-                    }
-                }
+        }
 
-                if conn.state() == ServerState::Finished {
-                    return true;
-                }
-            }
+        if self.conn.state() == ServerState::Finished {
+            return true;
         }
 
         false
@@ -2952,70 +2305,8 @@ async fn connection_process<P: CidProvider, S: Read + Write + Shutdown + Identif
     }
 }
 
-pub async fn server_req_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
-    stop: CancellationToken,
-    cid: ArrayString<[u8; 32]>,
-    cid_provider: &mut P,
-    stream: &mut S,
-    stream_registration: &reactor::Registration,
-    peer_addr: SocketAddr,
-    secure: bool,
-    buffer_size: usize,
-    body_buffer_size: usize,
-    rb_tmp: &Rc<TmpBuffer>,
-    packet_buf: Rc<RefCell<Vec<u8>>>,
-    tmp_buf: Rc<RefCell<Vec<u8>>>,
-    timeout: Duration,
-    instance_id: &str,
-    zsender: channel::LocalSender<zmq::Message>,
-    zreceiver: &channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
-    reactor: &Reactor,
-) {
-    let zreceiver_registration = reactor
-        .register_custom_local(zreceiver.get_read_registration(), mio::Interest::READABLE)
-        .unwrap();
-
-    let zsender_registration = reactor
-        .register_custom_local(zsender.get_write_registration(), mio::Interest::WRITABLE)
-        .unwrap();
-
-    let c = Connection::new_req(
-        reactor.now(),
-        stream,
-        peer_addr,
-        secure,
-        buffer_size,
-        body_buffer_size,
-        rb_tmp,
-        timeout,
-        zsender,
-        zreceiver,
-    );
-
-    connection_process(
-        stop,
-        cid,
-        cid_provider,
-        c,
-        secure,
-        stream_registration,
-        zsender_registration,
-        None,
-        &zreceiver_registration,
-        packet_buf,
-        tmp_buf,
-        instance_id,
-        reactor,
-    )
-    .await;
-
-    zreceiver_registration
-        .deregister_custom_local(zreceiver.get_read_registration())
-        .unwrap();
-}
-
 pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown + Identify>(
-    stop: CancellationToken,
+    token: CancellationToken,
     cid: ArrayString<[u8; 32]>,
     cid_provider: &mut P,
     stream: &mut S,
@@ -3065,7 +2356,7 @@ pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown
     );
 
     connection_process(
-        stop,
+        token,
         cid,
         cid_provider,
         c,
@@ -3086,12 +2377,697 @@ pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown
         .unwrap();
 }
 
+async fn try_recv<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Result<(), io::Error> {
+    if buf.write_avail() == 0 {
+        return Err(io::Error::from(io::ErrorKind::WriteZero));
+    }
+
+    let size = match r.read(buf.write_buf()).await {
+        Ok(size) => size,
+        Err(e) => return Err(e),
+    };
+
+    buf.write_commit(size);
+
+    if size == 0 {
+        return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+    }
+
+    Ok(())
+}
+
+struct RequestHandler<'a, S> {
+    stream: &'a mut S,
+    buf1: &'a mut RingBuffer,
+    buf2: &'a mut RingBuffer,
+}
+
+impl<'a, S: AsyncRead + AsyncWrite> RequestHandler<'a, S> {
+    fn new(stream: &'a mut S, buf1: &'a mut RingBuffer, buf2: &'a mut RingBuffer) -> Self {
+        buf1.align();
+        buf2.clear();
+
+        Self { stream, buf1, buf2 }
+    }
+
+    // read from stream into buf, and parse buf as a request header
+    async fn recv_request(self) -> Result<RequestHeader<'a, S>, ServerError> {
+        let mut protocol = http1::ServerProtocol::new();
+
+        assert_eq!(protocol.state(), http1::ServerState::ReceivingRequest);
+
+        loop {
+            let mut hbuf = io::Cursor::new(self.buf1.read_buf());
+
+            let mut headers = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+
+            let req = match protocol.recv_request(&mut hbuf, &mut headers) {
+                Some(Ok(req)) => req,
+                Some(Err(e)) => return Err(e.into()),
+                None => {
+                    if let Err(e) = try_recv(self.stream, self.buf1).await {
+                        if e.kind() == io::ErrorKind::WriteZero {
+                            return Err(ServerError::BufferExceeded);
+                        }
+
+                        return Err(e.into());
+                    }
+
+                    continue;
+                }
+            };
+
+            assert!([
+                http1::ServerState::ReceivingBody,
+                http1::ServerState::AwaitingResponse
+            ]
+            .contains(&protocol.state()));
+
+            let hsize = hbuf.position() as usize;
+
+            let hbuf = self.buf1.read_buf();
+
+            let mut ranges = RequestHeaderRanges {
+                method: slice_to_range(hbuf, req.method),
+                uri: slice_to_range(hbuf, req.uri),
+                headers: [EMPTY_HEADER_RANGES; http1::HEADERS_MAX],
+                headers_count: req.headers.len(),
+            };
+
+            for (i, h) in req.headers.iter().enumerate() {
+                ranges.headers[i].name = slice_to_range(hbuf, h.name);
+                ranges.headers[i].value = slice_to_range(hbuf, h.value);
+            }
+
+            let body_size = req.body_size;
+            let expect_100 = req.expect_100;
+
+            break Ok(RequestHeader {
+                stream: self.stream,
+                buf1: self.buf1,
+                buf2: self.buf2,
+                protocol,
+                hsize,
+                ranges,
+                body_size,
+                expect_100,
+            });
+        }
+    }
+}
+
+fn request_from_ranges<'buf, 'headers>(
+    buf: &'buf [u8],
+    ranges: &RequestHeaderRanges,
+    body_size: http1::BodySize,
+    expect_100: bool,
+    scratch: &'headers mut [httparse::Header<'buf>; http1::HEADERS_MAX],
+) -> http1::Request<'buf, 'headers> {
+    let method = unsafe { range_to_str_unchecked(buf, ranges.method) };
+    let uri = unsafe { range_to_str_unchecked(buf, ranges.uri) };
+
+    for (i, h) in ranges.headers.iter().enumerate() {
+        scratch[i].name = unsafe { range_to_str_unchecked(buf, h.name) };
+        scratch[i].value = range_to_slice(buf, h.value);
+    }
+
+    let headers = &scratch[..ranges.headers_count];
+
+    http1::Request {
+        method,
+        uri,
+        headers,
+        body_size,
+        expect_100,
+    }
+}
+
+struct RequestHeader<'a, S> {
+    stream: &'a mut S,
+    buf1: &'a mut RingBuffer,
+    buf2: &'a mut RingBuffer,
+    protocol: http1::ServerProtocol,
+    hsize: usize,
+    ranges: RequestHeaderRanges,
+    body_size: http1::BodySize,
+    expect_100: bool,
+}
+
+impl<'a, S: AsyncRead + AsyncWrite> RequestHeader<'a, S> {
+    fn request<'buf: 'a, 'headers>(
+        &'buf self,
+        scratch: &'headers mut [httparse::Header<'buf>; http1::HEADERS_MAX],
+    ) -> http1::Request<'buf, 'headers> {
+        request_from_ranges(
+            self.buf1.read_buf(),
+            &self.ranges,
+            self.body_size,
+            self.expect_100,
+            scratch,
+        )
+    }
+
+    async fn start_recv_body(mut self) -> Result<RequestRecvBody<'a, S>, ServerError> {
+        let hbuf = self.buf1.read_buf();
+
+        // move header data to buf2
+        if let Err(e) = self.buf2.write_all(&hbuf[..self.hsize]) {
+            return Err(e.into());
+        }
+
+        self.buf1.read_commit(self.hsize);
+
+        if self.expect_100 {
+            let mut cont = [0; 32];
+
+            let cont = {
+                let mut c = io::Cursor::new(&mut cont[..]);
+
+                if let Err(e) = self.protocol.send_100_continue(&mut c) {
+                    return Err(e.into());
+                }
+
+                let size = c.position() as usize;
+
+                &cont[..size]
+            };
+
+            let mut left = cont.len();
+
+            while left > 0 {
+                let pos = cont.len() - left;
+
+                let size = match self.stream.write(&cont[pos..]).await {
+                    Ok(size) => size,
+                    Err(e) => return Err(e.into()),
+                };
+
+                left -= size;
+            }
+        }
+
+        Ok(RequestRecvBody {
+            stream: self.stream,
+            buf1: self.buf1,
+            buf2: self.buf2,
+            protocol: self.protocol,
+            ranges: self.ranges,
+            body_size: self.body_size,
+            expect_100: self.expect_100,
+        })
+    }
+}
+
+struct RequestRecvBody<'a, S> {
+    stream: &'a mut S,
+    buf1: &'a mut RingBuffer,
+    buf2: &'a mut RingBuffer,
+    protocol: http1::ServerProtocol,
+    ranges: RequestHeaderRanges,
+    body_size: http1::BodySize,
+    expect_100: bool,
+}
+
+impl<'a, S: AsyncRead + AsyncWrite> RequestRecvBody<'a, S> {
+    fn request<'buf: 'a, 'headers>(
+        &'buf self,
+        scratch: &'headers mut [httparse::Header<'buf>; http1::HEADERS_MAX],
+    ) -> http1::Request<'buf, 'headers> {
+        request_from_ranges(
+            self.buf2.read_buf(),
+            &self.ranges,
+            self.body_size,
+            self.expect_100,
+            scratch,
+        )
+    }
+
+    async fn recv_body(&mut self, dest: &mut [u8]) -> Result<usize, ServerError> {
+        if self.protocol.state() == http1::ServerState::ReceivingBody {
+            self.buf1.align();
+
+            loop {
+                let mut buf = io::Cursor::new(self.buf1.read_buf());
+
+                let mut headers = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+
+                let (size, _) = match self.protocol.recv_body(&mut buf, dest, &mut headers) {
+                    Ok((size, headers)) => (size, headers),
+                    Err(e) => return Err(e.into()),
+                };
+
+                let read_size = buf.position() as usize;
+
+                if self.protocol.state() == http1::ServerState::ReceivingBody && read_size == 0 {
+                    if let Err(e) = try_recv(self.stream, self.buf1).await {
+                        if e.kind() == io::ErrorKind::WriteZero {
+                            return Err(ServerError::BufferExceeded);
+                        }
+
+                        return Err(e.into());
+                    }
+
+                    continue;
+                }
+
+                self.buf1.read_commit(read_size);
+
+                return Ok(size);
+            }
+        }
+
+        assert_eq!(self.protocol.state(), http1::ServerState::AwaitingResponse);
+
+        Ok(0)
+    }
+
+    async fn send_response(
+        mut self,
+        code: u32,
+        reason: &str,
+        headers: &[http1::Header<'_>],
+        body_size: http1::BodySize,
+    ) -> Result<RequestSendBody<'a, S>, ServerError> {
+        self.buf2.clear();
+
+        let mut hbuf = io::Cursor::new(self.buf2.write_buf());
+
+        if let Err(e) = self
+            .protocol
+            .send_response(&mut hbuf, code, reason, headers, body_size)
+        {
+            return Err(e.into());
+        }
+
+        let size = hbuf.position() as usize;
+        self.buf2.write_commit(size);
+
+        while self.buf2.read_avail() > 0 {
+            let size = match self.stream.write(self.buf2.read_buf()).await {
+                Ok(size) => size,
+                Err(e) => return Err(e.into()),
+            };
+
+            self.buf2.read_commit(size);
+        }
+
+        Ok(RequestSendBody {
+            stream: self.stream,
+            protocol: self.protocol,
+        })
+    }
+}
+
+struct RequestSendBody<'a, S> {
+    stream: &'a mut S,
+    protocol: http1::ServerProtocol,
+}
+
+impl<'a, S: AsyncRead + AsyncWrite> RequestSendBody<'a, S> {
+    async fn send_body(&mut self, src: &[&[u8]], more: bool) -> Result<usize, ServerError> {
+        assert_eq!(self.protocol.state(), http1::ServerState::SendingBody);
+
+        Ok(self
+            .protocol
+            .send_body_async(self.stream, src, !more, None)
+            .await?)
+    }
+
+    fn finish(self) -> bool {
+        self.protocol.is_persistent()
+    }
+}
+
+// return true if persistent
+async fn server_req_handler<S: AsyncRead + AsyncWrite>(
+    id: &str,
+    stream: &mut S,
+    peer_addr: Option<SocketAddr>,
+    secure: bool,
+    buf1: &mut RingBuffer,
+    buf2: &mut RingBuffer,
+    body_buf: &mut Buffer,
+    packet_buf: &RefCell<Vec<u8>>,
+    zsender: &AsyncLocalSender<zmq::Message>,
+    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+) -> Result<bool, ServerError> {
+    let handler = RequestHandler::new(stream, buf1, buf2);
+
+    // receive request header
+
+    let handler = match handler.recv_request().await {
+        Ok(handler) => handler,
+        Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
+        Err(e) => return Err(e),
+    };
+
+    // log request
+
+    {
+        let mut scratch = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+        let req = handler.request(&mut scratch);
+        let host = get_host(req.headers);
+        let scheme = if secure { "https" } else { "http" };
+
+        debug!(
+            "conn {}: request: {} {}://{}{}",
+            id, req.method, scheme, host, req.uri
+        );
+    }
+
+    // receive request body
+
+    let mut handler = handler.start_recv_body().await?;
+
+    loop {
+        let size = handler.recv_body(body_buf.write_buf()).await?;
+
+        if size == 0 {
+            break;
+        }
+
+        body_buf.write_commit(size);
+    }
+
+    // determine how to respond
+
+    let mut scratch = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+    let req = handler.request(&mut scratch);
+
+    let mut websocket = false;
+
+    for h in req.headers.iter() {
+        if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
+            websocket = true;
+            break;
+        }
+    }
+
+    let mut handler = if websocket {
+        // websocket requests are not supported in req mode
+
+        // toss the request body
+        body_buf.clear();
+
+        // send response header
+
+        let headers = &[http1::Header {
+            name: "Content-Type",
+            value: b"text/plain",
+        }];
+
+        let body = "WebSockets not supported on req mode interface.\n";
+
+        let handler = handler
+            .send_response(
+                400,
+                "Bad Request",
+                headers,
+                http1::BodySize::Known(body.len()),
+            )
+            .await?;
+
+        body_buf.write_all(body.as_bytes())?;
+
+        handler
+    } else {
+        // regular http requests we can handle
+
+        // prepare zmq message
+
+        let ids = [zhttppacket::Id {
+            id: id.as_bytes(),
+            seq: None,
+        }];
+
+        let msg = make_zhttp_request(
+            "",
+            &ids,
+            req.method,
+            req.uri,
+            req.headers,
+            body_buf.read_buf(),
+            false,
+            Mode::HttpReq,
+            0,
+            peer_addr,
+            secure,
+            &mut *packet_buf.borrow_mut(),
+        )?;
+
+        // body consumed
+        body_buf.clear();
+
+        // send message
+
+        if let Err(mpsc::SendError(_)) = zsender.send(msg).await {
+            return Err(io::Error::from(io::ErrorKind::BrokenPipe).into());
+        }
+
+        // receive message
+
+        let zresp = loop {
+            let zresp = match zreceiver.recv().await {
+                Ok((zresp, _)) => zresp,
+                Err(mpsc::RecvError) => {
+                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into())
+                }
+            };
+
+            let zresp_ref = zresp.get().get();
+
+            if !zresp_ref.ptype_str.is_empty() {
+                debug!("conn {}: handle packet: {}", id, zresp_ref.ptype_str);
+            } else {
+                debug!("conn {}: handle packet: (data)", id);
+            }
+
+            // skip non-data messages
+
+            match &zresp_ref.ptype {
+                zhttppacket::ResponsePacket::Data(_) => break zresp,
+                _ => debug!(
+                    "conn {}: unexpected packet in req mode: {}",
+                    id, zresp_ref.ptype_str
+                ),
+            }
+        };
+
+        let zresp = zresp.get().get();
+
+        let rdata = match &zresp.ptype {
+            zhttppacket::ResponsePacket::Data(rdata) => rdata,
+            _ => unreachable!(), // we confirmed the type above
+        };
+
+        // send response header
+
+        let mut headers = [http1::EMPTY_HEADER; http1::HEADERS_MAX];
+        let mut headers_len = 0;
+
+        for h in rdata.headers.iter() {
+            headers[headers_len] = http1::Header {
+                name: h.name,
+                value: h.value,
+            };
+            headers_len += 1;
+        }
+
+        let headers = &headers[..headers_len];
+
+        let handler = handler
+            .send_response(
+                rdata.code,
+                rdata.reason,
+                headers,
+                http1::BodySize::Known(rdata.body.len()),
+            )
+            .await?;
+
+        body_buf.write_all(&rdata.body)?;
+
+        handler
+    };
+
+    // send response body
+
+    while body_buf.read_avail() > 0 {
+        let size = handler.send_body(&[body_buf.read_buf()], false).await?;
+
+        body_buf.read_commit(size);
+    }
+
+    let persistent = handler.finish();
+
+    if websocket {
+        return Ok(false);
+    }
+
+    Ok(persistent)
+}
+
+async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
+    token: CancellationToken,
+    cid: &mut ArrayString<[u8; 32]>,
+    cid_provider: &mut P,
+    mut stream: S,
+    peer_addr: Option<SocketAddr>,
+    secure: bool,
+    buffer_size: usize,
+    body_buffer_size: usize,
+    rb_tmp: &Rc<TmpBuffer>,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    timeout: Duration,
+    zsender: AsyncLocalSender<zmq::Message>,
+    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+) -> Result<(), ServerError> {
+    let reactor = Reactor::current().unwrap();
+
+    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut body_buf = Buffer::new(body_buffer_size);
+
+    loop {
+        stream.set_id(cid);
+
+        // this was originally logged when starting the non-async state
+        // machine, so we'll keep doing that
+        debug!("conn {}: assigning id", cid);
+
+        let reuse = {
+            let handler = server_req_handler(
+                cid.as_ref(),
+                &mut stream,
+                peer_addr,
+                secure,
+                &mut buf1,
+                &mut buf2,
+                &mut body_buf,
+                &packet_buf,
+                &zsender,
+                zreceiver,
+            );
+            pin_mut!(handler);
+
+            let timeout = Timeout::new(reactor.now() + timeout);
+
+            match select_3(handler, timeout.elapsed(), token.cancelled()).await {
+                Select3::R1(ret) => ret?,
+                Select3::R2(_) => return Err(ServerError::Timeout),
+                Select3::R3(_) => return Err(ServerError::Stopped),
+            }
+        };
+
+        if !reuse {
+            break;
+        }
+
+        // note: buf1 is not cleared as there may be data to read
+
+        buf2.clear();
+        body_buf.clear();
+
+        *cid = cid_provider.get_new_assigned_cid();
+    }
+
+    stream.close().await?;
+
+    Ok(())
+}
+
+pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
+    token: CancellationToken,
+    mut cid: ArrayString<[u8; 32]>,
+    cid_provider: &mut P,
+    stream: S,
+    peer_addr: Option<SocketAddr>,
+    secure: bool,
+    buffer_size: usize,
+    body_buffer_size: usize,
+    rb_tmp: &Rc<TmpBuffer>,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    timeout: Duration,
+    zsender: AsyncLocalSender<zmq::Message>,
+    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+) {
+    match server_req_connection_inner(
+        token,
+        &mut cid,
+        cid_provider,
+        stream,
+        peer_addr,
+        secure,
+        buffer_size,
+        body_buffer_size,
+        rb_tmp,
+        packet_buf,
+        timeout,
+        zsender,
+        zreceiver,
+    )
+    .await
+    {
+        Ok(()) => debug!("conn {}: finished", cid),
+        Err(e) => debug!("conn {}: process error: {:?}", cid, e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::buffer::TmpBuffer;
+    use crate::waker;
+    use std::future::Future;
     use std::mem;
     use std::rc::Rc;
+    use std::sync::Arc;
+    use std::task::{Context, Poll, Waker};
+
+    struct NoopWaker {}
+
+    impl NoopWaker {
+        fn new() -> Self {
+            Self {}
+        }
+
+        fn into_std(self: Rc<NoopWaker>) -> Waker {
+            waker::into_std(self)
+        }
+    }
+
+    impl waker::RcWake for NoopWaker {
+        fn wake(self: Rc<Self>) {}
+    }
+
+    struct StepExecutor<F> {
+        reactor: Reactor,
+        fut: Pin<Box<F>>,
+    }
+
+    impl<F> StepExecutor<F>
+    where
+        F: Future,
+    {
+        fn new(reactor: Reactor, fut: F) -> Self {
+            Self {
+                reactor,
+                fut: Box::pin(fut),
+            }
+        }
+
+        fn step(&mut self) -> Poll<F::Output> {
+            self.reactor.poll_nonblocking(self.reactor.now()).unwrap();
+
+            let waker = Rc::new(NoopWaker::new()).into_std();
+            let mut cx = Context::from_waker(&waker);
+
+            self.fut.as_mut().poll(&mut cx)
+        }
+
+        fn advance_time(&mut self, now: Instant) {
+            self.reactor.poll_nonblocking(now).unwrap();
+        }
+    }
 
     struct FakeSock {
         inbuf: Vec<u8>,
@@ -3184,6 +3160,58 @@ mod tests {
         }
     }
 
+    struct AsyncFakeSock {
+        inner: Rc<RefCell<FakeSock>>,
+    }
+
+    impl AsyncFakeSock {
+        fn new(sock: Rc<RefCell<FakeSock>>) -> Self {
+            Self { inner: sock }
+        }
+    }
+
+    impl AsyncRead for AsyncFakeSock {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context,
+            buf: &mut [u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            let inner = &mut *self.inner.borrow_mut();
+
+            match inner.read(buf) {
+                Ok(usize) => Poll::Ready(Ok(usize)),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => Poll::Pending,
+                Err(e) => Poll::Ready(Err(e)),
+            }
+        }
+    }
+
+    impl AsyncWrite for AsyncFakeSock {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context,
+            buf: &[u8],
+        ) -> Poll<Result<usize, io::Error>> {
+            let inner = &mut *self.inner.borrow_mut();
+
+            match inner.write(buf) {
+                Ok(usize) => Poll::Ready(Ok(usize)),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => Poll::Pending,
+                Err(e) => Poll::Ready(Err(e)),
+            }
+        }
+
+        fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl Identify for AsyncFakeSock {
+        fn set_id(&mut self, _id: &str) {
+            // do nothing
+        }
+    }
+
     struct FakeSender {
         msgs: Vec<(Option<String>, zmq::Message)>,
         allow: usize,
@@ -3239,6 +3267,16 @@ mod tests {
         }
     }
 
+    struct SimpleCidProvider {
+        cid: ArrayString<[u8; 32]>,
+    }
+
+    impl CidProvider for SimpleCidProvider {
+        fn get_new_assigned_cid(&mut self) -> ArrayString<[u8; 32]> {
+            self.cid
+        }
+    }
+
     #[test]
     fn message_tracker() {
         let mut t = MessageTracker::new(2);
@@ -3273,36 +3311,81 @@ mod tests {
         assert!(r.is_err());
     }
 
-    #[test]
-    fn server_req_without_body() {
-        let mut sock = FakeSock::new();
-        let mut sender = FakeSender::new();
+    async fn req_fut(
+        token: CancellationToken,
+        sock: Rc<RefCell<FakeSock>>,
+        secure: bool,
+        s_from_conn: channel::LocalSender<zmq::Message>,
+        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    ) -> Result<(), ServerError> {
+        let mut cid = ArrayString::from_str("1").unwrap();
+        let mut cid_provider = SimpleCidProvider { cid };
 
+        let sock = AsyncFakeSock::new(sock);
+
+        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let buffer_size = 1024;
+
         let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let mut packet_buf = vec![0; 2048];
+        let packet_buf = Rc::new(RefCell::new(vec![0; 2048]));
 
         let timeout = Duration::from_millis(5_000);
 
-        let mut c = ServerReqConnection::new(
-            Instant::now(),
+        server_req_connection_inner(
+            token,
+            &mut cid,
+            &mut cid_provider,
+            sock,
             None,
-            false,
+            secure,
             buffer_size,
             buffer_size,
             &rb_tmp,
+            packet_buf.clone(),
             timeout,
-        );
-        c.start("1");
+            s_from_conn,
+            &r_to_conn,
+        )
+        .await
+    }
 
-        assert_eq!(c.state(), ServerState::Connected);
+    #[test]
+    fn server_req_without_body() {
+        let reactor = Reactor::new(100);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let resp_mem = Rc::new(arena::RcMemory::new(1));
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_read, true);
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            req_fut(token, sock, false, s_from_conn, r_to_conn)
+        };
+
+        let mut executor = StepExecutor::new(reactor, fut);
+
+        assert_eq!(executor.step().is_pending(), true);
+
+        // no messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // fill the connection's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
 
         let req_data = concat!(
             "GET /path HTTP/1.1\r\n",
@@ -3312,29 +3395,28 @@ mod tests {
         )
         .as_bytes();
 
-        sock.add_readable(req_data);
-        c.set_sock_readable();
+        sock.borrow_mut().add_readable(req_data);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // connection won't be able to send a message yet
+        assert_eq!(executor.step().is_pending(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_write, true);
-        assert_eq!(sender.msgs.len(), 0);
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
 
-        sender.allow(1);
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // now connection will be able to send a message
+        assert_eq!(executor.step().is_pending(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_read, true);
-        assert_eq!(sender.msgs.len(), 1);
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
 
-        let (_, buf) = sender.take();
-        let buf = &buf[..];
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
 
         let expected = concat!(
             "T148:2:id,1:1,3:ext,15:5:multi,4:true!}6:method,3:GET,3:ur",
@@ -3344,49 +3426,39 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        let ids = [zhttppacket::Id {
-            id: b"1",
-            seq: None,
-        }];
+        let msg = concat!(
+            "T100:2:id,1:1,4:code,3:200#6:reason,2:OK,7:h",
+            "eaders,34:30:12:Content-Type,10:text/plain,]]4:body,6:hell",
+            "o\n,}",
+        );
 
-        let rdata = zhttppacket::ResponseData {
-            credits: 0,
-            more: false,
-            code: 200,
-            reason: "OK",
-            headers: &[zhttppacket::Header {
-                name: "Content-Type",
-                value: b"text/plain",
-            }],
-            content_type: None,
-            body: b"hello\n",
-        };
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let zresp = zhttppacket::Response {
-            from: b"",
-            ids: &ids,
-            multi: false,
-            ptype: zhttppacket::ResponsePacket::Data(rdata),
-            ptype_str: "",
-        };
+        let scratch = arena::Rc::new(
+            RefCell::new(zhttppacket::ResponseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
-        c.apply_zhttp_response(&zresp).unwrap();
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_write, true);
+        assert_eq!(executor.step().is_pending(), true);
 
-        sock.allow_write(1024);
+        let data = sock.borrow_mut().take_writable();
+        assert_eq!(data.is_empty(), true);
 
-        c.process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        sock.borrow_mut().allow_write(1024);
 
-        assert_eq!(c.state(), ServerState::Finished);
+        match executor.step() {
+            Poll::Ready(Ok(())) => {}
+            _ => panic!("unexpected state"),
+        }
 
-        let data = sock.take_writable();
+        let data = sock.borrow_mut().take_writable();
 
         let expected = concat!(
             "HTTP/1.1 200 OK\r\n",
@@ -3402,34 +3474,40 @@ mod tests {
 
     #[test]
     fn server_req_with_body() {
-        let mut sock = FakeSock::new();
-        let mut sender = FakeSender::new();
+        let reactor = Reactor::new(100);
 
-        let buffer_size = 1024;
-        let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let mut packet_buf = vec![0; 2048];
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let resp_mem = Rc::new(arena::RcMemory::new(1));
 
-        let timeout = Duration::from_millis(5_000);
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
 
-        let mut c = ServerReqConnection::new(
-            Instant::now(),
-            None,
-            false,
-            buffer_size,
-            buffer_size,
-            &rb_tmp,
-            timeout,
-        );
-        c.start("1");
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
 
-        assert_eq!(c.state(), ServerState::Connected);
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+            req_fut(token, sock, false, s_from_conn, r_to_conn)
+        };
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_read, true);
+        let mut executor = StepExecutor::new(reactor, fut);
+
+        assert_eq!(executor.step().is_pending(), true);
+
+        // no messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // fill the connection's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
 
         let req_data = concat!(
             "POST /path HTTP/1.1\r\n",
@@ -3441,29 +3519,28 @@ mod tests {
         )
         .as_bytes();
 
-        sock.add_readable(req_data);
-        c.set_sock_readable();
+        sock.borrow_mut().add_readable(req_data);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // connection won't be able to send a message yet
+        assert_eq!(executor.step().is_pending(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_write, true);
-        assert_eq!(sender.msgs.len(), 0);
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
 
-        sender.allow(1);
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // now connection will be able to send a message
+        assert_eq!(executor.step().is_pending(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_read, true);
-        assert_eq!(sender.msgs.len(), 1);
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
 
-        let (_, buf) = sender.take();
-        let buf = &buf[..];
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
 
         let expected = concat!(
             "T191:2:id,1:1,3:ext,15:5:multi,4:true!}6:method,4:POST,3:u",
@@ -3474,49 +3551,39 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        let ids = [zhttppacket::Id {
-            id: b"1",
-            seq: None,
-        }];
+        let msg = concat!(
+            "T100:2:id,1:1,4:code,3:200#6:reason,2:OK,7:h",
+            "eaders,34:30:12:Content-Type,10:text/plain,]]4:body,6:hell",
+            "o\n,}",
+        );
 
-        let rdata = zhttppacket::ResponseData {
-            credits: 0,
-            more: false,
-            code: 200,
-            reason: "OK",
-            headers: &[zhttppacket::Header {
-                name: "Content-Type",
-                value: b"text/plain",
-            }],
-            content_type: None,
-            body: b"hello\n",
-        };
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let zresp = zhttppacket::Response {
-            from: b"",
-            ids: &ids,
-            multi: false,
-            ptype: zhttppacket::ResponsePacket::Data(rdata),
-            ptype_str: "",
-        };
+        let scratch = arena::Rc::new(
+            RefCell::new(zhttppacket::ResponseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
-        c.apply_zhttp_response(&zresp).unwrap();
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_write, true);
+        assert_eq!(executor.step().is_pending(), true);
 
-        sock.allow_write(1024);
+        let data = sock.borrow_mut().take_writable();
+        assert_eq!(data.is_empty(), true);
 
-        c.process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        sock.borrow_mut().allow_write(1024);
 
-        assert_eq!(c.state(), ServerState::Finished);
+        match executor.step() {
+            Poll::Ready(Ok(())) => {}
+            _ => panic!("unexpected state"),
+        }
 
-        let data = sock.take_writable();
+        let data = sock.borrow_mut().take_writable();
 
         let expected = concat!(
             "HTTP/1.1 200 OK\r\n",
@@ -3532,67 +3599,71 @@ mod tests {
 
     #[test]
     fn server_req_timeout() {
-        let mut sock = FakeSock::new();
-        let mut sender = FakeSender::new();
-
         let now = Instant::now();
+        let reactor = Reactor::new_with_time(100, now);
 
-        let buffer_size = 1024;
-        let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let mut packet_buf = vec![0; 2048];
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
 
-        let timeout = Duration::from_millis(5_000);
+        let (_s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, _r_from_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
 
-        let mut c =
-            ServerReqConnection::new(now, None, false, buffer_size, buffer_size, &rb_tmp, timeout);
-        c.start("1");
+        let fut = {
+            let sock = sock.clone();
 
-        assert_eq!(c.state(), ServerState::Connected);
+            req_fut(token, sock, false, s_from_conn, r_to_conn)
+        };
 
-        let want = c
-            .process(now, &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        let mut executor = StepExecutor::new(reactor, fut);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_read, true);
-        assert_eq!(want.timeout, Some(now + timeout));
+        assert_eq!(executor.step().is_pending(), true);
 
-        c.process(now + timeout, &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        executor.advance_time(now + Duration::from_millis(5_000));
 
-        assert_eq!(c.state(), ServerState::Finished);
+        match executor.step() {
+            Poll::Ready(Err(ServerError::Timeout)) => {}
+            _ => panic!("unexpected state"),
+        }
     }
 
     #[test]
     fn server_req_pipeline() {
-        let mut sock = FakeSock::new();
-        let mut sender = FakeSender::new();
+        let reactor = Reactor::new(100);
 
-        let buffer_size = 1024;
-        let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let mut packet_buf = vec![0; 2048];
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let resp_mem = Rc::new(arena::RcMemory::new(1));
 
-        let timeout = Duration::from_millis(5_000);
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
 
-        let mut c = ServerReqConnection::new(
-            Instant::now(),
-            None,
-            false,
-            buffer_size,
-            buffer_size,
-            &rb_tmp,
-            timeout,
-        );
-        c.start("1");
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
 
-        assert_eq!(c.state(), ServerState::Connected);
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+            req_fut(token, sock, false, s_from_conn, r_to_conn)
+        };
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_read, true);
+        let mut executor = StepExecutor::new(reactor, fut);
+
+        assert_eq!(executor.step().is_pending(), true);
+
+        // no messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // fill the connection's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
 
         let req_data = concat!(
             "GET /path1 HTTP/1.1\r\n",
@@ -3604,29 +3675,28 @@ mod tests {
         )
         .as_bytes();
 
-        sock.add_readable(req_data);
-        c.set_sock_readable();
+        sock.borrow_mut().add_readable(req_data);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // connection won't be able to send a message yet
+        assert_eq!(executor.step().is_pending(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_write, true);
-        assert_eq!(sender.msgs.len(), 0);
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
 
-        sender.allow(1);
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // now connection will be able to send a message
+        assert_eq!(executor.step().is_pending(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_read, true);
-        assert_eq!(sender.msgs.len(), 1);
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
 
-        let (_, buf) = sender.take();
-        let buf = &buf[..];
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
 
         let expected = concat!(
             "T123:2:id,1:1,3:ext,15:5:multi,4:true!}6:method,3:GET,3:ur",
@@ -3636,53 +3706,36 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        let ids = [zhttppacket::Id {
-            id: b"1",
-            seq: None,
-        }];
+        let msg = concat!(
+            "T100:2:id,1:1,4:code,3:200#6:reason,2:OK,7:h",
+            "eaders,34:30:12:Content-Type,10:text/plain,]]4:body,6:hell",
+            "o\n,}",
+        );
 
-        let rdata = zhttppacket::ResponseData {
-            credits: 0,
-            more: false,
-            code: 200,
-            reason: "OK",
-            headers: &[zhttppacket::Header {
-                name: "Content-Type",
-                value: b"text/plain",
-            }],
-            content_type: None,
-            body: b"hello\n",
-        };
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let zresp = zhttppacket::Response {
-            from: b"",
-            ids: &ids,
-            multi: false,
-            ptype: zhttppacket::ResponsePacket::Data(rdata),
-            ptype_str: "",
-        };
+        let scratch = arena::Rc::new(
+            RefCell::new(zhttppacket::ResponseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
-        c.apply_zhttp_response(&zresp).unwrap();
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_write, true);
+        assert_eq!(executor.step().is_pending(), true);
 
-        sock.allow_write(1024);
+        let data = sock.borrow_mut().take_writable();
+        assert_eq!(data.is_empty(), true);
 
-        c.process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        sock.borrow_mut().allow_write(1024);
 
-        assert_eq!(c.state(), ServerState::Ready);
+        assert_eq!(executor.step().is_pending(), true);
 
-        c.start("1");
-
-        assert_eq!(c.state(), ServerState::Connected);
-
-        let data = sock.take_writable();
+        let data = sock.borrow_mut().take_writable();
 
         let expected = concat!(
             "HTTP/1.1 200 OK\r\n",
@@ -3694,26 +3747,13 @@ mod tests {
 
         assert_eq!(str::from_utf8(&data).unwrap(), expected);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_write, true);
-        assert_eq!(sender.msgs.len(), 0);
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        sender.allow(1);
-
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
-
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_read, true);
-        assert_eq!(sender.msgs.len(), 1);
-
-        let (_, buf) = sender.take();
-        let buf = &buf[..];
+        let buf = &msg[..];
 
         let expected = concat!(
             "T123:2:id,1:1,3:ext,15:5:multi,4:true!}6:method,3:GET,3:ur",
@@ -3723,40 +3763,29 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        let ids = [zhttppacket::Id {
-            id: b"1",
-            seq: None,
-        }];
+        let msg = concat!(
+            "T100:2:id,1:1,4:code,3:200#6:reason,2:OK,7:h",
+            "eaders,34:30:12:Content-Type,10:text/plain,]]4:body,6:hell",
+            "o\n,}",
+        );
 
-        let rdata = zhttppacket::ResponseData {
-            credits: 0,
-            more: false,
-            code: 200,
-            reason: "OK",
-            headers: &[zhttppacket::Header {
-                name: "Content-Type",
-                value: b"text/plain",
-            }],
-            content_type: None,
-            body: b"hello\n",
-        };
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let zresp = zhttppacket::Response {
-            from: b"",
-            ids: &ids,
-            multi: false,
-            ptype: zhttppacket::ResponsePacket::Data(rdata),
-            ptype_str: "",
-        };
+        let scratch = arena::Rc::new(
+            RefCell::new(zhttppacket::ResponseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
-        c.apply_zhttp_response(&zresp).unwrap();
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        c.process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
 
-        assert_eq!(c.state(), ServerState::Ready);
+        assert_eq!(executor.step().is_pending(), true);
 
-        let data = sock.take_writable();
+        let data = sock.borrow_mut().take_writable();
 
         let expected = concat!(
             "HTTP/1.1 200 OK\r\n",
@@ -3771,34 +3800,40 @@ mod tests {
 
     #[test]
     fn server_req_secure() {
-        let mut sock = FakeSock::new();
-        let mut sender = FakeSender::new();
+        let reactor = Reactor::new(100);
 
-        let buffer_size = 1024;
-        let rb_tmp = Rc::new(TmpBuffer::new(1024));
-        let mut packet_buf = vec![0; 2048];
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let resp_mem = Rc::new(arena::RcMemory::new(1));
 
-        let timeout = Duration::from_millis(5_000);
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
 
-        let mut c = ServerReqConnection::new(
-            Instant::now(),
-            None,
-            true,
-            buffer_size,
-            buffer_size,
-            &rb_tmp,
-            timeout,
-        );
-        c.start("1");
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
 
-        assert_eq!(c.state(), ServerState::Connected);
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+            req_fut(token, sock, true, s_from_conn, r_to_conn)
+        };
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_read, true);
+        let mut executor = StepExecutor::new(reactor, fut);
+
+        assert_eq!(executor.step().is_pending(), true);
+
+        // no messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // fill the connection's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
 
         let req_data = concat!(
             "GET /path HTTP/1.1\r\n",
@@ -3808,29 +3843,28 @@ mod tests {
         )
         .as_bytes();
 
-        sock.add_readable(req_data);
-        c.set_sock_readable();
+        sock.borrow_mut().add_readable(req_data);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // connection won't be able to send a message yet
+        assert_eq!(executor.step().is_pending(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_write, true);
-        assert_eq!(sender.msgs.len(), 0);
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
 
-        sender.allow(1);
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        // now connection will be able to send a message
+        assert_eq!(executor.step().is_pending(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.zhttp_read, true);
-        assert_eq!(sender.msgs.len(), 1);
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
 
-        let (_, buf) = sender.take();
-        let buf = &buf[..];
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
 
         let expected = concat!(
             "T149:2:id,1:1,3:ext,15:5:multi,4:true!}6:method,3:GET,3:ur",
@@ -3840,49 +3874,39 @@ mod tests {
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
 
-        let ids = [zhttppacket::Id {
-            id: b"1",
-            seq: None,
-        }];
+        let msg = concat!(
+            "T100:2:id,1:1,4:code,3:200#6:reason,2:OK,7:h",
+            "eaders,34:30:12:Content-Type,10:text/plain,]]4:body,6:hell",
+            "o\n,}",
+        );
 
-        let rdata = zhttppacket::ResponseData {
-            credits: 0,
-            more: false,
-            code: 200,
-            reason: "OK",
-            headers: &[zhttppacket::Header {
-                name: "Content-Type",
-                value: b"text/plain",
-            }],
-            content_type: None,
-            body: b"hello\n",
-        };
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let zresp = zhttppacket::Response {
-            from: b"",
-            ids: &ids,
-            multi: false,
-            ptype: zhttppacket::ResponsePacket::Data(rdata),
-            ptype_str: "",
-        };
+        let scratch = arena::Rc::new(
+            RefCell::new(zhttppacket::ResponseScratch::new()),
+            &scratch_mem,
+        )
+        .unwrap();
 
-        c.apply_zhttp_response(&zresp).unwrap();
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        let want = c
-            .process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
 
-        assert_eq!(c.state(), ServerState::Connected);
-        assert_eq!(want.sock_write, true);
+        assert_eq!(executor.step().is_pending(), true);
 
-        sock.allow_write(1024);
+        let data = sock.borrow_mut().take_writable();
+        assert_eq!(data.is_empty(), true);
 
-        c.process(Instant::now(), &mut sock, &mut sender, &mut packet_buf)
-            .unwrap();
+        sock.borrow_mut().allow_write(1024);
 
-        assert_eq!(c.state(), ServerState::Finished);
+        match executor.step() {
+            Poll::Ready(Ok(())) => {}
+            _ => panic!("unexpected state"),
+        }
 
-        let data = sock.take_writable();
+        let data = sock.borrow_mut().take_writable();
 
         let expected = concat!(
             "HTTP/1.1 200 OK\r\n",

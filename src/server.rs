@@ -26,8 +26,8 @@ use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
     event_wait, select_2, select_3, select_4, select_6, select_option, AsyncLocalReceiver,
-    AsyncLocalSender, AsyncReceiver, CancellationSender, CancellationToken, Select2, Select3,
-    Select4, Select6, Timeout,
+    AsyncLocalSender, AsyncReceiver, AsyncTcpStream, AsyncTlsStream, CancellationSender,
+    CancellationToken, Select2, Select3, Select4, Select6, Timeout,
 };
 use crate::list;
 use crate::listener::Listener;
@@ -274,6 +274,18 @@ impl Identify for TcpStream {
 impl Identify for TlsStream {
     fn set_id(&mut self, id: &str) {
         TlsStream::set_id(self, id);
+    }
+}
+
+impl Identify for AsyncTcpStream {
+    fn set_id(&mut self, _id: &str) {
+        // do nothing
+    }
+}
+
+impl Identify for AsyncTlsStream {
+    fn set_id(&mut self, id: &str) {
+        self.inner().set_id(id);
     }
 }
 
@@ -1683,7 +1695,7 @@ impl Worker {
         worker_id: usize,
         ckey: usize,
         cid: ArrayString<[u8; 32]>,
-        mut stream: Stream,
+        stream: Stream,
         peer_addr: SocketAddr,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
         conns: Rc<Connections>,
@@ -1691,40 +1703,28 @@ impl Worker {
         req_opts: ConnectionReqOpts,
     ) {
         let done = AsyncLocalSender::new(done);
+        let zreceiver = AsyncLocalReceiver::new(zreceiver);
 
         let mut cid_provider = ConnectionCid::new(worker_id, ckey, &conns);
 
         debug!("worker {}: task started: connection-{}", worker_id, ckey);
 
-        let reactor = reactor::Reactor::current().unwrap();
-
-        let stream_registration = reactor
-            .register_io(
-                stream.get_tcp(),
-                mio::Interest::READABLE | mio::Interest::WRITABLE,
-            )
-            .unwrap();
-
-        match &mut stream {
+        match stream {
             Stream::Plain(stream) => {
                 server_req_connection(
                     token,
                     cid,
                     &mut cid_provider,
-                    stream,
-                    &stream_registration,
-                    peer_addr,
+                    AsyncTcpStream::new(stream),
+                    Some(peer_addr),
                     false,
                     opts.buffer_size,
                     req_opts.body_buffer_size,
                     &opts.rb_tmp,
                     opts.packet_buf,
-                    opts.tmp_buf,
                     opts.timeout,
-                    &opts.instance_id,
-                    req_opts.sender,
+                    AsyncLocalSender::new(req_opts.sender),
                     &zreceiver,
-                    &reactor,
                 )
                 .await
             }
@@ -1733,28 +1733,27 @@ impl Worker {
                     token,
                     cid,
                     &mut cid_provider,
-                    stream,
-                    &stream_registration,
-                    peer_addr,
+                    AsyncTlsStream::new(stream),
+                    Some(peer_addr),
                     true,
                     opts.buffer_size,
                     req_opts.body_buffer_size,
                     &opts.rb_tmp,
                     opts.packet_buf,
-                    opts.tmp_buf,
                     opts.timeout,
-                    &opts.instance_id,
-                    req_opts.sender,
+                    AsyncLocalSender::new(req_opts.sender),
                     &zreceiver,
-                    &reactor,
                 )
                 .await
             }
         }
 
-        stream_registration.deregister_io(stream.get_tcp()).unwrap();
-
-        done.send(ConnectionDone { ckey, zreceiver }).await.unwrap();
+        done.send(ConnectionDone {
+            ckey,
+            zreceiver: zreceiver.into_inner(),
+        })
+        .await
+        .unwrap();
 
         debug!("worker {}: task stopped: connection-{}", worker_id, ckey);
     }
