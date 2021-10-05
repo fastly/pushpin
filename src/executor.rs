@@ -16,10 +16,12 @@
 
 use crate::list;
 use crate::waker;
+use log::debug;
 use slab::Slab;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
+use std::mem;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 use std::task::{Context, Poll, Waker};
@@ -282,6 +284,8 @@ impl Executor {
     where
         F: Future<Output = ()> + 'static,
     {
+        debug!("spawning future with size {}", mem::size_of::<F>());
+
         self.tasks.add(fut)
     }
 
