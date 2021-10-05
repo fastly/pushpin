@@ -577,6 +577,10 @@ impl AsyncTlsStream {
             stream: s,
         }
     }
+
+    pub fn inner(&mut self) -> &mut TlsStream {
+        &mut self.stream
+    }
 }
 
 impl Drop for AsyncTlsStream {
