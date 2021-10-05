@@ -1338,26 +1338,52 @@ impl Worker {
                 }
             };
 
-            if spawner
-                .spawn(Self::connection_task(
-                    r_cstop,
-                    s_cdone,
-                    id,
-                    ckey,
-                    conn_id,
-                    stream,
-                    peer_addr,
-                    zreceiver,
-                    conns.clone(),
-                    opts.clone(),
-                    mode_opts,
-                    shared,
-                ))
-                .is_err()
-            {
-                // this should never happen. we only accept a connection if
-                // we know we can spawn
-                panic!("failed to spawn connection_task");
+            match mode_opts {
+                ConnectionModeOpts::Req(req_opts) => {
+                    if spawner
+                        .spawn(Self::req_connection_task(
+                            r_cstop,
+                            s_cdone,
+                            id,
+                            ckey,
+                            conn_id,
+                            stream,
+                            peer_addr,
+                            zreceiver,
+                            conns.clone(),
+                            opts.clone(),
+                            req_opts,
+                        ))
+                        .is_err()
+                    {
+                        // this should never happen. we only accept a connection if
+                        // we know we can spawn
+                        panic!("failed to spawn req_connection_task");
+                    }
+                }
+                ConnectionModeOpts::Stream(stream_opts) => {
+                    if spawner
+                        .spawn(Self::stream_connection_task(
+                            r_cstop,
+                            s_cdone,
+                            id,
+                            ckey,
+                            conn_id,
+                            stream,
+                            peer_addr,
+                            zreceiver,
+                            conns.clone(),
+                            opts.clone(),
+                            stream_opts,
+                            shared.unwrap(),
+                        ))
+                        .is_err()
+                    {
+                        // this should never happen. we only accept a connection if
+                        // we know we can spawn
+                        panic!("failed to spawn stream_connection_task");
+                    }
+                }
             }
         }
 
@@ -1651,8 +1677,8 @@ impl Worker {
         debug!("worker {}: task stopped: stream_handle", id);
     }
 
-    async fn connection_task(
-        stop: CancellationToken,
+    async fn req_connection_task(
+        token: CancellationToken,
         done: channel::LocalSender<ConnectionDone>,
         worker_id: usize,
         ckey: usize,
@@ -1662,8 +1688,7 @@ impl Worker {
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
-        mode_opts: ConnectionModeOpts,
-        shared: Option<arena::Rc<ServerStreamSharedData>>,
+        req_opts: ConnectionReqOpts,
     ) {
         let done = AsyncLocalSender::new(done);
 
@@ -1680,106 +1705,137 @@ impl Worker {
             )
             .unwrap();
 
-        match mode_opts {
-            ConnectionModeOpts::Req(req_opts) => match &mut stream {
-                Stream::Plain(stream) => {
-                    server_req_connection(
-                        stop,
-                        cid,
-                        &mut cid_provider,
-                        stream,
-                        &stream_registration,
-                        peer_addr,
-                        false,
-                        opts.buffer_size,
-                        req_opts.body_buffer_size,
-                        &opts.rb_tmp,
-                        opts.packet_buf,
-                        opts.tmp_buf,
-                        opts.timeout,
-                        &opts.instance_id,
-                        req_opts.sender,
-                        &zreceiver,
-                        &reactor,
-                    )
-                    .await
-                }
-                Stream::Tls(stream) => {
-                    server_req_connection(
-                        stop,
-                        cid,
-                        &mut cid_provider,
-                        stream,
-                        &stream_registration,
-                        peer_addr,
-                        true,
-                        opts.buffer_size,
-                        req_opts.body_buffer_size,
-                        &opts.rb_tmp,
-                        opts.packet_buf,
-                        opts.tmp_buf,
-                        opts.timeout,
-                        &opts.instance_id,
-                        req_opts.sender,
-                        &zreceiver,
-                        &reactor,
-                    )
-                    .await
-                }
-            },
-            ConnectionModeOpts::Stream(stream_opts) => {
-                let shared = shared.unwrap();
+        match &mut stream {
+            Stream::Plain(stream) => {
+                server_req_connection(
+                    token,
+                    cid,
+                    &mut cid_provider,
+                    stream,
+                    &stream_registration,
+                    peer_addr,
+                    false,
+                    opts.buffer_size,
+                    req_opts.body_buffer_size,
+                    &opts.rb_tmp,
+                    opts.packet_buf,
+                    opts.tmp_buf,
+                    opts.timeout,
+                    &opts.instance_id,
+                    req_opts.sender,
+                    &zreceiver,
+                    &reactor,
+                )
+                .await
+            }
+            Stream::Tls(stream) => {
+                server_req_connection(
+                    token,
+                    cid,
+                    &mut cid_provider,
+                    stream,
+                    &stream_registration,
+                    peer_addr,
+                    true,
+                    opts.buffer_size,
+                    req_opts.body_buffer_size,
+                    &opts.rb_tmp,
+                    opts.packet_buf,
+                    opts.tmp_buf,
+                    opts.timeout,
+                    &opts.instance_id,
+                    req_opts.sender,
+                    &zreceiver,
+                    &reactor,
+                )
+                .await
+            }
+        }
 
-                match &mut stream {
-                    Stream::Plain(stream) => {
-                        server_stream_connection(
-                            stop,
-                            cid,
-                            &mut cid_provider,
-                            stream,
-                            &stream_registration,
-                            peer_addr,
-                            false,
-                            opts.buffer_size,
-                            stream_opts.messages_max,
-                            &opts.rb_tmp,
-                            opts.packet_buf,
-                            opts.tmp_buf,
-                            opts.timeout,
-                            &opts.instance_id,
-                            stream_opts.sender,
-                            stream_opts.sender_stream,
-                            &zreceiver,
-                            shared,
-                            &reactor,
-                        )
-                        .await
-                    }
-                    Stream::Tls(stream) => {
-                        server_stream_connection(
-                            stop,
-                            cid,
-                            &mut cid_provider,
-                            stream,
-                            &stream_registration,
-                            peer_addr,
-                            true,
-                            opts.buffer_size,
-                            stream_opts.messages_max,
-                            &opts.rb_tmp,
-                            opts.packet_buf,
-                            opts.tmp_buf,
-                            opts.timeout,
-                            &opts.instance_id,
-                            stream_opts.sender,
-                            stream_opts.sender_stream,
-                            &zreceiver,
-                            shared,
-                            &reactor,
-                        )
-                        .await
-                    }
-                }
+        stream_registration.deregister_io(stream.get_tcp()).unwrap();
+
+        done.send(ConnectionDone { ckey, zreceiver }).await.unwrap();
+
+        debug!("worker {}: task stopped: connection-{}", worker_id, ckey);
+    }
+
+    async fn stream_connection_task(
+        token: CancellationToken,
+        done: channel::LocalSender<ConnectionDone>,
+        worker_id: usize,
+        ckey: usize,
+        cid: ArrayString<[u8; 32]>,
+        mut stream: Stream,
+        peer_addr: SocketAddr,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        conns: Rc<Connections>,
+        opts: ConnectionOpts,
+        stream_opts: ConnectionStreamOpts,
+        shared: arena::Rc<ServerStreamSharedData>,
+    ) {
+        let done = AsyncLocalSender::new(done);
+
+        let mut cid_provider = ConnectionCid::new(worker_id, ckey, &conns);
+
+        debug!("worker {}: task started: connection-{}", worker_id, ckey);
+
+        let reactor = reactor::Reactor::current().unwrap();
+
+        let stream_registration = reactor
+            .register_io(
+                stream.get_tcp(),
+                mio::Interest::READABLE | mio::Interest::WRITABLE,
+            )
+            .unwrap();
+
+        match &mut stream {
+            Stream::Plain(stream) => {
+                server_stream_connection(
+                    token,
+                    cid,
+                    &mut cid_provider,
+                    stream,
+                    &stream_registration,
+                    peer_addr,
+                    false,
+                    opts.buffer_size,
+                    stream_opts.messages_max,
+                    &opts.rb_tmp,
+                    opts.packet_buf,
+                    opts.tmp_buf,
+                    opts.timeout,
+                    &opts.instance_id,
+                    stream_opts.sender,
+                    stream_opts.sender_stream,
+                    &zreceiver,
+                    shared,
+                    &reactor,
+                )
+                .await
+            }
+            Stream::Tls(stream) => {
+                server_stream_connection(
+                    token,
+                    cid,
+                    &mut cid_provider,
+                    stream,
+                    &stream_registration,
+                    peer_addr,
+                    true,
+                    opts.buffer_size,
+                    stream_opts.messages_max,
+                    &opts.rb_tmp,
+                    opts.packet_buf,
+                    opts.tmp_buf,
+                    opts.timeout,
+                    &opts.instance_id,
+                    stream_opts.sender,
+                    stream_opts.sender_stream,
+                    &zreceiver,
+                    shared,
+                    &reactor,
+                )
+                .await
             }
         }
 
