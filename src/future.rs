@@ -615,6 +615,13 @@ impl Timeout {
     pub fn set_deadline(&self, deadline: Instant) {
         let inner = &mut *self.inner.borrow_mut();
 
+        if let Some(evented) = &inner.evented {
+            if evented.expires() == deadline {
+                // no change
+                return;
+            }
+        }
+
         // destroy previous timer registration before creating a new one
         inner.evented = None;
 
