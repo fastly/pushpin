@@ -355,6 +355,8 @@ impl<T> LocalSender<T> {
         }
     }
 
+    // NOTE: if the receiver is dropped while there are multiple senders,
+    // only one of the senders will be notified of the disconnect
     pub fn try_clone(
         &self,
         memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
@@ -367,6 +369,25 @@ impl<T> LocalSender<T> {
             channel: self.channel.clone(),
             key,
             write_registration: write_reg,
+        })
+    }
+
+    // returns error if a receiver already exists
+    pub fn make_receiver(
+        &self,
+        memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
+    ) -> Result<LocalReceiver<T>, ()> {
+        if self.channel.read_set_readiness.borrow().is_some() {
+            return Err(());
+        }
+
+        let (read_reg, read_sr) = event::LocalRegistration::new(memory);
+
+        *self.channel.read_set_readiness.borrow_mut() = Some(read_sr);
+
+        Ok(LocalReceiver {
+            channel: self.channel.clone(),
+            read_registration: read_reg,
         })
     }
 }
@@ -416,6 +437,8 @@ impl<T> LocalReceiver<T> {
 impl<T> Drop for LocalReceiver<T> {
     fn drop(&mut self) {
         *self.channel.read_set_readiness.borrow_mut() = None;
+
+        self.channel.notify_one_sender();
     }
 }
 

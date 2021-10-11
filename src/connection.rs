@@ -2329,7 +2329,7 @@ pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown
     instance_id: &str,
     zsender: channel::LocalSender<zmq::Message>,
     zsender_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
-    zreceiver: &channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: arena::Rc<ServerStreamSharedData>,
     reactor: &Reactor,
 ) {
@@ -2358,7 +2358,7 @@ pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown
         rb_tmp,
         timeout,
         StreamLocalSenders::new(zsender, zsender_stream),
-        zreceiver,
+        &zreceiver,
         shared,
     );
 
@@ -3000,7 +3000,7 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     packet_buf: Rc<RefCell<Vec<u8>>>,
     timeout: Duration,
     zsender: AsyncLocalSender<zmq::Message>,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) {
     match server_req_connection_inner(
         token,
@@ -3015,7 +3015,7 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
         packet_buf,
         timeout,
         zsender,
-        zreceiver,
+        &zreceiver,
     )
     .await
     {

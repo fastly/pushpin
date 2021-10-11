@@ -458,7 +458,6 @@ impl<T> ChannelPool<T> {
 
 struct ConnectionDone {
     ckey: usize,
-    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 }
 
 struct ConnectionItem {
@@ -1230,9 +1229,12 @@ impl Worker {
                         Ok(done) => {
                             let zreceiver_sender = conns.remove(done.ckey);
 
-                            done.zreceiver.clear();
+                            let zreceiver = zreceiver_sender
+                                .make_receiver(&reactor.local_registration_memory())
+                                .unwrap();
+                            zreceiver.clear();
 
-                            zreceiver_pool.push((zreceiver_sender, done.zreceiver));
+                            zreceiver_pool.push((zreceiver_sender, zreceiver));
 
                             continue;
                         }
@@ -1723,7 +1725,7 @@ impl Worker {
                     opts.packet_buf,
                     opts.timeout,
                     AsyncLocalSender::new(req_opts.sender),
-                    &zreceiver,
+                    zreceiver,
                 )
                 .await
             }
@@ -1741,18 +1743,13 @@ impl Worker {
                     opts.packet_buf,
                     opts.timeout,
                     AsyncLocalSender::new(req_opts.sender),
-                    &zreceiver,
+                    zreceiver,
                 )
                 .await
             }
         }
 
-        done.send(ConnectionDone {
-            ckey,
-            zreceiver: zreceiver.into_inner(),
-        })
-        .await
-        .unwrap();
+        done.send(ConnectionDone { ckey }).await.unwrap();
 
         debug!("worker {}: task stopped: connection-{}", worker_id, ckey);
     }
@@ -1805,7 +1802,7 @@ impl Worker {
                     &opts.instance_id,
                     stream_opts.sender,
                     stream_opts.sender_stream,
-                    &zreceiver,
+                    zreceiver,
                     shared,
                     &reactor,
                 )
@@ -1829,7 +1826,7 @@ impl Worker {
                     &opts.instance_id,
                     stream_opts.sender,
                     stream_opts.sender_stream,
-                    &zreceiver,
+                    zreceiver,
                     shared,
                     &reactor,
                 )
@@ -1839,7 +1836,7 @@ impl Worker {
 
         stream_registration.deregister_io(stream.get_tcp()).unwrap();
 
-        done.send(ConnectionDone { ckey, zreceiver }).await.unwrap();
+        done.send(ConnectionDone { ckey }).await.unwrap();
 
         debug!("worker {}: task stopped: connection-{}", worker_id, ckey);
     }
