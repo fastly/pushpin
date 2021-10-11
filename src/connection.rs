@@ -2098,9 +2098,16 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
         packet_buf: &mut [u8],
         tmp_buf: &mut [u8],
     ) -> bool {
-        while let Ok((resp, id_index)) = self.zreceiver.try_recv() {
+        while let Ok((zresp, id_index)) = self.zreceiver.try_recv() {
+            let zresp = zresp.get().get();
+
+            if zresp.ids[id_index].id != self.id.as_bytes() {
+                // skip messages addressed to old ids
+                continue;
+            }
+
             // if error, keep going
-            let _ = self.handle_packet(now, resp.get().get(), id_index);
+            let _ = self.handle_packet(now, zresp, id_index);
         }
 
         match self.conn.process(
@@ -2827,14 +2834,19 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         // receive message
 
         let zresp = loop {
-            let zresp = match zreceiver.recv().await {
-                Ok((zresp, _)) => zresp,
+            let (zresp, id_index) = match zreceiver.recv().await {
+                Ok(ret) => ret,
                 Err(mpsc::RecvError) => {
                     return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into())
                 }
             };
 
             let zresp_ref = zresp.get().get();
+
+            if zresp_ref.ids[id_index].id != id.as_bytes() {
+                // skip messages addressed to old ids
+                continue;
+            }
 
             if !zresp_ref.ptype_str.is_empty() {
                 debug!("conn {}: handle packet: {}", id, zresp_ref.ptype_str);
