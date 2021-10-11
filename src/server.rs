@@ -458,14 +458,13 @@ impl<T> ChannelPool<T> {
 
 struct ConnectionDone {
     ckey: usize,
-    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 }
 
 struct ConnectionItem {
     id: ArrayString<[u8; 32]>,
     stop: Option<CancellationSender>,
-    zreceiver_sender:
-        Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>>,
+    zreceiver_sender: Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>>,
     shared: Option<arena::Rc<ServerStreamSharedData>>,
     batch_key: Option<BatchKey>,
 }
@@ -521,7 +520,7 @@ impl Connections {
         &self,
         worker_id: usize,
         stop: CancellationSender,
-        zreceiver_sender: AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        zreceiver_sender: AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         shared: Option<arena::Rc<ServerStreamSharedData>>,
     ) -> Result<(usize, ArrayString<[u8; 32]>), ()> {
         let items = &mut *self.items.borrow_mut();
@@ -551,7 +550,7 @@ impl Connections {
     fn remove(
         &self,
         ckey: usize,
-    ) -> channel::LocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)> {
+    ) -> channel::LocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)> {
         let nkey = ckey;
 
         let items = &mut *self.items.borrow_mut();
@@ -603,7 +602,7 @@ impl Connections {
     fn take_zreceiver_sender(
         &self,
         ckey: usize,
-    ) -> Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>> {
+    ) -> Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>> {
         let nkey = ckey;
 
         let items = &mut *self.items.borrow_mut();
@@ -615,7 +614,7 @@ impl Connections {
     fn set_zreceiver_sender(
         &self,
         ckey: usize,
-        sender: AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        sender: AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     ) {
         let nkey = ckey;
 
@@ -1185,7 +1184,7 @@ impl Worker {
         acceptor_tls: Vec<(bool, Option<String>)>,
         identities: Arc<IdentityCache>,
         spawner: Spawner,
-        zreceiver_pool: Rc<ChannelPool<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>>,
+        zreceiver_pool: Rc<ChannelPool<(arena::Rc<zhttppacket::OwnedResponse>, usize)>>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         mode_opts: ConnectionModeOpts,
@@ -1483,7 +1482,7 @@ impl Worker {
 
                         let mut count = 0;
 
-                        for id in zresp.get().get().ids {
+                        for (i, id) in zresp.get().get().ids.iter().enumerate() {
                             let key = match get_key(&id.id) {
                                 Ok(key) => key,
                                 Err(_) => continue,
@@ -1497,7 +1496,7 @@ impl Worker {
                             if let Some(sender) = conns.take_zreceiver_sender(key) {
                                 match select_2(
                                     stop.recv(),
-                                    sender.send((arena::Rc::clone(&zresp), None)),
+                                    sender.send((arena::Rc::clone(&zresp), i)),
                                 )
                                 .await
                                 {
@@ -1643,7 +1642,7 @@ impl Worker {
 
                             let mut count = 0;
 
-                            for id in zresp.get().get().ids {
+                            for (i, id) in zresp.get().get().ids.iter().enumerate() {
                                 let key = match get_key(&id.id) {
                                     Ok(key) => key,
                                     Err(_) => continue,
@@ -1657,7 +1656,7 @@ impl Worker {
                                 if let Some(sender) = conns.take_zreceiver_sender(key) {
                                     match select_2(
                                         stop.recv(),
-                                        sender.send((arena::Rc::clone(&zresp), id.seq)),
+                                        sender.send((arena::Rc::clone(&zresp), i)),
                                     )
                                     .await
                                     {
@@ -1697,7 +1696,7 @@ impl Worker {
         cid: ArrayString<[u8; 32]>,
         stream: Stream,
         peer_addr: SocketAddr,
-        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         req_opts: ConnectionReqOpts,
@@ -1766,7 +1765,7 @@ impl Worker {
         cid: ArrayString<[u8; 32]>,
         mut stream: Stream,
         peer_addr: SocketAddr,
-        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         stream_opts: ConnectionStreamOpts,

@@ -1566,13 +1566,13 @@ impl ServerStreamConnection {
         &mut self,
         now: Instant,
         zresp: &zhttppacket::Response,
-        seq: Option<u32>,
+        id_index: usize,
     ) -> Result<(), ServerError> {
         if zresp.ids.len() == 0 {
             return Err(ServerError::BadMessage);
         }
 
-        if let Some(seq) = seq {
+        if let Some(seq) = zresp.ids[id_index].seq {
             if seq != self.d.in_seq {
                 debug!(
                     "conn {}: bad seq (expected {}, got {}), skipping",
@@ -2012,7 +2012,7 @@ struct Connection<'a, S> {
     senders: StreamLocalSenders,
     want: Want,
     timer: Option<Instant>,
-    zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 }
 
 impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
@@ -2026,7 +2026,7 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
         rb_tmp: &Rc<TmpBuffer>,
         timeout: Duration,
         senders: StreamLocalSenders,
-        zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        zreceiver: &'a channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         shared: arena::Rc<ServerStreamSharedData>,
     ) -> Self {
         Self {
@@ -2075,7 +2075,7 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
         &mut self,
         now: Instant,
         zresp: &zhttppacket::Response,
-        seq: Option<u32>,
+        id_index: usize,
     ) -> Result<(), ()> {
         if !zresp.ptype_str.is_empty() {
             debug!("conn {}: handle packet: {}", self.id, zresp.ptype_str);
@@ -2083,7 +2083,7 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
             debug!("conn {}: handle packet: (data)", self.id);
         }
 
-        if let Err(e) = self.conn.apply_zhttp_response(now, zresp, seq) {
+        if let Err(e) = self.conn.apply_zhttp_response(now, zresp, id_index) {
             debug!("conn {}: apply error {:?}", self.id, e);
             return Err(());
         }
@@ -2098,9 +2098,9 @@ impl<'a, S: Read + Write + Shutdown + Identify> Connection<'a, S> {
         packet_buf: &mut [u8],
         tmp_buf: &mut [u8],
     ) -> bool {
-        while let Ok((resp, seq)) = self.zreceiver.try_recv() {
+        while let Ok((resp, id_index)) = self.zreceiver.try_recv() {
             // if error, keep going
-            let _ = self.handle_packet(now, resp.get().get(), seq);
+            let _ = self.handle_packet(now, resp.get().get(), id_index);
         }
 
         match self.conn.process(
@@ -2322,7 +2322,7 @@ pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown
     instance_id: &str,
     zsender: channel::LocalSender<zmq::Message>,
     zsender_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
-    zreceiver: &channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: &channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: arena::Rc<ServerStreamSharedData>,
     reactor: &Reactor,
 ) {
@@ -2709,7 +2709,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     body_buf: &mut Buffer,
     packet_buf: &RefCell<Vec<u8>>,
     zsender: &AsyncLocalSender<zmq::Message>,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<bool, ServerError> {
     let handler = RequestHandler::new(stream, buf1, buf2);
 
@@ -2919,7 +2919,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     packet_buf: Rc<RefCell<Vec<u8>>>,
     timeout: Duration,
     zsender: AsyncLocalSender<zmq::Message>,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<(), ServerError> {
     let reactor = Reactor::current().unwrap();
 
@@ -2988,7 +2988,7 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     packet_buf: Rc<RefCell<Vec<u8>>>,
     timeout: Duration,
     zsender: AsyncLocalSender<zmq::Message>,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) {
     match server_req_connection_inner(
         token,
@@ -3316,7 +3316,7 @@ mod tests {
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
-        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, Option<u32>)>,
+        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     ) -> Result<(), ServerError> {
         let mut cid = ArrayString::from_str("1").unwrap();
         let mut cid_provider = SimpleCidProvider { cid };
@@ -3444,7 +3444,7 @@ mod tests {
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
+        assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
         assert_eq!(executor.step().is_pending(), true);
 
@@ -3569,7 +3569,7 @@ mod tests {
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
+        assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
         assert_eq!(executor.step().is_pending(), true);
 
@@ -3724,7 +3724,7 @@ mod tests {
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
+        assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
         assert_eq!(executor.step().is_pending(), true);
 
@@ -3781,7 +3781,7 @@ mod tests {
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
+        assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
         assert_eq!(executor.step().is_pending(), true);
 
@@ -3892,7 +3892,7 @@ mod tests {
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
 
-        assert_eq!(s_to_conn.try_send((resp, None)).is_ok(), true);
+        assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
 
         assert_eq!(executor.step().is_pending(), true);
 
@@ -4043,8 +4043,7 @@ mod tests {
             ptype_str: "",
         };
 
-        c.apply_zhttp_response(Instant::now(), &zresp, ids[0].seq)
-            .unwrap();
+        c.apply_zhttp_response(Instant::now(), &zresp, 0).unwrap();
 
         let want = c
             .process(
@@ -4210,8 +4209,7 @@ mod tests {
             ptype_str: "credit",
         };
 
-        c.apply_zhttp_response(Instant::now(), &zresp, ids[0].seq)
-            .unwrap();
+        c.apply_zhttp_response(Instant::now(), &zresp, 0).unwrap();
 
         let want = c
             .process(
@@ -4266,8 +4264,7 @@ mod tests {
             ptype_str: "",
         };
 
-        c.apply_zhttp_response(Instant::now(), &zresp, ids[0].seq)
-            .unwrap();
+        c.apply_zhttp_response(Instant::now(), &zresp, 0).unwrap();
 
         let want = c
             .process(
@@ -4438,8 +4435,7 @@ mod tests {
             ptype_str: "",
         };
 
-        c.apply_zhttp_response(Instant::now(), &zresp, ids[0].seq)
-            .unwrap();
+        c.apply_zhttp_response(Instant::now(), &zresp, 0).unwrap();
 
         let ids = [zhttppacket::Id {
             id: b"1",
@@ -4464,8 +4460,7 @@ mod tests {
             ptype_str: "",
         };
 
-        c.apply_zhttp_response(Instant::now(), &zresp, ids[0].seq)
-            .unwrap();
+        c.apply_zhttp_response(Instant::now(), &zresp, 0).unwrap();
 
         let want = c
             .process(
@@ -4653,8 +4648,7 @@ mod tests {
             ptype_str: "",
         };
 
-        c.apply_zhttp_response(Instant::now(), &zresp, ids[0].seq)
-            .unwrap();
+        c.apply_zhttp_response(Instant::now(), &zresp, 0).unwrap();
 
         let want = c
             .process(
