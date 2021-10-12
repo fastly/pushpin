@@ -1496,22 +1496,26 @@ impl Worker {
                             }
 
                             if let Some(sender) = conns.take_zreceiver_sender(key) {
+                                let mut done = false;
+
                                 match select_2(
                                     stop.recv(),
                                     sender.send((arena::Rc::clone(&zresp), i)),
                                 )
                                 .await
                                 {
-                                    Select2::R1(_) => break 'main,
+                                    Select2::R1(_) => done = true,
                                     Select2::R2(result) => match result {
                                         Ok(()) => count += 1,
-                                        Err(_) => {}
+                                        Err(mpsc::SendError(_)) => {} // conn task ended
                                     },
                                 }
 
-                                // need to re-check for validity after await
-                                if conns.check_id(key, id.id) {
-                                    conns.set_zreceiver_sender(key, sender);
+                                // always put back the sender
+                                conns.set_zreceiver_sender(key, sender);
+
+                                if done {
+                                    break 'main;
                                 }
                             }
                         }
@@ -1656,22 +1660,26 @@ impl Worker {
                                 }
 
                                 if let Some(sender) = conns.take_zreceiver_sender(key) {
+                                    let mut done = false;
+
                                     match select_2(
                                         stop.recv(),
                                         sender.send((arena::Rc::clone(&zresp), i)),
                                     )
                                     .await
                                     {
-                                        Select2::R1(_) => break 'main,
+                                        Select2::R1(_) => done = true,
                                         Select2::R2(result) => match result {
                                             Ok(()) => count += 1,
-                                            Err(_) => {}
+                                            Err(mpsc::SendError(_)) => {} // conn task ended
                                         },
                                     }
 
-                                    // need to re-check for validity after await
-                                    if conns.check_id(key, id.id) {
-                                        conns.set_zreceiver_sender(key, sender);
+                                    // always put back the sender
+                                    conns.set_zreceiver_sender(key, sender);
+
+                                    if done {
+                                        break 'main;
                                     }
                                 }
                             }
