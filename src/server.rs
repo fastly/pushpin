@@ -25,9 +25,9 @@ use crate::connection::{
 use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
-    event_wait, select_2, select_3, select_4, select_6, select_option, AsyncLocalReceiver,
+    event_wait, select_2, select_3, select_6, select_8, select_option, AsyncLocalReceiver,
     AsyncLocalSender, AsyncReceiver, AsyncTcpStream, AsyncTlsStream, CancellationSender,
-    CancellationToken, Select2, Select3, Select4, Select6, Timeout,
+    CancellationToken, Select2, Select3, Select6, Select8, Timeout,
 };
 use crate::list;
 use crate::listener::Listener;
@@ -62,6 +62,7 @@ use std::thread;
 use std::time::Duration;
 
 const RESP_SENDER_BOUND: usize = 1;
+const HANDLE_ACCEPT_BOUND: usize = 100;
 
 // we read and process each response message one at a time, wrapping it in an
 // rc, and sending it to connections via channels. on the other side of each
@@ -942,6 +943,7 @@ impl Worker {
         handle_bound: usize,
     ) {
         let executor = Executor::current().unwrap();
+        let reactor = Reactor::current().unwrap();
         let stop = AsyncReceiver::new(stop);
         let req_acceptor = AsyncReceiver::new(req_acceptor);
         let stream_acceptor = AsyncReceiver::new(stream_acceptor);
@@ -988,7 +990,7 @@ impl Worker {
         let (zstream_out_sender, zstream_out_receiver) =
             local_channel(handle_bound, stream_maxconn + 1);
 
-        // max_senders is 1 per connection + 1 for the accept task + 1 for the handle task
+        // max_senders is 1 per connection + 1 for the accept task + 1 for the keep alive task
         let (zstream_out_stream_sender, zstream_out_stream_receiver) =
             local_channel(handle_bound, stream_maxconn + 2);
 
@@ -1011,36 +1013,70 @@ impl Worker {
             zreceiver_pool.push(local_channel(RESP_SENDER_BOUND, 1));
         }
 
-        executor
-            .spawn(Self::accept_task(
-                "req_accept",
-                id,
-                r_req_accept_stop,
-                s_req_accept_done,
-                req_acceptor,
-                req_acceptor_tls,
-                identities.clone(),
-                executor.spawner(),
-                zreceiver_pool.clone(),
-                req_conns.clone(),
-                ConnectionOpts {
-                    instance_id: instance_id.clone(),
-                    buffer_size,
-                    timeout: req_timeout,
-                    rb_tmp: rb_tmp.clone(),
-                    packet_buf: packet_buf.clone(),
-                    tmp_buf: tmp_buf.clone(),
-                },
-                ConnectionModeOpts::Req(ConnectionReqOpts {
-                    body_buffer_size,
-                    sender: zreq_sender,
-                }),
-            ))
-            .unwrap();
+        let (s_req_cdone, r_req_cdone) = {
+            let (s_from_handle, r_from_handle) = channel::local_channel(
+                HANDLE_ACCEPT_BOUND,
+                1,
+                &reactor.local_registration_memory(),
+            );
 
-        {
+            // bound is 1 per connection, so all connections can indicate done at once
+            // max_senders is 1 per connection + 1 for the accept task
+            let (s_from_conn, r_from_conn) = channel::local_channel(
+                req_conns.max(),
+                req_conns.max() + 1,
+                &reactor.local_registration_memory(),
+            );
+
+            executor
+                .spawn(Self::accept_task(
+                    "req_accept",
+                    id,
+                    r_req_accept_stop,
+                    s_req_accept_done,
+                    req_acceptor,
+                    req_acceptor_tls,
+                    identities.clone(),
+                    executor.spawner(),
+                    zreceiver_pool.clone(),
+                    AsyncLocalReceiver::new(r_from_handle),
+                    s_from_conn,
+                    req_conns.clone(),
+                    ConnectionOpts {
+                        instance_id: instance_id.clone(),
+                        buffer_size,
+                        timeout: req_timeout,
+                        rb_tmp: rb_tmp.clone(),
+                        packet_buf: packet_buf.clone(),
+                        tmp_buf: tmp_buf.clone(),
+                    },
+                    ConnectionModeOpts::Req(ConnectionReqOpts {
+                        body_buffer_size,
+                        sender: zreq_sender,
+                    }),
+                ))
+                .unwrap();
+
+            (s_from_handle, r_from_conn)
+        };
+
+        let (s_stream_cdone, r_stream_cdone) = {
+            let (s_from_handle, r_from_handle) = channel::local_channel(
+                HANDLE_ACCEPT_BOUND,
+                1,
+                &reactor.local_registration_memory(),
+            );
+
+            // bound is 1 per connection, so all connections can indicate done at once
+            // max_senders is 1 per connection + 1 for the accept task
+            let (s_from_conn, r_from_conn) = channel::local_channel(
+                stream_conns.max(),
+                stream_conns.max() + 1,
+                &reactor.local_registration_memory(),
+            );
+
             let zstream_out_stream_sender = zstream_out_stream_sender
-                .try_clone(&Reactor::current().unwrap().local_registration_memory())
+                .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
             executor
@@ -1054,6 +1090,8 @@ impl Worker {
                     identities.clone(),
                     executor.spawner(),
                     zreceiver_pool.clone(),
+                    AsyncLocalReceiver::new(r_from_handle),
+                    s_from_conn,
                     stream_conns.clone(),
                     ConnectionOpts {
                         instance_id: instance_id.clone(),
@@ -1071,7 +1109,9 @@ impl Worker {
                     }),
                 ))
                 .unwrap();
-        }
+
+            (s_from_handle, r_from_conn)
+        };
 
         executor
             .spawn(Self::req_handle_task(
@@ -1079,6 +1119,8 @@ impl Worker {
                 r_req_handle_stop,
                 s_req_handle_done,
                 zreq_receiver,
+                AsyncLocalReceiver::new(r_req_cdone),
+                AsyncLocalSender::new(s_req_cdone),
                 req_handle,
                 req_maxconn,
                 req_conns.clone(),
@@ -1093,6 +1135,8 @@ impl Worker {
                 instance_id.clone(),
                 zstream_out_receiver,
                 zstream_out_stream_receiver,
+                AsyncLocalReceiver::new(r_stream_cdone),
+                AsyncLocalSender::new(s_stream_cdone),
                 stream_handle,
                 stream_maxconn,
                 stream_conns.clone(),
@@ -1118,16 +1162,20 @@ impl Worker {
         // wait for stop
         let _ = stop.recv().await;
 
-        // stop all tasks
+        // stop all connections
         drop(req_accept_stop);
         drop(stream_accept_stop);
+
+        // wait for tasks to stop
+        let _ = req_accept_done.recv().await;
+        let _ = stream_accept_done.recv().await;
+
+        // stop remaining tasks
         drop(req_handle_stop);
         drop(stream_handle_stop);
         drop(keep_alives_stop);
 
         // wait for all to stop
-        let _ = req_accept_done.recv().await;
-        let _ = stream_accept_done.recv().await;
         let _ = req_handle_done.recv().await;
         let stream_handle = stream_handle_done.recv().await.unwrap();
         let _ = keep_alives_done.recv().await;
@@ -1136,7 +1184,7 @@ impl Worker {
 
         stream_conns.batch_clear();
 
-        let now = Reactor::current().unwrap().now();
+        let now = reactor.now();
         let shutdown_timeout = Timeout::new(now + SHUTDOWN_TIMEOUT);
 
         let mut next_cancel_index = 0;
@@ -1184,6 +1232,8 @@ impl Worker {
         identities: Arc<IdentityCache>,
         spawner: Spawner,
         zreceiver_pool: Rc<ChannelPool<(arena::Rc<zhttppacket::OwnedResponse>, usize)>>,
+        cdone: AsyncLocalReceiver<ConnectionDone>,
+        s_cdone: channel::LocalSender<ConnectionDone>,
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         mode_opts: ConnectionModeOpts,
@@ -1200,16 +1250,6 @@ impl Worker {
         }
 
         let reactor = Reactor::current().unwrap();
-
-        // bound is 1 per connection, so all connections can indicate done at once
-        // max_senders is 1 per connection + 1 for this task
-        let (s_cdone, cdone) = channel::local_channel::<ConnectionDone>(
-            conns.max(),
-            conns.max() + 1,
-            &reactor.local_registration_memory(),
-        );
-
-        let cdone = AsyncLocalReceiver::new(cdone);
 
         debug!("worker {}: task started: {}", id, name);
 
@@ -1414,6 +1454,8 @@ impl Worker {
         stop: AsyncLocalReceiver<()>,
         _done: AsyncLocalSender<()>,
         zreq_receiver: AsyncLocalReceiver<zmq::Message>,
+        r_cdone: AsyncLocalReceiver<ConnectionDone>,
+        s_cdone: AsyncLocalSender<ConnectionDone>,
         req_handle: zhttpsocket::AsyncClientReqHandle,
         req_maxconn: usize,
         conns: Rc<Connections>,
@@ -1426,6 +1468,7 @@ impl Worker {
         debug!("worker {}: task started: req_handle", id);
 
         let handle_send = None;
+        let mut done_send = None;
 
         pin_mut!(handle_send);
 
@@ -1436,35 +1479,57 @@ impl Worker {
                 None
             };
 
+            let done_recv = if done_send.is_none() {
+                Some(r_cdone.recv())
+            } else {
+                None
+            };
+
             let handle_recv = req_handle.recv();
 
             pin_mut!(handle_recv);
 
-            match select_4(
+            match select_6(
                 stop.recv(),
                 select_option(receiver_recv),
                 select_option(handle_send.as_mut().as_pin_mut()),
+                select_option(done_recv),
+                select_option(done_send.as_mut()),
                 handle_recv,
             )
             .await
             {
                 // stop.recv
-                Select4::R1(_) => break,
+                Select6::R1(_) => break,
                 // receiver_recv
-                Select4::R2(result) => match result {
+                Select6::R2(result) => match result {
                     Ok(msg) => handle_send.set(Some(req_handle.send(msg))),
                     Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
                 },
                 // handle_send
-                Select4::R3(result) => {
+                Select6::R3(result) => {
                     handle_send.set(None);
 
                     if let Err(e) = result {
                         error!("req send error: {}", e);
                     }
                 }
+                // done_recv
+                Select6::R4(result) => match result {
+                    Ok(msg) => done_send = Some(s_cdone.send(msg)),
+                    Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                },
+                // done send
+                Select6::R5(result) => {
+                    done_send = None;
+
+                    if let Err(mpsc::SendError(_)) = result {
+                        // this can happen if accept ends first
+                        break;
+                    }
+                }
                 // req_handle.recv
-                Select4::R4(result) => match result {
+                Select6::R6(result) => match result {
                     Ok(msg) => {
                         let scratch = arena::Rc::new(
                             RefCell::new(zhttppacket::ResponseScratch::new()),
@@ -1537,6 +1602,8 @@ impl Worker {
         instance_id: Rc<String>,
         zstream_out_receiver: AsyncLocalReceiver<zmq::Message>,
         zstream_out_stream_receiver: AsyncLocalReceiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
+        r_cdone: AsyncLocalReceiver<ConnectionDone>,
+        s_cdone: AsyncLocalSender<ConnectionDone>,
         stream_handle: zhttpsocket::AsyncClientStreamHandle,
         stream_maxconn: usize,
         conns: Rc<Connections>,
@@ -1551,6 +1618,7 @@ impl Worker {
         {
             let handle_send_to_any = None;
             let handle_send_to_addr = None;
+            let mut done_send = None;
 
             pin_mut!(handle_send_to_any, handle_send_to_addr);
 
@@ -1567,29 +1635,37 @@ impl Worker {
                     None
                 };
 
+                let done_recv = if done_send.is_none() {
+                    Some(r_cdone.recv())
+                } else {
+                    None
+                };
+
                 let handle_recv = stream_handle.recv();
 
                 pin_mut!(handle_recv);
 
-                match select_6(
+                match select_8(
                     stop.recv(),
                     select_option(receiver_recv),
                     select_option(handle_send_to_any.as_mut().as_pin_mut()),
                     select_option(stream_receiver_recv),
                     select_option(handle_send_to_addr.as_mut().as_pin_mut()),
+                    select_option(done_recv),
+                    select_option(done_send.as_mut()),
                     handle_recv,
                 )
                 .await
                 {
                     // stop.recv
-                    Select6::R1(_) => break,
+                    Select8::R1(_) => break,
                     // receiver_recv
-                    Select6::R2(result) => match result {
+                    Select8::R2(result) => match result {
                         Ok(msg) => handle_send_to_any.set(Some(stream_handle.send_to_any(msg))),
                         Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
                     },
                     // handle_send_to_any
-                    Select6::R3(result) => {
+                    Select8::R3(result) => {
                         handle_send_to_any.set(None);
 
                         if let Err(e) = result {
@@ -1597,22 +1673,36 @@ impl Worker {
                         }
                     }
                     // stream_receiver_recv
-                    Select6::R4(result) => match result {
+                    Select8::R4(result) => match result {
                         Ok((addr, msg)) => {
                             handle_send_to_addr.set(Some(stream_handle.send_to_addr(addr, msg)))
                         }
                         Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
                     },
                     // handle_send_to_addr
-                    Select6::R5(result) => {
+                    Select8::R5(result) => {
                         handle_send_to_addr.set(None);
 
                         if let Err(e) = result {
                             error!("stream out stream send error: {}", e);
                         }
                     }
+                    // done_recv
+                    Select8::R6(result) => match result {
+                        Ok(msg) => done_send = Some(s_cdone.send(msg)),
+                        Err(mpsc::RecvError) => break, // this can happen if accept+conns end first
+                    },
+                    // done send
+                    Select8::R7(result) => {
+                        done_send = None;
+
+                        if let Err(mpsc::SendError(_)) = result {
+                            // this can happen if accept ends first
+                            break;
+                        }
+                    }
                     // stream_handle.recv
-                    Select6::R6(result) => match result {
+                    Select8::R8(result) => match result {
                         Ok(msg) => {
                             let msg_data = &msg.get()[..];
 
