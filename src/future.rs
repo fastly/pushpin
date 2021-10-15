@@ -241,6 +241,38 @@ pub trait AsyncWrite: Unpin {
     fn cancel(&mut self) {}
 }
 
+impl<T: ?Sized + AsyncRead> AsyncRead for &mut T {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        Pin::new(&mut **self).poll_read(cx, buf)
+    }
+}
+
+impl<T: ?Sized + AsyncWrite> AsyncWrite for &mut T {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        Pin::new(&mut **self).poll_write(cx, buf)
+    }
+
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        Pin::new(&mut **self).poll_write_vectored(cx, bufs)
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Pin::new(&mut **self).poll_close(cx)
+    }
+}
+
 pub trait AsyncReadExt: AsyncRead {
     fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> ReadFuture<'a, Self> {
         ReadFuture { r: self, buf }
