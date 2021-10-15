@@ -2384,7 +2384,7 @@ pub async fn server_stream_connection<P: CidProvider, S: Read + Write + Shutdown
         .unwrap();
 }
 
-async fn try_recv<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Result<(), io::Error> {
+async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Result<(), io::Error> {
     if buf.write_avail() == 0 {
         return Err(io::Error::from(io::ErrorKind::WriteZero));
     }
@@ -2432,7 +2432,7 @@ impl<'a, S: AsyncRead + AsyncWrite> RequestHandler<'a, S> {
                 Some(Ok(req)) => req,
                 Some(Err(e)) => return Err(e.into()),
                 None => {
-                    if let Err(e) = try_recv(self.stream, self.buf1).await {
+                    if let Err(e) = recv_nonzero(self.stream, self.buf1).await {
                         if e.kind() == io::ErrorKind::WriteZero {
                             return Err(ServerError::BufferExceeded);
                         }
@@ -2626,7 +2626,7 @@ impl<'a, S: AsyncRead + AsyncWrite> RequestRecvBody<'a, S> {
                 let read_size = buf.position() as usize;
 
                 if self.protocol.state() == http1::ServerState::ReceivingBody && read_size == 0 {
-                    if let Err(e) = try_recv(self.stream, self.buf1).await {
+                    if let Err(e) = recv_nonzero(self.stream, self.buf1).await {
                         if e.kind() == io::ErrorKind::WriteZero {
                             return Err(ServerError::BufferExceeded);
                         }
