@@ -2725,6 +2725,46 @@ pub mod tests {
     use crate::websocket;
     use std::io::Read;
 
+    fn recv_frame<R: Read>(
+        stream: &mut R,
+        buf: &mut Vec<u8>,
+    ) -> Result<(bool, u8, Vec<u8>), io::Error> {
+        loop {
+            let fi = match websocket::read_header(buf) {
+                Ok(fi) => fi,
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    let mut chunk = [0; 1024];
+
+                    let size = stream.read(&mut chunk)?;
+                    if size == 0 {
+                        return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                    }
+
+                    buf.extend_from_slice(&chunk[..size]);
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+
+            while buf.len() < fi.payload_offset + fi.payload_size {
+                let mut chunk = [0; 1024];
+
+                let size = stream.read(&mut chunk)?;
+                if size == 0 {
+                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                }
+
+                buf.extend_from_slice(&chunk[..size]);
+            }
+
+            let content = Vec::from(&buf[fi.payload_offset..(fi.payload_offset + fi.payload_size)]);
+
+            *buf = buf.split_off(fi.payload_offset + fi.payload_size);
+
+            return Ok((fi.fin, fi.opcode, content));
+        }
+    }
+
     #[test]
     fn test_batch() {
         let mut batch = Batch::new(3);
@@ -2866,29 +2906,10 @@ pub mod tests {
 
         // recv message
 
-        let mut msg = Vec::new();
-
-        loop {
-            let fi = match websocket::read_header(&buf) {
-                Ok(fi) => fi,
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    let mut chunk = [0; 1024];
-                    let size = client.read(&mut chunk).unwrap();
-                    assert!(size > 0);
-                    buf.extend_from_slice(&chunk[..size]);
-                    continue;
-                }
-                Err(e) => panic!("{:?}", e),
-            };
-
-            assert_eq!(fi.fin, true);
-            assert_eq!(fi.opcode, websocket::OPCODE_TEXT);
-
-            msg.extend_from_slice(&buf[fi.payload_offset..(fi.payload_offset + fi.payload_size)]);
-            break;
-        }
-
-        assert_eq!(str::from_utf8(&msg).unwrap(), "hello");
+        let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_TEXT);
+        assert_eq!(str::from_utf8(&content).unwrap(), "hello");
     }
 
     #[test]
@@ -2951,29 +2972,10 @@ pub mod tests {
 
         // recv binary
 
-        let mut msg = Vec::new();
-
-        loop {
-            let fi = match websocket::read_header(&buf) {
-                Ok(fi) => fi,
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    let mut chunk = [0; 1024];
-                    let size = client.read(&mut chunk).unwrap();
-                    assert!(size > 0);
-                    buf.extend_from_slice(&chunk[..size]);
-                    continue;
-                }
-                Err(e) => panic!("{:?}", e),
-            };
-
-            assert_eq!(fi.fin, true);
-            assert_eq!(fi.opcode, websocket::OPCODE_BINARY);
-
-            msg.extend_from_slice(&buf[fi.payload_offset..(fi.payload_offset + fi.payload_size)]);
-            break;
-        }
-
-        assert_eq!(msg, &[1, 2, 3][..]);
+        let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_BINARY);
+        assert_eq!(content, &[1, 2, 3][..]);
 
         buf.clear();
 
@@ -2988,29 +2990,10 @@ pub mod tests {
 
         // recv pong
 
-        let mut msg = Vec::new();
-
-        loop {
-            let fi = match websocket::read_header(&buf) {
-                Ok(fi) => fi,
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    let mut chunk = [0; 1024];
-                    let size = client.read(&mut chunk).unwrap();
-                    assert!(size > 0);
-                    buf.extend_from_slice(&chunk[..size]);
-                    continue;
-                }
-                Err(e) => panic!("{:?}", e),
-            };
-
-            assert_eq!(fi.fin, true);
-            assert_eq!(fi.opcode, websocket::OPCODE_PONG);
-
-            msg.extend_from_slice(&buf[fi.payload_offset..(fi.payload_offset + fi.payload_size)]);
-            break;
-        }
-
-        assert_eq!(str::from_utf8(&msg).unwrap(), "");
+        let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_PONG);
+        assert_eq!(str::from_utf8(&content).unwrap(), "");
 
         buf.clear();
 
@@ -3026,29 +3009,10 @@ pub mod tests {
 
         // recv close
 
-        let mut msg = Vec::new();
-
-        loop {
-            let fi = match websocket::read_header(&buf) {
-                Ok(fi) => fi,
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    let mut chunk = [0; 1024];
-                    let size = client.read(&mut chunk).unwrap();
-                    assert!(size > 0);
-                    buf.extend_from_slice(&chunk[..size]);
-                    continue;
-                }
-                Err(e) => panic!("{:?}", e),
-            };
-
-            assert_eq!(fi.fin, true);
-            assert_eq!(fi.opcode, websocket::OPCODE_CLOSE);
-
-            msg.extend_from_slice(&buf[fi.payload_offset..(fi.payload_offset + fi.payload_size)]);
-            break;
-        }
-
-        assert_eq!(msg, &b"\x03\xf0gone"[..]);
+        let (fin, opcode, content) = recv_frame(&mut client, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_CLOSE);
+        assert_eq!(&content, &b"\x03\xf0gone"[..]);
 
         // expect tcp close
 
