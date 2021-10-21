@@ -41,6 +41,30 @@ pub const REGISTRATIONS_PER_CHANNEL: usize = 1;
 // 1 for the zmq fd, and potentially 1 for the retry timer
 pub const REGISTRATIONS_PER_ZMQSOCKET: usize = 2;
 
+pub struct PollFuture<F> {
+    fut: F,
+}
+
+impl<F> Future for PollFuture<F>
+where
+    F: Future + Unpin,
+{
+    type Output = Poll<F::Output>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let s = &mut *self;
+
+        Poll::Ready(Pin::new(&mut s.fut).poll(cx))
+    }
+}
+
+pub fn poll_async<F>(fut: F) -> PollFuture<F>
+where
+    F: Future + Unpin,
+{
+    PollFuture { fut }
+}
+
 fn range_unordered(dest: &mut [usize]) -> &[usize] {
     for i in 0..dest.len() {
         dest[i] = i;
@@ -1754,30 +1778,6 @@ mod tests {
     use std::task::Context;
     use std::thread;
 
-    struct PollFuture<F> {
-        fut: F,
-    }
-
-    impl<F> Future for PollFuture<F>
-    where
-        F: Future + Unpin,
-    {
-        type Output = Poll<F::Output>;
-
-        fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-            let s = &mut *self;
-
-            Poll::Ready(Pin::new(&mut s.fut).poll(cx))
-        }
-    }
-
-    fn poll_fut_async<F>(fut: F) -> PollFuture<F>
-    where
-        F: Future + Unpin,
-    {
-        PollFuture { fut }
-    }
-
     struct TestBuffer {
         data: Vec<u8>,
     }
@@ -2265,7 +2265,7 @@ mod tests {
                     h.push(zmq::Message::from(&b"test2"[..]));
                     let mut fut = s.send_to(h, zmq::Message::from(&b"3"[..]));
 
-                    assert_eq!(poll_fut_async(&mut fut).await, Poll::Pending);
+                    assert_eq!(poll_async(&mut fut).await, Poll::Pending);
                     assert_eq!(fut.timer_evented.is_some(), true);
 
                     fut.await.unwrap();
@@ -2418,10 +2418,10 @@ mod tests {
                 let timeout = Timeout::new(get_reactor().now() + Duration::from_millis(100));
 
                 let mut fut = timeout.elapsed();
-                assert_eq!(poll_fut_async(&mut fut).await, Poll::Pending);
+                assert_eq!(poll_async(&mut fut).await, Poll::Pending);
 
                 timeout.set_deadline(get_reactor().now());
-                assert_eq!(poll_fut_async(&mut fut).await, Poll::Ready(()));
+                assert_eq!(poll_async(&mut fut).await, Poll::Ready(()));
             })
             .unwrap();
 
@@ -2439,7 +2439,7 @@ mod tests {
                     CancellationToken::new(&get_reactor().local_registration_memory());
 
                 let mut fut = token.cancelled();
-                assert_eq!(poll_fut_async(&mut fut).await, Poll::Pending);
+                assert_eq!(poll_async(&mut fut).await, Poll::Pending);
 
                 drop(sender);
                 token.cancelled().await;
