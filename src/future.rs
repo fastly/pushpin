@@ -1427,6 +1427,43 @@ impl AsyncWrite for AsyncTcpStream {
         }
     }
 
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        let f = &mut *self;
+
+        f.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        if !f
+            .evented
+            .registration()
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
+        {
+            return Poll::Pending;
+        }
+
+        if !f.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.evented.io().write_vectored(bufs) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.evented
+                    .registration()
+                    .clear_readiness(mio::Interest::WRITABLE);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
     fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
         Poll::Ready(Ok(()))
     }
