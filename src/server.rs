@@ -1113,23 +1113,21 @@ impl Worker {
         // wait for stop
         let _ = stop.recv().await;
 
-        // stop all connections
+        // stop keep alives
+        drop(keep_alives_stop);
+        let _ = keep_alives_done.recv().await;
+
+        // stop connections
         drop(req_accept_stop);
         drop(stream_accept_stop);
-
-        // wait for tasks to stop
         let _ = req_accept_done.recv().await;
         let _ = stream_accept_done.recv().await;
 
         // stop remaining tasks
         drop(req_handle_stop);
         drop(stream_handle_stop);
-        drop(keep_alives_stop);
-
-        // wait for all to stop
         let _ = req_handle_done.recv().await;
         let stream_handle = stream_handle_done.recv().await.unwrap();
-        let _ = keep_alives_done.recv().await;
 
         // send cancels
 
