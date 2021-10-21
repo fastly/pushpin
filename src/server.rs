@@ -20,7 +20,6 @@ use crate::buffer::TmpBuffer;
 use crate::channel;
 use crate::connection::{
     server_req_connection, server_stream_connection, CidProvider, Identify, ServerStreamSharedData,
-    Shutdown, ZhttpSender,
 };
 use crate::event;
 use crate::executor::{Executor, Spawner};
@@ -32,7 +31,6 @@ use crate::future::{
 use crate::list;
 use crate::listener::Listener;
 use crate::pin_mut;
-use crate::reactor;
 use crate::reactor::Reactor;
 use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
 use crate::tnetstring;
@@ -214,56 +212,9 @@ fn gen_id(id: usize, ckey: usize, next_cid: &mut u32) -> ArrayString<[u8; 32]> {
     ArrayString::from_str(s).unwrap()
 }
 
-impl Shutdown for TcpStream {
-    fn shutdown(&mut self) -> Result<(), io::Error> {
-        Ok(())
-    }
-}
-
-impl Shutdown for TlsStream {
-    fn shutdown(&mut self) -> Result<(), io::Error> {
-        self.shutdown()
-    }
-}
-
-impl ZhttpSender for channel::LocalSender<zmq::Message> {
-    fn can_send_to(&self) -> bool {
-        // req mode doesn't use this
-        unimplemented!();
-    }
-
-    fn send(&mut self, message: zmq::Message) -> Result<(), zhttpsocket::SendError> {
-        match self.try_send(message) {
-            Ok(()) => Ok(()),
-            Err(mpsc::TrySendError::Full(msg)) => Err(zhttpsocket::SendError::Full(msg)),
-            Err(mpsc::TrySendError::Disconnected(_)) => Err(zhttpsocket::SendError::Io(
-                io::Error::from(io::ErrorKind::BrokenPipe),
-            )),
-        }
-    }
-
-    fn send_to(
-        &mut self,
-        _addr: &[u8],
-        _message: zmq::Message,
-    ) -> Result<(), zhttpsocket::SendError> {
-        // req mode doesn't use this
-        unimplemented!();
-    }
-}
-
 enum Stream {
     Plain(TcpStream),
     Tls(TlsStream),
-}
-
-impl Stream {
-    fn get_tcp(&mut self) -> &mut TcpStream {
-        match self {
-            Stream::Plain(stream) => stream,
-            Stream::Tls(stream) => stream.get_tcp(),
-        }
-    }
 }
 
 impl Identify for TcpStream {
@@ -1858,7 +1809,7 @@ impl Worker {
         worker_id: usize,
         ckey: usize,
         cid: ArrayString<[u8; 32]>,
-        mut stream: Stream,
+        stream: Stream,
         peer_addr: SocketAddr,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         conns: Rc<Connections>,
@@ -1867,29 +1818,20 @@ impl Worker {
         shared: arena::Rc<ServerStreamSharedData>,
     ) {
         let done = AsyncLocalSender::new(done);
+        let zreceiver = AsyncLocalReceiver::new(zreceiver);
 
         let mut cid_provider = ConnectionCid::new(worker_id, ckey, &conns);
 
         debug!("worker {}: task started: connection-{}", worker_id, ckey);
 
-        let reactor = reactor::Reactor::current().unwrap();
-
-        let stream_registration = reactor
-            .register_io(
-                stream.get_tcp(),
-                mio::Interest::READABLE | mio::Interest::WRITABLE,
-            )
-            .unwrap();
-
-        match &mut stream {
+        match stream {
             Stream::Plain(stream) => {
                 server_stream_connection(
                     token,
                     cid,
                     &mut cid_provider,
-                    stream,
-                    &stream_registration,
-                    peer_addr,
+                    AsyncTcpStream::new(stream),
+                    Some(peer_addr),
                     false,
                     opts.buffer_size,
                     stream_opts.messages_max,
@@ -1898,11 +1840,10 @@ impl Worker {
                     opts.tmp_buf,
                     opts.timeout,
                     &opts.instance_id,
-                    stream_opts.sender,
-                    stream_opts.sender_stream,
+                    AsyncLocalSender::new(stream_opts.sender),
+                    AsyncLocalSender::new(stream_opts.sender_stream),
                     zreceiver,
                     shared,
-                    &reactor,
                 )
                 .await
             }
@@ -1911,9 +1852,8 @@ impl Worker {
                     token,
                     cid,
                     &mut cid_provider,
-                    stream,
-                    &stream_registration,
-                    peer_addr,
+                    AsyncTlsStream::new(stream),
+                    Some(peer_addr),
                     true,
                     opts.buffer_size,
                     stream_opts.messages_max,
@@ -1922,17 +1862,14 @@ impl Worker {
                     opts.tmp_buf,
                     opts.timeout,
                     &opts.instance_id,
-                    stream_opts.sender,
-                    stream_opts.sender_stream,
+                    AsyncLocalSender::new(stream_opts.sender),
+                    AsyncLocalSender::new(stream_opts.sender_stream),
                     zreceiver,
                     shared,
-                    &reactor,
                 )
                 .await
             }
         }
-
-        stream_registration.deregister_io(stream.get_tcp()).unwrap();
 
         done.send(ConnectionDone { ckey }).await.unwrap();
 
