@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-use crate::buffer::{write_vectored_offset, RefRead, VECTORED_MAX};
+use crate::buffer::{write_vectored_offset, write_vectored_offset_async, RefRead, VECTORED_MAX};
+use crate::future::AsyncWrite;
+use std::cell::{Cell, RefCell};
 use std::cmp;
 use std::io;
 use std::io::Write;
@@ -217,27 +219,39 @@ struct ReceivingMessage {
     frame_payload_read: usize,
 }
 
+struct Sending {
+    frame: Option<SendingFrame>,
+    message: Option<SendingMessage>,
+}
+
+struct Receiving {
+    frame: Option<FrameInfo>,
+    message: Option<ReceivingMessage>,
+}
+
 pub struct Protocol {
-    state: State,
-    sending_frame: Option<SendingFrame>,
-    receiving_frame: Option<FrameInfo>,
-    sending_message: Option<SendingMessage>,
-    receiving_message: Option<ReceivingMessage>,
+    state: Cell<State>,
+    sending: RefCell<Sending>,
+    receiving: RefCell<Receiving>,
 }
 
 impl<'buf> Protocol {
     pub fn new() -> Self {
         Self {
-            state: State::Connected,
-            sending_frame: None,
-            receiving_frame: None,
-            sending_message: None,
-            receiving_message: None,
+            state: Cell::new(State::Connected),
+            sending: RefCell::new(Sending {
+                frame: None,
+                message: None,
+            }),
+            receiving: RefCell::new(Receiving {
+                frame: None,
+                message: None,
+            }),
         }
     }
 
     pub fn state(&self) -> State {
-        self.state
+        self.state.get()
     }
 
     pub fn send_frame(
@@ -248,26 +262,28 @@ impl<'buf> Protocol {
         fin: bool,
         mask: Option<[u8; 4]>,
     ) -> Result<usize, Error> {
-        assert!(self.state == State::Connected || self.state == State::PeerClosed);
+        assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
+
+        let sending = &mut *self.sending.borrow_mut();
 
         let mut src_len = 0;
         for buf in src.iter() {
             src_len += buf.len();
         }
 
-        if self.sending_frame.is_none() {
+        if sending.frame.is_none() {
             let mut h = [0; HEADER_SIZE_MAX];
 
             let size = write_header(fin, opcode, src_len, mask, &mut h[..])?;
 
-            self.sending_frame = Some(SendingFrame {
+            sending.frame = Some(SendingFrame {
                 header: h,
                 header_len: size,
                 sent: 0,
             });
         }
 
-        let sending_frame = self.sending_frame.as_mut().unwrap();
+        let sending_frame = sending.frame.as_mut().unwrap();
 
         let header = &sending_frame.header[..sending_frame.header_len];
 
@@ -292,13 +308,81 @@ impl<'buf> Protocol {
             return Ok(0);
         }
 
-        self.sending_frame = None;
+        sending.frame = None;
 
         if opcode == OPCODE_CLOSE {
-            if self.state == State::PeerClosed {
-                self.state = State::Finished;
+            if self.state.get() == State::PeerClosed {
+                self.state.set(State::Finished);
             } else {
-                self.state = State::Closing;
+                self.state.set(State::Closing);
+            }
+        }
+
+        Ok(src_len)
+    }
+
+    pub async fn send_frame_async(
+        &self,
+        writer: &mut dyn AsyncWrite,
+        opcode: u8,
+        src: &[&[u8]],
+        fin: bool,
+        mask: Option<[u8; 4]>,
+    ) -> Result<usize, Error> {
+        assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
+
+        let sending = &mut *self.sending.borrow_mut();
+
+        let mut src_len = 0;
+        for buf in src.iter() {
+            src_len += buf.len();
+        }
+
+        if sending.frame.is_none() {
+            let mut h = [0; HEADER_SIZE_MAX];
+
+            let size = write_header(fin, opcode, src_len, mask, &mut h[..])?;
+
+            sending.frame = Some(SendingFrame {
+                header: h,
+                header_len: size,
+                sent: 0,
+            });
+        }
+
+        let sending_frame = sending.frame.as_mut().unwrap();
+
+        let header = &sending_frame.header[..sending_frame.header_len];
+
+        let total = header.len() + src_len;
+
+        let mut out_arr = [&b""[..]; VECTORED_MAX];
+        let mut out_arr_len = 0;
+
+        out_arr[0] = header;
+        out_arr_len += 1;
+
+        for buf in src.iter() {
+            out_arr[out_arr_len] = buf;
+            out_arr_len += 1;
+        }
+
+        let size = write_vectored_offset_async(writer, &out_arr[..out_arr_len], sending_frame.sent)
+            .await?;
+
+        sending_frame.sent += size;
+
+        if sending_frame.sent < total {
+            return Ok(0);
+        }
+
+        sending.frame = None;
+
+        if opcode == OPCODE_CLOSE {
+            if self.state.get() == State::PeerClosed {
+                self.state.set(State::Finished);
+            } else {
+                self.state.set(State::Closing);
             }
         }
 
@@ -311,9 +395,11 @@ impl<'buf> Protocol {
         &mut self,
         rbuf: &'buf mut dyn RefRead,
     ) -> Option<Result<Frame<'buf>, Error>> {
-        assert!(self.state == State::Connected || self.state == State::Closing);
+        assert!(self.state.get() == State::Connected || self.state.get() == State::Closing);
 
-        if self.receiving_frame.is_none() {
+        let receiving = &mut *self.receiving.borrow_mut();
+
+        if receiving.frame.is_none() {
             let fi = match read_header(rbuf.get_ref()) {
                 Ok(fi) => fi,
                 Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return None,
@@ -322,20 +408,20 @@ impl<'buf> Protocol {
 
             rbuf.consume(fi.payload_offset);
 
-            self.receiving_frame = Some(fi);
+            receiving.frame = Some(fi);
         }
 
-        let fi = self.receiving_frame.unwrap();
+        let fi = receiving.frame.unwrap();
 
         if rbuf.get_ref().len() < fi.payload_size {
             return None;
         }
 
         if fi.opcode == OPCODE_CLOSE {
-            if self.state == State::Closing {
-                self.state = State::Finished;
+            if self.state.get() == State::Closing {
+                self.state.set(State::Finished);
             } else {
-                self.state = State::PeerClosed;
+                self.state.set(State::PeerClosed);
             }
         }
 
@@ -345,7 +431,7 @@ impl<'buf> Protocol {
             apply_mask(buf, mask, 0);
         }
 
-        self.receiving_frame = None;
+        receiving.frame = None;
 
         Some(Ok(Frame {
             opcode: fi.opcode,
@@ -355,15 +441,17 @@ impl<'buf> Protocol {
     }
 
     pub fn is_sending_message(&self) -> bool {
-        self.sending_message.is_some()
+        self.sending.borrow().message.is_some()
     }
 
-    pub fn send_message_start(&mut self, opcode: u8, mask: Option<[u8; 4]>) {
-        assert!(self.state == State::Connected || self.state == State::PeerClosed);
+    pub fn send_message_start(&self, opcode: u8, mask: Option<[u8; 4]>) {
+        assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
 
-        assert_eq!(self.sending_message.is_some(), false);
+        let sending = &mut *self.sending.borrow_mut();
 
-        self.sending_message = Some(SendingMessage {
+        assert_eq!(sending.message.is_some(), false);
+
+        sending.message = Some(SendingMessage {
             opcode,
             mask,
             frame_sent: false,
@@ -376,9 +464,11 @@ impl<'buf> Protocol {
         src: &[&[u8]],
         end: bool,
     ) -> Result<(usize, bool), Error> {
-        assert!(self.state == State::Connected || self.state == State::PeerClosed);
+        assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
 
-        let msg = self.sending_message.as_ref().unwrap();
+        let sending = self.sending.borrow();
+
+        let msg = sending.message.as_ref().unwrap();
 
         let mut src_len = 0;
         for buf in src.iter() {
@@ -397,7 +487,7 @@ impl<'buf> Protocol {
             msg.opcode
         };
 
-        let fin = if let Some(f) = &self.sending_frame {
+        let fin = if let Some(f) = &sending.frame {
             f.header[0] & 0x80 != 0
         } else {
             end
@@ -405,28 +495,91 @@ impl<'buf> Protocol {
 
         let mask = msg.mask;
 
+        drop(sending);
+
         let size = self.send_frame(writer, opcode, src, fin, mask)?;
 
-        if self.sending_frame.is_none() && fin {
-            self.sending_message = None;
+        let mut sending = self.sending.borrow_mut();
+
+        if sending.frame.is_none() && fin {
+            sending.message = None;
         } else {
-            let msg = self.sending_message.as_mut().unwrap();
+            let msg = sending.message.as_mut().unwrap();
             msg.frame_sent = true;
         }
 
-        let done = self.sending_message.is_none();
+        let done = sending.message.is_none();
+
+        Ok((size, done))
+    }
+
+    pub async fn send_message_content_async(
+        &self,
+        writer: &mut dyn AsyncWrite,
+        src: &[&[u8]],
+        end: bool,
+    ) -> Result<(usize, bool), Error> {
+        assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
+
+        let sending = self.sending.borrow();
+
+        let msg = sending.message.as_ref().unwrap();
+
+        let mut src_len = 0;
+        for buf in src.iter() {
+            src_len += buf.len();
+        }
+
+        // control frames (ping, pong, close) must have a small payload length
+        //   and must not be fragmented
+        if msg.opcode & 0x08 != 0 && (src_len > CONTROL_FRAME_PAYLOAD_MAX || !end) {
+            return Err(Error::InvalidControlFrame);
+        }
+
+        let opcode = if msg.frame_sent {
+            OPCODE_CONTINUATION
+        } else {
+            msg.opcode
+        };
+
+        let fin = if let Some(f) = &sending.frame {
+            f.header[0] & 0x80 != 0
+        } else {
+            end
+        };
+
+        let mask = msg.mask;
+
+        drop(sending);
+
+        let size = self
+            .send_frame_async(writer, opcode, src, fin, mask)
+            .await?;
+
+        let mut sending = self.sending.borrow_mut();
+
+        if sending.frame.is_none() && fin {
+            sending.message = None;
+        } else {
+            let msg = sending.message.as_mut().unwrap();
+            msg.frame_sent = true;
+        }
+
+        let done = sending.message.is_none();
 
         Ok((size, done))
     }
 
     pub fn recv_message_content(
-        &mut self,
+        &self,
         rbuf: &mut dyn RefRead,
         dest: &mut [u8],
     ) -> Option<Result<(u8, usize, bool), Error>> {
-        assert!(self.state == State::Connected || self.state == State::Closing);
+        assert!(self.state.get() == State::Connected || self.state.get() == State::Closing);
 
-        if self.receiving_frame.is_none() {
+        let receiving = &mut *self.receiving.borrow_mut();
+
+        if receiving.frame.is_none() {
             let fi = match read_header(rbuf.get_ref()) {
                 Ok(fi) => fi,
                 Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return None,
@@ -435,9 +588,9 @@ impl<'buf> Protocol {
 
             rbuf.consume(fi.payload_offset);
 
-            self.receiving_frame = Some(fi);
+            receiving.frame = Some(fi);
 
-            if let Some(msg) = &mut self.receiving_message {
+            if let Some(msg) = &mut receiving.message {
                 if fi.opcode != OPCODE_CONTINUATION {
                     return Some(Err(Error::UnexpectedOpcode));
                 }
@@ -453,15 +606,15 @@ impl<'buf> Protocol {
                     return Some(Err(Error::InvalidControlFrame));
                 }
 
-                self.receiving_message = Some(ReceivingMessage {
+                receiving.message = Some(ReceivingMessage {
                     opcode: fi.opcode,
                     frame_payload_read: 0,
                 });
             }
         }
 
-        let fi = self.receiving_frame.as_ref().unwrap();
-        let msg = self.receiving_message.as_mut().unwrap();
+        let fi = receiving.frame.as_ref().unwrap();
+        let msg = receiving.message.as_mut().unwrap();
 
         let buf = rbuf.get_ref();
 
@@ -492,22 +645,22 @@ impl<'buf> Protocol {
         msg.frame_payload_read += size;
 
         if msg.frame_payload_read >= fi.payload_size {
-            self.receiving_frame = None;
+            receiving.frame = None;
 
             if fin {
-                self.receiving_message = None;
+                receiving.message = None;
 
                 if opcode == OPCODE_CLOSE {
-                    if self.state == State::Closing {
-                        self.state = State::Finished;
+                    if self.state.get() == State::Closing {
+                        self.state.set(State::Finished);
                     } else {
-                        self.state = State::PeerClosed;
+                        self.state.set(State::PeerClosed);
                     }
                 }
             }
         }
 
-        Some(Ok((opcode, size, self.receiving_message.is_none())))
+        Some(Ok((opcode, size, receiving.message.is_none())))
     }
 }
 
@@ -708,7 +861,7 @@ mod tests {
 
         let mut rbuf = io::Cursor::new(&mut data[..]);
 
-        let mut p = Protocol::new();
+        let p = Protocol::new();
 
         assert_eq!(p.state(), State::Connected);
 
