@@ -326,6 +326,13 @@ pub trait AsyncWriteExt: AsyncWrite {
     fn close<'a>(&'a mut self) -> CloseFuture<'a, Self> {
         CloseFuture { w: self }
     }
+
+    fn write_shared<'a, B>(&'a mut self, buf: &'a RefCell<B>) -> WriteSharedFuture<'a, Self, B>
+    where
+        B: AsRef<[u8]>,
+    {
+        WriteSharedFuture { w: self, buf }
+    }
 }
 
 impl<R: AsyncRead + ?Sized> AsyncReadExt for R {}
@@ -1213,6 +1220,29 @@ impl<'a, W: AsyncWrite + ?Sized> Future for WriteVectoredFuture<'a, W> {
 }
 
 impl<'a, W: AsyncWrite + ?Sized> Drop for WriteVectoredFuture<'a, W> {
+    fn drop(&mut self) {
+        self.w.cancel();
+    }
+}
+
+pub struct WriteSharedFuture<'a, W: AsyncWrite + ?Sized + Unpin, B: AsRef<[u8]>> {
+    w: &'a mut W,
+    buf: &'a RefCell<B>,
+}
+
+impl<'a, W: AsyncWrite + ?Sized, B: AsRef<[u8]>> Future for WriteSharedFuture<'a, W, B> {
+    type Output = Result<usize, io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        let w: Pin<&mut W> = Pin::new(f.w);
+
+        w.poll_write(cx, f.buf.borrow().as_ref())
+    }
+}
+
+impl<'a, W: AsyncWrite + ?Sized, B: AsRef<[u8]>> Drop for WriteSharedFuture<'a, W, B> {
     fn drop(&mut self) {
         self.w.cancel();
     }
