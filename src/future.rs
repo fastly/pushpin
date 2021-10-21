@@ -1824,8 +1824,8 @@ mod tests {
 
     #[test]
     fn test_channel_send_bound0() {
-        let executor = Executor::new(2);
         let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
 
         let (s, r) = channel::channel::<u32>(0);
 
@@ -1856,8 +1856,8 @@ mod tests {
 
     #[test]
     fn test_channel_send_bound1() {
-        let executor = Executor::new(1);
         let reactor = Reactor::new(2);
+        let executor = Executor::new(1);
 
         let (s, r) = channel::channel::<u32>(1);
 
@@ -1888,8 +1888,8 @@ mod tests {
 
     #[test]
     fn test_channel_recv() {
-        let executor = Executor::new(2);
         let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
 
         let (s, r) = channel::channel::<u32>(0);
 
@@ -1918,8 +1918,8 @@ mod tests {
 
     #[test]
     fn test_channel_writable() {
-        let executor = Executor::new(1);
         let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
 
         let (s, r) = channel::channel::<u32>(0);
 
@@ -1946,8 +1946,8 @@ mod tests {
 
     #[test]
     fn test_local_channel() {
-        let executor = Executor::new(2);
         let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
 
         let (s, r) = channel::local_channel::<u32>(1, 1, &reactor.local_registration_memory());
 
@@ -2048,8 +2048,8 @@ mod tests {
 
     #[test]
     fn test_tcpstream() {
-        let executor = Executor::new(2); // 2 tasks
         let reactor = Reactor::new(3); // 3 registrations
+        let executor = Executor::new(2); // 2 tasks
 
         let spawner = executor.spawner();
 
@@ -2097,8 +2097,8 @@ mod tests {
 
     #[test]
     fn test_zmq() {
-        let executor = Executor::new(2);
         let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
 
         let spec = "inproc://futures::tests::test_zmq";
 
@@ -2135,8 +2135,8 @@ mod tests {
 
     #[test]
     fn test_zmq_routable() {
-        let executor = Executor::new(2);
         let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
 
         let spec = "inproc://futures::tests::test_zmq_routable";
 
@@ -2288,8 +2288,8 @@ mod tests {
 
     #[test]
     fn test_budget_unlimited() {
-        let executor = Executor::new(1);
         let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
 
         let (s, r) = channel::channel::<u32>(3);
 
@@ -2324,8 +2324,8 @@ mod tests {
 
     #[test]
     fn test_budget_1() {
-        let executor = Executor::new(1);
         let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
 
         {
             let reactor = reactor.clone();
@@ -2410,8 +2410,8 @@ mod tests {
     fn test_timeout_change_ready() {
         let now = Instant::now();
 
-        let executor = Executor::new(1);
         let _reactor = Reactor::new_with_time(1, now);
+        let executor = Executor::new(1);
 
         executor
             .spawn(async {
@@ -2430,8 +2430,8 @@ mod tests {
 
     #[test]
     fn test_cancellation_token() {
-        let executor = Executor::new(1);
         let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
 
         executor
             .spawn(async {
@@ -2451,8 +2451,8 @@ mod tests {
 
     #[test]
     fn test_event_wait() {
-        let executor = Executor::new(2);
         let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
 
         let (s, r) = channel::local_channel::<u32>(1, 1, &reactor.local_registration_memory());
 
