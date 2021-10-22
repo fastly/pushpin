@@ -1,6 +1,6 @@
 [package]
 name = "condure"
-version = "1.3.1"
+version = "1.4.0"
 authors = ["Justin Karneges <justin@fanout.io>"]
 license = "Apache-2.0"
 description = "HTTP/WebSocket connection manager"

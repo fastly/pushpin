@@ -1,6 +1,10 @@
 Condure Changelog
 =================
 
+v. 1.4.0 (2021-10-22)
+
+  * Port connection handler to use async functions.
+
 v. 1.3.1 (2021-08-11)
 
   * Fixes for high load.
