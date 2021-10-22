@@ -3067,7 +3067,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
         *cid = cid_provider.get_new_assigned_cid();
     }
 
-    stream.close().await?;
+    discard_while(zreceiver, async { Ok(stream.close().await?) }).await?;
 
     Ok(())
 }
