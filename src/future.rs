@@ -666,12 +666,8 @@ impl Drop for AsyncTlsStream {
     }
 }
 
-struct TimeoutInner {
-    evented: Option<TimerEvented>,
-}
-
 pub struct Timeout {
-    inner: RefCell<TimeoutInner>,
+    evented: TimerEvented,
 }
 
 impl Timeout {
@@ -680,31 +676,13 @@ impl Timeout {
 
         evented.registration().set_ready(true);
 
-        Self {
-            inner: RefCell::new(TimeoutInner {
-                evented: Some(evented),
-            }),
-        }
+        Self { evented }
     }
 
     pub fn set_deadline(&self, deadline: Instant) {
-        let inner = &mut *self.inner.borrow_mut();
+        self.evented.set_expires(deadline).unwrap();
 
-        if let Some(evented) = &inner.evented {
-            if evented.expires() == deadline {
-                // no change
-                return;
-            }
-        }
-
-        // destroy previous timer registration before creating a new one
-        inner.evented = None;
-
-        let evented = TimerEvented::new(deadline, &get_reactor()).unwrap();
-
-        evented.registration().set_ready(true);
-
-        inner.evented = Some(evented);
+        self.evented.registration().set_ready(true);
     }
 
     pub fn elapsed<'a>(&'a self) -> TimeoutFuture<'a> {
@@ -1594,9 +1572,7 @@ impl Future for TimeoutFuture<'_> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let inner = &*self.t.inner.borrow();
-
-        let evented = inner.evented.as_ref().unwrap();
+        let evented = &self.t.evented;
 
         evented
             .registration()
@@ -1620,9 +1596,7 @@ impl Future for TimeoutFuture<'_> {
 
 impl Drop for TimeoutFuture<'_> {
     fn drop(&mut self) {
-        if let Some(evented) = &self.t.inner.borrow().evented {
-            evented.registration().clear_waker();
-        }
+        self.t.evented.registration().clear_waker();
     }
 }
 
