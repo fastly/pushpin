@@ -20,7 +20,7 @@ use crate::event::ReadinessExt;
 use crate::timer::TimerWheel;
 use mio;
 use slab::Slab;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::cmp;
 use std::io;
 use std::os::unix::io::RawFd;
@@ -206,6 +206,30 @@ impl Registration {
         }
 
         ok
+    }
+
+    pub fn reregister_timer(&self, expires: Instant) -> Result<(), io::Error> {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+
+        let registrations = &mut *reactor.registrations.borrow_mut();
+        let reg_data = &mut registrations[self.key];
+
+        let timer = &mut *reactor.timer.borrow_mut();
+
+        if let Some(timer_key) = reg_data.timer_key {
+            timer.wheel.remove(timer_key);
+        }
+
+        let expires_ticks = duration_to_ticks_round_up(expires - timer.start);
+
+        let timer_key = match timer.wheel.add(expires_ticks, self.key) {
+            Ok(timer_key) => timer_key,
+            Err(_) => return Err(io::Error::from(io::ErrorKind::Other)),
+        };
+
+        reg_data.timer_key = Some(timer_key);
+
+        Ok(())
     }
 }
 
@@ -668,7 +692,7 @@ impl CustomEvented {
 
 pub struct TimerEvented {
     registration: Registration,
-    expires: Instant,
+    expires: Cell<Instant>,
 }
 
 impl TimerEvented {
@@ -677,7 +701,7 @@ impl TimerEvented {
 
         Ok(Self {
             registration,
-            expires,
+            expires: Cell::new(expires),
         })
     }
 
@@ -686,7 +710,17 @@ impl TimerEvented {
     }
 
     pub fn expires(&self) -> Instant {
-        self.expires
+        self.expires.get()
+    }
+
+    pub fn set_expires(&self, expires: Instant) -> Result<(), io::Error> {
+        if self.expires.get() == expires {
+            // no change
+            return Ok(());
+        }
+
+        self.expires.set(expires);
+        self.registration.reregister_timer(expires)
     }
 }
 
