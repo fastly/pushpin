@@ -264,6 +264,9 @@ pub trait AsyncWrite: Unpin {
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>>;
 
+    // for use with std Write
+    fn is_writable(&self) -> bool;
+
     fn cancel(&mut self);
 }
 
@@ -300,6 +303,10 @@ impl<T: ?Sized + AsyncWrite> AsyncWrite for &mut T {
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut **self).poll_close(cx)
+    }
+
+    fn is_writable(&self) -> bool {
+        AsyncWrite::is_writable(&**self)
     }
 
     fn cancel(&mut self) {
@@ -347,6 +354,37 @@ pub trait AsyncWriteExt: AsyncWrite {
 
 impl<R: AsyncRead + ?Sized> AsyncReadExt for R {}
 impl<W: AsyncWrite + ?Sized> AsyncWriteExt for W {}
+
+pub struct StdWriteWrapper<'a, 'b, W> {
+    w: Pin<&'a mut W>,
+    cx: &'a mut Context<'b>,
+}
+
+impl<'a, 'b, W: AsyncWrite> StdWriteWrapper<'a, 'b, W> {
+    pub fn new(w: Pin<&'a mut W>, cx: &'a mut Context<'b>) -> Self {
+        StdWriteWrapper { w, cx }
+    }
+}
+
+impl<'a, 'b, W: AsyncWrite> Write for StdWriteWrapper<'a, 'b, W> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+        match self.w.as_mut().poll_write(self.cx, buf) {
+            Poll::Ready(ret) => ret,
+            Poll::Pending => Err(io::Error::from(io::ErrorKind::WouldBlock)),
+        }
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+        match self.w.as_mut().poll_write_vectored(self.cx, bufs) {
+            Poll::Ready(ret) => ret,
+            Poll::Pending => Err(io::Error::from(io::ErrorKind::WouldBlock)),
+        }
+    }
+
+    fn flush(&mut self) -> Result<(), io::Error> {
+        Ok(())
+    }
+}
 
 pub struct ReadHalf<'a, T: AsyncRead> {
     handle: &'a RefCell<T>,
@@ -397,6 +435,10 @@ impl<T: AsyncWrite> AsyncWrite for WriteHalf<'_, T> {
         let mut handle = self.handle.borrow_mut();
 
         Pin::new(&mut *handle).poll_close(cx)
+    }
+
+    fn is_writable(&self) -> bool {
+        self.handle.borrow().is_writable()
     }
 
     fn cancel(&mut self) {
@@ -1464,6 +1506,13 @@ impl AsyncWrite for AsyncTcpStream {
         Poll::Ready(Ok(()))
     }
 
+    fn is_writable(&self) -> bool {
+        self.evented
+            .registration()
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
+    }
+
     fn cancel(&mut self) {
         self.evented
             .registration()
@@ -1572,6 +1621,12 @@ impl AsyncWrite for AsyncTlsStream {
             }
             Err(e) => Poll::Ready(Err(e)),
         }
+    }
+
+    fn is_writable(&self) -> bool {
+        self.registration
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
     }
 
     fn cancel(&mut self) {
@@ -1939,6 +1994,10 @@ mod tests {
 
         fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
             Poll::Ready(Ok(()))
+        }
+
+        fn is_writable(&self) -> bool {
+            true
         }
 
         fn cancel(&mut self) {}

@@ -3324,6 +3324,10 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        fn is_writable(&self) -> bool {
+            true
+        }
+
         fn cancel(&mut self) {}
     }
 
