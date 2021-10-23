@@ -255,7 +255,7 @@ impl<'buf> Protocol {
     }
 
     pub fn send_frame(
-        &mut self,
+        &self,
         writer: &mut dyn Write,
         opcode: u8,
         src: &[&[u8]],
@@ -459,7 +459,7 @@ impl<'buf> Protocol {
     }
 
     pub fn send_message_content(
-        &mut self,
+        &self,
         writer: &mut dyn Write,
         src: &[&[u8]],
         end: bool,
@@ -763,7 +763,7 @@ mod tests {
 
     #[test]
     fn test_send_frame() {
-        let mut p = Protocol::new();
+        let p = Protocol::new();
 
         assert_eq!(p.state(), State::Connected);
 
@@ -780,7 +780,7 @@ mod tests {
 
     #[test]
     fn test_send_message() {
-        let mut p = Protocol::new();
+        let p = Protocol::new();
 
         assert_eq!(p.state(), State::Connected);
 
