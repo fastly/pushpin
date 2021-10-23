@@ -35,7 +35,8 @@ use crate::buffer::{Buffer, LimitBufs, RefRead, RingBuffer, TmpBuffer, VECTORED_
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_5, select_option,
     AsyncLocalReceiver, AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
-    CancellationToken, ReadHalf, Select2, Select3, Select4, Select5, Timeout, WriteHalf,
+    CancellationToken, ReadHalf, Select2, Select3, Select4, Select5, StdWriteWrapper, Timeout,
+    WriteHalf,
 };
 use crate::http1;
 use crate::pin_mut;
@@ -56,6 +57,7 @@ use std::rc::Rc;
 use std::str;
 use std::str::FromStr;
 use std::sync::mpsc;
+use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 
@@ -1077,6 +1079,51 @@ struct HttpSendBodyWrite<'a, W: AsyncWrite> {
     body_done: bool,
 }
 
+struct SendBodyFuture<'a, 'b, W: AsyncWrite> {
+    w: &'a RefCell<HttpSendBodyWrite<'b, W>>,
+    protocol: &'a RefCell<http1::ServerProtocol>,
+}
+
+impl<'a, 'b, W: AsyncWrite> Future for SendBodyFuture<'a, 'b, W> {
+    type Output = Result<usize, ServerError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
+
+        let w = &mut *f.w.borrow_mut();
+
+        let stream = &mut w.stream;
+
+        if !stream.is_writable() {
+            return Poll::Pending;
+        }
+
+        let protocol = &mut *f.protocol.borrow_mut();
+
+        let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
+        let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+
+        match protocol.send_body(
+            &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
+            bufs,
+            w.body_done,
+            None,
+        ) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(http1::ServerError::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e.into())),
+        }
+    }
+}
+
+impl<W: AsyncWrite> Drop for SendBodyFuture<'_, '_, W> {
+    fn drop(&mut self) {
+        self.w.borrow_mut().stream.cancel();
+    }
+}
+
 struct RequestSendBody<'a, R: AsyncRead, W: AsyncWrite> {
     r: RefCell<HttpSendBodyRead<'a, R>>,
     w: RefCell<HttpSendBodyWrite<'a, W>>,
@@ -1100,25 +1147,33 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
     }
 
     async fn flush_body(&self) -> Result<(usize, bool), ServerError> {
-        let w = &mut *self.w.borrow_mut();
-        let protocol = &mut *self.protocol.borrow_mut();
+        {
+            let protocol = &*self.protocol.borrow();
 
-        assert_eq!(protocol.state(), http1::ServerState::SendingBody);
+            assert_eq!(protocol.state(), http1::ServerState::SendingBody);
 
-        if w.buf.read_avail() == 0 && !w.body_done {
-            return Ok((0, false));
+            let w = &*self.w.borrow();
+
+            if w.buf.read_avail() == 0 && !w.body_done {
+                return Ok((0, false));
+            }
         }
 
-        let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-        let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+        let size = SendBodyFuture {
+            w: &self.w,
+            protocol: &self.protocol,
+        }
+        .await?;
 
-        let size = protocol
-            .send_body_async(&mut w.stream, bufs, w.body_done, None)
-            .await?;
+        let w = &mut *self.w.borrow_mut();
+        let protocol = &*self.protocol.borrow();
 
         w.buf.read_commit(size);
 
-        if w.buf.read_avail() > 0 || !w.body_done {
+        if w.buf.read_avail() > 0
+            || !w.body_done
+            || protocol.state() == http1::ServerState::SendingBody
+        {
             return Ok((size, false));
         }
 
@@ -1166,6 +1221,48 @@ struct WebSocketRead<'a, R: AsyncRead> {
 struct WebSocketWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
     buf: &'a mut RingBuffer,
+}
+
+struct SendMessageContentFuture<'a, 'b, W: AsyncWrite> {
+    w: &'a RefCell<WebSocketWrite<'b, W>>,
+    protocol: &'a websocket::Protocol,
+    avail: usize,
+    done: bool,
+}
+
+impl<'a, 'b, W: AsyncWrite> Future for SendMessageContentFuture<'a, 'b, W> {
+    type Output = Result<(usize, bool), ServerError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
+
+        let w = &mut *f.w.borrow_mut();
+
+        let stream = &mut w.stream;
+
+        if !stream.is_writable() {
+            return Poll::Pending;
+        }
+
+        let mut buf_arr = [&b""[..]; VECTORED_MAX - 1];
+        let bufs = w.buf.get_ref_vectored(&mut buf_arr).limit(f.avail);
+
+        match f.protocol.send_message_content(
+            &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
+            bufs,
+            f.done,
+        ) {
+            Ok(ret) => Poll::Ready(Ok(ret)),
+            Err(websocket::Error::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => Poll::Pending,
+            Err(e) => Poll::Ready(Err(e.into())),
+        }
+    }
+}
+
+impl<W: AsyncWrite> Drop for SendMessageContentFuture<'_, '_, W> {
+    fn drop(&mut self) {
+        self.w.borrow_mut().stream.cancel();
+    }
 }
 
 struct WebSocketHandler<'a, R: AsyncRead, W: AsyncWrite> {
@@ -1266,21 +1363,15 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         F: Fn(),
     {
         loop {
+            let (size, done) = SendMessageContentFuture {
+                w: &self.w,
+                protocol: &self.protocol,
+                avail,
+                done,
+            }
+            .await?;
+
             let w = &mut *self.w.borrow_mut();
-
-            let (size, done) = {
-                let mut buf_arr = [&b""[..]; VECTORED_MAX - 1];
-                let bufs = w.buf.get_ref_vectored(&mut buf_arr).limit(avail);
-
-                match self
-                    .protocol
-                    .send_message_content_async(&mut w.stream, bufs, done)
-                    .await
-                {
-                    Ok(r) => r,
-                    Err(e) => return Err(e.into()),
-                }
-            };
 
             if size == 0 && !done {
                 continue;
