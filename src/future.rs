@@ -238,7 +238,7 @@ pub trait AsyncRead: Unpin {
         buf: &mut [u8],
     ) -> Poll<Result<usize, io::Error>>;
 
-    fn cancel(&mut self) {}
+    fn cancel(&mut self);
 }
 
 pub trait AsyncWrite: Unpin {
@@ -264,7 +264,7 @@ pub trait AsyncWrite: Unpin {
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>>;
 
-    fn cancel(&mut self) {}
+    fn cancel(&mut self);
 }
 
 impl<T: ?Sized + AsyncRead> AsyncRead for &mut T {
@@ -274,6 +274,10 @@ impl<T: ?Sized + AsyncRead> AsyncRead for &mut T {
         buf: &mut [u8],
     ) -> Poll<Result<usize, io::Error>> {
         Pin::new(&mut **self).poll_read(cx, buf)
+    }
+
+    fn cancel(&mut self) {
+        AsyncRead::cancel(&mut **self)
     }
 }
 
@@ -296,6 +300,10 @@ impl<T: ?Sized + AsyncWrite> AsyncWrite for &mut T {
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut **self).poll_close(cx)
+    }
+
+    fn cancel(&mut self) {
+        AsyncWrite::cancel(&mut **self)
     }
 }
 
@@ -354,6 +362,10 @@ impl<T: AsyncRead> AsyncRead for ReadHalf<'_, T> {
 
         Pin::new(&mut *handle).poll_read(cx, buf)
     }
+
+    fn cancel(&mut self) {
+        self.handle.borrow_mut().cancel();
+    }
 }
 
 pub struct WriteHalf<'a, T: AsyncWrite> {
@@ -385,6 +397,10 @@ impl<T: AsyncWrite> AsyncWrite for WriteHalf<'_, T> {
         let mut handle = self.handle.borrow_mut();
 
         Pin::new(&mut *handle).poll_close(cx)
+    }
+
+    fn cancel(&mut self) {
+        self.handle.borrow_mut().cancel();
     }
 }
 
@@ -1906,6 +1922,8 @@ mod tests {
 
             Poll::Ready(Ok(size))
         }
+
+        fn cancel(&mut self) {}
     }
 
     impl AsyncWrite for TestBuffer {
@@ -1922,6 +1940,8 @@ mod tests {
         fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
             Poll::Ready(Ok(()))
         }
+
+        fn cancel(&mut self) {}
     }
 
     #[test]

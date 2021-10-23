@@ -3301,6 +3301,8 @@ mod tests {
                 Err(e) => Poll::Ready(Err(e)),
             }
         }
+
+        fn cancel(&mut self) {}
     }
 
     impl AsyncWrite for AsyncFakeSock {
@@ -3321,6 +3323,8 @@ mod tests {
         fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
             Poll::Ready(Ok(()))
         }
+
+        fn cancel(&mut self) {}
     }
 
     impl Identify for AsyncFakeSock {
