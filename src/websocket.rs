@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-use crate::buffer::{write_vectored_offset, write_vectored_offset_async, RefRead, VECTORED_MAX};
-use crate::future::AsyncWrite;
+use crate::buffer::{write_vectored_offset, RefRead, VECTORED_MAX};
 use std::cell::{Cell, RefCell};
 use std::cmp;
 use std::io;
@@ -321,74 +320,6 @@ impl<'buf> Protocol {
         Ok(src_len)
     }
 
-    pub async fn send_frame_async(
-        &self,
-        writer: &mut dyn AsyncWrite,
-        opcode: u8,
-        src: &[&[u8]],
-        fin: bool,
-        mask: Option<[u8; 4]>,
-    ) -> Result<usize, Error> {
-        assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
-
-        let sending = &mut *self.sending.borrow_mut();
-
-        let mut src_len = 0;
-        for buf in src.iter() {
-            src_len += buf.len();
-        }
-
-        if sending.frame.is_none() {
-            let mut h = [0; HEADER_SIZE_MAX];
-
-            let size = write_header(fin, opcode, src_len, mask, &mut h[..])?;
-
-            sending.frame = Some(SendingFrame {
-                header: h,
-                header_len: size,
-                sent: 0,
-            });
-        }
-
-        let sending_frame = sending.frame.as_mut().unwrap();
-
-        let header = &sending_frame.header[..sending_frame.header_len];
-
-        let total = header.len() + src_len;
-
-        let mut out_arr = [&b""[..]; VECTORED_MAX];
-        let mut out_arr_len = 0;
-
-        out_arr[0] = header;
-        out_arr_len += 1;
-
-        for buf in src.iter() {
-            out_arr[out_arr_len] = buf;
-            out_arr_len += 1;
-        }
-
-        let size = write_vectored_offset_async(writer, &out_arr[..out_arr_len], sending_frame.sent)
-            .await?;
-
-        sending_frame.sent += size;
-
-        if sending_frame.sent < total {
-            return Ok(0);
-        }
-
-        sending.frame = None;
-
-        if opcode == OPCODE_CLOSE {
-            if self.state.get() == State::PeerClosed {
-                self.state.set(State::Finished);
-            } else {
-                self.state.set(State::Closing);
-            }
-        }
-
-        Ok(src_len)
-    }
-
     // on success, it's up to the caller to advance the buffer by frame.data.len()
     #[cfg(test)]
     pub fn recv_frame(
@@ -498,63 +429,6 @@ impl<'buf> Protocol {
         drop(sending);
 
         let size = self.send_frame(writer, opcode, src, fin, mask)?;
-
-        let mut sending = self.sending.borrow_mut();
-
-        if sending.frame.is_none() && fin {
-            sending.message = None;
-        } else {
-            let msg = sending.message.as_mut().unwrap();
-            msg.frame_sent = true;
-        }
-
-        let done = sending.message.is_none();
-
-        Ok((size, done))
-    }
-
-    pub async fn send_message_content_async(
-        &self,
-        writer: &mut dyn AsyncWrite,
-        src: &[&[u8]],
-        end: bool,
-    ) -> Result<(usize, bool), Error> {
-        assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
-
-        let sending = self.sending.borrow();
-
-        let msg = sending.message.as_ref().unwrap();
-
-        let mut src_len = 0;
-        for buf in src.iter() {
-            src_len += buf.len();
-        }
-
-        // control frames (ping, pong, close) must have a small payload length
-        //   and must not be fragmented
-        if msg.opcode & 0x08 != 0 && (src_len > CONTROL_FRAME_PAYLOAD_MAX || !end) {
-            return Err(Error::InvalidControlFrame);
-        }
-
-        let opcode = if msg.frame_sent {
-            OPCODE_CONTINUATION
-        } else {
-            msg.opcode
-        };
-
-        let fin = if let Some(f) = &sending.frame {
-            f.header[0] & 0x80 != 0
-        } else {
-            end
-        };
-
-        let mask = msg.mask;
-
-        drop(sending);
-
-        let size = self
-            .send_frame_async(writer, opcode, src, fin, mask)
-            .await?;
 
         let mut sending = self.sending.borrow_mut();
 
