@@ -1,6 +1,10 @@
 Condure Changelog
 =================
 
+v. 1.4.1 (2021-10-24)
+
+  * Fix crash when sending too fast to clients.
+
 v. 1.4.0 (2021-10-22)
 
   * Port connection handler to use async functions.
