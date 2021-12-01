@@ -70,6 +70,7 @@ public:
 		int messageRate;
 		int messageHwm;
 		int messageBlockSize;
+		int messageWait;
 		int idCacheTtl;
 		int connectionsMax;
 		int connectionSubscriptionMax;
@@ -89,6 +90,7 @@ public:
 			messageRate(-1),
 			messageHwm(-1),
 			messageBlockSize(-1),
+			messageWait(-1),
 			idCacheTtl(-1),
 			connectionsMax(-1),
 			connectionSubscriptionMax(-1),

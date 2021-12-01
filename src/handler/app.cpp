@@ -278,6 +278,7 @@ public:
 		int messageRate = settings.value("handler/message_rate", -1).toInt();
 		int messageHwm = settings.value("handler/message_hwm", -1).toInt();
 		int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
+		int messageWait = settings.value("handler/message_wait", 5000).toInt();
 		int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int connectionSubscriptionMax = settings.value("handler/connection_subscription_max", 20).toInt();
@@ -339,6 +340,7 @@ public:
 		config.messageRate = messageRate;
 		config.messageHwm = messageHwm;
 		config.messageBlockSize = messageBlockSize;
+		config.messageWait = messageWait;
 		config.idCacheTtl = idCacheTtl;
 		config.connectionsMax = clientMaxconn;
 		config.connectionSubscriptionMax = connectionSubscriptionMax;

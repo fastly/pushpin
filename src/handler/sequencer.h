@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -42,6 +42,7 @@ public:
 	Sequencer(PublishLastIds *publishLastIds, QObject *parent = 0);
 	~Sequencer();
 
+	void setWaitMax(int msecs);
 	void setIdCacheTtl(int secs);
 
 	// seq = false means ID cache handling only

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2016-2021 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -35,7 +35,7 @@
 #include "publishlastids.h"
 
 #define CHANNEL_PENDING_MAX 100
-#define PENDING_EXPIRE 5000
+#define DEFAULT_PENDING_EXPIRE 5000
 #define EXPIRE_INTERVAL 1000
 
 class Sequencer::Private : public QObject
@@ -74,6 +74,7 @@ public:
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
 	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
 	QTimer *expireTimer;
+	int pendingExpireMSecs;
 	int idCacheTtl;
 	QHash<QPair<QString, QString>, CachedId*> idCacheById;
 	QMap<QPair<qint64, CachedId*>, CachedId*> idCacheByExpireTime;
@@ -82,6 +83,7 @@ public:
 		QObject(_q),
 		q(_q),
 		lastIds(_publishLastIds),
+		pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
 		idCacheTtl(-1)
 	{
 		expireTimer = new QTimer(this);
@@ -237,7 +239,7 @@ private slots:
 	void expireTimer_timeout()
 	{
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
-		qint64 threshold = now - PENDING_EXPIRE;
+		qint64 threshold = now - pendingExpireMSecs;
 
 		while(!pendingItemsByTime.isEmpty())
 		{
@@ -277,6 +279,11 @@ Sequencer::Sequencer(PublishLastIds *publishLastIds, QObject *parent) :
 Sequencer::~Sequencer()
 {
 	delete d;
+}
+
+void Sequencer::setWaitMax(int msecs)
+{
+	d->pendingExpireMSecs = msecs;
 }
 
 void Sequencer::setIdCacheTtl(int secs)

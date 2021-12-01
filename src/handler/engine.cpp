@@ -1257,6 +1257,7 @@ public:
 		updateLimiter->setRate(10);
 		updateLimiter->setBatchWaitEnabled(true);
 
+		sequencer->setWaitMax(config.messageWait);
 		sequencer->setIdCacheTtl(config.idCacheTtl);
 
 		zhttpIn = new ZhttpManager(this);
