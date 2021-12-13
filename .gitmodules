@@ -4,3 +4,9 @@
 [submodule "qzmq"]
 	path = src/corelib/qzmq
 	url = git://github.com/jkarneges/qzmq.git
+[submodule "condure"]
+	path = condure
+	url = https://github.com/fanout/condure
+[submodule "zurl"]
+	path = zurl
+	url = https://github.com/fanout/zurl
