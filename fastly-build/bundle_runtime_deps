@@ -1,0 +1,169 @@
+#! /usr/bin/env python3
+
+import sys, argparse, subprocess, re, os, shutil, collections
+
+Lib = collections.namedtuple('Lib', 'basename fullpath')
+
+def main():
+    os.umask(0o022)
+
+    parser = argparse.ArgumentParser(description='Bundle runtime dependencies of binaries')
+    parser.add_argument('--libdir', dest='libdir', help='the lib directory under the package installation root (required)', required=False, metavar='DIR')
+    parser.add_argument('--prefix', dest='prefix', help='deprecated. use --libdir instead', required=False, metavar='DIR')
+    parser.add_argument('--stage', dest='stage', help='directory under which files are staged for packaging', required=True, metavar='DIR')
+    parser.add_argument('--work-around-conflict', dest='work_around_conflicts', action='append',
+            help='name of library for which a provider conflict is resolved by picking the fastly one over the system one (this option can repeat)', metavar='SONAME')
+    parser.add_argument('exes', nargs='+', help='list of executables to patch, under the directory specified with --stage', metavar='FILES')
+    args = parser.parse_args()
+
+    if args.libdir:
+        libdir = os.path.normpath(args.libdir)
+    else:
+        libdir = os.path.normpath("%s/lib" % args.prefix)
+
+    stage_libdir = os.path.normpath(args.stage + '/./' + libdir)
+    os.makedirs(stage_libdir, mode=0o755, exist_ok=True)
+
+    abs_stage = os.path.realpath(args.stage)
+
+    # uses[basename][fullpath] = list(exes)
+    uses = collections.defaultdict(lambda:collections.defaultdict(lambda:[]))
+
+    seen_abs_stage_filenames = {}
+    for stage_filename in args.exes :
+        abs_stage_filename = os.path.realpath(stage_filename)
+        if abs_stage_filename in seen_abs_stage_filenames :
+            print('NOTE: skipping "{}" ("{}") because it is identical to "{}"'.format(
+                    stage_filename, abs_stage_filename, seen_abs_stage_filenames[abs_stage_filename]),
+                file=sys.stderr, flush=True)
+            continue
+        seen_abs_stage_filenames[abs_stage_filename] = stage_filename
+
+        abs_common = os.path.commonpath((abs_stage, abs_stage_filename))
+        if abs_common != abs_stage :
+            print('ERROR: executable "{}" ("{}") does not appear to be under "{}" ("{}"): "{}"'.format(
+                    stage_filename, abs_stage_filename, args.stage, abs_stage, abs_common),
+                file=sys.stderr, flush=True)
+            sys.exit(1)
+
+        if open(stage_filename, 'rb').read(4) != b'\x7fELF' :
+            print('NOTE: skipping "{}" because it is not an ELF binary'.format(stage_filename),
+                file=sys.stderr, flush=True)
+            continue
+
+        needs = get_needed_libs(stage_filename)
+        needs = [lib for lib in needs if not is_excluded_system_lib(lib.basename)]
+        if not needs and no_rpath_per_chrpath(stage_filename) :
+            # Go binaries trigger a bug in patchelf-0.9 (https://github.com/NixOS/patchelf/pull/149)
+            # but if they do not need patching then they can be safely skipped.
+            print('NOTE: skipping "{}" because it needs nothing other than system libs and has no rpath/runpath'.format(stage_filename),
+                file=sys.stderr, flush=True)
+            continue
+
+        for lib in needs :
+            uses[lib.basename][lib.fullpath].append(stage_filename)
+
+        set_runpath(stage_filename, libdir)
+
+    collision_found = False
+    libs_to_bundle = set()
+    for (basename, amap) in uses.items() :
+        if len(amap) == 1 :
+            [(fullpath, exes)] = amap.items()
+            libs_to_bundle.add(fullpath)
+            log_bundling(fullpath, exes)
+            continue
+
+        if basename in args.work_around_conflicts :
+            # If one of the providers is the base system and the other one is
+            # a fastly package, then pick the one from the fastly package on
+            # the unchecked assumption that it is more recent.  In all other
+            # situations a provider conflict is still an error.
+            opt_fst_libs = []
+            non_opt_fst_libs = []
+            all_exes = set()
+            for (fullpath, exes) in amap.items() :
+                all_exes.update(exes)
+                if fullpath.startswith('/opt/fst-') :
+                    opt_fst_libs.append(fullpath)
+                else:
+                    non_opt_fst_libs.append(fullpath)
+            if len(opt_fst_libs) == len(non_opt_fst_libs) == 1 :
+                log_multiple_providers('WARNING', basename, amap, end='')
+                print(' Picking fastly {} over system {}\n'.format(opt_fst_libs[0], non_opt_fst_libs[0]),
+                        file=sys.stderr, flush=True)
+                libs_to_bundle.add(opt_fst_libs[0])
+                log_bundling(opt_fst_libs[0], all_exes)
+                continue
+
+        collision_found = True
+        log_multiple_providers('ERROR', basename, amap)
+
+    if collision_found :
+        sys.exit(1)
+
+    for src_filename in libs_to_bundle :
+        stage_filename = os.path.join(stage_libdir, os.path.basename(src_filename))
+        if os.path.dirname(src_filename) != libdir :
+            if os.path.exists(stage_filename):
+                # Regarding fst-h2o-quic, it's based on fst-h2o and thus already
+                # has bundlees in the directory.
+                print('WARN: bundlee "{}" already exists, skipping'.format(stage_filename),
+                        file=sys.stderr, flush=True)
+            else:
+                print('INFO: copying "{}" to "{}"'.format(src_filename, stage_filename))
+                shutil.copy2(src_filename, stage_filename)
+        set_runpath(stage_filename, libdir)
+
+
+def log_bundling(fullpath, exes):
+    print('INFO: Bundling {} used by:'.format(fullpath), file=sys.stderr)
+    for exe in exes :
+        print(' {}'.format(exe), file=sys.stderr)
+    print(file=sys.stderr, flush=True)
+
+
+def log_multiple_providers(msg, basename, amap, end='\n'):
+    print('{}: Multiple providers for basename {}'.format(msg, basename), file=sys.stderr)
+    for (fullpath, exes) in amap.items() :
+        print(' Full path {} used by:'.format(fullpath), file=sys.stderr)
+        for exe in exes :
+            print('  {}'.format(exe), file=sys.stderr)
+    print(file=sys.stderr, flush=True, end=end)
+
+
+EXCLUDED_SYS_LIB_RE = re.compile(r'^(?:lib(?:c|m|rt|pthread|dl)|ld-linux-x86-64)\.so')
+def is_excluded_system_lib(basename):
+    return ( EXCLUDED_SYS_LIB_RE.match(basename) is not None )
+
+
+LD_TRACE_ITEM_RE = re.compile(' (/[^ ]+) [(]0x[0-9a-f]+[)]')
+def get_needed_libs(stage_filename):
+    libs = []
+    output = subprocess.check_output(['ldd', stage_filename]).decode('us-ascii')
+    for m in LD_TRACE_ITEM_RE.finditer(output) :
+        fullpath = m.group(1)
+        if not os.path.exists(fullpath) :
+            print('ERROR: non-existent file {} in ldd output:\n{}'.format(
+                    fullpath, output),
+                file=sys.stderr, flush=True)
+            sys.exit(1)
+        libs.append(Lib(fullpath=fullpath, basename=os.path.basename(fullpath)))
+    return libs
+
+
+def set_runpath(stage_filename, value):
+    subprocess.check_call(['patchelf', '--set-rpath', value, stage_filename])
+
+
+# Go binaries trigger a bug in patchelf-0.9 (https://github.com/NixOS/patchelf/pull/149)
+def no_rpath_per_chrpath(stage_filename):
+    dev_null = open('/dev/null', 'wb')
+    r = subprocess.call(['chrpath', '--list', stage_filename], stdout=dev_null)
+    return (r == 2)
+
+
+if __name__ == '__main__' :
+    main()
+
+# vim:set et sw=4 ts=4:
