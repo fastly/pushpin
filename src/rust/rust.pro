@@ -16,7 +16,7 @@ CONFIG(debug, debug|release) {
 	target_dir = $$PWD/../../target/release
 }
 
-rust_build.commands = cd "$$root_dir" && cargo build --offline $$cargo_flags
+rust_build.commands = cd "$$root_dir" && cargo build $$cargo_flags
 
 publish_build.target = $$target_dir/pushpin-publish
 publish_build.depends = rust_build
