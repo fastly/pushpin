@@ -1,6 +1,7 @@
 FROM us.gcr.io/plat-elevation-preprod/fastly/base:latest
 
 ARG DESTDIR=/build
+ARG PKG_VERSION=unknown
 
 
 WORKDIR /build
@@ -25,4 +26,4 @@ RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/f
 RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/pushpin-publish
 RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/condure
 RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/zurl
-RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin -v $(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}')-$(cat fastly-build/VERSION) -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C / opt/fst-pushpin
+RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin -v $PKG_VERSION-$(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}') -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C / opt/fst-pushpin
