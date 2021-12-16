@@ -16,7 +16,7 @@ ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
 RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make DESTDIR=/ install
 RUN ./configure --prefix=/opt/fst-pushpin && make -j $(nproc) && make install
-RUN cd cordure && cargo build --release && cp ./target/release/condure /opt/fst-pushpin/bin
+RUN cd condure && cargo build --release && cp ./target/release/condure /opt/fst-pushpin/bin
 RUN cd zurl && ./configure --prefix=/opt/fst-pushpin && make -j $(nproc) && make install
 RUN ./fastly-build/bundle_runtime_deps --stage=/home/jenkins/workspace/teamc/fst-pushpin/ --prefix=/opt/fst-pushpin /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/bin/pushpin*
 RUN ./fastly-build/bundle_runtime_deps --stage=/home/jenkins/workspace/teamc/fst-pushpin/ --prefix=/opt/fst-pushpin /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/bin/condure
