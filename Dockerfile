@@ -19,11 +19,10 @@ RUN git clone https://github.com/curl/curl.git && cd curl && git checkout curl-7
 RUN ./configure --prefix=/opt/fst-pushpin && make -j $(nproc) && make install
 RUN cd condure && cargo build --release && cp ./target/release/condure /opt/fst-pushpin/bin
 RUN cd zurl && ./configure --prefix=/opt/fst-pushpin && make -j $(nproc) && make install
-RUN ./fastly-build/bundle_runtime_deps --stage=/home/jenkins/workspace/teamc/fst-pushpin/ --prefix=/opt/fst-pushpin /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/bin/pushpin
-RUN ./fastly-build/bundle_runtime_deps --stage=/home/jenkins/workspace/teamc/fst-pushpin/ --prefix=/opt/fst-pushpin /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/bin/pushpin-handler
-RUN ./fastly-build/bundle_runtime_deps --stage=/home/jenkins/workspace/teamc/fst-pushpin/ --prefix=/opt/fst-pushpin /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/bin/pushpin-proxy
-RUN ./fastly-build/bundle_runtime_deps --stage=/home/jenkins/workspace/teamc/fst-pushpin/ --prefix=/opt/fst-pushpin /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/bin/pushpin-publish
-RUN ./fastly-build/bundle_runtime_deps --stage=/home/jenkins/workspace/teamc/fst-pushpin/ --prefix=/opt/fst-pushpin /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/bin/condure
-RUN ./fastly-build/bundle_runtime_deps --stage=/home/jenkins/workspace/teamc/fst-pushpin/ --prefix=/opt/fst-pushpin /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/bin/zurl
-RUN cp -r /home/jenkins/workspace/teamc/fst-pushpin/opt/fst-pushpin/ /opt
-RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin -v $(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}')-$(cat fastly-build/VERSION) -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C /home/jenkins/workspace/teamc/fst-pushpin/ opt/fst-pushpin
+RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/pushpin
+RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/pushpin-handler
+RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/pushpin-proxy
+RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/pushpin-publish
+RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/condure
+RUN ./fastly-build/bundle_runtime_deps --stage=/opt/fst-pushpin/ --prefix=/opt/fst-pushpin /opt/fst-pushpin/bin/zurl
+RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin -v $(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}')-$(cat fastly-build/VERSION) -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C / opt/fst-pushpin
