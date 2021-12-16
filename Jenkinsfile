@@ -15,6 +15,7 @@ def releaseBranches = [RELEASE_BRANCH, 'origin/' + RELEASE_BRANCH]
 def cache = true
 def cleanMergedRefs = false
 def pushDeb = false
+def pushImage = false
 def namedBuild = ''
 def tagName = null
 def slackChannel = null
@@ -42,6 +43,7 @@ String getCleanedUpBuildRef() {
 String ref = getCleanedUpBuildRef()
 if (ref in releaseBranches) {
   pushDeb = true
+  pushImage = true
   cache = false
   cleanMergedRefs = true
   tagName = "jenkins/release"
@@ -75,7 +77,7 @@ fastlyPipeline(script: this, buildTimeout: BUILD_TIMEOUT, ignoreTags: true, slac
         def buildContainerConfig = [
           dockerFile: 'Dockerfile',
           imageName: 'fastly/pushpin',
-          pushImage: false,
+          pushImage: pushImage,
           cache: cache,
           additionalBuildArgs: [
             "DESTDIR=${env.WORKSPACE}",
