@@ -14,7 +14,7 @@ ENV CXX=/opt/fst-gcc/9.1.0/bin/g++
 ENV RUST_TOOLCHAIN=/opt/fst-rust/1.56.1
 ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
-RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make install
+RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make DESTDIR=/ install
 RUN ./configure --prefix=/opt/fst-pushpin && make -j $(nproc) && make install
 RUN cd cordure && cargo build --release && cp ./target/release/condure /opt/fst-pushpin/bin
 RUN cd zurl && ./configure --prefix=/opt/fst-pushpin && make -j $(nproc) && make install
