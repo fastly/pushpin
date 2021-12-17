@@ -2,8 +2,8 @@
 
 set -x -e
 
-groupadd pushpin
-useradd -g pushpin pushpin
+groupadd pushpin || true
+useradd -g pushpin pushpin || true
 mkdir -p /var/run/pushpin
 chown pushpin:pushpin /var/run/pushpin
 
