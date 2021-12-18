@@ -27,4 +27,7 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stag
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/condure
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/zurl
 RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
+RUN cp ./fastly-build/pushpin-socat.service /opt/fst-pushpin/etc
+RUN cp ./scripts/pushpin.sh /opt/fst-pushpin/bin
+RUN cp ./scripts/pushpin-starter.sh /opt/fst-pushpin/bin
 RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin --post-install ./fastly-build/deb-postinstall.sh --post-uninstall ./fastly-build/deb-postuninstall.sh -v $PKG_VERSION-$(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}') -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C / opt/fst-pushpin

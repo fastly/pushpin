@@ -1,0 +1,19 @@
+[Unit]
+Description=pushpin-socat
+After=pushpin.service
+Requires=pushpin.service
+JoinsNamespaceOf=pushpin.service
+
+[Service]
+Type=simple
+Restart=always
+CPUQuota=100%
+LimitNOFILE=1000
+MemoryLimit=5G
+WorkingDirectory=/var/run/pushpin
+User=pushpin
+PrivateNetwork=true
+PrivateTmp=true
+PrivateIPC=true
+PrivateDevices=true
+ExecStart=/usr/bin/socat UNIX-LISTEN:/tmp/pushpin.sock,fork,user=pushpin,group=pushpin-listener,mode=770 TCP:127.0.0.1:7999

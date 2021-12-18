@@ -9,6 +9,9 @@ LimitNOFILE=1000
 MemoryLimit=5G
 WorkingDirectory=/var/run/pushpin
 User=pushpin
-Environment=LD_LIBRARY_PATH=/opt/fst-pushpin/lib
 Environment=PATH=/opt/fst-pushpin/bin:$PATH
-ExecStart=/opt/fst-pushpin/bin/pushpin -m
+PrivateNetwork=true
+PrivateTmp=true
+PrivateIPC=true
+PrivateDevices=true
+ExecStart=/opt/fst-pushpin/bin/pushpin.sh
