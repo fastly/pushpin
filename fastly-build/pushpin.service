@@ -14,4 +14,4 @@ PrivateNetwork=true
 PrivateTmp=true
 PrivateIPC=true
 PrivateDevices=true
-ExecStart=/opt/fst-pushpin/bin/pushpin -m
+ExecStart=/opt/fst-pushpin/bin/pushpin.sh
