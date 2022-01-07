@@ -2,8 +2,7 @@
 
 USER=pushpin
 GROUP=pushpin
-GROUPS=pushpin-listener
-TMPDIR=$(mktemp -d /tmp/pushpin-XXXXXXXX)
+TMPDIR=$(/bin/mktemp -d /tmp/pushpin-XXXXXXXX)
 
 do_mount() {
 	local mode="$1" src="$2" dst="${TMPDIR}${2}"
@@ -22,7 +21,7 @@ for m in "${MOUNT_RW[@]}"
 do
 	do_mount "rw" "${m}"
 done
-MOUNT_RO=( "/opt/fst-pushpin" "/etc" "/dev" "/usr" "/lib" "/lib64" "/bin" "/sbin" )
+MOUNT_RO=( "/opt/fst-pushpin" "/etc" "/dev" "/usr" "/lib" "/lib64" "/bin" "/sbin" "/proc" )
 # mounted ro
 for m in "${MOUNT_RO[@]}"
 do
@@ -38,4 +37,4 @@ cleanup () {
 
 trap cleanup EXIT
 
-exec chroot "$TMPDIR" /sbin/runuser -g "$GROUP" -u "$USER" $(for g in $GROUPS; do echo -n "-G $g "; done) -- /opt/fst-pushpin/bin/pushpin -m
+exec chroot "$TMPDIR" /opt/fst-pushpin/bin/pushpin-inner.sh

@@ -8,10 +8,6 @@ CPUQuota=100%
 LimitNOFILE=1000
 MemoryLimit=5G
 WorkingDirectory=/var/run/pushpin
-User=pushpin
-Environment=PATH=/opt/fst-pushpin/bin:$PATH
+Environment=PATH=/opt/fst-pushpin/bin:/bin:/sbin:/usr/bin:/usr/sbin
 PrivateNetwork=true
-PrivateTmp=true
-PrivateIPC=true
-PrivateDevices=true
 ExecStart=/opt/fst-pushpin/bin/pushpin.sh
