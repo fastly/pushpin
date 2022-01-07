@@ -1,7 +1,7 @@
 [Unit]
 Description=pushpin-socat
 After=pushpin.service
-Requires=pushpin.service
+BindsTo=pushpin.service
 JoinsNamespaceOf=pushpin.service
 
 [Service]

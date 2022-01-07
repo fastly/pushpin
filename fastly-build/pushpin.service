@@ -1,5 +1,7 @@
 [Unit]
 Description=pushpin
+Before=pushpin-socat.service
+Requires=pushpin-socat.service
 
 [Service]
 Type=simple
