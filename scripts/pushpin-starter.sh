@@ -1,7 +1,5 @@
 #!/bin/bash -e
 
-USER=pushpin
-GROUP=pushpin
 TMPDIR=$(/bin/mktemp -d /tmp/pushpin-XXXXXXXX)
 
 do_mount() {
@@ -15,7 +13,7 @@ do_mount() {
 	mount --bind -o "$mode" "$src" "$dst"
 }
 
-MOUNT_RW=( "/var/run/pushpin" "/tmp/pushpin.sock" )
+MOUNT_RW=( "/var/run/pushpin" )
 # mounted rw
 for m in "${MOUNT_RW[@]}"
 do
@@ -37,4 +35,5 @@ cleanup () {
 
 trap cleanup EXIT
 
-exec chroot "$TMPDIR" /opt/fst-pushpin/bin/pushpin-inner.sh
+chown pushpin "$TMPDIR"
+exec chroot --userspec="pushpin:pushpin" "$TMPDIR" /opt/fst-pushpin/bin/pushpin-inner.sh

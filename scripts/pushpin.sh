@@ -1,3 +1,3 @@
 #!/bin/sh
 
-/usr/bin/unshare -m --mount-proc --propagation=slave /opt/fst-pushpin/bin/pushpin-starter.sh
+/usr/bin/unshare -m -f -p --mount-proc --propagation=slave /opt/fst-pushpin/bin/pushpin-starter.sh
