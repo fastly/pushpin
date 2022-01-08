@@ -36,4 +36,4 @@ cleanup () {
 trap cleanup EXIT
 
 chown pushpin "$TMPDIR"
-exec chroot --userspec="pushpin:pushpin" "$TMPDIR" /opt/fst-pushpin/bin/pushpin-inner.sh
+exec chroot --userspec="pushpin:pushpin" "$TMPDIR" /opt/fst-pushpin/bin/pushpin -m
