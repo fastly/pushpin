@@ -9,4 +9,4 @@
 	url = https://github.com/fanout/condure
 [submodule "zurl"]
 	path = zurl
-	url = https://github.com/fanout/zurl
+	url = https://github.com/deweerdt/zurl
