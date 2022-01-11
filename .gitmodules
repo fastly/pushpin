@@ -1,9 +1,9 @@
 [submodule "common"]
 	path = src/corelib/common
-	url = git://github.com/fanout/common.git
+	url = https://github.com/fanout/common.git
 [submodule "qzmq"]
 	path = src/corelib/qzmq
-	url = git://github.com/jkarneges/qzmq.git
+	url = https://github.com/jkarneges/qzmq.git
 [submodule "condure"]
 	path = condure
 	url = https://github.com/fanout/condure
