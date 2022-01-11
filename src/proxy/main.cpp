@@ -55,9 +55,9 @@ public slots:
 
 int main(int argc, char **argv)
 {
-	QCoreApplication qapp(argc, argv);
-
 	seccomp_bind();
+
+	QCoreApplication qapp(argc, argv);
 
 	AppMain appMain;
 	QTimer::singleShot(0, &appMain, SLOT(start()));
