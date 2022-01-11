@@ -7,6 +7,7 @@ include($$QZMQ_DIR/src/src.pri)
 
 INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
+
 HEADERS += $$COMMON_DIR/processquit.h
 SOURCES += $$COMMON_DIR/processquit.cpp
 
