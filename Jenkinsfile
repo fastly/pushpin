@@ -21,6 +21,7 @@ def tagName = null
 def slackChannel = null
 def emailToSlack = [
   'fdeweerdt@fastly.com': '@fdeweerdt',
+  'jkarneges@fastly.com': '@jkarneges',
 ]
 
 // Ignore TAG push events from GitHub, only branches built
@@ -47,7 +48,7 @@ if (ref in releaseBranches) {
   cache = false
   cleanMergedRefs = true
   tagName = "jenkins/release"
-  slackChannel = '#fdeweerdt'
+  slackChannel = '#fanout'
 } else if (ref =~ /^.*\/jenkins$/) {
   pushDeb = true
   cache = false
