@@ -6,7 +6,7 @@
 	url = https://github.com/jkarneges/qzmq.git
 [submodule "condure"]
 	path = condure
-	url = https://github.com/fanout/condure
+	url = git@github.com:fastly/fst-condure
 [submodule "zurl"]
 	path = zurl
 	url = https://github.com/fanout/zurl
