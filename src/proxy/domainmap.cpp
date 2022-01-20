@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2020 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -54,6 +54,13 @@ class DomainMap::Worker : public QObject
 	Q_OBJECT
 
 public:
+	enum AddRuleResult
+	{
+		AddRuleOk,
+		AddRuleNoDomain,
+		AddRuleDuplicate,
+	};
+
 	class Rule
 	{
 	public:
@@ -195,9 +202,14 @@ public:
 				continue;
 			}
 
-			if(!addRuleToMap(&newmap, r))
+			AddRuleResult ret = addRule(&newmap, r);
+			if(ret != AddRuleOk)
 			{
-				log_warning("%s:%d skipping duplicate condition", qPrintable(fileName), lineNum);
+				if(ret == AddRuleNoDomain)
+					log_warning("%s:%d condition has no domain", qPrintable(fileName), lineNum);
+				else // AddRuleDuplicate
+					log_warning("%s:%d skipping duplicate condition", qPrintable(fileName), lineNum);
+
 				continue;
 			}
 		}
@@ -247,7 +259,7 @@ public:
 		if(!parseRouteLine(line, "<route>", 1, &r))
 			return false;
 
-		if(!addRuleToMap(&map, r))
+		if(addRule(&map, r) != AddRuleOk)
 			return false;
 
 		return true;
@@ -316,18 +328,21 @@ private:
 
 		if(sections.count() < 2)
 		{
-			log_warning("%s:%d: must specify rule and at least one target", qPrintable(fileName), lineNum);
+			log_warning("%s:%d: must specify condition and at least one target", qPrintable(fileName), lineNum);
 			return false;
 		}
 
 		QString val = sections[0].value;
 		QHash<QString, QString> props = sections[0].props;
 
-		if(val == "*")
-			val.clear();
-
 		Rule r;
-		r.domain = val;
+
+		if(val.isEmpty())
+			r.domain = QString(); // null means unspecified
+		else if(val == "*")
+			r.domain = QString(""); // empty means wildcard
+		else
+			r.domain = val; // non-empty means exact match
 
 		r.jsonpConfig.mode = JsonpConfig::Extended;
 
@@ -585,8 +600,11 @@ private:
 		return true;
 	}
 
-	static bool addRuleToMap(QHash< QString,QList<Rule> > *m, const Rule &r)
+	static AddRuleResult addRule(QHash< QString,QList<Rule> > *m, const Rule &r)
 	{
+		if(r.domain.isNull())
+			return AddRuleNoDomain;
+
 		QList<Rule> *rules = 0;
 		if(m->contains(r.domain))
 		{
@@ -602,7 +620,7 @@ private:
 			}
 
 			if(found)
-				return false;
+				return AddRuleDuplicate;
 		}
 
 		if(!rules)
@@ -612,7 +630,7 @@ private:
 		}
 
 		*rules += r;
-		return true;
+		return AddRuleOk;
 	}
 };
 

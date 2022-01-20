@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -93,6 +93,7 @@ public:
 
 	Token nextToken()
 	{
+		int start = index_;
 		QString part;
 
 		while(true)
@@ -162,25 +163,33 @@ public:
 
 				part += str_.mid(index_, at - index_);
 
-				if(part.isEmpty())
-				{
-					Token token(Token::Error);
-					if(state_ == ReadInitialValue)
-						token.value = "empty initial value";
-					else // ReadProp
-						token.value = "expecting prop";
-					return token;
-				}
-
 				Token token;
 
 				if(state_ == ReadInitialValue)
 				{
+					int n = part.indexOf('=');
+
+					// '=' in initial value?
+					if(n != -1)
+					{
+						// return empty initial value, re-read as a prop
+						index_ = start;
+						state_ = ReadProp;
+						return Token(Token::InitialValue);
+					}
+
 					token.type = Token::InitialValue;
 					token.value = part;
 				}
 				else // ReadProp
 				{
+					if(part.isEmpty())
+					{
+						Token token(Token::Error);
+						token.value = "expecting prop";
+						return token;
+					}
+
 					QString name;
 					QString value;
 
