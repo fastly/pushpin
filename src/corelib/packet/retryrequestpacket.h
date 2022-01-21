@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -87,6 +87,8 @@ public:
 
 	bool haveInspectInfo;
 	InspectInfo inspectInfo;
+
+	QByteArray route;
 
 	RetryRequestPacket();
 
