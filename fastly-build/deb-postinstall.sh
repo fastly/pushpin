@@ -4,7 +4,7 @@ set -x -e
 
 groupadd pushpin || true
 groupadd pushpin-listener || true
-useradd -g pushpin -G pushpin-listener pushpin || true
+useradd -r -g pushpin -G pushpin-listener pushpin || true
 mkdir -p /var/run/pushpin
 chown pushpin:pushpin /var/run/pushpin
 
