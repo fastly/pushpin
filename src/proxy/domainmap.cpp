@@ -58,6 +58,7 @@ public:
 	{
 		AddRuleOk,
 		AddRuleNoDomain,
+		AddRuleNoDomainOrId,
 		AddRuleDuplicate,
 	};
 
@@ -166,8 +167,11 @@ public:
 	};
 
 	QMutex m;
+	LookupMode mode;
 	QString fileName;
-	QHash< QString, QList<Rule> > map;
+	QList<Rule> allRules;
+	QHash< QString, QList<Rule> > rulesByDomain;
+	QHash<QString, Rule> rulesById;
 	QTimer t;
 	QFileSystemWatcher watcher;
 
@@ -188,7 +192,9 @@ public:
 			return;
 		}
 
-		QHash< QString, QList<Rule> > newmap;
+		QList<Rule> all;
+		QHash< QString, QList<Rule> > domainMap;
+		QHash<QString, Rule> idMap;
 
 		QTextStream ts(&file);
 		for(int lineNum = 1; !ts.atEnd(); ++lineNum)
@@ -202,11 +208,13 @@ public:
 				continue;
 			}
 
-			AddRuleResult ret = addRule(&newmap, r);
+			AddRuleResult ret = addRule(mode, r, &all, &domainMap, &idMap);
 			if(ret != AddRuleOk)
 			{
 				if(ret == AddRuleNoDomain)
 					log_warning("%s:%d condition has no domain", qPrintable(fileName), lineNum);
+				else if(ret == AddRuleNoDomainOrId)
+					log_warning("%s:%d condition has no domain or id", qPrintable(fileName), lineNum);
 				else // AddRuleDuplicate
 					log_warning("%s:%d skipping duplicate condition", qPrintable(fileName), lineNum);
 
@@ -215,7 +223,7 @@ public:
 		}
 
 		log_debug("routes map:");
-		QHashIterator< QString, QList<Rule> > it(newmap);
+		QHashIterator< QString, QList<Rule> > it(domainMap);
 		while(it.hasNext())
 		{
 			it.next();
@@ -244,10 +252,12 @@ public:
 
 		// atomically replace the map
 		m.lock();
-		map = newmap;
+		allRules = all;
+		rulesByDomain = domainMap;
+		rulesById = idMap;
 		m.unlock();
 
-		log_info("routes map loaded with %d entries", newmap.count());
+		log_info("routes map loaded with %d entries", domainMap.count());
 
 		QMetaObject::invokeMethod(this, "changed", Qt::QueuedConnection);
 	}
@@ -259,7 +269,7 @@ public:
 		if(!parseRouteLine(line, "<route>", 1, &r))
 			return false;
 
-		if(addRule(&map, r) != AddRuleOk)
+		if(addRule(mode, r, &allRules, &rulesByDomain, &rulesById) != AddRuleOk)
 			return false;
 
 		return true;
@@ -600,36 +610,70 @@ private:
 		return true;
 	}
 
-	static AddRuleResult addRule(QHash< QString,QList<Rule> > *m, const Rule &r)
+	static AddRuleResult addRule(LookupMode mode, const Rule &r, QList<Rule> *all, QHash< QString,QList<Rule> > *domainMap, QHash<QString, Rule> *idMap)
 	{
-		if(r.domain.isNull())
-			return AddRuleNoDomain;
-
-		QList<Rule> *rules = 0;
-		if(m->contains(r.domain))
+		if(mode == DomainLookups)
 		{
-			rules = &((*m)[r.domain]);
-			bool found = false;
-			foreach(const Rule &b, *rules)
+			if(r.domain.isNull())
+				return AddRuleNoDomain;
+		}
+		else // DomainOrIdLookups
+		{
+			if(r.domain.isNull() && r.id.isEmpty())
+				return AddRuleNoDomainOrId;
+		}
+
+		bool addByDomain = false;
+		bool addById = false;
+
+		if(!r.domain.isNull())
+		{
+			if(domainMap->contains(r.domain))
 			{
-				if(b.compare(r))
+				QList<Rule> *rules = &((*domainMap)[r.domain]);
+
+				bool found = false;
+				foreach(const Rule &b, *rules)
 				{
-					found = true;
-					break;
+					if(b.compare(r))
+					{
+						found = true;
+						break;
+					}
 				}
+
+				if(found)
+					return AddRuleDuplicate;
 			}
 
-			if(found)
-				return AddRuleDuplicate;
+			addByDomain = true;
 		}
 
-		if(!rules)
+		if(mode == DomainOrIdLookups && !r.id.isEmpty())
 		{
-			m->insert(r.domain, QList<Rule>());
-			rules = &((*m)[r.domain]);
+			if(idMap->contains(r.id))
+				return AddRuleDuplicate;
+
+			addById = true;
 		}
 
-		*rules += r;
+		*all += r;
+
+		if(addByDomain)
+		{
+			if(!domainMap->contains(r.domain))
+				domainMap->insert(r.domain, QList<Rule>());
+
+			QList<Rule> *rules = &((*domainMap)[r.domain]);
+
+			*rules += r;
+		}
+
+		if(addById)
+		{
+			idMap->insert(r.id, r);
+		}
+
 		return AddRuleOk;
 	}
 };
@@ -639,6 +683,7 @@ class DomainMap::Thread : public QThread
 	Q_OBJECT
 
 public:
+	LookupMode mode;
 	QString fileName;
 	Worker *worker;
 	QMutex m;
@@ -660,6 +705,7 @@ public:
 	virtual void run()
 	{
 		worker = new Worker;
+		worker->mode = mode;
 		worker->fileName = fileName;
 		connect(worker, &Worker::started, this, &Thread::worker_started, Qt::DirectConnection);
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
@@ -695,9 +741,10 @@ public:
 		delete thread;
 	}
 
-	void start(const QString &fileName = QString())
+	void start(LookupMode mode, const QString &fileName = QString())
 	{
 		thread = new Thread;
+		thread->mode = mode;
 		thread->fileName = fileName;
 		thread->start();
 
@@ -712,18 +759,18 @@ public slots:
 	}
 };
 
-DomainMap::DomainMap(QObject *parent) :
+DomainMap::DomainMap(DomainMap::LookupMode mode, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
-	d->start();
+	d->start(mode);
 }
 
-DomainMap::DomainMap(const QString &fileName, QObject *parent) :
+DomainMap::DomainMap(DomainMap::LookupMode mode, const QString &fileName, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
-	d->start(fileName);
+	d->start(mode, fileName);
 }
 
 DomainMap::~DomainMap()
@@ -742,10 +789,10 @@ DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domai
 
 	const QList<Worker::Rule> *rules;
 	QString empty("");
-	if(d->thread->worker->map.contains(domain))
-		rules = &d->thread->worker->map[domain];
-	else if(d->thread->worker->map.contains(empty))
-		rules = &d->thread->worker->map[empty];
+	if(d->thread->worker->rulesByDomain.contains(domain))
+		rules = &d->thread->worker->rulesByDomain[domain];
+	else if(d->thread->worker->rulesByDomain.contains(empty))
+		rules = &d->thread->worker->rulesByDomain[empty];
 	else
 		return Entry();
 
@@ -766,24 +813,28 @@ DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domai
 	return best->toEntry();
 }
 
+DomainMap::Entry DomainMap::entry(const QString &id) const
+{
+	QMutexLocker locker(&d->thread->worker->m);
+
+	if(d->thread->worker->rulesById.contains(id))
+		return d->thread->worker->rulesById[id].toEntry();
+	else
+		return Entry();
+}
+
 QList<DomainMap::ZhttpRoute> DomainMap::zhttpRoutes() const
 {
 	QMutexLocker locker(&d->thread->worker->m);
 
 	QList<ZhttpRoute> out;
 
-	QHashIterator< QString, QList<Worker::Rule> > it(d->thread->worker->map);
-	while(it.hasNext())
+	foreach(const Worker::Rule &r, d->thread->worker->allRules)
 	{
-		it.next();
-		const QList<Worker::Rule> &rules = it.value();
-		foreach(const Worker::Rule &r, rules)
+		foreach(const Target &t, r.targets)
 		{
-			foreach(const Target &t, r.targets)
-			{
-				if(!t.zhttpRoute.isNull() && !out.contains(t.zhttpRoute))
-					out += t.zhttpRoute;
-			}
+			if(!t.zhttpRoute.isNull() && !out.contains(t.zhttpRoute))
+				out += t.zhttpRoute;
 		}
 	}
 

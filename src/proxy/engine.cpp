@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2021 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -190,12 +190,12 @@ public:
 
 		if(!config.routeLines.isEmpty())
 		{
-			domainMap = new DomainMap(this);
+			domainMap = new DomainMap(DomainMap::DomainLookups, this);
 			foreach(const QString &line, config.routeLines)
 				domainMap->addRouteLine(line);
 		}
 		else
-			domainMap = new DomainMap(config.routesFile, this);
+			domainMap = new DomainMap(DomainMap::DomainLookups, config.routesFile, this);
 
 		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
 
