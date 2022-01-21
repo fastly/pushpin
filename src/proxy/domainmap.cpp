@@ -333,7 +333,7 @@ private:
 		}
 
 		QString val = sections[0].value;
-		QHash<QString, QString> props = sections[0].props;
+		QMultiHash<QString, QString> props = sections[0].props;
 
 		Rule r;
 
@@ -504,7 +504,7 @@ private:
 		for(int n = 1; n < sections.count(); ++n)
 		{
 			QString val = sections[n].value;
-			QHash<QString, QString> props = sections[n].props;
+			QMultiHash<QString, QString> props = sections[n].props;
 
 			Target target;
 

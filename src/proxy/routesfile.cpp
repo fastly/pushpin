@@ -259,7 +259,7 @@ QList<RouteSection> parseLine(const QString &line, bool *ok, QString *errorMessa
 				break;
 			case LineParser::Token::Prop:
 				assert(!out.isEmpty());
-				out.last().props.insertMulti(t.name, t.value);
+				out.last().props.insert(t.name, t.value);
 				break;
 			case LineParser::Token::EndOfLine:
 				done = true;

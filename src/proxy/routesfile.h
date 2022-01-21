@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,7 +31,7 @@
 
 #include <QString>
 #include <QList>
-#include <QHash>
+#include <QMultiHash>
 
 namespace RoutesFile {
 
@@ -39,7 +39,7 @@ class RouteSection
 {
 public:
 	QString value;
-	QHash<QString, QString> props;
+	QMultiHash<QString, QString> props;
 };
 
 QList<RouteSection> parseLine(const QString &line, bool *ok = 0, QString *errorMessage = 0);
