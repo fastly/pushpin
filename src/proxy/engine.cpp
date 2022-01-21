@@ -188,14 +188,16 @@ public:
 
 		WebSocketOverHttp::setMaxManagedDisconnects(config.maxWorkers);
 
+		DomainMap::LookupMode lookupMode = config.acceptPushpinRoute ? DomainMap::DomainOrIdLookups : DomainMap::DomainLookups;
+
 		if(!config.routeLines.isEmpty())
 		{
-			domainMap = new DomainMap(DomainMap::DomainLookups, this);
+			domainMap = new DomainMap(lookupMode, this);
 			foreach(const QString &line, config.routeLines)
 				domainMap->addRouteLine(line);
 		}
 		else
-			domainMap = new DomainMap(DomainMap::DomainLookups, config.routesFile, this);
+			domainMap = new DomainMap(lookupMode, config.routesFile, this);
 
 		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
 
@@ -491,6 +493,14 @@ public:
 				if(data.contains("auto-share"))
 					autoShare = data["auto-share"].toBool();
 			}
+
+			// with acceptPushpinRoute, we may be dependent on Pushpin-Route
+			//   in order to route properly. in that case, force internal
+			//   requests to always go to the network, and if they end up
+			//   looping back we can assume some proxy will add Pushpin-Route
+			//   if necessary
+			if(config.acceptPushpinRoute)
+				lookupRoute = false;
 		}
 		else
 		{
@@ -507,6 +517,14 @@ public:
 			rs->setPrefetchSize(config.inspectPrefetch);
 			rs->setDefaultUpstreamKey(config.upstreamKey);
 			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+
+			if(config.acceptPushpinRoute)
+			{
+				QString routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
+
+				if(!routeId.isEmpty())
+					rs->setRouteId(routeId);
+			}
 		}
 		else
 		{
@@ -568,8 +586,17 @@ public:
 
 		QByteArray encPath = requestUri.path(QUrl::FullyEncoded).toUtf8();
 
+		QString routeId;
+
+		if(config.acceptPushpinRoute)
+			routeId = QString::fromUtf8(sock->requestHeaders().get("Pushpin-Route"));
+
 		// look up the route
-		DomainMap::Entry route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
+		DomainMap::Entry route;
+		if(!routeId.isEmpty())
+			route = domainMap->entry(routeId);
+		else
+			route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
 
 		// before we do anything else, see if this is a sockjs request
 		if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
@@ -818,6 +845,9 @@ private slots:
 
 			rs->setDefaultUpstreamKey(config.upstreamKey);
 			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+
+			if(config.acceptPushpinRoute && !p.route.isEmpty())
+				rs->setRouteId(QString::fromUtf8(p.route));
 
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2020 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -166,6 +166,7 @@ public:
 	QHostAddress peerAddress;
 	QHostAddress logicalPeerAddress;
 	DomainMap::Entry route;
+	QString routeId;
 	bool debug;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
@@ -284,7 +285,10 @@ public:
 			QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
 			// look up the route
-			route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+			if(!routeId.isEmpty())
+				route = domainMap->entry(routeId);
+			else
+				route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 
 			// before we do anything else, see if this is a sockjs request
 			if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
@@ -394,7 +398,11 @@ public:
 		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
 		// look up the route
-		route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+		if(!routeId.isEmpty())
+			route = domainMap->entry(routeId);
+		else
+			route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+
 		if(route.isNull())
 		{
 			log_warning("requestsession: %p %s has 0 routes", q, qPrintable(host));
@@ -1276,6 +1284,11 @@ void RequestSession::setPrefetchSize(int size)
 void RequestSession::setRoute(const DomainMap::Entry &route)
 {
 	d->route = route;
+}
+
+void RequestSession::setRouteId(const QString &routeId)
+{
+	d->routeId = routeId;
 }
 
 void RequestSession::setAutoShare(bool enabled)
