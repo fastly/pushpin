@@ -544,6 +544,10 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
             formats.insert("http-response".into(), TnValue::Map(http_response));
         }
         Action::Hint => {
+            let mut http_response = HashMap::new();
+            http_response.insert("action".into(), TnValue::String("hint".into()));
+            formats.insert("http-response".into(), TnValue::Map(http_response));
+
             let mut http_stream = HashMap::new();
             http_stream.insert("action".into(), TnValue::String("hint".into()));
             formats.insert("http-stream".into(), TnValue::Map(http_stream));
