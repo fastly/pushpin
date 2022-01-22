@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -80,7 +80,8 @@ public:
 	void setAutoShare(bool enabled);
 	void setAccepted(bool enabled);
 	void setDefaultUpstreamKey(const QByteArray &key);
-        void setXffRules(const XffRule &untrusted, const XffRule &trusted);
+	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
+	void setAcceptPushpinRoute(bool enabled);
 
 	// takes ownership
 	void start(ZhttpRequest *req);
