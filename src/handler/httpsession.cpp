@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2021 Fanout, Inc.
+ * Copyright (C) 2016-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1133,6 +1133,8 @@ private:
 					rp.inspectInfo.lastIds.insert(c.name.toUtf8(), c.prevId.toUtf8());
 				}
 			}
+
+			rp.route = adata.route.toUtf8();
 
 			retryPacket = rp;
 		}

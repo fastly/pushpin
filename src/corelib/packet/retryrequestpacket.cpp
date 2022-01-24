@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -129,6 +129,9 @@ QVariant RetryRequestPacket::toVariant() const
 
 		obj["inspect"] = vinspect;
 	}
+
+	if(!route.isEmpty())
+		obj["route"] = route;
 
 	return obj;
 }
@@ -323,6 +326,14 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 		inspectInfo.userData = vinspect["user-data"];
 
 		haveInspectInfo = true;
+	}
+
+	if(obj.contains("route"))
+	{
+		if(obj["route"].type() != QVariant::ByteArray)
+			return false;
+
+		route = obj["route"].toByteArray();
 	}
 
 	return true;

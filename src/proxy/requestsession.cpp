@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2020 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -190,6 +190,7 @@ public:
 	bool autoShare;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
+	bool acceptPushpinRoute;
 	bool isSockJs;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
@@ -219,6 +220,7 @@ public:
 		accepted(false),
 		passthrough(false),
 		autoShare(false),
+		acceptPushpinRoute(false),
 		isSockJs(false)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
@@ -283,8 +285,13 @@ public:
 		{
 			QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
+			QString routeId = QString::fromUtf8(requestData.headers.get("Pushpin-Route"));
+
 			// look up the route
-			route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+			if(acceptPushpinRoute && !routeId.isEmpty())
+				route = domainMap->entry(routeId);
+			else
+				route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
 
 			// before we do anything else, see if this is a sockjs request
 			if(!route.isNull() && !route.sockJsPath.isEmpty() && encPath.startsWith(route.sockJsPath))
@@ -1297,6 +1304,11 @@ void RequestSession::setXffRules(const XffRule &untrusted, const XffRule &truste
 {
 	d->xffRule = untrusted;
 	d->xffTrustedRule = trusted;
+}
+
+void RequestSession::setAcceptPushpinRoute(bool enabled)
+{
+	d->acceptPushpinRoute = enabled;
 }
 
 void RequestSession::start(ZhttpRequest *req)
