@@ -485,7 +485,7 @@ public:
 			foreach(const QString &httpPortStr, httpPortStrs)
 			{
 				QPair<QHostAddress, int> p = parsePort(httpPortStr);
-				if(p.second < 1)
+				if(p.second < 0)
 				{
 					log_error("invalid http port: %s", qPrintable(httpPortStr));
 					emit q->quit(1);
