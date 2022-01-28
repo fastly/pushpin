@@ -1188,13 +1188,17 @@ private:
 		{
 			// don't use proxy routing
 			passthroughData["route"] = false;
-			if(!adata.sigIss.isEmpty())
-				passthroughData["sig-iss"] = adata.sigIss;
-			if(!adata.sigKey.isEmpty())
-				passthroughData["sig-key"] = adata.sigKey;
-			if(adata.trusted)
-				passthroughData["trusted"] = true;
 		}
+
+		// these fields are needed for when proxy routing is not used. note
+		//   that even if route=true, the proxy can still elect to not use
+		//   proxy routing. so, we include these fields in all cases
+		if(!adata.sigIss.isEmpty())
+			passthroughData["sig-iss"] = adata.sigIss;
+		if(!adata.sigKey.isEmpty())
+			passthroughData["sig-key"] = adata.sigKey;
+		if(adata.trusted)
+			passthroughData["trusted"] = true;
 
 		// share requests to the same URI
 		passthroughData["auto-share"] = true;
