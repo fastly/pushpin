@@ -93,12 +93,24 @@ private slots:
 		QCOMPARE(r[2].value, QString("cherry"));
 		QCOMPARE(r[2].props.value("type"), QString("bing"));
 
+		r = RoutesFile::parseLine(",organic", &ok);
+		QVERIFY(ok);
+		QCOMPARE(r.count(), 1);
+		QCOMPARE(r[0].value, QString(""));
+		QCOMPARE(r[0].props.count(), 1);
+		QVERIFY(r[0].props.contains("organic"));
+		QVERIFY(r[0].props.value("organic").isEmpty());
+
+		r = RoutesFile::parseLine("type=gala", &ok);
+		QVERIFY(ok);
+		QCOMPARE(r.count(), 1);
+		QCOMPARE(r[0].value, QString(""));
+		QCOMPARE(r[0].props.count(), 1);
+		QVERIFY(r[0].props.contains("type"));
+		QCOMPARE(r[0].props.value("type"), QString("gala"));
+
 		// unterminated quote
 		r = RoutesFile::parseLine("apple,organic,type=\"gala", &ok);
-		QVERIFY(!ok);
-
-		// empty value
-		r = RoutesFile::parseLine(",organic", &ok);
 		QVERIFY(!ok);
 
 		// empty prop name
