@@ -133,6 +133,7 @@ public:
 	QByteArray defaultSigIss;
 	QByteArray defaultSigKey;
 	bool trustedClient;
+	bool intReq;
 	bool passthrough;
 	bool acceptXForwardedProtocol;
 	bool useXForwardedProto;
@@ -162,6 +163,7 @@ public:
 		requestBodySent(false),
 		total(0),
 		trustedClient(false),
+		intReq(false),
 		passthrough(false),
 		acceptXForwardedProtocol(false),
 		useXForwardedProto(false),
@@ -264,8 +266,6 @@ public:
 					requestData.headers += HttpHeader(h.first, h.second);
 			}
 
-			bool intReq = false;
-
 			if(!rs->isRetry())
 			{
 				inRequest = rs->request();
@@ -281,12 +281,12 @@ public:
 			trustedClient = rs->trusted();
 			QHostAddress clientAddress = rs->request()->peerAddress();
 
-			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, idata, !intReq);
+			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, idata, route.grip, intReq);
 
 			state = Requesting;
 			buffering = true;
 
-			if(trustedClient || intReq)
+			if(trustedClient || !route.grip || intReq)
 				passthrough = true;
 
 			initialRequestBody = requestBody.toByteArray();
@@ -1140,7 +1140,7 @@ public slots:
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
-		if(!passthrough)
+		if(!intReq)
 			logFinished(si);
 
 		QPointer<QObject> self = this;

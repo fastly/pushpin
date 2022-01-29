@@ -515,7 +515,6 @@ public:
 			target.ssl = isHttps;
 			if(passthroughData.type() == QVariant::Hash)
 			{
-
 				route.sigIss = data["sig-iss"].toByteArray();
 				route.sigKey = data["sig-key"].toByteArray();
 				target.trusted = data["trusted"].toBool();

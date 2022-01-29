@@ -151,6 +151,7 @@ public:
 		QByteArray sockJsAsPath;
 		HttpHeaders headers;
 		bool separateStats;
+		bool grip;
 		QList<Target> targets;
 
 		bool isNull() const
@@ -172,7 +173,8 @@ public:
 			debug(false),
 			autoCrossOrigin(false),
 			session(false),
-			separateStats(false)
+			separateStats(false),
+			grip(true)
 		{
 		}
 	};

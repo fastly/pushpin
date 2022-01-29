@@ -86,6 +86,7 @@ public:
 		QByteArray sockJsPath;
 		QByteArray sockJsAsPath;
 		HttpHeaders headers;
+		bool grip;
 		QList<Target> targets;
 
 		Rule() :
@@ -96,7 +97,8 @@ public:
 			pathRemove(0),
 			debug(false),
 			autoCrossOrigin(false),
-			session(false)
+			session(false),
+			grip(true)
 		{
 		}
 
@@ -195,6 +197,7 @@ public:
 			e.sockJsAsPath = sockJsAsPath;
 			e.headers = headers;
 			e.separateStats = explicitId;
+			e.grip = grip;
 			e.targets = targets;
 			return e;
 		}
@@ -544,6 +547,9 @@ private:
 				r.headers += HttpHeader(name, value);
 			}
 		}
+
+		if(props.contains("no_grip"))
+			r.grip = false;
 
 		ok = true;
 		for(int n = 1; n < sections.count(); ++n)
