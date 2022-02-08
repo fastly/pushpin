@@ -947,7 +947,9 @@ public:
 
 		LogUtil::RequestData rd;
 
-		rd.routeId = route.id;
+		// only log route id if explicitly set
+		if(route.separateStats)
+			rd.routeId = route.id;
 
 		if(accepted)
 		{

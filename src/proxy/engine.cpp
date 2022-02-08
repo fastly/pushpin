@@ -188,16 +188,14 @@ public:
 
 		WebSocketOverHttp::setMaxManagedDisconnects(config.maxWorkers);
 
-		DomainMap::LookupMode lookupMode = config.acceptPushpinRoute ? DomainMap::DomainOrIdLookups : DomainMap::DomainLookups;
-
 		if(!config.routeLines.isEmpty())
 		{
-			domainMap = new DomainMap(lookupMode, this);
+			domainMap = new DomainMap(this);
 			foreach(const QString &line, config.routeLines)
 				domainMap->addRouteLine(line);
 		}
 		else
-			domainMap = new DomainMap(lookupMode, config.routesFile, this);
+			domainMap = new DomainMap(config.routesFile, this);
 
 		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
 
@@ -433,8 +431,8 @@ public:
 
 		if(stats)
 		{
-			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, ps->logicalClientAddress(), sock->requestUri().scheme() == "wss", false);
-			stats->addActivity(ps->routeId());
+			stats->addConnection(cid, ps->statsRoute(), StatsManager::WebSocket, ps->logicalClientAddress(), sock->requestUri().scheme() == "wss", false);
+			stats->addActivity(ps->statsRoute());
 		}
 	}
 
@@ -637,7 +635,11 @@ public:
 
 		LogUtil::RequestData rd;
 
-		rd.routeId = rs->route().id;
+		DomainMap::Entry route = rs->route();
+
+		// only log route id if explicitly set
+		if(route.separateStats)
+			rd.routeId = route.id;
 
 		if(accepted)
 		{

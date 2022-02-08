@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -50,6 +50,7 @@ public:
 	QTimer *requestTimer;
 	QByteArray cid;
 	QByteArray route;
+	bool separateStats;
 	QByteArray channelPrefix;
 	QUrl uri;
 
@@ -57,7 +58,8 @@ public:
 		QObject(_q),
 		q(_q),
 		manager(0),
-		nextReqId(0)
+		nextReqId(0),
+		separateStats(false)
 	{
 		requestTimer = new QTimer(this);
 		requestTimer->setSingleShot(true);
@@ -95,6 +97,7 @@ public:
 		WsControlPacket::Item i;
 		i.type = WsControlPacket::Item::Here;
 		i.route = route;
+		i.separateStats = separateStats;
 		i.channelPrefix = channelPrefix;
 		i.uri = uri;
 		i.ttl = SESSION_TTL;
@@ -284,9 +287,10 @@ QByteArray WsControlSession::cid() const
 	return d->cid;
 }
 
-void WsControlSession::start(const QByteArray &routeId, const QByteArray &channelPrefix, const QUrl &uri)
+void WsControlSession::start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, const QUrl &uri)
 {
 	d->route = routeId;
+	d->separateStats = separateStats;
 	d->channelPrefix = channelPrefix;
 	d->uri = uri;
 	d->start();

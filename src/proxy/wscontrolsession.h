@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -46,7 +46,7 @@ public:
 
 	QByteArray cid() const;
 
-	void start(const QByteArray &routeId, const QByteArray &channelPrefix, const QUrl &uri);
+	void start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, const QUrl &uri);
 	void sendGripMessage(const QByteArray &message);
 	void sendNeedKeepAlive();
 	void sendSubscribe(const QByteArray &channel);

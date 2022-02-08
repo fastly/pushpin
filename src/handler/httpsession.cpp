@@ -249,7 +249,7 @@ public:
 		assert(state == NotStarted);
 
 		ZhttpRequest::Rid rid = req->rid();
-		stats->addConnection(rid.first + ':' + rid.second, adata.route.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true);
+		stats->addConnection(rid.first + ':' + rid.second, adata.statsRoute.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true);
 
 		// set up implicit channels
 		QPointer<QObject> self = this;
@@ -1523,7 +1523,7 @@ private slots:
 
 			setupKeepAlive();
 
-			stats->addActivity(adata.route.toUtf8(), 1);
+			stats->addActivity(adata.statsRoute.toUtf8(), 1);
 		}
 	}
 
@@ -1570,9 +1570,9 @@ bool HttpSession::isRetry() const
 	return d->adata.isRetry;
 }
 
-QString HttpSession::route() const
+QString HttpSession::statsRoute() const
 {
-	return d->adata.route;
+	return d->adata.statsRoute;
 }
 
 QString HttpSession::sid() const

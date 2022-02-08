@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -84,6 +84,7 @@ public:
 	HttpResponseData response;
 
 	QByteArray route;
+	bool separateStats;
 	QByteArray channelPrefix;
 	QList<QByteArray> channels;
 	QByteArray sigIss;
@@ -95,6 +96,7 @@ public:
 	AcceptData() :
 		haveInspectData(false),
 		haveResponse(false),
+		separateStats(false),
 		useSession(false),
 		responseSent(false)
 	{

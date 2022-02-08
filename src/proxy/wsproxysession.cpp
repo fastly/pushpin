@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -878,7 +878,7 @@ private slots:
 				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
 				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
 				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
-				wsControl->start(routeId, channelPrefix, inSock->requestUri());
+				wsControl->start(routeId, route.separateStats, channelPrefix, inSock->requestUri());
 
 				foreach(const QString &subChannel, target.subscriptions)
 				{
@@ -1115,9 +1115,9 @@ QHostAddress WsProxySession::logicalClientAddress() const
 	return d->logicalClientAddress;
 }
 
-QByteArray WsProxySession::routeId() const
+QByteArray WsProxySession::statsRoute() const
 {
-	return d->routeId;
+	return d->route.statsRoute();
 }
 
 QByteArray WsProxySession::cid() const

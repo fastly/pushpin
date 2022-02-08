@@ -57,7 +57,6 @@ public:
 	enum AddRuleResult
 	{
 		AddRuleOk,
-		AddRuleNoDomain,
 		AddRuleNoDomainOrId,
 		AddRuleDuplicate,
 	};
@@ -72,6 +71,7 @@ public:
 		int ssl; // -1=unspecified, 0=no, 1=yes
 
 		QByteArray id;
+		bool explicitId; // if the id was provided by the user
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray prefix;
@@ -91,6 +91,7 @@ public:
 		Rule() :
 			proto(-1),
 			ssl(-1),
+			explicitId(false),
 			origHeaders(false),
 			pathRemove(0),
 			debug(false),
@@ -142,6 +143,38 @@ public:
 			return false;
 		}
 
+		QByteArray idFromCondition() const {
+			QString domainStr;
+			if(!domain.isEmpty())
+				domainStr = domain;
+			else
+				domainStr = "*";
+
+			QString protoStr;
+			if(proto == 0)
+				protoStr = "http";
+			else if(proto == 1)
+				protoStr = "ws";
+			else
+				protoStr = "*";
+
+			QString sslStr;
+			if(ssl == 0)
+				sslStr = "ssl";
+			else if(ssl == 1)
+				sslStr = "no-ssl";
+			else
+				sslStr = "*";
+
+			QString pathBegStr;
+			if(!pathBeg.isEmpty())
+				pathBegStr = pathBeg;
+			else
+				pathBegStr = "*";
+
+			return (domainStr + ',' + protoStr + ',' + sslStr + ',' + pathBegStr).toUtf8();
+		}
+
 		Entry toEntry() const
 		{
 			Entry e;
@@ -161,13 +194,13 @@ public:
 			e.sockJsPath = sockJsPath;
 			e.sockJsAsPath = sockJsAsPath;
 			e.headers = headers;
+			e.separateStats = explicitId;
 			e.targets = targets;
 			return e;
 		}
 	};
 
 	QMutex m;
-	LookupMode mode;
 	QString fileName;
 	QList<Rule> allRules;
 	QHash< QString, QList<Rule> > rulesByDomain;
@@ -208,12 +241,13 @@ public:
 				continue;
 			}
 
-			AddRuleResult ret = addRule(mode, r, &all, &domainMap, &idMap);
+			if(r.id.isEmpty())
+				r.id = r.idFromCondition();
+
+			AddRuleResult ret = addRule(r, &all, &domainMap, &idMap);
 			if(ret != AddRuleOk)
 			{
-				if(ret == AddRuleNoDomain)
-					log_warning("%s:%d condition has no domain", qPrintable(fileName), lineNum);
-				else if(ret == AddRuleNoDomainOrId)
+				if(ret == AddRuleNoDomainOrId)
 					log_warning("%s:%d condition has no domain or id", qPrintable(fileName), lineNum);
 				else // AddRuleDuplicate
 					log_warning("%s:%d skipping duplicate condition", qPrintable(fileName), lineNum);
@@ -269,7 +303,7 @@ public:
 		if(!parseRouteLine(line, "<route>", 1, &r))
 			return false;
 
-		if(addRule(mode, r, &allRules, &rulesByDomain, &rulesById) != AddRuleOk)
+		if(addRule(r, &allRules, &rulesByDomain, &rulesById) != AddRuleOk)
 			return false;
 
 		return true;
@@ -387,6 +421,7 @@ private:
 		if(props.contains("id"))
 		{
 			r.id = props.value("id").toUtf8();
+			r.explicitId = true;
 		}
 
 		if(props.contains("path_beg"))
@@ -610,18 +645,10 @@ private:
 		return true;
 	}
 
-	static AddRuleResult addRule(LookupMode mode, const Rule &r, QList<Rule> *all, QHash< QString,QList<Rule> > *domainMap, QHash<QString, Rule> *idMap)
+	static AddRuleResult addRule(const Rule &r, QList<Rule> *all, QHash< QString,QList<Rule> > *domainMap, QHash<QString, Rule> *idMap)
 	{
-		if(mode == DomainLookups)
-		{
-			if(r.domain.isNull())
-				return AddRuleNoDomain;
-		}
-		else // DomainOrIdLookups
-		{
-			if(r.domain.isNull() && r.id.isEmpty())
-				return AddRuleNoDomainOrId;
-		}
+		if(r.domain.isNull() && r.id.isEmpty())
+			return AddRuleNoDomainOrId;
 
 		bool addByDomain = false;
 		bool addById = false;
@@ -649,12 +676,17 @@ private:
 			addByDomain = true;
 		}
 
-		if(mode == DomainOrIdLookups && !r.id.isEmpty())
+		if(!r.id.isEmpty())
 		{
-			if(idMap->contains(r.id))
-				return AddRuleDuplicate;
-
-			addById = true;
+			if(!idMap->contains(r.id))
+			{
+				addById = true;
+			}
+			else
+			{
+				// mark the key as unusable
+				idMap->insert(r.id, Rule());
+			}
 		}
 
 		*all += r;
@@ -683,7 +715,6 @@ class DomainMap::Thread : public QThread
 	Q_OBJECT
 
 public:
-	LookupMode mode;
 	QString fileName;
 	Worker *worker;
 	QMutex m;
@@ -705,7 +736,6 @@ public:
 	virtual void run()
 	{
 		worker = new Worker;
-		worker->mode = mode;
 		worker->fileName = fileName;
 		connect(worker, &Worker::started, this, &Thread::worker_started, Qt::DirectConnection);
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
@@ -741,10 +771,9 @@ public:
 		delete thread;
 	}
 
-	void start(LookupMode mode, const QString &fileName = QString())
+	void start(const QString &fileName = QString())
 	{
 		thread = new Thread;
-		thread->mode = mode;
 		thread->fileName = fileName;
 		thread->start();
 
@@ -759,18 +788,18 @@ public slots:
 	}
 };
 
-DomainMap::DomainMap(DomainMap::LookupMode mode, QObject *parent) :
+DomainMap::DomainMap(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
-	d->start(mode);
+	d->start();
 }
 
-DomainMap::DomainMap(DomainMap::LookupMode mode, const QString &fileName, QObject *parent) :
+DomainMap::DomainMap(const QString &fileName, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
-	d->start(mode, fileName);
+	d->start(fileName);
 }
 
 DomainMap::~DomainMap()
@@ -817,10 +846,16 @@ DomainMap::Entry DomainMap::entry(const QString &id) const
 {
 	QMutexLocker locker(&d->thread->worker->m);
 
-	if(d->thread->worker->rulesById.contains(id))
-		return d->thread->worker->rulesById[id].toEntry();
-	else
+	if(!d->thread->worker->rulesById.contains(id))
 		return Entry();
+
+	const Worker::Rule *r = &d->thread->worker->rulesById[id];
+
+	// this can happen if there were duplicate route IDs
+	if(r->id.isEmpty())
+		return Entry();
+
+	return r->toEntry();
 }
 
 QList<DomainMap::ZhttpRoute> DomainMap::zhttpRoutes() const

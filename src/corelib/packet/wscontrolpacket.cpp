@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -210,6 +210,9 @@ QVariant WsControlPacket::toVariant() const
 		if(!item.route.isEmpty())
 			vitem["route"] = item.route;
 
+		if(item.separateStats)
+			vitem["separate-stats"] = true;
+
 		if(!item.channelPrefix.isEmpty())
 			vitem["channel-prefix"] = item.channelPrefix;
 
@@ -354,6 +357,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			QByteArray route = vitem["route"].toByteArray();
 			if(!route.isEmpty())
 				item.route = route;
+		}
+
+		if(vitem.contains("separate-stats"))
+		{
+			if(vitem["separate-stats"].type() != QVariant::Bool)
+				return false;
+
+			item.separateStats = vitem["separate-stats"].toBool();
 		}
 
 		if(vitem.contains("channel-prefix"))

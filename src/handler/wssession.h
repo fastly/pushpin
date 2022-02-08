@@ -46,6 +46,7 @@ public:
 	QString channelPrefix;
 	HttpRequestData requestData;
 	QString route;
+	QString statsRoute;
 	QString sid;
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)

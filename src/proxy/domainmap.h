@@ -43,17 +43,6 @@ class DomainMap : public QObject
 	Q_OBJECT
 
 public:
-	enum LookupMode
-	{
-		// default behavior. routes must specify a domain, and multiple
-		//   routes can have the same id
-		DomainLookups,
-
-		// routes must specify a domain or an id (domains are optional if an
-		//   id is specified), and an id cannot be shared by multiple routes
-		DomainOrIdLookups
-	};
-
 	class JsonpConfig
 	{
 	public:
@@ -145,8 +134,8 @@ public:
 	class Entry
 	{
 	public:
-		QByteArray pathBeg;
 		QByteArray id;
+		QByteArray pathBeg;
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray prefix;
@@ -161,6 +150,7 @@ public:
 		QByteArray sockJsPath;
 		QByteArray sockJsAsPath;
 		HttpHeaders headers;
+		bool separateStats;
 		QList<Target> targets;
 
 		bool isNull() const
@@ -168,18 +158,27 @@ public:
 			return targets.isEmpty();
 		}
 
+		QByteArray statsRoute() const
+		{
+			if(separateStats)
+				return id;
+			else
+				return QByteArray(); // global stats
+		}
+
 		Entry() :
 			origHeaders(false),
 			pathRemove(0),
 			debug(false),
 			autoCrossOrigin(false),
-			session(false)
+			session(false),
+			separateStats(false)
 		{
 		}
 	};
 
-	DomainMap(LookupMode mode, QObject *parent = 0);
-	DomainMap(LookupMode mode, const QString &fileName, QObject *parent = 0);
+	DomainMap(QObject *parent = 0);
+	DomainMap(const QString &fileName, QObject *parent = 0);
 	~DomainMap();
 
 	// shouldn't really ever need to call this, but it's here in case the
@@ -187,8 +186,6 @@ public:
 	void reload();
 
 	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
-
-	// only works in DomainOrIdLookups mode
 	Entry entry(const QString &id) const;
 
 	QList<ZhttpRoute> zhttpRoutes() const;

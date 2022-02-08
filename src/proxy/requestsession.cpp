@@ -370,8 +370,8 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
-			stats->addActivity(route.id);
+			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
+			stats->addActivity(route.statsRoute());
 		}
 
 		state = Prefetching;
@@ -418,8 +418,8 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
-			stats->addActivity(route.id);
+			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
+			stats->addActivity(route.statsRoute());
 		}
 	}
 
