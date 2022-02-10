@@ -256,7 +256,7 @@ public:
 			}
 		}
 
-		log_debug("routes map:");
+		log_debug("routes by domain:");
 		QHashIterator< QString, QList<Rule> > it(domainMap);
 		while(it.hasNext())
 		{
@@ -291,7 +291,7 @@ public:
 		rulesById = idMap;
 		m.unlock();
 
-		log_info("routes map loaded with %d entries", domainMap.count());
+		log_info("routes loaded with %d entries", allRules.count());
 
 		QMetaObject::invokeMethod(this, "changed", Qt::QueuedConnection);
 	}
