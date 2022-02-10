@@ -185,6 +185,7 @@ public:
 	//   underlying file watching doesn't work
 	void reload();
 
+	bool isIdShared(const QString &id) const;
 	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
 	Entry entry(const QString &id) const;
 

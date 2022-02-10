@@ -812,6 +812,18 @@ void DomainMap::reload()
 	QMetaObject::invokeMethod(d->thread->worker, "doReload", Qt::QueuedConnection);
 }
 
+bool DomainMap::isIdShared(const QString &id) const
+{
+	QMutexLocker locker(&d->thread->worker->m);
+
+	if(!d->thread->worker->rulesById.contains(id))
+		return false;
+
+	const Worker::Rule *r = &d->thread->worker->rulesById[id];
+
+	return r->id.isEmpty();
+}
+
 DomainMap::Entry DomainMap::entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const
 {
 	QMutexLocker locker(&d->thread->worker->m);

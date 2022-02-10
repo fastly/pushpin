@@ -285,7 +285,7 @@ public:
 			QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
 			// look up the route
-			if(!routeId.isEmpty())
+			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 				route = domainMap->entry(routeId);
 			else
 				route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
@@ -398,7 +398,7 @@ public:
 		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
 		// look up the route
-		if(!routeId.isEmpty())
+		if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 			route = domainMap->entry(routeId);
 		else
 			route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);

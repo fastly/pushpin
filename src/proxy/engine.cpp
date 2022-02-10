@@ -591,7 +591,7 @@ public:
 
 		// look up the route
 		DomainMap::Entry route;
-		if(!routeId.isEmpty())
+		if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 			route = domainMap->entry(routeId);
 		else
 			route = domainMap->entry(DomainMap::WebSocket, isSecure, host, encPath);
