@@ -1181,18 +1181,12 @@ private:
 		//   could still end up looping back to us
 		if(nextUri.scheme() == currentUri.scheme() && nextUri.host() == currentUri.host() && nextPort == currentPort)
 		{
-			// use proxy routing
-			passthroughData["route"] = true;
-		}
-		else
-		{
-			// don't use proxy routing
-			passthroughData["route"] = false;
+			// tell the proxy that we prefer the request to be handled
+			//   internally, using the same route
+			passthroughData["route"] = adata.route.toUtf8();
 		}
 
-		// these fields are needed for when proxy routing is not used. note
-		//   that even if route=true, the proxy can still elect to not use
-		//   proxy routing. so, we include these fields in all cases
+		// these fields are needed in case proxy routing is not used
 		if(!adata.sigIss.isEmpty())
 			passthroughData["sig-iss"] = adata.sigIss;
 		if(!adata.sigKey.isEmpty())

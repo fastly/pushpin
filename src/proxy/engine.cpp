@@ -475,62 +475,37 @@ public:
 				return;
 		}
 
-		bool lookupRoute = true;
+		QString routeId;
 		bool autoShare = false;
 
 		QVariant passthroughData = req->passthroughData();
 		if(passthroughData.isValid())
 		{
-			if(passthroughData.type() == QVariant::Hash)
-			{
-				QVariantHash data = passthroughData.toHash();
+			const QVariantHash data = passthroughData.toHash();
 
-				if(data.contains("route"))
-					lookupRoute = data["route"].toBool();
+			if(data.contains("route"))
+				routeId = QString::fromUtf8(data["route"].toByteArray());
 
-				if(data.contains("auto-share"))
-					autoShare = data["auto-share"].toBool();
-			}
-
-			// with acceptPushpinRoute, we may be dependent on Pushpin-Route
-			//   in order to route properly. in that case, force internal
-			//   requests to always go to the network, and if they end up
-			//   looping back we can assume some proxy will add Pushpin-Route
-			//   if necessary
-			if(config.acceptPushpinRoute)
-				lookupRoute = false;
+			if(data.contains("auto-share"))
+				autoShare = data["auto-share"].toBool();
 		}
 		else
 		{
 			if(config.acceptXForwardedProto && isXForwardedProtocolTls(req->requestHeaders()))
 				req->setIsTls(true);
+
+			if(config.acceptPushpinRoute)
+				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
 		}
 
 		RequestSession *rs;
-		if(lookupRoute)
+		if(passthroughData.isValid() && routeId.isEmpty())
 		{
-			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
-			rs->setDebugEnabled(config.debug);
-			rs->setAutoCrossOrigin(config.autoCrossOrigin);
-			rs->setPrefetchSize(config.inspectPrefetch);
-			rs->setDefaultUpstreamKey(config.upstreamKey);
-			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
-
-			if(config.acceptPushpinRoute)
-			{
-				QString routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
-
-				if(!routeId.isEmpty())
-					rs->setRouteId(routeId);
-			}
-		}
-		else
-		{
-			assert(passthroughData.isValid());
+			// passthrough request with no route ID. in this case, set up a
+			//   direct route, with no domainmap lookup
 
 			const QVariantHash data = passthroughData.toHash();
 
-			// make a direct route, no domainmap lookup
 			DomainMap::Entry route;
 			DomainMap::Target target;
 			QUrl uri = req->requestUri();
@@ -549,6 +524,20 @@ public:
 
 			rs = new RequestSession(stats, this);
 			rs->setRoute(route);
+		}
+		else
+		{
+			// regular request (with or without a route ID), or a passthrough
+			//   request with a route ID. in that case, use domainmap for
+			//   lookup, with route ID if available
+
+			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
+			rs->setDebugEnabled(config.debug);
+			rs->setAutoCrossOrigin(config.autoCrossOrigin);
+			rs->setPrefetchSize(config.inspectPrefetch);
+			rs->setDefaultUpstreamKey(config.upstreamKey);
+			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+			rs->setRouteId(routeId);
 		}
 
 		rs->setAutoShare(autoShare);
@@ -848,7 +837,7 @@ private slots:
 			rs->setDefaultUpstreamKey(config.upstreamKey);
 			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 
-			if(config.acceptPushpinRoute && !p.route.isEmpty())
+			if(!p.route.isEmpty())
 				rs->setRouteId(QString::fromUtf8(p.route));
 
 			// note: if the routing table was changed, there's a chance the request
