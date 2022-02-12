@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2021 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -172,6 +172,46 @@ public:
 				blocksReceived <= 0 &&
 				blocksSent <= 0);
 		}
+
+		void addConnectionsMinutes(int mins, qint64 now)
+		{
+			connectionsMinutes += mins;
+
+			lastUpdate = now;
+		}
+
+		void addMessageReceived(int blocks, qint64 now)
+		{
+			++messagesReceived;
+
+			if(blocks > 0)
+			{
+				if(blocksReceived < 0)
+					blocksReceived = 0;
+
+				blocksReceived += blocks;
+			}
+
+			lastUpdate = now;
+		}
+
+		void addMessageSent(const QString &transport, int blocks, qint64 now)
+		{
+			++messagesSent;
+
+			if(transport == "http-response")
+				++httpResponseMessagesSent;
+
+			if(blocks > 0)
+			{
+				if(blocksSent < 0)
+					blocksSent = 0;
+
+				blocksSent += blocks;
+			}
+
+			lastUpdate = now;
+		}
 	};
 
 	typedef QPair<QString, QString> SubscriptionKey;
@@ -202,6 +242,7 @@ public:
 	TimerWheel wheel;
 	qint64 startTime;
 	QHash<QByteArray, Report*> reports;
+	Report combinedReport;
 	QTimer *activityTimer;
 	QTimer *reportTimer;
 	QTimer *refreshTimer;
@@ -532,6 +573,9 @@ public:
 
 	void removeReport(Report *report)
 	{
+		// subtract the current total from the combined report
+		combinedReport.connectionsMax -= report->connectionsMax;
+
 		reports.remove(report->routeId);
 	}
 
@@ -672,6 +716,10 @@ public:
 
 		int conns = localConns + extConns;
 
+		// subtract the current total from the combined report
+		combinedReport.connectionsMax -= report->connectionsMax;
+
+		// update the individual report
 		if(report->connectionsMaxStale)
 		{
 			report->connectionsMax = conns;
@@ -681,6 +729,10 @@ public:
 			report->connectionsMax = qMax(report->connectionsMax, conns);
 
 		report->lastUpdate = now;
+
+		// add the new total to the combined report
+		combinedReport.connectionsMax += report->connectionsMax;
+		combinedReport.lastUpdate = now;
 	}
 
 	void updateConnectionsMinutes(ConnectionInfo *c, qint64 now)
@@ -697,9 +749,8 @@ public:
 			// only advance as much as we've read
 			c->lastReport += mins * 60000;
 
-			report->connectionsMinutes += mins;
-
-			report->lastUpdate = now;
+			report->addConnectionsMinutes(mins, now);
+			combinedReport.addConnectionsMinutes(mins, now);
 		}
 	}
 
@@ -1093,7 +1144,10 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 		if(!replacing)
 		{
 			Private::Report *report = d->getOrCreateReport(c->routeId);
-			++(report->connectionsMinutes); // minutes are rounded up so count one immediately
+
+			// minutes are rounded up so count one immediately
+			report->addConnectionsMinutes(1, now);
+			d->combinedReport.addConnectionsMinutes(1, now);
 		}
 	}
 
@@ -1233,17 +1287,10 @@ void StatsManager::addMessageReceived(const QByteArray &routeId, int blocks)
 
 	Private::Report *report = d->getOrCreateReport(routeId);
 
-	++report->messagesReceived;
+	qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-	if(blocks > 0)
-	{
-		if(report->blocksReceived < 0)
-			report->blocksReceived = 0;
-
-		report->blocksReceived += blocks;
-	}
-
-	report->lastUpdate = QDateTime::currentMSecsSinceEpoch();
+	report->addMessageReceived(blocks, now);
+	d->combinedReport.addMessageReceived(blocks, now);
 }
 
 void StatsManager::addMessageSent(const QByteArray &routeId, const QString &transport, int blocks)
@@ -1253,20 +1300,10 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 
 	Private::Report *report = d->getOrCreateReport(routeId);
 
-	++report->messagesSent;
+	qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-	if(transport == "http-response")
-		++report->httpResponseMessagesSent;
-
-	if(blocks > 0)
-	{
-		if(report->blocksSent < 0)
-			report->blocksSent = 0;
-
-		report->blocksSent += blocks;
-	}
-
-	report->lastUpdate = QDateTime::currentMSecsSinceEpoch();
+	report->addMessageSent(transport, blocks, now);
+	d->combinedReport.addMessageSent(transport, blocks, now);
 }
 
 bool StatsManager::checkConnection(const QByteArray &id) const
@@ -1361,7 +1398,10 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet)
 			if(!replacing)
 			{
 				Private::Report *report = d->getOrCreateReport(c->routeId);
-				++(report->connectionsMinutes); // minutes are rounded up so count one immediately
+
+				// minutes are rounded up so count one immediately
+				report->addConnectionsMinutes(1, now);
+				d->combinedReport.addConnectionsMinutes(1, now);
 			}
 		}
 		else
