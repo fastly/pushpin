@@ -31,6 +31,7 @@
 
 #include <QObject>
 #include <QStringList>
+#include <QHostAddress>
 #include "xffrule.h"
 
 class Engine : public QObject
@@ -85,6 +86,8 @@ public:
 		bool quietCheck;
 		int connectionsMax;
 		int statsConnectionTtl;
+		QHostAddress prometheusAddr;
+		int prometheusPort;
 
 		Configuration() :
 			ipcFileMode(-1),
@@ -102,7 +105,8 @@ public:
 			updatesCheck("check"),
 			quietCheck(false),
 			connectionsMax(-1),
-			statsConnectionTtl(-1)
+			statsConnectionTtl(-1),
+			prometheusPort(-1)
 		{
 		}
 	};

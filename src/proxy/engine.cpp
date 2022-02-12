@@ -300,20 +300,31 @@ public:
 			}
 		}
 
-		if(!config.statsSpec.isEmpty())
+		if(!config.statsSpec.isEmpty() || config.prometheusPort >= 0)
 		{
 			stats = new StatsManager(config.connectionsMax, 0, this);
 
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);
+			stats->setConnectionTtl(config.statsConnectionTtl);
 
-			if(!stats->setSpec(config.statsSpec))
+			if(!config.statsSpec.isEmpty())
 			{
-				log_error("unable to bind to stats_spec: %s", qPrintable(config.statsSpec));
-				return false;
+				if(!stats->setSpec(config.statsSpec))
+				{
+					// statsmanager logs error
+					return false;
+				}
 			}
 
-			stats->setConnectionTtl(config.statsConnectionTtl);
+			if(config.prometheusPort >= 0)
+			{
+				if(!stats->setPrometheusAddrPort(config.prometheusAddr, config.prometheusPort))
+				{
+					log_error("unable to bind to prometheus port: %s:%d", qPrintable(config.prometheusAddr.toString()), config.prometheusPort);
+					return false;
+				}
+			}
 		}
 
 		if(!config.commandSpec.isEmpty())
