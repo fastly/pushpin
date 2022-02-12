@@ -39,7 +39,9 @@
 #include "timerwheel.h"
 #include "log.h"
 #include "tnetstring.h"
+#include "httpheaders.h"
 #include "packet/statspacket.h"
+#include "simplehttpserver.h"
 #include "zutil.h"
 
 // make this somewhat big since PUB is lossy
@@ -229,6 +231,7 @@ public:
 	int subscriptionLinger;
 	int reportInterval;
 	QZmq::Socket *sock;
+	SimpleHttpServer *prometheusServer;
 	QHash<QByteArray, int> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
 	QHash<QByteArray, QSet<ConnectionInfo*> > connectionInfoByRoute;
@@ -260,6 +263,7 @@ public:
 		subscriptionLinger(60 * 1000),
 		reportInterval(10 * 1000),
 		sock(0),
+		prometheusServer(0),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
 		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)),
@@ -337,6 +341,15 @@ public:
 		}
 
 		return true;
+	}
+
+	void setPrometheusAddrPort(const QHostAddress &addr, int port)
+	{
+		prometheusServer = new SimpleHttpServer(8192, 8192, this);
+		connect(prometheusServer, &SimpleHttpServer::requestReady, this, &Private::prometheus_requestReady);
+		prometheusServer->listen(addr, port);
+
+		setupReportTimer();
 	}
 
 	void setupConnectionBuckets()
@@ -1003,6 +1016,35 @@ private slots:
 		refreshConnections(currentTime);
 		refreshSubscriptions(currentTime);
 	}
+
+	void prometheus_requestReady()
+	{
+		SimpleHttpRequest *req = prometheusServer->takeNext();
+
+		QString data = QString(
+		"# HELP connection_connected Number of concurrent connections\n"
+		"# TYPE connection_connected gauge\n"
+		"connection_connected %1\n"
+		"# HELP connection_minute Number of minutes clients have been connected to pushpin\n"
+		"# TYPE connection_minute counter\n"
+		"connection_minute %2\n"
+		"# HELP message_received Number of messages received by the publish API\n"
+		"# TYPE message_received counter\n"
+		"message_received %3\n"
+		"# HELP message_sent Number of messages pushpin has sent to clients\n"
+		"# TYPE message_sent counter\n"
+		"message_sent %4\n")
+		.arg(combinedReport.connectionsMax)
+		.arg(combinedReport.connectionsMinutes)
+		.arg(combinedReport.messagesReceived)
+		.arg(combinedReport.messagesSent);
+
+		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
+
+		HttpHeaders headers;
+		headers += HttpHeader("Content-Type", "text/plain");
+		req->respond(200, "OK", headers, data.toUtf8());
+	}
 };
 
 StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent) :
@@ -1058,6 +1100,11 @@ void StatsManager::setReportInterval(int secs)
 void StatsManager::setOutputFormat(Format format)
 {
 	d->outputFormat = format;
+}
+
+void StatsManager::setPrometheusAddrPort(const QHostAddress &addr, int port)
+{
+	d->setPrometheusAddrPort(addr, port);
 }
 
 void StatsManager::addActivity(const QByteArray &routeId, int count)

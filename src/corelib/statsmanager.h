@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2021 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -63,6 +63,7 @@ public:
 	void setSubscriptionLinger(int secs);
 	void setReportInterval(int secs);
 	void setOutputFormat(Format format);
+	void setPrometheusAddrPort(const QHostAddress &addr, int port);
 
 	// routeId may be empty for non-identified route
 
