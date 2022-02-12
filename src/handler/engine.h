@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2021 Fanout, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -79,6 +79,8 @@ public:
 		int statsSubscriptionTtl;
 		int statsReportInterval;
 		QString statsFormat;
+		QHostAddress prometheusAddr;
+		int prometheusPort;
 
 		Configuration() :
 			pushInSubConnect(false),
@@ -97,7 +99,8 @@ public:
 			subscriptionLinger(-1),
 			statsConnectionTtl(-1),
 			statsSubscriptionTtl(-1),
-			statsReportInterval(-1)
+			statsReportInterval(-1),
+			prometheusPort(-1)
 		{
 		}
 	};

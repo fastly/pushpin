@@ -1477,6 +1477,15 @@ public:
 			log_info("stats: %s", qPrintable(config.statsSpec));
 		}
 
+		if(config.prometheusPort >= 0)
+		{
+			if(!stats->setPrometheusAddrPort(config.prometheusAddr, config.prometheusPort))
+			{
+				log_error("unable to bind to prometheus port: %s:%d", qPrintable(config.prometheusAddr.toString()), config.prometheusPort);
+				return false;
+			}
+		}
+
 		if(!config.proxyStatsSpec.isEmpty())
 		{
 			proxyStatsSock = new QZmq::Socket(QZmq::Socket::Sub, this);
