@@ -63,7 +63,7 @@ public:
 	void setSubscriptionLinger(int secs);
 	void setReportInterval(int secs);
 	void setOutputFormat(Format format);
-	void setPrometheusAddrPort(const QHostAddress &addr, int port);
+	bool setPrometheusAddrPort(const QHostAddress &addr, int port);
 
 	// routeId may be empty for non-identified route
 

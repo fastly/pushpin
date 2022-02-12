@@ -343,13 +343,17 @@ public:
 		return true;
 	}
 
-	void setPrometheusAddrPort(const QHostAddress &addr, int port)
+	bool setPrometheusAddrPort(const QHostAddress &addr, int port)
 	{
 		prometheusServer = new SimpleHttpServer(8192, 8192, this);
 		connect(prometheusServer, &SimpleHttpServer::requestReady, this, &Private::prometheus_requestReady);
-		prometheusServer->listen(addr, port);
+
+		if(!prometheusServer->listen(addr, port))
+			return false;
 
 		setupReportTimer();
+
+		return true;
 	}
 
 	void setupConnectionBuckets()
@@ -1102,9 +1106,9 @@ void StatsManager::setOutputFormat(Format format)
 	d->outputFormat = format;
 }
 
-void StatsManager::setPrometheusAddrPort(const QHostAddress &addr, int port)
+bool StatsManager::setPrometheusAddrPort(const QHostAddress &addr, int port)
 {
-	d->setPrometheusAddrPort(addr, port);
+	return d->setPrometheusAddrPort(addr, port);
 }
 
 void StatsManager::addActivity(const QByteArray &routeId, int count)
