@@ -268,7 +268,6 @@ public:
 	int outPendingBytes;
 	int outReadInProgress; // frame type or -1
 	QByteArray pathBeg;
-	QByteArray routeId;
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
 	DomainMap::Target target;
@@ -421,7 +420,6 @@ public:
 		}
 
 		pathBeg = route.pathBeg;
-		routeId = route.id;
 		channelPrefix = route.prefix;
 		targets = route.targets;
 
@@ -709,7 +707,7 @@ public:
 			QDateTime now = QDateTime::currentDateTimeUtc();
 			if(now >= activityTime.addMSecs(ACTIVITY_TIMEOUT))
 			{
-				statsManager->addActivity(routeId);
+				statsManager->addActivity(route.id);
 
 				activityTime = activityTime.addMSecs((activityTime.msecsTo(now) / ACTIVITY_TIMEOUT) * ACTIVITY_TIMEOUT);
 			}
@@ -720,7 +718,9 @@ public:
 	{
 		LogUtil::RequestData rd;
 
-		rd.routeId = routeId;
+		// only log route id if explicitly set
+		if(route.separateStats)
+			rd.routeId = route.id;
 
 		if(responseCode != -1)
 		{
@@ -881,7 +881,7 @@ private slots:
 				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
 				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
 				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
-				wsControl->start(routeId, route.separateStats, channelPrefix, inSock->requestUri());
+				wsControl->start(route.id, route.separateStats, channelPrefix, inSock->requestUri());
 
 				foreach(const QString &subChannel, target.subscriptions)
 				{
