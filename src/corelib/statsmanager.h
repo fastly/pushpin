@@ -86,6 +86,9 @@ public:
 	void addMessageReceived(const QByteArray &routeId, int blocks = -1);
 	void addMessageSent(const QByteArray &routeId, const QString &transport, int blocks = -1);
 
+	// for combined only
+	void addRequestsReceived(int count);
+
 	bool checkConnection(const QByteArray &id) const;
 
 	// for reporting. return true if local connection was replaced

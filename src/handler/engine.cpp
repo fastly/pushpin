@@ -2633,6 +2633,14 @@ private slots:
 				stats->addActivity(p.route, p.count);
 			}
 		}
+		else if(p.type == StatsPacket::Counts)
+		{
+			if(p.requestsReceived > 0)
+			{
+				// merge with our own stats
+				stats->addRequestsReceived(p.requestsReceived);
+			}
+		}
 		else if(p.type == StatsPacket::Connected || p.type == StatsPacket::Disconnected)
 		{
 			QString sid;

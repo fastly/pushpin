@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -44,7 +44,8 @@ public:
 		Disconnected,
 		Subscribed,
 		Unsubscribed,
-		Report
+		Report,
+		Counts
 	};
 
 	enum ConnectionType
@@ -76,6 +77,7 @@ public:
 	int blocksReceived; // report
 	int blocksSent; // report
 	int duration; // report
+	int requestsReceived; // counts
 
 	StatsPacket() :
 		type((Type)-1),
@@ -92,7 +94,8 @@ public:
 		httpResponseMessagesSent(-1),
 		blocksReceived(-1),
 		blocksSent(-1),
-		duration(-1)
+		duration(-1),
+		requestsReceived(-1)
 	{
 	}
 

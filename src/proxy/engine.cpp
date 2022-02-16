@@ -444,6 +444,7 @@ public:
 		{
 			stats->addConnection(cid, ps->statsRoute(), StatsManager::WebSocket, ps->logicalClientAddress(), sock->requestUri().scheme() == "wss", false);
 			stats->addActivity(ps->statsRoute());
+			stats->addRequestsReceived(1);
 		}
 	}
 

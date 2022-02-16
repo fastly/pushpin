@@ -372,6 +372,7 @@ public:
 
 			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
 			stats->addActivity(route.statsRoute());
+			stats->addRequestsReceived(1);
 		}
 
 		state = Prefetching;
@@ -420,6 +421,8 @@ public:
 
 			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
 			stats->addActivity(route.statsRoute());
+
+			// note: we don't call addRequestsReceived here, because we're acting for an existing request
 		}
 	}
 
