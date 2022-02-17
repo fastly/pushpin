@@ -40,9 +40,10 @@ use crate::zmq::SpecInfo;
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
 use mio;
-use mio::net::{TcpListener, TcpSocket, TcpStream};
+use mio::net::{TcpListener, TcpStream};
 use mio::unix::SourceFd;
 use slab::Slab;
+use socket2::Socket;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io;
@@ -163,7 +164,7 @@ fn set_socket_opts(stream: TcpStream) -> TcpStream {
         error!("set nodelay failed: {:?}", e);
     }
 
-    let socket = unsafe { TcpSocket::from_raw_fd(stream.into_raw_fd()) };
+    let socket = unsafe { Socket::from_raw_fd(stream.into_raw_fd()) };
 
     if let Err(e) = socket.set_keepalive(true) {
         error!("set keepalive failed: {:?}", e);
