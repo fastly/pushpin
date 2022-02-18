@@ -315,6 +315,7 @@ public:
 		QString organizationName = settings.value("proxy/organization_name").toString();
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
+		QString prometheusPortStr = settings.value("proxy/prometheus_port").toString();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -341,6 +342,23 @@ public:
 
 		if(updatesCheck == "true")
 			updatesCheck = "check";
+
+		QHostAddress prometheusAddr;
+		int prometheusPort = -1;
+
+		if(!prometheusPortStr.isEmpty())
+		{
+			int pos = prometheusPortStr.indexOf(':');
+			if(pos >= 0)
+			{
+				prometheusAddr = QHostAddress(prometheusPortStr.mid(0, pos));
+				prometheusPort = prometheusPortStr.mid(pos + 1).toInt();
+			}
+			else
+			{
+				prometheusPort = prometheusPortStr.toInt();
+			}
+		}
 
 		Engine::Configuration config;
 		config.appVersion = VERSION;
@@ -396,6 +414,8 @@ public:
 		config.quietCheck = args.quietCheck;
 		config.connectionsMax = clientMaxconn;
 		config.statsConnectionTtl = statsConnectionTtl;
+		config.prometheusAddr = prometheusAddr;
+		config.prometheusPort = prometheusPort;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

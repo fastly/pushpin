@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Fanout, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -437,6 +437,8 @@ public:
 		{
 			delete server;
 			server = 0;
+
+			return false;
 		}
 
 		return true;

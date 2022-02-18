@@ -302,20 +302,31 @@ public:
 			}
 		}
 
-		if(!config.statsSpec.isEmpty())
+		if(!config.statsSpec.isEmpty() || config.prometheusPort >= 0)
 		{
 			stats = new StatsManager(config.connectionsMax, 0, this);
 
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);
+			stats->setConnectionTtl(config.statsConnectionTtl);
 
-			if(!stats->setSpec(config.statsSpec))
+			if(!config.statsSpec.isEmpty())
 			{
-				log_error("unable to bind to stats_spec: %s", qPrintable(config.statsSpec));
-				return false;
+				if(!stats->setSpec(config.statsSpec))
+				{
+					// statsmanager logs error
+					return false;
+				}
 			}
 
-			stats->setConnectionTtl(config.statsConnectionTtl);
+			if(config.prometheusPort >= 0)
+			{
+				if(!stats->setPrometheusAddrPort(config.prometheusAddr, config.prometheusPort))
+				{
+					log_error("unable to bind to prometheus port: %s:%d", qPrintable(config.prometheusAddr.toString()), config.prometheusPort);
+					return false;
+				}
+			}
 		}
 
 		if(!config.commandSpec.isEmpty())
@@ -433,8 +444,9 @@ public:
 
 		if(stats)
 		{
-			stats->addConnection(cid, ps->routeId(), StatsManager::WebSocket, ps->logicalClientAddress(), sock->requestUri().scheme() == "wss", false);
-			stats->addActivity(ps->routeId());
+			stats->addConnection(cid, ps->statsRoute(), StatsManager::WebSocket, ps->logicalClientAddress(), sock->requestUri().scheme() == "wss", false);
+			stats->addActivity(ps->statsRoute());
+			stats->addRequestsReceived(1);
 		}
 	}
 
@@ -477,47 +489,37 @@ public:
 				return;
 		}
 
-		bool lookupRoute = true;
+		QString routeId;
 		bool autoShare = false;
 
 		QVariant passthroughData = req->passthroughData();
 		if(passthroughData.isValid())
 		{
-			if(passthroughData.type() == QVariant::Hash)
-			{
-				QVariantHash data = passthroughData.toHash();
+			const QVariantHash data = passthroughData.toHash();
 
-				if(data.contains("route"))
-					lookupRoute = data["route"].toBool();
+			if(data.contains("route"))
+				routeId = QString::fromUtf8(data["route"].toByteArray());
 
-				if(data.contains("auto-share"))
-					autoShare = data["auto-share"].toBool();
-			}
+			if(data.contains("auto-share"))
+				autoShare = data["auto-share"].toBool();
 		}
 		else
 		{
 			if(config.acceptXForwardedProto && isXForwardedProtocolTls(req->requestHeaders()))
 				req->setIsTls(true);
+
+			if(config.acceptPushpinRoute)
+				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
 		}
 
 		RequestSession *rs;
-		if(lookupRoute)
+		if(passthroughData.isValid() && routeId.isEmpty())
 		{
-			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
-			rs->setDebugEnabled(config.debug);
-			rs->setAutoCrossOrigin(config.autoCrossOrigin);
-			rs->setPrefetchSize(config.inspectPrefetch);
-			rs->setDefaultUpstreamKey(config.upstreamKey);
-			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
-			rs->setAcceptPushpinRoute(config.acceptPushpinRoute);
-		}
-		else
-		{
-			assert(passthroughData.isValid());
+			// passthrough request with no route ID. in this case, set up a
+			//   direct route, with no domainmap lookup
 
 			const QVariantHash data = passthroughData.toHash();
 
-			// make a direct route, no domainmap lookup
 			DomainMap::Entry route;
 			DomainMap::Target target;
 			QUrl uri = req->requestUri();
@@ -527,7 +529,6 @@ public:
 			target.ssl = isHttps;
 			if(passthroughData.type() == QVariant::Hash)
 			{
-
 				route.sigIss = data["sig-iss"].toByteArray();
 				route.sigKey = data["sig-key"].toByteArray();
 				target.trusted = data["trusted"].toBool();
@@ -536,6 +537,20 @@ public:
 
 			rs = new RequestSession(stats, this);
 			rs->setRoute(route);
+		}
+		else
+		{
+			// regular request (with or without a route ID), or a passthrough
+			//   request with a route ID. in that case, use domainmap for
+			//   lookup, with route ID if available
+
+			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
+			rs->setDebugEnabled(config.debug);
+			rs->setAutoCrossOrigin(config.autoCrossOrigin);
+			rs->setPrefetchSize(config.inspectPrefetch);
+			rs->setDefaultUpstreamKey(config.upstreamKey);
+			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+			rs->setRouteId(routeId);
 		}
 
 		rs->setAutoShare(autoShare);
@@ -619,7 +634,11 @@ public:
 
 		LogUtil::RequestData rd;
 
-		rd.routeId = rs->route().id;
+		DomainMap::Entry route = rs->route();
+
+		// only log route id if explicitly set
+		if(route.separateStats)
+			rd.routeId = route.id;
 
 		if(accepted)
 		{
@@ -827,6 +846,9 @@ private slots:
 
 			rs->setDefaultUpstreamKey(config.upstreamKey);
 			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
+
+			if(!p.route.isEmpty())
+				rs->setRouteId(QString::fromUtf8(p.route));
 
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse

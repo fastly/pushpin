@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -268,7 +268,6 @@ public:
 	int outPendingBytes;
 	int outReadInProgress; // frame type or -1
 	QByteArray pathBeg;
-	QByteArray routeId;
 	QByteArray channelPrefix;
 	QList<DomainMap::Target> targets;
 	DomainMap::Target target;
@@ -421,7 +420,6 @@ public:
 		}
 
 		pathBeg = route.pathBeg;
-		routeId = route.id;
 		channelPrefix = route.prefix;
 		targets = route.targets;
 
@@ -436,15 +434,18 @@ public:
 
 		clientAddress = inSock->peerAddress();
 
-		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, InspectData(), true);
+		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, InspectData(), route.grip, false);
 
 		// don't proxy extensions, as we may not know how to handle them
 		requestData.headers.removeAll("Sec-WebSocket-Extensions");
 
-		// send grip extension
-		requestData.headers += HttpHeader("Sec-WebSocket-Extensions", "grip");
+		if(route.grip)
+		{
+			// send grip extension
+			requestData.headers += HttpHeader("Sec-WebSocket-Extensions", "grip");
+		}
 
-		if(trustedClient)
+		if(trustedClient || !route.grip)
 			passToUpstream = true;
 
 		tryNextTarget();
@@ -706,7 +707,7 @@ public:
 			QDateTime now = QDateTime::currentDateTimeUtc();
 			if(now >= activityTime.addMSecs(ACTIVITY_TIMEOUT))
 			{
-				statsManager->addActivity(routeId);
+				statsManager->addActivity(route.id);
 
 				activityTime = activityTime.addMSecs((activityTime.msecsTo(now) / ACTIVITY_TIMEOUT) * ACTIVITY_TIMEOUT);
 			}
@@ -717,7 +718,9 @@ public:
 	{
 		LogUtil::RequestData rd;
 
-		rd.routeId = routeId;
+		// only log route id if explicitly set
+		if(route.separateStats)
+			rd.routeId = route.id;
 
 		if(responseCode != -1)
 		{
@@ -878,7 +881,7 @@ private slots:
 				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
 				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
 				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
-				wsControl->start(routeId, channelPrefix, inSock->requestUri());
+				wsControl->start(route.id, route.separateStats, channelPrefix, inSock->requestUri());
 
 				foreach(const QString &subChannel, target.subscriptions)
 				{
@@ -985,7 +988,7 @@ private slots:
 	{
 		WebSocketOverHttp *woh = (WebSocketOverHttp *)sender();
 
-		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, InspectData(), true);
+		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, InspectData(), route.grip, false);
 
 		woh->setHeaders(requestData.headers);
 	}
@@ -1115,9 +1118,9 @@ QHostAddress WsProxySession::logicalClientAddress() const
 	return d->logicalClientAddress;
 }
 
-QByteArray WsProxySession::routeId() const
+QByteArray WsProxySession::statsRoute() const
 {
-	return d->routeId;
+	return d->route.statsRoute();
 }
 
 QByteArray WsProxySession::cid() const

@@ -145,8 +145,8 @@ public:
 	class Entry
 	{
 	public:
-		QByteArray pathBeg;
 		QByteArray id;
+		QByteArray pathBeg;
 		QByteArray sigIss;
 		QByteArray sigKey;
 		QByteArray prefix;
@@ -161,6 +161,8 @@ public:
 		QByteArray sockJsPath;
 		QByteArray sockJsAsPath;
 		HttpHeaders headers;
+		bool separateStats;
+		bool grip;
 		QList<Target> targets;
 
 		bool isNull() const
@@ -168,12 +170,22 @@ public:
 			return targets.isEmpty();
 		}
 
+		QByteArray statsRoute() const
+		{
+			if(separateStats)
+				return id;
+			else
+				return QByteArray(); // global stats
+		}
+
 		Entry() :
 			origHeaders(false),
 			pathRemove(0),
 			debug(false),
 			autoCrossOrigin(false),
-			session(false)
+			session(false),
+			separateStats(false),
+			grip(true)
 		{
 		}
 	};
@@ -186,7 +198,9 @@ public:
 	//   underlying file watching doesn't work
 	void reload();
 
+	bool isIdShared(const QString &id) const;
 	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
+	Entry entry(const QString &id) const;
 
 	// only works in DomainOrIdLookups mode
 	Entry entry(const QString &id) const;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2015-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -188,6 +188,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	if(!adata.route.isEmpty())
 		obj["route"] = adata.route;
+
+	if(adata.separateStats)
+		obj["separate-stats"] = true;
 
 	if(!adata.channelPrefix.isEmpty())
 		obj["channel-prefix"] = adata.channelPrefix;

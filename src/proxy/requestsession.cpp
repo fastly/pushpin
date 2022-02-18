@@ -166,6 +166,7 @@ public:
 	QHostAddress peerAddress;
 	QHostAddress logicalPeerAddress;
 	DomainMap::Entry route;
+	QString routeId;
 	bool debug;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
@@ -288,7 +289,7 @@ public:
 			QString routeId = QString::fromUtf8(requestData.headers.get("Pushpin-Route"));
 
 			// look up the route
-			if(acceptPushpinRoute && !routeId.isEmpty())
+			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 				route = domainMap->entry(routeId);
 			else
 				route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
@@ -373,8 +374,9 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
-			stats->addActivity(route.id);
+			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
+			stats->addActivity(route.statsRoute());
+			stats->addRequestsReceived(1);
 		}
 
 		state = Prefetching;
@@ -401,7 +403,11 @@ public:
 		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
 		// look up the route
-		route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+		if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
+			route = domainMap->entry(routeId);
+		else
+			route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+
 		if(route.isNull())
 		{
 			log_warning("requestsession: %p %s has 0 routes", q, qPrintable(host));
@@ -417,8 +423,10 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
-			stats->addActivity(route.id);
+			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
+			stats->addActivity(route.statsRoute());
+
+			// note: we don't call addRequestsReceived here, because we're acting for an existing request
 		}
 	}
 
@@ -1283,6 +1291,11 @@ void RequestSession::setPrefetchSize(int size)
 void RequestSession::setRoute(const DomainMap::Entry &route)
 {
 	d->route = route;
+}
+
+void RequestSession::setRouteId(const QString &routeId)
+{
+	d->routeId = routeId;
 }
 
 void RequestSession::setAutoShare(bool enabled)

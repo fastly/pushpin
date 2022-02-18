@@ -77,11 +77,11 @@ public:
 	void setAutoCrossOrigin(bool enabled);
 	void setPrefetchSize(int size);
 	void setRoute(const DomainMap::Entry &route);
+	void setRouteId(const QString &routeId);
 	void setAutoShare(bool enabled);
 	void setAccepted(bool enabled);
 	void setDefaultUpstreamKey(const QByteArray &key);
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
-	void setAcceptPushpinRoute(bool enabled);
 
 	// takes ownership
 	void start(ZhttpRequest *req);
