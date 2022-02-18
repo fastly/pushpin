@@ -43,17 +43,6 @@ class DomainMap : public QObject
 	Q_OBJECT
 
 public:
-	enum LookupMode
-	{
-		// default behavior. routes must specify a domain, and multiple
-		//   routes can have the same id
-		DomainLookups,
-
-		// routes must specify a domain or an id (domains are optional if an
-		//   id is specified), and an id cannot be shared by multiple routes
-		DomainOrIdLookups
-	};
-
 	class JsonpConfig
 	{
 	public:
@@ -190,8 +179,8 @@ public:
 		}
 	};
 
-	DomainMap(LookupMode mode, QObject *parent = 0);
-	DomainMap(LookupMode mode, const QString &fileName, QObject *parent = 0);
+	DomainMap(QObject *parent = 0);
+	DomainMap(const QString &fileName, QObject *parent = 0);
 	~DomainMap();
 
 	// shouldn't really ever need to call this, but it's here in case the
@@ -200,9 +189,6 @@ public:
 
 	bool isIdShared(const QString &id) const;
 	Entry entry(Protocol proto, bool ssl, const QString &domain, const QByteArray &path) const;
-	Entry entry(const QString &id) const;
-
-	// only works in DomainOrIdLookups mode
 	Entry entry(const QString &id) const;
 
 	QList<ZhttpRoute> zhttpRoutes() const;

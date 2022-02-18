@@ -204,7 +204,6 @@ public:
 	};
 
 	QMutex m;
-	LookupMode mode;
 	QString fileName;
 	QList<Rule> allRules;
 	QHash< QString, QList<Rule> > rulesByDomain;
@@ -722,7 +721,6 @@ class DomainMap::Thread : public QThread
 	Q_OBJECT
 
 public:
-	LookupMode mode;
 	QString fileName;
 	Worker *worker;
 	QMutex m;
@@ -744,7 +742,6 @@ public:
 	virtual void run()
 	{
 		worker = new Worker;
-		worker->mode = mode;
 		worker->fileName = fileName;
 		connect(worker, &Worker::started, this, &Thread::worker_started, Qt::DirectConnection);
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
@@ -780,10 +777,9 @@ public:
 		delete thread;
 	}
 
-	void start(LookupMode mode, const QString &fileName = QString())
+	void start(const QString &fileName = QString())
 	{
 		thread = new Thread;
-		thread->mode = mode;
 		thread->fileName = fileName;
 		thread->start();
 
@@ -798,18 +794,18 @@ public slots:
 	}
 };
 
-DomainMap::DomainMap(DomainMap::LookupMode mode, QObject *parent) :
+DomainMap::DomainMap(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
-	d->start(mode);
+	d->start();
 }
 
-DomainMap::DomainMap(DomainMap::LookupMode mode, const QString &fileName, QObject *parent) :
+DomainMap::DomainMap(const QString &fileName, QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
-	d->start(mode, fileName);
+	d->start(fileName);
 }
 
 DomainMap::~DomainMap()

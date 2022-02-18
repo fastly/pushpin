@@ -191,7 +191,6 @@ public:
 	bool autoShare;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
-	bool acceptPushpinRoute;
 	bool isSockJs;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
@@ -221,7 +220,6 @@ public:
 		accepted(false),
 		passthrough(false),
 		autoShare(false),
-		acceptPushpinRoute(false),
 		isSockJs(false)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
@@ -285,8 +283,6 @@ public:
 		if(route.isNull() && domainMap)
 		{
 			QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
-
-			QString routeId = QString::fromUtf8(requestData.headers.get("Pushpin-Route"));
 
 			// look up the route
 			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
@@ -1317,11 +1313,6 @@ void RequestSession::setXffRules(const XffRule &untrusted, const XffRule &truste
 {
 	d->xffRule = untrusted;
 	d->xffTrustedRule = trusted;
-}
-
-void RequestSession::setAcceptPushpinRoute(bool enabled)
-{
-	d->acceptPushpinRoute = enabled;
 }
 
 void RequestSession::start(ZhttpRequest *req)
