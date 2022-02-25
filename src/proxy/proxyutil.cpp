@@ -76,7 +76,7 @@ bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestDa
 	return false;
 }
 
-void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool stripHeaders)
+void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool gripEnabled, bool intReq)
 {
 	if(trustedClient)
 		log_debug("%s: %p passing to upstream", logprefix, object);
@@ -149,48 +149,52 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	requestData->headers.removeAll("Transfer-Encoding");
 	requestData->headers.removeAll("Expect");
 
-	if(!trustedClient)
+	if(!trustedClient && !intReq)
 	{
-		if(stripHeaders)
+		// remove all Grip- headers
+		for(int n = 0; n < requestData->headers.count(); ++n)
 		{
-			// remove all Grip- headers
-			for(int n = 0; n < requestData->headers.count(); ++n)
+			if(qstrnicmp(requestData->headers[n].first.data(), "Grip-", 5) == 0)
 			{
-				if(qstrnicmp(requestData->headers[n].first.data(), "Grip-", 5) == 0)
-				{
-					requestData->headers.removeAt(n);
-					--n; // adjust position
-				}
+				requestData->headers.removeAt(n);
+				--n; // adjust position
 			}
 		}
+	}
 
+	if(!trustedClient && gripEnabled)
+	{
 		// set Grip-Sig
 		if(!sigIss.isEmpty() && !sigKey.isEmpty())
 		{
 			QByteArray token = make_token(sigIss, sigKey);
 			if(!token.isEmpty())
+			{
+				requestData->headers.removeAll("Grip-Sig");
 				requestData->headers += HttpHeader("Grip-Sig", token);
+			}
 			else
 				log_error("%s: %p failed to sign request", logprefix, object);
 		}
-	}
 
-	requestData->headers.removeAll("Grip-Feature");
-	requestData->headers += HttpHeader("Grip-Feature",
-		"status, session, link:next, filter:skip-self, filter:skip-users, filter:require-sub, filter:build-id, filter:var-subst");
+		requestData->headers.removeAll("Grip-Feature");
+		requestData->headers += HttpHeader("Grip-Feature",
+			"status, session, link:next, filter:skip-self, filter:skip-users, filter:require-sub, filter:build-id, filter:var-subst");
 
-	if(!idata.sid.isEmpty())
-	{
-		requestData->headers += HttpHeader("Grip-Session-Id", idata.sid);
-	}
-
-	if(!idata.lastIds.isEmpty())
-	{
-		QHashIterator<QByteArray, QByteArray> it(idata.lastIds);
-		while(it.hasNext())
+		if(!idata.sid.isEmpty())
 		{
-			it.next();
-			requestData->headers += HttpHeader("Grip-Last", it.key() + "; last-id=" + it.value());
+			requestData->headers.removeAll("Grip-Session-Id");
+			requestData->headers += HttpHeader("Grip-Session-Id", idata.sid);
+		}
+
+		if(!idata.lastIds.isEmpty())
+		{
+			QHashIterator<QByteArray, QByteArray> it(idata.lastIds);
+			while(it.hasNext())
+			{
+				it.next();
+				requestData->headers += HttpHeader("Grip-Last", it.key() + "; last-id=" + it.value());
+			}
 		}
 	}
 

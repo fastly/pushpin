@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -49,7 +49,7 @@ public:
 	~WsProxySession();
 
 	QHostAddress logicalClientAddress() const;
-	QByteArray routeId() const;
+	QByteArray statsRoute() const;
 	QByteArray cid() const;
 
 	WebSocket *inSocket() const;

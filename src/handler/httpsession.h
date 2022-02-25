@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2021 Fanout, Inc.
+ * Copyright (C) 2016-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -67,6 +67,7 @@ public:
 		bool jsonpExtendedResponse;
 		HttpRequestData requestData;
 		QString route;
+		QString statsRoute;
 		QString channelPrefix;
 		QSet<QString> implicitChannels;
 		QByteArray sigIss;
@@ -96,7 +97,7 @@ public:
 	ZhttpRequest::Rid rid() const;
 	QUrl requestUri() const;
 	bool isRetry() const;
-	QString route() const;
+	QString statsRoute() const;
 	QString sid() const;
 	QHash<QString, Instruct::Channel> channels() const;
 	QHash<QString, QString> meta() const;

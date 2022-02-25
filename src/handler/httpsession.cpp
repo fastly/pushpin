@@ -249,7 +249,7 @@ public:
 		assert(state == NotStarted);
 
 		ZhttpRequest::Rid rid = req->rid();
-		stats->addConnection(rid.first + ':' + rid.second, adata.route.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true);
+		stats->addConnection(rid.first + ':' + rid.second, adata.statsRoute.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true);
 
 		// set up implicit channels
 		QPointer<QObject> self = this;
@@ -1181,20 +1181,18 @@ private:
 		//   could still end up looping back to us
 		if(nextUri.scheme() == currentUri.scheme() && nextUri.host() == currentUri.host() && nextPort == currentPort)
 		{
-			// use proxy routing
-			passthroughData["route"] = true;
+			// tell the proxy that we prefer the request to be handled
+			//   internally, using the same route
+			passthroughData["route"] = adata.route.toUtf8();
 		}
-		else
-		{
-			// don't use proxy routing
-			passthroughData["route"] = false;
-			if(!adata.sigIss.isEmpty())
-				passthroughData["sig-iss"] = adata.sigIss;
-			if(!adata.sigKey.isEmpty())
-				passthroughData["sig-key"] = adata.sigKey;
-			if(adata.trusted)
-				passthroughData["trusted"] = true;
-		}
+
+		// these fields are needed in case proxy routing is not used
+		if(!adata.sigIss.isEmpty())
+			passthroughData["sig-iss"] = adata.sigIss;
+		if(!adata.sigKey.isEmpty())
+			passthroughData["sig-key"] = adata.sigKey;
+		if(adata.trusted)
+			passthroughData["trusted"] = true;
 
 		// share requests to the same URI
 		passthroughData["auto-share"] = true;
@@ -1519,7 +1517,7 @@ private slots:
 
 			setupKeepAlive();
 
-			stats->addActivity(adata.route.toUtf8(), 1);
+			stats->addActivity(adata.statsRoute.toUtf8(), 1);
 		}
 	}
 
@@ -1566,9 +1564,9 @@ bool HttpSession::isRetry() const
 	return d->adata.isRetry;
 }
 
-QString HttpSession::route() const
+QString HttpSession::statsRoute() const
 {
-	return d->adata.route;
+	return d->adata.statsRoute;
 }
 
 QString HttpSession::sid() const

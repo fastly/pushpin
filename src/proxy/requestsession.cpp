@@ -166,6 +166,7 @@ public:
 	QHostAddress peerAddress;
 	QHostAddress logicalPeerAddress;
 	DomainMap::Entry route;
+	QString routeId;
 	bool debug;
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
@@ -190,7 +191,6 @@ public:
 	bool autoShare;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
-	bool acceptPushpinRoute;
 	bool isSockJs;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
@@ -220,7 +220,6 @@ public:
 		accepted(false),
 		passthrough(false),
 		autoShare(false),
-		acceptPushpinRoute(false),
 		isSockJs(false)
 	{
 		jsonpExtractableHeaders += "Cache-Control";
@@ -285,10 +284,8 @@ public:
 		{
 			QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
-			QString routeId = QString::fromUtf8(requestData.headers.get("Pushpin-Route"));
-
 			// look up the route
-			if(acceptPushpinRoute && !routeId.isEmpty())
+			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
 				route = domainMap->entry(routeId);
 			else
 				route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
@@ -373,8 +370,9 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
-			stats->addActivity(route.id);
+			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
+			stats->addActivity(route.statsRoute());
+			stats->addRequestsReceived(1);
 		}
 
 		state = Prefetching;
@@ -401,7 +399,11 @@ public:
 		QByteArray encPath = requestData.uri.path(QUrl::FullyEncoded).toUtf8();
 
 		// look up the route
-		route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+		if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
+			route = domainMap->entry(routeId);
+		else
+			route = domainMap->entry(DomainMap::Http, isHttps, host, encPath);
+
 		if(route.isNull())
 		{
 			log_warning("requestsession: %p %s has 0 routes", q, qPrintable(host));
@@ -417,8 +419,10 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.id, StatsManager::Http, logicalPeerAddress, isHttps, false);
-			stats->addActivity(route.id);
+			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
+			stats->addActivity(route.statsRoute());
+
+			// note: we don't call addRequestsReceived here, because we're acting for an existing request
 		}
 	}
 
@@ -1285,6 +1289,11 @@ void RequestSession::setRoute(const DomainMap::Entry &route)
 	d->route = route;
 }
 
+void RequestSession::setRouteId(const QString &routeId)
+{
+	d->routeId = routeId;
+}
+
 void RequestSession::setAutoShare(bool enabled)
 {
 	d->autoShare = enabled;
@@ -1304,11 +1313,6 @@ void RequestSession::setXffRules(const XffRule &untrusted, const XffRule &truste
 {
 	d->xffRule = untrusted;
 	d->xffTrustedRule = trusted;
-}
-
-void RequestSession::setAcceptPushpinRoute(bool enabled)
-{
-	d->acceptPushpinRoute = enabled;
 }
 
 void RequestSession::start(ZhttpRequest *req)

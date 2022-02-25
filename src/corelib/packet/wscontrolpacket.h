@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -66,6 +66,7 @@ public:
 		int code;
 		QByteArray reason;
 		QByteArray route;
+		bool separateStats;
 		QByteArray channelPrefix;
 		QByteArray channel;
 		int ttl;
@@ -76,6 +77,7 @@ public:
 			type((Type)-1),
 			queue(false),
 			code(-1),
+			separateStats(false),
 			ttl(-1),
 			timeout(-1)
 		{

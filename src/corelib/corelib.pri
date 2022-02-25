@@ -62,6 +62,7 @@ HEADERS += \
 	$$PWD/statusreasons.h \
 	$$PWD/inspectdata.h \
 	$$PWD/cors.h \
+	$$PWD/simplehttpserver.h \
 	$$PWD/statsmanager.h \
 	$$PWD/settings.h
 
@@ -78,5 +79,6 @@ SOURCES += \
 	$$PWD/zrpcrequest.cpp \
 	$$PWD/statusreasons.cpp \
 	$$PWD/cors.cpp \
+	$$PWD/simplehttpserver.cpp \
 	$$PWD/statsmanager.cpp \
 	$$PWD/settings.cpp
