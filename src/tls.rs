@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -337,7 +337,7 @@ impl TlsAcceptor {
 pub struct TlsStream {
     stream: Stream<'static>,
     tcp_stream: Box<TcpStream>,
-    id: ArrayString<[u8; 32]>,
+    id: ArrayString<32>,
 }
 
 impl TlsStream {

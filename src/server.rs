@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -198,7 +198,7 @@ fn async_local_channel<T>(
     (s, r)
 }
 
-fn gen_id(id: usize, ckey: usize, next_cid: &mut u32) -> ArrayString<[u8; 32]> {
+fn gen_id(id: usize, ckey: usize, next_cid: &mut u32) -> ArrayString<32> {
     let mut buf = [0; 32];
     let mut c = io::Cursor::new(&mut buf[..]);
 
@@ -264,7 +264,7 @@ impl<'a> BatchGroup<'a, '_> {
 
 struct Batch {
     nodes: Slab<list::Node<usize>>,
-    addrs: Vec<(ArrayVec<[u8; 64]>, list::List)>,
+    addrs: Vec<(ArrayVec<u8, 64>, list::List)>,
     addr_index: usize,
     group_ids: arena::ReusableVec,
     last_group_ckeys: Vec<usize>,
@@ -414,7 +414,7 @@ struct ConnectionDone {
 }
 
 struct ConnectionItem {
-    id: ArrayString<[u8; 32]>,
+    id: ArrayString<32>,
     stop: Option<CancellationSender>,
     zreceiver_sender: Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>>,
     shared: Option<arena::Rc<ServerStreamSharedData>>,
@@ -474,7 +474,7 @@ impl Connections {
         stop: CancellationSender,
         zreceiver_sender: AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         shared: Option<arena::Rc<ServerStreamSharedData>>,
-    ) -> Result<(usize, ArrayString<[u8; 32]>), ()> {
+    ) -> Result<(usize, ArrayString<32>), ()> {
         let items = &mut *self.items.borrow_mut();
         let c = &mut *self.inner.borrow_mut();
 
@@ -522,7 +522,7 @@ impl Connections {
         ci.zreceiver_sender.unwrap().into_inner()
     }
 
-    fn regen_id(&self, worker_id: usize, ckey: usize) -> ArrayString<[u8; 32]> {
+    fn regen_id(&self, worker_id: usize, ckey: usize) -> ArrayString<32> {
         let nkey = ckey;
 
         let items = &mut *self.items.borrow_mut();
@@ -660,7 +660,7 @@ impl Connections {
         &self,
         from: &str,
         btype: BatchType,
-    ) -> Option<(usize, ArrayVec<[u8; 64]>, zmq::Message)> {
+    ) -> Option<(usize, ArrayVec<u8, 64>, zmq::Message)> {
         let items = &mut *self.items.borrow_mut();
         let nodes = &mut items.nodes;
         let batch = &mut items.batch;
@@ -705,7 +705,7 @@ impl Connections {
 
             let data = &data[..size];
 
-            let mut addr = ArrayVec::<[u8; 64]>::new();
+            let mut addr = ArrayVec::<u8, 64>::new();
             if addr.try_extend_from_slice(group.addr()).is_err() {
                 error!("failed to prepare addr");
                 continue;
@@ -747,7 +747,7 @@ impl<'a> ConnectionCid<'a> {
 }
 
 impl CidProvider for ConnectionCid<'_> {
-    fn get_new_assigned_cid(&mut self) -> ArrayString<[u8; 32]> {
+    fn get_new_assigned_cid(&mut self) -> ArrayString<32> {
         self.conns.regen_id(self.worker_id, self.ckey)
     }
 }
@@ -770,7 +770,7 @@ struct ConnectionReqOpts {
 struct ConnectionStreamOpts {
     messages_max: usize,
     sender: channel::LocalSender<zmq::Message>,
-    sender_stream: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    sender_stream: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     stream_shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
 }
 
@@ -1551,7 +1551,7 @@ impl Worker {
         done: AsyncLocalSender<zhttpsocket::AsyncClientStreamHandle>,
         instance_id: Rc<String>,
         zstream_out_receiver: AsyncLocalReceiver<zmq::Message>,
-        zstream_out_stream_receiver: AsyncLocalReceiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
+        zstream_out_stream_receiver: AsyncLocalReceiver<(ArrayVec<u8, 64>, zmq::Message)>,
         r_cdone: AsyncLocalReceiver<ConnectionDone>,
         s_cdone: AsyncLocalSender<ConnectionDone>,
         stream_handle: zhttpsocket::AsyncClientStreamHandle,
@@ -1743,7 +1743,7 @@ impl Worker {
         done: channel::LocalSender<ConnectionDone>,
         worker_id: usize,
         ckey: usize,
-        cid: ArrayString<[u8; 32]>,
+        cid: ArrayString<32>,
         stream: Stream,
         peer_addr: SocketAddr,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
@@ -1807,7 +1807,7 @@ impl Worker {
         done: channel::LocalSender<ConnectionDone>,
         worker_id: usize,
         ckey: usize,
-        cid: ArrayString<[u8; 32]>,
+        cid: ArrayString<32>,
         stream: Stream,
         peer_addr: SocketAddr,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
@@ -1880,7 +1880,7 @@ impl Worker {
         stop: AsyncLocalReceiver<()>,
         _done: AsyncLocalSender<()>,
         instance_id: Rc<String>,
-        sender: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+        sender: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
         conns: Rc<Connections>,
     ) {
         debug!("worker {}: task started: keep_alives", id);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ const WS_ACCEPT_MAX: usize = 28; // base64_encode(sha1_hash) = 28 bytes
 const ZHTTP_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub trait CidProvider {
-    fn get_new_assigned_cid(&mut self) -> ArrayString<[u8; 32]>;
+    fn get_new_assigned_cid(&mut self) -> ArrayString<32>;
 }
 
 pub trait Identify {
@@ -94,7 +94,7 @@ fn get_host<'a>(headers: &'a [httparse::Header]) -> &'a str {
     "localhost"
 }
 
-fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<[u8; WS_ACCEPT_MAX]>, ()> {
+fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
     let input_len = key.len() + websocket::WS_GUID.len();
 
     if input_len > WS_HASH_INPUT_MAX {
@@ -390,7 +390,7 @@ impl MessageTracker {
 }
 
 struct ServerStreamSharedDataInner {
-    to_addr: Option<ArrayVec<[u8; 64]>>,
+    to_addr: Option<ArrayVec<u8, 64>>,
     out_seq: u32,
 }
 
@@ -428,7 +428,7 @@ impl ServerStreamSharedData {
         s.out_seq = 0;
     }
 
-    fn set_to_addr(&self, addr: Option<ArrayVec<[u8; 64]>>) {
+    fn set_to_addr(&self, addr: Option<ArrayVec<u8, 64>>) {
         let s = &mut *self.inner.borrow_mut();
 
         s.to_addr = addr;
@@ -1390,7 +1390,7 @@ struct ZhttpStreamSessionOut<'a> {
     instance_id: &'a str,
     id: &'a str,
     packet_buf: &'a RefCell<Vec<u8>>,
-    sender_stream: &'a AsyncLocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    sender_stream: &'a AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     shared: &'a ServerStreamSharedData,
 }
 
@@ -1399,7 +1399,7 @@ impl<'a> ZhttpStreamSessionOut<'a> {
         instance_id: &'a str,
         id: &'a str,
         packet_buf: &'a RefCell<Vec<u8>>,
-        sender_stream: &'a AsyncLocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+        sender_stream: &'a AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
         shared: &'a ServerStreamSharedData,
     ) -> Self {
         Self {
@@ -1862,7 +1862,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
 async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
-    cid: &mut ArrayString<[u8; 32]>,
+    cid: &mut ArrayString<32>,
     cid_provider: &mut P,
     mut stream: S,
     peer_addr: Option<SocketAddr>,
@@ -1931,7 +1931,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
 
 pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
-    mut cid: ArrayString<[u8; 32]>,
+    mut cid: ArrayString<32>,
     cid_provider: &mut P,
     stream: S,
     peer_addr: Option<SocketAddr>,
@@ -2600,7 +2600,7 @@ async fn server_stream_handler<S, R1, R2>(
     tmp_buf: &RefCell<Vec<u8>>,
     instance_id: &str,
     zsender: &AsyncLocalSender<zmq::Message>,
-    zsender_stream: &AsyncLocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    zsender_stream: &AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: &ServerStreamSharedData,
     refresh_stream_timeout: &R1,
@@ -2673,7 +2673,7 @@ where
             id, req.method, scheme, host, req.uri
         );
 
-        let ws_accept: Option<ArrayString<[u8; WS_ACCEPT_MAX]>> = if websocket {
+        let ws_accept: Option<ArrayString<WS_ACCEPT_MAX>> = if websocket {
             if req.method != "GET" || req.body_size != http1::BodySize::NoBody || ws_key.is_none() {
                 return Err(ServerError::InvalidWebSocketRequest);
             }
@@ -3017,7 +3017,7 @@ where
 
 async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
-    cid: &mut ArrayString<[u8; 32]>,
+    cid: &mut ArrayString<32>,
     cid_provider: &mut P,
     mut stream: S,
     peer_addr: Option<SocketAddr>,
@@ -3030,7 +3030,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     stream_timeout: Duration,
     instance_id: &str,
     zsender: AsyncLocalSender<zmq::Message>,
-    zsender_stream: AsyncLocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: arena::Rc<ServerStreamSharedData>,
 ) -> Result<(), ServerError> {
@@ -3165,7 +3165,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 
 pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
-    mut cid: ArrayString<[u8; 32]>,
+    mut cid: ArrayString<32>,
     cid_provider: &mut P,
     stream: S,
     peer_addr: Option<SocketAddr>,
@@ -3178,7 +3178,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     timeout: Duration,
     instance_id: &str,
     zsender: AsyncLocalSender<zmq::Message>,
-    zsender_stream: AsyncLocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: arena::Rc<ServerStreamSharedData>,
 ) {
@@ -3429,11 +3429,11 @@ mod tests {
     }
 
     struct SimpleCidProvider {
-        cid: ArrayString<[u8; 32]>,
+        cid: ArrayString<32>,
     }
 
     impl CidProvider for SimpleCidProvider {
-        fn get_new_assigned_cid(&mut self) -> ArrayString<[u8; 32]> {
+        fn get_new_assigned_cid(&mut self) -> ArrayString<32> {
             self.cid
         }
     }
@@ -4130,7 +4130,7 @@ mod tests {
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
-        s_stream_from_conn: channel::LocalSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+        s_stream_from_conn: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     ) -> Result<(), ServerError> {
         let mut cid = ArrayString::from_str("1").unwrap();

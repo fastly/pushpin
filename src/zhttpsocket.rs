@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -295,7 +295,7 @@ struct ReqPipeEnd {
 struct StreamPipeEnd {
     sender: channel::Sender<arena::Arc<zmq::Message>>,
     receiver_any: channel::Receiver<zmq::Message>,
-    receiver_addr: channel::Receiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    receiver_addr: channel::Receiver<(ArrayVec<u8, 64>, zmq::Message)>,
 }
 
 struct AsyncReqPipeEnd {
@@ -306,28 +306,28 @@ struct AsyncReqPipeEnd {
 struct AsyncStreamPipeEnd {
     sender: AsyncSender<arena::Arc<zmq::Message>>,
     receiver_any: AsyncReceiver<zmq::Message>,
-    receiver_addr: AsyncReceiver<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    receiver_addr: AsyncReceiver<(ArrayVec<u8, 64>, zmq::Message)>,
 }
 
 enum ControlRequest {
     Stop,
     SetClientReq(Vec<SpecInfo>),
     SetClientStream(Vec<SpecInfo>, Vec<SpecInfo>, Vec<SpecInfo>),
-    AddClientReqHandle(ReqPipeEnd, ArrayString<[u8; 8]>),
-    AddClientStreamHandle(StreamPipeEnd, ArrayString<[u8; 8]>),
+    AddClientReqHandle(ReqPipeEnd, ArrayString<8>),
+    AddClientStreamHandle(StreamPipeEnd, ArrayString<8>),
 }
 
 type ControlResponse = Result<(), String>;
 
 struct ReqPipe {
     pe: AsyncReqPipeEnd,
-    filter: ArrayString<[u8; 8]>,
+    filter: ArrayString<8>,
     valid: Cell<bool>,
 }
 
 struct StreamPipe {
     pe: AsyncStreamPipeEnd,
-    filter: ArrayString<[u8; 8]>,
+    filter: ArrayString<8>,
     valid: Cell<bool>,
 }
 
@@ -398,7 +398,7 @@ impl ReqHandles {
         self.nodes.len()
     }
 
-    fn add(&mut self, pe: AsyncReqPipeEnd, filter: ArrayString<[u8; 8]>) {
+    fn add(&mut self, pe: AsyncReqPipeEnd, filter: ArrayString<8>) {
         assert!(self.nodes.len() < self.nodes.capacity());
 
         let key = self.nodes.insert(list::Node::new(ReqPipe {
@@ -513,7 +513,7 @@ struct StreamHandles {
     nodes: Slab<list::Node<StreamPipe>>,
     list: list::List,
     recv_any_scratch: RefCell<RecvScratch<zmq::Message>>,
-    recv_addr_scratch: RefCell<RecvScratch<(ArrayVec<[u8; 64]>, zmq::Message)>>,
+    recv_addr_scratch: RefCell<RecvScratch<(ArrayVec<u8, 64>, zmq::Message)>>,
     need_cleanup: Cell<bool>,
 }
 
@@ -532,7 +532,7 @@ impl StreamHandles {
         self.nodes.len()
     }
 
-    fn add(&mut self, pe: AsyncStreamPipeEnd, filter: ArrayString<[u8; 8]>) {
+    fn add(&mut self, pe: AsyncStreamPipeEnd, filter: ArrayString<8>) {
         assert!(self.nodes.len() < self.nodes.capacity());
 
         let key = self.nodes.insert(list::Node::new(StreamPipe {
@@ -582,7 +582,7 @@ impl StreamHandles {
         }
     }
 
-    async fn recv_addr(&self) -> (ArrayVec<[u8; 64]>, zmq::Message) {
+    async fn recv_addr(&self) -> (ArrayVec<u8, 64>, zmq::Message) {
         let mut scratch = self.recv_addr_scratch.borrow_mut();
 
         let (mut tasks, slice_scratch) = scratch.get();
@@ -1289,7 +1289,7 @@ impl AsyncClientReqHandle {
 
 pub struct ClientStreamHandle {
     sender_any: channel::Sender<zmq::Message>,
-    sender_addr: channel::Sender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    sender_addr: channel::Sender<(ArrayVec<u8, 64>, zmq::Message)>,
     receiver: channel::Receiver<arena::Arc<zmq::Message>>,
 }
 
@@ -1344,7 +1344,7 @@ impl ClientStreamHandle {
 
 pub struct AsyncClientStreamHandle {
     sender_any: AsyncSender<zmq::Message>,
-    sender_addr: AsyncSender<(ArrayVec<[u8; 64]>, zmq::Message)>,
+    sender_addr: AsyncSender<(ArrayVec<u8, 64>, zmq::Message)>,
     receiver: AsyncReceiver<arena::Arc<zmq::Message>>,
 }
 
@@ -1373,7 +1373,7 @@ impl AsyncClientStreamHandle {
 
     pub async fn send_to_addr(
         &self,
-        addr: ArrayVec<[u8; 64]>,
+        addr: ArrayVec<u8, 64>,
         msg: zmq::Message,
     ) -> Result<(), io::Error> {
         match self.sender_addr.send((addr, msg)).await {
