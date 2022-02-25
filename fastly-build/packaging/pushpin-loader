@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+
+import argparse
+from collections import namedtuple
+import gzip
+from http.client import HTTPConnection
+from io import BytesIO
+import json
+import os
+import string
+import sys
+import time
+import traceback
+
+
+PKG_VERSION = '1.0.0'
+
+alphanumerics = string.ascii_lowercase + string.ascii_uppercase + string.digits
+Response = namedtuple('Response', 'status data etag')
+
+
+class ValidationError(Exception):
+    pass
+
+
+def validate_id(s):
+    if len(s) < 1 or len(s) > 63:
+        raise ValidationError(
+            'id must have a length between 1 and 63 characters')
+
+    for c in s:
+        if c not in '._-' and c not in alphanumerics:
+            raise ValidationError('id cannot contain: {}'.format(c))
+
+    return s
+
+
+def validate_host(s):
+    if len(s) < 1 or len(s) > 255:
+        raise ValidationError(
+            'host must have a length between 1 and 255 characters')
+
+    for c in s:
+        if c not in '._-' and c not in alphanumerics:
+            raise ValidationError('host cannot contain: {}'.format(c))
+
+    return s
+
+
+class HeavenlyClient(object):
+    def __init__(self):
+        self.conn = None
+
+    def request(self, url, accept, inm=None):
+        # Use an established connection, open a new one if that fails.
+        for reuse in (True, False):
+            if reuse and self.conn is None:
+                continue
+            if not reuse:
+                self.conn = None
+                self.conn = HTTPConnection('localhost:8001')
+            try:
+                return self.request_on_conn(self.conn, url, accept, inm)
+            except Exception:
+                if not reuse:
+                    raise
+
+    def request_on_conn(self, conn, url, accept, inm):
+        headers = {
+            'Accept-Encoding': 'gzip',
+            'Accept': accept,
+            'Host': 'fastly-config-loader-2',
+            'User-Agent': 'pushpin-loader/' + PKG_VERSION,
+            'Fastly-CDN': 'fastly',
+            'Fastly-Debug': '1',
+        }
+        headers['Heavenly-Canary'] = '0'
+        if inm is not None:
+            headers['If-None-Match'] = inm
+
+        nredirs = 0
+        while True:
+            conn.request('GET', url, None, headers)
+            resp = conn.getresponse()
+            data = resp.read()
+
+            location = resp.getheader('Location')
+            if location and location.startswith('/'):
+                url = location
+                nredirs += 1
+                if nredirs > 5:
+                    raise IOError('Too many redirects')
+                continue
+            break
+
+        if resp.status == 304:
+            return Response(304, None, resp.getheader('ETag'))
+
+        content_encoding = resp.getheader('Content-Encoding')
+        if content_encoding:
+            if content_encoding.lower() != 'gzip':
+                raise IOError(
+                    'Surprising Content-Encoding {}'.format(content_encoding))
+            data = gzip.GzipFile(fileobj=BytesIO(data)).read()
+
+        data = data.decode('utf-8')
+
+        return Response(resp.status, data, resp.getheader('ETag'))
+
+
+def fetch_service_backends():
+    """
+    Returns {service_id: [backend]}.
+    """
+    client = HeavenlyClient()
+
+    print('fetching service manifest')
+
+    resp = client.request('/config/service/', 'application/json')
+    services = json.loads(resp.data)
+
+    pushpin_services = []
+
+    for (service_id, service) in services.items():
+        assert(service_id == service['service'])
+
+        loader_pushpin_enabled = service.get(
+            'features', {}).get('loader-pushpin-enabled', '0')
+        if loader_pushpin_enabled == '1':
+            pushpin_services.append(service)
+
+    print('found {} services with pushpin enabled'.format(len(pushpin_services)))
+
+    service_backends = {}
+
+    for (i, service) in enumerate(pushpin_services):
+        service_id = service['service']
+        version = service['version']
+
+        print('fetching backends for service {} ({}/{})'.format(service_id,
+              i + 1, len(pushpin_services)))
+
+        resp = client.request(
+            '/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
+        backends = json.loads(resp.data)['backends']
+
+        service_backends[service_id] = backends
+
+    return service_backends
+
+
+def make_route(service_id, backend):
+    service_id = validate_id(service_id)
+    backend_name = validate_id(backend['name'])
+    host = validate_host(backend['address'])
+
+    target = '{}:{}'.format(host, backend['port'])
+
+    if backend.get('use_ssl'):
+        target += ',ssl'
+
+    override_host = backend.get('override_host', '')
+    if override_host:
+        override_host = validate_host(override_host)
+        target += ',host={}'.format(override_host)
+
+    return 'id={}:{} {}'.format(service_id, backend_name, target)
+
+
+def write_routes(routes, routes_file):
+    """
+    Returns True if routes file was changed.
+    """
+    newdata = ''
+    for route in routes:
+        newdata += route + '\n'
+
+    try:
+        with open(routes_file, 'r', encoding='utf-8') as f:
+            curdata = f.read()
+    except Exception:
+        # failed to read original routes. no big deal
+        curdata = ''
+
+    if newdata != curdata:
+        tmpfile = '{}.tmp'.format(routes_file)
+
+        with open(tmpfile, 'w', encoding='utf-8') as f:
+            f.write(newdata)
+
+        os.rename(tmpfile, routes_file)
+
+        return True
+    else:
+        return False
+
+
+def update_routes(routes_file):
+    routes = []
+
+    for (service_id, backends) in fetch_service_backends().items():
+        for backend in backends:
+            try:
+                routes.append(make_route(service_id, backend))
+            except Exception as e:
+                sys.stderr.write(
+                    'failed to make route from backend: {}\n'.format(e))
+
+    if write_routes(routes, routes_file):
+        print('wrote {}'.format(routes_file))
+    else:
+        print('no changes')
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Fetch backends from Heavenly and write Pushpin routes file.')
+    parser.add_argument('--output', metavar='FILENAME', dest='output',
+                        default='routes', help='location of routes file (default: ./routes)')
+    parser.add_argument('--loop', metavar='SECONDS', type=int,
+                        dest='loop', help='repeat the process on an interval')
+
+    args = parser.parse_args()
+
+    routes_file = args.output
+
+    sleep_time = 0
+    if args.loop:
+        sleep_time = args.loop
+
+    while True:
+        try:
+            update_routes(routes_file)
+        except Exception:
+            traceback.print_exc()
+
+        if not sleep_time:
+            break
+
+        # whether success or fail, sleep before acting again
+        print('sleeping for {}s'.format(sleep_time))
+        time.sleep(sleep_time)
+
+
+main()
