@@ -1,0 +1,7 @@
+[Unit]
+Description=pushpin-loader
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/opt/fst-pushpin/bin/pushpin-loader --loop 60 --output /opt/fst-pushpin/etc/pushpin/routes
