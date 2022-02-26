@@ -10,6 +10,7 @@ chown pushpin:pushpin /var/run/pushpin
 
 cp /opt/fst-pushpin/etc/pushpin.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-socat.service /etc/systemd/system
+cp /opt/fst-pushpin/etc/pushpin-loader.service /etc/systemd/system
 
 # Reload systemd so that it picks up the packaged unit fragment file.
 # The query `systemctl is-system-running` exits with a non-0 status and it says
