@@ -5,6 +5,7 @@ set -x +e
 
 rm -f /etc/systemd/system/pushpin.service
 rm -f /etc/systemd/system/pushpin-socat.service
+rm -f /etc/systemd/system/pushpin-loader.service
 
 # Reload systemd so that it picks up the removal of the packaged unit fragment file.
 # The query `systemctl is-system-running` exits with a non-0 status and it says
