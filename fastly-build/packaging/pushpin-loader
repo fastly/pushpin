@@ -164,7 +164,7 @@ def make_route(service_id, backend):
         override_host = validate_host(override_host)
         target += ',host={}'.format(override_host)
 
-    return 'id={}:{} {}'.format(service_id, backend_name, target)
+    return 'id={}:{},no_grip {}'.format(service_id, backend_name, target)
 
 
 def write_routes(routes, routes_file):
