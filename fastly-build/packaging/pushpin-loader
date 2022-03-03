@@ -198,6 +198,8 @@ def write_routes(routes, routes_file):
 def update_routes(routes_file):
     routes = []
 
+    routes.append('pushpin.healthcheck.test test')
+
     for (service_id, backends) in fetch_service_backends().items():
         for backend in backends:
             try:
