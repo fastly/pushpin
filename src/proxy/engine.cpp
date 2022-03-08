@@ -300,7 +300,7 @@ public:
 			}
 		}
 
-		if(!config.statsSpec.isEmpty() || config.prometheusPort >= 0)
+		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
 			stats = new StatsManager(config.connectionsMax, 0, this);
 
@@ -317,11 +317,11 @@ public:
 				}
 			}
 
-			if(config.prometheusPort >= 0)
+			if(!config.prometheusPort.isEmpty())
 			{
-				if(!stats->setPrometheusAddrPort(config.prometheusAddr, config.prometheusPort))
+				if(!stats->setPrometheusPort(config.prometheusPort))
 				{
-					log_error("unable to bind to prometheus port: %s:%d", qPrintable(config.prometheusAddr.toString()), config.prometheusPort);
+					log_error("unable to bind to prometheus port: %s", qPrintable(config.prometheusPort));
 					return false;
 				}
 			}

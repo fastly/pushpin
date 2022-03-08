@@ -86,8 +86,7 @@ public:
 		bool quietCheck;
 		int connectionsMax;
 		int statsConnectionTtl;
-		QHostAddress prometheusAddr;
-		int prometheusPort;
+		QString prometheusPort;
 
 		Configuration() :
 			ipcFileMode(-1),
@@ -105,8 +104,7 @@ public:
 			updatesCheck("check"),
 			quietCheck(false),
 			connectionsMax(-1),
-			statsConnectionTtl(-1),
-			prometheusPort(-1)
+			statsConnectionTtl(-1)
 		{
 		}
 	};

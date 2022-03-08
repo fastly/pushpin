@@ -370,13 +370,43 @@ public:
 		return true;
 	}
 
-	bool setPrometheusAddrPort(const QHostAddress &addr, int port)
+	bool setPrometheusPort(const QString &portStr)
 	{
 		prometheusServer = new SimpleHttpServer(8192, 8192, this);
 		connect(prometheusServer, &SimpleHttpServer::requestReady, this, &Private::prometheus_requestReady);
 
-		if(!prometheusServer->listen(addr, port))
-			return false;
+		if(portStr.startsWith("ipc://"))
+		{
+			if(!prometheusServer->listenLocal(portStr.mid(6)))
+			{
+				delete prometheusServer;
+
+				return false;
+			}
+		}
+		else
+		{
+			QHostAddress addr;
+			int port = -1;
+
+			int pos = portStr.indexOf(':');
+			if(pos >= 0)
+			{
+				addr = QHostAddress(portStr.mid(0, pos));
+				port = portStr.mid(pos + 1).toInt();
+			}
+			else
+			{
+				port = portStr.toInt();
+			}
+
+			if(!prometheusServer->listen(addr, port))
+			{
+				delete prometheusServer;
+
+				return false;
+			}
+		}
 
 		setupReportTimer();
 
@@ -1158,9 +1188,9 @@ void StatsManager::setOutputFormat(Format format)
 	d->outputFormat = format;
 }
 
-bool StatsManager::setPrometheusAddrPort(const QHostAddress &addr, int port)
+bool StatsManager::setPrometheusPort(const QString &port)
 {
-	return d->setPrometheusAddrPort(addr, port);
+	return d->setPrometheusPort(port);
 }
 
 void StatsManager::addActivity(const QByteArray &routeId, int count)

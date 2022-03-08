@@ -29,6 +29,7 @@
 #include "simplehttpserver.h"
 
 #include <assert.h>
+#include <QFile>
 #include <QTcpSocket>
 #include <QTcpServer>
 #include <QLocalSocket>
@@ -469,6 +470,8 @@ public:
 	bool listenLocal(const QString &name)
 	{
 		assert(!server);
+
+		QFile::remove(name);
 
 		QLocalServer *s = new QLocalServer(this);
 		connect(s, &QLocalServer::newConnection, this, &SimpleHttpServerPrivate::server_newConnection);
