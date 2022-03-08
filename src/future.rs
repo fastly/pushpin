@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,13 +23,14 @@ use crate::shuffle::shuffle;
 use crate::tls::TlsStream;
 use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio;
-use mio::net::{TcpListener, TcpStream};
+use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use paste::paste;
 use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::io;
 use std::io::{Read, Write};
 use std::net::SocketAddr;
+use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -648,6 +649,30 @@ impl AsyncTcpListener {
     }
 }
 
+pub struct AsyncUnixListener {
+    evented: IoEvented<UnixListener>,
+}
+
+impl AsyncUnixListener {
+    pub fn new(l: UnixListener) -> Self {
+        let evented = IoEvented::new(l, mio::Interest::READABLE, &get_reactor()).unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self { evented }
+    }
+
+    pub fn bind<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+        let listener = UnixListener::bind(path)?;
+
+        Ok(Self::new(listener))
+    }
+
+    pub fn accept<'a>(&'a self) -> UnixAcceptFuture<'a> {
+        UnixAcceptFuture { l: self }
+    }
+}
+
 pub struct AsyncTcpStream {
     evented: IoEvented<TcpStream>,
 }
@@ -679,6 +704,43 @@ impl AsyncTcpStream {
         stream.evented.registration().set_ready(false);
 
         let fut = TcpConnectFuture { s: &mut stream };
+        fut.await?;
+
+        Ok(stream)
+    }
+}
+
+pub struct AsyncUnixStream {
+    evented: IoEvented<UnixStream>,
+}
+
+impl AsyncUnixStream {
+    pub fn new(s: UnixStream) -> Self {
+        let evented = IoEvented::new(
+            s,
+            mio::Interest::READABLE | mio::Interest::WRITABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        // when constructing via new(), assume I/O operations are ready to be
+        // attempted
+        evented
+            .registration()
+            .set_readiness(Some(mio::Interest::READABLE | mio::Interest::WRITABLE));
+
+        Self { evented }
+    }
+
+    pub async fn connect<'a, P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+        let stream = UnixStream::connect(path)?;
+        let mut stream = Self::new(stream);
+
+        // when constructing via connect(), the ready state should start out
+        // false because we need to wait for a writability indication
+        stream.evented.registration().set_ready(false);
+
+        let fut = UnixConnectFuture { s: &mut stream };
         fut.await?;
 
         Ok(stream)
@@ -1175,6 +1237,46 @@ impl Drop for AcceptFuture<'_> {
     }
 }
 
+pub struct UnixAcceptFuture<'a> {
+    l: &'a AsyncUnixListener,
+}
+
+impl Future for UnixAcceptFuture<'_> {
+    type Output = Result<UnixStream, io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.l.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::READABLE);
+
+        if !f.l.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        if !f.l.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.l.evented.io().accept() {
+            Ok((stream, _)) => Poll::Ready(Ok(stream)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.l.evented.registration().set_ready(false);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
+impl Drop for UnixAcceptFuture<'_> {
+    fn drop(&mut self) {
+        self.l.evented.registration().clear_waker();
+    }
+}
+
 pub struct ReadFuture<'a, R: AsyncRead + ?Sized> {
     r: &'a mut R,
     buf: &'a mut [u8],
@@ -1382,6 +1484,43 @@ impl Drop for TcpConnectFuture<'_> {
     }
 }
 
+pub struct UnixConnectFuture<'a> {
+    s: &'a mut AsyncUnixStream,
+}
+
+impl Future for UnixConnectFuture<'_> {
+    type Output = Result<(), io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        let maybe_error = match f.s.evented.io().take_error() {
+            Ok(me) => me,
+            Err(e) => return Poll::Ready(Err(e)),
+        };
+
+        if let Some(e) = maybe_error {
+            return Poll::Ready(Err(e));
+        }
+
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl Drop for UnixConnectFuture<'_> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
 impl AsyncRead for AsyncTcpStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -1428,6 +1567,144 @@ impl AsyncRead for AsyncTcpStream {
 }
 
 impl AsyncWrite for AsyncTcpStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let f = &mut *self;
+
+        f.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        if !f
+            .evented
+            .registration()
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
+        {
+            return Poll::Pending;
+        }
+
+        if !f.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.evented.io().write(buf) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.evented
+                    .registration()
+                    .clear_readiness(mio::Interest::WRITABLE);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<Result<usize, io::Error>> {
+        let f = &mut *self;
+
+        f.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        if !f
+            .evented
+            .registration()
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
+        {
+            return Poll::Pending;
+        }
+
+        if !f.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.evented.io().write_vectored(bufs) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.evented
+                    .registration()
+                    .clear_readiness(mio::Interest::WRITABLE);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn is_writable(&self) -> bool {
+        self.evented
+            .registration()
+            .readiness()
+            .contains_any(mio::Interest::WRITABLE)
+    }
+
+    fn cancel(&mut self) {
+        self.evented
+            .registration()
+            .clear_waker_interest(mio::Interest::WRITABLE);
+    }
+}
+
+impl AsyncRead for AsyncUnixStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let f = &mut *self;
+
+        f.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::READABLE);
+
+        if !f
+            .evented
+            .registration()
+            .readiness()
+            .contains_any(mio::Interest::READABLE)
+        {
+            return Poll::Pending;
+        }
+
+        if !f.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.evented.io().read(buf) {
+            Ok(size) => Poll::Ready(Ok(size)),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.evented
+                    .registration()
+                    .clear_readiness(mio::Interest::READABLE);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+
+    fn cancel(&mut self) {
+        self.evented
+            .registration()
+            .clear_waker_interest(mio::Interest::READABLE);
+    }
+}
+
+impl AsyncWrite for AsyncUnixStream {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
@@ -1945,6 +2222,7 @@ mod tests {
     use crate::executor::Executor;
     use crate::zmq::SpecInfo;
     use std::cmp;
+    use std::fs;
     use std::mem;
     use std::rc::Rc;
     use std::str;
@@ -2394,6 +2672,60 @@ mod tests {
             .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_unixstream() {
+        // ensure pipe file doesn't exist
+        match fs::remove_file("test-unixstream") {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => panic!("{}", e),
+        }
+
+        let reactor = Reactor::new(3); // 3 registrations
+        let executor = Executor::new(2); // 2 tasks
+
+        let spawner = executor.spawner();
+
+        executor
+            .spawn(async move {
+                let listener = AsyncUnixListener::bind("test-unixstream").expect("failed to bind");
+
+                spawner
+                    .spawn(async move {
+                        let mut stream = AsyncUnixStream::connect("test-unixstream").await.unwrap();
+
+                        let size = stream.write("hello".as_bytes()).await.unwrap();
+                        assert_eq!(size, 5);
+                    })
+                    .unwrap();
+
+                let stream = listener.accept().await.unwrap();
+                let mut stream = AsyncUnixStream::new(stream);
+
+                let mut resp = Vec::new();
+
+                loop {
+                    let mut buf = [0; 1024];
+
+                    let size = stream.read(&mut buf).await.unwrap();
+                    if size == 0 {
+                        break;
+                    }
+
+                    resp.extend(&buf[..size]);
+                }
+
+                let resp = str::from_utf8(&resp).unwrap();
+
+                assert_eq!(resp, "hello");
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+
+        fs::remove_file("test-unixstream").unwrap();
     }
 
     #[test]
