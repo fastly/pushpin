@@ -12,8 +12,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let response = client.get(url).await?;
 
     if !response.status().is_success() {
-        process::exit(0);
-    } else {
         process::exit(1);
+    } else {
+        process::exit(0);
     }
 }
