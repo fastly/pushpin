@@ -7,6 +7,8 @@ groupadd pushpin-listener || true
 useradd -r -g pushpin -G pushpin-listener pushpin || true
 mkdir -p /var/run/pushpin
 chown pushpin:pushpin /var/run/pushpin
+chown pushpin:pushpin-listener /opt/fst-pushpin/bin/pushpin-healthcheck
+chmod g+s /opt/fst-pushpin/bin/pushpin-healthcheck
 
 cp /opt/fst-pushpin/etc/pushpin.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-socat.service /etc/systemd/system
