@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -238,7 +238,9 @@ impl Buffer {
 #[cfg(test)]
 impl Read for Buffer {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        let src = self.read_buf();
+        // fully qualified to work around future method warning
+        // https://github.com/rust-lang/rust/issues/48919
+        let src = Buffer::read_buf(self);
         let size = cmp::min(src.len(), buf.len());
 
         buf[..size].copy_from_slice(&src[..size]);
@@ -443,7 +445,9 @@ impl Read for RingBuffer {
         let mut pos = 0;
 
         while pos < buf.len() && self.read_avail() > 0 {
-            let src = self.read_buf();
+            // fully qualified to work around future method warning
+            // https://github.com/rust-lang/rust/issues/48919
+            let src = RingBuffer::read_buf(self);
             let size = cmp::min(src.len(), buf.len() - pos);
 
             buf[pos..(pos + size)].copy_from_slice(&src[..size]);
