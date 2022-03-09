@@ -79,8 +79,7 @@ public:
 		int statsSubscriptionTtl;
 		int statsReportInterval;
 		QString statsFormat;
-		QHostAddress prometheusAddr;
-		int prometheusPort;
+		QString prometheusPort;
 
 		Configuration() :
 			pushInSubConnect(false),
@@ -99,8 +98,7 @@ public:
 			subscriptionLinger(-1),
 			statsConnectionTtl(-1),
 			statsSubscriptionTtl(-1),
-			statsReportInterval(-1),
-			prometheusPort(-1)
+			statsReportInterval(-1)
 		{
 		}
 	};
