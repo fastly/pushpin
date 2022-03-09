@@ -2,7 +2,6 @@
 Description=pushpin-socat
 After=pushpin.service
 BindsTo=pushpin.service
-JoinsNamespaceOf=pushpin.service
 
 [Service]
 Type=simple
@@ -11,5 +10,4 @@ CPUQuota=100%
 LimitNOFILE=1000
 MemoryLimit=5G
 WorkingDirectory=/var/run/pushpin
-PrivateNetwork=true
 ExecStart=/usr/bin/socat UNIX-LISTEN:/tmp/pushpin.sock,fork,user=pushpin,group=pushpin-listener,mode=770 TCP:127.0.0.1:7999
