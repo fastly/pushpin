@@ -288,6 +288,7 @@ public:
 		int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
 		QString statsFormat = settings.value("handler/stats_format").toString();
 		QString prometheusPort = settings.value("handler/prometheus_port").toString();
+		QString prometheusPrefix = settings.value("handler/prometheus_prefix").toString();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -351,6 +352,7 @@ public:
 		config.statsReportInterval = statsReportInterval;
 		config.statsFormat = statsFormat;
 		config.prometheusPort = prometheusPort;
+		config.prometheusPrefix = prometheusPrefix;
 
 		engine = new Engine(this);
 		if(!engine->start(config))
