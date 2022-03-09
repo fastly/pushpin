@@ -30,6 +30,7 @@
 
 #include <assert.h>
 #include <QFile>
+#include <QFileInfo>
 #include <QTcpSocket>
 #include <QTcpServer>
 #include <QLocalSocket>
@@ -471,11 +472,14 @@ public:
 	{
 		assert(!server);
 
-		QFile::remove(name);
+		QFileInfo fi(name);
+		QString filePath = fi.absoluteFilePath();
+
+		QFile::remove(filePath);
 
 		QLocalServer *s = new QLocalServer(this);
 		connect(s, &QLocalServer::newConnection, this, &SimpleHttpServerPrivate::server_newConnection);
-		if(!s->listen(name))
+		if(!s->listen(filePath))
 		{
 			delete s;
 

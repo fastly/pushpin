@@ -319,6 +319,8 @@ public:
 
 			if(!config.prometheusPort.isEmpty())
 			{
+				stats->setPrometheusPrefix(config.prometheusPrefix);
+
 				if(!stats->setPrometheusPort(config.prometheusPort))
 				{
 					log_error("unable to bind to prometheus port: %s", qPrintable(config.prometheusPort));
