@@ -64,6 +64,7 @@ public:
 	void setReportInterval(int secs);
 	void setOutputFormat(Format format);
 	bool setPrometheusPort(const QString &port);
+	void setPrometheusPrefix(const QString &prefix);
 
 	// routeId may be empty for non-identified route
 

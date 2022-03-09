@@ -87,6 +87,7 @@ public:
 		int connectionsMax;
 		int statsConnectionTtl;
 		QString prometheusPort;
+		QString prometheusPrefix;
 
 		Configuration() :
 			ipcFileMode(-1),

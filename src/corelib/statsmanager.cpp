@@ -242,6 +242,32 @@ public:
 		}
 	};
 
+	class PrometheusMetric
+	{
+	public:
+		enum Type
+		{
+			RequestReceived,
+			ConnectionConnected,
+			ConnectionMinute,
+			MessageReceived,
+			MessageSent
+		};
+
+		Type mtype;
+		QString name;
+		QString type;
+		QString help;
+
+		PrometheusMetric(Type _mtype, const QString &_name, const QString &_type, const QString &_help) :
+			mtype(_mtype),
+			name(_name),
+			type(_type),
+			help(_help)
+		{
+		}
+	};
+
 	typedef QPair<QString, QString> SubscriptionKey;
 
 	StatsManager *q;
@@ -258,6 +284,8 @@ public:
 	int reportInterval;
 	QZmq::Socket *sock;
 	SimpleHttpServer *prometheusServer;
+	QString prometheusPrefix;
+	QList<PrometheusMetric> prometheusMetrics;
 	QHash<QByteArray, int> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
 	QHash<QByteArray, QSet<ConnectionInfo*> > connectionInfoByRoute;
@@ -306,6 +334,12 @@ public:
 
 		setupConnectionBuckets();
 		setupSubscriptionBuckets();
+
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::RequestReceived, "request_received", "counter", "Number of requests received");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::ConnectionConnected, "connection_connected", "gauge", "Number of concurrent connections");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::ConnectionMinute, "connection_minute", "counter", "Number of minutes clients have been connected");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageReceived, "message_received", "counter", "Number of messages received by the publish API");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 	}
@@ -1103,27 +1137,30 @@ private slots:
 	{
 		SimpleHttpRequest *req = prometheusServer->takeNext();
 
-		QString data = QString(
-		"# HELP request_received Number of requests received\n"
-		"# TYPE request_received counter\n"
-		"request_received %1\n"
-		"# HELP connection_connected Number of concurrent connections\n"
-		"# TYPE connection_connected gauge\n"
-		"connection_connected %2\n"
-		"# HELP connection_minute Number of minutes clients have been connected to pushpin\n"
-		"# TYPE connection_minute counter\n"
-		"connection_minute %3\n"
-		"# HELP message_received Number of messages received by the publish API\n"
-		"# TYPE message_received counter\n"
-		"message_received %4\n"
-		"# HELP message_sent Number of messages pushpin has sent to clients\n"
-		"# TYPE message_sent counter\n"
-		"message_sent %5\n")
-		.arg(combinedReport.requestsReceived)
-		.arg(combinedReport.connectionsMax)
-		.arg(combinedReport.connectionsMinutes)
-		.arg(combinedReport.messagesReceived)
-		.arg(combinedReport.messagesSent);
+		QString data;
+
+		foreach(const PrometheusMetric &m, prometheusMetrics)
+		{
+			QVariant value;
+
+			switch(m.mtype)
+			{
+				case PrometheusMetric::RequestReceived: value = QVariant(combinedReport.requestsReceived); break;
+				case PrometheusMetric::ConnectionConnected: value = QVariant(combinedReport.connectionsMax); break;
+				case PrometheusMetric::ConnectionMinute: value = QVariant(combinedReport.connectionsMinutes); break;
+				case PrometheusMetric::MessageReceived: value = QVariant(combinedReport.messagesReceived); break;
+				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
+			}
+
+			if(value.isNull())
+				continue;
+
+			data += QString(
+			"# HELP %1%2 %3\n"
+			"# TYPE %4%5 %6\n"
+			"%7%8 %9\n"
+			).arg(prometheusPrefix, m.name, m.help, prometheusPrefix, m.name, m.type, prometheusPrefix, m.name, value.toString());
+		}
 
 		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
 
@@ -1191,6 +1228,11 @@ void StatsManager::setOutputFormat(Format format)
 bool StatsManager::setPrometheusPort(const QString &port)
 {
 	return d->setPrometheusPort(port);
+}
+
+void StatsManager::setPrometheusPrefix(const QString &prefix)
+{
+	d->prometheusPrefix = prefix;
 }
 
 void StatsManager::addActivity(const QByteArray &routeId, int count)

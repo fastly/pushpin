@@ -316,6 +316,7 @@ public:
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
 		QString prometheusPort = settings.value("proxy/prometheus_port").toString();
+		QString prometheusPrefix = settings.value("proxy/prometheus_prefix").toString();
 
 		QList<QByteArray> origHeadersNeedMark;
 		foreach(const QString &s, origHeadersNeedMarkStr)
@@ -398,6 +399,7 @@ public:
 		config.connectionsMax = clientMaxconn;
 		config.statsConnectionTtl = statsConnectionTtl;
 		config.prometheusPort = prometheusPort;
+		config.prometheusPrefix = prometheusPrefix;
 
 		engine = new Engine(this);
 		if(!engine->start(config))

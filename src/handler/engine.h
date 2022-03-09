@@ -80,6 +80,7 @@ public:
 		int statsReportInterval;
 		QString statsFormat;
 		QString prometheusPort;
+		QString prometheusPrefix;
 
 		Configuration() :
 			pushInSubConnect(false),
