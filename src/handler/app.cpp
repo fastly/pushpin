@@ -287,7 +287,7 @@ public:
 		int statsSubscriptionTtl = settings.value("handler/stats_subscription_ttl", 60).toInt();
 		int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
 		QString statsFormat = settings.value("handler/stats_format").toString();
-		QString prometheusPortStr = settings.value("handler/prometheus_port").toString();
+		QString prometheusPort = settings.value("handler/prometheus_port").toString();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -301,23 +301,6 @@ public:
 			log_error("must set proxy_inspect_spec, proxy_accept_spec, and proxy_retry_out_spec");
 			emit q->quit();
 			return;
-		}
-
-		QHostAddress prometheusAddr;
-		int prometheusPort = -1;
-
-		if(!prometheusPortStr.isEmpty())
-		{
-			int pos = prometheusPortStr.indexOf(':');
-			if(pos >= 0)
-			{
-				prometheusAddr = QHostAddress(prometheusPortStr.mid(0, pos));
-				prometheusPort = prometheusPortStr.mid(pos + 1).toInt();
-			}
-			else
-			{
-				prometheusPort = prometheusPortStr.toInt();
-			}
 		}
 
 		Engine::Configuration config;
@@ -367,7 +350,6 @@ public:
 		config.statsSubscriptionTtl = statsSubscriptionTtl;
 		config.statsReportInterval = statsReportInterval;
 		config.statsFormat = statsFormat;
-		config.prometheusAddr = prometheusAddr;
 		config.prometheusPort = prometheusPort;
 
 		engine = new Engine(this);

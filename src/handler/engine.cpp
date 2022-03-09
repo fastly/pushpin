@@ -1477,11 +1477,11 @@ public:
 			log_info("stats: %s", qPrintable(config.statsSpec));
 		}
 
-		if(config.prometheusPort >= 0)
+		if(!config.prometheusPort.isEmpty())
 		{
-			if(!stats->setPrometheusAddrPort(config.prometheusAddr, config.prometheusPort))
+			if(!stats->setPrometheusPort(config.prometheusPort))
 			{
-				log_error("unable to bind to prometheus port: %s:%d", qPrintable(config.prometheusAddr.toString()), config.prometheusPort);
+				log_error("unable to bind to prometheus port: %s", qPrintable(config.prometheusPort));
 				return false;
 			}
 		}
