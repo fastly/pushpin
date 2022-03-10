@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -128,6 +128,17 @@ QString Settings::resolveVars(const QString &in) const
 	}
 
 	return out;
+}
+
+bool Settings::contains(const QString &key) const
+{
+	if(main_->contains(key))
+		return true;
+
+	if(include_)
+		return include_->contains(key);
+
+	return false;
 }
 
 QVariant Settings::valueRaw(const QString &key, const QVariant &defaultValue) const

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2020 Fanout, Inc.
+ * Copyright (C) 2016-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -73,6 +73,12 @@ bool Mongrel2Service::generateConfigFile(const QString &m2shBinFile, const QStri
 
 	foreach(const ListenPort &p, ports)
 	{
+		if(!p.localPath.isEmpty())
+		{
+			log_error("Cannot use local_ports option with mongrel2");
+			return false;
+		}
+
 		QVariantMap v;
 		v["addr"] = (!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
 		v["port"] = p.port;
