@@ -120,32 +120,10 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         // there's always a first part
         let part1 = parts.next().unwrap();
 
-        let port_pos = match part1.rfind(':') {
-            Some(pos) => pos + 1,
-            None => 0,
-        };
-
-        let port = &part1[port_pos..];
-        if port.parse::<u16>().is_err() {
-            return Err(format!("failed to parse listen: invalid port {}", port).into());
-        }
-
-        let addr = if port_pos > 0 {
-            String::from(part1)
-        } else {
-            format!("0.0.0.0:{}", part1)
-        };
-
-        let addr = match addr.parse() {
-            Ok(addr) => addr,
-            Err(e) => {
-                return Err(format!("failed to parse listen: {}", e).into());
-            }
-        };
-
         let mut stream = true;
         let mut tls = false;
         let mut default_cert = None;
+        let mut local = false;
 
         for part in parts {
             let (k, v) = match part.find('=') {
@@ -158,18 +136,45 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
                 "stream" => stream = true,
                 "tls" => tls = true,
                 "default-cert" => default_cert = Some(String::from(v)),
+                "local" => local = true,
                 _ => return Err(format!("failed to parse listen: invalid param: {}", part).into()),
             }
         }
 
-        config.listen.push(app::ListenConfig {
-            spec: app::ListenSpec::Tcp {
+        let spec = if local {
+            app::ListenSpec::Local(PathBuf::from(part1))
+        } else {
+            let port_pos = match part1.rfind(':') {
+                Some(pos) => pos + 1,
+                None => 0,
+            };
+
+            let port = &part1[port_pos..];
+            if port.parse::<u16>().is_err() {
+                return Err(format!("failed to parse listen: invalid port {}", port).into());
+            }
+
+            let addr = if port_pos > 0 {
+                String::from(part1)
+            } else {
+                format!("0.0.0.0:{}", part1)
+            };
+
+            let addr = match addr.parse() {
+                Ok(addr) => addr,
+                Err(e) => {
+                    return Err(format!("failed to parse listen: {}", e).into());
+                }
+            };
+
+            app::ListenSpec::Tcp {
                 addr,
                 tls,
                 default_cert,
-            },
-            stream,
-        });
+            }
+        };
+
+        config.listen.push(app::ListenConfig { spec, stream });
     }
 
     condure::run(&config)
