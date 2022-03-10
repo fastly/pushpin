@@ -64,7 +64,7 @@ CondureService::CondureService(
 	{
 		if(!p.localPath.isEmpty())
 		{
-			QString arg = "--listen=" + p.localPath + ",local";
+			QString arg = "--listen=" + p.localPath + ",local,stream";
 
 			args_ += arg;
 		}
