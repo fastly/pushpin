@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::app::ListenConfig;
+use crate::app::{ListenConfig, ListenSpec};
 use crate::arena;
 use crate::buffer::TmpBuffer;
 use crate::channel;
@@ -25,12 +25,12 @@ use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
     event_wait, select_2, select_3, select_6, select_8, select_option, AsyncLocalReceiver,
-    AsyncLocalSender, AsyncReceiver, AsyncTcpStream, AsyncTlsStream, CancellationSender,
-    CancellationToken, Select2, Select3, Select6, Select8, Timeout,
+    AsyncLocalSender, AsyncReceiver, AsyncTcpStream, AsyncTlsStream, AsyncUnixStream,
+    CancellationSender, CancellationToken, Select2, Select3, Select6, Select8, Timeout,
 };
 use crate::list;
 use crate::listener::Listener;
-use crate::net::set_socket_opts;
+use crate::net::{set_socket_opts, NetListener, NetStream, SocketAddr};
 use crate::pin_mut;
 use crate::reactor::Reactor;
 use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
@@ -40,14 +40,14 @@ use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
-use mio::net::{TcpListener, TcpStream};
+use mio::net::{TcpListener, TcpStream, UnixListener};
 use mio::unix::SourceFd;
 use slab::Slab;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::fs;
 use std::io;
 use std::io::Write;
-use std::net::SocketAddr;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -198,7 +198,7 @@ fn gen_id(id: usize, ckey: usize, next_cid: &mut u32) -> ArrayString<32> {
 }
 
 enum Stream {
-    Plain(TcpStream),
+    Plain(NetStream),
     Tls(TlsStream),
 }
 
@@ -215,6 +215,12 @@ impl Identify for TlsStream {
 }
 
 impl Identify for AsyncTcpStream {
+    fn set_id(&mut self, _id: &str) {
+        // do nothing
+    }
+}
+
+impl Identify for AsyncUnixStream {
     fn set_id(&mut self, _id: &str) {
         // do nothing
     }
@@ -779,8 +785,8 @@ impl Worker {
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
-        req_acceptor: channel::Receiver<(usize, TcpStream, SocketAddr)>,
-        stream_acceptor: channel::Receiver<(usize, TcpStream, SocketAddr)>,
+        req_acceptor: channel::Receiver<(usize, NetStream, SocketAddr)>,
+        stream_acceptor: channel::Receiver<(usize, NetStream, SocketAddr)>,
         req_acceptor_tls: &Vec<(bool, Option<String>)>,
         stream_acceptor_tls: &Vec<(bool, Option<String>)>,
         identities: &Arc<IdentityCache>,
@@ -870,8 +876,8 @@ impl Worker {
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
-        req_acceptor: channel::Receiver<(usize, TcpStream, SocketAddr)>,
-        stream_acceptor: channel::Receiver<(usize, TcpStream, SocketAddr)>,
+        req_acceptor: channel::Receiver<(usize, NetStream, SocketAddr)>,
+        stream_acceptor: channel::Receiver<(usize, NetStream, SocketAddr)>,
         req_acceptor_tls: Vec<(bool, Option<String>)>,
         stream_acceptor_tls: Vec<(bool, Option<String>)>,
         identities: Arc<IdentityCache>,
@@ -1161,7 +1167,7 @@ impl Worker {
         id: usize,
         stop: AsyncLocalReceiver<()>,
         _done: AsyncLocalSender<()>,
-        acceptor: AsyncReceiver<(usize, TcpStream, SocketAddr)>,
+        acceptor: AsyncReceiver<(usize, NetStream, SocketAddr)>,
         acceptor_tls: Vec<(bool, Option<String>)>,
         identities: Arc<IdentityCache>,
         spawner: Spawner,
@@ -1221,25 +1227,30 @@ impl Worker {
                     },
                 };
 
-            set_socket_opts(&mut stream);
+            if let NetStream::Tcp(stream) = &mut stream {
+                set_socket_opts(stream);
+            }
 
-            let stream = match &tls_acceptors[pos] {
-                Some(tls_acceptor) => match tls_acceptor.accept(stream) {
-                    Ok(stream) => {
-                        debug!("worker {}: tls accept", id);
+            let stream = match stream {
+                NetStream::Tcp(stream) => match &tls_acceptors[pos] {
+                    Some(tls_acceptor) => match tls_acceptor.accept(stream) {
+                        Ok(stream) => {
+                            debug!("worker {}: tls accept", id);
 
-                        Stream::Tls(stream)
-                    }
-                    Err(e) => {
-                        error!("worker {}: tls accept: {}", id, e);
-                        break;
+                            Stream::Tls(stream)
+                        }
+                        Err(e) => {
+                            error!("worker {}: tls accept: {}", id, e);
+                            break;
+                        }
+                    },
+                    None => {
+                        debug!("worker {}: plain accept", id);
+
+                        Stream::Plain(NetStream::Tcp(stream))
                     }
                 },
-                None => {
-                    debug!("worker {}: plain accept", id);
-
-                    Stream::Plain(stream)
-                }
+                NetStream::Unix(stream) => Stream::Plain(NetStream::Unix(stream)),
             };
 
             let (cstop, r_cstop) = CancellationToken::new(&reactor.local_registration_memory());
@@ -1743,31 +1754,51 @@ impl Worker {
         debug!("worker {}: task started: connection-{}", worker_id, ckey);
 
         match stream {
-            Stream::Plain(stream) => {
-                server_req_connection(
-                    token,
-                    cid,
-                    &mut cid_provider,
-                    AsyncTcpStream::new(stream),
-                    Some(peer_addr),
-                    false,
-                    opts.buffer_size,
-                    req_opts.body_buffer_size,
-                    &opts.rb_tmp,
-                    opts.packet_buf,
-                    opts.timeout,
-                    AsyncLocalSender::new(req_opts.sender),
-                    zreceiver,
-                )
-                .await
-            }
+            Stream::Plain(stream) => match stream {
+                NetStream::Tcp(stream) => {
+                    server_req_connection(
+                        token,
+                        cid,
+                        &mut cid_provider,
+                        AsyncTcpStream::new(stream),
+                        Some(&peer_addr),
+                        false,
+                        opts.buffer_size,
+                        req_opts.body_buffer_size,
+                        &opts.rb_tmp,
+                        opts.packet_buf,
+                        opts.timeout,
+                        AsyncLocalSender::new(req_opts.sender),
+                        zreceiver,
+                    )
+                    .await
+                }
+                NetStream::Unix(stream) => {
+                    server_req_connection(
+                        token,
+                        cid,
+                        &mut cid_provider,
+                        AsyncUnixStream::new(stream),
+                        Some(&peer_addr),
+                        false,
+                        opts.buffer_size,
+                        req_opts.body_buffer_size,
+                        &opts.rb_tmp,
+                        opts.packet_buf,
+                        opts.timeout,
+                        AsyncLocalSender::new(req_opts.sender),
+                        zreceiver,
+                    )
+                    .await
+                }
+            },
             Stream::Tls(stream) => {
                 server_req_connection(
                     token,
                     cid,
                     &mut cid_provider,
                     AsyncTlsStream::new(stream),
-                    Some(peer_addr),
+                    Some(&peer_addr),
                     true,
                     opts.buffer_size,
                     req_opts.body_buffer_size,
@@ -1808,35 +1839,59 @@ impl Worker {
         debug!("worker {}: task started: connection-{}", worker_id, ckey);
 
         match stream {
-            Stream::Plain(stream) => {
-                server_stream_connection(
-                    token,
-                    cid,
-                    &mut cid_provider,
-                    AsyncTcpStream::new(stream),
-                    Some(peer_addr),
-                    false,
-                    opts.buffer_size,
-                    stream_opts.messages_max,
-                    &opts.rb_tmp,
-                    opts.packet_buf,
-                    opts.tmp_buf,
-                    opts.timeout,
-                    &opts.instance_id,
-                    AsyncLocalSender::new(stream_opts.sender),
-                    AsyncLocalSender::new(stream_opts.sender_stream),
-                    zreceiver,
-                    shared,
-                )
-                .await
-            }
+            Stream::Plain(stream) => match stream {
+                NetStream::Tcp(stream) => {
+                    server_stream_connection(
+                        token,
+                        cid,
+                        &mut cid_provider,
+                        AsyncTcpStream::new(stream),
+                        Some(&peer_addr),
+                        false,
+                        opts.buffer_size,
+                        stream_opts.messages_max,
+                        &opts.rb_tmp,
+                        opts.packet_buf,
+                        opts.tmp_buf,
+                        opts.timeout,
+                        &opts.instance_id,
+                        AsyncLocalSender::new(stream_opts.sender),
+                        AsyncLocalSender::new(stream_opts.sender_stream),
+                        zreceiver,
+                        shared,
+                    )
+                    .await
+                }
+                NetStream::Unix(stream) => {
+                    server_stream_connection(
+                        token,
+                        cid,
+                        &mut cid_provider,
+                        AsyncUnixStream::new(stream),
+                        Some(&peer_addr),
+                        false,
+                        opts.buffer_size,
+                        stream_opts.messages_max,
+                        &opts.rb_tmp,
+                        opts.packet_buf,
+                        opts.tmp_buf,
+                        opts.timeout,
+                        &opts.instance_id,
+                        AsyncLocalSender::new(stream_opts.sender),
+                        AsyncLocalSender::new(stream_opts.sender_stream),
+                        zreceiver,
+                        shared,
+                    )
+                    .await
+                }
+            },
             Stream::Tls(stream) => {
                 server_stream_connection(
                     token,
                     cid,
                     &mut cid_provider,
                     AsyncTlsStream::new(stream),
-                    Some(peer_addr),
+                    Some(&peer_addr),
                     true,
                     opts.buffer_size,
                     stream_opts.messages_max,
@@ -2000,8 +2055,8 @@ impl Server {
     ) -> Result<Self, String> {
         let identities = Arc::new(IdentityCache::new(certs_dir));
 
-        let mut req_tcp_listeners = Vec::new();
-        let mut stream_tcp_listeners = Vec::new();
+        let mut req_listeners = Vec::new();
+        let mut stream_listeners = Vec::new();
 
         let mut req_acceptor_tls = Vec::new();
         let mut stream_acceptor_tls = Vec::new();
@@ -2011,24 +2066,59 @@ impl Server {
         let mut addrs = Vec::new();
 
         for lc in listen_addrs.iter() {
-            let l = match TcpListener::bind(lc.addr) {
-                Ok(l) => l,
-                Err(e) => return Err(format!("failed to bind {}: {}", lc.addr, e)),
-            };
+            match &lc.spec {
+                ListenSpec::Tcp {
+                    addr,
+                    tls,
+                    default_cert,
+                } => {
+                    let l = match TcpListener::bind(*addr) {
+                        Ok(l) => l,
+                        Err(e) => return Err(format!("failed to bind {}: {}", addr, e)),
+                    };
 
-            let addr = l.local_addr().unwrap();
+                    let addr = l.local_addr().unwrap();
 
-            info!("listening on {}", addr);
+                    info!("listening on {}", addr);
 
-            addrs.push(addr);
+                    addrs.push(SocketAddr::Ip(addr));
 
-            if lc.stream {
-                stream_tcp_listeners.push(l);
-                stream_acceptor_tls.push((lc.tls, lc.default_cert.clone()));
-            } else {
-                req_tcp_listeners.push(l);
-                req_acceptor_tls.push((lc.tls, lc.default_cert.clone()));
-            };
+                    if lc.stream {
+                        stream_listeners.push(NetListener::Tcp(l));
+                        stream_acceptor_tls.push((*tls, default_cert.clone()));
+                    } else {
+                        req_listeners.push(NetListener::Tcp(l));
+                        req_acceptor_tls.push((*tls, default_cert.clone()));
+                    };
+                }
+                ListenSpec::Local(path) => {
+                    // ensure pipe file doesn't exist
+                    match fs::remove_file(path) {
+                        Ok(()) => {}
+                        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                        Err(e) => panic!("{}", e),
+                    }
+
+                    let l = match UnixListener::bind(path) {
+                        Ok(l) => l,
+                        Err(e) => return Err(format!("failed to bind {:?}: {}", path, e)),
+                    };
+
+                    let addr = l.local_addr().unwrap();
+
+                    info!("listening on {:?}", addr);
+
+                    addrs.push(SocketAddr::Unix(addr));
+
+                    if lc.stream {
+                        stream_listeners.push(NetListener::Unix(l));
+                        stream_acceptor_tls.push((false, None));
+                    } else {
+                        req_listeners.push(NetListener::Unix(l));
+                        req_acceptor_tls.push((false, None));
+                    };
+                }
+            }
         }
 
         let mut workers = Vec::new();
@@ -2063,8 +2153,8 @@ impl Server {
             workers.push(w);
         }
 
-        let req_listener = Listener::new(req_tcp_listeners, req_lsenders);
-        let stream_listener = Listener::new(stream_tcp_listeners, stream_lsenders);
+        let req_listener = Listener::new(req_listeners, req_lsenders);
+        let stream_listener = Listener::new(stream_listeners, stream_lsenders);
 
         Ok(Self {
             addrs,
@@ -2153,16 +2243,20 @@ impl TestServer {
             Duration::from_secs(5),
             &vec![
                 ListenConfig {
-                    addr: addr1,
+                    spec: ListenSpec::Tcp {
+                        addr: addr1,
+                        tls: false,
+                        default_cert: None,
+                    },
                     stream: false,
-                    tls: false,
-                    default_cert: None,
                 },
                 ListenConfig {
-                    addr: addr2,
+                    spec: ListenSpec::Tcp {
+                        addr: addr2,
+                        tls: false,
+                        default_cert: None,
+                    },
                     stream: true,
-                    tls: false,
-                    default_cert: None,
                 },
             ],
             Path::new("."),
@@ -2188,12 +2282,18 @@ impl TestServer {
         }
     }
 
-    pub fn req_addr(&self) -> SocketAddr {
-        self.server.addrs()[0]
+    pub fn req_addr(&self) -> std::net::SocketAddr {
+        match self.server.addrs()[0] {
+            SocketAddr::Ip(a) => a,
+            _ => unimplemented!("test server doesn't implement unix sockets"),
+        }
     }
 
-    pub fn stream_addr(&self) -> SocketAddr {
-        self.server.addrs()[1]
+    pub fn stream_addr(&self) -> std::net::SocketAddr {
+        match self.server.addrs()[1] {
+            SocketAddr::Ip(a) => a,
+            _ => unimplemented!("test server doesn't implement unix sockets"),
+        }
     }
 
     fn respond(id: &[u8]) -> Result<zmq::Message, io::Error> {

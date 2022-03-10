@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ use signal_hook;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
 use std::cmp;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -52,11 +51,18 @@ fn make_specs(base: &str) -> Result<(String, String, String), String> {
     }
 }
 
+pub enum ListenSpec {
+    Tcp {
+        addr: std::net::SocketAddr,
+        tls: bool,
+        default_cert: Option<String>,
+    },
+    Local(PathBuf),
+}
+
 pub struct ListenConfig {
-    pub addr: SocketAddr,
+    pub spec: ListenSpec,
     pub stream: bool,
-    pub tls: bool,
-    pub default_cert: Option<String>,
 }
 
 pub struct Config {

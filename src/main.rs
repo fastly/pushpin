@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -163,10 +163,12 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         }
 
         config.listen.push(app::ListenConfig {
-            addr,
+            spec: app::ListenSpec::Tcp {
+                addr,
+                tls,
+                default_cert,
+            },
             stream,
-            tls,
-            default_cert,
         });
     }
 

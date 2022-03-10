@@ -39,6 +39,7 @@ use crate::future::{
     WriteHalf,
 };
 use crate::http1;
+use crate::net::SocketAddr;
 use crate::pin_mut;
 use crate::reactor::Reactor;
 use crate::websocket;
@@ -51,7 +52,6 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::io;
 use std::io::Write;
-use std::net::SocketAddr;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -132,7 +132,7 @@ fn make_zhttp_request(
     more: bool,
     mode: Mode,
     credits: u32,
-    peer_addr: Option<SocketAddr>,
+    peer_addr: Option<&SocketAddr>,
     secure: bool,
     packet_buf: &mut [u8],
 ) -> Result<zmq::Message, io::Error> {
@@ -194,7 +194,7 @@ fn make_zhttp_request(
 
     let mut addr = [0; 128];
 
-    if let Some(peer_addr) = &peer_addr {
+    if let Some(SocketAddr::Ip(peer_addr)) = peer_addr {
         let mut c = io::Cursor::new(&mut addr[..]);
         write!(&mut c, "{}", peer_addr.ip()).unwrap();
         let size = c.position() as usize;
@@ -1635,7 +1635,7 @@ where
 async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     id: &str,
     stream: &mut S,
-    peer_addr: Option<SocketAddr>,
+    peer_addr: Option<&SocketAddr>,
     secure: bool,
     buf1: &mut RingBuffer,
     buf2: &mut RingBuffer,
@@ -1865,7 +1865,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     cid: &mut ArrayString<32>,
     cid_provider: &mut P,
     mut stream: S,
-    peer_addr: Option<SocketAddr>,
+    peer_addr: Option<&SocketAddr>,
     secure: bool,
     buffer_size: usize,
     body_buffer_size: usize,
@@ -1934,7 +1934,7 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     mut cid: ArrayString<32>,
     cid_provider: &mut P,
     stream: S,
-    peer_addr: Option<SocketAddr>,
+    peer_addr: Option<&SocketAddr>,
     secure: bool,
     buffer_size: usize,
     body_buffer_size: usize,
@@ -2591,7 +2591,7 @@ where
 async fn server_stream_handler<S, R1, R2>(
     id: &str,
     stream: &mut S,
-    peer_addr: Option<SocketAddr>,
+    peer_addr: Option<&SocketAddr>,
     secure: bool,
     buf1: &mut RingBuffer,
     buf2: &mut RingBuffer,
@@ -3020,7 +3020,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     cid: &mut ArrayString<32>,
     cid_provider: &mut P,
     mut stream: S,
-    peer_addr: Option<SocketAddr>,
+    peer_addr: Option<&SocketAddr>,
     secure: bool,
     buffer_size: usize,
     messages_max: usize,
@@ -3168,7 +3168,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     mut cid: ArrayString<32>,
     cid_provider: &mut P,
     stream: S,
-    peer_addr: Option<SocketAddr>,
+    peer_addr: Option<&SocketAddr>,
     secure: bool,
     buffer_size: usize,
     messages_max: usize,

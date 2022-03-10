@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,13 @@ use crate::arena::recycle_vec;
 use crate::channel;
 use crate::executor::Executor;
 use crate::future::{
-    select_2, select_slice, AcceptFuture, AsyncReceiver, AsyncSender, AsyncTcpListener, Select2,
+    select_2, select_slice, AsyncNetListener, AsyncReceiver, AsyncSender, NetAcceptFuture, Select2,
     WaitWritableFuture,
 };
+use crate::net::{NetListener, NetStream, SocketAddr};
 use crate::reactor::Reactor;
 use log::{debug, error};
-use mio::net::{TcpListener, TcpStream};
 use std::cmp;
-use std::net::SocketAddr;
 use std::sync::mpsc;
 use std::thread;
 
@@ -39,8 +38,8 @@ pub struct Listener {
 
 impl Listener {
     pub fn new(
-        listeners: Vec<TcpListener>,
-        senders: Vec<channel::Sender<(usize, TcpStream, SocketAddr)>>,
+        listeners: Vec<NetListener>,
+        senders: Vec<channel::Sender<(usize, NetStream, SocketAddr)>>,
     ) -> Listener {
         let (s, r) = channel::channel(1);
 
@@ -61,26 +60,26 @@ impl Listener {
 
     async fn run(
         stop: channel::Receiver<()>,
-        listeners: Vec<TcpListener>,
-        senders: Vec<channel::Sender<(usize, TcpStream, SocketAddr)>>,
+        listeners: Vec<NetListener>,
+        senders: Vec<channel::Sender<(usize, NetStream, SocketAddr)>>,
     ) {
         let stop = AsyncReceiver::new(stop);
 
-        let mut listeners: Vec<AsyncTcpListener> = listeners
+        let mut listeners: Vec<AsyncNetListener> = listeners
             .into_iter()
-            .map(|l| AsyncTcpListener::new(l))
+            .map(|l| AsyncNetListener::new(l))
             .collect();
 
-        let mut senders: Vec<AsyncSender<(usize, TcpStream, SocketAddr)>> =
+        let mut senders: Vec<AsyncSender<(usize, NetStream, SocketAddr)>> =
             senders.into_iter().map(|s| AsyncSender::new(s)).collect();
 
         let mut listeners_pos = 0;
         let mut senders_pos = 0;
 
-        let mut sender_tasks_mem: Vec<WaitWritableFuture<(usize, TcpStream, SocketAddr)>> =
+        let mut sender_tasks_mem: Vec<WaitWritableFuture<(usize, NetStream, SocketAddr)>> =
             Vec::with_capacity(senders.len());
 
-        let mut listener_tasks_mem: Vec<AcceptFuture> = Vec::with_capacity(listeners.len());
+        let mut listener_tasks_mem: Vec<NetAcceptFuture> = Vec::with_capacity(listeners.len());
 
         let mut slice_scratch = Vec::with_capacity(cmp::max(senders.len(), listeners.len()));
 
@@ -189,6 +188,7 @@ impl Drop for Listener {
 mod tests {
     use super::*;
     use crate::event;
+    use mio::net::TcpListener;
     use std::io::{Read, Write};
     use std::mem;
     use std::sync::mpsc;
@@ -204,7 +204,7 @@ mod tests {
             let addr = "127.0.0.1:0".parse().unwrap();
             let l = TcpListener::bind(addr).unwrap();
             addrs.push(l.local_addr().unwrap());
-            listeners.push(l);
+            listeners.push(NetListener::Tcp(l));
 
             let (sender, receiver) = channel::channel(0);
             senders.push(sender);
@@ -249,9 +249,14 @@ mod tests {
             }
         }
 
-        let (lnum, mut peer_client, _) = receivers[0].try_recv().unwrap();
+        let (lnum, peer_client, _) = receivers[0].try_recv().unwrap();
 
         assert_eq!(lnum, 0);
+
+        let mut peer_client = match peer_client {
+            NetStream::Tcp(s) => s,
+            _ => unreachable!(),
+        };
 
         peer_client.write(b"hello").unwrap();
         mem::drop(peer_client);
