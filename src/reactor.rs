@@ -18,7 +18,6 @@ use crate::arena;
 use crate::event;
 use crate::event::ReadinessExt;
 use crate::timer::TimerWheel;
-use mio;
 use slab::Slab;
 use std::cell::{Cell, RefCell};
 use std::cmp;

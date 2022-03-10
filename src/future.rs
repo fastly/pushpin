@@ -23,7 +23,6 @@ use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration,
 use crate::shuffle::shuffle;
 use crate::tls::TlsStream;
 use crate::zmq::{MultipartHeader, ZmqSocket};
-use mio;
 use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use paste::paste;
 use std::cell::{Cell, RefCell};

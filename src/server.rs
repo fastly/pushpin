@@ -40,7 +40,6 @@ use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
-use mio;
 use mio::net::{TcpListener, TcpStream};
 use mio::unix::SourceFd;
 use slab::Slab;

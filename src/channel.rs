@@ -17,7 +17,6 @@
 use crate::arena;
 use crate::event;
 use crate::list;
-use mio;
 use slab::Slab;
 use std::cell::RefCell;
 use std::collections::VecDeque;

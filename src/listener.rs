@@ -23,7 +23,6 @@ use crate::future::{
 };
 use crate::reactor::Reactor;
 use log::{debug, error};
-use mio;
 use mio::net::{TcpListener, TcpStream};
 use std::cmp;
 use std::net::SocketAddr;
