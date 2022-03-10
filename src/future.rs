@@ -18,6 +18,7 @@ use crate::arena;
 use crate::channel;
 use crate::event;
 use crate::event::ReadinessExt;
+use crate::net::{NetListener, NetStream, SocketAddr};
 use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented};
 use crate::shuffle::shuffle;
 use crate::tls::TlsStream;
@@ -29,7 +30,6 @@ use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::io;
 use std::io::{Read, Write};
-use std::net::SocketAddr;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -634,13 +634,13 @@ impl AsyncTcpListener {
         Self { evented }
     }
 
-    pub fn bind(addr: SocketAddr) -> Result<Self, io::Error> {
+    pub fn bind(addr: std::net::SocketAddr) -> Result<Self, io::Error> {
         let listener = TcpListener::bind(addr)?;
 
         Ok(Self::new(listener))
     }
 
-    pub fn local_addr(&self) -> Result<SocketAddr, io::Error> {
+    pub fn local_addr(&self) -> Result<std::net::SocketAddr, io::Error> {
         self.evented.io().local_addr()
     }
 
@@ -668,8 +668,33 @@ impl AsyncUnixListener {
         Ok(Self::new(listener))
     }
 
+    pub fn local_addr(&self) -> Result<mio::net::SocketAddr, io::Error> {
+        self.evented.io().local_addr()
+    }
+
     pub fn accept<'a>(&'a self) -> UnixAcceptFuture<'a> {
         UnixAcceptFuture { l: self }
+    }
+}
+
+pub enum AsyncNetListener {
+    Tcp(AsyncTcpListener),
+    Unix(AsyncUnixListener),
+}
+
+impl AsyncNetListener {
+    pub fn new(l: NetListener) -> Self {
+        match l {
+            NetListener::Tcp(l) => Self::Tcp(AsyncTcpListener::new(l)),
+            NetListener::Unix(l) => Self::Unix(AsyncUnixListener::new(l)),
+        }
+    }
+
+    pub fn accept<'a>(&'a self) -> NetAcceptFuture<'a> {
+        match self {
+            Self::Tcp(l) => NetAcceptFuture::Tcp(l.accept()),
+            Self::Unix(l) => NetAcceptFuture::Unix(l.accept()),
+        }
     }
 }
 
@@ -695,7 +720,7 @@ impl AsyncTcpStream {
         Self { evented }
     }
 
-    pub async fn connect<'a>(addr: SocketAddr) -> Result<Self, io::Error> {
+    pub async fn connect<'a>(addr: std::net::SocketAddr) -> Result<Self, io::Error> {
         let stream = TcpStream::connect(addr)?;
         let mut stream = Self::new(stream);
 
@@ -1202,7 +1227,7 @@ pub struct AcceptFuture<'a> {
 }
 
 impl Future for AcceptFuture<'_> {
-    type Output = Result<(TcpStream, SocketAddr), io::Error>;
+    type Output = Result<(TcpStream, std::net::SocketAddr), io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
@@ -1242,7 +1267,7 @@ pub struct UnixAcceptFuture<'a> {
 }
 
 impl Future for UnixAcceptFuture<'_> {
-    type Output = Result<UnixStream, io::Error>;
+    type Output = Result<(UnixStream, mio::net::SocketAddr), io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
@@ -1260,7 +1285,7 @@ impl Future for UnixAcceptFuture<'_> {
         }
 
         match f.l.evented.io().accept() {
-            Ok((stream, _)) => Poll::Ready(Ok(stream)),
+            Ok((stream, peer_addr)) => Poll::Ready(Ok((stream, peer_addr))),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 f.l.evented.registration().set_ready(false);
 
@@ -1274,6 +1299,40 @@ impl Future for UnixAcceptFuture<'_> {
 impl Drop for UnixAcceptFuture<'_> {
     fn drop(&mut self) {
         self.l.evented.registration().clear_waker();
+    }
+}
+
+pub enum NetAcceptFuture<'a> {
+    Tcp(AcceptFuture<'a>),
+    Unix(UnixAcceptFuture<'a>),
+}
+
+impl Future for NetAcceptFuture<'_> {
+    type Output = Result<(NetStream, SocketAddr), io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let ret = match &mut *self {
+            Self::Tcp(fut) => match Pin::new(fut).poll(cx) {
+                Poll::Ready(ret) => match ret {
+                    Ok((stream, peer_addr)) => {
+                        Ok((NetStream::Tcp(stream), SocketAddr::Ip(peer_addr)))
+                    }
+                    Err(e) => Err(e),
+                },
+                Poll::Pending => return Poll::Pending,
+            },
+            Self::Unix(fut) => match Pin::new(fut).poll(cx) {
+                Poll::Ready(ret) => match ret {
+                    Ok((stream, peer_addr)) => {
+                        Ok((NetStream::Unix(stream), SocketAddr::Unix(peer_addr)))
+                    }
+                    Err(e) => Err(e),
+                },
+                Poll::Pending => return Poll::Pending,
+            },
+        };
+
+        Poll::Ready(ret)
     }
 }
 
@@ -2701,7 +2760,7 @@ mod tests {
                     })
                     .unwrap();
 
-                let stream = listener.accept().await.unwrap();
+                let (stream, _) = listener.accept().await.unwrap();
                 let mut stream = AsyncUnixStream::new(stream);
 
                 let mut resp = Vec::new();

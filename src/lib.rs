@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ pub mod future;
 pub mod http1;
 pub mod list;
 pub mod listener;
+pub mod net;
 pub mod reactor;
 pub mod server;
 pub mod shuffle;

@@ -30,6 +30,7 @@ use crate::future::{
 };
 use crate::list;
 use crate::listener::Listener;
+use crate::net::set_socket_opts;
 use crate::pin_mut;
 use crate::reactor::Reactor;
 use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
@@ -43,13 +44,11 @@ use mio;
 use mio::net::{TcpListener, TcpStream};
 use mio::unix::SourceFd;
 use slab::Slab;
-use socket2::Socket;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io;
 use std::io::Write;
 use std::net::SocketAddr;
-use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -157,20 +156,6 @@ fn get_key(id: &[u8]) -> Result<usize, ()> {
     };
 
     Ok(key)
-}
-
-fn set_socket_opts(stream: TcpStream) -> TcpStream {
-    if let Err(e) = stream.set_nodelay(true) {
-        error!("set nodelay failed: {:?}", e);
-    }
-
-    let socket = unsafe { Socket::from_raw_fd(stream.into_raw_fd()) };
-
-    if let Err(e) = socket.set_keepalive(true) {
-        error!("set keepalive failed: {:?}", e);
-    }
-
-    unsafe { TcpStream::from_raw_fd(socket.into_raw_fd()) }
 }
 
 fn local_channel<T>(
@@ -1210,7 +1195,7 @@ impl Worker {
                 None
             };
 
-            let (pos, stream, peer_addr) =
+            let (pos, mut stream, peer_addr) =
                 match select_3(stop.recv(), cdone.recv(), select_option(acceptor_recv)).await {
                     // stop.recv
                     Select3::R1(_) => break,
@@ -1237,7 +1222,7 @@ impl Worker {
                     },
                 };
 
-            let stream = set_socket_opts(stream);
+            set_socket_opts(&mut stream);
 
             let stream = match &tls_acceptors[pos] {
                 Some(tls_acceptor) => match tls_acceptor.accept(stream) {
