@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -40,6 +40,7 @@ public:
 	Settings(const QString &fileName);
 	~Settings();
 
+	bool contains(const QString &key) const;
 	QVariant valueRaw(const QString &key, const QVariant &defaultValue = QVariant()) const;
 	QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
 	int adjustedPort(const QString &key, int defaultValue = -1) const;

@@ -75,7 +75,8 @@ QVariant StatsPacket::toVariant() const
 			else // Http
 				obj["type"] = QByteArray("http");
 
-			obj["peer-address"] = peerAddress.toString().toUtf8();
+			if(!peerAddress.isNull())
+				obj["peer-address"] = peerAddress.toString().toUtf8();
 
 			if(ssl)
 				obj["ssl"] = true;

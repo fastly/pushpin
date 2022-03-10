@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -62,18 +62,27 @@ CondureService::CondureService(
 
 	foreach(const ListenPort &p, ports)
 	{
-		QString addr = !p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0");
-
-		QString arg = "--listen=" + addr + ":" + QString::number(p.port) + ",stream";
-
-		if(p.ssl)
+		if(!p.localPath.isEmpty())
 		{
-			usingSsl = true;
+			QString arg = "--listen=" + p.localPath + ",local";
 
-			arg += ",tls,default-cert=default_" + QString::number(p.port);
+			args_ += arg;
 		}
+		else
+		{
+			QString addr = !p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0");
 
-		args_ += arg;
+			QString arg = "--listen=" + addr + ":" + QString::number(p.port) + ",stream";
+
+			if(p.ssl)
+			{
+				usingSsl = true;
+
+				arg += ",tls,default-cert=default_" + QString::number(p.port);
+			}
+
+			args_ += arg;
+		}
 	}
 
 	args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "condure";

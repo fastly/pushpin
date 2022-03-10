@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2020 Fanout, Inc.
+ * Copyright (C) 2016-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,9 +34,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
-#include <QSettings>
 #include "processquit.h"
 #include "log.h"
+#include "settings.h"
 #include "listenport.h"
 #include "condureservice.h"
 #include "mongrel2service.h"
@@ -359,7 +359,7 @@ public:
 		if(args.configFile.isEmpty())
 			log_info("using config: %s", qPrintable(configFile));
 
-		QSettings settings(configFile, QSettings::IniFormat);
+		Settings settings(configFile);
 
 		QString exeDir = QCoreApplication::applicationDirPath();
 
@@ -396,6 +396,9 @@ public:
 
 		QStringList httpsPortStrs = settings.value("runner/https_ports").toStringList();
 		trimlist(&httpsPortStrs);
+
+		QStringList localPortStrs = settings.value("runner/local_ports").toStringList();
+		trimlist(&localPortStrs);
 
 		QString runDir;
 		if(settings.contains("global/rundir"))
@@ -506,6 +509,11 @@ public:
 				}
 
 				ports += ListenPort(p.first, p.second, true);
+			}
+
+			foreach(const QString &localPortStr, localPortStrs)
+			{
+				ports += ListenPort(QHostAddress(), 0, true, localPortStr);
 			}
 		}
 
