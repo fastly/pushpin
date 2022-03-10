@@ -20,4 +20,6 @@ cp /opt/fst-pushpin/etc/pushpin-loader.service /etc/systemd/system
 status=$(systemctl is-system-running || true)
 if [ "X$status" = Xrunning -o "X$status" = Xdegraded ]; then
   systemctl daemon-reload
+  systemctl restart pushpin
+  systemctl restart pushpin-loader
 fi
