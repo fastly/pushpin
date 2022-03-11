@@ -1,6 +1,10 @@
 Condure Changelog
 =================
 
+v. 1.5.0 (2022-03-11)
+
+  * Ability to listen on a Unix socket for client connections.
+
 v. 1.4.1 (2021-10-24)
 
   * Fix crash when sending too fast to clients.
