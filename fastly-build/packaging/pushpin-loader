@@ -156,7 +156,7 @@ def make_route(service_id, backend):
 
     target = '{}:{}'.format(host, backend['port'])
 
-    if backend.get('use_ssl'):
+    if int(backend.get('use_ssl', '0')):
         target += ',ssl'
 
     override_host = backend.get('override_host', '')
