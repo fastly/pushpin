@@ -10,4 +10,4 @@ CPUQuota=100%
 LimitNOFILE=1000
 MemoryLimit=5G
 WorkingDirectory=/var/run/pushpin
-ExecStart=/usr/bin/socat UNIX-LISTEN:/tmp/pushpin.sock,fork,user=pushpin,group=pushpin-listener,mode=770 TCP:127.0.0.1:7999
+ExecStart=/usr/bin/socat UNIX-LISTEN:/tmp/pushpin.sock,fork,user=pushpin,group=pushpin-listener,mode=777 TCP:127.0.0.1:7999
