@@ -62,6 +62,7 @@ public:
 	void setUseXForwardedProtocol(bool protoEnabled, bool protocolEnabled);
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
 	void setOrigHeadersNeedMark(const QList<QByteArray> &names);
+	void setAcceptPushpinRoute(bool enabled);
 
 	// takes ownership
 	void start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route);

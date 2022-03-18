@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -76,7 +76,7 @@ bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestDa
 	return false;
 }
 
-void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, const QHostAddress &peerAddress, const InspectData &idata, bool gripEnabled, bool intReq)
+void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, bool acceptPushpinRoute, const QHostAddress &peerAddress, const InspectData &idata, bool gripEnabled, bool intReq)
 {
 	if(trustedClient)
 		log_debug("%s: %p passing to upstream", logprefix, object);
@@ -148,6 +148,9 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	requestData->headers.removeAll("Content-Encoding");
 	requestData->headers.removeAll("Transfer-Encoding");
 	requestData->headers.removeAll("Expect");
+
+	if(acceptPushpinRoute)
+		requestData->headers.removeAll("Pushpin-Route");
 
 	if(!trustedClient && !intReq)
 	{
