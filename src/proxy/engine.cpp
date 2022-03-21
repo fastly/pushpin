@@ -393,6 +393,7 @@ public:
 			ps->setUseXForwardedProtocol(config.setXForwardedProto, config.setXForwardedProtocol);
 			ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 			ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
+			ps->setAcceptPushpinRoute(config.acceptPushpinRoute);
 			ps->setProxyInitialResponseEnabled(true);
 
 			if(idata)
@@ -434,6 +435,7 @@ public:
 		ps->setUseXForwardedProtocol(config.setXForwardedProto, config.setXForwardedProtocol);
 		ps->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
 		ps->setOrigHeadersNeedMark(config.origHeadersNeedMark);
+		ps->setAcceptPushpinRoute(config.acceptPushpinRoute);
 
 		WsProxyItem *i = new WsProxyItem;
 		i->ps = ps;
