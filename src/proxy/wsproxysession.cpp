@@ -256,6 +256,7 @@ public:
 	XffRule xffRule;
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
+	bool acceptPushpinRoute;
 	HttpRequestData requestData;
 	bool trustedClient;
 	QHostAddress logicalClientAddress;
@@ -298,6 +299,7 @@ public:
 		acceptXForwardedProtocol(false),
 		useXForwardedProto(false),
 		useXForwardedProtocol(false),
+		acceptPushpinRoute(false),
 		trustedClient(false),
 		inSock(0),
 		outSock(0),
@@ -434,7 +436,7 @@ public:
 
 		clientAddress = inSock->peerAddress();
 
-		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, InspectData(), route.grip, false);
+		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, acceptPushpinRoute, clientAddress, InspectData(), route.grip, false);
 
 		// don't proxy extensions, as we may not know how to handle them
 		requestData.headers.removeAll("Sec-WebSocket-Extensions");
@@ -988,7 +990,7 @@ private slots:
 	{
 		WebSocketOverHttp *woh = (WebSocketOverHttp *)sender();
 
-		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, InspectData(), route.grip, false);
+		ProxyUtil::manipulateRequestHeaders("wsproxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, acceptPushpinRoute, clientAddress, InspectData(), route.grip, false);
 
 		woh->setHeaders(requestData.headers);
 	}
@@ -1174,6 +1176,11 @@ void WsProxySession::setXffRules(const XffRule &untrusted, const XffRule &truste
 void WsProxySession::setOrigHeadersNeedMark(const QList<QByteArray> &names)
 {
 	d->origHeadersNeedMark = names;
+}
+
+void WsProxySession::setAcceptPushpinRoute(bool enabled)
+{
+	d->acceptPushpinRoute = enabled;
 }
 
 void WsProxySession::start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route)

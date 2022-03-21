@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -141,6 +141,7 @@ public:
 	XffRule xffRule;
 	XffRule xffTrustedRule;
 	QList<QByteArray> origHeadersNeedMark;
+	bool acceptPushpinRoute;
 	bool proxyInitialResponse;
 	bool acceptAfterResponding;
 	AcceptRequest *acceptRequest;
@@ -168,6 +169,7 @@ public:
 		acceptXForwardedProtocol(false),
 		useXForwardedProto(false),
 		useXForwardedProtocol(false),
+		acceptPushpinRoute(false),
 		proxyInitialResponse(false),
 		acceptAfterResponding(false),
 		acceptRequest(0),
@@ -281,7 +283,7 @@ public:
 			trustedClient = rs->trusted();
 			QHostAddress clientAddress = rs->request()->peerAddress();
 
-			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, clientAddress, idata, route.grip, intReq);
+			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, acceptPushpinRoute, clientAddress, idata, route.grip, intReq);
 
 			state = Requesting;
 			buffering = true;
@@ -1426,6 +1428,11 @@ void ProxySession::setXffRules(const XffRule &untrusted, const XffRule &trusted)
 void ProxySession::setOrigHeadersNeedMark(const QList<QByteArray> &names)
 {
 	d->origHeadersNeedMark = names;
+}
+
+void ProxySession::setAcceptPushpinRoute(bool enabled)
+{
+	d->acceptPushpinRoute = enabled;
 }
 
 void ProxySession::setProxyInitialResponseEnabled(bool enabled)

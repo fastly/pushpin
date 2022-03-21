@@ -1,6 +1,17 @@
 Pushpin Changelog
 =================
 
+v. 1.35.0 (2022-03-11)
+
+  * Add support for Prometheus metrics.
+  * Ability to listen on a Unix socket for client connections.
+  * New config options: prometheus_port, prometheus_prefix.
+  * New config option: local_ports.
+  * New config option: accept_pushpin_route.
+  * New route condition option: no_grip.
+  * Use the route of the initial request for retries and link requests.
+  * pushpin-publish: fix sending hint action for http-response format.
+
 v. 1.34.0 (2021-11-30)
 
   * New config option: message_wait.
