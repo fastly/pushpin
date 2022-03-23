@@ -27,6 +27,7 @@ pub mod list;
 pub mod listener;
 pub mod net;
 pub mod reactor;
+pub mod resolver;
 pub mod server;
 pub mod shuffle;
 pub mod timer;
