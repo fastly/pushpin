@@ -149,6 +149,7 @@ impl Queries {
             if let Some(nkey) = queries.next.pop_front(&mut queries.nodes) {
                 let qi = &mut queries.nodes[nkey].value;
 
+                invalidated.store(false, Ordering::Relaxed);
                 qi.invalidated = Some(invalidated.clone());
 
                 return Some((nkey, qi.host.clone()));
@@ -158,13 +159,15 @@ impl Queries {
         }
     }
 
-    fn set_result<F>(&self, item_key: usize, result: Result<Addrs, io::Error>, check_valid: F)
-    where
-        F: Fn() -> bool,
-    {
+    fn set_result(
+        &self,
+        item_key: usize,
+        result: Result<Addrs, io::Error>,
+        invalidated: &AtomicBool,
+    ) {
         let mut queries = self.inner.0.lock().unwrap();
 
-        if check_valid() {
+        if !invalidated.load(Ordering::Relaxed) {
             let qi = &mut queries.nodes[item_key].value;
 
             qi.result = Some(result);
@@ -226,8 +229,6 @@ impl ResolverInner {
                 let invalidated = Arc::new(AtomicBool::new(false));
 
                 loop {
-                    invalidated.store(false, Ordering::Relaxed);
-
                     let (item_key, host) = match queries.get_next(&invalidated) {
                         Some(ret) => ret,
                         None => break,
@@ -235,7 +236,7 @@ impl ResolverInner {
 
                     let ret = resolve_fn(host.as_str());
 
-                    queries.set_result(item_key, ret, || !invalidated.load(Ordering::Relaxed));
+                    queries.set_result(item_key, ret, &invalidated);
                 }
             });
 
