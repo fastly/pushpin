@@ -2,6 +2,8 @@
 Description=pushpin
 Before=pushpin-socat.service
 Requires=pushpin-socat.service
+# proxyb provides the ACLs
+Requires=h2o_proxyb.service
 
 [Service]
 Type=simple
@@ -11,4 +13,6 @@ LimitNOFILE=1000
 MemoryLimit=5G
 WorkingDirectory=/var/run/pushpin
 Environment=PATH=/opt/fst-pushpin/bin:/bin:/sbin:/usr/bin:/usr/sbin
+ExecStartPre=/opt/fst-pushpin/bin/pushpin-iptables.sh apply
 ExecStart=/opt/fst-pushpin/bin/pushpin.sh
+ExecStopPost=/opt/fst-pushpin/bin/pushpin-iptables.sh rm

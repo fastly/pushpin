@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -x
+
+setup() {
+        # Create the ipset if it does not exist because the services that
+        # manage the ipsets may not yet have been created and started.
+        ipset -q create proxyb_block_ingress hash:net -exist
+        ipset -q create proxyb_block_ingress6 hash:net family inet6 -exist
+        ipset -q create proxyb_block_egress hash:net -exist
+        ipset -q create proxyb_block_egress6 hash:net family inet6 -exist
+
+        iptables -N PUSHPINOUT
+        iptables -I OUTPUT -m owner --uid-owner pushpin -g PUSHPINOUT
+        iptables -I PUSHPINOUT -j ACCEPT
+        iptables -I PUSHPINOUT -m set --match-set proxyb_block_egress dst -j DROP
+        iptables -I PUSHPINOUT -m set --match-set proxyb_infra_blocked dst -j REJECT || echo >&2 "WARNING: Infra block rule skipped for IPv4"
+
+        ip6tables -N PUSHPIN6OUT
+        ip6tables -I OUTPUT -m owner --uid-owner pushpin -g PUSHPIN6OUT
+        ip6tables -I PROXYB6OUT -j ACCEPT
+        ip6tables -I PROXYB6OUT -m set --match-set proxyb_block_egress6 dst -j DROP
+        ip6tables -I PROXYB6OUT -m set --match-set proxyb_infra_blocked6 dst -j REJECT || echo >&2 "WARNING: Infra block rule skipped for IPv6"
+}
+
+cleanup() {
+        iptables -D OUTPUT -m owner --uid-owner pushpin -g PUSHPINOUT
+        iptables -F PUSHPINOUT
+        iptables -X PUSHPINOUT
+
+        ip6tables -D OUTPUT -m owner --uid-owner pushpin -g PUSHPIN6OUT
+        ip6tables -F PUSHPIN6OUT
+        ip6tables -X PUSHPIN6OUT
+}
+
+if [ "$1" = "apply" ]; then
+        cleanup
+        set -e
+        setup
+elif [ "$1" = "rm" ]; then
+        cleanup
+        exit 0
+else
+        echo "Unsupported command '$1', please use 'apply' or 'rm'"
+        exit 1
+fi
