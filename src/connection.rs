@@ -63,7 +63,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 const URI_SIZE_MAX: usize = 4096;
-const HEADERS_MAX: usize = 32;
+const HEADERS_MAX: usize = 64;
 const WS_HASH_INPUT_MAX: usize = 256;
 const WS_ACCEPT_MAX: usize = 28; // base64_encode(sha1_hash) = 28 bytes
 const ZHTTP_SESSION_TIMEOUT: Duration = Duration::from_secs(60);

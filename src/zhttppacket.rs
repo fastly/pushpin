@@ -24,7 +24,7 @@ use std::str;
 
 pub const IDS_MAX: usize = 128;
 
-const HEADERS_MAX: usize = 32;
+const HEADERS_MAX: usize = 64;
 
 const EMPTY_BYTES: &[u8] = b"";
 
