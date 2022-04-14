@@ -49,6 +49,7 @@ use log::debug;
 use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::VecDeque;
+use std::convert::TryFrom;
 use std::future::Future;
 use std::io;
 use std::io::Write;
@@ -278,26 +279,34 @@ impl From<websocket::Error> for ServerError {
 // our own range-like struct that supports copying
 #[derive(Clone, Copy, Default)]
 struct Range {
-    start: usize,
-    end: usize,
+    start: u32,
+    end: u32,
 }
 
-fn slice_to_range<T: AsRef<[u8]>>(base: &[u8], s: T) -> Range {
-    let sref = s.as_ref();
-    let start = (sref.as_ptr() as usize) - (base.as_ptr() as usize);
+impl Range {
+    fn from_slice<T: AsRef<[u8]>>(base: &[u8], s: T) -> Self {
+        let sref = s.as_ref();
+        let start = (sref.as_ptr() as usize) - (base.as_ptr() as usize);
+        let end = start + sref.len();
 
-    Range {
-        start,
-        end: start + sref.len(),
+        // panic if the indexes don't fit in a u32 (4GB). nobody should ever
+        // set such a large buffer size, so this should never happen
+        let start = u32::try_from(start).expect("start index greater than u32");
+        let end = u32::try_from(end).expect("end index greater than u32");
+
+        Self {
+            start: start as u32,
+            end: end as u32,
+        }
     }
-}
 
-fn range_to_slice(base: &[u8], range: Range) -> &[u8] {
-    &base[range.start..range.end]
-}
+    fn to_slice<'a>(&self, base: &'a [u8]) -> &'a [u8] {
+        &base[(self.start as usize)..(self.end as usize)]
+    }
 
-unsafe fn range_to_str_unchecked(base: &[u8], range: Range) -> &str {
-    str::from_utf8_unchecked(&base[range.start..range.end])
+    unsafe fn to_str_unchecked<'a>(&self, base: &'a [u8]) -> &'a str {
+        str::from_utf8_unchecked(&base[(self.start as usize)..(self.end as usize)])
+    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -562,16 +571,16 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
                     let hbuf = self.r.buf1.read_buf();
 
                     *ranges = RequestHeaderRanges {
-                        method: slice_to_range(hbuf, req.method),
-                        uri: slice_to_range(hbuf, req.uri),
+                        method: Range::from_slice(hbuf, req.method),
+                        uri: Range::from_slice(hbuf, req.uri),
                         headers: [EMPTY_HEADER_RANGES; HEADERS_MAX],
                         headers_count: req.headers.len(),
                     };
 
                     for (i, h) in req.headers.iter().enumerate() {
                         ranges.headers[i] = HeaderRanges {
-                            name: slice_to_range(hbuf, h.name),
-                            value: slice_to_range(hbuf, h.value),
+                            name: Range::from_slice(hbuf, h.name),
+                            value: Range::from_slice(hbuf, h.value),
                         };
                     }
 
@@ -608,14 +617,14 @@ fn request_from_ranges<'buf, 'headers>(
     expect_100: bool,
     scratch: &'headers mut [httparse::Header<'buf>; HEADERS_MAX],
 ) -> http1::Request<'buf, 'headers> {
-    let method = unsafe { range_to_str_unchecked(buf, ranges.method) };
-    let uri = unsafe { range_to_str_unchecked(buf, ranges.uri) };
+    let method = unsafe { ranges.method.to_str_unchecked(buf) };
+    let uri = unsafe { ranges.uri.to_str_unchecked(buf) };
 
     let ranges_headers = &ranges.headers[..ranges.headers_count];
 
     for (i, h) in ranges_headers.iter().enumerate() {
-        scratch[i].name = unsafe { range_to_str_unchecked(buf, h.name) };
-        scratch[i].value = range_to_slice(buf, h.value);
+        scratch[i].name = unsafe { h.name.to_str_unchecked(buf) };
+        scratch[i].value = h.value.to_slice(buf);
     }
 
     let headers = &scratch[..ranges.headers_count];
