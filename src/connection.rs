@@ -276,7 +276,7 @@ impl From<websocket::Error> for ServerError {
 }
 
 // our own range-like struct that supports copying
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct Range {
     start: usize,
     end: usize,
@@ -300,7 +300,7 @@ unsafe fn range_to_str_unchecked(base: &[u8], range: Range) -> &str {
     str::from_utf8_unchecked(&base[range.start..range.end])
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct HeaderRanges {
     name: Range,
     value: Range,
@@ -317,6 +317,17 @@ struct RequestHeaderRanges {
     uri: Range,
     headers: [HeaderRanges; HEADERS_MAX],
     headers_count: usize,
+}
+
+impl Default for RequestHeaderRanges {
+    fn default() -> Self {
+        Self {
+            method: Range::default(),
+            uri: Range::default(),
+            headers: [EMPTY_HEADER_RANGES; HEADERS_MAX],
+            headers_count: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -520,66 +531,72 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
     }
 
     // read from stream into buf, and parse buf as a request header
-    async fn recv_request(mut self) -> Result<RequestHeader<'a, R, W>, ServerError> {
+    async fn recv_request(
+        mut self,
+        ranges: &'a mut RequestHeaderRanges,
+    ) -> Result<RequestHeader<'a, R, W>, ServerError> {
         let mut protocol = http1::ServerProtocol::new();
 
         assert_eq!(protocol.state(), http1::ServerState::ReceivingRequest);
 
         loop {
-            let mut hbuf = io::Cursor::new(self.r.buf1.read_buf());
+            {
+                let mut hbuf = io::Cursor::new(self.r.buf1.read_buf());
 
-            let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
+                let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
-            let req = match protocol.recv_request(&mut hbuf, &mut headers) {
-                Some(Ok(req)) => req,
-                Some(Err(e)) => return Err(e.into()),
-                None => {
-                    if let Err(e) = recv_nonzero(&mut self.r.stream, self.r.buf1).await {
-                        if e.kind() == io::ErrorKind::WriteZero {
-                            return Err(ServerError::BufferExceeded);
-                        }
+                if let Some(ret) = protocol.recv_request(&mut hbuf, &mut headers) {
+                    let req = match ret {
+                        Ok(req) => req,
+                        Err(e) => return Err(e.into()),
+                    };
 
-                        return Err(e.into());
+                    assert!([
+                        http1::ServerState::ReceivingBody,
+                        http1::ServerState::AwaitingResponse
+                    ]
+                    .contains(&protocol.state()));
+
+                    let hsize = hbuf.position() as usize;
+
+                    let hbuf = self.r.buf1.read_buf();
+
+                    *ranges = RequestHeaderRanges {
+                        method: slice_to_range(hbuf, req.method),
+                        uri: slice_to_range(hbuf, req.uri),
+                        headers: [EMPTY_HEADER_RANGES; HEADERS_MAX],
+                        headers_count: req.headers.len(),
+                    };
+
+                    for (i, h) in req.headers.iter().enumerate() {
+                        ranges.headers[i] = HeaderRanges {
+                            name: slice_to_range(hbuf, h.name),
+                            value: slice_to_range(hbuf, h.value),
+                        };
                     }
 
-                    continue;
+                    let body_size = req.body_size;
+                    let expect_100 = req.expect_100;
+
+                    break Ok(RequestHeader {
+                        r: self.r,
+                        w: self.w,
+                        protocol,
+                        hsize,
+                        ranges,
+                        body_size,
+                        expect_100,
+                    });
                 }
-            };
-
-            assert!([
-                http1::ServerState::ReceivingBody,
-                http1::ServerState::AwaitingResponse
-            ]
-            .contains(&protocol.state()));
-
-            let hsize = hbuf.position() as usize;
-
-            let hbuf = self.r.buf1.read_buf();
-
-            let mut ranges = RequestHeaderRanges {
-                method: slice_to_range(hbuf, req.method),
-                uri: slice_to_range(hbuf, req.uri),
-                headers: [EMPTY_HEADER_RANGES; HEADERS_MAX],
-                headers_count: req.headers.len(),
-            };
-
-            for (i, h) in req.headers.iter().enumerate() {
-                ranges.headers[i].name = slice_to_range(hbuf, h.name);
-                ranges.headers[i].value = slice_to_range(hbuf, h.value);
             }
 
-            let body_size = req.body_size;
-            let expect_100 = req.expect_100;
+            if let Err(e) = recv_nonzero(&mut self.r.stream, self.r.buf1).await {
+                if e.kind() == io::ErrorKind::WriteZero {
+                    return Err(ServerError::BufferExceeded);
+                }
 
-            break Ok(RequestHeader {
-                r: self.r,
-                w: self.w,
-                protocol,
-                hsize,
-                ranges,
-                body_size,
-                expect_100,
-            });
+                return Err(e.into());
+            }
         }
     }
 }
@@ -594,7 +611,9 @@ fn request_from_ranges<'buf, 'headers>(
     let method = unsafe { range_to_str_unchecked(buf, ranges.method) };
     let uri = unsafe { range_to_str_unchecked(buf, ranges.uri) };
 
-    for (i, h) in ranges.headers.iter().enumerate() {
+    let ranges_headers = &ranges.headers[..ranges.headers_count];
+
+    for (i, h) in ranges_headers.iter().enumerate() {
         scratch[i].name = unsafe { range_to_str_unchecked(buf, h.name) };
         scratch[i].value = range_to_slice(buf, h.value);
     }
@@ -615,7 +634,7 @@ struct RequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
     w: HttpWrite<'a, W>,
     protocol: http1::ServerProtocol,
     hsize: usize,
-    ranges: RequestHeaderRanges,
+    ranges: &'a mut RequestHeaderRanges,
     body_size: http1::BodySize,
     expect_100: bool,
 }
@@ -627,14 +646,46 @@ impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
     ) -> http1::Request<'buf, 'headers> {
         request_from_ranges(
             self.r.buf1.read_buf(),
-            &self.ranges,
+            self.ranges,
             self.body_size,
             self.expect_100,
             scratch,
         )
     }
 
-    async fn start_recv_body(mut self) -> Result<RequestRecvBody<'a, R, W>, ServerError> {
+    async fn start_recv_body(self) -> Result<RequestRecvBody<'a, R, W>, ServerError> {
+        let (recv_body, _) = self.start_recv_body_inner().await?;
+
+        Ok(recv_body)
+    }
+
+    async fn start_recv_body_and_keep_header(
+        mut self,
+    ) -> Result<RequestRecvBodyKeepHeader<'a, R, W>, ServerError> {
+        self.move_header()?;
+
+        let body_size = self.body_size;
+        let expect_100 = self.expect_100;
+
+        let (recv_body, ranges) = self.start_recv_body_inner().await?;
+
+        Ok(RequestRecvBodyKeepHeader {
+            inner: recv_body,
+            ranges,
+            body_size,
+            expect_100,
+        })
+    }
+
+    fn recv_done(mut self) -> Result<RequestStartResponse<'a, R, W>, ServerError> {
+        self.clear_header();
+
+        Ok(RequestStartResponse::new(self.r, self.w, self.protocol))
+    }
+
+    async fn start_recv_body_inner(
+        mut self,
+    ) -> Result<(RequestRecvBody<'a, R, W>, &'a mut RequestHeaderRanges), ServerError> {
         self.clear_header();
 
         if self.expect_100 {
@@ -666,40 +717,18 @@ impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
             }
         }
 
-        Ok(RequestRecvBody {
-            r: RefCell::new(RecvBodyRead {
-                stream: self.r.stream,
-                buf: self.r.buf1,
-            }),
-            wstream: self.w.stream,
-            buf2: self.r.buf2,
-            protocol: RefCell::new(self.protocol),
-        })
-    }
-
-    async fn start_recv_body_and_keep_header(
-        mut self,
-    ) -> Result<RequestRecvBodyKeepHeader<'a, R, W>, ServerError> {
-        self.move_header()?;
-
-        let ranges = self.ranges;
-        let body_size = self.body_size;
-        let expect_100 = self.expect_100;
-
-        let recv_body = self.start_recv_body().await?;
-
-        Ok(RequestRecvBodyKeepHeader {
-            inner: recv_body,
-            ranges,
-            body_size,
-            expect_100,
-        })
-    }
-
-    fn recv_done(mut self) -> Result<RequestStartResponse<'a, R, W>, ServerError> {
-        self.clear_header();
-
-        Ok(RequestStartResponse::new(self.r, self.w, self.protocol))
+        Ok((
+            RequestRecvBody {
+                r: RefCell::new(RecvBodyRead {
+                    stream: self.r.stream,
+                    buf: self.r.buf1,
+                }),
+                wstream: self.w.stream,
+                buf2: self.r.buf2,
+                protocol: RefCell::new(self.protocol),
+            },
+            self.ranges,
+        ))
     }
 
     fn move_header(&mut self) -> Result<(), ServerError> {
@@ -746,13 +775,17 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
             r.buf.align();
 
             loop {
-                let mut buf = io::Cursor::new(r.buf.read_buf());
+                let (size, read_size) = {
+                    let mut buf = io::Cursor::new(r.buf.read_buf());
 
-                let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
+                    let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
-                let (size, _) = protocol.recv_body(&mut buf, dest, &mut headers)?;
+                    let (size, _) = protocol.recv_body(&mut buf, dest, &mut headers)?;
 
-                let read_size = buf.position() as usize;
+                    let read_size = buf.position() as usize;
+
+                    (size, read_size)
+                };
 
                 if protocol.state() == http1::ServerState::ReceivingBody && read_size == 0 {
                     if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
@@ -794,18 +827,22 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
             r.buf.align();
 
             loop {
-                let mut buf = io::Cursor::new(r.buf.read_buf());
+                let (size, read_size) = {
+                    let mut buf = io::Cursor::new(r.buf.read_buf());
 
-                let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
+                    let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
-                let (size, _) = {
-                    let dest = &mut *dest.borrow_mut();
+                    let (size, _) = {
+                        let dest = &mut *dest.borrow_mut();
 
-                    protocol.recv_body(&mut buf, &mut dest.as_mut()[..limit], &mut headers)?
+                        protocol.recv_body(&mut buf, &mut dest.as_mut()[..limit], &mut headers)?
+                    };
+
+                    let read_size = buf.position() as usize;
+                    r.buf.read_commit(read_size);
+
+                    (size, read_size)
                 };
-
-                let read_size = buf.position() as usize;
-                r.buf.read_commit(read_size);
 
                 if protocol.state() == http1::ServerState::ReceivingBody && read_size == 0 {
                     if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
@@ -849,7 +886,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
 
 struct RequestRecvBodyKeepHeader<'a, R: AsyncRead, W: AsyncWrite> {
     inner: RequestRecvBody<'a, R, W>,
-    ranges: RequestHeaderRanges,
+    ranges: &'a RequestHeaderRanges,
     body_size: http1::BodySize,
     expect_100: bool,
 }
@@ -861,7 +898,7 @@ impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestRecvBodyKeepHeader<'a, 
     ) -> http1::Request<'buf, 'headers> {
         request_from_ranges(
             self.inner.buf2.read_buf(),
-            &self.ranges,
+            self.ranges,
             self.body_size,
             self.expect_100,
             scratch,
@@ -1617,12 +1654,10 @@ async fn discard_while<F, T>(
     fut: F,
 ) -> F::Output
 where
-    F: Future<Output = Result<T, ServerError>>,
+    F: Future<Output = Result<T, ServerError>> + Unpin,
 {
-    pin_mut!(fut);
-
     loop {
-        match select_2(fut.as_mut(), receiver.recv()).await {
+        match select_2(fut, receiver.recv()).await {
             Select2::R1(v) => break v,
             Select2::R2(_) => {
                 // unexpected message in current state
@@ -1648,14 +1683,22 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     let stream = RefCell::new(stream);
 
     let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
+    let mut ranges = RequestHeaderRanges::default();
 
     // receive request header
 
     // ABR: discard_while
-    let handler = match discard_while(zreceiver, handler.recv_request()).await {
-        Ok(handler) => handler,
-        Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
-        Err(e) => return Err(e),
+    let handler = {
+        let fut = handler.recv_request(&mut ranges);
+        pin_mut!(fut);
+
+        match discard_while(zreceiver, fut).await {
+            Ok(handler) => handler,
+            Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                return Ok(false)
+            }
+            Err(e) => return Err(e),
+        }
     };
 
     // log request
@@ -1675,11 +1718,21 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     // receive request body
 
     // ABR: discard_while
-    let handler = discard_while(zreceiver, handler.start_recv_body_and_keep_header()).await?;
+    let handler = {
+        let fut = handler.start_recv_body_and_keep_header();
+        pin_mut!(fut);
+
+        discard_while(zreceiver, fut).await?
+    };
 
     loop {
         // ABR: discard_while
-        let size = discard_while(zreceiver, handler.recv_body(body_buf.write_buf())).await?;
+        let size = {
+            let fut = handler.recv_body(body_buf.write_buf());
+            pin_mut!(fut);
+
+            discard_while(zreceiver, fut).await?
+        };
 
         if size == 0 {
             break;
@@ -1690,84 +1743,72 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
     // determine how to respond
 
-    let mut scratch = [httparse::EMPTY_HEADER; HEADERS_MAX];
-    let req = handler.request(&mut scratch);
+    let msg = {
+        let mut scratch = [httparse::EMPTY_HEADER; HEADERS_MAX];
+        let req = handler.request(&mut scratch);
 
-    let mut websocket = false;
+        let mut websocket = false;
 
-    for h in req.headers.iter() {
-        if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
-            websocket = true;
-            break;
+        for h in req.headers.iter() {
+            if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
+                websocket = true;
+                break;
+            }
         }
-    }
 
-    let handler = if websocket {
-        // websocket requests are not supported in req mode
+        if websocket {
+            // websocket requests are not supported in req mode
 
-        // toss the request body
-        body_buf.clear();
+            // toss the request body
+            body_buf.clear();
 
-        // send response header
+            None
+        } else {
+            // regular http requests we can handle
 
-        let headers = &[http1::Header {
-            name: "Content-Type",
-            value: b"text/plain",
-        }];
+            // prepare zmq message
 
-        let body = "WebSockets not supported on req mode interface.\n";
+            let ids = [zhttppacket::Id {
+                id: id.as_bytes(),
+                seq: None,
+            }];
 
-        let handler = handler.recv_done();
+            let msg = make_zhttp_request(
+                "",
+                &ids,
+                req.method,
+                req.uri,
+                req.headers,
+                body_buf.read_buf(),
+                false,
+                Mode::HttpReq,
+                0,
+                peer_addr,
+                secure,
+                &mut *packet_buf.borrow_mut(),
+            )?;
 
-        let handler = handler.prepare_response(
-            400,
-            "Bad Request",
-            headers,
-            http1::BodySize::Known(body.len()),
-        )?;
+            // body consumed
+            body_buf.clear();
 
-        // ABR: discard_while
-        discard_while(zreceiver, handler.send_header()).await?;
+            Some(msg)
+        }
+    };
 
-        let handler = handler.send_header_done();
-
-        body_buf.write_all(body.as_bytes())?;
-
-        handler
-    } else {
-        // regular http requests we can handle
-
-        // prepare zmq message
-
-        let ids = [zhttppacket::Id {
-            id: id.as_bytes(),
-            seq: None,
-        }];
-
-        let msg = make_zhttp_request(
-            "",
-            &ids,
-            req.method,
-            req.uri,
-            req.headers,
-            body_buf.read_buf(),
-            false,
-            Mode::HttpReq,
-            0,
-            peer_addr,
-            secure,
-            &mut *packet_buf.borrow_mut(),
-        )?;
-
-        // body consumed
-        body_buf.clear();
+    let (handler, websocket) = if let Some(msg) = msg {
+        // handle as http
 
         let handler = handler.recv_done();
 
         // send message
 
         // ABR: discard_while
-        discard_while(zreceiver, send_msg(&zsender, msg)).await?;
+        {
+            let fut = send_msg(&zsender, msg);
+            pin_mut!(fut);
+
+            discard_while(zreceiver, fut).await?;
+        }
 
         // receive message
 
@@ -1808,46 +1849,92 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
         // send response header
 
-        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-        let mut headers_len = 0;
+        let handler = {
+            let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
+            let mut headers_len = 0;
 
-        for h in rdata.headers.iter() {
-            if headers_len >= headers.len() {
-                return Err(ServerError::BadMessage);
+            for h in rdata.headers.iter() {
+                if headers_len >= headers.len() {
+                    return Err(ServerError::BadMessage);
+                }
+
+                headers[headers_len] = http1::Header {
+                    name: h.name,
+                    value: h.value,
+                };
+
+                headers_len += 1;
             }
 
-            headers[headers_len] = http1::Header {
-                name: h.name,
-                value: h.value,
-            };
+            let headers = &headers[..headers_len];
 
-            headers_len += 1;
-        }
-
-        let headers = &headers[..headers_len];
-
-        let handler = handler.prepare_response(
-            rdata.code,
-            rdata.reason,
-            headers,
-            http1::BodySize::Known(rdata.body.len()),
-        )?;
+            handler.prepare_response(
+                rdata.code,
+                rdata.reason,
+                headers,
+                http1::BodySize::Known(rdata.body.len()),
+            )?
+        };
 
         // ABR: discard_while
-        discard_while(zreceiver, handler.send_header()).await?;
+        {
+            let fut = handler.send_header();
+            pin_mut!(fut);
+
+            discard_while(zreceiver, fut).await?;
+        }
 
         let handler = handler.send_header_done();
 
         body_buf.write_all(&rdata.body)?;
 
-        handler
+        (handler, false)
+    } else {
+        // handle as websocket
+
+        // send response header
+
+        let headers = &[http1::Header {
+            name: "Content-Type",
+            value: b"text/plain",
+        }];
+
+        let body = "WebSockets not supported on req mode interface.\n";
+
+        let handler = handler.recv_done();
+
+        let handler = handler.prepare_response(
+            400,
+            "Bad Request",
+            headers,
+            http1::BodySize::Known(body.len()),
+        )?;
+
+        // ABR: discard_while
+        {
+            let fut = handler.send_header();
+            pin_mut!(fut);
+
+            discard_while(zreceiver, fut).await?;
+        }
+
+        let handler = handler.send_header_done();
+
+        body_buf.write_all(body.as_bytes())?;
+
+        (handler, true)
     };
 
     // send response body
 
     while body_buf.read_avail() > 0 {
         // ABR: discard_while
-        let size = discard_while(zreceiver, handler.send_body(body_buf.read_buf(), false)).await?;
+        let size = {
+            let fut = handler.send_body(body_buf.read_buf(), false);
+            pin_mut!(fut);
+
+            discard_while(zreceiver, fut).await?
+        };
 
         body_buf.read_commit(size);
     }
@@ -1984,7 +2071,12 @@ where
 
             // discarding here is fine. the sender should cease sending
             // messages until we've replied with proceed
-            discard_while(&zsess_in.receiver, zsess_out.send_msg(zreq)).await?;
+            {
+                let fut = zsess_out.send_msg(zreq);
+                pin_mut!(fut);
+
+                discard_while(&zsess_in.receiver, fut).await?;
+            }
 
             // pause until we get a msg
             zsess_in.peek_msg().await?;
@@ -2618,16 +2710,24 @@ where
     let recv_buf_size = buf2.capacity();
 
     let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
+    let mut ranges = RequestHeaderRanges::default();
 
     let zsess_out = ZhttpStreamSessionOut::new(instance_id, id, packet_buf, zsender_stream, shared);
 
     // receive request header
 
     // ABR: discard_while
-    let handler = match discard_while(zreceiver, handler.recv_request()).await {
-        Ok(handler) => handler,
-        Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
-        Err(e) => return Err(e),
+    let handler = {
+        let fut = handler.recv_request(&mut ranges);
+        pin_mut!(fut);
+
+        match discard_while(zreceiver, fut).await {
+            Ok(handler) => handler,
+            Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                return Ok(false)
+            }
+            Err(e) => return Err(e),
+        }
     };
 
     refresh_stream_timeout();
@@ -2729,7 +2829,12 @@ where
     // send request message
 
     // ABR: discard_while
-    discard_while(zreceiver, send_msg(&zsender, msg)).await?;
+    {
+        let fut = send_msg(&zsender, msg);
+        pin_mut!(fut);
+
+        discard_while(zreceiver, fut).await?;
+    }
 
     let mut zsess_in = ZhttpStreamSessionIn::new(
         id,
@@ -2804,41 +2909,48 @@ where
 
                     let rdata = edata.rejected_info.as_ref().unwrap();
 
-                    let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-                    let mut headers_len = 0;
+                    let handler = {
+                        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
+                        let mut headers_len = 0;
 
-                    for h in rdata.headers.iter() {
-                        // don't send these headers
-                        if h.name.eq_ignore_ascii_case("Upgrade")
-                            || h.name.eq_ignore_ascii_case("Connection")
-                            || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
-                        {
-                            continue;
+                        for h in rdata.headers.iter() {
+                            // don't send these headers
+                            if h.name.eq_ignore_ascii_case("Upgrade")
+                                || h.name.eq_ignore_ascii_case("Connection")
+                                || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
+                            {
+                                continue;
+                            }
+
+                            if headers_len >= headers.len() {
+                                return Err(ServerError::BadMessage);
+                            }
+
+                            headers[headers_len] = http1::Header {
+                                name: h.name,
+                                value: h.value,
+                            };
+
+                            headers_len += 1;
                         }
 
-                        if headers_len >= headers.len() {
-                            return Err(ServerError::BadMessage);
-                        }
+                        let headers = &headers[..headers_len];
 
-                        headers[headers_len] = http1::Header {
-                            name: h.name,
-                            value: h.value,
-                        };
-
-                        headers_len += 1;
-                    }
-
-                    let headers = &headers[..headers_len];
-
-                    let handler = handler.prepare_response(
-                        rdata.code,
-                        rdata.reason,
-                        headers,
-                        http1::BodySize::Known(rdata.body.len()),
-                    )?;
+                        handler.prepare_response(
+                            rdata.code,
+                            rdata.reason,
+                            headers,
+                            http1::BodySize::Known(rdata.body.len()),
+                        )?
+                    };
 
                     // ABR: discard_while
-                    discard_while(zreceiver, handler.send_header()).await?;
+                    {
+                        let fut = handler.send_header();
+                        pin_mut!(fut);
+
+                        discard_while(zreceiver, fut).await?;
+                    }
 
                     let handler = handler.send_header_done();
 
@@ -2846,7 +2958,12 @@ where
 
                     loop {
                         // ABR: discard_while
-                        let (_, done) = discard_while(zreceiver, handler.flush_body()).await?;
+                        let (_, done) = {
+                            let fut = handler.flush_body();
+                            pin_mut!(fut);
+
+                            discard_while(zreceiver, fut).await?
+                        };
 
                         if done {
                             break;
@@ -2866,76 +2983,80 @@ where
 
         // send response header
 
-        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-        let mut headers_len = 0;
+        let handler = {
+            let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
+            let mut headers_len = 0;
 
-        let mut body_size = http1::BodySize::Unknown;
+            let mut body_size = http1::BodySize::Unknown;
 
-        for h in rdata.headers.iter() {
-            if ws_accept.is_some() {
-                // don't send these headers
-                if h.name.eq_ignore_ascii_case("Upgrade")
-                    || h.name.eq_ignore_ascii_case("Connection")
-                    || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
-                {
-                    continue;
+            for h in rdata.headers.iter() {
+                if ws_accept.is_some() {
+                    // don't send these headers
+                    if h.name.eq_ignore_ascii_case("Upgrade")
+                        || h.name.eq_ignore_ascii_case("Connection")
+                        || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
+                    {
+                        continue;
+                    }
+                } else {
+                    if h.name.eq_ignore_ascii_case("Content-Length") {
+                        let s = str::from_utf8(h.value)?;
+
+                        let clen: usize = match s.parse() {
+                            Ok(clen) => clen,
+                            Err(_) => {
+                                return Err(io::Error::from(io::ErrorKind::InvalidInput).into())
+                            }
+                        };
+
+                        body_size = http1::BodySize::Known(clen);
+                    }
                 }
-            } else {
-                if h.name.eq_ignore_ascii_case("Content-Length") {
-                    let s = str::from_utf8(h.value)?;
 
-                    let clen: usize = match s.parse() {
-                        Ok(clen) => clen,
-                        Err(_) => return Err(io::Error::from(io::ErrorKind::InvalidInput).into()),
-                    };
-
-                    body_size = http1::BodySize::Known(clen);
+                if headers_len >= headers.len() {
+                    return Err(ServerError::BadMessage);
                 }
+
+                headers[headers_len] = http1::Header {
+                    name: h.name,
+                    value: h.value,
+                };
+
+                headers_len += 1;
             }
 
-            if headers_len >= headers.len() {
-                return Err(ServerError::BadMessage);
+            if body_size == http1::BodySize::Unknown && !rdata.more {
+                body_size = http1::BodySize::Known(rdata.body.len());
             }
 
-            headers[headers_len] = http1::Header {
-                name: h.name,
-                value: h.value,
-            };
+            if let Some(accept_data) = &ws_accept {
+                if headers_len + 3 > headers.len() {
+                    return Err(ServerError::BadMessage);
+                }
 
-            headers_len += 1;
-        }
+                headers[headers_len] = http1::Header {
+                    name: "Upgrade",
+                    value: b"websocket",
+                };
+                headers_len += 1;
 
-        if body_size == http1::BodySize::Unknown && !rdata.more {
-            body_size = http1::BodySize::Known(rdata.body.len());
-        }
+                headers[headers_len] = http1::Header {
+                    name: "Connection",
+                    value: b"Upgrade",
+                };
+                headers_len += 1;
 
-        if let Some(accept_data) = &ws_accept {
-            if headers_len + 3 > headers.len() {
-                return Err(ServerError::BadMessage);
+                headers[headers_len] = http1::Header {
+                    name: "Sec-WebSocket-Accept",
+                    value: accept_data.as_bytes(),
+                };
+                headers_len += 1;
             }
 
-            headers[headers_len] = http1::Header {
-                name: "Upgrade",
-                value: b"websocket",
-            };
-            headers_len += 1;
+            let headers = &headers[..headers_len];
 
-            headers[headers_len] = http1::Header {
-                name: "Connection",
-                value: b"Upgrade",
-            };
-            headers_len += 1;
-
-            headers[headers_len] = http1::Header {
-                name: "Sec-WebSocket-Accept",
-                value: accept_data.as_bytes(),
-            };
-            headers_len += 1;
-        }
-
-        let headers = &headers[..headers_len];
-
-        let handler = handler.prepare_response(rdata.code, rdata.reason, headers, body_size)?;
+            handler.prepare_response(rdata.code, rdata.reason, headers, body_size)?
+        };
 
         handler.append_body(rdata.body, rdata.more, id)?;
 
@@ -3159,7 +3280,12 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
         *cid = cid_provider.get_new_assigned_cid();
     }
 
-    discard_while(zreceiver, async { Ok(stream.close().await?) }).await?;
+    {
+        let fut = async { Ok(stream.close().await?) };
+        pin_mut!(fut);
+
+        discard_while(zreceiver, fut).await?;
+    }
 
     Ok(())
 }
