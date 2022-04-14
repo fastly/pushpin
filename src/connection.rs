@@ -62,6 +62,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 const URI_SIZE_MAX: usize = 4096;
+const HEADERS_MAX: usize = 32;
 const WS_HASH_INPUT_MAX: usize = 256;
 const WS_ACCEPT_MAX: usize = 28; // base64_encode(sha1_hash) = 28 bytes
 const ZHTTP_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
@@ -142,7 +143,7 @@ fn make_zhttp_request(
 
     let host = get_host(headers);
 
-    let mut zheaders = [zhttppacket::EMPTY_HEADER; http1::HEADERS_MAX];
+    let mut zheaders = [zhttppacket::EMPTY_HEADER; HEADERS_MAX];
     let mut zheaders_len = 0;
 
     for h in headers.iter() {
@@ -314,7 +315,7 @@ const EMPTY_HEADER_RANGES: HeaderRanges = HeaderRanges {
 struct RequestHeaderRanges {
     method: Range,
     uri: Range,
-    headers: [HeaderRanges; http1::HEADERS_MAX],
+    headers: [HeaderRanges; HEADERS_MAX],
     headers_count: usize,
 }
 
@@ -527,7 +528,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
         loop {
             let mut hbuf = io::Cursor::new(self.r.buf1.read_buf());
 
-            let mut headers = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+            let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
             let req = match protocol.recv_request(&mut hbuf, &mut headers) {
                 Some(Ok(req)) => req,
@@ -558,7 +559,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
             let mut ranges = RequestHeaderRanges {
                 method: slice_to_range(hbuf, req.method),
                 uri: slice_to_range(hbuf, req.uri),
-                headers: [EMPTY_HEADER_RANGES; http1::HEADERS_MAX],
+                headers: [EMPTY_HEADER_RANGES; HEADERS_MAX],
                 headers_count: req.headers.len(),
             };
 
@@ -588,7 +589,7 @@ fn request_from_ranges<'buf, 'headers>(
     ranges: &RequestHeaderRanges,
     body_size: http1::BodySize,
     expect_100: bool,
-    scratch: &'headers mut [httparse::Header<'buf>; http1::HEADERS_MAX],
+    scratch: &'headers mut [httparse::Header<'buf>; HEADERS_MAX],
 ) -> http1::Request<'buf, 'headers> {
     let method = unsafe { range_to_str_unchecked(buf, ranges.method) };
     let uri = unsafe { range_to_str_unchecked(buf, ranges.uri) };
@@ -622,7 +623,7 @@ struct RequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
     fn request<'headers>(
         &'buf self,
-        scratch: &'headers mut [httparse::Header<'buf>; http1::HEADERS_MAX],
+        scratch: &'headers mut [httparse::Header<'buf>; HEADERS_MAX],
     ) -> http1::Request<'buf, 'headers> {
         request_from_ranges(
             self.r.buf1.read_buf(),
@@ -747,7 +748,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
             loop {
                 let mut buf = io::Cursor::new(r.buf.read_buf());
 
-                let mut headers = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+                let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
                 let (size, _) = protocol.recv_body(&mut buf, dest, &mut headers)?;
 
@@ -795,7 +796,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
             loop {
                 let mut buf = io::Cursor::new(r.buf.read_buf());
 
-                let mut headers = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+                let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
                 let (size, _) = {
                     let dest = &mut *dest.borrow_mut();
@@ -856,7 +857,7 @@ struct RequestRecvBodyKeepHeader<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestRecvBodyKeepHeader<'a, R, W> {
     fn request<'headers>(
         &'buf self,
-        scratch: &'headers mut [httparse::Header<'buf>; http1::HEADERS_MAX],
+        scratch: &'headers mut [httparse::Header<'buf>; HEADERS_MAX],
     ) -> http1::Request<'buf, 'headers> {
         request_from_ranges(
             self.inner.buf2.read_buf(),
@@ -1660,7 +1661,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     // log request
 
     {
-        let mut scratch = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+        let mut scratch = [httparse::EMPTY_HEADER; HEADERS_MAX];
         let req = handler.request(&mut scratch);
         let host = get_host(req.headers);
         let scheme = if secure { "https" } else { "http" };
@@ -1689,7 +1690,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
     // determine how to respond
 
-    let mut scratch = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+    let mut scratch = [httparse::EMPTY_HEADER; HEADERS_MAX];
     let req = handler.request(&mut scratch);
 
     let mut websocket = false;
@@ -1807,7 +1808,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
         // send response header
 
-        let mut headers = [http1::EMPTY_HEADER; http1::HEADERS_MAX];
+        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
         let mut headers_len = 0;
 
         for h in rdata.headers.iter() {
@@ -2632,7 +2633,7 @@ where
     refresh_stream_timeout();
 
     let (body_size, ws_accept, msg) = {
-        let mut scratch = [httparse::EMPTY_HEADER; http1::HEADERS_MAX];
+        let mut scratch = [httparse::EMPTY_HEADER; HEADERS_MAX];
         let req = handler.request(&mut scratch);
 
         let mut websocket = false;
@@ -2803,7 +2804,7 @@ where
 
                     let rdata = edata.rejected_info.as_ref().unwrap();
 
-                    let mut headers = [http1::EMPTY_HEADER; http1::HEADERS_MAX];
+                    let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
                     let mut headers_len = 0;
 
                     for h in rdata.headers.iter() {
@@ -2865,7 +2866,7 @@ where
 
         // send response header
 
-        let mut headers = [http1::EMPTY_HEADER; http1::HEADERS_MAX];
+        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
         let mut headers_len = 0;
 
         let mut body_size = http1::BodySize::Unknown;

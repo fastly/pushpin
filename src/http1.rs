@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,6 @@ use std::convert::TryFrom;
 use std::io;
 use std::io::{Read, Write};
 use std::str;
-
-pub const HEADERS_MAX: usize = 32;
 
 const CHUNK_SIZE_MAX: usize = 0xffff;
 const CHUNK_HEADER_SIZE_MAX: usize = 6; // ffff\r\n
@@ -806,6 +804,8 @@ impl<'buf, 'headers> ServerProtocol {
 mod tests {
     use super::*;
     use std::mem;
+
+    const HEADERS_MAX: usize = 32;
 
     struct MyBuffer {
         data: Vec<u8>,
