@@ -2749,10 +2749,8 @@ where
         let mut ws_key = None;
 
         for h in req.headers.iter() {
-            if h.name.eq_ignore_ascii_case("Upgrade") {
-                if str::from_utf8(h.value).unwrap() == "websocket" {
-                    websocket = true;
-                }
+            if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
+                websocket = true;
             }
 
             if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
