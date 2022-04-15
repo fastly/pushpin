@@ -124,6 +124,23 @@ fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
     Ok(ArrayString::from_str(output).unwrap())
 }
 
+fn validate_ws_request(
+    req: &http1::Request,
+    ws_key: Option<&[u8]>,
+) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
+    // a websocket request must not have a body.
+    // some clients send "Content-Length: 0", which we'll allow.
+    // chunked encoding will be rejected.
+    if req.method == "GET"
+        && (req.body_size == http1::BodySize::NoBody || req.body_size == http1::BodySize::Known(0))
+        && ws_key.is_some()
+    {
+        return calculate_ws_accept(&ws_key.unwrap());
+    }
+
+    Err(())
+}
+
 fn make_zhttp_request(
     instance: &str,
     ids: &[zhttppacket::Id],
@@ -2782,11 +2799,7 @@ where
         );
 
         let ws_accept: Option<ArrayString<WS_ACCEPT_MAX>> = if websocket {
-            if req.method != "GET" || req.body_size != http1::BodySize::NoBody || ws_key.is_none() {
-                return Err(ServerError::InvalidWebSocketRequest);
-            }
-
-            let accept = match calculate_ws_accept(&ws_key.unwrap()) {
+            let accept = match validate_ws_request(&req, ws_key) {
                 Ok(s) => s,
                 Err(_) => return Err(ServerError::InvalidWebSocketRequest),
             };
