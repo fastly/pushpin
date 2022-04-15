@@ -43,11 +43,15 @@ use log::{debug, error, info, warn};
 use mio::net::{TcpListener, TcpStream, UnixListener};
 use mio::unix::SourceFd;
 use slab::Slab;
+use socket2::{Domain, Socket, Type};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
 use std::io::Write;
+use std::mem;
+use std::net::{IpAddr, Ipv4Addr};
+use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -2167,6 +2171,125 @@ impl Server {
     pub fn addrs(&self) -> &[SocketAddr] {
         &self.addrs
     }
+
+    pub fn task_sizes() -> Vec<(String, usize)> {
+        let req_task_size = {
+            let reactor = Reactor::new(10);
+
+            let (_, stop) = CancellationToken::new(&reactor.local_registration_memory());
+            let (done, _) = local_channel(1, 1);
+            let (_, zreceiver) = local_channel(1, 1);
+            let (sender, _) = local_channel(1, 1);
+
+            let batch = Batch::new(1);
+            let conn_items = Rc::new(RefCell::new(ConnectionItems::new(1, batch)));
+            let conns = Rc::new(Connections::new(conn_items.clone(), 1));
+
+            let stream = {
+                let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
+                let stream = unsafe { TcpStream::from_raw_fd(socket.into_raw_fd()) };
+
+                Stream::Plain(NetStream::Tcp(stream))
+            };
+
+            let peer_addr = SocketAddr::Ip(std::net::SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                10000,
+            ));
+
+            let fut = Worker::req_connection_task(
+                stop,
+                done,
+                0,
+                0,
+                ArrayString::from("0-0-0").unwrap(),
+                stream,
+                peer_addr,
+                zreceiver,
+                conns,
+                ConnectionOpts {
+                    instance_id: Rc::new("".to_string()),
+                    buffer_size: 0,
+                    timeout: Duration::from_millis(0),
+                    rb_tmp: Rc::new(TmpBuffer::new(1)),
+                    packet_buf: Rc::new(RefCell::new(Vec::new())),
+                    tmp_buf: Rc::new(RefCell::new(Vec::new())),
+                },
+                ConnectionReqOpts {
+                    body_buffer_size: 0,
+                    sender,
+                },
+            );
+
+            mem::size_of_val(&fut)
+        };
+
+        let stream_task_size = {
+            let reactor = Reactor::new(10);
+
+            let (_, stop) = CancellationToken::new(&reactor.local_registration_memory());
+            let (done, _) = local_channel(1, 1);
+            let (_, zreceiver) = local_channel(1, 1);
+            let (sender, _) = local_channel(1, 1);
+            let (sender_stream, _) = local_channel(1, 1);
+
+            let batch = Batch::new(1);
+            let conn_items = Rc::new(RefCell::new(ConnectionItems::new(1, batch)));
+            let conns = Rc::new(Connections::new(conn_items.clone(), 1));
+
+            let stream = {
+                let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
+                let stream = unsafe { TcpStream::from_raw_fd(socket.into_raw_fd()) };
+
+                Stream::Plain(NetStream::Tcp(stream))
+            };
+
+            let peer_addr = SocketAddr::Ip(std::net::SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                10000,
+            ));
+
+            let stream_shared_mem = Rc::new(arena::RcMemory::new(1));
+
+            let shared = arena::Rc::new(ServerStreamSharedData::new(), &stream_shared_mem).unwrap();
+
+            let fut = Worker::stream_connection_task(
+                stop,
+                done,
+                0,
+                0,
+                ArrayString::from("0-0-0").unwrap(),
+                stream,
+                peer_addr,
+                zreceiver,
+                conns,
+                ConnectionOpts {
+                    instance_id: Rc::new("".to_string()),
+                    buffer_size: 0,
+                    timeout: Duration::from_millis(0),
+                    rb_tmp: Rc::new(TmpBuffer::new(1)),
+                    packet_buf: Rc::new(RefCell::new(Vec::new())),
+                    tmp_buf: Rc::new(RefCell::new(Vec::new())),
+                },
+                ConnectionStreamOpts {
+                    messages_max: 0,
+                    sender,
+                    sender_stream,
+                    stream_shared_mem,
+                },
+                shared,
+            );
+
+            mem::size_of_val(&fut)
+        };
+
+        let mut v = Vec::new();
+
+        v.push(("req_connection_task".to_string(), req_task_size));
+        v.push(("stream_connection_task".to_string(), stream_task_size));
+
+        v
+    }
 }
 
 impl Drop for Server {
@@ -3039,5 +3162,27 @@ pub mod tests {
         let mut chunk = [0; 1024];
         let size = client.read(&mut chunk).unwrap();
         assert_eq!(size, 0);
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[cfg(debug_assertions)]
+    #[test]
+    fn test_task_sizes() {
+        // sizes in debug mode at commit a4af3624af36643d5cbe2545ae91e85ba46e9919
+        const REQ_TASK_SIZE_BASE: usize = 4752;
+        const STREAM_TASK_SIZE_BASE: usize = 6904;
+
+        // cause tests to fail if sizes grow too much
+        const GROWTH_LIMIT: usize = 1000;
+        const REQ_TASK_SIZE_MAX: usize = REQ_TASK_SIZE_BASE + GROWTH_LIMIT;
+        const STREAM_TASK_SIZE_MAX: usize = STREAM_TASK_SIZE_BASE + GROWTH_LIMIT;
+
+        let sizes = Server::task_sizes();
+
+        assert_eq!(sizes[0].0, "req_connection_task");
+        assert!(sizes[0].1 <= REQ_TASK_SIZE_MAX);
+
+        assert_eq!(sizes[1].0, "stream_connection_task");
+        assert!(sizes[1].1 <= STREAM_TASK_SIZE_MAX);
     }
 }
