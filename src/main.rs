@@ -311,6 +311,11 @@ fn main() {
                 .help("Directory containing certificates and private keys")
                 .default_value("."),
         )
+        .arg(
+            Arg::with_name("task-sizes")
+                .long("task-sizes")
+                .help("Prints task sizes"),
+        )
         .get_matches();
 
     log::set_logger(&LOGGER).unwrap();
@@ -337,6 +342,13 @@ fn main() {
     };
 
     log::set_max_level(level);
+
+    if matches.is_present("task-sizes") {
+        for (name, size) in condure::server::Server::task_sizes() {
+            println!("{}: {} bytes", name, size);
+        }
+        process::exit(0);
+    }
 
     let id = matches.value_of("id").unwrap();
 
