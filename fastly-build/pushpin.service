@@ -1,5 +1,6 @@
 [Unit]
 Description=pushpin
+After=network.target
 Before=pushpin-socat.service
 Requires=pushpin-socat.service
 # proxyb provides the ACLs
@@ -16,3 +17,6 @@ Environment=PATH=/opt/fst-pushpin/bin:/bin:/sbin:/usr/bin:/usr/sbin
 ExecStartPre=/opt/fst-pushpin/bin/pushpin-iptables.sh apply
 ExecStart=/opt/fst-pushpin/bin/pushpin.sh
 ExecStopPost=/opt/fst-pushpin/bin/pushpin-iptables.sh rm
+
+[Install]
+WantedBy=multi-user.target
