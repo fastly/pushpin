@@ -12,7 +12,6 @@ Restart=always
 CPUQuota=100%
 LimitNOFILE=1000
 MemoryLimit=5G
-WorkingDirectory=/var/run/pushpin
 Environment=PATH=/opt/fst-pushpin/bin:/bin:/sbin:/usr/bin:/usr/sbin
 ExecStartPre=/opt/fst-pushpin/bin/pushpin-iptables.sh apply
 ExecStart=/opt/fst-pushpin/bin/pushpin.sh
