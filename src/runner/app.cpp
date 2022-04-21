@@ -34,6 +34,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include <QUrl>
 #include "processquit.h"
 #include "log.h"
 #include "settings.h"
@@ -69,11 +70,9 @@ static bool ensureDir(const QString &path)
 
 static QPair<QHostAddress, int> parsePort(const QString &s)
 {
-	int at = s.indexOf(':');
-	if(at != -1)
-		return QPair<QHostAddress, int>(QHostAddress(s.mid(0, at)), s.mid(at + 1).toInt());
-	else
-		return QPair<QHostAddress, int>(QHostAddress(), s.toInt());
+	QUrl url{QUrl::fromUserInput(s)};
+
+	return QPair<QHostAddress, int>(QHostAddress(url.host()), url.port());
 }
 
 QMap<QString, int> parseLogLevel(const QStringList &parts, QString *errorMessage)
