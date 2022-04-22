@@ -4,7 +4,9 @@ set -x -e
 
 groupadd pushpin || true
 groupadd pushpin-listener || true
-useradd -r -g pushpin -G pushpin-listener pushpin || true
+groupadd pub-events || true
+useradd -r -g pushpin pushpin || true
+usermod -a -G pushpin-listener,pub-events pushpin || true
 mkdir -p /var/run/pushpin
 chown pushpin:pushpin /var/run/pushpin
 chown pushpin:pushpin-listener /opt/fst-pushpin/bin/pushpin-healthcheck
