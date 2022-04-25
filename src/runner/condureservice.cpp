@@ -31,6 +31,7 @@
 #include <QDir>
 #include <QVariantList>
 #include <QProcess>
+#include <QUrl>
 #include "log.h"
 #include "template.h"
 
@@ -70,9 +71,11 @@ CondureService::CondureService(
 		}
 		else
 		{
-			QString addr = !p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0");
+			QUrl url;
+			url.setHost(!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
+			url.setPort(p.port);
 
-			QString arg = "--listen=" + addr + ":" + QString::number(p.port) + ",stream";
+			QString arg = "--listen=" + url.authority() + ",stream";
 
 			if(p.ssl)
 			{
