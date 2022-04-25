@@ -70,6 +70,14 @@ static bool ensureDir(const QString &path)
 
 static QPair<QHostAddress, int> parsePort(const QString &s)
 {
+	// if the string doesn't contain a colon character, assume it's a port
+	// number by itself
+	if(!s.contains(':'))
+		return QPair<QHostAddress, int>(QHostAddress(), s.toInt());
+
+	// otherwise, assume it's an address:port combination
+
+	// parse with QUrl in order to support bracketed IPv6 notation
 	QUrl url{QUrl::fromUserInput(s)};
 
 	return QPair<QHostAddress, int>(QHostAddress(url.host()), url.port());
