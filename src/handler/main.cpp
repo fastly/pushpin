@@ -29,6 +29,7 @@
 #include <QCoreApplication>
 #include <QTimer>
 #include "app.h"
+#include "seccomp.h"
 
 class AppMain : public QObject
 {
@@ -54,6 +55,8 @@ public slots:
 
 int main(int argc, char **argv)
 {
+	seccomp_bind();
+
 	QCoreApplication qapp(argc, argv);
 
 	AppMain appMain;
