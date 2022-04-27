@@ -34,8 +34,7 @@ HEADERS += \
 	$$SRC_DIR/proxysession.h \
 	$$SRC_DIR/wsproxysession.h \
 	$$SRC_DIR/updater.h \
-	$$SRC_DIR/engine.h \
-	$$SRC_DIR/seccomp.h
+	$$SRC_DIR/engine.h
 
 SOURCES += \
 	$$SRC_DIR/jwt.cpp \
@@ -58,5 +57,4 @@ SOURCES += \
 	$$SRC_DIR/proxysession.cpp \
 	$$SRC_DIR/wsproxysession.cpp \
 	$$SRC_DIR/updater.cpp \
-	$$SRC_DIR/engine.cpp \
-	$$SRC_DIR/seccomp.cpp
+	$$SRC_DIR/engine.cpp

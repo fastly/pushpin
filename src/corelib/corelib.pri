@@ -64,7 +64,8 @@ HEADERS += \
 	$$PWD/cors.h \
 	$$PWD/simplehttpserver.h \
 	$$PWD/statsmanager.h \
-	$$PWD/settings.h
+	$$PWD/settings.h \
+	$$PWD/seccomp.h
 
 SOURCES += \
 	$$PWD/timerwheel.cpp \
@@ -81,4 +82,5 @@ SOURCES += \
 	$$PWD/cors.cpp \
 	$$PWD/simplehttpserver.cpp \
 	$$PWD/statsmanager.cpp \
-	$$PWD/settings.cpp
+	$$PWD/settings.cpp \
+	$$PWD/seccomp.cpp
