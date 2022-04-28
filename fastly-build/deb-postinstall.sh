@@ -22,6 +22,10 @@ cp /opt/fst-pushpin/etc/pushpin-loader.service /etc/systemd/system
 status=$(systemctl is-system-running || true)
 if [ "X$status" = Xrunning -o "X$status" = Xdegraded ]; then
   systemctl daemon-reload
-  systemctl restart pushpin
+  # Make the restart optional:
+  # 1) If it fails, it's because the node is being installed
+  # 2) cachectl will make sure that the service is restarted when the
+  #    node is enabled
+  systemctl restart pushpin || true
   systemctl restart pushpin-loader
 fi
