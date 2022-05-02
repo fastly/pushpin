@@ -3,8 +3,6 @@ Description=pushpin
 After=network.target
 Before=pushpin-socat.service
 Requires=pushpin-socat.service
-# proxyb provides the ACLs
-Requires=h2o_proxyb.service
 
 [Service]
 Type=simple
