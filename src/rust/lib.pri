@@ -4,7 +4,7 @@ CONFIG(debug, debug|release) {
 	RUST_BUILD_DIR = $$PWD/../../target/release
 }
 
-LIBS += -L$$RUST_BUILD_DIR -lpushpin
+LIBS += -L$$RUST_BUILD_DIR -lpushpin -lssl -lcrypto
 
 unix:!mac: LIBS += -ldl
 mac:LIBS += -framework CoreFoundation -framework Security
