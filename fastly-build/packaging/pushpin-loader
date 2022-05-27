@@ -15,8 +15,18 @@ import traceback
 
 PKG_VERSION = '1.0.0'
 
+PUSHPIN_ENABLED_FLAG = 'loader-pushpin-enabled'
+GRIP_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-grip-enabled:'
+WOH_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-woh-enabled:'
+
 alphanumerics = string.ascii_lowercase + string.ascii_uppercase + string.digits
 Response = namedtuple('Response', 'status data etag')
+
+
+class Service:
+    def __init__(self, data, backend_flags):
+        self.data = data
+        self.backend_flags = backend_flags
 
 
 class ValidationError(Exception):
@@ -124,18 +134,39 @@ def fetch_service_backends():
     for (service_id, service) in services.items():
         assert(service_id == service['service'])
 
-        loader_pushpin_enabled = service.get(
-            'features', {}).get('loader-pushpin-enabled', '0')
+        features = service.get('features', {})
+
+        loader_pushpin_enabled = features.get(PUSHPIN_ENABLED_FLAG, '0')
+
+        backend_flags = {}
+
+        for (k, v) in features.items():
+            if k.startswith(GRIP_ENABLED_FLAG_PREFIX):
+                offset = len(GRIP_ENABLED_FLAG_PREFIX)
+                flag = 'grip-enabled'
+            elif k.startswith(WOH_ENABLED_FLAG_PREFIX):
+                offset = len(WOH_ENABLED_FLAG_PREFIX)
+                flag = 'woh-enabled'
+            else:
+                continue
+
+            backend_name = k[offset:]
+
+            if backend_name not in backend_flags:
+                backend_flags[backend_name] = {}
+
+            backend_flags[backend_name][flag] = v
+
         if loader_pushpin_enabled == '1':
-            pushpin_services.append(service)
+            pushpin_services.append(Service(service, backend_flags))
 
     print('found {} services with pushpin enabled'.format(len(pushpin_services)))
 
     service_backends = {}
 
     for (i, service) in enumerate(pushpin_services):
-        service_id = service['service']
-        version = service['version']
+        service_id = service.data['service']
+        version = service.data['version']
 
         print('fetching backends for service {} ({}/{})'.format(service_id,
               i + 1, len(pushpin_services)))
@@ -143,6 +174,14 @@ def fetch_service_backends():
         resp = client.request(
             '/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
         backends = json.loads(resp.data)['backends']
+
+        # apply the backend-specific loader flags to the backend object
+        for (backend_name, flags) in service.backend_flags.items():
+            for backend in backends:
+                if backend['name'] == backend_name:
+                    for (k, v) in flags.items():
+                        backend['loader-{}'.format(k)] = v
+                    break
 
         service_backends[service_id] = backends
 
@@ -164,7 +203,19 @@ def make_route(service_id, backend):
         override_host = validate_host(override_host)
         target += ',host={}'.format(override_host)
 
-    return 'id={}:{},no_grip {}'.format(service_id, backend_name, target)
+    if int(backend.get('loader-woh-enabled', '0')):
+        target += ',over_http'
+
+    line = 'id={}:{}'.format(service_id, backend_name)
+
+    if int(backend.get('loader-grip-enabled', '0')):
+        line += ',prefix=g:ck:{}:'.format(service_id)
+    else:
+        line += ',no_grip'
+
+    line += ' ' + target
+
+    return line
 
 
 def write_routes(routes, routes_file):
