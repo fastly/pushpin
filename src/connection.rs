@@ -46,6 +46,7 @@ use crate::websocket;
 use crate::zhttppacket;
 use arrayvec::{ArrayString, ArrayVec};
 use log::debug;
+use sha1::{Digest, Sha1};
 use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::VecDeque;
@@ -110,11 +111,13 @@ fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
 
     let input = &input[..input_len];
 
-    let digest = sha1::Sha1::from(input).digest();
+    let mut hasher = Sha1::new();
+    hasher.update(input);
+    let digest = hasher.finalize();
 
     let mut output = [0; WS_ACCEPT_MAX];
 
-    let size = base64::encode_config_slice(&digest.bytes(), base64::STANDARD, &mut output);
+    let size = base64::encode_config_slice(&digest, base64::STANDARD, &mut output);
 
     let output = match str::from_utf8(&output[..size]) {
         Ok(s) => s,
