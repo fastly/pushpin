@@ -40,6 +40,7 @@ thiserror = "^1.0.26"
 tokio = { version = "^1.13.1", features = ["full"] }
 toml = "^0.5.8"
 tracing = "^0.1.26"
+tracing-subscriber = "^0.3"
 
 # for stats-emitter
 [dev-dependencies]

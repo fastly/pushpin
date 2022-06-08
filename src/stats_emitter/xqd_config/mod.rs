@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! ExecuteD configuration parsing.
 //!
 //! This crate defines types that can be used with [serde] to parse the `xqd.toml.in` TOML data

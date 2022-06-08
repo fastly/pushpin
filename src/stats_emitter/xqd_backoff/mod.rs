@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! # Exponential Back-off with Jitter
 //!
 //! This module implements the "Full Jitter" variant described
