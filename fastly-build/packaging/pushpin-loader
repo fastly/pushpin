@@ -16,6 +16,8 @@ import traceback
 PKG_VERSION = '1.0.0'
 
 PUSHPIN_ENABLED_FLAG = 'loader-pushpin-enabled'
+GRIP_ENABLED_FLAG = 'loader-pushpin-grip-enabled'
+WOH_ENABLED_FLAG = 'loader-pushpin-woh-enabled'
 GRIP_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-grip-enabled:'
 WOH_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-woh-enabled:'
 
@@ -24,8 +26,10 @@ Response = namedtuple('Response', 'status data etag')
 
 
 class Service:
-    def __init__(self, data, backend_flags):
+    def __init__(self, data, grip_enabled, woh_enabled, backend_flags):
         self.data = data
+        self.grip_enabled = grip_enabled
+        self.woh_enabled = woh_enabled
         self.backend_flags = backend_flags
 
 
@@ -136,7 +140,9 @@ def fetch_service_backends():
 
         features = service.get('features', {})
 
-        loader_pushpin_enabled = features.get(PUSHPIN_ENABLED_FLAG, '0')
+        pushpin_enabled = features.get(PUSHPIN_ENABLED_FLAG, '0') == '1'
+        grip_enabled = features.get(GRIP_ENABLED_FLAG, '0') == '1'
+        woh_enabled = features.get(WOH_ENABLED_FLAG, '0') == '1'
 
         backend_flags = {}
 
@@ -157,8 +163,8 @@ def fetch_service_backends():
 
             backend_flags[backend_name][flag] = v
 
-        if loader_pushpin_enabled == '1':
-            pushpin_services.append(Service(service, backend_flags))
+        if pushpin_enabled:
+            pushpin_services.append(Service(service, grip_enabled, woh_enabled, backend_flags))
 
     print('found {} services with pushpin enabled'.format(len(pushpin_services)))
 
@@ -182,6 +188,13 @@ def fetch_service_backends():
                     for (k, v) in flags.items():
                         backend['loader-{}'.format(k)] = v
                     break
+
+        # apply service-level flags to backends
+        for backend in backends:
+            if service.grip_enabled:
+                backend['loader-grip-enabled'] = '1'
+            if service.woh_enabled:
+                backend['loader-woh-enabled'] = '1'
 
         service_backends[service_id] = backends
 
