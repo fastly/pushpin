@@ -27,7 +27,7 @@ log = "0.4"
 mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
 openssl = "0.10"
 paste = "1.0"
-sha1 = "0.6"
+sha1 = "0.10"
 signal-hook = "0.3"
 slab = "0.4"
 socket2 = "0.4"
