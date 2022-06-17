@@ -714,7 +714,7 @@ public:
 		}
 		else if(outputFormat == JsonFormat)
 		{
-			QJsonObject obj = QJsonObject::fromVariantMap(vpacket.toMap());
+			QJsonObject obj = QJsonObject::fromVariantHash(vpacket.toHash());
 			buf = prefix + " J" + QJsonDocument(obj).toJson(QJsonDocument::Compact);
 		}
 
