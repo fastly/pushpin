@@ -20,9 +20,9 @@ panic = "abort"
 
 [dependencies]
 arrayvec = "0.7"
-base64 = "0.12"
-clap = { version = "2.33", features = ["wrap_help"] }
-httparse = "1.3"
+base64 = "0.13"
+clap = { version = "2.34", features = ["wrap_help"] }
+httparse = "1.7"
 log = "0.4"
 mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
 openssl = "0.10"
