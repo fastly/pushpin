@@ -29,5 +29,6 @@
 pub mod ffi;
 pub mod list;
 pub mod publish_cli;
+pub mod stats_emitter;
 pub mod timer;
 pub mod tnetstring;
