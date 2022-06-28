@@ -6,6 +6,7 @@ import gzip
 from http.client import HTTPConnection
 from io import BytesIO
 import json
+import logging
 import os
 import string
 import sys
@@ -44,7 +45,7 @@ def validate_id(s):
 
     for c in s:
         if c not in '._-' and c not in alphanumerics:
-            raise ValidationError('id cannot contain: {}'.format(c))
+            raise ValidationError('id cannot contain: {}'.format(repr(c)))
 
     return s
 
@@ -56,7 +57,7 @@ def validate_host(s):
 
     for c in s:
         if c not in '._-' and c not in alphanumerics:
-            raise ValidationError('host cannot contain: {}'.format(c))
+            raise ValidationError('host cannot contain: {}'.format(repr(c)))
 
     return s
 
@@ -128,7 +129,7 @@ def fetch_service_backends():
     """
     client = HeavenlyClient()
 
-    print('fetching service manifest')
+    logging.info('fetching service manifest')
 
     resp = client.request('/config/service/', 'application/json')
     services = json.loads(resp.data)
@@ -166,7 +167,7 @@ def fetch_service_backends():
         if pushpin_enabled:
             pushpin_services.append(Service(service, grip_enabled, woh_enabled, backend_flags))
 
-    print('found {} services with pushpin enabled'.format(len(pushpin_services)))
+    logging.debug('found {} services with pushpin enabled'.format(len(pushpin_services)))
 
     service_backends = {}
 
@@ -174,7 +175,7 @@ def fetch_service_backends():
         service_id = service.data['service']
         version = service.data['version']
 
-        print('fetching backends for service {} ({}/{})'.format(service_id,
+        logging.debug('fetching backends for service {} ({}/{})'.format(service_id,
               i + 1, len(pushpin_services)))
 
         resp = client.request(
@@ -269,24 +270,30 @@ def update_routes(routes_file):
             try:
                 routes.append(make_route(service_id, backend))
             except Exception as e:
-                sys.stderr.write(
-                    'failed to make route from backend: {}\n'.format(e))
+                logging.warning(
+                    'failed to make route for service {} backend {}: {}'.format(service_id, repr(backend['name']), e))
 
     if write_routes(routes, routes_file):
-        print('wrote {}'.format(routes_file))
+        logging.info('wrote {}'.format(routes_file))
     else:
-        print('no changes')
+        logging.debug('no changes')
 
 
 def main():
     parser = argparse.ArgumentParser(
         description='Fetch backends from Heavenly and write Pushpin routes file.')
+    parser.add_argument('--log-level', metavar='N', type=int,
+                        dest='log_level', default=2, help='log level')
     parser.add_argument('--output', metavar='FILENAME', dest='output',
                         default='routes', help='location of routes file (default: ./routes)')
     parser.add_argument('--loop', metavar='SECONDS', type=int,
                         dest='loop', help='repeat the process on an interval')
 
     args = parser.parse_args()
+
+    log_level = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG][args.log_level]
+
+    logging.basicConfig(stream=sys.stdout, level=log_level)
 
     routes_file = args.output
 
@@ -298,13 +305,13 @@ def main():
         try:
             update_routes(routes_file)
         except Exception:
-            traceback.print_exc()
+            logging.exception('update_routes failed')
 
         if not sleep_time:
             break
 
         # whether success or fail, sleep before acting again
-        print('sleeping for {}s'.format(sleep_time))
+        logging.debug('sleeping for {}s'.format(sleep_time))
         time.sleep(sleep_time)
 
 
