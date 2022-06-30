@@ -12,6 +12,26 @@ chown pushpin:pushpin /var/run/pushpin
 chown pushpin:pushpin-listener /opt/fst-pushpin/bin/pushpin-healthcheck
 chmod g+s /opt/fst-pushpin/bin/pushpin-healthcheck
 
+SECRETS="pushpin-nsq-client-cert.pem pushpin-nsq-client-key.pem pushpin-nsq-ca-cert.pem"
+
+secrets_tmp_dir=/etc/pushpin/private/tmp
+install -d -o root -g root -m 0700 "${secrets_tmp_dir}"
+
+secrets_src_dir=/etc/vaultly/cache
+on_secrets_fail=true
+
+if [ -r /etc/chef/client.pem -a -x /opt/chef/embedded/bin/ruby ]; then
+  fail() { echo >&2 "ERROR: chef-vault fetch failed and fallback files are unavailable."; exit 1; }
+  on_secrets_fail=fail
+  /opt/fst-executed/bin/get-from-chef-vault --vault secrets --item cache_public --dest "${secrets_tmp_dir}" $SECRETS && secrets_src_dir="${secrets_tmp_dir}" || echo >&2 'WARNING: chef-vault fetch failed.'
+fi
+
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-cert.pem /etc/pushpin/private/nsq-client-cert.pem || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-key.pem  /etc/pushpin/private/nsq-client-key.pem  || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-ca-cert.pem     /etc/pushpin/private/nsq-ca-cert.pem     || ${on_secrets_fail}
+
+rm -rf "${secrets_tmp_dir}"
+
 cp /opt/fst-pushpin/etc/pushpin.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-socat.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-loader.service /etc/systemd/system
