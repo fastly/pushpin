@@ -33,6 +33,7 @@ RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
 RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-socat.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-loader.service /opt/fst-pushpin/etc
+RUN cp ./fastly-build/pushpin-stats-emitter.service /opt/fst-pushpin/etc
 RUN cp ./scripts/pushpin.sh /opt/fst-pushpin/bin
 RUN cp ./scripts/pushpin-starter.sh /opt/fst-pushpin/bin
 RUN cp ./scripts/pushpin-iptables.sh /opt/fst-pushpin/bin

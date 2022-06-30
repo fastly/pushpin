@@ -35,6 +35,7 @@ rm -rf "${secrets_tmp_dir}"
 cp /opt/fst-pushpin/etc/pushpin.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-socat.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-loader.service /etc/systemd/system
+cp /opt/fst-pushpin/etc/pushpin-stats-emitter.service /etc/systemd/system
 
 # Reload systemd so that it picks up the packaged unit fragment file.
 # The query `systemctl is-system-running` exits with a non-0 status and it says
@@ -48,4 +49,5 @@ if [ "X$status" = Xrunning -o "X$status" = Xdegraded ]; then
   #    node is enabled
   systemctl restart pushpin || true
   systemctl restart pushpin-loader
+  systemctl restart pushpin-stats-emitter
 fi
