@@ -22,7 +22,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc::error::SendError;
 use tracing::{debug, error, info, warn};
 
-const SCHEMA_NAME: &'static str = "pushpin-billing";
+const SCHEMA_NAME: &'static str = "billing";
 const EMITTER_NAME: &'static str = "pushpin";
 const EDGE_CONFIGLY_PATH: &'static str = "/etc/fastly/edge-configly.json";
 
