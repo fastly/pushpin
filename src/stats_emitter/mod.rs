@@ -204,10 +204,7 @@ fn process_stats(spec: &str, sender: MessageAggregatorSender) -> Result<(), Box<
 
         let pos = match report.route.find(":") {
             Some(pos) => pos,
-            None => {
-                warn!("invalid route: {}", report.route);
-                continue;
-            }
+            None => continue, // skip routes that don't begin with "{service-id}:"
         };
 
         let service_id = &report.route[..pos];
