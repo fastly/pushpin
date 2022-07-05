@@ -202,7 +202,7 @@ def fetch_service_backends():
     return service_backends
 
 
-def make_route(service_id, backend):
+def make_routes(service_id, backend):
     service_id = validate_id(service_id)
     backend_name = validate_id(backend['name'])
     host = validate_host(backend['address'])
@@ -220,16 +220,17 @@ def make_route(service_id, backend):
     if int(backend.get('loader-woh-enabled', '0')):
         target += ',over_http'
 
-    line = 'id={}:{}'.format(service_id, backend_name)
+    routes = []
 
     if int(backend.get('loader-grip-enabled', '0')):
-        line += ',prefix=g:ck:{}:'.format(service_id)
+        routes.append('id={}:{},prefix=g:ck:{}: {}'.format(service_id, backend_name, service_id, target))
+        routes.append('id=ht:{}:{},prefix=g:ck:{}: {}'.format(service_id, backend_name, service_id, target))
+        routes.append('id=ws:{}:{},prefix=g:ck:{}: {}'.format(service_id, backend_name, service_id, target))
     else:
-        line += ',no_grip'
+        routes.append('id={}:{},no_grip {}'.format(service_id, backend_name, target))
+        routes.append('id=ws:{}:{},no_grip {}'.format(service_id, backend_name, target))
 
-    line += ' ' + target
-
-    return line
+    return routes
 
 
 def write_routes(routes, routes_file):
@@ -268,7 +269,7 @@ def update_routes(routes_file):
     for (service_id, backends) in fetch_service_backends().items():
         for backend in backends:
             try:
-                routes.append(make_route(service_id, backend))
+                routes.extend(make_routes(service_id, backend))
             except Exception as e:
                 logging.warning(
                     'failed to make route for service {} backend {}: {}'.format(service_id, repr(backend['name']), e))
