@@ -202,12 +202,16 @@ fn process_stats(spec: &str, sender: MessageAggregatorSender) -> Result<(), Box<
             }
         };
 
-        let pos = match report.route.find(":") {
-            Some(pos) => pos,
-            None => continue, // skip routes that don't begin with "{service-id}:"
+        let route = if report.route.starts_with("ht:") || report.route.starts_with("ws:") {
+            &report.route[3..]
+        } else {
+            &report.route
         };
 
-        let service_id = &report.route[..pos];
+        let service_id = match route.find(":") {
+            Some(pos) => &route[..pos],
+            None => continue, // skip routes that don't begin with "{service-id}:"
+        };
 
         let service_id = match ServiceID::from_bytes(service_id.as_bytes()) {
             Ok(s) => s,
