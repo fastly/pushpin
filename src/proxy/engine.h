@@ -86,6 +86,7 @@ public:
 		bool quietCheck;
 		int connectionsMax;
 		int statsConnectionTtl;
+		int statsReportInterval;
 		QString prometheusPort;
 		QString prometheusPrefix;
 
@@ -105,7 +106,8 @@ public:
 			updatesCheck("check"),
 			quietCheck(false),
 			connectionsMax(-1),
-			statsConnectionTtl(-1)
+			statsConnectionTtl(-1),
+			statsReportInterval(-1)
 		{
 		}
 	};

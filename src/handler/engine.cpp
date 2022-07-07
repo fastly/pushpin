@@ -2673,6 +2673,11 @@ private slots:
 				return;
 			}
 		}
+		else if(p.type == StatsPacket::Report)
+		{
+			// merge into local report and don't forward
+			stats->processExternalPacket(p);
+		}
 	}
 
 	void controlHttpServer_requestReady()

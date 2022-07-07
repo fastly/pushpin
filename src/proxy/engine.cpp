@@ -307,6 +307,7 @@ public:
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);
 			stats->setConnectionTtl(config.statsConnectionTtl);
+			stats->setReportInterval(config.statsReportInterval);
 
 			if(!config.statsSpec.isEmpty())
 			{

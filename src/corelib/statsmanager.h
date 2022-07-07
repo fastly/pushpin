@@ -30,6 +30,7 @@
 #define STATSMANAGER_H
 
 #include <QObject>
+#include "stats.h"
 
 class QHostAddress;
 
@@ -83,16 +84,19 @@ public:
 	// NOTE: may emit unsubscribed immediately (not DOR-DS)
 	void removeSubscription(const QString &mode, const QString &channel, bool linger);
 
-	// for reporting only
+	// for reporting and combined
 	void addMessageReceived(const QByteArray &routeId, int blocks = -1);
 	void addMessageSent(const QByteArray &routeId, const QString &transport, int blocks = -1);
+	void incCounter(const QByteArray &routeId, Stats::Counter c, int count = 1);
 
 	// for combined only
 	void addRequestsReceived(int count);
 
 	bool checkConnection(const QByteArray &id) const;
 
-	// for reporting. return true if local connection was replaced
+	// conn and report packets received from the proxy should be passed
+	// into this method. returns true if the packet should not also be
+	// forwarded on
 	bool processExternalPacket(const StatsPacket &packet);
 
 	// directly send, for proxy->handler passthrough

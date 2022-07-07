@@ -148,6 +148,7 @@ public:
 		int blocksReceived;
 		int blocksSent;
 		int requestsReceived;
+		Stats::Counters counters;
 		qint64 lastUpdate;
 		qint64 startTime;
 
@@ -175,7 +176,8 @@ public:
 				httpResponseMessagesSent == 0 &&
 				blocksReceived <= 0 &&
 				blocksSent <= 0 &&
-				requestsReceived == 0);
+				requestsReceived == 0 &&
+				counters.isEmpty());
 		}
 
 		void addConnectionsMinutes(int mins, qint64 now)
@@ -221,6 +223,20 @@ public:
 		void addRequestsReceived(int count, qint64 now)
 		{
 			requestsReceived += count;
+
+			lastUpdate = now;
+		}
+
+		void incCounter(Stats::Counter c, int count, qint64 now)
+		{
+			counters.inc(c, count);
+
+			lastUpdate = now;
+		}
+
+		void addCounters(const Stats::Counters &other, qint64 now)
+		{
+			counters.add(other);
 
 			lastUpdate = now;
 		}
@@ -441,8 +457,6 @@ public:
 				return false;
 			}
 		}
-
-		setupReportTimer();
 
 		return true;
 	}
@@ -1030,6 +1044,19 @@ public:
 			currentSubscriptionRefreshBucket = 0;
 	}
 
+	void addCounters(const QByteArray &routeId, const Stats::Counters &counters)
+	{
+		if(reportInterval <= 0)
+			return;
+
+		Report *report = getOrCreateReport(routeId);
+
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		report->addCounters(counters, now);
+		combinedReport.addCounters(counters, now);
+	}
+
 private slots:
 	void activity_timeout()
 	{
@@ -1075,6 +1102,7 @@ private slots:
 			p.type = StatsPacket::Report;
 			p.from = instanceId;
 			p.route = routeId;
+
 			p.connectionsMax = report->connectionsMax;
 			p.connectionsMinutes = report->connectionsMinutes;
 			p.messagesReceived = report->messagesReceived;
@@ -1084,6 +1112,19 @@ private slots:
 			p.blocksSent = report->blocksSent;
 			p.duration = now - report->startTime;
 
+			p.clientHeaderBytesReceived = report->counters.get(Stats::ClientHeaderBytesReceived);
+			p.clientHeaderBytesSent = report->counters.get(Stats::ClientHeaderBytesSent);
+			p.clientContentBytesReceived = report->counters.get(Stats::ClientContentBytesReceived);
+			p.clientContentBytesSent = report->counters.get(Stats::ClientContentBytesSent);
+			p.clientMessagesReceived = report->counters.get(Stats::ClientMessagesReceived);
+			p.clientMessagesSent = report->counters.get(Stats::ClientMessagesSent);
+			p.serverHeaderBytesReceived = report->counters.get(Stats::ServerHeaderBytesReceived);
+			p.serverHeaderBytesSent = report->counters.get(Stats::ServerHeaderBytesSent);
+			p.serverContentBytesReceived = report->counters.get(Stats::ServerContentBytesReceived);
+			p.serverContentBytesSent = report->counters.get(Stats::ServerContentBytesSent);
+			p.serverMessagesReceived = report->counters.get(Stats::ServerMessagesReceived);
+			p.serverMessagesSent = report->counters.get(Stats::ServerMessagesSent);
+
 			report->startTime = now;
 			report->connectionsMaxStale = true;
 			report->connectionsMinutes = 0;
@@ -1092,6 +1133,7 @@ private slots:
 			report->httpResponseMessagesSent = 0;
 			report->blocksReceived = -1;
 			report->blocksSent = -1;
+			report->counters.reset();
 
 			if(report->isEmpty())
 			{
@@ -1481,6 +1523,19 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 	d->combinedReport.addMessageSent(transport, blocks, now);
 }
 
+void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, int count)
+{
+	if(d->reportInterval <= 0)
+		return;
+
+	Private::Report *report = d->getOrCreateReport(routeId);
+
+	qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+	report->incCounter(c, count, now);
+	d->combinedReport.incCounter(c, count, now);
+}
+
 void StatsManager::addRequestsReceived(int count)
 {
 	assert(count >= 0);
@@ -1504,120 +1559,143 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet)
 	if(d->reportInterval <= 0)
 		return false;
 
-	if(packet.type != StatsPacket::Connected && packet.type != StatsPacket::Disconnected)
-		return false;
-
-	qint64 now = QDateTime::currentMSecsSinceEpoch();
-
-	bool replacing = false;
-	qint64 lastReport = now;
-
-	if(packet.type == StatsPacket::Connected)
+	if(packet.type == StatsPacket::Connected || packet.type == StatsPacket::Disconnected)
 	{
-		// is there a local connection with the same ID?
-		Private::ConnectionInfo *c = d->connectionInfoById.value(packet.connectionId);
-		if(c)
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		bool replacing = false;
+		qint64 lastReport = now;
+
+		if(packet.type == StatsPacket::Connected)
 		{
-			// if there is a non-lingering local connection, ignore the packet
-			if(!c->linger)
+			// is there a local connection with the same ID?
+			Private::ConnectionInfo *c = d->connectionInfoById.value(packet.connectionId);
+			if(c)
 			{
-				return false;
-			}
+				// if there is a non-lingering local connection, ignore the packet
+				if(!c->linger)
+				{
+					return false;
+				}
 
-			// otherwise, remove local connection and it will be replaced with external
+				// otherwise, remove local connection and it will be replaced with external
 
-			replacing = true;
-			lastReport = c->lastReport;
+				replacing = true;
+				lastReport = c->lastReport;
 
-			d->removeConnection(c);
-			delete c;
-		}
-	}
-
-	// if the connection exists under a different from address, remove it.
-	// note: this iterates over all the known external sources, which at
-	//   at the time of this writing is almost certainly just 1 (a single
-	//   pushpin-proxy source).
-	QList<Private::ConnectionInfo*> toDelete;
-	QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo*> > it(d->externalConnectionInfoByFrom);
-	while(it.hasNext())
-	{
-		it.next();
-		const QByteArray &from = it.key();
-
-		if(from == packet.from)
-			continue;
-
-		const QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = it.value();
-
-		Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
-		if(c)
-			toDelete += c;
-	}
-	foreach(Private::ConnectionInfo *c, toDelete)
-	{
-		d->removeExternalConnection(c);
-		delete c;
-	}
-
-	QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = d->externalConnectionInfoByFrom[packet.from];
-
-	if(packet.type == StatsPacket::Connected)
-	{
-		// add/update
-		Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
-		if(!c)
-		{
-			c = new Private::ConnectionInfo;
-			c->timerType = Private::TimerBase::Type::ExternalConnection;
-			c->id = packet.connectionId;
-			c->routeId = packet.route;
-			c->type = packet.connectionType == StatsPacket::Http ? Http : WebSocket;
-			c->peerAddress = packet.peerAddress;
-			c->ssl = packet.ssl;
-			c->lastReport = lastReport;
-			c->from = packet.from;
-			c->lastActive = now;
-			d->insertExternalConnection(c);
-
-			d->updateConnectionsMax(c->routeId, now);
-
-			// only count a minute if we weren't replacing
-			if(!replacing)
-			{
-				Private::Report *report = d->getOrCreateReport(c->routeId);
-
-				// minutes are rounded up so count one immediately
-				report->addConnectionsMinutes(1, now);
-				d->combinedReport.addConnectionsMinutes(1, now);
+				d->removeConnection(c);
+				delete c;
 			}
 		}
-		else
-		{
-			c->ttl = packet.ttl;
 
-			c->lastActive = now;
-			d->wheelAdd(c->lastActive + d->connectionTtl, c);
+		// if the connection exists under a different from address, remove it.
+		// note: this iterates over all the known external sources, which at
+		//   at the time of this writing is almost certainly just 1 (a single
+		//   pushpin-proxy source).
+		QList<Private::ConnectionInfo*> toDelete;
+		QHashIterator<QByteArray, QHash<QByteArray, Private::ConnectionInfo*> > it(d->externalConnectionInfoByFrom);
+		while(it.hasNext())
+		{
+			it.next();
+			const QByteArray &from = it.key();
+
+			if(from == packet.from)
+				continue;
+
+			const QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = it.value();
+
+			Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
+			if(c)
+				toDelete += c;
 		}
-
-		d->updateConnectionsMinutes(c, now);
-	}
-	else // Disconnected
-	{
-		Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
-		if(c)
+		foreach(Private::ConnectionInfo *c, toDelete)
 		{
-			QByteArray routeId = c->routeId;
-
-			d->updateConnectionsMinutes(c, now);
 			d->removeExternalConnection(c);
 			delete c;
-
-			d->updateConnectionsMax(routeId, now);
 		}
+
+		QHash<QByteArray, Private::ConnectionInfo*> &extConnectionInfoById = d->externalConnectionInfoByFrom[packet.from];
+
+		if(packet.type == StatsPacket::Connected)
+		{
+			// add/update
+			Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
+			if(!c)
+			{
+				c = new Private::ConnectionInfo;
+				c->timerType = Private::TimerBase::Type::ExternalConnection;
+				c->id = packet.connectionId;
+				c->routeId = packet.route;
+				c->type = packet.connectionType == StatsPacket::Http ? Http : WebSocket;
+				c->peerAddress = packet.peerAddress;
+				c->ssl = packet.ssl;
+				c->lastReport = lastReport;
+				c->from = packet.from;
+				c->lastActive = now;
+				d->insertExternalConnection(c);
+
+				d->updateConnectionsMax(c->routeId, now);
+
+				// only count a minute if we weren't replacing
+				if(!replacing)
+				{
+					Private::Report *report = d->getOrCreateReport(c->routeId);
+
+					// minutes are rounded up so count one immediately
+					report->addConnectionsMinutes(1, now);
+					d->combinedReport.addConnectionsMinutes(1, now);
+				}
+			}
+			else
+			{
+				c->ttl = packet.ttl;
+
+				c->lastActive = now;
+				d->wheelAdd(c->lastActive + d->connectionTtl, c);
+			}
+
+			d->updateConnectionsMinutes(c, now);
+		}
+		else // Disconnected
+		{
+			Private::ConnectionInfo *c = extConnectionInfoById.value(packet.connectionId);
+			if(c)
+			{
+				QByteArray routeId = c->routeId;
+
+				d->updateConnectionsMinutes(c, now);
+				d->removeExternalConnection(c);
+				delete c;
+
+				d->updateConnectionsMax(routeId, now);
+			}
+		}
+
+		return replacing;
+	}
+	else if(packet.type == StatsPacket::Report)
+	{
+		Stats::Counters counters;
+
+		counters.inc(Stats::ClientHeaderBytesReceived, qMax(packet.clientHeaderBytesReceived, 0));
+		counters.inc(Stats::ClientHeaderBytesSent, qMax(packet.clientHeaderBytesSent, 0));
+		counters.inc(Stats::ClientContentBytesReceived, qMax(packet.clientContentBytesReceived, 0));
+		counters.inc(Stats::ClientContentBytesSent, qMax(packet.clientContentBytesSent, 0));
+		counters.inc(Stats::ClientMessagesReceived, qMax(packet.clientMessagesReceived, 0));
+		counters.inc(Stats::ClientMessagesSent, qMax(packet.clientMessagesSent, 0));
+		counters.inc(Stats::ServerHeaderBytesReceived, qMax(packet.serverHeaderBytesReceived, 0));
+		counters.inc(Stats::ServerHeaderBytesSent, qMax(packet.serverHeaderBytesSent, 0));
+		counters.inc(Stats::ServerContentBytesReceived, qMax(packet.serverContentBytesReceived, 0));
+		counters.inc(Stats::ServerContentBytesSent, qMax(packet.serverContentBytesSent, 0));
+		counters.inc(Stats::ServerMessagesReceived, qMax(packet.serverMessagesReceived, 0));
+		counters.inc(Stats::ServerMessagesSent, qMax(packet.serverMessagesSent, 0));
+
+		d->addCounters(packet.route, counters);
+
+		return true;
 	}
 
-	return replacing;
+	return false;
 }
 
 void StatsManager::sendPacket(const StatsPacket &packet)

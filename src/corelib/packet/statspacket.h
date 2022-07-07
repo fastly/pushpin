@@ -78,6 +78,18 @@ public:
 	int blocksSent; // report
 	int duration; // report
 	int requestsReceived; // counts
+	int clientHeaderBytesReceived; // report
+	int clientHeaderBytesSent; // report
+	int clientContentBytesReceived; // report
+	int clientContentBytesSent; // report
+	int clientMessagesReceived; // report
+	int clientMessagesSent; // report
+	int serverHeaderBytesReceived; // report
+	int serverHeaderBytesSent; // report
+	int serverContentBytesReceived; // report
+	int serverContentBytesSent; // report
+	int serverMessagesReceived; // report
+	int serverMessagesSent; // report
 
 	StatsPacket() :
 		type((Type)-1),
@@ -95,7 +107,19 @@ public:
 		blocksReceived(-1),
 		blocksSent(-1),
 		duration(-1),
-		requestsReceived(-1)
+		requestsReceived(-1),
+		clientHeaderBytesReceived(-1),
+		clientHeaderBytesSent(-1),
+		clientContentBytesReceived(-1),
+		clientContentBytesSent(-1),
+		clientMessagesReceived(-1),
+		clientMessagesSent(-1),
+		serverHeaderBytesReceived(-1),
+		serverHeaderBytesSent(-1),
+		serverContentBytesReceived(-1),
+		serverContentBytesSent(-1),
+		serverMessagesReceived(-1),
+		serverMessagesSent(-1)
 	{
 	}
 
