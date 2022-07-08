@@ -63,6 +63,15 @@ struct Report {
     #[serde(rename(deserialize = "http-response-sent"), default)]
     #[allow(dead_code)]
     pub http_response_sent: u64,
+
+    #[serde(rename(deserialize = "client-header-bytes-sent"), default)]
+    pub client_header_bytes_sent: u64,
+
+    #[serde(rename(deserialize = "client-content-bytes-received"), default)]
+    pub client_content_bytes_received: u64,
+
+    #[serde(rename(deserialize = "client-content-bytes-sent"), default)]
+    pub client_content_bytes_sent: u64,
 }
 
 #[derive(serde::Deserialize)]
@@ -94,51 +103,44 @@ pub fn get_host_info() -> Result<HostInfo, Box<dyn Error>> {
     })
 }
 
-fn send_count(
-    sender: &MessageAggregatorSender,
-    service_id: &ServiceID,
-    metric: &'static str,
-    count: u64,
-) -> Result<(), Box<dyn Error>> {
-    let msg = ChannelMessage {
-        id: service_id.clone(),
-        metric: metric.into(),
-        count,
-    };
-
-    match sender.blocking_send(msg) {
-        Ok(()) => {}
-        Err(SendError(msg)) => {
-            return Err(format!("failed to send to aggregator: {:?}", msg).into())
-        }
-    }
-
-    Ok(())
+struct Sender<'a> {
+    inner: &'a MessageAggregatorSender,
+    service_id: &'a ServiceID,
 }
 
-fn process_report(
-    service_id: &ServiceID,
-    r: &Report,
-    sender: &MessageAggregatorSender,
-) -> Result<(), Box<dyn Error>> {
+impl Sender<'_> {
+    fn send_count(&self, metric: &'static str, count: u64) -> Result<(), Box<dyn Error>> {
+        if count == 0 {
+            return Ok(());
+        }
+
+        let msg = ChannelMessage {
+            id: self.service_id.clone(),
+            metric: metric.into(),
+            count,
+        };
+
+        match self.inner.blocking_send(msg) {
+            Ok(()) => {}
+            Err(SendError(msg)) => {
+                return Err(format!("failed to send to aggregator: {:?}", msg).into())
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn process_report(r: &Report, s: Sender) -> Result<(), Box<dyn Error>> {
     debug!("report: {:?}", r);
 
-    if r.minutes > 0 {
-        send_count(
-            &sender,
-            service_id,
-            "pushpin_conn_time_ms",
-            r.minutes * 60_000,
-        )?;
-    }
+    s.send_count("websocket_resp_header_bytes", r.client_header_bytes_sent)?;
+    s.send_count("websocket_req_body_bytes", r.client_content_bytes_received)?;
+    s.send_count("websocket_resp_body_bytes", r.client_content_bytes_sent)?;
 
-    if r.received > 0 {
-        send_count(&sender, service_id, "pushpin_recv_publishes", r.received)?;
-    }
-
-    if r.sent > 0 {
-        send_count(&sender, service_id, "pushpin_send_publishes", r.sent)?;
-    }
+    s.send_count("fanout_conn_time_ms", r.minutes * 60_000)?;
+    s.send_count("fanout_recv_publishes", r.received)?;
+    s.send_count("fanout_send_publishes", r.sent)?;
 
     Ok(())
 }
@@ -221,7 +223,12 @@ fn process_stats(spec: &str, sender: MessageAggregatorSender) -> Result<(), Box<
             }
         };
 
-        if let Err(e) = process_report(&service_id, &report, &sender) {
+        let sender = Sender {
+            inner: &sender,
+            service_id: &service_id,
+        };
+
+        if let Err(e) = process_report(&report, sender) {
             error!("failed to process report: {}", e);
         }
     }
