@@ -105,6 +105,8 @@ signals:
 	void finishedByAccept();
 	void bytesWritten(int count);
 	void paused();
+	void headerBytesSent(int count);
+	void bodyBytesSent(int count);
 
 	// this signal means some error was encountered while responding and
 	//   that you should not attempt to call further response-related

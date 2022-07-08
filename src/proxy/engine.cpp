@@ -383,7 +383,7 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, accept, logConfig, this);
+			ps = new ProxySession(zroutes, accept, logConfig, stats, this);
 			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
 			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
 			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
