@@ -808,53 +808,56 @@ impl Worker {
         let identities = Arc::clone(identities);
         let zsockman = Arc::clone(zsockman);
 
-        let thread = thread::spawn(move || {
-            let maxconn = req_maxconn + stream_maxconn;
+        let thread = thread::Builder::new()
+            .name(format!("worker-{}", id))
+            .spawn(move || {
+                let maxconn = req_maxconn + stream_maxconn;
 
-            // 1 task per connection, plus a handful of supporting tasks
-            let tasks_max = maxconn + WORKER_NON_CONNECTION_TASKS_MAX;
+                // 1 task per connection, plus a handful of supporting tasks
+                let tasks_max = maxconn + WORKER_NON_CONNECTION_TASKS_MAX;
 
-            let registrations_max = REGISTRATIONS_PER_TASK_MAX * tasks_max;
+                let registrations_max = REGISTRATIONS_PER_TASK_MAX * tasks_max;
 
-            let reactor = Reactor::new(registrations_max);
+                let reactor = Reactor::new(registrations_max);
 
-            let executor = Executor::new(tasks_max);
+                let executor = Executor::new(tasks_max);
 
-            {
-                let reactor = reactor.clone();
+                {
+                    let reactor = reactor.clone();
 
-                executor.set_pre_poll(move || {
-                    reactor.set_budget(Some(REACTOR_BUDGET));
-                });
-            }
+                    executor.set_pre_poll(move || {
+                        reactor.set_budget(Some(REACTOR_BUDGET));
+                    });
+                }
 
-            executor
-                .spawn(Self::run(
-                    r_stop,
-                    s_ready,
-                    instance_id,
-                    id,
-                    req_maxconn,
-                    stream_maxconn,
-                    buffer_size,
-                    body_buffer_size,
-                    messages_max,
-                    req_timeout,
-                    stream_timeout,
-                    req_acceptor,
-                    stream_acceptor,
-                    req_acceptor_tls,
-                    stream_acceptor_tls,
-                    identities,
-                    zsockman,
-                    handle_bound,
-                ))
-                .unwrap();
+                executor
+                    .spawn(Self::run(
+                        r_stop,
+                        s_ready,
+                        instance_id,
+                        id,
+                        req_maxconn,
+                        stream_maxconn,
+                        buffer_size,
+                        body_buffer_size,
+                        messages_max,
+                        req_timeout,
+                        stream_timeout,
+                        req_acceptor,
+                        stream_acceptor,
+                        req_acceptor_tls,
+                        stream_acceptor_tls,
+                        identities,
+                        zsockman,
+                        handle_bound,
+                    ))
+                    .unwrap();
 
-            executor.run(|timeout| reactor.poll(timeout)).unwrap();
+                executor.run(|timeout| reactor.poll(timeout)).unwrap();
 
-            debug!("worker {}: stopped", id);
-        });
+                debug!("worker {}: stopped", id);
+            })
+            .unwrap();
 
         ready.recv().unwrap();
 
@@ -2157,8 +2160,8 @@ impl Server {
             workers.push(w);
         }
 
-        let req_listener = Listener::new(req_listeners, req_lsenders);
-        let stream_listener = Listener::new(stream_listeners, stream_lsenders);
+        let req_listener = Listener::new("listener-req", req_listeners, req_lsenders);
+        let stream_listener = Listener::new("listener-stream", stream_listeners, stream_lsenders);
 
         Ok(Self {
             addrs,

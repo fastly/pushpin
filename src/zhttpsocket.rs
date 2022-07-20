@@ -710,28 +710,31 @@ impl SocketManager {
 
         let instance_id = String::from(instance_id);
 
-        let thread = thread::spawn(move || {
-            debug!("manager thread start");
+        let thread = thread::Builder::new()
+            .name("zhttpsocket".to_string())
+            .spawn(move || {
+                debug!("manager thread start");
 
-            // 2 control channels, 3 channels per handle, 4 zmq sockets
-            let channels = 2 + (HANDLES_MAX * 3);
-            let zmqsockets = 4;
+                // 2 control channels, 3 channels per handle, 4 zmq sockets
+                let channels = 2 + (HANDLES_MAX * 3);
+                let zmqsockets = 4;
 
-            let registrations_max =
-                (channels * REGISTRATIONS_PER_CHANNEL) + (zmqsockets * REGISTRATIONS_PER_ZMQSOCKET);
+                let registrations_max = (channels * REGISTRATIONS_PER_CHANNEL)
+                    + (zmqsockets * REGISTRATIONS_PER_ZMQSOCKET);
 
-            let reactor = Reactor::new(registrations_max);
+                let reactor = Reactor::new(registrations_max);
 
-            let executor = Executor::new(EXECUTOR_TASKS_MAX);
+                let executor = Executor::new(EXECUTOR_TASKS_MAX);
 
-            executor
-                .spawn(Self::run(ctx, s1, r2, instance_id, retained_max, hwm))
-                .unwrap();
+                executor
+                    .spawn(Self::run(ctx, s1, r2, instance_id, retained_max, hwm))
+                    .unwrap();
 
-            executor.run(|timeout| reactor.poll(timeout)).unwrap();
+                executor.run(|timeout| reactor.poll(timeout)).unwrap();
 
-            debug!("manager thread end");
-        });
+                debug!("manager thread end");
+            })
+            .unwrap();
 
         Self {
             handle_bound,

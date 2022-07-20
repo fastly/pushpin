@@ -225,20 +225,23 @@ impl ResolverInner {
             let queries = queries.clone();
             let resolve_fn = resolve_fn.clone();
 
-            let thread = thread::spawn(move || {
-                let invalidated = Arc::new(AtomicBool::new(false));
+            let thread = thread::Builder::new()
+                .name("resolver".to_string())
+                .spawn(move || {
+                    let invalidated = Arc::new(AtomicBool::new(false));
 
-                loop {
-                    let (item_key, host) = match queries.get_next(&invalidated) {
-                        Some(ret) => ret,
-                        None => break,
-                    };
+                    loop {
+                        let (item_key, host) = match queries.get_next(&invalidated) {
+                            Some(ret) => ret,
+                            None => break,
+                        };
 
-                    let ret = resolve_fn(host.as_str());
+                        let ret = resolve_fn(host.as_str());
 
-                    queries.set_result(item_key, ret, &invalidated);
-                }
-            });
+                        queries.set_result(item_key, ret, &invalidated);
+                    }
+                })
+                .unwrap();
 
             workers.push(thread);
         }

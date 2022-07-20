@@ -38,19 +38,23 @@ pub struct Listener {
 
 impl Listener {
     pub fn new(
+        name: &str,
         listeners: Vec<NetListener>,
         senders: Vec<channel::Sender<(usize, NetStream, SocketAddr)>>,
     ) -> Listener {
         let (s, r) = channel::channel(1);
 
-        let thread = thread::spawn(move || {
-            let reactor = Reactor::new(REACTOR_REGISTRATIONS_MAX);
-            let executor = Executor::new(EXECUTOR_TASKS_MAX);
+        let thread = thread::Builder::new()
+            .name(name.to_string())
+            .spawn(move || {
+                let reactor = Reactor::new(REACTOR_REGISTRATIONS_MAX);
+                let executor = Executor::new(EXECUTOR_TASKS_MAX);
 
-            executor.spawn(Self::run(r, listeners, senders)).unwrap();
+                executor.spawn(Self::run(r, listeners, senders)).unwrap();
 
-            executor.run(|timeout| reactor.poll(timeout)).unwrap();
-        });
+                executor.run(|timeout| reactor.poll(timeout)).unwrap();
+            })
+            .unwrap();
 
         Self {
             thread: Some(thread),
@@ -211,7 +215,7 @@ mod tests {
             receivers.push(receiver);
         }
 
-        let _l = Listener::new(listeners, senders);
+        let _l = Listener::new("listener-test", listeners, senders);
 
         let mut poller = event::Poller::new(1024).unwrap();
 
