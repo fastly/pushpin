@@ -1064,7 +1064,7 @@ private:
 			adata.jsonpExtendedResponse = rs.jsonpExtendedResponse;
 			adata.route = route;
 			adata.channelPrefix = channelPrefix;
-			adata.implicitChannels = implicitChannels.toSet();
+			adata.implicitChannels = QSet<QString>(implicitChannels.begin(), implicitChannels.end());
 			adata.sid = sid;
 			adata.responseSent = responseSent;
 			adata.sigIss = sigIss;

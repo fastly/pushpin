@@ -33,6 +33,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QRandomGenerator>
 #include "rtimer.h"
 #include "log.h"
 #include "bufferlist.h"
@@ -540,7 +541,7 @@ private:
 		if(instruct.keepAliveTimeout >= 0)
 		{
 			int timeout = instruct.keepAliveTimeout * 1000;
-			timeout = qMax(timeout - (qrand() % KEEPALIVE_RAND_MAX), 0);
+			timeout = qMax(timeout - (int)(QRandomGenerator::global()->generate() % KEEPALIVE_RAND_MAX), 0);
 			timer->setSingleShot(true);
 			timer->start(timeout);
 		}
@@ -1488,7 +1489,7 @@ private slots:
 			int delay = RETRY_TIMEOUT;
 			for(int n = 0; n < retries; ++n)
 				delay *= 2;
-			delay += qrand() % RETRY_RAND_MAX;
+			delay += QRandomGenerator::global()->generate() % RETRY_RAND_MAX;
 
 			log_debug("httpsession: trying again in %dms", delay);
 

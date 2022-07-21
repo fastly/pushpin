@@ -35,6 +35,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QHostAddress>
+#include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
 #include "zhttpmanager.h"
@@ -755,7 +756,7 @@ public:
 		if(keepAliveTimeout >= 0)
 		{
 			int timeout = keepAliveTimeout * 1000;
-			timeout = qMax(timeout - (qrand() % KEEPALIVE_RAND_MAX), 0);
+			timeout = qMax(timeout - (int)(QRandomGenerator::global()->generate() % KEEPALIVE_RAND_MAX), 0);
 			keepAliveTimer->start(timeout);
 		}
 	}
