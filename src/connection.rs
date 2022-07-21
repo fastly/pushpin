@@ -2197,7 +2197,7 @@ where
         pin_mut!(check_send, recv_body);
 
         loop {
-            if recv_body.is_none() && check_send.is_none() {
+            if zsess_in.credits() > 0 && recv_body.is_none() && check_send.is_none() {
                 check_send.set(Some(zsess_out.check_send()));
             }
 
@@ -2221,6 +2221,7 @@ where
                 Select3::R1(()) => {
                     check_send.set(None);
 
+                    assert!(zsess_in.credits() > 0);
                     assert_eq!(recv_body.is_none(), true);
 
                     let max_read = cmp::min(tmp_buf.borrow().len(), zsess_in.credits() as usize);
@@ -2451,7 +2452,7 @@ where
                 send_msg.set(Some(zsess_out.send_msg(zreq)));
             }
         } else {
-            if do_recv && recv_content.is_none() && check_send.is_none() {
+            if do_recv && zsess_in.credits() > 0 && recv_content.is_none() && check_send.is_none() {
                 check_send.set(Some(zsess_out.check_send()));
             }
         }
@@ -2490,6 +2491,7 @@ where
             Select5::R1(()) => {
                 check_send.set(None);
 
+                assert!(zsess_in.credits() > 0);
                 assert_eq!(recv_content.is_none(), true);
 
                 let max_read = cmp::min(tmp_buf.borrow().len(), zsess_in.credits() as usize);
