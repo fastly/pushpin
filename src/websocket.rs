@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -505,7 +505,9 @@ impl<'buf> Protocol {
 
         let size = cmp::min(cmp::min(left, buf.len()), dest.len());
 
-        dest[..size].copy_from_slice(&buf[..size]);
+        let dest = &mut dest[..size];
+
+        dest.copy_from_slice(&buf[..size]);
 
         rbuf.consume(size);
 
