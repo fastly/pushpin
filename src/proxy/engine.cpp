@@ -1007,6 +1007,11 @@ Engine::~Engine()
 	delete d;
 }
 
+StatsManager *Engine::statsManager() const
+{
+	return d->stats;
+}
+
 bool Engine::start(const Configuration &config)
 {
 	return d->start(config);

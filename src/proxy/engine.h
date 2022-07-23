@@ -34,6 +34,8 @@
 #include <QHostAddress>
 #include "xffrule.h"
 
+class StatsManager;
+
 class Engine : public QObject
 {
 	Q_OBJECT
@@ -114,6 +116,8 @@ public:
 
 	Engine(QObject *parent = 0);
 	~Engine();
+
+	StatsManager *statsManager() const;
 
 	bool start(const Configuration &config);
 	void reload();
