@@ -72,6 +72,7 @@ public:
 	QZmq::Socket *handlerRetryOutSock;
 
 	QHash<QByteArray, HttpRequestData> serverReqs;
+	bool isWs;
 	bool serverFailed;
 	bool inspectEnabled;
 	bool inspected;
@@ -88,6 +89,7 @@ public:
 
 	Wrapper(QObject *parent) :
 		QObject(parent),
+		isWs(false),
 		serverFailed(false),
 		inspectEnabled(true),
 		inspected(false),
@@ -160,6 +162,7 @@ public:
 	void reset()
 	{
 		serverReqs.clear();
+		isWs = false;
 		serverFailed = false;
 		inspectEnabled = true;
 		inspected = false;
@@ -197,7 +200,7 @@ private slots:
 			responses[zresp.ids.first().id].body += zresp.body;
 			in += zresp.body;
 
-			if(!zresp.more)
+			if(!isWs && !zresp.more)
 			{
 				finished = true;
 				++clientReqsFinished;
@@ -216,6 +219,11 @@ private slots:
 			msg.append(QByteArray());
 			msg.append(buf);
 			zhttpClientOutStreamSock->write(msg);
+		}
+		else if(zresp.type == ZhttpResponsePacket::Close)
+		{
+			finished = true;
+			++clientReqsFinished;
 		}
 	}
 
@@ -247,6 +255,11 @@ private slots:
 
 	void handleServerIn(const ZhttpRequestPacket &zreq)
 	{
+		if(zreq.type == ZhttpRequestPacket::Close || zreq.type == ZhttpRequestPacket::Credit)
+		{
+			return;
+		}
+
 		if(zreq.type == ZhttpRequestPacket::Cancel)
 		{
 			serverFailed = true;
@@ -279,6 +292,40 @@ private slots:
 		zresp.from = "test-server";
 		zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 		zresp.type = ZhttpResponsePacket::Data;
+
+		if(!isWs && zreq.uri.scheme() == "ws")
+		{
+			isWs = true;
+
+			// accept websocket
+			zresp.code = 101;
+			zresp.reason = "Switching Protocols";
+			zresp.credits = 200000;
+			QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+
+			// send message
+			zresp.ids[0].seq = serverOutSeq++;
+			zresp.credits = -1;
+			zresp.code = -1;
+			zresp.reason.clear();
+			zresp.body = "hello world";
+			buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+
+			return;
+		}
+
+		if(isWs)
+		{
+			// close
+			zresp.type = ZhttpResponsePacket::Close;
+			QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+
+			return;
+		}
+
 		zresp.code = 200;
 		zresp.reason = "OK";
 
@@ -1274,6 +1321,64 @@ private slots:
 		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
 		QCOMPARE(p.serverContentBytesSent, 11); // "hello world"
 		QCOMPARE(p.serverHeaderBytesReceived, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.serverContentBytesReceived, 11); // "hello world"
+	}
+
+	void passthroughWs()
+	{
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.ids += ZhttpRequestPacket::Id("19", 0);
+		zreq.type = ZhttpRequestPacket::Data;
+		zreq.uri = "ws://example/path";
+		zreq.stream = true;
+		zreq.credits = 200000;
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+		while(!wrapper->isWs)
+			QTest::qWait(10);
+
+		zreq = ZhttpRequestPacket();
+		zreq.from = "test-client";
+		zreq.type = ZhttpRequestPacket::Data;
+		zreq.body = "hello";
+
+		zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id("19", 1);
+		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		QList<QByteArray> msg;
+		msg.append("proxy");
+		msg.append(QByteArray());
+		msg.append(buf);
+		wrapper->zhttpClientOutStreamSock->write(msg);
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		engine->statsManager()->flushReport(QByteArray());
+
+		QCOMPARE(wrapper->serverReqs.count(), 1);
+		QCOMPARE(wrapper->in, QByteArray("hello world"));
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 8); // "GET" + "/path"
+		QCOMPARE(p.clientContentBytesReceived, 5);
+		QCOMPARE(p.clientHeaderBytesSent, 22); // "101" + "Switching Protocols"
+		QCOMPARE(p.clientContentBytesSent, 11); // "hello world"
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes("GET", reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 5);
+		QCOMPARE(p.serverHeaderBytesReceived, 22); // "101" + "Switching Protocols"
 		QCOMPARE(p.serverContentBytesReceived, 11); // "hello world"
 	}
 };
