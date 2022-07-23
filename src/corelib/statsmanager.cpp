@@ -1057,6 +1057,71 @@ public:
 		combinedReport.addCounters(counters, now);
 	}
 
+	StatsPacket reportToPacket(Report *report, const QByteArray &routeId, qint64 now)
+	{
+		if(report->connectionsMaxStale)
+			updateConnectionsMax(routeId, now);
+
+		StatsPacket p;
+		p.type = StatsPacket::Report;
+		p.from = instanceId;
+		p.route = routeId;
+
+		p.connectionsMax = report->connectionsMax;
+		p.connectionsMinutes = report->connectionsMinutes;
+		p.messagesReceived = report->messagesReceived;
+		p.messagesSent = report->messagesSent;
+		p.httpResponseMessagesSent = report->httpResponseMessagesSent;
+		p.blocksReceived = report->blocksReceived;
+		p.blocksSent = report->blocksSent;
+		p.duration = now - report->startTime;
+
+		p.clientHeaderBytesReceived = report->counters.get(Stats::ClientHeaderBytesReceived);
+		p.clientHeaderBytesSent = report->counters.get(Stats::ClientHeaderBytesSent);
+		p.clientContentBytesReceived = report->counters.get(Stats::ClientContentBytesReceived);
+		p.clientContentBytesSent = report->counters.get(Stats::ClientContentBytesSent);
+		p.clientMessagesReceived = report->counters.get(Stats::ClientMessagesReceived);
+		p.clientMessagesSent = report->counters.get(Stats::ClientMessagesSent);
+		p.serverHeaderBytesReceived = report->counters.get(Stats::ServerHeaderBytesReceived);
+		p.serverHeaderBytesSent = report->counters.get(Stats::ServerHeaderBytesSent);
+		p.serverContentBytesReceived = report->counters.get(Stats::ServerContentBytesReceived);
+		p.serverContentBytesSent = report->counters.get(Stats::ServerContentBytesSent);
+		p.serverMessagesReceived = report->counters.get(Stats::ServerMessagesReceived);
+		p.serverMessagesSent = report->counters.get(Stats::ServerMessagesSent);
+
+		report->startTime = now;
+		report->connectionsMaxStale = true;
+		report->connectionsMinutes = 0;
+		report->messagesReceived = 0;
+		report->messagesSent = 0;
+		report->httpResponseMessagesSent = 0;
+		report->blocksReceived = -1;
+		report->blocksSent = -1;
+		report->counters.reset();
+
+		return p;
+	}
+
+	void flushReport(const QByteArray &routeId)
+	{
+		Report *report = getOrCreateReport(routeId);
+
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		StatsPacket p = reportToPacket(report, routeId, now);
+
+		if(report->isEmpty())
+		{
+			removeReport(report);
+			delete report;
+		}
+
+		if(sock)
+			write(p);
+
+		emit q->reported(QList<StatsPacket>() << p);
+	}
+
 private slots:
 	void activity_timeout()
 	{
@@ -1095,45 +1160,7 @@ private slots:
 			const QByteArray &routeId = it.key();
 			Report *report = it.value();
 
-			if(report->connectionsMaxStale)
-				updateConnectionsMax(routeId, now);
-
-			StatsPacket p;
-			p.type = StatsPacket::Report;
-			p.from = instanceId;
-			p.route = routeId;
-
-			p.connectionsMax = report->connectionsMax;
-			p.connectionsMinutes = report->connectionsMinutes;
-			p.messagesReceived = report->messagesReceived;
-			p.messagesSent = report->messagesSent;
-			p.httpResponseMessagesSent = report->httpResponseMessagesSent;
-			p.blocksReceived = report->blocksReceived;
-			p.blocksSent = report->blocksSent;
-			p.duration = now - report->startTime;
-
-			p.clientHeaderBytesReceived = report->counters.get(Stats::ClientHeaderBytesReceived);
-			p.clientHeaderBytesSent = report->counters.get(Stats::ClientHeaderBytesSent);
-			p.clientContentBytesReceived = report->counters.get(Stats::ClientContentBytesReceived);
-			p.clientContentBytesSent = report->counters.get(Stats::ClientContentBytesSent);
-			p.clientMessagesReceived = report->counters.get(Stats::ClientMessagesReceived);
-			p.clientMessagesSent = report->counters.get(Stats::ClientMessagesSent);
-			p.serverHeaderBytesReceived = report->counters.get(Stats::ServerHeaderBytesReceived);
-			p.serverHeaderBytesSent = report->counters.get(Stats::ServerHeaderBytesSent);
-			p.serverContentBytesReceived = report->counters.get(Stats::ServerContentBytesReceived);
-			p.serverContentBytesSent = report->counters.get(Stats::ServerContentBytesSent);
-			p.serverMessagesReceived = report->counters.get(Stats::ServerMessagesReceived);
-			p.serverMessagesSent = report->counters.get(Stats::ServerMessagesSent);
-
-			report->startTime = now;
-			report->connectionsMaxStale = true;
-			report->connectionsMinutes = 0;
-			report->messagesReceived = 0;
-			report->messagesSent = 0;
-			report->httpResponseMessagesSent = 0;
-			report->blocksReceived = -1;
-			report->blocksSent = -1;
-			report->counters.reset();
+			StatsPacket p = reportToPacket(report, routeId, now);
 
 			if(report->isEmpty())
 			{
@@ -1706,6 +1733,11 @@ void StatsManager::sendPacket(const StatsPacket &packet)
 	StatsPacket p = packet;
 	p.from = d->instanceId;
 	d->write(p);
+}
+
+void StatsManager::flushReport(const QByteArray &routeId)
+{
+	d->flushReport(routeId);
 }
 
 #include "statsmanager.moc"

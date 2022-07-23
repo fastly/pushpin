@@ -102,6 +102,8 @@ public:
 	// directly send, for proxy->handler passthrough
 	void sendPacket(const StatsPacket &packet);
 
+	void flushReport(const QByteArray &routeId);
+
 signals:
 	void connectionsRefreshed(const QList<QByteArray> &ids);
 	void unsubscribed(const QString &mode, const QString &channel);
