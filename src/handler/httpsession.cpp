@@ -33,6 +33,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QRandomGenerator>
 #include "rtimer.h"
 #include "log.h"
 #include "bufferlist.h"
@@ -285,6 +286,9 @@ public:
 			headers.removeAll("Content-Length");
 			if(adata.autoCrossOrigin)
 				Cors::applyCorsHeaders(req->requestHeaders(), &headers);
+
+			incCounter(Stats::ClientHeaderBytesSent, ZhttpManager::estimateResponseHeaderBytes(instruct.response.code, instruct.response.reason, headers));
+
 			req->beginResponse(instruct.response.code, instruct.response.reason, headers);
 
 			if(!instruct.response.body.isEmpty())
@@ -540,7 +544,7 @@ private:
 		if(instruct.keepAliveTimeout >= 0)
 		{
 			int timeout = instruct.keepAliveTimeout * 1000;
-			timeout = qMax(timeout - (qrand() % KEEPALIVE_RAND_MAX), 0);
+			timeout = qMax(timeout - (int)(QRandomGenerator::global()->generate() % KEEPALIVE_RAND_MAX), 0);
 			timer->setSingleShot(true);
 			timer->start(timeout);
 		}
@@ -567,7 +571,7 @@ private:
 		int avail = req->writeBytesAvailable();
 		if(avail > 0)
 		{
-			req->writeBody(firstInstructResponse.take(avail));
+			writeBody(firstInstructResponse.take(avail));
 
 			if(firstInstructResponse.isEmpty())
 				firstInstructResponseDone();
@@ -863,7 +867,7 @@ private:
 					break;
 				}
 
-				req->writeBody(body);
+				writeBody(body);
 
 				// restart keep alive timer
 				adjustKeepAlive();
@@ -1009,8 +1013,10 @@ private:
 			}
 		}
 
+		incCounter(Stats::ClientHeaderBytesSent, ZhttpManager::estimateResponseHeaderBytes(code, reason, headers));
+
 		req->beginResponse(code, reason, headers);
-		req->writeBody(body);
+		writeBody(body);
 		req->endBody();
 	}
 
@@ -1248,7 +1254,7 @@ private:
 					}
 				}
 
-				req->writeBody(buf);
+				writeBody(buf);
 
 				sentOutReqData += buf.size();
 			}
@@ -1272,7 +1278,7 @@ private:
 
 					if(!buf.isEmpty())
 					{
-						req->writeBody(buf);
+						writeBody(buf);
 
 						sentOutReqData += buf.size();
 					}
@@ -1382,6 +1388,18 @@ private:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
+	void incCounter(Stats::Counter c, int count = 1)
+	{
+		stats->incCounter(adata.statsRoute.toUtf8(), c, count);
+	}
+
+	void writeBody(const QByteArray &body)
+	{
+		incCounter(Stats::ClientContentBytesSent, body.size());
+
+		req->writeBody(body);
+	}
+
 private slots:
 	void doError()
 	{
@@ -1403,7 +1421,7 @@ private slots:
 			prepareToClose();
 
 			if(adata.debug)
-				req->writeBody("\n\n" + errorMessage.toUtf8() + '\n');
+				writeBody("\n\n" + errorMessage.toUtf8() + '\n');
 
 			req->endBody();
 		}
@@ -1488,7 +1506,7 @@ private slots:
 			int delay = RETRY_TIMEOUT;
 			for(int n = 0; n < retries; ++n)
 				delay *= 2;
-			delay += qrand() % RETRY_RAND_MAX;
+			delay += QRandomGenerator::global()->generate() % RETRY_RAND_MAX;
 
 			log_debug("httpsession: trying again in %dms", delay);
 
@@ -1513,7 +1531,7 @@ private slots:
 		}
 		else if(instruct.holdMode == Instruct::StreamHold)
 		{
-			req->writeBody(instruct.keepAliveData);
+			writeBody(instruct.keepAliveData);
 
 			setupKeepAlive();
 

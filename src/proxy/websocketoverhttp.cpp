@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2014-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,6 +32,7 @@
 #include <QTimer>
 #include <QPointer>
 #include <QCoreApplication>
+#include <QRandomGenerator>
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
@@ -943,7 +944,7 @@ private slots:
 			int delay = RETRY_TIMEOUT;
 			for(int n = 0; n < retries; ++n)
 				delay *= 2;
-			delay += qrand() % RETRY_RAND_MAX;
+			delay += (int)(QRandomGenerator::global()->generate() % RETRY_RAND_MAX);
 
 			log_debug("woh: trying again in %dms", delay);
 

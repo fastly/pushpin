@@ -35,6 +35,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QHostAddress>
+#include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
 #include "zhttpmanager.h"
@@ -397,6 +398,8 @@ public:
 			return;
 		}
 
+		incCounter(Stats::ClientHeaderBytesReceived, ZhttpManager::estimateRequestHeaderBytes("GET", requestData.uri, requestData.headers));
+
 		if(!route.asHost.isEmpty())
 			ProxyUtil::applyHost(&requestData.uri, route.asHost);
 
@@ -459,6 +462,10 @@ public:
 		inPendingFrames += fromSendEvent;
 
 		inSock->writeFrame(frame);
+
+		incCounter(Stats::ClientContentBytesSent, frame.data.size());
+		if(!frame.more)
+			incCounter(Stats::ClientMessagesSent);
 	}
 
 	void tryNextTarget()
@@ -573,6 +580,8 @@ public:
 
 		ProxyUtil::applyHostHeader(&requestData.headers, uri);
 
+		incCounter(Stats::ServerHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes("GET", uri, requestData.headers));
+
 		outSock->start(uri, requestData.headers);
 	}
 
@@ -582,6 +591,8 @@ public:
 
 		state = Closing;
 		inSock->respondError(code, reason, headers, body);
+
+		incCounter(Stats::ClientHeaderBytesSent, ZhttpManager::estimateResponseHeaderBytes(code, reason, headers));
 
 		logConnection(proxied, code, body.size());
 	}
@@ -606,11 +617,19 @@ public:
 
 			tryLogActivity();
 
+			incCounter(Stats::ClientContentBytesReceived, f.data.size());
+			if(!f.more)
+				incCounter(Stats::ClientMessagesReceived);
+
 			if(detached)
 				continue;
 
 			outSock->writeFrame(f);
 			outPendingBytes += f.data.size();
+
+			incCounter(Stats::ServerContentBytesSent, f.data.size());
+			if(!f.more)
+				incCounter(Stats::ServerMessagesSent);
 		}
 	}
 
@@ -621,6 +640,10 @@ public:
 			WebSocket::Frame f = outSock->readFrame();
 
 			tryLogActivity();
+
+			incCounter(Stats::ServerContentBytesReceived, f.data.size());
+			if(!f.more)
+				incCounter(Stats::ServerMessagesReceived);
 
 			if(detached && outReadInProgress == -1)
 				continue;
@@ -755,7 +778,7 @@ public:
 		if(keepAliveTimeout >= 0)
 		{
 			int timeout = keepAliveTimeout * 1000;
-			timeout = qMax(timeout - (qrand() % KEEPALIVE_RAND_MAX), 0);
+			timeout = qMax(timeout - (int)(QRandomGenerator::global()->generate() % KEEPALIVE_RAND_MAX), 0);
 			keepAliveTimer->start(timeout);
 		}
 	}
@@ -765,6 +788,12 @@ public:
 		// if idle mode, restart the timer. else leave alone
 		if(keepAliveTimer && keepAliveMode == WsControl::Idle)
 			setupKeepAlive();
+	}
+
+	void incCounter(Stats::Counter c, int count = 1)
+	{
+		if(statsManager)
+			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
 private slots:
@@ -849,6 +878,8 @@ private slots:
 
 		HttpHeaders headers = outSock->responseHeaders();
 
+		incCounter(Stats::ServerHeaderBytesReceived, ZhttpManager::estimateResponseHeaderBytes(101, outSock->responseReason(), headers));
+
 		// don't proxy extensions, as we may not know how to handle them
 		QList<QByteArray> wsExtensions = headers.takeAll("Sec-WebSocket-Extensions");
 
@@ -895,6 +926,8 @@ private slots:
 		}
 
 		inSock->respondSuccess(outSock->responseReason(), headers);
+
+		incCounter(Stats::ClientHeaderBytesSent, ZhttpManager::estimateResponseHeaderBytes(101, outSock->responseReason(), headers));
 
 		logConnection(true, 101, 0);
 

@@ -44,6 +44,7 @@
 #include "sockjsmanager.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
+#include "zhttpmanager.h"
 #include "zrpcmanager.h"
 #include "zrpcchecker.h"
 #include "inspectrequest.h"
@@ -1354,6 +1355,8 @@ void RequestSession::startResponse(int code, const QByteArray &reason, const Htt
 {
 	assert(d->state == Private::ReceivingForAccept || d->state == Private::WaitingForResponse);
 
+	emit headerBytesSent(ZhttpManager::estimateResponseHeaderBytes(code, reason, headers));
+
 	d->state = Private::RespondingStart;
 	d->responseData.code = code;
 	d->responseData.reason = reason;
@@ -1366,6 +1369,8 @@ void RequestSession::writeResponseBody(const QByteArray &body)
 {
 	assert(d->state == Private::RespondingStart || d->state == Private::Responding);
 	assert(!d->responseBodyFinished);
+
+	emit bodyBytesSent(body.size());
 
 	d->out += body;
 	d->responseUpdate();
