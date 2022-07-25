@@ -400,21 +400,21 @@ fi
 
 gen_files() {
 cat >"$1/modules.cpp" <<EOT
-#line 1 "qt52.qcm"
+#line 1 "qt5.qcm"
 /*
 -----BEGIN QCMOD-----
-name: Qt >= 5.2.0
+name: Qt >= 5.14.0
 -----END QCMOD-----
 */
-class qc_qt52 : public ConfObj
+class qc_qt5 : public ConfObj
 {
 public:
-	qc_qt52(Conf *c) : ConfObj(c) {}
-	QString name() const { return "Qt >= 5.2.0"; }
-	QString shortname() const { return "qt52"; }
+	qc_qt5(Conf *c) : ConfObj(c) {}
+	QString name() const { return "Qt >= 5.14.0"; }
+	QString shortname() const { return "qt5"; }
 	bool exec()
 	{
-		return(QT_VERSION >= 0x050200);
+		return(QT_VERSION >= 0x050e00);
 	}
 };
 #line 1 "conf.qcm"
@@ -555,7 +555,7 @@ public:
 
 EOT
 cat >"$1/modules_new.cpp" <<EOT
-    o = new qc_qt52(conf);
+    o = new qc_qt5(conf);
     o->required = true;
     o->disabled = false;
     o = new qc_conf(conf);
