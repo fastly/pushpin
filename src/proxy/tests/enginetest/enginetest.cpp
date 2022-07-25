@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Fanout, Inc.
+ * Copyright (C) 2013-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -28,6 +28,7 @@
 
 #include <unistd.h>
 #include <QtTest/QtTest>
+#include <QSignalSpy>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qzmqsocket.h"
@@ -37,8 +38,14 @@
 #include "tnetstring.h"
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
+#include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "packet/statspacket.h"
+#include "zhttpmanager.h"
+#include "statsmanager.h"
 #include "engine.h"
+
+Q_DECLARE_METATYPE(QList<StatsPacket>);
 
 // NOTE: based on proxysession hardcoded max
 #define PROXY_MAX_ACCEPT_RESPONSE_BODY 100000
@@ -64,7 +71,8 @@ public:
 	QZmq::Valve *handlerAcceptValve;
 	QZmq::Socket *handlerRetryOutSock;
 
-	int serverReqs;
+	QHash<QByteArray, HttpRequestData> serverReqs;
+	bool isWs;
 	bool serverFailed;
 	bool inspectEnabled;
 	bool inspected;
@@ -81,7 +89,7 @@ public:
 
 	Wrapper(QObject *parent) :
 		QObject(parent),
-		serverReqs(0),
+		isWs(false),
 		serverFailed(false),
 		inspectEnabled(true),
 		inspected(false),
@@ -153,7 +161,8 @@ public:
 
 	void reset()
 	{
-		serverReqs = 0;
+		serverReqs.clear();
+		isWs = false;
 		serverFailed = false;
 		inspectEnabled = true;
 		inspected = false;
@@ -191,7 +200,7 @@ private slots:
 			responses[zresp.ids.first().id].body += zresp.body;
 			in += zresp.body;
 
-			if(!zresp.more)
+			if(!isWs && !zresp.more)
 			{
 				finished = true;
 				++clientReqsFinished;
@@ -211,15 +220,25 @@ private slots:
 			msg.append(buf);
 			zhttpClientOutStreamSock->write(msg);
 		}
+		else if(zresp.type == ZhttpResponsePacket::Close)
+		{
+			finished = true;
+			++clientReqsFinished;
+		}
 	}
 
 	void zhttpServerIn_readyRead(const QList<QByteArray> &message)
 	{
-		++serverReqs;
 		log_debug("server in");
 		QVariant v = TnetString::toVariant(message[0].mid(1));
 		ZhttpRequestPacket zreq;
 		zreq.fromVariant(v);
+
+		HttpRequestData rd;
+		rd.method = zreq.method;
+		rd.uri = zreq.uri;
+		rd.headers = zreq.headers;
+		serverReqs[zreq.ids[0].id] = rd;
 
 		handleServerIn(zreq);
 	}
@@ -236,11 +255,18 @@ private slots:
 
 	void handleServerIn(const ZhttpRequestPacket &zreq)
 	{
+		if(zreq.type == ZhttpRequestPacket::Close || zreq.type == ZhttpRequestPacket::Credit)
+		{
+			return;
+		}
+
 		if(zreq.type == ZhttpRequestPacket::Cancel)
 		{
 			serverFailed = true;
 			return;
 		}
+
+		serverReqs[zreq.ids[0].id].body += zreq.body;
 
 		if(zreq.type == ZhttpRequestPacket::Data)
 			requestBody += zreq.body;
@@ -266,6 +292,40 @@ private slots:
 		zresp.from = "test-server";
 		zresp.ids += ZhttpResponsePacket::Id(zreq.ids.first().id, serverOutSeq++);
 		zresp.type = ZhttpResponsePacket::Data;
+
+		if(!isWs && zreq.uri.scheme() == "ws")
+		{
+			isWs = true;
+
+			// accept websocket
+			zresp.code = 101;
+			zresp.reason = "Switching Protocols";
+			zresp.credits = 200000;
+			QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+
+			// send message
+			zresp.ids[0].seq = serverOutSeq++;
+			zresp.credits = -1;
+			zresp.code = -1;
+			zresp.reason.clear();
+			zresp.body = "hello world";
+			buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+
+			return;
+		}
+
+		if(isWs)
+		{
+			// close
+			zresp.type = ZhttpResponsePacket::Close;
+			QByteArray buf = zreq.from + " T" + TnetString::fromVariant(zresp.toVariant());
+			zhttpServerOutSock->write(QList<QByteArray>() << buf);
+
+			return;
+		}
+
 		zresp.code = 200;
 		zresp.reason = "OK";
 
@@ -436,6 +496,18 @@ private slots:
 			hold = acceptHeaders.get("Grip-Hold");
 		}
 
+		QVariantList vheaders = vresponse["headers"].toList();
+		for(int n = 0; n < vheaders.count(); ++n)
+		{
+			QVariantList h = vheaders[n].toList();
+			if(h[0].toByteArray().startsWith("Grip-"))
+			{
+				vheaders.removeAt(n);
+				--n; // adjust position
+			}
+		}
+		vresponse["headers"] = vheaders;
+
 		QVariantHash vresp;
 		vresp["id"] = vreq["id"];
 		vresp["success"] = true;
@@ -477,9 +549,18 @@ private:
 	Engine *engine;
 	Wrapper *wrapper;
 
+private:
+	void reset()
+	{
+		wrapper->reset();
+		engine->statsManager()->flushReport(QByteArray());
+	}
+
 private slots:
 	void initTestCase()
 	{
+		qRegisterMetaType<QList<StatsPacket>>();
+
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
@@ -499,12 +580,15 @@ private slots:
 		config.inspectSpec = "ipc://inspect";
 		config.acceptSpec = "ipc://accept";
 		config.retryInSpec = "ipc://retry-out";
+		config.statsSpec = "ipc://stats";
 		config.inspectTimeout = 500;
 		config.inspectPrefetch = 5;
 		config.routesFile = "routes";
 		config.sigIss = "pushpin";
 		config.sigKey = "changeme";
 		config.connectionsMax = 20;
+		config.statsConnectionTtl = 120;
+		config.statsReportInterval = 1000; // set a large interval so there's only one working report
 		QVERIFY(engine->start(config));
 
 		wrapper->startHandler();
@@ -520,14 +604,17 @@ private slots:
 
 	void passthrough()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("1", 0);
 		zreq.type = ZhttpRequestPacket::Data;
-		zreq.uri = "http://example/path";
+		zreq.uri = "http://example/path?a=b";
 		zreq.method = "GET";
+		zreq.headers += HttpHeader("Host", "example");
 		zreq.stream = true;
 		zreq.credits = 200000;
 		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
@@ -536,12 +623,33 @@ private slots:
 		while(!wrapper->finished)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
+		QCOMPARE(wrapper->serverReqs.count(), 1);
 		QCOMPARE(wrapper->in, QByteArray("hello world"));
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 23); // "GET" + "/path?a=b" + "Host" + "example"
+		QCOMPARE(p.clientContentBytesReceived, 0);
+		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.clientContentBytesSent, 11); // "hello world"
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesReceived, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.serverContentBytesReceived, 11); // "hello world"
 	}
 
 	void passthroughWithoutInspect()
 	{
-		wrapper->reset();
+		reset();
+
 		wrapper->inspectEnabled = false;
 
 		ZhttpRequestPacket zreq;
@@ -563,7 +671,7 @@ private slots:
 
 	void passthroughJsonp()
 	{
-		wrapper->reset();
+		reset();
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -596,7 +704,7 @@ private slots:
 
 	void passthroughJsonpBasic()
 	{
-		wrapper->reset();
+		reset();
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -617,7 +725,9 @@ private slots:
 
 	void passthroughPostStream()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -635,7 +745,7 @@ private slots:
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
 		// ensure the server gets hit without finishing the request
-		while(wrapper->serverReqs < 1)
+		while(wrapper->serverReqs.count() < 1)
 			QTest::qWait(10);
 
 		// now finish the request
@@ -655,13 +765,34 @@ private slots:
 		while(!wrapper->finished)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		QCOMPARE(wrapper->requestBody, QByteArray("hello world"));
 		QCOMPARE(wrapper->responses["5"].body, QByteArray("hello world"));
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
+		QCOMPARE(p.clientContentBytesReceived, 11); // "hello world"
+		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.clientContentBytesSent, 11); // "hello world"
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 11);
+		QCOMPARE(p.serverHeaderBytesReceived, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.serverContentBytesReceived, 11); // "hello world"
 	}
 
 	void passthroughPostStreamFail()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -679,7 +810,7 @@ private slots:
 		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
 
 		// ensure the server gets hit without finishing the request
-		while(wrapper->serverReqs < 1)
+		while(wrapper->serverReqs.count() < 1)
 			QTest::qWait(10);
 
 		// now cancel the request
@@ -698,11 +829,32 @@ private slots:
 		// wait for server side to receive error
 		while(!wrapper->serverFailed)
 			QTest::qWait(10);
+
+		engine->statsManager()->flushReport(QByteArray());
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
+		QCOMPARE(p.clientContentBytesReceived, 5); // "hello"
+		QCOMPARE(p.clientHeaderBytesSent, 0);
+		QCOMPARE(p.clientContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 5); // "hello"
+		QCOMPARE(p.serverHeaderBytesReceived, 0);
+		QCOMPARE(p.serverContentBytesReceived, 0);
 	}
 
 	void acceptResponse()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -718,14 +870,35 @@ private slots:
 		while(!wrapper->finished)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		QCOMPARE(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("response"));
 		QCOMPARE(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
 		QVERIFY(wrapper->acceptIn.isEmpty());
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 22); // "GET" + "/path?hold=response"
+		QCOMPARE(p.clientContentBytesReceived, 0);
+		QCOMPARE(p.clientHeaderBytesSent, 0);
+		QCOMPARE(p.clientContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesReceived, 61); // "200" + "OK" + "Grip-Hold" + "response" + "Grip-Channel" + "test-channel" + "Content-Length" + "0"
+		QCOMPARE(p.serverContentBytesReceived, 0);
 	}
 
 	void acceptStream()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -741,15 +914,34 @@ private slots:
 		while(!wrapper->finished)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		QCOMPARE(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("stream"));
 		QCOMPARE(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
 		QCOMPARE(wrapper->acceptIn, QByteArray("stream open\n"));
 		QVERIFY(wrapper->in.isEmpty());
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 20); // "GET" + "/path?hold=stream"
+		QCOMPARE(p.clientContentBytesReceived, 0);
+		QCOMPARE(p.clientHeaderBytesSent, 0);
+		QCOMPARE(p.clientContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesReceived, 60); // "200" + "OK" + "Grip-Hold" + "stream" + "Grip-Channel" + "test-channel" + "Content-Length" + "12"
+		QCOMPARE(p.serverContentBytesReceived, 12); // "stream open\n"
 	}
 
 	void acceptResponseBodyInstruct()
 	{
-		wrapper->reset();
+		reset();
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -770,7 +962,9 @@ private slots:
 
 	void acceptNoHold()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -786,12 +980,31 @@ private slots:
 		while(!wrapper->finished)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		QCOMPARE(wrapper->in, QByteArray("hello world"));
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 18); // "GET" + "/path?hold=none"
+		QCOMPARE(p.clientContentBytesReceived, 0);
+		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.clientContentBytesSent, 11); // "hello world"
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesReceived, 54); // "200" + "OK" + "Content-Type" + "text/plain" + "Grip-Foo" + "bar" + "Content-Length" + "11"
+		QCOMPARE(p.serverContentBytesReceived, 11); // "hello world"
 	}
 
 	void acceptNoHoldBodyInstruct()
 	{
-		wrapper->reset();
+		reset();
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -812,7 +1025,9 @@ private slots:
 
 	void passthroughThenAcceptStream()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -828,16 +1043,37 @@ private slots:
 		while(!wrapper->finished)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		QCOMPARE(wrapper->in.size(), 110001);
 		QCOMPARE(wrapper->in.mid(wrapper->in.size() - 2), QByteArray("a\n"));
 		QCOMPARE(wrapper->acceptHeaders.get("Grip-Hold"), QByteArray("stream"));
 		QCOMPARE(wrapper->acceptHeaders.get("Grip-Channel"), QByteArray("test-channel"));
 		QVERIFY(wrapper->acceptIn.isEmpty());
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 31); // "GET" + "/path?hold=stream&large=true"
+		QCOMPARE(p.clientContentBytesReceived, 0);
+		QCOMPARE(p.clientHeaderBytesSent, 5); // "200" + "OK"
+		QCOMPARE(p.clientContentBytesSent, 110001);
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesReceived, 64); // "200" + "OK" + "Grip-Hold" + "stream" + "Grip-Channel" + "test-channel" + "Content-Length" + "110001"
+		QCOMPARE(p.serverContentBytesReceived, 110001);
 	}
 
 	void passthroughThenAcceptNext()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -853,21 +1089,42 @@ private slots:
 		while(!wrapper->finished)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		QCOMPARE(wrapper->in.size(), 110001);
 		QCOMPARE(wrapper->in.mid(wrapper->in.size() - 2), QByteArray("a\n"));
 		QVERIFY(wrapper->acceptIn.isEmpty());
 		QCOMPARE(wrapper->acceptHeaders.get("Grip-Link"), QByteArray("</path3>; rel=next"));
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 29); // "GET" + "/path?hold=none&large=true"
+		QCOMPARE(p.clientContentBytesReceived, 0);
+		QCOMPARE(p.clientHeaderBytesSent, 27); // "200" + "OK" + "Content-Type" + "text/plain"
+		QCOMPARE(p.clientContentBytesSent, 110001);
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesReceived, 74); // "200" + "OK" + "Content-Type" + "text/plain" + "Grip-Link" + "</path3>; rel=next" + "Content-Length" + "110001"
+		QCOMPARE(p.serverContentBytesReceived, 110001);
 	}
 
 	void acceptWithRetry()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
 		zreq.ids += ZhttpRequestPacket::Id("14", 0);
 		zreq.type = ZhttpRequestPacket::Data;
-		zreq.uri = "http://example/path2?wait=true&body-instruct=true";
+		zreq.uri = "http://example/path2?hold=response&body-instruct=true";
 		zreq.method = "GET";
 		zreq.stream = true;
 		zreq.credits = 200000;
@@ -877,12 +1134,47 @@ private slots:
 		while(!wrapper->finished)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		QCOMPARE(wrapper->in, QByteArray("hello world"));
+
+		QCOMPARE(wrapper->serverReqs.count(), 2);
+
+		QHashIterator<QByteArray, HttpRequestData> it(wrapper->serverReqs);
+		HttpRequestData req1Data = it.next().value();
+		HttpRequestData req2Data = it.next().value();
+
+		int headerBytes = 0;
+		int contentBytes = 0;
+
+		headerBytes += ZhttpManager::estimateRequestHeaderBytes(req1Data.method, req1Data.uri, req1Data.headers);
+		contentBytes += req1Data.body.size();
+
+		headerBytes += ZhttpManager::estimateRequestHeaderBytes(req2Data.method, req2Data.uri, req2Data.headers);
+		contentBytes += req2Data.body.size();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 42); // "GET" + "/path2?hold=response&body-instruct=true"
+		QCOMPARE(p.clientContentBytesReceived, 0);
+		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.clientContentBytesSent, 11); // "hello world"
+		QCOMPARE(p.serverHeaderBytesSent, headerBytes);
+		QCOMPARE(p.serverContentBytesSent, contentBytes);
+		QCOMPARE(p.serverHeaderBytesReceived, 101); // "200" + "OK + "Content-Type" + "application/grip-instruct" + "Content-Length": "94" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.serverContentBytesReceived, 105); // "{ \"hold\": { \"mode\": \"response\", \"channels\": [ { \"name\": \"test-channel\", \"prev-id\": \"1\" } ] } }" + "hello world"
 	}
 
 	void passthroughShared()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+
 		wrapper->sharingKey = "test";
 
 		ZhttpRequestPacket zreq;
@@ -913,16 +1205,38 @@ private slots:
 		while(wrapper->clientReqsFinished < 2)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		// there should have only been 1 request to the server
-		QCOMPARE(wrapper->serverReqs, 1);
+		QCOMPARE(wrapper->serverReqs.count(), 1);
 
 		QCOMPARE(wrapper->responses[id1].body, QByteArray("hello world"));
 		QCOMPARE(wrapper->responses[id2].body, QByteArray("hello world"));
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 16); // "GET" + "/path" + "GET" + "/path"
+		QCOMPARE(p.clientContentBytesReceived, 0);
+		QCOMPARE(p.clientHeaderBytesSent, 86); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.clientContentBytesSent, 22); // "hello world" + "hello world"
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 0);
+		QCOMPARE(p.serverHeaderBytesReceived, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.serverContentBytesReceived, 11); // "hello world"
 	}
 
 	void passthroughSharedPost()
 	{
-		wrapper->reset();
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+
 		wrapper->sharingKey = "test";
 
 		ZhttpRequestPacket zreq;
@@ -984,11 +1298,88 @@ private slots:
 		while(wrapper->clientReqsFinished < 2)
 			QTest::qWait(10);
 
+		engine->statsManager()->flushReport(QByteArray());
+
 		// there should have only been 1 request to the server
-		QCOMPARE(wrapper->serverReqs, 1);
+		QCOMPARE(wrapper->serverReqs.count(), 1);
 
 		QCOMPARE(wrapper->responses[id1].body, QByteArray("hello world"));
 		QCOMPARE(wrapper->responses[id2].body, QByteArray("hello world"));
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 18); // "POST" + "/path" + "POST" + "/path"
+		QCOMPARE(p.clientContentBytesReceived, 22); // "hello world" + "hello world"
+		QCOMPARE(p.clientHeaderBytesSent, 86); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.clientContentBytesSent, 22); // "hello world" + "hello world"
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes(reqData.method, reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 11); // "hello world"
+		QCOMPARE(p.serverHeaderBytesReceived, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
+		QCOMPARE(p.serverContentBytesReceived, 11); // "hello world"
+	}
+
+	void passthroughWs()
+	{
+		reset();
+
+		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+
+		ZhttpRequestPacket zreq;
+		zreq.from = "test-client";
+		zreq.ids += ZhttpRequestPacket::Id("19", 0);
+		zreq.type = ZhttpRequestPacket::Data;
+		zreq.uri = "ws://example/path";
+		zreq.stream = true;
+		zreq.credits = 200000;
+		QByteArray buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		wrapper->zhttpClientOutSock->write(QList<QByteArray>() << buf);
+		while(!wrapper->isWs)
+			QTest::qWait(10);
+
+		zreq = ZhttpRequestPacket();
+		zreq.from = "test-client";
+		zreq.type = ZhttpRequestPacket::Data;
+		zreq.body = "hello";
+
+		zreq.ids = QList<ZhttpRequestPacket::Id>() << ZhttpRequestPacket::Id("19", 1);
+		buf = 'T' + TnetString::fromVariant(zreq.toVariant());
+		log_debug("writing: %s", buf.data());
+		QList<QByteArray> msg;
+		msg.append("proxy");
+		msg.append(QByteArray());
+		msg.append(buf);
+		wrapper->zhttpClientOutStreamSock->write(msg);
+		while(!wrapper->finished)
+			QTest::qWait(10);
+
+		engine->statsManager()->flushReport(QByteArray());
+
+		QCOMPARE(wrapper->serverReqs.count(), 1);
+		QCOMPARE(wrapper->in, QByteArray("hello world"));
+
+		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
+
+		QCOMPARE(spy.count(), 1);
+
+		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
+		QCOMPARE(packets.count(), 1);
+
+		StatsPacket p = packets[0];
+		QCOMPARE(p.clientHeaderBytesReceived, 8); // "GET" + "/path"
+		QCOMPARE(p.clientContentBytesReceived, 5);
+		QCOMPARE(p.clientHeaderBytesSent, 22); // "101" + "Switching Protocols"
+		QCOMPARE(p.clientContentBytesSent, 11); // "hello world"
+		QCOMPARE(p.serverHeaderBytesSent, ZhttpManager::estimateRequestHeaderBytes("GET", reqData.uri, reqData.headers));
+		QCOMPARE(p.serverContentBytesSent, 5);
+		QCOMPARE(p.serverHeaderBytesReceived, 22); // "101" + "Switching Protocols"
+		QCOMPARE(p.serverContentBytesReceived, 11); // "hello world"
 	}
 };
 

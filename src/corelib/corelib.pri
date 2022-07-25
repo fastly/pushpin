@@ -63,6 +63,7 @@ HEADERS += \
 	$$PWD/inspectdata.h \
 	$$PWD/cors.h \
 	$$PWD/simplehttpserver.h \
+	$$PWD/stats.h \
 	$$PWD/statsmanager.h \
 	$$PWD/settings.h \
 	$$PWD/seccomp.h
@@ -81,6 +82,7 @@ SOURCES += \
 	$$PWD/statusreasons.cpp \
 	$$PWD/cors.cpp \
 	$$PWD/simplehttpserver.cpp \
+	$$PWD/stats.cpp \
 	$$PWD/statsmanager.cpp \
 	$$PWD/settings.cpp \
 	$$PWD/seccomp.cpp

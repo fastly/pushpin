@@ -307,6 +307,7 @@ public:
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);
 			stats->setConnectionTtl(config.statsConnectionTtl);
+			stats->setReportInterval(config.statsReportInterval);
 
 			if(!config.statsSpec.isEmpty())
 			{
@@ -382,7 +383,7 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, accept, logConfig, this);
+			ps = new ProxySession(zroutes, accept, logConfig, stats, this);
 			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
 			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
 			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
@@ -1004,6 +1005,11 @@ Engine::Engine(QObject *parent) :
 Engine::~Engine()
 {
 	delete d;
+}
+
+StatsManager *Engine::statsManager() const
+{
+	return d->stats;
 }
 
 bool Engine::start(const Configuration &config)

@@ -37,6 +37,7 @@ class InspectData;
 class AcceptData;
 class ZrpcManager;
 class ZRoutes;
+class StatsManager;
 class XffRule;
 class RequestSession;
 
@@ -45,7 +46,7 @@ class ProxySession : public QObject
 	Q_OBJECT
 
 public:
-	ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, QObject *parent = 0);
+	ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *stats = 0, QObject *parent = 0);
 	~ProxySession();
 
 	void setRoute(const DomainMap::Entry &route);

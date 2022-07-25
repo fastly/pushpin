@@ -30,6 +30,19 @@
 
 #include <assert.h>
 
+static bool tryGetInt(const QVariantHash &obj, const QString &name, int *result)
+{
+	if(obj.contains(name))
+	{
+		if(!obj[name].canConvert(QVariant::Int))
+			return false;
+
+		*result = obj[name].toInt();
+	}
+
+	return true;
+}
+
 QVariant StatsPacket::toVariant() const
 {
 	QVariantHash obj;
@@ -123,6 +136,31 @@ QVariant StatsPacket::toVariant() const
 			obj["blocks-sent"] = blocksSent;
 		if(duration >= 0)
 			obj["duration"] = duration;
+
+		if(clientHeaderBytesReceived >= 0)
+			obj["client-header-bytes-received"] = clientHeaderBytesReceived;
+		if(clientHeaderBytesSent >= 0)
+			obj["client-header-bytes-sent"] = clientHeaderBytesSent;
+		if(clientContentBytesReceived >= 0)
+			obj["client-content-bytes-received"] = clientContentBytesReceived;
+		if(clientContentBytesSent >= 0)
+			obj["client-content-bytes-sent"] = clientContentBytesSent;
+		if(clientMessagesReceived >= 0)
+			obj["client-messages-received"] = clientMessagesReceived;
+		if(clientMessagesSent >= 0)
+			obj["client-messages-sent"] = clientMessagesSent;
+		if(serverHeaderBytesReceived >= 0)
+			obj["server-header-bytes-received"] = serverHeaderBytesReceived;
+		if(serverHeaderBytesSent >= 0)
+			obj["server-header-bytes-sent"] = serverHeaderBytesSent;
+		if(serverContentBytesReceived >= 0)
+			obj["server-content-bytes-received"] = serverContentBytesReceived;
+		if(serverContentBytesSent >= 0)
+			obj["server-content-bytes-sent"] = serverContentBytesSent;
+		if(serverMessagesReceived >= 0)
+			obj["server-messages-received"] = serverMessagesReceived;
+		if(serverMessagesSent >= 0)
+			obj["server-messages-sent"] = serverMessagesSent;
 	}
 	else // Counts
 	{
@@ -304,6 +342,8 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 	}
 	else if(_type == "report")
 	{
+		type = Report;
+
 		if(obj.contains("connections"))
 		{
 			if(!obj["connections"].canConvert(QVariant::Int))
@@ -367,6 +407,31 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 			duration = obj["duration"].toInt();
 		}
+
+		if(!tryGetInt(obj, "client-header-bytes-received", &clientHeaderBytesReceived))
+			return false;
+		if(!tryGetInt(obj, "client-header-bytes-sent", &clientHeaderBytesSent))
+			return false;
+		if(!tryGetInt(obj, "client-content-bytes-received", &clientContentBytesReceived))
+			return false;
+		if(!tryGetInt(obj, "client-content-bytes-sent", &clientContentBytesSent))
+			return false;
+		if(!tryGetInt(obj, "client-messages-received", &clientMessagesReceived))
+			return false;
+		if(!tryGetInt(obj, "client-messages-sent", &clientMessagesSent))
+			return false;
+		if(!tryGetInt(obj, "server-header-bytes-received", &serverHeaderBytesReceived))
+			return false;
+		if(!tryGetInt(obj, "server-header-bytes-sent", &serverHeaderBytesSent))
+			return false;
+		if(!tryGetInt(obj, "server-content-bytes-received", &serverContentBytesReceived))
+			return false;
+		if(!tryGetInt(obj, "server-content-bytes-sent", &serverContentBytesSent))
+			return false;
+		if(!tryGetInt(obj, "server-messages-received", &serverMessagesReceived))
+			return false;
+		if(!tryGetInt(obj, "server-messages-sent", &serverMessagesSent))
+			return false;
 	}
 	else if(_type == "counts")
 	{

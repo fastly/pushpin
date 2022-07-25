@@ -73,6 +73,9 @@ public:
 	// for server mode, jump directly to responding state
 	ZhttpRequest *createRequestFromState(const ZhttpRequest::ServerState &state);
 
+	static int estimateRequestHeaderBytes(const QString &method, const QUrl &uri, const HttpHeaders &headers);
+	static int estimateResponseHeaderBytes(int code, const QByteArray &reason, const HttpHeaders &headers);
+
 signals:
 	void requestReady();
 	void socketReady();

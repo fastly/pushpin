@@ -34,6 +34,8 @@
 #include <QHostAddress>
 #include "xffrule.h"
 
+class StatsManager;
+
 class Engine : public QObject
 {
 	Q_OBJECT
@@ -86,6 +88,7 @@ public:
 		bool quietCheck;
 		int connectionsMax;
 		int statsConnectionTtl;
+		int statsReportInterval;
 		QString prometheusPort;
 		QString prometheusPrefix;
 
@@ -105,13 +108,16 @@ public:
 			updatesCheck("check"),
 			quietCheck(false),
 			connectionsMax(-1),
-			statsConnectionTtl(-1)
+			statsConnectionTtl(-1),
+			statsReportInterval(-1)
 		{
 		}
 	};
 
 	Engine(QObject *parent = 0);
 	~Engine();
+
+	StatsManager *statsManager() const;
 
 	bool start(const Configuration &config);
 	void reload();
