@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2022 Fanout, Inc.
+ * Copyright (C) 2013-2020 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,7 +34,6 @@
 #include <QPair>
 #include <QHash>
 #include <QDateTime>
-#include <QElapsedTimer>
 #include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
@@ -453,7 +452,7 @@ public:
 	int zwsConnectPort;
 	bool ignorePolicies;
 	QList<ControlPort> controlPorts;
-	QElapsedTimer time;
+	QTime time;
 	QTimer *statusTimer;
 	QTimer *refreshTimer;
 
@@ -483,8 +482,6 @@ public:
 
 		refreshTimer = new QTimer(this);
 		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
-
-		time.start();
 	}
 
 	~Private()

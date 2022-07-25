@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2022 Fanout, Inc.
+ * Copyright (C) 2016 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -148,7 +148,7 @@ public:
 		connect(proc, &QProcess::started, this, &Private::proc_started);
 		connect(proc, &QProcess::readyReadStandardOutput, this, &Private::proc_readyRead);
 		connect(proc, static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), this, &Private::proc_finished);
-		connect(proc, static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::errorOccurred), this, &Private::proc_errorOccurred);
+		connect(proc, static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::error), this, &Private::proc_error);
 
 		proc->setProcessChannelMode(QProcess::MergedChannels);
 		proc->setReadChannel(QProcess::StandardOutput);
@@ -202,7 +202,7 @@ private slots:
 	{
 		if(!pidFile.isEmpty())
 		{
-			if(!writePidFile(pidFile, proc->processId()))
+			if(!writePidFile(pidFile, proc->pid()))
 				log_error("failed to write pid file: %s", qPrintable(pidFile));
 		}
 
@@ -259,7 +259,7 @@ private slots:
 		emit q->stopped();
 	}
 
-	void proc_errorOccurred(QProcess::ProcessError error)
+	void proc_error(QProcess::ProcessError error)
 	{
 		if(error == QProcess::FailedToStart)
 		{
@@ -353,7 +353,7 @@ QString Service::formatLogLine(const QString &line) const {
 void Service::sendSighup()
 {
 	if(d->proc)
-		::kill(d->proc->processId(), SIGHUP);
+		::kill(d->proc->pid(), SIGHUP);
 }
 
 void Service::setName(const QString &name)

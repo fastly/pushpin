@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2015-2017 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -36,7 +36,6 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QCryptographicHash>
-#include <QRandomGenerator>
 #include "log.h"
 #include "bufferlist.h"
 #include "zhttprequest.h"
@@ -408,7 +407,7 @@ public:
 		}
 		else if(method == "GET" && s->path == "/info")
 		{
-			quint32 x = QRandomGenerator::global()->generate();
+			quint32 x = (quint32)qrand();
 
 			QVariantMap out;
 			out["websocket"] = true;
