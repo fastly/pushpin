@@ -55,6 +55,7 @@ struct Report {
     pub minutes: u64,
 
     #[serde(default)]
+    #[allow(dead_code)]
     pub received: u64,
 
     #[serde(default)]
@@ -139,7 +140,6 @@ fn process_report(r: &Report, s: Sender) -> Result<(), Box<dyn Error>> {
     s.send_count("websocket_resp_body_bytes", r.client_content_bytes_sent)?;
 
     s.send_count("fanout_conn_time_ms", r.minutes * 60_000)?;
-    s.send_count("fanout_recv_publishes", r.received)?;
     s.send_count("fanout_send_publishes", r.sent)?;
 
     Ok(())
