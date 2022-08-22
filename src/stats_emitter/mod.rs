@@ -138,8 +138,8 @@ fn process_report(r: &Report, s: Sender) -> Result<(), Box<dyn Error>> {
     s.send_count("websocket_resp_header_bytes", r.client_header_bytes_sent)?;
     s.send_count("websocket_req_body_bytes", r.client_content_bytes_received)?;
     s.send_count("websocket_resp_body_bytes", r.client_content_bytes_sent)?;
+    s.send_count("websocket_conn_time_ms", r.minutes * 60_000)?;
 
-    s.send_count("fanout_conn_time_ms", r.minutes * 60_000)?;
     s.send_count("fanout_send_publishes", r.sent)?;
 
     Ok(())
