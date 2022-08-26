@@ -65,6 +65,10 @@ struct Report {
     #[allow(dead_code)]
     pub http_response_sent: u64,
 
+    #[serde(rename(deserialize = "client-header-bytes-received"), default)]
+    #[allow(dead_code)]
+    pub client_header_bytes_received: u64,
+
     #[serde(rename(deserialize = "client-header-bytes-sent"), default)]
     pub client_header_bytes_sent: u64,
 
@@ -73,6 +77,18 @@ struct Report {
 
     #[serde(rename(deserialize = "client-content-bytes-sent"), default)]
     pub client_content_bytes_sent: u64,
+
+    #[serde(rename(deserialize = "server-header-bytes-received"), default)]
+    pub server_header_bytes_received: u64,
+
+    #[serde(rename(deserialize = "server-header-bytes-sent"), default)]
+    pub server_header_bytes_sent: u64,
+
+    #[serde(rename(deserialize = "server-content-bytes-received"), default)]
+    pub server_content_bytes_received: u64,
+
+    #[serde(rename(deserialize = "server-content-bytes-sent"), default)]
+    pub server_content_bytes_sent: u64,
 }
 
 #[derive(serde::Deserialize)]
@@ -135,12 +151,27 @@ impl Sender<'_> {
 fn process_report(r: &Report, s: Sender) -> Result<(), Box<dyn Error>> {
     debug!("report: {:?}", r);
 
-    s.send_count("websocket_resp_header_bytes", r.client_header_bytes_sent)?;
-    s.send_count("websocket_req_body_bytes", r.client_content_bytes_received)?;
-    s.send_count("websocket_resp_body_bytes", r.client_content_bytes_sent)?;
-    s.send_count("websocket_conn_time_ms", r.minutes * 60_000)?;
+    let table = [
+        ("websocket_req_body_bytes", r.client_content_bytes_received),
+        ("websocket_resp_header_bytes", r.client_header_bytes_sent),
+        ("websocket_resp_body_bytes", r.client_content_bytes_sent),
+        ("websocket_bereq_header_bytes", r.server_header_bytes_sent),
+        ("websocket_bereq_body_bytes", r.server_content_bytes_sent),
+        (
+            "websocket_beresp_header_bytes",
+            r.server_header_bytes_received,
+        ),
+        (
+            "websocket_beresp_body_bytes",
+            r.server_content_bytes_received,
+        ),
+        ("websocket_conn_time_ms", r.minutes * 60_000),
+        ("fanout_send_publishes", r.sent),
+    ];
 
-    s.send_count("fanout_send_publishes", r.sent)?;
+    for (name, value) in table {
+        s.send_count(name, value)?;
+    }
 
     Ok(())
 }
