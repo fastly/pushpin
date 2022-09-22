@@ -1,7 +1,11 @@
 [Unit]
 Description=pushpin-loader
+After=network.target
 
 [Service]
 Type=simple
 Restart=always
 ExecStart=/opt/fst-pushpin/bin/pushpin-loader --log-level 1 --loop 60 --output /opt/fst-pushpin/etc/pushpin/routes
+
+[Install]
+WantedBy=multi-user.target
