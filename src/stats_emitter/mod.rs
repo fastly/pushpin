@@ -66,7 +66,6 @@ struct Report {
     pub http_response_sent: u64,
 
     #[serde(rename(deserialize = "client-header-bytes-received"), default)]
-    #[allow(dead_code)]
     pub client_header_bytes_received: u64,
 
     #[serde(rename(deserialize = "client-header-bytes-sent"), default)]
@@ -152,6 +151,7 @@ fn process_report(r: &Report, s: Sender) -> Result<(), Box<dyn Error>> {
     debug!("report: {:?}", r);
 
     let table = [
+        ("websocket_req_header_bytes", r.client_header_bytes_received),
         ("websocket_req_body_bytes", r.client_content_bytes_received),
         ("websocket_resp_header_bytes", r.client_header_bytes_sent),
         ("websocket_resp_body_bytes", r.client_content_bytes_sent),
