@@ -19,6 +19,7 @@ PKG_VERSION = '1.0.0'
 PUSHPIN_ENABLED_FLAG = 'loader-pushpin-enabled'
 GRIP_ENABLED_FLAG = 'loader-pushpin-grip-enabled'
 WOH_ENABLED_FLAG = 'loader-pushpin-woh-enabled'
+ACO_ENABLED_FLAG = 'loader-pushpin-aco-enabled'
 GRIP_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-grip-enabled:'
 WOH_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-woh-enabled:'
 
@@ -27,10 +28,12 @@ Response = namedtuple('Response', 'status data etag')
 
 
 class Service:
-    def __init__(self, data, grip_enabled, woh_enabled, backend_flags):
+    def __init__(self, data, grip_enabled, woh_enabled, aco_enabled, backend_flags):
         self.data = data
+        self.id = data['service']
         self.grip_enabled = grip_enabled
         self.woh_enabled = woh_enabled
+        self.aco_enabled = aco_enabled
         self.backend_flags = backend_flags
 
 
@@ -144,6 +147,7 @@ def fetch_service_backends():
         pushpin_enabled = features.get(PUSHPIN_ENABLED_FLAG, '0') == '1'
         grip_enabled = features.get(GRIP_ENABLED_FLAG, '0') == '1'
         woh_enabled = features.get(WOH_ENABLED_FLAG, '0') == '1'
+        aco_enabled = features.get(ACO_ENABLED_FLAG, '0') == '1'
 
         backend_flags = {}
 
@@ -165,14 +169,14 @@ def fetch_service_backends():
             backend_flags[backend_name][flag] = v
 
         if pushpin_enabled:
-            pushpin_services.append(Service(service, grip_enabled, woh_enabled, backend_flags))
+            pushpin_services.append(Service(service, grip_enabled, woh_enabled, aco_enabled, backend_flags))
 
     logging.debug('found {} services with pushpin enabled'.format(len(pushpin_services)))
 
     service_backends = {}
 
     for (i, service) in enumerate(pushpin_services):
-        service_id = service.data['service']
+        service_id = service.id
         version = service.data['version']
 
         logging.debug('fetching backends for service {} ({}/{})'.format(service_id,
@@ -197,13 +201,13 @@ def fetch_service_backends():
             if service.woh_enabled:
                 backend['loader-woh-enabled'] = '1'
 
-        service_backends[service_id] = backends
+        service_backends[service_id] = (service, backends)
 
     return service_backends
 
 
-def make_routes(service_id, backend):
-    service_id = validate_id(service_id)
+def make_routes(service, backend):
+    service_id = validate_id(service.id)
     backend_name = validate_id(backend['name'])
     host = validate_host(backend['address'])
 
@@ -223,9 +227,13 @@ def make_routes(service_id, backend):
     routes = []
 
     if int(backend.get('loader-grip-enabled', '0')):
-        routes.append('id={}:{},prefix=g:ck:{}: {}'.format(service_id, backend_name, service_id, target))
-        routes.append('id=ht:{}:{},prefix=g:ck:{}: {}'.format(service_id, backend_name, service_id, target))
-        routes.append('id=ws:{}:{},prefix=g:ck:{}: {}'.format(service_id, backend_name, service_id, target))
+        cond_opts = 'prefix=g:ck:{}:'.format(service_id)
+        if service.aco_enabled:
+            cond_opts += ',aco'
+
+        routes.append('id={}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id=ht:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id=ws:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
     else:
         routes.append('id={}:{},no_grip {}'.format(service_id, backend_name, target))
         routes.append('id=ws:{}:{},no_grip {}'.format(service_id, backend_name, target))
@@ -266,13 +274,13 @@ def update_routes(routes_file):
 
     routes.append('pushpin.healthcheck.test test')
 
-    for (service_id, backends) in fetch_service_backends().items():
+    for service, backends in fetch_service_backends().values():
         for backend in backends:
             try:
-                routes.extend(make_routes(service_id, backend))
+                routes.extend(make_routes(service, backend))
             except Exception as e:
                 logging.warning(
-                    'failed to make route for service {} backend {}: {}'.format(service_id, repr(backend['name']), e))
+                    'failed to make route for service {} backend {}: {}'.format(service.id, repr(backend['name']), e))
 
     if write_routes(routes, routes_file):
         logging.info('wrote {}'.format(routes_file))
