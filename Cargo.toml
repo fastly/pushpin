@@ -13,6 +13,7 @@ panic = "abort"
 [dependencies]
 base64 = "0.12"
 clap = { version = "2.33", features = ["wrap_help"] }
+jsonwebtoken = "8"
 libc = "0.2"
 log = "0.4"
 rustls = "0.19"

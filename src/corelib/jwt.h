@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,9 +29,62 @@
 #ifndef JWT_H
 #define JWT_H
 
+#include <QByteArray>
 #include <QVariant>
 
+class QString;
+
 namespace Jwt {
+
+// NOTE: must match values on the rust side
+enum Algorithm
+{
+	HS256 = 0,
+	ES256 = 1,
+	RS256 = 2,
+};
+
+class EncodingKey
+{
+public:
+	~EncodingKey();
+
+	bool isNull() const { return (bool)(!raw_); }
+	const void *raw() const { return raw_; }
+
+	static EncodingKey fromSecret(const QByteArray &key);
+	static EncodingKey fromEcPem(const QByteArray &key);
+	static EncodingKey fromEcPemFile(const QString &fileName);
+
+private:
+	void *raw_;
+
+	EncodingKey() { raw_ = 0; }
+};
+
+class DecodingKey
+{
+public:
+	~DecodingKey();
+
+	bool isNull() const { return (bool)(!raw_); }
+	const void *raw() const { return raw_; }
+
+	static DecodingKey fromSecret(const QByteArray &key);
+	static DecodingKey fromEcPem(const QByteArray &key);
+	static DecodingKey fromEcPemFile(const QString &fileName);
+
+private:
+	void *raw_;
+
+	DecodingKey() { raw_ = 0; }
+};
+
+// returns token, null on error
+QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const EncodingKey &key);
+
+// returns claim, null on error
+QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const DecodingKey &key);
 
 QByteArray encode(const QVariant &claim, const QByteArray &key);
 QVariant decode(const QByteArray &token, const QByteArray &key);

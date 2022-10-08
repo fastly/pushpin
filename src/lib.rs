@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Fanout, Inc.
+ * Copyright (C) 2021-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -27,6 +27,7 @@
  */
 
 pub mod ffi;
+pub mod jwt;
 pub mod list;
 pub mod publish_cli;
 pub mod timer;

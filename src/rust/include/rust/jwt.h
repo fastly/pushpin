@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Fanout, Inc.
+ * Copyright (C) 2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,26 +26,31 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef RUST_TIMER_H
-#define RUST_TIMER_H
+#ifndef RUST_JWT_H
+#define RUST_JWT_H
 
 #include <QtGlobal>
 
 extern "C"
 {
-	struct ExpiredTimer
+	struct JwtBuffer
 	{
-		int key;
-		size_t user_data;
+		quint8 *data;
+		size_t len;
 	};
 
-	void *timer_wheel_create(unsigned int capacity);
-	void timer_wheel_destroy(void *wheel);
-	int timer_add(void *wheel, quint64 expires, size_t user_data);
-	void timer_remove(void *wheel, int key);
-	qint64 timer_wheel_timeout(void *wheel);
-	void timer_wheel_update(void *wheel, quint64 curtime);
-	ExpiredTimer timer_wheel_take_expired(void *wheel);
+	void *jwt_encoding_key_from_secret(const quint8 *data, size_t len);
+	void *jwt_encoding_key_from_ec_pem(const quint8 *data, size_t len);
+	void jwt_encoding_key_destroy(void *key);
+
+	void *jwt_decoding_key_from_secret(const quint8 *data, size_t len);
+	void *jwt_decoding_key_from_ec_pem(const quint8 *data, size_t len);
+	void jwt_decoding_key_destroy(void *key);
+
+	void jwt_str_destroy(char *s);
+
+	int jwt_encode(int alg, const char *claim, const void *key, char **out_token);
+	int jwt_decode(int alg, const char *token, const void *key, char **out_claim);
 }
 
 #endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2012-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -28,126 +28,127 @@
 
 #include "jwt.h"
 
+#include <QString>
+#include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QMessageAuthenticationCode>
-#include "log.h"
-
-static QByteArray base64url(const QByteArray &in)
-{
-	QByteArray b64 = in.toBase64();
-
-	// trim trailing padding
-	int at = b64.indexOf('=');
-	if(at != -1)
-		b64 = b64.mid(0, at);
-
-	// character substitution
-	for(int n = 0; n < b64.size(); ++n)
-	{
-		if(b64[n] == '+')
-			b64[n] = '-';
-		else if(b64[n] == '/')
-			b64[n] = '_';
-	}
-
-	return b64;
-}
-
-static QByteArray unbase64url(const QByteArray &in)
-{
-	QByteArray b64 = in;
-
-	// add padding
-	int need = b64.size() % 4;
-	for(int n = 0; n < need; ++n)
-		b64 += '=';
-
-	// character substitution
-	for(int n = 0; n < b64.size(); ++n)
-	{
-		if(b64[n] == '-')
-			b64[n] = '+';
-		else if(b64[n] == '_')
-			b64[n] = '/';
-	}
-
-	return QByteArray::fromBase64(b64);
-}
-
-static QByteArray jws_sign(const QByteArray &header, const QByteArray &claim, const QByteArray &key)
-{
-	QByteArray si = header + '.' + claim;
-	return base64url(QMessageAuthenticationCode::hash(si, key, QCryptographicHash::Sha256));
-}
+#include "rust/jwt.h"
 
 namespace Jwt {
 
+EncodingKey::~EncodingKey()
+{
+	jwt_encoding_key_destroy(raw_);
+}
+
+EncodingKey EncodingKey::fromSecret(const QByteArray &key)
+{
+	EncodingKey k;
+	k.raw_ = jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size());
+	return k;
+}
+
+EncodingKey EncodingKey::fromEcPem(const QByteArray &key)
+{
+	EncodingKey k;
+	k.raw_ = jwt_encoding_key_from_ec_pem((const quint8 *)key.data(), key.size());
+	return k;
+}
+
+EncodingKey EncodingKey::fromEcPemFile(const QString &fileName)
+{
+	QFile f(fileName);
+	if(!f.open(QFile::ReadOnly))
+	{
+		return EncodingKey();
+	}
+
+	return fromEcPem(f.readAll());
+}
+
+DecodingKey::~DecodingKey()
+{
+	jwt_decoding_key_destroy(raw_);
+}
+
+DecodingKey DecodingKey::fromSecret(const QByteArray &key)
+{
+	DecodingKey k;
+	k.raw_ = jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size());
+	return k;
+}
+
+DecodingKey DecodingKey::fromEcPem(const QByteArray &key)
+{
+	DecodingKey k;
+	k.raw_ = jwt_decoding_key_from_ec_pem((const quint8 *)key.data(), key.size());
+	return k;
+}
+
+DecodingKey DecodingKey::fromEcPemFile(const QString &fileName)
+{
+	QFile f(fileName);
+	if(!f.open(QFile::ReadOnly))
+	{
+		return DecodingKey();
+	}
+
+	return fromEcPem(f.readAll());
+}
+
+QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const EncodingKey &key)
+{
+	char *token;
+
+	if(jwt_encode((int)alg, (const char *)claim.data(), key.raw(), &token) != 0)
+	{
+		// error
+		return QByteArray();
+	}
+
+	QByteArray out = QByteArray(token);
+	jwt_str_destroy(token);
+
+	return out;
+}
+
+QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const DecodingKey &key)
+{
+	char *claim;
+
+	if(jwt_decode((int)alg, (const char *)token.data(), key.raw(), &claim) != 0)
+	{
+		// error
+		return QByteArray();
+	}
+
+	QByteArray out = QByteArray(claim);
+	jwt_str_destroy(claim);
+
+	return out;
+}
+
 QByteArray encode(const QVariant &claim, const QByteArray &key)
 {
-	QVariantMap header;
-	header["typ"] = "JWT";
-	header["alg"] = "HS256";
-	QByteArray headerJson = QJsonDocument(QJsonObject::fromVariantMap(header)).toJson(QJsonDocument::Compact);
-	if(headerJson.isNull())
-		return QByteArray();
-
 	QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim.toMap())).toJson(QJsonDocument::Compact);
 	if(claimJson.isNull())
 		return QByteArray();
 
-	QByteArray headerPart = base64url(headerJson);
-	QByteArray claimPart = base64url(claimJson);
-
-	QByteArray sig = jws_sign(headerPart, claimPart, key);
-
-	return headerPart + '.' + claimPart + '.' + sig;
+	return encodeWithAlgorithm(HS256, claimJson, EncodingKey::fromSecret(key));
 }
 
 QVariant decode(const QByteArray &token, const QByteArray &key)
 {
-	int at = token.indexOf('.');
-	if(at == -1)
-		return QVariant();
-
-	QByteArray headerPart = token.mid(0, at);
-
-	++at;
-	int start = at;
-	at = token.indexOf('.', start);
-	if(at == -1)
-		return QVariant();
-
-	QByteArray claimPart = token.mid(start, at - start);
-	QByteArray sig = token.mid(at + 1);
-
-	QByteArray headerJson = unbase64url(headerPart);
-	if(headerJson.isEmpty())
-		return QVariant();
-
-	QJsonParseError error;
-	QJsonDocument doc = QJsonDocument::fromJson(headerJson, &error);
-	if(error.error != QJsonParseError::NoError || !doc.isObject())
-		return QVariant();
-
-	QVariantMap header = doc.object().toVariantMap();
-	if(header.value("typ").toString() != "JWT" || header.value("alg").toString() != "HS256")
-		return QVariant();
-
-	QByteArray claimJson = unbase64url(claimPart);
+	QByteArray claimJson = decodeWithAlgorithm(HS256, token, DecodingKey::fromSecret(key));
 	if(claimJson.isEmpty())
 		return QVariant();
 
-	doc = QJsonDocument::fromJson(claimJson, &error);
+	QJsonParseError error;
+	QJsonDocument doc = QJsonDocument::fromJson(claimJson, &error);
 	if(error.error != QJsonParseError::NoError || !doc.isObject())
 		return QVariant();
 
-	QVariant claim = doc.object().toVariantMap();
-
-	if(jws_sign(headerPart, claimPart, key) != sig)
-		return QVariant();
-
-	return claim;
+	return doc.object().toVariantMap();
 }
 
 }
