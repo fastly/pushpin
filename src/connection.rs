@@ -304,9 +304,12 @@ struct Range {
 }
 
 impl Range {
-    fn from_slice<T: AsRef<[u8]>>(base: &[u8], s: T) -> Self {
+    // SAFETY: s must be derived from base
+    unsafe fn from_slice<T: AsRef<[u8]>>(base: &[u8], s: T) -> Self {
         let sref = s.as_ref();
-        let start = (sref.as_ptr() as usize) - (base.as_ptr() as usize);
+
+        let start = usize::try_from(sref.as_ptr().offset_from(base.as_ptr()))
+            .expect("start index is negative");
         let end = start + sref.len();
 
         // panic if the indexes don't fit in a u32 (4GB). nobody should ever
@@ -591,16 +594,20 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
                     let hbuf = self.r.buf1.read_buf();
 
                     *ranges = RequestHeaderRanges {
-                        method: Range::from_slice(hbuf, req.method),
-                        uri: Range::from_slice(hbuf, req.uri),
+                        // SAFETY: req.method is derived from hbuf
+                        method: unsafe { Range::from_slice(hbuf, req.method) },
+                        // SAFETY: req.uri is derived from hbuf
+                        uri: unsafe { Range::from_slice(hbuf, req.uri) },
                         headers: [EMPTY_HEADER_RANGES; HEADERS_MAX],
                         headers_count: req.headers.len(),
                     };
 
                     for (i, h) in req.headers.iter().enumerate() {
                         ranges.headers[i] = HeaderRanges {
-                            name: Range::from_slice(hbuf, h.name),
-                            value: Range::from_slice(hbuf, h.value),
+                            // SAFETY: h.name is derived from hbuf
+                            name: unsafe { Range::from_slice(hbuf, h.name) },
+                            // SAFETY: h.value is derived from hbuf
+                            value: unsafe { Range::from_slice(hbuf, h.value) },
                         };
                     }
 
