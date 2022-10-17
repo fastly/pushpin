@@ -267,7 +267,8 @@ public:
 			ConnectionConnected,
 			ConnectionMinute,
 			MessageReceived,
-			MessageSent
+			MessageSent,
+			TestMetric
 		};
 
 		Type mtype;
@@ -356,6 +357,7 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::ConnectionMinute, "connection_minute", "counter", "Number of minutes clients have been connected");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageReceived, "message_received", "counter", "Number of messages received by the publish API");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::TestMetric,"test_metric", "counter", "[TEST_METRIC] Number of messages sent to clients");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 	}
@@ -1219,6 +1221,7 @@ private slots:
 				case PrometheusMetric::ConnectionMinute: value = QVariant(combinedReport.connectionsMinutes); break;
 				case PrometheusMetric::MessageReceived: value = QVariant(combinedReport.messagesReceived); break;
 				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
+				case PrometheusMetric::TestMetric: value = QVariant(combinedReport.counters.get(Stats::ClientMessagesSent)); break;
 			}
 
 			if(value.isNull())
