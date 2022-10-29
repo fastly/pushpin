@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::cmp;
 use std::io;
 use std::io::{Read, Write};
+use std::mem;
 use std::rc::Rc;
 
 pub const VECTORED_MAX: usize = 8;
@@ -465,6 +466,41 @@ impl RingBuffer {
         self.end = size;
 
         size
+    }
+
+    // extract inner buffer, aligning it first if necessary, and replace it
+    // with an empty buffer. this should be cheap if the inner buffer is
+    // already aligned. afterwards, the ringbuffer will have a capacity of
+    // zero and will be essentially unusable until set_inner is called with a
+    // non-empty buffer
+    pub fn take_inner(&mut self) -> FilledBuf {
+        self.align();
+
+        let data = mem::take(&mut self.buf);
+        let filled = self.end;
+        self.end = 0;
+
+        FilledBuf::new(data, filled)
+    }
+
+    // replace the inner buffer. this should be cheap if the original inner
+    // buffer is empty, which is the case if take_inner was called earlier.
+    // panics if the new buffer is larger than the tmp buffer
+    pub fn set_inner(&mut self, buf: FilledBuf) {
+        let filled = buf.filled_len();
+        let data = buf.into_inner();
+
+        assert!(data.len() <= self.tmp.len());
+
+        self.buf = data;
+        self.start = 0;
+        self.end = filled;
+    }
+
+    pub fn swap_inner(&mut self, other: &mut Self) {
+        let buf = self.take_inner();
+        self.set_inner(other.take_inner());
+        other.set_inner(buf);
     }
 }
 
