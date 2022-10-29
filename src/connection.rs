@@ -50,7 +50,6 @@ use sha1::{Digest, Sha1};
 use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::VecDeque;
-use std::convert::TryFrom;
 use std::future::Future;
 use std::io;
 use std::io::Write;
@@ -296,72 +295,6 @@ impl From<websocket::Error> for ServerError {
     }
 }
 
-// our own range-like struct that supports copying
-#[derive(Clone, Copy, Default)]
-struct Range {
-    start: u32,
-    end: u32,
-}
-
-impl Range {
-    // SAFETY: s must be derived from base
-    unsafe fn from_slice<T: AsRef<[u8]>>(base: &[u8], s: T) -> Self {
-        let sref = s.as_ref();
-
-        let start = usize::try_from(sref.as_ptr().offset_from(base.as_ptr()))
-            .expect("start index is negative");
-        let end = start + sref.len();
-
-        // panic if the indexes don't fit in a u32 (4GB). nobody should ever
-        // set such a large buffer size, so this should never happen
-        let start = u32::try_from(start).expect("start index greater than u32");
-        let end = u32::try_from(end).expect("end index greater than u32");
-
-        Self {
-            start: start as u32,
-            end: end as u32,
-        }
-    }
-
-    fn to_slice<'a>(&self, base: &'a [u8]) -> &'a [u8] {
-        &base[(self.start as usize)..(self.end as usize)]
-    }
-
-    unsafe fn to_str_unchecked<'a>(&self, base: &'a [u8]) -> &'a str {
-        str::from_utf8_unchecked(&base[(self.start as usize)..(self.end as usize)])
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-struct HeaderRanges {
-    name: Range,
-    value: Range,
-}
-
-const EMPTY_HEADER_RANGES: HeaderRanges = HeaderRanges {
-    name: Range { start: 0, end: 0 },
-    value: Range { start: 0, end: 0 },
-};
-
-#[derive(Clone, Copy)]
-struct RequestHeaderRanges {
-    method: Range,
-    uri: Range,
-    headers: [HeaderRanges; HEADERS_MAX],
-    headers_count: usize,
-}
-
-impl Default for RequestHeaderRanges {
-    fn default() -> Self {
-        Self {
-            method: Range::default(),
-            uri: Range::default(),
-            headers: [EMPTY_HEADER_RANGES; HEADERS_MAX],
-            headers_count: 0,
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 struct MessageItem {
     mtype: u8,
@@ -563,66 +496,47 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
     }
 
     // read from stream into buf, and parse buf as a request header
-    async fn recv_request(
+    async fn recv_request<'b: 'c, 'c, const N: usize>(
         mut self,
-        ranges: &'a mut RequestHeaderRanges,
-    ) -> Result<RequestHeader<'a, R, W>, ServerError> {
+        mut scratch: &'b mut http1::RequestScratch<N>,
+        req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
+    ) -> Result<RequestHeader<'a, 'b, 'c, R, W, N>, ServerError> {
         let mut protocol = http1::ServerProtocol::new();
 
         assert_eq!(protocol.state(), http1::ServerState::ReceivingRequest);
 
         loop {
             {
-                let mut hbuf = io::Cursor::new(self.r.buf1.read_buf());
+                let hbuf = self.r.buf1.take_inner();
 
-                let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
+                match protocol.recv_request_owned(hbuf, scratch) {
+                    http1::RecvRequestStatus::Complete(req) => {
+                        assert!([
+                            http1::ServerState::ReceivingBody,
+                            http1::ServerState::AwaitingResponse
+                        ]
+                        .contains(&protocol.state()));
 
-                if let Some(ret) = protocol.recv_request(&mut hbuf, &mut headers) {
-                    let req = match ret {
-                        Ok(req) => req,
-                        Err(e) => return Err(e.into()),
-                    };
+                        *req_mem = Some(req);
 
-                    assert!([
-                        http1::ServerState::ReceivingBody,
-                        http1::ServerState::AwaitingResponse
-                    ]
-                    .contains(&protocol.state()));
-
-                    let hsize = hbuf.position() as usize;
-
-                    let hbuf = self.r.buf1.read_buf();
-
-                    *ranges = RequestHeaderRanges {
-                        // SAFETY: req.method is derived from hbuf
-                        method: unsafe { Range::from_slice(hbuf, req.method) },
-                        // SAFETY: req.uri is derived from hbuf
-                        uri: unsafe { Range::from_slice(hbuf, req.uri) },
-                        headers: [EMPTY_HEADER_RANGES; HEADERS_MAX],
-                        headers_count: req.headers.len(),
-                    };
-
-                    for (i, h) in req.headers.iter().enumerate() {
-                        ranges.headers[i] = HeaderRanges {
-                            // SAFETY: h.name is derived from hbuf
-                            name: unsafe { Range::from_slice(hbuf, h.name) },
-                            // SAFETY: h.value is derived from hbuf
-                            value: unsafe { Range::from_slice(hbuf, h.value) },
-                        };
+                        break Ok(RequestHeader {
+                            r: self.r,
+                            w: self.w,
+                            protocol,
+                            req_mem,
+                        });
                     }
+                    http1::RecvRequestStatus::Incomplete(hbuf, ret_scratch) => {
+                        // NOTE: after polonius it may not be necessary for
+                        // scratch to be returned
+                        scratch = ret_scratch;
+                        self.r.buf1.set_inner(hbuf);
+                    }
+                    http1::RecvRequestStatus::Error(e, hbuf, _) => {
+                        self.r.buf1.set_inner(hbuf);
 
-                    let body_size = req.body_size;
-                    let expect_100 = req.expect_100;
-
-                    break Ok(RequestHeader {
-                        r: self.r,
-                        w: self.w,
-                        protocol,
-                        hsize,
-                        ranges,
-                        body_size,
-                        expect_100,
-                    });
+                        return Err(e.into());
+                    }
                 }
             }
 
@@ -637,123 +551,110 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
     }
 }
 
-fn request_from_ranges<'buf, 'headers>(
-    buf: &'buf [u8],
-    ranges: &RequestHeaderRanges,
-    body_size: http1::BodySize,
-    expect_100: bool,
-    scratch: &'headers mut [httparse::Header<'buf>; HEADERS_MAX],
-) -> http1::Request<'buf, 'headers> {
-    let method = unsafe { ranges.method.to_str_unchecked(buf) };
-    let uri = unsafe { ranges.uri.to_str_unchecked(buf) };
-
-    let ranges_headers = &ranges.headers[..ranges.headers_count];
-
-    for (i, h) in ranges_headers.iter().enumerate() {
-        scratch[i].name = unsafe { h.name.to_str_unchecked(buf) };
-        scratch[i].value = h.value.to_slice(buf);
-    }
-
-    let headers = &scratch[..ranges.headers_count];
-
-    http1::Request {
-        method,
-        uri,
-        headers,
-        body_size,
-        expect_100,
-    }
-}
-
-struct RequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
+struct RequestHeader<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> {
     r: HttpRead<'a, R>,
     w: HttpWrite<'a, W>,
     protocol: http1::ServerProtocol,
-    hsize: usize,
-    ranges: &'a mut RequestHeaderRanges,
-    body_size: http1::BodySize,
-    expect_100: bool,
+    req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
 }
 
-impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
-    fn request<'headers>(
-        &'buf self,
-        scratch: &'headers mut [httparse::Header<'buf>; HEADERS_MAX],
-    ) -> http1::Request<'buf, 'headers> {
-        request_from_ranges(
-            self.r.buf1.read_buf(),
-            self.ranges,
-            self.body_size,
-            self.expect_100,
-            scratch,
-        )
+impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 'b, 'c, R, W, N> {
+    fn request(&self) -> http1::Request {
+        self.req_mem.as_ref().unwrap().get()
     }
 
-    async fn start_recv_body(self) -> Result<RequestRecvBody<'a, R, W>, ServerError> {
-        let (recv_body, _) = self.start_recv_body_inner().await?;
+    async fn start_recv_body(mut self) -> Result<RequestRecvBody<'a, R, W>, ServerError> {
+        self.handle_expect().await?;
 
-        Ok(recv_body)
+        // restore the read ringbuffer
+        self.discard_request();
+
+        Ok(self.into_recv_body().0)
     }
 
     async fn start_recv_body_and_keep_header(
         mut self,
-    ) -> Result<RequestRecvBodyKeepHeader<'a, R, W>, ServerError> {
-        self.move_header()?;
+    ) -> Result<RequestRecvBodyKeepHeader<'a, 'b, 'c, R, W, N>, ServerError> {
+        self.handle_expect().await?;
 
-        let body_size = self.body_size;
-        let expect_100 = self.expect_100;
+        // we're keeping the request, so put any remaining bytes into buf2
+        // and swap the inner buffers. those bytes will then become readable
+        // from buf1. we'll plan to give the request's inner buffer to buf2
+        // after the request is no longer needed
+        let req = self.req_mem.as_ref().unwrap();
+        self.r.buf2.write(req.remaining_bytes())?;
+        self.r.buf1.swap_inner(self.r.buf2);
 
-        let (recv_body, ranges) = self.start_recv_body_inner().await?;
+        let (recv_body, req_mem) = self.into_recv_body();
 
         Ok(RequestRecvBodyKeepHeader {
             inner: recv_body,
-            ranges,
-            body_size,
-            expect_100,
+            req_mem,
         })
     }
 
     fn recv_done(mut self) -> Result<RequestStartResponse<'a, R, W>, ServerError> {
-        self.clear_header();
+        // restore the read ringbuffer
+        self.discard_request();
 
         Ok(RequestStartResponse::new(self.r, self.w, self.protocol))
     }
 
-    async fn start_recv_body_inner(
-        mut self,
-    ) -> Result<(RequestRecvBody<'a, R, W>, &'a mut RequestHeaderRanges), ServerError> {
-        self.clear_header();
-
-        if self.expect_100 {
-            let mut cont = [0; 32];
-
-            let cont = {
-                let mut c = io::Cursor::new(&mut cont[..]);
-
-                if let Err(e) = self.protocol.send_100_continue(&mut c) {
-                    return Err(e.into());
-                }
-
-                let size = c.position() as usize;
-
-                &cont[..size]
-            };
-
-            let mut left = cont.len();
-
-            while left > 0 {
-                let pos = cont.len() - left;
-
-                let size = match self.w.stream.write(&cont[pos..]).await {
-                    Ok(size) => size,
-                    Err(e) => return Err(e.into()),
-                };
-
-                left -= size;
-            }
+    // this method requires the request to exist
+    async fn handle_expect(&mut self) -> Result<(), ServerError> {
+        if !self.request().expect_100 {
+            return Ok(());
         }
 
-        Ok((
+        let mut cont = [0; 32];
+
+        let cont = {
+            let mut c = io::Cursor::new(&mut cont[..]);
+
+            if let Err(e) = self.protocol.send_100_continue(&mut c) {
+                return Err(e.into());
+            }
+
+            let size = c.position() as usize;
+
+            &cont[..size]
+        };
+
+        let mut left = cont.len();
+
+        while left > 0 {
+            let pos = cont.len() - left;
+
+            let size = match self.w.stream.write(&cont[pos..]).await {
+                Ok(size) => size,
+                Err(e) => return Err(e.into()),
+            };
+
+            left -= size;
+        }
+
+        Ok(())
+    }
+
+    // consumes request and gives the inner buffer back to buf1
+    fn discard_request(&mut self) {
+        let req = self.req_mem.take().unwrap();
+
+        let remaining_len = req.remaining_bytes().len();
+        let inner_buf = req.into_buf();
+        let hsize = inner_buf.filled_len() - remaining_len;
+
+        self.r.buf1.set_inner(inner_buf);
+        self.r.buf1.read_commit(hsize);
+    }
+
+    fn into_recv_body(
+        self,
+    ) -> (
+        RequestRecvBody<'a, R, W>,
+        &'c mut Option<http1::OwnedRequest<'b, N>>,
+    ) {
+        (
             RequestRecvBody {
                 r: RefCell::new(RecvBodyRead {
                     stream: self.r.stream,
@@ -763,26 +664,8 @@ impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
                 buf2: self.r.buf2,
                 protocol: RefCell::new(self.protocol),
             },
-            self.ranges,
-        ))
-    }
-
-    fn move_header(&mut self) -> Result<(), ServerError> {
-        let hbuf = self.r.buf1.read_buf();
-
-        // move header data to buf2
-        if let Err(e) = self.r.buf2.write_all(&hbuf[..self.hsize]) {
-            return Err(e.into());
-        }
-
-        self.clear_header();
-
-        Ok(())
-    }
-
-    fn clear_header(&mut self) {
-        self.r.buf1.read_commit(self.hsize);
-        self.hsize = 0;
+            self.req_mem,
+        )
     }
 }
 
@@ -920,25 +803,16 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
     }
 }
 
-struct RequestRecvBodyKeepHeader<'a, R: AsyncRead, W: AsyncWrite> {
+struct RequestRecvBodyKeepHeader<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> {
     inner: RequestRecvBody<'a, R, W>,
-    ranges: &'a RequestHeaderRanges,
-    body_size: http1::BodySize,
-    expect_100: bool,
+    req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
 }
 
-impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestRecvBodyKeepHeader<'a, R, W> {
-    fn request<'headers>(
-        &'buf self,
-        scratch: &'headers mut [httparse::Header<'buf>; HEADERS_MAX],
-    ) -> http1::Request<'buf, 'headers> {
-        request_from_ranges(
-            self.inner.buf2.read_buf(),
-            self.ranges,
-            self.body_size,
-            self.expect_100,
-            scratch,
-        )
+impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize>
+    RequestRecvBodyKeepHeader<'a, 'b, 'c, R, W, N>
+{
+    fn request(&self) -> http1::Request {
+        self.req_mem.as_ref().unwrap().get()
     }
 
     async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, ServerError> {
@@ -946,6 +820,12 @@ impl<'buf, 'a: 'buf, R: AsyncRead, W: AsyncWrite> RequestRecvBodyKeepHeader<'a, 
     }
 
     fn recv_done(self) -> RequestStartResponse<'a, R, W> {
+        // the request is no longer needed, so give its inner buffer to buf2
+        // and clear it
+        let buf = self.req_mem.take().unwrap().into_buf();
+        self.inner.buf2.set_inner(buf);
+        self.inner.buf2.clear();
+
         self.inner.recv_done()
     }
 }
@@ -1719,13 +1599,14 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     let stream = RefCell::new(stream);
 
     let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
-    let mut ranges = RequestHeaderRanges::default();
+    let mut scratch = http1::RequestScratch::<HEADERS_MAX>::new();
+    let mut req_mem = None;
 
     // receive request header
 
     // ABR: discard_while
     let handler = {
-        let fut = handler.recv_request(&mut ranges);
+        let fut = handler.recv_request(&mut scratch, &mut req_mem);
         pin_mut!(fut);
 
         match discard_while(zreceiver, fut).await {
@@ -1740,8 +1621,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     // log request
 
     {
-        let mut scratch = [httparse::EMPTY_HEADER; HEADERS_MAX];
-        let req = handler.request(&mut scratch);
+        let req = handler.request();
         let host = get_host(req.headers);
         let scheme = if secure { "https" } else { "http" };
 
@@ -1780,8 +1660,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     // determine how to respond
 
     let msg = {
-        let mut scratch = [httparse::EMPTY_HEADER; HEADERS_MAX];
-        let req = handler.request(&mut scratch);
+        let req = handler.request();
 
         let mut websocket = false;
 
@@ -2125,10 +2004,10 @@ where
     }
 }
 
-async fn stream_recv_body<'a, R1, R2, R, W>(
+async fn stream_recv_body<'a, 'b, 'c, R1, R2, R, W, const N: usize>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
-    handler: RequestHeader<'a, R, W>,
+    handler: RequestHeader<'a, 'b, 'c, R, W, N>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<RequestStartResponse<'a, R, W>, ServerError>
@@ -2748,7 +2627,8 @@ where
     let recv_buf_size = buf2.capacity();
 
     let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
-    let mut ranges = RequestHeaderRanges::default();
+    let mut scratch = http1::RequestScratch::<HEADERS_MAX>::new();
+    let mut req_mem = None;
 
     let zsess_out = ZhttpStreamSessionOut::new(instance_id, id, packet_buf, zsender_stream, shared);
 
@@ -2756,7 +2636,7 @@ where
 
     // ABR: discard_while
     let handler = {
-        let fut = handler.recv_request(&mut ranges);
+        let fut = handler.recv_request(&mut scratch, &mut req_mem);
         pin_mut!(fut);
 
         match discard_while(zreceiver, fut).await {
@@ -2771,8 +2651,7 @@ where
     refresh_stream_timeout();
 
     let (body_size, ws_accept, msg) = {
-        let mut scratch = [httparse::EMPTY_HEADER; HEADERS_MAX];
-        let req = handler.request(&mut scratch);
+        let req = handler.request();
 
         let mut websocket = false;
         let mut ws_key = None;
