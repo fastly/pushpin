@@ -3171,9 +3171,9 @@ pub mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn test_task_sizes() {
-        // sizes in debug mode at commit a4af3624af36643d5cbe2545ae91e85ba46e9919
-        const REQ_TASK_SIZE_BASE: usize = 4752;
-        const STREAM_TASK_SIZE_BASE: usize = 6904;
+        // sizes in debug mode at commit 4c1b0bb177314051405ef5be3cde023e9d1ad635
+        const REQ_TASK_SIZE_BASE: usize = 5824;
+        const STREAM_TASK_SIZE_BASE: usize = 7760;
 
         // cause tests to fail if sizes grow too much
         const GROWTH_LIMIT: usize = 1000;
