@@ -284,6 +284,35 @@ impl TmpBuffer {
     }
 }
 
+// holds a Vec<u8> but only exposes the portion of it considered to be
+// readable ("filled"). any remaining bytes may be zeroed or uninitialized
+// and are not considered to be readable
+pub struct FilledBuf {
+    data: Vec<u8>,
+    filled: usize,
+}
+
+impl FilledBuf {
+    // panics if filled is larger than data.len()
+    pub fn new(data: Vec<u8>, filled: usize) -> Self {
+        assert!(filled <= data.len());
+
+        Self { data, filled }
+    }
+
+    pub fn filled(&self) -> &[u8] {
+        &self.data[..self.filled]
+    }
+
+    pub fn filled_len(&self) -> usize {
+        self.filled
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.data
+    }
+}
+
 pub struct RingBuffer {
     buf: Vec<u8>,
     start: usize,

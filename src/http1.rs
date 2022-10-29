@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
-use crate::buffer::{write_vectored_offset, write_vectored_offset_async, LimitBufs, VECTORED_MAX};
+use crate::buffer::{
+    write_vectored_offset, write_vectored_offset_async, FilledBuf, LimitBufs, VECTORED_MAX,
+};
 use crate::future::AsyncWrite;
 use std::cmp;
 use std::convert::TryFrom;
 use std::io;
 use std::io::{Read, Write};
+use std::mem;
 use std::str;
 
 const CHUNK_SIZE_MAX: usize = 0xffff;
@@ -271,6 +274,122 @@ pub enum BodySize {
     Unknown,
 }
 
+pub struct RequestScratch<const N: usize> {
+    headers: [httparse::Header<'static>; N],
+}
+
+impl<const N: usize> RequestScratch<N> {
+    pub fn new() -> Self {
+        Self {
+            headers: [httparse::EMPTY_HEADER; N],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.headers.fill(httparse::EMPTY_HEADER);
+    }
+}
+
+pub enum RecvRequestStatus<'a, T, E, const N: usize> {
+    Complete(T),
+    Incomplete(FilledBuf, &'a mut RequestScratch<N>),
+    Error(E, FilledBuf, &'a mut RequestScratch<N>),
+}
+
+struct OwnedHttparseRequestInner<'s, const N: usize> {
+    req: httparse::Request<'s, 'static>,
+    scratch: &'s mut RequestScratch<N>,
+    buf: FilledBuf,
+    size: usize,
+}
+
+struct OwnedHttparseRequest<'s, const N: usize> {
+    inner: Option<OwnedHttparseRequestInner<'s, N>>,
+}
+
+impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
+    // on success, takes ownership of the buffer/scratch
+    // on incomplete/error, returns the buffer/scratch
+    fn parse(
+        buf: FilledBuf,
+        scratch: &'s mut RequestScratch<N>,
+    ) -> RecvRequestStatus<'s, Self, httparse::Error, N> {
+        let buf_ref: &[u8] = buf.filled();
+        let headers_mut: &mut [httparse::Header<'static>] = scratch.headers.as_mut();
+
+        // SAFETY: Self will take ownership of buf, and the bytes referred to
+        // by buf_ref are on the heap, and buf will not be modified or
+        // dropped until Self is dropped, so the bytes referred to by buf_ref
+        // will remain valid for the lifetime of Self
+        let buf_ref: &'static [u8] = unsafe { mem::transmute(buf_ref) };
+
+        // SAFETY: Self borrows scratch, and the location
+        // referred to by headers_mut is on the heap, and the borrow will not
+        // be released until Self is dropped, so the location referred to by
+        // headers_mut will remain valid for the lifetime of Self
+        //
+        // further, it is safe for httparse::Request::parse() to write
+        // references to buf_ref into headers_mut, because we guarantee buf
+        // lives as long as scratch, except if into_buf() is called in
+        // which case we clear the content of scratch
+        let headers_mut: &'static mut [httparse::Header<'static>] =
+            unsafe { mem::transmute(headers_mut) };
+
+        let mut req = httparse::Request::new(headers_mut);
+
+        let size = match req.parse(buf_ref) {
+            Ok(httparse::Status::Complete(size)) => size,
+            Ok(httparse::Status::Partial) => return RecvRequestStatus::Incomplete(buf, scratch),
+            Err(e) => return RecvRequestStatus::Error(e, buf, scratch),
+        };
+
+        RecvRequestStatus::Complete(Self {
+            inner: Some(OwnedHttparseRequestInner {
+                req,
+                scratch,
+                buf,
+                size,
+            }),
+        })
+    }
+
+    fn get<'a>(&'a self) -> &'a httparse::Request<'a, 'a> {
+        let s = self.inner.as_ref().unwrap();
+
+        let req = &s.req;
+
+        // SAFETY: here we simply reduce the inner lifetimes to that of the owning
+        // object, which is fine
+        let req: &'a httparse::Request<'a, 'a> = unsafe { mem::transmute(req) };
+
+        req
+    }
+
+    fn remaining_bytes<'a>(&'a self) -> &'a [u8] {
+        let s = self.inner.as_ref().unwrap();
+
+        &s.buf.filled()[s.size..]
+    }
+
+    fn into_parts(mut self) -> (FilledBuf, &'s mut RequestScratch<N>) {
+        let OwnedHttparseRequestInner { buf, scratch, .. } = self.inner.take().unwrap();
+
+        // SAFETY: ensure there are no references to buf in scratch
+        scratch.clear();
+
+        (buf, scratch)
+    }
+}
+
+impl<const N: usize> Drop for OwnedHttparseRequest<'_, N> {
+    fn drop(&mut self) {
+        // SAFETY: ensure there are no references to buf in scratch
+        if let Some(s) = &mut self.inner {
+            s.scratch.clear();
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Request<'buf, 'headers> {
     pub method: &'buf str,
@@ -278,6 +397,34 @@ pub struct Request<'buf, 'headers> {
     pub headers: &'headers [httparse::Header<'buf>],
     pub body_size: BodySize,
     pub expect_100: bool,
+}
+
+pub struct OwnedRequest<'s, const N: usize> {
+    req: OwnedHttparseRequest<'s, N>,
+    body_size: BodySize,
+    expect_100: bool,
+}
+
+impl<'s, const N: usize> OwnedRequest<'s, N> {
+    pub fn get(&self) -> Request {
+        let req = self.req.get();
+
+        Request {
+            method: req.method.unwrap(),
+            uri: req.path.unwrap(),
+            headers: req.headers,
+            body_size: self.body_size,
+            expect_100: self.expect_100,
+        }
+    }
+
+    pub fn remaining_bytes(&self) -> &[u8] {
+        self.req.remaining_bytes()
+    }
+
+    pub fn into_buf(self) -> FilledBuf {
+        self.req.into_parts().0
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -369,80 +516,52 @@ impl<'buf, 'headers> ServerProtocol {
             Err(e) => return Some(Err(ServerError::ParseError(e))),
         };
 
-        let version = req.version.unwrap();
-
-        let mut content_len = None;
-        let mut chunked = false;
-        let mut keep_alive = false;
-        let mut close = false;
-        let mut expect_100 = false;
-
-        for i in 0..req.headers.len() {
-            let h = req.headers[i];
-
-            if h.name.eq_ignore_ascii_case("Content-Length") {
-                let len = parse_as_int(h.value);
-                let len = match len {
-                    Ok(len) => len,
-                    Err(_) => {
-                        return Some(Err(ServerError::InvalidContentLength));
-                    }
-                };
-
-                content_len = Some(len);
-            } else if h.name.eq_ignore_ascii_case("Transfer-Encoding") {
-                if h.value == b"chunked" {
-                    chunked = true;
-                } else {
-                    // unknown transfer encoding
-                    return Some(Err(ServerError::UnsupportedTransferEncoding));
-                }
-            } else if h.name.eq_ignore_ascii_case("Connection") {
-                if !keep_alive && header_contains_param(h.value, b"keep-alive", true) {
-                    keep_alive = true;
-                }
-
-                if !close && header_contains_param(h.value, b"close", false) {
-                    close = true;
-                }
-            } else if h.name.eq_ignore_ascii_case("Expect") {
-                if header_contains_param(h.value, b"100-continue", false) && version >= 1 {
-                    expect_100 = true;
-                }
-            }
-        }
-
-        self.ver_min = version;
-
-        if chunked {
-            self.body_size = BodySize::Unknown;
-        } else if let Some(len) = content_len {
-            self.body_size = BodySize::Known(len);
-            self.chunk_left = Some(len);
-        } else {
-            self.body_size = BodySize::NoBody;
-        }
-
-        if version >= 1 {
-            self.persistent = !close;
-        } else {
-            self.persistent = keep_alive && !close;
-        }
+        let expect_100 = match self.process_request(&req) {
+            Ok(ret) => ret,
+            Err(e) => return Some(Err(e)),
+        };
 
         rbuf.set_position(rbuf.position() + (size as u64));
-
-        self.state = match self.body_size {
-            BodySize::Unknown | BodySize::Known(_) => ServerState::ReceivingBody,
-            BodySize::NoBody => ServerState::AwaitingResponse,
-        };
 
         Some(Ok(Request {
             method: req.method.unwrap(),
             uri: req.path.unwrap(),
             headers: req.headers,
             body_size: self.body_size,
-            expect_100: expect_100 && self.body_size != BodySize::NoBody,
+            expect_100,
         }))
+    }
+
+    pub fn recv_request_owned<'a, const N: usize>(
+        &mut self,
+        rbuf: FilledBuf,
+        scratch: &'a mut RequestScratch<N>,
+    ) -> RecvRequestStatus<'a, OwnedRequest<'a, N>, ServerError, N> {
+        assert_eq!(self.state, ServerState::ReceivingRequest);
+
+        let req = match OwnedHttparseRequest::parse(rbuf, scratch) {
+            RecvRequestStatus::Complete(req) => req,
+            RecvRequestStatus::Incomplete(rbuf, scratch) => {
+                return RecvRequestStatus::Incomplete(rbuf, scratch)
+            }
+            RecvRequestStatus::Error(e, rbuf, scratch) => {
+                return RecvRequestStatus::Error(ServerError::ParseError(e), rbuf, scratch)
+            }
+        };
+
+        let expect_100 = match self.process_request(req.get()) {
+            Ok(ret) => ret,
+            Err(e) => {
+                let (buf, scratch) = req.into_parts();
+                return RecvRequestStatus::Error(e, buf, scratch);
+            }
+        };
+
+        RecvRequestStatus::Complete(OwnedRequest {
+            req,
+            body_size: self.body_size,
+            expect_100,
+        })
     }
 
     pub fn recv_body(
@@ -798,12 +917,80 @@ impl<'buf, 'headers> ServerProtocol {
 
         Ok(content_written)
     }
+
+    fn process_request(&mut self, req: &httparse::Request) -> Result<bool, ServerError> {
+        let version = req.version.unwrap();
+
+        let mut content_len = None;
+        let mut chunked = false;
+        let mut keep_alive = false;
+        let mut close = false;
+        let mut expect_100 = false;
+
+        for i in 0..req.headers.len() {
+            let h = req.headers[i];
+
+            if h.name.eq_ignore_ascii_case("Content-Length") {
+                let len = parse_as_int(h.value);
+                let len = match len {
+                    Ok(len) => len,
+                    Err(_) => return Err(ServerError::InvalidContentLength),
+                };
+
+                content_len = Some(len);
+            } else if h.name.eq_ignore_ascii_case("Transfer-Encoding") {
+                if h.value == b"chunked" {
+                    chunked = true;
+                } else {
+                    // unknown transfer encoding
+                    return Err(ServerError::UnsupportedTransferEncoding);
+                }
+            } else if h.name.eq_ignore_ascii_case("Connection") {
+                if !keep_alive && header_contains_param(h.value, b"keep-alive", true) {
+                    keep_alive = true;
+                }
+
+                if !close && header_contains_param(h.value, b"close", false) {
+                    close = true;
+                }
+            } else if h.name.eq_ignore_ascii_case("Expect") {
+                if header_contains_param(h.value, b"100-continue", false) && version >= 1 {
+                    expect_100 = true;
+                }
+            }
+        }
+
+        self.ver_min = version;
+
+        if chunked {
+            self.body_size = BodySize::Unknown;
+        } else if let Some(len) = content_len {
+            self.body_size = BodySize::Known(len);
+            self.chunk_left = Some(len);
+        } else {
+            self.body_size = BodySize::NoBody;
+        }
+
+        if version >= 1 {
+            self.persistent = !close;
+        } else {
+            self.persistent = keep_alive && !close;
+        }
+
+        self.state = match self.body_size {
+            BodySize::Unknown | BodySize::Known(_) => ServerState::ReceivingBody,
+            BodySize::NoBody => ServerState::AwaitingResponse,
+        };
+
+        let expect_100 = expect_100 && self.body_size != BodySize::NoBody;
+
+        Ok(expect_100)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::mem;
 
     const HEADERS_MAX: usize = 32;
 
@@ -917,15 +1104,22 @@ mod tests {
 
         assert_eq!(p.state(), ServerState::ReceivingRequest);
 
-        let mut rbuf = io::Cursor::new(src);
+        let rbuf = FilledBuf::new(src.to_vec(), src.len());
 
         let mut result = TestRequest::new();
 
         assert_eq!(p.state(), ServerState::ReceivingRequest);
 
-        let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
+        let mut scratch = RequestScratch::<HEADERS_MAX>::new();
 
-        let req = p.recv_request(&mut rbuf, &mut headers).unwrap().unwrap();
+        let req = match p.recv_request_owned(rbuf, &mut scratch) {
+            RecvRequestStatus::Complete(req) => req,
+            _ => panic!("recv_request_owned did not return complete"),
+        };
+
+        let mut rbuf = io::Cursor::new(req.remaining_bytes());
+
+        let req = req.get();
 
         result.method = String::from(req.method);
         result.uri = String::from(req.uri);
@@ -942,6 +1136,7 @@ mod tests {
             }
 
             let mut buf = [0; READ_SIZE_MAX];
+            let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
             let (size, trailing_headers) = p
                 .recv_body(&mut rbuf, &mut buf[..read_size], &mut headers)
@@ -1568,6 +1763,53 @@ mod tests {
             assert_eq!(p.chunk_left, test.chunk_left, "test={}", test.name);
             assert_eq!(p.is_persistent(), test.persistent, "test={}", test.name);
             assert_eq!(c.position(), test.rbuf_position, "test={}", test.name);
+        }
+
+        for test in tests.iter() {
+            let mut p = ServerProtocol::new();
+
+            let src = test.data.as_bytes();
+            let rbuf = FilledBuf::new(src.to_vec(), src.len());
+            let mut scratch = RequestScratch::<HEADERS_MAX>::new();
+
+            let mut rbuf_position = 0;
+
+            let r = p.recv_request_owned(rbuf, &mut scratch);
+
+            match r {
+                RecvRequestStatus::Complete(req) => {
+                    let expected = match &test.result {
+                        Some(Ok(req)) => req,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(req.get(), *expected, "test={}", test.name);
+
+                    rbuf_position = (src.len() - req.remaining_bytes().len()) as u64
+                }
+                RecvRequestStatus::Incomplete(_, _) => {
+                    assert!(test.result.is_none(), "test={}", test.name);
+                }
+                RecvRequestStatus::Error(e, _, _) => {
+                    let expected = match &test.result {
+                        Some(Err(e)) => e,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(
+                        mem::discriminant(&e),
+                        mem::discriminant(expected),
+                        "test={}",
+                        test.name
+                    );
+                }
+            }
+
+            assert_eq!(p.state(), test.state, "test={}", test.name);
+            assert_eq!(p.ver_min, test.ver_min, "test={}", test.name);
+            assert_eq!(p.chunk_left, test.chunk_left, "test={}", test.name);
+            assert_eq!(p.is_persistent(), test.persistent, "test={}", test.name);
+            assert_eq!(rbuf_position, test.rbuf_position, "test={}", test.name);
         }
     }
 
