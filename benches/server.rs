@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+use condure::connection::testutil::{
+    BenchServerReqConnection, BenchServerReqHandler, BenchServerStreamConnection,
+    BenchServerStreamHandler,
+};
 use condure::server::TestServer;
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::io::{Read, Write};
@@ -47,12 +51,44 @@ fn req(addr: SocketAddr) {
 
 fn criterion_benchmark(c: &mut Criterion) {
     {
+        let t = BenchServerReqHandler::new();
+
+        c.bench_function("req_handler", |b| {
+            b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
+        });
+    }
+
+    {
+        let t = BenchServerStreamHandler::new();
+
+        c.bench_function("stream_handler", |b| {
+            b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
+        });
+    }
+
+    {
+        let t = BenchServerReqConnection::new();
+
+        c.bench_function("req_connection", |b| {
+            b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
+        });
+    }
+
+    {
+        let t = BenchServerStreamConnection::new();
+
+        c.bench_function("stream_connection", |b| {
+            b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
+        });
+    }
+
+    {
         let server = TestServer::new(1);
         let req_addr = server.req_addr();
         let stream_addr = server.stream_addr();
 
-        c.bench_function("req workers=1", |b| b.iter(|| req(req_addr)));
-        c.bench_function("stream workers=1", |b| b.iter(|| req(stream_addr)));
+        c.bench_function("req_server workers=1", |b| b.iter(|| req(req_addr)));
+        c.bench_function("stream_server workers=1", |b| b.iter(|| req(stream_addr)));
     }
 
     {
@@ -60,8 +96,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         let req_addr = server.req_addr();
         let stream_addr = server.stream_addr();
 
-        c.bench_function("req workers=2", |b| b.iter(|| req(req_addr)));
-        c.bench_function("stream workers=2", |b| b.iter(|| req(stream_addr)));
+        c.bench_function("req_server workers=2", |b| b.iter(|| req(req_addr)));
+        c.bench_function("stream_server workers=2", |b| b.iter(|| req(stream_addr)));
     }
 }
 

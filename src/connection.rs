@@ -3246,8 +3246,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     }
 }
 
-#[cfg(test)]
-mod tests {
+pub mod testutil {
     use super::*;
     use crate::buffer::TmpBuffer;
     use crate::channel;
@@ -3261,14 +3260,14 @@ mod tests {
     use std::task::{Context, Poll, Waker};
     use std::time::Instant;
 
-    struct NoopWaker {}
+    pub struct NoopWaker {}
 
     impl NoopWaker {
-        fn new() -> Self {
+        pub fn new() -> Self {
             Self {}
         }
 
-        fn into_std(self: Rc<NoopWaker>) -> Waker {
+        pub fn into_std(self: Rc<NoopWaker>) -> Waker {
             waker::into_std(self)
         }
     }
@@ -3277,23 +3276,23 @@ mod tests {
         fn wake(self: Rc<Self>) {}
     }
 
-    struct StepExecutor<F> {
-        reactor: Reactor,
+    pub struct StepExecutor<'a, F> {
+        reactor: &'a Reactor,
         fut: Pin<Box<F>>,
     }
 
-    impl<F> StepExecutor<F>
+    impl<'a, F> StepExecutor<'a, F>
     where
         F: Future,
     {
-        fn new(reactor: Reactor, fut: F) -> Self {
+        pub fn new(reactor: &'a Reactor, fut: F) -> Self {
             Self {
                 reactor,
                 fut: Box::pin(fut),
             }
         }
 
-        fn step(&mut self) -> Poll<F::Output> {
+        pub fn step(&mut self) -> Poll<F::Output> {
             self.reactor.poll_nonblocking(self.reactor.now()).unwrap();
 
             let waker = Rc::new(NoopWaker::new()).into_std();
@@ -3302,13 +3301,13 @@ mod tests {
             self.fut.as_mut().poll(&mut cx)
         }
 
-        fn advance_time(&mut self, now: Instant) {
+        pub fn advance_time(&mut self, now: Instant) {
             self.reactor.poll_nonblocking(now).unwrap();
         }
     }
 
     #[track_caller]
-    fn check_poll<T, E>(p: Poll<Result<T, E>>) -> Option<T>
+    pub fn check_poll<T, E>(p: Poll<Result<T, E>>) -> Option<T>
     where
         E: fmt::Debug,
     {
@@ -3321,30 +3320,30 @@ mod tests {
         }
     }
 
-    struct FakeSock {
+    pub struct FakeSock {
         inbuf: Vec<u8>,
         outbuf: Vec<u8>,
         out_allow: usize,
     }
 
     impl FakeSock {
-        fn new() -> Self {
+        pub fn new() -> Self {
             Self {
-                inbuf: Vec::new(),
-                outbuf: Vec::new(),
+                inbuf: Vec::with_capacity(16384),
+                outbuf: Vec::with_capacity(16384),
                 out_allow: 0,
             }
         }
 
-        fn add_readable(&mut self, buf: &[u8]) {
+        pub fn add_readable(&mut self, buf: &[u8]) {
             self.inbuf.extend_from_slice(buf);
         }
 
-        fn take_writable(&mut self) -> Vec<u8> {
-            self.outbuf.split_off(0)
+        pub fn take_writable(&mut self) -> Vec<u8> {
+            mem::take(&mut self.outbuf)
         }
 
-        fn allow_write(&mut self, size: usize) {
+        pub fn allow_write(&mut self, size: usize) {
             self.out_allow += size;
         }
     }
@@ -3406,12 +3405,12 @@ mod tests {
         }
     }
 
-    struct AsyncFakeSock {
-        inner: Rc<RefCell<FakeSock>>,
+    pub struct AsyncFakeSock {
+        pub inner: Rc<RefCell<FakeSock>>,
     }
 
     impl AsyncFakeSock {
-        fn new(sock: Rc<RefCell<FakeSock>>) -> Self {
+        pub fn new(sock: Rc<RefCell<FakeSock>>) -> Self {
             Self { inner: sock }
         }
     }
@@ -3466,8 +3465,8 @@ mod tests {
         }
     }
 
-    struct SimpleCidProvider {
-        cid: ArrayString<32>,
+    pub struct SimpleCidProvider {
+        pub cid: ArrayString<32>,
     }
 
     impl CidProvider for SimpleCidProvider {
@@ -3475,6 +3474,661 @@ mod tests {
             self.cid
         }
     }
+
+    async fn server_req_handler_fut(
+        sock: Rc<RefCell<FakeSock>>,
+        secure: bool,
+        s_from_conn: channel::LocalSender<zmq::Message>,
+        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+        buf1: &mut RingBuffer,
+        buf2: &mut RingBuffer,
+        body_buf: &mut Buffer,
+    ) -> Result<bool, ServerError> {
+        let mut sock = AsyncFakeSock::new(sock);
+
+        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let s_from_conn = AsyncLocalSender::new(s_from_conn);
+
+        server_req_handler(
+            "1",
+            &mut sock,
+            None,
+            secure,
+            buf1,
+            buf2,
+            body_buf,
+            &packet_buf,
+            &s_from_conn,
+            &r_to_conn,
+        )
+        .await
+    }
+
+    pub struct BenchServerReqHandlerArgs {
+        sock: Rc<RefCell<FakeSock>>,
+        buf1: RingBuffer,
+        buf2: RingBuffer,
+        body_buf: Buffer,
+    }
+
+    pub struct BenchServerReqHandler {
+        reactor: Reactor,
+        msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
+        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ResponseScratch<'static>>>>,
+        resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
+        rb_tmp: Rc<TmpBuffer>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+    }
+
+    impl BenchServerReqHandler {
+        pub fn new() -> Self {
+            Self {
+                reactor: Reactor::new(100),
+                msg_mem: Arc::new(arena::ArcMemory::new(1)),
+                scratch_mem: Rc::new(arena::RcMemory::new(1)),
+                resp_mem: Rc::new(arena::RcMemory::new(1)),
+                rb_tmp: Rc::new(TmpBuffer::new(1024)),
+                packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
+            }
+        }
+
+        pub fn init(&self) -> BenchServerReqHandlerArgs {
+            let buffer_size = 1024;
+
+            BenchServerReqHandlerArgs {
+                sock: Rc::new(RefCell::new(FakeSock::new())),
+                buf1: RingBuffer::new(buffer_size, &self.rb_tmp),
+                buf2: RingBuffer::new(buffer_size, &self.rb_tmp),
+                body_buf: Buffer::new(buffer_size),
+            }
+        }
+
+        pub fn run(&self, args: &mut BenchServerReqHandlerArgs) {
+            let reactor = &self.reactor;
+            let msg_mem = &self.msg_mem;
+            let scratch_mem = &self.scratch_mem;
+            let resp_mem = &self.resp_mem;
+            let packet_buf = &self.packet_buf;
+            let sock = &args.sock;
+
+            let (s_to_conn, r_to_conn) =
+                channel::local_channel(1, 1, &reactor.local_registration_memory());
+            let (s_from_conn, r_from_conn) =
+                channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+            let fut = {
+                let sock = args.sock.clone();
+                let s_from_conn = s_from_conn
+                    .try_clone(&reactor.local_registration_memory())
+                    .unwrap();
+
+                server_req_handler_fut(
+                    sock,
+                    false,
+                    s_from_conn,
+                    r_to_conn,
+                    packet_buf.clone(),
+                    &mut args.buf1,
+                    &mut args.buf2,
+                    &mut args.body_buf,
+                )
+            };
+
+            let mut executor = StepExecutor::new(reactor, fut);
+
+            assert_eq!(check_poll(executor.step()), None);
+
+            let req_data = concat!(
+                "GET /path HTTP/1.1\r\n",
+                "Host: example.com\r\n",
+                "Connection: close\r\n",
+                "\r\n"
+            )
+            .as_bytes();
+
+            sock.borrow_mut().add_readable(req_data);
+            sock.borrow_mut().allow_write(1024);
+
+            assert_eq!(check_poll(executor.step()), None);
+
+            // read message
+            let _ = r_from_conn.try_recv().unwrap();
+
+            let msg = concat!(
+                "T100:2:id,1:1,4:code,3:200#6:reason,2:OK,7:h",
+                "eaders,34:30:12:Content-Type,10:text/plain,]]4:body,6:hell",
+                "o\n,}",
+            );
+
+            let msg = zmq::Message::from(msg.as_bytes());
+            let msg = arena::Arc::new(msg, msg_mem).unwrap();
+
+            let scratch = arena::Rc::new(
+                RefCell::new(zhttppacket::ResponseScratch::new()),
+                scratch_mem,
+            )
+            .unwrap();
+
+            let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+            let resp = arena::Rc::new(resp, resp_mem).unwrap();
+
+            assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+
+            assert_eq!(check_poll(executor.step()), Some(false));
+
+            let data = sock.borrow_mut().take_writable();
+
+            let expected = concat!(
+                "HTTP/1.1 200 OK\r\n",
+                "Content-Type: text/plain\r\n",
+                "Connection: close\r\n",
+                "Content-Length: 6\r\n",
+                "\r\n",
+                "hello\n",
+            );
+
+            assert_eq!(str::from_utf8(&data).unwrap(), expected);
+        }
+    }
+
+    async fn server_req_connection_inner_fut(
+        token: CancellationToken,
+        sock: Rc<RefCell<FakeSock>>,
+        secure: bool,
+        s_from_conn: channel::LocalSender<zmq::Message>,
+        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        rb_tmp: Rc<TmpBuffer>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+    ) -> Result<(), ServerError> {
+        let mut cid = ArrayString::from_str("1").unwrap();
+        let mut cid_provider = SimpleCidProvider { cid };
+
+        let sock = AsyncFakeSock::new(sock);
+
+        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let s_from_conn = AsyncLocalSender::new(s_from_conn);
+        let buffer_size = 1024;
+
+        let timeout = Duration::from_millis(5_000);
+
+        server_req_connection_inner(
+            token,
+            &mut cid,
+            &mut cid_provider,
+            sock,
+            None,
+            secure,
+            buffer_size,
+            buffer_size,
+            &rb_tmp,
+            packet_buf,
+            timeout,
+            s_from_conn,
+            &r_to_conn,
+        )
+        .await
+    }
+
+    pub struct BenchServerReqConnection {
+        reactor: Reactor,
+        msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
+        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ResponseScratch<'static>>>>,
+        resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
+        rb_tmp: Rc<TmpBuffer>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+    }
+
+    impl BenchServerReqConnection {
+        pub fn new() -> Self {
+            Self {
+                reactor: Reactor::new(100),
+                msg_mem: Arc::new(arena::ArcMemory::new(1)),
+                scratch_mem: Rc::new(arena::RcMemory::new(1)),
+                resp_mem: Rc::new(arena::RcMemory::new(1)),
+                rb_tmp: Rc::new(TmpBuffer::new(1024)),
+                packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
+            }
+        }
+
+        pub fn init(&self) -> Rc<RefCell<FakeSock>> {
+            Rc::new(RefCell::new(FakeSock::new()))
+        }
+
+        pub fn run(&self, sock: &Rc<RefCell<FakeSock>>) {
+            let reactor = &self.reactor;
+            let msg_mem = &self.msg_mem;
+            let scratch_mem = &self.scratch_mem;
+            let resp_mem = &self.resp_mem;
+            let rb_tmp = &self.rb_tmp;
+            let packet_buf = &self.packet_buf;
+
+            let (s_to_conn, r_to_conn) =
+                channel::local_channel(1, 1, &reactor.local_registration_memory());
+            let (s_from_conn, r_from_conn) =
+                channel::local_channel(1, 2, &reactor.local_registration_memory());
+            let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+            let fut = {
+                let sock = sock.clone();
+                let s_from_conn = s_from_conn
+                    .try_clone(&reactor.local_registration_memory())
+                    .unwrap();
+
+                server_req_connection_inner_fut(
+                    token,
+                    sock,
+                    false,
+                    s_from_conn,
+                    r_to_conn,
+                    rb_tmp.clone(),
+                    packet_buf.clone(),
+                )
+            };
+
+            let mut executor = StepExecutor::new(reactor, fut);
+
+            assert_eq!(check_poll(executor.step()), None);
+
+            let req_data = concat!(
+                "GET /path HTTP/1.1\r\n",
+                "Host: example.com\r\n",
+                "Connection: close\r\n",
+                "\r\n"
+            )
+            .as_bytes();
+
+            sock.borrow_mut().add_readable(req_data);
+            sock.borrow_mut().allow_write(1024);
+
+            assert_eq!(check_poll(executor.step()), None);
+
+            // read message
+            let _ = r_from_conn.try_recv().unwrap();
+
+            let msg = concat!(
+                "T100:2:id,1:1,4:code,3:200#6:reason,2:OK,7:h",
+                "eaders,34:30:12:Content-Type,10:text/plain,]]4:body,6:hell",
+                "o\n,}",
+            );
+
+            let msg = zmq::Message::from(msg.as_bytes());
+            let msg = arena::Arc::new(msg, msg_mem).unwrap();
+
+            let scratch = arena::Rc::new(
+                RefCell::new(zhttppacket::ResponseScratch::new()),
+                scratch_mem,
+            )
+            .unwrap();
+
+            let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+            let resp = arena::Rc::new(resp, resp_mem).unwrap();
+
+            assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+
+            assert_eq!(check_poll(executor.step()), Some(()));
+
+            let data = sock.borrow_mut().take_writable();
+
+            let expected = concat!(
+                "HTTP/1.1 200 OK\r\n",
+                "Content-Type: text/plain\r\n",
+                "Connection: close\r\n",
+                "Content-Length: 6\r\n",
+                "\r\n",
+                "hello\n",
+            );
+
+            assert_eq!(str::from_utf8(&data).unwrap(), expected);
+        }
+    }
+
+    async fn server_stream_handler_fut(
+        sock: Rc<RefCell<FakeSock>>,
+        secure: bool,
+        s_from_conn: channel::LocalSender<zmq::Message>,
+        s_stream_from_conn: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
+        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+        tmp_buf: Rc<RefCell<Vec<u8>>>,
+        buf1: &mut RingBuffer,
+        buf2: &mut RingBuffer,
+        shared: arena::Rc<ServerStreamSharedData>,
+    ) -> Result<bool, ServerError> {
+        let mut sock = AsyncFakeSock::new(sock);
+
+        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let s_from_conn = AsyncLocalSender::new(s_from_conn);
+        let s_stream_from_conn = AsyncLocalSender::new(s_stream_from_conn);
+
+        server_stream_handler(
+            "1",
+            &mut sock,
+            None,
+            secure,
+            buf1,
+            buf2,
+            10,
+            &packet_buf,
+            &tmp_buf,
+            "test",
+            &s_from_conn,
+            &s_stream_from_conn,
+            &r_to_conn,
+            shared.get(),
+            &|| {},
+            &|| {},
+        )
+        .await
+    }
+
+    pub struct BenchServerStreamHandlerArgs {
+        sock: Rc<RefCell<FakeSock>>,
+        buf1: RingBuffer,
+        buf2: RingBuffer,
+    }
+
+    pub struct BenchServerStreamHandler {
+        reactor: Reactor,
+        msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
+        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ResponseScratch<'static>>>>,
+        resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
+        shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
+        rb_tmp: Rc<TmpBuffer>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+        tmp_buf: Rc<RefCell<Vec<u8>>>,
+    }
+
+    impl BenchServerStreamHandler {
+        pub fn new() -> Self {
+            Self {
+                reactor: Reactor::new(100),
+                msg_mem: Arc::new(arena::ArcMemory::new(1)),
+                scratch_mem: Rc::new(arena::RcMemory::new(1)),
+                resp_mem: Rc::new(arena::RcMemory::new(1)),
+                shared_mem: Rc::new(arena::RcMemory::new(1)),
+                rb_tmp: Rc::new(TmpBuffer::new(1024)),
+                packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
+                tmp_buf: Rc::new(RefCell::new(vec![0; 1024])),
+            }
+        }
+
+        pub fn init(&self) -> BenchServerStreamHandlerArgs {
+            let buffer_size = 1024;
+
+            BenchServerStreamHandlerArgs {
+                sock: Rc::new(RefCell::new(FakeSock::new())),
+                buf1: RingBuffer::new(buffer_size, &self.rb_tmp),
+                buf2: RingBuffer::new(buffer_size, &self.rb_tmp),
+            }
+        }
+
+        pub fn run(&self, args: &mut BenchServerStreamHandlerArgs) {
+            let reactor = &self.reactor;
+            let msg_mem = &self.msg_mem;
+            let scratch_mem = &self.scratch_mem;
+            let resp_mem = &self.resp_mem;
+            let shared_mem = &self.shared_mem;
+            let packet_buf = &self.packet_buf;
+            let tmp_buf = &self.tmp_buf;
+            let sock = &args.sock;
+
+            let (s_to_conn, r_to_conn) =
+                channel::local_channel(1, 1, &reactor.local_registration_memory());
+            let (s_from_conn, r_from_conn) =
+                channel::local_channel(1, 2, &reactor.local_registration_memory());
+            let (s_stream_from_conn, _r_stream_from_conn) =
+                channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+            let fut = {
+                let sock = args.sock.clone();
+                let s_from_conn = s_from_conn
+                    .try_clone(&reactor.local_registration_memory())
+                    .unwrap();
+                let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+
+                server_stream_handler_fut(
+                    sock,
+                    false,
+                    s_from_conn,
+                    s_stream_from_conn,
+                    r_to_conn,
+                    packet_buf.clone(),
+                    tmp_buf.clone(),
+                    &mut args.buf1,
+                    &mut args.buf2,
+                    shared,
+                )
+            };
+
+            let mut executor = StepExecutor::new(&reactor, fut);
+
+            assert_eq!(check_poll(executor.step()), None);
+
+            let req_data =
+                concat!("GET /path HTTP/1.1\r\n", "Host: example.com\r\n", "\r\n").as_bytes();
+
+            sock.borrow_mut().add_readable(req_data);
+            sock.borrow_mut().allow_write(1024);
+
+            assert_eq!(check_poll(executor.step()), None);
+
+            // read message
+            let _ = r_from_conn.try_recv().unwrap();
+
+            let msg = concat!(
+                "T127:2:id,1:1,6:reason,2:OK,7:headers,34:30:12:Content-Typ",
+                "e,10:text/plain,]]3:seq,1:0#4:from,7:handler,4:code,3:200#",
+                "4:body,6:hello\n,}",
+            );
+
+            let msg = zmq::Message::from(msg.as_bytes());
+            let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+            let scratch = arena::Rc::new(
+                RefCell::new(zhttppacket::ResponseScratch::new()),
+                &scratch_mem,
+            )
+            .unwrap();
+
+            let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+            let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+
+            assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+
+            assert_eq!(check_poll(executor.step()), Some(true));
+
+            let data = sock.borrow_mut().take_writable();
+
+            let expected = concat!(
+                "HTTP/1.1 200 OK\r\n",
+                "Content-Type: text/plain\r\n",
+                "Content-Length: 6\r\n",
+                "\r\n",
+                "hello\n",
+            );
+
+            assert_eq!(str::from_utf8(&data).unwrap(), expected);
+        }
+    }
+
+    async fn server_stream_connection_inner_fut(
+        token: CancellationToken,
+        sock: Rc<RefCell<FakeSock>>,
+        secure: bool,
+        s_from_conn: channel::LocalSender<zmq::Message>,
+        s_stream_from_conn: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
+        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        rb_tmp: Rc<TmpBuffer>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+        tmp_buf: Rc<RefCell<Vec<u8>>>,
+        shared: arena::Rc<ServerStreamSharedData>,
+    ) -> Result<(), ServerError> {
+        let mut cid = ArrayString::from_str("1").unwrap();
+        let mut cid_provider = SimpleCidProvider { cid };
+
+        let sock = AsyncFakeSock::new(sock);
+
+        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let s_from_conn = AsyncLocalSender::new(s_from_conn);
+        let s_stream_from_conn = AsyncLocalSender::new(s_stream_from_conn);
+        let buffer_size = 1024;
+
+        let timeout = Duration::from_millis(5_000);
+
+        server_stream_connection_inner(
+            token,
+            &mut cid,
+            &mut cid_provider,
+            sock,
+            None,
+            secure,
+            buffer_size,
+            10,
+            &rb_tmp,
+            packet_buf,
+            tmp_buf,
+            timeout,
+            "test",
+            s_from_conn,
+            s_stream_from_conn,
+            &r_to_conn,
+            shared,
+        )
+        .await
+    }
+
+    pub struct BenchServerStreamConnection {
+        reactor: Reactor,
+        msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
+        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ResponseScratch<'static>>>>,
+        resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
+        shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
+        rb_tmp: Rc<TmpBuffer>,
+        packet_buf: Rc<RefCell<Vec<u8>>>,
+        tmp_buf: Rc<RefCell<Vec<u8>>>,
+    }
+
+    impl BenchServerStreamConnection {
+        pub fn new() -> Self {
+            Self {
+                reactor: Reactor::new(100),
+                msg_mem: Arc::new(arena::ArcMemory::new(1)),
+                scratch_mem: Rc::new(arena::RcMemory::new(1)),
+                resp_mem: Rc::new(arena::RcMemory::new(1)),
+                shared_mem: Rc::new(arena::RcMemory::new(1)),
+                rb_tmp: Rc::new(TmpBuffer::new(1024)),
+                packet_buf: Rc::new(RefCell::new(vec![0; 2048])),
+                tmp_buf: Rc::new(RefCell::new(vec![0; 1024])),
+            }
+        }
+
+        pub fn init(&self) -> Rc<RefCell<FakeSock>> {
+            Rc::new(RefCell::new(FakeSock::new()))
+        }
+
+        pub fn run(&self, sock: &Rc<RefCell<FakeSock>>) {
+            let reactor = &self.reactor;
+            let msg_mem = &self.msg_mem;
+            let scratch_mem = &self.scratch_mem;
+            let resp_mem = &self.resp_mem;
+            let shared_mem = &self.shared_mem;
+            let rb_tmp = &self.rb_tmp;
+            let packet_buf = &self.packet_buf;
+            let tmp_buf = &self.tmp_buf;
+
+            let (s_to_conn, r_to_conn) =
+                channel::local_channel(1, 1, &reactor.local_registration_memory());
+            let (s_from_conn, r_from_conn) =
+                channel::local_channel(1, 2, &reactor.local_registration_memory());
+            let (s_stream_from_conn, _r_stream_from_conn) =
+                channel::local_channel(1, 2, &reactor.local_registration_memory());
+            let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+            let fut = {
+                let sock = sock.clone();
+                let s_from_conn = s_from_conn
+                    .try_clone(&reactor.local_registration_memory())
+                    .unwrap();
+                let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+
+                server_stream_connection_inner_fut(
+                    token,
+                    sock,
+                    false,
+                    s_from_conn,
+                    s_stream_from_conn,
+                    r_to_conn,
+                    rb_tmp.clone(),
+                    packet_buf.clone(),
+                    tmp_buf.clone(),
+                    shared,
+                )
+            };
+
+            let mut executor = StepExecutor::new(&reactor, fut);
+
+            assert_eq!(check_poll(executor.step()), None);
+
+            let req_data =
+                concat!("GET /path HTTP/1.1\r\n", "Host: example.com\r\n", "\r\n").as_bytes();
+
+            sock.borrow_mut().add_readable(req_data);
+            sock.borrow_mut().allow_write(1024);
+
+            assert_eq!(check_poll(executor.step()), None);
+
+            // read message
+            let _ = r_from_conn.try_recv().unwrap();
+
+            let msg = concat!(
+                "T127:2:id,1:1,6:reason,2:OK,7:headers,34:30:12:Content-Typ",
+                "e,10:text/plain,]]3:seq,1:0#4:from,7:handler,4:code,3:200#",
+                "4:body,6:hello\n,}",
+            );
+
+            let msg = zmq::Message::from(msg.as_bytes());
+            let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+            let scratch = arena::Rc::new(
+                RefCell::new(zhttppacket::ResponseScratch::new()),
+                &scratch_mem,
+            )
+            .unwrap();
+
+            let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+            let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+
+            assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+
+            // connection reusable
+            assert_eq!(check_poll(executor.step()), None);
+
+            let data = sock.borrow_mut().take_writable();
+
+            let expected = concat!(
+                "HTTP/1.1 200 OK\r\n",
+                "Content-Type: text/plain\r\n",
+                "Content-Length: 6\r\n",
+                "\r\n",
+                "hello\n",
+            );
+
+            assert_eq!(str::from_utf8(&data).unwrap(), expected);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::testutil::*;
+    use super::*;
+    use crate::buffer::TmpBuffer;
+    use crate::channel;
+    use std::rc::Rc;
+    use std::sync::Arc;
+    use std::task::Poll;
+    use std::time::Instant;
 
     #[test]
     fn message_tracker() {
@@ -3546,7 +4200,7 @@ mod tests {
         handler.append_body(b"!", false, "").unwrap_err();
 
         {
-            let mut executor = StepExecutor::new(reactor, handler.send_header());
+            let mut executor = StepExecutor::new(&reactor, handler.send_header());
             assert_eq!(check_poll(executor.step()), Some(()));
         }
 
@@ -3627,7 +4281,7 @@ mod tests {
             req_fut(token, sock, false, s_from_conn, r_to_conn)
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -3746,7 +4400,7 @@ mod tests {
             req_fut(token, sock, false, s_from_conn, r_to_conn)
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -3862,7 +4516,7 @@ mod tests {
             req_fut(token, sock, false, s_from_conn, r_to_conn)
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -3899,7 +4553,7 @@ mod tests {
             req_fut(token, sock, false, s_from_conn, r_to_conn)
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -4069,7 +4723,7 @@ mod tests {
             req_fut(token, sock, true, s_from_conn, r_to_conn)
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -4246,7 +4900,7 @@ mod tests {
             )
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -4370,7 +5024,7 @@ mod tests {
             )
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -4536,7 +5190,7 @@ mod tests {
             )
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -4683,7 +5337,7 @@ mod tests {
             )
         };
 
-        let mut executor = StepExecutor::new(reactor, fut);
+        let mut executor = StepExecutor::new(&reactor, fut);
 
         assert_eq!(check_poll(executor.step()), None);
 
@@ -4776,5 +5430,29 @@ mod tests {
         );
 
         assert_eq!(str::from_utf8(&data).unwrap(), expected);
+    }
+
+    #[test]
+    fn bench_server_req_handler() {
+        let t = BenchServerReqHandler::new();
+        t.run(&mut t.init());
+    }
+
+    #[test]
+    fn bench_server_req_connection() {
+        let t = BenchServerReqConnection::new();
+        t.run(&mut t.init());
+    }
+
+    #[test]
+    fn bench_server_stream_handler() {
+        let t = BenchServerStreamHandler::new();
+        t.run(&mut t.init());
+    }
+
+    #[test]
+    fn bench_server_stream_connection() {
+        let t = BenchServerStreamConnection::new();
+        t.run(&mut t.init());
     }
 }
