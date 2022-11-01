@@ -237,6 +237,7 @@ def make_routes(service, backend):
     else:
         routes.append('id={}:{},no_grip {}'.format(service_id, backend_name, target))
         routes.append('id=ws:{}:{},no_grip {}'.format(service_id, backend_name, target))
+        routes.append('id=ws:{}:{}--F_{},no_grip {}'.format(service_id, service_id, backend_name, target))
 
     return routes
 
