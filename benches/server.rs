@@ -18,35 +18,54 @@ use condure::connection::testutil::{
     BenchServerReqConnection, BenchServerReqHandler, BenchServerStreamConnection,
     BenchServerStreamHandler,
 };
+use condure::executor::Executor;
+use condure::future::{AsyncReadExt, AsyncTcpStream, AsyncWriteExt};
+use condure::reactor::Reactor;
 use condure::server::TestServer;
 use criterion::{criterion_group, criterion_main, Criterion};
-use std::io::{Read, Write};
+use std::io::{self, Write};
 use std::net::SocketAddr;
 use std::str;
 
 const REQS_PER_ITER: usize = 10;
 
 fn req(addr: SocketAddr) {
-    let mut clients = Vec::new();
+    let reactor = Reactor::new(REQS_PER_ITER * 10);
+    let executor = Executor::new(REQS_PER_ITER);
 
     for _ in 0..REQS_PER_ITER {
-        let mut client = std::net::TcpStream::connect(&addr).unwrap();
-        client
-            .write(b"GET /hello HTTP/1.0\r\nHost: example.com\r\n\r\n")
+        executor
+            .spawn(async move {
+                let mut client = AsyncTcpStream::connect(addr).await.unwrap();
+
+                client
+                    .write(b"GET /hello HTTP/1.0\r\nHost: example.com\r\n\r\n")
+                    .await
+                    .unwrap();
+
+                let mut resp = [0u8; 1024];
+                let mut resp = io::Cursor::new(&mut resp[..]);
+
+                loop {
+                    let mut buf = [0; 1024];
+
+                    let size = client.read(&mut buf).await.unwrap();
+                    if size == 0 {
+                        break;
+                    }
+
+                    resp.write(&buf[..size]).unwrap();
+                }
+
+                let size = resp.position() as usize;
+                let resp = str::from_utf8(&resp.get_ref()[..size]).unwrap();
+
+                assert_eq!(resp, "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n");
+            })
             .unwrap();
-
-        clients.push(client);
     }
 
-    for client in clients.iter_mut() {
-        let mut buf = Vec::new();
-        client.read_to_end(&mut buf).unwrap();
-
-        assert_eq!(
-            str::from_utf8(&buf).unwrap(),
-            "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\nworld\n"
-        );
-    }
+    executor.run(|timeout| reactor.poll(timeout)).unwrap();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
