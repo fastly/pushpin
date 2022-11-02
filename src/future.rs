@@ -1599,16 +1599,24 @@ impl Future for TcpConnectFuture<'_> {
             return Poll::Pending;
         }
 
-        let maybe_error = match f.s.evented.io().take_error() {
-            Ok(me) => me,
-            Err(e) => return Poll::Ready(Err(e)),
-        };
+        // mio documentation says to use take_error() and peer_addr() to
+        // check for connected
 
-        if let Some(e) = maybe_error {
+        if let Ok(Some(e)) | Err(e) = f.s.evented.io().take_error() {
             return Poll::Ready(Err(e));
         }
 
-        Poll::Ready(Ok(()))
+        match f.s.evented.io().peer_addr() {
+            Ok(_) => Poll::Ready(Ok(())),
+            Err(e) if e.kind() == io::ErrorKind::NotConnected => {
+                f.s.evented
+                    .registration()
+                    .clear_readiness(mio::Interest::WRITABLE);
+
+                Poll::Pending
+            }
+            Err(e) => return Poll::Ready(Err(e)),
+        }
     }
 }
 
@@ -1636,16 +1644,24 @@ impl Future for UnixConnectFuture<'_> {
             return Poll::Pending;
         }
 
-        let maybe_error = match f.s.evented.io().take_error() {
-            Ok(me) => me,
-            Err(e) => return Poll::Ready(Err(e)),
-        };
+        // mio documentation says to use take_error() and peer_addr() to
+        // check for connected
 
-        if let Some(e) = maybe_error {
+        if let Ok(Some(e)) | Err(e) = f.s.evented.io().take_error() {
             return Poll::Ready(Err(e));
         }
 
-        Poll::Ready(Ok(()))
+        match f.s.evented.io().peer_addr() {
+            Ok(_) => Poll::Ready(Ok(())),
+            Err(e) if e.kind() == io::ErrorKind::NotConnected => {
+                f.s.evented
+                    .registration()
+                    .clear_readiness(mio::Interest::WRITABLE);
+
+                Poll::Pending
+            }
+            Err(e) => return Poll::Ready(Err(e)),
+        }
     }
 }
 
