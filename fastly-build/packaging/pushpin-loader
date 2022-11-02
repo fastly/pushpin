@@ -231,9 +231,9 @@ def make_routes(service, backend):
         if service.aco_enabled:
             cond_opts += ',aco'
 
-        routes.append('id={}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
-        routes.append('id=ht:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
-        routes.append('id=ws:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id=gr:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id=gr:ht:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id=gr:ws:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
     else:
         routes.append('id={}:{},no_grip {}'.format(service_id, backend_name, target))
         routes.append('id=ws:{}:{},no_grip {}'.format(service_id, backend_name, target))
