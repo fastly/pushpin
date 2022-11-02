@@ -147,30 +147,74 @@ impl Sender<'_> {
     }
 }
 
-fn process_report(r: &Report, s: Sender) -> Result<(), Box<dyn Error>> {
+struct Metric<'a> {
+    ws: Option<&'a str>,
+    fo: Option<&'a str>,
+    value: u64,
+}
+
+fn process_report(r: &Report, s: Sender, grip_enabled: bool) -> Result<(), Box<dyn Error>> {
     debug!("report: {:?}", r);
 
     let table = [
-        ("websocket_req_header_bytes", r.client_header_bytes_received),
-        ("websocket_req_body_bytes", r.client_content_bytes_received),
-        ("websocket_resp_header_bytes", r.client_header_bytes_sent),
-        ("websocket_resp_body_bytes", r.client_content_bytes_sent),
-        ("websocket_bereq_header_bytes", r.server_header_bytes_sent),
-        ("websocket_bereq_body_bytes", r.server_content_bytes_sent),
-        (
-            "websocket_beresp_header_bytes",
-            r.server_header_bytes_received,
-        ),
-        (
-            "websocket_beresp_body_bytes",
-            r.server_content_bytes_received,
-        ),
-        ("websocket_conn_time_ms", r.minutes * 60_000),
-        ("fanout_send_publishes", r.sent),
+        Metric {
+            ws: Some("websocket_req_header_bytes"),
+            fo: Some("fanout_req_header_bytes"),
+            value: r.client_header_bytes_received,
+        },
+        Metric {
+            ws: Some("websocket_req_body_bytes"),
+            fo: Some("fanout_req_body_bytes"),
+            value: r.client_content_bytes_received,
+        },
+        Metric {
+            ws: Some("websocket_resp_header_bytes"),
+            fo: Some("fanout_resp_header_bytes"),
+            value: r.client_header_bytes_sent,
+        },
+        Metric {
+            ws: Some("websocket_resp_body_bytes"),
+            fo: Some("fanout_resp_body_bytes"),
+            value: r.client_content_bytes_sent,
+        },
+        Metric {
+            ws: Some("websocket_bereq_header_bytes"),
+            fo: Some("fanout_bereq_header_bytes"),
+            value: r.server_header_bytes_sent,
+        },
+        Metric {
+            ws: Some("websocket_bereq_body_bytes"),
+            fo: Some("fanout_bereq_body_bytes"),
+            value: r.server_content_bytes_sent,
+        },
+        Metric {
+            ws: Some("websocket_beresp_header_bytes"),
+            fo: Some("fanout_beresp_header_bytes"),
+            value: r.server_header_bytes_received,
+        },
+        Metric {
+            ws: Some("websocket_beresp_body_bytes"),
+            fo: Some("fanout_beresp_body_bytes"),
+            value: r.server_content_bytes_received,
+        },
+        Metric {
+            ws: Some("websocket_conn_time_ms"),
+            fo: Some("fanout_conn_time_ms"),
+            value: r.minutes * 60_000,
+        },
+        Metric {
+            ws: None,
+            fo: Some("fanout_send_publishes"),
+            value: r.sent,
+        },
     ];
 
-    for (name, value) in table {
-        s.send_count(name, value)?;
+    for metric in table {
+        let name = if grip_enabled { metric.fo } else { metric.ws };
+
+        if let Some(name) = name {
+            s.send_count(name, metric.value)?;
+        }
     }
 
     Ok(())
@@ -235,10 +279,20 @@ fn process_stats(spec: &str, sender: MessageAggregatorSender) -> Result<(), Box<
             }
         };
 
-        let route = if report.route.starts_with("ht:") || report.route.starts_with("ws:") {
-            &report.route[3..]
+        let route = report.route.as_str();
+
+        // interpret gr: prefix
+        let (route, grip_enabled) = if route.starts_with("gr:") {
+            (&route[3..], true)
         } else {
-            &report.route
+            (route, false)
+        };
+
+        // discard transport prefix
+        let route = if route.starts_with("ht:") || route.starts_with("ws:") {
+            &route[3..]
+        } else {
+            route
         };
 
         let service_id = match route.find(":") {
@@ -259,7 +313,7 @@ fn process_stats(spec: &str, sender: MessageAggregatorSender) -> Result<(), Box<
             service_id: &service_id,
         };
 
-        if let Err(e) = process_report(&report, sender) {
+        if let Err(e) = process_report(&report, sender, grip_enabled) {
             error!("failed to process report: {}", e);
         }
     }

@@ -864,10 +864,27 @@ DomainMap::Entry DomainMap::entry(const QString &id) const
 {
 	QMutexLocker locker(&d->thread->worker->m);
 
-	if(!d->thread->worker->rulesById.contains(id))
+	// HACK
+	// the stats emitter needs to know which metrics are for
+	// grip-enabled routes or not, but this information is not
+	// provided in the metrics. to solve this, we can encode
+	// the grip mode into the route ID and have the emitter
+	// determine the mode from the ID. further, to workaround
+	// having to modify h2o/xqd/vcl to provide a new ID style,
+	// we can use a simple prefix to indicate the mode and
+	// internally perform lookups with and without the
+	// prefix. since the loader currently provides only one
+	// route per backend, either grip-enabled or not, there
+	// will be no ambiguity in the lookup
+	QString foundId;
+	if(d->thread->worker->rulesById.contains(id))
+		foundId = id;
+	else if(!id.startsWith("gr:") && d->thread->worker->rulesById.contains("gr:" + id))
+		foundId = "gr:" + id;
+	else
 		return Entry();
 
-	const Worker::Rule *r = &d->thread->worker->rulesById[id];
+	const Worker::Rule *r = &d->thread->worker->rulesById[foundId];
 
 	// this can happen if there were duplicate route IDs
 	if(r->id.isEmpty())
