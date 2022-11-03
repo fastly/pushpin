@@ -691,8 +691,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         let protocol = &mut *self.protocol.borrow_mut();
 
         if protocol.state() == http1::ServerState::ReceivingBody {
-            r.buf.align();
-
             loop {
                 let (size, read_size) = {
                     let mut buf = io::Cursor::new(r.buf.read_buf());
@@ -707,6 +705,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
                 };
 
                 if protocol.state() == http1::ServerState::ReceivingBody && read_size == 0 {
+                    if !r.buf.is_readable_contiguous() {
+                        r.buf.align();
+                        continue;
+                    }
+
                     if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                         if e.kind() == io::ErrorKind::WriteZero {
                             return Err(ServerError::BufferExceeded);
@@ -743,8 +746,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         let protocol = &mut *self.protocol.borrow_mut();
 
         if protocol.state() == http1::ServerState::ReceivingBody {
-            r.buf.align();
-
             loop {
                 let (size, read_size) = {
                     let mut buf = io::Cursor::new(r.buf.read_buf());
@@ -764,6 +765,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
                 };
 
                 if protocol.state() == http1::ServerState::ReceivingBody && read_size == 0 {
+                    if !r.buf.is_readable_contiguous() {
+                        r.buf.align();
+                        continue;
+                    }
+
                     if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                         if e.kind() == io::ErrorKind::WriteZero {
                             return Err(ServerError::BufferExceeded);
@@ -1231,7 +1237,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         buf1: &'a mut RingBuffer,
         buf2: &'a mut RingBuffer,
     ) -> Self {
-        buf1.align();
         buf2.clear();
 
         Self {
@@ -1279,6 +1284,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
                 }
                 Some(Err(e)) => return Err(e.into()),
                 None => {
+                    if !r.buf.is_readable_contiguous() {
+                        r.buf.align();
+                        continue;
+                    }
+
                     if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                         if e.kind() == io::ErrorKind::WriteZero {
                             return Err(ServerError::BufferExceeded);

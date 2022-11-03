@@ -405,6 +405,11 @@ impl RingBuffer {
         self.end += amount;
     }
 
+    // return true if the readable bytes have not wrapped
+    pub fn is_readable_contiguous(&self) -> bool {
+        self.end <= self.buf.len()
+    }
+
     pub fn align(&mut self) -> usize {
         if self.start == 0 {
             return 0;
