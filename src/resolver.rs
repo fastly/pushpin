@@ -374,7 +374,7 @@ mod tests {
                     cvar.notify_one();
 
                     // wait for query to be removed
-                    let _ = cvar.wait(guard).unwrap();
+                    let _guard = cvar.wait(guard).unwrap();
 
                     Ok(Addrs::new())
                 })
@@ -388,7 +388,7 @@ mod tests {
             let query = inner.resolve("127.0.0.1").unwrap();
 
             // wait for resolve_fn to start
-            let _ = cvar.wait(guard).unwrap();
+            let _guard = cvar.wait(guard).unwrap();
 
             drop(query);
 
