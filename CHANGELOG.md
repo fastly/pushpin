@@ -1,6 +1,21 @@
 Condure Changelog
 =================
 
+v. 1.8.0 (2022-11-03)
+
+  * Compatibility with httparse 1.8.
+  * Add more benchmarks.
+
+v. 1.7.0 (2022-08-18)
+
+  * Fix worker thread hang when backend buffer is full.
+
+v. 1.6.0 (2022-04-15)
+
+  * Significantly reduce connection memory usage.
+  * Allow up to 64 headers in requests and responses.
+  * Allow WebSocket requests that include a Content-Length of 0.
+
 v. 1.5.0 (2022-03-11)
 
   * Ability to listen on a Unix socket for client connections.
