@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Fanout, Inc.
+ * Copyright (C) 2017-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -91,23 +91,16 @@ static void logPacket(int level, const QString &message, const QVariant &data = 
 
 static void logPacket(int level, const QVariant &data, const char *fmt, va_list ap)
 {
-	QString str;
-	str.vsprintf(fmt, ap);
-	logPacket(level, str, data, MAX_DATA_LENGTH);
+	logPacket(level, QString::vasprintf(fmt, ap), data, MAX_DATA_LENGTH);
 }
 
 static void logPacket(int level, const QByteArray &content, const char *fmt, va_list ap)
 {
-	QString str;
-	str.vsprintf(fmt, ap);
-	logPacket(level, str, QVariant(), -1, content, MAX_CONTENT_LENGTH);
+	logPacket(level, QString::vasprintf(fmt, ap), QVariant(), -1, content, MAX_CONTENT_LENGTH);
 }
 
 static void logPacket(int level, const QVariant &data, const QString &contentField, const char *fmt, va_list ap)
 {
-	QString str;
-	str.vsprintf(fmt, ap);
-
 	QVariant meta;
 	QByteArray content;
 
@@ -126,7 +119,7 @@ static void logPacket(int level, const QVariant &data, const QString &contentFie
 		meta = data;
 	}
 
-	logPacket(level, str, meta, MAX_DATA_LENGTH, content, MAX_CONTENT_LENGTH);
+	logPacket(level, QString::vasprintf(fmt, ap), meta, MAX_DATA_LENGTH, content, MAX_CONTENT_LENGTH);
 }
 
 void logVariant(int level, const QVariant &data, const char *fmt, ...)
@@ -190,7 +183,7 @@ void logRequest(int level, const RequestData &data, const Config &config)
 		msg += " retry";
 
 	if(data.sharedBy)
-		msg += QString().sprintf(" shared=%p", data.sharedBy);
+		msg += QString::asprintf(" shared=%p", data.sharedBy);
 
 	if(config.userAgent)
 	{
