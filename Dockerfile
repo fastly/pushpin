@@ -1,4 +1,4 @@
-FROM us.gcr.io/plat-elevation-preprod/fastly/base:latest
+FROM us.gcr.io/plat-elevation-preprod/fastly/base-focal:latest
 
 ARG DESTDIR=/build
 ARG PKG_VERSION=unknown
@@ -7,6 +7,7 @@ ARG PKG_VERSION=unknown
 WORKDIR /build
 COPY . .
 
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake qconf fst-rustc-1.65.0=1.65.0-120 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake
 
 RUN ls -alhrt
