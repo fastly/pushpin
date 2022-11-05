@@ -2,7 +2,7 @@
  <name>Pushpin</name>
  <profile>pushpin.pro</profile>
  <moddir>qcm</moddir>
- <dep type='qt52'>
+ <dep type='qt5'>
   <required/>
  </dep>
  <dep type='conf'>
