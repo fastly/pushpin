@@ -116,7 +116,7 @@ public slots:
 			response.reason = StatusReasons::getReason(response.code);
 			response.headers += HttpHeader("Content-Type", "text/plain");
 			response.headers += HttpHeader("Grip-Hold", "response");
-			response.headers += HttpHeader("Grip-Channel", QStringList(channels.begin(), channels.end()).join(", ").toUtf8());
+			response.headers += HttpHeader("Grip-Channel", QStringList(channels.toList()).join(", ").toUtf8());
 			responseBody += QByteArray("nothing for now\n");
 		}
 		else if(path == "/stream")
@@ -125,7 +125,7 @@ public slots:
 			response.reason = StatusReasons::getReason(response.code);
 			response.headers += HttpHeader("Content-Type", "text/plain");
 			response.headers += HttpHeader("Grip-Hold", "stream");
-			response.headers += HttpHeader("Grip-Channel", QStringList(channels.begin(), channels.end()).join(", ").toUtf8());
+			response.headers += HttpHeader("Grip-Channel", QStringList(channels.toList()).join(", ").toUtf8());
 			responseBody += QByteArray("[stream opened]\n");
 		}
 		else

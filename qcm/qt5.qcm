@@ -1,16 +1,16 @@
 /*
 -----BEGIN QCMOD-----
-name: Qt >= 5.14.0
+name: Qt >= 5.12.0
 -----END QCMOD-----
 */
 class qc_qt5 : public ConfObj
 {
 public:
 	qc_qt5(Conf *c) : ConfObj(c) {}
-	QString name() const { return "Qt >= 5.14.0"; }
+	QString name() const { return "Qt >= 5.12.0"; }
 	QString shortname() const { return "qt5"; }
 	bool exec()
 	{
-		return(QT_VERSION >= 0x050e00);
+		return(QT_VERSION >= 0x050c00);
 	}
 };
