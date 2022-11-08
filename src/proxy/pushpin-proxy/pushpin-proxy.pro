@@ -14,8 +14,8 @@ PRE_TARGETDEPS += $$PWD/../libpushpin-proxy.a
 LIBS += -L$$PWD/../../corelib -lpushpin-core
 PRE_TARGETDEPS += $$PWD/../../corelib/libpushpin-core.a
 
-include($$OUT_PWD/../../../conf.pri)
 include($$OUT_PWD/../../rust/lib.pri)
+include($$OUT_PWD/../../../conf.pri)
 include(pushpin-proxy.pri)
 
 unix:!isEmpty(BINDIR) {

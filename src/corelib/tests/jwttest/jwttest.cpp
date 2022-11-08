@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Fanout, Inc.
+ * Copyright (C) 2013-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -27,7 +27,22 @@
  */
 
 #include <QtTest/QtTest>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "jwt.h"
+
+static const char *test_ec_private_key_pem =
+	"-----BEGIN PRIVATE KEY-----\n"
+	"MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgFcZQVV16cpGC4QUQ\n"
+	"8O8H85totFiAB54WBTxKQQElI7KhRANCAAQA3D4/QkBACQuC99MFqZllTOaamPAJ\n"
+	"3+Z3JkPsrd/z651PYmlywcdEGVWRiD2PNhvdzM7Nckxx1ZofDLlkvoxH\n"
+	"-----END PRIVATE KEY-----\n";
+
+static const char *test_ec_public_key_pem =
+	"-----BEGIN PUBLIC KEY-----\n"
+	"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEANw+P0JAQAkLgvfTBamZZUzmmpjw\n"
+	"Cd/mdyZD7K3f8+udT2JpcsHHRBlVkYg9jzYb3czOzXJMcdWaHwy5ZL6MRw==\n"
+	"-----END PUBLIC KEY-----\n";
 
 class JwtTest : public QObject
 {
@@ -59,6 +74,35 @@ private slots:
 	{
 		QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", "wrong");
 		QVERIFY(vclaim.isNull());
+	}
+
+	void es256EncodeDecode()
+	{
+		Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromEcPem(QByteArray(test_ec_private_key_pem));
+		QVERIFY(!privateKey.isNull());
+
+		Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromEcPem(QByteArray(test_ec_public_key_pem));
+		QVERIFY(!publicKey.isNull());
+
+		QVariantMap claim;
+		claim["iss"] = "nobody";
+
+		QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim)).toJson(QJsonDocument::Compact);
+		QVERIFY(!claimJson.isNull());
+
+		QByteArray token = Jwt::encodeWithAlgorithm(Jwt::ES256, claimJson, privateKey);
+		QVERIFY(!token.isNull());
+
+		QByteArray resultJson = Jwt::decodeWithAlgorithm(Jwt::ES256, token, publicKey);
+		QVERIFY(!resultJson.isNull());
+
+		QJsonParseError error;
+		QJsonDocument doc = QJsonDocument::fromJson(resultJson, &error);
+		QVERIFY(error.error == QJsonParseError::NoError);
+		QVERIFY(doc.isObject());
+
+		QVariantMap result = doc.object().toVariantMap();
+		QCOMPARE(result["iss"], "nobody");
 	}
 };
 

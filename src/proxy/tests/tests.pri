@@ -15,8 +15,8 @@ PRE_TARGETDEPS += $$PWD/../libpushpin-proxy.a
 LIBS += -L$$PWD/../../corelib -lpushpin-core
 PRE_TARGETDEPS += $$PWD/../../corelib/libpushpin-core.a
 
-include($$PWD/../../../conf.pri)
 include($$PWD/../../rust/lib.pri)
+include($$PWD/../../../conf.pri)
 
 INCLUDEPATH += $$SRC_DIR
 INCLUDEPATH += $$CORE_DIR
