@@ -1,12 +1,11 @@
-TEMPLATE = lib
-CONFIG -= app_bundle
-CONFIG += staticlib
-QT -= gui
-QT += network
-TARGET = pushpin-core
+TEMPLATE = subdirs
 
-MOC_DIR = $$OUT_PWD/_moc
-OBJECTS_DIR = $$OUT_PWD/_obj
+corelib.subdir = corelib
+tests.subdir = tests
+tests.depends = corelib
 
-include($$OUT_PWD/../../conf.pri)
-include(corelib.pri)
+tests.CONFIG += no_default_install
+
+SUBDIRS += \
+	corelib \
+	tests

@@ -21,7 +21,11 @@ vendor
 /src/config.h
 /src/Makefile
 /src/corelib/Makefile
+/src/corelib/corelib/Makefile
 /src/corelib/libpushpin-core.a
+/src/corelib/tests/Makefile
+/src/corelib/tests/*test/Makefile
+/src/corelib/tests/*test/*test
 /src/m2adapter/Makefile
 /src/proxy/Makefile
 /src/proxy/libpushpin-proxy/Makefile
