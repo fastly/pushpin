@@ -12,7 +12,6 @@ INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
 
 HEADERS += \
-	$$SRC_DIR/jwt.h \
 	$$SRC_DIR/testhttprequest.h \
 	$$SRC_DIR/testwebsocket.h \
 	$$SRC_DIR/websocketoverhttp.h \
@@ -37,7 +36,6 @@ HEADERS += \
 	$$SRC_DIR/engine.h
 
 SOURCES += \
-	$$SRC_DIR/jwt.cpp \
 	$$SRC_DIR/testhttprequest.cpp \
 	$$SRC_DIR/testwebsocket.cpp \
 	$$SRC_DIR/websocketoverhttp.cpp \
