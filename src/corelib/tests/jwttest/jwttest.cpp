@@ -78,11 +78,13 @@ private slots:
 
 	void es256EncodeDecode()
 	{
-		Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromEcPem(QByteArray(test_ec_private_key_pem));
+		Jwt::EncodingKey privateKey = Jwt::EncodingKey::fromPem(QByteArray(test_ec_private_key_pem));
 		QVERIFY(!privateKey.isNull());
+		QCOMPARE(privateKey.type(), Jwt::KeyType::Ec);
 
-		Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromEcPem(QByteArray(test_ec_public_key_pem));
+		Jwt::DecodingKey publicKey = Jwt::DecodingKey::fromPem(QByteArray(test_ec_public_key_pem));
 		QVERIFY(!publicKey.isNull());
+		QCOMPARE(publicKey.type(), Jwt::KeyType::Ec);
 
 		QVariantMap claim;
 		claim["iss"] = "nobody";

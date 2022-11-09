@@ -32,9 +32,16 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include "rust/jwt.h"
 
 namespace Jwt {
+
+EncodingKey EncodingKey::fromInternal(JwtEncodingKey key)
+{
+	EncodingKey k;
+	k.raw_ = key.key;
+	k.type_ = (KeyType)key.type;
+	return k;
+}
 
 EncodingKey::~EncodingKey()
 {
@@ -43,19 +50,15 @@ EncodingKey::~EncodingKey()
 
 EncodingKey EncodingKey::fromSecret(const QByteArray &key)
 {
-	EncodingKey k;
-	k.raw_ = jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size());
-	return k;
+	return fromInternal(jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size()));
 }
 
-EncodingKey EncodingKey::fromEcPem(const QByteArray &key)
+EncodingKey EncodingKey::fromPem(const QByteArray &key)
 {
-	EncodingKey k;
-	k.raw_ = jwt_encoding_key_from_ec_pem((const quint8 *)key.data(), key.size());
-	return k;
+	return fromInternal(jwt_encoding_key_from_pem((const quint8 *)key.data(), key.size()));
 }
 
-EncodingKey EncodingKey::fromEcPemFile(const QString &fileName)
+EncodingKey EncodingKey::fromPemFile(const QString &fileName)
 {
 	QFile f(fileName);
 	if(!f.open(QFile::ReadOnly))
@@ -63,7 +66,15 @@ EncodingKey EncodingKey::fromEcPemFile(const QString &fileName)
 		return EncodingKey();
 	}
 
-	return fromEcPem(f.readAll());
+	return fromPem(f.readAll());
+}
+
+DecodingKey DecodingKey::fromInternal(JwtDecodingKey key)
+{
+	DecodingKey k;
+	k.raw_ = key.key;
+	k.type_ = (KeyType)key.type;
+	return k;
 }
 
 DecodingKey::~DecodingKey()
@@ -73,19 +84,15 @@ DecodingKey::~DecodingKey()
 
 DecodingKey DecodingKey::fromSecret(const QByteArray &key)
 {
-	DecodingKey k;
-	k.raw_ = jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size());
-	return k;
+	return fromInternal(jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size()));
 }
 
-DecodingKey DecodingKey::fromEcPem(const QByteArray &key)
+DecodingKey DecodingKey::fromPem(const QByteArray &key)
 {
-	DecodingKey k;
-	k.raw_ = jwt_decoding_key_from_ec_pem((const quint8 *)key.data(), key.size());
-	return k;
+	return fromInternal(jwt_decoding_key_from_pem((const quint8 *)key.data(), key.size()));
 }
 
-DecodingKey DecodingKey::fromEcPemFile(const QString &fileName)
+DecodingKey DecodingKey::fromPemFile(const QString &fileName)
 {
 	QFile f(fileName);
 	if(!f.open(QFile::ReadOnly))
@@ -93,7 +100,7 @@ DecodingKey DecodingKey::fromEcPemFile(const QString &fileName)
 		return DecodingKey();
 	}
 
-	return fromEcPem(f.readAll());
+	return fromPem(f.readAll());
 }
 
 QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const EncodingKey &key)

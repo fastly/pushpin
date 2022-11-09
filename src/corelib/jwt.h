@@ -31,17 +31,23 @@
 
 #include <QByteArray>
 #include <QVariant>
+#include "rust/jwt.h"
 
 class QString;
 
 namespace Jwt {
 
-// NOTE: must match values on the rust side
+enum KeyType {
+	Secret = JWT_KEYTYPE_SECRET,
+	Ec = JWT_KEYTYPE_EC,
+	Rsa = JWT_KEYTYPE_RSA,
+};
+
 enum Algorithm
 {
-	HS256 = 0,
-	ES256 = 1,
-	RS256 = 2,
+	HS256 = JWT_ALGORITHM_HS256,
+	ES256 = JWT_ALGORITHM_ES256,
+	RS256 = JWT_ALGORITHM_RS256,
 };
 
 class EncodingKey
@@ -50,16 +56,25 @@ public:
 	~EncodingKey();
 
 	bool isNull() const { return (bool)(!raw_); }
+	KeyType type() const { return type_; }
+
 	const void *raw() const { return raw_; }
 
 	static EncodingKey fromSecret(const QByteArray &key);
-	static EncodingKey fromEcPem(const QByteArray &key);
-	static EncodingKey fromEcPemFile(const QString &fileName);
+	static EncodingKey fromPem(const QByteArray &key);
+	static EncodingKey fromPemFile(const QString &fileName);
 
 private:
 	void *raw_;
+	KeyType type_;
 
-	EncodingKey() { raw_ = 0; }
+	EncodingKey() :
+		raw_(0),
+		type_((KeyType)-1)
+	{
+	}
+
+	static EncodingKey fromInternal(JwtEncodingKey key);
 };
 
 class DecodingKey
@@ -68,16 +83,25 @@ public:
 	~DecodingKey();
 
 	bool isNull() const { return (bool)(!raw_); }
+	KeyType type() const { return type_; }
+
 	const void *raw() const { return raw_; }
 
 	static DecodingKey fromSecret(const QByteArray &key);
-	static DecodingKey fromEcPem(const QByteArray &key);
-	static DecodingKey fromEcPemFile(const QString &fileName);
+	static DecodingKey fromPem(const QByteArray &key);
+	static DecodingKey fromPemFile(const QString &fileName);
 
 private:
 	void *raw_;
+	KeyType type_;
 
-	DecodingKey() { raw_ = 0; }
+	DecodingKey() :
+		raw_(0),
+		type_((KeyType)-1)
+	{
+	}
+
+	static DecodingKey fromInternal(JwtDecodingKey key);
 };
 
 // returns token, null on error
