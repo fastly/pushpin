@@ -35,27 +35,35 @@
 
 namespace Jwt {
 
-EncodingKey EncodingKey::fromInternal(JwtEncodingKey key)
+EncodingKey::Private::Private() :
+	type((KeyType)-1),
+	raw(0)
 {
-	EncodingKey k;
-	k.raw_ = key.key;
-	k.type_ = (KeyType)key.type;
-	return k;
 }
 
-EncodingKey::~EncodingKey()
+EncodingKey::Private::Private(JwtEncodingKey key) :
+	type((KeyType)key.type),
+	raw(key.key)
 {
-	jwt_encoding_key_destroy(raw_);
+}
+
+EncodingKey::Private::~Private()
+{
+	jwt_encoding_key_destroy(raw);
 }
 
 EncodingKey EncodingKey::fromSecret(const QByteArray &key)
 {
-	return fromInternal(jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size()));
+	EncodingKey k;
+	k.d = new Private(jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size()));
+	return k;
 }
 
 EncodingKey EncodingKey::fromPem(const QByteArray &key)
 {
-	return fromInternal(jwt_encoding_key_from_pem((const quint8 *)key.data(), key.size()));
+	EncodingKey k;
+	k.d = new Private(jwt_encoding_key_from_pem((const quint8 *)key.data(), key.size()));
+	return k;
 }
 
 EncodingKey EncodingKey::fromPemFile(const QString &fileName)
@@ -69,27 +77,54 @@ EncodingKey EncodingKey::fromPemFile(const QString &fileName)
 	return fromPem(f.readAll());
 }
 
-DecodingKey DecodingKey::fromInternal(JwtDecodingKey key)
+EncodingKey EncodingKey::fromConfigString(const QString &s)
 {
-	DecodingKey k;
-	k.raw_ = key.key;
-	k.type_ = (KeyType)key.type;
-	return k;
+	if(s.startsWith("file:"))
+	{
+		return EncodingKey::fromPemFile(s.mid(5));
+	}
+	else
+	{
+		QByteArray secret;
+
+		if(s.startsWith("base64:"))
+			secret = QByteArray::fromBase64(s.mid(7).toUtf8());
+		else
+			secret = s.toUtf8();
+
+		return EncodingKey::fromSecret(secret);
+	}
 }
 
-DecodingKey::~DecodingKey()
+DecodingKey::Private::Private() :
+	type((KeyType)-1),
+	raw(0)
 {
-	jwt_decoding_key_destroy(raw_);
+}
+
+DecodingKey::Private::Private(JwtDecodingKey key) :
+	type((KeyType)key.type),
+	raw(key.key)
+{
+}
+
+DecodingKey::Private::~Private()
+{
+	jwt_decoding_key_destroy(raw);
 }
 
 DecodingKey DecodingKey::fromSecret(const QByteArray &key)
 {
-	return fromInternal(jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size()));
+	DecodingKey k;
+	k.d = new Private(jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size()));
+	return k;
 }
 
 DecodingKey DecodingKey::fromPem(const QByteArray &key)
 {
-	return fromInternal(jwt_decoding_key_from_pem((const quint8 *)key.data(), key.size()));
+	DecodingKey k;
+	k.d = new Private(jwt_decoding_key_from_pem((const quint8 *)key.data(), key.size()));
+	return k;
 }
 
 DecodingKey DecodingKey::fromPemFile(const QString &fileName)
@@ -101,6 +136,25 @@ DecodingKey DecodingKey::fromPemFile(const QString &fileName)
 	}
 
 	return fromPem(f.readAll());
+}
+
+DecodingKey DecodingKey::fromConfigString(const QString &s)
+{
+	if(s.startsWith("file:"))
+	{
+		return DecodingKey::fromPemFile(s.mid(5));
+	}
+	else
+	{
+		QByteArray secret;
+
+		if(s.startsWith("base64:"))
+			secret = QByteArray::fromBase64(s.mid(7).toUtf8());
+		else
+			secret = s.toUtf8();
+
+		return DecodingKey::fromSecret(secret);
+	}
 }
 
 QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const EncodingKey &key)

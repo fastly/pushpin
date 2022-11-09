@@ -31,6 +31,7 @@
 
 #include <QByteArray>
 #include <QVariant>
+#include <QSharedData>
 #include "rust/jwt.h"
 
 class QString;
@@ -53,55 +54,57 @@ enum Algorithm
 class EncodingKey
 {
 public:
-	~EncodingKey();
+	bool isNull() const { return !d; }
+	KeyType type() const { if(d) { return d->type; } else { return (KeyType)-1; } }
 
-	bool isNull() const { return (bool)(!raw_); }
-	KeyType type() const { return type_; }
-
-	const void *raw() const { return raw_; }
+	const void *raw() const { if(d) { return d->raw; } else { return 0; } }
 
 	static EncodingKey fromSecret(const QByteArray &key);
 	static EncodingKey fromPem(const QByteArray &key);
 	static EncodingKey fromPemFile(const QString &fileName);
+	static EncodingKey fromConfigString(const QString &s);
 
 private:
-	void *raw_;
-	KeyType type_;
-
-	EncodingKey() :
-		raw_(0),
-		type_((KeyType)-1)
+	class Private : public QSharedData
 	{
-	}
+	public:
+		KeyType type;
+		void *raw;
 
-	static EncodingKey fromInternal(JwtEncodingKey key);
+		Private();
+		Private(JwtEncodingKey key);
+		~Private();
+	};
+
+	QSharedDataPointer<Private> d;
 };
 
 class DecodingKey
 {
 public:
-	~DecodingKey();
+	bool isNull() const { return !d; }
+	KeyType type() const { if(d) { return d->type; } else { return (KeyType)-1; } }
 
-	bool isNull() const { return (bool)(!raw_); }
-	KeyType type() const { return type_; }
-
-	const void *raw() const { return raw_; }
+	const void *raw() const { if(d) { return d->raw; } else { return 0; } }
 
 	static DecodingKey fromSecret(const QByteArray &key);
 	static DecodingKey fromPem(const QByteArray &key);
 	static DecodingKey fromPemFile(const QString &fileName);
+	static DecodingKey fromConfigString(const QString &s);
 
 private:
-	void *raw_;
-	KeyType type_;
-
-	DecodingKey() :
-		raw_(0),
-		type_((KeyType)-1)
+	class Private : public QSharedData
 	{
-	}
+	public:
+		KeyType type;
+		void *raw;
 
-	static DecodingKey fromInternal(JwtDecodingKey key);
+		Private();
+		Private(JwtDecodingKey key);
+		~Private();
+	};
+
+	QSharedDataPointer<Private> d;
 };
 
 // returns token, null on error
