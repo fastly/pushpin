@@ -30,32 +30,44 @@
 
 #include <QString>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include "rust/jwt.h"
 
 namespace Jwt {
 
-EncodingKey::~EncodingKey()
+EncodingKey::Private::Private() :
+	type((KeyType)-1),
+	raw(0)
 {
-	jwt_encoding_key_destroy(raw_);
+}
+
+EncodingKey::Private::Private(JwtEncodingKey key) :
+	type((KeyType)key.type),
+	raw(key.key)
+{
+}
+
+EncodingKey::Private::~Private()
+{
+	jwt_encoding_key_destroy(raw);
 }
 
 EncodingKey EncodingKey::fromSecret(const QByteArray &key)
 {
 	EncodingKey k;
-	k.raw_ = jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size());
+	k.d = new Private(jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size()));
 	return k;
 }
 
-EncodingKey EncodingKey::fromEcPem(const QByteArray &key)
+EncodingKey EncodingKey::fromPem(const QByteArray &key)
 {
 	EncodingKey k;
-	k.raw_ = jwt_encoding_key_from_ec_pem((const quint8 *)key.data(), key.size());
+	k.d = new Private(jwt_encoding_key_from_pem((const quint8 *)key.data(), key.size()));
 	return k;
 }
 
-EncodingKey EncodingKey::fromEcPemFile(const QString &fileName)
+EncodingKey EncodingKey::fromPemFile(const QString &fileName)
 {
 	QFile f(fileName);
 	if(!f.open(QFile::ReadOnly))
@@ -63,29 +75,65 @@ EncodingKey EncodingKey::fromEcPemFile(const QString &fileName)
 		return EncodingKey();
 	}
 
-	return fromEcPem(f.readAll());
+	return fromPem(f.readAll());
 }
 
-DecodingKey::~DecodingKey()
+EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 {
-	jwt_decoding_key_destroy(raw_);
+	if(s.startsWith("file:"))
+	{
+		QString keyFile = s.mid(5);
+		QFileInfo fi(keyFile);
+		if(fi.isRelative())
+			keyFile = QFileInfo(baseDir, keyFile).filePath();
+
+		return EncodingKey::fromPemFile(keyFile);
+	}
+	else
+	{
+		QByteArray secret;
+
+		if(s.startsWith("base64:"))
+			secret = QByteArray::fromBase64(s.mid(7).toUtf8());
+		else
+			secret = s.toUtf8();
+
+		return EncodingKey::fromSecret(secret);
+	}
+}
+
+DecodingKey::Private::Private() :
+	type((KeyType)-1),
+	raw(0)
+{
+}
+
+DecodingKey::Private::Private(JwtDecodingKey key) :
+	type((KeyType)key.type),
+	raw(key.key)
+{
+}
+
+DecodingKey::Private::~Private()
+{
+	jwt_decoding_key_destroy(raw);
 }
 
 DecodingKey DecodingKey::fromSecret(const QByteArray &key)
 {
 	DecodingKey k;
-	k.raw_ = jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size());
+	k.d = new Private(jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size()));
 	return k;
 }
 
-DecodingKey DecodingKey::fromEcPem(const QByteArray &key)
+DecodingKey DecodingKey::fromPem(const QByteArray &key)
 {
 	DecodingKey k;
-	k.raw_ = jwt_decoding_key_from_ec_pem((const quint8 *)key.data(), key.size());
+	k.d = new Private(jwt_decoding_key_from_pem((const quint8 *)key.data(), key.size()));
 	return k;
 }
 
-DecodingKey DecodingKey::fromEcPemFile(const QString &fileName)
+DecodingKey DecodingKey::fromPemFile(const QString &fileName)
 {
 	QFile f(fileName);
 	if(!f.open(QFile::ReadOnly))
@@ -93,7 +141,31 @@ DecodingKey DecodingKey::fromEcPemFile(const QString &fileName)
 		return DecodingKey();
 	}
 
-	return fromEcPem(f.readAll());
+	return fromPem(f.readAll());
+}
+
+DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
+{
+	if(s.startsWith("file:"))
+	{
+		QString keyFile = s.mid(5);
+		QFileInfo fi(keyFile);
+		if(fi.isRelative())
+			keyFile = QFileInfo(baseDir, keyFile).filePath();
+
+		return DecodingKey::fromPemFile(keyFile);
+	}
+	else
+	{
+		QByteArray secret;
+
+		if(s.startsWith("base64:"))
+			secret = QByteArray::fromBase64(s.mid(7).toUtf8());
+		else
+			secret = s.toUtf8();
+
+		return DecodingKey::fromSecret(secret);
+	}
 }
 
 QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const EncodingKey &key)
@@ -128,18 +200,36 @@ QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const Dec
 	return out;
 }
 
-QByteArray encode(const QVariant &claim, const QByteArray &key)
+QByteArray encode(const QVariant &claim, const EncodingKey &key)
 {
+	Algorithm alg;
+	switch(key.type())
+	{
+		case Jwt::KeyType::Secret: alg = Jwt::HS256; break;
+		case Jwt::KeyType::Ec: alg = Jwt::ES256; break;
+		case Jwt::KeyType::Rsa: alg = Jwt::RS256; break;
+		default: return QByteArray();
+	}
+
 	QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim.toMap())).toJson(QJsonDocument::Compact);
 	if(claimJson.isNull())
 		return QByteArray();
 
-	return encodeWithAlgorithm(HS256, claimJson, EncodingKey::fromSecret(key));
+	return encodeWithAlgorithm(alg, claimJson, key);
 }
 
-QVariant decode(const QByteArray &token, const QByteArray &key)
+QVariant decode(const QByteArray &token, const DecodingKey &key)
 {
-	QByteArray claimJson = decodeWithAlgorithm(HS256, token, DecodingKey::fromSecret(key));
+	Algorithm alg;
+	switch(key.type())
+	{
+		case Jwt::KeyType::Secret: alg = Jwt::HS256; break;
+		case Jwt::KeyType::Ec: alg = Jwt::ES256; break;
+		case Jwt::KeyType::Rsa: alg = Jwt::RS256; break;
+		default: return QVariant();
+	}
+
+	QByteArray claimJson = decodeWithAlgorithm(alg, token, key);
 	if(claimJson.isEmpty())
 		return QVariant();
 
