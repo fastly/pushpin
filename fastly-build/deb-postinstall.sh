@@ -12,7 +12,7 @@ chown pushpin:pushpin /var/run/pushpin
 chown pushpin:pushpin-listener /opt/fst-pushpin/bin/pushpin-healthcheck
 chmod g+s /opt/fst-pushpin/bin/pushpin-healthcheck
 
-SECRETS="pushpin-nsq-client-cert.pem pushpin-nsq-client-key.pem pushpin-nsq-ca-cert.pem"
+SECRETS="pushpin-nsq-client-cert.pem pushpin-nsq-client-key.pem pushpin-nsq-ca-cert.pem pushpin-sig-key.pem"
 
 secrets_tmp_dir=/etc/pushpin/private/tmp
 install -d -o root -g root -m 0700 "${secrets_tmp_dir}"
@@ -29,6 +29,7 @@ fi
 install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-cert.pem /etc/pushpin/private/nsq-client-cert.pem || ${on_secrets_fail}
 install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-key.pem  /etc/pushpin/private/nsq-client-key.pem  || ${on_secrets_fail}
 install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-ca-cert.pem     /etc/pushpin/private/nsq-ca-cert.pem     || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-sig-key.pem         /etc/pushpin/private/sig-key.pem         || ${on_secrets_fail}
 
 rm -rf "${secrets_tmp_dir}"
 
