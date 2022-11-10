@@ -70,8 +70,6 @@ public:
 		QString statsRoute;
 		QString channelPrefix;
 		QSet<QString> implicitChannels;
-		QByteArray sigIss;
-		QByteArray sigKey;
 		bool trusted;
 		bool responseSent;
 		QString sid;

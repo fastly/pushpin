@@ -38,6 +38,7 @@
 #include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
+#include "jwt.h"
 #include "zhttpmanager.h"
 #include "zwebsocket.h"
 #include "websocketoverhttp.h"
@@ -248,8 +249,8 @@ public:
 	DomainMap::Entry route;
 	bool debug;
 	QByteArray defaultSigIss;
-	QByteArray defaultSigKey;
-	QByteArray defaultUpstreamKey;
+	Jwt::EncodingKey defaultSigKey;
+	Jwt::DecodingKey defaultUpstreamKey;
 	bool passToUpstream;
 	bool acceptXForwardedProtocol;
 	bool useXForwardedProto;
@@ -262,7 +263,7 @@ public:
 	bool trustedClient;
 	QHostAddress logicalClientAddress;
 	QByteArray sigIss;
-	QByteArray sigKey;
+	Jwt::EncodingKey sigKey;
 	WebSocket *inSock;
 	WebSocket *outSock;
 	int inPendingBytes;
@@ -413,7 +414,7 @@ public:
 
 		requestData.uri.setPath(QString::fromUtf8(path), QUrl::StrictMode);
 
-		if(!route.sigIss.isEmpty() && !route.sigKey.isEmpty())
+		if(!route.sigIss.isEmpty() && !route.sigKey.isNull())
 		{
 			sigIss = route.sigIss;
 			sigKey = route.sigKey;
@@ -1178,13 +1179,13 @@ void WsProxySession::setDebugEnabled(bool enabled)
 	d->debug = enabled;
 }
 
-void WsProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)
+void WsProxySession::setDefaultSigKey(const QByteArray &iss, const Jwt::EncodingKey &key)
 {
 	d->defaultSigIss = iss;
 	d->defaultSigKey = key;
 }
 
-void WsProxySession::setDefaultUpstreamKey(const QByteArray &key)
+void WsProxySession::setDefaultUpstreamKey(const Jwt::DecodingKey &key)
 {
 	d->defaultUpstreamKey = key;
 }

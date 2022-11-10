@@ -31,20 +31,40 @@
 
 #include <QtGlobal>
 
+// NOTE: must match values on the rust side
+#define JWT_KEYTYPE_SECRET 0
+#define JWT_KEYTYPE_EC 1
+#define JWT_KEYTYPE_RSA 2
+#define JWT_ALGORITHM_HS256 0
+#define JWT_ALGORITHM_ES256 1
+#define JWT_ALGORITHM_RS256 2
+
 extern "C"
 {
+	struct JwtEncodingKey
+	{
+		int type;
+		void *key;
+	};
+
+	struct JwtDecodingKey
+	{
+		int type;
+		void *key;
+	};
+
 	struct JwtBuffer
 	{
 		quint8 *data;
 		size_t len;
 	};
 
-	void *jwt_encoding_key_from_secret(const quint8 *data, size_t len);
-	void *jwt_encoding_key_from_ec_pem(const quint8 *data, size_t len);
+	JwtEncodingKey jwt_encoding_key_from_secret(const quint8 *data, size_t len);
+	JwtEncodingKey jwt_encoding_key_from_pem(const quint8 *data, size_t len);
 	void jwt_encoding_key_destroy(void *key);
 
-	void *jwt_decoding_key_from_secret(const quint8 *data, size_t len);
-	void *jwt_decoding_key_from_ec_pem(const quint8 *data, size_t len);
+	JwtDecodingKey jwt_decoding_key_from_secret(const quint8 *data, size_t len);
+	JwtDecodingKey jwt_decoding_key_from_pem(const quint8 *data, size_t len);
 	void jwt_decoding_key_destroy(void *key);
 
 	void jwt_str_destroy(char *s);

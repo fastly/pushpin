@@ -29,11 +29,13 @@
 #include "proxyutil.h"
 
 #include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "log.h"
 #include "jwt.h"
 #include "inspectdata.h"
 
-static QByteArray make_token(const QByteArray &iss, const QByteArray &key)
+static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key)
 {
 	QVariantMap claim;
 	claim["iss"] = QString::fromUtf8(iss);
@@ -41,7 +43,7 @@ static QByteArray make_token(const QByteArray &iss, const QByteArray &key)
 	return Jwt::encode(claim, key);
 }
 
-static bool validate_token(const QByteArray &token, const QByteArray &key)
+static bool validate_token(const QByteArray &token, const Jwt::DecodingKey &key)
 {
 	QVariant claimObj = Jwt::decode(token, key);
 	if(!claimObj.isValid() || claimObj.type() != QVariant::Map)
@@ -59,9 +61,9 @@ static bool validate_token(const QByteArray &token, const QByteArray &key)
 namespace ProxyUtil {
 
 // check if the request is coming from a grip proxy already
-bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestData &requestData, const QByteArray &defaultUpstreamKey)
+bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestData &requestData, const Jwt::DecodingKey &defaultUpstreamKey)
 {
-	if(!defaultUpstreamKey.isEmpty())
+	if(!defaultUpstreamKey.isNull())
 	{
 		QByteArray token = requestData.headers.get("Grip-Sig");
 		if(!token.isEmpty())
@@ -76,7 +78,7 @@ bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestDa
 	return false;
 }
 
-void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const QByteArray &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, bool acceptPushpinRoute, const QHostAddress &peerAddress, const InspectData &idata, bool gripEnabled, bool intReq)
+void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const Jwt::EncodingKey &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, bool acceptPushpinRoute, const QHostAddress &peerAddress, const InspectData &idata, bool gripEnabled, bool intReq)
 {
 	if(trustedClient)
 		log_debug("%s: %p passing to upstream", logprefix, object);
@@ -168,7 +170,7 @@ void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestDa
 	if(!trustedClient && gripEnabled)
 	{
 		// set Grip-Sig
-		if(!sigIss.isEmpty() && !sigKey.isEmpty())
+		if(!sigIss.isEmpty() && !sigKey.isNull())
 		{
 			QByteArray token = make_token(sigIss, sigKey);
 			if(!token.isEmpty())

@@ -87,8 +87,6 @@ public:
 	bool separateStats;
 	QByteArray channelPrefix;
 	QList<QByteArray> channels;
-	QByteArray sigIss;
-	QByteArray sigKey;
 	bool trusted; // whether a trusted target was used
 	bool useSession;
 	bool responseSent;

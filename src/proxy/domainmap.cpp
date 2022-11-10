@@ -36,18 +36,11 @@
 #include <QMutex>
 #include <QWaitCondition>
 #include <QFile>
+#include <QDir>
 #include <QTextStream>
 #include <QFileSystemWatcher>
 #include "log.h"
 #include "routesfile.h"
-
-static QByteArray parse_key(const QString &in)
-{
-	if(in.startsWith("base64:"))
-		return QByteArray::fromBase64(in.mid(7).toUtf8());
-	else
-		return in.toUtf8();
-}
 
 class DomainMap::Worker : public QObject
 {
@@ -73,7 +66,7 @@ public:
 		QByteArray id;
 		bool explicitId; // if the id was provided by the user
 		QByteArray sigIss;
-		QByteArray sigKey;
+		Jwt::EncodingKey sigKey;
 		QByteArray prefix;
 		bool origHeaders;
 		QString asHost;
@@ -228,6 +221,8 @@ public:
 			return;
 		}
 
+		QDir fileDir = QFileInfo(fileName).absoluteDir();
+
 		QList<Rule> all;
 		QHash< QString, QList<Rule> > domainMap;
 		QHash<QString, Rule> idMap;
@@ -238,7 +233,7 @@ public:
 			QString line = ts.readLine();
 
 			Rule r;
-			if(!parseRouteLine(line, fileName, lineNum, &r))
+			if(!parseRouteLine(line, fileName, lineNum, fileDir, &r))
 			{
 				// parseRouteLine will have logged a message if needed
 				continue;
@@ -303,7 +298,7 @@ public:
 	bool addRouteLine(const QString &line)
 	{
 		Rule r;
-		if(!parseRouteLine(line, "<route>", 1, &r))
+		if(!parseRouteLine(line, "<route>", 1, QDir::current(), &r))
 			return false;
 
 		if(addRule(r, &allRules, &rulesByDomain, &rulesById) != AddRuleOk)
@@ -356,7 +351,7 @@ public slots:
 	}
 
 private:
-	static bool parseRouteLine(const QString &line, const QString &fileName, int lineNum, Rule *rule)
+	static bool parseRouteLine(const QString &line, const QString &fileName, int lineNum, const QDir &fileDir, Rule *rule)
 	{
 		bool ok;
 		QString errmsg;
@@ -446,7 +441,7 @@ private:
 
 		if(props.contains("sig_key"))
 		{
-			r.sigKey = parse_key(props.value("sig_key"));
+			r.sigKey = Jwt::EncodingKey::fromConfigString(props.value("sig_key"), fileDir);
 		}
 
 		if(props.contains("prefix"))

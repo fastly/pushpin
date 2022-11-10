@@ -31,53 +31,81 @@
 
 #include <QByteArray>
 #include <QVariant>
+#include <QSharedData>
+#include <QDir>
+#include "rust/jwt.h"
 
 class QString;
 
 namespace Jwt {
 
-// NOTE: must match values on the rust side
+enum KeyType {
+	Secret = JWT_KEYTYPE_SECRET,
+	Ec = JWT_KEYTYPE_EC,
+	Rsa = JWT_KEYTYPE_RSA,
+};
+
 enum Algorithm
 {
-	HS256 = 0,
-	ES256 = 1,
-	RS256 = 2,
+	HS256 = JWT_ALGORITHM_HS256,
+	ES256 = JWT_ALGORITHM_ES256,
+	RS256 = JWT_ALGORITHM_RS256,
 };
 
 class EncodingKey
 {
 public:
-	~EncodingKey();
+	bool isNull() const { return !d; }
+	KeyType type() const { if(d) { return d->type; } else { return (KeyType)-1; } }
 
-	bool isNull() const { return (bool)(!raw_); }
-	const void *raw() const { return raw_; }
+	const void *raw() const { if(d) { return d->raw; } else { return 0; } }
 
 	static EncodingKey fromSecret(const QByteArray &key);
-	static EncodingKey fromEcPem(const QByteArray &key);
-	static EncodingKey fromEcPemFile(const QString &fileName);
+	static EncodingKey fromPem(const QByteArray &key);
+	static EncodingKey fromPemFile(const QString &fileName);
+	static EncodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
 
 private:
-	void *raw_;
+	class Private : public QSharedData
+	{
+	public:
+		KeyType type;
+		void *raw;
 
-	EncodingKey() { raw_ = 0; }
+		Private();
+		Private(JwtEncodingKey key);
+		~Private();
+	};
+
+	QSharedDataPointer<Private> d;
 };
 
 class DecodingKey
 {
 public:
-	~DecodingKey();
+	bool isNull() const { return !d; }
+	KeyType type() const { if(d) { return d->type; } else { return (KeyType)-1; } }
 
-	bool isNull() const { return (bool)(!raw_); }
-	const void *raw() const { return raw_; }
+	const void *raw() const { if(d) { return d->raw; } else { return 0; } }
 
 	static DecodingKey fromSecret(const QByteArray &key);
-	static DecodingKey fromEcPem(const QByteArray &key);
-	static DecodingKey fromEcPemFile(const QString &fileName);
+	static DecodingKey fromPem(const QByteArray &key);
+	static DecodingKey fromPemFile(const QString &fileName);
+	static DecodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
 
 private:
-	void *raw_;
+	class Private : public QSharedData
+	{
+	public:
+		KeyType type;
+		void *raw;
 
-	DecodingKey() { raw_ = 0; }
+		Private();
+		Private(JwtDecodingKey key);
+		~Private();
+	};
+
+	QSharedDataPointer<Private> d;
 };
 
 // returns token, null on error
@@ -86,8 +114,8 @@ QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const Enc
 // returns claim, null on error
 QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const DecodingKey &key);
 
-QByteArray encode(const QVariant &claim, const QByteArray &key);
-QVariant decode(const QByteArray &token, const QByteArray &key);
+QByteArray encode(const QVariant &claim, const EncodingKey &key);
+QVariant decode(const QByteArray &token, const DecodingKey &key);
 
 }
 

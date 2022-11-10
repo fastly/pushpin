@@ -99,24 +99,103 @@ pub unsafe extern "C" fn timer_wheel_take_expired(wheel: *mut TimerWheel) -> Exp
     }
 }
 
+const JWT_KEYTYPE_SECRET: libc::c_int = 0;
+const JWT_KEYTYPE_EC: libc::c_int = 1;
+const JWT_KEYTYPE_RSA: libc::c_int = 2;
+const JWT_ALGORITHM_HS256: libc::c_int = 0;
+const JWT_ALGORITHM_ES256: libc::c_int = 1;
+const JWT_ALGORITHM_RS256: libc::c_int = 2;
+
+#[repr(C)]
+pub struct JwtEncodingKey {
+    r#type: libc::c_int,
+    key: *mut jsonwebtoken::EncodingKey,
+}
+
+#[repr(C)]
+pub struct JwtDecodingKey {
+    r#type: libc::c_int,
+    key: *mut jsonwebtoken::DecodingKey,
+}
+
+type EncodingKeyFromPemFn =
+    fn(&[u8]) -> Result<jsonwebtoken::EncodingKey, jsonwebtoken::errors::Error>;
+type DecodingKeyFromPemFn =
+    fn(&[u8]) -> Result<jsonwebtoken::DecodingKey, jsonwebtoken::errors::Error>;
+
+fn load_encoding_key_pem(
+    key: &[u8],
+) -> Result<(libc::c_int, jsonwebtoken::EncodingKey), jsonwebtoken::errors::Error> {
+    // pem data includes the key type, however the jsonwebtoken crate
+    // requires specifying the expected type when decoding. we'll just try
+    // the data against multiple possible types
+    let decoders: [(libc::c_int, EncodingKeyFromPemFn); 2] = [
+        (JWT_KEYTYPE_EC, jsonwebtoken::EncodingKey::from_ec_pem),
+        (JWT_KEYTYPE_RSA, jsonwebtoken::EncodingKey::from_rsa_pem),
+    ];
+
+    let mut last_err = None;
+
+    for (ktype, f) in decoders {
+        match f(key) {
+            Ok(key) => return Ok((ktype, key)),
+            Err(e) => last_err = Some(e),
+        }
+    }
+
+    Err(last_err.unwrap())
+}
+
+fn load_decoding_key_pem(
+    key: &[u8],
+) -> Result<(libc::c_int, jsonwebtoken::DecodingKey), jsonwebtoken::errors::Error> {
+    // pem data includes the key type, however the jsonwebtoken crate
+    // requires specifying the expected type when decoding. we'll just try
+    // the data against multiple possible types
+    let decoders: [(libc::c_int, DecodingKeyFromPemFn); 2] = [
+        (JWT_KEYTYPE_EC, jsonwebtoken::DecodingKey::from_ec_pem),
+        (JWT_KEYTYPE_RSA, jsonwebtoken::DecodingKey::from_rsa_pem),
+    ];
+
+    let mut last_err = None;
+
+    for (ktype, f) in decoders {
+        match f(key) {
+            Ok(key) => return Ok((ktype, key)),
+            Err(e) => last_err = Some(e),
+        }
+    }
+
+    Err(last_err.unwrap())
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn jwt_encoding_key_from_secret(
     data: *const u8,
     len: libc::size_t,
-) -> *mut jsonwebtoken::EncodingKey {
+) -> JwtEncodingKey {
     let key = jsonwebtoken::EncodingKey::from_secret(slice::from_raw_parts(data, len));
 
-    Box::into_raw(Box::new(key))
+    JwtEncodingKey {
+        r#type: JWT_KEYTYPE_SECRET,
+        key: Box::into_raw(Box::new(key)),
+    }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn jwt_encoding_key_from_ec_pem(
+pub unsafe extern "C" fn jwt_encoding_key_from_pem(
     data: *const u8,
     len: libc::size_t,
-) -> *mut jsonwebtoken::EncodingKey {
-    match jsonwebtoken::EncodingKey::from_ec_pem(slice::from_raw_parts(data, len)) {
-        Ok(key) => Box::into_raw(Box::new(key)),
-        Err(_) => ptr::null_mut(),
+) -> JwtEncodingKey {
+    match load_encoding_key_pem(slice::from_raw_parts(data, len)) {
+        Ok((ktype, key)) => JwtEncodingKey {
+            r#type: ktype,
+            key: Box::into_raw(Box::new(key)),
+        },
+        Err(_) => JwtEncodingKey {
+            r#type: -1,
+            key: ptr::null_mut(),
+        },
     }
 }
 
@@ -131,20 +210,29 @@ pub unsafe extern "C" fn jwt_encoding_key_destroy(key: *mut jsonwebtoken::Encodi
 pub unsafe extern "C" fn jwt_decoding_key_from_secret(
     data: *const u8,
     len: libc::size_t,
-) -> *mut jsonwebtoken::DecodingKey {
+) -> JwtDecodingKey {
     let key = jsonwebtoken::DecodingKey::from_secret(slice::from_raw_parts(data, len));
 
-    Box::into_raw(Box::new(key))
+    JwtDecodingKey {
+        r#type: JWT_KEYTYPE_SECRET,
+        key: Box::into_raw(Box::new(key)),
+    }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn jwt_decoding_key_from_ec_pem(
+pub unsafe extern "C" fn jwt_decoding_key_from_pem(
     data: *const u8,
     len: libc::size_t,
-) -> *mut jsonwebtoken::DecodingKey {
-    match jsonwebtoken::DecodingKey::from_ec_pem(slice::from_raw_parts(data, len)) {
-        Ok(key) => Box::into_raw(Box::new(key)),
-        Err(_) => ptr::null_mut(),
+) -> JwtDecodingKey {
+    match load_decoding_key_pem(slice::from_raw_parts(data, len)) {
+        Ok((ktype, key)) => JwtDecodingKey {
+            r#type: ktype,
+            key: Box::into_raw(Box::new(key)),
+        },
+        Err(_) => JwtDecodingKey {
+            r#type: -1,
+            key: ptr::null_mut(),
+        },
     }
 }
 
@@ -179,9 +267,9 @@ pub unsafe extern "C" fn jwt_encode(
     };
 
     let header = match alg {
-        0 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
-        1 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256),
-        2 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
+        JWT_ALGORITHM_HS256 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        JWT_ALGORITHM_ES256 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::ES256),
+        JWT_ALGORITHM_RS256 => jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256),
         _ => return 1, // unsupported algorithm
     };
 
@@ -222,9 +310,9 @@ pub unsafe extern "C" fn jwt_decode(
     };
 
     let mut validation = match alg {
-        0 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256),
-        1 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::ES256),
-        2 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256),
+        JWT_ALGORITHM_HS256 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256),
+        JWT_ALGORITHM_ES256 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::ES256),
+        JWT_ALGORITHM_RS256 => jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256),
         _ => return 1, // unsupported algorithm
     };
 

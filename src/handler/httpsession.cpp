@@ -1179,6 +1179,8 @@ private:
 
 		QVariantHash passthroughData;
 
+		passthroughData["route"] = adata.route.toUtf8();
+
 		// if next link points to the same service as the current request,
 		//   then we can assume the network would send the request back to
 		//   us, so we can handle it internally. if the link points to a
@@ -1189,14 +1191,10 @@ private:
 		{
 			// tell the proxy that we prefer the request to be handled
 			//   internally, using the same route
-			passthroughData["route"] = adata.route.toUtf8();
+			passthroughData["prefer-internal"] = true;
 		}
 
 		// these fields are needed in case proxy routing is not used
-		if(!adata.sigIss.isEmpty())
-			passthroughData["sig-iss"] = adata.sigIss;
-		if(!adata.sigKey.isEmpty())
-			passthroughData["sig-key"] = adata.sigKey;
 		if(adata.trusted)
 			passthroughData["trusted"] = true;
 
