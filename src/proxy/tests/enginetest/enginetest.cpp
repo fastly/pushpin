@@ -585,7 +585,7 @@ private slots:
 		config.inspectPrefetch = 5;
 		config.routesFile = "routes";
 		config.sigIss = "pushpin";
-		config.sigKey = "changeme";
+		config.sigKey = Jwt::EncodingKey::fromSecret("changeme");
 		config.connectionsMax = 20;
 		config.statsConnectionTtl = 120;
 		config.statsReportInterval = 1000; // set a large interval so there's only one working report

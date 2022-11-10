@@ -30,6 +30,7 @@
 
 #include <QString>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -77,11 +78,16 @@ EncodingKey EncodingKey::fromPemFile(const QString &fileName)
 	return fromPem(f.readAll());
 }
 
-EncodingKey EncodingKey::fromConfigString(const QString &s)
+EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 {
 	if(s.startsWith("file:"))
 	{
-		return EncodingKey::fromPemFile(s.mid(5));
+		QString keyFile = s.mid(5);
+		QFileInfo fi(keyFile);
+		if(fi.isRelative())
+			keyFile = QFileInfo(baseDir, keyFile).filePath();
+
+		return EncodingKey::fromPemFile(keyFile);
 	}
 	else
 	{
@@ -138,11 +144,16 @@ DecodingKey DecodingKey::fromPemFile(const QString &fileName)
 	return fromPem(f.readAll());
 }
 
-DecodingKey DecodingKey::fromConfigString(const QString &s)
+DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 {
 	if(s.startsWith("file:"))
 	{
-		return DecodingKey::fromPemFile(s.mid(5));
+		QString keyFile = s.mid(5);
+		QFileInfo fi(keyFile);
+		if(fi.isRelative())
+			keyFile = QFileInfo(baseDir, keyFile).filePath();
+
+		return DecodingKey::fromPemFile(keyFile);
 	}
 	else
 	{
@@ -189,18 +200,36 @@ QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const Dec
 	return out;
 }
 
-QByteArray encode(const QVariant &claim, const QByteArray &key)
+QByteArray encode(const QVariant &claim, const EncodingKey &key)
 {
+	Algorithm alg;
+	switch(key.type())
+	{
+		case Jwt::KeyType::Secret: alg = Jwt::HS256; break;
+		case Jwt::KeyType::Ec: alg = Jwt::ES256; break;
+		case Jwt::KeyType::Rsa: alg = Jwt::RS256; break;
+		default: return QByteArray();
+	}
+
 	QByteArray claimJson = QJsonDocument(QJsonObject::fromVariantMap(claim.toMap())).toJson(QJsonDocument::Compact);
 	if(claimJson.isNull())
 		return QByteArray();
 
-	return encodeWithAlgorithm(HS256, claimJson, EncodingKey::fromSecret(key));
+	return encodeWithAlgorithm(alg, claimJson, key);
 }
 
-QVariant decode(const QByteArray &token, const QByteArray &key)
+QVariant decode(const QByteArray &token, const DecodingKey &key)
 {
-	QByteArray claimJson = decodeWithAlgorithm(HS256, token, DecodingKey::fromSecret(key));
+	Algorithm alg;
+	switch(key.type())
+	{
+		case Jwt::KeyType::Secret: alg = Jwt::HS256; break;
+		case Jwt::KeyType::Ec: alg = Jwt::ES256; break;
+		case Jwt::KeyType::Rsa: alg = Jwt::RS256; break;
+		default: return QVariant();
+	}
+
+	QByteArray claimJson = decodeWithAlgorithm(alg, token, key);
 	if(claimJson.isEmpty())
 		return QVariant();
 

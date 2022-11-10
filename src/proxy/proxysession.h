@@ -33,6 +33,10 @@
 #include "logutil.h"
 #include "domainmap.h"
 
+namespace Jwt {
+	class EncodingKey;
+}
+
 class InspectData;
 class AcceptData;
 class ZrpcManager;
@@ -50,7 +54,7 @@ public:
 	~ProxySession();
 
 	void setRoute(const DomainMap::Entry &route);
-	void setDefaultSigKey(const QByteArray &iss, const QByteArray &key);
+	void setDefaultSigKey(const QByteArray &iss, const Jwt::EncodingKey &key);
 	void setAcceptXForwardedProtocol(bool enabled);
 	void setUseXForwardedProtocol(bool protoEnabled, bool protocolEnabled);
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);

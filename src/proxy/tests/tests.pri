@@ -8,6 +8,7 @@ SRC_DIR = $$PWD/..
 CORE_DIR = $$PWD/../../corelib
 QZMQ_DIR = $$CORE_DIR/qzmq
 COMMON_DIR = $$CORE_DIR/common
+RUST_DIR = $$SRC_DIR/../rust
 
 LIBS += -L$$SRC_DIR -lpushpin-proxy
 PRE_TARGETDEPS += $$PWD/../libpushpin-proxy.a
@@ -24,3 +25,5 @@ INCLUDEPATH += $$QZMQ_DIR/src
 
 INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
+
+INCLUDEPATH += $$RUST_DIR/include

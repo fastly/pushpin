@@ -32,6 +32,7 @@
 #include <QObject>
 #include <QStringList>
 #include <QHostAddress>
+#include "jwt.h"
 #include "xffrule.h"
 
 class StatsManager;
@@ -80,8 +81,8 @@ public:
 		bool logFrom;
 		bool logUserAgent;
 		QByteArray sigIss;
-		QByteArray sigKey;
-		QByteArray upstreamKey;
+		Jwt::EncodingKey sigKey;
+		Jwt::DecodingKey upstreamKey;
 		QString sockJsUrl;
 		QString updatesCheck;
 		QString organizationName;

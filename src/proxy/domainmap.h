@@ -34,6 +34,7 @@
 #include <QString>
 #include <QStringList>
 #include "httpheaders.h"
+#include "jwt.h"
 
 // this class offers fast access to the routes file. the table is maintained
 //   by a background thread so that file access doesn't cause blocking.
@@ -137,7 +138,7 @@ public:
 		QByteArray id;
 		QByteArray pathBeg;
 		QByteArray sigIss;
-		QByteArray sigKey;
+		Jwt::EncodingKey sigKey;
 		QByteArray prefix;
 		bool origHeaders;
 		QString asHost;

@@ -35,6 +35,10 @@
 
 class QHostAddress;
 
+namespace Jwt {
+	class DecodingKey;
+}
+
 class HttpRequestData;
 class HttpResponseData;
 class SockJsManager;
@@ -80,7 +84,7 @@ public:
 	void setRouteId(const QString &routeId);
 	void setAutoShare(bool enabled);
 	void setAccepted(bool enabled);
-	void setDefaultUpstreamKey(const QByteArray &key);
+	void setDefaultUpstreamKey(const Jwt::DecodingKey &key);
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
 
 	// takes ownership

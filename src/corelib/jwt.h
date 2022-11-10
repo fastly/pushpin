@@ -32,6 +32,7 @@
 #include <QByteArray>
 #include <QVariant>
 #include <QSharedData>
+#include <QDir>
 #include "rust/jwt.h"
 
 class QString;
@@ -62,7 +63,7 @@ public:
 	static EncodingKey fromSecret(const QByteArray &key);
 	static EncodingKey fromPem(const QByteArray &key);
 	static EncodingKey fromPemFile(const QString &fileName);
-	static EncodingKey fromConfigString(const QString &s);
+	static EncodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
 
 private:
 	class Private : public QSharedData
@@ -90,7 +91,7 @@ public:
 	static DecodingKey fromSecret(const QByteArray &key);
 	static DecodingKey fromPem(const QByteArray &key);
 	static DecodingKey fromPemFile(const QString &fileName);
-	static DecodingKey fromConfigString(const QString &s);
+	static DecodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
 
 private:
 	class Private : public QSharedData
@@ -113,8 +114,8 @@ QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const Enc
 // returns claim, null on error
 QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const DecodingKey &key);
 
-QByteArray encode(const QVariant &claim, const QByteArray &key);
-QVariant decode(const QByteArray &token, const QByteArray &key);
+QByteArray encode(const QVariant &claim, const EncodingKey &key);
+QVariant decode(const QByteArray &token, const DecodingKey &key);
 
 }
 

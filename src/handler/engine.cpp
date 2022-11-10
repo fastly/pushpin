@@ -424,8 +424,6 @@ public:
 	QString statsRoute;
 	QString channelPrefix;
 	QStringList implicitChannels;
-	QByteArray sigIss;
-	QByteArray sigKey;
 	bool trusted;
 	QHash<ZhttpRequest::Rid, RequestState> requestStates;
 	HttpRequestData requestData;
@@ -518,28 +516,6 @@ public:
 
 					implicitChannels += QString::fromUtf8(v.toByteArray());
 				}
-			}
-
-			if(args.contains("sig-iss"))
-			{
-				if(args["sig-iss"].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				sigIss = args["sig-iss"].toByteArray();
-			}
-
-			if(args.contains("sig-key"))
-			{
-				if(args["sig-key"].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				sigKey = args["sig-key"].toByteArray();
 			}
 
 			if(args.contains("trusted"))
@@ -1067,8 +1043,6 @@ private:
 			adata.implicitChannels = implicitChannels.toSet();
 			adata.sid = sid;
 			adata.responseSent = responseSent;
-			adata.sigIss = sigIss;
-			adata.sigKey = sigKey;
 			adata.trusted = trusted;
 			adata.haveInspectInfo = haveInspectInfo;
 			adata.inspectInfo = inspectInfo;

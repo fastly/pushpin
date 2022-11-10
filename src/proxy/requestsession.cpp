@@ -162,7 +162,7 @@ public:
 	StatsManager *stats;
 	ZhttpRequest *zhttpRequest;
 	HttpRequestData requestData;
-	QByteArray defaultUpstreamKey;
+	Jwt::DecodingKey defaultUpstreamKey;
 	bool trusted;
 	QHostAddress peerAddress;
 	QHostAddress logicalPeerAddress;
@@ -1305,7 +1305,7 @@ void RequestSession::setAccepted(bool enabled)
 	d->accepted = enabled;
 }
 
-void RequestSession::setDefaultUpstreamKey(const QByteArray &key)
+void RequestSession::setDefaultUpstreamKey(const Jwt::DecodingKey &key)
 {
 	d->defaultUpstreamKey = key;
 }

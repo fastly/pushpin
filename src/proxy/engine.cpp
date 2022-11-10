@@ -493,21 +493,29 @@ public:
 		}
 
 		QString routeId;
+		bool preferInternal = false;
 		bool autoShare = false;
 
 		QVariant passthroughData = req->passthroughData();
 		if(passthroughData.isValid())
 		{
+			// passthrough request, from handler
+
 			const QVariantHash data = passthroughData.toHash();
 
-			if(data.contains("route"))
-				routeId = QString::fromUtf8(data["route"].toByteArray());
+			// there is always a route
+			routeId = QString::fromUtf8(data["route"].toByteArray());
+
+			if(data.contains("prefer-internal"))
+				preferInternal = data["prefer-internal"].toBool();
 
 			if(data.contains("auto-share"))
 				autoShare = data["auto-share"].toBool();
 		}
 		else
 		{
+			// regular request
+
 			if(config.acceptXForwardedProto && isXForwardedProtocolTls(req->requestHeaders()))
 				req->setIsTls(true);
 
@@ -516,26 +524,35 @@ public:
 		}
 
 		RequestSession *rs;
-		if(passthroughData.isValid() && routeId.isEmpty())
+		if(passthroughData.isValid() && !preferInternal)
 		{
-			// passthrough request with no route ID. in this case, set up a
-			//   direct route, with no domainmap lookup
+			// passthrough request with preferInternal=false. in this case,
+			// set up a direct route, using some settings from the original
+			// route
+
+			DomainMap::Entry originalRoute;
+			if(!routeId.isEmpty() && !domainMap->isIdShared(routeId))
+				originalRoute = domainMap->entry(routeId);
 
 			const QVariantHash data = passthroughData.toHash();
 
 			DomainMap::Entry route;
+
+			// use sig settings from the original route, if available
+			if(!originalRoute.isNull())
+			{
+				route.sigIss = originalRoute.sigIss;
+				route.sigKey = originalRoute.sigKey;
+			}
+
 			DomainMap::Target target;
 			QUrl uri = req->requestUri();
 			bool isHttps = (uri.scheme() == "https");
 			target.connectHost = uri.host();
 			target.connectPort = uri.port(isHttps ? 443 : 80);
 			target.ssl = isHttps;
-			if(passthroughData.type() == QVariant::Hash)
-			{
-				route.sigIss = data["sig-iss"].toByteArray();
-				route.sigKey = data["sig-key"].toByteArray();
-				target.trusted = data["trusted"].toBool();
-			}
+			target.trusted = data["trusted"].toBool();
+
 			route.targets += target;
 
 			rs = new RequestSession(stats, this);
@@ -544,8 +561,8 @@ public:
 		else
 		{
 			// regular request (with or without a route ID), or a passthrough
-			//   request with a route ID. in that case, use domainmap for
-			//   lookup, with route ID if available
+			// request with preferInternal=true. in that case, use domainmap
+			// for lookup, with route ID if available
 
 			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
 			rs->setDebugEnabled(config.debug);

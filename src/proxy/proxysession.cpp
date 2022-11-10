@@ -37,6 +37,7 @@
 #include "packet/httpresponsedata.h"
 #include "bufferlist.h"
 #include "log.h"
+#include "jwt.h"
 #include "inspectdata.h"
 #include "acceptdata.h"
 #include "zhttpmanager.h"
@@ -136,7 +137,7 @@ public:
 	int total;
 	bool buffering;
 	QByteArray defaultSigIss;
-	QByteArray defaultSigKey;
+	Jwt::EncodingKey defaultSigKey;
 	bool trustedClient;
 	bool intReq;
 	bool passthrough;
@@ -275,8 +276,8 @@ public:
 			requestData.uri.setPath(QString::fromUtf8(path), QUrl::StrictMode);
 
 			QByteArray sigIss;
-			QByteArray sigKey;
-			if(!route.sigIss.isEmpty() && !route.sigKey.isEmpty())
+			Jwt::EncodingKey sigKey;
+			if(!route.sigIss.isEmpty() && !route.sigKey.isNull())
 			{
 				sigIss = route.sigIss;
 				sigKey = route.sigKey;
@@ -1259,8 +1260,8 @@ public slots:
 			assert(!acceptRequest);
 
 			QByteArray sigIss;
-			QByteArray sigKey;
-			if(!route.sigIss.isEmpty() && !route.sigKey.isEmpty())
+			Jwt::EncodingKey sigKey;
+			if(!route.sigIss.isEmpty() && !route.sigKey.isNull())
 			{
 				sigIss = route.sigIss;
 				sigKey = route.sigKey;
@@ -1315,8 +1316,6 @@ public slots:
 			adata.channelPrefix = route.prefix;
 			foreach(const QString &s, target.subscriptions)
 				adata.channels += s.toUtf8();
-			adata.sigIss = sigIss;
-			adata.sigKey = sigKey;
 			adata.trusted = target.trusted;
 			adata.useSession = route.session;
 			adata.responseSent = acceptAfterResponding;
@@ -1482,7 +1481,7 @@ void ProxySession::setRoute(const DomainMap::Entry &route)
 	d->route = route;
 }
 
-void ProxySession::setDefaultSigKey(const QByteArray &iss, const QByteArray &key)
+void ProxySession::setDefaultSigKey(const QByteArray &iss, const Jwt::EncodingKey &key)
 {
 	d->defaultSigIss = iss;
 	d->defaultSigKey = key;

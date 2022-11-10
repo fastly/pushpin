@@ -203,12 +203,6 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 		obj["channels"] = vchannels;
 	}
 
-	if(!adata.sigIss.isEmpty())
-		obj["sig-iss"] = adata.sigIss;
-
-	if(!adata.sigKey.isEmpty())
-		obj["sig-key"] = adata.sigKey;
-
 	if(adata.trusted)
 		obj["trusted"] = true;
 
