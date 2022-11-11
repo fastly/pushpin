@@ -128,6 +128,7 @@ fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
 
 fn validate_ws_request(
     req: &http1::Request,
+    ws_version: Option<&[u8]>,
     ws_key: Option<&[u8]>,
 ) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
     // a websocket request must not have a body.
@@ -135,6 +136,7 @@ fn validate_ws_request(
     // chunked encoding will be rejected.
     if req.method == "GET"
         && (req.body_size == http1::BodySize::NoBody || req.body_size == http1::BodySize::Known(0))
+        && ws_version == Some(b"13")
         && ws_key.is_some()
     {
         return calculate_ws_accept(&ws_key.unwrap());
@@ -2664,11 +2666,16 @@ where
         let req = handler.request();
 
         let mut websocket = false;
+        let mut ws_version = None;
         let mut ws_key = None;
 
         for h in req.headers.iter() {
             if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
                 websocket = true;
+            }
+
+            if h.name.eq_ignore_ascii_case("Sec-WebSocket-Version") {
+                ws_version = Some(h.value);
             }
 
             if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
@@ -2700,7 +2707,7 @@ where
         );
 
         let ws_accept: Option<ArrayString<WS_ACCEPT_MAX>> = if websocket {
-            let accept = match validate_ws_request(&req, ws_key) {
+            let accept = match validate_ws_request(&req, ws_version, ws_key) {
                 Ok(s) => s,
                 Err(_) => return Err(ServerError::InvalidWebSocketRequest),
             };

@@ -3002,6 +3002,7 @@ pub mod tests {
             "GET /hello HTTP/1.1\r\n",
             "Host: example.com\r\n",
             "Upgrade: websocket\r\n",
+            "Sec-WebSocket-Version: 13\r\n",
             "Sec-WebSocket-Key: abcde\r\n",
             "\r\n",
         );
@@ -3068,6 +3069,7 @@ pub mod tests {
             "GET /hello HTTP/1.1\r\n",
             "Host: example.com\r\n",
             "Upgrade: websocket\r\n",
+            "Sec-WebSocket-Version: 13\r\n",
             "Sec-WebSocket-Key: abcde\r\n",
             "\r\n",
         );
