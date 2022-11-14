@@ -1,6 +1,12 @@
 Pushpin Changelog
 =================
 
+v. 1.36.0 (2022-11-14)
+
+  * Ability to accept client connections via IPv6.
+  * Ability to sign requests using EC or RSA public keys.
+  * Include bytes/messages in report stats.
+
 v. 1.35.0 (2022-03-11)
 
   * Add support for Prometheus metrics.
