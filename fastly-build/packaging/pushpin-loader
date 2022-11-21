@@ -53,6 +53,18 @@ def validate_id(s):
     return s
 
 
+def validate_backend(s):
+    if len(s) < 1 or len(s) > 63:
+        raise ValidationError(
+            'backend name must have a length between 1 and 63 characters')
+
+    for c in s:
+        if c not in '._- ' and c not in alphanumerics:
+            raise ValidationError('backend name cannot contain: {}'.format(repr(c)))
+
+    return s
+
+
 def validate_host(s):
     if len(s) < 1 or len(s) > 255:
         raise ValidationError(
@@ -208,7 +220,7 @@ def fetch_service_backends():
 
 def make_routes(service, backend):
     service_id = validate_id(service.id)
-    backend_name = validate_id(backend['name'])
+    backend_name = validate_backend(backend['name'])
     host = validate_host(backend['address'])
 
     target = '{}:{}'.format(host, backend['port'])
@@ -231,14 +243,14 @@ def make_routes(service, backend):
         if service.aco_enabled:
             cond_opts += ',aco'
 
-        routes.append('id=gr:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
-        routes.append('id=gr:ht:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
-        routes.append('id=gr:ws:{}:{},{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id="gr:{}:{}",{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id="gr:ht:{}:{}",{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id="gr:ws:{}:{}",{} {}'.format(service_id, backend_name, cond_opts, target))
     else:
-        routes.append('id={}:{},no_grip {}'.format(service_id, backend_name, target))
-        routes.append('id=ws:{}:{},no_grip {}'.format(service_id, backend_name, target))
-        routes.append('id=ws:{}:{}--{},no_grip {}'.format(service_id, service_id, backend_name, target))
-        routes.append('id=ws:{}:{}--F_{},no_grip {}'.format(service_id, service_id, backend_name, target))
+        routes.append('id="{}:{}",no_grip {}'.format(service_id, backend_name, target))
+        routes.append('id="ws:{}:{}",no_grip {}'.format(service_id, backend_name, target))
+        routes.append('id=ws:{}:{}--{},no_grip {}'.format(service_id, service_id, backend_name.replace(' ', '_'), target))
+        routes.append('id=ws:{}:{}--F_{},no_grip {}'.format(service_id, service_id, backend_name.replace(' ', '_'), target))
 
     return routes
 
