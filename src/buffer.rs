@@ -219,6 +219,38 @@ impl<'a> LimitBufs<'a> for [&'a [u8]] {
     }
 }
 
+pub trait LimitBufsMut<'a> {
+    fn limit(&mut self, size: usize) -> &mut [&'a mut [u8]];
+}
+
+impl<'a> LimitBufsMut<'a> for [&'a mut [u8]] {
+    fn limit(&mut self, size: usize) -> &mut [&'a mut [u8]] {
+        let mut want = size;
+
+        for i in 0..self.len() {
+            let buf_len = self[i].len();
+
+            if buf_len >= want {
+                // SAFETY: shrinking the length of an existing slice requires
+                // borrowing through self, which causes the compiler to
+                // extend the lifetime of the smaller slice to the lifetime
+                // of self. however, the smaller slice is not dependent on
+                // anything about self except the original slice, so it is
+                // safe to forcibly reduce its lifetime to that of the
+                // original
+                self[i] =
+                    unsafe { mem::transmute::<&mut [u8], &'a mut [u8]>(&mut self[i][..want]) };
+
+                return &mut self[..(i + 1)];
+            }
+
+            want -= buf_len;
+        }
+
+        self
+    }
+}
+
 pub struct Buffer {
     buf: Vec<u8>,
     start: usize,
