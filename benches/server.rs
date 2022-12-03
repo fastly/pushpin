@@ -22,6 +22,7 @@ use condure::executor::Executor;
 use condure::future::{AsyncReadExt, AsyncTcpStream, AsyncWriteExt};
 use condure::reactor::Reactor;
 use condure::server::TestServer;
+use condure::websocket::testutil::{BenchRecvMessage, BenchSendMessage};
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::io::{self, Write};
 use std::net::SocketAddr;
@@ -97,6 +98,38 @@ fn criterion_benchmark(c: &mut Criterion) {
         let t = BenchServerStreamConnection::new();
 
         c.bench_function("stream_connection", |b| {
+            b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
+        });
+    }
+
+    {
+        let t = BenchSendMessage::new(false);
+
+        c.bench_function("ws_send", |b| {
+            b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
+        });
+    }
+
+    {
+        let t = BenchSendMessage::new(true);
+
+        c.bench_function("ws_send_deflate", |b| {
+            b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
+        });
+    }
+
+    {
+        let t = BenchRecvMessage::new(false);
+
+        c.bench_function("ws_recv", |b| {
+            b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
+        });
+    }
+
+    {
+        let t = BenchRecvMessage::new(true);
+
+        c.bench_function("ws_recv_deflate", |b| {
             b.iter_batched_ref(|| t.init(), |i| t.run(i), criterion::BatchSize::SmallInput)
         });
     }

@@ -1356,8 +1356,175 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
     }
 }
 
+pub mod testutil {
+    use super::*;
+    use crate::buffer::{RingBuffer, TmpBuffer};
+    use std::rc::Rc;
+
+    pub struct BenchSendMessageArgs {
+        protocol: Protocol<Vec<u8>>,
+        dest: Vec<u8>,
+    }
+
+    pub struct BenchSendMessage {
+        use_deflate: bool,
+        content: Vec<u8>,
+    }
+
+    impl BenchSendMessage {
+        pub fn new(use_deflate: bool) -> Self {
+            let mut content = Vec::with_capacity(1024);
+            for i in 0..1024 {
+                content.push((i % 256) as u8);
+            }
+
+            Self {
+                use_deflate,
+                content,
+            }
+        }
+
+        pub fn init(&self) -> BenchSendMessageArgs {
+            let deflate_config = if self.use_deflate {
+                let tmp = Rc::new(TmpBuffer::new(256));
+
+                Some((
+                    PerMessageDeflateConfig::default(),
+                    RingBuffer::new(256, &tmp),
+                ))
+            } else {
+                None
+            };
+
+            BenchSendMessageArgs {
+                protocol: Protocol::new(deflate_config),
+                dest: Vec::with_capacity(16_384),
+            }
+        }
+
+        pub fn run(&self, args: &mut BenchSendMessageArgs) {
+            let p = &mut args.protocol;
+            let src = &self.content;
+            let dest = &mut args.dest;
+
+            p.send_message_start(OPCODE_TEXT, None);
+
+            let mut src_pos = 0;
+
+            loop {
+                let (size, done) = p
+                    .send_message_content(dest, &[&src[src_pos..]], true)
+                    .unwrap();
+
+                src_pos += size;
+
+                assert!(dest.len() < dest.capacity() || done);
+
+                if done {
+                    break;
+                }
+            }
+        }
+    }
+
+    pub struct BenchRecvMessageArgs {
+        protocol: Protocol<Vec<u8>>,
+        rbuf: RingBuffer,
+        dest: Vec<u8>,
+    }
+
+    pub struct BenchRecvMessage {
+        use_deflate: bool,
+        tmp: Rc<TmpBuffer>,
+        msg: Vec<u8>,
+    }
+
+    impl BenchRecvMessage {
+        pub fn new(use_deflate: bool) -> Self {
+            let mut content = Vec::with_capacity(1024);
+            for i in 0..1024 {
+                content.push((i % 256) as u8);
+            }
+
+            let tmp = Rc::new(TmpBuffer::new(16_384));
+
+            let deflate_config = if use_deflate {
+                Some((
+                    PerMessageDeflateConfig::default(),
+                    RingBuffer::new(16_384, &tmp),
+                ))
+            } else {
+                None
+            };
+
+            let p = Protocol::new(deflate_config);
+
+            let mut msg = Vec::new();
+            p.send_message_start(OPCODE_TEXT, None);
+            let (size, done) = p.send_message_content(&mut msg, &[&content], true).unwrap();
+            assert_eq!(size, content.len());
+            assert_eq!(done, true);
+
+            Self {
+                use_deflate,
+                tmp,
+                msg,
+            }
+        }
+
+        pub fn init(&self) -> BenchRecvMessageArgs {
+            let deflate_config = if self.use_deflate {
+                Some((
+                    PerMessageDeflateConfig::default(),
+                    RingBuffer::new(256, &self.tmp),
+                ))
+            } else {
+                None
+            };
+
+            let mut rbuf = RingBuffer::new(16_384, &self.tmp);
+
+            let size = rbuf.write(&self.msg).unwrap();
+            assert_eq!(size, self.msg.len());
+
+            let mut dest = Vec::with_capacity(16_384);
+            dest.resize(dest.capacity(), 0);
+
+            BenchRecvMessageArgs {
+                protocol: Protocol::new(deflate_config),
+                rbuf,
+                dest,
+            }
+        }
+
+        pub fn run(&self, args: &mut BenchRecvMessageArgs) {
+            let p = &mut args.protocol;
+            let rbuf = &mut args.rbuf;
+            let dest = &mut args.dest;
+
+            let mut dest_pos = 0;
+
+            loop {
+                let (_, size, end) = p
+                    .recv_message_content(rbuf, &mut dest[dest_pos..])
+                    .unwrap()
+                    .unwrap();
+
+                dest_pos += size;
+
+                assert!(dest_pos < dest.len() || end);
+
+                if end {
+                    break;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::testutil::*;
     use super::*;
     use crate::buffer::{RingBuffer, TmpBuffer};
     use std::rc::Rc;
@@ -1879,5 +2046,17 @@ mod tests {
         assert_eq!(read, 2);
         assert_eq!(output_end, true);
         assert_eq!(&dest[..written], b"Hello");
+    }
+
+    #[test]
+    fn bench_send_message() {
+        let t = BenchSendMessage::new(false);
+        t.run(&mut t.init());
+    }
+
+    #[test]
+    fn bench_recv_message() {
+        let t = BenchRecvMessage::new(false);
+        t.run(&mut t.init());
     }
 }
