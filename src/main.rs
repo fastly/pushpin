@@ -343,9 +343,9 @@ fn main() {
                 .default_value("."),
         )
         .arg(
-            Arg::with_name("task-sizes")
-                .long("task-sizes")
-                .help("Prints task sizes"),
+            Arg::with_name("sizes")
+                .long("sizes")
+                .help("Prints sizes of tasks and other objects"),
         )
         .get_matches();
 
@@ -374,8 +374,8 @@ fn main() {
 
     log::set_max_level(level);
 
-    if matches.is_present("task-sizes") {
-        for (name, size) in condure::server::Server::task_sizes() {
+    if matches.is_present("sizes") {
+        for (name, size) in condure::app::App::sizes() {
             println!("{}: {} bytes", name, size);
         }
         process::exit(0);

@@ -15,6 +15,7 @@
  */
 
 use crate::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WORKER_MAX};
+use crate::websocket;
 use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
 use log::info;
@@ -237,5 +238,17 @@ impl App {
                 _ => unreachable!(),
             }
         }
+    }
+
+    pub fn sizes() -> Vec<(String, usize)> {
+        let mut out = Vec::new();
+
+        out.extend(Server::task_sizes());
+        out.push((
+            "deflate_codec_state".to_string(),
+            websocket::deflate_codec_state_size(),
+        ));
+
+        out
     }
 }
