@@ -1187,7 +1187,7 @@ struct WebSocketWrite<'a, W: AsyncWrite> {
 
 struct SendMessageContentFuture<'a, 'b, W: AsyncWrite> {
     w: &'a RefCell<WebSocketWrite<'b, W>>,
-    protocol: &'a websocket::Protocol,
+    protocol: &'a websocket::Protocol<Vec<u8>>,
     avail: usize,
     done: bool,
 }
@@ -1230,7 +1230,7 @@ impl<W: AsyncWrite> Drop for SendMessageContentFuture<'_, '_, W> {
 struct WebSocketHandler<'a, R: AsyncRead, W: AsyncWrite> {
     r: RefCell<WebSocketRead<'a, R>>,
     w: RefCell<WebSocketWrite<'a, W>>,
-    protocol: websocket::Protocol,
+    protocol: websocket::Protocol<Vec<u8>>,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
@@ -1250,7 +1250,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
                 stream: stream.1,
                 buf: buf2,
             }),
-            protocol: websocket::Protocol::new(),
+            protocol: websocket::Protocol::new(None),
         }
     }
 

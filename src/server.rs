@@ -3045,9 +3045,15 @@ pub mod tests {
 
         let mut data = vec![0; 1024];
         let body = &b"hello"[..];
-        let size =
-            websocket::write_header(true, websocket::OPCODE_TEXT, body.len(), None, &mut data)
-                .unwrap();
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_TEXT,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
@@ -3112,9 +3118,15 @@ pub mod tests {
 
         let mut data = vec![0; 1024];
         let body = &[1, 2, 3][..];
-        let size =
-            websocket::write_header(true, websocket::OPCODE_BINARY, body.len(), None, &mut data)
-                .unwrap();
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_BINARY,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 
@@ -3131,9 +3143,15 @@ pub mod tests {
 
         let mut data = vec![0; 1024];
         let body = &b""[..];
-        let size =
-            websocket::write_header(true, websocket::OPCODE_PING, body.len(), None, &mut data)
-                .unwrap();
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_PING,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
         client.write(&data[..size]).unwrap();
 
         // recv pong
@@ -3149,9 +3167,15 @@ pub mod tests {
 
         let mut data = vec![0; 1024];
         let body = &b"\x03\xf0gone"[..];
-        let size =
-            websocket::write_header(true, websocket::OPCODE_CLOSE, body.len(), None, &mut data)
-                .unwrap();
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_CLOSE,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
         data[size..(size + body.len())].copy_from_slice(body);
         client.write(&data[..(size + body.len())]).unwrap();
 

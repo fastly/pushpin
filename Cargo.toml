@@ -24,6 +24,7 @@ base64 = "0.13"
 clap = { version = "3.2", features = ["cargo", "wrap_help"] }
 httparse = "1.7"
 log = "0.4"
+miniz_oxide = "0.6"
 mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
 openssl = "0.10"
 paste = "1.0"
