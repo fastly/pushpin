@@ -24,6 +24,37 @@ use std::rc::Rc;
 
 pub const VECTORED_MAX: usize = 8;
 
+pub fn trim_for_display(s: &str, max: usize) -> String {
+    // NOTE: O(n)
+    let char_len = s.chars().count();
+
+    if char_len > max && max >= 7 {
+        let dist = max / 2;
+        let mut left_end = 0;
+        let mut right_start = 0;
+
+        // NOTE: O(n)
+        for (i, (pos, _)) in s.char_indices().enumerate() {
+            // dist guaranteed to be < char_len
+            if i == dist {
+                left_end = pos;
+            }
+
+            // (char_len - dist + 3) guaranteed to be < char_len
+            if i == char_len - dist + 3 {
+                right_start = pos;
+            }
+        }
+
+        let left = &s[..left_end];
+        let right = &s[right_start..];
+
+        format!("{}...{}", left, right)
+    } else {
+        s.to_owned()
+    }
+}
+
 pub trait RefRead {
     fn get_ref(&self) -> &[u8];
     fn get_mut(&mut self) -> &mut [u8];

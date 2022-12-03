@@ -15,6 +15,7 @@
  */
 
 use crate::arena;
+use crate::buffer::trim_for_display;
 use crate::channel;
 use crate::event;
 use crate::executor::Executor;
@@ -50,37 +51,6 @@ const STREAM_OUT_STREAM_DELAY: Duration = Duration::from_millis(50);
 const LOG_METADATA_MAX: usize = 1_000;
 const LOG_CONTENT_MAX: usize = 1_000;
 const EXECUTOR_TASKS_MAX: usize = 1;
-
-fn trim(s: &str, max: usize) -> String {
-    // NOTE: O(n)
-    let char_len = s.chars().count();
-
-    if char_len > max && max >= 7 {
-        let dist = max / 2;
-        let mut left_end = 0;
-        let mut right_start = 0;
-
-        // NOTE: O(n)
-        for (i, (pos, _)) in s.char_indices().enumerate() {
-            // dist guaranteed to be < char_len
-            if i == dist {
-                left_end = pos;
-            }
-
-            // (char_len - dist + 3) guaranteed to be < char_len
-            if i == char_len - dist + 3 {
-                right_start = pos;
-            }
-        }
-
-        let left = &s[..left_end];
-        let right = &s[right_start..];
-
-        format!("{}...{}", left, right)
-    } else {
-        s.to_owned()
-    }
-}
 
 struct Packet<'a> {
     map_frame: tnetstring::Frame<'a>,
@@ -179,7 +149,7 @@ impl fmt::Display for Packet<'_> {
         // formatted output is guaranteed to be utf8
         let meta = String::from_utf8(meta).unwrap();
 
-        let meta = trim(&meta, LOG_METADATA_MAX);
+        let meta = trim_for_display(&meta, LOG_METADATA_MAX);
 
         if self.content_field.is_some() {
             let mut content = Vec::new();
@@ -193,7 +163,7 @@ impl fmt::Display for Packet<'_> {
                 // formatted output is guaranteed to be utf8
                 let content = String::from_utf8(content).unwrap();
 
-                let content = trim(&content, LOG_CONTENT_MAX);
+                let content = trim_for_display(&content, LOG_CONTENT_MAX);
 
                 return write!(f, "{} {} {}", meta, clen, content);
             }
