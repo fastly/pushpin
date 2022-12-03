@@ -83,6 +83,198 @@ fn header_contains_param(value: &[u8], param: &[u8], ignore_case: bool) -> bool 
     false
 }
 
+fn find_one_of(s: &str, values: &[u8]) -> Option<(usize, u8)> {
+    for (pos, &c) in s.as_bytes().iter().enumerate() {
+        for v in values {
+            if c == *v {
+                return Some((pos, c));
+            }
+        }
+    }
+
+    None
+}
+
+fn find_non_space(s: &str) -> Option<usize> {
+    for (pos, c) in s.char_indices() {
+        if !c.is_ascii_whitespace() {
+            return Some(pos);
+        }
+    }
+
+    None
+}
+
+// return (value, remainder)
+fn parse_quoted(s: &str) -> Result<(&str, &str), io::Error> {
+    match s.find('"') {
+        Some(pos) => Ok((&s[..pos], &s[(pos + 1)..])),
+        None => Err(io::Error::from(io::ErrorKind::InvalidData)),
+    }
+}
+
+// return (value, remainder).
+// remainder will start at the first non-space character following the param,
+// or will be empty
+fn parse_param_value(s: &str) -> Result<(&str, &str), io::Error> {
+    let s = match find_non_space(s) {
+        Some(pos) => &s[pos..],
+        None => return Ok(("", "")),
+    };
+
+    if s.as_bytes()[0] == b'"' {
+        let (s, remainder) = parse_quoted(&s[1..])?;
+
+        let remainder = match find_non_space(remainder) {
+            Some(pos) => &remainder[pos..],
+            None => "",
+        };
+
+        Ok((s, remainder))
+    } else {
+        let (s, remainder) = match find_one_of(s, b";,") {
+            Some((pos, _)) => (&s[..pos], &s[pos..]),
+            None => (s, ""),
+        };
+
+        Ok((s.trim(), remainder))
+    }
+}
+
+pub struct HeaderParamsIterator<'a> {
+    s: &'a str,
+    done: bool,
+}
+
+impl<'a> HeaderParamsIterator<'a> {
+    fn new(s: &'a str) -> Self {
+        Self { s, done: false }
+    }
+
+    fn empty() -> Self {
+        Self { s: "", done: true }
+    }
+}
+
+impl<'a> Iterator for HeaderParamsIterator<'a> {
+    type Item = Result<(&'a str, &'a str), io::Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+
+        let (k, v, remainder, done) = match find_one_of(self.s, b"=;,") {
+            Some((pos, b'=')) => {
+                let k = &self.s[..pos];
+
+                let (v, remainder) = match parse_param_value(&self.s[(pos + 1)..]) {
+                    Ok(ret) => ret,
+                    Err(e) => return Some(Err(e)),
+                };
+
+                let (remainder, done) = if !remainder.is_empty() {
+                    match remainder.as_bytes()[0] {
+                        b';' => (&remainder[1..], false),
+                        b',' => (remainder, true),
+                        _ => return Some(Err(io::Error::from(io::ErrorKind::InvalidData))),
+                    }
+                } else {
+                    ("", true)
+                };
+
+                (k, v, remainder, done)
+            }
+            Some((pos, b';')) => (&self.s[..pos], "", &self.s[(pos + 1)..], false),
+            Some((pos, b',')) => (&self.s[..pos], "", &self.s[pos..], true),
+            Some(_) => unreachable!(),
+            None => (self.s, "", "", true),
+        };
+
+        let k = k.trim();
+
+        if k.is_empty() {
+            return Some(Err(io::Error::from(io::ErrorKind::InvalidData)));
+        }
+
+        self.s = remainder;
+        self.done = done;
+
+        return Some(Ok((k, v)));
+    }
+}
+
+pub struct HeaderValueIterator<'a> {
+    s: &'a str,
+    done: bool,
+}
+
+impl<'a> Iterator for HeaderValueIterator<'a> {
+    type Item = Result<(&'a str, HeaderParamsIterator<'a>), io::Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+
+        let (first_part, params, remainder, done) = match find_one_of(self.s, b";,") {
+            Some((pos, b';')) => {
+                // make a temporary params iterator
+                let mut params = HeaderParamsIterator::new(&self.s[(pos + 1)..]);
+
+                // drive it to the end
+                while let Some(p) = params.next() {
+                    if let Err(e) = p {
+                        return Some(Err(e));
+                    }
+                }
+
+                // when HeaderParamsIterator completes, its remaining value
+                // will either start with a comma or be empty
+                let (remainder, done) = if params.s.starts_with(",") {
+                    (&params.s[1..], false)
+                } else if params.s.is_empty() {
+                    ("", true)
+                } else {
+                    unreachable!();
+                };
+
+                // prepare a fresh iterator for returning
+                let params = HeaderParamsIterator::new(&self.s[(pos + 1)..]);
+
+                (&self.s[..pos], params, remainder, done)
+            }
+            Some((pos, b',')) => (
+                &self.s[..pos],
+                HeaderParamsIterator::empty(),
+                &self.s[(pos + 1)..],
+                false,
+            ),
+            Some(_) => unreachable!(),
+            None => (self.s, HeaderParamsIterator::empty(), "", true),
+        };
+
+        let first_part = first_part.trim();
+
+        if first_part.is_empty() {
+            return Some(Err(io::Error::from(io::ErrorKind::InvalidData)));
+        }
+
+        self.s = remainder;
+        self.done = done;
+
+        Some(Ok((first_part, params)))
+    }
+}
+
+// parse a header value into parts
+pub fn parse_header_value(s: &[u8]) -> HeaderValueIterator {
+    match str::from_utf8(s) {
+        Ok(s) => HeaderValueIterator { s, done: false },
+        Err(_) => HeaderValueIterator { s: "", done: false },
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct Chunk {
     header: [u8; CHUNK_HEADER_SIZE_MAX],
@@ -3097,5 +3289,123 @@ mod tests {
         let req = read_req(&mut p, data, 2);
 
         assert_eq!(req.persistent, true);
+    }
+
+    fn collect_values<'a>(
+        s: &'a [u8],
+    ) -> Result<Vec<(&'a str, Vec<(&'a str, &'a str)>)>, io::Error> {
+        let mut out = Vec::new();
+
+        for part in parse_header_value(s) {
+            let (name, params_iter) = part?;
+
+            let mut params = Vec::new();
+            for p in params_iter {
+                let (k, v) = p?;
+                params.push((k, v));
+            }
+
+            out.push((name, params));
+        }
+
+        Ok(out)
+    }
+
+    #[test]
+    fn test_parse_header_value() {
+        struct Test {
+            name: &'static str,
+            value: &'static str,
+            result: Result<Vec<(&'static str, Vec<(&'static str, &'static str)>)>, io::Error>,
+        }
+
+        let tests = [
+            Test {
+                name: "empty",
+                value: "",
+                result: Err(io::Error::from(io::ErrorKind::InvalidData)),
+            },
+            Test {
+                name: "value",
+                value: "apple",
+                result: Ok(vec![("apple", vec![])]),
+            },
+            Test {
+                name: "incomplete-value",
+                value: "apple,",
+                result: Err(io::Error::from(io::ErrorKind::InvalidData)),
+            },
+            Test {
+                name: "incomplete-param",
+                value: "apple;",
+                result: Err(io::Error::from(io::ErrorKind::InvalidData)),
+            },
+            Test {
+                name: "incomplete-second-param",
+                value: "apple; type=gala;",
+                result: Err(io::Error::from(io::ErrorKind::InvalidData)),
+            },
+            Test {
+                name: "value-with-param",
+                value: "apple; type=gala",
+                result: Ok(vec![("apple", vec![("type", "gala")])]),
+            },
+            Test {
+                name: "value-with-params",
+                value: "apple; type=\"granny smith\"; color=green",
+                result: Ok(vec![(
+                    "apple",
+                    vec![("type", "granny smith"), ("color", "green")],
+                )]),
+            },
+            Test {
+                name: "values",
+                value: "apple, banana, cherry",
+                result: Ok(vec![
+                    ("apple", vec![]),
+                    ("banana", vec![]),
+                    ("cherry", vec![]),
+                ]),
+            },
+            Test {
+                name: "values-and-params",
+                value: "apple, banana; color=yellow; ripe=true, cherry",
+                result: Ok(vec![
+                    ("apple", vec![]),
+                    ("banana", vec![("color", "yellow"), ("ripe", "true")]),
+                    ("cherry", vec![]),
+                ]),
+            },
+            Test {
+                name: "spacing",
+                value: "apple ,banana ;color= yellow ; ripe=  \"true\" , cherry",
+                result: Ok(vec![
+                    ("apple", vec![]),
+                    ("banana", vec![("color", "yellow"), ("ripe", "true")]),
+                    ("cherry", vec![]),
+                ]),
+            },
+        ];
+
+        for test in tests {
+            match collect_values(test.value.as_bytes()) {
+                Ok(values) => {
+                    let expected = match test.result {
+                        Ok(v) => v,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(values, expected, "test={}", test.name);
+                }
+                Err(e) => {
+                    let expected = match test.result {
+                        Err(e) => e,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(e.kind(), expected.kind(), "test={}", test.name);
+                }
+            }
+        }
     }
 }
