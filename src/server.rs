@@ -763,6 +763,7 @@ struct ConnectionReqOpts {
 
 struct ConnectionStreamOpts {
     messages_max: usize,
+    allow_compression: bool,
     sender: channel::LocalSender<zmq::Message>,
     sender_stream: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     stream_shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
@@ -789,6 +790,7 @@ impl Worker {
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
+        allow_compression: bool,
         req_acceptor: channel::Receiver<(usize, NetStream, SocketAddr)>,
         stream_acceptor: channel::Receiver<(usize, NetStream, SocketAddr)>,
         req_acceptor_tls: &Vec<(bool, Option<String>)>,
@@ -843,6 +845,7 @@ impl Worker {
                         messages_max,
                         req_timeout,
                         stream_timeout,
+                        allow_compression,
                         req_acceptor,
                         stream_acceptor,
                         req_acceptor_tls,
@@ -883,6 +886,7 @@ impl Worker {
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
+        allow_compression: bool,
         req_acceptor: channel::Receiver<(usize, NetStream, SocketAddr)>,
         stream_acceptor: channel::Receiver<(usize, NetStream, SocketAddr)>,
         req_acceptor_tls: Vec<(bool, Option<String>)>,
@@ -1052,6 +1056,7 @@ impl Worker {
                     },
                     ConnectionModeOpts::Stream(ConnectionStreamOpts {
                         messages_max,
+                        allow_compression,
                         sender: zstream_out_sender,
                         sender_stream: zstream_out_stream_sender,
                         stream_shared_mem,
@@ -1334,6 +1339,7 @@ impl Worker {
 
                     let mode_opts = ConnectionModeOpts::Stream(ConnectionStreamOpts {
                         messages_max: stream_opts.messages_max,
+                        allow_compression: stream_opts.allow_compression,
                         sender: zstream_out_sender,
                         sender_stream: zstream_out_stream_sender,
                         stream_shared_mem: stream_opts.stream_shared_mem.clone(),
@@ -1861,6 +1867,7 @@ impl Worker {
                         opts.packet_buf,
                         opts.tmp_buf,
                         opts.timeout,
+                        stream_opts.allow_compression,
                         &opts.instance_id,
                         AsyncLocalSender::new(stream_opts.sender),
                         AsyncLocalSender::new(stream_opts.sender_stream),
@@ -1883,6 +1890,7 @@ impl Worker {
                         opts.packet_buf,
                         opts.tmp_buf,
                         opts.timeout,
+                        stream_opts.allow_compression,
                         &opts.instance_id,
                         AsyncLocalSender::new(stream_opts.sender),
                         AsyncLocalSender::new(stream_opts.sender_stream),
@@ -1906,6 +1914,7 @@ impl Worker {
                     opts.packet_buf,
                     opts.tmp_buf,
                     opts.timeout,
+                    stream_opts.allow_compression,
                     &opts.instance_id,
                     AsyncLocalSender::new(stream_opts.sender),
                     AsyncLocalSender::new(stream_opts.sender_stream),
@@ -2057,6 +2066,7 @@ impl Server {
         stream_timeout: Duration,
         listen_addrs: &[ListenConfig],
         certs_dir: &Path,
+        allow_compression: bool,
         zsockman: zhttpsocket::SocketManager,
         handle_bound: usize,
     ) -> Result<Self, String> {
@@ -2149,6 +2159,7 @@ impl Server {
                 messages_max,
                 req_timeout,
                 stream_timeout,
+                allow_compression,
                 req_r,
                 stream_r,
                 &req_acceptor_tls,
@@ -2276,6 +2287,7 @@ impl Server {
                 },
                 ConnectionStreamOpts {
                     messages_max: 0,
+                    allow_compression: false,
                     sender,
                     sender_stream,
                     stream_shared_mem,
@@ -2386,6 +2398,7 @@ impl TestServer {
                 },
             ],
             Path::new("."),
+            false,
             zsockman,
             100,
         )

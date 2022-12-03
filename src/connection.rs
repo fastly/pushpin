@@ -2656,6 +2656,7 @@ async fn server_stream_handler<S, R1, R2>(
     buf1: &mut RingBuffer,
     buf2: &mut RingBuffer,
     messages_max: usize,
+    allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     tmp_buf: &RefCell<Vec<u8>>,
     instance_id: &str,
@@ -2733,7 +2734,7 @@ where
                             // the client can present multiple offers. take
                             // the first that works. if none work, it's not
                             // an error. we'll just not use compression
-                            if ws_deflate_config.is_none() {
+                            if allow_compression && ws_deflate_config.is_none() {
                                 if let Ok(config) =
                                     websocket::PerMessageDeflateConfig::from_params(params)
                                 {
@@ -3175,6 +3176,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     packet_buf: Rc<RefCell<Vec<u8>>>,
     tmp_buf: Rc<RefCell<Vec<u8>>>,
     stream_timeout: Duration,
+    allow_compression: bool,
     instance_id: &str,
     zsender: AsyncLocalSender<zmq::Message>,
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
@@ -3224,6 +3226,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 &mut buf1,
                 &mut buf2,
                 messages_max,
+                allow_compression,
                 &packet_buf,
                 &tmp_buf,
                 instance_id,
@@ -3328,6 +3331,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     packet_buf: Rc<RefCell<Vec<u8>>>,
     tmp_buf: Rc<RefCell<Vec<u8>>>,
     timeout: Duration,
+    allow_compression: bool,
     instance_id: &str,
     zsender: AsyncLocalSender<zmq::Message>,
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
@@ -3347,6 +3351,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
         packet_buf,
         tmp_buf,
         timeout,
+        allow_compression,
         instance_id,
         zsender,
         zsender_stream,
@@ -3923,6 +3928,7 @@ pub mod testutil {
             buf1,
             buf2,
             10,
+            false,
             &packet_buf,
             &tmp_buf,
             "test",
@@ -4103,6 +4109,7 @@ pub mod testutil {
             packet_buf,
             tmp_buf,
             timeout,
+            false,
             "test",
             s_from_conn,
             s_stream_from_conn,
@@ -4952,6 +4959,7 @@ mod tests {
         token: CancellationToken,
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
+        allow_compression: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
         s_stream_from_conn: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
@@ -4988,6 +4996,7 @@ mod tests {
             packet_buf,
             tmp_buf,
             timeout,
+            allow_compression,
             "test",
             s_from_conn,
             s_stream_from_conn,
@@ -5024,6 +5033,7 @@ mod tests {
             stream_fut(
                 token,
                 sock,
+                false,
                 false,
                 s_from_conn,
                 s_stream_from_conn,
@@ -5148,6 +5158,7 @@ mod tests {
             stream_fut(
                 token,
                 sock,
+                false,
                 false,
                 s_from_conn,
                 s_stream_from_conn,
@@ -5315,6 +5326,7 @@ mod tests {
                 token,
                 sock,
                 false,
+                false,
                 s_from_conn,
                 s_stream_from_conn,
                 r_to_conn,
@@ -5462,6 +5474,7 @@ mod tests {
                 token,
                 sock,
                 false,
+                false,
                 s_from_conn,
                 s_stream_from_conn,
                 r_to_conn,
@@ -5587,6 +5600,7 @@ mod tests {
             stream_fut(
                 token,
                 sock,
+                false,
                 false,
                 s_from_conn,
                 s_stream_from_conn,
@@ -5764,6 +5778,7 @@ mod tests {
                 token,
                 sock,
                 false,
+                true,
                 s_from_conn,
                 s_stream_from_conn,
                 r_to_conn,

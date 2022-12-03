@@ -112,6 +112,7 @@ struct Args {
     zclient_connect: bool,
     ipc_file_mode: usize,
     tls_identities_dir: String,
+    allow_compression: bool,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -143,6 +144,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         zclient_connect: args.zclient_connect,
         ipc_file_mode: args.ipc_file_mode,
         certs_dir: PathBuf::from(args.tls_identities_dir),
+        allow_compression: args.allow_compression,
     };
 
     for v in args.listen.iter() {
@@ -343,6 +345,11 @@ fn main() {
                 .default_value("."),
         )
         .arg(
+            Arg::with_name("compression")
+                .long("compression")
+                .help("Allow compression to be used"),
+        )
+        .arg(
             Arg::with_name("sizes")
                 .long("sizes")
                 .help("Prints sizes of tasks and other objects"),
@@ -495,6 +502,8 @@ fn main() {
 
     let tls_identities_dir = matches.value_of("tls-identities-dir").unwrap();
 
+    let allow_compression = matches.is_present("compression");
+
     let args = Args {
         id: id.to_string(),
         workers,
@@ -511,6 +520,7 @@ fn main() {
         zclient_connect,
         ipc_file_mode,
         tls_identities_dir: tls_identities_dir.to_string(),
+        allow_compression,
     };
 
     if let Err(e) = process_args_and_run(args) {

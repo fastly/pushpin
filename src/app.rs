@@ -82,6 +82,7 @@ pub struct Config {
     pub zclient_connect: bool,
     pub ipc_file_mode: usize,
     pub certs_dir: PathBuf,
+    pub allow_compression: bool,
 }
 
 pub struct App {
@@ -207,6 +208,7 @@ impl App {
             config.stream_timeout,
             &config.listen,
             config.certs_dir.as_path(),
+            config.allow_compression,
             zsockman,
             handle_bound,
         )?;
