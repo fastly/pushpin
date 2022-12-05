@@ -1,6 +1,10 @@
 Condure Changelog
 =================
 
+v. 1.9.0 (2022-12-05)
+
+  * Support permessage-deflate WebSocket compression.
+
 v. 1.8.0 (2022-11-03)
 
   * Compatibility with httparse 1.8.
