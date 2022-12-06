@@ -45,6 +45,7 @@ CondureService::CondureService(
 	const QString &certsDir,
 	int clientBufferSize,
 	int maxconn,
+	bool allowCompression,
 	const QList<ListenPort> &ports,
 	QObject *parent) :
 	Service(parent)
@@ -93,6 +94,9 @@ CondureService::CondureService(
 	args_ += "--buffer-size=" + QString::number(clientBufferSize);
 
 	args_ += "--stream-maxconn=" + QString::number(maxconn);
+
+	if(allowCompression)
+		args_ += "--compression";
 
 	if(usingSsl)
 		args_ += "--tls-identities-dir=" + certsDir;

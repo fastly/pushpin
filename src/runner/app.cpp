@@ -451,6 +451,8 @@ public:
 		int clientBufferSize = settings.value("runner/client_buffer_size", 8192).toInt();
 		int clientMaxConnections = settings.value("runner/client_maxconn", 50000).toInt();
 
+		bool allowCompression = settings.value("runner/allow_compression").toBool();
+
 		QString m2aBin = "m2adapter";
 		QFileInfo fi(QDir(exeDir).filePath("bin/m2adapter"));
 		if(fi.isFile())
@@ -553,7 +555,7 @@ public:
 
 			QString certsDir = QDir(configDir).filePath("certs");
 
-			services += new CondureService(condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, ports, this);
+			services += new CondureService(condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, this);
 		}
 
 		if(serviceNames.contains("mongrel2"))
