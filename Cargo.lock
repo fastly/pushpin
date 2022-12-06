@@ -939,7 +939,7 @@ checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 
 [[package]]
 name = "pushpin"
-version = "1.36.0-dev"
+version = "1.37.0-dev"
 dependencies = [
  "anyhow",
  "base64 0.12.3",

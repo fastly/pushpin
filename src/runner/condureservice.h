@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2022 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -47,6 +47,7 @@ public:
 		const QString &certsDir,
 		int clientBufferSize,
 		int maxconn,
+		bool allowCompression,
 		const QList<ListenPort> &ports,
 		QObject *parent = 0);
 
