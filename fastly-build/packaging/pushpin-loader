@@ -8,10 +8,10 @@ from io import BytesIO
 import json
 import logging
 import os
+import re
 import string
 import sys
 import time
-import traceback
 
 
 PKG_VERSION = '1.0.0'
@@ -75,6 +75,10 @@ def validate_host(s):
             raise ValidationError('host cannot contain: {}'.format(repr(c)))
 
     return s
+
+
+def vclify_backend(s):
+    return re.sub('[^A-Za-z0-9_]', '_', s)
 
 
 class HeavenlyClient(object):
@@ -249,8 +253,8 @@ def make_routes(service, backend):
     else:
         routes.append('id="{}:{}",no_grip {}'.format(service_id, backend_name, target))
         routes.append('id="ws:{}:{}",no_grip {}'.format(service_id, backend_name, target))
-        routes.append('id=ws:{}:{}--{},no_grip {}'.format(service_id, service_id, backend_name.replace(' ', '_'), target))
-        routes.append('id=ws:{}:{}--F_{},no_grip {}'.format(service_id, service_id, backend_name.replace(' ', '_'), target))
+        routes.append('id=ws:{}:{}--{},no_grip {}'.format(service_id, service_id, vclify_backend(backend_name), target))
+        routes.append('id=ws:{}:{}--F_{},no_grip {}'.format(service_id, service_id, vclify_backend(backend_name), target))
 
     return routes
 
