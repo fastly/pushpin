@@ -1,3 +1,7 @@
+QMAKE_CXXFLAGS += $$(CXXFLAGS)
+QMAKE_CFLAGS += $$(CFLAGS)
+QMAKE_LFLAGS += $$(LDFLAGS)
+
 SRC_DIR = $$PWD/..
 CORE_DIR = $$PWD/../../corelib
 COMMON_DIR = $$CORE_DIR/common
