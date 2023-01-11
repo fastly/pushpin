@@ -42,7 +42,7 @@ while True:
     socks = dict(poller.poll(500 - elapsed))
     if socks.get(sock) == zmq.POLLIN:
         m = sock.recv()
-        if m[0] == b'\x01' and m[1:].decode('utf-8') == channel:
+        if m[0] == 1 and m[1:].decode('utf-8') == channel:
             # subscription ready
             break
 
