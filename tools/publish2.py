@@ -6,8 +6,8 @@ import tnetstring
 import zmq
 
 if len(sys.argv) < 3:
-	print 'usage: %s [channel] [content]' % sys.argv[0]
-	sys.exit(1)
+    print('usage: {} [channel] [content]'.format(sys.argv[0]))
+    sys.exit(1)
 
 channel = sys.argv[1]
 content = sys.argv[2]
@@ -35,30 +35,29 @@ poller = zmq.Poller()
 poller.register(sock, zmq.POLLIN)
 start = int(time.time() * 1000)
 while True:
-	elapsed = int(time.time() * 1000) - start
-	if elapsed >= 500:
-		# give up
-		break
-	socks = dict(poller.poll(500 - elapsed))
-	if socks.get(sock) == zmq.POLLIN:
-		m = sock.recv()
-		if m[0] == '\x01' and m[1:] == channel:
-			# subscription ready
-			break
+    elapsed = int(time.time() * 1000) - start
+    if elapsed >= 500:
+        # give up
+        break
+    socks = dict(poller.poll(500 - elapsed))
+    if socks.get(sock) == zmq.POLLIN:
+        m = sock.recv()
+        if m[0] == b'\x01' and m[1:].decode('utf-8') == channel:
+            # subscription ready
+            break
 
-hr = dict()
-hr['body'] = content + '\n'
-hs = dict()
-hs['content'] = content + '\n'
-ws = dict()
-ws['content'] = content
-formats = dict()
-formats['http-response'] = hr
-formats['http-stream'] = hs
-formats['ws-message'] = ws
-item = dict()
-item['formats'] = formats
+content = content.encode('utf-8')
 
-sock.send_multipart([channel, tnetstring.dumps(item)])
+hr = {b'body': content + b'\n'}
+hs = {b'content': content + b'\n'}
+ws = {b'content': content}
+formats = {
+    b'http-response': hr,
+    b'http-stream': hs,
+    b'ws-message': ws
+}
+item = {b'formats': formats}
 
-print 'Published'
+sock.send_multipart([channel.encode('utf-8'), tnetstring.dumps(item)])
+
+print('Published')
