@@ -25,7 +25,7 @@ use crate::future::{
     REGISTRATIONS_PER_ZMQSOCKET,
 };
 use crate::list;
-use crate::pin_mut;
+use crate::pin;
 use crate::reactor::Reactor;
 use crate::tnetstring;
 use crate::zhttppacket::{Id, Response, ResponseScratch};
@@ -896,26 +896,18 @@ impl SocketManager {
                 None
             };
 
-            let result = {
-                pin_mut!(
-                    req_handles_recv,
-                    stream_handles_recv_any,
-                    stream_handles_recv_addr
-                );
-
-                select_9(
-                    control_receiver.recv(),
-                    select_option(req_handles_recv.as_pin_mut()),
-                    select_option(req_send.as_mut()),
-                    client_req.sock.recv_routed(),
-                    select_option(stream_handles_recv_any.as_pin_mut()),
-                    select_option(stream_out_send.as_mut()),
-                    select_option(stream_handles_recv_addr.as_pin_mut()),
-                    select_option(stream_out_stream_send.as_mut()),
-                    client_stream.in_.recv(),
-                )
-                .await
-            };
+            let result = select_9(
+                control_receiver.recv(),
+                select_option(pin!(req_handles_recv).as_pin_mut()),
+                select_option(req_send.as_mut()),
+                client_req.sock.recv_routed(),
+                select_option(pin!(stream_handles_recv_any).as_pin_mut()),
+                select_option(stream_out_send.as_mut()),
+                select_option(pin!(stream_handles_recv_addr).as_pin_mut()),
+                select_option(stream_out_stream_send.as_mut()),
+                client_stream.in_.recv(),
+            )
+            .await;
 
             match result {
                 // control_receiver.recv

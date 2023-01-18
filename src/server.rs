@@ -31,7 +31,7 @@ use crate::future::{
 use crate::list;
 use crate::listener::Listener;
 use crate::net::{set_socket_opts, NetListener, NetStream, SocketAddr};
-use crate::pin_mut;
+use crate::pin;
 use crate::reactor::Reactor;
 use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
 use crate::tnetstring;
@@ -53,7 +53,6 @@ use std::mem;
 use std::net::{IpAddr, Ipv4Addr};
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::path::Path;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::str::FromStr;
@@ -1160,11 +1159,12 @@ impl Worker {
             {
                 debug!("worker {}: sending cancels for {} sessions", id, count);
 
-                let send = stream_handle.send_to_addr(addr, msg);
-
-                pin_mut!(send);
-
-                match select_2(send, shutdown_timeout.elapsed()).await {
+                match select_2(
+                    pin!(stream_handle.send_to_addr(addr, msg)),
+                    shutdown_timeout.elapsed(),
+                )
+                .await
+                {
                     Select2::R1(r) => r.unwrap(),
                     Select2::R2(_) => break 'outer,
                 }
@@ -1425,10 +1425,8 @@ impl Worker {
 
         debug!("worker {}: task started: req_handle", id);
 
-        let handle_send = None;
+        let mut handle_send = pin!(None);
         let mut done_send = None;
-
-        pin_mut!(handle_send);
 
         'main: loop {
             let receiver_recv = if handle_send.is_none() {
@@ -1443,17 +1441,13 @@ impl Worker {
                 None
             };
 
-            let handle_recv = req_handle.recv();
-
-            pin_mut!(handle_recv);
-
             match select_6(
                 stop.recv(),
                 select_option(receiver_recv),
                 select_option(handle_send.as_mut().as_pin_mut()),
                 select_option(done_recv),
                 select_option(done_send.as_mut()),
-                handle_recv,
+                pin!(req_handle.recv()),
             )
             .await
             {
@@ -1574,11 +1568,9 @@ impl Worker {
         debug!("worker {}: task started: stream_handle", id);
 
         {
-            let handle_send_to_any = None;
-            let handle_send_to_addr = None;
+            let mut handle_send_to_any = pin!(None);
+            let mut handle_send_to_addr = pin!(None);
             let mut done_send = None;
-
-            pin_mut!(handle_send_to_any, handle_send_to_addr);
 
             'main: loop {
                 let receiver_recv = if handle_send_to_any.is_none() {
@@ -1599,10 +1591,6 @@ impl Worker {
                     None
                 };
 
-                let handle_recv = stream_handle.recv();
-
-                pin_mut!(handle_recv);
-
                 match select_8(
                     stop.recv(),
                     select_option(receiver_recv),
@@ -1611,7 +1599,7 @@ impl Worker {
                     select_option(handle_send_to_addr.as_mut().as_pin_mut()),
                     select_option(done_recv),
                     select_option(done_send.as_mut()),
-                    handle_recv,
+                    pin!(stream_handle.recv()),
                 )
                 .await
                 {
@@ -1988,10 +1976,12 @@ impl Worker {
                 next_keep_alive_timeout.set_deadline(next_keep_alive_time);
             }
 
-            let wait = event_wait(&sender_registration, mio::Interest::WRITABLE);
-            pin_mut!(wait);
-
-            match select_2(stop.recv(), wait).await {
+            match select_2(
+                stop.recv(),
+                pin!(event_wait(&sender_registration, mio::Interest::WRITABLE)),
+            )
+            .await
+            {
                 Select2::R1(_) => break,
                 Select2::R2(_) => {}
             }

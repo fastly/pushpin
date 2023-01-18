@@ -43,7 +43,7 @@ use crate::future::{
 };
 use crate::http1;
 use crate::net::SocketAddr;
-use crate::pin_mut;
+use crate::pin;
 use crate::reactor::Reactor;
 use crate::websocket;
 use crate::zhttppacket;
@@ -1592,10 +1592,12 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
     // ABR: discard_while
     let handler = {
-        let fut = handler.recv_request(&mut scratch, &mut req_mem);
-        pin_mut!(fut);
-
-        match discard_while(zreceiver, fut).await {
+        match discard_while(
+            zreceiver,
+            pin!(handler.recv_request(&mut scratch, &mut req_mem)),
+        )
+        .await
+        {
             Ok(handler) => handler,
             Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => {
                 return Ok(false)
@@ -1620,21 +1622,11 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     // receive request body
 
     // ABR: discard_while
-    let handler = {
-        let fut = handler.start_recv_body_and_keep_header();
-        pin_mut!(fut);
-
-        discard_while(zreceiver, fut).await?
-    };
+    let handler = discard_while(zreceiver, pin!(handler.start_recv_body_and_keep_header())).await?;
 
     loop {
         // ABR: discard_while
-        let size = {
-            let fut = handler.recv_body(body_buf.write_buf());
-            pin_mut!(fut);
-
-            discard_while(zreceiver, fut).await?
-        };
+        let size = discard_while(zreceiver, pin!(handler.recv_body(body_buf.write_buf()))).await?;
 
         if size == 0 {
             break;
@@ -1704,12 +1696,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         // send message
 
         // ABR: discard_while
-        {
-            let fut = send_msg(&zsender, msg);
-            pin_mut!(fut);
-
-            discard_while(zreceiver, fut).await?;
-        }
+        discard_while(zreceiver, pin!(send_msg(&zsender, msg))).await?;
 
         // receive message
 
@@ -1778,12 +1765,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         };
 
         // ABR: discard_while
-        {
-            let fut = handler.send_header();
-            pin_mut!(fut);
-
-            discard_while(zreceiver, fut).await?;
-        }
+        discard_while(zreceiver, pin!(handler.send_header())).await?;
 
         let handler = handler.send_header_done();
 
@@ -1812,12 +1794,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         )?;
 
         // ABR: discard_while
-        {
-            let fut = handler.send_header();
-            pin_mut!(fut);
-
-            discard_while(zreceiver, fut).await?;
-        }
+        discard_while(zreceiver, pin!(handler.send_header())).await?;
 
         let handler = handler.send_header_done();
 
@@ -1830,12 +1807,11 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
     while body_buf.read_avail() > 0 {
         // ABR: discard_while
-        let size = {
-            let fut = handler.send_body(body_buf.read_buf(), false);
-            pin_mut!(fut);
-
-            discard_while(zreceiver, fut).await?
-        };
+        let size = discard_while(
+            zreceiver,
+            pin!(handler.send_body(body_buf.read_buf(), false)),
+        )
+        .await?;
 
         body_buf.read_commit(size);
     }
@@ -1890,11 +1866,10 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
                 &zsender,
                 zreceiver,
             );
-            pin_mut!(handler);
 
             let timeout = Timeout::new(reactor.now() + timeout);
 
-            match select_3(handler, timeout.elapsed(), token.cancelled()).await {
+            match select_3(pin!(handler), timeout.elapsed(), token.cancelled()).await {
                 Select3::R1(ret) => ret?,
                 Select3::R2(_) => return Err(ServerError::Timeout),
                 Select3::R3(_) => return Err(ServerError::Stopped),
@@ -1972,12 +1947,7 @@ where
 
             // discarding here is fine. the sender should cease sending
             // messages until we've replied with proceed
-            {
-                let fut = zsess_out.send_msg(zreq);
-                pin_mut!(fut);
-
-                discard_while(&zsess_in.receiver, fut).await?;
-            }
+            discard_while(&zsess_in.receiver, pin!(zsess_out.send_msg(zreq))).await?;
 
             // pause until we get a msg
             zsess_in.peek_msg().await?;
@@ -2004,9 +1974,7 @@ where
     W: AsyncWrite,
 {
     let handler = {
-        let start_recv_body = handler.start_recv_body();
-
-        pin_mut!(start_recv_body);
+        let mut start_recv_body = pin!(handler.start_recv_body());
 
         // ABR: poll_async doesn't block
         match poll_async(start_recv_body.as_mut()).await {
@@ -2016,14 +1984,8 @@ where
 
                 // keep trying to process while reading messages
                 loop {
-                    let ret = {
-                        let recv_msg = zsess_in.recv_msg();
-
-                        pin_mut!(recv_msg);
-
-                        // ABR: select contains read
-                        select_2(start_recv_body.as_mut(), recv_msg).await
-                    };
+                    // ABR: select contains read
+                    let ret = select_2(start_recv_body.as_mut(), pin!(zsess_in.recv_msg())).await;
 
                     match ret {
                         Select2::R1(ret) => break ret?,
@@ -2063,29 +2025,21 @@ where
     };
 
     {
-        let check_send = None;
-        let add_to_recv_buffer = None;
-
-        pin_mut!(check_send, add_to_recv_buffer);
+        let mut check_send = pin!(None);
+        let mut add_to_recv_buffer = pin!(None);
 
         loop {
             if zsess_in.credits() > 0 && add_to_recv_buffer.is_none() && check_send.is_none() {
                 check_send.set(Some(zsess_out.check_send()));
             }
 
-            let ret = {
-                let peek_msg = zsess_in.peek_msg();
-
-                pin_mut!(peek_msg);
-
-                // ABR: select contains read
-                select_3(
-                    select_option(check_send.as_mut().as_pin_mut()),
-                    select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
-                    peek_msg,
-                )
-                .await
-            };
+            // ABR: select contains read
+            let ret = select_3(
+                select_option(check_send.as_mut().as_pin_mut()),
+                select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
+                pin!(zsess_in.peek_msg()),
+            )
+            .await;
 
             match ret {
                 Select3::R1(()) => {
@@ -2168,10 +2122,8 @@ where
 {
     let mut out_credits = 0;
 
-    let flush_body = None;
-    let send_msg = None;
-
-    pin_mut!(flush_body, send_msg);
+    let mut flush_body = pin!(None);
+    let mut send_msg = pin!(None);
 
     'main: loop {
         let ret = {
@@ -2187,17 +2139,12 @@ where
                 send_msg.set(Some(zsess_out.send_msg(zreq)));
             }
 
-            let recv_msg = zsess_in.recv_msg();
-            let fill_recv_buffer = handler.fill_recv_buffer();
-
-            pin_mut!(recv_msg, fill_recv_buffer);
-
             // ABR: select contains read
             select_4(
                 select_option(flush_body.as_mut().as_pin_mut()),
                 select_option(send_msg.as_mut().as_pin_mut()),
-                recv_msg,
-                fill_recv_buffer,
+                pin!(zsess_in.recv_msg()),
+                pin!(handler.fill_recv_buffer()),
             )
             .await
         };
@@ -2315,12 +2262,10 @@ where
 
     let mut out_credits = 0;
 
-    let check_send = None;
-    let add_to_recv_buffer = None;
-    let send_content = None;
-    let send_msg = None;
-
-    pin_mut!(check_send, add_to_recv_buffer, send_content, send_msg);
+    let mut check_send = pin!(None);
+    let mut add_to_recv_buffer = pin!(None);
+    let mut send_content = pin!(None);
+    let mut send_msg = pin!(None);
 
     loop {
         let (do_send, do_recv) = match handler.state() {
@@ -2362,21 +2307,15 @@ where
             }
         }
 
-        let ret = {
-            let recv_msg = zsess_in.recv_msg();
-
-            pin_mut!(recv_msg);
-
-            // ABR: select contains read
-            select_5(
-                select_option(check_send.as_mut().as_pin_mut()),
-                select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
-                select_option(send_content.as_mut().as_pin_mut()),
-                select_option(send_msg.as_mut().as_pin_mut()),
-                recv_msg,
-            )
-            .await
-        };
+        // ABR: select contains read
+        let ret = select_5(
+            select_option(check_send.as_mut().as_pin_mut()),
+            select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
+            select_option(send_content.as_mut().as_pin_mut()),
+            select_option(send_msg.as_mut().as_pin_mut()),
+            pin!(zsess_in.recv_msg()),
+        )
+        .await;
 
         match ret {
             Select5::R1(()) => {
@@ -2674,17 +2613,15 @@ where
     // receive request header
 
     // ABR: discard_while
-    let handler = {
-        let fut = handler.recv_request(&mut scratch, &mut req_mem);
-        pin_mut!(fut);
-
-        match discard_while(zreceiver, fut).await {
-            Ok(handler) => handler,
-            Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                return Ok(false)
-            }
-            Err(e) => return Err(e),
-        }
+    let handler = match discard_while(
+        zreceiver,
+        pin!(handler.recv_request(&mut scratch, &mut req_mem)),
+    )
+    .await
+    {
+        Ok(handler) => handler,
+        Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
+        Err(e) => return Err(e),
     };
 
     refresh_stream_timeout();
@@ -2828,12 +2765,7 @@ where
     // send request message
 
     // ABR: discard_while
-    {
-        let fut = send_msg(&zsender, msg);
-        pin_mut!(fut);
-
-        discard_while(zreceiver, fut).await?;
-    }
+    discard_while(zreceiver, pin!(send_msg(&zsender, msg))).await?;
 
     let mut zsess_in = ZhttpStreamSessionIn::new(
         id,
@@ -2866,15 +2798,8 @@ where
     // receive response message
 
     let zresp = loop {
-        let ret = {
-            let recv_msg = zsess_in.recv_msg();
-            let fill_recv_buffer = handler.fill_recv_buffer();
-
-            pin_mut!(recv_msg, fill_recv_buffer);
-
-            // ABR: select contains read
-            select_2(recv_msg, fill_recv_buffer).await
-        };
+        // ABR: select contains read
+        let ret = select_2(pin!(zsess_in.recv_msg()), pin!(handler.fill_recv_buffer())).await;
 
         match ret {
             Select2::R1(ret) => {
@@ -2945,12 +2870,7 @@ where
                     };
 
                     // ABR: discard_while
-                    {
-                        let fut = handler.send_header();
-                        pin_mut!(fut);
-
-                        discard_while(zreceiver, fut).await?;
-                    }
+                    discard_while(zreceiver, pin!(handler.send_header())).await?;
 
                     let handler = handler.send_header_done();
 
@@ -2958,12 +2878,8 @@ where
 
                     loop {
                         // ABR: discard_while
-                        let (_, done) = {
-                            let fut = handler.flush_body();
-                            pin_mut!(fut);
-
-                            discard_while(zreceiver, fut).await?
-                        };
+                        let (_, done) =
+                            discard_while(zreceiver, pin!(handler.flush_body())).await?;
 
                         if done {
                             break;
@@ -3078,19 +2994,11 @@ where
         handler.append_body(rdata.body, rdata.more, id)?;
 
         {
-            let send_header = handler.send_header();
-
-            pin_mut!(send_header);
+            let mut send_header = pin!(handler.send_header());
 
             loop {
-                let ret = {
-                    let recv_msg = zsess_in.recv_msg();
-
-                    pin_mut!(recv_msg);
-
-                    // ABR: select contains read
-                    select_2(send_header.as_mut(), recv_msg).await
-                };
+                // ABR: select contains read
+                let ret = select_2(send_header.as_mut(), pin!(zsess_in.recv_msg())).await;
 
                 match ret {
                     Select2::R1(ret) => {
@@ -3216,7 +3124,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 timeout.set_deadline(soonest_time());
             };
 
-            let handler = server_stream_handler(
+            let handler = pin!(server_stream_handler(
                 cid.as_ref(),
                 &mut stream,
                 peer_addr,
@@ -3234,8 +3142,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 shared.get(),
                 &refresh_stream_timeout,
                 &refresh_session_timeout,
-            );
-            pin_mut!(handler);
+            ));
 
             match select_3(handler, timeout.elapsed(), token.cancelled()).await {
                 Select3::R1(ret) => match ret {
@@ -3306,12 +3213,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
         *cid = cid_provider.get_new_assigned_cid();
     }
 
-    {
-        let fut = async { Ok(stream.close().await?) };
-        pin_mut!(fut);
-
-        discard_while(zreceiver, fut).await?;
-    }
+    discard_while(zreceiver, pin!(async { Ok(stream.close().await?) })).await?;
 
     Ok(())
 }
