@@ -47,11 +47,12 @@ namespace ProxyUtil {
 
 bool checkTrustedClient(const char *logprefix, void *object, const HttpRequestData &requestData, const Jwt::DecodingKey &defaultUpstreamKey);
 
-void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const Jwt::EncodingKey &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, bool acceptPushpinRoute, const QHostAddress &peerAddress, const InspectData &idata, bool gripEnabled, bool intReq);
+void manipulateRequestHeaders(const char *logprefix, void *object, HttpRequestData *requestData, bool trustedClient, const DomainMap::Entry &entry, const QByteArray &sigIss, const Jwt::EncodingKey &sigKey, bool acceptXForwardedProtocol, bool useXForwardedProto, bool useXForwardedProtocol, const XffRule &xffTrustedRule, const XffRule &xffRule, const QList<QByteArray> &origHeadersNeedMark, bool acceptPushpinRoute, const QByteArray &cdnLoop, const QHostAddress &peerAddress, const InspectData &idata, bool gripEnabled, bool intReq);
 
 void applyHost(QUrl *url, const QString &host);
 
 void applyHostHeader(HttpHeaders *headers, const QUrl &uri);
+void applyGripSig(const char *logprefix, void *object, HttpHeaders *headers, const QByteArray &sigIss, const Jwt::EncodingKey &sigKey);
 
 QString targetToString(const DomainMap::Target &target);
 
