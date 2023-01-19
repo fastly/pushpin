@@ -68,6 +68,7 @@ public:
 	void setXffRules(const XffRule &untrusted, const XffRule &trusted);
 	void setOrigHeadersNeedMark(const QList<QByteArray> &names);
 	void setAcceptPushpinRoute(bool enabled);
+	void setCdnLoop(const QByteArray &value);
 
 	// takes ownership
 	void start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route);
