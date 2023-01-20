@@ -1,6 +1,10 @@
 Condure Changelog
 =================
 
+v. 1.9.1 (2023-01-19)
+
+  * Fix crash in stream connection handler.
+
 v. 1.9.0 (2022-12-05)
 
   * Support permessage-deflate WebSocket compression.
