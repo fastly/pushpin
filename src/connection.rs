@@ -701,7 +701,21 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         self.protocol.borrow().state() == http1::ServerState::ReceivingBody
     }
 
-    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, ServerError> {
+    async fn add_to_recv_buffer(&self) -> Result<(), ServerError> {
+        let r = &mut *self.r.borrow_mut();
+
+        if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
+            if e.kind() == io::ErrorKind::WriteZero {
+                return Err(ServerError::BufferExceeded);
+            }
+
+            return Err(e.into());
+        }
+
+        Ok(())
+    }
+
+    fn try_recv_body(&self, dest: &mut [u8]) -> Option<Result<usize, ServerError>> {
         let r = &mut *self.r.borrow_mut();
         let protocol = &mut *self.protocol.borrow_mut();
 
@@ -712,7 +726,10 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
 
                     let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
-                    let (size, _) = protocol.recv_body(&mut buf, dest, &mut headers)?;
+                    let (size, _) = match protocol.recv_body(&mut buf, dest, &mut headers) {
+                        Ok(ret) => ret,
+                        Err(e) => return Some(Err(e.into())),
+                    };
 
                     let read_size = buf.position() as usize;
 
@@ -725,86 +742,28 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
                         continue;
                     }
 
-                    if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
-                        if e.kind() == io::ErrorKind::WriteZero {
-                            return Err(ServerError::BufferExceeded);
-                        }
-
-                        return Err(e.into());
-                    }
-
-                    continue;
+                    return None;
                 }
 
                 r.buf.read_commit(read_size);
 
-                return Ok(size);
+                return Some(Ok(size));
             }
         }
 
         assert_eq!(protocol.state(), http1::ServerState::AwaitingResponse);
 
-        Ok(0)
+        Some(Ok(0))
     }
 
-    async fn recv_body_shared<'b, B, F>(
-        &self,
-        dest: &RefCell<B>,
-        limit: usize,
-        bytes_read: &F,
-    ) -> Result<usize, ServerError>
-    where
-        B: AsMut<[u8]>,
-        F: Fn(),
-    {
-        let r = &mut *self.r.borrow_mut();
-        let protocol = &mut *self.protocol.borrow_mut();
-
-        if protocol.state() == http1::ServerState::ReceivingBody {
-            loop {
-                let (size, read_size) = {
-                    let mut buf = io::Cursor::new(r.buf.read_buf());
-
-                    let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
-
-                    let (size, _) = {
-                        let dest = &mut *dest.borrow_mut();
-
-                        protocol.recv_body(&mut buf, &mut dest.as_mut()[..limit], &mut headers)?
-                    };
-
-                    let read_size = buf.position() as usize;
-                    r.buf.read_commit(read_size);
-
-                    (size, read_size)
-                };
-
-                if protocol.state() == http1::ServerState::ReceivingBody && read_size == 0 {
-                    if !r.buf.is_readable_contiguous() {
-                        r.buf.align();
-                        continue;
-                    }
-
-                    if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
-                        if e.kind() == io::ErrorKind::WriteZero {
-                            return Err(ServerError::BufferExceeded);
-                        }
-
-                        return Err(e.into());
-                    }
-
-                    continue;
-                }
-
-                bytes_read();
-
-                return Ok(size);
+    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, ServerError> {
+        loop {
+            if let Some(ret) = self.try_recv_body(dest) {
+                return ret;
             }
+
+            self.add_to_recv_buffer().await?;
         }
-
-        assert_eq!(protocol.state(), http1::ServerState::AwaitingResponse);
-
-        Ok(0)
     }
 
     fn recv_done(self) -> RequestStartResponse<'a, R, W> {
@@ -1275,46 +1234,37 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         self.protocol.state()
     }
 
-    async fn recv_message_content<'b, B, F>(
+    async fn add_to_recv_buffer(&self) -> Result<(), ServerError> {
+        let r = &mut *self.r.borrow_mut();
+
+        if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
+            if e.kind() == io::ErrorKind::WriteZero {
+                return Err(ServerError::BufferExceeded);
+            }
+
+            return Err(e.into());
+        }
+
+        Ok(())
+    }
+
+    fn try_recv_message_content<'b>(
         &self,
-        dest: &RefCell<B>,
-        limit: usize,
-        bytes_read: &F,
-    ) -> Result<(u8, usize, bool), ServerError>
-    where
-        B: AsMut<[u8]>,
-        F: Fn(),
-    {
+        dest: &mut [u8],
+    ) -> Option<Result<(u8, usize, bool), ServerError>> {
+        let r = &mut *self.r.borrow_mut();
+
         loop {
-            let r = &mut *self.r.borrow_mut();
-
-            let ret = {
-                let dest = &mut *dest.borrow_mut();
-
-                self.protocol
-                    .recv_message_content(r.buf, &mut dest.as_mut()[..limit])
-            };
-
-            match ret {
-                Some(Ok((opcode, size, end))) => {
-                    bytes_read();
-
-                    return Ok((opcode, size, end));
-                }
-                Some(Err(e)) => return Err(e.into()),
+            match self.protocol.recv_message_content(r.buf, dest) {
+                Some(Ok(ret)) => return Some(Ok(ret)),
+                Some(Err(e)) => return Some(Err(e.into())),
                 None => {
                     if !r.buf.is_readable_contiguous() {
                         r.buf.align();
                         continue;
                     }
 
-                    if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
-                        if e.kind() == io::ErrorKind::WriteZero {
-                            return Err(ServerError::BufferExceeded);
-                        }
-
-                        return Err(e.into());
-                    }
+                    return None;
                 }
             }
         }
@@ -1400,15 +1350,18 @@ impl<'a> ZhttpStreamSessionOut<'a> {
 
     // it's okay to run multiple instances of this future within the same
     // task, because it's okay to run multiple instances of check_send
-    async fn send_msg(
-        &self,
-        mut zreq: zhttppacket::Request<'_, '_, '_>,
-    ) -> Result<(), ServerError> {
+    async fn send_msg(&self, zreq: zhttppacket::Request<'_, '_, '_>) -> Result<(), ServerError> {
         // wait for the ability to send before actually sending. this way we
         // can atomically create and send the message using non-blocking I/O
         self.sender_stream.check_send().await;
 
+        self.try_send_msg(zreq)
+    }
+
+    fn try_send_msg(&self, zreq: zhttppacket::Request) -> Result<(), ServerError> {
         let msg = {
+            let mut zreq = zreq;
+
             let ids = [zhttppacket::Id {
                 id: self.id.as_bytes(),
                 seq: Some(self.shared.out_seq()),
@@ -2107,16 +2060,14 @@ where
 
     {
         let check_send = None;
-        let recv_body = None;
+        let add_to_recv_buffer = None;
 
-        pin_mut!(check_send, recv_body);
+        pin_mut!(check_send, add_to_recv_buffer);
 
         loop {
-            if zsess_in.credits() > 0 && recv_body.is_none() && check_send.is_none() {
+            if zsess_in.credits() > 0 && add_to_recv_buffer.is_none() && check_send.is_none() {
                 check_send.set(Some(zsess_out.check_send()));
             }
-
-            let orig_in_credits = zsess_in.credits();
 
             let ret = {
                 let peek_msg = zsess_in.peek_msg();
@@ -2126,7 +2077,7 @@ where
                 // ABR: select contains read
                 select_3(
                     select_option(check_send.as_mut().as_pin_mut()),
-                    select_option(recv_body.as_mut().as_pin_mut()),
+                    select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
                     peek_msg,
                 )
                 .await
@@ -2137,20 +2088,22 @@ where
                     check_send.set(None);
 
                     assert!(zsess_in.credits() > 0);
-                    assert_eq!(recv_body.is_none(), true);
+                    assert_eq!(add_to_recv_buffer.is_none(), true);
 
-                    let max_read = cmp::min(tmp_buf.borrow().len(), zsess_in.credits() as usize);
+                    let tmp_buf = &mut *tmp_buf.borrow_mut();
+                    let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
 
-                    recv_body.set(Some(
-                        handler.recv_body_shared(tmp_buf, max_read, bytes_read),
-                    ));
-                }
-                Select3::R2(ret) => {
-                    recv_body.set(None);
+                    let size = match handler.try_recv_body(&mut tmp_buf[..max_read]) {
+                        Some(ret) => ret?,
+                        None => {
+                            add_to_recv_buffer.set(Some(handler.add_to_recv_buffer()));
+                            continue;
+                        }
+                    };
 
-                    let size = ret?;
+                    bytes_read();
 
-                    let body = &tmp_buf.borrow()[..size];
+                    let body = &tmp_buf[..size];
 
                     zsess_in.subtract_credits(size as u32);
 
@@ -2160,12 +2113,17 @@ where
 
                     let zreq = zhttppacket::Request::new_data(b"", &[], rdata);
 
-                    // ABR: we've already called check_send, so this shouldn't block
-                    zsess_out.send_msg(zreq).await?;
+                    // check_send just finished, so this should succeed
+                    zsess_out.try_send_msg(zreq)?;
 
                     if !handler.more() {
                         break;
                     }
+                }
+                Select3::R2(ret) => {
+                    ret?;
+
+                    add_to_recv_buffer.set(None);
                 }
                 Select3::R3(ret) => {
                     let r = ret?;
@@ -2183,11 +2141,6 @@ where
                             // ABR: handle_other
                             handle_other(zresp_ref, zsess_in, zsess_out).await?;
                         }
-                    }
-
-                    if zsess_in.credits() > orig_in_credits {
-                        // restart the recv
-                        recv_body.set(None);
                     }
                 }
             }
@@ -2363,11 +2316,11 @@ where
     let mut out_credits = 0;
 
     let check_send = None;
-    let recv_content = None;
+    let add_to_recv_buffer = None;
     let send_content = None;
     let send_msg = None;
 
-    pin_mut!(check_send, recv_content, send_content, send_msg);
+    pin_mut!(check_send, add_to_recv_buffer, send_content, send_msg);
 
     loop {
         let (do_send, do_recv) = match handler.state() {
@@ -2388,7 +2341,11 @@ where
                 send_msg.set(Some(zsess_out.send_msg(zreq)));
             }
         } else {
-            if do_recv && zsess_in.credits() > 0 && recv_content.is_none() && check_send.is_none() {
+            if do_recv
+                && zsess_in.credits() > 0
+                && add_to_recv_buffer.is_none()
+                && check_send.is_none()
+            {
                 check_send.set(Some(zsess_out.check_send()));
             }
         }
@@ -2405,8 +2362,6 @@ where
             }
         }
 
-        let orig_in_credits = zsess_in.credits();
-
         let ret = {
             let recv_msg = zsess_in.recv_msg();
 
@@ -2415,7 +2370,7 @@ where
             // ABR: select contains read
             select_5(
                 select_option(check_send.as_mut().as_pin_mut()),
-                select_option(recv_content.as_mut().as_pin_mut()),
+                select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
                 select_option(send_content.as_mut().as_pin_mut()),
                 select_option(send_msg.as_mut().as_pin_mut()),
                 recv_msg,
@@ -2428,20 +2383,23 @@ where
                 check_send.set(None);
 
                 assert!(zsess_in.credits() > 0);
-                assert_eq!(recv_content.is_none(), true);
+                assert_eq!(add_to_recv_buffer.is_none(), true);
 
-                let max_read = cmp::min(tmp_buf.borrow().len(), zsess_in.credits() as usize);
+                let tmp_buf = &mut *tmp_buf.borrow_mut();
+                let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
 
-                recv_content.set(Some(
-                    handler.recv_message_content(tmp_buf, max_read, bytes_read),
-                ));
-            }
-            Select5::R2(ret) => {
-                recv_content.set(None);
+                let (opcode, size, end) =
+                    match handler.try_recv_message_content(&mut tmp_buf[..max_read]) {
+                        Some(ret) => ret?,
+                        None => {
+                            add_to_recv_buffer.set(Some(handler.add_to_recv_buffer()));
+                            continue;
+                        }
+                    };
 
-                let (opcode, size, end) = ret?;
+                bytes_read();
 
-                let body = &tmp_buf.borrow()[..size];
+                let body = &tmp_buf[..size];
 
                 let zreq = match opcode {
                     websocket::OPCODE_TEXT | websocket::OPCODE_BINARY => {
@@ -2493,8 +2451,13 @@ where
 
                 zsess_in.subtract_credits(size as u32);
 
-                // ABR: we've already called check_send, so this shouldn't block
-                zsess_out.send_msg(zreq).await?;
+                // check_send just finished, so this should succeed
+                zsess_out.try_send_msg(zreq)?;
+            }
+            Select5::R2(ret) => {
+                ret?;
+
+                add_to_recv_buffer.set(None);
             }
             Select5::R3(ret) => {
                 send_content.set(None);
@@ -2634,11 +2597,6 @@ where
                         // ABR: handle_other
                         handle_other(zresp_ref, zsess_in, zsess_out).await?;
                     }
-                }
-
-                if zsess_in.credits() > orig_in_credits {
-                    // restart the recv
-                    recv_content.set(None);
                 }
             }
         }
