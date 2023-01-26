@@ -941,8 +941,8 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         opcode: u8,
         src: &[&[u8]],
         fin: bool,
+        rsv1: bool,
         mask: Option<[u8; 4]>,
-        compression_mode: CompressionMode,
     ) -> Result<usize, Error> {
         assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
 
@@ -954,7 +954,6 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         }
 
         if sending.frame.is_none() {
-            let rsv1 = compression_mode == CompressionMode::Compressed;
             let mut h = [0; HEADER_SIZE_MAX];
 
             let size = write_header(fin, rsv1, opcode, src_len, mask, &mut h[..])?;
@@ -1119,7 +1118,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
         drop(sending);
 
-        let read = match &self.deflate_state {
+        let (read, frame_sent) = match &self.deflate_state {
             Some(state) if !is_control => {
                 let state = &mut *state.borrow_mut();
 
@@ -1154,6 +1153,8 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                 // we should never get EOS if there are bytes left to send
                 assert!(!output_end || read == src_len);
 
+                let mut frame_sent = false;
+
                 if state.enc_buf.read_avail() > 0 || output_end {
                     // send_frame adds 1 element to vector
                     let mut bufs_arr = [&b""[..]; VECTORED_MAX - 1];
@@ -1164,26 +1165,30 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                         opcode,
                         bufs,
                         output_end,
+                        opcode != OPCODE_CONTINUATION, // set rsv1 on first frame
                         mask,
-                        CompressionMode::Compressed,
                     )?;
+
+                    frame_sent = true;
 
                     state.enc_buf.read_commit(size);
                 }
 
-                read
+                (read, frame_sent)
             }
-            _ => self.send_frame(
-                writer,
-                opcode,
-                src,
-                fin,
-                mask,
-                CompressionMode::Uncompressed,
-            )?,
+            _ => {
+                let read = self.send_frame(writer, opcode, src, fin, false, mask)?;
+
+                (read, true)
+            }
         };
 
         let mut sending = self.sending.borrow_mut();
+
+        if frame_sent {
+            let msg = sending.message.as_mut().unwrap();
+            msg.frame_sent = true;
+        }
 
         if sending.frame.is_none() && fin {
             sending.message = None;
@@ -1195,9 +1200,6 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                     state.enc.reset();
                 }
             }
-        } else {
-            let msg = sending.message.as_mut().unwrap();
-            msg.frame_sent = true;
         }
 
         let done = sending.message.is_none();
@@ -1264,7 +1266,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         let fi = receiving.frame.as_ref().unwrap();
         let msg = receiving.message.as_mut().unwrap();
 
-        let (written, output_end) = if msg.compression_mode == CompressionMode::Compressed {
+        let (written, frame_end) = if msg.compression_mode == CompressionMode::Compressed {
             let state = match &self.deflate_state {
                 Some(state) => state,
                 None => return Some(Err(Error::CompressionError)),
@@ -1275,7 +1277,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             let left = fi.payload_size - msg.frame_payload_read;
             let limit = cmp::min(left, rbuf.len());
 
-            let end = (msg.frame_payload_read + limit) == fi.payload_size;
+            let end = ((msg.frame_payload_read + limit) == fi.payload_size) && fi.fin;
 
             let (read, written, output_end) = match unmask_and_decode(
                 rbuf,
@@ -1292,12 +1294,19 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
             msg.frame_payload_read += read;
 
-            // no output progress means we need more input
-            if written == 0 && !output_end {
-                return None;
-            }
+            let frame_end = if fi.fin {
+                // no output progress means we need more input
+                if written == 0 && !output_end {
+                    return None;
+                }
 
-            (written, output_end)
+                // finish final frame only when we hit EOS
+                (msg.frame_payload_read == fi.payload_size) && output_end
+            } else {
+                msg.frame_payload_read == fi.payload_size
+            };
+
+            (written, frame_end)
         } else {
             let buf = rbuf.get_ref();
 
@@ -1336,7 +1345,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         let opcode = msg.opcode;
         let fin = fi.fin;
 
-        if output_end {
+        if frame_end {
             receiving.frame = None;
 
             if fin {
@@ -1722,14 +1731,7 @@ mod tests {
         let mut writer = MyWriter::new();
 
         let size = p
-            .send_frame(
-                &mut writer,
-                OPCODE_TEXT,
-                &[b"hello"],
-                true,
-                None,
-                CompressionMode::Uncompressed,
-            )
+            .send_frame(&mut writer, OPCODE_TEXT, &[b"hello"], true, false, None)
             .unwrap();
 
         assert_eq!(size, 5);
@@ -1962,6 +1964,77 @@ mod tests {
         assert_eq!(opcode, OPCODE_TEXT);
         assert_eq!(data, b"Hello");
         assert_eq!(end, true);
+    }
+
+    #[test]
+    fn test_send_recv_compressed_fragmented() {
+        let tmp = Rc::new(TmpBuffer::new(1024));
+
+        let p = Protocol::new(Some((
+            PerMessageDeflateConfig::default(),
+            RingBuffer::new(1024, &tmp),
+        )));
+
+        let mut writer = MyWriter::new();
+
+        p.send_message_start(OPCODE_TEXT, None);
+
+        let (size, done) = p
+            .send_message_content(&mut writer, &[b"hello"], false)
+            .unwrap();
+        assert_eq!(size, 5);
+        assert_eq!(done, false);
+
+        // flush the encoded data
+        {
+            let state = &mut *p.deflate_state.as_ref().unwrap().borrow_mut();
+
+            let (_, output_end) = state
+                .enc
+                .encode_to_ringbuffer(&[], true, &mut state.enc_buf)
+                .unwrap();
+            assert_eq!(output_end, true);
+
+            state.enc_buf.write(&DEFLATE_SUFFIX).unwrap();
+        }
+
+        // send flushed data as first frame
+        let (size, done) = p.send_message_content(&mut writer, &[], false).unwrap();
+        assert_eq!(size, 0);
+        assert_eq!(done, false);
+        assert_eq!(writer.data.is_empty(), false);
+
+        // send second frame
+        let (size, done) = p
+            .send_message_content(&mut writer, &[b" world"], true)
+            .unwrap();
+        assert_eq!(size, 6);
+        assert_eq!(done, true);
+
+        let mut rbuf = io::Cursor::new(writer.data.as_mut());
+
+        let p = Protocol::new(Some((
+            PerMessageDeflateConfig::default(),
+            RingBuffer::new(1024, &tmp),
+        )));
+
+        let mut result: Vec<u8> = Vec::new();
+
+        loop {
+            let mut dest = [0; 1024];
+
+            let (opcode, size, end) = p
+                .recv_message_content(&mut rbuf, &mut dest)
+                .unwrap()
+                .unwrap();
+            assert_eq!(opcode, OPCODE_TEXT);
+            result.extend(&dest[..size]);
+            if end {
+                break;
+            }
+        }
+
+        assert_eq!(result, b"hello world");
     }
 
     struct LimitedDeflateDecoder {
