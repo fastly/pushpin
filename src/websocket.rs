@@ -873,6 +873,7 @@ struct SendingMessage {
     opcode: u8,
     mask: Option<[u8; 4]>,
     frame_sent: bool,
+    enc_output_end: bool,
 }
 
 struct ReceivingMessage {
@@ -882,8 +883,8 @@ struct ReceivingMessage {
 }
 
 struct Sending {
-    frame: Option<SendingFrame>,
-    message: Option<SendingMessage>,
+    frame: RefCell<Option<SendingFrame>>,
+    message: RefCell<Option<SendingMessage>>,
 }
 
 struct Receiving {
@@ -900,7 +901,7 @@ struct DeflateState<T> {
 
 pub struct Protocol<T> {
     state: Cell<State>,
-    sending: RefCell<Sending>,
+    sending: Sending,
     receiving: RefCell<Receiving>,
     deflate_state: Option<RefCell<DeflateState<T>>>,
 }
@@ -919,10 +920,10 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
         Self {
             state: Cell::new(State::Connected),
-            sending: RefCell::new(Sending {
-                frame: None,
-                message: None,
-            }),
+            sending: Sending {
+                frame: RefCell::new(None),
+                message: RefCell::new(None),
+            },
             receiving: RefCell::new(Receiving {
                 frame: None,
                 message: None,
@@ -946,28 +947,28 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
     ) -> Result<usize, Error> {
         assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
 
-        let sending = &mut *self.sending.borrow_mut();
+        let sending_frame = &mut *self.sending.frame.borrow_mut();
 
         let mut src_len = 0;
         for buf in src.iter() {
             src_len += buf.len();
         }
 
-        if sending.frame.is_none() {
+        if sending_frame.is_none() {
             let mut h = [0; HEADER_SIZE_MAX];
 
             let size = write_header(fin, rsv1, opcode, src_len, mask, &mut h[..])?;
 
-            sending.frame = Some(SendingFrame {
+            *sending_frame = Some(SendingFrame {
                 header: h,
                 header_len: size,
                 sent: 0,
             });
         }
 
-        let sending_frame = sending.frame.as_mut().unwrap();
+        let frame = sending_frame.as_mut().unwrap();
 
-        let header = &sending_frame.header[..sending_frame.header_len];
+        let header = &frame.header[..frame.header_len];
 
         let total = header.len() + src_len;
 
@@ -983,19 +984,19 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         }
 
         let out = &out_arr[..out_arr_len];
-        let size = write_vectored_offset(writer, out, sending_frame.sent)?;
+        let size = write_vectored_offset(writer, out, frame.sent)?;
 
         if log_enabled!(log::Level::Trace) {
             trace!("OUT sock {}", Bufs::new(out));
         }
 
-        sending_frame.sent += size;
+        frame.sent += size;
 
-        if sending_frame.sent < total {
+        if frame.sent < total {
             return Ok(0);
         }
 
-        sending.frame = None;
+        *sending_frame = None;
 
         if opcode == OPCODE_CLOSE {
             if self.state.get() == State::PeerClosed {
@@ -1060,20 +1061,21 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
     }
 
     pub fn is_sending_message(&self) -> bool {
-        self.sending.borrow().message.is_some()
+        self.sending.message.borrow().is_some()
     }
 
     pub fn send_message_start(&self, opcode: u8, mask: Option<[u8; 4]>) {
         assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
 
-        let sending = &mut *self.sending.borrow_mut();
+        let sending_message = &mut *self.sending.message.borrow_mut();
 
-        assert_eq!(sending.message.is_some(), false);
+        assert_eq!(sending_message.is_some(), false);
 
-        sending.message = Some(SendingMessage {
+        *sending_message = Some(SendingMessage {
             opcode,
             mask,
             frame_sent: false,
+            enc_output_end: false,
         });
     }
 
@@ -1085,9 +1087,9 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
     ) -> Result<(usize, bool), Error> {
         assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
 
-        let sending = self.sending.borrow();
+        let mut sending_message = self.sending.message.borrow_mut();
 
-        let msg = sending.message.as_ref().unwrap();
+        let msg = sending_message.as_mut().unwrap();
 
         let mut src_len = 0;
         for buf in src.iter() {
@@ -1108,54 +1110,44 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             msg.opcode
         };
 
-        let fin = if let Some(f) = &sending.frame {
-            f.header[0] & 0x80 != 0
-        } else {
-            end
-        };
-
-        let mask = msg.mask;
-
-        drop(sending);
-
-        let (read, frame_sent) = match &self.deflate_state {
+        let (read, sent_all) = match &self.deflate_state {
             Some(state) if !is_control => {
                 let state = &mut *state.borrow_mut();
 
                 let mut read = 0;
-                let mut output_end = false;
 
-                if src_len > 0 {
-                    for (i, buf) in src.iter().enumerate() {
-                        // only set end on the last buf
-                        let end = end && (i == src.len() - 1);
+                if !msg.enc_output_end {
+                    if src_len > 0 {
+                        for (i, buf) in src.iter().enumerate() {
+                            // only set end on the last buf
+                            let end = end && (i == src.len() - 1);
 
+                            let dest = &mut state.enc_buf;
+
+                            let (r, oe) = state.enc.encode_to_ringbuffer(buf, end, dest)?;
+
+                            read += r;
+                            msg.enc_output_end = oe;
+
+                            if r < buf.len() || oe {
+                                break;
+                            }
+                        }
+                    } else {
                         let dest = &mut state.enc_buf;
 
-                        let (r, oe) = state.enc.encode_to_ringbuffer(buf, end, dest)?;
+                        let (_, oe) = state.enc.encode_to_ringbuffer(&[], end, dest)?;
 
-                        read += r;
-                        output_end = oe;
-
-                        if r < buf.len() || oe {
-                            break;
-                        }
+                        msg.enc_output_end = oe;
                     }
-                } else {
-                    let dest = &mut state.enc_buf;
-
-                    let (r, oe) = state.enc.encode_to_ringbuffer(&[], end, dest)?;
-
-                    read += r;
-                    output_end = oe;
                 }
 
                 // we should never get EOS if there are bytes left to send
-                assert!(!output_end || read == src_len);
+                assert!(!msg.enc_output_end || read == src_len);
 
-                let mut frame_sent = false;
+                let mut sent_all = false;
 
-                if state.enc_buf.read_avail() > 0 || output_end {
+                if state.enc_buf.read_avail() > 0 || msg.enc_output_end {
                     // send_frame adds 1 element to vector
                     let mut bufs_arr = [&b""[..]; VECTORED_MAX - 1];
                     let bufs = state.enc_buf.get_ref_vectored(&mut bufs_arr);
@@ -1164,34 +1156,31 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                         writer,
                         opcode,
                         bufs,
-                        output_end,
+                        msg.enc_output_end,
                         opcode != OPCODE_CONTINUATION, // set rsv1 on first frame
-                        mask,
+                        msg.mask,
                     )?;
 
-                    frame_sent = true;
-
                     state.enc_buf.read_commit(size);
+
+                    msg.frame_sent = true;
+
+                    sent_all = msg.enc_output_end && state.enc_buf.read_avail() == 0;
                 }
 
-                (read, frame_sent)
+                (read, sent_all)
             }
             _ => {
-                let read = self.send_frame(writer, opcode, src, fin, false, mask)?;
+                let read = self.send_frame(writer, opcode, src, end, false, msg.mask)?;
 
-                (read, true)
+                msg.frame_sent = true;
+
+                (read, end && read == src_len)
             }
         };
 
-        let mut sending = self.sending.borrow_mut();
-
-        if frame_sent {
-            let msg = sending.message.as_mut().unwrap();
-            msg.frame_sent = true;
-        }
-
-        if sending.frame.is_none() && fin {
-            sending.message = None;
+        if sent_all && self.sending.frame.borrow().is_none() {
+            *sending_message = None;
 
             if let Some(state) = &self.deflate_state {
                 let mut state = state.borrow_mut();
@@ -1202,7 +1191,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             }
         }
 
-        let done = sending.message.is_none();
+        let done = sending_message.is_none();
 
         Ok((read, done))
     }

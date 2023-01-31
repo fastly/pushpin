@@ -48,7 +48,7 @@ use crate::reactor::Reactor;
 use crate::websocket;
 use crate::zhttppacket;
 use arrayvec::{ArrayString, ArrayVec};
-use log::debug;
+use log::{debug, warn};
 use sha1::{Digest, Sha1};
 use std::cell::{Ref, RefCell};
 use std::cmp;
@@ -1270,6 +1270,10 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         }
     }
 
+    fn accept_avail(&self) -> usize {
+        self.w.borrow().buf.write_avail()
+    }
+
     fn accept_body(&self, body: &[u8]) -> Result<(), ServerError> {
         let w = &mut *self.w.borrow_mut();
 
@@ -2229,8 +2233,7 @@ where
                         handler.append_body(rdata.body, rdata.more)?;
                     }
                     _ => {
-                        // if handoff requested, flush send buffer before
-                        // before responding
+                        // if handoff requested, flush send buffer responding
                         match &zresp_ref.ptype {
                             zhttppacket::ResponsePacket::HandoffStart => {
                                 if flush_body.is_none() && handler.can_flush() {
@@ -2281,7 +2284,7 @@ async fn stream_websocket<S, R1, R2>(
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
-    deflate_config: Option<websocket::PerMessageDeflateConfig>,
+    deflate_config: Option<(websocket::PerMessageDeflateConfig, usize)>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<(), ServerError>
@@ -2296,11 +2299,8 @@ where
     let mut wbuf = buf2.take_inner().into_inner();
 
     let (mut wbuf, deflate_config) = match deflate_config {
-        Some(config) => {
-            // split the original write buffer memory:
-            // 75% for a new write buffer, 25% for an encode buffer
-            let size = wbuf.capacity() * 3 / 4;
-            let (wbuf, ebuf) = wbuf.split_at_mut(size);
+        Some((config, write_buf_size)) => {
+            let (wbuf, ebuf) = wbuf.split_at_mut(write_buf_size);
 
             let wbuf = SliceRingBuffer::new(wbuf, &rb_tmp);
             let ebuf = SliceRingBuffer::new(ebuf, &rb_tmp);
@@ -2485,7 +2485,17 @@ where
                 match &zresp_ref.ptype {
                     zhttppacket::ResponsePacket::Data(rdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
-                            handler.accept_body(rdata.body)?;
+                            let avail = handler.accept_avail();
+
+                            if let Err(e) = handler.accept_body(rdata.body) {
+                                warn!(
+                                    "received too much data from handler (size={}, credits={})",
+                                    rdata.body.len(),
+                                    avail,
+                                );
+
+                                return Err(e.into());
+                            }
 
                             let opcode = match &rdata.content_type {
                                 Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
@@ -2515,8 +2525,9 @@ where
 
                             let arr: [u8; 2] = code.to_be_bytes();
 
+                            // close content isn't limited by credits. if we
+                            // don't have space for it, just error out
                             handler.accept_body(&arr)?;
-
                             handler.accept_body(reason.as_bytes())?;
 
                             if ws_in_tracker.start(websocket::OPCODE_CLOSE).is_err() {
@@ -2530,7 +2541,17 @@ where
                     },
                     zhttppacket::ResponsePacket::Ping(pdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
-                            handler.accept_body(pdata.body)?;
+                            let avail = handler.accept_avail();
+
+                            if let Err(e) = handler.accept_body(pdata.body) {
+                                warn!(
+                                    "received too much data from handler (size={}, credits={})",
+                                    pdata.body.len(),
+                                    avail,
+                                );
+
+                                return Err(e.into());
+                            }
 
                             if ws_in_tracker.start(websocket::OPCODE_PING).is_err() {
                                 return Err(ServerError::BadFrame);
@@ -2543,7 +2564,17 @@ where
                     },
                     zhttppacket::ResponsePacket::Pong(pdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
-                            handler.accept_body(pdata.body)?;
+                            let avail = handler.accept_avail();
+
+                            if let Err(e) = handler.accept_body(pdata.body) {
+                                warn!(
+                                    "received too much data from handler (size={}, credits={})",
+                                    pdata.body.len(),
+                                    avail,
+                                );
+
+                                return Err(e.into());
+                            }
 
                             if ws_in_tracker.start(websocket::OPCODE_PONG).is_err() {
                                 return Err(ServerError::BadFrame);
@@ -2555,8 +2586,7 @@ where
                         _ => {}
                     },
                     _ => {
-                        // if handoff requested, flush send buffer before
-                        // before responding
+                        // if handoff requested, flush send buffer responding
                         match &zresp_ref.ptype {
                             zhttppacket::ResponsePacket::HandoffStart => loop {
                                 if send_content.is_none() {
@@ -2697,7 +2727,11 @@ where
                                     websocket::PerMessageDeflateConfig::from_params(params)
                                 {
                                     if let Ok(resp_config) = config.create_response() {
-                                        ws_deflate_config = Some(resp_config);
+                                        // split the original write buffer memory:
+                                        // 75% for a new write buffer, 25% for an encode buffer
+                                        let write_buf_size = recv_buf_size * 3 / 4;
+
+                                        ws_deflate_config = Some((resp_config, write_buf_size));
                                     }
                                 }
                             }
@@ -2736,7 +2770,7 @@ where
 
         let ws_config: Option<(
             ArrayString<WS_ACCEPT_MAX>,
-            Option<websocket::PerMessageDeflateConfig>,
+            Option<(websocket::PerMessageDeflateConfig, usize)>,
         )> = if websocket {
             let accept = match validate_ws_request(&req, ws_version, ws_key) {
                 Ok(s) => s,
@@ -2765,6 +2799,12 @@ where
             (Mode::HttpStream, more)
         };
 
+        let credits = if let Some((_, Some((_, write_buf_size)))) = &ws_config {
+            *write_buf_size
+        } else {
+            recv_buf_size
+        };
+
         let msg = make_zhttp_request(
             instance_id,
             &ids,
@@ -2774,7 +2814,7 @@ where
             b"",
             more,
             mode,
-            recv_buf_size as u32,
+            credits as u32,
             peer_addr,
             secure,
             &mut *packet_buf.borrow_mut(),
@@ -3017,7 +3057,7 @@ where
                 };
                 headers_len += 1;
 
-                if let Some(config) = &ws_config.1 {
+                if let Some((config, _)) = &ws_config.1 {
                     if write_ws_ext_header_value(config, &mut ws_ext).is_err() {
                         return Err(ServerError::CompressionError);
                     }
@@ -5769,12 +5809,12 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T309:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T308:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,21:ws://example.com/path,7:heade",
             "rs,173:22:4:Host,11:example.com,]22:7:Upgrade,9:websocket,",
             "]30:21:Sec-WebSocket-Version,2:13,]29:17:Sec-WebSocket-Key",
             ",5:abcde,]50:24:Sec-WebSocket-Extensions,18:permessage-def",
-            "late,]]7:credits,4:1024#}",
+            "late,]]7:credits,3:768#}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
