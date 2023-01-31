@@ -108,8 +108,8 @@ impl RefRead for io::Cursor<&mut [u8]> {
     }
 }
 
-pub fn write_vectored_offset(
-    writer: &mut dyn Write,
+pub fn write_vectored_offset<W: Write>(
+    writer: &mut W,
     bufs: &[&[u8]],
     offset: usize,
 ) -> Result<usize, io::Error> {
@@ -152,8 +152,8 @@ pub fn write_vectored_offset(
     writer.write_vectored(&arr[..arr_len])
 }
 
-pub async fn write_vectored_offset_async(
-    writer: &mut dyn AsyncWrite,
+pub async fn write_vectored_offset_async<W: AsyncWrite>(
+    writer: &mut W,
     bufs: &[&[u8]],
     offset: usize,
 ) -> Result<usize, io::Error> {
@@ -399,7 +399,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> BaseRingBuffer<T> {
         self.end = 0;
     }
 
-    pub fn write_from(&mut self, r: &mut dyn Read) -> Result<usize, io::Error> {
+    pub fn write_from<R: Read>(&mut self, r: &mut R) -> Result<usize, io::Error> {
         let size = match r.read(self.write_buf()) {
             Ok(size) => size,
             Err(e) => return Err(e),

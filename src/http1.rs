@@ -284,10 +284,10 @@ struct Chunk {
 }
 
 // writes src to dest as chunks. current chunk state is passed in
-fn write_chunk(
+fn write_chunk<W: Write>(
     content: &[&[u8]],
     footer: &[u8],
-    dest: &mut dyn Write,
+    dest: &mut W,
     chunk: &mut Option<Chunk>,
     max_size: usize,
 ) -> Result<usize, io::Error> {
@@ -360,10 +360,10 @@ fn write_chunk(
 }
 
 // writes src to dest as chunks. current chunk state is passed in
-async fn write_chunk_async(
+async fn write_chunk_async<W: AsyncWrite>(
     content: &[&[u8]],
     footer: &[u8],
-    dest: &mut dyn AsyncWrite,
+    dest: &mut W,
     chunk: &mut Option<Chunk>,
     max_size: usize,
 ) -> Result<usize, io::Error> {
@@ -436,7 +436,7 @@ async fn write_chunk_async(
 }
 
 #[cfg(test)]
-pub fn write_headers(writer: &mut dyn io::Write, headers: &[Header]) -> Result<(), io::Error> {
+pub fn write_headers<W: Write>(writer: &mut W, headers: &[Header]) -> Result<(), io::Error> {
     for h in headers.iter() {
         write!(writer, "{}: ", h.name)?;
         writer.write(h.value)?;
@@ -870,15 +870,15 @@ impl<'buf, 'headers> ServerProtocol {
         }
     }
 
-    pub fn send_100_continue(&mut self, writer: &mut dyn Write) -> Result<(), ServerError> {
+    pub fn send_100_continue<W: Write>(&mut self, writer: &mut W) -> Result<(), ServerError> {
         writer.write(b"HTTP/1.1 100 Continue\r\n\r\n")?;
 
         Ok(())
     }
 
-    pub fn send_response(
+    pub fn send_response<W: Write>(
         &mut self,
-        writer: &mut dyn Write,
+        writer: &mut W,
         code: u32,
         reason: &str,
         headers: &[Header],
@@ -964,9 +964,9 @@ impl<'buf, 'headers> ServerProtocol {
         Ok(())
     }
 
-    pub fn send_body(
+    pub fn send_body<W: Write>(
         &mut self,
-        writer: &mut dyn Write,
+        writer: &mut W,
         src: &[&[u8]],
         end: bool,
         headers: Option<&[u8]>,
@@ -1036,9 +1036,9 @@ impl<'buf, 'headers> ServerProtocol {
         Ok(content_written)
     }
 
-    pub async fn send_body_async(
+    pub async fn send_body_async<W: AsyncWrite>(
         &mut self,
-        writer: &mut dyn AsyncWrite,
+        writer: &mut W,
         src: &[&[u8]],
         end: bool,
         headers: Option<&[u8]>,

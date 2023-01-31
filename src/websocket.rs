@@ -935,9 +935,9 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         self.state.get()
     }
 
-    pub fn send_frame(
+    pub fn send_frame<W: Write>(
         &self,
-        writer: &mut dyn Write,
+        writer: &mut W,
         opcode: u8,
         src: &[&[u8]],
         fin: bool,
@@ -1010,9 +1010,9 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
     // on success, it's up to the caller to advance the buffer by frame.data.len()
     #[cfg(test)]
-    pub fn recv_frame(
+    pub fn recv_frame<R: RefRead>(
         &mut self,
-        rbuf: &'buf mut dyn RefRead,
+        rbuf: &'buf mut R,
     ) -> Option<Result<Frame<'buf>, Error>> {
         assert!(self.state.get() == State::Connected || self.state.get() == State::Closing);
 
@@ -1077,9 +1077,9 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         });
     }
 
-    pub fn send_message_content(
+    pub fn send_message_content<W: Write>(
         &self,
-        writer: &mut dyn Write,
+        writer: &mut W,
         src: &[&[u8]],
         end: bool,
     ) -> Result<(usize, bool), Error> {
@@ -1207,9 +1207,9 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         Ok((read, done))
     }
 
-    pub fn recv_message_content(
+    pub fn recv_message_content<R: RefRead>(
         &self,
-        rbuf: &mut dyn RefRead,
+        rbuf: &mut R,
         dest: &mut [u8],
     ) -> Option<Result<(u8, usize, bool), Error>> {
         assert!(self.state.get() == State::Connected || self.state.get() == State::Closing);
