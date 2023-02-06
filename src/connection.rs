@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,10 +36,9 @@ use crate::buffer::{
     VECTORED_MAX,
 };
 use crate::future::{
-    io_split, poll_async, select_2, select_3, select_4, select_5, select_option,
-    AsyncLocalReceiver, AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
-    CancellationToken, ReadHalf, Select2, Select3, Select4, Select5, StdWriteWrapper, Timeout,
-    WriteHalf,
+    io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
+    AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, CancellationToken,
+    ReadHalf, Select2, Select3, Select4, StdWriteWrapper, Timeout, WriteHalf,
 };
 use crate::http1;
 use crate::net::SocketAddr;
@@ -1352,16 +1351,10 @@ impl<'a> ZhttpStreamSessionOut<'a> {
         self.sender_stream.check_send().await
     }
 
-    // it's okay to run multiple instances of this future within the same
-    // task, because it's okay to run multiple instances of check_send
-    async fn send_msg(&self, zreq: zhttppacket::Request<'_, '_, '_>) -> Result<(), ServerError> {
-        // wait for the ability to send before actually sending. this way we
-        // can atomically create and send the message using non-blocking I/O
-        self.sender_stream.check_send().await;
-
-        self.try_send_msg(zreq)
-    }
-
+    // this method is non-blocking, in order to increment the sequence number
+    // and send the message in one shot, without concurrent activity
+    // interfering with the sequencing. to send asynchronously, first await
+    // on check_send and then call this method
     fn try_send_msg(&self, zreq: zhttppacket::Request) -> Result<(), ServerError> {
         let msg = {
             let mut zreq = zreq;
@@ -1379,8 +1372,6 @@ impl<'a> ZhttpStreamSessionOut<'a> {
 
             let size = zreq.serialize(packet_buf)?;
 
-            self.shared.inc_out_seq();
-
             zmq::Message::from(&packet_buf[..size])
         };
 
@@ -1393,6 +1384,8 @@ impl<'a> ZhttpStreamSessionOut<'a> {
         }
 
         self.sender_stream.try_send((addr, msg))?;
+
+        self.shared.inc_out_seq();
 
         Ok(())
     }
@@ -1943,11 +1936,18 @@ where
         zhttppacket::ResponsePacket::KeepAlive => Ok(()),
         zhttppacket::ResponsePacket::Credit(_) => Ok(()),
         zhttppacket::ResponsePacket::HandoffStart => {
-            let zreq = zhttppacket::Request::new_handoff_proceed(b"", &[]);
-
             // discarding here is fine. the sender should cease sending
             // messages until we've replied with proceed
-            discard_while(&zsess_in.receiver, pin!(zsess_out.send_msg(zreq))).await?;
+            discard_while(
+                &zsess_in.receiver,
+                pin!(async { Ok(zsess_out.check_send().await) }),
+            )
+            .await?;
+
+            let zreq = zhttppacket::Request::new_handoff_proceed(b"", &[]);
+
+            // check_send just finished, so this should succeed
+            zsess_out.try_send_msg(zreq)?;
 
             // pause until we get a msg
             zsess_in.peek_msg().await?;
@@ -2123,7 +2123,7 @@ where
     let mut out_credits = 0;
 
     let mut flush_body = pin!(None);
-    let mut send_msg = pin!(None);
+    let mut check_send = pin!(None);
 
     'main: loop {
         let ret = {
@@ -2131,18 +2131,14 @@ where
                 flush_body.set(Some(handler.flush_body()));
             }
 
-            if out_credits > 0 && send_msg.is_none() {
-                let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits);
-
-                out_credits = 0;
-
-                send_msg.set(Some(zsess_out.send_msg(zreq)));
+            if out_credits > 0 && check_send.is_none() {
+                check_send.set(Some(zsess_out.check_send()));
             }
 
             // ABR: select contains read
             select_4(
                 select_option(flush_body.as_mut().as_pin_mut()),
-                select_option(send_msg.as_mut().as_pin_mut()),
+                select_option(check_send.as_mut().as_pin_mut()),
                 pin!(zsess_in.recv_msg()),
                 pin!(handler.fill_recv_buffer()),
             )
@@ -2165,10 +2161,14 @@ where
                     bytes_read();
                 }
             }
-            Select4::R2(ret) => {
-                send_msg.set(None);
+            Select4::R2(()) => {
+                check_send.set(None);
 
-                ret?;
+                let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits);
+                out_credits = 0;
+
+                // check_send just finished, so this should succeed
+                zsess_out.try_send_msg(zreq)?;
             }
             Select4::R3(ret) => {
                 let r = ret?;
@@ -2265,7 +2265,6 @@ where
     let mut check_send = pin!(None);
     let mut add_to_recv_buffer = pin!(None);
     let mut send_content = pin!(None);
-    let mut send_msg = pin!(None);
 
     loop {
         let (do_send, do_recv) = match handler.state() {
@@ -2275,24 +2274,11 @@ where
             websocket::State::Finished => break,
         };
 
-        if out_credits > 0 {
-            if send_msg.is_none() {
-                // send credits
-
-                let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits as u32);
-
-                out_credits = 0;
-
-                send_msg.set(Some(zsess_out.send_msg(zreq)));
-            }
-        } else {
-            if do_recv
-                && zsess_in.credits() > 0
-                && add_to_recv_buffer.is_none()
+        if out_credits > 0
+            || (do_recv && zsess_in.credits() > 0 && add_to_recv_buffer.is_none())
                 && check_send.is_none()
-            {
-                check_send.set(Some(zsess_out.check_send()));
-            }
+        {
+            check_send.set(Some(zsess_out.check_send()));
         }
 
         if do_send && send_content.is_none() {
@@ -2308,18 +2294,26 @@ where
         }
 
         // ABR: select contains read
-        let ret = select_5(
+        let ret = select_4(
             select_option(check_send.as_mut().as_pin_mut()),
             select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
             select_option(send_content.as_mut().as_pin_mut()),
-            select_option(send_msg.as_mut().as_pin_mut()),
             pin!(zsess_in.recv_msg()),
         )
         .await;
 
         match ret {
-            Select5::R1(()) => {
+            Select4::R1(()) => {
                 check_send.set(None);
+
+                if out_credits > 0 {
+                    let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits as u32);
+                    out_credits = 0;
+
+                    // check_send just finished, so this should succeed
+                    zsess_out.try_send_msg(zreq)?;
+                    continue;
+                }
 
                 assert!(zsess_in.credits() > 0);
                 assert_eq!(add_to_recv_buffer.is_none(), true);
@@ -2393,12 +2387,12 @@ where
                 // check_send just finished, so this should succeed
                 zsess_out.try_send_msg(zreq)?;
             }
-            Select5::R2(ret) => {
+            Select4::R2(ret) => {
                 ret?;
 
                 add_to_recv_buffer.set(None);
             }
-            Select5::R3(ret) => {
+            Select4::R3(ret) => {
                 send_content.set(None);
 
                 let (size, done) = ret?;
@@ -2411,12 +2405,7 @@ where
                     out_credits += size as u32;
                 }
             }
-            Select5::R4(ret) => {
-                send_msg.set(None);
-
-                ret?;
-            }
-            Select5::R5(ret) => {
+            Select4::R4(ret) => {
                 let r = ret?;
 
                 let zresp_ref = r.get().get();
