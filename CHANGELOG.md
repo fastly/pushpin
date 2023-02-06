@@ -1,6 +1,10 @@
 Condure Changelog
 =================
 
+v. 1.9.2 (2023-02-06)
+
+  * Fix WebSocket compression with fragmented messages.
+
 v. 1.9.1 (2023-01-19)
 
   * Fix crash in stream connection handler.
