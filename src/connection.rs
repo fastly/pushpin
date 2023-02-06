@@ -3523,7 +3523,7 @@ pub mod testutil {
     pub struct BenchServerReqHandler {
         reactor: Reactor,
         msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
-        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ResponseScratch<'static>>>>,
+        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -3612,11 +3612,9 @@ pub mod testutil {
             let msg = zmq::Message::from(msg.as_bytes());
             let msg = arena::Arc::new(msg, msg_mem).unwrap();
 
-            let scratch = arena::Rc::new(
-                RefCell::new(zhttppacket::ResponseScratch::new()),
-                scratch_mem,
-            )
-            .unwrap();
+            let scratch =
+                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
+                    .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
             let resp = arena::Rc::new(resp, resp_mem).unwrap();
@@ -3681,7 +3679,7 @@ pub mod testutil {
     pub struct BenchServerReqConnection {
         reactor: Reactor,
         msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
-        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ResponseScratch<'static>>>>,
+        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -3763,11 +3761,9 @@ pub mod testutil {
             let msg = zmq::Message::from(msg.as_bytes());
             let msg = arena::Arc::new(msg, msg_mem).unwrap();
 
-            let scratch = arena::Rc::new(
-                RefCell::new(zhttppacket::ResponseScratch::new()),
-                scratch_mem,
-            )
-            .unwrap();
+            let scratch =
+                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
+                    .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
             let resp = arena::Rc::new(resp, resp_mem).unwrap();
@@ -3840,7 +3836,7 @@ pub mod testutil {
     pub struct BenchServerStreamHandler {
         reactor: Reactor,
         msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
-        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ResponseScratch<'static>>>>,
+        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
         shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
         rb_tmp: Rc<TmpBuffer>,
@@ -3934,11 +3930,9 @@ pub mod testutil {
             let msg = zmq::Message::from(msg.as_bytes());
             let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-            let scratch = arena::Rc::new(
-                RefCell::new(zhttppacket::ResponseScratch::new()),
-                &scratch_mem,
-            )
-            .unwrap();
+            let scratch =
+                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                    .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
             let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -4011,7 +4005,7 @@ pub mod testutil {
     pub struct BenchServerStreamConnection {
         reactor: Reactor,
         msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
-        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ResponseScratch<'static>>>>,
+        scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
         shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
         rb_tmp: Rc<TmpBuffer>,
@@ -4100,11 +4094,9 @@ pub mod testutil {
             let msg = zmq::Message::from(msg.as_bytes());
             let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-            let scratch = arena::Rc::new(
-                RefCell::new(zhttppacket::ResponseScratch::new()),
-                &scratch_mem,
-            )
-            .unwrap();
+            let scratch =
+                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                    .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
             let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -4368,11 +4360,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -4490,11 +4479,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -4642,11 +4628,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -4699,11 +4682,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -4810,11 +4790,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -4986,11 +4963,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5114,11 +5088,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5153,11 +5124,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5278,11 +5246,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5296,11 +5261,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5431,11 +5393,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5539,11 +5498,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5618,11 +5574,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5718,11 +5671,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();
@@ -5808,11 +5758,8 @@ mod tests {
         let msg = zmq::Message::from(msg.as_bytes());
         let msg = arena::Arc::new(msg, &msg_mem).unwrap();
 
-        let scratch = arena::Rc::new(
-            RefCell::new(zhttppacket::ResponseScratch::new()),
-            &scratch_mem,
-        )
-        .unwrap();
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
 
         let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
         let resp = arena::Rc::new(resp, &resp_mem).unwrap();

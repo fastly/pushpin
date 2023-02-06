@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -680,6 +680,7 @@ impl Connections {
                     BatchType::KeepAlive => zhttppacket::RequestPacket::KeepAlive,
                     BatchType::Cancel => zhttppacket::RequestPacket::Cancel,
                 },
+                ptype_str: "",
             };
 
             let mut data = [0; BULK_PACKET_SIZE_MAX];
@@ -1484,7 +1485,7 @@ impl Worker {
                 Select6::R6(result) => match result {
                     Ok(msg) => {
                         let scratch = arena::Rc::new(
-                            RefCell::new(zhttppacket::ResponseScratch::new()),
+                            RefCell::new(zhttppacket::ParseScratch::new()),
                             &req_scratch_mem,
                         )
                         .unwrap();
@@ -1666,7 +1667,7 @@ impl Worker {
                             }
 
                             let scratch = arena::Rc::new(
-                                RefCell::new(zhttppacket::ResponseScratch::new()),
+                                RefCell::new(zhttppacket::ParseScratch::new()),
                                 &stream_scratch_mem,
                             )
                             .unwrap();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ use crate::list;
 use crate::pin;
 use crate::reactor::Reactor;
 use crate::tnetstring;
-use crate::zhttppacket::{Id, Response, ResponseScratch};
+use crate::zhttppacket::{parse_ids, Id, ParseScratch};
 use crate::zmq::{MultipartHeader, SpecInfo, ZmqSocket};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, log_enabled, trace, warn};
@@ -1113,9 +1113,9 @@ impl SocketManager {
     ) {
         let msg = arena::Arc::new(msg, messages_memory).unwrap();
 
-        let mut scratch = ResponseScratch::new();
+        let mut scratch = ParseScratch::new();
 
-        let ids = match Response::parse_ids(msg.get(), &mut scratch) {
+        let ids = match parse_ids(msg.get(), &mut scratch) {
             Ok(ids) => ids,
             Err(e) => {
                 warn!("unable to determine packet id(s): {}", e);
@@ -1160,9 +1160,9 @@ impl SocketManager {
 
         let buf = &buf[pos + 1..];
 
-        let mut scratch = ResponseScratch::new();
+        let mut scratch = ParseScratch::new();
 
-        let ids = match Response::parse_ids(&buf, &mut scratch) {
+        let ids = match parse_ids(&buf, &mut scratch) {
             Ok(ids) => ids,
             Err(e) => {
                 warn!("unable to determine packet id(s): {}", e);
@@ -1352,7 +1352,7 @@ impl AsyncClientStreamHandle {
 mod tests {
     use super::*;
     use crate::event;
-    use crate::zhttppacket::ResponsePacket;
+    use crate::zhttppacket::{PacketParse, Response, ResponsePacket};
     use std::mem;
 
     fn wait_readable(poller: &mut event::Poller, token: mio::Token) {
@@ -1554,7 +1554,7 @@ mod tests {
         }
 
         let msg = msg.get();
-        let mut scratch = ResponseScratch::new();
+        let mut scratch = ParseScratch::new();
         let resp = Response::parse(&msg, &mut scratch).unwrap();
 
         let rdata = match resp.ptype {
@@ -1589,7 +1589,7 @@ mod tests {
         }
 
         let msg = msg.get();
-        let mut scratch = ResponseScratch::new();
+        let mut scratch = ParseScratch::new();
         let resp = Response::parse(&msg, &mut scratch).unwrap();
 
         let rdata = match resp.ptype {
@@ -1711,7 +1711,7 @@ mod tests {
 
         let buf = &buf[pos + 1..];
 
-        let mut scratch = ResponseScratch::new();
+        let mut scratch = ParseScratch::new();
         let resp = Response::parse(buf, &mut scratch).unwrap();
 
         let rdata = match resp.ptype {
@@ -1765,7 +1765,7 @@ mod tests {
 
         let buf = &buf[pos + 1..];
 
-        let mut scratch = ResponseScratch::new();
+        let mut scratch = ParseScratch::new();
         let resp = Response::parse(buf, &mut scratch).unwrap();
 
         let rdata = match resp.ptype {
