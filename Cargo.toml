@@ -37,6 +37,8 @@ zmq = "0.9"
 
 [dev-dependencies]
 criterion = "0.3"
+env_logger = { version = "0.9", default-features = false }
+test-log = "0.2"
 
 [[bench]]
 name = "server"

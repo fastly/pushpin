@@ -1354,6 +1354,7 @@ mod tests {
     use crate::event;
     use crate::zhttppacket::{PacketParse, Response, ResponsePacket};
     use std::mem;
+    use test_log::test;
 
     fn wait_readable(poller: &mut event::Poller, token: mio::Token) {
         loop {
