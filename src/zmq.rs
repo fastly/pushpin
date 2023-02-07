@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use arrayvec::ArrayVec;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::fmt;
@@ -21,7 +22,7 @@ use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 
-const MULTIPART_HEADERS_MAX: usize = 1;
+const MULTIPART_HEADERS_MAX: usize = 8;
 
 fn trim_prefix<'a>(s: &'a str, prefix: &str) -> Result<&'a str, ()> {
     if s.starts_with(prefix) {
@@ -126,24 +127,7 @@ fn unsetup_spec(sock: &zmq::Socket, spec: &ActiveSpec) {
     }
 }
 
-pub struct MultipartHeader {
-    parts: [Option<zmq::Message>; MULTIPART_HEADERS_MAX],
-    len: usize,
-}
-
-impl MultipartHeader {
-    pub fn new() -> Self {
-        Self {
-            parts: [None; MULTIPART_HEADERS_MAX],
-            len: 0,
-        }
-    }
-
-    pub fn push(&mut self, msg: zmq::Message) {
-        self.parts[self.len] = Some(msg);
-        self.len += 1;
-    }
-}
+pub type MultipartHeader = ArrayVec<zmq::Message, MULTIPART_HEADERS_MAX>;
 
 pub struct ZmqSocket {
     inner: zmq::Socket,
@@ -200,21 +184,15 @@ impl ZmqSocket {
         content: zmq::Message,
         flags: i32,
     ) -> Result<(), zmq::Error> {
-        if header.len + 2 > 8 {
-            panic!("cannot send more than 8 parts")
+        let mut headers: ArrayVec<&[u8], MULTIPART_HEADERS_MAX> = ArrayVec::new();
+
+        for part in header {
+            headers.push(part);
         }
-
-        let mut headers: [&[u8]; 8] = [b""; 8];
-
-        for i in 0..header.len {
-            headers[i] = &header.parts[i].as_ref().unwrap();
-        }
-
-        let headers = &headers[..header.len];
 
         let flags = flags & zmq::DONTWAIT;
 
-        if let Err(e) = self.inner.send_multipart(headers, flags | zmq::SNDMORE) {
+        if let Err(e) = self.inner.send_multipart(&headers, flags | zmq::SNDMORE) {
             self.update_events();
             return Err(e);
         }
@@ -251,16 +229,35 @@ impl ZmqSocket {
         Ok(msg)
     }
 
-    pub fn recv_routed(&self, flags: i32) -> Result<zmq::Message, zmq::Error> {
+    pub fn recv_routed(&self, flags: i32) -> Result<(MultipartHeader, zmq::Message), zmq::Error> {
         let flags = flags & zmq::DONTWAIT;
 
+        let mut header = MultipartHeader::new();
+
         loop {
-            // eat parts until we reach the separator
+            // read parts until we reach the separator
             match self.inner.recv_msg(flags) {
                 Ok(msg) => {
                     if msg.is_empty() {
                         break;
                     }
+
+                    if header.len() == header.capacity() {
+                        // header too large
+
+                        let flags = 0;
+
+                        // eat the rest of the parts
+                        while self.inner.get_rcvmore().unwrap() {
+                            self.inner.recv_msg(flags).unwrap();
+                        }
+
+                        self.update_events();
+
+                        return Err(zmq::Error::EINVAL);
+                    }
+
+                    header.push(msg);
                 }
                 Err(e) => {
                     self.update_events();
@@ -293,7 +290,7 @@ impl ZmqSocket {
 
         self.update_events();
 
-        Ok(msg)
+        Ok((header, msg))
     }
 
     pub fn apply_specs(&self, new_specs: &[SpecInfo]) -> Result<(), ZmqSocketError> {

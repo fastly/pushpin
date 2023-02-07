@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2290,7 +2290,7 @@ pub struct ZmqRecvRoutedFuture<'a> {
 }
 
 impl Future for ZmqRecvRoutedFuture<'_> {
-    type Output = Result<zmq::Message, zmq::Error>;
+    type Output = Result<(MultipartHeader, zmq::Message), zmq::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
@@ -2309,7 +2309,7 @@ impl Future for ZmqRecvRoutedFuture<'_> {
         }
 
         match f.s.inner.recv_routed(zmq::DONTWAIT) {
-            Ok(msg) => Poll::Ready(Ok(msg)),
+            Ok(ret) => Poll::Ready(Ok(ret)),
             Err(zmq::Error::EAGAIN) => Poll::Pending,
             Err(e) => Poll::Ready(Err(e)),
         }
@@ -2975,8 +2975,10 @@ mod tests {
 
         executor
             .spawn(async move {
-                assert_eq!(r.recv_routed().await, Ok(zmq::Message::from(&b"1"[..])));
-                assert_eq!(r.recv_routed().await, Ok(zmq::Message::from(&b"2"[..])));
+                let (_, msg) = r.recv_routed().await.unwrap();
+                assert_eq!(msg, zmq::Message::from(&b"1"[..]));
+                let (_, msg) = r.recv_routed().await.unwrap();
+                assert_eq!(msg, zmq::Message::from(&b"2"[..]));
             })
             .unwrap();
 
@@ -3048,7 +3050,8 @@ mod tests {
         }
 
         // we can clear out r1
-        assert_eq!(r1.recv_routed(0), Ok(zmq::Message::from(&b"1"[..])));
+        let (_, msg) = r1.recv_routed(0).unwrap();
+        assert_eq!(msg, zmq::Message::from(&b"1"[..]));
 
         // wrap in Rc so the inproc sender is not dropped until after the
         // messages have been received
@@ -3086,12 +3089,15 @@ mod tests {
         assert_eq!(executor.have_tasks(), true);
 
         // this will allow the third write to go through
-        assert_eq!(r2.recv_routed(0), Ok(zmq::Message::from(&b"1"[..])));
+        let (_, msg) = r2.recv_routed(0).unwrap();
+        assert_eq!(msg, zmq::Message::from(&b"1"[..]));
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
 
-        assert_eq!(r2.recv_routed(0), Ok(zmq::Message::from(&b"2"[..])));
-        assert_eq!(r2.recv_routed(0), Ok(zmq::Message::from(&b"3"[..])));
+        let (_, msg) = r2.recv_routed(0).unwrap();
+        assert_eq!(msg, zmq::Message::from(&b"2"[..]));
+        let (_, msg) = r2.recv_routed(0).unwrap();
+        assert_eq!(msg, zmq::Message::from(&b"3"[..]));
     }
 
     #[test]

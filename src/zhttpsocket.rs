@@ -996,7 +996,7 @@ impl SocketManager {
                 }
                 // client_req.sock.recv_routed
                 Select9::R4(result) => match result {
-                    Ok(msg) => {
+                    Ok((_, msg)) => {
                         if log_enabled!(log::Level::Trace) {
                             trace!("IN req {}", packet_to_string(&msg));
                         }
