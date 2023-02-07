@@ -18,10 +18,10 @@ use crate::arena;
 use crate::tnetstring;
 use arrayvec::ArrayVec;
 use std::cell::RefCell;
-use std::fmt;
 use std::io;
 use std::mem;
 use std::str;
+use thiserror::Error;
 
 pub const IDS_MAX: usize = 128;
 
@@ -41,41 +41,37 @@ pub const EMPTY_HEADER: Header = Header {
 
 const EMPTY_HEADERS: [Header; 0] = [EMPTY_HEADER; 0];
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Error, PartialEq)]
 pub enum ParseError {
+    #[error("unrecognized data format")]
     Unrecognized,
-    TnetParse(tnetstring::ParseError),
+
+    #[error(transparent)]
+    TnetParse(#[from] tnetstring::ParseError),
+
+    #[error("{0} must be of type {1}")]
     WrongType(&'static str, tnetstring::FrameType),
+
+    #[error("{0} must be of type map or string")]
     NotMapOrString(&'static str),
+
+    #[error("{0} must be a utf-8 string")]
     NotUtf8(&'static str),
+
+    #[error("{0} must not be negative")]
     NegativeInt(&'static str),
+
+    #[error("too many ids")]
     TooManyIds,
+
+    #[error("too many headers")]
     TooManyHeaders,
+
+    #[error("header item must have size 2")]
     InvalidHeader,
+
+    #[error("no id")]
     NoId,
-}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unrecognized => write!(f, "unrecognized data format"),
-            Self::TnetParse(e) => e.fmt(f),
-            Self::WrongType(field, expected) => write!(f, "{} must be of type {}", field, expected),
-            Self::NotMapOrString(field) => write!(f, "{} must be of type map or string", field),
-            Self::NotUtf8(field) => write!(f, "{} must be a utf-8 string", field),
-            Self::NegativeInt(field) => write!(f, "{} must not be negative", field),
-            Self::TooManyIds => write!(f, "too many ids"),
-            Self::TooManyHeaders => write!(f, "too many headers"),
-            Self::InvalidHeader => write!(f, "header item must have size 2"),
-            Self::NoId => write!(f, "no id"),
-        }
-    }
-}
-
-impl From<tnetstring::ParseError> for ParseError {
-    fn from(e: tnetstring::ParseError) -> Self {
-        Self::TnetParse(e)
-    }
 }
 
 trait ErrorContext<T> {

@@ -32,6 +32,7 @@ sha1 = "0.10"
 signal-hook = "0.3"
 slab = "0.4"
 socket2 = "0.4"
+thiserror = "1.0"
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
 zmq = "0.9"
 

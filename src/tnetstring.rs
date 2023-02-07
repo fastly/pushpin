@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ use std::fmt;
 use std::io;
 use std::io::Write;
 use std::str;
+use thiserror::Error;
 
 const F64_SIZE_MAX: usize = 64;
 const OPS_MAX: usize = 1_000;
@@ -116,25 +117,19 @@ impl From<FrameType> for &str {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Error, PartialEq)]
 pub enum ParseError {
+    #[error("unexpected eof")]
     UnexpectedEof,
-    InvalidData,
-    WrongType(FrameType, FrameType), // got, expected
-    InvalidKey,
-}
 
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnexpectedEof => write!(f, "unexpected eof"),
-            Self::InvalidData => write!(f, "invalid data"),
-            Self::WrongType(got, expected) => {
-                write!(f, "wrong type {}, expected {}", got, expected)
-            }
-            Self::InvalidKey => write!(f, "map key must be a utf-8 string"),
-        }
-    }
+    #[error("invalid data")]
+    InvalidData,
+
+    #[error("wrong type {0}, expected {1}")]
+    WrongType(FrameType, FrameType), // got, expected
+
+    #[error("map key must be a utf-8 string")]
+    InvalidKey,
 }
 
 #[derive(Copy, Clone)]
