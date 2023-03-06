@@ -240,6 +240,8 @@ def make_routes(service, backend):
     if int(backend.get('loader-woh-enabled', '0')):
         target += ',over_http'
 
+    target += ',untrusted'
+
     routes = []
 
     if int(backend.get('loader-grip-enabled', '0')):
