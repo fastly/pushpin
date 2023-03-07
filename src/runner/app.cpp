@@ -555,7 +555,7 @@ public:
 
 			QString certsDir = QDir(configDir).filePath("certs");
 
-			services += new CondureService(condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, this);
+			services += new CondureService("condure-in", condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, this);
 		}
 
 		if(serviceNames.contains("mongrel2"))
@@ -592,14 +592,11 @@ public:
 
 		if(serviceNames.contains("zurl"))
 		{
-			QString zurlBin = "zurl";
-			if(settings.contains("runner/zurl_bin"))
-				zurlBin = settings.value("runner/zurl_bin").toString();
+			QString condureBin = "condure";
+			if(settings.contains("runner/condure_bin"))
+				condureBin = settings.value("runner/condure_bin").toString();
 
-			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("zurl", defaultLevel), this);
-
-			// when zurl is managed by pushpin, log updates checks as debug level
-			quietCheck = true;
+			services += new CondureService("condure-out", condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), QString(), clientBufferSize, clientMaxConnections, allowCompression, QList<ListenPort>(), this);
 		}
 
 		if(serviceNames.contains("pushpin-proxy"))

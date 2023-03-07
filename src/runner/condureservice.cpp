@@ -36,6 +36,7 @@
 #include "template.h"
 
 CondureService::CondureService(
+	const QString &name,
 	const QString &binFile,
 	const QString &runDir,
 	const QString &logDir,
@@ -60,49 +61,66 @@ CondureService::CondureService(
 	if(logLevel >= 0)
 		args_ += "--log-level=" + QString::number(logLevel);
 
-	bool usingSsl = false;
-
-	foreach(const ListenPort &p, ports)
+	if(!ports.isEmpty())
 	{
-		if(!p.localPath.isEmpty())
+		// server mode
+
+		bool usingSsl = false;
+
+		foreach(const ListenPort &p, ports)
 		{
-			QString arg = "--listen=" + p.localPath + ",local,stream";
-
-			args_ += arg;
-		}
-		else
-		{
-			QUrl url;
-			url.setHost(!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
-			url.setPort(p.port);
-
-			QString arg = "--listen=" + url.authority() + ",stream";
-
-			if(p.ssl)
+			if(!p.localPath.isEmpty())
 			{
-				usingSsl = true;
+				QString arg = "--listen=" + p.localPath + ",local,stream";
 
-				arg += ",tls,default-cert=default_" + QString::number(p.port);
+				args_ += arg;
 			}
+			else
+			{
+				QUrl url;
+				url.setHost(!p.addr.isNull() ? p.addr.toString() : QString("0.0.0.0"));
+				url.setPort(p.port);
 
-			args_ += arg;
+				QString arg = "--listen=" + url.authority() + ",stream";
+
+				if(p.ssl)
+				{
+					usingSsl = true;
+
+					arg += ",tls,default-cert=default_" + QString::number(p.port);
+				}
+
+				args_ += arg;
+			}
 		}
+
+		args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "condure";
+
+		args_ += "--buffer-size=" + QString::number(clientBufferSize);
+
+		args_ += "--stream-maxconn=" + QString::number(maxconn);
+
+		if(allowCompression)
+			args_ += "--compression";
+
+		if(usingSsl)
+			args_ += "--tls-identities-dir=" + certsDir;
+	}
+	else
+	{
+		// client mode
+
+		args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "zurl";
+
+		args_ += "--buffer-size=" + QString::number(clientBufferSize);
+
+		args_ += "--stream-maxconn=" + QString::number(maxconn);
+
+		args_ += "--deny-out-internal";
 	}
 
-	args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "condure";
-
-	args_ += "--buffer-size=" + QString::number(clientBufferSize);
-
-	args_ += "--stream-maxconn=" + QString::number(maxconn);
-
-	if(allowCompression)
-		args_ += "--compression";
-
-	if(usingSsl)
-		args_ += "--tls-identities-dir=" + certsDir;
-
-	setName("condure");
-	setPidFile(QDir(runDir).filePath(filePrefix + "condure.pid"));
+	setName(name);
+	setPidFile(QDir(runDir).filePath(filePrefix + name + ".pid"));
 }
 
 QStringList CondureService::arguments() const
