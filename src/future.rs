@@ -1297,6 +1297,22 @@ impl Future for QueryFuture {
     }
 }
 
+impl Drop for QueryFuture {
+    fn drop(&mut self) {
+        if let Some(evented) = &self.evented {
+            let query = self.query.as_ref().unwrap();
+
+            // normally, a registration will deregister itself when dropped.
+            // however, the query's registration is not dropped when the
+            // query is dropped, so we need to explicitly deregister
+            evented
+                .registration()
+                .deregister_custom(query.get_read_registration())
+                .unwrap();
+        }
+    }
+}
+
 pub struct AcceptFuture<'a> {
     l: &'a AsyncTcpListener,
 }
