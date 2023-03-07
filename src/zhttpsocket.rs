@@ -101,6 +101,7 @@ impl Packet<'_> {
         let it = tnetstring::MapIterator::new(self.map_frame.data);
 
         let mut ptype = &b""[..];
+        let mut condition = None;
         let mut content = None;
 
         for mi in it {
@@ -109,11 +110,20 @@ impl Packet<'_> {
                 Err(_) => return Ok(None),
             };
 
-            if mi.key == "type" {
-                ptype = match tnetstring::parse_string(mi.data) {
-                    Ok(s) => s,
-                    Err(_) => return Ok(None),
-                };
+            match mi.key {
+                "type" => {
+                    ptype = match tnetstring::parse_string(mi.data) {
+                        Ok(s) => s,
+                        Err(_) => return Ok(None),
+                    };
+                }
+                "condition" => {
+                    condition = match tnetstring::parse_string(mi.data) {
+                        Ok(s) => Some(s),
+                        Err(_) => return Ok(None),
+                    };
+                }
+                _ => {}
             }
 
             // can't fail
@@ -124,8 +134,8 @@ impl Packet<'_> {
             }
         }
 
-        // only take content from data packets (ptype empty)
-        if ptype.is_empty() {
+        // only take content from data packets (ptype empty) or rejections
+        if ptype.is_empty() || (ptype == b"error" && condition == Some(b"rejected")) {
             if let Some(frame) = content {
                 write!(f, "{}", frame)?;
                 return Ok(Some(frame.data.len()));
