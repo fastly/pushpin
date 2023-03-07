@@ -670,6 +670,20 @@ pub struct ResponseData<'buf, 'headers> {
     pub body: &'buf [u8],
 }
 
+impl ResponseData<'_, '_> {
+    pub fn new() -> Self {
+        Self {
+            credits: 0,
+            more: false,
+            code: 0,
+            reason: "",
+            headers: &EMPTY_HEADERS,
+            content_type: None,
+            body: EMPTY_BYTES,
+        }
+    }
+}
+
 impl<'a> Serialize<'a> for ResponseData<'a, 'a> {
     fn serialize(&self, w: &mut tnetstring::Writer<'a, '_>) -> Result<(), io::Error> {
         if self.code > 0 {
@@ -1512,7 +1526,63 @@ pub struct Response<'buf, 'ids, 'headers> {
     pub ptype_str: &'buf str,
 }
 
-impl<'buf, 'scratch> Response<'_, '_, '_> {
+impl<'buf, 'ids, 'headers> Response<'buf, 'ids, 'headers> {
+    pub fn new_data(
+        from: &'buf [u8],
+        ids: &'ids [Id<'buf>],
+        data: ResponseData<'buf, 'headers>,
+    ) -> Self {
+        Self::new(from, ids, ResponsePacket::Data(data))
+    }
+
+    pub fn new_error(
+        from: &'buf [u8],
+        ids: &'ids [Id<'buf>],
+        edata: ResponseErrorData<'buf, 'headers>,
+    ) -> Self {
+        Self::new(from, ids, ResponsePacket::Error(edata))
+    }
+
+    pub fn new_credit(from: &'buf [u8], ids: &'ids [Id<'buf>], credits: u32) -> Self {
+        Self::new(from, ids, ResponsePacket::Credit(CreditData { credits }))
+    }
+
+    pub fn new_keep_alive(from: &'buf [u8], ids: &'ids [Id<'buf>]) -> Self {
+        Self::new(from, ids, ResponsePacket::KeepAlive)
+    }
+
+    pub fn new_cancel(from: &'buf [u8], ids: &'ids [Id<'buf>]) -> Self {
+        Self::new(from, ids, ResponsePacket::Cancel)
+    }
+
+    pub fn new_handoff_proceed(from: &'buf [u8], ids: &'ids [Id<'buf>]) -> Self {
+        Self::new(from, ids, ResponsePacket::HandoffProceed)
+    }
+
+    pub fn new_close(
+        from: &'buf [u8],
+        ids: &'ids [Id<'buf>],
+        status: Option<(u16, &'buf str)>,
+    ) -> Self {
+        Self::new(from, ids, ResponsePacket::Close(CloseData { status }))
+    }
+
+    pub fn new_ping(from: &'buf [u8], ids: &'ids [Id<'buf>], body: &'buf [u8]) -> Self {
+        Self::new(
+            from,
+            ids,
+            ResponsePacket::Ping(PingData { credits: 0, body }),
+        )
+    }
+
+    pub fn new_pong(from: &'buf [u8], ids: &'ids [Id<'buf>], body: &'buf [u8]) -> Self {
+        Self::new(
+            from,
+            ids,
+            ResponsePacket::Pong(PongData { credits: 0, body }),
+        )
+    }
+
     pub fn serialize(&self, dest: &mut [u8]) -> Result<usize, io::Error> {
         if dest.is_empty() {
             return Err(io::Error::from(io::ErrorKind::WriteZero));
@@ -1561,6 +1631,16 @@ impl<'buf, 'scratch> Response<'_, '_, '_> {
         w.flush()?;
 
         Ok((cursor.position() as usize) + 1)
+    }
+
+    fn new(from: &'buf [u8], ids: &'ids [Id<'buf>], ptype: ResponsePacket<'buf, 'headers>) -> Self {
+        Self {
+            from: from,
+            ids: ids,
+            multi: false,
+            ptype,
+            ptype_str: "",
+        }
     }
 }
 
