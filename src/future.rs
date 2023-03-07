@@ -742,18 +742,35 @@ impl AsyncTcpStream {
         Self { evented }
     }
 
-    pub async fn connect<'a>(addr: std::net::SocketAddr) -> Result<Self, io::Error> {
-        let stream = TcpStream::connect(addr)?;
-        let mut stream = Self::new(stream);
+    pub async fn connect<'a>(addrs: &[std::net::SocketAddr]) -> Result<Self, io::Error> {
+        let mut last_err = None;
 
-        // when constructing via connect(), the ready state should start out
-        // false because we need to wait for a writability indication
-        stream.evented.registration().set_ready(false);
+        for addr in addrs {
+            let stream = match TcpStream::connect(*addr) {
+                Ok(stream) => stream,
+                Err(e) => {
+                    last_err = Some(e);
+                    continue;
+                }
+            };
 
-        let fut = TcpConnectFuture { s: &mut stream };
-        fut.await?;
+            let mut stream = Self::new(stream);
 
-        Ok(stream)
+            // when constructing via connect(), the ready state should start out
+            // false because we need to wait for a writability indication
+            stream.evented.registration().set_ready(false);
+
+            let fut = TcpConnectFuture { s: &mut stream };
+
+            if let Err(e) = fut.await {
+                last_err = Some(e);
+                continue;
+            }
+
+            return Ok(stream);
+        }
+
+        Err(last_err.unwrap_or(io::Error::from(io::ErrorKind::InvalidInput)))
     }
 }
 
@@ -2831,7 +2848,7 @@ mod tests {
 
                 spawner
                     .spawn(async move {
-                        let mut stream = AsyncTcpStream::connect(addr).await.unwrap();
+                        let mut stream = AsyncTcpStream::connect(&[addr]).await.unwrap();
 
                         let size = stream.write("hello".as_bytes()).await.unwrap();
                         assert_eq!(size, 5);
