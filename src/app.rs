@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,7 +108,7 @@ impl App {
 
         let maxconn = config.req_maxconn + config.stream_maxconn;
 
-        let mut zsockman = zhttpsocket::SocketManager::new(
+        let mut zsockman = zhttpsocket::ClientSocketManager::new(
             Arc::clone(&zmq_context),
             &config.instance_id,
             (MSG_RETAINED_PER_CONNECTION_MAX * maxconn)

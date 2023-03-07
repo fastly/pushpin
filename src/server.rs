@@ -796,7 +796,7 @@ impl Worker {
         req_acceptor_tls: &Vec<(bool, Option<String>)>,
         stream_acceptor_tls: &Vec<(bool, Option<String>)>,
         identities: &Arc<IdentityCache>,
-        zsockman: &Arc<zhttpsocket::SocketManager>,
+        zsockman: &Arc<zhttpsocket::ClientSocketManager>,
         handle_bound: usize,
     ) -> Self {
         debug!("worker {}: starting", id);
@@ -892,7 +892,7 @@ impl Worker {
         req_acceptor_tls: Vec<(bool, Option<String>)>,
         stream_acceptor_tls: Vec<(bool, Option<String>)>,
         identities: Arc<IdentityCache>,
-        zsockman: Arc<zhttpsocket::SocketManager>,
+        zsockman: Arc<zhttpsocket::ClientSocketManager>,
         handle_bound: usize,
     ) {
         let executor = Executor::current().unwrap();
@@ -2058,7 +2058,7 @@ impl Server {
         listen_addrs: &[ListenConfig],
         certs_dir: &Path,
         allow_compression: bool,
-        zsockman: zhttpsocket::SocketManager,
+        zsockman: zhttpsocket::ClientSocketManager,
         handle_bound: usize,
     ) -> Result<Self, String> {
         let identities = Arc::new(IdentityCache::new(certs_dir));
@@ -2321,7 +2321,7 @@ impl TestServer {
 
         let maxconn = req_maxconn + stream_maxconn;
 
-        let mut zsockman = zhttpsocket::SocketManager::new(
+        let mut zsockman = zhttpsocket::ClientSocketManager::new(
             Arc::clone(&zmq_context),
             "test",
             (MSG_RETAINED_PER_CONNECTION_MAX * maxconn) + (MSG_RETAINED_PER_WORKER_MAX * workers),
