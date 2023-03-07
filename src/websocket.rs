@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -864,6 +864,7 @@ impl From<io::Error> for Error {
 }
 
 struct SendingFrame {
+    opcode: u8,
     header: [u8; HEADER_SIZE_MAX],
     header_len: usize,
     sent: usize,
@@ -960,6 +961,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             let size = write_header(fin, rsv1, opcode, src_len, mask, &mut h[..])?;
 
             *sending_frame = Some(SendingFrame {
+                opcode,
                 header: h,
                 header_len: size,
                 sent: 0,
@@ -995,6 +997,8 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         if frame.sent < total {
             return Ok(0);
         }
+
+        let opcode = frame.opcode;
 
         *sending_frame = None;
 
