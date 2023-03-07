@@ -835,7 +835,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestStartResponse<'a, R, W> {
 
     fn prepare_response(
         mut self,
-        code: u32,
+        code: u16,
         reason: &str,
         headers: &[http1::Header<'_>],
         body_size: http1::BodySize,

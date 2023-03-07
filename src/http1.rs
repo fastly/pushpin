@@ -879,7 +879,7 @@ impl<'buf, 'headers> ServerProtocol {
     pub fn send_response<W: Write>(
         &mut self,
         writer: &mut W,
-        code: u32,
+        code: u16,
         reason: &str,
         headers: &[Header],
         body_size: BodySize,
@@ -1267,7 +1267,7 @@ mod tests {
     }
 
     struct TestResponse {
-        pub code: u32,
+        pub code: u16,
         pub reason: String,
         pub headers: Vec<(String, Vec<u8>)>,
         pub body: Vec<u8>,
@@ -2328,7 +2328,7 @@ mod tests {
         struct Test<'buf, 'headers> {
             name: &'static str,
             write_space: usize,
-            code: u32,
+            code: u16,
             reason: &'static str,
             headers: &'headers [Header<'buf>],
             body_size: BodySize,

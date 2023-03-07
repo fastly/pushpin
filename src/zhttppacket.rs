@@ -663,7 +663,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
 pub struct ResponseData<'buf, 'headers> {
     pub credits: u32,
     pub more: bool,
-    pub code: u32,
+    pub code: u16,
     pub reason: &'buf str,
     pub headers: &'headers [Header<'buf>],
     pub content_type: Option<ContentType>, // websocket
@@ -765,7 +765,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for ResponseData<'buf, 'scr
                         return Err(ParseError::NegativeInt("code"));
                     }
 
-                    code = x as u32;
+                    code = x as u16;
                 }
                 "reason" => {
                     let s = tnetstring::parse_string(e.data).field("reason")?;
@@ -886,7 +886,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestErrorData<'buf> 
 }
 
 pub struct RejectedInfo<'buf, 'headers> {
-    pub code: u32,
+    pub code: u16,
     pub reason: &'buf str,
     pub headers: &'headers [Header<'buf>],
     pub body: &'buf [u8],
@@ -961,7 +961,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for ResponseErrorData<'buf,
                         return Err(ParseError::NegativeInt("code"));
                     }
 
-                    code = x as u32;
+                    code = x as u16;
                 }
                 "reason" => {
                     let s = tnetstring::parse_string(e.data).field("reason")?;
