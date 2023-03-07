@@ -205,18 +205,6 @@ enum Stream {
     Tls(TlsStream),
 }
 
-impl Identify for TcpStream {
-    fn set_id(&mut self, _id: &str) {
-        // do nothing
-    }
-}
-
-impl Identify for TlsStream {
-    fn set_id(&mut self, id: &str) {
-        TlsStream::set_id(self, id);
-    }
-}
-
 impl Identify for AsyncTcpStream {
     fn set_id(&mut self, _id: &str) {
         // do nothing
