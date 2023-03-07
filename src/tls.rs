@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ use log::debug;
 use mio::net::TcpStream;
 use openssl::error::ErrorStack;
 use openssl::ssl::{
-    HandshakeError, MidHandshakeSslStream, NameType, SniError, SslAcceptor, SslContext,
-    SslContextBuilder, SslFiletype, SslMethod, SslStream,
+    HandshakeError, MidHandshakeSslStream, NameType, SniError, SslAcceptor, SslConnector,
+    SslContext, SslContextBuilder, SslFiletype, SslMethod, SslStream,
 };
 use std::cmp;
 use std::collections::HashMap;
@@ -306,6 +306,80 @@ impl TlsAcceptor {
     }
 
     pub fn accept(&self, stream: TcpStream) -> Result<TlsStream, ErrorStack> {
+        TlsStream::new(false, stream, |stream| {
+            let stream = match self.acceptor.accept(stream) {
+                Ok(stream) => Stream::Ssl(stream),
+                Err(HandshakeError::SetupFailure(e)) => return Err(e),
+                Err(HandshakeError::Failure(stream)) => Stream::MidHandshakeSsl(stream),
+                Err(HandshakeError::WouldBlock(stream)) => Stream::MidHandshakeSsl(stream),
+            };
+
+            Ok(stream)
+        })
+    }
+}
+
+pub struct TlsStream {
+    stream: Stream<'static>,
+    tcp_stream: Box<TcpStream>,
+    id: ArrayString<64>,
+    client: bool,
+}
+
+impl TlsStream {
+    pub fn connect(domain: &str, stream: TcpStream) -> Result<Self, ErrorStack> {
+        Self::new(true, stream, |stream| {
+            let connector = SslConnector::builder(SslMethod::tls())?.build();
+
+            let stream = match connector.connect(domain, stream) {
+                Ok(stream) => Stream::Ssl(stream),
+                Err(HandshakeError::SetupFailure(e)) => return Err(e),
+                Err(HandshakeError::Failure(stream)) => Stream::MidHandshakeSsl(stream),
+                Err(HandshakeError::WouldBlock(stream)) => Stream::MidHandshakeSsl(stream),
+            };
+
+            Ok(stream)
+        })
+    }
+
+    pub fn get_tcp(&mut self) -> &mut TcpStream {
+        match &mut self.stream {
+            Stream::Ssl(stream) => stream.get_mut(),
+            Stream::MidHandshakeSsl(stream) => stream.get_mut(),
+            Stream::NoSsl => &mut self.tcp_stream,
+        }
+    }
+
+    pub fn set_id(&mut self, id: &str) -> Result<(), ()> {
+        self.id = match ArrayString::from_str(id) {
+            Ok(s) => s,
+            Err(_) => return Err(()),
+        };
+
+        Ok(())
+    }
+
+    pub fn shutdown(&mut self) -> Result<(), io::Error> {
+        match &mut self.stream {
+            Stream::Ssl(stream) => match stream.shutdown() {
+                Ok(_) => {
+                    debug!("{} {}: tls shutdown sent", self.log_prefix(), self.id);
+
+                    Ok(())
+                }
+                Err(e) => Err(match e.into_io_error() {
+                    Ok(e) => e,
+                    Err(_) => io::Error::from(io::ErrorKind::Other),
+                }),
+            },
+            _ => Err(io::Error::from(io::ErrorKind::Other)),
+        }
+    }
+
+    fn new<T>(client: bool, stream: TcpStream, init_fn: T) -> Result<Self, ErrorStack>
+    where
+        T: FnOnce(&'static mut TcpStream) -> Result<Stream<'static>, ErrorStack>,
+    {
         let mut tcp_stream_boxed = Box::new(stream);
 
         let tcp_stream: &mut TcpStream = &mut tcp_stream_boxed;
@@ -319,55 +393,14 @@ impl TlsAcceptor {
         // or MidHandshakeSslStream, or when known to be not wrapped
         let tcp_stream: &'static mut TcpStream = unsafe { mem::transmute(tcp_stream) };
 
-        let stream = match self.acceptor.accept(tcp_stream) {
-            Ok(stream) => Stream::Ssl(stream),
-            Err(HandshakeError::SetupFailure(e)) => return Err(e),
-            Err(HandshakeError::Failure(stream)) => Stream::MidHandshakeSsl(stream),
-            Err(HandshakeError::WouldBlock(stream)) => Stream::MidHandshakeSsl(stream),
-        };
+        let stream = init_fn(tcp_stream)?;
 
-        Ok(TlsStream {
+        Ok(Self {
             stream,
             tcp_stream: tcp_stream_boxed,
             id: ArrayString::new(),
+            client,
         })
-    }
-}
-
-pub struct TlsStream {
-    stream: Stream<'static>,
-    tcp_stream: Box<TcpStream>,
-    id: ArrayString<32>,
-}
-
-impl TlsStream {
-    pub fn get_tcp(&mut self) -> &mut TcpStream {
-        match &mut self.stream {
-            Stream::Ssl(stream) => stream.get_mut(),
-            Stream::MidHandshakeSsl(stream) => stream.get_mut(),
-            Stream::NoSsl => &mut self.tcp_stream,
-        }
-    }
-
-    pub fn set_id(&mut self, id: &str) {
-        self.id = ArrayString::from_str(id).unwrap();
-    }
-
-    pub fn shutdown(&mut self) -> Result<(), io::Error> {
-        match &mut self.stream {
-            Stream::Ssl(stream) => match stream.shutdown() {
-                Ok(_) => {
-                    debug!("conn {}: tls shutdown sent", self.id);
-
-                    Ok(())
-                }
-                Err(e) => Err(match e.into_io_error() {
-                    Ok(e) => e,
-                    Err(_) => io::Error::from(io::ErrorKind::Other),
-                }),
-            },
-            _ => Err(io::Error::from(io::ErrorKind::Other)),
-        }
     }
 
     fn ensure_handshake(&mut self) -> Result<(), io::Error> {
@@ -376,7 +409,7 @@ impl TlsStream {
             Stream::MidHandshakeSsl(_) => match mem::replace(&mut self.stream, Stream::NoSsl) {
                 Stream::MidHandshakeSsl(stream) => match stream.handshake() {
                     Ok(stream) => {
-                        debug!("conn {}: tls handshake success", self.id);
+                        debug!("{} {}: tls handshake success", self.log_prefix(), self.id);
                         self.stream = Stream::Ssl(stream);
 
                         Ok(())
@@ -394,6 +427,14 @@ impl TlsStream {
                 _ => unreachable!(),
             },
             Stream::NoSsl => Err(io::Error::from(io::ErrorKind::Other)),
+        }
+    }
+
+    fn log_prefix(&self) -> &'static str {
+        if self.client {
+            "client-conn"
+        } else {
+            "conn"
         }
     }
 }

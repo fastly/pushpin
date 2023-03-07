@@ -219,7 +219,8 @@ impl Identify for AsyncUnixStream {
 
 impl Identify for AsyncTlsStream {
     fn set_id(&mut self, id: &str) {
-        self.inner().set_id(id);
+        // server generates ids known to always be accepted
+        self.inner().set_id(id).unwrap();
     }
 }
 
