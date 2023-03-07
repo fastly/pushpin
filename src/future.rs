@@ -772,6 +772,14 @@ impl AsyncTcpStream {
 
         Err(last_err.unwrap_or(io::Error::from(io::ErrorKind::InvalidInput)))
     }
+
+    pub fn peer_addr(&self) -> Result<std::net::SocketAddr, io::Error> {
+        self.evented.io().peer_addr()
+    }
+
+    pub fn into_inner(self) -> TcpStream {
+        self.evented.into_inner()
+    }
 }
 
 pub struct AsyncUnixStream {

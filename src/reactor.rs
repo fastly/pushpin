@@ -627,6 +627,13 @@ impl<S: mio::event::Source> IoEvented<S> {
     pub fn io(&self) -> &S {
         &self.io.as_ref().unwrap()
     }
+
+    pub fn into_inner(mut self) -> S {
+        let mut io = self.io.take().unwrap();
+        self.registration().deregister_io(&mut io).unwrap();
+
+        io
+    }
 }
 
 impl<S: mio::event::Source> Drop for IoEvented<S> {
