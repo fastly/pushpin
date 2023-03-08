@@ -249,7 +249,7 @@ fn make_zhttp_request(
 enum Error {
     Io(io::Error),
     Utf8(str::Utf8Error),
-    Http(http1::ServerError),
+    Http(http1::Error),
     WebSocket(websocket::Error),
     InvalidWebSocketRequest,
     CompressionError,
@@ -297,8 +297,8 @@ impl From<mpsc::RecvError> for Error {
     }
 }
 
-impl From<http1::ServerError> for Error {
-    fn from(e: http1::ServerError) -> Self {
+impl From<http1::Error> for Error {
+    fn from(e: http1::Error) -> Self {
         Self::Http(e)
     }
 }
@@ -512,7 +512,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
     // read from stream into buf, and parse buf as a request header
     async fn recv_request<'b: 'c, 'c, const N: usize>(
         mut self,
-        mut scratch: &'b mut http1::RequestScratch<N>,
+        mut scratch: &'b mut http1::ParseScratch<N>,
         req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
     ) -> Result<RequestHeader<'a, 'b, 'c, R, W, N>, Error> {
         let mut protocol = http1::ServerProtocol::new();
@@ -524,7 +524,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
                 let hbuf = self.r.buf1.take_inner();
 
                 match protocol.recv_request_owned(hbuf, scratch) {
-                    http1::RecvRequestStatus::Complete(req) => {
+                    http1::ParseStatus::Complete(req) => {
                         assert!([
                             http1::ServerState::ReceivingBody,
                             http1::ServerState::AwaitingResponse
@@ -540,13 +540,13 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
                             req_mem,
                         });
                     }
-                    http1::RecvRequestStatus::Incomplete(hbuf, ret_scratch) => {
+                    http1::ParseStatus::Incomplete((), hbuf, ret_scratch) => {
                         // NOTE: after polonius it may not be necessary for
                         // scratch to be returned
                         scratch = ret_scratch;
                         self.r.buf1.set_inner(hbuf);
                     }
-                    http1::RecvRequestStatus::Error(e, hbuf, _) => {
+                    http1::ParseStatus::Error(e, hbuf, _) => {
                         self.r.buf1.set_inner(hbuf);
 
                         return Err(e.into());
@@ -1043,9 +1043,7 @@ impl<'a, 'b, W: AsyncWrite> Future for SendBodyFuture<'a, 'b, W> {
             None,
         ) {
             Ok(size) => Poll::Ready(Ok(size)),
-            Err(http1::ServerError::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
-                Poll::Pending
-            }
+            Err(http1::Error::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => Poll::Pending,
             Err(e) => Poll::Ready(Err(e.into())),
         }
     }
@@ -1575,7 +1573,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     let stream = RefCell::new(stream);
 
     let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
-    let mut scratch = http1::RequestScratch::<HEADERS_MAX>::new();
+    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
     let mut req_mem = None;
 
     // receive request header
@@ -2589,7 +2587,7 @@ where
     let recv_buf_size = buf2.capacity();
 
     let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
-    let mut scratch = http1::RequestScratch::<HEADERS_MAX>::new();
+    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
     let mut req_mem = None;
 
     let zsess_out = ZhttpStreamSessionOut::new(instance_id, id, packet_buf, zsender_stream, shared);

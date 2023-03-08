@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -466,11 +466,11 @@ pub enum BodySize {
     Unknown,
 }
 
-pub struct RequestScratch<const N: usize> {
+pub struct ParseScratch<const N: usize> {
     headers: [httparse::Header<'static>; N],
 }
 
-impl<const N: usize> RequestScratch<N> {
+impl<const N: usize> ParseScratch<N> {
     pub fn new() -> Self {
         Self {
             headers: [httparse::EMPTY_HEADER; N],
@@ -482,21 +482,21 @@ impl<const N: usize> RequestScratch<N> {
     }
 }
 
-pub enum RecvRequestStatus<'a, T, E, const N: usize> {
+pub enum ParseStatus<'a, T, I, E, const N: usize> {
     Complete(T),
-    Incomplete(FilledBuf, &'a mut RequestScratch<N>),
-    Error(E, FilledBuf, &'a mut RequestScratch<N>),
+    Incomplete(I, FilledBuf, &'a mut ParseScratch<N>),
+    Error(E, FilledBuf, &'a mut ParseScratch<N>),
 }
 
-struct OwnedHttparseRequestInner<'s, const N: usize> {
-    req: httparse::Request<'s, 'static>,
-    scratch: &'s mut RequestScratch<N>,
+struct OwnedParsedInner<'s, T, const N: usize> {
+    parsed: T,
+    scratch: &'s mut ParseScratch<N>,
     buf: FilledBuf,
     size: usize,
 }
 
 struct OwnedHttparseRequest<'s, const N: usize> {
-    inner: Option<OwnedHttparseRequestInner<'s, N>>,
+    inner: Option<OwnedParsedInner<'s, httparse::Request<'s, 'static>, N>>,
 }
 
 impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
@@ -504,8 +504,8 @@ impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
     // on incomplete/error, returns the buffer/scratch
     fn parse(
         buf: FilledBuf,
-        scratch: &'s mut RequestScratch<N>,
-    ) -> RecvRequestStatus<'s, Self, httparse::Error, N> {
+        scratch: &'s mut ParseScratch<N>,
+    ) -> ParseStatus<'s, Self, (), httparse::Error, N> {
         let buf_ref: &[u8] = buf.filled();
         let headers_mut: &mut [httparse::Header<'static>] = scratch.headers.as_mut();
 
@@ -531,13 +531,13 @@ impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
 
         let size = match req.parse(buf_ref) {
             Ok(httparse::Status::Complete(size)) => size,
-            Ok(httparse::Status::Partial) => return RecvRequestStatus::Incomplete(buf, scratch),
-            Err(e) => return RecvRequestStatus::Error(e, buf, scratch),
+            Ok(httparse::Status::Partial) => return ParseStatus::Incomplete((), buf, scratch),
+            Err(e) => return ParseStatus::Error(e, buf, scratch),
         };
 
-        RecvRequestStatus::Complete(Self {
-            inner: Some(OwnedHttparseRequestInner {
-                req,
+        ParseStatus::Complete(Self {
+            inner: Some(OwnedParsedInner {
+                parsed: req,
                 scratch,
                 buf,
                 size,
@@ -548,7 +548,7 @@ impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
     fn get<'a>(&'a self) -> &'a httparse::Request<'a, 'a> {
         let s = self.inner.as_ref().unwrap();
 
-        let req = &s.req;
+        let req = &s.parsed;
 
         // SAFETY: here we simply reduce the inner lifetimes to that of the owning
         // object, which is fine
@@ -563,8 +563,8 @@ impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
         &s.buf.filled()[s.size..]
     }
 
-    fn into_parts(mut self) -> (FilledBuf, &'s mut RequestScratch<N>) {
-        let OwnedHttparseRequestInner { buf, scratch, .. } = self.inner.take().unwrap();
+    fn into_parts(mut self) -> (FilledBuf, &'s mut ParseScratch<N>) {
+        let OwnedParsedInner { buf, scratch, .. } = self.inner.take().unwrap();
 
         // SAFETY: ensure there are no references to buf in scratch
         scratch.clear();
@@ -574,6 +574,93 @@ impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
 }
 
 impl<const N: usize> Drop for OwnedHttparseRequest<'_, N> {
+    fn drop(&mut self) {
+        // SAFETY: ensure there are no references to buf in scratch
+        if let Some(s) = &mut self.inner {
+            s.scratch.clear();
+        }
+    }
+}
+
+struct OwnedHttparseResponse<'s, const N: usize> {
+    inner: Option<OwnedParsedInner<'s, httparse::Response<'s, 'static>, N>>,
+}
+
+impl<'s, const N: usize> OwnedHttparseResponse<'s, N> {
+    // on success, takes ownership of the buffer/scratch
+    // on incomplete/error, returns the buffer/scratch
+    fn parse(
+        buf: FilledBuf,
+        scratch: &'s mut ParseScratch<N>,
+    ) -> ParseStatus<'s, Self, (), httparse::Error, N> {
+        let buf_ref: &[u8] = buf.filled();
+        let headers_mut: &mut [httparse::Header<'static>] = scratch.headers.as_mut();
+
+        // SAFETY: Self will take ownership of buf, and the bytes referred to
+        // by buf_ref are on the heap, and buf will not be modified or
+        // dropped until Self is dropped, so the bytes referred to by buf_ref
+        // will remain valid for the lifetime of Self
+        let buf_ref: &'static [u8] = unsafe { mem::transmute(buf_ref) };
+
+        // SAFETY: Self borrows scratch, and the location
+        // referred to by headers_mut is on the heap, and the borrow will not
+        // be released until Self is dropped, so the location referred to by
+        // headers_mut will remain valid for the lifetime of Self
+        //
+        // further, it is safe for httparse::Response::parse() to write
+        // references to buf_ref into headers_mut, because we guarantee buf
+        // lives as long as scratch, except if into_buf() is called in
+        // which case we clear the content of scratch
+        let headers_mut: &'static mut [httparse::Header<'static>] =
+            unsafe { mem::transmute(headers_mut) };
+
+        let mut resp = httparse::Response::new(headers_mut);
+
+        let size = match resp.parse(buf_ref) {
+            Ok(httparse::Status::Complete(size)) => size,
+            Ok(httparse::Status::Partial) => return ParseStatus::Incomplete((), buf, scratch),
+            Err(e) => return ParseStatus::Error(e, buf, scratch),
+        };
+
+        ParseStatus::Complete(Self {
+            inner: Some(OwnedParsedInner {
+                parsed: resp,
+                scratch,
+                buf,
+                size,
+            }),
+        })
+    }
+
+    fn get<'a>(&'a self) -> &'a httparse::Response<'a, 'a> {
+        let s = self.inner.as_ref().unwrap();
+
+        let resp = &s.parsed;
+
+        // SAFETY: here we simply reduce the inner lifetimes to that of the owning
+        // object, which is fine
+        let resp: &'a httparse::Response<'a, 'a> = unsafe { mem::transmute(resp) };
+
+        resp
+    }
+
+    fn remaining_bytes<'a>(&'a self) -> &'a [u8] {
+        let s = self.inner.as_ref().unwrap();
+
+        &s.buf.filled()[s.size..]
+    }
+
+    fn into_parts(mut self) -> (FilledBuf, &'s mut ParseScratch<N>) {
+        let OwnedParsedInner { buf, scratch, .. } = self.inner.take().unwrap();
+
+        // SAFETY: ensure there are no references to buf in scratch
+        scratch.clear();
+
+        (buf, scratch)
+    }
+}
+
+impl<const N: usize> Drop for OwnedHttparseResponse<'_, N> {
     fn drop(&mut self) {
         // SAFETY: ensure there are no references to buf in scratch
         if let Some(s) = &mut self.inner {
@@ -619,6 +706,40 @@ impl<'s, const N: usize> OwnedRequest<'s, N> {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Response<'buf, 'headers> {
+    pub code: u16,
+    pub reason: &'buf str,
+    pub headers: &'headers [httparse::Header<'buf>],
+    pub body_size: BodySize,
+}
+
+pub struct OwnedResponse<'s, const N: usize> {
+    resp: OwnedHttparseResponse<'s, N>,
+    body_size: BodySize,
+}
+
+impl<'s, const N: usize> OwnedResponse<'s, N> {
+    pub fn get(&self) -> Response {
+        let resp = self.resp.get();
+
+        Response {
+            code: resp.code.unwrap(),
+            reason: resp.reason.unwrap(),
+            headers: resp.headers,
+            body_size: self.body_size,
+        }
+    }
+
+    pub fn remaining_bytes(&self) -> &[u8] {
+        self.resp.remaining_bytes()
+    }
+
+    pub fn into_buf(self) -> FilledBuf {
+        self.resp.into_parts().0
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ServerState {
     // call: recv_request
@@ -641,21 +762,28 @@ pub enum ServerState {
     Finished,
 }
 
-#[derive(Debug)]
-pub enum ServerError {
-    ParseError(httparse::Error),
-    InvalidContentLength,
-    UnsupportedTransferEncoding,
-    Io(io::Error),
-    InvalidChunkSize,
-    ChunkTooLarge,
-    InvalidChunkSuffix,
-}
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    ParseError(#[from] httparse::Error),
 
-impl From<io::Error> for ServerError {
-    fn from(e: io::Error) -> Self {
-        Self::Io(e)
-    }
+    #[error("invalid content length")]
+    InvalidContentLength,
+
+    #[error("unsupported transfer encoding")]
+    UnsupportedTransferEncoding,
+
+    #[error(transparent)]
+    Io(#[from] io::Error),
+
+    #[error("invalid chunk size")]
+    InvalidChunkSize,
+
+    #[error("chunk too large")]
+    ChunkTooLarge,
+
+    #[error("invalid chunk suffix")]
+    InvalidChunkSuffix,
 }
 
 pub struct ServerProtocol {
@@ -695,7 +823,7 @@ impl<'buf, 'headers> ServerProtocol {
         &mut self,
         rbuf: &mut io::Cursor<&'buf [u8]>,
         headers: &'headers mut [httparse::Header<'buf>],
-    ) -> Option<Result<Request<'buf, 'headers>, ServerError>> {
+    ) -> Option<Result<Request<'buf, 'headers>, Error>> {
         assert_eq!(self.state, ServerState::ReceivingRequest);
 
         let mut req = httparse::Request::new(headers);
@@ -705,7 +833,7 @@ impl<'buf, 'headers> ServerProtocol {
         let size = match req.parse(buf) {
             Ok(httparse::Status::Complete(size)) => size,
             Ok(httparse::Status::Partial) => return None,
-            Err(e) => return Some(Err(ServerError::ParseError(e))),
+            Err(e) => return Some(Err(Error::ParseError(e))),
         };
 
         let expect_100 = match self.process_request(&req) {
@@ -727,17 +855,17 @@ impl<'buf, 'headers> ServerProtocol {
     pub fn recv_request_owned<'a, const N: usize>(
         &mut self,
         rbuf: FilledBuf,
-        scratch: &'a mut RequestScratch<N>,
-    ) -> RecvRequestStatus<'a, OwnedRequest<'a, N>, ServerError, N> {
+        scratch: &'a mut ParseScratch<N>,
+    ) -> ParseStatus<'a, OwnedRequest<'a, N>, (), Error, N> {
         assert_eq!(self.state, ServerState::ReceivingRequest);
 
         let req = match OwnedHttparseRequest::parse(rbuf, scratch) {
-            RecvRequestStatus::Complete(req) => req,
-            RecvRequestStatus::Incomplete(rbuf, scratch) => {
-                return RecvRequestStatus::Incomplete(rbuf, scratch)
+            ParseStatus::Complete(req) => req,
+            ParseStatus::Incomplete((), rbuf, scratch) => {
+                return ParseStatus::Incomplete((), rbuf, scratch)
             }
-            RecvRequestStatus::Error(e, rbuf, scratch) => {
-                return RecvRequestStatus::Error(ServerError::ParseError(e), rbuf, scratch)
+            ParseStatus::Error(e, rbuf, scratch) => {
+                return ParseStatus::Error(Error::ParseError(e), rbuf, scratch)
             }
         };
 
@@ -745,11 +873,11 @@ impl<'buf, 'headers> ServerProtocol {
             Ok(ret) => ret,
             Err(e) => {
                 let (buf, scratch) = req.into_parts();
-                return RecvRequestStatus::Error(e, buf, scratch);
+                return ParseStatus::Error(e, buf, scratch);
             }
         };
 
-        RecvRequestStatus::Complete(OwnedRequest {
+        ParseStatus::Complete(OwnedRequest {
             req,
             body_size: self.body_size,
             expect_100,
@@ -761,7 +889,7 @@ impl<'buf, 'headers> ServerProtocol {
         rbuf: &mut io::Cursor<&'buf [u8]>,
         dest: &mut [u8],
         headers: &'headers mut [httparse::Header<'buf>],
-    ) -> Result<(usize, Option<&'headers [httparse::Header<'buf>]>), ServerError> {
+    ) -> Result<(usize, Option<&'headers [httparse::Header<'buf>]>), Error> {
         assert_eq!(self.state, ServerState::ReceivingBody);
 
         match self.body_size {
@@ -791,7 +919,7 @@ impl<'buf, 'headers> ServerProtocol {
                         Ok(httparse::Status::Complete((pos, size))) => {
                             let size = match u32::try_from(size) {
                                 Ok(size) => size,
-                                Err(_) => return Err(ServerError::ChunkTooLarge),
+                                Err(_) => return Err(Error::ChunkTooLarge),
                             };
 
                             let size = size as usize;
@@ -805,7 +933,7 @@ impl<'buf, 'headers> ServerProtocol {
                             return Ok((0, None));
                         }
                         Err(_) => {
-                            return Err(ServerError::InvalidChunkSize);
+                            return Err(Error::InvalidChunkSize);
                         }
                     }
                 }
@@ -843,7 +971,7 @@ impl<'buf, 'headers> ServerProtocol {
                                 return Ok((size, None));
                             }
                             Err(e) => {
-                                return Err(ServerError::ParseError(e));
+                                return Err(Error::ParseError(e));
                             }
                         }
 
@@ -854,7 +982,7 @@ impl<'buf, 'headers> ServerProtocol {
                         }
 
                         if &buf[..2] != b"\r\n" {
-                            return Err(ServerError::InvalidChunkSuffix);
+                            return Err(Error::InvalidChunkSuffix);
                         }
 
                         rbuf.set_position(rbuf.position() + 2);
@@ -870,7 +998,7 @@ impl<'buf, 'headers> ServerProtocol {
         }
     }
 
-    pub fn send_100_continue<W: Write>(&mut self, writer: &mut W) -> Result<(), ServerError> {
+    pub fn send_100_continue<W: Write>(&mut self, writer: &mut W) -> Result<(), Error> {
         writer.write(b"HTTP/1.1 100 Continue\r\n\r\n")?;
 
         Ok(())
@@ -883,7 +1011,7 @@ impl<'buf, 'headers> ServerProtocol {
         reason: &str,
         headers: &[Header],
         body_size: BodySize,
-    ) -> Result<(), ServerError> {
+    ) -> Result<(), Error> {
         assert!(
             self.state == ServerState::AwaitingResponse || self.state == ServerState::ReceivingBody
         );
@@ -970,7 +1098,7 @@ impl<'buf, 'headers> ServerProtocol {
         src: &[&[u8]],
         end: bool,
         headers: Option<&[u8]>,
-    ) -> Result<usize, ServerError> {
+    ) -> Result<usize, Error> {
         assert_eq!(self.state, ServerState::SendingBody);
 
         let mut src_len = 0;
@@ -1042,7 +1170,7 @@ impl<'buf, 'headers> ServerProtocol {
         src: &[&[u8]],
         end: bool,
         headers: Option<&[u8]>,
-    ) -> Result<usize, ServerError> {
+    ) -> Result<usize, Error> {
         assert_eq!(self.state, ServerState::SendingBody);
 
         let mut src_len = 0;
@@ -1110,7 +1238,7 @@ impl<'buf, 'headers> ServerProtocol {
         Ok(content_written)
     }
 
-    fn process_request(&mut self, req: &httparse::Request) -> Result<bool, ServerError> {
+    fn process_request(&mut self, req: &httparse::Request) -> Result<bool, Error> {
         let version = req.version.unwrap();
 
         let mut content_len = None;
@@ -1126,7 +1254,7 @@ impl<'buf, 'headers> ServerProtocol {
                 let len = parse_as_int(h.value);
                 let len = match len {
                     Ok(len) => len,
-                    Err(_) => return Err(ServerError::InvalidContentLength),
+                    Err(_) => return Err(Error::InvalidContentLength),
                 };
 
                 content_len = Some(len);
@@ -1135,7 +1263,7 @@ impl<'buf, 'headers> ServerProtocol {
                     chunked = true;
                 } else {
                     // unknown transfer encoding
-                    return Err(ServerError::UnsupportedTransferEncoding);
+                    return Err(Error::UnsupportedTransferEncoding);
                 }
             } else if h.name.eq_ignore_ascii_case("Connection") {
                 if !keep_alive && header_contains_param(h.value, b"keep-alive", true) {
@@ -1178,6 +1306,449 @@ impl<'buf, 'headers> ServerProtocol {
 
         Ok(expect_100)
     }
+}
+
+struct ClientState {
+    ver_min: u8,
+    body_size: BodySize,
+    chunk_left: Option<usize>,
+    chunk_size: usize,
+    persistent: bool,
+    chunked: bool,
+    sending_chunk: Option<Chunk>,
+}
+
+impl ClientState {
+    fn new() -> Self {
+        Self {
+            ver_min: 1,
+            body_size: BodySize::NoBody,
+            chunk_left: None,
+            chunk_size: 0,
+            persistent: true,
+            chunked: false,
+            sending_chunk: None,
+        }
+    }
+}
+
+pub struct ClientRequest {
+    state: ClientState,
+}
+
+impl ClientRequest {
+    pub fn new() -> Self {
+        Self {
+            state: ClientState::new(),
+        }
+    }
+
+    pub fn send_header<W: Write>(
+        mut self,
+        writer: &mut W,
+        method: &str,
+        uri: &str,
+        headers: &[Header],
+        body_size: BodySize,
+        websocket: bool,
+    ) -> Result<ClientRequestBody, Error> {
+        let chunked = body_size == BodySize::Unknown;
+
+        write!(writer, "{} {} HTTP/1.1\r\n", method, uri)?;
+
+        for h in headers.iter() {
+            // we'll override these headers
+            if (h.name.eq_ignore_ascii_case("Connection") && !websocket)
+                || h.name.eq_ignore_ascii_case("Content-Length")
+                || h.name.eq_ignore_ascii_case("Transfer-Encoding")
+            {
+                continue;
+            }
+
+            write!(writer, "{}: ", h.name)?;
+            writer.write(h.value)?;
+            writer.write(b"\r\n")?;
+        }
+
+        // Connection header
+
+        if chunked {
+            writer.write(b"Connection: Transfer-Encoding\r\n")?;
+        }
+
+        // Content-Length header
+
+        if let BodySize::Known(x) = body_size {
+            if x > 0
+                || !method.eq_ignore_ascii_case("OPTIONS")
+                    && !method.eq_ignore_ascii_case("GET")
+                    && !method.eq_ignore_ascii_case("HEAD")
+            {
+                write!(writer, "Content-Length: {}\r\n", x)?;
+            }
+        }
+
+        // Transfer-Encoding header
+
+        if chunked {
+            writer.write(b"Transfer-Encoding: chunked\r\n")?;
+        }
+
+        writer.write(b"\r\n")?;
+
+        self.state.body_size = body_size;
+        self.state.chunked = chunked;
+
+        Ok(ClientRequestBody { state: self.state })
+    }
+}
+
+pub enum SendStatus<T, P, E> {
+    Complete(T, usize),
+    Partial(P, usize),
+    Error(P, E),
+}
+
+pub enum RecvStatus<T, C> {
+    Read(T, usize, usize),
+    Complete(C, usize, usize),
+}
+
+pub struct ClientRequestBody {
+    state: ClientState,
+}
+
+impl ClientRequestBody {
+    pub fn send<W: Write>(
+        mut self,
+        writer: &mut W,
+        src: &[&[u8]],
+        end: bool,
+        headers: Option<&[u8]>,
+    ) -> SendStatus<ClientResponse, Self, Error> {
+        let state = &mut self.state;
+
+        let mut src_len = 0;
+        for buf in src.iter() {
+            src_len += buf.len();
+        }
+
+        if let BodySize::NoBody = state.body_size {
+            // ignore the data
+
+            if end {
+                return SendStatus::Complete(ClientResponse { state: self.state }, 0);
+            }
+
+            return SendStatus::Partial(self, src_len);
+        }
+
+        if !state.chunked {
+            let size = match write_vectored_offset(writer, src, 0) {
+                Ok(ret) => ret,
+                Err(e) => return SendStatus::Error(self, e.into()),
+            };
+
+            assert!(size <= src_len);
+
+            if end && size == src_len {
+                return SendStatus::Complete(ClientResponse { state: self.state }, size);
+            }
+
+            return SendStatus::Partial(self, size);
+        }
+
+        // chunked
+
+        let mut content_written = 0;
+
+        if src_len > 0 {
+            content_written = match write_chunk(
+                src,
+                CHUNK_FOOTER,
+                writer,
+                &mut state.sending_chunk,
+                CHUNK_SIZE_MAX,
+            ) {
+                Ok(ret) => ret,
+                Err(e) => return SendStatus::Error(self, e.into()),
+            };
+
+            assert!(content_written <= src_len);
+        }
+
+        // if all content is written then we can send the closing chunk
+        if end && content_written == src_len {
+            let footer = if let Some(headers) = headers {
+                headers
+            } else {
+                CHUNK_FOOTER
+            };
+
+            match write_chunk(
+                &[b""],
+                footer,
+                writer,
+                &mut state.sending_chunk,
+                CHUNK_SIZE_MAX,
+            ) {
+                Ok(ret) => ret,
+                Err(e) => return SendStatus::Error(self, e.into()),
+            };
+
+            if state.sending_chunk.is_none() {
+                return SendStatus::Complete(ClientResponse { state: self.state }, content_written);
+            }
+        }
+
+        SendStatus::Partial(self, content_written)
+    }
+}
+
+pub struct ClientResponse {
+    state: ClientState,
+}
+
+impl ClientResponse {
+    pub fn recv_header<'a, const N: usize>(
+        mut self,
+        rbuf: FilledBuf,
+        scratch: &'a mut ParseScratch<N>,
+    ) -> ParseStatus<'a, (OwnedResponse<'a, N>, ClientResponseBody), Self, Error, N> {
+        let resp = match OwnedHttparseResponse::parse(rbuf, scratch) {
+            ParseStatus::Complete(resp) => resp,
+            ParseStatus::Incomplete((), rbuf, scratch) => {
+                return ParseStatus::Incomplete(self, rbuf, scratch)
+            }
+            ParseStatus::Error(e, rbuf, scratch) => {
+                return ParseStatus::Error(Error::ParseError(e), rbuf, scratch)
+            }
+        };
+
+        if let Err(e) = self.process_response(resp.get()) {
+            let (buf, scratch) = resp.into_parts();
+            return ParseStatus::Error(e, buf, scratch);
+        }
+
+        ParseStatus::Complete((
+            OwnedResponse {
+                resp,
+                body_size: self.state.body_size,
+            },
+            ClientResponseBody { state: self.state },
+        ))
+    }
+
+    fn process_response(&mut self, resp: &httparse::Response) -> Result<(), Error> {
+        let state = &mut self.state;
+
+        let version = resp.version.unwrap();
+
+        let mut content_len = None;
+        let mut chunked = false;
+        let mut keep_alive = false;
+        let mut close = false;
+
+        for i in 0..resp.headers.len() {
+            let h = resp.headers[i];
+
+            if h.name.eq_ignore_ascii_case("Content-Length") {
+                let len = parse_as_int(h.value);
+                let len = match len {
+                    Ok(len) => len,
+                    Err(_) => return Err(Error::InvalidContentLength),
+                };
+
+                content_len = Some(len);
+            } else if h.name.eq_ignore_ascii_case("Transfer-Encoding") {
+                if h.value == b"chunked" {
+                    chunked = true;
+                } else {
+                    // unknown transfer encoding
+                    return Err(Error::UnsupportedTransferEncoding);
+                }
+            } else if h.name.eq_ignore_ascii_case("Connection") {
+                if !keep_alive && header_contains_param(h.value, b"keep-alive", true) {
+                    keep_alive = true;
+                }
+
+                if !close && header_contains_param(h.value, b"close", false) {
+                    close = true;
+                }
+            }
+        }
+
+        state.ver_min = version;
+
+        if chunked {
+            state.body_size = BodySize::Unknown;
+        } else if let Some(len) = content_len {
+            state.body_size = BodySize::Known(len);
+            state.chunk_left = Some(len);
+        } else {
+            state.body_size = BodySize::NoBody;
+        }
+
+        if version >= 1 {
+            state.persistent = !close;
+        } else {
+            state.persistent = keep_alive && !close;
+        }
+
+        Ok(())
+    }
+}
+
+pub struct ClientResponseBody {
+    state: ClientState,
+}
+
+impl ClientResponseBody {
+    pub fn size(&self) -> BodySize {
+        self.state.body_size
+    }
+
+    pub fn recv<'buf, const N: usize>(
+        mut self,
+        src: &'buf [u8],
+        dest: &mut [u8],
+        scratch: &mut mem::MaybeUninit<[httparse::Header<'buf>; N]>,
+    ) -> Result<RecvStatus<ClientResponseBody, ClientFinished>, Error> {
+        let state = &mut self.state;
+
+        match state.body_size {
+            BodySize::Known(_) => {
+                let mut chunk_left = state.chunk_left.unwrap();
+                let read_size = cmp::min(chunk_left, dest.len());
+
+                // src holds body as-is
+                let mut rbuf = io::Cursor::new(src);
+                let size = rbuf.read(&mut dest[..read_size])?;
+
+                chunk_left -= size;
+
+                if chunk_left == 0 {
+                    state.chunk_left = None;
+
+                    Ok(RecvStatus::Complete(
+                        ClientFinished {
+                            headers_range: None,
+                            persistent: state.persistent,
+                        },
+                        size,
+                        size,
+                    ))
+                } else {
+                    state.chunk_left = Some(chunk_left);
+
+                    Ok(RecvStatus::Read(self, size, size))
+                }
+            }
+            BodySize::Unknown => {
+                let mut pos = if state.chunk_left.is_none() {
+                    match httparse::parse_chunk_size(src) {
+                        Ok(httparse::Status::Complete((pos, size))) => {
+                            let size = match u32::try_from(size) {
+                                Ok(size) => size,
+                                Err(_) => return Err(Error::ChunkTooLarge),
+                            };
+
+                            let size = size as usize;
+
+                            state.chunk_left = Some(size);
+                            state.chunk_size = size;
+
+                            pos
+                        }
+                        Ok(httparse::Status::Partial) => {
+                            return Ok(RecvStatus::Read(self, 0, 0));
+                        }
+                        Err(_) => {
+                            return Err(Error::InvalidChunkSize);
+                        }
+                    }
+                } else {
+                    0
+                };
+
+                let mut chunk_left = state.chunk_left.unwrap();
+
+                let size = if chunk_left > 0 {
+                    let read_size = cmp::min(chunk_left, dest.len());
+
+                    let mut rbuf = io::Cursor::new(&src[pos..]);
+                    let size = rbuf.read(&mut dest[..read_size])?;
+
+                    pos += size;
+                    chunk_left -= size;
+
+                    state.chunk_left = Some(chunk_left);
+
+                    size
+                } else {
+                    0
+                };
+
+                if chunk_left == 0 {
+                    let buf = &src[pos..];
+
+                    if state.chunk_size == 0 {
+                        // trailing headers
+                        let scratch = unsafe { scratch.assume_init_mut() };
+                        match httparse::parse_headers(buf, scratch) {
+                            Ok(httparse::Status::Complete((x, _))) => {
+                                let headers_start = pos;
+                                let headers_end = pos + x;
+
+                                return Ok(RecvStatus::Complete(
+                                    ClientFinished {
+                                        headers_range: Some((headers_start, headers_end)),
+                                        persistent: state.persistent,
+                                    },
+                                    headers_end,
+                                    size,
+                                ));
+                            }
+                            Ok(httparse::Status::Partial) => {
+                                return Ok(RecvStatus::Read(self, pos, size));
+                            }
+                            Err(e) => {
+                                return Err(Error::ParseError(e));
+                            }
+                        }
+                    } else {
+                        if buf.len() < 2 {
+                            return Ok(RecvStatus::Read(self, pos, size));
+                        }
+
+                        if &buf[..2] != b"\r\n" {
+                            return Err(Error::InvalidChunkSuffix);
+                        }
+
+                        pos += 2;
+
+                        state.chunk_left = None;
+                        state.chunk_size = 0;
+                    }
+                }
+
+                Ok(RecvStatus::Read(self, pos, size))
+            }
+            BodySize::NoBody => Ok(RecvStatus::Complete(
+                ClientFinished {
+                    headers_range: None,
+                    persistent: state.persistent,
+                },
+                0,
+                0,
+            )),
+        }
+    }
+}
+
+pub struct ClientFinished {
+    pub headers_range: Option<(usize, usize)>,
+    pub persistent: bool,
 }
 
 #[cfg(test)]
@@ -1302,10 +1873,10 @@ mod tests {
 
         assert_eq!(p.state(), ServerState::ReceivingRequest);
 
-        let mut scratch = RequestScratch::<HEADERS_MAX>::new();
+        let mut scratch = ParseScratch::<HEADERS_MAX>::new();
 
         let req = match p.recv_request_owned(rbuf, &mut scratch) {
-            RecvRequestStatus::Complete(req) => req,
+            ParseStatus::Complete(req) => req,
             _ => panic!("recv_request_owned did not return complete"),
         };
 
@@ -1422,7 +1993,7 @@ mod tests {
             let size =
                 match p.send_body(&mut body_out, &[&resp.body[sent..]], true, trailing_headers) {
                     Ok(size) => size,
-                    Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::WriteZero => 0,
+                    Err(Error::Io(e)) if e.kind() == io::ErrorKind::WriteZero => 0,
                     Err(_) => panic!("send_body failed"),
                 };
 
@@ -1729,7 +2300,7 @@ mod tests {
         struct Test<'buf, 'headers> {
             name: &'static str,
             data: &'buf str,
-            result: Option<Result<Request<'buf, 'headers>, ServerError>>,
+            result: Option<Result<Request<'buf, 'headers>, Error>>,
             state: ServerState,
             ver_min: u8,
             chunk_left: Option<usize>,
@@ -1751,7 +2322,7 @@ mod tests {
             Test {
                 name: "parse-error",
                 data: "G\n",
-                result: Some(Err(ServerError::ParseError(httparse::Error::Token))),
+                result: Some(Err(Error::ParseError(httparse::Error::Token))),
                 state: ServerState::ReceivingRequest,
                 ver_min: 0,
                 chunk_left: None,
@@ -1761,7 +2332,7 @@ mod tests {
             Test {
                 name: "invalid-content-length",
                 data: "GET / HTTP/1.0\r\nContent-Length: a\r\n\r\n",
-                result: Some(Err(ServerError::InvalidContentLength)),
+                result: Some(Err(Error::InvalidContentLength)),
                 state: ServerState::ReceivingRequest,
                 ver_min: 0,
                 chunk_left: None,
@@ -1771,7 +2342,7 @@ mod tests {
             Test {
                 name: "unsupported-transfer-encoding",
                 data: "GET / HTTP/1.0\r\nTransfer-Encoding: bogus\r\n\r\n",
-                result: Some(Err(ServerError::UnsupportedTransferEncoding)),
+                result: Some(Err(Error::UnsupportedTransferEncoding)),
                 state: ServerState::ReceivingRequest,
                 ver_min: 0,
                 chunk_left: None,
@@ -1962,14 +2533,14 @@ mod tests {
 
             let src = test.data.as_bytes();
             let rbuf = FilledBuf::new(src.to_vec(), src.len());
-            let mut scratch = RequestScratch::<HEADERS_MAX>::new();
+            let mut scratch = ParseScratch::<HEADERS_MAX>::new();
 
             let mut rbuf_position = 0;
 
             let r = p.recv_request_owned(rbuf, &mut scratch);
 
             match r {
-                RecvRequestStatus::Complete(req) => {
+                ParseStatus::Complete(req) => {
                     let expected = match &test.result {
                         Some(Ok(req)) => req,
                         _ => panic!("result mismatch: test={}", test.name),
@@ -1979,10 +2550,10 @@ mod tests {
 
                     rbuf_position = (src.len() - req.remaining_bytes().len()) as u64
                 }
-                RecvRequestStatus::Incomplete(_, _) => {
+                ParseStatus::Incomplete(_, _, _) => {
                     assert!(test.result.is_none(), "test={}", test.name);
                 }
-                RecvRequestStatus::Error(e, _, _) => {
+                ParseStatus::Error(e, _, _) => {
                     let expected = match &test.result {
                         Some(Err(e)) => e,
                         _ => panic!("result mismatch: test={}", test.name),
@@ -2013,7 +2584,7 @@ mod tests {
             body_size: BodySize,
             chunk_left: Option<usize>,
             chunk_size: usize,
-            result: Result<(usize, Option<&'headers [httparse::Header<'buf>]>), ServerError>,
+            result: Result<(usize, Option<&'headers [httparse::Header<'buf>]>), Error>,
             state: ServerState,
             chunk_left_after: Option<usize>,
             chunk_size_after: usize,
@@ -2067,7 +2638,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Err(ServerError::InvalidChunkSize),
+                result: Err(Error::InvalidChunkSize),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -2080,7 +2651,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Err(ServerError::ChunkTooLarge),
+                result: Err(Error::ChunkTooLarge),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -2158,7 +2729,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Err(ServerError::InvalidChunkSuffix),
+                result: Err(Error::InvalidChunkSuffix),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
@@ -2236,7 +2807,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Err(ServerError::ParseError(httparse::Error::Token)),
+                result: Err(Error::ParseError(httparse::Error::Token)),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
@@ -2334,7 +2905,7 @@ mod tests {
             body_size: BodySize,
             ver_min: u8,
             persistent: bool,
-            result: Result<(), ServerError>,
+            result: Result<(), Error>,
             state: ServerState,
             body_size_after: BodySize,
             chunked: bool,
@@ -2351,7 +2922,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 1,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2366,7 +2937,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 0,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2381,7 +2952,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 0,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2398,7 +2969,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 0,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2415,7 +2986,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 0,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2432,7 +3003,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 0,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2447,7 +3018,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 0,
                 persistent: true,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2462,7 +3033,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 1,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2477,7 +3048,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 ver_min: 1,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2492,7 +3063,7 @@ mod tests {
                 body_size: BodySize::Known(0),
                 ver_min: 0,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2507,7 +3078,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 ver_min: 1,
                 persistent: true,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2522,7 +3093,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 ver_min: 0,
                 persistent: false,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::AwaitingResponse,
                 body_size_after: BodySize::NoBody,
                 chunked: false,
@@ -2797,7 +3368,7 @@ mod tests {
             body_size: BodySize,
             chunked: bool,
             sending_chunk: Option<Chunk>,
-            result: Result<usize, ServerError>,
+            result: Result<usize, Error>,
             state: ServerState,
             sending_chunk_after: Option<Chunk>,
             written: &'static str,
@@ -2855,7 +3426,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunked: false,
                 sending_chunk: None,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::SendingBody,
                 sending_chunk_after: None,
                 written: "",
@@ -2916,7 +3487,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunked: true,
                 sending_chunk: None,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::SendingBody,
                 sending_chunk_after: Some(Chunk {
                     header: [b'5', b'\r', b'\n', 0, 0, 0],
@@ -2968,7 +3539,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunked: true,
                 sending_chunk: None,
-                result: Err(ServerError::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
                 state: ServerState::SendingBody,
                 sending_chunk_after: Some(Chunk {
                     header: [b'0', b'\r', b'\n', 0, 0, 0],
