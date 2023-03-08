@@ -19,7 +19,7 @@ use crate::arena;
 use crate::buffer::TmpBuffer;
 use crate::channel;
 use crate::connection::{
-    server_req_connection, server_stream_connection, CidProvider, Identify, ServerStreamSharedData,
+    server_req_connection, server_stream_connection, CidProvider, Identify, StreamSharedData,
 };
 use crate::event;
 use crate::executor::{Executor, Spawner};
@@ -399,7 +399,7 @@ struct ConnectionItem {
     id: ArrayString<32>,
     stop: Option<CancellationSender>,
     zreceiver_sender: Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>>,
-    shared: Option<arena::Rc<ServerStreamSharedData>>,
+    shared: Option<arena::Rc<StreamSharedData>>,
     batch_key: Option<BatchKey>,
 }
 
@@ -455,7 +455,7 @@ impl Connections {
         worker_id: usize,
         stop: CancellationSender,
         zreceiver_sender: AsyncLocalSender<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-        shared: Option<arena::Rc<ServerStreamSharedData>>,
+        shared: Option<arena::Rc<StreamSharedData>>,
     ) -> Result<(usize, ArrayString<32>), ()> {
         let items = &mut *self.items.borrow_mut();
         let c = &mut *self.inner.borrow_mut();
@@ -755,7 +755,7 @@ struct ConnectionStreamOpts {
     allow_compression: bool,
     sender: channel::LocalSender<zmq::Message>,
     sender_stream: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    stream_shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
+    stream_shared_mem: Rc<arena::RcMemory<StreamSharedData>>,
 }
 
 enum ConnectionModeOpts {
@@ -1304,11 +1304,9 @@ impl Worker {
 
                     let zstream_receiver_sender = AsyncLocalSender::new(zstream_receiver_sender);
 
-                    let shared = arena::Rc::new(
-                        ServerStreamSharedData::new(),
-                        &stream_opts.stream_shared_mem,
-                    )
-                    .unwrap();
+                    let shared =
+                        arena::Rc::new(StreamSharedData::new(), &stream_opts.stream_shared_mem)
+                            .unwrap();
 
                     let (ckey, conn_id) = conns
                         .add(
@@ -1820,7 +1818,7 @@ impl Worker {
         conns: Rc<Connections>,
         opts: ConnectionOpts,
         stream_opts: ConnectionStreamOpts,
-        shared: arena::Rc<ServerStreamSharedData>,
+        shared: arena::Rc<StreamSharedData>,
     ) {
         let done = AsyncLocalSender::new(done);
         let zreceiver = AsyncLocalReceiver::new(zreceiver);
@@ -2245,7 +2243,7 @@ impl Server {
 
             let stream_shared_mem = Rc::new(arena::RcMemory::new(1));
 
-            let shared = arena::Rc::new(ServerStreamSharedData::new(), &stream_shared_mem).unwrap();
+            let shared = arena::Rc::new(StreamSharedData::new(), &stream_shared_mem).unwrap();
 
             let fut = Worker::stream_connection_task(
                 stop,

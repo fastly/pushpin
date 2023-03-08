@@ -246,7 +246,7 @@ fn make_zhttp_request(
 }
 
 #[derive(Debug)]
-enum ServerError {
+enum Error {
     Io(io::Error),
     Utf8(str::Utf8Error),
     Http(http1::ServerError),
@@ -262,25 +262,25 @@ enum ServerError {
     Stopped,
 }
 
-impl From<io::Error> for ServerError {
+impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
     }
 }
 
-impl From<str::Utf8Error> for ServerError {
+impl From<str::Utf8Error> for Error {
     fn from(e: str::Utf8Error) -> Self {
         Self::Utf8(e)
     }
 }
 
-impl<T> From<mpsc::SendError<T>> for ServerError {
+impl<T> From<mpsc::SendError<T>> for Error {
     fn from(_e: mpsc::SendError<T>) -> Self {
         Self::Io(io::Error::from(io::ErrorKind::BrokenPipe))
     }
 }
 
-impl<T> From<mpsc::TrySendError<T>> for ServerError {
+impl<T> From<mpsc::TrySendError<T>> for Error {
     fn from(e: mpsc::TrySendError<T>) -> Self {
         let kind = match e {
             mpsc::TrySendError::Full(_) => io::ErrorKind::WriteZero,
@@ -291,19 +291,19 @@ impl<T> From<mpsc::TrySendError<T>> for ServerError {
     }
 }
 
-impl From<mpsc::RecvError> for ServerError {
+impl From<mpsc::RecvError> for Error {
     fn from(_e: mpsc::RecvError) -> Self {
         Self::Io(io::Error::from(io::ErrorKind::UnexpectedEof))
     }
 }
 
-impl From<http1::ServerError> for ServerError {
+impl From<http1::ServerError> for Error {
     fn from(e: http1::ServerError) -> Self {
         Self::Http(e)
     }
 }
 
-impl From<websocket::Error> for ServerError {
+impl From<websocket::Error> for Error {
     fn from(e: websocket::Error) -> Self {
         Self::WebSocket(e)
     }
@@ -380,13 +380,13 @@ impl MessageTracker {
     }
 }
 
-struct ServerStreamSharedDataInner {
+struct StreamSharedDataInner {
     to_addr: Option<ArrayVec<u8, 64>>,
     out_seq: u32,
 }
 
 pub struct AddrRef<'a> {
-    s: Ref<'a, ServerStreamSharedDataInner>,
+    s: Ref<'a, StreamSharedDataInner>,
 }
 
 impl<'a> AddrRef<'a> {
@@ -398,14 +398,14 @@ impl<'a> AddrRef<'a> {
     }
 }
 
-pub struct ServerStreamSharedData {
-    inner: RefCell<ServerStreamSharedDataInner>,
+pub struct StreamSharedData {
+    inner: RefCell<StreamSharedDataInner>,
 }
 
-impl ServerStreamSharedData {
+impl StreamSharedData {
     pub fn new() -> Self {
         Self {
-            inner: RefCell::new(ServerStreamSharedDataInner {
+            inner: RefCell::new(StreamSharedDataInner {
                 to_addr: None,
                 out_seq: 0,
             }),
@@ -514,7 +514,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
         mut self,
         mut scratch: &'b mut http1::RequestScratch<N>,
         req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
-    ) -> Result<RequestHeader<'a, 'b, 'c, R, W, N>, ServerError> {
+    ) -> Result<RequestHeader<'a, 'b, 'c, R, W, N>, Error> {
         let mut protocol = http1::ServerProtocol::new();
 
         assert_eq!(protocol.state(), http1::ServerState::ReceivingRequest);
@@ -556,7 +556,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
 
             if let Err(e) = recv_nonzero(&mut self.r.stream, self.r.buf1).await {
                 if e.kind() == io::ErrorKind::WriteZero {
-                    return Err(ServerError::BufferExceeded);
+                    return Err(Error::BufferExceeded);
                 }
 
                 return Err(e.into());
@@ -577,7 +577,7 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 
         self.req_mem.as_ref().unwrap().get()
     }
 
-    async fn start_recv_body(mut self) -> Result<RequestRecvBody<'a, R, W>, ServerError> {
+    async fn start_recv_body(mut self) -> Result<RequestRecvBody<'a, R, W>, Error> {
         self.handle_expect().await?;
 
         // restore the read ringbuffer
@@ -588,7 +588,7 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 
 
     async fn start_recv_body_and_keep_header(
         mut self,
-    ) -> Result<RequestRecvBodyKeepHeader<'a, 'b, 'c, R, W, N>, ServerError> {
+    ) -> Result<RequestRecvBodyKeepHeader<'a, 'b, 'c, R, W, N>, Error> {
         self.handle_expect().await?;
 
         // we're keeping the request, so put any remaining bytes into buf2
@@ -607,7 +607,7 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 
         })
     }
 
-    fn recv_done(mut self) -> Result<RequestStartResponse<'a, R, W>, ServerError> {
+    fn recv_done(mut self) -> Result<RequestStartResponse<'a, R, W>, Error> {
         // restore the read ringbuffer
         self.discard_request();
 
@@ -615,7 +615,7 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 
     }
 
     // this method requires the request to exist
-    async fn handle_expect(&mut self) -> Result<(), ServerError> {
+    async fn handle_expect(&mut self) -> Result<(), Error> {
         if !self.request().expect_100 {
             return Ok(());
         }
@@ -700,12 +700,12 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         self.protocol.borrow().state() == http1::ServerState::ReceivingBody
     }
 
-    async fn add_to_recv_buffer(&self) -> Result<(), ServerError> {
+    async fn add_to_recv_buffer(&self) -> Result<(), Error> {
         let r = &mut *self.r.borrow_mut();
 
         if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
             if e.kind() == io::ErrorKind::WriteZero {
-                return Err(ServerError::BufferExceeded);
+                return Err(Error::BufferExceeded);
             }
 
             return Err(e.into());
@@ -714,7 +714,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         Ok(())
     }
 
-    fn try_recv_body(&self, dest: &mut [u8]) -> Option<Result<usize, ServerError>> {
+    fn try_recv_body(&self, dest: &mut [u8]) -> Option<Result<usize, Error>> {
         let r = &mut *self.r.borrow_mut();
         let protocol = &mut *self.protocol.borrow_mut();
 
@@ -755,7 +755,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         Some(Ok(0))
     }
 
-    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, ServerError> {
+    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, Error> {
         loop {
             if let Some(ret) = self.try_recv_body(dest) {
                 return ret;
@@ -794,7 +794,7 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize>
         self.req_mem.as_ref().unwrap().get()
     }
 
-    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, ServerError> {
+    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, Error> {
         self.inner.recv_body(dest).await
     }
 
@@ -820,7 +820,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestStartResponse<'a, R, W> {
         Self { r, w, protocol }
     }
 
-    async fn fill_recv_buffer(&mut self) -> ServerError {
+    async fn fill_recv_buffer(&mut self) -> Error {
         loop {
             if let Err(e) = recv_nonzero(&mut self.r.stream, self.r.buf1).await {
                 if e.kind() == io::ErrorKind::WriteZero {
@@ -839,7 +839,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestStartResponse<'a, R, W> {
         reason: &str,
         headers: &[http1::Header<'_>],
         body_size: http1::BodySize,
-    ) -> Result<RequestSendHeader<'a, R, W>, ServerError> {
+    ) -> Result<RequestSendHeader<'a, R, W>, Error> {
         self.r.buf2.clear();
 
         let mut hbuf = io::Cursor::new(self.r.buf2.write_buf());
@@ -910,7 +910,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
         }
     }
 
-    async fn send_header(&self) -> Result<(), ServerError> {
+    async fn send_header(&self) -> Result<(), Error> {
         let mut stream = self.wstream.borrow_mut();
 
         // limit = header bytes left
@@ -935,7 +935,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
         Ok(())
     }
 
-    fn append_body(&self, body: &[u8], more: bool, id: &str) -> Result<(), ServerError> {
+    fn append_body(&self, body: &[u8], more: bool, id: &str) -> Result<(), Error> {
         let mut wbuf = self.wbuf.borrow_mut();
         let mut early_body = self.early_body.borrow_mut();
 
@@ -1018,7 +1018,7 @@ struct SendBodyFuture<'a, 'b, W: AsyncWrite> {
 }
 
 impl<'a, 'b, W: AsyncWrite> Future for SendBodyFuture<'a, 'b, W> {
-    type Output = Result<usize, ServerError>;
+    type Output = Result<usize, Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &*self;
@@ -1064,7 +1064,7 @@ struct RequestSendBody<'a, R: AsyncRead, W: AsyncWrite> {
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
-    fn append_body(&self, body: &[u8], more: bool) -> Result<(), ServerError> {
+    fn append_body(&self, body: &[u8], more: bool) -> Result<(), Error> {
         let w = &mut *self.w.borrow_mut();
 
         w.buf.write_all(body)?;
@@ -1079,7 +1079,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
         w.buf.read_avail() > 0 || w.body_done
     }
 
-    async fn flush_body(&self) -> Result<(usize, bool), ServerError> {
+    async fn flush_body(&self) -> Result<(usize, bool), Error> {
         {
             let protocol = &*self.protocol.borrow();
 
@@ -1115,7 +1115,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
         Ok((size, true))
     }
 
-    async fn send_body(&self, body: &[u8], more: bool) -> Result<usize, ServerError> {
+    async fn send_body(&self, body: &[u8], more: bool) -> Result<usize, Error> {
         let w = &mut *self.w.borrow_mut();
         let protocol = &mut *self.protocol.borrow_mut();
 
@@ -1126,7 +1126,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
             .await?)
     }
 
-    async fn fill_recv_buffer(&self) -> ServerError {
+    async fn fill_recv_buffer(&self) -> Error {
         let r = &mut *self.r.borrow_mut();
 
         loop {
@@ -1166,7 +1166,7 @@ struct SendMessageContentFuture<'a, 'b, W: AsyncWrite, M> {
 impl<'a, 'b, W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
     for SendMessageContentFuture<'a, 'b, W, M>
 {
-    type Output = Result<(usize, bool), ServerError>;
+    type Output = Result<(usize, bool), Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &*self;
@@ -1233,12 +1233,12 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         self.protocol.state()
     }
 
-    async fn add_to_recv_buffer(&self) -> Result<(), ServerError> {
+    async fn add_to_recv_buffer(&self) -> Result<(), Error> {
         let r = &mut *self.r.borrow_mut();
 
         if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
             if e.kind() == io::ErrorKind::WriteZero {
-                return Err(ServerError::BufferExceeded);
+                return Err(Error::BufferExceeded);
             }
 
             return Err(e.into());
@@ -1250,7 +1250,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
     fn try_recv_message_content<'b>(
         &self,
         dest: &mut [u8],
-    ) -> Option<Result<(u8, usize, bool), ServerError>> {
+    ) -> Option<Result<(u8, usize, bool), Error>> {
         let r = &mut *self.r.borrow_mut();
 
         loop {
@@ -1273,7 +1273,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         self.w.borrow().buf.write_avail()
     }
 
-    fn accept_body(&self, body: &[u8]) -> Result<(), ServerError> {
+    fn accept_body(&self, body: &[u8]) -> Result<(), Error> {
         let w = &mut *self.w.borrow_mut();
 
         w.buf.write_all(body)?;
@@ -1294,7 +1294,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         avail: usize,
         done: bool,
         bytes_sent: &F,
-    ) -> Result<(usize, bool), ServerError>
+    ) -> Result<(usize, bool), Error>
     where
         F: Fn(),
     {
@@ -1327,7 +1327,7 @@ struct ZhttpStreamSessionOut<'a> {
     id: &'a str,
     packet_buf: &'a RefCell<Vec<u8>>,
     sender_stream: &'a AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    shared: &'a ServerStreamSharedData,
+    shared: &'a StreamSharedData,
 }
 
 impl<'a> ZhttpStreamSessionOut<'a> {
@@ -1336,7 +1336,7 @@ impl<'a> ZhttpStreamSessionOut<'a> {
         id: &'a str,
         packet_buf: &'a RefCell<Vec<u8>>,
         sender_stream: &'a AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-        shared: &'a ServerStreamSharedData,
+        shared: &'a StreamSharedData,
     ) -> Self {
         Self {
             instance_id,
@@ -1355,7 +1355,7 @@ impl<'a> ZhttpStreamSessionOut<'a> {
     // and send the message in one shot, without concurrent activity
     // interfering with the sequencing. to send asynchronously, first await
     // on check_send and then call this method
-    fn try_send_msg(&self, zreq: zhttppacket::Request) -> Result<(), ServerError> {
+    fn try_send_msg(&self, zreq: zhttppacket::Request) -> Result<(), Error> {
         let msg = {
             let mut zreq = zreq;
 
@@ -1396,7 +1396,7 @@ struct ZhttpStreamSessionIn<'a, R> {
     send_buf_size: usize,
     websocket: bool,
     receiver: &'a AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    shared: &'a ServerStreamSharedData,
+    shared: &'a StreamSharedData,
     msg_read: &'a R,
     next: Option<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     seq: u32,
@@ -1413,7 +1413,7 @@ where
         send_buf_size: usize,
         websocket: bool,
         receiver: &'a AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-        shared: &'a ServerStreamSharedData,
+        shared: &'a StreamSharedData,
         msg_read: &'a R,
     ) -> Self {
         Self {
@@ -1438,7 +1438,7 @@ where
         self.credits -= amount;
     }
 
-    async fn peek_msg(&mut self) -> Result<&arena::Rc<zhttppacket::OwnedResponse>, ServerError> {
+    async fn peek_msg(&mut self) -> Result<&arena::Rc<zhttppacket::OwnedResponse>, Error> {
         if self.next.is_none() {
             let (r, id_index) = loop {
                 let (r, id_index) = self.receiver.recv().await?;
@@ -1462,7 +1462,7 @@ where
             }
 
             if zresp.ids.len() == 0 {
-                return Err(ServerError::BadMessage);
+                return Err(Error::BadMessage);
             }
 
             if let Some(seq) = zresp.ids[id_index].seq {
@@ -1471,7 +1471,7 @@ where
                         "conn {}: bad seq (expected {}, got {}), skipping",
                         self.id, self.seq, seq
                     );
-                    return Err(ServerError::BadMessage);
+                    return Err(Error::BadMessage);
                 }
 
                 self.seq += 1;
@@ -1479,7 +1479,7 @@ where
 
             let mut addr = ArrayVec::new();
             if addr.try_extend_from_slice(zresp.from).is_err() {
-                return Err(ServerError::BadMessage);
+                return Err(Error::BadMessage);
             }
 
             self.shared.set_to_addr(Some(addr));
@@ -1530,17 +1530,14 @@ where
         Ok(&self.next.as_ref().unwrap().0)
     }
 
-    async fn recv_msg(&mut self) -> Result<arena::Rc<zhttppacket::OwnedResponse>, ServerError> {
+    async fn recv_msg(&mut self) -> Result<arena::Rc<zhttppacket::OwnedResponse>, Error> {
         self.peek_msg().await?;
 
         Ok(self.next.take().unwrap().0)
     }
 }
 
-async fn send_msg(
-    sender: &AsyncLocalSender<zmq::Message>,
-    msg: zmq::Message,
-) -> Result<(), ServerError> {
+async fn send_msg(sender: &AsyncLocalSender<zmq::Message>, msg: zmq::Message) -> Result<(), Error> {
     Ok(sender.send(msg).await?)
 }
 
@@ -1549,14 +1546,14 @@ async fn discard_while<F, T>(
     fut: F,
 ) -> F::Output
 where
-    F: Future<Output = Result<T, ServerError>> + Unpin,
+    F: Future<Output = Result<T, Error>> + Unpin,
 {
     loop {
         match select_2(fut, receiver.recv()).await {
             Select2::R1(v) => break v,
             Select2::R2(_) => {
                 // unexpected message in current state
-                return Err(ServerError::BadMessage);
+                return Err(Error::BadMessage);
             }
         }
     }
@@ -1574,7 +1571,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     packet_buf: &RefCell<Vec<u8>>,
     zsender: &AsyncLocalSender<zmq::Message>,
     zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-) -> Result<bool, ServerError> {
+) -> Result<bool, Error> {
     let stream = RefCell::new(stream);
 
     let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
@@ -1592,9 +1589,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         .await
         {
             Ok(handler) => handler,
-            Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                return Ok(false)
-            }
+            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
             Err(e) => return Err(e),
         }
     };
@@ -1736,7 +1731,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
             for h in rdata.headers.iter() {
                 if headers_len >= headers.len() {
-                    return Err(ServerError::BadMessage);
+                    return Err(Error::BadMessage);
                 }
 
                 headers[headers_len] = http1::Header {
@@ -1832,7 +1827,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     timeout: Duration,
     zsender: AsyncLocalSender<zmq::Message>,
     zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-) -> Result<(), ServerError> {
+) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
     let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
@@ -1864,8 +1859,8 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
 
             match select_3(pin!(handler), timeout.elapsed(), token.cancelled()).await {
                 Select3::R1(ret) => ret?,
-                Select3::R2(_) => return Err(ServerError::Timeout),
-                Select3::R3(_) => return Err(ServerError::Stopped),
+                Select3::R2(_) => return Err(Error::Timeout),
+                Select3::R3(_) => return Err(Error::Stopped),
             }
         };
 
@@ -1928,7 +1923,7 @@ async fn handle_other<R>(
     zresp: &zhttppacket::Response<'_, '_, '_>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, R>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
-) -> Result<(), ServerError>
+) -> Result<(), Error>
 where
     R: Fn(),
 {
@@ -1954,9 +1949,9 @@ where
 
             Ok(())
         }
-        zhttppacket::ResponsePacket::Error(_) => Err(ServerError::HandlerError),
-        zhttppacket::ResponsePacket::Cancel => Err(ServerError::HandlerCancel),
-        _ => Err(ServerError::BadMessage), // unexpected type
+        zhttppacket::ResponsePacket::Error(_) => Err(Error::HandlerError),
+        zhttppacket::ResponsePacket::Cancel => Err(Error::HandlerCancel),
+        _ => Err(Error::BadMessage), // unexpected type
     }
 }
 
@@ -1966,7 +1961,7 @@ async fn stream_recv_body<'a, 'b, 'c, R1, R2, R, W, const N: usize>(
     handler: RequestHeader<'a, 'b, 'c, R, W, N>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
-) -> Result<RequestStartResponse<'a, R, W>, ServerError>
+) -> Result<RequestStartResponse<'a, R, W>, Error>
 where
     R1: Fn(),
     R2: Fn(),
@@ -2113,7 +2108,7 @@ async fn stream_send_body<'a, R1, R2, R, W>(
     handler: &RequestSendBody<'a, R, W>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
-) -> Result<(), ServerError>
+) -> Result<(), Error>
 where
     R1: Fn(),
     R2: Fn(),
@@ -2234,7 +2229,7 @@ async fn stream_websocket<S, R1, R2>(
     deflate_config: Option<(websocket::PerMessageDeflateConfig, usize)>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
-) -> Result<(), ServerError>
+) -> Result<(), Error>
 where
     S: AsyncRead + AsyncWrite,
     R1: Fn(),
@@ -2378,7 +2373,7 @@ where
                     websocket::OPCODE_PONG => zhttppacket::Request::new_pong(b"", &[], body),
                     opcode => {
                         debug!("conn {}: unsupported websocket opcode: {}", id, opcode);
-                        return Err(ServerError::BadFrame);
+                        return Err(Error::BadFrame);
                     }
                 };
 
@@ -2432,7 +2427,7 @@ where
 
                             if !ws_in_tracker.in_progress() {
                                 if ws_in_tracker.start(opcode).is_err() {
-                                    return Err(ServerError::BufferExceeded);
+                                    return Err(Error::BufferExceeded);
                                 }
                             }
 
@@ -2459,7 +2454,7 @@ where
                             handler.accept_body(reason.as_bytes())?;
 
                             if ws_in_tracker.start(websocket::OPCODE_CLOSE).is_err() {
-                                return Err(ServerError::BadFrame);
+                                return Err(Error::BadFrame);
                             }
 
                             ws_in_tracker.extend(arr.len() + reason.len());
@@ -2482,7 +2477,7 @@ where
                             }
 
                             if ws_in_tracker.start(websocket::OPCODE_PING).is_err() {
-                                return Err(ServerError::BadFrame);
+                                return Err(Error::BadFrame);
                             }
 
                             ws_in_tracker.extend(pdata.body.len());
@@ -2505,7 +2500,7 @@ where
                             }
 
                             if ws_in_tracker.start(websocket::OPCODE_PONG).is_err() {
-                                return Err(ServerError::BadFrame);
+                                return Err(Error::BadFrame);
                             }
 
                             ws_in_tracker.extend(pdata.body.len());
@@ -2579,10 +2574,10 @@ async fn server_stream_handler<S, R1, R2>(
     zsender: &AsyncLocalSender<zmq::Message>,
     zsender_stream: &AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    shared: &ServerStreamSharedData,
+    shared: &StreamSharedData,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
-) -> Result<bool, ServerError>
+) -> Result<bool, Error>
 where
     S: AsyncRead + AsyncWrite,
     R1: Fn(),
@@ -2609,7 +2604,7 @@ where
     .await
     {
         Ok(handler) => handler,
-        Err(ServerError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
+        Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
         Err(e) => return Err(e),
     };
 
@@ -2640,7 +2635,7 @@ where
                 for value in http1::parse_header_value(h.value) {
                     let (name, params) = match value {
                         Ok(v) => v,
-                        Err(_) => return Err(ServerError::InvalidWebSocketRequest),
+                        Err(_) => return Err(Error::InvalidWebSocketRequest),
                     };
 
                     match name {
@@ -2700,7 +2695,7 @@ where
         )> = if websocket {
             let accept = match validate_ws_request(&req, ws_version, ws_key) {
                 Ok(s) => s,
-                Err(_) => return Err(ServerError::InvalidWebSocketRequest),
+                Err(_) => return Err(Error::InvalidWebSocketRequest),
             };
 
             Some((accept, ws_deflate_config))
@@ -2837,7 +2832,7 @@ where
                             }
 
                             if headers_len >= headers.len() {
-                                return Err(ServerError::BadMessage);
+                                return Err(Error::BadMessage);
                             }
 
                             headers[headers_len] = http1::Header {
@@ -2920,7 +2915,7 @@ where
                 }
 
                 if headers_len >= headers.len() {
-                    return Err(ServerError::BadMessage);
+                    return Err(Error::BadMessage);
                 }
 
                 headers[headers_len] = http1::Header {
@@ -2941,7 +2936,7 @@ where
                 let accept_data = &ws_config.0;
 
                 if headers_len + 4 > headers.len() {
-                    return Err(ServerError::BadMessage);
+                    return Err(Error::BadMessage);
                 }
 
                 headers[headers_len] = http1::Header {
@@ -2964,7 +2959,7 @@ where
 
                 if let Some((config, _)) = &ws_config.1 {
                     if write_ws_ext_header_value(config, &mut ws_ext).is_err() {
-                        return Err(ServerError::CompressionError);
+                        return Err(Error::CompressionError);
                     }
 
                     headers[headers_len] = http1::Header {
@@ -3076,8 +3071,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     zsender: AsyncLocalSender<zmq::Message>,
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    shared: arena::Rc<ServerStreamSharedData>,
-) -> Result<(), ServerError> {
+    shared: arena::Rc<StreamSharedData>,
+) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
     let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
@@ -3138,9 +3133,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                     Ok(reuse) => reuse,
                     Err(e) => {
                         let handler_caused = match &e {
-                            ServerError::BadMessage
-                            | ServerError::HandlerError
-                            | ServerError::HandlerCancel => true,
+                            Error::BadMessage | Error::HandlerError | Error::HandlerCancel => true,
                             _ => false,
                         };
 
@@ -3185,8 +3178,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                         return Err(e);
                     }
                 },
-                Select3::R2(_) => return Err(ServerError::Timeout),
-                Select3::R3(_) => return Err(ServerError::Stopped),
+                Select3::R2(_) => return Err(Error::Timeout),
+                Select3::R3(_) => return Err(Error::Stopped),
             }
         };
 
@@ -3225,7 +3218,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     zsender: AsyncLocalSender<zmq::Message>,
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    shared: arena::Rc<ServerStreamSharedData>,
+    shared: arena::Rc<StreamSharedData>,
 ) {
     match server_stream_connection_inner(
         token,
@@ -3492,7 +3485,7 @@ pub mod testutil {
         buf1: &mut RingBuffer,
         buf2: &mut RingBuffer,
         body_buf: &mut Buffer,
-    ) -> Result<bool, ServerError> {
+    ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
         let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
@@ -3646,7 +3639,7 @@ pub mod testutil {
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
-    ) -> Result<(), ServerError> {
+    ) -> Result<(), Error> {
         let mut cid = ArrayString::from_str("1").unwrap();
         let mut cid_provider = SimpleCidProvider { cid };
 
@@ -3797,8 +3790,8 @@ pub mod testutil {
         tmp_buf: Rc<RefCell<Vec<u8>>>,
         buf1: &mut RingBuffer,
         buf2: &mut RingBuffer,
-        shared: arena::Rc<ServerStreamSharedData>,
-    ) -> Result<bool, ServerError> {
+        shared: arena::Rc<StreamSharedData>,
+    ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
         let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
@@ -3838,7 +3831,7 @@ pub mod testutil {
         msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
         scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
-        shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
+        shared_mem: Rc<arena::RcMemory<StreamSharedData>>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -3890,7 +3883,7 @@ pub mod testutil {
                 let s_from_conn = s_from_conn
                     .try_clone(&reactor.local_registration_memory())
                     .unwrap();
-                let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+                let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
 
                 server_stream_handler_fut(
                     sock,
@@ -3965,8 +3958,8 @@ pub mod testutil {
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
-        shared: arena::Rc<ServerStreamSharedData>,
-    ) -> Result<(), ServerError> {
+        shared: arena::Rc<StreamSharedData>,
+    ) -> Result<(), Error> {
         let mut cid = ArrayString::from_str("1").unwrap();
         let mut cid_provider = SimpleCidProvider { cid };
 
@@ -4007,7 +4000,7 @@ pub mod testutil {
         msg_mem: Arc<arena::ArcMemory<zmq::Message>>,
         scratch_mem: Rc<arena::RcMemory<RefCell<zhttppacket::ParseScratch<'static>>>>,
         resp_mem: Rc<arena::RcMemory<zhttppacket::OwnedResponse>>,
-        shared_mem: Rc<arena::RcMemory<ServerStreamSharedData>>,
+        shared_mem: Rc<arena::RcMemory<StreamSharedData>>,
         rb_tmp: Rc<TmpBuffer>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
@@ -4054,7 +4047,7 @@ pub mod testutil {
                 let s_from_conn = s_from_conn
                     .try_clone(&reactor.local_registration_memory())
                     .unwrap();
-                let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+                let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
 
                 server_stream_connection_inner_fut(
                     token,
@@ -4242,7 +4235,7 @@ mod tests {
         secure: bool,
         s_from_conn: channel::LocalSender<zmq::Message>,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    ) -> Result<(), ServerError> {
+    ) -> Result<(), Error> {
         let mut cid = ArrayString::from_str("1").unwrap();
         let mut cid_provider = SimpleCidProvider { cid };
 
@@ -4536,7 +4529,7 @@ mod tests {
         executor.advance_time(now + Duration::from_millis(5_000));
 
         match executor.step() {
-            Poll::Ready(Err(ServerError::Timeout)) => {}
+            Poll::Ready(Err(Error::Timeout)) => {}
             _ => panic!("unexpected state"),
         }
     }
@@ -4829,7 +4822,7 @@ mod tests {
         s_from_conn: channel::LocalSender<zmq::Message>,
         s_stream_from_conn: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
-    ) -> Result<(), ServerError> {
+    ) -> Result<(), Error> {
         let mut cid = ArrayString::from_str("1").unwrap();
         let mut cid_provider = SimpleCidProvider { cid };
 
@@ -4847,7 +4840,7 @@ mod tests {
         let timeout = Duration::from_millis(5_000);
 
         let shared_mem = Rc::new(arena::RcMemory::new(1));
-        let shared = arena::Rc::new(ServerStreamSharedData::new(), &shared_mem).unwrap();
+        let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
 
         server_stream_connection_inner(
             token,
