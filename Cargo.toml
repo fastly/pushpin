@@ -23,6 +23,7 @@ arrayvec = "0.7"
 base64 = "0.13"
 clap = { version = "3.2", features = ["cargo", "wrap_help"] }
 httparse = "1.7"
+ipnet = "2"
 log = "0.4"
 miniz_oxide = "0.6"
 mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
@@ -34,6 +35,7 @@ slab = "0.4"
 socket2 = "0.4"
 thiserror = "1.0"
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+url = "2.3"
 zmq = "0.9"
 
 [dev-dependencies]
