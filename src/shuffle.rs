@@ -40,7 +40,7 @@ fn gen_index(n: usize) -> usize {
 /// Pseudorandom number generator based on [xorshift*].
 ///
 /// [xorshift*]: https://en.wikipedia.org/wiki/Xorshift#xorshift*
-fn random() -> u64 {
+pub fn random() -> u64 {
     thread_local! {
         static RNG: Cell<Wrapping<u64>> = Cell::new(Wrapping(prng_seed()));
     }

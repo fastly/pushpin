@@ -37,24 +37,33 @@ use crate::buffer::{
 };
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
-    AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, CancellationToken,
-    ReadHalf, Select2, Select3, Select4, StdWriteWrapper, Timeout, WriteHalf,
+    AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncResolver, AsyncTcpStream, AsyncTlsStream,
+    AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf, Select2, Select3, Select4,
+    StdWriteWrapper, Timeout, WriteHalf,
 };
 use crate::http1;
 use crate::net::SocketAddr;
 use crate::pin;
 use crate::reactor::Reactor;
+use crate::resolver;
+use crate::shuffle::random;
+use crate::tls::TlsStream;
 use crate::websocket;
 use crate::zhttppacket;
+use crate::zmq::MultipartHeader;
 use arrayvec::{ArrayString, ArrayVec};
+use ipnet::IpNet;
 use log::{debug, warn};
 use sha1::{Digest, Sha1};
 use std::cell::{Ref, RefCell};
 use std::cmp;
 use std::collections::VecDeque;
+use std::convert::TryFrom;
 use std::future::Future;
 use std::io;
 use std::io::Write;
+use std::mem;
+use std::net::IpAddr;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -67,6 +76,7 @@ use std::time::Duration;
 const URI_SIZE_MAX: usize = 4096;
 const HEADERS_MAX: usize = 64;
 const WS_HASH_INPUT_MAX: usize = 256;
+const WS_KEY_MAX: usize = 24; // base64_encode([16 bytes]) = 24 bytes
 const WS_ACCEPT_MAX: usize = 28; // base64_encode(sha1_hash) = 28 bytes
 const ZHTTP_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -98,6 +108,21 @@ fn get_host<'a>(headers: &'a [httparse::Header]) -> &'a str {
     "localhost"
 }
 
+fn gen_ws_key() -> ArrayString<WS_KEY_MAX> {
+    let mut nonce = [0; 16];
+    for b in nonce.iter_mut() {
+        *b = (random() % (256 as u64)) as u8;
+    }
+
+    let mut output = [0; WS_KEY_MAX];
+
+    let size = base64::encode_config_slice(&nonce, base64::STANDARD, &mut output);
+
+    let output = str::from_utf8(&output[..size]).unwrap();
+
+    ArrayString::from_str(output).unwrap()
+}
+
 fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
     let input_len = key.len() + websocket::WS_GUID.len();
 
@@ -108,7 +133,7 @@ fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
     let mut input = [0; WS_HASH_INPUT_MAX];
 
     input[..key.len()].copy_from_slice(key);
-    input[key.len()..input_len].copy_from_slice(&websocket::WS_GUID.as_bytes());
+    input[key.len()..input_len].copy_from_slice(websocket::WS_GUID.as_bytes());
 
     let input = &input[..input_len];
 
@@ -142,6 +167,25 @@ fn validate_ws_request(
         && ws_key.is_some()
     {
         return calculate_ws_accept(&ws_key.unwrap());
+    }
+
+    Err(())
+}
+
+fn validate_ws_response(
+    resp: &http1::Response,
+    ws_key: &[u8],
+    ws_accept: Option<&[u8]>,
+) -> Result<(), ()> {
+    // a websocket response must not have a body.
+    // some servers might send "Content-Length: 0", which we'll allow.
+    // chunked encoding will be rejected.
+    if resp.body_size == http1::BodySize::NoBody || resp.body_size == http1::BodySize::Known(0) {
+        if let Some(ws_accept) = ws_accept {
+            if calculate_ws_accept(ws_key)?.as_bytes() == ws_accept {
+                return Ok(());
+            }
+        }
     }
 
     Err(())
@@ -257,9 +301,27 @@ enum Error {
     HandlerError,
     HandlerCancel,
     BufferExceeded,
+    Unusable,
     BadFrame,
+    TlsError,
+    PolicyViolation,
     Timeout,
     Stopped,
+}
+
+impl Error {
+    fn to_condition(&self) -> &'static str {
+        match self {
+            Error::Io(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
+                "remote-connection-failed"
+            }
+            Error::BadMessage => "bad-request",
+            Error::Timeout => "connection-timeout",
+            Error::TlsError => "tls-error",
+            Error::PolicyViolation => "policy-violation",
+            _ => "undefined-condition",
+        }
+    }
 }
 
 impl From<io::Error> for Error {
@@ -380,22 +442,22 @@ impl MessageTracker {
     }
 }
 
-struct StreamSharedDataInner {
-    to_addr: Option<ArrayVec<u8, 64>>,
-    out_seq: u32,
-}
-
 pub struct AddrRef<'a> {
-    s: Ref<'a, StreamSharedDataInner>,
+    s: Ref<'a, Option<ArrayVec<u8, 64>>>,
 }
 
 impl<'a> AddrRef<'a> {
     pub fn get(&self) -> Option<&[u8]> {
-        match &self.s.to_addr {
-            Some(addr) => Some(addr.as_ref()),
+        match &*self.s {
+            Some(s) => Some(s.as_slice()),
             None => None,
         }
     }
+}
+
+struct StreamSharedDataInner {
+    to_addr: Option<ArrayVec<u8, 64>>,
+    out_seq: u32,
 }
 
 pub struct StreamSharedData {
@@ -427,7 +489,7 @@ impl StreamSharedData {
 
     pub fn to_addr(&self) -> AddrRef {
         AddrRef {
-            s: self.inner.borrow(),
+            s: Ref::map(self.inner.borrow(), |s| &s.to_addr),
         }
     }
 
@@ -440,6 +502,54 @@ impl StreamSharedData {
 
         s.out_seq += 1;
     }
+}
+
+fn make_zhttp_req_response(
+    id: Option<&[u8]>,
+    ptype: zhttppacket::ResponsePacket,
+    scratch: &mut [u8],
+) -> Result<zmq::Message, io::Error> {
+    let mut ids_mem = [zhttppacket::Id { id: b"", seq: None }];
+
+    let ids = if let Some(id) = id {
+        ids_mem[0].id = id;
+
+        ids_mem.as_slice()
+    } else {
+        &[]
+    };
+
+    let zresp = zhttppacket::Response {
+        from: b"",
+        ids,
+        multi: false,
+        ptype,
+        ptype_str: "",
+    };
+
+    let size = zresp.serialize(scratch)?;
+    let payload = &scratch[..size];
+
+    Ok(zmq::Message::from(payload))
+}
+
+fn make_zhttp_response(
+    addr: &[u8],
+    zresp: zhttppacket::Response,
+    scratch: &mut [u8],
+) -> Result<zmq::Message, io::Error> {
+    let size = zresp.serialize(scratch)?;
+    let payload = &scratch[..size];
+
+    let mut v = vec![0; addr.len() + 1 + payload.len()];
+
+    v[..addr.len()].copy_from_slice(addr);
+    v[addr.len()] = b' ';
+    let pos = addr.len() + 1;
+    v[pos..(pos + payload.len())].copy_from_slice(payload);
+
+    // this takes over the vec's memory without copying
+    Ok(zmq::Message::from(v))
 }
 
 async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Result<(), io::Error> {
@@ -1389,6 +1499,68 @@ impl<'a> ZhttpStreamSessionOut<'a> {
     }
 }
 
+struct ZhttpServerStreamSessionOut<'a> {
+    instance_id: &'a str,
+    id: &'a [u8],
+    packet_buf: &'a RefCell<Vec<u8>>,
+    sender: &'a AsyncLocalSender<zmq::Message>,
+    shared: &'a StreamSharedData,
+}
+
+impl<'a> ZhttpServerStreamSessionOut<'a> {
+    fn new(
+        instance_id: &'a str,
+        id: &'a [u8],
+        packet_buf: &'a RefCell<Vec<u8>>,
+        sender: &'a AsyncLocalSender<zmq::Message>,
+        shared: &'a StreamSharedData,
+    ) -> Self {
+        Self {
+            instance_id,
+            id,
+            packet_buf,
+            sender,
+            shared,
+        }
+    }
+
+    async fn check_send(&self) {
+        self.sender.check_send().await
+    }
+
+    // this method is non-blocking, in order to increment the sequence number
+    // and send the message in one shot, without concurrent activity
+    // interfering with the sequencing. to send asynchronously, first await
+    // on check_send and then call this method
+    fn try_send_msg(&self, zresp: zhttppacket::Response) -> Result<(), Error> {
+        let msg = {
+            let mut zresp = zresp;
+
+            let ids = [zhttppacket::Id {
+                id: self.id,
+                seq: Some(self.shared.out_seq()),
+            }];
+
+            zresp.from = self.instance_id.as_bytes();
+            zresp.ids = &ids;
+            zresp.multi = true;
+
+            let addr = self.shared.to_addr();
+            let addr = addr.get().unwrap();
+
+            let packet_buf = &mut *self.packet_buf.borrow_mut();
+
+            make_zhttp_response(addr, zresp, packet_buf)?
+        };
+
+        self.sender.try_send(msg)?;
+
+        self.shared.inc_out_seq();
+
+        Ok(())
+    }
+}
+
 struct ZhttpStreamSessionIn<'a, R> {
     id: &'a str,
     send_buf_size: usize,
@@ -1535,12 +1707,159 @@ where
     }
 }
 
+struct ZhttpServerStreamSessionIn<'a, R> {
+    log_id: &'a str,
+    id: &'a [u8],
+    receiver: &'a AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    shared: &'a StreamSharedData,
+    msg_read: &'a R,
+    next: Option<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    seq: u32,
+    credits: u32,
+}
+
+impl<'a, R> ZhttpServerStreamSessionIn<'a, R>
+where
+    R: Fn(),
+{
+    fn new(
+        log_id: &'a str,
+        id: &'a [u8],
+        credits: u32,
+        receiver: &'a AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+        shared: &'a StreamSharedData,
+        msg_read: &'a R,
+    ) -> Self {
+        Self {
+            log_id,
+            id,
+            receiver,
+            shared,
+            msg_read,
+            next: None,
+            seq: 1,
+            credits,
+        }
+    }
+
+    fn credits(&self) -> u32 {
+        self.credits
+    }
+
+    fn subtract_credits(&mut self, amount: u32) {
+        self.credits -= amount;
+    }
+
+    async fn peek_msg(&mut self) -> Result<&arena::Rc<zhttppacket::OwnedRequest>, Error> {
+        if self.next.is_none() {
+            let (r, id_index) = loop {
+                let (r, id_index) = self.receiver.recv().await?;
+
+                let zreq = r.get().get();
+
+                if zreq.ids[id_index].id != self.id {
+                    // skip messages addressed to old ids
+                    continue;
+                }
+
+                break (r, id_index);
+            };
+
+            let zreq = r.get().get();
+
+            if !zreq.ptype_str.is_empty() {
+                debug!(
+                    "client-conn {}: handle packet: {}",
+                    self.log_id, zreq.ptype_str
+                );
+            } else {
+                debug!("client-conn {}: handle packet: (data)", self.log_id);
+            }
+
+            if zreq.ids.len() == 0 {
+                return Err(Error::BadMessage);
+            }
+
+            if let Some(seq) = zreq.ids[id_index].seq {
+                if seq != self.seq {
+                    debug!(
+                        "client-conn {}: bad seq (expected {}, got {}), skipping",
+                        self.log_id, self.seq, seq
+                    );
+                    return Err(Error::BadMessage);
+                }
+
+                self.seq += 1;
+            }
+
+            let mut addr = ArrayVec::new();
+            if addr.try_extend_from_slice(zreq.from).is_err() {
+                return Err(Error::BadMessage);
+            }
+
+            self.shared.set_to_addr(Some(addr));
+
+            (self.msg_read)();
+
+            match &zreq.ptype {
+                zhttppacket::RequestPacket::Data(rdata) => {
+                    self.credits += rdata.credits;
+                }
+                zhttppacket::RequestPacket::Error(edata) => {
+                    debug!(
+                        "client-conn {}: zhttp error condition={}",
+                        self.log_id, edata.condition
+                    );
+                }
+                zhttppacket::RequestPacket::Credit(cdata) => {
+                    self.credits += cdata.credits;
+                }
+                zhttppacket::RequestPacket::Ping(pdata) => {
+                    self.credits += pdata.credits;
+                }
+                zhttppacket::RequestPacket::Pong(pdata) => {
+                    self.credits += pdata.credits;
+                }
+                _ => {}
+            }
+
+            self.next = Some((r, id_index));
+        }
+
+        Ok(&self.next.as_ref().unwrap().0)
+    }
+
+    async fn recv_msg(&mut self) -> Result<arena::Rc<zhttppacket::OwnedRequest>, Error> {
+        self.peek_msg().await?;
+
+        Ok(self.next.take().unwrap().0)
+    }
+}
+
 async fn send_msg(sender: &AsyncLocalSender<zmq::Message>, msg: zmq::Message) -> Result<(), Error> {
     Ok(sender.send(msg).await?)
 }
 
 async fn discard_while<F, T>(
     receiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    fut: F,
+) -> F::Output
+where
+    F: Future<Output = Result<T, Error>> + Unpin,
+{
+    loop {
+        match select_2(fut, receiver.recv()).await {
+            Select2::R1(v) => break v,
+            Select2::R2(_) => {
+                // unexpected message in current state
+                return Err(Error::BadMessage);
+            }
+        }
+    }
+}
+
+async fn server_discard_while<F, T>(
+    receiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     fut: F,
 ) -> F::Output
 where
@@ -1955,6 +2274,43 @@ where
     }
 }
 
+// this function will either return immediately or await messages
+async fn server_handle_other<R>(
+    zreq: &zhttppacket::Request<'_, '_, '_>,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R>,
+    zsess_out: &ZhttpServerStreamSessionOut<'_>,
+) -> Result<(), Error>
+where
+    R: Fn(),
+{
+    match &zreq.ptype {
+        zhttppacket::RequestPacket::KeepAlive => Ok(()),
+        zhttppacket::RequestPacket::Credit(_) => Ok(()),
+        zhttppacket::RequestPacket::HandoffStart => {
+            // discarding here is fine. the sender should cease sending
+            // messages until we've replied with proceed
+            server_discard_while(
+                &zsess_in.receiver,
+                pin!(async { Ok(zsess_out.check_send().await) }),
+            )
+            .await?;
+
+            let zresp = zhttppacket::Response::new_handoff_proceed(b"", &[]);
+
+            // check_send just finished, so this should succeed
+            zsess_out.try_send_msg(zresp)?;
+
+            // pause until we get a msg
+            zsess_in.peek_msg().await?;
+
+            Ok(())
+        }
+        zhttppacket::RequestPacket::Error(_) => Err(Error::HandlerError),
+        zhttppacket::RequestPacket::Cancel => Err(Error::HandlerCancel),
+        _ => Err(Error::BadMessage), // unexpected type
+    }
+}
+
 async fn stream_recv_body<'a, 'b, 'c, R1, R2, R, W, const N: usize>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -2103,6 +2459,92 @@ where
     Ok(handler.recv_done())
 }
 
+async fn server_stream_recv_body<'a, R1, R2, R>(
+    tmp_buf: &RefCell<Vec<u8>>,
+    bytes_read: &R1,
+    resp_body: ClientResponseBody<'a, R>,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R2>,
+    zsess_out: &ZhttpServerStreamSessionOut<'_>,
+) -> Result<ClientFinished, Error>
+where
+    R1: Fn(),
+    R2: Fn(),
+    R: AsyncRead,
+{
+    let mut check_send = pin!(None);
+    let mut add_to_buffer = pin!(None);
+
+    loop {
+        if zsess_in.credits() > 0 && add_to_buffer.is_none() && check_send.is_none() {
+            check_send.set(Some(zsess_out.check_send()));
+        }
+
+        // ABR: select contains read
+        let ret = select_3(
+            select_option(check_send.as_mut().as_pin_mut()),
+            select_option(add_to_buffer.as_mut().as_pin_mut()),
+            pin!(zsess_in.recv_msg()),
+        )
+        .await;
+
+        match ret {
+            Select3::R1(()) => {
+                check_send.set(None);
+
+                assert!(zsess_in.credits() > 0);
+                assert_eq!(add_to_buffer.is_none(), true);
+
+                let tmp_buf = &mut *tmp_buf.borrow_mut();
+                let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
+
+                let (size, mut finished) = match resp_body.try_recv(&mut tmp_buf[..max_read])? {
+                    RecvStatus::Complete(finished, written) => (written, Some(finished)),
+                    RecvStatus::Read((), written) => {
+                        if written == 0 {
+                            add_to_buffer.set(Some(resp_body.add_to_buffer()));
+                            continue;
+                        }
+
+                        (written, None)
+                    }
+                };
+
+                bytes_read();
+
+                let body = &tmp_buf[..size];
+
+                zsess_in.subtract_credits(size as u32);
+
+                let mut rdata = zhttppacket::ResponseData::new();
+                rdata.body = body;
+                rdata.more = finished.is_none();
+
+                let zresp = zhttppacket::Response::new_data(b"", &[], rdata);
+
+                // check_send just finished, so this should succeed
+                zsess_out.try_send_msg(zresp)?;
+
+                if let Some(finished) = finished.take() {
+                    return Ok(finished);
+                }
+            }
+            Select3::R2(ret) => {
+                ret?;
+
+                add_to_buffer.set(None);
+            }
+            Select3::R3(ret) => {
+                let r = ret?;
+
+                let zreq_ref = r.get().get();
+
+                // ABR: handle_other
+                server_handle_other(zreq_ref, zsess_in, zsess_out).await?;
+            }
+        }
+    }
+}
+
 async fn stream_send_body<'a, R1, R2, R, W>(
     bytes_read: &R1,
     handler: &RequestSendBody<'a, R, W>,
@@ -2218,8 +2660,183 @@ where
     Ok(())
 }
 
+struct Overflow {
+    buf: Buffer,
+    end: bool,
+}
+
+async fn server_stream_send_body<'a, R1, R2, R, W>(
+    bytes_read: &R1,
+    req_body: ClientRequestBody<'a, R, W>,
+    mut overflow: Option<Overflow>,
+    recv_buf_size: usize,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R2>,
+    zsess_out: &ZhttpServerStreamSessionOut<'_>,
+) -> Result<ClientResponse<'a, R>, Error>
+where
+    R1: Fn(),
+    R2: Fn(),
+    R: AsyncRead,
+    W: AsyncWrite,
+{
+    // send initial body, including overflow, before offering credits
+
+    let mut send = pin!(None);
+
+    while send.is_some() || req_body.can_send() {
+        if send.is_none() {
+            send.set(Some(req_body.send()));
+        }
+
+        let result = select_2(
+            select_option(send.as_mut().as_pin_mut()),
+            pin!(zsess_in.recv_msg()),
+        )
+        .await;
+
+        match result {
+            Select2::R1(ret) => {
+                send.set(None);
+
+                match ret {
+                    SendStatus::Complete(resp) => return Ok(resp),
+                    SendStatus::Partial((), _) => {
+                        if !req_body.can_send() {
+                            if let Some(overflow) = &mut overflow {
+                                let size =
+                                    req_body.prepare(overflow.buf.read_buf(), overflow.end)?;
+                                overflow.buf.read_commit(size);
+                            }
+                        }
+                    }
+                    SendStatus::Error((), e) => return Err(e.into()),
+                }
+            }
+            Select2::R2(ret) => {
+                let r = ret?;
+
+                let zreq_ref = r.get().get();
+
+                // ABR: handle_other
+                server_handle_other(zreq_ref, zsess_in, zsess_out).await?;
+            }
+        }
+    }
+
+    assert_eq!(req_body.can_send(), false);
+
+    let mut out_credits = recv_buf_size as u32;
+
+    let mut send = pin!(None);
+    let mut check_send = pin!(None);
+
+    let resp = 'main: loop {
+        let ret = {
+            if send.is_none() && req_body.can_send() {
+                send.set(Some(req_body.send()));
+            }
+
+            if out_credits > 0 && check_send.is_none() {
+                check_send.set(Some(zsess_out.check_send()));
+            }
+
+            // ABR: select contains read
+            select_3(
+                select_option(send.as_mut().as_pin_mut()),
+                select_option(check_send.as_mut().as_pin_mut()),
+                pin!(zsess_in.recv_msg()),
+            )
+            .await
+        };
+
+        match ret {
+            Select3::R1(ret) => {
+                send.set(None);
+
+                match ret {
+                    SendStatus::Complete(resp) => break resp,
+                    SendStatus::Partial((), size) => {
+                        out_credits += size as u32;
+
+                        if size > 0 {
+                            bytes_read();
+                        }
+                    }
+                    SendStatus::Error(_, e) => return Err(e),
+                }
+            }
+            Select3::R2(()) => {
+                check_send.set(None);
+
+                let zresp = zhttppacket::Response::new_credit(b"", &[], out_credits);
+                out_credits = 0;
+
+                // check_send just finished, so this should succeed
+                zsess_out.try_send_msg(zresp)?;
+            }
+            Select3::R3(ret) => {
+                let r = ret?;
+
+                let zreq_ref = r.get().get();
+
+                match &zreq_ref.ptype {
+                    zhttppacket::RequestPacket::Data(rdata) => {
+                        req_body.prepare(rdata.body, !rdata.more)?;
+                    }
+                    _ => {
+                        // if handoff requested, flush send buffer responding
+                        match &zreq_ref.ptype {
+                            zhttppacket::RequestPacket::HandoffStart => {
+                                if send.is_none() && req_body.can_send() {
+                                    send.set(Some(req_body.send()));
+                                }
+
+                                while let Some(fut) = send.as_mut().as_pin_mut() {
+                                    let ret = server_discard_while(
+                                        zsess_in.receiver,
+                                        pin!(async {
+                                            match fut.await {
+                                                SendStatus::Error(_, e) => Err(e),
+                                                ret => Ok(ret),
+                                            }
+                                        }),
+                                    )
+                                    .await?;
+                                    send.set(None);
+
+                                    match ret {
+                                        SendStatus::Complete(resp) => break 'main resp,
+                                        SendStatus::Partial((), size) => {
+                                            out_credits += size as u32;
+
+                                            if size > 0 {
+                                                bytes_read();
+                                            }
+                                        }
+                                        SendStatus::Error((), _) => unreachable!(), // handled above
+                                    }
+
+                                    if req_body.can_send() {
+                                        send.set(Some(req_body.send()));
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        // ABR: handle_other
+                        server_handle_other(zreq_ref, zsess_in, zsess_out).await?;
+                    }
+                }
+            }
+        }
+    };
+
+    Ok(resp)
+}
+
 async fn stream_websocket<S, R1, R2>(
-    id: &str,
+    log_id: &str,
     stream: RefCell<&mut S>,
     buf1: &mut RingBuffer,
     buf2: &mut RingBuffer,
@@ -2372,7 +2989,7 @@ where
                     websocket::OPCODE_PING => zhttppacket::Request::new_ping(b"", &[], body),
                     websocket::OPCODE_PONG => zhttppacket::Request::new_pong(b"", &[], body),
                     opcode => {
-                        debug!("conn {}: unsupported websocket opcode: {}", id, opcode);
+                        debug!("conn {}: unsupported websocket opcode: {}", log_id, opcode);
                         return Err(Error::BadFrame);
                     }
                 };
@@ -2549,6 +3166,349 @@ where
 
                         // ABR: handle_other
                         handle_other(zresp_ref, zsess_in, zsess_out).await?;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn server_stream_websocket<S, R1, R2>(
+    log_id: &str,
+    stream: RefCell<&mut S>,
+    buf1: &mut RingBuffer,
+    buf2: &mut RingBuffer,
+    messages_max: usize,
+    tmp_buf: &RefCell<Vec<u8>>,
+    bytes_read: &R1,
+    deflate_config: Option<(websocket::PerMessageDeflateConfig, usize)>,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R2>,
+    zsess_out: &ZhttpServerStreamSessionOut<'_>,
+) -> Result<(), Error>
+where
+    S: AsyncRead + AsyncWrite,
+    R1: Fn(),
+    R2: Fn(),
+{
+    // buf2 must be empty since we will repurpose the memory
+    assert_eq!(buf2.read_avail(), 0);
+    let rb_tmp = buf2.get_tmp().clone();
+    let mut wbuf = buf2.take_inner().into_inner();
+
+    let (mut wbuf, deflate_config) = match deflate_config {
+        Some((config, write_buf_size)) => {
+            let (wbuf, ebuf) = wbuf.split_at_mut(write_buf_size);
+
+            let wbuf = SliceRingBuffer::new(wbuf, &rb_tmp);
+            let ebuf = SliceRingBuffer::new(ebuf, &rb_tmp);
+
+            (wbuf, Some((config, ebuf)))
+        }
+        None => (SliceRingBuffer::new(&mut wbuf, &rb_tmp), None),
+    };
+
+    let handler = WebSocketHandler::new(io_split(&stream), buf1, &mut wbuf, deflate_config);
+    let mut ws_in_tracker = MessageTracker::new(messages_max);
+
+    let mut out_credits = 0;
+
+    let mut check_send = pin!(None);
+    let mut add_to_recv_buffer = pin!(None);
+    let mut send_content = pin!(None);
+
+    loop {
+        let (do_send, do_recv) = match handler.state() {
+            websocket::State::Connected => (true, true),
+            websocket::State::PeerClosed => (true, false),
+            websocket::State::Closing => (false, true),
+            websocket::State::Finished => break,
+        };
+
+        if out_credits > 0
+            || (do_recv && zsess_in.credits() > 0 && add_to_recv_buffer.is_none())
+                && check_send.is_none()
+        {
+            check_send.set(Some(zsess_out.check_send()));
+        }
+
+        if do_send && send_content.is_none() {
+            if let Some((mtype, avail, done)) = ws_in_tracker.current() {
+                if !handler.is_sending_message() {
+                    handler.send_message_start(mtype, None);
+                }
+
+                if avail > 0 || done {
+                    send_content.set(Some(handler.send_message_content(avail, done, bytes_read)));
+                }
+            }
+        }
+
+        // ABR: select contains read
+        let ret = select_4(
+            select_option(check_send.as_mut().as_pin_mut()),
+            select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
+            select_option(send_content.as_mut().as_pin_mut()),
+            pin!(zsess_in.recv_msg()),
+        )
+        .await;
+
+        match ret {
+            Select4::R1(()) => {
+                check_send.set(None);
+
+                if out_credits > 0 {
+                    let zresp = zhttppacket::Response::new_credit(b"", &[], out_credits as u32);
+                    out_credits = 0;
+
+                    // check_send just finished, so this should succeed
+                    zsess_out.try_send_msg(zresp)?;
+                    continue;
+                }
+
+                assert!(zsess_in.credits() > 0);
+                assert_eq!(add_to_recv_buffer.is_none(), true);
+
+                let tmp_buf = &mut *tmp_buf.borrow_mut();
+                let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
+
+                let (opcode, size, end) =
+                    match handler.try_recv_message_content(&mut tmp_buf[..max_read]) {
+                        Some(ret) => ret?,
+                        None => {
+                            add_to_recv_buffer.set(Some(handler.add_to_recv_buffer()));
+                            continue;
+                        }
+                    };
+
+                bytes_read();
+
+                let body = &tmp_buf[..size];
+
+                let zresp = match opcode {
+                    websocket::OPCODE_TEXT | websocket::OPCODE_BINARY => {
+                        if body.is_empty() && !end {
+                            // don't bother sending empty message
+                            continue;
+                        }
+
+                        let mut data = zhttppacket::ResponseData::new();
+
+                        data.body = body;
+
+                        data.content_type = if opcode == websocket::OPCODE_TEXT {
+                            Some(zhttppacket::ContentType::Text)
+                        } else {
+                            Some(zhttppacket::ContentType::Binary)
+                        };
+
+                        data.more = !end;
+
+                        zhttppacket::Response::new_data(b"", &[], data)
+                    }
+                    websocket::OPCODE_CLOSE => {
+                        let status = if body.len() >= 2 {
+                            let mut arr = [0; 2];
+                            arr[..].copy_from_slice(&body[..2]);
+
+                            let code = u16::from_be_bytes(arr);
+
+                            let reason = match str::from_utf8(&body[2..]) {
+                                Ok(reason) => reason,
+                                Err(e) => return Err(e.into()),
+                            };
+
+                            Some((code, reason))
+                        } else {
+                            None
+                        };
+
+                        zhttppacket::Response::new_close(b"", &[], status)
+                    }
+                    websocket::OPCODE_PING => zhttppacket::Response::new_ping(b"", &[], body),
+                    websocket::OPCODE_PONG => zhttppacket::Response::new_pong(b"", &[], body),
+                    opcode => {
+                        debug!(
+                            "client-conn {}: unsupported websocket opcode: {}",
+                            log_id, opcode
+                        );
+                        return Err(Error::BadFrame);
+                    }
+                };
+
+                zsess_in.subtract_credits(size as u32);
+
+                // check_send just finished, so this should succeed
+                zsess_out.try_send_msg(zresp)?;
+            }
+            Select4::R2(ret) => {
+                ret?;
+
+                add_to_recv_buffer.set(None);
+            }
+            Select4::R3(ret) => {
+                send_content.set(None);
+
+                let (size, done) = ret?;
+
+                ws_in_tracker.consumed(size, done);
+
+                if handler.state() == websocket::State::Connected
+                    || handler.state() == websocket::State::PeerClosed
+                {
+                    out_credits += size as u32;
+                }
+            }
+            Select4::R4(ret) => {
+                let r = ret?;
+
+                let zreq_ref = r.get().get();
+
+                match &zreq_ref.ptype {
+                    zhttppacket::RequestPacket::Data(rdata) => match handler.state() {
+                        websocket::State::Connected | websocket::State::PeerClosed => {
+                            let avail = handler.accept_avail();
+
+                            if let Err(e) = handler.accept_body(rdata.body) {
+                                warn!(
+                                    "received too much data from handler (size={}, credits={})",
+                                    rdata.body.len(),
+                                    avail,
+                                );
+
+                                return Err(e.into());
+                            }
+
+                            let opcode = match &rdata.content_type {
+                                Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
+                                _ => websocket::OPCODE_TEXT,
+                            };
+
+                            if !ws_in_tracker.in_progress() {
+                                if ws_in_tracker.start(opcode).is_err() {
+                                    return Err(Error::BufferExceeded);
+                                }
+                            }
+
+                            ws_in_tracker.extend(rdata.body.len());
+
+                            if !rdata.more {
+                                ws_in_tracker.done();
+                            }
+                        }
+                        _ => {}
+                    },
+                    zhttppacket::RequestPacket::Close(cdata) => match handler.state() {
+                        websocket::State::Connected | websocket::State::PeerClosed => {
+                            let (code, reason) = match cdata.status {
+                                Some(v) => v,
+                                None => (1000, ""),
+                            };
+
+                            let arr: [u8; 2] = code.to_be_bytes();
+
+                            // close content isn't limited by credits. if we
+                            // don't have space for it, just error out
+                            handler.accept_body(&arr)?;
+                            handler.accept_body(reason.as_bytes())?;
+
+                            if ws_in_tracker.start(websocket::OPCODE_CLOSE).is_err() {
+                                return Err(Error::BadFrame);
+                            }
+
+                            ws_in_tracker.extend(arr.len() + reason.len());
+                            ws_in_tracker.done();
+                        }
+                        _ => {}
+                    },
+                    zhttppacket::RequestPacket::Ping(pdata) => match handler.state() {
+                        websocket::State::Connected | websocket::State::PeerClosed => {
+                            let avail = handler.accept_avail();
+
+                            if let Err(e) = handler.accept_body(pdata.body) {
+                                warn!(
+                                    "received too much data from handler (size={}, credits={})",
+                                    pdata.body.len(),
+                                    avail,
+                                );
+
+                                return Err(e.into());
+                            }
+
+                            if ws_in_tracker.start(websocket::OPCODE_PING).is_err() {
+                                return Err(Error::BadFrame);
+                            }
+
+                            ws_in_tracker.extend(pdata.body.len());
+                            ws_in_tracker.done();
+                        }
+                        _ => {}
+                    },
+                    zhttppacket::RequestPacket::Pong(pdata) => match handler.state() {
+                        websocket::State::Connected | websocket::State::PeerClosed => {
+                            let avail = handler.accept_avail();
+
+                            if let Err(e) = handler.accept_body(pdata.body) {
+                                warn!(
+                                    "received too much data from handler (size={}, credits={})",
+                                    pdata.body.len(),
+                                    avail,
+                                );
+
+                                return Err(e.into());
+                            }
+
+                            if ws_in_tracker.start(websocket::OPCODE_PONG).is_err() {
+                                return Err(Error::BadFrame);
+                            }
+
+                            ws_in_tracker.extend(pdata.body.len());
+                            ws_in_tracker.done();
+                        }
+                        _ => {}
+                    },
+                    _ => {
+                        // if handoff requested, flush send buffer responding
+                        match &zreq_ref.ptype {
+                            zhttppacket::RequestPacket::HandoffStart => loop {
+                                if send_content.is_none() {
+                                    if let Some((mtype, avail, done)) = ws_in_tracker.current() {
+                                        if !handler.is_sending_message() {
+                                            handler.send_message_start(mtype, None);
+                                        }
+
+                                        if avail > 0 || done {
+                                            send_content
+                                                .set(Some(handler.send_message_content(
+                                                    avail, done, bytes_read,
+                                                )));
+                                        }
+                                    }
+                                }
+
+                                if let Some(fut) = send_content.as_mut().as_pin_mut() {
+                                    let ret = server_discard_while(zsess_in.receiver, fut).await;
+                                    send_content.set(None);
+
+                                    let (size, done) = ret?;
+
+                                    ws_in_tracker.consumed(size, done);
+
+                                    if handler.state() == websocket::State::Connected
+                                        || handler.state() == websocket::State::PeerClosed
+                                    {
+                                        out_credits += size as u32;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            },
+                            _ => {}
+                        }
+
+                        // ABR: handle_other
+                        server_handle_other(zreq_ref, zsess_in, zsess_out).await?;
                     }
                 }
             }
@@ -2781,7 +3741,7 @@ where
 
     // receive response message
 
-    let zresp = loop {
+    let zresp_orig = loop {
         // ABR: select contains read
         let ret = select_2(pin!(zsess_in.recv_msg()), pin!(handler.fill_recv_buffer())).await;
 
@@ -2807,7 +3767,7 @@ where
     // determine how to respond
 
     let (handler, ws_config) = {
-        let zresp = zresp.get().get();
+        let zresp = zresp_orig.get().get();
 
         let rdata = match &zresp.ptype {
             zhttppacket::ResponsePacket::Data(rdata) => rdata,
@@ -2976,6 +3936,8 @@ where
         };
 
         handler.append_body(rdata.body, rdata.more, id)?;
+
+        drop(zresp_orig);
 
         {
             let mut send_header = pin!(handler.send_header());
@@ -3247,6 +4209,1618 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     }
 }
 
+struct AsyncOperation<O, C>
+where
+    C: FnMut(),
+{
+    op_fn: O,
+    cancel_fn: C,
+}
+
+impl<O, C, R> AsyncOperation<O, C>
+where
+    O: FnMut(&mut Context) -> Option<R>,
+    C: FnMut(),
+{
+    fn new(op_fn: O, cancel_fn: C) -> Self {
+        Self { op_fn, cancel_fn }
+    }
+}
+
+impl<O, C, R> Future for AsyncOperation<O, C>
+where
+    O: FnMut(&mut Context) -> Option<R> + Unpin,
+    C: FnMut() + Unpin,
+{
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let s = Pin::into_inner(self);
+
+        match (s.op_fn)(cx) {
+            Some(ret) => Poll::Ready(ret),
+            None => Poll::Pending,
+        }
+    }
+}
+
+impl<O, C> Drop for AsyncOperation<O, C>
+where
+    C: FnMut(),
+{
+    fn drop(&mut self) {
+        (self.cancel_fn)();
+    }
+}
+
+async fn fill_recv_buffer<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Error {
+    loop {
+        if let Err(e) = recv_nonzero(r, buf).await {
+            if e.kind() == io::ErrorKind::WriteZero {
+                // if there's no more space, suspend forever
+                let () = std::future::pending().await;
+            }
+
+            return e.into();
+        }
+    }
+}
+
+pub enum SendStatus<T, P, E> {
+    Complete(T),
+    Partial(P, usize),
+    Error(P, E),
+}
+
+pub enum RecvStatus<T, C> {
+    Read(T, usize),
+    Complete(C, usize),
+}
+
+struct ClientRequest<'a, R: AsyncRead, W: AsyncWrite> {
+    r: ReadHalf<'a, R>,
+    w: WriteHalf<'a, W>,
+    buf1: &'a mut RingBuffer,
+    buf2: &'a mut RingBuffer,
+}
+
+impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequest<'a, R, W> {
+    fn new(
+        stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
+        buf1: &'a mut RingBuffer,
+        buf2: &'a mut RingBuffer,
+    ) -> Self {
+        Self {
+            r: stream.0,
+            w: stream.1,
+            buf1,
+            buf2,
+        }
+    }
+
+    fn prepare_header(
+        self,
+        method: &str,
+        uri: &str,
+        headers: &[http1::Header<'_>],
+        body_size: http1::BodySize,
+        websocket: bool,
+        initial_body: &[u8],
+        end: bool,
+    ) -> Result<ClientRequestHeader<'a, R, W>, Error> {
+        let req = http1::ClientRequest::new();
+
+        let req_body = match req.send_header(self.buf1, method, uri, headers, body_size, websocket)
+        {
+            Ok(ret) => ret,
+            Err(_) => return Err(Error::BufferExceeded),
+        };
+
+        if self.buf2.write_all(initial_body).is_err() {
+            return Err(Error::BufferExceeded);
+        }
+
+        Ok(ClientRequestHeader {
+            r: self.r,
+            w: self.w,
+            buf1: self.buf1,
+            buf2: self.buf2,
+            req_body,
+            end,
+        })
+    }
+}
+
+struct ClientRequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
+    r: ReadHalf<'a, R>,
+    w: WriteHalf<'a, W>,
+    buf1: &'a mut RingBuffer,
+    buf2: &'a mut RingBuffer,
+    req_body: http1::ClientRequestBody,
+    end: bool,
+}
+
+impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
+    async fn send(mut self) -> Result<ClientRequestBody<'a, R, W>, Error> {
+        while self.buf1.read_avail() > 0 {
+            let size = self.w.write(self.buf1.read_buf()).await?;
+            self.buf1.read_commit(size);
+        }
+
+        Ok(ClientRequestBody {
+            inner: RefCell::new(Some(ClientRequestBodyInner {
+                r: RefCell::new(ClientRequestBodyRead {
+                    stream: self.r,
+                    buf: self.buf1,
+                }),
+                w: RefCell::new(ClientRequestBodyWrite {
+                    stream: self.w,
+                    buf: self.buf2,
+                    req_body: Some(self.req_body),
+                    end: self.end,
+                }),
+            })),
+        })
+    }
+}
+
+struct ClientRequestBodyRead<'a, R: AsyncRead> {
+    stream: ReadHalf<'a, R>,
+    buf: &'a mut RingBuffer,
+}
+
+struct ClientRequestBodyWrite<'a, W: AsyncWrite> {
+    stream: WriteHalf<'a, W>,
+    buf: &'a mut RingBuffer,
+    req_body: Option<http1::ClientRequestBody>,
+    end: bool,
+}
+
+struct ClientRequestBodyInner<'a, R: AsyncRead, W: AsyncWrite> {
+    r: RefCell<ClientRequestBodyRead<'a, R>>,
+    w: RefCell<ClientRequestBodyWrite<'a, W>>,
+}
+
+struct ClientRequestBody<'a, R: AsyncRead, W: AsyncWrite> {
+    inner: RefCell<Option<ClientRequestBodyInner<'a, R, W>>>,
+}
+
+impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
+    fn prepare(&self, src: &[u8], end: bool) -> Result<usize, Error> {
+        if let Some(inner) = &*self.inner.borrow() {
+            let w = &mut *inner.w.borrow_mut();
+
+            // call not allowed if the end has already been indicated
+            if w.end {
+                return Err(Error::Io(io::Error::from(io::ErrorKind::InvalidInput)));
+            }
+
+            let size = w.buf.write(src)?;
+
+            assert!(size <= src.len());
+
+            if size == src.len() && end {
+                w.end = true;
+            }
+
+            Ok(size)
+        } else {
+            Err(Error::Unusable)
+        }
+    }
+
+    fn can_send(&self) -> bool {
+        if let Some(inner) = &*self.inner.borrow() {
+            let w = &*inner.w.borrow();
+
+            w.buf.read_avail() > 0 || w.end
+        } else {
+            false
+        }
+    }
+
+    async fn send(&self) -> SendStatus<ClientResponse<'a, R>, (), Error> {
+        let ret = if let Some(inner) = &*self.inner.borrow() {
+            let mut r = inner.r.borrow_mut();
+
+            let result = select_2(
+                AsyncOperation::new(
+                    |cx| {
+                        let w = &mut *inner.w.borrow_mut();
+
+                        if !w.stream.is_writable() {
+                            return None;
+                        }
+
+                        let req_body = w.req_body.take().unwrap();
+
+                        debug!("send: {}", w.buf.read_avail());
+                        let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
+                        let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+
+                        match req_body.send(
+                            &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
+                            bufs,
+                            w.end,
+                            None,
+                        ) {
+                            http1::SendStatus::Error(req_body, http1::Error::Io(e))
+                                if e.kind() == io::ErrorKind::WouldBlock =>
+                            {
+                                w.req_body = Some(req_body);
+                                debug!("would block");
+
+                                None
+                            }
+                            ret => Some(ret),
+                        }
+                    },
+                    || inner.w.borrow_mut().stream.cancel(),
+                ),
+                pin!(async {
+                    let r = &mut *r;
+                    fill_recv_buffer(&mut r.stream, r.buf).await
+                }),
+            )
+            .await;
+
+            match result {
+                Select2::R1(ret) => ret,
+                Select2::R2(e) => return SendStatus::Error((), e),
+            }
+        } else {
+            return SendStatus::Error((), Error::Unusable);
+        };
+
+        let mut inner = self.inner.borrow_mut();
+        assert_eq!(inner.is_some(), true);
+
+        match ret {
+            http1::SendStatus::Complete(resp, size) => {
+                let inner = inner.take().unwrap();
+
+                let r = inner.r.into_inner();
+                let w = inner.w.into_inner();
+
+                w.buf.read_commit(size);
+
+                assert_eq!(w.buf.read_avail(), 0);
+
+                SendStatus::Complete(ClientResponse {
+                    r: r.stream,
+                    buf1: r.buf,
+                    buf2: w.buf,
+                    inner: resp,
+                })
+            }
+            http1::SendStatus::Partial(req_body, size) => {
+                let inner = inner.as_ref().unwrap();
+
+                let mut w = inner.w.borrow_mut();
+
+                w.req_body = Some(req_body);
+                w.buf.read_commit(size);
+
+                SendStatus::Partial((), size)
+            }
+            http1::SendStatus::Error(req_body, e) => {
+                let inner = inner.as_ref().unwrap();
+
+                inner.w.borrow_mut().req_body = Some(req_body);
+
+                SendStatus::Error((), e.into())
+            }
+        }
+    }
+}
+
+struct ClientResponse<'a, R: AsyncRead> {
+    r: ReadHalf<'a, R>,
+    buf1: &'a mut RingBuffer,
+    buf2: &'a mut RingBuffer,
+    inner: http1::ClientResponse,
+}
+
+impl<'a, R: AsyncRead> ClientResponse<'a, R> {
+    async fn recv_header<'b, const N: usize>(
+        mut self,
+        mut scratch: &'b mut http1::ParseScratch<N>,
+    ) -> Result<
+        (
+            http1::OwnedResponse<'b, N>,
+            ClientResponseBodyKeepHeader<'a, R>,
+        ),
+        Error,
+    > {
+        let mut resp = self.inner;
+
+        let (resp, resp_body) = loop {
+            {
+                let hbuf = self.buf1.take_inner();
+
+                resp = match resp.recv_header(hbuf, scratch) {
+                    http1::ParseStatus::Complete(ret) => break ret,
+                    http1::ParseStatus::Incomplete(resp, hbuf, ret_scratch) => {
+                        // NOTE: after polonius it may not be necessary for
+                        // scratch to be returned
+                        scratch = ret_scratch;
+
+                        self.buf1.set_inner(hbuf);
+
+                        resp
+                    }
+                    http1::ParseStatus::Error(e, hbuf, _) => {
+                        self.buf1.set_inner(hbuf);
+
+                        return Err(e.into());
+                    }
+                }
+            }
+
+            if !self.buf1.is_readable_contiguous() {
+                self.buf1.align();
+                continue;
+            }
+
+            if let Err(e) = recv_nonzero(&mut self.r, self.buf1).await {
+                if e.kind() == io::ErrorKind::WriteZero {
+                    return Err(Error::BufferExceeded);
+                }
+
+                return Err(e.into());
+            }
+        };
+
+        // at this point, resp has taken buf1's inner buffer, such that
+        // buf1 has no inner buffer
+
+        // put remaining readable bytes in buf2
+        self.buf2.write(resp.remaining_bytes())?;
+
+        // swap inner buffers, such that buf1 now contains the remaining
+        // readable bytes, and buf2 is now the one with no inner buffer
+        self.buf1.swap_inner(self.buf2);
+
+        Ok((
+            resp,
+            ClientResponseBodyKeepHeader {
+                inner: ClientResponseBody {
+                    inner: RefCell::new(Some(ClientResponseBodyInner {
+                        r: self.r,
+                        buf1: self.buf1,
+                        resp_body,
+                    })),
+                },
+                buf2: RefCell::new(Some(self.buf2)),
+            },
+        ))
+    }
+}
+
+struct ClientResponseBodyInner<'a, R: AsyncRead> {
+    r: ReadHalf<'a, R>,
+    buf1: &'a mut RingBuffer,
+    resp_body: http1::ClientResponseBody,
+}
+
+struct ClientResponseBody<'a, R: AsyncRead> {
+    inner: RefCell<Option<ClientResponseBodyInner<'a, R>>>,
+}
+
+impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
+    async fn add_to_buffer(&self) -> Result<(), Error> {
+        if let Some(inner) = &mut *self.inner.borrow_mut() {
+            if let Err(e) = recv_nonzero(&mut inner.r, inner.buf1).await {
+                if e.kind() == io::ErrorKind::WriteZero {
+                    return Err(Error::BufferExceeded);
+                }
+
+                return Err(e.into());
+            }
+
+            Ok(())
+        } else {
+            Err(Error::Unusable)
+        }
+    }
+
+    fn try_recv(&self, dest: &mut [u8]) -> Result<RecvStatus<(), ClientFinished>, Error> {
+        loop {
+            let mut b_inner = self.inner.borrow_mut();
+
+            if let Some(inner) = b_inner.take() {
+                let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
+
+                match inner
+                    .resp_body
+                    .recv(inner.buf1.read_buf(), dest, &mut scratch)?
+                {
+                    http1::RecvStatus::Complete(finished, read, written) => {
+                        inner.buf1.read_commit(read);
+
+                        *b_inner = None;
+
+                        break Ok(RecvStatus::Complete(
+                            ClientFinished { inner: finished },
+                            written,
+                        ));
+                    }
+                    http1::RecvStatus::Read(resp_body, read, written) => {
+                        *b_inner = Some(ClientResponseBodyInner {
+                            r: inner.r,
+                            buf1: inner.buf1,
+                            resp_body,
+                        });
+
+                        let inner = b_inner.as_mut().unwrap();
+
+                        if read == 0 && written == 0 {
+                            if !inner.buf1.is_readable_contiguous() {
+                                inner.buf1.align();
+                                continue;
+                            }
+                        }
+
+                        inner.buf1.read_commit(read);
+
+                        return Ok(RecvStatus::Read((), written));
+                    }
+                }
+            } else {
+                return Err(Error::Unusable);
+            }
+        }
+    }
+}
+
+struct ClientResponseBodyKeepHeader<'a, R: AsyncRead> {
+    inner: ClientResponseBody<'a, R>,
+    buf2: RefCell<Option<&'a mut RingBuffer>>,
+}
+
+impl<'a, R: AsyncRead> ClientResponseBodyKeepHeader<'a, R> {
+    fn discard_header<const N: usize>(
+        self,
+        resp: http1::OwnedResponse<N>,
+    ) -> Result<ClientResponseBody<'a, R>, Error> {
+        if let Some(buf2) = self.buf2.borrow_mut().take() {
+            buf2.set_inner(resp.into_buf());
+            buf2.clear();
+
+            Ok(self.inner)
+        } else {
+            Err(Error::Unusable)
+        }
+    }
+
+    async fn add_to_buffer(&self) -> Result<(), Error> {
+        self.inner.add_to_buffer().await
+    }
+
+    fn try_recv(
+        &self,
+        dest: &mut [u8],
+    ) -> Result<RecvStatus<(), ClientFinishedKeepHeader<'a>>, Error> {
+        if !self.buf2.borrow().is_some() {
+            return Err(Error::Unusable);
+        }
+
+        match self.inner.try_recv(dest)? {
+            RecvStatus::Complete(finished, written) => Ok(RecvStatus::Complete(
+                ClientFinishedKeepHeader {
+                    inner: finished,
+                    buf2: self.buf2.borrow_mut().take().unwrap(),
+                },
+                written,
+            )),
+            RecvStatus::Read((), written) => Ok(RecvStatus::Read((), written)),
+        }
+    }
+}
+
+struct ClientFinished {
+    inner: http1::ClientFinished,
+}
+
+struct ClientFinishedKeepHeader<'a> {
+    inner: ClientFinished,
+    buf2: &'a mut RingBuffer,
+}
+
+impl<'a> ClientFinishedKeepHeader<'a> {
+    fn discard_header<const N: usize>(self, resp: http1::OwnedResponse<N>) -> ClientFinished {
+        self.buf2.set_inner(resp.into_buf());
+        self.buf2.clear();
+
+        self.inner
+    }
+}
+
+enum Stream {
+    Plain(AsyncTcpStream),
+    Tls(AsyncTlsStream),
+}
+
+fn is_allowed(addr: &IpAddr, deny: &[IpNet]) -> bool {
+    for net in deny {
+        if net.contains(addr) {
+            return false;
+        }
+    }
+
+    true
+}
+
+async fn client_connect(
+    log_id: &str,
+    rdata: &zhttppacket::RequestData<'_, '_>,
+    uri: &url::Url,
+    resolver: &resolver::Resolver,
+    deny: &[IpNet],
+) -> Result<Stream, Error> {
+    let use_tls = ["https", "wss"].contains(&uri.scheme());
+
+    let uri_host = match uri.host_str() {
+        Some(s) => s,
+        None => return Err(Error::BadMessage),
+    };
+
+    let default_port = if use_tls { 443 } else { 80 };
+
+    let (connect_host, connect_port) = if !rdata.connect_host.is_empty() {
+        (rdata.connect_host, rdata.connect_port)
+    } else {
+        (uri_host, uri.port().unwrap_or(default_port))
+    };
+
+    let resolver = AsyncResolver::new(&resolver);
+
+    debug!("client-conn {}: resolving: [{}]", log_id, connect_host);
+
+    let resolver_results = resolver.resolve(connect_host).await?;
+
+    let mut addrs = ArrayVec::<std::net::SocketAddr, { resolver::ADDRS_MAX }>::new();
+    let mut denied = false;
+
+    for addr in resolver_results {
+        if !is_allowed(&addr, deny) {
+            denied = true;
+            continue;
+        }
+
+        addrs.push(std::net::SocketAddr::new(addr, connect_port));
+    }
+
+    if addrs.is_empty() && denied {
+        return Err(Error::PolicyViolation);
+    }
+
+    debug!("client-conn {}: connecting to one of {:?}", log_id, addrs);
+
+    let stream = AsyncTcpStream::connect(&addrs).await?;
+
+    let peer_addr = stream.peer_addr()?;
+
+    debug!("client-conn {}: connected to {}", log_id, peer_addr);
+
+    if use_tls {
+        let mut stream = match TlsStream::connect(uri_host, stream.into_inner()) {
+            Ok(stream) => stream,
+            Err(e) => {
+                debug!("client-conn {}: tls connect error: {}", log_id, e);
+
+                return Err(Error::TlsError);
+            }
+        };
+
+        if stream.set_id(log_id).is_err() {
+            warn!("client-conn {}: log id too long for TlsStream", log_id);
+
+            return Err(Error::BadMessage);
+        }
+
+        Ok(Stream::Tls(AsyncTlsStream::new(stream)))
+    } else {
+        Ok(Stream::Plain(stream))
+    }
+}
+
+// return (_, true) if persistent
+async fn client_req_handler<S>(
+    log_id: &str,
+    id: Option<&[u8]>,
+    stream: &mut S,
+    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    buf1: &mut RingBuffer,
+    buf2: &mut RingBuffer,
+    body_buf: &mut Buffer,
+    packet_buf: &RefCell<Vec<u8>>,
+) -> Result<(zmq::Message, bool), Error>
+where
+    S: AsyncRead + AsyncWrite,
+{
+    let stream = RefCell::new(stream);
+    let req = ClientRequest::new(io_split(&stream), buf1, buf2);
+
+    let req_header = {
+        let zreq_ref = zreq.get().get();
+
+        let rdata = match &zreq_ref.ptype {
+            zhttppacket::RequestPacket::Data(data) => data,
+            _ => return Err(Error::BadMessage),
+        };
+
+        let uri = match url::Url::parse(rdata.uri) {
+            Ok(uri) => uri,
+            Err(_) => return Err(Error::BadMessage),
+        };
+
+        let host_port = &uri[url::Position::BeforeHost..url::Position::AfterPort];
+
+        let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
+
+        headers.push(http1::Header {
+            name: "Host",
+            value: host_port.as_bytes(),
+        });
+
+        for h in rdata.headers.iter() {
+            if headers.remaining_capacity() == 0 {
+                return Err(Error::BadMessage);
+            }
+
+            // host comes from the uri
+            if h.name.eq_ignore_ascii_case("Host") {
+                continue;
+            }
+
+            headers.push(http1::Header {
+                name: h.name,
+                value: h.value,
+            });
+        }
+
+        let path = &uri[url::Position::BeforePath..];
+
+        let req_header = req.prepare_header(
+            rdata.method,
+            path,
+            &headers,
+            http1::BodySize::Known(rdata.body.len()),
+            false,
+            &[],
+            false,
+        )?;
+
+        body_buf.write_all(rdata.body)?;
+
+        drop(headers);
+        drop(zreq);
+
+        req_header
+    };
+
+    let resp = {
+        // send request header
+
+        let req_body = req_header.send().await?;
+
+        // send request body
+
+        loop {
+            // fill the buffer as much as possible
+            let size = req_body.prepare(body_buf.read_buf(), true)?;
+            body_buf.read_commit(size);
+
+            // send the buffer
+            match req_body.send().await {
+                SendStatus::Complete(resp) => break resp,
+                SendStatus::Partial((), _) => {}
+                SendStatus::Error((), e) => return Err(e.into()),
+            }
+        }
+    };
+
+    assert_eq!(body_buf.read_avail(), 0);
+
+    // receive response header
+
+    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+
+    let (resp, resp_body) = resp.recv_header(&mut scratch).await?;
+
+    let (zresp, finished) = {
+        let resp = resp.get();
+
+        debug!(
+            "client-conn {}: response: {} {}",
+            log_id, resp.code, resp.reason
+        );
+
+        // receive response body
+
+        let finished = {
+            loop {
+                match resp_body.try_recv(body_buf.write_buf())? {
+                    RecvStatus::Complete(finished, written) => {
+                        body_buf.write_commit(written);
+
+                        break finished;
+                    }
+                    RecvStatus::Read((), written) => {
+                        body_buf.write_commit(written);
+
+                        if written == 0 {
+                            resp_body.add_to_buffer().await?;
+                        }
+                    }
+                }
+            }
+        };
+
+        let mut zheaders = ArrayVec::<zhttppacket::Header, HEADERS_MAX>::new();
+
+        for h in resp.headers {
+            zheaders.push(zhttppacket::Header {
+                name: h.name,
+                value: h.value,
+            });
+        }
+
+        let rdata = zhttppacket::ResponseData {
+            credits: 0,
+            more: false,
+            code: resp.code,
+            reason: resp.reason,
+            headers: &zheaders,
+            content_type: None,
+            body: body_buf.read_buf(),
+        };
+
+        let zresp = make_zhttp_req_response(
+            id,
+            zhttppacket::ResponsePacket::Data(rdata),
+            &mut *packet_buf.borrow_mut(),
+        )?;
+
+        (zresp, finished)
+    };
+
+    let finished = finished.discard_header(resp);
+
+    Ok((zresp, finished.inner.persistent))
+}
+
+async fn client_req_connect(
+    log_id: &str,
+    id: Option<&[u8]>,
+    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    buf1: &mut RingBuffer,
+    buf2: &mut RingBuffer,
+    body_buf: &mut Buffer,
+    packet_buf: &RefCell<Vec<u8>>,
+    deny: &[IpNet],
+    resolver: &resolver::Resolver,
+) -> Result<zmq::Message, Error> {
+    let zreq_ref = zreq.get().get();
+
+    let rdata = match &zreq_ref.ptype {
+        zhttppacket::RequestPacket::Data(data) => data,
+        _ => return Err(Error::BadMessage),
+    };
+
+    let uri = match url::Url::parse(rdata.uri) {
+        Ok(uri) => uri,
+        Err(_) => return Err(Error::BadMessage),
+    };
+
+    // must be an http url
+    if !["http", "https"].contains(&uri.scheme()) {
+        return Err(Error::BadMessage);
+    }
+
+    // must have a method
+    if rdata.method.is_empty() {
+        return Err(Error::BadMessage);
+    }
+
+    debug!(
+        "client-conn {}: request: {} {}",
+        log_id, rdata.method, rdata.uri,
+    );
+
+    let deny = if rdata.ignore_policies { &[] } else { deny };
+
+    let mut stream = client_connect(log_id, rdata, &uri, resolver, deny).await?;
+
+    let (zresp, _persistent) = match &mut stream {
+        Stream::Plain(stream) => {
+            client_req_handler(log_id, id, stream, zreq, buf1, buf2, body_buf, packet_buf).await?
+        }
+        Stream::Tls(stream) => {
+            client_req_handler(log_id, id, stream, zreq, buf1, buf2, body_buf, packet_buf).await?
+        }
+    };
+
+    Ok(zresp)
+}
+
+async fn client_req_connection_inner(
+    token: CancellationToken,
+    log_id: &str,
+    id: Option<&[u8]>,
+    zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
+    buffer_size: usize,
+    body_buffer_size: usize,
+    rb_tmp: &Rc<TmpBuffer>,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    timeout: Duration,
+    deny: &[IpNet],
+    resolver: &resolver::Resolver,
+    zsender: AsyncLocalSender<(MultipartHeader, zmq::Message)>,
+) -> Result<(), Error> {
+    let reactor = Reactor::current().unwrap();
+
+    let (zheader, zreq) = zreq;
+
+    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut body_buf = Buffer::new(body_buffer_size);
+
+    let handler = client_req_connect(
+        log_id,
+        id,
+        zreq,
+        &mut buf1,
+        &mut buf2,
+        &mut body_buf,
+        &packet_buf,
+        deny,
+        resolver,
+    );
+
+    let timeout = Timeout::new(reactor.now() + timeout);
+
+    let ret = match select_3(pin!(handler), timeout.elapsed(), token.cancelled()).await {
+        Select3::R1(ret) => ret,
+        Select3::R2(_) => Err(Error::Timeout),
+        Select3::R3(_) => return Err(Error::Stopped),
+    };
+
+    match ret {
+        Ok(zresp) => zsender.send((zheader, zresp)).await?,
+        Err(e) => {
+            let zresp = make_zhttp_req_response(
+                id,
+                zhttppacket::ResponsePacket::Error(zhttppacket::ResponseErrorData {
+                    condition: e.to_condition(),
+                    rejected_info: None,
+                }),
+                &mut *packet_buf.borrow_mut(),
+            )?;
+
+            zsender.send((zheader, zresp)).await?;
+
+            return Err(e);
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn client_req_connection(
+    token: CancellationToken,
+    log_id: &str,
+    id: Option<&[u8]>,
+    zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
+    buffer_size: usize,
+    body_buffer_size: usize,
+    rb_tmp: &Rc<TmpBuffer>,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    timeout: Duration,
+    deny: &[IpNet],
+    resolver: &resolver::Resolver,
+    zsender: AsyncLocalSender<(MultipartHeader, zmq::Message)>,
+) {
+    match client_req_connection_inner(
+        token,
+        log_id,
+        id,
+        zreq,
+        buffer_size,
+        body_buffer_size,
+        rb_tmp,
+        packet_buf,
+        timeout,
+        deny,
+        resolver,
+        zsender,
+    )
+    .await
+    {
+        Ok(()) => debug!("client-conn {}: finished", log_id),
+        Err(e) => debug!("client-conn {}: process error: {:?}", log_id, e),
+    }
+}
+
+// return true if persistent
+async fn client_stream_handler<S, R1, R2>(
+    log_id: &str,
+    id: &[u8],
+    stream: &mut S,
+    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    buf1: &mut RingBuffer,
+    buf2: &mut RingBuffer,
+    messages_max: usize,
+    packet_buf: &RefCell<Vec<u8>>,
+    tmp_buf: &RefCell<Vec<u8>>,
+    instance_id: &str,
+    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zsender: &AsyncLocalSender<zmq::Message>,
+    shared: &StreamSharedData,
+    refresh_stream_timeout: &R1,
+    refresh_session_timeout: &R2,
+) -> Result<bool, Error>
+where
+    S: AsyncRead + AsyncWrite,
+    R1: Fn(),
+    R2: Fn(),
+{
+    let stream = RefCell::new(stream);
+
+    let send_buf_size = buf1.capacity();
+    let recv_buf_size = buf2.capacity();
+
+    let req = ClientRequest::new(io_split(&stream), buf1, buf2);
+
+    let zsess_out = ZhttpServerStreamSessionOut::new(instance_id, id, packet_buf, zsender, shared);
+
+    let (credits, req_header, ws_key, overflow) = {
+        let zreq_ref = zreq.get().get();
+
+        let rdata = match &zreq_ref.ptype {
+            zhttppacket::RequestPacket::Data(data) => data,
+            _ => return Err(Error::BadMessage),
+        };
+
+        let uri = match url::Url::parse(rdata.uri) {
+            Ok(uri) => uri,
+            Err(_) => return Err(Error::BadMessage),
+        };
+
+        let websocket = ["wss", "ws"].contains(&uri.scheme());
+
+        let host_port = &uri[url::Position::BeforeHost..url::Position::AfterPort];
+
+        let ws_key = if websocket { Some(gen_ws_key()) } else { None };
+
+        let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
+
+        headers.push(http1::Header {
+            name: "Host",
+            value: host_port.as_bytes(),
+        });
+
+        if let Some(ws_key) = &ws_key {
+            headers.push(http1::Header {
+                name: "Upgrade",
+                value: b"websocket",
+            });
+
+            headers.push(http1::Header {
+                name: "Connection",
+                value: b"Upgrade",
+            });
+
+            headers.push(http1::Header {
+                name: "Sec-WebSocket-Version",
+                value: b"13",
+            });
+
+            headers.push(http1::Header {
+                name: "Sec-WebSocket-Key",
+                value: ws_key.as_bytes(),
+            });
+        }
+
+        let mut body_size = if websocket {
+            http1::BodySize::NoBody
+        } else {
+            http1::BodySize::Unknown
+        };
+
+        for h in rdata.headers.iter() {
+            // host comes from the uri
+            if h.name.eq_ignore_ascii_case("Host") {
+                continue;
+            }
+
+            if websocket {
+                // don't send these headers
+                if h.name.eq_ignore_ascii_case("Connection")
+                    || h.name.eq_ignore_ascii_case("Upgrade")
+                    || h.name.eq_ignore_ascii_case("Sec-WebSocket-Version")
+                    || h.name.eq_ignore_ascii_case("Sec-WebSocket-Key")
+                {
+                    continue;
+                }
+            } else {
+                if h.name.eq_ignore_ascii_case("Content-Length") {
+                    let s = str::from_utf8(h.value)?;
+
+                    let clen: usize = match s.parse() {
+                        Ok(clen) => clen,
+                        Err(_) => return Err(io::Error::from(io::ErrorKind::InvalidInput).into()),
+                    };
+
+                    body_size = http1::BodySize::Known(clen);
+                }
+            }
+
+            if headers.remaining_capacity() == 0 {
+                return Err(Error::BadMessage);
+            }
+
+            headers.push(http1::Header {
+                name: h.name,
+                value: h.value,
+            });
+        }
+
+        let method = if websocket { "GET" } else { rdata.method };
+
+        let path = &uri[url::Position::BeforePath..];
+
+        if body_size == http1::BodySize::Unknown && !rdata.more {
+            body_size = http1::BodySize::Known(rdata.body.len());
+        }
+
+        let mut overflow = None;
+
+        let req_header = if websocket {
+            req.prepare_header(method, path, &headers, body_size, websocket, &[], true)?
+        } else {
+            let (initial_body, end) = if rdata.body.len() > recv_buf_size {
+                let body = &rdata.body[..recv_buf_size];
+
+                let mut remainder = Buffer::new(rdata.body.len() - body.len());
+                remainder.write_all(&rdata.body[body.len()..])?;
+
+                debug!(
+                    "initial={} overflow={} end={}",
+                    body.len(),
+                    remainder.read_avail(),
+                    !rdata.more
+                );
+
+                overflow = Some(Overflow {
+                    buf: remainder,
+                    end: !rdata.more,
+                });
+
+                (body, false)
+            } else {
+                (rdata.body, !rdata.more)
+            };
+
+            req.prepare_header(
+                method,
+                path,
+                &headers,
+                body_size,
+                websocket,
+                initial_body,
+                end,
+            )?
+        };
+
+        let credits = rdata.credits;
+
+        drop(headers);
+        drop(zreq);
+
+        (credits, req_header, ws_key, overflow)
+    };
+
+    // ack request
+
+    // ABR: discard_while
+    server_discard_while(zreceiver, pin!(async { Ok(zsess_out.check_send().await) })).await?;
+
+    // TODO: set cid
+
+    zsess_out.try_send_msg(zhttppacket::Response::new_keep_alive(b"", &[]))?;
+
+    let mut zsess_in = ZhttpServerStreamSessionIn::new(
+        log_id,
+        id,
+        credits,
+        zreceiver,
+        shared,
+        refresh_session_timeout,
+    );
+
+    // send request header
+
+    let req_body = {
+        let mut send_header = pin!(req_header.send());
+
+        loop {
+            let result = select_2(send_header.as_mut(), pin!(zsess_in.recv_msg())).await;
+
+            match result {
+                Select2::R1(ret) => break ret?,
+                Select2::R2(ret) => {
+                    let r = ret?;
+
+                    let zreq_ref = r.get().get();
+
+                    // ABR: handle_other
+                    server_handle_other(zreq_ref, &mut zsess_in, &zsess_out).await?;
+                }
+            }
+        }
+    };
+
+    refresh_stream_timeout();
+
+    // send request body
+
+    let resp = server_stream_send_body(
+        refresh_stream_timeout,
+        req_body,
+        overflow,
+        recv_buf_size,
+        &mut zsess_in,
+        &zsess_out,
+    )
+    .await?;
+
+    // receive response header
+
+    let resp_body = {
+        let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+
+        let (resp, resp_body) = resp.recv_header(&mut scratch).await?;
+
+        {
+            let resp = resp.get();
+
+            debug!(
+                "client-conn {}: response: {} {}",
+                log_id, resp.code, resp.reason
+            );
+
+            loop {
+                let result =
+                    select_2(pin!(zsess_out.check_send()), pin!(zsess_in.recv_msg())).await;
+
+                match result {
+                    Select2::R1(()) => break,
+                    Select2::R2(ret) => {
+                        let r = ret?;
+
+                        let zreq_ref = r.get().get();
+
+                        // ABR: handle_other
+                        server_handle_other(zreq_ref, &mut zsess_in, &zsess_out).await?;
+                    }
+                }
+            }
+
+            let mut zheaders = ArrayVec::<zhttppacket::Header, HEADERS_MAX>::new();
+
+            let mut ws_accept = None;
+
+            for h in resp.headers {
+                if ws_key.is_some() {
+                    if h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept") {
+                        ws_accept = Some(h.value);
+                    }
+                }
+
+                zheaders.push(zhttppacket::Header {
+                    name: h.name,
+                    value: h.value,
+                });
+            }
+
+            if let Some(ws_key) = &ws_key {
+                if resp.code == 101 {
+                    if validate_ws_response(&resp, ws_key.as_bytes(), ws_accept).is_err() {
+                        return Err(Error::InvalidWebSocketRequest);
+                    }
+                } else {
+                    // websocket request rejected
+
+                    // we need to allocate to collect the response body,
+                    // since buf1 holds bytes read from the socket, and
+                    // resp is using buf2's inner buffer
+                    let mut body_buf = Buffer::new(send_buf_size);
+
+                    // receive response body
+
+                    loop {
+                        match resp_body.try_recv(body_buf.write_buf())? {
+                            RecvStatus::Complete(_, written) => {
+                                body_buf.write_commit(written);
+                                break;
+                            }
+                            RecvStatus::Read((), written) => {
+                                body_buf.write_commit(written);
+
+                                if written == 0 {
+                                    resp_body.add_to_buffer().await?;
+                                }
+                            }
+                        }
+                    }
+
+                    let edata = zhttppacket::ResponseErrorData {
+                        condition: "rejected",
+                        rejected_info: Some(zhttppacket::RejectedInfo {
+                            code: resp.code,
+                            reason: resp.reason,
+                            headers: &zheaders,
+                            body: body_buf.read_buf(),
+                        }),
+                    };
+
+                    let zresp = zhttppacket::Response::new_error(b"", &[], edata);
+
+                    // check_send just finished, so this should succeed
+                    zsess_out.try_send_msg(zresp)?;
+
+                    return Ok(false);
+                }
+            }
+
+            // for websockets, provide credits when sending response to handler
+            let credits = if ws_key.is_some() {
+                recv_buf_size as u32
+            } else {
+                0
+            };
+
+            let rdata = zhttppacket::ResponseData {
+                credits,
+                more: true,
+                code: resp.code,
+                reason: resp.reason,
+                headers: &zheaders,
+                content_type: None,
+                body: b"",
+            };
+
+            let zresp = zhttppacket::Response::new_data(b"", &[], rdata);
+
+            // check_send just finished, so this should succeed
+            zsess_out.try_send_msg(zresp)?;
+        }
+
+        let resp_body = resp_body.discard_header(resp)?;
+
+        resp_body
+    };
+
+    if ws_key.is_some() {
+        drop(resp_body);
+
+        // handle as websocket connection
+
+        server_stream_websocket(
+            log_id,
+            stream,
+            buf1,
+            buf2,
+            messages_max,
+            tmp_buf,
+            refresh_stream_timeout,
+            None,
+            &mut zsess_in,
+            &zsess_out,
+        )
+        .await?;
+
+        Ok(false)
+    } else {
+        // receive response body
+
+        let finished = server_stream_recv_body(
+            tmp_buf,
+            refresh_stream_timeout,
+            resp_body,
+            &mut zsess_in,
+            &zsess_out,
+        )
+        .await?;
+
+        Ok(finished.inner.persistent)
+    }
+}
+
+async fn client_stream_connect<R1, R2>(
+    log_id: &str,
+    id: &[u8],
+    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    buf1: &mut RingBuffer,
+    buf2: &mut RingBuffer,
+    messages_max: usize,
+    packet_buf: &RefCell<Vec<u8>>,
+    tmp_buf: &RefCell<Vec<u8>>,
+    deny: &[IpNet],
+    instance_id: &str,
+    resolver: &resolver::Resolver,
+    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zsender: &AsyncLocalSender<zmq::Message>,
+    shared: &StreamSharedData,
+    refresh_stream_timeout: &R1,
+    refresh_session_timeout: &R2,
+) -> Result<(), Error>
+where
+    R1: Fn(),
+    R2: Fn(),
+{
+    let zreq_ref = zreq.get().get();
+
+    // assign address so we can send replies
+    let addr: ArrayVec<u8, 64> = match ArrayVec::try_from(zreq_ref.from) {
+        Ok(v) => v,
+        Err(_) => return Err(Error::BadMessage),
+    };
+
+    shared.set_to_addr(Some(addr));
+
+    let rdata = match &zreq_ref.ptype {
+        zhttppacket::RequestPacket::Data(data) => data,
+        _ => return Err(Error::BadMessage),
+    };
+
+    let uri = match url::Url::parse(rdata.uri) {
+        Ok(uri) => uri,
+        Err(_) => return Err(Error::BadMessage),
+    };
+
+    // must be an http or websocket url
+    if !["http", "https", "ws", "wss"].contains(&uri.scheme()) {
+        return Err(Error::BadMessage);
+    }
+
+    // http requests must have a method
+    if ["http", "https"].contains(&uri.scheme()) && rdata.method.is_empty() {
+        return Err(Error::BadMessage);
+    }
+
+    debug!(
+        "client-conn {}: request: {} {}",
+        log_id, rdata.method, rdata.uri,
+    );
+
+    let deny = if rdata.ignore_policies { &[] } else { deny };
+
+    // ABR: discard_while
+    let mut stream = server_discard_while(
+        zreceiver,
+        pin!(client_connect(log_id, rdata, &uri, resolver, deny)),
+    )
+    .await?;
+
+    let _persistent = match &mut stream {
+        Stream::Plain(stream) => {
+            client_stream_handler(
+                log_id,
+                id,
+                stream,
+                zreq,
+                buf1,
+                buf2,
+                messages_max,
+                packet_buf,
+                tmp_buf,
+                instance_id,
+                zreceiver,
+                zsender,
+                shared,
+                refresh_stream_timeout,
+                refresh_session_timeout,
+            )
+            .await?
+        }
+        Stream::Tls(stream) => {
+            client_stream_handler(
+                log_id,
+                id,
+                stream,
+                zreq,
+                buf1,
+                buf2,
+                messages_max,
+                packet_buf,
+                tmp_buf,
+                instance_id,
+                zreceiver,
+                zsender,
+                shared,
+                refresh_stream_timeout,
+                refresh_session_timeout,
+            )
+            .await?
+        }
+    };
+
+    Ok(())
+}
+
+async fn client_stream_connection_inner(
+    token: CancellationToken,
+    log_id: &str,
+    id: &[u8],
+    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    buffer_size: usize,
+    messages_max: usize,
+    rb_tmp: &Rc<TmpBuffer>,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    tmp_buf: Rc<RefCell<Vec<u8>>>,
+    stream_timeout: Duration,
+    deny: &[IpNet],
+    instance_id: &str,
+    resolver: &resolver::Resolver,
+    zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zsender: AsyncLocalSender<zmq::Message>,
+    shared: arena::Rc<StreamSharedData>,
+) -> Result<(), Error> {
+    let reactor = Reactor::current().unwrap();
+
+    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
+
+    let stream_timeout_time = RefCell::new(reactor.now() + stream_timeout);
+    let session_timeout_time = RefCell::new(reactor.now() + ZHTTP_SESSION_TIMEOUT);
+
+    let soonest_time = || {
+        cmp::min(
+            *stream_timeout_time.borrow(),
+            *session_timeout_time.borrow(),
+        )
+    };
+
+    let timeout = Timeout::new(soonest_time());
+
+    let refresh_stream_timeout = || {
+        stream_timeout_time.replace(reactor.now() + stream_timeout);
+        timeout.set_deadline(soonest_time());
+    };
+
+    let refresh_session_timeout = || {
+        session_timeout_time.replace(reactor.now() + ZHTTP_SESSION_TIMEOUT);
+        timeout.set_deadline(soonest_time());
+    };
+
+    let handler = pin!(client_stream_connect(
+        log_id,
+        id,
+        zreq,
+        &mut buf1,
+        &mut buf2,
+        messages_max,
+        &packet_buf,
+        &tmp_buf,
+        deny,
+        instance_id,
+        resolver,
+        &zreceiver,
+        &zsender,
+        shared.get(),
+        &refresh_stream_timeout,
+        &refresh_session_timeout,
+    ));
+
+    let ret = match select_3(handler, timeout.elapsed(), token.cancelled()).await {
+        Select3::R1(ret) => ret,
+        Select3::R2(_) => return Err(Error::Timeout),
+        Select3::R3(_) => return Err(Error::Stopped),
+    };
+
+    match ret {
+        Ok(()) => {}
+        Err(e) => {
+            let shared = shared.get();
+
+            let msg = if let Some(addr) = &shared.to_addr().get() {
+                let handler_caused = match &e {
+                    Error::BadMessage | Error::HandlerError | Error::HandlerCancel => true,
+                    _ => false,
+                };
+
+                let mut zresp = if handler_caused {
+                    zhttppacket::Response::new_cancel(b"", &[])
+                } else {
+                    zhttppacket::Response::new_error(
+                        b"",
+                        &[],
+                        zhttppacket::ResponseErrorData {
+                            condition: e.to_condition(),
+                            rejected_info: None,
+                        },
+                    )
+                };
+
+                let ids = [zhttppacket::Id {
+                    id,
+                    seq: Some(shared.out_seq()),
+                }];
+
+                zresp.from = instance_id.as_bytes();
+                zresp.ids = &ids;
+                zresp.multi = true;
+
+                let packet_buf = &mut *packet_buf.borrow_mut();
+
+                let msg = make_zhttp_response(addr, zresp, packet_buf)?;
+
+                Some(msg)
+            } else {
+                None
+            };
+
+            if let Some(msg) = msg {
+                // best effort
+                let _ = zsender.try_send(msg);
+
+                shared.inc_out_seq();
+            }
+
+            return Err(e);
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn client_stream_connection(
+    token: CancellationToken,
+    log_id: &str,
+    id: &[u8],
+    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    buffer_size: usize,
+    messages_max: usize,
+    rb_tmp: &Rc<TmpBuffer>,
+    packet_buf: Rc<RefCell<Vec<u8>>>,
+    tmp_buf: Rc<RefCell<Vec<u8>>>,
+    timeout: Duration,
+    _allow_compression: bool,
+    deny: &[IpNet],
+    instance_id: &str,
+    resolver: &resolver::Resolver,
+    zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zsender: AsyncLocalSender<zmq::Message>,
+    shared: arena::Rc<StreamSharedData>,
+) {
+    match client_stream_connection_inner(
+        token,
+        log_id,
+        id,
+        zreq,
+        buffer_size,
+        messages_max,
+        rb_tmp,
+        packet_buf,
+        tmp_buf,
+        timeout,
+        deny,
+        instance_id,
+        resolver,
+        zreceiver,
+        zsender,
+        shared,
+    )
+    .await
+    {
+        Ok(()) => debug!("client-conn {}: finished", log_id),
+        Err(e) => debug!("client-conn {}: process error: {:?}", log_id, e),
+    }
+}
+
 pub mod testutil {
     use super::*;
     use crate::buffer::TmpBuffer;
@@ -3255,7 +5829,6 @@ pub mod testutil {
     use std::fmt;
     use std::future::Future;
     use std::io::Read;
-    use std::mem;
     use std::rc::Rc;
     use std::sync::Arc;
     use std::task::{Context, Poll, Waker};

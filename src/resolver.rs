@@ -28,7 +28,7 @@ use std::thread;
 
 pub const REGISTRATIONS_PER_QUERY: usize = 1;
 
-const ADDRS_MAX: usize = 16;
+pub const ADDRS_MAX: usize = 16;
 
 pub type Hostname = ArrayString<255>;
 pub type Addrs = ArrayVec<IpAddr, ADDRS_MAX>;
