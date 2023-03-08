@@ -1714,16 +1714,16 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
             }
         };
 
-        let zresp = zresp.get().get();
-
-        let rdata = match &zresp.ptype {
-            zhttppacket::ResponsePacket::Data(rdata) => rdata,
-            _ => unreachable!(), // we confirmed the type above
-        };
-
-        // send response header
-
         let handler = {
+            let zresp = zresp.get().get();
+
+            let rdata = match &zresp.ptype {
+                zhttppacket::ResponsePacket::Data(rdata) => rdata,
+                _ => unreachable!(), // we confirmed the type above
+            };
+
+            // send response header
+
             let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
             let mut headers_len = 0;
 
@@ -1742,22 +1742,24 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
             let headers = &headers[..headers_len];
 
-            handler.prepare_response(
+            let handler = handler.prepare_response(
                 rdata.code,
                 rdata.reason,
                 headers,
                 http1::BodySize::Known(rdata.body.len()),
-            )?
+            )?;
+
+            body_buf.write_all(&rdata.body)?;
+
+            handler
         };
+
+        drop(zresp);
 
         // ABR: discard_while
         discard_while(zreceiver, pin!(handler.send_header())).await?;
 
-        let handler = handler.send_header_done();
-
-        body_buf.write_all(&rdata.body)?;
-
-        (handler, false)
+        (handler.send_header_done(), false)
     } else {
         // handle as websocket
 
