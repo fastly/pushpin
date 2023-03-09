@@ -805,7 +805,7 @@ where
         assert!(masked >= read);
         masked -= read;
 
-        let mut bufs_arr = MaybeUninit::uninit();
+        let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX]>::uninit();
         let bufs = src.get_mut_vectored(&mut bufs_arr).limit(masked);
 
         let mut count = 0;
@@ -941,7 +941,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         &self,
         writer: &mut W,
         opcode: u8,
-        src: &[&[u8]],
+        src: &mut [&mut [u8]],
         fin: bool,
         rsv1: bool,
         mask: Option<[u8; 4]>,
@@ -974,25 +974,72 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
         let total = header.len() + src_len;
 
-        let mut out_arr = [&b""[..]; VECTORED_MAX];
-        let mut out_arr_len = 0;
+        let orig_frame_payload_sent = if frame.sent >= header.len() {
+            frame.sent - header.len()
+        } else {
+            0
+        };
 
-        out_arr[0] = header;
-        out_arr_len += 1;
+        if let Some(mask) = mask {
+            // to avoid copying, we apply the mask directly to the input
+            // buffer and then revert it on any bytes that weren't written.
+            // in the best case, all bytes will be written with nothing to
+            // revert. in the worst case, nothing will be written and all
+            // the bytes will be reverted
 
-        for buf in src.iter() {
-            out_arr[out_arr_len] = buf;
-            out_arr_len += 1;
+            let mut count = 0;
+
+            for buf in src.iter_mut() {
+                apply_mask(*buf, mask, orig_frame_payload_sent + count);
+                count += buf.len();
+            }
         }
 
-        let out = &out_arr[..out_arr_len];
-        let size = write_vectored_offset(writer, out, frame.sent)?;
+        let size = {
+            let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
 
-        if log_enabled!(log::Level::Trace) {
-            trace!("OUT sock {}", Bufs::new(out));
-        }
+            out.push(header);
+
+            for buf in src.iter() {
+                out.push(*buf);
+            }
+
+            let size = write_vectored_offset(writer, out.as_slice(), frame.sent)?;
+
+            if log_enabled!(log::Level::Trace) {
+                trace!("OUT sock {}", Bufs::new(out.as_slice()));
+            }
+
+            size
+        };
 
         frame.sent += size;
+
+        let frame_payload_sent = if frame.sent >= header.len() {
+            frame.sent - header.len()
+        } else {
+            0
+        };
+
+        if let Some(mask) = mask {
+            // undo the mask on any unwritten bytes
+
+            let mut skip = frame_payload_sent - orig_frame_payload_sent;
+            let mut count = 0;
+
+            for buf in src.iter_mut() {
+                if skip >= buf.len() {
+                    skip -= buf.len();
+                    continue;
+                }
+
+                let buf = &mut buf[skip..];
+                skip = 0;
+
+                apply_mask(buf, mask, frame_payload_sent + count);
+                count += buf.len();
+            }
+        }
 
         if frame.sent < total {
             return Ok(0);
@@ -1086,7 +1133,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
     pub fn send_message_content<W: Write>(
         &self,
         writer: &mut W,
-        src: &[&[u8]],
+        src: &mut [&mut [u8]],
         end: bool,
     ) -> Result<(usize, bool), Error> {
         assert!(self.state.get() == State::Connected || self.state.get() == State::PeerClosed);
@@ -1153,8 +1200,8 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
                 if state.enc_buf.read_avail() > 0 || msg.enc_output_end {
                     // send_frame adds 1 element to vector
-                    let mut bufs_arr = [&b""[..]; VECTORED_MAX - 1];
-                    let bufs = state.enc_buf.get_ref_vectored(&mut bufs_arr);
+                    let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
+                    let bufs = state.enc_buf.get_mut_vectored(&mut bufs_arr);
 
                     let size = self.send_frame(
                         writer,
@@ -1370,7 +1417,7 @@ pub mod testutil {
 
     pub struct BenchSendMessage {
         use_deflate: bool,
-        content: Vec<u8>,
+        content: RefCell<Vec<u8>>,
     }
 
     impl BenchSendMessage {
@@ -1382,7 +1429,7 @@ pub mod testutil {
 
             Self {
                 use_deflate,
-                content,
+                content: RefCell::new(content),
             }
         }
 
@@ -1406,7 +1453,7 @@ pub mod testutil {
 
         pub fn run(&self, args: &mut BenchSendMessageArgs) {
             let p = &mut args.protocol;
-            let src = &self.content;
+            let src = &mut *self.content.borrow_mut();
             let dest = &mut args.dest;
 
             p.send_message_start(OPCODE_TEXT, None);
@@ -1415,7 +1462,7 @@ pub mod testutil {
 
             loop {
                 let (size, done) = p
-                    .send_message_content(dest, &[&src[src_pos..]], true)
+                    .send_message_content(dest, &mut [&mut src[src_pos..]], true)
                     .unwrap();
 
                 src_pos += size;
@@ -1463,7 +1510,9 @@ pub mod testutil {
 
             let mut msg = Vec::new();
             p.send_message_start(OPCODE_TEXT, None);
-            let (size, done) = p.send_message_content(&mut msg, &[&content], true).unwrap();
+            let (size, done) = p
+                .send_message_content(&mut msg, &mut [&mut content], true)
+                .unwrap();
             assert_eq!(size, content.len());
             assert_eq!(done, true);
 
@@ -1562,6 +1611,10 @@ mod tests {
         fn flush(&mut self) -> Result<(), io::Error> {
             Ok(())
         }
+    }
+
+    fn make_buf<const N: usize>(s: &[u8; N]) -> ArrayVec<u8, N> {
+        ArrayVec::from(*s)
     }
 
     #[test]
@@ -1724,7 +1777,14 @@ mod tests {
         let mut writer = MyWriter::new();
 
         let size = p
-            .send_frame(&mut writer, OPCODE_TEXT, &[b"hello"], true, false, None)
+            .send_frame(
+                &mut writer,
+                OPCODE_TEXT,
+                &mut [&mut make_buf(b"hello")],
+                true,
+                false,
+                None,
+            )
             .unwrap();
 
         assert_eq!(size, 5);
@@ -1743,7 +1803,11 @@ mod tests {
         p.send_message_start(OPCODE_TEXT, None);
 
         let (size, done) = p
-            .send_message_content(&mut writer, &[b"hel", b"lo"], true)
+            .send_message_content(
+                &mut writer,
+                &mut [&mut make_buf(b"hel"), &mut make_buf(b"lo")],
+                true,
+            )
             .unwrap();
         assert_eq!(size, 5);
         assert_eq!(done, true);
@@ -1754,7 +1818,7 @@ mod tests {
         p.send_message_start(OPCODE_TEXT, None);
 
         let (size, done) = p
-            .send_message_content(&mut writer, &[b"hello"], false)
+            .send_message_content(&mut writer, &mut [&mut make_buf(b"hello")], false)
             .unwrap();
         assert_eq!(size, 5);
         assert_eq!(done, false);
@@ -1763,7 +1827,7 @@ mod tests {
 
         writer.data.clear();
 
-        let (size, done) = p.send_message_content(&mut writer, &[b""], true).unwrap();
+        let (size, done) = p.send_message_content(&mut writer, &mut [], true).unwrap();
         assert_eq!(size, 0);
         assert_eq!(done, true);
         assert_eq!(writer.data, b"\x80\x00");
@@ -1773,7 +1837,7 @@ mod tests {
         p.send_message_start(OPCODE_PING, None);
 
         let (size, done) = p
-            .send_message_content(&mut writer, &[b"hello"], true)
+            .send_message_content(&mut writer, &mut [&mut make_buf(b"hello")], true)
             .unwrap();
         assert_eq!(size, 5);
         assert_eq!(done, true);
@@ -1783,7 +1847,7 @@ mod tests {
         writer.data.clear();
         p.send_message_start(OPCODE_PING, None);
 
-        let r = p.send_message_content(&mut writer, &[b"hello"], false);
+        let r = p.send_message_content(&mut writer, &mut [&mut make_buf(b"hello")], false);
         assert!(r.is_err());
     }
 
@@ -1930,7 +1994,11 @@ mod tests {
         p.send_message_start(OPCODE_TEXT, None);
 
         let (size, done) = p
-            .send_message_content(&mut writer, &[b"Hel", b"lo"], true)
+            .send_message_content(
+                &mut writer,
+                &mut [&mut make_buf(b"Hel"), &mut make_buf(b"lo")],
+                true,
+            )
             .unwrap();
         assert_eq!(size, 5);
         assert_eq!(done, true);
@@ -1973,7 +2041,7 @@ mod tests {
         p.send_message_start(OPCODE_TEXT, None);
 
         let (size, done) = p
-            .send_message_content(&mut writer, &[b"hello"], false)
+            .send_message_content(&mut writer, &mut [&mut make_buf(b"hello")], false)
             .unwrap();
         assert_eq!(size, 5);
         assert_eq!(done, false);
@@ -1992,14 +2060,14 @@ mod tests {
         }
 
         // send flushed data as first frame
-        let (size, done) = p.send_message_content(&mut writer, &[], false).unwrap();
+        let (size, done) = p.send_message_content(&mut writer, &mut [], false).unwrap();
         assert_eq!(size, 0);
         assert_eq!(done, false);
         assert_eq!(writer.data.is_empty(), false);
 
         // send second frame
         let (size, done) = p
-            .send_message_content(&mut writer, &[b" world"], true)
+            .send_message_content(&mut writer, &mut [&mut make_buf(b" world")], true)
             .unwrap();
         assert_eq!(size, 6);
         assert_eq!(done, true);

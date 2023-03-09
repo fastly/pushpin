@@ -72,9 +72,9 @@ pub trait RefRead {
         &mut bufs[..1]
     }
 
-    fn get_mut_vectored<'data, 'bufs>(
+    fn get_mut_vectored<'data, 'bufs, const N: usize>(
         &'data mut self,
-        bufs: &'bufs mut MaybeUninit<[&'data mut [u8]; VECTORED_MAX]>,
+        bufs: &'bufs mut MaybeUninit<[&'data mut [u8]; N]>,
     ) -> &'bufs mut [&'data mut [u8]] {
         let bufs = unsafe { bufs.assume_init_mut() };
 
@@ -628,9 +628,9 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RefRead for BaseRingBuffer<T> {
         }
     }
 
-    fn get_mut_vectored<'data, 'bufs>(
+    fn get_mut_vectored<'data, 'bufs, const N: usize>(
         &'data mut self,
-        bufs: &'bufs mut MaybeUninit<[&'data mut [u8]; VECTORED_MAX]>,
+        bufs: &'bufs mut MaybeUninit<[&'data mut [u8]; N]>,
     ) -> &'bufs mut [&'data mut [u8]] {
         let bufs = unsafe { bufs.assume_init_mut() };
 

@@ -32,7 +32,7 @@
 
 use crate::arena;
 use crate::buffer::{
-    BaseRingBuffer, Buffer, LimitBufs, RefRead, RingBuffer, SliceRingBuffer, TmpBuffer,
+    BaseRingBuffer, Buffer, LimitBufsMut, RefRead, RingBuffer, SliceRingBuffer, TmpBuffer,
     VECTORED_MAX,
 };
 use crate::future::{
@@ -189,6 +189,15 @@ fn validate_ws_response(
     }
 
     Err(())
+}
+
+fn gen_mask() -> [u8; 4] {
+    let mut out = [0; 4];
+    for b in out.iter_mut() {
+        *b = (random() % (256 as u64)) as u8;
+    }
+
+    out
 }
 
 fn write_ws_ext_header_value<W: Write>(
@@ -1288,8 +1297,8 @@ impl<'a, 'b, W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
         }
 
         // protocol.send_message_content may add 1 element to vector
-        let mut buf_arr = [&b""[..]; VECTORED_MAX - 1];
-        let bufs = w.buf.get_ref_vectored(&mut buf_arr).limit(f.avail);
+        let mut buf_arr = mem::MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
+        let bufs = w.buf.get_mut_vectored(&mut buf_arr).limit(f.avail);
 
         match f.protocol.send_message_content(
             &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -3236,7 +3245,7 @@ where
         if do_send && send_content.is_none() {
             if let Some((mtype, avail, done)) = ws_in_tracker.current() {
                 if !handler.is_sending_message() {
-                    handler.send_message_start(mtype, None);
+                    handler.send_message_start(mtype, Some(gen_mask()));
                 }
 
                 if avail > 0 || done {
@@ -3475,7 +3484,7 @@ where
                                 if send_content.is_none() {
                                     if let Some((mtype, avail, done)) = ws_in_tracker.current() {
                                         if !handler.is_sending_message() {
-                                            handler.send_message_start(mtype, None);
+                                            handler.send_message_start(mtype, Some(gen_mask()));
                                         }
 
                                         if avail > 0 || done {
