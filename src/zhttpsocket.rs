@@ -136,8 +136,11 @@ impl Packet<'_> {
             }
         }
 
-        // only take content from data packets (ptype empty) or rejections
-        if ptype.is_empty() || (ptype == b"error" && condition == Some(b"rejected")) {
+        // only take content from data (ptype empty), close, or rejection packets
+        if ptype.is_empty()
+            || ptype == b"close"
+            || (ptype == b"error" && condition == Some(b"rejected"))
+        {
             if let Some(frame) = content {
                 write!(f, "{}", frame)?;
                 return Ok(Some(frame.data.len()));
