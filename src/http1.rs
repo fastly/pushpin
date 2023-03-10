@@ -1352,6 +1352,12 @@ impl ClientRequest {
         body_size: BodySize,
         websocket: bool,
     ) -> Result<ClientRequestBody, Error> {
+        let body_size = if websocket {
+            BodySize::NoBody
+        } else {
+            body_size
+        };
+
         let chunked = body_size == BodySize::Unknown;
 
         write!(writer, "{} {} HTTP/1.1\r\n", method, uri)?;
@@ -2296,7 +2302,7 @@ mod tests {
     }
 
     #[test]
-    fn test_recv_request() {
+    fn test_recv_request_header() {
         struct Test<'buf, 'headers> {
             name: &'static str,
             data: &'buf str,
@@ -2577,7 +2583,7 @@ mod tests {
     }
 
     #[test]
-    fn test_recv_body() {
+    fn test_recv_request_body() {
         struct Test<'buf, 'headers> {
             name: &'static str,
             data: &'buf str,
@@ -2895,7 +2901,7 @@ mod tests {
     }
 
     #[test]
-    fn test_send_response() {
+    fn test_send_response_header() {
         struct Test<'buf, 'headers> {
             name: &'static str,
             write_space: usize,
@@ -3358,7 +3364,7 @@ mod tests {
     }
 
     #[test]
-    fn test_send_body() {
+    fn test_send_response_body() {
         struct Test {
             name: &'static str,
             write_space: usize,
@@ -3650,7 +3656,7 @@ mod tests {
     }
 
     #[test]
-    fn test_req() {
+    fn test_server_req() {
         let data = "GET /foo HTTP/1.1\r\nHost: example.com\r\n\r\n".as_bytes();
 
         let mut p = ServerProtocol::new();
@@ -3736,7 +3742,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resp() {
+    fn test_server_resp() {
         let data = "GET /foo HTTP/1.1\r\nHost: example.com\r\n\r\n";
 
         let mut p = ServerProtocol::new();
@@ -3816,7 +3822,7 @@ mod tests {
     }
 
     #[test]
-    fn test_persistent() {
+    fn test_server_persistent() {
         // http 1.0 without keep alive
         let data = concat!("GET /foo HTTP/1.0\r\n", "Host: example.com\r\n", "\r\n").as_bytes();
 
@@ -3860,6 +3866,1194 @@ mod tests {
         let req = read_req(&mut p, data, 2);
 
         assert_eq!(req.persistent, true);
+    }
+
+    #[test]
+    fn test_send_request_header() {
+        struct Test<'buf, 'headers> {
+            name: &'static str,
+            write_space: usize,
+            method: &'static str,
+            uri: &'static str,
+            headers: &'headers [Header<'buf>],
+            body_size: BodySize,
+            websocket: bool,
+            result: Result<(), Error>,
+            body_size_after: BodySize,
+            chunked: bool,
+            written: &'static str,
+        }
+
+        let tests = [
+            Test {
+                name: "cant-write",
+                write_space: 2,
+                method: "GET",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "",
+            },
+            Test {
+                name: "cant-write-request-line",
+                write_space: 12,
+                method: "GET",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "GET /foo",
+            },
+            Test {
+                name: "cant-write-header-name",
+                write_space: 22,
+                method: "GET",
+                uri: "/foo",
+                headers: &[Header {
+                    name: "Foo",
+                    value: b"Bar",
+                }],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "GET /foo HTTP/1.1\r\nFoo",
+            },
+            Test {
+                name: "cant-write-header-value",
+                write_space: 26,
+                method: "GET",
+                uri: "/foo",
+                headers: &[Header {
+                    name: "Foo",
+                    value: b"Bar",
+                }],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "GET /foo HTTP/1.1\r\nFoo: ",
+            },
+            Test {
+                name: "cant-write-header-eol",
+                write_space: 28,
+                method: "GET",
+                uri: "/foo",
+                headers: &[Header {
+                    name: "Foo",
+                    value: b"Bar",
+                }],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "GET /foo HTTP/1.1\r\nFoo: Bar",
+            },
+            Test {
+                name: "cant-write-transfer-encoding",
+                write_space: 27,
+                method: "POST",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::Unknown,
+                websocket: false,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                body_size_after: BodySize::Unknown,
+                chunked: false,
+                written: "POST /foo HTTP/1.1\r\n",
+            },
+            Test {
+                name: "cant-write-content-length",
+                write_space: 27,
+                method: "POST",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "POST /foo HTTP/1.1\r\n",
+            },
+            Test {
+                name: "cant-write-eol",
+                write_space: 20,
+                method: "POST",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::Unknown,
+                websocket: false,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                body_size_after: BodySize::Unknown,
+                chunked: false,
+                written: "POST /foo HTTP/1.1\r\n",
+            },
+            Test {
+                name: "exclude-headers",
+                write_space: 1024,
+                method: "POST",
+                uri: "/foo",
+                headers: &[
+                    Header {
+                        name: "Connection",
+                        value: b"X",
+                    },
+                    Header {
+                        name: "Foo",
+                        value: b"Bar",
+                    },
+                    Header {
+                        name: "Content-Length",
+                        value: b"X",
+                    },
+                    Header {
+                        name: "Transfer-Encoding",
+                        value: b"X",
+                    },
+                ],
+                body_size: BodySize::Known(0),
+                websocket: false,
+                result: Ok(()),
+                body_size_after: BodySize::Known(0),
+                chunked: false,
+                written: "POST /foo HTTP/1.1\r\nFoo: Bar\r\nContent-Length: 0\r\n\r\n",
+            },
+            Test {
+                name: "no-body",
+                write_space: 1024,
+                method: "GET",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::NoBody,
+                websocket: false,
+                result: Ok(()),
+                body_size_after: BodySize::NoBody,
+                chunked: false,
+                written: "GET /foo HTTP/1.1\r\n\r\n",
+            },
+            Test {
+                name: "len",
+                write_space: 1024,
+                method: "POST",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::Known(42),
+                websocket: false,
+                result: Ok(()),
+                body_size_after: BodySize::Known(42),
+                chunked: false,
+                written: "POST /foo HTTP/1.1\r\nContent-Length: 42\r\n\r\n",
+            },
+            Test {
+                name: "no-len",
+                write_space: 1024,
+                method: "POST",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::Unknown,
+                websocket: false,
+                result: Ok(()),
+                body_size_after: BodySize::Unknown,
+                chunked: true,
+                written: "POST /foo HTTP/1.1\r\nConnection: Transfer-Encoding\r\nTransfer-Encoding: chunked\r\n\r\n",
+            },
+            Test {
+                name: "force-no-body",
+                write_space: 1024,
+                method: "GET",
+                uri: "/foo",
+                headers: &[],
+                body_size: BodySize::Known(42),
+                websocket: true,
+                result: Ok(()),
+                body_size_after: BodySize::NoBody,
+                chunked: false,
+                written: "GET /foo HTTP/1.1\r\n\r\n",
+            },
+        ];
+
+        for test in tests.iter() {
+            let req = ClientRequest::new();
+
+            let mut w = MyBuffer::new(test.write_space, false);
+
+            let r = req.send_header(
+                &mut w,
+                test.method,
+                test.uri,
+                test.headers,
+                test.body_size,
+                test.websocket,
+            );
+
+            match r {
+                Ok(req_body) => {
+                    match &test.result {
+                        Ok(_) => {}
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(
+                        req_body.state.body_size, test.body_size_after,
+                        "test={}",
+                        test.name
+                    );
+                    assert_eq!(req_body.state.chunked, test.chunked, "test={}", test.name);
+                }
+                Err(e) => {
+                    let expected = match &test.result {
+                        Err(e) => e,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(
+                        mem::discriminant(&e),
+                        mem::discriminant(expected),
+                        "test={}",
+                        test.name
+                    );
+                }
+            }
+
+            assert_eq!(
+                str::from_utf8(&w.data).unwrap(),
+                test.written,
+                "test={}",
+                test.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_send_request_body() {
+        struct Test {
+            name: &'static str,
+            write_space: usize,
+            src: &'static str,
+            end: bool,
+            headers: Option<&'static [u8]>,
+            body_size: BodySize,
+            chunked: bool,
+            sending_chunk: Option<Chunk>,
+            result: Result<(bool, usize), Error>,
+            sending_chunk_after: Option<Chunk>,
+            written: &'static str,
+        }
+
+        let tests = [
+            Test {
+                name: "no-body",
+                write_space: 1024,
+                src: "hello",
+                end: false,
+                headers: None,
+                body_size: BodySize::NoBody,
+                chunked: false,
+                sending_chunk: None,
+                result: Ok((false, 5)),
+                sending_chunk_after: None,
+                written: "",
+            },
+            Test {
+                name: "no-body-end",
+                write_space: 1024,
+                src: "",
+                end: true,
+                headers: None,
+                body_size: BodySize::NoBody,
+                chunked: false,
+                sending_chunk: None,
+                result: Ok((true, 0)),
+                sending_chunk_after: None,
+                written: "",
+            },
+            Test {
+                name: "non-chunked-partial",
+                write_space: 3,
+                src: "hello",
+                end: false,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: false,
+                sending_chunk: None,
+                result: Ok((false, 3)),
+                sending_chunk_after: None,
+                written: "hel",
+            },
+            Test {
+                name: "non-chunked-error",
+                write_space: 0,
+                src: "hello",
+                end: false,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: false,
+                sending_chunk: None,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                sending_chunk_after: None,
+                written: "",
+            },
+            Test {
+                name: "non-chunked",
+                write_space: 1024,
+                src: "hello",
+                end: false,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: false,
+                sending_chunk: None,
+                result: Ok((false, 5)),
+                sending_chunk_after: None,
+                written: "hello",
+            },
+            Test {
+                name: "non-chunked-end",
+                write_space: 1024,
+                src: "",
+                end: true,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: false,
+                sending_chunk: None,
+                result: Ok((true, 0)),
+                sending_chunk_after: None,
+                written: "",
+            },
+            Test {
+                name: "chunked-partial",
+                write_space: 2,
+                src: "hello",
+                end: false,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: true,
+                sending_chunk: None,
+                result: Ok((false, 0)),
+                sending_chunk_after: Some(Chunk {
+                    header: [b'5', b'\r', b'\n', 0, 0, 0],
+                    header_len: 3,
+                    size: 5,
+                    sent: 2,
+                }),
+                written: "5\r",
+            },
+            Test {
+                name: "chunked-error",
+                write_space: 0,
+                src: "hello",
+                end: false,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: true,
+                sending_chunk: None,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                sending_chunk_after: Some(Chunk {
+                    header: [b'5', b'\r', b'\n', 0, 0, 0],
+                    header_len: 3,
+                    size: 5,
+                    sent: 0,
+                }),
+                written: "",
+            },
+            Test {
+                name: "chunked-complete",
+                write_space: 1024,
+                src: "hello",
+                end: false,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: true,
+                sending_chunk: None,
+                result: Ok((false, 5)),
+                sending_chunk_after: None,
+                written: "5\r\nhello\r\n",
+            },
+            Test {
+                name: "end-partial",
+                write_space: 2,
+                src: "",
+                end: true,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: true,
+                sending_chunk: None,
+                result: Ok((false, 0)),
+                sending_chunk_after: Some(Chunk {
+                    header: [b'0', b'\r', b'\n', 0, 0, 0],
+                    header_len: 3,
+                    size: 0,
+                    sent: 2,
+                }),
+                written: "0\r",
+            },
+            Test {
+                name: "end-error",
+                write_space: 0,
+                src: "",
+                end: true,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: true,
+                sending_chunk: None,
+                result: Err(Error::Io(io::Error::from(io::ErrorKind::WriteZero))),
+                sending_chunk_after: Some(Chunk {
+                    header: [b'0', b'\r', b'\n', 0, 0, 0],
+                    header_len: 3,
+                    size: 0,
+                    sent: 0,
+                }),
+                written: "",
+            },
+            Test {
+                name: "end-complete",
+                write_space: 1024,
+                src: "",
+                end: true,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: true,
+                sending_chunk: None,
+                result: Ok((true, 0)),
+                sending_chunk_after: None,
+                written: "0\r\n\r\n",
+            },
+            Test {
+                name: "end-headers",
+                write_space: 1024,
+                src: "",
+                end: true,
+                headers: Some(b"Foo: Bar\r\n\r\n"),
+                body_size: BodySize::Unknown,
+                chunked: true,
+                sending_chunk: None,
+                result: Ok((true, 0)),
+                sending_chunk_after: None,
+                written: "0\r\nFoo: Bar\r\n\r\n",
+            },
+            Test {
+                name: "content-and-end",
+                write_space: 1024,
+                src: "hello",
+                end: true,
+                headers: None,
+                body_size: BodySize::Unknown,
+                chunked: true,
+                sending_chunk: None,
+                result: Ok((true, 5)),
+                sending_chunk_after: None,
+                written: "5\r\nhello\r\n0\r\n\r\n",
+            },
+        ];
+
+        for test in tests.iter() {
+            let req_body = ClientRequestBody {
+                state: ClientState {
+                    ver_min: 0,
+                    body_size: test.body_size,
+                    chunk_left: None,
+                    chunk_size: 0,
+                    persistent: false,
+                    chunked: test.chunked,
+                    sending_chunk: test.sending_chunk,
+                },
+            };
+
+            let mut w = MyBuffer::new(test.write_space, true);
+
+            let (state, r) =
+                match req_body.send(&mut w, &[test.src.as_bytes()], test.end, test.headers) {
+                    SendStatus::Complete(resp, size) => (resp.state, Ok((true, size))),
+                    SendStatus::Partial(req_body, size) => (req_body.state, Ok((false, size))),
+                    SendStatus::Error(req_body, e) => (req_body.state, Err(e)),
+                };
+
+            match r {
+                Ok((done, size)) => {
+                    let (expected_done, expected_size) = match &test.result {
+                        Ok(v) => v,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(done, *expected_done, "test={}", test.name);
+                    assert_eq!(size, *expected_size, "test={}", test.name);
+                }
+                Err(e) => {
+                    let expected = match &test.result {
+                        Err(e) => e,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(
+                        mem::discriminant(&e),
+                        mem::discriminant(expected),
+                        "test={}",
+                        test.name
+                    );
+                }
+            }
+
+            assert_eq!(
+                state.sending_chunk, test.sending_chunk_after,
+                "test={}",
+                test.name
+            );
+
+            assert_eq!(
+                str::from_utf8(&w.data).unwrap(),
+                test.written,
+                "test={}",
+                test.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_recv_response_header() {
+        struct Test<'buf, 'headers> {
+            name: &'static str,
+            data: &'buf str,
+            result: Option<Result<Response<'buf, 'headers>, Error>>,
+            ver_min: u8,
+            chunk_left: Option<usize>,
+            persistent: bool,
+            rbuf_position: u64,
+        }
+
+        let tests = [
+            Test {
+                name: "partial",
+                data: "H",
+                result: None,
+                ver_min: 0,
+                chunk_left: None,
+                persistent: false,
+                rbuf_position: 0,
+            },
+            Test {
+                name: "parse-error",
+                data: "H\n",
+                result: Some(Err(Error::ParseError(httparse::Error::Token))),
+                ver_min: 0,
+                chunk_left: None,
+                persistent: false,
+                rbuf_position: 0,
+            },
+            Test {
+                name: "invalid-content-length",
+                data: "HTTP/1.0 200 OK\r\nContent-Length: a\r\n\r\n",
+                result: Some(Err(Error::InvalidContentLength)),
+                ver_min: 0,
+                chunk_left: None,
+                persistent: false,
+                rbuf_position: 0,
+            },
+            Test {
+                name: "unsupported-transfer-encoding",
+                data: "HTTP/1.0 200 OK\r\nTransfer-Encoding: bogus\r\n\r\n",
+                result: Some(Err(Error::UnsupportedTransferEncoding)),
+                ver_min: 0,
+                chunk_left: None,
+                persistent: false,
+                rbuf_position: 0,
+            },
+            Test {
+                name: "no-body",
+                data: "HTTP/1.0 204 No Content\r\nFoo: Bar\r\n\r\n",
+                result: Some(Ok(Response {
+                    code: 204,
+                    reason: "No Content",
+                    headers: &[httparse::Header {
+                        name: "Foo",
+                        value: b"Bar",
+                    }],
+                    body_size: BodySize::NoBody,
+                })),
+                ver_min: 0,
+                chunk_left: None,
+                persistent: false,
+                rbuf_position: 37,
+            },
+            Test {
+                name: "body-size-known",
+                data: "HTTP/1.0 200 OK\r\nContent-Length: 42\r\n\r\n",
+                result: Some(Ok(Response {
+                    code: 200,
+                    reason: "OK",
+                    headers: &[httparse::Header {
+                        name: "Content-Length",
+                        value: b"42",
+                    }],
+                    body_size: BodySize::Known(42),
+                })),
+                ver_min: 0,
+                chunk_left: Some(42),
+                persistent: false,
+                rbuf_position: 39,
+            },
+            Test {
+                name: "body-size-unknown",
+                data: "HTTP/1.0 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n",
+                result: Some(Ok(Response {
+                    code: 200,
+                    reason: "OK",
+                    headers: &[httparse::Header {
+                        name: "Transfer-Encoding",
+                        value: b"chunked",
+                    }],
+                    body_size: BodySize::Unknown,
+                })),
+                ver_min: 0,
+                chunk_left: None,
+                persistent: false,
+                rbuf_position: 47,
+            },
+            Test {
+                name: "1.0-persistent",
+                data: "HTTP/1.0 200 OK\r\nConnection: keep-alive\r\n\r\n",
+                result: Some(Ok(Response {
+                    code: 200,
+                    reason: "OK",
+                    headers: &[httparse::Header {
+                        name: "Connection",
+                        value: b"keep-alive",
+                    }],
+                    body_size: BodySize::NoBody,
+                })),
+                ver_min: 0,
+                chunk_left: None,
+                persistent: true,
+                rbuf_position: 43,
+            },
+            Test {
+                name: "1.1-persistent",
+                data: "HTTP/1.1 200 OK\r\n\r\n",
+                result: Some(Ok(Response {
+                    code: 200,
+                    reason: "OK",
+                    headers: &[],
+                    body_size: BodySize::NoBody,
+                })),
+                ver_min: 1,
+                chunk_left: None,
+                persistent: true,
+                rbuf_position: 19,
+            },
+            Test {
+                name: "1.1-non-persistent",
+                data: "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n",
+                result: Some(Ok(Response {
+                    code: 200,
+                    reason: "OK",
+                    headers: &[httparse::Header {
+                        name: "Connection",
+                        value: b"close",
+                    }],
+                    body_size: BodySize::NoBody,
+                })),
+                ver_min: 1,
+                chunk_left: None,
+                persistent: false,
+                rbuf_position: 38,
+            },
+        ];
+
+        for test in tests.iter() {
+            let resp = ClientResponse {
+                state: ClientState::new(),
+            };
+
+            let src = test.data.as_bytes();
+            let rbuf = FilledBuf::new(src.to_vec(), src.len());
+            let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+
+            let mut rbuf_position = 0;
+
+            let r = resp.recv_header(rbuf, &mut scratch);
+
+            match r {
+                ParseStatus::Complete((resp, resp_body)) => {
+                    let expected = match &test.result {
+                        Some(Ok(req)) => req,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(resp.get(), *expected, "test={}", test.name);
+
+                    assert_eq!(resp_body.state.ver_min, test.ver_min, "test={}", test.name);
+                    assert_eq!(
+                        resp_body.state.chunk_left, test.chunk_left,
+                        "test={}",
+                        test.name
+                    );
+                    assert_eq!(
+                        resp_body.state.persistent, test.persistent,
+                        "test={}",
+                        test.name
+                    );
+
+                    rbuf_position = (src.len() - resp.remaining_bytes().len()) as u64
+                }
+                ParseStatus::Incomplete(_, _, _) => {
+                    assert!(test.result.is_none(), "test={}", test.name);
+                }
+                ParseStatus::Error(e, _, _) => {
+                    let expected = match &test.result {
+                        Some(Err(e)) => e,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(
+                        mem::discriminant(&e),
+                        mem::discriminant(expected),
+                        "test={}",
+                        test.name
+                    );
+                }
+            }
+
+            assert_eq!(rbuf_position, test.rbuf_position, "test={}", test.name);
+        }
+    }
+
+    #[test]
+    fn test_recv_response_body() {
+        struct Test<'buf, 'headers> {
+            name: &'static str,
+            data: &'buf str,
+            body_size: BodySize,
+            chunk_left: Option<usize>,
+            chunk_size: usize,
+            result: Result<(bool, usize, Option<&'headers [httparse::Header<'buf>]>), Error>,
+            chunk_left_after: Option<usize>,
+            chunk_size_after: usize,
+            rbuf_position: u64,
+            dest_data: &'static str,
+        }
+
+        let tests = [
+            Test {
+                name: "partial",
+                data: "hel",
+                body_size: BodySize::Known(5),
+                chunk_left: Some(5),
+                chunk_size: 0,
+                result: Ok((false, 3, None)),
+                chunk_left_after: Some(2),
+                chunk_size_after: 0,
+                rbuf_position: 3,
+                dest_data: "hel",
+            },
+            Test {
+                name: "complete",
+                data: "hello",
+                body_size: BodySize::Known(5),
+                chunk_left: Some(5),
+                chunk_size: 0,
+                result: Ok((true, 5, None)),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 5,
+                dest_data: "hello",
+            },
+            Test {
+                name: "chunked-header-partial",
+                data: "5",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((false, 0, None)),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 0,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-header-parse-error",
+                data: "z",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Err(Error::InvalidChunkSize),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 0,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-too-large",
+                data: "ffffffffff\r\n",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Err(Error::ChunkTooLarge),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 0,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-header-ok",
+                data: "5\r\n",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((false, 0, None)),
+                chunk_left_after: Some(5),
+                chunk_size_after: 5,
+                rbuf_position: 3,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-content-partial",
+                data: "5\r\nhel",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((false, 3, None)),
+                chunk_left_after: Some(2),
+                chunk_size_after: 5,
+                rbuf_position: 6,
+                dest_data: "hel",
+            },
+            Test {
+                name: "chunked-footer-partial-full-none",
+                data: "5\r\nhello",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((false, 5, None)),
+                chunk_left_after: Some(0),
+                chunk_size_after: 5,
+                rbuf_position: 8,
+                dest_data: "hello",
+            },
+            Test {
+                name: "chunked-footer-partial-full-r",
+                data: "5\r\nhello\r",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((false, 5, None)),
+                chunk_left_after: Some(0),
+                chunk_size_after: 5,
+                rbuf_position: 8,
+                dest_data: "hello",
+            },
+            Test {
+                name: "chunked-footer-partial-mid-r",
+                data: "\r",
+                body_size: BodySize::Unknown,
+                chunk_left: Some(0),
+                chunk_size: 5,
+                result: Ok((false, 0, None)),
+                chunk_left_after: Some(0),
+                chunk_size_after: 5,
+                rbuf_position: 0,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-footer-parse-error",
+                data: "5\r\nhelloXX",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Err(Error::InvalidChunkSuffix),
+                chunk_left_after: Some(0),
+                chunk_size_after: 5,
+                rbuf_position: 8,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-complete-full",
+                data: "5\r\nhello\r\n",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((false, 5, None)),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 10,
+                dest_data: "hello",
+            },
+            Test {
+                name: "chunked-complete-mid",
+                data: "lo\r\n",
+                body_size: BodySize::Unknown,
+                chunk_left: Some(2),
+                chunk_size: 5,
+                result: Ok((false, 2, None)),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 4,
+                dest_data: "lo",
+            },
+            Test {
+                name: "chunked-complete-end",
+                data: "\r\n",
+                body_size: BodySize::Unknown,
+                chunk_left: Some(0),
+                chunk_size: 5,
+                result: Ok((false, 0, None)),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 2,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-empty",
+                data: "0\r\n\r\n",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((true, 0, Some(&[]))),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 5,
+                dest_data: "",
+            },
+            Test {
+                name: "trailing-headers-partial",
+                data: "0\r\nhelloXX",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((false, 0, None)),
+                chunk_left_after: Some(0),
+                chunk_size_after: 0,
+                rbuf_position: 3,
+                dest_data: "",
+            },
+            Test {
+                name: "trailing-headers-parse-error",
+                data: "0\r\nhelloXX\n",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Err(Error::ParseError(httparse::Error::Token)),
+                chunk_left_after: Some(0),
+                chunk_size_after: 0,
+                rbuf_position: 3,
+                dest_data: "",
+            },
+            Test {
+                name: "trailing-headers-complete",
+                data: "0\r\nFoo: Bar\r\n\r\n",
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                result: Ok((
+                    true,
+                    0,
+                    Some(&[httparse::Header {
+                        name: "Foo",
+                        value: b"Bar",
+                    }]),
+                )),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 15,
+                dest_data: "",
+            },
+        ];
+
+        for test in tests.iter() {
+            let resp_body = ClientResponseBody {
+                state: ClientState {
+                    ver_min: 0,
+                    body_size: test.body_size,
+                    chunk_left: test.chunk_left,
+                    chunk_size: test.chunk_size,
+                    persistent: false,
+                    chunked: test.body_size == BodySize::Unknown,
+                    sending_chunk: None,
+                },
+            };
+
+            let mut dest = [0; 1024];
+            let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
+
+            let r = resp_body.recv(test.data.as_bytes(), &mut dest, &mut scratch);
+
+            let (r, headers) = match r {
+                Ok(RecvStatus::Complete(finished, read, written)) => {
+                    if let Some((start, end)) = finished.headers_range {
+                        let headers_data = &test.data.as_bytes()[start..end];
+                        let scratch = unsafe { scratch.assume_init_mut() };
+
+                        match httparse::parse_headers(headers_data, scratch) {
+                            Ok(httparse::Status::Complete((pos, headers))) => {
+                                assert_eq!(pos, end - start);
+
+                                (
+                                    Ok(RecvStatus::Complete(finished, read, written)),
+                                    Some(headers),
+                                )
+                            }
+                            Ok(httparse::Status::Partial) => panic!("unexpected partial parse"),
+                            Err(e) => (Err(e.into()), None),
+                        }
+                    } else {
+                        (Ok(RecvStatus::Complete(finished, read, written)), None)
+                    }
+                }
+                r => (r, None),
+            };
+
+            match r {
+                Ok(RecvStatus::Complete(_, read, written)) => {
+                    let (expected_size, expected_headers) = match &test.result {
+                        Ok((true, size, headers)) => (size, headers),
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(written, *expected_size, "test={}", test.name);
+                    assert_eq!(read as u64, test.rbuf_position, "test={}", test.name);
+                    assert_eq!(headers, *expected_headers, "test={}", test.name);
+                }
+                Ok(RecvStatus::Read(resp_body, read, written)) => {
+                    let expected_size = match &test.result {
+                        Ok((false, size, _)) => size,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    let state = resp_body.state;
+
+                    assert_eq!(written, *expected_size, "test={}", test.name);
+                    assert_eq!(
+                        state.chunk_left, test.chunk_left_after,
+                        "test={}",
+                        test.name
+                    );
+                    assert_eq!(
+                        state.chunk_size, test.chunk_size_after,
+                        "test={}",
+                        test.name
+                    );
+                    assert_eq!(read as u64, test.rbuf_position, "test={}", test.name);
+
+                    assert_eq!(
+                        str::from_utf8(&dest[..written]).unwrap(),
+                        test.dest_data,
+                        "test={}",
+                        test.name
+                    );
+                }
+                Err(e) => {
+                    let expected = match &test.result {
+                        Err(e) => e,
+                        _ => panic!("result mismatch: test={}", test.name),
+                    };
+
+                    assert_eq!(
+                        mem::discriminant(&e),
+                        mem::discriminant(expected),
+                        "test={}",
+                        test.name
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_client_flow() {
+        let req = ClientRequest::new();
+
+        let mut out = MyBuffer::new(1024, true);
+
+        let req_body = req
+            .send_header(
+                &mut out,
+                "GET",
+                "/foo",
+                &[Header {
+                    name: "Host",
+                    value: b"example.com",
+                }],
+                BodySize::NoBody,
+                false,
+            )
+            .unwrap();
+
+        let expected = "GET /foo HTTP/1.1\r\nHost: example.com\r\n\r\n";
+
+        assert_eq!(str::from_utf8(&out.data).unwrap(), expected);
+
+        out.data.clear();
+
+        let resp = match req_body.send(&mut out, &[], true, None) {
+            SendStatus::Complete(resp, read) => {
+                assert_eq!(read, 0);
+
+                resp
+            }
+            _ => panic!("unexpected status"),
+        };
+
+        assert_eq!(out.data.is_empty(), true);
+
+        let mut buf = Vec::new();
+
+        let data = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Content-Length: 6\r\n",
+            "\r\n",
+            "hello\n",
+        );
+
+        let size = buf.write(data.as_bytes()).unwrap();
+        buf.resize(1024, 0);
+
+        let buf = FilledBuf::new(buf, size);
+        let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+
+        let (resp, resp_body) = match resp.recv_header(buf, &mut scratch) {
+            ParseStatus::Complete(ret) => ret,
+            _ => panic!("unexpected status"),
+        };
+
+        {
+            let resp = resp.get();
+
+            assert_eq!(resp.code, 200);
+            assert_eq!(resp.headers.len(), 2);
+            assert_eq!(resp.headers[0].name, "Content-Type");
+            assert_eq!(resp.headers[0].value, b"text/plain");
+            assert_eq!(resp.headers[1].name, "Content-Length");
+            assert_eq!(resp.headers[1].value, b"6");
+
+            assert_eq!(resp_body.size(), BodySize::Known(6));
+        }
+
+        let mut out = [0; 1024];
+        let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
+
+        let finished = match resp_body
+            .recv(resp.remaining_bytes(), &mut out, &mut scratch)
+            .unwrap()
+        {
+            RecvStatus::Complete(finished, read, written) => {
+                assert_eq!(read, 6);
+                assert_eq!(written, 6);
+
+                finished
+            }
+            _ => panic!("unexpected status"),
+        };
+
+        assert_eq!(finished.headers_range, None);
+        assert_eq!(finished.persistent, true);
     }
 
     fn collect_values<'a>(
