@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2021 Fanout, Inc.
+ * Copyright (C) 2014-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -305,10 +305,9 @@ public:
 
 	void writeFrame(const Frame &frame)
 	{
-		// FIXME: consider removing this assert. due to async signals,
-		//   the only way for the user to fully avoid it is by checking
-		//   canWrite() beforehand which is burdensome
-		assert(state == Connected || state == ConnectedPeerClosed);
+		if(state != Connected && state != ConnectedPeerClosed)
+			return;
+
 		outFrames += frame;
 		update();
 	}
@@ -405,7 +404,7 @@ public:
 				contentBytesWritten += f.data.size();
 			}
 
-			if(written > 0)
+			if(written > 0 || contentBytesWritten > 0)
 			{
 				emit q->framesWritten(written, contentBytesWritten);
 				if(!self)
