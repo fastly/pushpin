@@ -1217,25 +1217,6 @@ int ZWebSocket::framesAvailable() const
 	return d->inFrames.count();
 }
 
-bool ZWebSocket::canWrite() const
-{
-	return ((d->state == Private::Connected || d->state == Private::ConnectedPeerClosed) && writeBytesAvailable() > 0);
-}
-
-int ZWebSocket::writeBytesAvailable() const
-{
-	int avail = d->outCredits;
-	foreach(const Frame &f, d->outFrames)
-	{
-		if(f.data.size() >= avail)
-			return 0;
-
-		avail -= f.data.size();
-	}
-
-	return avail;
-}
-
 int ZWebSocket::peerCloseCode() const
 {
 	return d->peerCloseCode;

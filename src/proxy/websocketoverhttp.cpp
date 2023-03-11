@@ -1150,16 +1150,6 @@ int WebSocketOverHttp::framesAvailable() const
 	return d->inFrames.count();
 }
 
-bool WebSocketOverHttp::canWrite() const
-{
-	return (d->state == Connected && writeBytesAvailable() > 0);
-}
-
-int WebSocketOverHttp::writeBytesAvailable() const
-{
-	return d->writeBytesAvailable();
-}
-
 int WebSocketOverHttp::peerCloseCode() const
 {
 	return d->peerCloseCode;

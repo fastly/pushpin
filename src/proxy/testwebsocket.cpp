@@ -263,25 +263,6 @@ int TestWebSocket::framesAvailable() const
 	return d->inFrames.count();
 }
 
-bool TestWebSocket::canWrite() const
-{
-	return (writeBytesAvailable() > 0);
-}
-
-int TestWebSocket::writeBytesAvailable() const
-{
-	int avail = BUFFER_SIZE;
-	foreach(const Frame &f, d->inFrames)
-	{
-		if(f.data.size() >= avail)
-			return 0;
-
-		avail -= f.data.size();
-	}
-
-	return avail;
-}
-
 int TestWebSocket::peerCloseCode() const
 {
 	return d->peerCloseCode;

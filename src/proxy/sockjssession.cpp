@@ -1188,33 +1188,6 @@ int SockJsSession::framesAvailable() const
 	}
 }
 
-bool SockJsSession::canWrite() const
-{
-	return (writeBytesAvailable() > 0);
-}
-
-int SockJsSession::writeBytesAvailable() const
-{
-	if(d->mode == Private::Http)
-	{
-		int avail = BUFFER_SIZE;
-		foreach(const Frame &f, d->outFrames)
-		{
-			if(f.data.size() >= avail)
-				return 0;
-
-			avail -= f.data.size();
-		}
-
-		return avail;
-	}
-	else
-	{
-		assert(d->sock);
-		return d->sock->writeBytesAvailable();
-	}
-}
-
 int SockJsSession::peerCloseCode() const
 {
 	return d->peerCloseCode;
