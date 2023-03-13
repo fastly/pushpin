@@ -106,8 +106,6 @@ public:
 	virtual HttpHeaders responseHeaders() const = 0;
 	virtual QByteArray responseBody() const = 0;
 	virtual int framesAvailable() const = 0;
-	virtual bool canWrite() const = 0;
-	virtual int writeBytesAvailable() const = 0;
 	virtual int peerCloseCode() const = 0;
 	virtual QString peerCloseReason() const = 0;
 	virtual ErrorCondition errorCondition() const = 0;
