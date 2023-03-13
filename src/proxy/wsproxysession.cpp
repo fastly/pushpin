@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2014-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -55,6 +55,7 @@
 
 #define ACTIVITY_TIMEOUT 60000
 #define KEEPALIVE_RAND_MAX 1000
+#define PENDING_MAX 16384
 
 class HttpExtension
 {
@@ -613,7 +614,7 @@ public:
 
 	void tryReadIn()
 	{
-		while(inSock->framesAvailable() > 0 && ((outSock && outSock->canWrite()) || detached))
+		while(inSock->framesAvailable() > 0 && ((outSock && outPendingBytes < PENDING_MAX) || detached))
 		{
 			WebSocket::Frame f = inSock->readFrame();
 
@@ -637,7 +638,7 @@ public:
 
 	void tryReadOut()
 	{
-		while(outSock->framesAvailable() > 0 && ((inSock && inSock->canWrite()) || detached))
+		while(outSock->framesAvailable() > 0 && ((inSock && inPendingBytes < PENDING_MAX) || detached))
 		{
 			WebSocket::Frame f = outSock->readFrame();
 
@@ -1046,7 +1047,7 @@ private slots:
 		}
 
 		// if queue == false, drop if we can't send right now
-		if(!queue && (!inSock->canWrite() || outReadInProgress != -1))
+		if(!queue && (inPendingBytes >= PENDING_MAX || outReadInProgress != -1))
 		{
 			// if drop is allowed, drop is success :)
 			wsControl->sendEventWritten();
