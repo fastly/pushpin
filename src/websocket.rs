@@ -217,7 +217,7 @@ pub fn write_header(
     }
 }
 
-fn apply_mask(buf: &mut [u8], mask: [u8; 4], offset: usize) {
+pub fn apply_mask(buf: &mut [u8], mask: [u8; 4], offset: usize) {
     for (i, c) in buf.iter_mut().enumerate() {
         *c ^= mask[(offset + i) % 4];
     }

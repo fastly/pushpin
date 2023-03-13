@@ -6031,6 +6031,20 @@ pub mod testutil {
             }
         }
 
+        fn poll_write_vectored(
+            self: Pin<&mut Self>,
+            _cx: &mut Context,
+            bufs: &[io::IoSlice],
+        ) -> Poll<Result<usize, io::Error>> {
+            let inner = &mut *self.inner.borrow_mut();
+
+            match inner.write_vectored(bufs) {
+                Ok(usize) => Poll::Ready(Ok(usize)),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => Poll::Pending,
+                Err(e) => Poll::Ready(Err(e)),
+            }
+        }
+
         fn poll_close(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), io::Error>> {
             Poll::Ready(Ok(()))
         }
@@ -6811,7 +6825,7 @@ mod tests {
         assert_eq!(bufs[1], b"ld!");
     }
 
-    async fn req_fut(
+    async fn server_req_fut(
         token: CancellationToken,
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
@@ -6872,7 +6886,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            req_fut(token, sock, false, s_from_conn, r_to_conn)
+            server_req_fut(token, sock, false, s_from_conn, r_to_conn)
         };
 
         let mut executor = StepExecutor::new(&reactor, fut);
@@ -6988,7 +7002,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            req_fut(token, sock, false, s_from_conn, r_to_conn)
+            server_req_fut(token, sock, false, s_from_conn, r_to_conn)
         };
 
         let mut executor = StepExecutor::new(&reactor, fut);
@@ -7101,7 +7115,7 @@ mod tests {
         let fut = {
             let sock = sock.clone();
 
-            req_fut(token, sock, false, s_from_conn, r_to_conn)
+            server_req_fut(token, sock, false, s_from_conn, r_to_conn)
         };
 
         let mut executor = StepExecutor::new(&reactor, fut);
@@ -7138,7 +7152,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            req_fut(token, sock, false, s_from_conn, r_to_conn)
+            server_req_fut(token, sock, false, s_from_conn, r_to_conn)
         };
 
         let mut executor = StepExecutor::new(&reactor, fut);
@@ -7302,7 +7316,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            req_fut(token, sock, true, s_from_conn, r_to_conn)
+            server_req_fut(token, sock, true, s_from_conn, r_to_conn)
         };
 
         let mut executor = StepExecutor::new(&reactor, fut);
@@ -7396,7 +7410,7 @@ mod tests {
         assert_eq!(str::from_utf8(&data).unwrap(), expected);
     }
 
-    async fn stream_fut(
+    async fn server_stream_fut(
         token: CancellationToken,
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
@@ -7471,7 +7485,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            stream_fut(
+            server_stream_fut(
                 token,
                 sock,
                 false,
@@ -7593,7 +7607,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            stream_fut(
+            server_stream_fut(
                 token,
                 sock,
                 false,
@@ -7754,7 +7768,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            stream_fut(
+            server_stream_fut(
                 token,
                 sock,
                 false,
@@ -7896,7 +7910,7 @@ mod tests {
                 .try_clone(&reactor.local_registration_memory())
                 .unwrap();
 
-            stream_fut(
+            server_stream_fut(
                 token,
                 sock,
                 false,
@@ -8020,7 +8034,7 @@ mod tests {
         let fut = {
             let sock = sock.clone();
 
-            stream_fut(
+            server_stream_fut(
                 token,
                 sock,
                 false,
@@ -8191,7 +8205,7 @@ mod tests {
         let fut = {
             let sock = sock.clone();
 
-            stream_fut(
+            server_stream_fut(
                 token,
                 sock,
                 false,
@@ -8362,6 +8376,723 @@ mod tests {
             dest
         };
         assert_eq!(str::from_utf8(&content).unwrap(), "world");
+    }
+
+    async fn client_req_fut(
+        id: Option<Vec<u8>>,
+        zreq: arena::Rc<zhttppacket::OwnedRequest>,
+        sock: Rc<RefCell<FakeSock>>,
+        s_from_conn: channel::LocalSender<zmq::Message>,
+    ) -> Result<(), Error> {
+        let mut sock = AsyncFakeSock::new(sock);
+
+        let s_from_conn = AsyncLocalSender::new(s_from_conn);
+        let buffer_size = 1024;
+
+        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
+
+        let mut buf1 = RingBuffer::new(buffer_size, &rb_tmp);
+        let mut buf2 = RingBuffer::new(buffer_size, &rb_tmp);
+        let mut body_buf = Buffer::new(buffer_size);
+        let packet_buf = RefCell::new(vec![0; 2048]);
+
+        let (msg, _) = client_req_handler(
+            "test",
+            id.as_deref(),
+            &mut sock,
+            zreq,
+            &mut buf1,
+            &mut buf2,
+            &mut body_buf,
+            &packet_buf,
+        )
+        .await?;
+
+        s_from_conn.send(msg).await?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn client_req_without_id() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let req_mem = Rc::new(arena::RcMemory::new(1));
+
+        let data = concat!(
+            "T74:7:headers,16:12:3:Foo,3:Bar,]]3:uri,19:https://example.co",
+            "m,6:method,3:GET,}",
+        )
+        .as_bytes();
+
+        let msg = zmq::Message::from(data);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            client_req_fut(None, zreq, sock, s_from_conn)
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // no messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // fill the handler's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
+
+        // no data yet
+        assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected = concat!(
+            "GET / HTTP/1.1\r\n",
+            "Host: example.com\r\n",
+            "Foo: Bar\r\n",
+            "\r\n",
+        );
+
+        let buf = sock.borrow_mut().take_writable();
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        // handler won't be able to send a message yet
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let resp_data = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Content-Length: 6\r\n",
+            "\r\n",
+            "hello\n",
+        )
+        .as_bytes();
+
+        sock.borrow_mut().add_readable(resp_data);
+
+        // now handler will be able to send a message and finish
+        assert_eq!(check_poll(executor.step()), Some(()));
+
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T117:4:code,3:200#6:reason,2:OK,7:headers,60:30:12:Content",
+            "-Type,10:text/plain,]22:14:Content-Length,1:6,]]4:body,6:h",
+            "ello\n,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
+    #[test]
+    fn client_req_with_id() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let req_mem = Rc::new(arena::RcMemory::new(1));
+
+        let data = concat!(
+            "T83:7:headers,16:12:3:Foo,3:Bar,]]3:uri,19:https://example.co",
+            "m,6:method,3:GET,2:id,1:1,}",
+        )
+        .as_bytes();
+
+        let msg = zmq::Message::from(data);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            client_req_fut(Some(b"1".to_vec()), zreq, sock, s_from_conn)
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // no messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // fill the handler's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
+
+        // no data yet
+        assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected = concat!(
+            "GET / HTTP/1.1\r\n",
+            "Host: example.com\r\n",
+            "Foo: Bar\r\n",
+            "\r\n",
+        );
+
+        let buf = sock.borrow_mut().take_writable();
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        // handler won't be able to send a message yet
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let resp_data = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Content-Length: 6\r\n",
+            "\r\n",
+            "hello\n",
+        )
+        .as_bytes();
+
+        sock.borrow_mut().add_readable(resp_data);
+
+        // now handler will be able to send a message and finish
+        assert_eq!(check_poll(executor.step()), Some(()));
+
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T126:2:id,1:1,4:code,3:200#6:reason,2:OK,7:headers,60:30:1",
+            "2:Content-Type,10:text/plain,]22:14:Content-Length,1:6,]]4",
+            ":body,6:hello\n,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
+    async fn client_stream_fut(
+        id: Vec<u8>,
+        zreq: arena::Rc<zhttppacket::OwnedRequest>,
+        sock: Rc<RefCell<FakeSock>>,
+        r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+        s_from_conn: channel::LocalSender<zmq::Message>,
+        shared: arena::Rc<StreamSharedData>,
+    ) -> Result<(), Error> {
+        let mut sock = AsyncFakeSock::new(sock);
+
+        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let s_from_conn = AsyncLocalSender::new(s_from_conn);
+        let buffer_size = 1024;
+
+        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
+
+        let mut buf1 = RingBuffer::new(buffer_size, &rb_tmp);
+        let mut buf2 = RingBuffer::new(buffer_size, &rb_tmp);
+        let packet_buf = RefCell::new(vec![0; 2048]);
+        let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
+
+        let refresh_stream_timeout = || {};
+        let refresh_session_timeout = || {};
+
+        let _persistent = client_stream_handler(
+            "test",
+            &id,
+            &mut sock,
+            zreq,
+            &mut buf1,
+            &mut buf2,
+            10,
+            &packet_buf,
+            &tmp_buf,
+            "test",
+            &r_to_conn,
+            &s_from_conn,
+            shared.get(),
+            &refresh_stream_timeout,
+            &refresh_session_timeout,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn client_stream() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let req_mem = Rc::new(arena::RcMemory::new(1));
+
+        let data = concat!(
+            "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
+            "t-Type,10:text/plain,]]3:uri,24:https://example.com/path,6:me",
+            "thod,4:POST,3:seq,1:0#2:id,1:1,4:from,7:handler,}",
+        )
+        .as_bytes();
+
+        let msg = zmq::Message::from(data);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            let shared_mem = Rc::new(arena::RcMemory::new(1));
+            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
+            shared.get().set_to_addr(Some(addr));
+
+            client_stream_fut(b"1".to_vec(), zreq, sock, r_to_conn, s_from_conn, shared)
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        // fill the handler's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
+
+        // handler won't be able to send a message yet
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // now handler will be able to send a message
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T79:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:mu",
+            "lti,4:true!}4:type,10:keep-alive,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // no data yet
+        assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected = concat!(
+            "POST /path HTTP/1.1\r\n",
+            "Host: example.com\r\n",
+            "Content-Type: text/plain\r\n",
+            "Connection: Transfer-Encoding\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+        );
+
+        let buf = sock.borrow_mut().take_writable();
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T91:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:mu",
+            "lti,4:true!}4:type,6:credit,7:credits,4:1024#}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        let msg = concat!("T52:3:seq,1:1#2:id,1:1,4:from,7:handler,4:body,6:hello\n,}");
+
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let req = arena::Rc::new(req, &req_mem).unwrap();
+
+        assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected = concat!("6\r\nhello\n\r\n0\r\n\r\n",);
+
+        let buf = sock.borrow_mut().take_writable();
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // no more messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let resp_data = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Content-Length: 6\r\n",
+            "\r\n",
+            "hello\n",
+        )
+        .as_bytes();
+
+        sock.borrow_mut().add_readable(resp_data);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T173:4:from,4:test,2:id,1:1,3:seq,1:2#3:ext,15:5:m",
+            "ulti,4:true!}4:code,3:200#6:reason,2:OK,7:headers,60:30:12",
+            ":Content-Type,10:text/plain,]22:14:Content-Length,1:6,]]4:",
+            "more,4:true!}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        assert_eq!(check_poll(executor.step()), Some(()));
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T74:4:from,4:test,2:id,1:1,3:seq,1:3#3:ext,15:5:mu",
+            "lti,4:true!}4:body,6:hello\n,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
+    #[test]
+    fn client_websocket() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let req_mem = Rc::new(arena::RcMemory::new(1));
+
+        let data = concat!(
+            "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
+            "wss://example.com/path,3:seq,1:0#2:id,1:1,4:from,7:handler,}",
+        )
+        .as_bytes();
+
+        let msg = zmq::Message::from(data);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            let shared_mem = Rc::new(arena::RcMemory::new(1));
+            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
+            shared.get().set_to_addr(Some(addr));
+
+            client_stream_fut(b"1".to_vec(), zreq, sock, r_to_conn, s_from_conn, shared)
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        // fill the handler's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
+
+        // handler won't be able to send a message yet
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // now handler will be able to send a message
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T79:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:mu",
+            "lti,4:true!}4:type,10:keep-alive,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // no data yet
+        assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let buf = sock.borrow_mut().take_writable();
+
+        // use httparse to fish out Sec-WebSocket-Key
+        let ws_key = {
+            let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
+
+            let mut req = httparse::Request::new(&mut headers);
+
+            match req.parse(&buf) {
+                Ok(httparse::Status::Complete(_)) => {}
+                _ => panic!("unexpected parse status"),
+            }
+
+            let mut ws_key = String::new();
+
+            for h in req.headers {
+                if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
+                    ws_key = String::from_utf8(h.value.to_vec()).unwrap();
+                }
+            }
+
+            ws_key
+        };
+
+        let expected = format!(
+            concat!(
+                "GET /path HTTP/1.1\r\n",
+                "Host: example.com\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Version: 13\r\n",
+                "Sec-WebSocket-Key: {}\r\n",
+                "Foo: Bar\r\n",
+                "\r\n",
+            ),
+            ws_key
+        );
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        // no more messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let ws_accept = calculate_ws_accept(ws_key.as_bytes()).unwrap();
+
+        let resp_data = format!(
+            concat!(
+                "HTTP/1.1 101 Switching Protocols\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Accept: {}\r\n",
+                "\r\n",
+            ),
+            ws_accept
+        );
+
+        sock.borrow_mut().add_readable(resp_data.as_bytes());
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = format!(
+            concat!(
+                "handler T263:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
+                "ulti,4:true!}}4:code,3:101#6:reason,19:Switching Protocols",
+                ",7:headers,114:22:7:Upgrade,9:websocket,]24:10:Connection,",
+                "7:Upgrade,]56:20:Sec-WebSocket-Accept,28:{},]]7:credits,4:",
+                "1024#4:more,4:true!}}",
+            ),
+            ws_accept
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // send message
+
+        let mut data = vec![0; 1024];
+        let body = b"hello";
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_TEXT,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
+        data[size..(size + body.len())].copy_from_slice(body);
+        let data = &data[..(size + body.len())];
+
+        sock.borrow_mut().add_readable(data);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T96:4:from,4:test,2:id,1:1,3:seq,1:2#3:ext,15:5:mu",
+            "lti,4:true!}12:content-type,4:text,4:body,5:hello,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // recv message
+
+        let msg = concat!(
+            "T99:4:from,7:handler,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4",
+            ":true!}12:content-type,4:text,4:body,5:world,}",
+        );
+
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let req = arena::Rc::new(req, &req_mem).unwrap();
+
+        assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let mut data = sock.borrow_mut().take_writable();
+
+        let fi = websocket::read_header(&data).unwrap();
+        assert_eq!(fi.fin, true);
+        assert_eq!(fi.opcode, websocket::OPCODE_TEXT);
+        assert!(data.len() >= fi.payload_offset + fi.payload_size);
+
+        let content = &mut data[fi.payload_offset..(fi.payload_offset + fi.payload_size)];
+        websocket::apply_mask(content, fi.mask.unwrap(), 0);
+        assert_eq!(str::from_utf8(content).unwrap(), "world");
     }
 
     #[test]
