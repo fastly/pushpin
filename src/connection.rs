@@ -2739,13 +2739,15 @@ where
     let mut send = pin!(None);
     let mut check_send = pin!(None);
 
+    let mut prepare_done = false;
+
     let resp = 'main: loop {
         let ret = {
             if send.is_none() && req_body.can_send() {
                 send.set(Some(req_body.send()));
             }
 
-            if out_credits > 0 && check_send.is_none() {
+            if !prepare_done && out_credits > 0 && check_send.is_none() {
                 check_send.set(Some(zsess_out.check_send()));
             }
 
@@ -2790,7 +2792,15 @@ where
 
                 match &zreq_ref.ptype {
                     zhttppacket::RequestPacket::Data(rdata) => {
-                        req_body.prepare(rdata.body, !rdata.more)?;
+                        let size = req_body.prepare(rdata.body, !rdata.more)?;
+
+                        if size < rdata.body.len() {
+                            return Err(Error::BufferExceeded);
+                        }
+
+                        if !rdata.more {
+                            prepare_done = true;
+                        }
                     }
                     _ => {
                         // if handoff requested, flush send buffer responding
@@ -4443,7 +4453,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
 
                         let req_body = w.req_body.take().unwrap();
 
-                        debug!("send: {}", w.buf.read_avail());
                         let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
                         let bufs = w.buf.get_ref_vectored(&mut buf_arr);
 
@@ -4457,7 +4466,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
                                 if e.kind() == io::ErrorKind::WouldBlock =>
                             {
                                 w.req_body = Some(req_body);
-                                debug!("would block");
 
                                 None
                             }
