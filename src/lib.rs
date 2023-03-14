@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ pub mod app;
 pub mod arena;
 pub mod buffer;
 pub mod channel;
+pub mod client;
 pub mod connection;
 pub mod event;
 pub mod executor;

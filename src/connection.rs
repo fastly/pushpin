@@ -5161,7 +5161,7 @@ pub async fn client_req_connection(
 }
 
 // return true if persistent
-async fn client_stream_handler<S, R1, R2>(
+async fn client_stream_handler<S, E, R1, R2>(
     log_id: &str,
     id: &[u8],
     stream: &mut S,
@@ -5175,11 +5175,13 @@ async fn client_stream_handler<S, R1, R2>(
     zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: &AsyncLocalSender<zmq::Message>,
     shared: &StreamSharedData,
+    enable_routing: &E,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
 ) -> Result<bool, Error>
 where
     S: AsyncRead + AsyncWrite,
+    E: Fn(),
     R1: Fn(),
     R2: Fn(),
 {
@@ -5344,8 +5346,6 @@ where
     // ABR: discard_while
     server_discard_while(zreceiver, pin!(async { Ok(zsess_out.check_send().await) })).await?;
 
-    // TODO: set cid
-
     zsess_out.try_send_msg(zhttppacket::Response::new_keep_alive(b"", &[]))?;
 
     let mut zsess_in = ZhttpServerStreamSessionIn::new(
@@ -5356,6 +5356,9 @@ where
         shared,
         refresh_session_timeout,
     );
+
+    // allow receiving subsequent messages
+    enable_routing();
 
     // send request header
 
@@ -5556,7 +5559,7 @@ where
     }
 }
 
-async fn client_stream_connect<R1, R2>(
+async fn client_stream_connect<E, R1, R2>(
     log_id: &str,
     id: &[u8],
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
@@ -5571,10 +5574,12 @@ async fn client_stream_connect<R1, R2>(
     zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: &AsyncLocalSender<zmq::Message>,
     shared: &StreamSharedData,
+    enable_routing: &E,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
 ) -> Result<(), Error>
 where
+    E: Fn(),
     R1: Fn(),
     R2: Fn(),
 {
@@ -5638,6 +5643,7 @@ where
                 zreceiver,
                 zsender,
                 shared,
+                enable_routing,
                 refresh_stream_timeout,
                 refresh_session_timeout,
             )
@@ -5658,6 +5664,7 @@ where
                 zreceiver,
                 zsender,
                 shared,
+                enable_routing,
                 refresh_stream_timeout,
                 refresh_session_timeout,
             )
@@ -5668,7 +5675,7 @@ where
     Ok(())
 }
 
-async fn client_stream_connection_inner(
+async fn client_stream_connection_inner<E>(
     token: CancellationToken,
     log_id: &str,
     id: &[u8],
@@ -5685,7 +5692,11 @@ async fn client_stream_connection_inner(
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<zmq::Message>,
     shared: arena::Rc<StreamSharedData>,
-) -> Result<(), Error> {
+    enable_routing: &E,
+) -> Result<(), Error>
+where
+    E: Fn(),
+{
     let reactor = Reactor::current().unwrap();
 
     let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
@@ -5728,6 +5739,7 @@ async fn client_stream_connection_inner(
         &zreceiver,
         &zsender,
         shared.get(),
+        enable_routing,
         &refresh_stream_timeout,
         &refresh_session_timeout,
     ));
@@ -5794,7 +5806,7 @@ async fn client_stream_connection_inner(
     Ok(())
 }
 
-pub async fn client_stream_connection(
+pub async fn client_stream_connection<E>(
     token: CancellationToken,
     log_id: &str,
     id: &[u8],
@@ -5812,7 +5824,10 @@ pub async fn client_stream_connection(
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<zmq::Message>,
     shared: arena::Rc<StreamSharedData>,
-) {
+    enable_routing: &E,
+) where
+    E: Fn(),
+{
     match client_stream_connection_inner(
         token,
         log_id,
@@ -5830,6 +5845,7 @@ pub async fn client_stream_connection(
         zreceiver,
         zsender,
         shared,
+        enable_routing,
     )
     .await
     {
@@ -8675,6 +8691,7 @@ mod tests {
             &r_to_conn,
             &s_from_conn,
             shared.get(),
+            &|| {},
             &refresh_stream_timeout,
             &refresh_session_timeout,
         )
