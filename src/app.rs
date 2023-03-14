@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::client::Client;
 use crate::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WORKER_MAX};
 use crate::websocket;
 use crate::zhttpsocket;
@@ -246,6 +247,7 @@ impl App {
         let mut out = Vec::new();
 
         out.extend(Server::task_sizes());
+        out.extend(Client::task_sizes());
         out.push((
             "deflate_codec_state".to_string(),
             websocket::deflate_codec_state_size(),

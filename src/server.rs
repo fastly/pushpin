@@ -54,10 +54,8 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::path::Path;
 use std::rc::Rc;
-use std::str;
-use std::str::FromStr;
-use std::sync::mpsc;
-use std::sync::Arc;
+use std::str::{self, FromStr};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
@@ -2278,8 +2276,11 @@ impl Server {
 
         let mut v = Vec::new();
 
-        v.push(("req_connection_task".to_string(), req_task_size));
-        v.push(("stream_connection_task".to_string(), stream_task_size));
+        v.push(("server_req_connection_task".to_string(), req_task_size));
+        v.push((
+            "server_stream_connection_task".to_string(),
+            stream_task_size,
+        ));
 
         v
     }
@@ -3199,10 +3200,10 @@ pub mod tests {
 
         let sizes = Server::task_sizes();
 
-        assert_eq!(sizes[0].0, "req_connection_task");
+        assert_eq!(sizes[0].0, "server_req_connection_task");
         assert!(sizes[0].1 <= REQ_TASK_SIZE_MAX);
 
-        assert_eq!(sizes[1].0, "stream_connection_task");
+        assert_eq!(sizes[1].0, "server_stream_connection_task");
         assert!(sizes[1].1 <= STREAM_TASK_SIZE_MAX);
     }
 }
