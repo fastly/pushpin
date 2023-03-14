@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,17 @@ use time::{OffsetDateTime, UtcOffset};
 // safety values
 const WORKERS_MAX: usize = 1024;
 const CONNS_MAX: usize = 10_000_000;
+
+const PRIVATE_SUBNETS: &[&str] = &[
+    "127.0.0.0/8",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "169.254.0.0/16",
+    "::1/128",
+    "fc00::/7",
+    "fe80::/10",
+];
 
 struct SimpleLogger {
     local_offset: UtcOffset,
@@ -110,9 +121,13 @@ struct Args {
     zclient_req_specs: Vec<String>,
     zclient_stream_specs: Vec<String>,
     zclient_connect: bool,
+    zserver_req_specs: Vec<String>,
+    zserver_stream_specs: Vec<String>,
+    zserver_connect: bool,
     ipc_file_mode: usize,
     tls_identities_dir: String,
     allow_compression: bool,
+    deny_out_internal: bool,
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
@@ -142,9 +157,13 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         zclient_req: args.zclient_req_specs,
         zclient_stream: args.zclient_stream_specs,
         zclient_connect: args.zclient_connect,
+        zserver_req: args.zserver_req_specs,
+        zserver_stream: args.zserver_stream_specs,
+        zserver_connect: args.zserver_connect,
         ipc_file_mode: args.ipc_file_mode,
         certs_dir: PathBuf::from(args.tls_identities_dir),
         allow_compression: args.allow_compression,
+        deny: Vec::new(),
     };
 
     for v in args.listen.iter() {
@@ -208,6 +227,12 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         };
 
         config.listen.push(app::ListenConfig { spec, stream });
+    }
+
+    if args.deny_out_internal {
+        for s in PRIVATE_SUBNETS.iter() {
+            config.deny.push(s.parse().unwrap());
+        }
     }
 
     condure::run(&config)
@@ -286,7 +311,7 @@ fn main() {
                 .long("req-timeout")
                 .takes_value(true)
                 .value_name("N")
-                .help("Client timeout in req mode (seconds)")
+                .help("Connection timeout in req mode (seconds)")
                 .default_value("30"),
         )
         .arg(
@@ -294,7 +319,7 @@ fn main() {
                 .long("stream-timeout")
                 .takes_value(true)
                 .value_name("N")
-                .help("Client timeout in stream mode (seconds)")
+                .help("Connection timeout in stream mode (seconds)")
                 .default_value("1800"),
         )
         .arg(
@@ -303,8 +328,7 @@ fn main() {
                 .takes_value(true)
                 .value_name("[addr:]port[,params...]")
                 .multiple(true)
-                .help("Port to listen on")
-                .default_value("0.0.0.0:8000,stream"),
+                .help("Port to listen on"),
         )
         .arg(
             Arg::with_name("zclient-req")
@@ -330,6 +354,27 @@ fn main() {
                 .help("ZeroMQ client sockets should connect instead of bind"),
         )
         .arg(
+            Arg::with_name("zserver-req")
+                .long("zserver-req")
+                .takes_value(true)
+                .value_name("spec")
+                .multiple(true)
+                .help("ZeroMQ server REQ spec"),
+        )
+        .arg(
+            Arg::with_name("zserver-stream")
+                .long("zserver-stream")
+                .takes_value(true)
+                .value_name("spec-base")
+                .multiple(true)
+                .help("ZeroMQ server PULL/ROUTER/PUB spec base"),
+        )
+        .arg(
+            Arg::with_name("zserver-connect")
+                .long("zserver-connect")
+                .help("ZeroMQ server sockets should connect instead of bind"),
+        )
+        .arg(
             Arg::with_name("ipc-file-mode")
                 .long("ipc-file-mode")
                 .takes_value(true)
@@ -348,6 +393,11 @@ fn main() {
             Arg::with_name("compression")
                 .long("compression")
                 .help("Allow compression to be used"),
+        )
+        .arg(
+            Arg::with_name("deny-out-internal")
+                .long("deny-out-internal")
+                .help("Block outbound connections to local/internal IP address ranges"),
         )
         .arg(
             Arg::with_name("sizes")
@@ -470,11 +520,15 @@ fn main() {
         }
     };
 
-    let listen = matches
-        .values_of("listen")
-        .unwrap()
-        .map(String::from)
-        .collect();
+    let mut listen: Vec<String> = if matches.is_present("listen") {
+        matches
+            .values_of("listen")
+            .unwrap()
+            .map(String::from)
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     let zclient_req_specs = matches
         .values_of("zclient-req")
@@ -490,6 +544,28 @@ fn main() {
 
     let zclient_connect = matches.is_present("zclient-connect");
 
+    let zserver_req_specs: Vec<String> = if matches.is_present("zserver-req") {
+        matches
+            .values_of("zserver-req")
+            .unwrap()
+            .map(String::from)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let zserver_stream_specs: Vec<String> = if matches.is_present("zserver-stream") {
+        matches
+            .values_of("zserver-stream")
+            .unwrap()
+            .map(String::from)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let zserver_connect = matches.is_present("zserver-connect");
+
     let ipc_file_mode = matches.value_of("ipc-file-mode").unwrap_or("0");
 
     let ipc_file_mode: usize = match ipc_file_mode.parse() {
@@ -503,6 +579,16 @@ fn main() {
     let tls_identities_dir = matches.value_of("tls-identities-dir").unwrap();
 
     let allow_compression = matches.is_present("compression");
+
+    let deny_out_internal = matches.is_present("deny-out-internal");
+
+    // if no zmq server specs are set (needed by client mode), specify
+    // default listen configuration in order to enable server mode. this
+    // means if zmq server specs are set, then server mode won't be enabled
+    // by default
+    if listen.is_empty() && zserver_req_specs.is_empty() && zserver_stream_specs.is_empty() {
+        listen.push("0.0.0.0:8000,stream".to_string());
+    }
 
     let args = Args {
         id: id.to_string(),
@@ -518,9 +604,13 @@ fn main() {
         zclient_req_specs,
         zclient_stream_specs,
         zclient_connect,
+        zserver_req_specs,
+        zserver_stream_specs,
+        zserver_connect,
         ipc_file_mode,
         tls_identities_dir: tls_identities_dir.to_string(),
         allow_compression,
+        deny_out_internal,
     };
 
     if let Err(e) = process_args_and_run(args) {
