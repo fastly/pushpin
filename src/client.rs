@@ -18,6 +18,7 @@ use crate::arena;
 use crate::buffer::TmpBuffer;
 use crate::channel;
 use crate::connection::{client_req_connection, client_stream_connection, StreamSharedData};
+use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
     event_wait, select_2, select_5, select_option, AsyncLocalReceiver, AsyncLocalSender,
@@ -27,18 +28,23 @@ use crate::list;
 use crate::pin;
 use crate::reactor::Reactor;
 use crate::resolver::Resolver;
+use crate::tnetstring;
 use crate::zhttppacket;
 use crate::zhttpsocket;
-use crate::zmq::MultipartHeader;
+use crate::zmq::{MultipartHeader, SpecInfo};
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
 use log::{debug, error, info, warn};
+use mio::unix::SourceFd;
 use slab::Slab;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
+use std::io::{self, Write};
 use std::mem;
 use std::rc::Rc;
+use std::str;
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
@@ -51,6 +57,11 @@ const REQ_SENDER_BOUND: usize = 1;
 // max number of messages retained per connection is the channel bound per
 // connection
 pub const MSG_RETAINED_PER_CONNECTION_MAX: usize = REQ_SENDER_BOUND;
+
+// the max number of messages retained outside of connections is one per
+// handle we read from (req and stream), in preparation for sending to any
+// connections
+pub const MSG_RETAINED_PER_WORKER_MAX: usize = 2;
 
 // run x1
 // req_handle_task x1
@@ -1790,5 +1801,1090 @@ impl Drop for Client {
         for w in self.workers.iter_mut() {
             w.stop();
         }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum StatusMessage {
+    Started,
+    ReqFinished,
+    StreamFinished,
+}
+
+enum ControlMessage {
+    Stop,
+    Req(zmq::Message),
+    Stream(zmq::Message),
+}
+
+pub struct TestClient {
+    _client: Client,
+    thread: Option<thread::JoinHandle<()>>,
+    status: channel::Receiver<StatusMessage>,
+    control: channel::Sender<ControlMessage>,
+    next_id: Cell<u64>,
+}
+
+impl TestClient {
+    pub fn new(workers: usize) -> Self {
+        let zmq_context = Arc::new(zmq::Context::new());
+
+        let req_maxconn = 100;
+        let stream_maxconn = 100;
+
+        let maxconn = req_maxconn + stream_maxconn;
+
+        let mut zsockman = zhttpsocket::ServerSocketManager::new(
+            Arc::clone(&zmq_context),
+            "test",
+            (MSG_RETAINED_PER_CONNECTION_MAX * maxconn) + (MSG_RETAINED_PER_WORKER_MAX * workers),
+            100,
+            100,
+        );
+
+        zsockman
+            .set_server_req_specs(&vec![SpecInfo {
+                spec: String::from("inproc://client-test"),
+                bind: true,
+                ipc_file_mode: 0,
+            }])
+            .unwrap();
+
+        let zsockman = Arc::new(zsockman);
+
+        let client = Client::new(
+            "test",
+            workers,
+            req_maxconn,
+            stream_maxconn,
+            1024,
+            1024,
+            10,
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+            false,
+            &[],
+            zsockman.clone(),
+            100,
+        )
+        .unwrap();
+
+        zsockman
+            .set_server_stream_specs(
+                &vec![SpecInfo {
+                    spec: String::from("inproc://client-test-out"),
+                    bind: true,
+                    ipc_file_mode: 0,
+                }],
+                &vec![SpecInfo {
+                    spec: String::from("inproc://client-test-out-stream"),
+                    bind: true,
+                    ipc_file_mode: 0,
+                }],
+                &vec![SpecInfo {
+                    spec: String::from("inproc://client-test-in"),
+                    bind: true,
+                    ipc_file_mode: 0,
+                }],
+            )
+            .unwrap();
+
+        let (status_s, status_r) = channel::channel(1);
+        let (control_s, control_r) = channel::channel(1000);
+
+        let thread = thread::spawn(move || {
+            Self::run(status_s, control_r, zmq_context);
+        });
+
+        // wait for handler thread to start
+        assert_eq!(status_r.recv().unwrap(), StatusMessage::Started);
+
+        Self {
+            _client: client,
+            thread: Some(thread),
+            status: status_r,
+            control: control_s,
+            next_id: Cell::new(0),
+        }
+    }
+
+    pub fn do_req(&self, addr: std::net::SocketAddr) {
+        let msg = self.make_req_message(addr).unwrap();
+
+        self.control.send(ControlMessage::Req(msg)).unwrap();
+    }
+
+    pub fn do_stream_http(&self, addr: std::net::SocketAddr) {
+        let msg = self.make_stream_message(addr, false).unwrap();
+
+        self.control.send(ControlMessage::Stream(msg)).unwrap();
+    }
+
+    pub fn do_stream_ws(&self, addr: std::net::SocketAddr) {
+        let msg = self.make_stream_message(addr, true).unwrap();
+
+        self.control.send(ControlMessage::Stream(msg)).unwrap();
+    }
+
+    pub fn wait_req(&self) {
+        assert_eq!(self.status.recv().unwrap(), StatusMessage::ReqFinished);
+    }
+
+    pub fn wait_stream(&self) {
+        assert_eq!(self.status.recv().unwrap(), StatusMessage::StreamFinished);
+    }
+
+    fn make_req_message(&self, addr: std::net::SocketAddr) -> Result<zmq::Message, io::Error> {
+        let mut dest = [0; 1024];
+
+        let mut cursor = io::Cursor::new(&mut dest[..]);
+
+        cursor.write(b"T")?;
+
+        let mut w = tnetstring::Writer::new(&mut cursor);
+
+        w.start_map()?;
+
+        let mut tmp = [0u8; 1024];
+
+        let id = {
+            let id = self.next_id.get();
+            self.next_id.set(id + 1);
+
+            let mut cursor = io::Cursor::new(&mut tmp[..]);
+            write!(&mut cursor, "{}", id)?;
+            let pos = cursor.position() as usize;
+
+            &tmp[..pos]
+        };
+
+        w.write_string(b"id")?;
+        w.write_string(id)?;
+
+        w.write_string(b"method")?;
+        w.write_string(b"GET")?;
+
+        let mut tmp = [0u8; 1024];
+
+        let uri = {
+            let mut cursor = io::Cursor::new(&mut tmp[..]);
+            write!(&mut cursor, "http://{}/path", addr)?;
+            let pos = cursor.position() as usize;
+
+            &tmp[..pos]
+        };
+
+        w.write_string(b"uri")?;
+        w.write_string(uri)?;
+
+        w.end_map()?;
+
+        w.flush()?;
+
+        let size = cursor.position() as usize;
+
+        Ok(zmq::Message::from(&dest[..size]))
+    }
+
+    fn make_stream_message(
+        &self,
+        addr: std::net::SocketAddr,
+        ws: bool,
+    ) -> Result<zmq::Message, io::Error> {
+        let mut dest = [0; 1024];
+
+        let mut cursor = io::Cursor::new(&mut dest[..]);
+
+        cursor.write(b"T")?;
+
+        let mut w = tnetstring::Writer::new(&mut cursor);
+
+        w.start_map()?;
+
+        w.write_string(b"from")?;
+        w.write_string(b"handler")?;
+
+        let mut tmp = [0u8; 1024];
+
+        let id = {
+            let id = self.next_id.get();
+            self.next_id.set(id + 1);
+
+            let mut cursor = io::Cursor::new(&mut tmp[..]);
+            write!(&mut cursor, "{}", id)?;
+            let pos = cursor.position() as usize;
+
+            &tmp[..pos]
+        };
+
+        w.write_string(b"id")?;
+        w.write_string(id)?;
+
+        w.write_string(b"seq")?;
+        w.write_int(0)?;
+
+        let mut tmp = [0u8; 1024];
+
+        let uri = if ws {
+            let mut cursor = io::Cursor::new(&mut tmp[..]);
+            write!(&mut cursor, "ws://{}/path", addr)?;
+            let pos = cursor.position() as usize;
+
+            &tmp[..pos]
+        } else {
+            w.write_string(b"method")?;
+            w.write_string(b"GET")?;
+
+            let mut cursor = io::Cursor::new(&mut tmp[..]);
+            write!(&mut cursor, "http://{}/path", addr)?;
+            let pos = cursor.position() as usize;
+
+            &tmp[..pos]
+        };
+
+        w.write_string(b"uri")?;
+        w.write_string(uri)?;
+
+        w.write_string(b"credits")?;
+        w.write_int(1024)?;
+
+        w.end_map()?;
+
+        w.flush()?;
+
+        let size = cursor.position() as usize;
+
+        Ok(zmq::Message::from(&dest[..size]))
+    }
+
+    fn respond_msg(
+        id: &[u8],
+        seq: u32,
+        ptype: &str,
+        content_type: &str,
+        body: &[u8],
+        code: Option<u16>,
+    ) -> Result<zmq::Message, io::Error> {
+        let mut dest = [0; 1024];
+
+        let mut cursor = io::Cursor::new(&mut dest[..]);
+
+        cursor.write(b"T")?;
+
+        let mut w = tnetstring::Writer::new(&mut cursor);
+
+        w.start_map()?;
+
+        w.write_string(b"from")?;
+        w.write_string(b"handler")?;
+
+        w.write_string(b"id")?;
+        w.write_string(id)?;
+
+        w.write_string(b"seq")?;
+        w.write_int(seq as isize)?;
+
+        if ptype.is_empty() {
+            w.write_string(b"content-type")?;
+            w.write_string(content_type.as_bytes())?;
+        } else {
+            w.write_string(b"type")?;
+            w.write_string(ptype.as_bytes())?;
+        }
+
+        if let Some(x) = code {
+            w.write_string(b"code")?;
+            w.write_int(x as isize)?;
+        }
+
+        w.write_string(b"body")?;
+        w.write_string(body)?;
+
+        w.end_map()?;
+
+        w.flush()?;
+
+        let size = cursor.position() as usize;
+
+        Ok(zmq::Message::from(&dest[..size]))
+    }
+
+    fn run(
+        status: channel::Sender<StatusMessage>,
+        control: channel::Receiver<ControlMessage>,
+        zmq_context: Arc<zmq::Context>,
+    ) {
+        let req_sock = zmq_context.socket(zmq::DEALER).unwrap();
+        req_sock.connect("inproc://client-test").unwrap();
+
+        let out_sock = zmq_context.socket(zmq::PUSH).unwrap();
+        out_sock.connect("inproc://client-test-out").unwrap();
+
+        let out_stream_sock = zmq_context.socket(zmq::ROUTER).unwrap();
+        out_stream_sock
+            .connect("inproc://client-test-out-stream")
+            .unwrap();
+
+        let in_sock = zmq_context.socket(zmq::SUB).unwrap();
+        in_sock.set_subscribe(b"handler ").unwrap();
+        in_sock.connect("inproc://client-test-in").unwrap();
+
+        // ensure zsockman is subscribed
+        thread::sleep(Duration::from_millis(100));
+
+        status.send(StatusMessage::Started).unwrap();
+
+        let mut poller = event::Poller::new(1).unwrap();
+
+        poller
+            .register_custom(
+                control.get_read_registration(),
+                mio::Token(1),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
+
+        poller
+            .register(
+                &mut SourceFd(&req_sock.get_fd().unwrap()),
+                mio::Token(2),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
+
+        poller
+            .register(
+                &mut SourceFd(&in_sock.get_fd().unwrap()),
+                mio::Token(3),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
+
+        let mut req_events = req_sock.get_events().unwrap();
+
+        let mut in_events = in_sock.get_events().unwrap();
+
+        loop {
+            while req_events.contains(zmq::POLLIN) {
+                let parts = match req_sock.recv_multipart(zmq::DONTWAIT) {
+                    Ok(parts) => parts,
+                    Err(zmq::Error::EAGAIN) => {
+                        break;
+                    }
+                    Err(e) => panic!("recv error: {:?}", e),
+                };
+
+                req_events = req_sock.get_events().unwrap();
+
+                assert_eq!(parts.len(), 2);
+
+                let msg = &parts[1];
+                assert_eq!(msg[0], b'T');
+
+                let mut code: u16 = 0;
+                let mut reason = "";
+                let mut body = b"".as_slice();
+
+                for f in tnetstring::parse_map(&msg[1..]).unwrap() {
+                    let f = f.unwrap();
+
+                    match f.key {
+                        "code" => {
+                            let x = tnetstring::parse_int(&f.data).unwrap();
+                            code = x as u16;
+                        }
+                        "reason" => {
+                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            reason = str::from_utf8(s).unwrap();
+                        }
+                        "body" => {
+                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            body = s;
+                        }
+                        _ => {}
+                    }
+                }
+
+                assert_eq!(code, 200);
+                assert_eq!(reason, "OK");
+                assert_eq!(str::from_utf8(body).unwrap(), "hello\n");
+
+                status.send(StatusMessage::ReqFinished).unwrap();
+            }
+
+            while in_events.contains(zmq::POLLIN) {
+                let parts = match in_sock.recv_multipart(zmq::DONTWAIT) {
+                    Ok(parts) => parts,
+                    Err(zmq::Error::EAGAIN) => {
+                        break;
+                    }
+                    Err(e) => panic!("recv error: {:?}", e),
+                };
+
+                in_events = in_sock.get_events().unwrap();
+
+                assert_eq!(parts.len(), 1);
+
+                let buf = &parts[0];
+
+                let mut pos = None;
+                for (i, b) in buf.iter().enumerate() {
+                    if *b == b' ' {
+                        pos = Some(i);
+                        break;
+                    }
+                }
+
+                let pos = pos.unwrap();
+                let msg = &buf[(pos + 1)..];
+
+                assert_eq!(msg[0], b'T');
+
+                let mut id = "";
+                let mut seq = None;
+                let mut ptype = "";
+                let mut code = None;
+                let mut reason = "";
+                let mut content_type = "";
+                let mut body = &b""[..];
+                let mut more = false;
+
+                for f in tnetstring::parse_map(&msg[1..]).unwrap() {
+                    let f = f.unwrap();
+
+                    match f.key {
+                        "id" => {
+                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            id = str::from_utf8(s).unwrap();
+                        }
+                        "seq" => {
+                            let x = tnetstring::parse_int(&f.data).unwrap();
+                            seq = Some(x as u32);
+                        }
+                        "type" => {
+                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            ptype = str::from_utf8(s).unwrap();
+                        }
+                        "code" => {
+                            let x = tnetstring::parse_int(&f.data).unwrap();
+                            code = Some(x as u16);
+                        }
+                        "reason" => {
+                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            reason = str::from_utf8(s).unwrap();
+                        }
+                        "content-type" => {
+                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            content_type = str::from_utf8(s).unwrap();
+                        }
+                        "body" => {
+                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            body = s;
+                        }
+                        "more" => {
+                            let b = tnetstring::parse_bool(&f.data).unwrap();
+                            more = b;
+                        }
+                        _ => {}
+                    }
+                }
+
+                let seq = seq.unwrap() + 1;
+
+                // as a hack to make the test server stateless, respond to every message
+                // using the received sequence number. for messages we don't care about,
+                // respond with keep-alive in order to keep the sequencing going
+                if ptype.is_empty() || ptype == "ping" || ptype == "pong" || ptype == "close" {
+                    if ptype.is_empty() && content_type.is_empty() {
+                        // assume http/ws accept, or http body
+
+                        if !reason.is_empty() {
+                            // http/ws accept
+
+                            let code = code.unwrap();
+                            assert!(code == 200 || code == 101);
+
+                            if code == 200 {
+                                assert_eq!(reason, "OK");
+                                assert_eq!(body.len(), 0);
+                                assert_eq!(more, true);
+                            } else {
+                                // 101
+                                assert_eq!(reason, "Switching Protocols");
+                                assert_eq!(body.len(), 0);
+                                assert_eq!(more, false);
+                            }
+
+                            let msg =
+                                Self::respond_msg(id.as_bytes(), seq, "keep-alive", "", b"", None)
+                                    .unwrap();
+                            out_stream_sock
+                                .send_multipart(
+                                    [
+                                        zmq::Message::from(b"test".as_slice()),
+                                        zmq::Message::new(),
+                                        msg,
+                                    ],
+                                    0,
+                                )
+                                .unwrap();
+                        } else {
+                            // http body
+
+                            assert_eq!(str::from_utf8(body).unwrap(), "hello\n");
+                            assert_eq!(more, false);
+
+                            status.send(StatusMessage::StreamFinished).unwrap();
+                        }
+                    } else {
+                        // assume ws message
+
+                        if ptype == "ping" {
+                            ptype = "pong";
+                        }
+
+                        // echo
+                        let msg =
+                            Self::respond_msg(id.as_bytes(), seq, ptype, content_type, body, code)
+                                .unwrap();
+                        out_stream_sock
+                            .send_multipart(
+                                [
+                                    zmq::Message::from(b"test".as_slice()),
+                                    zmq::Message::new(),
+                                    msg,
+                                ],
+                                0,
+                            )
+                            .unwrap();
+
+                        if ptype == "close" {
+                            status.send(StatusMessage::StreamFinished).unwrap();
+                        }
+                    }
+                } else {
+                    let msg =
+                        Self::respond_msg(id.as_bytes(), seq, "keep-alive", "", b"", None).unwrap();
+                    out_stream_sock
+                        .send_multipart(
+                            [
+                                zmq::Message::from(b"test".as_slice()),
+                                zmq::Message::new(),
+                                msg,
+                            ],
+                            0,
+                        )
+                        .unwrap();
+                }
+            }
+
+            poller.poll(None).unwrap();
+
+            let mut done = false;
+
+            for event in poller.iter_events() {
+                match event.token() {
+                    mio::Token(1) => match control.try_recv() {
+                        Ok(ControlMessage::Stop) => {
+                            done = true;
+                            break;
+                        }
+                        Ok(ControlMessage::Req(msg)) => {
+                            req_sock
+                                .send_multipart([zmq::Message::new(), msg], 0)
+                                .unwrap();
+                        }
+                        Ok(ControlMessage::Stream(msg)) => out_sock.send(msg, 0).unwrap(),
+                        Err(_) => {}
+                    },
+                    mio::Token(2) => req_events = req_sock.get_events().unwrap(),
+                    mio::Token(3) => in_events = in_sock.get_events().unwrap(),
+                    _ => unreachable!(),
+                }
+            }
+
+            if done {
+                break;
+            }
+        }
+    }
+}
+
+impl Drop for TestClient {
+    fn drop(&mut self) {
+        self.control.try_send(ControlMessage::Stop).unwrap();
+
+        let thread = self.thread.take().unwrap();
+        thread.join().unwrap();
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use crate::connection::calculate_ws_accept;
+    use crate::websocket;
+    use std::io::Read;
+    use test_log::test;
+
+    fn recv_frame<R: Read>(
+        stream: &mut R,
+        buf: &mut Vec<u8>,
+    ) -> Result<(bool, u8, Vec<u8>), io::Error> {
+        loop {
+            let fi = match websocket::read_header(buf) {
+                Ok(fi) => fi,
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    let mut chunk = [0; 1024];
+
+                    let size = stream.read(&mut chunk)?;
+                    if size == 0 {
+                        return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                    }
+
+                    buf.extend_from_slice(&chunk[..size]);
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+
+            while buf.len() < fi.payload_offset + fi.payload_size {
+                let mut chunk = [0; 1024];
+
+                let size = stream.read(&mut chunk)?;
+                if size == 0 {
+                    return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+                }
+
+                buf.extend_from_slice(&chunk[..size]);
+            }
+
+            let mut content =
+                Vec::from(&buf[fi.payload_offset..(fi.payload_offset + fi.payload_size)]);
+
+            if let Some(mask) = fi.mask {
+                websocket::apply_mask(&mut content, mask, 0);
+            }
+
+            *buf = buf.split_off(fi.payload_offset + fi.payload_size);
+
+            return Ok((fi.fin, fi.opcode, content));
+        }
+    }
+
+    #[test]
+    fn test_batch() {
+        let mut batch = Batch::new(3);
+
+        assert_eq!(batch.capacity(), 3);
+        assert_eq!(batch.len(), 0);
+        assert_eq!(batch.last_group_ckeys(), &[]);
+
+        assert!(batch.add(b"addr-a", 1).is_ok());
+        assert!(batch.add(b"addr-a", 2).is_ok());
+        assert!(batch.add(b"addr-b", 3).is_ok());
+        assert_eq!(batch.len(), 3);
+
+        assert!(batch.add(b"addr-c", 4).is_err());
+        assert_eq!(batch.len(), 3);
+        assert_eq!(batch.is_empty(), false);
+
+        let ids = ["id-1", "id-2", "id-3"];
+
+        let group = batch
+            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .unwrap();
+        assert_eq!(group.ids().len(), 2);
+        assert_eq!(group.ids()[0].id, b"id-1");
+        assert_eq!(group.ids()[0].seq, Some(0));
+        assert_eq!(group.ids()[1].id, b"id-2");
+        assert_eq!(group.ids()[1].seq, Some(0));
+        assert_eq!(group.addr(), b"addr-a");
+        drop(group);
+        assert_eq!(batch.is_empty(), false);
+        assert_eq!(batch.last_group_ckeys(), &[1, 2]);
+
+        let group = batch
+            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .unwrap();
+        assert_eq!(group.ids().len(), 1);
+        assert_eq!(group.ids()[0].id, b"id-3");
+        assert_eq!(group.ids()[0].seq, Some(0));
+        assert_eq!(group.addr(), b"addr-b");
+        drop(group);
+        assert_eq!(batch.is_empty(), true);
+        assert_eq!(batch.last_group_ckeys(), &[3]);
+
+        assert!(batch
+            .take_group(|ckey| { (ids[ckey - 1].as_bytes(), 0) })
+            .is_none());
+        assert_eq!(batch.last_group_ckeys(), &[3]);
+    }
+
+    #[test]
+    fn test_client() {
+        let client = TestClient::new(1);
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // req
+
+        client.do_req(addr);
+        let (mut stream, _) = listener.accept().unwrap();
+
+        let mut buf = Vec::new();
+        let mut req_end = 0;
+
+        while req_end == 0 {
+            let mut chunk = [0; 1024];
+            let size = stream.read(&mut chunk).unwrap();
+            buf.extend_from_slice(&chunk[..size]);
+
+            for i in 0..(buf.len() - 3) {
+                if &buf[i..(i + 4)] == b"\r\n\r\n" {
+                    req_end = i + 4;
+                    break;
+                }
+            }
+        }
+
+        let expected = format!(
+            concat!("GET /path HTTP/1.1\r\n", "Host: {}\r\n", "\r\n"),
+            addr
+        );
+
+        assert_eq!(str::from_utf8(&buf[..req_end]).unwrap(), expected);
+
+        stream
+            .write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nhello\n",
+            )
+            .unwrap();
+        drop(stream);
+
+        client.wait_req();
+
+        // stream (http)
+
+        client.do_stream_http(addr);
+        let (mut stream, _) = listener.accept().unwrap();
+
+        let mut buf = Vec::new();
+        let mut req_end = 0;
+
+        while req_end == 0 {
+            let mut chunk = [0; 1024];
+            let size = stream.read(&mut chunk).unwrap();
+            buf.extend_from_slice(&chunk[..size]);
+
+            for i in 0..(buf.len() - 3) {
+                if &buf[i..(i + 4)] == b"\r\n\r\n" {
+                    req_end = i + 4;
+                    break;
+                }
+            }
+        }
+
+        let expected = format!(
+            concat!("GET /path HTTP/1.1\r\n", "Host: {}\r\n", "\r\n"),
+            addr
+        );
+
+        assert_eq!(str::from_utf8(&buf[..req_end]).unwrap(), expected);
+
+        stream
+            .write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nhello\n",
+            )
+            .unwrap();
+        drop(stream);
+
+        client.wait_stream();
+
+        // stream (ws)
+
+        client.do_stream_ws(addr);
+        let (mut stream, _) = listener.accept().unwrap();
+
+        let mut buf = Vec::new();
+        let mut req_end = 0;
+
+        while req_end == 0 {
+            let mut chunk = [0; 1024];
+            let size = stream.read(&mut chunk).unwrap();
+            buf.extend_from_slice(&chunk[..size]);
+
+            for i in 0..(buf.len() - 3) {
+                if &buf[i..(i + 4)] == b"\r\n\r\n" {
+                    req_end = i + 4;
+                    break;
+                }
+            }
+        }
+
+        let req_buf = &buf[..req_end];
+
+        // use httparse to fish out Sec-WebSocket-Key
+        let ws_key = {
+            let mut headers = [httparse::EMPTY_HEADER; 32];
+
+            let mut req = httparse::Request::new(&mut headers);
+
+            match req.parse(req_buf) {
+                Ok(httparse::Status::Complete(_)) => {}
+                _ => panic!("unexpected parse status"),
+            }
+
+            let mut ws_key = String::new();
+
+            for h in req.headers {
+                if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
+                    ws_key = String::from_utf8(h.value.to_vec()).unwrap();
+                }
+            }
+
+            ws_key
+        };
+
+        let expected = format!(
+            concat!(
+                "GET /path HTTP/1.1\r\n",
+                "Host: {}\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Version: 13\r\n",
+                "Sec-WebSocket-Key: {}\r\n",
+                "\r\n"
+            ),
+            addr, ws_key,
+        );
+
+        assert_eq!(str::from_utf8(&buf[..req_end]).unwrap(), expected);
+
+        buf = buf.split_off(req_end);
+
+        let ws_accept = calculate_ws_accept(ws_key.as_bytes()).unwrap();
+
+        let resp_data = format!(
+            concat!(
+                "HTTP/1.1 101 Switching Protocols\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Accept: {}\r\n",
+                "\r\n",
+            ),
+            ws_accept
+        );
+
+        stream.write(resp_data.as_bytes()).unwrap();
+
+        // send message
+
+        let mut data = vec![0; 1024];
+        let body = &b"hello"[..];
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_TEXT,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
+        data[size..(size + body.len())].copy_from_slice(body);
+        stream.write(&data[..(size + body.len())]).unwrap();
+
+        // recv message
+
+        let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_TEXT);
+        assert_eq!(str::from_utf8(&content).unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_ws() {
+        let client = TestClient::new(1);
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        client.do_stream_ws(addr);
+        let (mut stream, _) = listener.accept().unwrap();
+
+        let mut buf = Vec::new();
+        let mut req_end = 0;
+
+        while req_end == 0 {
+            let mut chunk = [0; 1024];
+            let size = stream.read(&mut chunk).unwrap();
+            buf.extend_from_slice(&chunk[..size]);
+
+            for i in 0..(buf.len() - 3) {
+                if &buf[i..(i + 4)] == b"\r\n\r\n" {
+                    req_end = i + 4;
+                    break;
+                }
+            }
+        }
+
+        let req_buf = &buf[..req_end];
+
+        // use httparse to fish out Sec-WebSocket-Key
+        let ws_key = {
+            let mut headers = [httparse::EMPTY_HEADER; 32];
+
+            let mut req = httparse::Request::new(&mut headers);
+
+            match req.parse(req_buf) {
+                Ok(httparse::Status::Complete(_)) => {}
+                _ => panic!("unexpected parse status"),
+            }
+
+            let mut ws_key = String::new();
+
+            for h in req.headers {
+                if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
+                    ws_key = String::from_utf8(h.value.to_vec()).unwrap();
+                }
+            }
+
+            ws_key
+        };
+
+        let expected = format!(
+            concat!(
+                "GET /path HTTP/1.1\r\n",
+                "Host: {}\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Version: 13\r\n",
+                "Sec-WebSocket-Key: {}\r\n",
+                "\r\n"
+            ),
+            addr, ws_key,
+        );
+
+        assert_eq!(str::from_utf8(&buf[..req_end]).unwrap(), expected);
+
+        buf = buf.split_off(req_end);
+
+        let ws_accept = calculate_ws_accept(ws_key.as_bytes()).unwrap();
+
+        let resp_data = format!(
+            concat!(
+                "HTTP/1.1 101 Switching Protocols\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Accept: {}\r\n",
+                "\r\n",
+            ),
+            ws_accept
+        );
+
+        stream.write(resp_data.as_bytes()).unwrap();
+
+        // send binary
+
+        let mut data = vec![0; 1024];
+        let body = &[1, 2, 3][..];
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_BINARY,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
+        data[size..(size + body.len())].copy_from_slice(body);
+        stream.write(&data[..(size + body.len())]).unwrap();
+
+        // recv binary
+
+        let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_BINARY);
+        assert_eq!(content, &[1, 2, 3][..]);
+
+        buf.clear();
+
+        // send ping
+
+        let mut data = vec![0; 1024];
+        let body = &b""[..];
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_PING,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
+        stream.write(&data[..size]).unwrap();
+
+        // recv pong
+
+        let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_PONG);
+        assert_eq!(str::from_utf8(&content).unwrap(), "");
+
+        buf.clear();
+
+        // send close
+
+        let mut data = vec![0; 1024];
+        let body = &b"\x03\xf0gone"[..];
+        let size = websocket::write_header(
+            true,
+            false,
+            websocket::OPCODE_CLOSE,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
+        data[size..(size + body.len())].copy_from_slice(body);
+        stream.write(&data[..(size + body.len())]).unwrap();
+
+        // recv close
+
+        let (fin, opcode, content) = recv_frame(&mut stream, &mut buf).unwrap();
+        assert_eq!(fin, true);
+        assert_eq!(opcode, websocket::OPCODE_CLOSE);
+        assert_eq!(&content, &b"\x03\xf0gone"[..]);
+
+        // expect tcp close
+
+        let mut chunk = [0; 1024];
+        let size = stream.read(&mut chunk).unwrap();
+        assert_eq!(size, 0);
+
+        client.wait_stream();
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[cfg(debug_assertions)]
+    #[test]
+    fn test_task_sizes() {
+        // sizes in debug mode at commit e7af23368a69998b595716d9ca74ce2f812929ad
+        const REQ_TASK_SIZE_BASE: usize = 6496;
+        const STREAM_TASK_SIZE_BASE: usize = 7880;
+
+        // cause tests to fail if sizes grow too much
+        const GROWTH_LIMIT: usize = 1000;
+        const REQ_TASK_SIZE_MAX: usize = REQ_TASK_SIZE_BASE + GROWTH_LIMIT;
+        const STREAM_TASK_SIZE_MAX: usize = STREAM_TASK_SIZE_BASE + GROWTH_LIMIT;
+
+        let sizes = Client::task_sizes();
+
+        assert_eq!(sizes[0].0, "client_req_connection_task");
+        assert!(sizes[0].1 <= REQ_TASK_SIZE_MAX);
+
+        assert_eq!(sizes[1].0, "client_stream_connection_task");
+        assert!(sizes[1].1 <= STREAM_TASK_SIZE_MAX);
     }
 }

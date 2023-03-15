@@ -123,7 +123,7 @@ fn gen_ws_key() -> ArrayString<WS_KEY_MAX> {
     ArrayString::from_str(output).unwrap()
 }
 
-fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
+pub fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
     let input_len = key.len() + websocket::WS_GUID.len();
 
     if input_len > WS_HASH_INPUT_MAX {
@@ -5504,7 +5504,7 @@ where
 
             let rdata = zhttppacket::ResponseData {
                 credits,
-                more: true,
+                more: !ws_key.is_some(),
                 code: resp.code,
                 reason: resp.reason,
                 headers: &zheaders,
@@ -9045,11 +9045,11 @@ mod tests {
 
         let expected = format!(
             concat!(
-                "handler T263:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
+                "handler T249:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
                 "ulti,4:true!}}4:code,3:101#6:reason,19:Switching Protocols",
                 ",7:headers,114:22:7:Upgrade,9:websocket,]24:10:Connection,",
                 "7:Upgrade,]56:20:Sec-WebSocket-Accept,28:{},]]7:credits,4:",
-                "1024#4:more,4:true!}}",
+                "1024#}}",
             ),
             ws_accept
         );
