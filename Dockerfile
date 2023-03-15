@@ -1,4 +1,4 @@
-FROM us.gcr.io/plat-elevation-preprod/fastly/base-focal:latest
+FROM container-registry.secretcdn.net/fastly/base-focal:latest
 
 ARG DESTDIR=/build
 ARG PKG_VERSION=unknown

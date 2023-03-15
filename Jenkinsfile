@@ -1,4 +1,5 @@
 #!/usr/bin/env groovy
+@Library("pipeline@v2-stable")
 
 import pipeline.fastly.kubernetes.jenkins.Constants
 import pipeline.fastly.github.Repo
