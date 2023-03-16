@@ -29,7 +29,6 @@
 #include "wsproxysession.h"
 
 #include <assert.h>
-#include <QTimer>
 #include <QDateTime>
 #include <QUrl>
 #include <QJsonDocument>
@@ -38,6 +37,7 @@
 #include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
+#include "rtimer.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
 #include "zwebsocket.h"
@@ -282,7 +282,7 @@ public:
 	bool detached;
 	QDateTime activityTime;
 	QByteArray publicCid;
-	QTimer *keepAliveTimer;
+	RTimer *keepAliveTimer;
 	WsControl::KeepAliveMode keepAliveMode;
 	int keepAliveTimeout;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
@@ -1078,8 +1078,8 @@ private slots:
 
 			if(!keepAliveTimer)
 			{
-				keepAliveTimer = new QTimer(this);
-				connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
+				keepAliveTimer = new RTimer(this);
+				connect(keepAliveTimer, &RTimer::timeout, this, &Private::keepAliveTimer_timeout);
 				keepAliveTimer->setSingleShot(true);
 			}
 
