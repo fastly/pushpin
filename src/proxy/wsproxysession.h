@@ -30,6 +30,7 @@
 #define WSPROXYSESSION_H
 
 #include <QObject>
+#include "callback.h"
 #include "logutil.h"
 #include "domainmap.h"
 
@@ -73,8 +74,8 @@ public:
 	// takes ownership
 	void start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route);
 
-signals:
-	void finishedByPassthrough();
+	// NOTE: for performance reasons we use callbacks instead of signals/slots
+	Callback<std::tuple<WsProxySession *>> & finishedByPassthroughCallback();
 
 private:
 	class Private;

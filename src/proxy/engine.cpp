@@ -383,7 +383,8 @@ public:
 		{
 			log_debug("creating proxysession for id=%s", rs->rid().second.data());
 
-			ps = new ProxySession(zroutes, accept, logConfig, stats, this);
+			ps = new ProxySession(zroutes, accept, logConfig, stats);
+			// TODO: use callbacks for performance
 			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
 			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
 			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
@@ -416,6 +417,7 @@ public:
 			log_debug("reusing proxysession");
 
 		// proxysession will take it from here
+		// TODO: use callbacks for performance
 		rs->disconnect(this);
 
 		ps->add(rs);
@@ -425,8 +427,8 @@ public:
 	{
 		QByteArray cid = connectionManager.addConnection(sock);
 
-		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl, this);
-		connect(ps, &WsProxySession::finishedByPassthrough, this, &Private::wsps_finishedByPassthrough);
+		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl);
+		ps->finishedByPassthroughCallback().add(Private::wsps_finishedByPassthrough_cb, this);
 
 		connectionManager.setProxyForConnection(sock, ps);
 
@@ -557,7 +559,7 @@ public:
 
 			route.targets += target;
 
-			rs = new RequestSession(stats, this);
+			rs = new RequestSession(stats);
 			rs->setRoute(route);
 		}
 		else
@@ -566,7 +568,7 @@ public:
 			// request with preferInternal=true. in that case, use domainmap
 			// for lookup, with route ID if available
 
-			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
+			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
 			rs->setDebugEnabled(config.debug);
 			rs->setAutoCrossOrigin(config.autoCrossOrigin);
 			rs->setPrefetchSize(config.inspectPrefetch);
@@ -577,6 +579,7 @@ public:
 
 		rs->setAutoShare(autoShare);
 
+		// TODO: use callbacks for performance
 		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
 		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
 		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
@@ -792,10 +795,17 @@ private slots:
 		tryTakeNext();
 	}
 
-	void wsps_finishedByPassthrough()
+	static void wsps_finishedByPassthrough_cb(void *data, std::tuple<WsProxySession *> value)
 	{
-		WsProxySession *ps = (WsProxySession *)sender();
+		Q_UNUSED(value);
 
+		Private *self = (Private *)data;
+
+		self->wsps_finishedByPassthrough(std::get<0>(value));
+	}
+
+	void wsps_finishedByPassthrough(WsProxySession *ps)
+	{
 		WsProxyItem *i = wsProxyItemsBySession.value(ps);
 		assert(i);
 
@@ -865,7 +875,7 @@ private slots:
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats, this);
+			RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
 
 			requestSessions += rs;
 
