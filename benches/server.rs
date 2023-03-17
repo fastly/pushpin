@@ -37,7 +37,7 @@ fn req(addr: SocketAddr) {
     for _ in 0..REQS_PER_ITER {
         executor
             .spawn(async move {
-                let mut client = AsyncTcpStream::connect(addr).await.unwrap();
+                let mut client = AsyncTcpStream::connect(&[addr]).await.unwrap();
 
                 client
                     .write(b"GET /hello HTTP/1.0\r\nHost: example.com\r\n\r\n")
