@@ -171,6 +171,7 @@ impl Queries {
             let qi = &mut queries.nodes[item_key].value;
 
             qi.result = Some(result);
+            qi.invalidated = None;
             qi.set_readiness.set_readiness(Interest::READABLE).unwrap();
         } else {
             queries.invalidated_count += 1;
@@ -231,6 +232,8 @@ impl ResolverInner {
                     let invalidated = Arc::new(AtomicBool::new(false));
 
                     loop {
+                        assert_eq!(Arc::strong_count(&invalidated), 1);
+
                         let (item_key, host) = match queries.get_next(&invalidated) {
                             Some(ret) => ret,
                             None => break,
