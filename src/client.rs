@@ -2393,6 +2393,7 @@ impl TestClient {
                             req_sock
                                 .send_multipart([zmq::Message::new(), msg], 0)
                                 .unwrap();
+                            req_events = req_sock.get_events().unwrap();
                         }
                         Ok(ControlMessage::Stream(msg)) => out_sock.send(msg, 0).unwrap(),
                         Err(_) => {}
