@@ -1889,7 +1889,7 @@ impl TestClient {
             )
             .unwrap();
 
-        let (status_s, status_r) = channel::channel(1);
+        let (status_s, status_r) = channel::channel(1000);
         let (control_s, control_r) = channel::channel(1000);
 
         let thread = thread::spawn(move || {
@@ -2164,11 +2164,12 @@ impl TestClient {
 
         let mut in_events = in_sock.get_events().unwrap();
 
-        loop {
+        'main: loop {
             while req_events.contains(zmq::POLLIN) {
                 let parts = match req_sock.recv_multipart(zmq::DONTWAIT) {
                     Ok(parts) => parts,
                     Err(zmq::Error::EAGAIN) => {
+                        req_events = req_sock.get_events().unwrap();
                         break;
                     }
                     Err(e) => panic!("recv error: {:?}", e),
@@ -2181,6 +2182,7 @@ impl TestClient {
                 let msg = &parts[1];
                 assert_eq!(msg[0], b'T');
 
+                let mut ptype = "";
                 let mut code: u16 = 0;
                 let mut reason = "";
                 let mut body = b"".as_slice();
@@ -2189,6 +2191,10 @@ impl TestClient {
                     let f = f.unwrap();
 
                     match f.key {
+                        "type" => {
+                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            ptype = str::from_utf8(s).unwrap();
+                        }
                         "code" => {
                             let x = tnetstring::parse_int(&f.data).unwrap();
                             code = x as u16;
@@ -2205,6 +2211,7 @@ impl TestClient {
                     }
                 }
 
+                assert_eq!(ptype, "");
                 assert_eq!(code, 200);
                 assert_eq!(reason, "OK");
                 assert_eq!(str::from_utf8(body).unwrap(), "hello\n");
@@ -2216,6 +2223,7 @@ impl TestClient {
                 let parts = match in_sock.recv_multipart(zmq::DONTWAIT) {
                     Ok(parts) => parts,
                     Err(zmq::Error::EAGAIN) => {
+                        in_events = in_sock.get_events().unwrap();
                         break;
                     }
                     Err(e) => panic!("recv error: {:?}", e),
@@ -2380,32 +2388,26 @@ impl TestClient {
 
             poller.poll(None).unwrap();
 
-            let mut done = false;
-
             for event in poller.iter_events() {
                 match event.token() {
-                    mio::Token(1) => match control.try_recv() {
-                        Ok(ControlMessage::Stop) => {
-                            done = true;
-                            break;
+                    mio::Token(1) => {
+                        while let Ok(msg) = control.try_recv() {
+                            match msg {
+                                ControlMessage::Stop => break 'main,
+                                ControlMessage::Req(msg) => {
+                                    req_sock
+                                        .send_multipart([zmq::Message::new(), msg], 0)
+                                        .unwrap();
+                                    req_events = req_sock.get_events().unwrap();
+                                }
+                                ControlMessage::Stream(msg) => out_sock.send(msg, 0).unwrap(),
+                            }
                         }
-                        Ok(ControlMessage::Req(msg)) => {
-                            req_sock
-                                .send_multipart([zmq::Message::new(), msg], 0)
-                                .unwrap();
-                            req_events = req_sock.get_events().unwrap();
-                        }
-                        Ok(ControlMessage::Stream(msg)) => out_sock.send(msg, 0).unwrap(),
-                        Err(_) => {}
-                    },
+                    }
                     mio::Token(2) => req_events = req_sock.get_events().unwrap(),
                     mio::Token(3) => in_events = in_sock.get_events().unwrap(),
                     _ => unreachable!(),
                 }
-            }
-
-            if done {
-                break;
             }
         }
     }

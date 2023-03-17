@@ -669,6 +669,10 @@ impl AsyncTcpListener {
     pub fn accept<'a>(&'a self) -> AcceptFuture<'a> {
         AcceptFuture { l: self }
     }
+
+    pub fn into_inner(self) -> TcpListener {
+        self.evented.into_inner()
+    }
 }
 
 pub struct AsyncUnixListener {

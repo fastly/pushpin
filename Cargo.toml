@@ -47,6 +47,10 @@ test-log = "0.2"
 name = "server"
 harness = false
 
+[[bench]]
+name = "client"
+harness = false
+
 [package.metadata.deb]
 extended-description = """\
 Condure is a service that manages network connections on behalf of server
