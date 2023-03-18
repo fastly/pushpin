@@ -2733,6 +2733,9 @@ mod tests {
 
         let mut zsockman = ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100);
 
+        let h1 = zsockman.server_req_handle();
+        let h2 = zsockman.server_req_handle();
+
         zsockman
             .set_server_req_specs(&vec![SpecInfo {
                 spec: String::from("inproc://test-server-req"),
@@ -2740,9 +2743,6 @@ mod tests {
                 ipc_file_mode: 0,
             }])
             .unwrap();
-
-        let h1 = zsockman.server_req_handle();
-        let h2 = zsockman.server_req_handle();
 
         let mut poller = event::Poller::new(1024).unwrap();
 
