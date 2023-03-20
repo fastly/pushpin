@@ -1819,25 +1819,25 @@ private:
 			removeSessionChannel(s, channel);
 	}
 
-	static void hs_subscribe_cb(void *data, HttpSession *hs, const QString &channel)
+	static void hs_subscribe_cb(void *data, std::tuple<HttpSession *, const QString &> value)
 	{
 		Private *self = (Private *)data;
 
-		self->hs_subscribe(hs, channel);
+		self->hs_subscribe(std::get<0>(value), std::get<1>(value));
 	}
 
-	static void hs_unsubscribe_cb(void *data, HttpSession *hs, const QString &channel)
+	static void hs_unsubscribe_cb(void *data, std::tuple<HttpSession *, const QString &> value)
 	{
 		Private *self = (Private *)data;
 
-		self->hs_unsubscribe(hs, channel);
+		self->hs_unsubscribe(std::get<0>(value), std::get<1>(value));
 	}
 
-	static void hs_finished_cb(void *data, HttpSession *hs)
+	static void hs_finished_cb(void *data, std::tuple<HttpSession *> value)
 	{
 		Private *self = (Private *)data;
 
-		self->hs_finished(hs);
+		self->hs_finished(std::get<0>(value));
 	}
 
 private slots:
@@ -2850,9 +2850,9 @@ private slots:
 			// NOTE: for performance reasons we do not call hs->setParent and
 			// instead leave the object unparented
 
-			hs->setSubscribeCallback(Private::hs_subscribe_cb, this);
-			hs->setUnsubscribeCallback(Private::hs_unsubscribe_cb, this);
-			hs->setFinishedCallback(Private::hs_finished_cb, this);
+			hs->subscribeCallback().add(Private::hs_subscribe_cb, this);
+			hs->unsubscribeCallback().add(Private::hs_unsubscribe_cb, this);
+			hs->finishedCallback().add(Private::hs_finished_cb, this);
 
 			cs.httpSessions.insert(hs->rid(), hs);
 

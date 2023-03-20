@@ -32,6 +32,7 @@
 #include <QObject>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "callback.h"
 #include "inspectdata.h"
 #include "zhttprequest.h"
 #include "instruct.h"
@@ -46,10 +47,6 @@ class HttpSessionUpdateManager;
 class RetryRequestPacket;
 
 class HttpSession;
-
-typedef void (*SubscribeFunc)(void *data, HttpSession *hs, const QString &channel);
-typedef void (*UnsubscribeFunc)(void *data, HttpSession *hs, const QString &channel);
-typedef void (*FinishedFunc)(void *data, HttpSession *hs);
 
 class HttpSession : public QObject
 {
@@ -106,9 +103,9 @@ public:
 	void publish(const PublishItem &item, const QList<QByteArray> &exposeHeaders = QList<QByteArray>());
 
 	// NOTE: for performance reasons we use callbacks instead of signals/slots
-	void setSubscribeCallback(SubscribeFunc cb, void *data);
-	void setUnsubscribeCallback(UnsubscribeFunc cb, void *data);
-	void setFinishedCallback(FinishedFunc cb, void *data);
+	Callback<std::tuple<HttpSession *, const QString &>> & subscribeCallback();
+	Callback<std::tuple<HttpSession *, const QString &>> & unsubscribeCallback();
+	Callback<std::tuple<HttpSession *>> & finishedCallback();
 
 private:
 	class Private;
