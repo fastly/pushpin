@@ -7,7 +7,7 @@ Requires=pushpin-socat.service
 [Service]
 Type=simple
 Restart=always
-CPUQuota=200%
+CPUQuota=400%
 LimitNOFILE=1000
 MemoryLimit=5G
 Environment=PATH=/opt/fst-pushpin/bin:/bin:/sbin:/usr/bin:/usr/sbin
