@@ -177,12 +177,9 @@ public:
 	FilterStack *responseFilters;
 	QSet<QString> activeChannels;
 	int connectionSubscriptionMax;
-	SubscribeFunc subscribeCallback;
-	void *subscribeData;
-	UnsubscribeFunc unsubscribeCallback;
-	void *unsubscribeData;
-	FinishedFunc finishedCallback;
-	void *finishedData;
+	Callback<std::tuple<HttpSession *, const QString &>> subscribeCallback;
+	Callback<std::tuple<HttpSession *, const QString &>> unsubscribeCallback;
+	Callback<std::tuple<HttpSession *>> finishedCallback;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -200,13 +197,7 @@ public:
 		needUpdate(false),
 		pendingAction(0),
 		responseFilters(0),
-		connectionSubscriptionMax(_connectionSubscriptionMax),
-		subscribeCallback(0),
-		subscribeData(0),
-		unsubscribeCallback(0),
-		unsubscribeData(0),
-		finishedCallback(0),
-		finishedData(0)
+		connectionSubscriptionMax(_connectionSubscriptionMax)
 	{
 		state = NotStarted;
 
@@ -263,10 +254,7 @@ public:
 
 				channels.insert(name, c);
 
-				if(subscribeCallback)
-				{
-					subscribeCallback(subscribeData, q, name);
-				}
+				subscribeCallback.call({q, name});
 
 				assert(self); // deleting here would leak subscriptions/connections
 			}
@@ -684,20 +672,14 @@ private:
 
 		foreach(const QString &channel, channelsRemoved)
 		{
-			if(unsubscribeCallback)
-			{
-				unsubscribeCallback(unsubscribeData, q, channel);
-			}
+			unsubscribeCallback.call({q, channel});
 
 			assert(self); // deleting here would leak subscriptions/connections
 		}
 
 		foreach(const QString &channel, channelsAdded)
 		{
-			if(subscribeCallback)
-			{
-				subscribeCallback(subscribeData, q, channel);
-			}
+			subscribeCallback.call({q, channel});
 
 			assert(self); // deleting here would leak subscriptions/connections
 		}
@@ -1075,10 +1057,7 @@ private:
 			it.next();
 			const QString &channel = it.key();
 
-			if(unsubscribeCallback)
-			{
-				unsubscribeCallback(unsubscribeData, q, channel);
-			}
+			unsubscribeCallback.call({q, channel});
 
 			assert(self); // deleting here would leak subscriptions/connections
 		}
@@ -1149,10 +1128,7 @@ private:
 			stats->removeConnection(cid, false);
 		}
 
-		if(finishedCallback)
-		{
-			finishedCallback(finishedData, q);
-		}
+		finishedCallback.call({q});
 	}
 
 	void requestNextLink()
@@ -1620,22 +1596,19 @@ void HttpSession::publish(const PublishItem &item, const QList<QByteArray> &expo
 	d->publish(item, exposeHeaders);
 }
 
-void HttpSession::setSubscribeCallback(SubscribeFunc cb, void *data)
+Callback<std::tuple<HttpSession *, const QString &>> & HttpSession::subscribeCallback()
 {
-	d->subscribeCallback = cb;
-	d->subscribeData = data;
+	return d->subscribeCallback;
 }
 
-void HttpSession::setUnsubscribeCallback(UnsubscribeFunc cb, void *data)
+Callback<std::tuple<HttpSession *, const QString &>> & HttpSession::unsubscribeCallback()
 {
-	d->unsubscribeCallback = cb;
-	d->unsubscribeData = data;
+	return d->unsubscribeCallback;
 }
 
-void HttpSession::setFinishedCallback(FinishedFunc cb, void *data)
+Callback<std::tuple<HttpSession *>> & HttpSession::finishedCallback()
 {
-	d->finishedCallback = cb;
-	d->finishedData = data;
+	return d->finishedCallback;
 }
 
 #include "httpsession.moc"

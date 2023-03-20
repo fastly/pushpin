@@ -52,6 +52,7 @@ SOURCES += \
 	$$SRC_DIR/packet/zrpcresponsepacket.cpp
 
 HEADERS += \
+	$$SRC_DIR/callback.h \
 	$$SRC_DIR/timerwheel.h \
 	$$SRC_DIR/jwt.h \
 	$$SRC_DIR/rtimer.h \

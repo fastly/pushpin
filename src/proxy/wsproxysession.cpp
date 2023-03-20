@@ -29,7 +29,6 @@
 #include "wsproxysession.h"
 
 #include <assert.h>
-#include <QTimer>
 #include <QDateTime>
 #include <QUrl>
 #include <QJsonDocument>
@@ -38,6 +37,7 @@
 #include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
+#include "rtimer.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
 #include "zwebsocket.h"
@@ -282,11 +282,12 @@ public:
 	bool detached;
 	QDateTime activityTime;
 	QByteArray publicCid;
-	QTimer *keepAliveTimer;
+	RTimer *keepAliveTimer;
 	WsControl::KeepAliveMode keepAliveMode;
 	int keepAliveTimeout;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 	LogUtil::Config logConfig;
+	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -724,7 +725,7 @@ public:
 		if(!inSock && !outSock)
 		{
 			cleanup();
-			emit q->finishedByPassthrough();
+			finishedByPassthroughCallback.call({q});
 		}
 	}
 
@@ -1078,8 +1079,8 @@ private slots:
 
 			if(!keepAliveTimer)
 			{
-				keepAliveTimer = new QTimer(this);
-				connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
+				keepAliveTimer = new RTimer(this);
+				connect(keepAliveTimer, &RTimer::timeout, this, &Private::keepAliveTimer_timeout);
 				keepAliveTimer->setSingleShot(true);
 			}
 
@@ -1227,6 +1228,11 @@ void WsProxySession::setCdnLoop(const QByteArray &value)
 void WsProxySession::start(WebSocket *sock, const QByteArray &publicCid, const DomainMap::Entry &route)
 {
 	d->start(sock, publicCid, route);
+}
+
+Callback<std::tuple<WsProxySession *>> & WsProxySession::finishedByPassthroughCallback()
+{
+	return d->finishedByPassthroughCallback;
 }
 
 #include "wsproxysession.moc"
