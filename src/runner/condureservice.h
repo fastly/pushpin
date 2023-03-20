@@ -38,6 +38,7 @@ class CondureService : public Service
 
 public:
 	CondureService(
+		const QString &name,
 		const QString &binFile,
 		const QString &runDir,
 		const QString &logDir,
