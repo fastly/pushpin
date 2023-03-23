@@ -868,6 +868,7 @@ struct ServerStreamHandles {
     nodes: Slab<list::Node<ServerStreamPipe>>,
     list: list::List,
     recv_scratch: RefCell<RecvScratch<zmq::Message>>,
+    send_scratch: RefCell<Vec<bool>>,
     need_cleanup: Cell<bool>,
 }
 
@@ -877,6 +878,7 @@ impl ServerStreamHandles {
             nodes: Slab::with_capacity(capacity),
             list: list::List::default(),
             recv_scratch: RefCell::new(RecvScratch::new(capacity)),
+            send_scratch: RefCell::new(Vec::with_capacity(capacity)),
             need_cleanup: Cell::new(false),
         }
     }
@@ -939,12 +941,20 @@ impl ServerStreamHandles {
             return;
         }
 
+        let indexes = &mut *self.send_scratch.borrow_mut();
+        indexes.clear();
+        indexes.resize(self.nodes.len(), false);
+
         for id in ids {
             let nkey = hash(id.id) % self.nodes.len();
+            indexes[nkey] = true;
+        }
+
+        for (nkey, &do_send) in indexes.iter().enumerate() {
             let n = &self.nodes[nkey];
             let p = &n.value;
 
-            if p.valid.get() {
+            if p.valid.get() && do_send {
                 // blocking send. handle is expected to read as fast as possible
                 //   without downstream backpressure
                 match p.pe.sender.send(arena::Arc::clone(msg)).await {
