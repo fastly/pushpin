@@ -22,7 +22,7 @@ use crate::net::{NetListener, NetStream, SocketAddr};
 use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented};
 use crate::resolver;
 use crate::shuffle::shuffle;
-use crate::tls::TlsStream;
+use crate::tls::{TlsStream, TlsStreamError};
 use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use paste::paste;
@@ -847,6 +847,10 @@ impl AsyncTlsStream {
             registration,
             stream: s,
         }
+    }
+
+    pub fn ensure_handshake<'a>(&'a mut self) -> EnsureHandshakeFuture<'a> {
+        EnsureHandshakeFuture { s: self }
     }
 
     pub fn inner(&mut self) -> &mut TlsStream {
@@ -2104,6 +2108,53 @@ impl AsyncWrite for AsyncTlsStream {
     fn cancel(&mut self) {
         self.registration
             .clear_waker_interest(mio::Interest::WRITABLE);
+    }
+}
+
+pub struct EnsureHandshakeFuture<'a> {
+    s: &'a mut AsyncTlsStream,
+}
+
+impl Future for EnsureHandshakeFuture<'_> {
+    type Output = Result<(), TlsStreamError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.registration.set_waker(
+            cx.waker(),
+            mio::Interest::READABLE | mio::Interest::WRITABLE,
+        );
+
+        if !f
+            .s
+            .registration
+            .readiness()
+            .contains_any(mio::Interest::READABLE | mio::Interest::WRITABLE)
+        {
+            return Poll::Pending;
+        }
+
+        if !f.s.registration.pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.s.stream.ensure_handshake() {
+            Ok(()) => Poll::Ready(Ok(())),
+            Err(TlsStreamError::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
+                f.s.registration
+                    .clear_readiness(mio::Interest::READABLE | mio::Interest::WRITABLE);
+
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
+    }
+}
+
+impl Drop for EnsureHandshakeFuture<'_> {
+    fn drop(&mut self) {
+        self.s.registration.clear_waker();
     }
 }
 

@@ -19,8 +19,8 @@ use log::debug;
 use mio::net::TcpStream;
 use openssl::error::ErrorStack;
 use openssl::ssl::{
-    HandshakeError, MidHandshakeSslStream, NameType, SniError, SslAcceptor, SslConnector,
-    SslContext, SslContextBuilder, SslFiletype, SslMethod, SslStream,
+    self, HandshakeError, MidHandshakeSslStream, NameType, SniError, SslAcceptor, SslConnector,
+    SslContext, SslContextBuilder, SslFiletype, SslMethod, SslStream, SslVerifyMode,
 };
 use std::cmp;
 use std::collections::HashMap;
@@ -305,17 +305,38 @@ impl TlsAcceptor {
         }
     }
 
-    pub fn accept(&self, stream: TcpStream) -> Result<TlsStream, ErrorStack> {
+    pub fn accept(&self, stream: TcpStream) -> Result<TlsStream, ssl::Error> {
         TlsStream::new(false, stream, |stream| {
             let stream = match self.acceptor.accept(stream) {
                 Ok(stream) => Stream::Ssl(stream),
-                Err(HandshakeError::SetupFailure(e)) => return Err(e),
-                Err(HandshakeError::Failure(stream)) => Stream::MidHandshakeSsl(stream),
+                Err(HandshakeError::SetupFailure(e)) => return Err(e.into()),
+                Err(HandshakeError::Failure(stream)) => return Err(stream.into_error()),
                 Err(HandshakeError::WouldBlock(stream)) => Stream::MidHandshakeSsl(stream),
             };
 
             Ok(stream)
         })
+    }
+}
+
+pub enum VerifyMode {
+    Full,
+    None,
+}
+
+#[derive(Debug)]
+pub enum TlsStreamError {
+    Io(io::Error),
+    Ssl(ErrorStack),
+    Unusable,
+}
+
+impl TlsStreamError {
+    fn into_io_error(self) -> io::Error {
+        match self {
+            TlsStreamError::Io(e) => e,
+            _ => io::Error::from(io::ErrorKind::Other),
+        }
     }
 }
 
@@ -327,14 +348,24 @@ pub struct TlsStream {
 }
 
 impl TlsStream {
-    pub fn connect(domain: &str, stream: TcpStream) -> Result<Self, ErrorStack> {
+    pub fn connect(
+        domain: &str,
+        stream: TcpStream,
+        verify_mode: VerifyMode,
+    ) -> Result<Self, ssl::Error> {
         Self::new(true, stream, |stream| {
-            let connector = SslConnector::builder(SslMethod::tls())?.build();
+            let mut connector = SslConnector::builder(SslMethod::tls())?;
+
+            if let VerifyMode::None = verify_mode {
+                connector.set_verify(SslVerifyMode::NONE);
+            }
+
+            let connector = connector.build();
 
             let stream = match connector.connect(domain, stream) {
                 Ok(stream) => Stream::Ssl(stream),
-                Err(HandshakeError::SetupFailure(e)) => return Err(e),
-                Err(HandshakeError::Failure(stream)) => Stream::MidHandshakeSsl(stream),
+                Err(HandshakeError::SetupFailure(e)) => return Err(e.into()),
+                Err(HandshakeError::Failure(stream)) => return Err(stream.into_error()),
                 Err(HandshakeError::WouldBlock(stream)) => Stream::MidHandshakeSsl(stream),
             };
 
@@ -359,6 +390,45 @@ impl TlsStream {
         Ok(())
     }
 
+    pub fn ensure_handshake(&mut self) -> Result<(), TlsStreamError> {
+        match &self.stream {
+            Stream::Ssl(_) => Ok(()),
+            Stream::MidHandshakeSsl(_) => match mem::replace(&mut self.stream, Stream::NoSsl) {
+                Stream::MidHandshakeSsl(stream) => match stream.handshake() {
+                    Ok(stream) => {
+                        debug!("{} {}: tls handshake success", self.log_prefix(), self.id);
+                        self.stream = Stream::Ssl(stream);
+
+                        Ok(())
+                    }
+                    Err(HandshakeError::SetupFailure(e)) => Err(TlsStreamError::Ssl(e)),
+                    Err(HandshakeError::Failure(stream)) => {
+                        let e = stream.into_error();
+
+                        match e.into_io_error() {
+                            Ok(e) => Err(TlsStreamError::Io(e)),
+                            Err(e) => match e.ssl_error() {
+                                Some(e) => Err(TlsStreamError::Ssl(e.clone())),
+                                None => {
+                                    Err(TlsStreamError::Io(io::Error::from(io::ErrorKind::Other)))
+                                }
+                            },
+                        }
+                    }
+                    Err(HandshakeError::WouldBlock(stream)) => {
+                        self.stream = Stream::MidHandshakeSsl(stream);
+
+                        Err(TlsStreamError::Io(io::Error::from(
+                            io::ErrorKind::WouldBlock,
+                        )))
+                    }
+                },
+                _ => unreachable!(),
+            },
+            Stream::NoSsl => Err(TlsStreamError::Unusable),
+        }
+    }
+
     pub fn shutdown(&mut self) -> Result<(), io::Error> {
         match &mut self.stream {
             Stream::Ssl(stream) => match stream.shutdown() {
@@ -376,9 +446,9 @@ impl TlsStream {
         }
     }
 
-    fn new<T>(client: bool, stream: TcpStream, init_fn: T) -> Result<Self, ErrorStack>
+    fn new<T>(client: bool, stream: TcpStream, init_fn: T) -> Result<Self, ssl::Error>
     where
-        T: FnOnce(&'static mut TcpStream) -> Result<Stream<'static>, ErrorStack>,
+        T: FnOnce(&'static mut TcpStream) -> Result<Stream<'static>, ssl::Error>,
     {
         let mut tcp_stream_boxed = Box::new(stream);
 
@@ -403,33 +473,6 @@ impl TlsStream {
         })
     }
 
-    fn ensure_handshake(&mut self) -> Result<(), io::Error> {
-        match &self.stream {
-            Stream::Ssl(_) => Ok(()),
-            Stream::MidHandshakeSsl(_) => match mem::replace(&mut self.stream, Stream::NoSsl) {
-                Stream::MidHandshakeSsl(stream) => match stream.handshake() {
-                    Ok(stream) => {
-                        debug!("{} {}: tls handshake success", self.log_prefix(), self.id);
-                        self.stream = Stream::Ssl(stream);
-
-                        Ok(())
-                    }
-                    Err(HandshakeError::SetupFailure(_)) => {
-                        Err(io::Error::from(io::ErrorKind::Other))
-                    }
-                    Err(HandshakeError::Failure(_)) => Err(io::Error::from(io::ErrorKind::Other)),
-                    Err(HandshakeError::WouldBlock(stream)) => {
-                        self.stream = Stream::MidHandshakeSsl(stream);
-
-                        Err(io::Error::from(io::ErrorKind::WouldBlock))
-                    }
-                },
-                _ => unreachable!(),
-            },
-            Stream::NoSsl => Err(io::Error::from(io::ErrorKind::Other)),
-        }
-    }
-
     fn log_prefix(&self) -> &'static str {
         if self.client {
             "client-conn"
@@ -441,7 +484,9 @@ impl TlsStream {
 
 impl Read for TlsStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        self.ensure_handshake()?;
+        if let Err(e) = self.ensure_handshake() {
+            return Err(e.into_io_error());
+        }
 
         match &mut self.stream {
             Stream::Ssl(stream) => SslStream::read(stream, buf),
@@ -452,7 +497,9 @@ impl Read for TlsStream {
 
 impl Write for TlsStream {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-        self.ensure_handshake()?;
+        if let Err(e) = self.ensure_handshake() {
+            return Err(e.into_io_error());
+        }
 
         match &mut self.stream {
             Stream::Ssl(stream) => SslStream::write(stream, buf),

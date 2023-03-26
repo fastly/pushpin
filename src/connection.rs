@@ -47,7 +47,7 @@ use crate::pin;
 use crate::reactor::Reactor;
 use crate::resolver;
 use crate::shuffle::random;
-use crate::tls::TlsStream;
+use crate::tls::{TlsStream, VerifyMode};
 use crate::websocket;
 use crate::zhttppacket;
 use crate::zmq::MultipartHeader;
@@ -4821,7 +4821,19 @@ async fn client_connect(
     debug!("client-conn {}: connected to {}", log_id, peer_addr);
 
     if use_tls {
-        let mut stream = match TlsStream::connect(uri_host, stream.into_inner()) {
+        let host = if rdata.trust_connect_host {
+            connect_host
+        } else {
+            uri_host
+        };
+
+        let verify_mode = if rdata.ignore_tls_errors {
+            VerifyMode::None
+        } else {
+            VerifyMode::Full
+        };
+
+        let mut stream = match TlsStream::connect(host, stream.into_inner(), verify_mode) {
             Ok(stream) => stream,
             Err(e) => {
                 debug!("client-conn {}: tls connect error: {}", log_id, e);
@@ -4836,7 +4848,15 @@ async fn client_connect(
             return Err(Error::BadMessage);
         }
 
-        Ok(Stream::Tls(AsyncTlsStream::new(stream)))
+        let mut stream = AsyncTlsStream::new(stream);
+
+        if let Err(e) = stream.ensure_handshake().await {
+            debug!("client-conn {}: tls handshake error: {:?}", log_id, e);
+
+            return Err(Error::TlsError);
+        }
+
+        Ok(Stream::Tls(stream))
     } else {
         Ok(Stream::Plain(stream))
     }
