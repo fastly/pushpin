@@ -814,7 +814,9 @@ private slots:
 
 		wsProxyItemsBySession.remove(i->ps);
 		delete i;
-		delete ps;
+
+		ps->finishedByPassthroughCallback().remove(this);
+		ps->deleteLater();
 
 		tryTakeNext();
 	}

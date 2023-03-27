@@ -29,6 +29,7 @@
 #ifndef CALLBACK_H
 #define CALLBACK_H
 
+#include <assert.h>
 #include <QList>
 
 template <typename T> class Callback
@@ -36,37 +37,101 @@ template <typename T> class Callback
 public:
     typedef void (*CallbackFunc)(void *data, T);
 
-    Callback()
+    Callback() :
+        activeCalls_(0),
+        destroyed_(0)
     {
+    }
+
+    ~Callback()
+    {
+        if(destroyed_)
+            *destroyed_ = true;
     }
 
     void add(CallbackFunc cb, void *data)
     {
-        targets_ += QPair<CallbackFunc, void *>(cb, data);
+        targets_ += Target(cb, data);
     }
 
-    void removeAll(void *data)
+    void remove(void *data)
     {
+        // mark for removal, but don't actually remove
         for(int n = 0; n < targets_.count(); ++n)
         {
-            if(targets_[n].second == data)
+            Target &t = targets_[n];
+
+            if(t.second == data)
+            {
+                t.second = 0;
+            }
+        }
+
+        // only actually remove if not in the middle of a call
+        if(activeCalls_ == 0)
+        {
+            removeMarked();
+        }
+    }
+
+    void call(T value)
+    {
+        activeCalls_ += 1;
+
+        for(int n = 0; n < targets_.count(); ++n)
+        {
+            const Target &t = targets_[n];
+
+            // skip if marked for removal
+            if(!t.second)
+            {
+                continue;
+            }
+
+            CallbackFunc f = t.first;
+            void *data = t.second;
+
+            assert(!destroyed_);
+
+            bool destroyed = false;
+            destroyed_ = &destroyed;
+
+            f(data, value);
+
+            if(destroyed)
+                return;
+
+            destroyed_ = 0;
+        }
+
+        assert(activeCalls_ >= 1);
+        activeCalls_ -= 1;
+
+        if(activeCalls_ == 0)
+        {
+            removeMarked();
+        }
+    }
+
+private:
+    typedef QPair<CallbackFunc, void *> Target;
+    QList<Target> targets_;
+    bool activeCalls_;
+    bool *destroyed_;
+
+    void removeMarked()
+    {
+        assert(activeCalls_ == 0);
+
+        for(int n = 0; n < targets_.count(); ++n)
+        {
+            if(!targets_[n].second)
             {
                 targets_.removeAt(n);
                 --n; // adjust position
             }
         }
     }
-
-    void call(T value)
-    {
-        for(int n = 0; n < targets_.count(); ++n)
-        {
-            targets_[n].first(targets_[n].second, value);
-        }
-    }
-
-private:
-    QList<QPair<CallbackFunc, void *>> targets_;
 };
 
 #endif
