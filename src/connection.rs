@@ -312,6 +312,7 @@ enum Error {
     BufferExceeded,
     Unusable,
     BadFrame,
+    BadRequest,
     TlsError,
     PolicyViolation,
     Timeout,
@@ -324,7 +325,7 @@ impl Error {
             Error::Io(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
                 "remote-connection-failed"
             }
-            Error::BadMessage => "bad-request",
+            Error::BadRequest => "bad-request",
             Error::Timeout => "connection-timeout",
             Error::TlsError => "tls-error",
             Error::PolicyViolation => "policy-violation",
@@ -4118,12 +4119,12 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                             _ => false,
                         };
 
-                        let shared = shared.get();
+                        if !handler_caused {
+                            let shared = shared.get();
 
-                        if !handler_caused && shared.to_addr().get().is_some() {
-                            let id = cid.as_ref();
+                            let msg = if let Some(addr) = shared.to_addr().get() {
+                                let id = cid.as_ref();
 
-                            let msg = {
                                 let mut zreq = zhttppacket::Request::new_cancel(b"", &[]);
 
                                 let ids = [zhttppacket::Id {
@@ -4139,21 +4140,28 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 
                                 let size = zreq.serialize(packet_buf)?;
 
-                                shared.inc_out_seq();
+                                let msg = zmq::Message::from(&packet_buf[..size]);
 
-                                zmq::Message::from(&packet_buf[..size])
+                                let addr = match ArrayVec::try_from(addr) {
+                                    Ok(v) => v,
+                                    Err(_) => {
+                                        return Err(
+                                            io::Error::from(io::ErrorKind::InvalidInput).into()
+                                        )
+                                    }
+                                };
+
+                                Some((addr, msg))
+                            } else {
+                                None
                             };
 
-                            let mut addr = ArrayVec::new();
-                            if addr
-                                .try_extend_from_slice(shared.to_addr().get().unwrap())
-                                .is_err()
-                            {
-                                return Err(io::Error::from(io::ErrorKind::InvalidInput).into());
-                            }
+                            if let Some((addr, msg)) = msg {
+                                // best effort
+                                let _ = zsender_stream.try_send((addr, msg));
 
-                            // best effort
-                            let _ = zsender_stream.try_send((addr, msg));
+                                shared.inc_out_seq();
+                            }
                         }
 
                         return Err(e);
@@ -4779,7 +4787,7 @@ async fn client_connect(
 
     let uri_host = match uri.host_str() {
         Some(s) => s,
-        None => return Err(Error::BadMessage),
+        None => return Err(Error::BadRequest),
     };
 
     let default_port = if use_tls { 443 } else { 80 };
@@ -4845,7 +4853,7 @@ async fn client_connect(
         if stream.set_id(log_id).is_err() {
             warn!("client-conn {}: log id too long for TlsStream", log_id);
 
-            return Err(Error::BadMessage);
+            return Err(Error::BadRequest);
         }
 
         let mut stream = AsyncTlsStream::new(stream);
@@ -4884,12 +4892,12 @@ where
 
         let rdata = match &zreq_ref.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
-            _ => return Err(Error::BadMessage),
+            _ => return Err(Error::BadRequest),
         };
 
         let uri = match url::Url::parse(rdata.uri) {
             Ok(uri) => uri,
-            Err(_) => return Err(Error::BadMessage),
+            Err(_) => return Err(Error::BadRequest),
         };
 
         let host_port = &uri[url::Position::BeforeHost..url::Position::AfterPort];
@@ -4903,7 +4911,7 @@ where
 
         for h in rdata.headers.iter() {
             if headers.remaining_capacity() == 0 {
-                return Err(Error::BadMessage);
+                return Err(Error::BadRequest);
             }
 
             // host comes from the uri
@@ -5043,22 +5051,22 @@ async fn client_req_connect(
 
     let rdata = match &zreq_ref.ptype {
         zhttppacket::RequestPacket::Data(data) => data,
-        _ => return Err(Error::BadMessage),
+        _ => return Err(Error::BadRequest),
     };
 
     let uri = match url::Url::parse(rdata.uri) {
         Ok(uri) => uri,
-        Err(_) => return Err(Error::BadMessage),
+        Err(_) => return Err(Error::BadRequest),
     };
 
     // must be an http url
     if !["http", "https"].contains(&uri.scheme()) {
-        return Err(Error::BadMessage);
+        return Err(Error::BadRequest);
     }
 
     // must have a method
     if rdata.method.is_empty() {
-        return Err(Error::BadMessage);
+        return Err(Error::BadRequest);
     }
 
     debug!(
@@ -5219,12 +5227,12 @@ where
 
         let rdata = match &zreq_ref.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
-            _ => return Err(Error::BadMessage),
+            _ => return Err(Error::BadRequest),
         };
 
         let uri = match url::Url::parse(rdata.uri) {
             Ok(uri) => uri,
-            Err(_) => return Err(Error::BadMessage),
+            Err(_) => return Err(Error::BadRequest),
         };
 
         let websocket = ["wss", "ws"].contains(&uri.scheme());
@@ -5297,7 +5305,7 @@ where
             }
 
             if headers.remaining_capacity() == 0 {
-                return Err(Error::BadMessage);
+                return Err(Error::BadRequest);
             }
 
             headers.push(http1::Header {
@@ -5608,35 +5616,38 @@ where
     // assign address so we can send replies
     let addr: ArrayVec<u8, 64> = match ArrayVec::try_from(zreq_ref.from) {
         Ok(v) => v,
-        Err(_) => return Err(Error::BadMessage),
+        Err(_) => return Err(Error::BadRequest),
     };
 
     shared.set_to_addr(Some(addr));
 
     let rdata = match &zreq_ref.ptype {
         zhttppacket::RequestPacket::Data(data) => data,
-        _ => return Err(Error::BadMessage),
+        _ => return Err(Error::BadRequest),
     };
 
     let uri = match url::Url::parse(rdata.uri) {
         Ok(uri) => uri,
-        Err(_) => return Err(Error::BadMessage),
+        Err(_) => return Err(Error::BadRequest),
     };
 
     // must be an http or websocket url
     if !["http", "https", "ws", "wss"].contains(&uri.scheme()) {
-        return Err(Error::BadMessage);
+        return Err(Error::BadRequest);
     }
 
     // http requests must have a method
     if ["http", "https"].contains(&uri.scheme()) && rdata.method.is_empty() {
-        return Err(Error::BadMessage);
+        return Err(Error::BadRequest);
     }
 
-    debug!(
-        "client-conn {}: request: {} {}",
-        log_id, rdata.method, rdata.uri,
-    );
+    let method = if !rdata.method.is_empty() {
+        rdata.method
+    } else {
+        "_"
+    };
+
+    debug!("client-conn {}: request: {} {}", log_id, method, rdata.uri);
 
     let deny = if rdata.ignore_policies { &[] } else { deny };
 
@@ -5773,50 +5784,48 @@ where
     match ret {
         Ok(()) => {}
         Err(e) => {
-            let shared = shared.get();
+            let handler_caused = match &e {
+                Error::BadMessage | Error::HandlerError | Error::HandlerCancel => true,
+                _ => false,
+            };
 
-            let msg = if let Some(addr) = &shared.to_addr().get() {
-                let handler_caused = match &e {
-                    Error::BadMessage | Error::HandlerError | Error::HandlerCancel => true,
-                    _ => false,
-                };
+            if !handler_caused {
+                let shared = shared.get();
 
-                let mut zresp = if handler_caused {
-                    zhttppacket::Response::new_cancel(b"", &[])
-                } else {
-                    zhttppacket::Response::new_error(
+                let msg = if let Some(addr) = shared.to_addr().get() {
+                    let mut zresp = zhttppacket::Response::new_error(
                         b"",
                         &[],
                         zhttppacket::ResponseErrorData {
                             condition: e.to_condition(),
                             rejected_info: None,
                         },
-                    )
+                    );
+
+                    let ids = [zhttppacket::Id {
+                        id,
+                        seq: Some(shared.out_seq()),
+                    }];
+
+                    zresp.from = instance_id.as_bytes();
+                    zresp.ids = &ids;
+                    zresp.multi = true;
+
+                    let packet_buf = &mut *packet_buf.borrow_mut();
+
+                    let msg = make_zhttp_response(addr, zresp, packet_buf)?;
+
+                    Some(msg)
+                } else {
+                    None
                 };
 
-                let ids = [zhttppacket::Id {
-                    id,
-                    seq: Some(shared.out_seq()),
-                }];
+                if let Some(msg) = msg {
+                    // best effort
+                    let _ = zsender.try_send(msg);
 
-                zresp.from = instance_id.as_bytes();
-                zresp.ids = &ids;
-                zresp.multi = true;
-
-                let packet_buf = &mut *packet_buf.borrow_mut();
-
-                let msg = make_zhttp_response(addr, zresp, packet_buf)?;
-
-                Some(msg)
-            } else {
-                None
-            };
-
-            if let Some(msg) = msg {
-                // best effort
-                let _ = zsender.try_send(msg);
-
-                shared.inc_out_seq();
+                    shared.inc_out_seq();
+                }
             }
 
             return Err(e);
