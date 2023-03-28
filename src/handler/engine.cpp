@@ -2913,7 +2913,11 @@ private slots:
 		RetryRequestPacket rp = hs->retryPacket();
 
 		cs.httpSessions.remove(hs->rid());
-		delete hs;
+
+		hs->subscribeCallback().remove(this);
+		hs->unsubscribeCallback().remove(this);
+		hs->finishedCallback().remove(this);
+		hs->deleteLater();
 
 		if(!rp.requests.isEmpty())
 			writeRetryPacket(rp);
