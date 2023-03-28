@@ -21,8 +21,8 @@ use crate::connection::{client_req_connection, client_stream_connection, StreamS
 use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
-    event_wait, select_2, select_5, select_option, AsyncLocalReceiver, AsyncLocalSender,
-    AsyncReceiver, CancellationSender, CancellationToken, Select2, Select5, Timeout,
+    event_wait, select_2, select_5, select_6, select_option, AsyncLocalReceiver, AsyncLocalSender,
+    AsyncReceiver, CancellationSender, CancellationToken, Select2, Select5, Select6, Timeout,
 };
 use crate::list;
 use crate::pin;
@@ -1162,30 +1162,31 @@ impl Worker {
                     None
                 };
 
-                let stream_handle_recv = if conns.count() < conns.max() {
-                    Some(stream_handle.recv())
+                let stream_handle_recv_from_any = if conns.count() < conns.max() {
+                    Some(stream_handle.recv_from_any())
                 } else {
                     None
                 };
 
-                match select_5(
+                match select_6(
                     stop.recv(),
                     select_option(receiver_recv),
                     select_option(handle_send.as_mut().as_pin_mut()),
                     r_cdone.recv(),
-                    select_option(pin!(stream_handle_recv).as_pin_mut()),
+                    select_option(pin!(stream_handle_recv_from_any).as_pin_mut()),
+                    pin!(stream_handle.recv_directed()),
                 )
                 .await
                 {
                     // stop.recv
-                    Select5::R1(_) => break,
+                    Select6::R1(_) => break,
                     // receiver_recv
-                    Select5::R2(result) => match result {
+                    Select6::R2(result) => match result {
                         Ok(msg) => handle_send.set(Some(stream_handle.send(msg))),
                         Err(e) => panic!("zstream_out_receiver channel error: {}", e),
                     },
                     // handle_send
-                    Select5::R3(result) => {
+                    Select6::R3(result) => {
                         handle_send.set(None);
 
                         if let Err(e) = result {
@@ -1193,7 +1194,7 @@ impl Worker {
                         }
                     }
                     // r_cdone.recv
-                    Select5::R4(result) => match result {
+                    Select6::R4(result) => match result {
                         Ok(done) => {
                             let zreceiver_sender = conns.remove(done.ckey).unwrap();
 
@@ -1206,8 +1207,120 @@ impl Worker {
                         }
                         Err(e) => panic!("r_cdone channel error: {}", e),
                     },
-                    // stream_handle_recv
-                    Select5::R5(result) => match result {
+                    // stream_handle_recv_from_any
+                    Select6::R5(result) => match result {
+                        Ok(msg) => {
+                            let scratch = arena::Rc::new(
+                                RefCell::new(zhttppacket::ParseScratch::new()),
+                                &stream_scratch_mem,
+                            )
+                            .unwrap();
+
+                            let zreq = match zhttppacket::OwnedRequest::parse(msg, 0, scratch) {
+                                Ok(zreq) => zreq,
+                                Err(e) => {
+                                    warn!("client-worker {}: zhttp parse error: {}", id, e);
+                                    continue;
+                                }
+                            };
+
+                            let zreq = arena::Rc::new(zreq, &stream_req_mem).unwrap();
+
+                            let zreq_ref = zreq.get().get();
+
+                            let ids = zreq_ref.ids;
+
+                            if ids.len() != 1 {
+                                warn!("client-worker {}: packet did not contain exactly one id, skipping", id);
+                                continue;
+                            }
+
+                            if ids[0].seq != Some(0) {
+                                warn!("client-worker {}: received message with seq != 0 as first message, skipping", id);
+                                continue;
+                            }
+
+                            if !zreq_ref.ptype_str.is_empty() {
+                                warn!("client-worker {}: received non-data message as first message, skipping", id);
+                                continue;
+                            }
+
+                            let cid: ArrayVec<u8, 64> = match ArrayVec::try_from(ids[0].id) {
+                                Ok(v) => v,
+                                Err(_) => {
+                                    warn!("client-worker {}: request id too long, skipping", id);
+                                    continue;
+                                }
+                            };
+
+                            let (cstop, r_cstop) =
+                                CancellationToken::new(&reactor.local_registration_memory());
+
+                            let s_cdone = s_cdone
+                                .try_clone(&reactor.local_registration_memory())
+                                .unwrap();
+
+                            let zstream_out_sender = zstream_out_sender
+                                .try_clone(&reactor.local_registration_memory())
+                                .unwrap();
+
+                            let (zstream_receiver_sender, zstream_receiver) =
+                                zreceiver_pool.take().unwrap();
+
+                            let zstream_receiver_sender =
+                                AsyncLocalSender::new(zstream_receiver_sender);
+
+                            let shared =
+                                arena::Rc::new(StreamSharedData::new(), &stream_shared_mem)
+                                    .unwrap();
+
+                            let ckey = conns
+                                .add(
+                                    cstop,
+                                    Some(zstream_receiver_sender),
+                                    Some(arena::Rc::clone(&shared)),
+                                )
+                                .unwrap();
+
+                            debug!(
+                                "client-worker {}: stream conn starting {} {}/{}",
+                                id,
+                                ckey,
+                                conns.count(),
+                                conns.max(),
+                            );
+
+                            if spawner
+                                .spawn(Self::stream_connection_task(
+                                    r_cstop,
+                                    s_cdone,
+                                    id,
+                                    ckey,
+                                    cid,
+                                    arena::Rc::clone(&zreq),
+                                    Arc::clone(&resolver),
+                                    zstream_receiver,
+                                    Rc::clone(&deny),
+                                    Rc::clone(&conns),
+                                    opts.clone(),
+                                    ConnectionStreamOpts {
+                                        messages_max,
+                                        allow_compression,
+                                        sender: zstream_out_sender,
+                                    },
+                                    shared,
+                                ))
+                                .is_err()
+                            {
+                                // this should never happen. we only read a message
+                                // if we know we can spawn
+                                panic!("failed to spawn stream_connection_task");
+                            }
+                        }
+                        Err(e) => panic!("client-worker {}: handle read error {}", id, e),
+                    },
+                    // stream_handle.recv_directed
+                    Select6::R6(result) => match result {
                         Ok(msg) => {
                             let scratch = arena::Rc::new(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
@@ -1234,124 +1347,40 @@ impl Worker {
                                 continue;
                             }
 
-                            if ids.len() == 1 && ids[0].seq == Some(0) {
-                                // first packet of a session
+                            let mut count = 0;
 
-                                if !zreq_ref.ptype_str.is_empty() {
-                                    warn!("client-worker {}: received non-data message as first message, skipping", id);
-                                    continue;
-                                }
+                            for (i, rid) in ids.iter().enumerate() {
+                                if let Some(key) = conns.find_key(&rid.id) {
+                                    if let Some(sender) = conns.take_zreceiver_sender(key) {
+                                        let mut done = false;
 
-                                let cid: ArrayVec<u8, 64> = match ArrayVec::try_from(ids[0].id) {
-                                    Ok(v) => v,
-                                    Err(_) => {
-                                        warn!(
-                                            "client-worker {}: request id too long, skipping",
-                                            id
-                                        );
-                                        continue;
-                                    }
-                                };
+                                        match select_2(
+                                            stop.recv(),
+                                            sender.send((arena::Rc::clone(&zreq), i)),
+                                        )
+                                        .await
+                                        {
+                                            Select2::R1(_) => done = true,
+                                            Select2::R2(result) => match result {
+                                                Ok(()) => count += 1,
+                                                Err(mpsc::SendError(_)) => {} // conn task ended
+                                            },
+                                        }
 
-                                let (cstop, r_cstop) =
-                                    CancellationToken::new(&reactor.local_registration_memory());
+                                        // always put back the sender
+                                        conns.set_zreceiver_sender(key, sender);
 
-                                let s_cdone = s_cdone
-                                    .try_clone(&reactor.local_registration_memory())
-                                    .unwrap();
-
-                                let zstream_out_sender = zstream_out_sender
-                                    .try_clone(&reactor.local_registration_memory())
-                                    .unwrap();
-
-                                let (zstream_receiver_sender, zstream_receiver) =
-                                    zreceiver_pool.take().unwrap();
-
-                                let zstream_receiver_sender =
-                                    AsyncLocalSender::new(zstream_receiver_sender);
-
-                                let shared =
-                                    arena::Rc::new(StreamSharedData::new(), &stream_shared_mem)
-                                        .unwrap();
-
-                                let ckey = conns
-                                    .add(
-                                        cstop,
-                                        Some(zstream_receiver_sender),
-                                        Some(arena::Rc::clone(&shared)),
-                                    )
-                                    .unwrap();
-
-                                debug!(
-                                    "client-worker {}: stream conn starting {} {}/{}",
-                                    id,
-                                    ckey,
-                                    conns.count(),
-                                    conns.max(),
-                                );
-
-                                if spawner
-                                    .spawn(Self::stream_connection_task(
-                                        r_cstop,
-                                        s_cdone,
-                                        id,
-                                        ckey,
-                                        cid,
-                                        arena::Rc::clone(&zreq),
-                                        Arc::clone(&resolver),
-                                        zstream_receiver,
-                                        Rc::clone(&deny),
-                                        Rc::clone(&conns),
-                                        opts.clone(),
-                                        ConnectionStreamOpts {
-                                            messages_max,
-                                            allow_compression,
-                                            sender: zstream_out_sender,
-                                        },
-                                        shared,
-                                    ))
-                                    .is_err()
-                                {
-                                    // this should never happen. we only read a message
-                                    // if we know we can spawn
-                                    panic!("failed to spawn stream_connection_task");
-                                }
-                            } else {
-                                let mut count = 0;
-
-                                for (i, rid) in ids.iter().enumerate() {
-                                    if let Some(key) = conns.find_key(&rid.id) {
-                                        if let Some(sender) = conns.take_zreceiver_sender(key) {
-                                            let mut done = false;
-
-                                            match select_2(
-                                                stop.recv(),
-                                                sender.send((arena::Rc::clone(&zreq), i)),
-                                            )
-                                            .await
-                                            {
-                                                Select2::R1(_) => done = true,
-                                                Select2::R2(result) => match result {
-                                                    Ok(()) => count += 1,
-                                                    Err(mpsc::SendError(_)) => {} // conn task ended
-                                                },
-                                            }
-
-                                            // always put back the sender
-                                            conns.set_zreceiver_sender(key, sender);
-
-                                            if done {
-                                                break 'main;
-                                            }
+                                        if done {
+                                            break 'main;
                                         }
                                     }
                                 }
-
-                                debug!(
-                                    "client-worker {}: queued zmq message for {} conns",
-                                    id, count
-                                );
                             }
+
+                            debug!(
+                                "client-worker {}: queued zmq message for {} conns",
+                                id, count
+                            );
                         }
                         Err(e) => panic!("client-worker {}: handle read error {}", id, e),
                     },
