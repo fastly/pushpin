@@ -91,7 +91,7 @@ public:
             CallbackFunc f = t.first;
             void *data = t.second;
 
-            assert(!destroyed_);
+            bool *prevDestroyed = destroyed_;
 
             bool destroyed = false;
             destroyed_ = &destroyed;
@@ -99,9 +99,16 @@ public:
             f(data, value);
 
             if(destroyed)
-                return;
+            {
+                if(prevDestroyed)
+                {
+                    *prevDestroyed = true;
+                }
 
-            destroyed_ = 0;
+                return;
+            }
+
+            destroyed_ = prevDestroyed;
         }
 
         assert(activeCalls_ >= 1);
