@@ -2462,6 +2462,31 @@ pub async fn event_wait(registration: &Registration, interest: mio::Interest) ->
     EventWaiter::new(registration).wait(interest).await
 }
 
+pub struct YieldFuture {
+    done: bool,
+}
+
+impl Future for YieldFuture {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        if !f.done {
+            f.done = true;
+            cx.waker().wake_by_ref();
+
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
+    }
+}
+
+pub fn yield_task() -> YieldFuture {
+    YieldFuture { done: false }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3394,5 +3419,50 @@ mod tests {
             .unwrap();
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_yield_task() {
+        struct PollCountFuture<F> {
+            count: i32,
+            fut: F,
+        }
+
+        impl<F> PollCountFuture<F>
+        where
+            F: Future<Output = ()> + Unpin,
+        {
+            fn new(fut: F) -> Self {
+                Self { count: 0, fut }
+            }
+        }
+
+        impl<F> Future for PollCountFuture<F>
+        where
+            F: Future<Output = ()> + Unpin,
+        {
+            type Output = i32;
+
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+                let f = &mut *self;
+
+                f.count += 1;
+
+                match Pin::new(&mut f.fut).poll(cx) {
+                    Poll::Ready(()) => Poll::Ready(f.count),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+        }
+
+        let executor = Executor::new(1);
+
+        executor
+            .spawn(async {
+                assert_eq!(PollCountFuture::new(yield_task()).await, 2);
+            })
+            .unwrap();
+
+        executor.run(|_| Ok(())).unwrap();
     }
 }
