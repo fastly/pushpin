@@ -583,6 +583,10 @@ impl<T> AsyncLocalSender<T> {
     pub fn try_send(&self, t: T) -> Result<(), mpsc::TrySendError<T>> {
         self.inner.try_send(t)
     }
+
+    pub fn cancel(&self) {
+        self.inner.cancel();
+    }
 }
 
 pub struct AsyncLocalReceiver<T> {

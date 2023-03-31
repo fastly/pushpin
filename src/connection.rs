@@ -43,7 +43,6 @@ use crate::future::{
 };
 use crate::http1;
 use crate::net::SocketAddr;
-use crate::pin;
 use crate::reactor::Reactor;
 use crate::resolver;
 use crate::shuffle::random;
@@ -51,6 +50,7 @@ use crate::tls::{TlsStream, VerifyMode};
 use crate::websocket;
 use crate::zhttppacket;
 use crate::zmq::MultipartHeader;
+use crate::{pin, Defer};
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
 use log::{debug, warn};
@@ -1469,6 +1469,10 @@ impl<'a> ZhttpStreamSessionOut<'a> {
         self.sender_stream.check_send().await
     }
 
+    fn cancel_send(&self) {
+        self.sender_stream.cancel();
+    }
+
     // this method is non-blocking, in order to increment the sequence number
     // and send the message in one shot, without concurrent activity
     // interfering with the sequencing. to send asynchronously, first await
@@ -1536,6 +1540,10 @@ impl<'a> ZhttpServerStreamSessionOut<'a> {
 
     async fn check_send(&self) {
         self.sender.check_send().await
+    }
+
+    fn cancel_send(&self) {
+        self.sender.cancel();
     }
 
     // this method is non-blocking, in order to increment the sequence number
@@ -2406,6 +2414,8 @@ where
                 Select3::R1(()) => {
                     check_send.set(None);
 
+                    let _defer = Defer::new(|| zsess_out.cancel_send());
+
                     assert!(zsess_in.credits() > 0);
                     assert_eq!(add_to_recv_buffer.is_none(), true);
 
@@ -2500,6 +2510,8 @@ where
         match ret {
             Select3::R1(()) => {
                 check_send.set(None);
+
+                let _defer = Defer::new(|| zsess_out.cancel_send());
 
                 assert!(zsess_in.credits() > 0);
                 assert_eq!(add_to_buffer.is_none(), true);
@@ -2938,6 +2950,8 @@ where
             Select4::R1(()) => {
                 check_send.set(None);
 
+                let _defer = Defer::new(|| zsess_out.cancel_send());
+
                 if out_credits > 0 {
                     let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits as u32);
                     out_credits = 0;
@@ -3278,6 +3292,8 @@ where
         match ret {
             Select4::R1(()) => {
                 check_send.set(None);
+
+                let _defer = Defer::new(|| zsess_out.cancel_send());
 
                 if out_credits > 0 {
                     let zresp = zhttppacket::Response::new_credit(b"", &[], out_credits as u32);

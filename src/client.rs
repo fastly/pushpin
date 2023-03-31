@@ -26,13 +26,13 @@ use crate::future::{
     Select6, Timeout,
 };
 use crate::list;
-use crate::pin;
 use crate::reactor::Reactor;
 use crate::resolver::Resolver;
 use crate::tnetstring;
 use crate::zhttppacket;
 use crate::zhttpsocket;
 use crate::zmq::{MultipartHeader, SpecInfo};
+use crate::{pin, Defer};
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
 use log::{debug, error, info, warn};
@@ -425,7 +425,7 @@ impl Connections {
         items.nodes_by_id.get(id).copied()
     }
 
-    fn can_send(&self, ckey: usize) -> bool {
+    fn check_send(&self, ckey: usize) -> bool {
         let nkey = ckey;
 
         let items = &*self.items.borrow();
@@ -435,6 +435,17 @@ impl Connections {
             sender.check_send()
         } else {
             false
+        }
+    }
+
+    fn cancel_send(&self, ckey: usize) {
+        let nkey = ckey;
+
+        let items = &*self.items.borrow();
+        let ci = &items.nodes[nkey].value;
+
+        if let Some(sender) = &ci.zreceiver_sender {
+            sender.cancel()
         }
     }
 
@@ -1358,14 +1369,16 @@ impl Worker {
                                     None => continue,
                                 };
 
-                                if !conns.can_send(key) {
+                                let _defer = Defer::new(|| conns.cancel_send(key));
+
+                                if !conns.check_send(key) {
                                     match select_2(stop.recv(), yield_task()).await {
                                         Select2::R1(_) => break 'main,
                                         Select2::R2(()) => {}
                                     };
 
                                     // ABR issue with conn task
-                                    if !conns.can_send(key) {
+                                    if !conns.check_send(key) {
                                         error!("client-worker {}: connection-{} cannot receive message after yield", id, key);
                                         continue;
                                     }

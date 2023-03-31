@@ -48,6 +48,24 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+pub struct Defer<T: FnOnce()> {
+    f: Option<T>,
+}
+
+impl<T: FnOnce()> Defer<T> {
+    pub fn new(f: T) -> Self {
+        Self { f: Some(f) }
+    }
+}
+
+impl<T: FnOnce()> Drop for Defer<T> {
+    fn drop(&mut self) {
+        let f = self.f.take().unwrap();
+
+        f();
+    }
+}
+
 pub struct Pinner<'a, T> {
     pub unsafe_pointer: &'a mut T,
 }
