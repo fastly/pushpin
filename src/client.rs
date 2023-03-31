@@ -21,8 +21,9 @@ use crate::connection::{client_req_connection, client_stream_connection, StreamS
 use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
-    event_wait, select_2, select_5, select_6, select_option, AsyncLocalReceiver, AsyncLocalSender,
-    AsyncReceiver, CancellationSender, CancellationToken, Select2, Select5, Select6, Timeout,
+    event_wait, select_2, select_5, select_6, select_option, yield_task, AsyncLocalReceiver,
+    AsyncLocalSender, AsyncReceiver, CancellationSender, CancellationToken, Select2, Select5,
+    Select6, Timeout,
 };
 use crate::list;
 use crate::pin;
@@ -283,7 +284,7 @@ struct ConnectionDone {
 struct ConnectionItem {
     id: Option<ArrayVec<u8, 64>>,
     stop: Option<CancellationSender>,
-    zreceiver_sender: Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>>,
+    zreceiver_sender: Option<channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>>,
     shared: Option<arena::Rc<StreamSharedData>>,
     batch_key: Option<BatchKey>,
 }
@@ -338,7 +339,9 @@ impl Connections {
     fn add(
         &self,
         stop: CancellationSender,
-        zreceiver_sender: Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>>,
+        zreceiver_sender: Option<
+            channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+        >,
         shared: Option<arena::Rc<StreamSharedData>>,
     ) -> Result<usize, ()> {
         let items = &mut *self.items.borrow_mut();
@@ -387,10 +390,7 @@ impl Connections {
             items.nodes_by_id.remove(id);
         }
 
-        match ci.zreceiver_sender {
-            Some(sender) => Some(sender.into_inner()),
-            None => None,
-        }
+        ci.zreceiver_sender
     }
 
     fn set_id(&self, ckey: usize, id: Option<&[u8]>) {
@@ -425,10 +425,23 @@ impl Connections {
         items.nodes_by_id.get(id).copied()
     }
 
+    fn zreceiver_sender_can_send(&self, ckey: usize) -> bool {
+        let nkey = ckey;
+
+        let items = &*self.items.borrow();
+        let ci = &items.nodes[nkey].value;
+
+        if let Some(sender) = &ci.zreceiver_sender {
+            sender.check_send()
+        } else {
+            false
+        }
+    }
+
     fn take_zreceiver_sender(
         &self,
         ckey: usize,
-    ) -> Option<AsyncLocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>> {
+    ) -> Option<channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>> {
         let nkey = ckey;
 
         let items = &mut *self.items.borrow_mut();
@@ -440,7 +453,7 @@ impl Connections {
     fn set_zreceiver_sender(
         &self,
         ckey: usize,
-        sender: AsyncLocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+        sender: channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     ) {
         let nkey = ckey;
 
@@ -1267,9 +1280,6 @@ impl Worker {
                             let (zstream_receiver_sender, zstream_receiver) =
                                 zreceiver_pool.take().unwrap();
 
-                            let zstream_receiver_sender =
-                                AsyncLocalSender::new(zstream_receiver_sender);
-
                             let shared =
                                 arena::Rc::new(StreamSharedData::new(), &stream_shared_mem)
                                     .unwrap();
@@ -1350,31 +1360,40 @@ impl Worker {
                             let mut count = 0;
 
                             for (i, rid) in ids.iter().enumerate() {
-                                if let Some(key) = conns.find_key(&rid.id) {
-                                    if let Some(sender) = conns.take_zreceiver_sender(key) {
-                                        let mut done = false;
+                                let key = match conns.find_key(&rid.id) {
+                                    Some(key) => key,
+                                    None => continue,
+                                };
 
-                                        match select_2(
-                                            stop.recv(),
-                                            sender.send((arena::Rc::clone(&zreq), i)),
-                                        )
-                                        .await
-                                        {
-                                            Select2::R1(_) => done = true,
-                                            Select2::R2(result) => match result {
-                                                Ok(()) => count += 1,
-                                                Err(mpsc::SendError(_)) => {} // conn task ended
-                                            },
-                                        }
+                                if !conns.zreceiver_sender_can_send(key) {
+                                    match select_2(stop.recv(), yield_task()).await {
+                                        Select2::R1(_) => break 'main,
+                                        Select2::R2(()) => {}
+                                    };
 
-                                        // always put back the sender
-                                        conns.set_zreceiver_sender(key, sender);
-
-                                        if done {
-                                            break 'main;
-                                        }
+                                    // ABR issue with conn task
+                                    if !conns.zreceiver_sender_can_send(key) {
+                                        error!("client-worker {}: connection-{} cannot receive message after yield", id, key);
+                                        continue;
                                     }
                                 }
+
+                                // NOTE: do not await while sender is taken below
+
+                                let sender = conns.take_zreceiver_sender(key).unwrap();
+
+                                // can_send just succeeded, so this should succeed
+                                match sender.try_send((arena::Rc::clone(&zreq), i)) {
+                                    Ok(()) => count += 1,
+                                    Err(mpsc::TrySendError::Full(_)) => error!(
+                                        "client-worker {}: connection-{} cannot receive message",
+                                        id, key
+                                    ),
+                                    Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
+                                }
+
+                                // always put back the sender
+                                conns.set_zreceiver_sender(key, sender);
                             }
 
                             debug!(
