@@ -58,7 +58,7 @@ fn poll_fut(fut: &mut Pin<Box<dyn Future<Output = ()>>>, waker: Waker) -> bool {
 
 struct Task {
     fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
-    processing: bool,
+    wakeable: bool,
 }
 
 struct TasksData {
@@ -122,7 +122,7 @@ impl Tasks {
 
         let task = Task {
             fut: Some(Box::pin(fut)),
-            processing: false,
+            wakeable: false,
         };
 
         entry.insert(list::Node::new(task));
@@ -155,29 +155,11 @@ impl Tasks {
         let mut l = list::List::default();
         l.concat(&mut data.nodes, &mut data.next);
 
-        let mut cur = l.head;
-
-        while let Some(nkey) = cur {
-            let node = &mut data.nodes[nkey];
-            node.value.processing = true;
-
-            cur = node.next;
-        }
-
         l
     }
 
-    fn append_next_list(&self, mut l: list::List) {
+    fn append_to_next_list(&self, mut l: list::List) {
         let data = &mut *self.data.borrow_mut();
-
-        let mut cur = l.head;
-
-        while let Some(nkey) = cur {
-            let node = &mut data.nodes[nkey];
-            node.value.processing = false;
-
-            cur = node.next;
-        }
 
         data.next.concat(&mut data.nodes, &mut l);
     }
@@ -201,7 +183,7 @@ impl Tasks {
         let fut = task.fut.take().unwrap();
         let waker = waker::into_std(data.wakers[nkey].clone());
 
-        task.processing = false;
+        task.wakeable = true;
 
         Some((nkey, fut, waker))
     }
@@ -247,15 +229,11 @@ impl Tasks {
 
         let node = &mut data.nodes[nkey];
 
-        // if the task is already in the processing list, don't do anything
-        if node.value.processing {
+        if !node.value.wakeable {
             return;
         }
 
-        // if the task is already queued up in the next list, don't do anything
-        if node.prev.is_some() || data.next.head == Some(nkey) {
-            return;
-        }
+        node.value.wakeable = false;
 
         data.next.push_back(&mut data.nodes, nkey);
     }
@@ -351,7 +329,7 @@ impl Executor {
 
             // requeue any tasks that had yielded
             if let Some(l) = low_priority_tasks {
-                self.tasks.append_next_list(l);
+                self.tasks.append_to_next_list(l);
             }
         }
 
