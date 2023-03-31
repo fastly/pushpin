@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -167,6 +167,21 @@ impl Tasks {
         l
     }
 
+    fn append_next_list(&self, mut l: list::List) {
+        let data = &mut *self.data.borrow_mut();
+
+        let mut cur = l.head;
+
+        while let Some(nkey) = cur {
+            let node = &mut data.nodes[nkey];
+            node.value.processing = false;
+
+            cur = node.next;
+        }
+
+        data.next.concat(&mut data.nodes, &mut l);
+    }
+
     fn take_task(
         &self,
         l: &mut list::List,
@@ -317,13 +332,27 @@ impl Executor {
                 break;
             }
 
-            let timeout = if self.tasks.have_next() {
-                Some(Duration::from_millis(0))
+            let (timeout, low_priority_tasks) = if self.tasks.have_next() {
+                // some tasks trigger their own waker and return Pending in
+                // order to achieve a yielding effect. in that case they will
+                // already be queued up for processing again. move these
+                // tasks aside so that they can be deprioritized, and use a
+                // timeout of 0 when parking so we can quickly resume them
+
+                let timeout = Duration::from_millis(0);
+                let l = self.tasks.take_next_list();
+
+                (Some(timeout), Some(l))
             } else {
-                None
+                (None, None)
             };
 
             park(timeout)?;
+
+            // requeue any tasks that had yielded
+            if let Some(l) = low_priority_tasks {
+                self.tasks.append_next_list(l);
+            }
         }
 
         Ok(())
