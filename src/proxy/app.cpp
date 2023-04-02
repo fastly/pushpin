@@ -309,6 +309,7 @@ public:
 		QString updatesCheck = settings.value("proxy/updates_check").toString();
 		QString organizationName = settings.value("proxy/organization_name").toString();
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
+		bool statsConnectionSend = settings.value("global/stats_connection_send", true).toBool();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
 		int statsReportInterval = settings.value("proxy/stats_report_interval", 10).toInt();
 		QString prometheusPort = settings.value("proxy/prometheus_port").toString();
@@ -394,6 +395,7 @@ public:
 		config.organizationName = organizationName;
 		config.quietCheck = args.quietCheck;
 		config.connectionsMax = clientMaxconn;
+		config.statsConnectionSend = statsConnectionSend;
 		config.statsConnectionTtl = statsConnectionTtl;
 		config.statsReportInterval = statsReportInterval;
 		config.prometheusPort = prometheusPort;

@@ -1423,6 +1423,7 @@ public:
 		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
 		connect(stats, &StatsManager::reported, this, &Private::stats_reported);
 
+		stats->setConnectionSendEnabled(config.statsConnectionSend);
 		stats->setConnectionTtl(config.statsConnectionTtl);
 		stats->setSubscriptionTtl(config.statsSubscriptionTtl);
 		stats->setSubscriptionLinger(config.subscriptionLinger);
@@ -2302,7 +2303,8 @@ private slots:
 			return;
 		}
 
-		QStringList updateSids;
+		QStringList createOrUpdateSids;
+		QHash<QString, LastIds> updateSids;
 
 		QList<WsControlPacket::Item> outItems;
 
@@ -2338,6 +2340,10 @@ private slots:
 				s->route = item.route;
 				s->statsRoute = item.separateStats ? item.route : QString();
 				s->channelPrefix = QString::fromUtf8(item.channelPrefix);
+
+				if(!s->sid.isEmpty())
+					updateSids[s->sid] = LastIds();
+
 				continue;
 			}
 
@@ -2435,7 +2441,7 @@ private slots:
 					if(!cm.sessionId.isEmpty())
 					{
 						s->sid = cm.sessionId;
-						updateSids += cm.sessionId;
+						createOrUpdateSids += cm.sessionId;
 					}
 					else
 					{
@@ -2549,12 +2555,19 @@ private slots:
 		if(!outItems.isEmpty())
 			writeWsControlItems(outItems);
 
-		if(stateClient && !updateSids.isEmpty())
+		if(stateClient)
 		{
-			foreach(const QString &sid, updateSids)
+			foreach(const QString &sid, createOrUpdateSids)
 			{
 				Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, LastIds(), this);
 				connect(d, &Deferred::finished, this, &Private::sessionCreateOrUpdate_finished);
+				deferreds += d;
+			}
+
+			if(!updateSids.isEmpty())
+			{
+				Deferred *d = SessionRequest::updateMany(stateClient, updateSids, this);
+				connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
 				deferreds += d;
 			}
 		}
@@ -2619,38 +2632,24 @@ private slots:
 		}
 		else if(p.type == StatsPacket::Connected || p.type == StatsPacket::Disconnected)
 		{
-			QString sid;
-			if(p.connectionType == StatsPacket::WebSocket)
+			if(stats->connectionSendEnabled())
 			{
-				WsSession *s = cs.wsSessions.value(QString::fromUtf8(p.connectionId));
-				if(s)
-					sid = s->sid;
-			}
+				// track proxy connections for reporting
+				bool localReplaced = stats->processExternalPacket(p, false);
 
-			// track proxy connections for reporting
-			bool localReplaced = stats->processExternalPacket(p);
-
-			if(!localReplaced)
-			{
-				// forward the packet. this will stamp the from field and keep the rest
-				stats->sendPacket(p);
-			}
-
-			// update session
-			if(stateClient && !sid.isEmpty() && p.type == StatsPacket::Connected)
-			{
-				QHash<QString, LastIds> sidLastIds;
-				sidLastIds[sid] = LastIds();
-				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-				connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
-				deferreds += d;
-				return;
+				if(!localReplaced)
+				{
+					// forward the packet. this will stamp the from field and keep the rest
+					stats->sendPacket(p);
+				}
 			}
 		}
 		else if(p.type == StatsPacket::Report)
 		{
+			bool mergeConnectionReport = !stats->connectionSendEnabled();
+
 			// merge into local report and don't forward
-			stats->processExternalPacket(p);
+			stats->processExternalPacket(p, mergeConnectionReport);
 		}
 	}
 

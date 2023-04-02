@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2012-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -89,6 +89,7 @@ public:
 		QString organizationName;
 		bool quietCheck;
 		int connectionsMax;
+		bool statsConnectionSend;
 		int statsConnectionTtl;
 		int statsReportInterval;
 		QString prometheusPort;
@@ -110,6 +111,7 @@ public:
 			updatesCheck("check"),
 			quietCheck(false),
 			connectionsMax(-1),
+			statsConnectionSend(false),
 			statsConnectionTtl(-1),
 			statsReportInterval(-1)
 		{

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2015-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -75,6 +75,7 @@ public:
 		int connectionsMax;
 		int connectionSubscriptionMax;
 		int subscriptionLinger;
+		bool statsConnectionSend;
 		int statsConnectionTtl;
 		int statsSubscriptionTtl;
 		int statsReportInterval;
@@ -97,6 +98,7 @@ public:
 			connectionsMax(-1),
 			connectionSubscriptionMax(-1),
 			subscriptionLinger(-1),
+			statsConnectionSend(false),
 			statsConnectionTtl(-1),
 			statsSubscriptionTtl(-1),
 			statsReportInterval(-1)

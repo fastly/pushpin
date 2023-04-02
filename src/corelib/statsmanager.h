@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2014-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -56,9 +56,12 @@ public:
 	StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent = 0);
 	~StatsManager();
 
+	bool connectionSendEnabled() const;
+
 	void setInstanceId(const QByteArray &instanceId);
 	void setIpcFileMode(int mode);
 	bool setSpec(const QString &spec);
+	void setConnectionSendEnabled(bool enabled);
 	void setConnectionTtl(int secs);
 	void setSubscriptionTtl(int secs);
 	void setSubscriptionLinger(int secs);
@@ -72,7 +75,7 @@ public:
 	void addActivity(const QByteArray &routeId, int count = 1);
 	void addMessage(const QString &channel, const QString &itemId, const QString &transport, int count = 1, int blocks = -1);
 
-	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet);
+	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet, int reportOffset = -1);
 	void removeConnection(const QByteArray &id, bool linger);
 
 	// manager automatically refreshes, but it may be useful to force a
@@ -97,7 +100,7 @@ public:
 	// conn and report packets received from the proxy should be passed
 	// into this method. returns true if the packet should not also be
 	// forwarded on
-	bool processExternalPacket(const StatsPacket &packet);
+	bool processExternalPacket(const StatsPacket &packet, bool mergeConnectionReport);
 
 	// directly send, for proxy->handler passthrough
 	void sendPacket(const StatsPacket &packet);

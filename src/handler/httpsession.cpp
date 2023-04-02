@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2022 Fanout, Inc.
+ * Copyright (C) 2016-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -241,7 +241,10 @@ public:
 		assert(state == NotStarted);
 
 		ZhttpRequest::Rid rid = req->rid();
-		stats->addConnection(rid.first + ':' + rid.second, adata.statsRoute.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true);
+
+		int reportOffset = stats->connectionSendEnabled() ? -1 : 0;
+
+		stats->addConnection(rid.first + ':' + rid.second, adata.statsRoute.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true, reportOffset);
 
 		// set up implicit channels
 		QPointer<QObject> self = this;
@@ -1066,7 +1069,9 @@ private:
 		{
 			// refresh before remove, to ensure transition
 			stats->refreshConnection(cid);
-			stats->removeConnection(cid, true);
+
+			bool linger = stats->connectionSendEnabled();
+			stats->removeConnection(cid, linger);
 
 			ZhttpRequest::ServerState ss = req->serverState();
 
