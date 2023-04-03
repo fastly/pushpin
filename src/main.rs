@@ -124,7 +124,7 @@ struct Args {
     zserver_req_specs: Vec<String>,
     zserver_stream_specs: Vec<String>,
     zserver_connect: bool,
-    ipc_file_mode: usize,
+    ipc_file_mode: u32,
     tls_identities_dir: String,
     allow_compression: bool,
     deny_out_internal: bool,
@@ -568,7 +568,7 @@ fn main() {
 
     let ipc_file_mode = matches.value_of("ipc-file-mode").unwrap_or("0");
 
-    let ipc_file_mode: usize = match ipc_file_mode.parse() {
+    let ipc_file_mode = match u32::from_str_radix(ipc_file_mode, 8) {
         Ok(x) => x,
         Err(e) => {
             error!("failed to parse ipc-file-mode: {}", e);

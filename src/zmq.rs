@@ -36,7 +36,7 @@ fn trim_prefix<'a>(s: &'a str, prefix: &str) -> Result<&'a str, ()> {
 pub struct SpecInfo {
     pub spec: String,
     pub bind: bool,
-    pub ipc_file_mode: usize,
+    pub ipc_file_mode: u32,
 }
 
 impl fmt::Display for SpecInfo {
@@ -91,7 +91,7 @@ fn setup_spec(sock: &zmq::Socket, spec: &SpecInfo) -> Result<String, ZmqSocketEr
 
                 if let Ok(path) = trim_prefix(&spec.spec, "ipc://") {
                     if spec.ipc_file_mode > 0 {
-                        let perms = fs::Permissions::from_mode(spec.ipc_file_mode as u32);
+                        let perms = fs::Permissions::from_mode(spec.ipc_file_mode);
                         if let Err(e) = fs::set_permissions(path, perms) {
                             // if setting perms fails, undo the bind
                             unbind(sock, &endpoint).unwrap();

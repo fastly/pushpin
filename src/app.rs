@@ -93,7 +93,7 @@ pub struct Config {
     pub zserver_req: Vec<String>,
     pub zserver_stream: Vec<String>,
     pub zserver_connect: bool,
-    pub ipc_file_mode: usize,
+    pub ipc_file_mode: u32,
     pub certs_dir: PathBuf,
     pub allow_compression: bool,
     pub deny: Vec<IpNet>,
