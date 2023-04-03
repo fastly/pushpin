@@ -136,6 +136,7 @@ dependencies = [
  "env_logger",
  "httparse",
  "ipnet",
+ "libc",
  "log",
  "miniz_oxide",
  "mio",

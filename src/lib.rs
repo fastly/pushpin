@@ -43,9 +43,15 @@ pub mod zmq;
 use app::Config;
 use log::info;
 use std::error::Error;
+use std::ffi::CString;
 use std::future::Future;
+use std::io;
+use std::mem;
 use std::ops::Deref;
+use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
 use std::pin::Pin;
+use std::ptr;
 use std::task::{Context, Poll};
 
 pub struct Defer<T: FnOnce()> {
@@ -122,6 +128,43 @@ macro_rules! pin {
             unsafe_pointer: &mut { $x },
         }
     };
+}
+
+pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
+    let gid = unsafe {
+        let name = CString::new(group).unwrap();
+        let mut buf = [0; 1024];
+        let mut grp = mem::MaybeUninit::uninit();
+        let mut group = ptr::null_mut();
+
+        if libc::getgrnam_r(
+            name.as_ptr(),
+            grp.as_mut_ptr(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut group,
+        ) != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+
+        let group = match group.as_ref() {
+            Some(r) => r,
+            None => return Err(io::Error::from(io::ErrorKind::NotFound)),
+        };
+
+        group.gr_gid
+    };
+
+    unsafe {
+        let path = CString::new(path.as_os_str().as_bytes()).unwrap();
+
+        if libc::chown(path.as_ptr(), u32::MAX, gid) != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+
+    Ok(())
 }
 
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {

@@ -68,7 +68,11 @@ pub enum ListenSpec {
         tls: bool,
         default_cert: Option<String>,
     },
-    Local(PathBuf),
+    Local {
+        path: PathBuf,
+        mode: Option<u32>,
+        group: Option<String>,
+    },
 }
 
 pub struct ListenConfig {

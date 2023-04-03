@@ -176,6 +176,8 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         let mut tls = false;
         let mut default_cert = None;
         let mut local = false;
+        let mut mode = None;
+        let mut group = None;
 
         for part in parts {
             let (k, v) = match part.find('=') {
@@ -189,12 +191,21 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
                 "tls" => tls = true,
                 "default-cert" => default_cert = Some(String::from(v)),
                 "local" => local = true,
+                "mode" => match u32::from_str_radix(v, 8) {
+                    Ok(x) => mode = Some(x),
+                    Err(e) => return Err(format!("failed to parse mode: {}", e).into()),
+                },
+                "group" => group = Some(String::from(v)),
                 _ => return Err(format!("failed to parse listen: invalid param: {}", part).into()),
             }
         }
 
         let spec = if local {
-            app::ListenSpec::Local(PathBuf::from(part1))
+            app::ListenSpec::Local {
+                path: PathBuf::from(part1),
+                mode,
+                group,
+            }
         } else {
             let port_pos = match part1.rfind(':') {
                 Some(pos) => pos + 1,

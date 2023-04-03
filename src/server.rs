@@ -38,7 +38,7 @@ use crate::tnetstring;
 use crate::zhttppacket;
 use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
-use crate::{pin, Defer};
+use crate::{pin, set_group, Defer};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
 use mio::net::{TcpListener, TcpStream, UnixListener};
@@ -52,6 +52,7 @@ use std::io;
 use std::io::Write;
 use std::mem;
 use std::net::{IpAddr, Ipv4Addr};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::path::Path;
 use std::rc::Rc;
@@ -2089,7 +2090,7 @@ impl Server {
                         req_acceptor_tls.push((*tls, default_cert.clone()));
                     };
                 }
-                ListenSpec::Local(path) => {
+                ListenSpec::Local { path, mode, group } => {
                     // ensure pipe file doesn't exist
                     match fs::remove_file(path) {
                         Ok(()) => {}
@@ -2101,6 +2102,23 @@ impl Server {
                         Ok(l) => l,
                         Err(e) => return Err(format!("failed to bind {:?}: {}", path, e)),
                     };
+
+                    if let Some(mode) = mode {
+                        let perms = fs::Permissions::from_mode(*mode);
+
+                        if let Err(e) = fs::set_permissions(path, perms) {
+                            return Err(format!("failed to set mode on {:?}: {}", path, e));
+                        }
+                    }
+
+                    if let Some(group) = group {
+                        if let Err(e) = set_group(path, group) {
+                            return Err(format!(
+                                "failed to set group {:?} on {:?}: {}",
+                                group, path, e
+                            ));
+                        }
+                    }
 
                     let addr = l.local_addr().unwrap();
 
