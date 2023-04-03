@@ -130,9 +130,38 @@ macro_rules! pin {
     };
 }
 
-pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
+fn get_user_uid(name: &str) -> Result<libc::gid_t, io::Error> {
+    let uid = unsafe {
+        let name = CString::new(name).unwrap();
+        let mut buf = [0; 1024];
+        let mut pwd = mem::MaybeUninit::uninit();
+        let mut passwd = ptr::null_mut();
+
+        if libc::getpwnam_r(
+            name.as_ptr(),
+            pwd.as_mut_ptr(),
+            buf.as_mut_ptr(),
+            buf.len(),
+            &mut passwd,
+        ) != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+
+        let passwd = match passwd.as_ref() {
+            Some(r) => r,
+            None => return Err(io::Error::from(io::ErrorKind::NotFound)),
+        };
+
+        passwd.pw_uid
+    };
+
+    Ok(uid)
+}
+
+fn get_group_gid(name: &str) -> Result<libc::gid_t, io::Error> {
     let gid = unsafe {
-        let name = CString::new(group).unwrap();
+        let name = CString::new(name).unwrap();
         let mut buf = [0; 1024];
         let mut grp = mem::MaybeUninit::uninit();
         let mut group = ptr::null_mut();
@@ -155,6 +184,26 @@ pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
 
         group.gr_gid
     };
+
+    Ok(gid)
+}
+
+pub fn set_user(path: &Path, user: &str) -> Result<(), io::Error> {
+    let uid = get_user_uid(user)?;
+
+    unsafe {
+        let path = CString::new(path.as_os_str().as_bytes()).unwrap();
+
+        if libc::chown(path.as_ptr(), uid, u32::MAX) != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+
+    Ok(())
+}
+
+pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
+    let gid = get_group_gid(group)?;
 
     unsafe {
         let path = CString::new(path.as_os_str().as_bytes()).unwrap();

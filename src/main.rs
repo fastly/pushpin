@@ -177,6 +177,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         let mut default_cert = None;
         let mut local = false;
         let mut mode = None;
+        let mut user = None;
         let mut group = None;
 
         for part in parts {
@@ -195,6 +196,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
                     Ok(x) => mode = Some(x),
                     Err(e) => return Err(format!("failed to parse mode: {}", e).into()),
                 },
+                "user" => user = Some(String::from(v)),
                 "group" => group = Some(String::from(v)),
                 _ => return Err(format!("failed to parse listen: invalid param: {}", part).into()),
             }
@@ -204,6 +206,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
             app::ListenSpec::Local {
                 path: PathBuf::from(part1),
                 mode,
+                user,
                 group,
             }
         } else {

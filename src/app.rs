@@ -71,6 +71,7 @@ pub enum ListenSpec {
     Local {
         path: PathBuf,
         mode: Option<u32>,
+        user: Option<String>,
         group: Option<String>,
     },
 }
