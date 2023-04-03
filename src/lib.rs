@@ -130,17 +130,33 @@ macro_rules! pin {
     };
 }
 
+fn try_with_increasing_buffer<T, U>(starting_size: usize, f: T) -> Result<U, io::Error>
+where
+    T: Fn(&mut [u8]) -> Result<U, io::Error>,
+{
+    let mut buf = Vec::new();
+    buf.resize(starting_size, 0);
+
+    loop {
+        match f(&mut buf) {
+            Ok(v) => return Ok(v),
+            Err(e) if e.raw_os_error() == Some(libc::ERANGE) => buf.resize(buf.len() * 2, 0),
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 fn get_user_uid(name: &str) -> Result<libc::gid_t, io::Error> {
-    let uid = unsafe {
-        let name = CString::new(name).unwrap();
-        let mut buf = [0; 1024];
+    let name = CString::new(name).unwrap();
+
+    try_with_increasing_buffer(1024, |buf| unsafe {
         let mut pwd = mem::MaybeUninit::uninit();
         let mut passwd = ptr::null_mut();
 
         if libc::getpwnam_r(
             name.as_ptr(),
             pwd.as_mut_ptr(),
-            buf.as_mut_ptr(),
+            buf.as_mut_ptr() as *mut i8,
             buf.len(),
             &mut passwd,
         ) != 0
@@ -153,23 +169,21 @@ fn get_user_uid(name: &str) -> Result<libc::gid_t, io::Error> {
             None => return Err(io::Error::from(io::ErrorKind::NotFound)),
         };
 
-        passwd.pw_uid
-    };
-
-    Ok(uid)
+        Ok(passwd.pw_uid)
+    })
 }
 
 fn get_group_gid(name: &str) -> Result<libc::gid_t, io::Error> {
-    let gid = unsafe {
-        let name = CString::new(name).unwrap();
-        let mut buf = [0; 1024];
+    let name = CString::new(name).unwrap();
+
+    try_with_increasing_buffer(1024, |buf| unsafe {
         let mut grp = mem::MaybeUninit::uninit();
         let mut group = ptr::null_mut();
 
         if libc::getgrnam_r(
             name.as_ptr(),
             grp.as_mut_ptr(),
-            buf.as_mut_ptr(),
+            buf.as_mut_ptr() as *mut i8,
             buf.len(),
             &mut group,
         ) != 0
@@ -182,10 +196,8 @@ fn get_group_gid(name: &str) -> Result<libc::gid_t, io::Error> {
             None => return Err(io::Error::from(io::ErrorKind::NotFound)),
         };
 
-        group.gr_gid
-    };
-
-    Ok(gid)
+        Ok(group.gr_gid)
+    })
 }
 
 pub fn set_user(path: &Path, user: &str) -> Result<(), io::Error> {
