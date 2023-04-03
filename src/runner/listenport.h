@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -38,18 +38,25 @@ public:
 	int port;
 	bool ssl;
 	QString localPath;
+	int mode;
+	QString user;
+	QString group;
 
 	ListenPort() :
 		port(-1),
-		ssl(false)
+		ssl(false),
+		mode(-1)
 	{
 	}
 
-	ListenPort(const QHostAddress &_addr, int _port, bool _ssl, const QString &_localPath = QString()) :
+	ListenPort(const QHostAddress &_addr, int _port, bool _ssl, const QString &_localPath = QString(), int _mode = -1, const QString &_user = QString(), const QString &_group = QString()) :
 		addr(_addr),
 		port(_port),
 		ssl(_ssl),
-		localPath(_localPath)
+		localPath(_localPath),
+		mode(_mode),
+		user(_user),
+		group(_group)
 	{
 	}
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2022 Fanout, Inc.
+ * Copyright (C) 2016-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -522,7 +522,34 @@ public:
 
 			foreach(const QString &localPortStr, localPortStrs)
 			{
-				ports += ListenPort(QHostAddress(), 0, true, localPortStr);
+				QUrl path = QUrl::fromEncoded(localPortStr.toUtf8());
+				if(!path.isValid())
+				{
+					log_error("invalid local port: %s", qPrintable(localPortStr));
+					emit q->quit(1);
+					return;
+				}
+
+				QUrlQuery query(path.query());
+
+				int mode = -1;
+				if(query.hasQueryItem("mode"))
+				{
+					QString modeStr = query.queryItemValue("mode");
+					bool ok = false;
+					mode = modeStr.toInt(&ok, 8);
+					if(!ok)
+					{
+						log_error("invalid mode: %s", qPrintable(modeStr));
+						emit q->quit(1);
+						return;
+					}
+				}
+
+				QString user = query.queryItemValue("user");
+				QString group = query.queryItemValue("group");
+
+				ports += ListenPort(QHostAddress(), 0, true, path.path(), mode, user, group);
 			}
 		}
 
