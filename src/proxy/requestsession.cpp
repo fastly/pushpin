@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2012-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -255,7 +255,8 @@ public:
 				stats->refreshConnection(cid);
 
 			// linger if accepted
-			stats->removeConnection(cid, accepted);
+			bool linger = accepted && stats->connectionSendEnabled();
+			stats->removeConnection(cid, linger);
 		}
 
 		state = Stopped;
@@ -420,7 +421,9 @@ public:
 		{
 			connectionRegistered = true;
 
-			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false);
+			int reportOffset = stats->connectionSendEnabled() ? -1 : 0;
+
+			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false, reportOffset);
 			stats->addActivity(route.statsRoute());
 
 			// note: we don't call addRequestsReceived here, because we're acting for an existing request

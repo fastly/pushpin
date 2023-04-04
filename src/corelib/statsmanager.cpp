@@ -151,6 +151,7 @@ public:
 		Stats::Counters counters;
 		qint64 lastUpdate;
 		qint64 startTime;
+		QHash<QByteArray, Report> externalReports;
 
 		Report() :
 			connectionsMax(0),
@@ -178,6 +179,38 @@ public:
 				blocksSent <= 0 &&
 				requestsReceived == 0 &&
 				counters.isEmpty());
+		}
+
+		int externalConnectionsMax() const
+		{
+			int count = 0;
+
+			QHashIterator<QByteArray, Report> it(externalReports);
+			while(it.hasNext())
+			{
+				it.next();
+				const Report &r = it.value();
+
+				count += r.connectionsMax;
+			}
+
+			return count;
+		}
+
+		int externalConnectionsMinutes() const
+		{
+			int count = 0;
+
+			QHashIterator<QByteArray, Report> it(externalReports);
+			while(it.hasNext())
+			{
+				it.next();
+				const Report &r = it.value();
+
+				count += r.connectionsMinutes;
+			}
+
+			return count;
 		}
 
 		void addConnectionsMinutes(int mins, qint64 now)
@@ -293,6 +326,7 @@ public:
 	int ipcFileMode;
 	QString spec;
 	Format outputFormat;
+	bool connectionSend;
 	int connectionTtl;
 	int connectionLinger;
 	int subscriptionTtl;
@@ -328,6 +362,7 @@ public:
 		subscriptionsMax(_subscriptionsMax),
 		ipcFileMode(-1),
 		outputFormat(TnetStringFormat),
+		connectionSend(false),
 		connectionTtl(120 * 1000),
 		connectionLinger(60 * 1000),
 		subscriptionTtl(60 * 1000),
@@ -772,7 +807,7 @@ public:
 
 	void sendConnected(ConnectionInfo *c)
 	{
-		if(!sock)
+		if(!sock || !connectionSend)
 			return;
 
 		StatsPacket p;
@@ -792,7 +827,7 @@ public:
 
 	void sendDisconnected(ConnectionInfo *c)
 	{
-		if(!sock)
+		if(!sock || !connectionSend)
 			return;
 
 		StatsPacket p;
@@ -1044,17 +1079,43 @@ public:
 			currentSubscriptionRefreshBucket = 0;
 	}
 
-	void addCounters(const QByteArray &routeId, const Stats::Counters &counters)
+	void mergeExternalReport(const StatsPacket &packet, bool includeConnections)
 	{
 		if(reportInterval <= 0)
 			return;
 
-		Report *report = getOrCreateReport(routeId);
+		Report *report = getOrCreateReport(packet.route);
+
+		Stats::Counters counters;
+
+		counters.inc(Stats::ClientHeaderBytesReceived, qMax(packet.clientHeaderBytesReceived, 0));
+		counters.inc(Stats::ClientHeaderBytesSent, qMax(packet.clientHeaderBytesSent, 0));
+		counters.inc(Stats::ClientContentBytesReceived, qMax(packet.clientContentBytesReceived, 0));
+		counters.inc(Stats::ClientContentBytesSent, qMax(packet.clientContentBytesSent, 0));
+		counters.inc(Stats::ClientMessagesReceived, qMax(packet.clientMessagesReceived, 0));
+		counters.inc(Stats::ClientMessagesSent, qMax(packet.clientMessagesSent, 0));
+		counters.inc(Stats::ServerHeaderBytesReceived, qMax(packet.serverHeaderBytesReceived, 0));
+		counters.inc(Stats::ServerHeaderBytesSent, qMax(packet.serverHeaderBytesSent, 0));
+		counters.inc(Stats::ServerContentBytesReceived, qMax(packet.serverContentBytesReceived, 0));
+		counters.inc(Stats::ServerContentBytesSent, qMax(packet.serverContentBytesSent, 0));
+		counters.inc(Stats::ServerMessagesReceived, qMax(packet.serverMessagesReceived, 0));
+		counters.inc(Stats::ServerMessagesSent, qMax(packet.serverMessagesSent, 0));
 
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
 
 		report->addCounters(counters, now);
 		combinedReport.addCounters(counters, now);
+
+		if(includeConnections)
+		{
+			if(!report->externalReports.contains(packet.from))
+				report->externalReports[packet.from] = Report();
+
+			Report &r = report->externalReports[packet.from];
+
+			r.connectionsMinutes += packet.connectionsMinutes;
+			r.connectionsMax = qMax(r.connectionsMax, packet.connectionsMax);
+		}
 	}
 
 	StatsPacket reportToPacket(Report *report, const QByteArray &routeId, qint64 now)
@@ -1067,8 +1128,8 @@ public:
 		p.from = instanceId;
 		p.route = routeId;
 
-		p.connectionsMax = report->connectionsMax;
-		p.connectionsMinutes = report->connectionsMinutes;
+		p.connectionsMax = report->connectionsMax + report->externalConnectionsMax();
+		p.connectionsMinutes = report->connectionsMinutes + report->externalConnectionsMinutes();
 		p.messagesReceived = report->messagesReceived;
 		p.messagesSent = report->messagesSent;
 		p.httpResponseMessagesSent = report->httpResponseMessagesSent;
@@ -1098,6 +1159,7 @@ public:
 		report->blocksReceived = -1;
 		report->blocksSent = -1;
 		report->counters.reset();
+		report->externalReports.clear();
 
 		return p;
 	}
@@ -1266,6 +1328,16 @@ bool StatsManager::setSpec(const QString &spec)
 	return d->setupSock();
 }
 
+bool StatsManager::connectionSendEnabled() const
+{
+	return d->connectionSend;
+}
+
+void StatsManager::setConnectionSendEnabled(bool enabled)
+{
+	d->connectionSend = enabled;
+}
+
 void StatsManager::setConnectionTtl(int secs)
 {
 	d->connectionTtl = secs * 1000;
@@ -1322,12 +1394,15 @@ void StatsManager::addMessage(const QString &channel, const QString &itemId, con
 	d->sendMessage(channel, itemId, transport, count, blocks);
 }
 
-void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet)
+void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet, int reportOffset)
 {
 	qint64 now = QDateTime::currentMSecsSinceEpoch();
 
 	bool replacing = false;
 	qint64 lastReport = now;
+
+	if(reportOffset >= 0)
+		lastReport -= reportOffset;
 
 	if(d->reportInterval > 0)
 	{
@@ -1384,8 +1459,8 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 	{
 		d->updateConnectionsMax(c->routeId, now);
 
-		// only count a minute if we weren't replacing
-		if(!replacing)
+		// only immediately count a minute if an offset wasn't set and we weren't replacing
+		if(reportOffset < 0 && !replacing)
 		{
 			Private::Report *report = d->getOrCreateReport(c->routeId);
 
@@ -1581,7 +1656,7 @@ bool StatsManager::checkConnection(const QByteArray &id) const
 	return d->connectionInfoById.contains(id);
 }
 
-bool StatsManager::processExternalPacket(const StatsPacket &packet)
+bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeConnectionReport)
 {
 	if(d->reportInterval <= 0)
 		return false;
@@ -1702,22 +1777,7 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet)
 	}
 	else if(packet.type == StatsPacket::Report)
 	{
-		Stats::Counters counters;
-
-		counters.inc(Stats::ClientHeaderBytesReceived, qMax(packet.clientHeaderBytesReceived, 0));
-		counters.inc(Stats::ClientHeaderBytesSent, qMax(packet.clientHeaderBytesSent, 0));
-		counters.inc(Stats::ClientContentBytesReceived, qMax(packet.clientContentBytesReceived, 0));
-		counters.inc(Stats::ClientContentBytesSent, qMax(packet.clientContentBytesSent, 0));
-		counters.inc(Stats::ClientMessagesReceived, qMax(packet.clientMessagesReceived, 0));
-		counters.inc(Stats::ClientMessagesSent, qMax(packet.clientMessagesSent, 0));
-		counters.inc(Stats::ServerHeaderBytesReceived, qMax(packet.serverHeaderBytesReceived, 0));
-		counters.inc(Stats::ServerHeaderBytesSent, qMax(packet.serverHeaderBytesSent, 0));
-		counters.inc(Stats::ServerContentBytesReceived, qMax(packet.serverContentBytesReceived, 0));
-		counters.inc(Stats::ServerContentBytesSent, qMax(packet.serverContentBytesSent, 0));
-		counters.inc(Stats::ServerMessagesReceived, qMax(packet.serverMessagesReceived, 0));
-		counters.inc(Stats::ServerMessagesSent, qMax(packet.serverMessagesSent, 0));
-
-		d->addCounters(packet.route, counters);
+		d->mergeExternalReport(packet, mergeConnectionReport);
 
 		return true;
 	}

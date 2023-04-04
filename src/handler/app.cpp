@@ -283,6 +283,7 @@ public:
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int connectionSubscriptionMax = settings.value("handler/connection_subscription_max", 20).toInt();
 		int subscriptionLinger = settings.value("handler/subscription_linger", 60).toInt();
+		int statsConnectionSend = settings.value("global/stats_connection_send", true).toBool();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
 		int statsSubscriptionTtl = settings.value("handler/stats_subscription_ttl", 60).toInt();
 		int statsReportInterval = settings.value("handler/stats_report_interval", 10).toInt();
@@ -347,6 +348,7 @@ public:
 		config.connectionsMax = clientMaxconn;
 		config.connectionSubscriptionMax = connectionSubscriptionMax;
 		config.subscriptionLinger = subscriptionLinger;
+		config.statsConnectionSend = statsConnectionSend;
 		config.statsConnectionTtl = statsConnectionTtl;
 		config.statsSubscriptionTtl = statsSubscriptionTtl;
 		config.statsReportInterval = statsReportInterval;
