@@ -8,8 +8,8 @@ Requires=pushpin-socat.service
 Type=simple
 Restart=always
 CPUQuota=400%
-LimitNOFILE=1000
-MemoryLimit=5G
+LimitNOFILE=101000
+MemoryLimit=40G
 Environment=PATH=/opt/fst-pushpin/bin:/bin:/sbin:/usr/bin:/usr/sbin
 ExecStartPre=/opt/fst-pushpin/bin/pushpin-iptables.sh apply
 ExecStart=/opt/fst-pushpin/bin/pushpin.sh
