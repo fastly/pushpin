@@ -55,7 +55,7 @@ CondureService::CondureService(
 
 	if(!logDir.isEmpty())
 	{
-		setStandardOutputFile(QDir(logDir).filePath(filePrefix + "condure.log"));
+		setStandardOutputFile(QDir(logDir).filePath(filePrefix + name + ".log"));
 	}
 
 	if(logLevel >= 0)
