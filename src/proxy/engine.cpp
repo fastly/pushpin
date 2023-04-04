@@ -306,6 +306,7 @@ public:
 
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);
+			stats->setConnectionSendEnabled(config.statsConnectionSend);
 			stats->setConnectionTtl(config.statsConnectionTtl);
 			stats->setReportInterval(config.statsReportInterval);
 
