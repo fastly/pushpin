@@ -4,7 +4,7 @@ use std::{error::Error, process};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let uri = Uri::new("/tmp/pushpin.sock", "/");
+    let uri = Uri::new("/var/run/pushpin/pushpin-server", "/");
     let req = Request::builder()
         .uri(uri)
         .header("host", "pushpin.healthcheck.test")
