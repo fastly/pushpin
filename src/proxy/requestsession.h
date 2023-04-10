@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2012-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -89,7 +89,7 @@ public:
 
 	// takes ownership
 	void start(ZhttpRequest *req);
-	void startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse);
+	void startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime);
 
 	void pause();
 	void resume();
@@ -101,6 +101,8 @@ public:
 	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
 	void respondError(int code, const QString &reason, const QString &errorString);
 	void respondCannotAccept();
+
+	int unregisterConnection(); // return unreported time
 
 signals:
 	void inspected(const InspectData &idata);

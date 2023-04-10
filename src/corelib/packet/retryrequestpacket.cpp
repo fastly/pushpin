@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2012-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -65,6 +65,9 @@ QVariant RetryRequestPacket::toVariant() const
 
 		if(r.jsonpExtendedResponse)
 			vrequest["jsonp-extended-response"] = true;
+
+		if(r.unreportedTime > 0)
+			vrequest["unreported-time"] = r.unreportedTime;
 
 		vrequest["in-seq"] = r.inSeq;
 		vrequest["out-seq"] = r.outSeq;
@@ -221,6 +224,14 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 
 				r.jsonpExtendedResponse = vrequest["jsonp-extended-response"].toBool();
 			}
+		}
+
+		if(vrequest.contains("unreported-time"))
+		{
+			if(!vrequest["unreported-time"].canConvert(QVariant::Int))
+				return false;
+
+			r.unreportedTime = vrequest["unreported-time"].toInt();
 		}
 
 		if(!vrequest.contains("in-seq") || !vrequest["in-seq"].canConvert(QVariant::Int))

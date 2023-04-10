@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2012-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1279,6 +1279,11 @@ public slots:
 
 			foreach(SessionItem *si, sessionItems)
 			{
+				int unreportedTime = -1;
+
+				if(!statsManager->connectionSendEnabled())
+					unreportedTime = si->rs->unregisterConnection();
+
 				ZhttpRequest::ServerState ss = si->rs->request()->serverState();
 
 				AcceptData::Request areq;
@@ -1291,6 +1296,7 @@ public slots:
 				areq.autoCrossOrigin = si->rs->autoCrossOrigin();
 				areq.jsonpCallback = si->rs->jsonpCallback();
 				areq.jsonpExtendedResponse = si->rs->jsonpExtendedResponse();
+				areq.unreportedTime = unreportedTime;
 				areq.responseCode = ss.responseCode;
 				areq.inSeq = ss.inSeq;
 				areq.outSeq = ss.outSeq;

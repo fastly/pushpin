@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2015-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -71,6 +71,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 				if(r.jsonpExtendedResponse)
 					vrequest["jsonp-extended-response"] = true;
 			}
+
+			if(r.unreportedTime > 0)
+				vrequest["unreported-time"] = r.unreportedTime;
 
 			if(r.responseCode != -1)
 				vrequest["response-code"] = r.responseCode;
