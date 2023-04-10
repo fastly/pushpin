@@ -242,7 +242,7 @@ public:
 
 		ZhttpRequest::Rid rid = req->rid();
 
-		int reportOffset = stats->connectionSendEnabled() ? -1 : 0;
+		int reportOffset = stats->connectionSendEnabled() ? -1 : qMax(adata.unreportedTime, 0);
 
 		stats->addConnection(rid.first + ':' + rid.second, adata.statsRoute.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true, reportOffset);
 
@@ -1070,8 +1070,12 @@ private:
 			// refresh before remove, to ensure transition
 			stats->refreshConnection(cid);
 
-			bool linger = stats->connectionSendEnabled();
-			stats->removeConnection(cid, linger);
+			int unreportedTime = -1;
+
+			if(stats->connectionSendEnabled())
+				stats->removeConnection(cid, true);
+			else
+				unreportedTime = stats->removeConnection(cid, false);
 
 			ZhttpRequest::ServerState ss = req->serverState();
 
@@ -1085,6 +1089,7 @@ private:
 			rpreq.autoCrossOrigin = adata.autoCrossOrigin;
 			rpreq.jsonpCallback = adata.jsonpCallback;
 			rpreq.jsonpExtendedResponse = adata.jsonpExtendedResponse;
+			rpreq.unreportedTime = unreportedTime;
 			rpreq.inSeq = ss.inSeq;
 			rpreq.outSeq = ss.outSeq;
 			rpreq.outCredits = ss.outCredits;

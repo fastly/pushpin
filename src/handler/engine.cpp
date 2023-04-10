@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2015-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1038,6 +1038,7 @@ private:
 			adata.autoCrossOrigin = rs.autoCrossOrigin;
 			adata.jsonpCallback = rs.jsonpCallback;
 			adata.jsonpExtendedResponse = rs.jsonpExtendedResponse;
+			adata.unreportedTime = rs.unreportedTime;
 			adata.route = route;
 			adata.channelPrefix = channelPrefix;
 			adata.implicitChannels = implicitChannels.toSet();

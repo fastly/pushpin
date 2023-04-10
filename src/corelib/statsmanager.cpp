@@ -1474,14 +1474,15 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 		d->sendConnected(c);
 }
 
-void StatsManager::removeConnection(const QByteArray &id, bool linger)
+int StatsManager::removeConnection(const QByteArray &id, bool linger)
 {
 	Private::ConnectionInfo *c = d->connectionInfoById.value(id);
 	if(!c)
-		return;
+		return 0;
 
 	qint64 now = QDateTime::currentMSecsSinceEpoch();
 	QByteArray routeId = c->routeId;
+	int unreportedTime = 0;
 
 	if(d->reportInterval > 0)
 		d->updateConnectionsMinutes(c, now);
@@ -1501,6 +1502,9 @@ void StatsManager::removeConnection(const QByteArray &id, bool linger)
 	}
 	else
 	{
+		if(now >= c->lastReport)
+			unreportedTime = now - c->lastReport;
+
 		d->sendDisconnected(c);
 		d->removeConnection(c);
 		delete c;
@@ -1508,6 +1512,8 @@ void StatsManager::removeConnection(const QByteArray &id, bool linger)
 
 	if(d->reportInterval > 0)
 		d->updateConnectionsMax(routeId, now);
+
+	return unreportedTime;
 }
 
 void StatsManager::refreshConnection(const QByteArray &id)

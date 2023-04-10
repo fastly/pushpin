@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2016-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -136,6 +136,14 @@ RequestState RequestState::fromVariant(const QVariant &in)
 			return RequestState();
 
 		rs.jsonpExtendedResponse = r["jsonp-extended-response"].toBool();
+	}
+
+	if(r.contains("unreported-time"))
+	{
+		if(!r["unreported-time"].canConvert(QVariant::Int))
+			return RequestState();
+
+		rs.unreportedTime = r["unreported-time"].toInt();
 	}
 
 	if(r.contains("user-data"))

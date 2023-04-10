@@ -248,6 +248,8 @@ public:
 
 		if(stats && connectionRegistered)
 		{
+			connectionRegistered = false;
+
 			QByteArray cid = ridToString(rid);
 
 			// refresh before remove, to ensure transition
@@ -383,7 +385,7 @@ public:
 		processIncomingRequest();
 	}
 
-	void startRetry()
+	void startRetry(int unreportedTime)
 	{
 		trusted = ProxyUtil::checkTrustedClient("requestsession", q, requestData, defaultUpstreamKey);
 
@@ -421,7 +423,7 @@ public:
 		{
 			connectionRegistered = true;
 
-			int reportOffset = stats->connectionSendEnabled() ? -1 : 0;
+			int reportOffset = stats->connectionSendEnabled() ? -1 : qMax(unreportedTime, 0);
 
 			stats->addConnection(ridToString(rid), route.statsRoute(), StatsManager::Http, logicalPeerAddress, isHttps, false, reportOffset);
 			stats->addActivity(route.statsRoute());
@@ -1324,7 +1326,7 @@ void RequestSession::start(ZhttpRequest *req)
 	d->start(req);
 }
 
-void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse)
+void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime)
 {
 	d->isRetry = true;
 	d->zhttpRequest = req;
@@ -1338,7 +1340,7 @@ void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOri
 	d->requestData.headers = req->requestHeaders();
 	d->requestData.body = req->readBody();
 
-	d->startRetry();
+	d->startRetry(unreportedTime);
 }
 
 void RequestSession::pause()
@@ -1401,6 +1403,17 @@ void RequestSession::respondError(int code, const QString &reason, const QString
 void RequestSession::respondCannotAccept()
 {
 	d->respondCannotAccept();
+}
+
+int RequestSession::unregisterConnection()
+{
+	if(!d->connectionRegistered)
+		return 0;
+
+	d->connectionRegistered = false;
+
+	QByteArray cid = ridToString(d->rid);
+	return d->stats->removeConnection(cid, false);
 }
 
 #include "requestsession.moc"

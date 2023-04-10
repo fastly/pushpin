@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2012-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -51,6 +51,7 @@ public:
 		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 		bool jsonpExtendedResponse;
+		int unreportedTime;
 
 		// zhttp
 		int responseCode;
@@ -65,6 +66,7 @@ public:
 			isRetry(false),
 			autoCrossOrigin(false),
 			jsonpExtendedResponse(false),
+			unreportedTime(-1),
 			responseCode(-1),
 			inSeq(-1),
 			outSeq(-1),
