@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 Restart=always
-ExecStart=/opt/fst-pushpin/bin/pushpin-stats-emitter --log-level 1 --nsq-cert /etc/pushpin/private/nsq-client-cert.pem --nsq-key /etc/pushpin/private/nsq-client-key.pem --nsq-ca /etc/pushpin/private/nsq-ca-cert.pem ipc:///var/run/pushpin/pushpin-stats "https://127.0.0.1:1912/pub?topic=fst-stats-json"
+ExecStart=/opt/fst-pushpin/bin/pushpin-stats-emitter --log-level 1 --nsq-cert /etc/pushpin/private/nsq-client-cert.pem --nsq-key /etc/pushpin/private/nsq-client-key.pem --nsq-ca /etc/pushpin/private/nsq-ca-cert.pem --no-verify-peer ipc:///var/run/pushpin/pushpin-stats "https://127.0.0.1:1912/pub?topic=fst-stats-json"
 
 [Install]
 WantedBy=multi-user.target
