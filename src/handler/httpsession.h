@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2022 Fanout, Inc.
+ * Copyright (C) 2016-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -62,6 +62,7 @@ public:
 		bool autoCrossOrigin;
 		QByteArray jsonpCallback;
 		bool jsonpExtendedResponse;
+		int unreportedTime;
 		HttpRequestData requestData;
 		QString route;
 		QString statsRoute;
@@ -78,6 +79,7 @@ public:
 			isRetry(false),
 			autoCrossOrigin(false),
 			jsonpExtendedResponse(false),
+			unreportedTime(-1),
 			trusted(false),
 			responseSent(false),
 			haveInspectInfo(false)
