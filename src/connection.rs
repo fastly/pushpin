@@ -83,6 +83,7 @@ const HEADERS_MAX: usize = 64;
 const WS_HASH_INPUT_MAX: usize = 256;
 const WS_KEY_MAX: usize = 24; // base64_encode([16 bytes]) = 24 bytes
 const WS_ACCEPT_MAX: usize = 28; // base64_encode(sha1_hash) = 28 bytes
+const REDIRECTS_MAX: usize = 8;
 const ZHTTP_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECTION_POOL_TTL: Duration = Duration::from_secs(55);
 
@@ -316,6 +317,7 @@ enum Error {
     BadRequest,
     TlsError,
     PolicyViolation,
+    TooManyRedirects,
     ValueActive,
     StreamTimeout,
     SessionTimeout,
@@ -332,6 +334,7 @@ impl Error {
             Error::StreamTimeout => "connection-timeout",
             Error::TlsError => "tls-error",
             Error::PolicyViolation => "policy-violation",
+            Error::TooManyRedirects => "too-many-redirects",
             _ => "undefined-condition",
         }
     }
@@ -5208,18 +5211,74 @@ async fn client_connect(
     Ok((peer_addr, use_tls, stream))
 }
 
+// return Some if fully valid redirect response, else return None.
+fn check_redirect(
+    method: &str,
+    base_url: &url::Url,
+    resp: &http1::Response,
+    schemes: &[&str],
+) -> Option<(url::Url, bool)> {
+    if resp.code >= 300 && resp.code <= 399 {
+        let mut location = None;
+
+        for h in resp.headers.iter() {
+            if h.name.eq_ignore_ascii_case("Location") {
+                location = Some(h.value);
+                break;
+            }
+        }
+
+        // must have location header
+        if let Some(s) = location {
+            // must be UTF-8
+            if let Ok(s) = str::from_utf8(s) {
+                // must be valid URL
+                if let Ok(url) = base_url.join(s) {
+                    // must have an acceptable scheme
+                    if schemes.contains(&url.scheme()) {
+                        let use_get = resp.code >= 301 && resp.code <= 303 && method == "POST";
+
+                        // all is well!
+                        return Some((url, use_get));
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+enum ClientHandlerDone<T> {
+    Complete(T, bool),
+    Redirect(bool, url::Url, bool), // rare alloc
+}
+
+impl<T> ClientHandlerDone<T> {
+    fn is_persistent(&self) -> bool {
+        match self {
+            ClientHandlerDone::Complete(_, persistent) => *persistent,
+            ClientHandlerDone::Redirect(persistent, _, _) => *persistent,
+        }
+    }
+}
+
 // return (_, true) if persistent
 #[allow(clippy::too_many_arguments)]
 async fn client_req_handler<S>(
     log_id: &str,
     id: Option<&[u8]>,
     stream: &mut S,
-    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    zreq: &zhttppacket::Request<'_, '_, '_>,
+    method: &str,
+    url: &url::Url,
+    include_body: bool,
+    follow_redirects: bool,
     buf1: &mut RingBuffer,
     buf2: &mut RingBuffer,
     body_buf: &mut Buffer,
     packet_buf: &RefCell<Vec<u8>>,
-) -> Result<(zmq::Message, bool), Error>
+) -> Result<ClientHandlerDone<zmq::Message>, Error>
 where
     S: AsyncRead + AsyncWrite,
 {
@@ -5227,19 +5286,12 @@ where
     let req = ClientRequest::new(io_split(&stream), buf1, buf2);
 
     let req_header = {
-        let zreq_ref = zreq.get().get();
-
-        let rdata = match &zreq_ref.ptype {
+        let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
             _ => return Err(Error::BadRequest),
         };
 
-        let uri = match url::Url::parse(rdata.uri) {
-            Ok(uri) => uri,
-            Err(_) => return Err(Error::BadRequest),
-        };
-
-        let host_port = &uri[url::Position::BeforeHost..url::Position::AfterPort];
+        let host_port = &url[url::Position::BeforeHost..url::Position::AfterPort];
 
         let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
@@ -5264,24 +5316,17 @@ where
             });
         }
 
-        let path = &uri[url::Position::BeforePath..];
+        let path = &url[url::Position::BeforePath..];
 
-        let req_header = req.prepare_header(
-            rdata.method,
-            path,
-            &headers,
-            http1::BodySize::Known(rdata.body.len()),
-            false,
-            &[],
-            false,
-        )?;
+        let body_size = if include_body {
+            body_buf.write_all(rdata.body)?;
 
-        body_buf.write_all(rdata.body)?;
+            http1::BodySize::Known(rdata.body.len())
+        } else {
+            http1::BodySize::NoBody
+        };
 
-        drop(headers);
-        drop(zreq);
-
-        req_header
+        req.prepare_header(method, path, &headers, body_size, false, &[], false)?
     };
 
     let resp = {
@@ -5318,11 +5363,11 @@ where
     let (resp, resp_body) = resp.recv_header(&mut scratch).await?;
 
     let (zresp, finished) = {
-        let resp = resp.get();
+        let resp_ref = resp.get();
 
         debug!(
             "client-conn {}: response: {} {}",
-            log_id, resp.code, resp.reason
+            log_id, resp_ref.code, resp_ref.reason
         );
 
         // receive response body
@@ -5346,9 +5391,24 @@ where
             }
         };
 
+        if follow_redirects {
+            if let Some((url, use_get)) = check_redirect(method, url, &resp_ref, &["http", "https"])
+            {
+                let finished = finished.discard_header(resp);
+
+                debug!("client-conn {}: redirecting to {}", log_id, url);
+
+                return Ok(ClientHandlerDone::Redirect(
+                    finished.inner.persistent,
+                    url,
+                    use_get,
+                ));
+            }
+        }
+
         let mut zheaders = ArrayVec::<zhttppacket::Header, HEADERS_MAX>::new();
 
-        for h in resp.headers {
+        for h in resp_ref.headers {
             zheaders.push(zhttppacket::Header {
                 name: h.name,
                 value: h.value,
@@ -5358,8 +5418,8 @@ where
         let rdata = zhttppacket::ResponseData {
             credits: 0,
             more: false,
-            code: resp.code,
-            reason: resp.reason,
+            code: resp_ref.code,
+            reason: resp_ref.reason,
             headers: &zheaders,
             content_type: None,
             body: Buffer::read_buf(body_buf),
@@ -5376,7 +5436,10 @@ where
 
     let finished = finished.discard_header(resp);
 
-    Ok((zresp, finished.inner.persistent))
+    Ok(ClientHandlerDone::Complete(
+        zresp,
+        finished.inner.persistent,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5392,20 +5455,20 @@ async fn client_req_connect(
     resolver: &resolver::Resolver,
     pool: &ConnectionPool,
 ) -> Result<zmq::Message, Error> {
-    let zreq_ref = zreq.get().get();
+    let zreq = zreq.get().get();
 
-    let rdata = match &zreq_ref.ptype {
+    let rdata = match &zreq.ptype {
         zhttppacket::RequestPacket::Data(data) => data,
         _ => return Err(Error::BadRequest),
     };
 
-    let uri = match url::Url::parse(rdata.uri) {
-        Ok(uri) => uri,
+    let initial_url = match url::Url::parse(rdata.uri) {
+        Ok(url) => url,
         Err(_) => return Err(Error::BadRequest),
     };
 
     // must be an http url
-    if !["http", "https"].contains(&uri.scheme()) {
+    if !["http", "https"].contains(&initial_url.scheme()) {
         return Err(Error::BadRequest);
     }
 
@@ -5414,11 +5477,6 @@ async fn client_req_connect(
         return Err(Error::BadRequest);
     }
 
-    let uri_host = match uri.host_str() {
-        Some(s) => s,
-        None => return Err(Error::BadRequest),
-    };
-
     debug!(
         "client-conn {}: request: {} {}",
         log_id, rdata.method, rdata.uri,
@@ -5426,32 +5484,100 @@ async fn client_req_connect(
 
     let deny = if rdata.ignore_policies { &[] } else { deny };
 
-    let (peer_addr, using_tls, mut stream) =
-        client_connect(log_id, rdata, &uri, resolver, deny, pool).await?;
+    let mut last_redirect: Option<(url::Url, bool)> = None;
+    let mut redirect_count = 0;
 
-    let (zresp, persistent) = match &mut stream {
-        AsyncStream::Plain(stream) => {
-            client_req_handler(log_id, id, stream, zreq, buf1, buf2, body_buf, packet_buf).await?
+    let zresp = loop {
+        let (method, url, include_body) = match &last_redirect {
+            Some((url, use_get)) => {
+                let (method, include_body) = if *use_get {
+                    ("GET", false)
+                } else {
+                    (rdata.method, true)
+                };
+
+                (method, url, include_body)
+            }
+            None => (rdata.method, &initial_url, true),
+        };
+
+        let url_host = match url.host_str() {
+            Some(s) => s,
+            None => return Err(Error::BadRequest),
+        };
+
+        let (peer_addr, using_tls, mut stream) =
+            client_connect(log_id, rdata, url, resolver, deny, pool).await?;
+
+        let done = match &mut stream {
+            AsyncStream::Plain(stream) => {
+                client_req_handler(
+                    log_id,
+                    id,
+                    stream,
+                    zreq,
+                    method,
+                    url,
+                    include_body,
+                    rdata.follow_redirects,
+                    buf1,
+                    buf2,
+                    body_buf,
+                    packet_buf,
+                )
+                .await?
+            }
+            AsyncStream::Tls(stream) => {
+                client_req_handler(
+                    log_id,
+                    id,
+                    stream,
+                    zreq,
+                    method,
+                    url,
+                    include_body,
+                    rdata.follow_redirects,
+                    buf1,
+                    buf2,
+                    body_buf,
+                    packet_buf,
+                )
+                .await?
+            }
+        };
+
+        if done.is_persistent() {
+            if pool
+                .push(
+                    peer_addr,
+                    using_tls,
+                    url_host.to_string(),
+                    stream.into_inner(),
+                    CONNECTION_POOL_TTL,
+                )
+                .is_ok()
+            {
+                debug!("client-conn {}: leaving connection intact", log_id);
+            }
         }
-        AsyncStream::Tls(stream) => {
-            client_req_handler(log_id, id, stream, zreq, buf1, buf2, body_buf, packet_buf).await?
+
+        match done {
+            ClientHandlerDone::Complete(zresp, _) => break zresp,
+            ClientHandlerDone::Redirect(_, url, mut use_get) => {
+                if redirect_count >= REDIRECTS_MAX {
+                    return Err(Error::TooManyRedirects);
+                }
+
+                redirect_count += 1;
+
+                if let Some((_, b)) = &last_redirect {
+                    use_get = use_get || *b;
+                }
+
+                last_redirect = Some((url, use_get));
+            }
         }
     };
-
-    if persistent {
-        if pool
-            .push(
-                peer_addr,
-                using_tls,
-                uri_host.to_string(),
-                stream.into_inner(),
-                CONNECTION_POOL_TTL,
-            )
-            .is_ok()
-        {
-            debug!("client-conn {}: leaving connection intact", log_id);
-        }
-    }
 
     Ok(zresp)
 }
@@ -5573,7 +5699,11 @@ async fn client_stream_handler<S, E, R1, R2>(
     log_id: &str,
     id: &[u8],
     stream: &mut S,
-    zreq: arena::Rc<zhttppacket::OwnedRequest>,
+    zreq: &zhttppacket::Request<'_, '_, '_>,
+    method: &str,
+    url: &url::Url,
+    include_body: bool,
+    mut follow_redirects: bool,
     buf1: &mut RingBuffer,
     buf2: &mut RingBuffer,
     messages_max: usize,
@@ -5588,7 +5718,7 @@ async fn client_stream_handler<S, E, R1, R2>(
     response_received: &mut bool,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
-) -> Result<bool, Error>
+) -> Result<ClientHandlerDone<()>, Error>
 where
     S: AsyncRead + AsyncWrite,
     E: Fn(),
@@ -5605,23 +5735,20 @@ where
     let zsess_out = ZhttpServerStreamSessionOut::new(instance_id, id, packet_buf, zsender, shared);
 
     let (credits, req_header, ws_key, overflow) = {
-        let zreq_ref = zreq.get().get();
-
-        let rdata = match &zreq_ref.ptype {
+        let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
             _ => return Err(Error::BadRequest),
         };
 
-        let uri = match url::Url::parse(rdata.uri) {
-            Ok(uri) => uri,
-            Err(_) => return Err(Error::BadRequest),
-        };
+        let websocket = ["wss", "ws"].contains(&url.scheme());
 
-        let websocket = ["wss", "ws"].contains(&uri.scheme());
-
-        let host_port = &uri[url::Position::BeforeHost..url::Position::AfterPort];
+        let host_port = &url[url::Position::BeforeHost..url::Position::AfterPort];
 
         let ws_key = if websocket { Some(gen_ws_key()) } else { None };
+
+        if !websocket && rdata.more {
+            follow_redirects = false;
+        }
 
         let mut ws_ext = ArrayVec::<u8, 512>::new();
 
@@ -5670,7 +5797,7 @@ where
             }
         }
 
-        let mut body_size = if websocket {
+        let mut body_size = if websocket || !include_body {
             http1::BodySize::NoBody
         } else {
             http1::BodySize::Unknown
@@ -5714,9 +5841,9 @@ where
             });
         }
 
-        let method = if websocket { "GET" } else { rdata.method };
+        let method = if websocket { "GET" } else { method };
 
-        let path = &uri[url::Position::BeforePath..];
+        let path = &url[url::Position::BeforePath..];
 
         if body_size == http1::BodySize::Unknown && !rdata.more {
             body_size = http1::BodySize::Known(rdata.body.len());
@@ -5725,48 +5852,39 @@ where
         let mut overflow = None;
 
         let req_header = if websocket {
-            req.prepare_header(method, path, &headers, body_size, websocket, &[], true)?
+            req.prepare_header(method, path, &headers, body_size, true, &[], true)?
         } else {
-            let (initial_body, end) = if rdata.body.len() > recv_buf_size {
-                let body = &rdata.body[..recv_buf_size];
+            let (initial_body, end) = if include_body {
+                if rdata.body.len() > recv_buf_size {
+                    let body = &rdata.body[..recv_buf_size];
 
-                let mut remainder = Buffer::new(rdata.body.len() - body.len());
-                remainder.write_all(&rdata.body[body.len()..])?;
+                    let mut remainder = Buffer::new(rdata.body.len() - body.len());
+                    remainder.write_all(&rdata.body[body.len()..])?;
 
-                debug!(
-                    "initial={} overflow={} end={}",
-                    body.len(),
-                    remainder.read_avail(),
-                    !rdata.more
-                );
+                    debug!(
+                        "initial={} overflow={} end={}",
+                        body.len(),
+                        remainder.read_avail(),
+                        !rdata.more
+                    );
 
-                overflow = Some(Overflow {
-                    buf: remainder,
-                    end: !rdata.more,
-                });
+                    overflow = Some(Overflow {
+                        buf: remainder,
+                        end: !rdata.more,
+                    });
 
-                (body, false)
+                    (body, false)
+                } else {
+                    (rdata.body, !rdata.more)
+                }
             } else {
-                (rdata.body, !rdata.more)
+                (&[][..], true)
             };
 
-            req.prepare_header(
-                method,
-                path,
-                &headers,
-                body_size,
-                websocket,
-                initial_body,
-                end,
-            )?
+            req.prepare_header(method, path, &headers, body_size, false, initial_body, end)?
         };
 
-        let credits = rdata.credits;
-
-        drop(headers);
-        drop(zreq);
-
-        (credits, req_header, ws_key, overflow)
+        (rdata.credits, req_header, ws_key, overflow)
     };
 
     // ack request
@@ -5853,11 +5971,11 @@ where
         };
 
         let ws_config = {
-            let resp = resp.get();
+            let resp_ref = resp.get();
 
             debug!(
                 "client-conn {}: response: {} {}",
-                log_id, resp.code, resp.reason
+                log_id, resp_ref.code, resp_ref.reason
             );
 
             loop {
@@ -5876,12 +5994,76 @@ where
                 }
             }
 
+            if follow_redirects {
+                let schemes = if ws_key.is_some() {
+                    ["ws", "wss"]
+                } else {
+                    ["http", "https"]
+                };
+
+                if let Some((url, use_get)) = check_redirect(method, url, &resp_ref, &schemes) {
+                    // eat response body
+                    let finished = loop {
+                        let ret = {
+                            let mut buf = [0; 4_096];
+                            resp_body.try_recv(&mut buf)?
+                        };
+
+                        match ret {
+                            RecvStatus::Complete(finished, _) => break finished,
+                            RecvStatus::Read((), written) => {
+                                if written == 0 {
+                                    let mut add_to_buffer = pin!(resp_body.add_to_buffer());
+
+                                    loop {
+                                        // ABR: select contains read
+                                        let result = select_2(
+                                            add_to_buffer.as_mut(),
+                                            pin!(zsess_in.recv_msg()),
+                                        )
+                                        .await;
+
+                                        match result {
+                                            Select2::R1(ret) => {
+                                                ret?;
+                                                break;
+                                            }
+                                            Select2::R2(ret) => {
+                                                let zreq = ret?;
+
+                                                // ABR: handle_other
+                                                server_handle_other(
+                                                    zreq,
+                                                    &mut zsess_in,
+                                                    &zsess_out,
+                                                )
+                                                .await?;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    };
+
+                    let finished = finished.discard_header(resp);
+
+                    debug!("client-conn {}: redirecting to {}", log_id, url);
+
+                    return Ok(ClientHandlerDone::Redirect(
+                        finished.inner.persistent,
+                        url,
+                        use_get,
+                    ));
+                }
+            }
+
             let mut zheaders = ArrayVec::<zhttppacket::Header, HEADERS_MAX>::new();
 
             let mut ws_accept = None;
             let mut ws_deflate_config = None;
 
-            for h in resp.headers {
+            for h in resp_ref.headers {
                 if ws_key.is_some() {
                     if h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept") {
                         ws_accept = Some(h.value);
@@ -5930,7 +6112,7 @@ where
             }
 
             if let Some(ws_key) = &ws_key {
-                if resp.code == 101 {
+                if resp_ref.code == 101 {
                     if validate_ws_response(ws_key.as_bytes(), ws_accept).is_err() {
                         return Err(Error::InvalidWebSocketResponse);
                     }
@@ -5944,11 +6126,11 @@ where
 
                     // receive response body
 
-                    loop {
+                    let finished = loop {
                         match resp_body.try_recv(body_buf.write_buf())? {
-                            RecvStatus::Complete(_, written) => {
+                            RecvStatus::Complete(finished, written) => {
                                 body_buf.write_commit(written);
-                                break;
+                                break finished;
                             }
                             RecvStatus::Read((), written) => {
                                 body_buf.write_commit(written);
@@ -5965,7 +6147,10 @@ where
                                         .await;
 
                                         match result {
-                                            Select2::R1(ret) => break ret?,
+                                            Select2::R1(ret) => {
+                                                ret?;
+                                                break;
+                                            }
                                             Select2::R2(ret) => {
                                                 let zreq = ret?;
 
@@ -5982,13 +6167,13 @@ where
                                 }
                             }
                         }
-                    }
+                    };
 
                     let edata = zhttppacket::ResponseErrorData {
                         condition: "rejected",
                         rejected_info: Some(zhttppacket::RejectedInfo {
-                            code: resp.code,
-                            reason: resp.reason,
+                            code: resp_ref.code,
+                            reason: resp_ref.reason,
                             headers: &zheaders,
                             body: body_buf.read_buf(),
                         }),
@@ -5999,7 +6184,11 @@ where
                     // check_send just finished, so this should succeed
                     zsess_out.try_send_msg(zresp)?;
 
-                    return Ok(false);
+                    drop(zheaders);
+
+                    let finished = finished.discard_header(resp);
+
+                    return Ok(ClientHandlerDone::Complete((), finished.inner.persistent));
                 }
             }
 
@@ -6018,8 +6207,8 @@ where
             let rdata = zhttppacket::ResponseData {
                 credits,
                 more: ws_key.is_none(),
-                code: resp.code,
-                reason: resp.reason,
+                code: resp_ref.code,
+                reason: resp_ref.reason,
                 headers: &zheaders,
                 content_type: None,
                 body: b"",
@@ -6062,7 +6251,7 @@ where
         )
         .await?;
 
-        Ok(false)
+        Ok(ClientHandlerDone::Complete((), false))
     } else {
         // receive response body
 
@@ -6076,7 +6265,7 @@ where
         )
         .await?;
 
-        Ok(finished.inner.persistent)
+        Ok(ClientHandlerDone::Complete((), finished.inner.persistent))
     }
 }
 
@@ -6108,33 +6297,33 @@ where
     R1: Fn(),
     R2: Fn(),
 {
-    let zreq_ref = zreq.get().get();
+    let zreq = zreq.get().get();
 
     // assign address so we can send replies
-    let addr: ArrayVec<u8, 64> = match ArrayVec::try_from(zreq_ref.from) {
+    let addr: ArrayVec<u8, 64> = match ArrayVec::try_from(zreq.from) {
         Ok(v) => v,
         Err(_) => return Err(Error::BadRequest),
     };
 
     shared.set_to_addr(Some(addr));
 
-    let rdata = match &zreq_ref.ptype {
+    let rdata = match &zreq.ptype {
         zhttppacket::RequestPacket::Data(data) => data,
         _ => return Err(Error::BadRequest),
     };
 
-    let uri = match url::Url::parse(rdata.uri) {
-        Ok(uri) => uri,
+    let initial_url = match url::Url::parse(rdata.uri) {
+        Ok(url) => url,
         Err(_) => return Err(Error::BadRequest),
     };
 
     // must be an http or websocket url
-    if !["http", "https", "ws", "wss"].contains(&uri.scheme()) {
+    if !["http", "https", "ws", "wss"].contains(&initial_url.scheme()) {
         return Err(Error::BadRequest);
     }
 
     // http requests must have a method
-    if ["http", "https"].contains(&uri.scheme()) && rdata.method.is_empty() {
+    if ["http", "https"].contains(&initial_url.scheme()) && rdata.method.is_empty() {
         return Err(Error::BadRequest);
     }
 
@@ -6144,83 +6333,126 @@ where
         "_"
     };
 
-    let uri_host = match uri.host_str() {
-        Some(s) => s,
-        None => return Err(Error::BadRequest),
-    };
-
     debug!("client-conn {}: request: {} {}", log_id, method, rdata.uri);
 
     let deny = if rdata.ignore_policies { &[] } else { deny };
 
-    // ABR: discard_while
-    let (peer_addr, using_tls, mut stream) = server_discard_while(
-        zreceiver,
-        pin!(client_connect(log_id, rdata, &uri, resolver, deny, pool)),
-    )
-    .await?;
+    let mut last_redirect: Option<(url::Url, bool)> = None;
+    let mut redirect_count = 0;
 
-    let persistent = match &mut stream {
-        AsyncStream::Plain(stream) => {
-            client_stream_handler(
-                log_id,
-                id,
-                stream,
-                zreq,
-                buf1,
-                buf2,
-                messages_max,
-                allow_compression,
-                packet_buf,
-                tmp_buf,
-                instance_id,
-                zreceiver,
-                zsender,
-                shared,
-                enable_routing,
-                response_received,
-                refresh_stream_timeout,
-                refresh_session_timeout,
-            )
-            .await?
-        }
-        AsyncStream::Tls(stream) => {
-            client_stream_handler(
-                log_id,
-                id,
-                stream,
-                zreq,
-                buf1,
-                buf2,
-                messages_max,
-                allow_compression,
-                packet_buf,
-                tmp_buf,
-                instance_id,
-                zreceiver,
-                zsender,
-                shared,
-                enable_routing,
-                response_received,
-                refresh_stream_timeout,
-                refresh_session_timeout,
-            )
-            .await?
-        }
-    };
+    loop {
+        let (method, url, include_body) = match &last_redirect {
+            Some((url, use_get)) => {
+                let (method, include_body) = if *use_get {
+                    ("GET", false)
+                } else {
+                    (rdata.method, true)
+                };
 
-    if persistent {
-        if pool
-            .push(
-                peer_addr,
-                using_tls,
-                uri_host.to_string(),
-                stream.into_inner(),
-                CONNECTION_POOL_TTL,
-            )
-            .is_ok()
-        {
-            debug!("client-conn {}: leaving connection intact", log_id);
+                (method, url, include_body)
+            }
+            None => (rdata.method, &initial_url, true),
+        };
+
+        let url_host = match url.host_str() {
+            Some(s) => s,
+            None => return Err(Error::BadRequest),
+        };
+
+        // ABR: discard_while
+        let (peer_addr, using_tls, mut stream) = server_discard_while(
+            zreceiver,
+            pin!(client_connect(log_id, rdata, url, resolver, deny, pool)),
+        )
+        .await?;
+
+        let done = match &mut stream {
+            AsyncStream::Plain(stream) => {
+                client_stream_handler(
+                    log_id,
+                    id,
+                    stream,
+                    zreq,
+                    method,
+                    url,
+                    include_body,
+                    rdata.follow_redirects,
+                    buf1,
+                    buf2,
+                    messages_max,
+                    allow_compression,
+                    packet_buf,
+                    tmp_buf,
+                    instance_id,
+                    zreceiver,
+                    zsender,
+                    shared,
+                    enable_routing,
+                    response_received,
+                    refresh_stream_timeout,
+                    refresh_session_timeout,
+                )
+                .await?
+            }
+            AsyncStream::Tls(stream) => {
+                client_stream_handler(
+                    log_id,
+                    id,
+                    stream,
+                    zreq,
+                    method,
+                    url,
+                    include_body,
+                    rdata.follow_redirects,
+                    buf1,
+                    buf2,
+                    messages_max,
+                    allow_compression,
+                    packet_buf,
+                    tmp_buf,
+                    instance_id,
+                    zreceiver,
+                    zsender,
+                    shared,
+                    enable_routing,
+                    response_received,
+                    refresh_stream_timeout,
+                    refresh_session_timeout,
+                )
+                .await?
+            }
+        };
+
+        if done.is_persistent() {
+            if pool
+                .push(
+                    peer_addr,
+                    using_tls,
+                    url_host.to_string(),
+                    stream.into_inner(),
+                    CONNECTION_POOL_TTL,
+                )
+                .is_ok()
+            {
+                debug!("client-conn {}: leaving connection intact", log_id);
+            }
+        }
+
+        match done {
+            ClientHandlerDone::Complete((), _) => break,
+            ClientHandlerDone::Redirect(_, url, mut use_get) => {
+                if redirect_count >= REDIRECTS_MAX {
+                    return Err(Error::TooManyRedirects);
+                }
+
+                redirect_count += 1;
+
+                if let Some((_, b)) = &last_redirect {
+                    use_get = use_get || *b;
+                }
+
+                last_redirect = Some((url, use_get));
+            }
         }
     }
 
@@ -9033,17 +9265,34 @@ mod tests {
         let mut body_buf = Buffer::new(buffer_size);
         let packet_buf = RefCell::new(vec![0; 2048]);
 
-        let (msg, _) = client_req_handler(
+        let zreq = zreq.get().get();
+
+        let rdata = match &zreq.ptype {
+            zhttppacket::RequestPacket::Data(rdata) => rdata,
+            _ => panic!("unexpected init packet"),
+        };
+
+        let url = url::Url::parse(rdata.uri).unwrap();
+
+        let msg = match client_req_handler(
             "test",
             id.as_deref(),
             &mut sock,
             zreq,
+            rdata.method,
+            &url,
+            true,
+            false,
             &mut buf1,
             &mut buf2,
             &mut body_buf,
             &packet_buf,
         )
-        .await?;
+        .await?
+        {
+            ClientHandlerDone::Complete(r, _) => r,
+            ClientHandlerDone::Redirect(_, _, _) => panic!("unexpected redirect"),
+        };
 
         s_from_conn.send(msg).await?;
 
@@ -9295,11 +9544,24 @@ mod tests {
         let refresh_stream_timeout = || {};
         let refresh_session_timeout = || {};
 
+        let zreq = zreq.get().get();
+
+        let rdata = match &zreq.ptype {
+            zhttppacket::RequestPacket::Data(rdata) => rdata,
+            _ => panic!("unexpected init packet"),
+        };
+
+        let url = url::Url::parse(rdata.uri).unwrap();
+
         let _persistent = client_stream_handler(
             "test",
             &id,
             &mut sock,
             zreq,
+            rdata.method,
+            &url,
+            true,
+            false,
             &mut buf1,
             &mut buf2,
             10,
@@ -9324,9 +9586,9 @@ mod tests {
     fn client_stream() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let req_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(arena::ArcMemory::new(2));
+        let scratch_mem = Rc::new(arena::RcMemory::new(2));
+        let req_mem = Rc::new(arena::RcMemory::new(2));
 
         let data = concat!(
             "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
@@ -9521,9 +9783,9 @@ mod tests {
     fn client_websocket() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let req_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(arena::ArcMemory::new(2));
+        let scratch_mem = Rc::new(arena::RcMemory::new(2));
+        let req_mem = Rc::new(arena::RcMemory::new(2));
 
         let data = concat!(
             "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
@@ -9760,9 +10022,9 @@ mod tests {
     fn client_websocket_with_deflate() {
         let reactor = Reactor::new(100);
 
-        let msg_mem = Arc::new(arena::ArcMemory::new(1));
-        let scratch_mem = Rc::new(arena::RcMemory::new(1));
-        let req_mem = Rc::new(arena::RcMemory::new(1));
+        let msg_mem = Arc::new(arena::ArcMemory::new(2));
+        let scratch_mem = Rc::new(arena::RcMemory::new(2));
+        let req_mem = Rc::new(arena::RcMemory::new(2));
 
         let data = concat!(
             "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
