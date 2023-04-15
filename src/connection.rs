@@ -305,6 +305,7 @@ enum Error {
     Http(http1::Error),
     WebSocket(websocket::Error),
     InvalidWebSocketRequest,
+    InvalidWebSocketResponse,
     CompressionError,
     BadMessage,
     HandlerError,
@@ -1330,7 +1331,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
         buf1: &'a mut RingBuffer,
         buf2: &'a mut SliceRingBuffer<'a>,
-        deflate_config: Option<(websocket::PerMessageDeflateConfig, SliceRingBuffer<'a>)>,
+        deflate_config: Option<(bool, SliceRingBuffer<'a>)>,
     ) -> Self {
         buf2.clear();
 
@@ -2896,7 +2897,7 @@ where
             let wbuf = SliceRingBuffer::new(wbuf, &rb_tmp);
             let ebuf = SliceRingBuffer::new(ebuf, &rb_tmp);
 
-            (wbuf, Some((config, ebuf)))
+            (wbuf, Some((!config.server_no_context_takeover, ebuf)))
         }
         None => (SliceRingBuffer::new(&mut wbuf, &rb_tmp), None),
     };
@@ -3239,7 +3240,7 @@ where
             let wbuf = SliceRingBuffer::new(wbuf, &rb_tmp);
             let ebuf = SliceRingBuffer::new(ebuf, &rb_tmp);
 
-            (wbuf, Some((config, ebuf)))
+            (wbuf, Some((!config.client_no_context_takeover, ebuf)))
         }
         None => (SliceRingBuffer::new(&mut wbuf, &rb_tmp), None),
     };
@@ -5215,6 +5216,7 @@ async fn client_stream_handler<S, E, R1, R2>(
     buf1: &mut RingBuffer,
     buf2: &mut RingBuffer,
     messages_max: usize,
+    allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     tmp_buf: &RefCell<Vec<u8>>,
     instance_id: &str,
@@ -5259,6 +5261,8 @@ where
 
         let ws_key = if websocket { Some(gen_ws_key()) } else { None };
 
+        let mut ws_ext = ArrayVec::<u8, 512>::new();
+
         let mut headers = ArrayVec::<http1::Header, HEADERS_MAX>::new();
 
         headers.push(http1::Header {
@@ -5286,6 +5290,22 @@ where
                 name: "Sec-WebSocket-Key",
                 value: ws_key.as_bytes(),
             });
+
+            if allow_compression {
+                if write_ws_ext_header_value(
+                    &websocket::PerMessageDeflateConfig::default(),
+                    &mut ws_ext,
+                )
+                .is_err()
+                {
+                    return Err(Error::CompressionError);
+                }
+
+                headers.push(http1::Header {
+                    name: "Sec-WebSocket-Extensions",
+                    value: ws_ext.as_slice(),
+                });
+            }
         }
 
         let mut body_size = if websocket {
@@ -5444,12 +5464,12 @@ where
 
     // receive response header
 
-    let resp_body = {
+    let (resp_body, ws_config) = {
         let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
 
         let (resp, resp_body) = resp.recv_header(&mut scratch).await?;
 
-        {
+        let ws_config = {
             let resp = resp.get();
 
             debug!(
@@ -5477,11 +5497,47 @@ where
             let mut zheaders = ArrayVec::<zhttppacket::Header, HEADERS_MAX>::new();
 
             let mut ws_accept = None;
+            let mut ws_deflate_config = None;
 
             for h in resp.headers {
                 if ws_key.is_some() {
                     if h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept") {
                         ws_accept = Some(h.value);
+                    }
+
+                    if h.name.eq_ignore_ascii_case("Sec-WebSocket-Extensions") {
+                        for value in http1::parse_header_value(h.value) {
+                            let (name, params) = match value {
+                                Ok(v) => v,
+                                Err(_) => return Err(Error::InvalidWebSocketResponse),
+                            };
+
+                            match name {
+                                "permessage-deflate" => {
+                                    // we must have offered, and server must
+                                    // provide one response at most
+                                    if !allow_compression || ws_deflate_config.is_some() {
+                                        return Err(Error::InvalidWebSocketResponse);
+                                    }
+
+                                    if let Ok(config) =
+                                        websocket::PerMessageDeflateConfig::from_params(params)
+                                    {
+                                        if config.check_response().is_ok() {
+                                            // split the original write buffer memory:
+                                            // 75% for a new write buffer, 25% for an encode buffer
+                                            let write_buf_size = recv_buf_size * 3 / 4;
+
+                                            ws_deflate_config = Some((config, write_buf_size));
+                                        }
+                                    }
+                                }
+                                name => {
+                                    debug!("ignoring unsupported websocket extension: {}", name);
+                                    continue;
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -5562,14 +5618,20 @@ where
 
             // check_send just finished, so this should succeed
             zsess_out.try_send_msg(zresp)?;
-        }
+
+            if ws_key.is_some() {
+                Some(ws_deflate_config)
+            } else {
+                None
+            }
+        };
 
         let resp_body = resp_body.discard_header(resp)?;
 
-        resp_body
+        (resp_body, ws_config)
     };
 
-    if ws_key.is_some() {
+    if let Some(deflate_config) = ws_config {
         drop(resp_body);
 
         // handle as websocket connection
@@ -5582,7 +5644,7 @@ where
             messages_max,
             tmp_buf,
             refresh_stream_timeout,
-            None,
+            deflate_config,
             &mut zsess_in,
             &zsess_out,
         )
@@ -5612,6 +5674,7 @@ async fn client_stream_connect<E, R1, R2>(
     buf1: &mut RingBuffer,
     buf2: &mut RingBuffer,
     messages_max: usize,
+    allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
     tmp_buf: &RefCell<Vec<u8>>,
     deny: &[IpNet],
@@ -5686,6 +5749,7 @@ where
                 buf1,
                 buf2,
                 messages_max,
+                allow_compression,
                 packet_buf,
                 tmp_buf,
                 instance_id,
@@ -5707,6 +5771,7 @@ where
                 buf1,
                 buf2,
                 messages_max,
+                allow_compression,
                 packet_buf,
                 tmp_buf,
                 instance_id,
@@ -5735,6 +5800,7 @@ async fn client_stream_connection_inner<E>(
     packet_buf: Rc<RefCell<Vec<u8>>>,
     tmp_buf: Rc<RefCell<Vec<u8>>>,
     stream_timeout: Duration,
+    allow_compression: bool,
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
@@ -5780,6 +5846,7 @@ where
         &mut buf1,
         &mut buf2,
         messages_max,
+        allow_compression,
         &packet_buf,
         &tmp_buf,
         deny,
@@ -5864,7 +5931,7 @@ pub async fn client_stream_connection<E>(
     packet_buf: Rc<RefCell<Vec<u8>>>,
     tmp_buf: Rc<RefCell<Vec<u8>>>,
     timeout: Duration,
-    _allow_compression: bool,
+    allow_compression: bool,
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
@@ -5886,6 +5953,7 @@ pub async fn client_stream_connection<E>(
         packet_buf,
         tmp_buf,
         timeout,
+        allow_compression,
         deny,
         instance_id,
         resolver,
@@ -8704,6 +8772,7 @@ mod tests {
         id: Vec<u8>,
         zreq: arena::Rc<zhttppacket::OwnedRequest>,
         sock: Rc<RefCell<FakeSock>>,
+        allow_compression: bool,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
         s_from_conn: channel::LocalSender<zmq::Message>,
         shared: arena::Rc<StreamSharedData>,
@@ -8732,6 +8801,7 @@ mod tests {
             &mut buf1,
             &mut buf2,
             10,
+            allow_compression,
             &packet_buf,
             &tmp_buf,
             "test",
@@ -8789,7 +8859,15 @@ mod tests {
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.get().set_to_addr(Some(addr));
 
-            client_stream_fut(b"1".to_vec(), zreq, sock, r_to_conn, s_from_conn, shared)
+            client_stream_fut(
+                b"1".to_vec(),
+                zreq,
+                sock,
+                false,
+                r_to_conn,
+                s_from_conn,
+                shared,
+            )
         };
 
         let mut executor = StepExecutor::new(&reactor, fut);
@@ -8977,7 +9055,15 @@ mod tests {
             let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
             shared.get().set_to_addr(Some(addr));
 
-            client_stream_fut(b"1".to_vec(), zreq, sock, r_to_conn, s_from_conn, shared)
+            client_stream_fut(
+                b"1".to_vec(),
+                zreq,
+                sock,
+                false,
+                r_to_conn,
+                s_from_conn,
+                shared,
+            )
         };
 
         let mut executor = StepExecutor::new(&reactor, fut);
@@ -9165,6 +9251,269 @@ mod tests {
         let content = &mut data[fi.payload_offset..(fi.payload_offset + fi.payload_size)];
         websocket::apply_mask(content, fi.mask.unwrap(), 0);
         assert_eq!(str::from_utf8(content).unwrap(), "world");
+    }
+
+    #[test]
+    fn client_websocket_with_deflate() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let req_mem = Rc::new(arena::RcMemory::new(1));
+
+        let data = concat!(
+            "T115:7:credits,4:1024#7:headers,16:12:3:Foo,3:Bar,]]3:uri,22:",
+            "wss://example.com/path,3:seq,1:0#2:id,1:1,4:from,7:handler,}",
+        )
+        .as_bytes();
+
+        let msg = zmq::Message::from(data);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            let shared_mem = Rc::new(arena::RcMemory::new(1));
+            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
+            shared.get().set_to_addr(Some(addr));
+
+            client_stream_fut(
+                b"1".to_vec(),
+                zreq,
+                sock,
+                true,
+                r_to_conn,
+                s_from_conn,
+                shared,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        // fill the handler's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
+
+        // handler won't be able to send a message yet
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // now handler will be able to send a message
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T79:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:mu",
+            "lti,4:true!}4:type,10:keep-alive,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // no data yet
+        assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let buf = sock.borrow_mut().take_writable();
+
+        // use httparse to fish out Sec-WebSocket-Key
+        let ws_key = {
+            let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
+
+            let mut req = httparse::Request::new(&mut headers);
+
+            match req.parse(&buf) {
+                Ok(httparse::Status::Complete(_)) => {}
+                _ => panic!("unexpected parse status"),
+            }
+
+            let mut ws_key = String::new();
+
+            for h in req.headers {
+                if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
+                    ws_key = String::from_utf8(h.value.to_vec()).unwrap();
+                }
+            }
+
+            ws_key
+        };
+
+        let expected = format!(
+            concat!(
+                "GET /path HTTP/1.1\r\n",
+                "Host: example.com\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Version: 13\r\n",
+                "Sec-WebSocket-Key: {}\r\n",
+                "Sec-WebSocket-Extensions: permessage-deflate\r\n",
+                "Foo: Bar\r\n",
+                "\r\n",
+            ),
+            ws_key
+        );
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        // no more messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let ws_accept = calculate_ws_accept(ws_key.as_bytes()).unwrap();
+
+        let resp_data = format!(
+            concat!(
+                "HTTP/1.1 101 Switching Protocols\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Accept: {}\r\n",
+                "Sec-WebSocket-Extensions: permessage-deflate\r\n",
+                "\r\n",
+            ),
+            ws_accept
+        );
+
+        sock.borrow_mut().add_readable(resp_data.as_bytes());
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = format!(
+            concat!(
+                "handler T303:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
+                "ulti,4:true!}}4:code,3:101#6:reason,19:Switching Protocols",
+                ",7:headers,168:22:7:Upgrade,9:websocket,]24:10:Connection,",
+                "7:Upgrade,]56:20:Sec-WebSocket-Accept,28:{},]50:24:Sec-Web",
+                "Socket-Extensions,18:permessage-deflate,]]7:credits,4:1024",
+                "#}}",
+            ),
+            ws_accept
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // send message
+
+        let mut data = vec![0; 1024];
+        let body = {
+            let src = b"hello";
+            let mut enc = websocket::DeflateEncoder::new();
+            let mut dest = vec![0; 1024];
+            let (read, written, output_end) = enc.encode(src, true, &mut dest).unwrap();
+            assert_eq!(read, 5);
+            assert_eq!(output_end, true);
+            dest.truncate(written);
+
+            dest
+        };
+        let size = websocket::write_header(
+            true,
+            true,
+            websocket::OPCODE_TEXT,
+            body.len(),
+            None,
+            &mut data,
+        )
+        .unwrap();
+        data[size..(size + body.len())].copy_from_slice(&body);
+        let data = &data[..(size + body.len())];
+
+        sock.borrow_mut().add_readable(data);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T96:4:from,4:test,2:id,1:1,3:seq,1:2#3:ext,15:5:mu",
+            "lti,4:true!}12:content-type,4:text,4:body,5:hello,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // recv message
+
+        let msg = concat!(
+            "T99:4:from,7:handler,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4",
+            ":true!}12:content-type,4:text,4:body,5:world,}",
+        );
+
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let req = arena::Rc::new(req, &req_mem).unwrap();
+
+        assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let mut data = sock.borrow_mut().take_writable();
+
+        let fi = websocket::read_header(&data).unwrap();
+        assert_eq!(fi.fin, true);
+        assert_eq!(fi.opcode, websocket::OPCODE_TEXT);
+        assert!(data.len() >= fi.payload_offset + fi.payload_size);
+
+        let content = {
+            let src = &mut data[fi.payload_offset..(fi.payload_offset + fi.payload_size)];
+            websocket::apply_mask(src, fi.mask.unwrap(), 0);
+
+            let mut dec = websocket::DeflateDecoder::new();
+            let mut dest = vec![0; 1024];
+            let (read, written, output_end) = dec.decode(src, true, &mut dest).unwrap();
+            assert_eq!(read, src.len());
+            assert_eq!(output_end, true);
+            dest.truncate(written);
+
+            dest
+        };
+        assert_eq!(str::from_utf8(&content).unwrap(), "world");
     }
 
     #[test]

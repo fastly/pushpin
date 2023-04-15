@@ -315,6 +315,15 @@ impl PerMessageDeflateConfig {
         })
     }
 
+    pub fn check_response(&self) -> Result<(), ()> {
+        // we don't support non-default client_max_window_bits
+        if self.client_max_window_bits != DEFAULT_MAX_WINDOW_BITS {
+            return Err(());
+        }
+
+        Ok(())
+    }
+
     pub fn serialize<W: Write>(&self, w: &mut W) -> Result<(), io::Error> {
         if self.client_no_context_takeover {
             write!(w, "; client_no_context_takeover")?;
@@ -908,12 +917,12 @@ pub struct Protocol<T> {
 }
 
 impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
-    pub fn new(deflate_config: Option<(PerMessageDeflateConfig, BaseRingBuffer<T>)>) -> Self {
+    pub fn new(deflate_config: Option<(bool, BaseRingBuffer<T>)>) -> Self {
         let deflate_state = match deflate_config {
-            Some((config, enc_buf)) => Some(RefCell::new(DeflateState {
+            Some((allow_takeover, enc_buf)) => Some(RefCell::new(DeflateState {
                 enc: DeflateEncoder::new(),
                 dec: DeflateDecoder::new(),
-                allow_takeover: !config.server_no_context_takeover,
+                allow_takeover,
                 enc_buf,
             })),
             None => None,
@@ -1437,10 +1446,7 @@ pub mod testutil {
             let deflate_config = if self.use_deflate {
                 let tmp = Rc::new(TmpBuffer::new(256));
 
-                Some((
-                    PerMessageDeflateConfig::default(),
-                    RingBuffer::new(256, &tmp),
-                ))
+                Some((true, RingBuffer::new(256, &tmp)))
             } else {
                 None
             };
@@ -1498,10 +1504,7 @@ pub mod testutil {
             let tmp = Rc::new(TmpBuffer::new(16_384));
 
             let deflate_config = if use_deflate {
-                Some((
-                    PerMessageDeflateConfig::default(),
-                    RingBuffer::new(16_384, &tmp),
-                ))
+                Some((true, RingBuffer::new(16_384, &tmp)))
             } else {
                 None
             };
@@ -1525,10 +1528,7 @@ pub mod testutil {
 
         pub fn init(&self) -> BenchRecvMessageArgs {
             let deflate_config = if self.use_deflate {
-                Some((
-                    PerMessageDeflateConfig::default(),
-                    RingBuffer::new(256, &self.tmp),
-                ))
+                Some((true, RingBuffer::new(256, &self.tmp)))
             } else {
                 None
             };
@@ -1984,10 +1984,7 @@ mod tests {
     fn test_send_recv_compressed() {
         let tmp = Rc::new(TmpBuffer::new(1024));
 
-        let p = Protocol::new(Some((
-            PerMessageDeflateConfig::default(),
-            RingBuffer::new(1024, &tmp),
-        )));
+        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
 
         let mut writer = MyWriter::new();
 
@@ -2009,10 +2006,7 @@ mod tests {
 
         let mut rbuf = io::Cursor::new(writer.data.as_mut());
 
-        let p = Protocol::new(Some((
-            PerMessageDeflateConfig::default(),
-            RingBuffer::new(1024, &tmp),
-        )));
+        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
 
         let mut dest = [0; 1024];
 
@@ -2031,10 +2025,7 @@ mod tests {
     fn test_send_recv_compressed_fragmented() {
         let tmp = Rc::new(TmpBuffer::new(1024));
 
-        let p = Protocol::new(Some((
-            PerMessageDeflateConfig::default(),
-            RingBuffer::new(1024, &tmp),
-        )));
+        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
 
         let mut writer = MyWriter::new();
 
@@ -2074,10 +2065,7 @@ mod tests {
 
         let mut rbuf = io::Cursor::new(writer.data.as_mut());
 
-        let p = Protocol::new(Some((
-            PerMessageDeflateConfig::default(),
-            RingBuffer::new(1024, &tmp),
-        )));
+        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
 
         let mut result: Vec<u8> = Vec::new();
 
