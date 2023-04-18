@@ -1315,7 +1315,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         let fi = receiving.frame.as_ref().unwrap();
         let msg = receiving.message.as_mut().unwrap();
 
-        let (written, frame_end) = if msg.compression_mode == CompressionMode::Compressed {
+        let (written, frame_read_end) = if msg.compression_mode == CompressionMode::Compressed {
             let state = match &self.deflate_state {
                 Some(state) => state,
                 None => return Some(Err(Error::CompressionError)),
@@ -1343,19 +1343,20 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
             msg.frame_payload_read += read;
 
-            let frame_end = if fi.fin {
-                // no output progress means we need more input
-                if written == 0 && !output_end {
-                    return None;
-                }
-
+            let frame_read_end = if fi.fin {
                 // finish final frame only when we hit EOS
                 (msg.frame_payload_read == fi.payload_size) && output_end
             } else {
                 msg.frame_payload_read == fi.payload_size
             };
 
-            (written, frame_end)
+            if !frame_read_end && written == 0 && rbuf.len() == 0 {
+                // if there's no progress to report and nothing left to read
+                // then we need more input
+                return None;
+            }
+
+            (written, frame_read_end)
         } else {
             let buf = rbuf.get_ref();
 
@@ -1394,7 +1395,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         let opcode = msg.opcode;
         let fin = fi.fin;
 
-        if frame_end {
+        if frame_read_end {
             receiving.frame = None;
 
             if fin {
@@ -1578,6 +1579,7 @@ mod tests {
     use super::testutil::*;
     use super::*;
     use crate::buffer::{RingBuffer, TmpBuffer};
+    use std::collections::VecDeque;
     use std::rc::Rc;
 
     struct MyWriter {
@@ -2063,21 +2065,32 @@ mod tests {
         assert_eq!(size, 6);
         assert_eq!(done, true);
 
-        let mut rbuf = io::Cursor::new(writer.data.as_mut());
-
         let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
 
+        let mut writer_data = VecDeque::from(writer.data);
+        let mut input = Vec::new();
         let mut result: Vec<u8> = Vec::new();
 
+        // feed one byte at a time
         loop {
+            let mut rbuf = io::Cursor::new(input.as_mut());
             let mut dest = [0; 1024];
 
-            let (opcode, size, end) = p
-                .recv_message_content(&mut rbuf, &mut dest)
-                .unwrap()
-                .unwrap();
+            let ret = p.recv_message_content(&mut rbuf, &mut dest);
+
+            let read = rbuf.position() as usize;
+            input = input.split_off(read);
+
+            if ret.is_none() {
+                input.push(writer_data.pop_front().unwrap());
+                continue;
+            }
+
+            let (opcode, size, end) = ret.unwrap().unwrap();
             assert_eq!(opcode, OPCODE_TEXT);
+
             result.extend(&dest[..size]);
+
             if end {
                 break;
             }
