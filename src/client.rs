@@ -26,13 +26,13 @@ use crate::future::{
     Select6, Timeout,
 };
 use crate::list;
+use crate::pin;
 use crate::reactor::Reactor;
 use crate::resolver::Resolver;
 use crate::tnetstring;
 use crate::zhttppacket;
 use crate::zhttpsocket;
 use crate::zmq::{MultipartHeader, SpecInfo};
-use crate::{pin, Defer};
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
 use log::{debug, error, info, warn};
@@ -630,6 +630,36 @@ impl Connections {
     }
 }
 
+struct CancelSend<'a> {
+    conns: &'a Connections,
+    key: Cell<Option<usize>>,
+}
+
+impl<'a> CancelSend<'a> {
+    fn new(conns: &'a Connections) -> Self {
+        Self {
+            conns,
+            key: Cell::new(None),
+        }
+    }
+
+    fn set(&self, key: usize) {
+        self.key.set(Some(key));
+    }
+
+    fn clear(&self) {
+        self.key.set(None);
+    }
+}
+
+impl Drop for CancelSend<'_> {
+    fn drop(&mut self) {
+        if let Some(key) = self.key.get() {
+            self.conns.cancel_send(key);
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ConnectionOpts {
     instance_id: Rc<String>,
@@ -1172,7 +1202,7 @@ impl Worker {
         {
             let mut handle_send = pin!(None);
 
-            'main: loop {
+            loop {
                 let receiver_recv = if handle_send.is_none() {
                     Some(zstream_out_receiver.recv())
                 } else {
@@ -1364,18 +1394,25 @@ impl Worker {
                             let mut count = 0;
 
                             for (i, rid) in ids.iter().enumerate() {
-                                let key = match conns.find_key(&rid.id) {
+                                let mut key = match conns.find_key(&rid.id) {
                                     Some(key) => key,
                                     None => continue,
                                 };
 
-                                let _defer = Defer::new(|| conns.cancel_send(key));
+                                let cancel_send = CancelSend::new(&conns);
+                                cancel_send.set(key);
 
                                 if !conns.check_send(key) {
-                                    match select_2(stop.recv(), yield_task()).await {
-                                        Select2::R1(_) => break 'main,
-                                        Select2::R2(()) => {}
+                                    cancel_send.clear();
+                                    yield_task().await;
+
+                                    // after resuming, make sure the connection still exists
+                                    key = match conns.find_key(&rid.id) {
+                                        Some(key) => key,
+                                        None => continue,
                                     };
+
+                                    cancel_send.set(key);
 
                                     // ABR issue with conn task
                                     if !conns.check_send(key) {

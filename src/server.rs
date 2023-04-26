@@ -38,14 +38,14 @@ use crate::tnetstring;
 use crate::zhttppacket;
 use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
-use crate::{pin, set_group, set_user, Defer};
+use crate::{pin, set_group, set_user};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
 use mio::net::{TcpListener, TcpStream, UnixListener};
 use mio::unix::SourceFd;
 use slab::Slab;
 use socket2::{Domain, Socket, Type};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
@@ -741,6 +741,36 @@ impl CidProvider for ConnectionCid<'_> {
     }
 }
 
+struct CancelSend<'a> {
+    conns: &'a Connections,
+    key: Cell<Option<usize>>,
+}
+
+impl<'a> CancelSend<'a> {
+    fn new(conns: &'a Connections) -> Self {
+        Self {
+            conns,
+            key: Cell::new(None),
+        }
+    }
+
+    fn set(&self, key: usize) {
+        self.key.set(Some(key));
+    }
+
+    fn clear(&self) {
+        self.key.set(None);
+    }
+}
+
+impl Drop for CancelSend<'_> {
+    fn drop(&mut self) {
+        if let Some(key) = self.key.get() {
+            self.conns.cancel_send(key);
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ConnectionOpts {
     instance_id: Rc<String>,
@@ -1418,7 +1448,7 @@ impl Worker {
         let mut handle_send = pin!(None);
         let mut done_send = None;
 
-        'main: loop {
+        loop {
             let receiver_recv = if handle_send.is_none() {
                 Some(zreq_receiver.recv())
             } else {
@@ -1498,17 +1528,22 @@ impl Worker {
                             };
 
                             if !conns.check_id(key, rid.id) {
-                                // key found but cid mismatch
                                 continue;
                             }
 
-                            let _defer = Defer::new(|| conns.cancel_send(key));
+                            let cancel_send = CancelSend::new(&conns);
+                            cancel_send.set(key);
 
                             if !conns.check_send(key) {
-                                match select_2(stop.recv(), yield_task()).await {
-                                    Select2::R1(_) => break 'main,
-                                    Select2::R2(()) => {}
-                                };
+                                cancel_send.clear();
+                                yield_task().await;
+
+                                // after resuming, make sure the connection still exists
+                                if !conns.check_id(key, rid.id) {
+                                    continue;
+                                }
+
+                                cancel_send.set(key);
 
                                 // ABR issue with conn task
                                 if !conns.check_send(key) {
@@ -1563,7 +1598,7 @@ impl Worker {
             let mut handle_send_to_addr = pin!(None);
             let mut done_send = None;
 
-            'main: loop {
+            loop {
                 let receiver_recv = if handle_send_to_any.is_none() {
                     Some(zstream_out_receiver.recv())
                 } else {
@@ -1682,17 +1717,22 @@ impl Worker {
                                 };
 
                                 if !conns.check_id(key, rid.id) {
-                                    // key found but cid mismatch
                                     continue;
                                 }
 
-                                let _defer = Defer::new(|| conns.cancel_send(key));
+                                let cancel_send = CancelSend::new(&conns);
+                                cancel_send.set(key);
 
                                 if !conns.check_send(key) {
-                                    match select_2(stop.recv(), yield_task()).await {
-                                        Select2::R1(_) => break 'main,
-                                        Select2::R2(()) => {}
-                                    };
+                                    cancel_send.clear();
+                                    yield_task().await;
+
+                                    // after resuming, make sure the connection still exists
+                                    if !conns.check_id(key, rid.id) {
+                                        continue;
+                                    }
+
+                                    cancel_send.set(key);
 
                                     // ABR issue with conn task
                                     if !conns.check_send(key) {
