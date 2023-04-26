@@ -54,10 +54,10 @@ const REQ_SENDER_BOUND: usize = 1;
 
 // we read and process each request message one at a time, wrapping it in an
 // rc, and sending it to connections via channels. on the other side of each
-// channel, the message is received and processed immediately. this means the
-// max number of messages retained per connection is the channel bound per
-// connection
-pub const MSG_RETAINED_PER_CONNECTION_MAX: usize = REQ_SENDER_BOUND;
+// channel, the message is received and processed immediately, except for the
+// first message. this means the max number of messages retained per
+// connection is the channel bound per connection plus one
+pub const MSG_RETAINED_PER_CONNECTION_MAX: usize = REQ_SENDER_BOUND + 1;
 
 // the max number of messages retained outside of connections is one per
 // handle we read from (req and stream), in preparation for sending to any
