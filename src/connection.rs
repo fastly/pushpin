@@ -1917,17 +1917,15 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     // receive request header
 
     // ABR: discard_while
-    let handler = {
-        match discard_while(
-            zreceiver,
-            pin!(handler.recv_request(&mut scratch, &mut req_mem)),
-        )
-        .await
-        {
-            Ok(handler) => handler,
-            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
-            Err(e) => return Err(e),
-        }
+    let handler = match discard_while(
+        zreceiver,
+        pin!(handler.recv_request(&mut scratch, &mut req_mem)),
+    )
+    .await
+    {
+        Ok(handler) => handler,
+        Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
+        Err(e) => return Err(e),
     };
 
     // log request
@@ -2214,7 +2212,8 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
         *cid = cid_provider.get_new_assigned_cid();
     }
 
-    stream.close().await?;
+    // ABR: discard_while
+    discard_while(zreceiver, pin!(async { Ok(stream.close().await?) })).await?;
 
     Ok(())
 }
@@ -2648,6 +2647,7 @@ where
                                 }
 
                                 while let Some(fut) = flush_body.as_mut().as_pin_mut() {
+                                    // ABR: discard_while
                                     let ret = discard_while(zsess_in.receiver, fut).await;
                                     flush_body.set(None);
 
@@ -2711,6 +2711,7 @@ where
             send.set(Some(req_body.send()));
         }
 
+        // ABR: select contains read
         let result = select_2(
             select_option(send.as_mut().as_pin_mut()),
             pin!(zsess_in.recv_msg()),
@@ -2825,6 +2826,7 @@ where
                                 }
 
                                 while let Some(fut) = send.as_mut().as_pin_mut() {
+                                    // ABR: discard_while
                                     let ret = server_discard_while(
                                         zsess_in.receiver,
                                         pin!(async {
@@ -3766,6 +3768,7 @@ where
     let mut handler = if body_size != http1::BodySize::NoBody {
         // receive request body and send to handler
 
+        // ABR: function contains read
         stream_recv_body(
             tmp_buf,
             refresh_stream_timeout,
@@ -4028,6 +4031,7 @@ where
 
         // handle as websocket connection
 
+        // ABR: function contains read
         stream_websocket(
             id,
             stream,
@@ -4046,6 +4050,7 @@ where
     } else {
         // send response body
 
+        // ABR: function contains read
         stream_send_body(refresh_stream_timeout, &handler, &mut zsess_in, &zsess_out).await?;
 
         let persistent = handler.finish();
@@ -4203,6 +4208,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
         *cid = cid_provider.get_new_assigned_cid();
     }
 
+    // ABR: discard_while
     discard_while(zreceiver, pin!(async { Ok(stream.close().await?) })).await?;
 
     Ok(())
@@ -5432,6 +5438,7 @@ where
         let mut send_header = pin!(req_header.send());
 
         loop {
+            // ABR: select contains read
             let result = select_2(send_header.as_mut(), pin!(zsess_in.recv_msg())).await;
 
             match result {
@@ -5452,6 +5459,7 @@ where
 
     // send request body
 
+    // ABR: function contains read
     let resp = server_stream_send_body(
         refresh_stream_timeout,
         req_body,
@@ -5466,8 +5474,24 @@ where
 
     let (resp_body, ws_config) = {
         let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+        let mut recv_header = pin!(resp.recv_header(&mut scratch));
 
-        let (resp, resp_body) = resp.recv_header(&mut scratch).await?;
+        let (resp, resp_body) = loop {
+            // ABR: select contains read
+            let result = select_2(recv_header.as_mut(), pin!(zsess_in.recv_msg())).await;
+
+            match result {
+                Select2::R1(ret) => break ret?,
+                Select2::R2(ret) => {
+                    let r = ret?;
+
+                    let zreq_ref = r.get().get();
+
+                    // ABR: handle_other
+                    server_handle_other(zreq_ref, &mut zsess_in, &zsess_out).await?;
+                }
+            }
+        };
 
         let ws_config = {
             let resp = resp.get();
@@ -5478,6 +5502,7 @@ where
             );
 
             loop {
+                // ABR: select contains read
                 let result =
                     select_2(pin!(zsess_out.check_send()), pin!(zsess_in.recv_msg())).await;
 
@@ -5572,7 +5597,33 @@ where
                                 body_buf.write_commit(written);
 
                                 if written == 0 {
-                                    resp_body.add_to_buffer().await?;
+                                    let mut add_to_buffer = pin!(resp_body.add_to_buffer());
+
+                                    loop {
+                                        // ABR: select contains read
+                                        let result = select_2(
+                                            add_to_buffer.as_mut(),
+                                            pin!(zsess_in.recv_msg()),
+                                        )
+                                        .await;
+
+                                        match result {
+                                            Select2::R1(ret) => break ret?,
+                                            Select2::R2(ret) => {
+                                                let r = ret?;
+
+                                                let zreq_ref = r.get().get();
+
+                                                // ABR: handle_other
+                                                server_handle_other(
+                                                    zreq_ref,
+                                                    &mut zsess_in,
+                                                    &zsess_out,
+                                                )
+                                                .await?;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -5636,6 +5687,7 @@ where
 
         // handle as websocket connection
 
+        // ABR: function contains read
         server_stream_websocket(
             log_id,
             stream,
@@ -5654,6 +5706,7 @@ where
     } else {
         // receive response body
 
+        // ABR: function contains read
         let finished = server_stream_recv_body(
             tmp_buf,
             refresh_stream_timeout,
