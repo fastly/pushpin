@@ -1,6 +1,7 @@
 [Unit]
 Description=pushpin
 After=network.target
+PartOf=pushpin-socat.service
 Before=pushpin-socat.service
 Requires=pushpin-socat.service
 

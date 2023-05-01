@@ -1,7 +1,6 @@
 [Unit]
 Description=pushpin-socat
-After=pushpin.service
-BindsTo=pushpin.service
+PartOf=pushpin.service
 
 [Service]
 Type=simple
