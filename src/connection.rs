@@ -2639,7 +2639,7 @@ where
                         handler.append_body(rdata.body, rdata.more)?;
                     }
                     _ => {
-                        // if handoff requested, flush send buffer responding
+                        // if handoff requested, flush send buffer before responding
                         match &zresp_ref.ptype {
                             zhttppacket::ResponsePacket::HandoffStart => {
                                 if flush_body.is_none() && handler.can_flush() {
@@ -2818,7 +2818,7 @@ where
                         }
                     }
                     _ => {
-                        // if handoff requested, flush send buffer responding
+                        // if handoff requested, flush send buffer before responding
                         match &zreq_ref.ptype {
                             zhttppacket::RequestPacket::HandoffStart => {
                                 if send.is_none() && req_body.can_send() {
@@ -3163,7 +3163,7 @@ where
                         _ => {}
                     },
                     _ => {
-                        // if handoff requested, flush send buffer responding
+                        // if handoff requested, flush send buffer before responding
                         match &zresp_ref.ptype {
                             zhttppacket::ResponsePacket::HandoffStart => loop {
                                 if send_content.is_none() {
@@ -3509,7 +3509,7 @@ where
                         _ => {}
                     },
                     _ => {
-                        // if handoff requested, flush send buffer responding
+                        // if handoff requested, flush send buffer before responding
                         match &zreq_ref.ptype {
                             zhttppacket::RequestPacket::HandoffStart => loop {
                                 if send_content.is_none() {
