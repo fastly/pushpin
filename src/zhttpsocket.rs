@@ -870,7 +870,7 @@ struct ServerStreamHandles {
     nodes: Slab<list::Node<ServerStreamPipe>>,
     list: list::List,
     recv_scratch: RefCell<RecvScratch<zmq::Message>>,
-    send_direct_scratch: RefCell<Vec<bool>>,
+    send_direct_scratch: RefCell<Vec<(usize, bool)>>,
     need_cleanup: Cell<bool>,
 }
 
@@ -941,18 +941,11 @@ impl ServerStreamHandles {
     async fn check_send_any(&self) {
         let mut at_least_one_writable = false;
 
-        let mut next = self.list.head;
-
-        while let Some(nkey) = next {
-            let n = &self.nodes[nkey];
-            let p = &n.value;
-
+        for (_, p) in self.list.iter(&self.nodes) {
             if p.valid.get() {
                 p.pe.sender_any.wait_writable().await;
                 at_least_one_writable = true;
             }
-
-            next = n.next;
         }
 
         // if there are no valid pipes then hang forever. caller can
@@ -968,10 +961,8 @@ impl ServerStreamHandles {
             return;
         }
 
-        let nkey = hash(ids[0].id) % self.nodes.len();
-
-        let n = &self.nodes[nkey];
-        let p = &n.value;
+        let x = hash(ids[0].id) % self.nodes.len();
+        let (_, p) = self.list.iter(&self.nodes).nth(x).unwrap();
 
         if p.valid.get() {
             match p.pe.sender_any.try_send(arena::Arc::clone(msg)) {
@@ -993,14 +984,17 @@ impl ServerStreamHandles {
 
         let indexes = &mut *self.send_direct_scratch.borrow_mut();
         indexes.clear();
-        indexes.resize(self.nodes.len(), false);
 
-        for id in ids {
-            let nkey = hash(id.id) % self.nodes.len();
-            indexes[nkey] = true;
+        for (nkey, _) in self.list.iter(&self.nodes) {
+            indexes.push((nkey, false));
         }
 
-        for (nkey, &do_send) in indexes.iter().enumerate() {
+        for id in ids {
+            let x = hash(id.id) % self.nodes.len();
+            indexes[x].1 = true;
+        }
+
+        for &(nkey, do_send) in indexes.iter() {
             let n = &self.nodes[nkey];
             let p = &n.value;
 
