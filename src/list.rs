@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -157,6 +157,40 @@ impl List {
         other.head = None;
         other.tail = None;
     }
+
+    pub fn iter<'a, T, S>(&self, nodes: &'a S) -> ListIterator<'a, S>
+    where
+        S: IndexMut<usize, Output = Node<T>>,
+    {
+        ListIterator {
+            nodes,
+            next: self.head,
+        }
+    }
+}
+
+pub struct ListIterator<'a, S> {
+    nodes: &'a S,
+    next: Option<usize>,
+}
+
+impl<'a, T, S> Iterator for ListIterator<'a, S>
+where
+    T: 'a,
+    S: IndexMut<usize, Output = Node<T>>,
+{
+    type Item = (usize, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(nkey) = self.next.take() {
+            let n = &self.nodes[nkey];
+            self.next = n.next;
+
+            Some((nkey, &n.value))
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -308,5 +342,24 @@ mod tests {
         assert_eq!(nodes[n1].next, Some(n2));
         assert_eq!(nodes[n2].prev, Some(n1));
         assert_eq!(nodes[n2].next, None);
+    }
+
+    #[test]
+    fn test_list_iter() {
+        let mut nodes = Slab::new();
+        let n1 = nodes.insert(Node::new("n1"));
+        let n2 = nodes.insert(Node::new("n2"));
+        let n3 = nodes.insert(Node::new("n3"));
+
+        let mut l = List::default();
+        l.push_back(&mut nodes, n1);
+        l.push_back(&mut nodes, n2);
+        l.push_back(&mut nodes, n3);
+
+        let mut it = l.iter(&nodes);
+        assert_eq!(it.next(), Some((n1, &"n1")));
+        assert_eq!(it.next(), Some((n2, &"n2")));
+        assert_eq!(it.next(), Some((n3, &"n3")));
+        assert_eq!(it.next(), None);
     }
 }
