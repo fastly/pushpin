@@ -815,10 +815,10 @@ where
         masked -= read;
 
         let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX]>::uninit();
-        let bufs = src.get_mut_vectored(&mut bufs_arr).limit(masked);
+        let mut bufs = src.get_mut_vectored(&mut bufs_arr).limit(masked);
 
         let mut count = 0;
-        for buf in bufs {
+        for buf in bufs.as_slice() {
             apply_mask(buf, mask, mask_offset + read + count);
             count += buf.len();
         }

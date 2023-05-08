@@ -18,6 +18,7 @@ use crate::buffer::{
     write_vectored_offset, write_vectored_offset_async, FilledBuf, LimitBufs, VECTORED_MAX,
 };
 use crate::future::AsyncWrite;
+use arrayvec::ArrayVec;
 use std::cmp;
 use std::convert::TryFrom;
 use std::io;
@@ -325,28 +326,22 @@ fn write_chunk<W: Write>(
 
     let total = cheader.len() + data_size + footer.len();
 
-    let mut content_arr = [&b""[..]; VECTORED_MAX - 2];
-    for (i, buf) in content.iter().enumerate() {
-        content_arr[i] = buf;
-    }
+    let mut content = ArrayVec::<&[u8], { VECTORED_MAX - 2 }>::try_from(content).unwrap();
+    let content = content.as_mut_slice().limit(data_size);
 
-    let trim_content = (&mut content_arr[..content.len()]).limit(data_size);
+    let size = {
+        let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
 
-    let mut out_arr = [&b""[..]; VECTORED_MAX];
-    let mut out_arr_len = 0;
+        out.push(cheader);
 
-    out_arr[0] = cheader;
-    out_arr_len += 1;
+        for buf in content.as_slice() {
+            out.push(buf);
+        }
 
-    for buf in trim_content.iter() {
-        out_arr[out_arr_len] = buf;
-        out_arr_len += 1;
-    }
+        out.push(footer);
 
-    out_arr[out_arr_len] = footer;
-    out_arr_len += 1;
-
-    let size = write_vectored_offset(dest, &out_arr[..out_arr_len], chunkv.sent)?;
+        write_vectored_offset(dest, out.as_slice(), chunkv.sent)?
+    };
 
     chunkv.sent += size;
 
@@ -401,28 +396,22 @@ async fn write_chunk_async<W: AsyncWrite>(
 
     let total = cheader.len() + data_size + footer.len();
 
-    let mut content_arr = [&b""[..]; VECTORED_MAX - 2];
-    for (i, buf) in content.iter().enumerate() {
-        content_arr[i] = buf;
-    }
+    let mut content = ArrayVec::<&[u8], { VECTORED_MAX - 2 }>::try_from(content).unwrap();
+    let content = content.as_mut_slice().limit(data_size);
 
-    let trim_content = (&mut content_arr[..content.len()]).limit(data_size);
+    let size = {
+        let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
 
-    let mut out_arr = [&b""[..]; VECTORED_MAX];
-    let mut out_arr_len = 0;
+        out.push(cheader);
 
-    out_arr[0] = cheader;
-    out_arr_len += 1;
+        for buf in content.as_slice() {
+            out.push(buf);
+        }
 
-    for buf in trim_content.iter() {
-        out_arr[out_arr_len] = buf;
-        out_arr_len += 1;
-    }
+        out.push(footer);
 
-    out_arr[out_arr_len] = footer;
-    out_arr_len += 1;
-
-    let size = write_vectored_offset_async(dest, &out_arr[..out_arr_len], chunkv.sent).await?;
+        write_vectored_offset_async(dest, out.as_slice(), chunkv.sent).await?
+    };
 
     chunkv.sent += size;
 

@@ -1300,11 +1300,11 @@ impl<'a, 'b, W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
 
         // protocol.send_message_content may add 1 element to vector
         let mut buf_arr = mem::MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
-        let bufs = w.buf.get_mut_vectored(&mut buf_arr).limit(f.avail);
+        let mut bufs = w.buf.get_mut_vectored(&mut buf_arr).limit(f.avail);
 
         match f.protocol.send_message_content(
             &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
-            bufs,
+            bufs.as_slice(),
             f.done,
         ) {
             Ok(ret) => Poll::Ready(Ok(ret)),

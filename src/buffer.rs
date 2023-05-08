@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ use std::io;
 use std::io::{Read, Write};
 use std::mem::{self, MaybeUninit};
 use std::rc::Rc;
+use std::slice;
 
 pub const VECTORED_MAX: usize = 8;
 
@@ -196,58 +197,189 @@ pub async fn write_vectored_offset_async<W: AsyncWrite>(
     writer.write_vectored(&arr[..arr_len]).await
 }
 
-pub trait LimitBufs<'a> {
-    fn limit(&mut self, size: usize) -> &mut [&'a [u8]];
+struct LimitBufsRestore<T> {
+    index: usize,
+    ptr: T,
+    len: usize,
 }
 
-impl<'a> LimitBufs<'a> for [&'a [u8]] {
-    fn limit(&mut self, size: usize) -> &mut [&'a [u8]] {
-        let mut want = size;
+pub struct LimitBufsGuard<'a, 'b> {
+    bufs: &'b mut [&'a [u8]],
+    start: usize,
+    end: usize,
+    restore: Option<LimitBufsRestore<*const u8>>,
+}
 
-        for i in 0..self.len() {
-            let buf_len = self[i].len();
-
-            if buf_len >= want {
-                self[i] = &self[i][..want];
-                return &mut self[..(i + 1)];
-            }
-
-            want -= buf_len;
-        }
-
-        self
+impl<'a: 'b, 'b> LimitBufsGuard<'a, 'b> {
+    pub fn as_slice(&self) -> &[&'a [u8]] {
+        &self.bufs[self.start..self.end]
     }
 }
 
-pub trait LimitBufsMut<'a> {
-    fn limit(&mut self, size: usize) -> &mut [&'a mut [u8]];
+impl<'a: 'b, 'b> Drop for LimitBufsGuard<'a, 'b> {
+    fn drop(&mut self) {
+        if let Some(restore) = self.restore.take() {
+            // SAFETY: ptr and len were collected earlier from the original
+            // memory referred to by the slice at this index and they are
+            // still valid. the only issue with reconstructing the slice is
+            // that we currently have a different slice using the same memory
+            // at this index. however, this is safe because we also replace
+            // the slice at this index and the two slices don't coexist
+            unsafe {
+                self.bufs[restore.index] = slice::from_raw_parts(restore.ptr, restore.len);
+            }
+        }
+    }
 }
 
-impl<'a> LimitBufsMut<'a> for [&'a mut [u8]] {
-    fn limit(&mut self, size: usize) -> &mut [&'a mut [u8]] {
+pub struct LimitBufsMutGuard<'a, 'b> {
+    bufs: &'b mut [&'a mut [u8]],
+    start: usize,
+    end: usize,
+    restore: Option<LimitBufsRestore<*mut u8>>,
+}
+
+impl<'a: 'b, 'b> LimitBufsMutGuard<'a, 'b> {
+    pub fn as_slice(&mut self) -> &mut [&'a mut [u8]] {
+        &mut self.bufs[self.start..self.end]
+    }
+}
+
+impl<'a: 'b, 'b> Drop for LimitBufsMutGuard<'a, 'b> {
+    fn drop(&mut self) {
+        if let Some(restore) = self.restore.take() {
+            // SAFETY: ptr and len were collected earlier from the original
+            // memory referred to by the slice at this index and they are
+            // still valid. the only issue with reconstructing the slice is
+            // that we currently have a different slice using the same memory
+            // at this index. however, this is safe because we also replace
+            // the slice at this index and the two slices don't coexist
+            unsafe {
+                self.bufs[restore.index] = slice::from_raw_parts_mut(restore.ptr, restore.len);
+            }
+        }
+    }
+}
+
+pub trait LimitBufs<'a, 'b> {
+    fn limit(&'b mut self, size: usize) -> LimitBufsGuard<'a, 'b>;
+}
+
+impl<'a: 'b, 'b> LimitBufs<'a, 'b> for [&'a [u8]] {
+    fn limit(&'b mut self, size: usize) -> LimitBufsGuard<'a, 'b> {
+        let mut end = self.len();
+        let mut restore = None;
         let mut want = size;
 
         for i in 0..self.len() {
             let buf_len = self[i].len();
 
             if buf_len >= want {
-                // SAFETY: shrinking the length of an existing slice requires
-                // borrowing through self, which causes the compiler to
-                // extend the lifetime of the smaller slice to the lifetime
-                // of self. however, the smaller slice is not dependent on
-                // anything about self except the original slice, so it is
-                // safe to forcibly reduce its lifetime to that of the
-                // original
-                self[i] =
-                    unsafe { mem::transmute::<&mut [u8], &'a mut [u8]>(&mut self[i][..want]) };
+                let len = self[i].len();
+                let ptr = self[i].as_ptr();
 
-                return &mut self[..(i + 1)];
+                restore = Some(LimitBufsRestore { index: i, ptr, len });
+
+                // SAFETY: ptr and len were obtained above and are still
+                // valid. we just need to be careful about using them again
+                // later on from the restore field
+                unsafe {
+                    self[i] = &slice::from_raw_parts(ptr, len)[..want];
+                }
+
+                end = i + 1;
+                break;
             }
 
             want -= buf_len;
         }
 
-        self
+        LimitBufsGuard {
+            bufs: self,
+            start: 0,
+            end,
+            restore,
+        }
+    }
+}
+
+pub trait LimitBufsMut<'a: 'b, 'b> {
+    fn skip(&'b mut self, size: usize) -> LimitBufsMutGuard<'a, 'b>;
+    fn limit(&'b mut self, size: usize) -> LimitBufsMutGuard<'a, 'b>;
+}
+
+impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
+    fn skip(&'b mut self, size: usize) -> LimitBufsMutGuard<'a, 'b> {
+        let mut start = 0;
+        let end = self.len();
+        let mut restore = None;
+        let mut skip = size;
+
+        for i in 0..self.len() {
+            let buf_len = self[i].len();
+
+            if buf_len >= skip {
+                let len = self[i].len();
+                let ptr = self[i].as_mut_ptr();
+
+                restore = Some(LimitBufsRestore { index: i, ptr, len });
+
+                // SAFETY: ptr and len were obtained above and are still
+                // valid. we just need to be careful about using them again
+                // later on from the restore field
+                unsafe {
+                    self[i] = &mut slice::from_raw_parts_mut(ptr, len)[skip..];
+                }
+
+                start = i;
+                break;
+            }
+
+            skip -= buf_len;
+        }
+
+        LimitBufsMutGuard {
+            bufs: self,
+            start,
+            end,
+            restore,
+        }
+    }
+
+    fn limit(&'b mut self, size: usize) -> LimitBufsMutGuard<'a, 'b> {
+        let mut end = self.len();
+        let mut restore = None;
+        let mut want = size;
+
+        for i in 0..self.len() {
+            let buf_len = self[i].len();
+
+            if buf_len >= want {
+                let len = self[i].len();
+                let ptr = self[i].as_mut_ptr();
+
+                restore = Some(LimitBufsRestore { index: i, ptr, len });
+
+                // SAFETY: ptr and len were obtained above and are still
+                // valid. we just need to be careful about using them again
+                // later on from the restore field
+                unsafe {
+                    self[i] = &mut slice::from_raw_parts_mut(ptr, len)[..want];
+                }
+
+                end = i + 1;
+                break;
+            }
+
+            want -= buf_len;
+        }
+
+        LimitBufsMutGuard {
+            bufs: self,
+            start: 0,
+            end,
+            restore,
+        }
     }
 }
 
