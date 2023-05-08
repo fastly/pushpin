@@ -223,6 +223,14 @@ pub fn apply_mask(buf: &mut [u8], mask: [u8; 4], offset: usize) {
     }
 }
 
+pub fn apply_mask_vectored(bufs: &mut [&mut [u8]], mask: [u8; 4], offset: usize) {
+    let mut count = 0;
+    for buf in bufs {
+        apply_mask(buf, mask, offset + count);
+        count += buf.len();
+    }
+}
+
 fn parse_empty(s: &str, dest: &mut bool) -> Result<(), io::Error> {
     // must not be set yet and value must be empty
     if *dest || !s.is_empty() {
@@ -817,14 +825,32 @@ where
         let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX]>::uninit();
         let mut bufs = src.get_mut_vectored(&mut bufs_arr).limit(masked);
 
-        let mut count = 0;
-        for buf in bufs.as_slice() {
-            apply_mask(buf, mask, mask_offset + read + count);
-            count += buf.len();
-        }
+        apply_mask_vectored(bufs.as_slice(), mask, mask_offset + read);
     }
 
     Ok((read, written, output_end))
+}
+
+// mask src, then call f(), then unmask src. f() returns (skip_unmask, R)
+fn with_mask<F, R>(src: &mut [&mut [u8]], mask: Option<[u8; 4]>, mask_offset: usize, f: F) -> R
+where
+    F: FnOnce(&mut [&mut [u8]]) -> (usize, R),
+{
+    if let Some(mask) = mask {
+        apply_mask_vectored(src, mask, mask_offset);
+    }
+
+    let (skip_unmask, ret) = f(src);
+
+    if let Some(mask) = mask {
+        apply_mask_vectored(
+            src.skip(skip_unmask).as_slice(),
+            mask,
+            mask_offset + skip_unmask,
+        );
+    }
+
+    ret
 }
 
 #[cfg(test)]
@@ -874,8 +900,8 @@ impl From<io::Error> for Error {
 
 struct SendingFrame {
     opcode: u8,
-    header: [u8; HEADER_SIZE_MAX],
-    header_len: usize,
+    header: ArrayVec<u8, HEADER_SIZE_MAX>,
+    payload_size: usize,
     sent: usize,
 }
 
@@ -965,108 +991,91 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         }
 
         if sending_frame.is_none() {
-            let mut h = [0; HEADER_SIZE_MAX];
+            let mut header = ArrayVec::from([0; HEADER_SIZE_MAX]);
 
-            let size = write_header(fin, rsv1, opcode, src_len, mask, &mut h[..])?;
+            let size = write_header(fin, rsv1, opcode, src_len, mask, &mut header)?;
+            header.truncate(size);
 
             *sending_frame = Some(SendingFrame {
                 opcode,
-                header: h,
-                header_len: size,
+                header,
+                payload_size: src_len,
                 sent: 0,
             });
         }
 
         let frame = sending_frame.as_mut().unwrap();
+        let header = frame.header.as_slice();
+        let frame_size = header.len() + frame.payload_size;
 
-        let header = &frame.header[..frame.header_len];
-
-        let total = header.len() + src_len;
-
-        let orig_frame_payload_sent = if frame.sent >= header.len() {
-            frame.sent - header.len()
+        let (header_remaining, payload_sent) = if frame.sent < header.len() {
+            (header.len() - frame.sent, 0)
         } else {
-            0
+            (0, frame.sent - header.len())
         };
 
-        if let Some(mask) = mask {
-            // to avoid copying, we apply the mask directly to the input
-            // buffer and then revert it on any bytes that weren't written.
-            // in the best case, all bytes will be written with nothing to
-            // revert. in the worst case, nothing will be written and all
-            // the bytes will be reverted
+        assert!(payload_sent <= frame.payload_size);
 
-            let mut count = 0;
+        let mut src = src.limit(frame.payload_size - payload_sent);
+        let src = src.as_slice();
 
-            for buf in src.iter_mut() {
-                apply_mask(*buf, mask, orig_frame_payload_sent + count);
-                count += buf.len();
-            }
-        }
-
-        let size = {
+        // to avoid copying, we apply the mask directly to the input
+        // buffer and then revert it on any bytes that weren't written.
+        // in the best case, all bytes will be written with nothing to
+        // revert. in the worst case, nothing will be written and all
+        // the bytes will be reverted
+        let size = with_mask(src, mask, payload_sent, |src| {
             let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
 
-            out.push(header);
+            if header_remaining > 0 {
+                out.push(&header[frame.sent..]);
+            }
 
             for buf in src.iter() {
                 out.push(*buf);
             }
 
-            let size = write_vectored_offset(writer, out.as_slice(), frame.sent)?;
+            let ret = write_vectored_offset(writer, out.as_slice(), 0);
 
             if log_enabled!(log::Level::Trace) {
-                trace!("OUT sock {}", Bufs::new(out.as_slice()));
+                trace!("OUT sock {} -> {:?}", Bufs::new(out.as_slice()), ret);
             }
 
-            size
-        };
+            let size = match ret {
+                Ok(size) => size,
+                Err(_) => 0,
+            };
+
+            let skip_unmask = size.saturating_sub(header_remaining);
+
+            (skip_unmask, ret)
+        })?;
 
         frame.sent += size;
 
-        let frame_payload_sent = if frame.sent >= header.len() {
-            frame.sent - header.len()
-        } else {
-            0
-        };
+        assert!(frame.sent <= frame_size);
 
-        if let Some(mask) = mask {
-            // undo the mask on any unwritten bytes
-
-            let mut skip = frame_payload_sent - orig_frame_payload_sent;
-            let mut count = 0;
-
-            for buf in src.iter_mut() {
-                if skip >= buf.len() {
-                    skip -= buf.len();
-                    continue;
-                }
-
-                let buf = &mut buf[skip..];
-                skip = 0;
-
-                apply_mask(buf, mask, frame_payload_sent + count);
-                count += buf.len();
-            }
-        }
-
-        if frame.sent < total {
+        if frame.sent < header.len() {
             return Ok(0);
         }
 
-        let opcode = frame.opcode;
+        let payload_written = (frame.sent - header.len()) - payload_sent;
 
-        *sending_frame = None;
+        if frame.sent == frame_size {
+            let opcode = frame.opcode;
 
-        if opcode == OPCODE_CLOSE {
-            if self.state.get() == State::PeerClosed {
-                self.state.set(State::Finished);
-            } else {
-                self.state.set(State::Closing);
+            *sending_frame = None;
+
+            if opcode == OPCODE_CLOSE {
+                if self.state.get() == State::PeerClosed {
+                    self.state.set(State::Finished);
+                } else {
+                    self.state.set(State::Closing);
+                }
             }
         }
 
-        Ok(src_len)
+        Ok(payload_written)
     }
 
     // on success, it's up to the caller to advance the buffer by frame.data.len()
@@ -1212,14 +1221,11 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                     let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
                     let bufs = state.enc_buf.get_mut_vectored(&mut bufs_arr);
 
-                    let size = self.send_frame(
-                        writer,
-                        opcode,
-                        bufs,
-                        msg.enc_output_end,
-                        opcode != OPCODE_CONTINUATION, // set rsv1 on first frame
-                        msg.mask,
-                    )?;
+                    // set on first frame
+                    let rsv1 = opcode != OPCODE_CONTINUATION;
+
+                    let size =
+                        self.send_frame(writer, opcode, bufs, msg.enc_output_end, rsv1, msg.mask)?;
 
                     state.enc_buf.read_commit(size);
 
@@ -1584,17 +1590,29 @@ mod tests {
 
     struct MyWriter {
         data: Vec<u8>,
+        allow: usize,
     }
 
     impl MyWriter {
         fn new() -> Self {
-            Self { data: Vec::new() }
+            Self {
+                data: Vec::new(),
+                allow: 1024,
+            }
         }
     }
 
     impl Write for MyWriter {
         fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-            self.data.extend_from_slice(buf.as_ref());
+            if !buf.is_empty() && self.allow == 0 {
+                return Err(io::Error::from(io::ErrorKind::WouldBlock));
+            }
+
+            let size = cmp::min(buf.len(), self.allow);
+            let buf = &buf[..size];
+
+            self.data.extend_from_slice(buf);
+            self.allow -= size;
 
             Ok(buf.len())
         }
@@ -1603,8 +1621,25 @@ mod tests {
             let mut total = 0;
 
             for buf in bufs {
+                if buf.is_empty() {
+                    continue;
+                }
+
+                if self.allow == 0 {
+                    if total == 0 {
+                        return Err(io::Error::from(io::ErrorKind::WouldBlock));
+                    }
+
+                    break;
+                }
+
+                let size = cmp::min(buf.len(), self.allow);
+                let buf = &buf[..size];
+
+                self.data.extend_from_slice(buf);
+                self.allow -= size;
+
                 total += buf.len();
-                self.data.extend_from_slice(buf.as_ref());
             }
 
             Ok(total)
@@ -1792,6 +1827,118 @@ mod tests {
         assert_eq!(size, 5);
         assert_eq!(writer.data, b"\x81\x05hello");
         assert_eq!(p.state(), State::Connected);
+    }
+
+    #[test]
+    fn test_send_frame_masked() {
+        let p = Protocol::<[u8; 0]>::new(None);
+
+        let mut buf = make_buf(b"hello");
+
+        let mut writer = MyWriter::new();
+        writer.allow = 0;
+
+        let e = p
+            .send_frame(
+                &mut writer,
+                OPCODE_TEXT,
+                &mut [&mut buf],
+                true,
+                false,
+                Some([0x01, 0x02, 0x03, 0x04]),
+            )
+            .unwrap_err();
+
+        let e = match e {
+            Error::Io(e) => e,
+            _ => panic!("unexpected error type"),
+        };
+
+        assert_eq!(e.kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(&buf, b"hello".as_slice());
+        assert_eq!(p.sending.frame.borrow().is_some(), true);
+
+        writer.allow = 3;
+
+        let size = p
+            .send_frame(
+                &mut writer,
+                OPCODE_TEXT,
+                &mut [&mut buf],
+                true,
+                false,
+                Some([0x01, 0x02, 0x03, 0x04]),
+            )
+            .unwrap();
+
+        let expected = [0x81, 0x85, 0x01];
+
+        assert_eq!(size, 0);
+        assert_eq!(writer.data, expected);
+        assert_eq!(&buf, b"hello".as_slice());
+        assert_eq!(p.sending.frame.borrow().is_some(), true);
+
+        writer.allow = 4;
+
+        let size = p
+            .send_frame(
+                &mut writer,
+                OPCODE_TEXT,
+                &mut [&mut buf],
+                true,
+                false,
+                Some([0x01, 0x02, 0x03, 0x04]),
+            )
+            .unwrap();
+
+        let expected = [0x81, 0x85, 0x01, 0x02, 0x03, 0x04, b'h' ^ 0x01];
+
+        assert_eq!(size, 1);
+        assert_eq!(writer.data, expected);
+        assert_eq!(&buf, [b'h' ^ 0x01, b'e', b'l', b'l', b'o'].as_slice());
+        assert_eq!(p.sending.frame.borrow().is_some(), true);
+
+        writer.allow = 1024;
+
+        let size = p
+            .send_frame(
+                &mut writer,
+                OPCODE_TEXT,
+                &mut [&mut buf[1..]],
+                true,
+                false,
+                Some([0x01, 0x02, 0x03, 0x04]),
+            )
+            .unwrap();
+
+        let expected = [
+            0x81,
+            0x85,
+            0x01,
+            0x02,
+            0x03,
+            0x04,
+            b'h' ^ 0x01,
+            b'e' ^ 0x02,
+            b'l' ^ 0x03,
+            b'l' ^ 0x04,
+            b'o' ^ 0x01,
+        ];
+
+        assert_eq!(size, 4);
+        assert_eq!(writer.data, expected);
+        assert_eq!(
+            &buf,
+            [
+                b'h' ^ 0x01,
+                b'e' ^ 0x02,
+                b'l' ^ 0x03,
+                b'l' ^ 0x04,
+                b'o' ^ 0x01
+            ]
+            .as_slice()
+        );
+        assert_eq!(p.sending.frame.borrow().is_some(), false);
     }
 
     #[test]
