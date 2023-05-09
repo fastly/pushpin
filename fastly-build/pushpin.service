@@ -1,20 +1,15 @@
 [Unit]
 Description=pushpin
 After=network.target
-PartOf=pushpin-socat.service
-Before=pushpin-socat.service
-Requires=pushpin-socat.service
+Before=pushpin-socat.service pushpin-condure-in.service pushpin-condure-out.service pushpin-proxy.service pushpin-handler.service
+Wants=pushpin-socat.service pushpin-condure-in.service pushpin-condure-out.service pushpin-proxy.service pushpin-handler.service
 
 [Service]
 Type=simple
-Restart=always
-CPUQuota=400%
-LimitNOFILE=101000
-MemoryLimit=40G
-Environment=PATH=/opt/fst-pushpin/bin:/bin:/sbin:/usr/bin:/usr/sbin
 ExecStartPre=/opt/fst-pushpin/bin/pushpin-iptables.sh apply
-ExecStart=/opt/fst-pushpin/bin/pushpin.sh
+ExecStart=/bin/true
 ExecStopPost=/opt/fst-pushpin/bin/pushpin-iptables.sh rm
+RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target

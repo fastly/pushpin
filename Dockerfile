@@ -33,9 +33,13 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stag
 RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
 RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-socat.service /opt/fst-pushpin/etc
+RUN cp ./fastly-build/pushpin-condure-in.service /opt/fst-pushpin/etc
+RUN cp ./fastly-build/pushpin-condure-out.service /opt/fst-pushpin/etc
+RUN cp ./fastly-build/pushpin-proxy.service /opt/fst-pushpin/etc
+RUN cp ./fastly-build/pushpin-handler.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-loader.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-stats-emitter.service /opt/fst-pushpin/etc
-RUN cp ./scripts/pushpin.sh /opt/fst-pushpin/bin
+RUN cp ./scripts/pushpin-sandbox.sh /opt/fst-pushpin/bin
 RUN cp ./scripts/pushpin-starter.sh /opt/fst-pushpin/bin
 RUN cp ./scripts/pushpin-iptables.sh /opt/fst-pushpin/bin
 RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin -d socat --post-install ./fastly-build/deb-postinstall.sh --post-uninstall ./fastly-build/deb-postuninstall.sh -v $PKG_VERSION-$(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}') -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C / opt/fst-pushpin
