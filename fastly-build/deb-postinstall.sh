@@ -35,6 +35,10 @@ rm -rf "${secrets_tmp_dir}"
 
 cp /opt/fst-pushpin/etc/pushpin.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-socat.service /etc/systemd/system
+cp /opt/fst-pushpin/etc/pushpin-condure-in.service /etc/systemd/system
+cp /opt/fst-pushpin/etc/pushpin-condure-out.service /etc/systemd/system
+cp /opt/fst-pushpin/etc/pushpin-proxy.service /etc/systemd/system
+cp /opt/fst-pushpin/etc/pushpin-handler.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-loader.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-stats-emitter.service /etc/systemd/system
 

@@ -5,6 +5,10 @@ set -x +e
 
 rm -f /etc/systemd/system/pushpin.service
 rm -f /etc/systemd/system/pushpin-socat.service
+rm -f /etc/systemd/system/pushpin-condure-in.service
+rm -f /etc/systemd/system/pushpin-condure-out.service
+rm -f /etc/systemd/system/pushpin-proxy.service
+rm -f /etc/systemd/system/pushpin-handler.service
 rm -f /etc/systemd/system/pushpin-loader.service
 rm -f /etc/systemd/system/pushpin-stats-emitter.service
 

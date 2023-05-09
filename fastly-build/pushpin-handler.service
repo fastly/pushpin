@@ -1,0 +1,13 @@
+[Unit]
+Description=pushpin-handler
+PartOf=pushpin.service
+
+[Service]
+Type=simple
+Restart=always
+CPUQuota=100%
+MemoryLimit=5G
+ExecStart=/opt/fst-pushpin/bin/pushpin-sandbox.sh /opt/fst-pushpin/bin/pushpin-handler --config=/opt/fst-pushpin/etc/pushpin/pushpin.conf --ipc-prefix=pushpin- --loglevel=1
+
+[Install]
+WantedBy=multi-user.target
