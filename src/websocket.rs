@@ -1216,7 +1216,11 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
                 let mut sent_all = false;
 
-                if state.enc_buf.read_avail() > 0 || msg.enc_output_end {
+                // only attempt to write if we have no consumed byte count
+                // to report, so that if the write returns an error
+                // (including WouldBlock) we can propagate the error without
+                // data loss
+                if read == 0 && (state.enc_buf.read_avail() > 0 || msg.enc_output_end) {
                     // send_frame adds 1 element to vector
                     let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
                     let bufs = state.enc_buf.get_mut_vectored(&mut bufs_arr);
@@ -2147,6 +2151,11 @@ mod tests {
             )
             .unwrap();
         assert_eq!(size, 5);
+        assert_eq!(done, false);
+        assert_eq!(writer.data.is_empty(), true);
+
+        let (size, done) = p.send_message_content(&mut writer, &mut [], true).unwrap();
+        assert_eq!(size, 0);
         assert_eq!(done, true);
         assert_eq!(
             writer.data,
@@ -2210,6 +2219,10 @@ mod tests {
             .send_message_content(&mut writer, &mut [&mut make_buf(b" world")], true)
             .unwrap();
         assert_eq!(size, 6);
+        assert_eq!(done, false);
+
+        let (size, done) = p.send_message_content(&mut writer, &mut [], true).unwrap();
+        assert_eq!(size, 0);
         assert_eq!(done, true);
 
         let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
