@@ -8,6 +8,7 @@ Restart=always
 CPUQuota=100%
 MemoryLimit=15G
 LimitNOFILE=101000
+SyslogIdentifier=pushpin-condure-out
 ExecStart=/opt/fst-pushpin/bin/pushpin-sandbox.sh /opt/fst-pushpin/bin/condure --log-level=1 --zserver-stream=ipc:///var/run/pushpin/pushpin-zurl --buffer-size=8192 --stream-maxconn=100100 --deny-out-internal
 
 [Install]
