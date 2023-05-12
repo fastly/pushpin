@@ -6963,7 +6963,20 @@ mod tests {
         assert_eq!(t.in_progress(), false);
         assert_eq!(t.current(), Some((websocket::OPCODE_TEXT, 3, true)));
 
-        t.consumed(3, true);
+        t.start(websocket::OPCODE_TEXT).unwrap();
+        assert_eq!(t.in_progress(), true);
+        assert_eq!(t.current(), Some((websocket::OPCODE_TEXT, 3, true)));
+
+        t.consumed(3, false);
+        assert_eq!(t.current(), Some((websocket::OPCODE_TEXT, 0, true)));
+
+        t.consumed(0, true);
+        assert_eq!(t.current(), Some((websocket::OPCODE_TEXT, 0, false)));
+
+        t.done();
+        assert_eq!(t.current(), Some((websocket::OPCODE_TEXT, 0, true)));
+
+        t.consumed(0, true);
         assert_eq!(t.current(), None);
 
         for _ in 0..t.items.capacity() {
