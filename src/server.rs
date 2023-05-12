@@ -824,7 +824,7 @@ impl Worker {
         zsockman: &Arc<zhttpsocket::ClientSocketManager>,
         handle_bound: usize,
     ) -> Self {
-        debug!("worker {}: starting", id);
+        debug!("server-worker {}: starting", id);
 
         let (stop, r_stop) = channel::channel(1);
         let (s_ready, ready) = channel::channel(1);
@@ -836,7 +836,7 @@ impl Worker {
         let zsockman = Arc::clone(zsockman);
 
         let thread = thread::Builder::new()
-            .name(format!("worker-{}", id))
+            .name(format!("server-worker-{}", id))
             .spawn(move || {
                 let maxconn = req_maxconn + stream_maxconn;
 
@@ -883,7 +883,7 @@ impl Worker {
 
                 executor.run(|timeout| reactor.poll(timeout)).unwrap();
 
-                debug!("worker {}: stopped", id);
+                debug!("server-worker {}: stopped", id);
             })
             .unwrap();
 
@@ -926,7 +926,7 @@ impl Worker {
         let req_acceptor = AsyncReceiver::new(req_acceptor);
         let stream_acceptor = AsyncReceiver::new(stream_acceptor);
 
-        debug!("worker {}: allocating buffers", id);
+        debug!("server-worker {}: allocating buffers", id);
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
 
@@ -1133,7 +1133,7 @@ impl Worker {
             ))
             .unwrap();
 
-        debug!("worker {}: started", id);
+        debug!("server-worker {}: started", id);
 
         ready.send(()).unwrap();
         drop(ready);
@@ -1183,7 +1183,10 @@ impl Worker {
             while let Some((count, addr, msg)) =
                 stream_conns.next_batch_message(&instance_id, BatchType::Cancel)
             {
-                debug!("worker {}: sending cancels for {} sessions", id, count);
+                debug!(
+                    "server-worker {}: sending cancels for {} sessions",
+                    id, count
+                );
 
                 match select_2(
                     pin!(stream_handle.send_to_addr(addr, msg)),
@@ -1229,7 +1232,7 @@ impl Worker {
 
         let reactor = Reactor::current().unwrap();
 
-        debug!("worker {}: task started: {}", id, name);
+        debug!("server-worker {}: task started: {}", id, name);
 
         loop {
             let acceptor_recv = if conns.count() < conns.max() {
@@ -1273,17 +1276,17 @@ impl Worker {
                 NetStream::Tcp(stream) => match &tls_acceptors[pos] {
                     Some(tls_acceptor) => match tls_acceptor.accept(stream) {
                         Ok(stream) => {
-                            debug!("worker {}: tls accept", id);
+                            debug!("server-worker {}: tls accept", id);
 
                             Stream::Tls(stream)
                         }
                         Err(e) => {
-                            error!("worker {}: tls accept: {}", id, e);
+                            error!("server-worker {}: tls accept: {}", id, e);
                             break;
                         }
                     },
                     None => {
-                        debug!("worker {}: plain accept", id);
+                        debug!("server-worker {}: plain accept", id);
 
                         Stream::Plain(NetStream::Tcp(stream))
                     }
@@ -1309,7 +1312,7 @@ impl Worker {
                     let (ckey, conn_id) = conns.add(id, cstop, zreq_receiver_sender, None).unwrap();
 
                     debug!(
-                        "worker {}: req conn starting {} {}/{}",
+                        "server-worker {}: req conn starting {} {}/{}",
                         id,
                         ckey,
                         conns.count(),
@@ -1350,7 +1353,7 @@ impl Worker {
                         .unwrap();
 
                     debug!(
-                        "worker {}: stream conn starting {} {}/{}",
+                        "server-worker {}: stream conn starting {} {}/{}",
                         id,
                         ckey,
                         conns.count(),
@@ -1420,11 +1423,11 @@ impl Worker {
 
         drop(s_cdone);
 
-        conns.stop_all(|ckey| debug!("worker {}: stopping {}", id, ckey));
+        conns.stop_all(|ckey| debug!("server-worker {}: stopping {}", id, ckey));
 
         while cdone.recv().await.is_ok() {}
 
-        debug!("worker {}: task stopped: {}", id, name);
+        debug!("server-worker {}: task stopped: {}", id, name);
     }
 
     async fn req_handle_task(
@@ -1443,7 +1446,7 @@ impl Worker {
         let req_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
         let req_resp_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
 
-        debug!("worker {}: task started: req_handle", id);
+        debug!("server-worker {}: task started: req_handle", id);
 
         let mut handle_send = pin!(None);
         let mut done_send = None;
@@ -1512,7 +1515,7 @@ impl Worker {
                         let zresp = match zhttppacket::OwnedResponse::parse(msg, 0, scratch) {
                             Ok(zresp) => zresp,
                             Err(e) => {
-                                warn!("worker {}: zhttp parse error: {}", id, e);
+                                warn!("server-worker {}: zhttp parse error: {}", id, e);
                                 continue;
                             }
                         };
@@ -1547,7 +1550,7 @@ impl Worker {
 
                                 // ABR issue with conn task
                                 if !conns.check_send(key) {
-                                    error!("worker {}: connection-{} cannot receive message after yield", id, key);
+                                    error!("server-worker {}: connection-{} cannot receive message after yield", id, key);
                                     continue;
                                 }
                             }
@@ -1556,21 +1559,24 @@ impl Worker {
                             match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
                                 Ok(()) => count += 1,
                                 Err(mpsc::TrySendError::Full(_)) => error!(
-                                    "worker {}: connection-{} cannot receive message",
+                                    "server-worker {}: connection-{} cannot receive message",
                                     id, key
                                 ),
                                 Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
                             }
                         }
 
-                        debug!("worker {}: queued zmq message for {} conns", id, count);
+                        debug!(
+                            "server-worker {}: queued zmq message for {} conns",
+                            id, count
+                        );
                     }
-                    Err(e) => panic!("worker {}: handle read error {}", id, e),
+                    Err(e) => panic!("server-worker {}: handle read error {}", id, e),
                 },
             }
         }
 
-        debug!("worker {}: task stopped: req_handle", id);
+        debug!("server-worker {}: task stopped: req_handle", id);
     }
 
     async fn stream_handle_task(
@@ -1591,7 +1597,7 @@ impl Worker {
         let stream_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
         let stream_resp_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
 
-        debug!("worker {}: task started: stream_handle", id);
+        debug!("server-worker {}: task started: stream_handle", id);
 
         {
             let mut handle_send_to_any = pin!(None);
@@ -1681,13 +1687,13 @@ impl Worker {
                             let (addr, offset) = match get_addr_and_offset(msg_data) {
                                 Ok(ret) => ret,
                                 Err(_) => {
-                                    warn!("worker {}: packet has unexpected format", id);
+                                    warn!("server-worker {}: packet has unexpected format", id);
                                     continue;
                                 }
                             };
 
                             if addr != &*instance_id {
-                                warn!("worker {}: packet not for us", id);
+                                warn!("server-worker {}: packet not for us", id);
                                 continue;
                             }
 
@@ -1701,7 +1707,7 @@ impl Worker {
                                 match zhttppacket::OwnedResponse::parse(msg, offset, scratch) {
                                     Ok(zresp) => zresp,
                                     Err(e) => {
-                                        warn!("worker {}: zhttp parse error: {}", id, e);
+                                        warn!("server-worker {}: zhttp parse error: {}", id, e);
                                         continue;
                                     }
                                 };
@@ -1736,7 +1742,7 @@ impl Worker {
 
                                     // ABR issue with conn task
                                     if !conns.check_send(key) {
-                                        error!("worker {}: connection-{} cannot receive message after yield", id, key);
+                                        error!("server-worker {}: connection-{} cannot receive message after yield", id, key);
                                         continue;
                                     }
                                 }
@@ -1745,16 +1751,19 @@ impl Worker {
                                 match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
                                     Ok(()) => count += 1,
                                     Err(mpsc::TrySendError::Full(_)) => error!(
-                                        "worker {}: connection-{} cannot receive message",
+                                        "server-worker {}: connection-{} cannot receive message",
                                         id, key
                                     ),
                                     Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
                                 }
                             }
 
-                            debug!("worker {}: queued zmq message for {} conns", id, count);
+                            debug!(
+                                "server-worker {}: queued zmq message for {} conns",
+                                id, count
+                            );
                         }
-                        Err(e) => panic!("worker {}: handle read error {}", id, e),
+                        Err(e) => panic!("server-worker {}: handle read error {}", id, e),
                     },
                 }
             }
@@ -1763,7 +1772,7 @@ impl Worker {
         // give the handle back
         done.send(stream_handle).await.unwrap();
 
-        debug!("worker {}: task stopped: stream_handle", id);
+        debug!("server-worker {}: task stopped: stream_handle", id);
     }
 
     async fn req_connection_task(
@@ -1784,7 +1793,10 @@ impl Worker {
 
         let mut cid_provider = ConnectionCid::new(worker_id, ckey, &conns);
 
-        debug!("worker {}: task started: connection-{}", worker_id, ckey);
+        debug!(
+            "server-worker {}: task started: connection-{}",
+            worker_id, ckey
+        );
 
         match stream {
             Stream::Plain(stream) => match stream {
@@ -1847,7 +1859,10 @@ impl Worker {
 
         done.send(ConnectionDone { ckey }).await.unwrap();
 
-        debug!("worker {}: task stopped: connection-{}", worker_id, ckey);
+        debug!(
+            "server-worker {}: task stopped: connection-{}",
+            worker_id, ckey
+        );
     }
 
     async fn stream_connection_task(
@@ -1869,7 +1884,10 @@ impl Worker {
 
         let mut cid_provider = ConnectionCid::new(worker_id, ckey, &conns);
 
-        debug!("worker {}: task started: connection-{}", worker_id, ckey);
+        debug!(
+            "server-worker {}: task started: connection-{}",
+            worker_id, ckey
+        );
 
         match stream {
             Stream::Plain(stream) => match stream {
@@ -1947,7 +1965,10 @@ impl Worker {
 
         done.send(ConnectionDone { ckey }).await.unwrap();
 
-        debug!("worker {}: task stopped: connection-{}", worker_id, ckey);
+        debug!(
+            "server-worker {}: task stopped: connection-{}",
+            worker_id, ckey
+        );
     }
 
     async fn keep_alives_task(
@@ -1958,7 +1979,7 @@ impl Worker {
         sender: channel::LocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
         conns: Rc<Connections>,
     ) {
-        debug!("worker {}: task started: keep_alives", id);
+        debug!("server-worker {}: task started: keep_alives", id);
 
         let reactor = Reactor::current().unwrap();
 
@@ -2028,7 +2049,10 @@ impl Worker {
 
             match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
                 Some((count, addr, msg)) => {
-                    debug!("worker {}: sending keep alives for {} sessions", id, count);
+                    debug!(
+                        "server-worker {}: sending keep alives for {} sessions",
+                        id, count
+                    );
 
                     if let Err(e) = sender.try_send((addr, msg)) {
                         error!("zhttp write error: {}", e);
@@ -2053,7 +2077,7 @@ impl Worker {
             }
         }
 
-        debug!("worker {}: task stopped: keep_alives", id);
+        debug!("server-worker {}: task stopped: keep_alives", id);
     }
 }
 

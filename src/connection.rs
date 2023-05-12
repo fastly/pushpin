@@ -1073,7 +1073,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
             };
 
             if accepted < body.len() {
-                debug!("conn {}: overflowing {} bytes", id, body.len() - accepted);
+                debug!(
+                    "server-conn {}: overflowing {} bytes",
+                    id,
+                    body.len() - accepted
+                );
 
                 if early_body.overflow.is_none() {
                     // only allow overflowing as much as there are header
@@ -1645,9 +1649,12 @@ where
             let zresp = r.get().get();
 
             if !zresp.ptype_str.is_empty() {
-                debug!("conn {}: handle packet: {}", self.id, zresp.ptype_str);
+                debug!(
+                    "server-conn {}: handle packet: {}",
+                    self.id, zresp.ptype_str
+                );
             } else {
-                debug!("conn {}: handle packet: (data)", self.id);
+                debug!("server-conn {}: handle packet: (data)", self.id);
             }
 
             if zresp.ids.len() == 0 {
@@ -1657,7 +1664,7 @@ where
             if let Some(seq) = zresp.ids[id_index].seq {
                 if seq != self.seq {
                     debug!(
-                        "conn {}: bad seq (expected {}, got {}), skipping",
+                        "server-conn {}: bad seq (expected {}, got {}), skipping",
                         self.id, self.seq, seq
                     );
                     return Err(Error::BadMessage);
@@ -1687,7 +1694,7 @@ where
                             //   send credits on websocket accept
                             credits = self.send_buf_size as u32;
                             debug!(
-                                "conn {}: no credits in websocket accept, assuming {}",
+                                "server-conn {}: no credits in websocket accept, assuming {}",
                                 self.id, credits
                             );
                         }
@@ -1697,7 +1704,7 @@ where
                 }
                 zhttppacket::ResponsePacket::Error(edata) => {
                     debug!(
-                        "conn {}: zhttp error condition={}",
+                        "server-conn {}: zhttp error condition={}",
                         self.id, edata.condition
                     );
                 }
@@ -1936,7 +1943,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         let scheme = if secure { "https" } else { "http" };
 
         debug!(
-            "conn {}: request: {} {}://{}{}",
+            "server-conn {}: request: {} {}://{}{}",
             id, req.method, scheme, host, req.uri
         );
     }
@@ -2034,9 +2041,9 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
             }
 
             if !zresp_ref.ptype_str.is_empty() {
-                debug!("conn {}: handle packet: {}", id, zresp_ref.ptype_str);
+                debug!("server-conn {}: handle packet: {}", id, zresp_ref.ptype_str);
             } else {
-                debug!("conn {}: handle packet: (data)", id);
+                debug!("server-conn {}: handle packet: (data)", id);
             }
 
             // skip non-data messages
@@ -2044,7 +2051,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
             match &zresp_ref.ptype {
                 zhttppacket::ResponsePacket::Data(_) => break zresp,
                 _ => debug!(
-                    "conn {}: unexpected packet in req mode: {}",
+                    "server-conn {}: unexpected packet in req mode: {}",
                     id, zresp_ref.ptype_str
                 ),
             }
@@ -2175,7 +2182,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
 
         // this was originally logged when starting the non-async state
         // machine, so we'll keep doing that
-        debug!("conn {}: assigning id", cid);
+        debug!("server-conn {}: assigning id", cid);
 
         let reuse = {
             let handler = server_req_handler(
@@ -2250,8 +2257,8 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     )
     .await
     {
-        Ok(()) => debug!("conn {}: finished", cid),
-        Err(e) => debug!("conn {}: process error: {:?}", cid, e),
+        Ok(()) => debug!("server-conn {}: finished", cid),
+        Err(e) => debug!("server-conn {}: process error: {:?}", cid, e),
     }
 }
 
@@ -3026,7 +3033,10 @@ where
                     websocket::OPCODE_PING => zhttppacket::Request::new_ping(b"", &[], body),
                     websocket::OPCODE_PONG => zhttppacket::Request::new_pong(b"", &[], body),
                     opcode => {
-                        debug!("conn {}: unsupported websocket opcode: {}", log_id, opcode);
+                        debug!(
+                            "server-conn {}: unsupported websocket opcode: {}",
+                            log_id, opcode
+                        );
                         return Err(Error::BadFrame);
                     }
                 };
@@ -3686,7 +3696,7 @@ where
         };
 
         debug!(
-            "conn {}: request: {} {}://{}{}",
+            "server-conn {}: request: {} {}://{}{}",
             id, req.method, scheme, host, req.uri
         );
 
@@ -4089,7 +4099,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 
         // this was originally logged when starting the non-async state
         // machine, so we'll keep doing that
-        debug!("conn {}: assigning id", cid);
+        debug!("server-conn {}: assigning id", cid);
 
         let reuse = {
             let stream_timeout_time = RefCell::new(reactor.now() + stream_timeout);
@@ -4256,8 +4266,8 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     )
     .await
     {
-        Ok(()) => debug!("conn {}: finished", cid),
-        Err(e) => debug!("conn {}: process error: {:?}", cid, e),
+        Ok(()) => debug!("server-conn {}: finished", cid),
+        Err(e) => debug!("server-conn {}: process error: {:?}", cid, e),
     }
 }
 
