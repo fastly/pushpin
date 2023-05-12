@@ -1,6 +1,6 @@
 [Unit]
 Description=pushpin-loader
-After=network.target
+PartOf=pushpin.service
 
 [Service]
 Type=simple

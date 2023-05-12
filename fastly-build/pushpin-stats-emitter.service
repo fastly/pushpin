@@ -1,6 +1,6 @@
 [Unit]
 Description=pushpin-stats-emitter
-After=network.target
+PartOf=pushpin.service
 
 [Service]
 Type=simple
