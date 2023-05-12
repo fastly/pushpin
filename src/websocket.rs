@@ -1148,6 +1148,10 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         });
     }
 
+    // returns (bytes read, done)
+    // note: when compression is used, bytes may be buffered in the encoder
+    // and may not be flushed to the writer until the encoder's buffer is
+    // full or the input ends
     pub fn send_message_content<W: Write>(
         &self,
         writer: &mut W,
