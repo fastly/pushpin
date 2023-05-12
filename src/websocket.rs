@@ -909,6 +909,7 @@ struct SendingMessage {
     opcode: u8,
     mask: Option<[u8; 4]>,
     frame_sent: bool,
+    end_len: Option<usize>,
     enc_output_end: bool,
 }
 
@@ -1144,6 +1145,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             opcode,
             mask,
             frame_sent: false,
+            end_len: None,
             enc_output_end: false,
         });
     }
@@ -1167,6 +1169,22 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         let mut src_len = 0;
         for buf in src.iter() {
             src_len += buf.len();
+        }
+
+        if let Some(end_len) = msg.end_len {
+            // once the caller has passed end=true, it must continue to pass
+            // end=true in all subsequent calls until this method returns
+            // done
+            assert_eq!(end, true);
+
+            // once the caller has passed end=true, it must continue to
+            // provide the expected number of src bytes in all subsequent
+            // calls until this method returns done
+            assert_eq!(src_len, end_len);
+        } else if end {
+            // when the caller passes end=true, note the number of src bytes
+            // provided
+            msg.end_len = Some(src_len);
         }
 
         let is_control = msg.opcode & 0x08 != 0;
@@ -1217,6 +1235,10 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
                 // we should never get EOS if there are bytes left to send
                 assert!(!msg.enc_output_end || read == src_len);
+
+                if let Some(end_len) = &mut msg.end_len {
+                    *end_len -= read;
+                }
 
                 let mut sent_all = false;
 
