@@ -7,6 +7,7 @@ Type=simple
 Restart=always
 CPUQuota=100%
 MemoryLimit=5G
+SyslogIdentifier=pushpin-handler
 ExecStart=/opt/fst-pushpin/bin/pushpin-sandbox.sh /opt/fst-pushpin/bin/pushpin-handler --config=/opt/fst-pushpin/etc/pushpin/pushpin.conf --ipc-prefix=pushpin- --loglevel=1
 
 [Install]
