@@ -53,6 +53,4 @@ if [ "X$status" = Xrunning -o "X$status" = Xdegraded ]; then
   # 2) cachectl will make sure that the service is restarted when the
   #    node is enabled
   systemctl restart pushpin || true
-  systemctl restart pushpin-loader
-  systemctl restart pushpin-stats-emitter
 fi
