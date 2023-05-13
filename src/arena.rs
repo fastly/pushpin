@@ -340,6 +340,10 @@ impl<T> Rc<T> {
         }
     }
 
+    pub fn ref_count(&self) -> usize {
+        self.memory.get(self.key).unwrap().refs
+    }
+
     pub fn get<'a>(&'a self) -> &'a T {
         let e = self.memory.get(self.key).unwrap();
 

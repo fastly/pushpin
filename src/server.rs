@@ -45,7 +45,7 @@ use mio::net::{TcpListener, TcpStream, UnixListener};
 use mio::unix::SourceFd;
 use slab::Slab;
 use socket2::{Domain, Socket, Type};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
@@ -99,6 +99,7 @@ const KEEP_ALIVE_INTERVAL: Duration = Duration::from_millis(KEEP_ALIVE_BATCH_MS 
 const KEEP_ALIVE_BATCHES: usize = KEEP_ALIVE_TIMEOUT_MS / KEEP_ALIVE_BATCH_MS;
 const BULK_PACKET_SIZE_MAX: usize = 65_000;
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(10_000);
+const CONNS_SEND_YIELDS_THRESHOLD: usize = 100;
 
 fn get_addr_and_offset(msg: &[u8]) -> Result<(&str, usize), ()> {
     let mut pos = None;
@@ -533,24 +534,6 @@ impl Connections {
         ci.id.as_bytes() == id
     }
 
-    fn check_send(&self, ckey: usize) -> bool {
-        let nkey = ckey;
-
-        let items = &*self.items.borrow();
-        let ci = &items.nodes[nkey].value;
-
-        ci.zreceiver_sender.check_send()
-    }
-
-    fn cancel_send(&self, ckey: usize) {
-        let nkey = ckey;
-
-        let items = &*self.items.borrow();
-        let ci = &items.nodes[nkey].value;
-
-        ci.zreceiver_sender.cancel();
-    }
-
     fn try_send(
         &self,
         ckey: usize,
@@ -738,36 +721,6 @@ impl<'a> ConnectionCid<'a> {
 impl CidProvider for ConnectionCid<'_> {
     fn get_new_assigned_cid(&mut self) -> ArrayString<32> {
         self.conns.regen_id(self.worker_id, self.ckey)
-    }
-}
-
-struct CancelSend<'a> {
-    conns: &'a Connections,
-    key: Cell<Option<usize>>,
-}
-
-impl<'a> CancelSend<'a> {
-    fn new(conns: &'a Connections) -> Self {
-        Self {
-            conns,
-            key: Cell::new(None),
-        }
-    }
-
-    fn set(&self, key: usize) {
-        self.key.set(Some(key));
-    }
-
-    fn clear(&self) {
-        self.key.set(None);
-    }
-}
-
-impl Drop for CancelSend<'_> {
-    fn drop(&mut self) {
-        if let Some(key) = self.key.get() {
-            self.conns.cancel_send(key);
-        }
     }
 }
 
@@ -1534,28 +1487,8 @@ impl Worker {
                                 continue;
                             }
 
-                            let cancel_send = CancelSend::new(&conns);
-                            cancel_send.set(key);
-
-                            if !conns.check_send(key) {
-                                cancel_send.clear();
-                                yield_task().await;
-
-                                // after resuming, make sure the connection still exists
-                                if !conns.check_id(key, rid.id) {
-                                    continue;
-                                }
-
-                                cancel_send.set(key);
-
-                                // ABR issue with conn task
-                                if !conns.check_send(key) {
-                                    error!("server-worker {}: connection-{} cannot receive message after yield", id, key);
-                                    continue;
-                                }
-                            }
-
-                            // can_send just succeeded, so this should succeed
+                            // this should always succeed, since afterwards we yield
+                            // until the receiver has dropped the message
                             match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
                                 Ok(()) => count += 1,
                                 Err(mpsc::TrySendError::Full(_)) => error!(
@@ -1570,6 +1503,17 @@ impl Worker {
                             "server-worker {}: queued zmq message for {} conns",
                             id, count
                         );
+
+                        let mut count = 0;
+
+                        while zresp.ref_count() > 1 {
+                            yield_task().await;
+                            count += 1;
+
+                            if count == CONNS_SEND_YIELDS_THRESHOLD + 1 {
+                                warn!("server-worker {}: yielded over {} times while waiting for connections to process message", id, CONNS_SEND_YIELDS_THRESHOLD);
+                            }
+                        }
                     }
                     Err(e) => panic!("server-worker {}: handle read error {}", id, e),
                 },
@@ -1726,28 +1670,8 @@ impl Worker {
                                     continue;
                                 }
 
-                                let cancel_send = CancelSend::new(&conns);
-                                cancel_send.set(key);
-
-                                if !conns.check_send(key) {
-                                    cancel_send.clear();
-                                    yield_task().await;
-
-                                    // after resuming, make sure the connection still exists
-                                    if !conns.check_id(key, rid.id) {
-                                        continue;
-                                    }
-
-                                    cancel_send.set(key);
-
-                                    // ABR issue with conn task
-                                    if !conns.check_send(key) {
-                                        error!("server-worker {}: connection-{} cannot receive message after yield", id, key);
-                                        continue;
-                                    }
-                                }
-
-                                // can_send just succeeded, so this should succeed
+                                // this should always succeed, since afterwards we yield
+                                // until the receiver has dropped the message
                                 match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
                                     Ok(()) => count += 1,
                                     Err(mpsc::TrySendError::Full(_)) => error!(
@@ -1762,6 +1686,17 @@ impl Worker {
                                 "server-worker {}: queued zmq message for {} conns",
                                 id, count
                             );
+
+                            let mut count = 0;
+
+                            while zresp.ref_count() > 1 {
+                                yield_task().await;
+                                count += 1;
+
+                                if count == CONNS_SEND_YIELDS_THRESHOLD + 1 {
+                                    warn!("server-worker {}: yielded over {} times while waiting for connections to process message", id, CONNS_SEND_YIELDS_THRESHOLD);
+                                }
+                            }
                         }
                         Err(e) => panic!("server-worker {}: handle read error {}", id, e),
                     },

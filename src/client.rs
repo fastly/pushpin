@@ -83,6 +83,7 @@ const KEEP_ALIVE_INTERVAL: Duration = Duration::from_millis(KEEP_ALIVE_BATCH_MS 
 const KEEP_ALIVE_BATCHES: usize = KEEP_ALIVE_TIMEOUT_MS / KEEP_ALIVE_BATCH_MS;
 const BULK_PACKET_SIZE_MAX: usize = 65_000;
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(10_000);
+const CONNS_SEND_YIELDS_THRESHOLD: usize = 100;
 
 const RESOLVER_THREADS: usize = 10;
 
@@ -425,30 +426,6 @@ impl Connections {
         items.nodes_by_id.get(id).copied()
     }
 
-    fn check_send(&self, ckey: usize) -> bool {
-        let nkey = ckey;
-
-        let items = &*self.items.borrow();
-        let ci = &items.nodes[nkey].value;
-
-        if let Some(sender) = &ci.zreceiver_sender {
-            sender.check_send()
-        } else {
-            false
-        }
-    }
-
-    fn cancel_send(&self, ckey: usize) {
-        let nkey = ckey;
-
-        let items = &*self.items.borrow();
-        let ci = &items.nodes[nkey].value;
-
-        if let Some(sender) = &ci.zreceiver_sender {
-            sender.cancel()
-        }
-    }
-
     fn try_send(
         &self,
         ckey: usize,
@@ -627,36 +604,6 @@ impl Connections {
         }
 
         None
-    }
-}
-
-struct CancelSend<'a> {
-    conns: &'a Connections,
-    key: Cell<Option<usize>>,
-}
-
-impl<'a> CancelSend<'a> {
-    fn new(conns: &'a Connections) -> Self {
-        Self {
-            conns,
-            key: Cell::new(None),
-        }
-    }
-
-    fn set(&self, key: usize) {
-        self.key.set(Some(key));
-    }
-
-    fn clear(&self) {
-        self.key.set(None);
-    }
-}
-
-impl Drop for CancelSend<'_> {
-    fn drop(&mut self) {
-        if let Some(key) = self.key.get() {
-            self.conns.cancel_send(key);
-        }
     }
 }
 
@@ -1394,34 +1341,13 @@ impl Worker {
                             let mut count = 0;
 
                             for (i, rid) in ids.iter().enumerate() {
-                                let mut key = match conns.find_key(&rid.id) {
+                                let key = match conns.find_key(&rid.id) {
                                     Some(key) => key,
                                     None => continue,
                                 };
 
-                                let cancel_send = CancelSend::new(&conns);
-                                cancel_send.set(key);
-
-                                if !conns.check_send(key) {
-                                    cancel_send.clear();
-                                    yield_task().await;
-
-                                    // after resuming, make sure the connection still exists
-                                    key = match conns.find_key(&rid.id) {
-                                        Some(key) => key,
-                                        None => continue,
-                                    };
-
-                                    cancel_send.set(key);
-
-                                    // ABR issue with conn task
-                                    if !conns.check_send(key) {
-                                        error!("client-worker {}: connection-{} cannot receive message after yield", id, key);
-                                        continue;
-                                    }
-                                }
-
-                                // can_send just succeeded, so this should succeed
+                                // this should always succeed, since afterwards we yield
+                                // until the receiver has dropped the message
                                 match conns.try_send(key, (arena::Rc::clone(&zreq), i)) {
                                     Ok(()) => count += 1,
                                     Err(mpsc::TrySendError::Full(_)) => error!(
@@ -1436,6 +1362,17 @@ impl Worker {
                                 "client-worker {}: queued zmq message for {} conns",
                                 id, count
                             );
+
+                            let mut count = 0;
+
+                            while zreq.ref_count() > 1 {
+                                yield_task().await;
+                                count += 1;
+
+                                if count == CONNS_SEND_YIELDS_THRESHOLD + 1 {
+                                    warn!("client-worker {}: yielded over {} times while waiting for connections to process message", id, CONNS_SEND_YIELDS_THRESHOLD);
+                                }
+                            }
                         }
                         Err(e) => panic!("client-worker {}: handle read error {}", id, e),
                     },
