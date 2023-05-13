@@ -2262,34 +2262,74 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     }
 }
 
-// this function will either return immediately or await messages
-async fn handle_other<R>(
-    zresp: &zhttppacket::Response<'_, '_, '_>,
+async fn accept_handoff<R>(
     zsess_in: &mut ZhttpStreamSessionIn<'_, R>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
     R: Fn(),
 {
-    match &zresp.ptype {
+    // discarding here is fine. the sender should cease sending
+    // messages until we've replied with proceed
+    discard_while(
+        &zsess_in.receiver,
+        pin!(async { Ok(zsess_out.check_send().await) }),
+    )
+    .await?;
+
+    let zreq = zhttppacket::Request::new_handoff_proceed(b"", &[]);
+
+    // check_send just finished, so this should succeed
+    zsess_out.try_send_msg(zreq)?;
+
+    // pause until we get a msg
+    zsess_in.peek_msg().await?;
+
+    Ok(())
+}
+
+async fn server_accept_handoff<R>(
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R>,
+    zsess_out: &ZhttpServerStreamSessionOut<'_>,
+) -> Result<(), Error>
+where
+    R: Fn(),
+{
+    // discarding here is fine. the sender should cease sending
+    // messages until we've replied with proceed
+    server_discard_while(
+        &zsess_in.receiver,
+        pin!(async { Ok(zsess_out.check_send().await) }),
+    )
+    .await?;
+
+    let zresp = zhttppacket::Response::new_handoff_proceed(b"", &[]);
+
+    // check_send just finished, so this should succeed
+    zsess_out.try_send_msg(zresp)?;
+
+    // pause until we get a msg
+    zsess_in.peek_msg().await?;
+
+    Ok(())
+}
+
+// this function will either return immediately or await messages
+async fn handle_other<R>(
+    zresp: arena::Rc<zhttppacket::OwnedResponse>,
+    zsess_in: &mut ZhttpStreamSessionIn<'_, R>,
+    zsess_out: &ZhttpStreamSessionOut<'_>,
+) -> Result<(), Error>
+where
+    R: Fn(),
+{
+    match &zresp.get().get().ptype {
         zhttppacket::ResponsePacket::KeepAlive => Ok(()),
         zhttppacket::ResponsePacket::Credit(_) => Ok(()),
         zhttppacket::ResponsePacket::HandoffStart => {
-            // discarding here is fine. the sender should cease sending
-            // messages until we've replied with proceed
-            discard_while(
-                &zsess_in.receiver,
-                pin!(async { Ok(zsess_out.check_send().await) }),
-            )
-            .await?;
+            drop(zresp);
 
-            let zreq = zhttppacket::Request::new_handoff_proceed(b"", &[]);
-
-            // check_send just finished, so this should succeed
-            zsess_out.try_send_msg(zreq)?;
-
-            // pause until we get a msg
-            zsess_in.peek_msg().await?;
+            accept_handoff(zsess_in, zsess_out).await?;
 
             Ok(())
         }
@@ -2301,32 +2341,20 @@ where
 
 // this function will either return immediately or await messages
 async fn server_handle_other<R>(
-    zreq: &zhttppacket::Request<'_, '_, '_>,
+    zreq: arena::Rc<zhttppacket::OwnedRequest>,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, R>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
     R: Fn(),
 {
-    match &zreq.ptype {
+    match &zreq.get().get().ptype {
         zhttppacket::RequestPacket::KeepAlive => Ok(()),
         zhttppacket::RequestPacket::Credit(_) => Ok(()),
         zhttppacket::RequestPacket::HandoffStart => {
-            // discarding here is fine. the sender should cease sending
-            // messages until we've replied with proceed
-            server_discard_while(
-                &zsess_in.receiver,
-                pin!(async { Ok(zsess_out.check_send().await) }),
-            )
-            .await?;
+            drop(zreq);
 
-            let zresp = zhttppacket::Response::new_handoff_proceed(b"", &[]);
-
-            // check_send just finished, so this should succeed
-            zsess_out.try_send_msg(zresp)?;
-
-            // pause until we get a msg
-            zsess_in.peek_msg().await?;
+            server_accept_handoff(zsess_in, zsess_out).await?;
 
             Ok(())
         }
@@ -2366,9 +2394,7 @@ where
                     match ret {
                         Select2::R1(ret) => break ret?,
                         Select2::R2(ret) => {
-                            let r = ret?;
-
-                            let zresp_ref = r.get().get();
+                            let zresp = ret?;
 
                             // note: if we get a data message, handle_other will
                             // error out. technically a data message should be
@@ -2392,7 +2418,7 @@ where
                             // needs to reject the request
 
                             // ABR: handle_other
-                            handle_other(zresp_ref, zsess_in, zsess_out).await?;
+                            handle_other(zresp, zsess_in, zsess_out).await?;
                         }
                     }
                 }
@@ -2470,12 +2496,10 @@ where
                         zhttppacket::ResponsePacket::Data(_) => break,
                         _ => {
                             // ABR: direct read
-                            let r = zsess_in.recv_msg().await?;
-
-                            let zresp_ref = r.get().get();
+                            let zresp = zsess_in.recv_msg().await?;
 
                             // ABR: handle_other
-                            handle_other(zresp_ref, zsess_in, zsess_out).await?;
+                            handle_other(zresp, zsess_in, zsess_out).await?;
                         }
                     }
                 }
@@ -2563,12 +2587,10 @@ where
                 add_to_buffer.set(None);
             }
             Select3::R3(ret) => {
-                let r = ret?;
-
-                let zreq_ref = r.get().get();
+                let zreq = ret?;
 
                 // ABR: handle_other
-                server_handle_other(zreq_ref, zsess_in, zsess_out).await?;
+                server_handle_other(zreq, zsess_in, zsess_out).await?;
             }
         }
     }
@@ -2637,49 +2659,48 @@ where
                 zsess_out.try_send_msg(zreq)?;
             }
             Select4::R3(ret) => {
-                let r = ret?;
+                let zresp = ret?;
 
-                let zresp_ref = r.get().get();
-
-                match &zresp_ref.ptype {
+                match &zresp.get().get().ptype {
                     zhttppacket::ResponsePacket::Data(rdata) => {
                         handler.append_body(rdata.body, rdata.more)?;
                     }
-                    _ => {
-                        // if handoff requested, flush send buffer before responding
-                        match &zresp_ref.ptype {
-                            zhttppacket::ResponsePacket::HandoffStart => {
-                                if flush_body.is_none() && handler.can_flush() {
-                                    flush_body.set(Some(handler.flush_body()));
-                                }
+                    zhttppacket::ResponsePacket::HandoffStart => {
+                        drop(zresp);
 
-                                while let Some(fut) = flush_body.as_mut().as_pin_mut() {
-                                    // ABR: discard_while
-                                    let ret = discard_while(zsess_in.receiver, fut).await;
-                                    flush_body.set(None);
-
-                                    let (size, done) = ret?;
-
-                                    if done {
-                                        break 'main;
-                                    }
-
-                                    out_credits += size as u32;
-
-                                    if size > 0 {
-                                        bytes_read();
-                                    }
-
-                                    if handler.can_flush() {
-                                        flush_body.set(Some(handler.flush_body()));
-                                    }
-                                }
-                            }
-                            _ => {}
+                        // if handoff requested, flush send buffer responding
+                        if flush_body.is_none() && handler.can_flush() {
+                            flush_body.set(Some(handler.flush_body()));
                         }
 
+                        while let Some(fut) = flush_body.as_mut().as_pin_mut() {
+                            // ABR: discard_while
+                            let ret = discard_while(zsess_in.receiver, fut).await;
+                            flush_body.set(None);
+
+                            let (size, done) = ret?;
+
+                            if done {
+                                break 'main;
+                            }
+
+                            out_credits += size as u32;
+
+                            if size > 0 {
+                                bytes_read();
+                            }
+
+                            if handler.can_flush() {
+                                flush_body.set(Some(handler.flush_body()));
+                            }
+                        }
+
+                        // ABR: function contains read
+                        accept_handoff(zsess_in, zsess_out).await?;
+                    }
+                    _ => {
                         // ABR: handle_other
-                        handle_other(zresp_ref, zsess_in, zsess_out).await?;
+                        handle_other(zresp, zsess_in, zsess_out).await?;
                     }
                 }
             }
@@ -2744,12 +2765,10 @@ where
                 }
             }
             Select2::R2(ret) => {
-                let r = ret?;
-
-                let zreq_ref = r.get().get();
+                let zreq = ret?;
 
                 // ABR: handle_other
-                server_handle_other(zreq_ref, zsess_in, zsess_out).await?;
+                server_handle_other(zreq, zsess_in, zsess_out).await?;
             }
         }
     }
@@ -2808,11 +2827,9 @@ where
                 zsess_out.try_send_msg(zresp)?;
             }
             Select3::R3(ret) => {
-                let r = ret?;
+                let zreq = ret?;
 
-                let zreq_ref = r.get().get();
-
-                match &zreq_ref.ptype {
+                match &zreq.get().get().ptype {
                     zhttppacket::RequestPacket::Data(rdata) => {
                         let size = req_body.prepare(rdata.body, !rdata.more)?;
 
@@ -2824,50 +2841,51 @@ where
                             prepare_done = true;
                         }
                     }
-                    _ => {
+                    zhttppacket::RequestPacket::HandoffStart => {
+                        drop(zreq);
+
                         // if handoff requested, flush send buffer before responding
-                        match &zreq_ref.ptype {
-                            zhttppacket::RequestPacket::HandoffStart => {
-                                if send.is_none() && req_body.can_send() {
-                                    send.set(Some(req_body.send()));
-                                }
-
-                                while let Some(fut) = send.as_mut().as_pin_mut() {
-                                    // ABR: discard_while
-                                    let ret = server_discard_while(
-                                        zsess_in.receiver,
-                                        pin!(async {
-                                            match fut.await {
-                                                SendStatus::Error(_, e) => Err(e),
-                                                ret => Ok(ret),
-                                            }
-                                        }),
-                                    )
-                                    .await?;
-                                    send.set(None);
-
-                                    match ret {
-                                        SendStatus::Complete(resp) => break 'main resp,
-                                        SendStatus::Partial((), size) => {
-                                            out_credits += size as u32;
-
-                                            if size > 0 {
-                                                bytes_read();
-                                            }
-                                        }
-                                        SendStatus::Error((), _) => unreachable!(), // handled above
-                                    }
-
-                                    if req_body.can_send() {
-                                        send.set(Some(req_body.send()));
-                                    }
-                                }
-                            }
-                            _ => {}
+                        if send.is_none() && req_body.can_send() {
+                            send.set(Some(req_body.send()));
                         }
 
+                        while let Some(fut) = send.as_mut().as_pin_mut() {
+                            // ABR: discard_while
+                            let ret = server_discard_while(
+                                zsess_in.receiver,
+                                pin!(async {
+                                    match fut.await {
+                                        SendStatus::Error(_, e) => Err(e),
+                                        ret => Ok(ret),
+                                    }
+                                }),
+                            )
+                            .await?;
+                            send.set(None);
+
+                            match ret {
+                                SendStatus::Complete(resp) => break 'main resp,
+                                SendStatus::Partial((), size) => {
+                                    out_credits += size as u32;
+
+                                    if size > 0 {
+                                        bytes_read();
+                                    }
+                                }
+                                SendStatus::Error((), _) => unreachable!(), // handled above
+                            }
+
+                            if req_body.can_send() {
+                                send.set(Some(req_body.send()));
+                            }
+                        }
+
+                        // ABR: function contains read
+                        server_accept_handoff(zsess_in, zsess_out).await?;
+                    }
+                    _ => {
                         // ABR: handle_other
-                        server_handle_other(zreq_ref, zsess_in, zsess_out).await?;
+                        server_handle_other(zreq, zsess_in, zsess_out).await?;
                     }
                 }
             }
@@ -3065,11 +3083,9 @@ where
                 }
             }
             Select4::R4(ret) => {
-                let r = ret?;
+                let zresp = ret?;
 
-                let zresp_ref = r.get().get();
-
-                match &zresp_ref.ptype {
+                match &zresp.get().get().ptype {
                     zhttppacket::ResponsePacket::Data(rdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
                             let avail = handler.accept_avail();
@@ -3172,48 +3188,50 @@ where
                         }
                         _ => {}
                     },
-                    _ => {
-                        // if handoff requested, flush send buffer before responding
-                        match &zresp_ref.ptype {
-                            zhttppacket::ResponsePacket::HandoffStart => loop {
-                                if send_content.is_none() {
-                                    if let Some((mtype, avail, done)) = ws_in_tracker.current() {
-                                        if !handler.is_sending_message() {
-                                            handler.send_message_start(mtype, None);
-                                        }
+                    zhttppacket::ResponsePacket::HandoffStart => {
+                        drop(zresp);
 
-                                        if avail > 0 || done {
-                                            send_content
-                                                .set(Some(handler.send_message_content(
-                                                    avail, done, bytes_read,
-                                                )));
-                                        }
+                        // if handoff requested, flush send buffer responding
+                        loop {
+                            if send_content.is_none() {
+                                if let Some((mtype, avail, done)) = ws_in_tracker.current() {
+                                    if !handler.is_sending_message() {
+                                        handler.send_message_start(mtype, None);
+                                    }
+
+                                    if avail > 0 || done {
+                                        send_content.set(Some(
+                                            handler.send_message_content(avail, done, bytes_read),
+                                        ));
                                     }
                                 }
+                            }
 
-                                if let Some(fut) = send_content.as_mut().as_pin_mut() {
-                                    // ABR: discard_while
-                                    let ret = discard_while(zsess_in.receiver, fut).await;
-                                    send_content.set(None);
+                            if let Some(fut) = send_content.as_mut().as_pin_mut() {
+                                // ABR: discard_while
+                                let ret = discard_while(zsess_in.receiver, fut).await;
+                                send_content.set(None);
 
-                                    let (size, done) = ret?;
+                                let (size, done) = ret?;
 
-                                    ws_in_tracker.consumed(size, done);
+                                ws_in_tracker.consumed(size, done);
 
-                                    if handler.state() == websocket::State::Connected
-                                        || handler.state() == websocket::State::PeerClosed
-                                    {
-                                        out_credits += size as u32;
-                                    }
-                                } else {
-                                    break;
+                                if handler.state() == websocket::State::Connected
+                                    || handler.state() == websocket::State::PeerClosed
+                                {
+                                    out_credits += size as u32;
                                 }
-                            },
-                            _ => {}
+                            } else {
+                                break;
+                            }
                         }
 
+                        // ABR: function contains read
+                        accept_handoff(zsess_in, zsess_out).await?;
+                    }
+                    _ => {
                         // ABR: handle_other
-                        handle_other(zresp_ref, zsess_in, zsess_out).await?;
+                        handle_other(zresp, zsess_in, zsess_out).await?;
                     }
                 }
             }
@@ -3411,11 +3429,9 @@ where
                 }
             }
             Select4::R4(ret) => {
-                let r = ret?;
+                let zreq = ret?;
 
-                let zreq_ref = r.get().get();
-
-                match &zreq_ref.ptype {
+                match &zreq.get().get().ptype {
                     zhttppacket::RequestPacket::Data(rdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
                             let avail = handler.accept_avail();
@@ -3518,48 +3534,50 @@ where
                         }
                         _ => {}
                     },
-                    _ => {
+                    zhttppacket::RequestPacket::HandoffStart => {
+                        drop(zreq);
+
                         // if handoff requested, flush send buffer before responding
-                        match &zreq_ref.ptype {
-                            zhttppacket::RequestPacket::HandoffStart => loop {
-                                if send_content.is_none() {
-                                    if let Some((mtype, avail, done)) = ws_in_tracker.current() {
-                                        if !handler.is_sending_message() {
-                                            handler.send_message_start(mtype, Some(gen_mask()));
-                                        }
+                        loop {
+                            if send_content.is_none() {
+                                if let Some((mtype, avail, done)) = ws_in_tracker.current() {
+                                    if !handler.is_sending_message() {
+                                        handler.send_message_start(mtype, Some(gen_mask()));
+                                    }
 
-                                        if avail > 0 || done {
-                                            send_content
-                                                .set(Some(handler.send_message_content(
-                                                    avail, done, bytes_read,
-                                                )));
-                                        }
+                                    if avail > 0 || done {
+                                        send_content.set(Some(
+                                            handler.send_message_content(avail, done, bytes_read),
+                                        ));
                                     }
                                 }
+                            }
 
-                                if let Some(fut) = send_content.as_mut().as_pin_mut() {
-                                    // ABR: discard_while
-                                    let ret = server_discard_while(zsess_in.receiver, fut).await;
-                                    send_content.set(None);
+                            if let Some(fut) = send_content.as_mut().as_pin_mut() {
+                                // ABR: discard_while
+                                let ret = server_discard_while(zsess_in.receiver, fut).await;
+                                send_content.set(None);
 
-                                    let (size, done) = ret?;
+                                let (size, done) = ret?;
 
-                                    ws_in_tracker.consumed(size, done);
+                                ws_in_tracker.consumed(size, done);
 
-                                    if handler.state() == websocket::State::Connected
-                                        || handler.state() == websocket::State::PeerClosed
-                                    {
-                                        out_credits += size as u32;
-                                    }
-                                } else {
-                                    break;
+                                if handler.state() == websocket::State::Connected
+                                    || handler.state() == websocket::State::PeerClosed
+                                {
+                                    out_credits += size as u32;
                                 }
-                            },
-                            _ => {}
+                            } else {
+                                break;
+                            }
                         }
 
+                        // ABR: function contains read
+                        server_accept_handoff(zsess_in, zsess_out).await?;
+                    }
+                    _ => {
                         // ABR: handle_other
-                        server_handle_other(zreq_ref, zsess_in, zsess_out).await?;
+                        server_handle_other(zreq, zsess_in, zsess_out).await?;
                     }
                 }
             }
@@ -3793,22 +3811,20 @@ where
 
     // receive response message
 
-    let zresp_orig = loop {
+    let zresp = loop {
         // ABR: select contains read
         let ret = select_2(pin!(zsess_in.recv_msg()), pin!(handler.fill_recv_buffer())).await;
 
         match ret {
             Select2::R1(ret) => {
-                let r = ret?;
+                let zresp = ret?;
 
-                let zresp_ref = r.get().get();
-
-                match &zresp_ref.ptype {
+                match zresp.get().get().ptype {
                     zhttppacket::ResponsePacket::Data(_)
-                    | zhttppacket::ResponsePacket::Error(_) => break r,
+                    | zhttppacket::ResponsePacket::Error(_) => break zresp,
                     _ => {
                         // ABR: handle_other
-                        handle_other(zresp_ref, &mut zsess_in, &zsess_out).await?;
+                        handle_other(zresp, &mut zsess_in, &zsess_out).await?;
                     }
                 }
             }
@@ -3819,9 +3835,7 @@ where
     // determine how to respond
 
     let (handler, ws_config) = {
-        let zresp = zresp_orig.get().get();
-
-        let rdata = match &zresp.ptype {
+        let rdata = match &zresp.get().get().ptype {
             zhttppacket::ResponsePacket::Data(rdata) => rdata,
             zhttppacket::ResponsePacket::Error(edata) => {
                 if ws_config.is_some() && edata.condition == "rejected" {
@@ -3871,6 +3885,8 @@ where
                     let handler = handler.send_header_done();
 
                     handler.append_body(rdata.body, false)?;
+
+                    drop(zresp);
 
                     loop {
                         // ABR: discard_while
@@ -3989,7 +4005,7 @@ where
 
         handler.append_body(rdata.body, rdata.more, id)?;
 
-        drop(zresp_orig);
+        drop(zresp);
 
         {
             let mut send_header = pin!(handler.send_header());
@@ -4005,17 +4021,15 @@ where
                         break;
                     }
                     Select2::R2(ret) => {
-                        let r = ret?;
+                        let zresp = ret?;
 
-                        let zresp_ref = r.get().get();
-
-                        match &zresp_ref.ptype {
+                        match &zresp.get().get().ptype {
                             zhttppacket::ResponsePacket::Data(rdata) => {
                                 handler.append_body(rdata.body, rdata.more, id)?;
                             }
                             _ => {
                                 // ABR: handle_other
-                                handle_other(zresp_ref, &mut zsess_in, &zsess_out).await?;
+                                handle_other(zresp, &mut zsess_in, &zsess_out).await?;
                             }
                         }
                     }
@@ -5454,12 +5468,10 @@ where
             match result {
                 Select2::R1(ret) => break ret?,
                 Select2::R2(ret) => {
-                    let r = ret?;
-
-                    let zreq_ref = r.get().get();
+                    let zreq = ret?;
 
                     // ABR: handle_other
-                    server_handle_other(zreq_ref, &mut zsess_in, &zsess_out).await?;
+                    server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
                 }
             }
         }
@@ -5493,12 +5505,10 @@ where
             match result {
                 Select2::R1(ret) => break ret?,
                 Select2::R2(ret) => {
-                    let r = ret?;
-
-                    let zreq_ref = r.get().get();
+                    let zreq = ret?;
 
                     // ABR: handle_other
-                    server_handle_other(zreq_ref, &mut zsess_in, &zsess_out).await?;
+                    server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
                 }
             }
         };
@@ -5519,12 +5529,10 @@ where
                 match result {
                     Select2::R1(()) => break,
                     Select2::R2(ret) => {
-                        let r = ret?;
-
-                        let zreq_ref = r.get().get();
+                        let zreq = ret?;
 
                         // ABR: handle_other
-                        server_handle_other(zreq_ref, &mut zsess_in, &zsess_out).await?;
+                        server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
                     }
                 }
             }
@@ -5620,13 +5628,11 @@ where
                                         match result {
                                             Select2::R1(ret) => break ret?,
                                             Select2::R2(ret) => {
-                                                let r = ret?;
-
-                                                let zreq_ref = r.get().get();
+                                                let zreq = ret?;
 
                                                 // ABR: handle_other
                                                 server_handle_other(
-                                                    zreq_ref,
+                                                    zreq,
                                                     &mut zsess_in,
                                                     &zsess_out,
                                                 )
