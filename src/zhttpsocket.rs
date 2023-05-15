@@ -1424,8 +1424,13 @@ impl ClientSocketManager {
                 }
                 // stream_out_stream_send
                 Select9::R8(result) => {
-                    if let Err(e) = result {
-                        error!("stream zmq send to: {}", e);
+                    match result {
+                        Ok(()) => {}
+                        Err(zmq::Error::EHOSTUNREACH) => {
+                            // this can happen if a known peer goes away
+                            debug!("stream zmq send to host unreachable");
+                        }
+                        Err(e) => error!("stream zmq send to: {}", e),
                     }
 
                     stream_out_stream_send = None;
