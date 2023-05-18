@@ -24,7 +24,7 @@ use crate::connection::{
 use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
-    event_wait, select_2, select_3, select_6, select_8, select_option, yield_task,
+    event_wait, select_2, select_3, select_6, select_8, select_option, yield_to_local_events,
     AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver, AsyncTcpStream, AsyncTlsStream,
     AsyncUnixStream, CancellationSender, CancellationToken, Select2, Select3, Select6, Select8,
     Timeout,
@@ -99,7 +99,6 @@ const KEEP_ALIVE_INTERVAL: Duration = Duration::from_millis(KEEP_ALIVE_BATCH_MS 
 const KEEP_ALIVE_BATCHES: usize = KEEP_ALIVE_TIMEOUT_MS / KEEP_ALIVE_BATCH_MS;
 const BULK_PACKET_SIZE_MAX: usize = 65_000;
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(10_000);
-const CONNS_SEND_YIELDS_THRESHOLD: usize = 100;
 
 fn get_addr_and_offset(msg: &[u8]) -> Result<(&str, usize), ()> {
     let mut pos = None;
@@ -1488,7 +1487,7 @@ impl Worker {
                             }
 
                             // this should always succeed, since afterwards we yield
-                            // until the receiver has dropped the message
+                            // to let the connection receive the message
                             match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
                                 Ok(()) => count += 1,
                                 Err(mpsc::TrySendError::Full(_)) => error!(
@@ -1504,16 +1503,7 @@ impl Worker {
                             id, count
                         );
 
-                        let mut count = 0;
-
-                        while zresp.ref_count() > 1 {
-                            yield_task().await;
-                            count += 1;
-
-                            if count == CONNS_SEND_YIELDS_THRESHOLD + 1 {
-                                warn!("server-worker {}: yielded over {} times while waiting for connections to process message", id, CONNS_SEND_YIELDS_THRESHOLD);
-                            }
-                        }
+                        yield_to_local_events().await;
                     }
                     Err(e) => panic!("server-worker {}: handle read error {}", id, e),
                 },
@@ -1671,7 +1661,7 @@ impl Worker {
                                 }
 
                                 // this should always succeed, since afterwards we yield
-                                // until the receiver has dropped the message
+                                // to let the connection receive the message
                                 match conns.try_send(key, (arena::Rc::clone(&zresp), i)) {
                                     Ok(()) => count += 1,
                                     Err(mpsc::TrySendError::Full(_)) => error!(
@@ -1687,15 +1677,8 @@ impl Worker {
                                 id, count
                             );
 
-                            let mut count = 0;
-
-                            while zresp.ref_count() > 1 {
-                                yield_task().await;
-                                count += 1;
-
-                                if count == CONNS_SEND_YIELDS_THRESHOLD + 1 {
-                                    warn!("server-worker {}: yielded over {} times while waiting for connections to process message", id, CONNS_SEND_YIELDS_THRESHOLD);
-                                }
+                            if count > 0 {
+                                yield_to_local_events().await;
                             }
                         }
                         Err(e) => panic!("server-worker {}: handle read error {}", id, e),

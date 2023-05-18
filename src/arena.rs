@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -338,10 +338,6 @@ impl<T> Rc<T> {
             memory: rc.memory.clone(),
             key: rc.key,
         }
-    }
-
-    pub fn ref_count(&self) -> usize {
-        self.memory.get(self.key).unwrap().refs
     }
 
     pub fn get<'a>(&'a self) -> &'a T {

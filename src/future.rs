@@ -2491,6 +2491,63 @@ pub fn yield_task() -> YieldFuture {
     YieldFuture { done: false }
 }
 
+pub struct YieldToLocalEvents {
+    started: bool,
+    evented: CustomEvented,
+    _registration: event::LocalRegistration,
+    set_readiness: event::LocalSetReadiness,
+}
+
+impl YieldToLocalEvents {
+    fn new() -> Self {
+        let reactor = get_reactor();
+
+        let (reg, sr) = event::LocalRegistration::new(&reactor.local_registration_memory());
+
+        let evented = CustomEvented::new_local(&reg, mio::Interest::READABLE, &reactor).unwrap();
+
+        evented.registration().set_ready(false);
+
+        Self {
+            started: false,
+            evented,
+            _registration: reg,
+            set_readiness: sr,
+        }
+    }
+}
+
+impl Future for YieldToLocalEvents {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        if f.evented.registration().is_ready() {
+            return Poll::Ready(());
+        }
+
+        f.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::READABLE);
+
+        if !f.started {
+            f.started = true;
+
+            // this will wake us up after all local events before it have been processed
+            f.set_readiness
+                .set_readiness(mio::Interest::READABLE)
+                .unwrap();
+        }
+
+        Poll::Pending
+    }
+}
+
+pub fn yield_to_local_events() -> YieldToLocalEvents {
+    YieldToLocalEvents::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3425,40 +3482,40 @@ mod tests {
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
 
+    struct PollCountFuture<F> {
+        count: i32,
+        fut: F,
+    }
+
+    impl<F> PollCountFuture<F>
+    where
+        F: Future<Output = ()> + Unpin,
+    {
+        fn new(fut: F) -> Self {
+            Self { count: 0, fut }
+        }
+    }
+
+    impl<F> Future for PollCountFuture<F>
+    where
+        F: Future<Output = ()> + Unpin,
+    {
+        type Output = i32;
+
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+            let f = &mut *self;
+
+            f.count += 1;
+
+            match Pin::new(&mut f.fut).poll(cx) {
+                Poll::Ready(()) => Poll::Ready(f.count),
+                Poll::Pending => Poll::Pending,
+            }
+        }
+    }
+
     #[test]
     fn test_yield_task() {
-        struct PollCountFuture<F> {
-            count: i32,
-            fut: F,
-        }
-
-        impl<F> PollCountFuture<F>
-        where
-            F: Future<Output = ()> + Unpin,
-        {
-            fn new(fut: F) -> Self {
-                Self { count: 0, fut }
-            }
-        }
-
-        impl<F> Future for PollCountFuture<F>
-        where
-            F: Future<Output = ()> + Unpin,
-        {
-            type Output = i32;
-
-            fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-                let f = &mut *self;
-
-                f.count += 1;
-
-                match Pin::new(&mut f.fut).poll(cx) {
-                    Poll::Ready(()) => Poll::Ready(f.count),
-                    Poll::Pending => Poll::Pending,
-                }
-            }
-        }
-
         let executor = Executor::new(1);
 
         executor
@@ -3468,5 +3525,39 @@ mod tests {
             .unwrap();
 
         executor.run(|_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn test_yield_to_local_events() {
+        let reactor = Reactor::new(3);
+        let executor = Executor::new(2);
+
+        let (s, r) = channel::local_channel(1, 1, &reactor.local_registration_memory());
+
+        let state = Rc::new(Cell::new(0));
+
+        {
+            let state = Rc::clone(&state);
+
+            executor
+                .spawn(async move {
+                    let r = AsyncLocalReceiver::new(r);
+                    r.recv().await.unwrap();
+                    state.set(1);
+                })
+                .unwrap();
+        }
+
+        executor.run_until_stalled();
+
+        executor
+            .spawn(async move {
+                s.try_send(1).unwrap();
+                yield_to_local_events().await;
+                assert_eq!(state.get(), 1);
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
 }
