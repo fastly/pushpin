@@ -47,6 +47,7 @@ use crate::reactor::Reactor;
 use crate::resolver;
 use crate::shuffle::random;
 use crate::tls::{TlsStream, VerifyMode};
+use crate::track::{track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError};
 use crate::websocket;
 use crate::zhttppacket;
 use crate::zmq::MultipartHeader;
@@ -316,6 +317,7 @@ enum Error {
     BadRequest,
     TlsError,
     PolicyViolation,
+    ValueActive,
     Timeout,
     Stopped,
 }
@@ -379,6 +381,12 @@ impl From<http1::Error> for Error {
 impl From<websocket::Error> for Error {
     fn from(e: websocket::Error) -> Self {
         Self::WebSocket(e)
+    }
+}
+
+impl From<ValueActiveError> for Error {
+    fn from(_e: ValueActiveError) -> Self {
+        Self::ValueActive
     }
 }
 
@@ -1584,20 +1592,20 @@ impl<'a> ZhttpServerStreamSessionOut<'a> {
     }
 }
 
-struct ZhttpStreamSessionIn<'a, R> {
+struct ZhttpStreamSessionIn<'a, 'b, R> {
     id: &'a str,
     send_buf_size: usize,
     websocket: bool,
-    receiver: &'a AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    receiver: &'a TrackedAsyncLocalReceiver<'b, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: &'a StreamSharedData,
     msg_read: &'a R,
-    next: Option<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    next: Option<(Track<'b, arena::Rc<zhttppacket::OwnedResponse>>, usize)>,
     seq: u32,
     credits: u32,
     first_data: bool,
 }
 
-impl<'a, R> ZhttpStreamSessionIn<'a, R>
+impl<'a, 'b: 'a, R> ZhttpStreamSessionIn<'a, 'b, R>
 where
     R: Fn(),
 {
@@ -1605,7 +1613,7 @@ where
         id: &'a str,
         send_buf_size: usize,
         websocket: bool,
-        receiver: &'a AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+        receiver: &'a TrackedAsyncLocalReceiver<'b, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         shared: &'a StreamSharedData,
         msg_read: &'a R,
     ) -> Self {
@@ -1634,7 +1642,7 @@ where
     async fn peek_msg(&mut self) -> Result<&arena::Rc<zhttppacket::OwnedResponse>, Error> {
         if self.next.is_none() {
             let (r, id_index) = loop {
-                let (r, id_index) = self.receiver.recv().await?;
+                let (r, id_index) = Track::map_first(self.receiver.recv().await?);
 
                 let zresp = r.get().get();
 
@@ -1726,25 +1734,27 @@ where
         Ok(&self.next.as_ref().unwrap().0)
     }
 
-    async fn recv_msg(&mut self) -> Result<arena::Rc<zhttppacket::OwnedResponse>, Error> {
+    async fn recv_msg(
+        &mut self,
+    ) -> Result<Track<'b, arena::Rc<zhttppacket::OwnedResponse>>, Error> {
         self.peek_msg().await?;
 
         Ok(self.next.take().unwrap().0)
     }
 }
 
-struct ZhttpServerStreamSessionIn<'a, R> {
+struct ZhttpServerStreamSessionIn<'a, 'b, R> {
     log_id: &'a str,
     id: &'a [u8],
-    receiver: &'a AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    receiver: &'a TrackedAsyncLocalReceiver<'b, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     shared: &'a StreamSharedData,
     msg_read: &'a R,
-    next: Option<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    next: Option<(Track<'b, arena::Rc<zhttppacket::OwnedRequest>>, usize)>,
     seq: u32,
     credits: u32,
 }
 
-impl<'a, R> ZhttpServerStreamSessionIn<'a, R>
+impl<'a, 'b: 'a, R> ZhttpServerStreamSessionIn<'a, 'b, R>
 where
     R: Fn(),
 {
@@ -1752,7 +1762,7 @@ where
         log_id: &'a str,
         id: &'a [u8],
         credits: u32,
-        receiver: &'a AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+        receiver: &'a TrackedAsyncLocalReceiver<'b, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
         shared: &'a StreamSharedData,
         msg_read: &'a R,
     ) -> Self {
@@ -1779,7 +1789,7 @@ where
     async fn peek_msg(&mut self) -> Result<&arena::Rc<zhttppacket::OwnedRequest>, Error> {
         if self.next.is_none() {
             let (r, id_index) = loop {
-                let (r, id_index) = self.receiver.recv().await?;
+                let (r, id_index) = Track::map_first(self.receiver.recv().await?);
 
                 let zreq = r.get().get();
 
@@ -1855,7 +1865,7 @@ where
         Ok(&self.next.as_ref().unwrap().0)
     }
 
-    async fn recv_msg(&mut self) -> Result<arena::Rc<zhttppacket::OwnedRequest>, Error> {
+    async fn recv_msg(&mut self) -> Result<Track<'b, arena::Rc<zhttppacket::OwnedRequest>>, Error> {
         self.peek_msg().await?;
 
         Ok(self.next.take().unwrap().0)
@@ -1867,14 +1877,14 @@ async fn send_msg(sender: &AsyncLocalSender<zmq::Message>, msg: zmq::Message) ->
 }
 
 async fn discard_while<F, T>(
-    receiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    receiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     fut: F,
 ) -> F::Output
 where
     F: Future<Output = Result<T, Error>> + Unpin,
 {
     loop {
-        match select_2(fut, receiver.recv()).await {
+        match select_2(fut, pin!(receiver.recv())).await {
             Select2::R1(v) => break v,
             Select2::R2(_) => {
                 // unexpected message in current state
@@ -1885,14 +1895,14 @@ where
 }
 
 async fn server_discard_while<F, T>(
-    receiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    receiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     fut: F,
 ) -> F::Output
 where
     F: Future<Output = Result<T, Error>> + Unpin,
 {
     loop {
-        match select_2(fut, receiver.recv()).await {
+        match select_2(fut, pin!(receiver.recv())).await {
             Select2::R1(v) => break v,
             Select2::R2(_) => {
                 // unexpected message in current state
@@ -1913,7 +1923,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     body_buf: &mut Buffer,
     packet_buf: &RefCell<Vec<u8>>,
     zsender: &AsyncLocalSender<zmq::Message>,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<bool, Error> {
     let stream = RefCell::new(stream);
 
@@ -2031,7 +2041,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
         let zresp = loop {
             // ABR: direct read
-            let (zresp, id_index) = zreceiver.recv().await?;
+            let (zresp, id_index) = Track::map_first(zreceiver.recv().await?);
 
             let zresp_ref = zresp.get().get();
 
@@ -2169,7 +2179,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     packet_buf: Rc<RefCell<Vec<u8>>>,
     timeout: Duration,
     zsender: AsyncLocalSender<zmq::Message>,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
@@ -2240,20 +2250,27 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     zsender: AsyncLocalSender<zmq::Message>,
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
 ) {
-    match server_req_connection_inner(
-        token,
-        &mut cid,
-        cid_provider,
-        stream,
-        peer_addr,
-        secure,
-        buffer_size,
-        body_buffer_size,
-        rb_tmp,
-        packet_buf,
-        timeout,
-        zsender,
-        &zreceiver,
+    let value_active = TrackFlag::default();
+
+    let zreceiver = TrackedAsyncLocalReceiver::new(zreceiver, &value_active);
+
+    match track_future(
+        server_req_connection_inner(
+            token,
+            &mut cid,
+            cid_provider,
+            stream,
+            peer_addr,
+            secure,
+            buffer_size,
+            body_buffer_size,
+            rb_tmp,
+            packet_buf,
+            timeout,
+            zsender,
+            &zreceiver,
+        ),
+        &value_active,
     )
     .await
     {
@@ -2263,7 +2280,7 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
 }
 
 async fn accept_handoff<R>(
-    zsess_in: &mut ZhttpStreamSessionIn<'_, R>,
+    zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
@@ -2289,7 +2306,7 @@ where
 }
 
 async fn server_accept_handoff<R>(
-    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R>,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
@@ -2316,8 +2333,8 @@ where
 
 // this function will either return immediately or await messages
 async fn handle_other<R>(
-    zresp: arena::Rc<zhttppacket::OwnedResponse>,
-    zsess_in: &mut ZhttpStreamSessionIn<'_, R>,
+    zresp: Track<'_, arena::Rc<zhttppacket::OwnedResponse>>,
+    zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
@@ -2341,8 +2358,8 @@ where
 
 // this function will either return immediately or await messages
 async fn server_handle_other<R>(
-    zreq: arena::Rc<zhttppacket::OwnedRequest>,
-    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R>,
+    zreq: Track<'_, arena::Rc<zhttppacket::OwnedRequest>>,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
@@ -2368,7 +2385,7 @@ async fn stream_recv_body<'a, 'b, 'c, R1, R2, R, W, const N: usize>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
     handler: RequestHeader<'a, 'b, 'c, R, W, N>,
-    zsess_in: &mut ZhttpStreamSessionIn<'_, R2>,
+    zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<RequestStartResponse<'a, R, W>, Error>
 where
@@ -2514,7 +2531,7 @@ async fn server_stream_recv_body<'a, R1, R2, R>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
     resp_body: ClientResponseBody<'a, R>,
-    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R2>,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
 ) -> Result<ClientFinished, Error>
 where
@@ -2599,7 +2616,7 @@ where
 async fn stream_send_body<'a, R1, R2, R, W>(
     bytes_read: &R1,
     handler: &RequestSendBody<'a, R, W>,
-    zsess_in: &mut ZhttpStreamSessionIn<'_, R2>,
+    zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
@@ -2721,7 +2738,7 @@ async fn server_stream_send_body<'a, R1, R2, R, W>(
     req_body: ClientRequestBody<'a, R, W>,
     mut overflow: Option<Overflow>,
     recv_buf_size: usize,
-    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R2>,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
 ) -> Result<ClientResponse<'a, R>, Error>
 where
@@ -2904,7 +2921,7 @@ async fn stream_websocket<S, R1, R2>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
     deflate_config: Option<(websocket::PerMessageDeflateConfig, usize)>,
-    zsess_in: &mut ZhttpStreamSessionIn<'_, R2>,
+    zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
@@ -3250,7 +3267,7 @@ async fn server_stream_websocket<S, R1, R2>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
     deflate_config: Option<(websocket::PerMessageDeflateConfig, usize)>,
-    zsess_in: &mut ZhttpServerStreamSessionIn<'_, R2>,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
 ) -> Result<(), Error>
 where
@@ -3602,7 +3619,7 @@ async fn server_stream_handler<S, R1, R2>(
     instance_id: &str,
     zsender: &AsyncLocalSender<zmq::Message>,
     zsender_stream: &AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: &StreamSharedData,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
@@ -4100,7 +4117,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     instance_id: &str,
     zsender: AsyncLocalSender<zmq::Message>,
     zsender_stream: AsyncLocalSender<(ArrayVec<u8, 64>, zmq::Message)>,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: arena::Rc<StreamSharedData>,
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
@@ -4258,25 +4275,32 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     shared: arena::Rc<StreamSharedData>,
 ) {
-    match server_stream_connection_inner(
-        token,
-        &mut cid,
-        cid_provider,
-        stream,
-        peer_addr,
-        secure,
-        buffer_size,
-        messages_max,
-        rb_tmp,
-        packet_buf,
-        tmp_buf,
-        timeout,
-        allow_compression,
-        instance_id,
-        zsender,
-        zsender_stream,
-        &zreceiver,
-        shared,
+    let value_active = TrackFlag::default();
+
+    let zreceiver = TrackedAsyncLocalReceiver::new(zreceiver, &value_active);
+
+    match track_future(
+        server_stream_connection_inner(
+            token,
+            &mut cid,
+            cid_provider,
+            stream,
+            peer_addr,
+            secure,
+            buffer_size,
+            messages_max,
+            rb_tmp,
+            packet_buf,
+            tmp_buf,
+            timeout,
+            allow_compression,
+            instance_id,
+            zsender,
+            zsender_stream,
+            &zreceiver,
+            shared,
+        ),
+        &value_active,
     )
     .await
     {
@@ -5250,7 +5274,7 @@ async fn client_stream_handler<S, E, R1, R2>(
     packet_buf: &RefCell<Vec<u8>>,
     tmp_buf: &RefCell<Vec<u8>>,
     instance_id: &str,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: &AsyncLocalSender<zmq::Message>,
     shared: &StreamSharedData,
     enable_routing: &E,
@@ -5749,7 +5773,7 @@ async fn client_stream_connect<E, R1, R2>(
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
-    zreceiver: &AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: &AsyncLocalSender<zmq::Message>,
     shared: &StreamSharedData,
     enable_routing: &E,
@@ -5873,7 +5897,7 @@ async fn client_stream_connection_inner<E>(
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
-    zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<zmq::Message>,
     shared: arena::Rc<StreamSharedData>,
     enable_routing: &E,
@@ -5921,7 +5945,7 @@ where
         deny,
         instance_id,
         resolver,
-        &zreceiver,
+        zreceiver,
         &zsender,
         shared.get(),
         enable_routing,
@@ -6011,25 +6035,32 @@ pub async fn client_stream_connection<E>(
 ) where
     E: Fn(),
 {
-    match client_stream_connection_inner(
-        token,
-        log_id,
-        id,
-        zreq,
-        buffer_size,
-        messages_max,
-        rb_tmp,
-        packet_buf,
-        tmp_buf,
-        timeout,
-        allow_compression,
-        deny,
-        instance_id,
-        resolver,
-        zreceiver,
-        zsender,
-        shared,
-        enable_routing,
+    let value_active = TrackFlag::default();
+
+    let zreceiver = TrackedAsyncLocalReceiver::new(zreceiver, &value_active);
+
+    match track_future(
+        client_stream_connection_inner(
+            token,
+            log_id,
+            id,
+            zreq,
+            buffer_size,
+            messages_max,
+            rb_tmp,
+            packet_buf,
+            tmp_buf,
+            timeout,
+            allow_compression,
+            deny,
+            instance_id,
+            resolver,
+            &zreceiver,
+            zsender,
+            shared,
+            enable_routing,
+        ),
+        &value_active,
     )
     .await
     {
@@ -6292,7 +6323,9 @@ pub mod testutil {
     ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
-        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let f = TrackFlag::default();
+
+        let r_to_conn = TrackedAsyncLocalReceiver::new(AsyncLocalReceiver::new(r_to_conn), &f);
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
 
         server_req_handler(
@@ -6449,7 +6482,9 @@ pub mod testutil {
 
         let sock = AsyncFakeSock::new(sock);
 
-        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let f = TrackFlag::default();
+
+        let r_to_conn = TrackedAsyncLocalReceiver::new(AsyncLocalReceiver::new(r_to_conn), &f);
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let buffer_size = 1024;
 
@@ -6598,7 +6633,9 @@ pub mod testutil {
     ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
-        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let f = TrackFlag::default();
+
+        let r_to_conn = TrackedAsyncLocalReceiver::new(AsyncLocalReceiver::new(r_to_conn), &f);
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let s_stream_from_conn = AsyncLocalSender::new(s_stream_from_conn);
 
@@ -6769,7 +6806,9 @@ pub mod testutil {
 
         let sock = AsyncFakeSock::new(sock);
 
-        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let f = TrackFlag::default();
+
+        let r_to_conn = TrackedAsyncLocalReceiver::new(AsyncLocalReceiver::new(r_to_conn), &f);
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let s_stream_from_conn = AsyncLocalSender::new(s_stream_from_conn);
         let buffer_size = 1024;
@@ -7058,7 +7097,9 @@ mod tests {
 
         let sock = AsyncFakeSock::new(sock);
 
-        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let f = TrackFlag::default();
+
+        let r_to_conn = TrackedAsyncLocalReceiver::new(AsyncLocalReceiver::new(r_to_conn), &f);
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let buffer_size = 1024;
 
@@ -7645,7 +7686,9 @@ mod tests {
 
         let sock = AsyncFakeSock::new(sock);
 
-        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let f = TrackFlag::default();
+
+        let r_to_conn = TrackedAsyncLocalReceiver::new(AsyncLocalReceiver::new(r_to_conn), &f);
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let s_stream_from_conn = AsyncLocalSender::new(s_stream_from_conn);
         let buffer_size = 1024;
@@ -8861,7 +8904,9 @@ mod tests {
     ) -> Result<(), Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
-        let r_to_conn = AsyncLocalReceiver::new(r_to_conn);
+        let f = TrackFlag::default();
+
+        let r_to_conn = TrackedAsyncLocalReceiver::new(AsyncLocalReceiver::new(r_to_conn), &f);
         let s_from_conn = AsyncLocalSender::new(s_from_conn);
         let buffer_size = 1024;
 
