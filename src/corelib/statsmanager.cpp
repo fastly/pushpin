@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -49,6 +50,7 @@
 
 #define ACTIVITY_TIMEOUT 100
 #define REFRESH_INTERVAL 1000
+#define EXTERNAL_CONNECTIONS_MAX_INTERVAL 10000
 
 #define SHOULD_PROCESS_TIME(x) (x * 3 / 4)
 
@@ -100,6 +102,7 @@ public:
 		int refreshBucket;
 		bool linger;
 		qint64 lastReport;
+		qint64 retrySeq;
 		QByteArray from; // external
 		int ttl; // external
 		qint64 lastActive; // external
@@ -110,6 +113,7 @@ public:
 			refreshBucket(-1),
 			linger(false),
 			lastReport(-1),
+			retrySeq(-1),
 			ttl(-1),
 			lastActive(-1)
 		{
@@ -132,6 +136,81 @@ public:
 			refreshBucket(-1),
 			linger(false)
 		{
+		}
+	};
+
+	class ConnectionsMax
+	{
+	public:
+		int retrySeq;
+		quint32 currentValue;
+		quint32 maxValue;
+		quint32 lastSentValue;
+		qint64 lastSentTime;
+
+		ConnectionsMax() :
+			retrySeq(-1),
+			currentValue(0),
+			maxValue(0),
+			lastSentValue(0),
+			lastSentTime(-1)
+		{
+		}
+
+		quint32 valueToSend()
+		{
+			if(maxValue > lastSentValue)
+				return maxValue;
+			else
+				return currentValue;
+		}
+	};
+
+	class ExternalConnectionsMax
+	{
+	public:
+		quint64 value;
+		qint64 expires;
+
+		ExternalConnectionsMax() :
+			value(0),
+			expires(0)
+		{
+		}
+	};
+
+	class ConnectionsMaxes
+	{
+	public:
+		QHash<QByteArray, ConnectionsMax> maxes;
+		QSet<QByteArray> needSend;
+		qint64 lastRefresh;
+
+		ConnectionsMaxes() :
+			lastRefresh(0)
+		{
+		}
+	};
+
+	class ExternalConnectionsMaxes
+	{
+	public:
+		QHash<QByteArray, ExternalConnectionsMax> maxes;
+
+		quint32 total() const
+		{
+			quint32 count = 0;
+
+			QHashIterator<QByteArray, ExternalConnectionsMax> it(maxes);
+			while(it.hasNext())
+			{
+				it.next();
+				const ExternalConnectionsMax &cm = it.value();
+
+				count += cm.value;
+			}
+
+			return count;
 		}
 	};
 
@@ -179,22 +258,6 @@ public:
 				blocksSent <= 0 &&
 				requestsReceived == 0 &&
 				counters.isEmpty());
-		}
-
-		quint32 externalConnectionsMax() const
-		{
-			quint32 count = 0;
-
-			QHashIterator<QByteArray, Report> it(externalReports);
-			while(it.hasNext())
-			{
-				it.next();
-				const Report &r = it.value();
-
-				count += r.connectionsMax;
-			}
-
-			return count;
 		}
 
 		quint32 externalConnectionsMinutes() const
@@ -327,7 +390,9 @@ public:
 	QString spec;
 	Format outputFormat;
 	bool connectionSend;
+	bool connectionsMaxSend;
 	int connectionTtl;
+	int connectionsMaxTtl;
 	int connectionLinger;
 	int subscriptionTtl;
 	int subscriptionLinger;
@@ -339,6 +404,7 @@ public:
 	QHash<QByteArray, quint32> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
 	QHash<QByteArray, QSet<ConnectionInfo*> > connectionInfoByRoute;
+	QMap<quint64, ConnectionInfo*> connectionInfoByRetrySeq;
 	QVector<QSet<ConnectionInfo*> > connectionInfoRefreshBuckets;
 	int currentConnectionInfoRefreshBucket;
 	QHash<QByteArray, QHash<QByteArray, ConnectionInfo*> > externalConnectionInfoByFrom;
@@ -346,14 +412,18 @@ public:
 	QHash<SubscriptionKey, Subscription*> subscriptionsByKey;
 	QVector<QSet<Subscription*> > subscriptionRefreshBuckets;
 	int currentSubscriptionRefreshBucket;
+	ConnectionsMaxes connectionsMaxes;
+	QHash<QByteArray, ExternalConnectionsMaxes> externalConnectionsMaxes;
 	TimerWheel wheel;
 	qint64 startTime;
 	QHash<QByteArray, Report*> reports;
 	Counts combinedCounts;
 	Report combinedReport;
+	quint64 nextRetrySeq;
 	QTimer *activityTimer;
 	QTimer *reportTimer;
 	QTimer *refreshTimer;
+	QTimer *externalConnectionsMaxTimer;
 
 	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
 		QObject(_q),
@@ -363,7 +433,9 @@ public:
 		ipcFileMode(-1),
 		outputFormat(TnetStringFormat),
 		connectionSend(false),
+		connectionsMaxSend(false),
 		connectionTtl(120 * 1000),
+		connectionsMaxTtl(60 * 1000),
 		connectionLinger(60 * 1000),
 		subscriptionTtl(60 * 1000),
 		subscriptionLinger(60 * 1000),
@@ -373,6 +445,7 @@ public:
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
 		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)),
+		nextRetrySeq(0),
 		reportTimer(0)
 	{
 		activityTimer = new QTimer(this);
@@ -382,6 +455,10 @@ public:
 		refreshTimer = new QTimer(this);
 		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
 		refreshTimer->start(REFRESH_INTERVAL);
+
+		externalConnectionsMaxTimer = new QTimer(this);
+		connect(externalConnectionsMaxTimer, &QTimer::timeout, this, &Private::externalConnectionsMax_timeout);
+		externalConnectionsMaxTimer->start(EXTERNAL_CONNECTIONS_MAX_INTERVAL);
 
 		setupConnectionBuckets();
 		setupSubscriptionBuckets();
@@ -393,6 +470,8 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
+
+		connectionsMaxes.lastRefresh = startTime;
 	}
 
 	~Private()
@@ -644,6 +723,9 @@ public:
 				connectionInfoByRoute.remove(c->routeId);
 		}
 
+		if(c->retrySeq >= 0)
+			connectionInfoByRetrySeq.remove(c->retrySeq);
+
 		if(c->lastRefresh >= 0)
 		{
 			wheelRemove(c);
@@ -686,6 +768,32 @@ public:
 		}
 
 		wheelRemove(c);
+	}
+
+	void removeLingeringConnections(quint64 retrySeq)
+	{
+		// invalid retry seq
+		if(retrySeq >= nextRetrySeq)
+			return;
+
+		QList<ConnectionInfo*> toRemove;
+
+		QMap<quint64, ConnectionInfo*>::iterator it = connectionInfoByRetrySeq.find(retrySeq);
+		while(it != connectionInfoByRetrySeq.end())
+		{
+			toRemove += it.value();
+
+			if(it == connectionInfoByRetrySeq.begin())
+				break;
+
+			--it;
+		}
+
+		foreach(ConnectionInfo *c, toRemove)
+		{
+			removeConnection(c);
+			delete c;
+		}
 	}
 
 	void insertSubscription(Subscription *s)
@@ -736,6 +844,14 @@ public:
 		reports.remove(report->routeId);
 	}
 
+	ConnectionsMax & getOrCreateConnectionsMax(const QByteArray &routeId)
+	{
+		if(!connectionsMaxes.maxes.contains(routeId))
+			connectionsMaxes.maxes.insert(routeId, ConnectionsMax());
+
+		return connectionsMaxes.maxes[routeId];
+	}
+
 	void write(const StatsPacket &packet)
 	{
 		assert(sock);
@@ -751,8 +867,10 @@ public:
 			prefix = "sub";
 		else if(packet.type == StatsPacket::Report)
 			prefix = "report";
-		else // Counts
+		else if(packet.type == StatsPacket::Counts)
 			prefix = "counts";
+		else // ConnectionsMax
+			prefix = "conn-max";
 
 		QVariant vpacket = packet.toVariant();
 
@@ -878,32 +996,64 @@ public:
 		write(p);
 	}
 
+	void sendConnectionsMax(const QByteArray &routeId, ConnectionsMax *cm, qint64 now)
+	{
+		emit q->connMax(getConnMaxPacket(routeId, cm, now));
+	}
+
 	void updateConnectionsMax(const QByteArray &routeId, qint64 now)
 	{
-		Report *report = getOrCreateReport(routeId);
-
 		quint32 localConns = connectionInfoByRoute.value(routeId).count();
 		quint32 extConns = externalConnectionInfoByRoute.value(routeId).count();
 
-		quint32 conns = localConns + extConns;
+		quint32 extConnsMax = 0;
+		if(externalConnectionsMaxes.contains(routeId))
+			extConnsMax = externalConnectionsMaxes[routeId].total();
 
-		// subtract the current total from the combined report
-		combinedReport.connectionsMax -= report->connectionsMax;
+		quint32 conns = localConns + extConns + extConnsMax;
 
-		// update the individual report
-		if(report->connectionsMax < 0 || report->connectionsMaxStale)
+		if(connectionsMaxSend)
 		{
-			report->connectionsMax = conns;
-			report->connectionsMaxStale = false;
+			ConnectionsMax &cm = getOrCreateConnectionsMax(routeId);
+
+			cm.currentValue = conns;
+			cm.maxValue = qMax(cm.maxValue, conns);
+
+			if(cm.valueToSend() != cm.lastSentValue)
+			{
+				connectionsMaxes.needSend.insert(routeId);
+
+				if(!activityTimer->isActive())
+					activityTimer->start(ACTIVITY_TIMEOUT);
+			}
+			else
+			{
+				connectionsMaxes.needSend.remove(routeId);
+			}
 		}
-		else
-			report->connectionsMax = qMax(report->connectionsMax, conns);
 
-		report->lastUpdate = now;
+		if(reportInterval > 0)
+		{
+			Report *report = getOrCreateReport(routeId);
 
-		// add the new total to the combined report
-		combinedReport.connectionsMax += report->connectionsMax;
-		combinedReport.lastUpdate = now;
+			// subtract the current total from the combined report
+			combinedReport.connectionsMax -= report->connectionsMax;
+
+			// update the individual report
+			if(report->connectionsMaxStale)
+			{
+				report->connectionsMax = conns;
+				report->connectionsMaxStale = false;
+			}
+			else
+				report->connectionsMax = qMax(report->connectionsMax, conns);
+
+			report->lastUpdate = now;
+
+			// add the new total to the combined report
+			combinedReport.connectionsMax += report->connectionsMax;
+			combinedReport.lastUpdate = now;
+		}
 	}
 
 	void updateConnectionsMinutes(ConnectionInfo *c, qint64 now)
@@ -1079,6 +1229,78 @@ public:
 			currentSubscriptionRefreshBucket = 0;
 	}
 
+	void refreshConnectionsMaxes(qint64 now)
+	{
+		if(now < connectionsMaxes.lastRefresh + (connectionsMaxTtl * 3 / 4))
+			return;
+
+		connectionsMaxes.lastRefresh = now;
+
+		QList<QByteArray> toRemove;
+
+		QMutableHashIterator<QByteArray, ConnectionsMax> it(connectionsMaxes.maxes);
+		while(it.hasNext())
+		{
+			it.next();
+			const QByteArray &routeId = it.key();
+			ConnectionsMax &cm = it.value();
+
+			if(cm.valueToSend() == 0)
+			{
+				if(cm.lastSentTime >= 0 && now >= cm.lastSentTime + connectionsMaxTtl)
+					toRemove += routeId;
+
+				continue;
+			}
+
+			sendConnectionsMax(routeId, &cm, now);
+		}
+
+		foreach(const QByteArray &routeId, toRemove)
+			connectionsMaxes.maxes.remove(routeId);
+	}
+
+	void expireExternalConnectionsMaxes(qint64 now)
+	{
+		QMutableHashIterator<QByteArray, ExternalConnectionsMaxes> it(externalConnectionsMaxes);
+		while(it.hasNext())
+		{
+			it.next();
+			QHash<QByteArray, ExternalConnectionsMax> &maxesForRoute = it.value().maxes;
+
+			QMutableHashIterator<QByteArray, ExternalConnectionsMax> rit(maxesForRoute);
+			while(rit.hasNext())
+			{
+				rit.next();
+				ExternalConnectionsMax &cm = rit.value();
+
+				if(now >= cm.expires)
+					rit.remove();
+			}
+
+			if(maxesForRoute.isEmpty())
+				it.remove();
+		}
+	}
+
+	void mergeExternalConnectionsMax(const StatsPacket &packet, qint64 now)
+	{
+		if(packet.retrySeq >= 0)
+			removeLingeringConnections((quint64)packet.retrySeq);
+
+		QHash<QByteArray, ExternalConnectionsMax> &maxes = externalConnectionsMaxes[packet.route].maxes;
+
+		if(!maxes.contains(packet.from))
+			maxes.insert(packet.from, ExternalConnectionsMax());
+
+		ExternalConnectionsMax &cm = maxes[packet.from];
+
+		cm.value = (quint32)qMax(packet.connectionsMax, 0);
+		cm.expires = now + (qMax(packet.ttl, 0) * 1000);
+
+		updateConnectionsMax(packet.route, now);
+	}
+
 	void mergeExternalReport(const StatsPacket &packet, bool includeConnections)
 	{
 		if(reportInterval <= 0)
@@ -1114,7 +1336,6 @@ public:
 			Report &r = report->externalReports[packet.from];
 
 			r.connectionsMinutes += qMax(packet.connectionsMinutes, 0);
-			r.connectionsMax = qMax(r.connectionsMax, (quint32)qMax(packet.connectionsMax, 0));
 		}
 	}
 
@@ -1128,7 +1349,7 @@ public:
 		p.from = instanceId;
 		p.route = routeId;
 
-		p.connectionsMax = report->connectionsMax + report->externalConnectionsMax();
+		p.connectionsMax = report->connectionsMax;
 		p.connectionsMinutes = report->connectionsMinutes + report->externalConnectionsMinutes();
 		p.messagesReceived = report->messagesReceived;
 		p.messagesSent = report->messagesSent;
@@ -1184,6 +1405,25 @@ public:
 		emit q->reported(QList<StatsPacket>() << p);
 	}
 
+	StatsPacket getConnMaxPacket(const QByteArray &routeId, ConnectionsMax *cm, qint64 now)
+	{
+		quint32 value = cm->valueToSend();
+
+		StatsPacket p;
+		p.type = StatsPacket::ConnectionsMax;
+		p.from = instanceId;
+		p.route = routeId;
+		p.connectionsMax = value;
+		p.ttl = connectionsMaxTtl / 1000;
+		p.retrySeq = cm->retrySeq;
+
+		cm->lastSentValue = value;
+		cm->lastSentTime = now;
+		cm->maxValue = cm->currentValue;
+
+		return p;
+	}
+
 private slots:
 	void activity_timeout()
 	{
@@ -1202,6 +1442,28 @@ private slots:
 
 			combinedCounts = Counts();
 		}
+
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		QSet<QByteArray> needSendNext;
+
+		foreach(const QByteArray &routeId, connectionsMaxes.needSend)
+		{
+			ConnectionsMax &cm = connectionsMaxes.maxes[routeId];
+
+			if(cm.valueToSend() == cm.lastSentValue)
+				continue;
+
+			sendConnectionsMax(routeId, &cm, now);
+
+			if(cm.valueToSend() != cm.lastSentValue)
+				needSendNext.insert(routeId);
+		}
+
+		connectionsMaxes.needSend = needSendNext;
+
+		if(!connectionsMaxes.needSend.isEmpty() && !activityTimer->isActive())
+			activityTimer->start(ACTIVITY_TIMEOUT);
 	}
 
 	void report_timeout()
@@ -1262,6 +1524,14 @@ private slots:
 
 		refreshConnections(currentTime);
 		refreshSubscriptions(currentTime);
+		refreshConnectionsMaxes(currentTime);
+	}
+
+	void externalConnectionsMax_timeout()
+	{
+		qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+
+		expireExternalConnectionsMaxes(currentTime);
 	}
 
 	void prometheus_requestReady()
@@ -1338,10 +1608,20 @@ void StatsManager::setConnectionSendEnabled(bool enabled)
 	d->connectionSend = enabled;
 }
 
+void StatsManager::setConnectionsMaxSendEnabled(bool enabled)
+{
+	d->connectionsMaxSend = enabled;
+}
+
 void StatsManager::setConnectionTtl(int secs)
 {
 	d->connectionTtl = secs * 1000;
 	d->setupConnectionBuckets();
+}
+
+void StatsManager::setConnectionsMaxTtl(int secs)
+{
+	d->connectionsMaxTtl = secs * 1000;
 }
 
 void StatsManager::setSubscriptionTtl(int secs)
@@ -1455,10 +1735,10 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 	c->lastReport = lastReport;
 	d->insertConnection(c);
 
+	d->updateConnectionsMax(c->routeId, now);
+
 	if(d->reportInterval > 0)
 	{
-		d->updateConnectionsMax(c->routeId, now);
-
 		// only immediately count a minute if an offset wasn't set and we weren't replacing
 		if(reportOffset < 0 && !replacing)
 		{
@@ -1492,6 +1772,9 @@ int StatsManager::removeConnection(const QByteArray &id, bool linger)
 		if(!c->linger)
 		{
 			c->linger = true;
+			c->retrySeq = (qint64)d->nextRetrySeq++;
+
+			d->connectionInfoByRetrySeq.insert((quint64)c->retrySeq, c);
 
 			// hack to ensure full linger time honored by refresh processing
 			qint64 lingerStartTime = now + (d->connectionLinger - SHOULD_PROCESS_TIME(d->connectionTtl));
@@ -1510,8 +1793,7 @@ int StatsManager::removeConnection(const QByteArray &id, bool linger)
 		delete c;
 	}
 
-	if(d->reportInterval > 0)
-		d->updateConnectionsMax(routeId, now);
+	d->updateConnectionsMax(routeId, now);
 
 	return unreportedTime;
 }
@@ -1781,6 +2063,14 @@ bool StatsManager::processExternalPacket(const StatsPacket &packet, bool mergeCo
 
 		return replacing;
 	}
+	else if(packet.type == StatsPacket::ConnectionsMax)
+	{
+		qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+		d->mergeExternalConnectionsMax(packet, now);
+
+		return true;
+	}
 	else if(packet.type == StatsPacket::Report)
 	{
 		d->mergeExternalReport(packet, mergeConnectionReport);
@@ -1804,6 +2094,27 @@ void StatsManager::sendPacket(const StatsPacket &packet)
 void StatsManager::flushReport(const QByteArray &routeId)
 {
 	d->flushReport(routeId);
+}
+
+qint64 StatsManager::lastRetrySeq() const
+{
+	return ((qint64)d->nextRetrySeq) - 1;
+}
+
+StatsPacket StatsManager::getConnMaxPacket(const QByteArray &routeId)
+{
+	Private::ConnectionsMax &cm = d->getOrCreateConnectionsMax(routeId);
+
+	qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+	return d->getConnMaxPacket(routeId, &cm, now);
+}
+
+void StatsManager::setRetrySeq(const QByteArray &routeId, int value)
+{
+	Private::ConnectionsMax &cm = d->getOrCreateConnectionsMax(routeId);
+
+	cm.retrySeq = value;
 }
 
 #include "statsmanager.moc"

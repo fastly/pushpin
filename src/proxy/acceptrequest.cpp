@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -214,6 +215,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 
 	if(adata.responseSent)
 		obj["response-sent"] = true;
+
+	if(!adata.connMaxPackets.isEmpty())
+		obj["conn-max"] = adata.connMaxPackets;
 
 	return obj;
 }

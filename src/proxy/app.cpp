@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -317,6 +318,7 @@ public:
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		bool statsConnectionSend = settings.value("global/stats_connection_send", true).toBool();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
+		int statsConnectionsMaxTtl = settings.value("proxy/stats_connections_max_ttl", 60).toInt();
 		int statsReportInterval = settings.value("proxy/stats_report_interval", 10).toInt();
 		QString prometheusPort = settings.value("proxy/prometheus_port").toString();
 		QString prometheusPrefix = settings.value("proxy/prometheus_prefix").toString();
@@ -412,6 +414,7 @@ public:
 		config.connectionsMax = clientMaxconn;
 		config.statsConnectionSend = statsConnectionSend;
 		config.statsConnectionTtl = statsConnectionTtl;
+		config.statsConnectionsMaxTtl = statsConnectionsMaxTtl;
 		config.statsReportInterval = statsReportInterval;
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -91,6 +92,7 @@ public:
 		int connectionsMax;
 		bool statsConnectionSend;
 		int statsConnectionTtl;
+		int statsConnectionsMaxTtl;
 		int statsReportInterval;
 		QString prometheusPort;
 		QString prometheusPrefix;
@@ -113,6 +115,7 @@ public:
 			connectionsMax(-1),
 			statsConnectionSend(false),
 			statsConnectionTtl(-1),
+			statsConnectionsMaxTtl(-1),
 			statsReportInterval(-1)
 		{
 		}

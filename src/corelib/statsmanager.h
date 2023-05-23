@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -62,7 +63,9 @@ public:
 	void setIpcFileMode(int mode);
 	bool setSpec(const QString &spec);
 	void setConnectionSendEnabled(bool enabled);
+	void setConnectionsMaxSendEnabled(bool enabled);
 	void setConnectionTtl(int secs);
+	void setConnectionsMaxTtl(int secs);
 	void setSubscriptionTtl(int secs);
 	void setSubscriptionLinger(int secs);
 	void setReportInterval(int secs);
@@ -97,8 +100,8 @@ public:
 
 	bool checkConnection(const QByteArray &id) const;
 
-	// conn and report packets received from the proxy should be passed
-	// into this method. returns true if the packet should not also be
+	// conn, conn-max, and report packets received from the proxy should be
+	// passed into this method. returns true if the packet should not also be
 	// forwarded on
 	bool processExternalPacket(const StatsPacket &packet, bool mergeConnectionReport);
 
@@ -107,10 +110,16 @@ public:
 
 	void flushReport(const QByteArray &routeId);
 
+	qint64 lastRetrySeq() const;
+
+	StatsPacket getConnMaxPacket(const QByteArray &routeId);
+	void setRetrySeq(const QByteArray &routeId, int value);
+
 signals:
 	void connectionsRefreshed(const QList<QByteArray> &ids);
 	void unsubscribed(const QString &mode, const QString &channel);
 	void reported(const QList<StatsPacket> &packet);
+	void connMax(const StatsPacket &packet);
 
 private:
 	class Private;

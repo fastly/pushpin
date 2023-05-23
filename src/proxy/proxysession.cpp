@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,6 +34,7 @@
 #include <QPointer>
 #include <QUrl>
 #include <QHostAddress>
+#include "packet/statspacket.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "bufferlist.h"
@@ -1327,6 +1329,15 @@ public slots:
 			adata.trusted = target.trusted;
 			adata.useSession = route.session;
 			adata.responseSent = acceptAfterResponding;
+
+			if(!statsManager->connectionSendEnabled())
+			{
+				// flush max. the count will include the connections we just unregistered
+				adata.connMaxPackets += statsManager->getConnMaxPacket(route.id).toVariant();
+
+				// flush max again to get the count without the connections
+				adata.connMaxPackets += statsManager->getConnMaxPacket(route.id).toVariant();
+			}
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
 			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);

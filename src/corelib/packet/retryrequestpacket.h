@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -91,6 +92,7 @@ public:
 	InspectInfo inspectInfo;
 
 	QByteArray route;
+	int retrySeq;
 
 	RetryRequestPacket();
 

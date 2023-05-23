@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -92,6 +93,7 @@ public:
 	bool trusted; // whether a trusted target was used
 	bool useSession;
 	bool responseSent;
+	QVariantList connMaxPackets;
 
 	AcceptData() :
 		haveInspectData(false),

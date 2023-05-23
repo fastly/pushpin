@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -35,6 +36,7 @@
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
 #include "packet/statspacket.h"
+#include "packet/zrpcrequestpacket.h"
 #include "rtimer.h"
 #include "log.h"
 #include "inspectdata.h"
@@ -304,10 +306,14 @@ public:
 		{
 			stats = new StatsManager(config.connectionsMax, 0, this);
 
+			connect(stats, &StatsManager::connMax, this, &Private::stats_connMax);
+
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);
 			stats->setConnectionSendEnabled(config.statsConnectionSend);
+			stats->setConnectionsMaxSendEnabled(!config.statsConnectionSend);
 			stats->setConnectionTtl(config.statsConnectionTtl);
+			stats->setConnectionsMaxTtl(config.statsConnectionsMaxTtl);
 			stats->setReportInterval(config.statsReportInterval);
 
 			if(!config.statsSpec.isEmpty())
@@ -850,6 +856,9 @@ private slots:
 
 		log_debug("IN (retry) %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
 
+		if(p.retrySeq >= 0)
+			stats->setRetrySeq(p.route, p.retrySeq);
+
 		InspectData idata;
 		if(p.haveInspectInfo)
 		{
@@ -1031,6 +1040,18 @@ private slots:
 	{
 		// connect to new zhttp targets, disconnect from old
 		zroutes->setup(domainMap->zhttpRoutes());
+	}
+
+	void stats_connMax(const StatsPacket &packet)
+	{
+		if(accept->canWriteImmediately())
+		{
+			ZrpcRequestPacket p;
+			p.method = "conn-max";
+			p.args["conn-max"] = QVariantList() << packet.toVariant();
+
+			accept->write(p);
+		}
 	}
 };
 

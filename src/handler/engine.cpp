@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -436,6 +437,7 @@ public:
 	LastIds lastIds;
 	QList<HttpSession*> sessions;
 	int connectionSubscriptionMax;
+	QSet<QByteArray> needRemoveFromStats;
 
 	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
 		Deferred(parent),
@@ -455,316 +457,357 @@ public:
 		req->setParent(this);
 	}
 
+	~AcceptWorker()
+	{
+		foreach(const QByteArray &cid, needRemoveFromStats)
+			stats->removeConnection(cid, false);
+	}
+
+	// NOTE: to ensure sequential processing of conn-max packets, this
+	// method must process any such packets contained within the accept
+	// request before returning. the conn-max packets must not be processed
+	// asynchronously
 	void start()
 	{
-		if(req->method() == "accept")
+		QVariantHash args = req->args();
+
+		// process conn-max packets before doing anything else
+		if(args.contains("conn-max"))
 		{
-			QVariantHash args = req->args();
-
-			if(args.contains("route"))
-			{
-				if(args["route"].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				route = QString::fromUtf8(args["route"].toByteArray());
-			}
-
-			if(args.contains("separate-stats"))
-			{
-				if(args["separate-stats"].type() != QVariant::Bool)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				bool separateStats = args["separate-stats"].toBool();
-
-				if(!route.isEmpty() && separateStats)
-					statsRoute = route;
-			}
-
-			if(args.contains("channel-prefix"))
-			{
-				if(args["channel-prefix"].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				channelPrefix = QString::fromUtf8(args["channel-prefix"].toByteArray());
-			}
-
-			if(args.contains("channels"))
-			{
-				if(args["channels"].type() != QVariant::List)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				QVariantList vchannels = args["channels"].toList();
-				foreach(const QVariant &v, vchannels)
-				{
-					if(v.type() != QVariant::ByteArray)
-					{
-						respondError("bad-request");
-						return;
-					}
-
-					implicitChannels += QString::fromUtf8(v.toByteArray());
-				}
-			}
-
-			if(args.contains("trusted"))
-			{
-				if(args["trusted"].type() != QVariant::Bool)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				trusted = args["trusted"].toBool();
-			}
-
-			// parse requests
-
-			if(!args.contains("requests") || args["requests"].type() != QVariant::List)
+			if(args["conn-max"].type() != QVariant::List)
 			{
 				respondError("bad-request");
 				return;
 			}
 
-			foreach(const QVariant &vr, args["requests"].toList())
+			QVariantList packets = args["conn-max"].toList();
+
+			foreach(const QVariant &data, packets)
 			{
-				RequestState rs = RequestState::fromVariant(vr);
-				if(rs.rid.first.isEmpty())
+				StatsPacket p;
+				if(!p.fromVariant("conn-max", data) || p.type != StatsPacket::ConnectionsMax)
 				{
 					respondError("bad-request");
 					return;
 				}
 
-				requestStates.insert(rs.rid, rs);
+				stats->processExternalPacket(p, false);
 			}
-
-			// parse request-data
-
-			requestData = parseRequestData(args, "request-data");
-			if(requestData.method.isEmpty())
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			// parse orig-request-data
-
-			origRequestData = parseRequestData(args, "orig-request-data");
-			if(origRequestData.method.isEmpty())
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			// parse response
-
-			if(!args.contains("response") || args["response"].type() != QVariant::Hash)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			QVariantHash rd = args["response"].toHash();
-
-			if(!rd.contains("code") || !rd["code"].canConvert(QVariant::Int))
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			responseData.code = rd["code"].toInt();
-
-			if(!rd.contains("reason") || rd["reason"].type() != QVariant::ByteArray)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			responseData.reason = rd["reason"].toByteArray();
-
-			if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			foreach(const QVariant &vheader, rd["headers"].toList())
-			{
-				if(vheader.type() != QVariant::List)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				QVariantList vlist = vheader.toList();
-				if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				responseData.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
-			}
-
-			if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
-			{
-				respondError("bad-request");
-				return;
-			}
-
-			responseData.body = rd["body"].toByteArray();
-
-			if(args.contains("inspect"))
-			{
-				if(args["inspect"].type() != QVariant::Hash)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				QVariantHash vinspect = args["inspect"].toHash();
-
-				if(!vinspect.contains("no-proxy") || vinspect["no-proxy"].type() != QVariant::Bool)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				inspectInfo.doProxy = !vinspect["no-proxy"].toBool();
-
-				inspectInfo.sharingKey.clear();
-				if(vinspect.contains("sharing-key"))
-				{
-					if(vinspect["sharing-key"].type() != QVariant::ByteArray)
-					{
-						respondError("bad-request");
-						return;
-					}
-
-					inspectInfo.sharingKey = vinspect["sharing-key"].toByteArray();
-				}
-
-				if(vinspect.contains("sid"))
-				{
-					if(vinspect["sid"].type() != QVariant::ByteArray)
-					{
-						respondError("bad-request");
-						return;
-					}
-
-					inspectInfo.sid = vinspect["sid"].toByteArray();
-				}
-
-				if(vinspect.contains("last-ids"))
-				{
-					if(vinspect["last-ids"].type() != QVariant::Hash)
-					{
-						respondError("bad-request");
-						return;
-					}
-
-					QVariantHash vlastIds = vinspect["last-ids"].toHash();
-					QHashIterator<QString, QVariant> it(vlastIds);
-					while(it.hasNext())
-					{
-						it.next();
-
-						if(it.value().type() != QVariant::ByteArray)
-						{
-							respondError("bad-request");
-							return;
-						}
-
-						QByteArray key = it.key().toUtf8();
-						QByteArray val = it.value().toByteArray();
-						inspectInfo.lastIds.insert(key, val);
-					}
-				}
-
-				inspectInfo.userData = vinspect["user-data"];
-
-				haveInspectInfo = true;
-			}
-
-			if(args.contains("response-sent"))
-			{
-				if(args["response-sent"].type() != QVariant::Bool)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				responseSent = args["response-sent"].toBool();
-			}
-
-			bool useSession = false;
-			if(args.contains("use-session"))
-			{
-				if(args["use-session"].type() != QVariant::Bool)
-				{
-					respondError("bad-request");
-					return;
-				}
-
-				useSession = args["use-session"].toBool();
-			}
-
-			sid = QString::fromUtf8(responseData.headers.get("Grip-Session-Id"));
-
-			QList<DetectRule> rules;
-			QList<HttpHeaderParameters> ruleHeaders = responseData.headers.getAllAsParameters("Grip-Session-Detect", HttpHeaders::ParseAllParameters);
-			foreach(const HttpHeaderParameters &params, ruleHeaders)
-			{
-				if(params.contains("path-prefix") && params.contains("sid-ptr"))
-				{
-					DetectRule rule;
-					rule.domain = requestData.uri.host();
-					rule.pathPrefix = params.get("path-prefix");
-					rule.sidPtr = QString::fromUtf8(params.get("sid-ptr"));
-					if(params.contains("json-param"))
-						rule.jsonParam = QString::fromUtf8(params.get("json-param"));
-					rules += rule;
-				}
-			}
-
-			QList<HttpHeaderParameters> lastHeaders = responseData.headers.getAllAsParameters("Grip-Last");
-			foreach(const HttpHeaderParameters &params, lastHeaders)
-			{
-				lastIds.insert(params[0].first, params.get("last-id"));
-			}
-
-			if(useSession && stateClient)
-			{
-				if(!rules.isEmpty())
-				{
-					Deferred *d = SessionRequest::detectRulesSet(stateClient, rules, this);
-					connect(d, &Deferred::finished, this, &AcceptWorker::sessionDetectRulesSet_finished);
-				}
-				else
-				{
-					afterSetRules();
-				}
-
-				return;
-			}
-
-			afterSessionCalls();
 		}
-		else
+
+		if(args.contains("route"))
 		{
-			respondError("method-not-found");
+			if(args["route"].type() != QVariant::ByteArray)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			route = QString::fromUtf8(args["route"].toByteArray());
 		}
+
+		if(args.contains("separate-stats"))
+		{
+			if(args["separate-stats"].type() != QVariant::Bool)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			bool separateStats = args["separate-stats"].toBool();
+
+			if(!route.isEmpty() && separateStats)
+				statsRoute = route;
+		}
+
+		if(args.contains("channel-prefix"))
+		{
+			if(args["channel-prefix"].type() != QVariant::ByteArray)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			channelPrefix = QString::fromUtf8(args["channel-prefix"].toByteArray());
+		}
+
+		if(args.contains("channels"))
+		{
+			if(args["channels"].type() != QVariant::List)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			QVariantList vchannels = args["channels"].toList();
+			foreach(const QVariant &v, vchannels)
+			{
+				if(v.type() != QVariant::ByteArray)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				implicitChannels += QString::fromUtf8(v.toByteArray());
+			}
+		}
+
+		if(args.contains("trusted"))
+		{
+			if(args["trusted"].type() != QVariant::Bool)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			trusted = args["trusted"].toBool();
+		}
+
+		// parse requests
+
+		if(!args.contains("requests") || args["requests"].type() != QVariant::List)
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		foreach(const QVariant &vr, args["requests"].toList())
+		{
+			RequestState rs = RequestState::fromVariant(vr);
+			if(rs.rid.first.isEmpty())
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			requestStates.insert(rs.rid, rs);
+		}
+
+		// parse request-data
+
+		requestData = parseRequestData(args, "request-data");
+		if(requestData.method.isEmpty())
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		// parse orig-request-data
+
+		origRequestData = parseRequestData(args, "orig-request-data");
+		if(origRequestData.method.isEmpty())
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		// parse response
+
+		if(!args.contains("response") || args["response"].type() != QVariant::Hash)
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		QVariantHash rd = args["response"].toHash();
+
+		if(!rd.contains("code") || !rd["code"].canConvert(QVariant::Int))
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		responseData.code = rd["code"].toInt();
+
+		if(!rd.contains("reason") || rd["reason"].type() != QVariant::ByteArray)
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		responseData.reason = rd["reason"].toByteArray();
+
+		if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		foreach(const QVariant &vheader, rd["headers"].toList())
+		{
+			if(vheader.type() != QVariant::List)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			QVariantList vlist = vheader.toList();
+			if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			responseData.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
+		}
+
+		if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
+		{
+			respondError("bad-request");
+			return;
+		}
+
+		responseData.body = rd["body"].toByteArray();
+
+		if(args.contains("inspect"))
+		{
+			if(args["inspect"].type() != QVariant::Hash)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			QVariantHash vinspect = args["inspect"].toHash();
+
+			if(!vinspect.contains("no-proxy") || vinspect["no-proxy"].type() != QVariant::Bool)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			inspectInfo.doProxy = !vinspect["no-proxy"].toBool();
+
+			inspectInfo.sharingKey.clear();
+			if(vinspect.contains("sharing-key"))
+			{
+				if(vinspect["sharing-key"].type() != QVariant::ByteArray)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				inspectInfo.sharingKey = vinspect["sharing-key"].toByteArray();
+			}
+
+			if(vinspect.contains("sid"))
+			{
+				if(vinspect["sid"].type() != QVariant::ByteArray)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				inspectInfo.sid = vinspect["sid"].toByteArray();
+			}
+
+			if(vinspect.contains("last-ids"))
+			{
+				if(vinspect["last-ids"].type() != QVariant::Hash)
+				{
+					respondError("bad-request");
+					return;
+				}
+
+				QVariantHash vlastIds = vinspect["last-ids"].toHash();
+				QHashIterator<QString, QVariant> it(vlastIds);
+				while(it.hasNext())
+				{
+					it.next();
+
+					if(it.value().type() != QVariant::ByteArray)
+					{
+						respondError("bad-request");
+						return;
+					}
+
+					QByteArray key = it.key().toUtf8();
+					QByteArray val = it.value().toByteArray();
+					inspectInfo.lastIds.insert(key, val);
+				}
+			}
+
+			inspectInfo.userData = vinspect["user-data"];
+
+			haveInspectInfo = true;
+		}
+
+		if(args.contains("response-sent"))
+		{
+			if(args["response-sent"].type() != QVariant::Bool)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			responseSent = args["response-sent"].toBool();
+		}
+
+		bool useSession = false;
+		if(args.contains("use-session"))
+		{
+			if(args["use-session"].type() != QVariant::Bool)
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			useSession = args["use-session"].toBool();
+		}
+
+		sid = QString::fromUtf8(responseData.headers.get("Grip-Session-Id"));
+
+		QList<DetectRule> rules;
+		QList<HttpHeaderParameters> ruleHeaders = responseData.headers.getAllAsParameters("Grip-Session-Detect", HttpHeaders::ParseAllParameters);
+		foreach(const HttpHeaderParameters &params, ruleHeaders)
+		{
+			if(params.contains("path-prefix") && params.contains("sid-ptr"))
+			{
+				DetectRule rule;
+				rule.domain = requestData.uri.host();
+				rule.pathPrefix = params.get("path-prefix");
+				rule.sidPtr = QString::fromUtf8(params.get("sid-ptr"));
+				if(params.contains("json-param"))
+					rule.jsonParam = QString::fromUtf8(params.get("json-param"));
+				rules += rule;
+			}
+		}
+
+		QList<HttpHeaderParameters> lastHeaders = responseData.headers.getAllAsParameters("Grip-Last");
+		foreach(const HttpHeaderParameters &params, lastHeaders)
+		{
+			lastIds.insert(params[0].first, params.get("last-id"));
+		}
+
+		// we need to "atomically" process conn-max packets and add
+		// connections to the stats manager. we do this by processing the
+		// conn-max packets above and adding to the stats manager below,
+		// without returning to the event loop in between
+		foreach(const RequestState &rs, requestStates)
+		{
+			QByteArray cid = rs.rid.first + ':' + rs.rid.second;
+
+			int reportOffset = stats->connectionSendEnabled() ? -1 : qMax(rs.unreportedTime, 0);
+
+			needRemoveFromStats += cid;
+			stats->addConnection(cid, statsRoute.toUtf8(), StatsManager::Http, rs.logicalPeerAddress, rs.isHttps, true, reportOffset);
+		}
+
+		if(useSession && stateClient)
+		{
+			if(!rules.isEmpty())
+			{
+				Deferred *d = SessionRequest::detectRulesSet(stateClient, rules, this);
+				connect(d, &Deferred::finished, this, &AcceptWorker::sessionDetectRulesSet_finished);
+			}
+			else
+			{
+				afterSetRules();
+			}
+
+			return;
+		}
+
+		afterSessionCalls();
 	}
 
 	QList<HttpSession*> takeSessions()
@@ -952,6 +995,12 @@ private:
 
 				foreach(const RequestState &rs, requestStates)
 				{
+					QByteArray cid = rs.rid.first + ':' + rs.rid.second;
+
+					needRemoveFromStats.remove(cid);
+
+					int unreportedTime = stats->removeConnection(cid, true);
+
 					RetryRequestPacket::Request rpreq;
 					rpreq.rid = rs.rid;
 					rpreq.https = rs.isHttps;
@@ -960,6 +1009,8 @@ private:
 					rpreq.autoCrossOrigin = rs.autoCrossOrigin;
 					rpreq.jsonpCallback = rs.jsonpCallback;
 					rpreq.jsonpExtendedResponse = rs.jsonpExtendedResponse;
+					if(!stats->connectionSendEnabled())
+						rpreq.unreportedTime = unreportedTime;
 					rpreq.inSeq = rs.inSeq;
 					rpreq.outSeq = rs.outSeq;
 					rpreq.outCredits = rs.outCredits;
@@ -995,6 +1046,9 @@ private:
 						rp.inspectInfo.lastIds.insert(c.name.toUtf8(), c.prevId.toUtf8());
 					}
 				}
+
+				rp.route = route.toUtf8();
+				rp.retrySeq = stats->lastRetrySeq();
 
 				emit retryPacketReady(rp);
 
@@ -1048,6 +1102,9 @@ private:
 			adata.trusted = trusted;
 			adata.haveInspectInfo = haveInspectInfo;
 			adata.inspectInfo = inspectInfo;
+
+			QByteArray cid = rid.first + ':' + rid.second;
+			needRemoveFromStats.remove(cid);
 
 			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
 		}
@@ -2078,12 +2135,49 @@ private slots:
 		if(!req)
 			return;
 
-		AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
-		connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
-		connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
-		connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
-		acceptWorkers += w;
-		w->start();
+		if(req->method() == "accept")
+		{
+			// NOTE: to ensure sequential processing of conn-max packets,
+			// we need to process any such packets contained within the
+			// accept request immediately before returning to the event loop.
+			// the start() call will do this
+
+			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
+			connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
+			connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
+			connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
+			acceptWorkers += w;
+
+			w->start();
+		}
+		else if(req->method() == "conn-max")
+		{
+			QVariantHash args = req->args();
+
+			if(args.contains("conn-max"))
+			{
+				if(args["conn-max"].type() == QVariant::List)
+				{
+					QVariantList packets = args["conn-max"].toList();
+
+					foreach(const QVariant &data, packets)
+					{
+						StatsPacket p;
+						if(!p.fromVariant("conn-max", data) || p.type != StatsPacket::ConnectionsMax)
+							continue;
+
+						stats->processExternalPacket(p, false);
+					}
+				}
+			}
+
+			delete req;
+		}
+		else
+		{
+			req->respondError("method-not-found");
+			delete req;
+		}
 	}
 
 	void controlServer_requestReady()

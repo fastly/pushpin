@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,7 +30,8 @@
 #include "retryrequestpacket.h"
 
 RetryRequestPacket::RetryRequestPacket() :
-	haveInspectInfo(false)
+	haveInspectInfo(false),
+	retrySeq(-1)
 {
 }
 
@@ -135,6 +137,9 @@ QVariant RetryRequestPacket::toVariant() const
 
 	if(!route.isEmpty())
 		obj["route"] = route;
+
+	if(retrySeq >= 0)
+		obj["retry-seq"] = retrySeq;
 
 	return obj;
 }
@@ -345,6 +350,14 @@ bool RetryRequestPacket::fromVariant(const QVariant &in)
 			return false;
 
 		route = obj["route"].toByteArray();
+	}
+
+	if(obj.contains("retry-seq"))
+	{
+		if(!obj["retry-seq"].canConvert(QVariant::Int))
+			return false;
+
+		retrySeq = obj["retry-seq"].toInt();
 	}
 
 	return true;

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -162,10 +163,18 @@ QVariant StatsPacket::toVariant() const
 		if(serverMessagesSent >= 0)
 			obj["server-messages-sent"] = serverMessagesSent;
 	}
-	else // Counts
+	else if(type == Counts)
 	{
 		if(requestsReceived > 0)
 			obj["requests-received"] = requestsReceived;
+	}
+	else // ConnectionsMax
+	{
+		obj["max"] = qMax(connectionsMax, 0);
+		obj["ttl"] = qMax(ttl, 0);
+
+		if(retrySeq >= 0)
+			obj["retry-seq"] = retrySeq;
 	}
 
 	return obj;
@@ -447,6 +456,40 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 				return false;
 
 			requestsReceived = x;
+		}
+	}
+	else if(_type == "conn-max")
+	{
+		type = ConnectionsMax;
+
+		if(!obj.contains("max") || !obj["max"].canConvert(QVariant::Int))
+			return false;
+
+		int x = obj["max"].toInt();
+		if(x < 0)
+			return false;
+
+		connectionsMax = x;
+
+		if(!obj.contains("ttl") || !obj["ttl"].canConvert(QVariant::Int))
+			return false;
+
+		x = obj["ttl"].toInt();
+		if(x < 0)
+			return false;
+
+		ttl = x;
+
+		if(obj.contains("retry-seq"))
+		{
+			if(!obj["retry-seq"].canConvert(QVariant::LongLong))
+				return false;
+
+			int x = obj["retry-seq"].toLongLong();
+			if(x < 0)
+				return false;
+
+			retrySeq = x;
 		}
 	}
 	else

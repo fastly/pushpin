@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -45,7 +46,8 @@ public:
 		Subscribed,
 		Unsubscribed,
 		Report,
-		Counts
+		Counts,
+		ConnectionsMax,
 	};
 
 	enum ConnectionType
@@ -57,19 +59,20 @@ public:
 	Type type;
 	QByteArray from;
 	QByteArray route;
+	qint64 retrySeq; // connections max
 	int count; // activity, message
 	QByteArray connectionId; // connected, disconnected
 	ConnectionType connectionType; // connected
 	QHostAddress peerAddress; // connected
 	bool ssl; // connected
-	int ttl; // connected, subscribed
+	int ttl; // connected, subscribed, connections max
 	QByteArray mode; // subscribed, unsubscribed
 	QByteArray channel; // message, subscribed, unsubscribed
 	QByteArray itemId; // message
 	QByteArray transport; // message
 	int blocks; // message
 	int subscribers; // subscribed
-	int connectionsMax; // report
+	int connectionsMax; // report, connections max
 	int connectionsMinutes; // report
 	int messagesReceived; // report
 	int messagesSent; // report
@@ -93,6 +96,7 @@ public:
 
 	StatsPacket() :
 		type((Type)-1),
+		retrySeq(-1),
 		count(-1),
 		connectionType((ConnectionType)-1),
 		ssl(false),

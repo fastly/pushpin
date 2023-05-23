@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -177,6 +178,7 @@ public:
 	FilterStack *responseFilters;
 	QSet<QString> activeChannels;
 	int connectionSubscriptionMax;
+	bool needRemoveFromStats;
 	Callback<std::tuple<HttpSession *, const QString &>> subscribeCallback;
 	Callback<std::tuple<HttpSession *, const QString &>> unsubscribeCallback;
 	Callback<std::tuple<HttpSession *>> finishedCallback;
@@ -197,7 +199,8 @@ public:
 		needUpdate(false),
 		pendingAction(0),
 		responseFilters(0),
-		connectionSubscriptionMax(_connectionSubscriptionMax)
+		connectionSubscriptionMax(_connectionSubscriptionMax),
+		needRemoveFromStats(true)
 	{
 		state = NotStarted;
 
@@ -225,6 +228,14 @@ public:
 	{
 		cleanup();
 
+		if(needRemoveFromStats)
+		{
+			ZhttpRequest::Rid rid = req->rid();
+			QByteArray cid = rid.first + ':' + rid.second;
+
+			stats->removeConnection(cid, false);
+		}
+
 		updateManager->unregisterSession(q);
 
 		timer->disconnect(this);
@@ -239,12 +250,6 @@ public:
 	void start()
 	{
 		assert(state == NotStarted);
-
-		ZhttpRequest::Rid rid = req->rid();
-
-		int reportOffset = stats->connectionSendEnabled() ? -1 : qMax(adata.unreportedTime, 0);
-
-		stats->addConnection(rid.first + ':' + rid.second, adata.statsRoute.toUtf8(), StatsManager::Http, adata.logicalPeerAddress, req->requestUri().scheme() == "https", true, reportOffset);
 
 		// set up implicit channels
 		QPointer<QObject> self = this;
@@ -1070,12 +1075,9 @@ private:
 			// refresh before remove, to ensure transition
 			stats->refreshConnection(cid);
 
-			int unreportedTime = -1;
+			needRemoveFromStats = false;
 
-			if(stats->connectionSendEnabled())
-				stats->removeConnection(cid, true);
-			else
-				unreportedTime = stats->removeConnection(cid, false);
+			int unreportedTime = stats->removeConnection(cid, true);
 
 			ZhttpRequest::ServerState ss = req->serverState();
 
@@ -1089,7 +1091,8 @@ private:
 			rpreq.autoCrossOrigin = adata.autoCrossOrigin;
 			rpreq.jsonpCallback = adata.jsonpCallback;
 			rpreq.jsonpExtendedResponse = adata.jsonpExtendedResponse;
-			rpreq.unreportedTime = unreportedTime;
+			if(!stats->connectionSendEnabled())
+				rpreq.unreportedTime = unreportedTime;
 			rpreq.inSeq = ss.inSeq;
 			rpreq.outSeq = ss.outSeq;
 			rpreq.outCredits = ss.outCredits;
@@ -1130,11 +1133,14 @@ private:
 			}
 
 			rp.route = adata.route.toUtf8();
+			rp.retrySeq = stats->lastRetrySeq();
 
 			retryPacket = rp;
 		}
 		else
 		{
+			needRemoveFromStats = false;
+
 			stats->removeConnection(cid, false);
 		}
 

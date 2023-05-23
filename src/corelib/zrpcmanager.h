@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -55,6 +56,9 @@ public:
 
 	ZrpcRequest *takeNext();
 
+	bool canWriteImmediately() const;
+	void write(const ZrpcRequestPacket &packet);
+
 signals:
 	void requestReady();
 
@@ -63,10 +67,8 @@ private:
 	Private *d;
 
 	friend class ZrpcRequest;
-	bool canWriteImmediately() const;
 	void link(ZrpcRequest *req);
 	void unlink(ZrpcRequest *req);
-	void write(const ZrpcRequestPacket &packet);
 	void write(const QList<QByteArray> &headers, const ZrpcResponsePacket &packet);
 };
 
