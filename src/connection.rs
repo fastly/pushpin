@@ -3631,8 +3631,8 @@ where
 {
     let stream = RefCell::new(stream);
 
-    let send_buf_size = buf1.capacity();
-    let recv_buf_size = buf2.capacity();
+    let send_buf_size = buf1.capacity(); // for sending to handler
+    let recv_buf_size = buf2.capacity(); // for receiving from handler
 
     let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
     let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
@@ -3694,11 +3694,11 @@ where
                                     websocket::PerMessageDeflateConfig::from_params(params)
                                 {
                                     if let Ok(resp_config) = config.create_response() {
-                                        // split the original write buffer memory:
-                                        // 75% for a new write buffer, 25% for an encode buffer
-                                        let write_buf_size = recv_buf_size * 3 / 4;
+                                        // split the original recv buffer memory:
+                                        // 75% for a new recv buffer, 25% for an encoded buffer
+                                        let recv_buf_size = recv_buf_size * 3 / 4;
 
-                                        ws_deflate_config = Some((resp_config, write_buf_size));
+                                        ws_deflate_config = Some((resp_config, recv_buf_size));
                                     }
                                 }
                             }
@@ -3766,8 +3766,8 @@ where
             (Mode::HttpStream, more)
         };
 
-        let credits = if let Some((_, Some((_, write_buf_size)))) = &ws_config {
-            *write_buf_size
+        let credits = if let Some((_, Some((_, recv_buf_size)))) = &ws_config {
+            *recv_buf_size
         } else {
             recv_buf_size
         };
@@ -5289,8 +5289,8 @@ where
 {
     let stream = RefCell::new(stream);
 
-    let send_buf_size = buf1.capacity();
-    let recv_buf_size = buf2.capacity();
+    let send_buf_size = buf1.capacity(); // for sending to handler
+    let recv_buf_size = buf2.capacity(); // for receiving from handler
 
     let req = ClientRequest::new(io_split(&stream), buf1, buf2);
 
@@ -5591,11 +5591,11 @@ where
                                         websocket::PerMessageDeflateConfig::from_params(params)
                                     {
                                         if config.check_response().is_ok() {
-                                            // split the original write buffer memory:
-                                            // 75% for a new write buffer, 25% for an encode buffer
-                                            let write_buf_size = recv_buf_size * 3 / 4;
+                                            // split the original recv buffer memory:
+                                            // 75% for a new recv buffer, 25% for an encoded buffer
+                                            let recv_buf_size = recv_buf_size * 3 / 4;
 
-                                            ws_deflate_config = Some((config, write_buf_size));
+                                            ws_deflate_config = Some((config, recv_buf_size));
                                         }
                                     }
                                 }
@@ -5688,10 +5688,15 @@ where
                 }
             }
 
-            // for websockets, provide credits when sending response to handler
             let credits = if ws_key.is_some() {
-                recv_buf_size as u32
+                // for websockets, provide credits when sending response to handler
+                if let Some((_, recv_buf_size)) = &ws_deflate_config {
+                    *recv_buf_size as u32
+                } else {
+                    recv_buf_size as u32
+                }
             } else {
+                // for http, it is not necessary to provide credits when responding
                 0
             };
 
@@ -9546,12 +9551,12 @@ mod tests {
 
         let expected = format!(
             concat!(
-                "handler T303:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
+                "handler T302:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
                 "ulti,4:true!}}4:code,3:101#6:reason,19:Switching Protocols",
                 ",7:headers,168:22:7:Upgrade,9:websocket,]24:10:Connection,",
                 "7:Upgrade,]56:20:Sec-WebSocket-Accept,28:{},]50:24:Sec-Web",
-                "Socket-Extensions,18:permessage-deflate,]]7:credits,4:1024",
-                "#}}",
+                "Socket-Extensions,18:permessage-deflate,]]7:credits,3:768#",
+                "}}",
             ),
             ws_accept
         );
