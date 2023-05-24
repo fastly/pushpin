@@ -395,9 +395,10 @@ public:
 
 		route = entry;
 
+		log_debug("wsproxysession: %p %s has %d routes", q, qPrintable(host), route.targets.count());
+
 		if(route.isNull())
 		{
-			log_warning("wsproxysession: %p %s has 0 routes", q, qPrintable(host));
 			reject(false, 502, "Bad Gateway", QString("No route for host: %1").arg(host));
 			return;
 		}
@@ -431,8 +432,6 @@ public:
 		pathBeg = route.pathBeg;
 		channelPrefix = route.prefix;
 		targets = route.targets;
-
-		log_debug("wsproxysession: %p %s has %d routes", q, qPrintable(host), targets.count());
 
 		foreach(const HttpHeader &h, route.headers)
 		{
