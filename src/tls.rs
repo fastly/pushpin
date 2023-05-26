@@ -16,21 +16,23 @@
 
 use arrayvec::ArrayString;
 use log::debug;
-use mio::net::TcpStream;
 use openssl::error::ErrorStack;
 use openssl::ssl::{
     self, HandshakeError, MidHandshakeSslStream, NameType, SniError, SslAcceptor, SslConnector,
     SslContext, SslContextBuilder, SslFiletype, SslMethod, SslStream, SslVerifyMode,
 };
+use std::any::Any;
 use std::cmp;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::io::{Read, Write};
+use std::marker::PhantomData;
 use std::mem;
 use std::path;
 use std::path::{Path, PathBuf};
+use std::ptr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
@@ -249,9 +251,24 @@ impl IdentityCache {
     }
 }
 
-enum Stream<'a> {
-    Ssl(SslStream<&'a mut TcpStream>),
-    MidHandshakeSsl(MidHandshakeSslStream<&'a mut TcpStream>),
+trait ReadWrite: Read + Write + Any + Send {
+    fn as_any(&mut self) -> &mut dyn Any;
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+impl<T: Read + Write + Any + Send> ReadWrite for T {
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
+enum Stream<T> {
+    Ssl(SslStream<T>),
+    MidHandshakeSsl(MidHandshakeSslStream<T>),
     NoSsl,
 }
 
@@ -305,7 +322,10 @@ impl TlsAcceptor {
         }
     }
 
-    pub fn accept(&self, stream: TcpStream) -> Result<TlsStream, ssl::Error> {
+    pub fn accept(
+        &self,
+        stream: mio::net::TcpStream,
+    ) -> Result<TlsStream<mio::net::TcpStream>, ssl::Error> {
         TlsStream::new(false, stream, |stream| {
             let stream = match self.acceptor.accept(stream) {
                 Ok(stream) => Stream::Ssl(stream),
@@ -340,19 +360,31 @@ impl TlsStreamError {
     }
 }
 
-pub struct TlsStream {
-    stream: Stream<'static>,
-    tcp_stream: Box<TcpStream>,
-    id: ArrayString<64>,
-    client: bool,
+fn replace_at<T, F>(value_at: &mut T, replace_fn: F)
+where
+    F: FnOnce(T) -> T,
+{
+    // SAFETY: we use ptr::read to get the current value and then put a new
+    // value in its place with ptr::write before returning
+    unsafe {
+        let p = value_at as *mut T;
+        ptr::write(p, replace_fn(ptr::read(p)));
+    }
 }
 
-impl TlsStream {
-    pub fn connect(
-        domain: &str,
-        stream: TcpStream,
-        verify_mode: VerifyMode,
-    ) -> Result<Self, ssl::Error> {
+pub struct TlsStream<T> {
+    stream: Stream<&'static mut Box<dyn ReadWrite>>,
+    plain_stream: Box<Box<dyn ReadWrite>>,
+    id: ArrayString<64>,
+    client: bool,
+    _marker: PhantomData<T>,
+}
+
+impl<T> TlsStream<T>
+where
+    T: Read + Write + Any + Send,
+{
+    pub fn connect(domain: &str, stream: T, verify_mode: VerifyMode) -> Result<Self, ssl::Error> {
         Self::new(true, stream, |stream| {
             let mut connector = SslConnector::builder(SslMethod::tls())?;
 
@@ -373,12 +405,16 @@ impl TlsStream {
         })
     }
 
-    pub fn get_tcp(&mut self) -> &mut TcpStream {
-        match &mut self.stream {
-            Stream::Ssl(stream) => stream.get_mut(),
-            Stream::MidHandshakeSsl(stream) => stream.get_mut(),
-            Stream::NoSsl => &mut self.tcp_stream,
-        }
+    pub fn get_inner<'a>(&'a mut self) -> &'a mut T {
+        let plain_stream: &'a mut Box<dyn ReadWrite> = match &mut self.stream {
+            Stream::Ssl(stream) => *stream.get_mut(),
+            Stream::MidHandshakeSsl(stream) => *stream.get_mut(),
+            Stream::NoSsl => Box::as_mut(&mut self.plain_stream),
+        };
+
+        let plain_stream: &mut dyn ReadWrite = Box::as_mut(plain_stream);
+
+        plain_stream.as_any().downcast_mut::<T>().unwrap()
     }
 
     pub fn set_id(&mut self, id: &str) -> Result<(), ()> {
@@ -446,30 +482,58 @@ impl TlsStream {
         }
     }
 
-    fn new<T>(client: bool, stream: TcpStream, init_fn: T) -> Result<Self, ssl::Error>
+    pub fn change_inner<F, U>(mut self, change_fn: F) -> TlsStream<U>
     where
-        T: FnOnce(&'static mut TcpStream) -> Result<Stream<'static>, ssl::Error>,
+        F: FnOnce(T) -> U,
+        U: Read + Write + Any + Send,
     {
-        let mut tcp_stream_boxed = Box::new(stream);
+        let plain_stream: &mut Box<dyn ReadWrite> = Box::as_mut(&mut self.plain_stream);
 
-        let tcp_stream: &mut TcpStream = &mut tcp_stream_boxed;
+        replace_at(plain_stream, |plain_stream: Box<dyn ReadWrite>| {
+            let plain_stream: Box<T> = plain_stream.into_any().downcast::<T>().unwrap();
+            let plain_stream: U = change_fn(*plain_stream);
 
-        // safety: TlsStream will take ownership of tcp_stream, and the value
-        // referred to by tcp_stream is on the heap, and tcp_stream will not
+            Box::new(plain_stream)
+        });
+
+        // SAFETY: nothing is changing except the phantom data type
+        unsafe { mem::transmute(self) }
+    }
+
+    fn new<F>(client: bool, stream: T, init_fn: F) -> Result<Self, ssl::Error>
+    where
+        F: FnOnce(
+            &'static mut Box<dyn ReadWrite>,
+        ) -> Result<Stream<&'static mut Box<dyn ReadWrite>>, ssl::Error>,
+    {
+        // box the stream, casting to ReadWrite
+        let inner_box: Box<dyn ReadWrite> = Box::new(stream);
+
+        // box it again. this way we have a pointer-to-a-pointer on the heap,
+        // allowing us to change where the outer pointer points to later on
+        // without changing its location
+        let mut outer_box: Box<Box<dyn ReadWrite>> = Box::new(inner_box);
+
+        // get the outer pointer
+        let outer: &mut Box<dyn ReadWrite> = Box::as_mut(&mut outer_box);
+
+        // safety: TlsStream will take ownership of outer_box, and the value
+        // referred to by outer_box is on the heap, and outer_box will not
         // be dropped until TlsStream is dropped, so the value referred to
-        // by tcp_stream will remain valid for the lifetime of TlsStream.
-        // further, tcp_stream is a mutable reference, and will only ever
-        // be exclusively mutably accessed, either when wrapped by SslStream
+        // by outer_box will remain valid for the lifetime of TlsStream.
+        // further, outer is a mutable reference, and will only ever be
+        // exclusively mutably accessed, either when wrapped by SslStream
         // or MidHandshakeSslStream, or when known to be not wrapped
-        let tcp_stream: &'static mut TcpStream = unsafe { mem::transmute(tcp_stream) };
+        let outer: &'static mut Box<dyn ReadWrite> = unsafe { mem::transmute(outer) };
 
-        let stream = init_fn(tcp_stream)?;
+        let stream = init_fn(outer)?;
 
         Ok(Self {
             stream,
-            tcp_stream: tcp_stream_boxed,
+            plain_stream: outer_box,
             id: ArrayString::new(),
             client,
+            _marker: PhantomData,
         })
     }
 
@@ -482,7 +546,10 @@ impl TlsStream {
     }
 }
 
-impl Read for TlsStream {
+impl<T> Read for TlsStream<T>
+where
+    T: Read + Write + Any + Send,
+{
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         if let Err(e) = self.ensure_handshake() {
             return Err(e.into_io_error());
@@ -495,7 +562,10 @@ impl Read for TlsStream {
     }
 }
 
-impl Write for TlsStream {
+impl<T> Write for TlsStream<T>
+where
+    T: Read + Write + Any + Send,
+{
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
         if let Err(e) = self.ensure_handshake() {
             return Err(e.into_io_error());
@@ -509,5 +579,59 @@ impl Write for TlsStream {
 
     fn flush(&mut self) -> Result<(), io::Error> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct ReadWriteA {
+        a: i32,
+    }
+
+    impl Read for ReadWriteA {
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, io::Error> {
+            Err(io::Error::from(io::ErrorKind::WouldBlock))
+        }
+    }
+
+    impl Write for ReadWriteA {
+        fn write(&mut self, _buf: &[u8]) -> Result<usize, io::Error> {
+            Err(io::Error::from(io::ErrorKind::WouldBlock))
+        }
+
+        fn flush(&mut self) -> Result<(), io::Error> {
+            Ok(())
+        }
+    }
+
+    struct ReadWriteB {
+        b: i32,
+    }
+
+    impl Read for ReadWriteB {
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, io::Error> {
+            Err(io::Error::from(io::ErrorKind::WouldBlock))
+        }
+    }
+
+    impl Write for ReadWriteB {
+        fn write(&mut self, _buf: &[u8]) -> Result<usize, io::Error> {
+            Err(io::Error::from(io::ErrorKind::WouldBlock))
+        }
+
+        fn flush(&mut self) -> Result<(), io::Error> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_get_change_inner() {
+        let a = ReadWriteA { a: 1 };
+        let mut stream = TlsStream::connect("localhost", a, VerifyMode::Full).unwrap();
+        assert_eq!(stream.get_inner().a, 1);
+        let mut stream = stream.change_inner(|_| ReadWriteB { b: 2 });
+        assert_eq!(stream.get_inner().b, 2);
     }
 }

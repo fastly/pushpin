@@ -829,14 +829,14 @@ impl AsyncUnixStream {
 
 pub struct AsyncTlsStream {
     registration: Registration,
-    stream: TlsStream,
+    stream: TlsStream<TcpStream>,
 }
 
 impl AsyncTlsStream {
-    pub fn new(mut s: TlsStream) -> Self {
+    pub fn new(mut s: TlsStream<TcpStream>) -> Self {
         let registration = get_reactor()
             .register_io(
-                s.get_tcp(),
+                s.get_inner(),
                 mio::Interest::READABLE | mio::Interest::WRITABLE,
             )
             .unwrap();
@@ -857,7 +857,7 @@ impl AsyncTlsStream {
         EnsureHandshakeFuture { s: self }
     }
 
-    pub fn inner(&mut self) -> &mut TlsStream {
+    pub fn inner(&mut self) -> &mut TlsStream<TcpStream> {
         &mut self.stream
     }
 }
@@ -865,7 +865,7 @@ impl AsyncTlsStream {
 impl Drop for AsyncTlsStream {
     fn drop(&mut self) {
         self.registration
-            .deregister_io(self.stream.get_tcp())
+            .deregister_io(self.stream.get_inner())
             .unwrap();
     }
 }

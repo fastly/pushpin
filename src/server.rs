@@ -202,7 +202,7 @@ fn gen_id(id: usize, ckey: usize, next_cid: &mut u32) -> ArrayString<32> {
 
 enum Stream {
     Plain(NetStream),
-    Tls(TlsStream),
+    Tls(TlsStream<TcpStream>),
 }
 
 impl Identify for AsyncTcpStream {
