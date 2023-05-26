@@ -30,6 +30,7 @@ use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::io;
 use std::io::{Read, Write};
+use std::os::fd::{FromRawFd, IntoRawFd};
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -788,6 +789,15 @@ impl AsyncTcpStream {
     pub fn into_inner(self) -> TcpStream {
         self.evented.into_inner()
     }
+
+    pub fn into_std(self) -> std::net::TcpStream {
+        unsafe { std::net::TcpStream::from_raw_fd(self.evented.into_inner().into_raw_fd()) }
+    }
+
+    // assumes stream is in non-blocking mode
+    pub fn from_std(stream: std::net::TcpStream) -> Self {
+        Self::new(TcpStream::from_std(stream))
+    }
 }
 
 pub struct AsyncUnixStream {
@@ -829,7 +839,7 @@ impl AsyncUnixStream {
 
 pub struct AsyncTlsStream {
     registration: Registration,
-    stream: TlsStream<TcpStream>,
+    stream: Option<TlsStream<TcpStream>>,
 }
 
 impl AsyncTlsStream {
@@ -849,7 +859,7 @@ impl AsyncTlsStream {
 
         Self {
             registration,
-            stream: s,
+            stream: Some(s),
         }
     }
 
@@ -858,15 +868,40 @@ impl AsyncTlsStream {
     }
 
     pub fn inner(&mut self) -> &mut TlsStream<TcpStream> {
-        &mut self.stream
+        self.stream.as_mut().unwrap()
+    }
+
+    pub fn into_inner(mut self) -> TlsStream<TcpStream> {
+        let mut stream = self.stream.take().unwrap();
+
+        self.registration.deregister_io(stream.get_inner()).unwrap();
+
+        stream
+    }
+
+    pub fn into_std(mut self) -> TlsStream<std::net::TcpStream> {
+        let mut stream = self.stream.take().unwrap();
+
+        self.registration.deregister_io(stream.get_inner()).unwrap();
+
+        stream.change_inner(|stream| unsafe {
+            std::net::TcpStream::from_raw_fd(stream.into_raw_fd())
+        })
+    }
+
+    // assumes stream is in non-blocking mode
+    pub fn from_std(stream: TlsStream<std::net::TcpStream>) -> Self {
+        let stream = stream.change_inner(|stream| TcpStream::from_std(stream));
+
+        Self::new(stream)
     }
 }
 
 impl Drop for AsyncTlsStream {
     fn drop(&mut self) {
-        self.registration
-            .deregister_io(self.stream.get_inner())
-            .unwrap();
+        if let Some(stream) = &mut self.stream {
+            self.registration.deregister_io(stream.get_inner()).unwrap();
+        }
     }
 }
 
@@ -2023,7 +2058,7 @@ impl AsyncRead for AsyncTlsStream {
             return Poll::Pending;
         }
 
-        match f.stream.read(buf) {
+        match f.stream.as_mut().unwrap().read(buf) {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 f.registration.clear_readiness(mio::Interest::READABLE);
@@ -2063,7 +2098,7 @@ impl AsyncWrite for AsyncTlsStream {
             return Poll::Pending;
         }
 
-        match f.stream.write(buf) {
+        match f.stream.as_mut().unwrap().write(buf) {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 f.registration.clear_readiness(mio::Interest::WRITABLE);
@@ -2092,7 +2127,7 @@ impl AsyncWrite for AsyncTlsStream {
             return Poll::Pending;
         }
 
-        match f.stream.shutdown() {
+        match f.stream.as_mut().unwrap().shutdown() {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 f.registration.clear_readiness(mio::Interest::WRITABLE);
@@ -2143,7 +2178,7 @@ impl Future for EnsureHandshakeFuture<'_> {
             return Poll::Pending;
         }
 
-        match f.s.stream.ensure_handshake() {
+        match f.s.stream.as_mut().unwrap().ensure_handshake() {
             Ok(()) => Poll::Ready(Ok(())),
             Err(TlsStreamError::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
                 f.s.registration

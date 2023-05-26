@@ -27,6 +27,7 @@ pub mod http1;
 pub mod list;
 pub mod listener;
 pub mod net;
+pub mod pool;
 pub mod reactor;
 pub mod resolver;
 pub mod server;
@@ -227,6 +228,16 @@ pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
     }
 
     Ok(())
+}
+
+pub fn can_move_mio_sockets_between_threads() -> bool {
+    if cfg!(unix) {
+        // on unix platforms, mio always uses epoll or kqueue, which support this
+        true
+    } else {
+        // mio makes no guarantee about this on non-unix platforms, so assume it's not possible
+        false
+    }
 }
 
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {

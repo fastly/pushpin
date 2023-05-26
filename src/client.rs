@@ -16,8 +16,11 @@
 
 use crate::arena;
 use crate::buffer::TmpBuffer;
+use crate::can_move_mio_sockets_between_threads;
 use crate::channel;
-use crate::connection::{client_req_connection, client_stream_connection, StreamSharedData};
+use crate::connection::{
+    client_req_connection, client_stream_connection, ConnectionPool, StreamSharedData,
+};
 use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
@@ -646,6 +649,7 @@ impl Worker {
         allow_compression: bool,
         deny: &[IpNet],
         resolver: &Arc<Resolver>,
+        pool: &Arc<ConnectionPool>,
         zsockman: &Arc<zhttpsocket::ServerSocketManager>,
         handle_bound: usize,
     ) -> Self {
@@ -657,6 +661,7 @@ impl Worker {
         let instance_id = String::from(instance_id);
         let deny = deny.to_vec();
         let resolver = Arc::clone(resolver);
+        let pool = Arc::clone(pool);
         let zsockman = Arc::clone(zsockman);
 
         let thread = thread::Builder::new()
@@ -697,6 +702,7 @@ impl Worker {
                         allow_compression,
                         deny,
                         resolver,
+                        pool,
                         zsockman,
                         handle_bound,
                     ))
@@ -735,6 +741,7 @@ impl Worker {
         allow_compression: bool,
         deny: Vec<IpNet>,
         resolver: Arc<Resolver>,
+        pool: Arc<ConnectionPool>,
         zsockman: Arc<zhttpsocket::ServerSocketManager>,
         handle_bound: usize,
     ) {
@@ -793,6 +800,7 @@ impl Worker {
                 s_req_handle_done,
                 executor.spawner(),
                 Arc::clone(&resolver),
+                Arc::clone(&pool),
                 req_handle,
                 req_maxconn,
                 req_conns,
@@ -824,6 +832,7 @@ impl Worker {
                     zstream_out_sender,
                     executor.spawner(),
                     Arc::clone(&resolver),
+                    Arc::clone(&pool),
                     stream_handle,
                     stream_maxconn,
                     stream_conns.clone(),
@@ -918,6 +927,7 @@ impl Worker {
         _done: AsyncLocalSender<()>,
         spawner: Spawner,
         resolver: Arc<Resolver>,
+        conn_pool: Arc<ConnectionPool>,
         req_handle: zhttpsocket::AsyncServerReqHandle,
         req_maxconn: usize,
         conns: Rc<Connections>,
@@ -1075,6 +1085,7 @@ impl Worker {
                                 cid,
                                 (header, zreq),
                                 Arc::clone(&resolver),
+                                Arc::clone(&conn_pool),
                                 Rc::clone(&deny),
                                 opts.clone(),
                                 ConnectionReqOpts {
@@ -1111,6 +1122,7 @@ impl Worker {
         zstream_out_sender: channel::LocalSender<zmq::Message>,
         spawner: Spawner,
         resolver: Arc<Resolver>,
+        conn_pool: Arc<ConnectionPool>,
         stream_handle: zhttpsocket::AsyncServerStreamHandle,
         stream_maxconn: usize,
         conns: Rc<Connections>,
@@ -1289,6 +1301,7 @@ impl Worker {
                                     cid,
                                     arena::Rc::clone(&zreq),
                                     Arc::clone(&resolver),
+                                    Arc::clone(&conn_pool),
                                     zstream_receiver,
                                     Rc::clone(&deny),
                                     Rc::clone(&conns),
@@ -1392,6 +1405,7 @@ impl Worker {
         cid: Option<ArrayVec<u8, 64>>,
         zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
         resolver: Arc<Resolver>,
+        pool: Arc<ConnectionPool>,
         deny: Rc<Vec<IpNet>>,
         opts: ConnectionOpts,
         req_opts: ConnectionReqOpts,
@@ -1425,6 +1439,7 @@ impl Worker {
             opts.timeout,
             &deny,
             &resolver,
+            &pool,
             AsyncLocalSender::new(req_opts.sender),
         )
         .await;
@@ -1445,6 +1460,7 @@ impl Worker {
         cid: ArrayVec<u8, 64>,
         zreq: arena::Rc<zhttppacket::OwnedRequest>,
         resolver: Arc<Resolver>,
+        pool: Arc<ConnectionPool>,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
         deny: Rc<Vec<IpNet>>,
         conns: Rc<Connections>,
@@ -1483,6 +1499,7 @@ impl Worker {
             &deny,
             &opts.instance_id,
             &resolver,
+            &pool,
             zreceiver,
             AsyncLocalSender::new(stream_opts.sender),
             shared,
@@ -1642,6 +1659,15 @@ impl Client {
 
         let resolver = Arc::new(Resolver::new(RESOLVER_THREADS, queries_max));
 
+        let pool_max = if can_move_mio_sockets_between_threads() {
+            (req_maxconn + stream_maxconn) / 10
+        } else {
+            // disable persistent connections
+            0
+        };
+
+        let pool = Arc::new(ConnectionPool::new(pool_max));
+
         if !deny.is_empty() {
             info!("blocking outgoing connections to: {:?}", deny);
         }
@@ -1662,6 +1688,7 @@ impl Client {
                 allow_compression,
                 deny,
                 &resolver,
+                &pool,
                 &zsockman,
                 handle_bound,
             );
@@ -1701,6 +1728,7 @@ impl Client {
             let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
+            let pool = Arc::new(ConnectionPool::new(0));
 
             let fut = Worker::req_connection_task(
                 stop,
@@ -1710,6 +1738,7 @@ impl Client {
                 None,
                 (MultipartHeader::new(), zreq),
                 resolver,
+                pool,
                 Rc::new(Vec::new()),
                 ConnectionOpts {
                     instance_id: Rc::new("".to_string()),
@@ -1762,6 +1791,7 @@ impl Client {
             let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
+            let pool = Arc::new(ConnectionPool::new(0));
 
             let stream_shared_mem = Rc::new(arena::RcMemory::new(1));
 
@@ -1775,6 +1805,7 @@ impl Client {
                 ArrayVec::new(),
                 zreq,
                 resolver,
+                pool,
                 zreceiver,
                 Rc::new(Vec::new()),
                 conns,

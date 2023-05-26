@@ -43,6 +43,7 @@ use crate::future::{
 };
 use crate::http1;
 use crate::net::SocketAddr;
+use crate::pool::Pool;
 use crate::reactor::Reactor;
 use crate::resolver;
 use crate::shuffle::random;
@@ -61,18 +62,18 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::future::Future;
-use std::io;
-use std::io::Write;
+use std::io::{self, Read, Write};
 use std::mem;
 use std::net::IpAddr;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
 use std::str::FromStr;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::task::Context;
 use std::task::Poll;
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 
 const URI_SIZE_MAX: usize = 4096;
 const HEADERS_MAX: usize = 64;
@@ -80,6 +81,7 @@ const WS_HASH_INPUT_MAX: usize = 256;
 const WS_KEY_MAX: usize = 24; // base64_encode([16 bytes]) = 24 bytes
 const WS_ACCEPT_MAX: usize = 28; // base64_encode(sha1_hash) = 28 bytes
 const ZHTTP_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
+const CONNECTION_POOL_TTL: Duration = Duration::from_secs(55);
 
 pub trait CidProvider {
     fn get_new_assigned_cid(&mut self) -> ArrayString<32>;
@@ -597,7 +599,7 @@ struct LimitedRingBuffer<'a> {
 
 impl AsRef<[u8]> for LimitedRingBuffer<'_> {
     fn as_ref(&self) -> &[u8] {
-        let buf = self.inner.read_buf();
+        let buf = BaseRingBuffer::read_buf(self.inner);
         let limit = cmp::min(buf.len(), self.limit);
 
         &buf[..limit]
@@ -850,7 +852,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         if protocol.state() == http1::ServerState::ReceivingBody {
             loop {
                 let (size, read_size) = {
-                    let mut buf = io::Cursor::new(r.buf.read_buf());
+                    let mut buf = io::Cursor::new(BaseRingBuffer::read_buf(r.buf));
 
                     let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
@@ -1056,7 +1058,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
         let mut early_body = self.early_body.borrow_mut();
 
         if let Some(overflow) = &mut early_body.overflow {
-            wbuf.inner.write(overflow.read_buf())?;
+            wbuf.inner.write(Buffer::read_buf(overflow))?;
 
             early_body.overflow = None;
         }
@@ -2011,7 +2013,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
                 req.method,
                 req.uri,
                 req.headers,
-                body_buf.read_buf(),
+                Buffer::read_buf(body_buf),
                 false,
                 Mode::HttpReq,
                 0,
@@ -2150,7 +2152,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         // ABR: discard_while
         let size = discard_while(
             zreceiver,
-            pin!(handler.send_body(body_buf.read_buf(), false)),
+            pin!(handler.send_body(Buffer::read_buf(body_buf), false)),
         )
         .await?;
 
@@ -4443,7 +4445,7 @@ struct ClientRequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
     async fn send(mut self) -> Result<ClientRequestBody<'a, R, W>, Error> {
         while self.buf1.read_avail() > 0 {
-            let size = self.w.write(self.buf1.read_buf()).await?;
+            let size = self.w.write(BaseRingBuffer::read_buf(self.buf1)).await?;
             self.buf1.read_commit(size);
         }
 
@@ -4729,10 +4731,11 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
             if let Some(inner) = b_inner.take() {
                 let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
-                match inner
-                    .resp_body
-                    .recv(inner.buf1.read_buf(), dest, &mut scratch)?
-                {
+                match inner.resp_body.recv(
+                    BaseRingBuffer::read_buf(inner.buf1),
+                    dest,
+                    &mut scratch,
+                )? {
                     http1::RecvStatus::Complete(finished, read, written) => {
                         inner.buf1.read_commit(read);
 
@@ -4835,8 +4838,137 @@ impl<'a> ClientFinishedKeepHeader<'a> {
 }
 
 enum Stream {
+    Plain(std::net::TcpStream),
+    Tls(TlsStream<std::net::TcpStream>),
+}
+
+impl Read for Stream {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+        match self {
+            Self::Plain(stream) => stream.read(buf),
+            Self::Tls(stream) => stream.read(buf),
+        }
+    }
+}
+
+enum AsyncStream {
     Plain(AsyncTcpStream),
     Tls(AsyncTlsStream),
+}
+
+impl AsyncStream {
+    fn into_inner(self) -> Stream {
+        match self {
+            Self::Plain(stream) => Stream::Plain(stream.into_std()),
+            Self::Tls(stream) => Stream::Tls(stream.into_std()),
+        }
+    }
+}
+
+impl From<Stream> for AsyncStream {
+    fn from(s: Stream) -> Self {
+        match s {
+            Stream::Plain(stream) => Self::Plain(AsyncTcpStream::from_std(stream)),
+            Stream::Tls(stream) => Self::Tls(AsyncTlsStream::from_std(stream)),
+        }
+    }
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct ConnectionPoolKey {
+    addr: std::net::SocketAddr,
+    tls: bool,
+    host: String,
+}
+
+impl ConnectionPoolKey {
+    fn new(addr: std::net::SocketAddr, tls: bool, host: String) -> Self {
+        Self { addr, tls, host }
+    }
+}
+
+pub struct ConnectionPool {
+    inner: Arc<Mutex<Pool<ConnectionPoolKey, Stream>>>,
+    thread: Option<thread::JoinHandle<()>>,
+    done: Option<mpsc::SyncSender<()>>,
+}
+
+impl ConnectionPool {
+    pub fn new(capacity: usize) -> Self {
+        let inner = Arc::new(Mutex::new(Pool::<ConnectionPoolKey, Stream>::new(capacity)));
+
+        let (s, r) = mpsc::sync_channel(1);
+
+        let thread = {
+            let inner = Arc::clone(&inner);
+
+            thread::Builder::new()
+                .name("connection-pool".into())
+                .spawn(move || loop {
+                    match r.recv_timeout(Duration::from_secs(1)) {
+                        Err(mpsc::RecvTimeoutError::Timeout) => {}
+                        _ => break,
+                    }
+
+                    let now = Instant::now();
+
+                    while let Some((key, _)) = inner.lock().unwrap().expire(now) {
+                        debug!("closing idle connection to {:?} for {}", key.addr, key.host);
+                    }
+                })
+                .unwrap()
+        };
+
+        Self {
+            inner,
+            thread: Some(thread),
+            done: Some(s),
+        }
+    }
+
+    fn push(
+        &self,
+        addr: std::net::SocketAddr,
+        tls: bool,
+        host: String,
+        stream: Stream,
+        ttl: Duration,
+    ) -> Result<(), Stream> {
+        self.inner.lock().unwrap().add(
+            ConnectionPoolKey::new(addr, tls, host),
+            stream,
+            Instant::now() + ttl,
+        )
+    }
+
+    fn take(&self, addr: std::net::SocketAddr, tls: bool, host: &str) -> Option<Stream> {
+        let key = ConnectionPoolKey::new(addr, tls, host.to_string());
+
+        // take the first connection that returns WouldBlock when attempting a read.
+        // anything else is considered an error and the connection is discarded
+        while let Some(mut stream) = self.inner.lock().unwrap().take(&key) {
+            match stream.read(&mut [0]) {
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Some(stream),
+                _ => {}
+            }
+
+            debug!(
+                "discarding broken connection to {:?} for {}",
+                key.addr, key.host
+            );
+        }
+
+        None
+    }
+}
+
+impl Drop for ConnectionPool {
+    fn drop(&mut self) {
+        self.done = None;
+
+        let thread = self.thread.take().unwrap();
+        thread.join().unwrap();
+    }
 }
 
 fn is_allowed(addr: &IpAddr, deny: &[IpNet]) -> bool {
@@ -4855,7 +4987,8 @@ async fn client_connect(
     uri: &url::Url,
     resolver: &resolver::Resolver,
     deny: &[IpNet],
-) -> Result<Stream, Error> {
+    pool: &ConnectionPool,
+) -> Result<(std::net::SocketAddr, bool, AsyncStream), Error> {
     let use_tls = ["https", "wss"].contains(&uri.scheme());
 
     let uri_host = match uri.host_str() {
@@ -4879,6 +5012,7 @@ async fn client_connect(
 
     let mut addrs = ArrayVec::<std::net::SocketAddr, { resolver::ADDRS_MAX }>::new();
     let mut denied = false;
+    let mut reuse_stream = None;
 
     for addr in resolver_results {
         if !is_allowed(&addr, deny) {
@@ -4886,61 +5020,83 @@ async fn client_connect(
             continue;
         }
 
-        addrs.push(std::net::SocketAddr::new(addr, connect_port));
+        let addr = std::net::SocketAddr::new(addr, connect_port);
+
+        if let Some(stream) = pool.take(addr, use_tls, uri_host) {
+            reuse_stream = Some((addr, stream));
+            break;
+        }
+
+        addrs.push(addr);
     }
 
-    if addrs.is_empty() && denied {
-        return Err(Error::PolicyViolation);
-    }
+    let (peer_addr, mut stream, is_new) = if let Some((peer_addr, stream)) = reuse_stream {
+        debug!(
+            "client-conn {}: reusing connection to {:?}",
+            log_id, peer_addr,
+        );
 
-    debug!("client-conn {}: connecting to one of {:?}", log_id, addrs);
+        (peer_addr, stream.into(), false)
+    } else {
+        if addrs.is_empty() && denied {
+            return Err(Error::PolicyViolation);
+        }
 
-    let stream = AsyncTcpStream::connect(&addrs).await?;
+        debug!("client-conn {}: connecting to one of {:?}", log_id, addrs);
 
-    let peer_addr = stream.peer_addr()?;
+        let stream = AsyncTcpStream::connect(&addrs).await?;
 
-    debug!("client-conn {}: connected to {}", log_id, peer_addr);
+        let peer_addr = stream.peer_addr()?;
 
-    if use_tls {
-        let host = if rdata.trust_connect_host {
-            connect_host
+        debug!("client-conn {}: connected to {}", log_id, peer_addr);
+
+        let stream = if use_tls {
+            let host = if rdata.trust_connect_host {
+                connect_host
+            } else {
+                uri_host
+            };
+
+            let verify_mode = if rdata.ignore_tls_errors {
+                VerifyMode::None
+            } else {
+                VerifyMode::Full
+            };
+
+            let stream = match TlsStream::connect(host, stream.into_inner(), verify_mode) {
+                Ok(stream) => stream,
+                Err(e) => {
+                    debug!("client-conn {}: tls connect error: {}", log_id, e);
+
+                    return Err(Error::TlsError);
+                }
+            };
+
+            AsyncStream::Tls(AsyncTlsStream::new(stream))
         } else {
-            uri_host
+            AsyncStream::Plain(stream)
         };
 
-        let verify_mode = if rdata.ignore_tls_errors {
-            VerifyMode::None
-        } else {
-            VerifyMode::Full
-        };
+        (peer_addr, stream, true)
+    };
 
-        let mut stream = match TlsStream::connect(host, stream.into_inner(), verify_mode) {
-            Ok(stream) => stream,
-            Err(e) => {
-                debug!("client-conn {}: tls connect error: {}", log_id, e);
-
-                return Err(Error::TlsError);
-            }
-        };
-
-        if stream.set_id(log_id).is_err() {
+    if let AsyncStream::Tls(stream) = &mut stream {
+        if stream.inner().set_id(log_id).is_err() {
             warn!("client-conn {}: log id too long for TlsStream", log_id);
 
             return Err(Error::BadRequest);
         }
 
-        let mut stream = AsyncTlsStream::new(stream);
+        if is_new {
+            if let Err(e) = stream.ensure_handshake().await {
+                debug!("client-conn {}: tls handshake error: {:?}", log_id, e);
 
-        if let Err(e) = stream.ensure_handshake().await {
-            debug!("client-conn {}: tls handshake error: {:?}", log_id, e);
-
-            return Err(Error::TlsError);
+                return Err(Error::TlsError);
+            }
         }
-
-        Ok(Stream::Tls(stream))
-    } else {
-        Ok(Stream::Plain(stream))
     }
+
+    Ok((peer_addr, use_tls, stream))
 }
 
 // return (_, true) if persistent
@@ -5027,7 +5183,7 @@ where
 
         loop {
             // fill the buffer as much as possible
-            let size = req_body.prepare(body_buf.read_buf(), true)?;
+            let size = req_body.prepare(Buffer::read_buf(body_buf), true)?;
             body_buf.read_commit(size);
 
             // send the buffer
@@ -5092,7 +5248,7 @@ where
             reason: resp.reason,
             headers: &zheaders,
             content_type: None,
-            body: body_buf.read_buf(),
+            body: Buffer::read_buf(body_buf),
         };
 
         let zresp = make_zhttp_req_response(
@@ -5119,6 +5275,7 @@ async fn client_req_connect(
     packet_buf: &RefCell<Vec<u8>>,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
+    pool: &ConnectionPool,
 ) -> Result<zmq::Message, Error> {
     let zreq_ref = zreq.get().get();
 
@@ -5142,6 +5299,11 @@ async fn client_req_connect(
         return Err(Error::BadRequest);
     }
 
+    let uri_host = match uri.host_str() {
+        Some(s) => s,
+        None => return Err(Error::BadRequest),
+    };
+
     debug!(
         "client-conn {}: request: {} {}",
         log_id, rdata.method, rdata.uri,
@@ -5149,16 +5311,32 @@ async fn client_req_connect(
 
     let deny = if rdata.ignore_policies { &[] } else { deny };
 
-    let mut stream = client_connect(log_id, rdata, &uri, resolver, deny).await?;
+    let (peer_addr, using_tls, mut stream) =
+        client_connect(log_id, rdata, &uri, resolver, deny, pool).await?;
 
-    let (zresp, _persistent) = match &mut stream {
-        Stream::Plain(stream) => {
+    let (zresp, persistent) = match &mut stream {
+        AsyncStream::Plain(stream) => {
             client_req_handler(log_id, id, stream, zreq, buf1, buf2, body_buf, packet_buf).await?
         }
-        Stream::Tls(stream) => {
+        AsyncStream::Tls(stream) => {
             client_req_handler(log_id, id, stream, zreq, buf1, buf2, body_buf, packet_buf).await?
         }
     };
+
+    if persistent {
+        if pool
+            .push(
+                peer_addr,
+                using_tls,
+                uri_host.to_string(),
+                stream.into_inner(),
+                CONNECTION_POOL_TTL,
+            )
+            .is_ok()
+        {
+            debug!("client-conn {}: leaving connection intact", log_id);
+        }
+    }
 
     Ok(zresp)
 }
@@ -5175,6 +5353,7 @@ async fn client_req_connection_inner(
     timeout: Duration,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
+    pool: &ConnectionPool,
     zsender: AsyncLocalSender<(MultipartHeader, zmq::Message)>,
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
@@ -5195,6 +5374,7 @@ async fn client_req_connection_inner(
         &packet_buf,
         deny,
         resolver,
+        pool,
     );
 
     let timeout = Timeout::new(reactor.now() + timeout);
@@ -5238,6 +5418,7 @@ pub async fn client_req_connection(
     timeout: Duration,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
+    pool: &ConnectionPool,
     zsender: AsyncLocalSender<(MultipartHeader, zmq::Message)>,
 ) {
     match client_req_connection_inner(
@@ -5252,6 +5433,7 @@ pub async fn client_req_connection(
         timeout,
         deny,
         resolver,
+        pool,
         zsender,
     )
     .await
@@ -5778,6 +5960,7 @@ async fn client_stream_connect<E, R1, R2>(
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
+    pool: &ConnectionPool,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: &AsyncLocalSender<zmq::Message>,
     shared: &StreamSharedData,
@@ -5826,19 +6009,24 @@ where
         "_"
     };
 
+    let uri_host = match uri.host_str() {
+        Some(s) => s,
+        None => return Err(Error::BadRequest),
+    };
+
     debug!("client-conn {}: request: {} {}", log_id, method, rdata.uri);
 
     let deny = if rdata.ignore_policies { &[] } else { deny };
 
     // ABR: discard_while
-    let mut stream = server_discard_while(
+    let (peer_addr, using_tls, mut stream) = server_discard_while(
         zreceiver,
-        pin!(client_connect(log_id, rdata, &uri, resolver, deny)),
+        pin!(client_connect(log_id, rdata, &uri, resolver, deny, pool)),
     )
     .await?;
 
-    let _persistent = match &mut stream {
-        Stream::Plain(stream) => {
+    let persistent = match &mut stream {
+        AsyncStream::Plain(stream) => {
             client_stream_handler(
                 log_id,
                 id,
@@ -5860,7 +6048,7 @@ where
             )
             .await?
         }
-        Stream::Tls(stream) => {
+        AsyncStream::Tls(stream) => {
             client_stream_handler(
                 log_id,
                 id,
@@ -5884,6 +6072,21 @@ where
         }
     };
 
+    if persistent {
+        if pool
+            .push(
+                peer_addr,
+                using_tls,
+                uri_host.to_string(),
+                stream.into_inner(),
+                CONNECTION_POOL_TTL,
+            )
+            .is_ok()
+        {
+            debug!("client-conn {}: leaving connection intact", log_id);
+        }
+    }
+
     Ok(())
 }
 
@@ -5902,6 +6105,7 @@ async fn client_stream_connection_inner<E>(
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
+    pool: &ConnectionPool,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<zmq::Message>,
     shared: arena::Rc<StreamSharedData>,
@@ -5950,6 +6154,7 @@ where
         deny,
         instance_id,
         resolver,
+        pool,
         zreceiver,
         &zsender,
         shared.get(),
@@ -6033,6 +6238,7 @@ pub async fn client_stream_connection<E>(
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
+    pool: &ConnectionPool,
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<zmq::Message>,
     shared: arena::Rc<StreamSharedData>,
@@ -6060,6 +6266,7 @@ pub async fn client_stream_connection<E>(
             deny,
             instance_id,
             resolver,
+            pool,
             &zreceiver,
             zsender,
             shared,
