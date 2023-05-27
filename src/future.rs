@@ -22,9 +22,10 @@ use crate::net::{NetListener, NetStream, SocketAddr};
 use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented};
 use crate::resolver;
 use crate::shuffle::shuffle;
-use crate::tls::{TlsStream, TlsStreamError};
+use crate::tls::{TlsStream, TlsStreamError, VerifyMode};
 use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
+use openssl::ssl;
 use paste::paste;
 use std::cell::{Cell, RefCell};
 use std::future::Future;
@@ -851,16 +852,26 @@ impl AsyncTlsStream {
             )
             .unwrap();
 
-        // assume I/O operations are ready to be attempted
-        registration.set_readiness(Some(mio::Interest::READABLE | mio::Interest::WRITABLE));
+        Self::new_with_registration(s, registration)
+    }
 
-        // process TLS reads/writes after any socket event
-        registration.set_any_as_all(true);
+    pub fn connect(
+        domain: &str,
+        stream: AsyncTcpStream,
+        verify_mode: VerifyMode,
+    ) -> Result<Self, ssl::Error> {
+        let (registration, stream) = stream.evented.into_parts();
 
-        Self {
-            registration,
-            stream: Some(s),
-        }
+        let stream = match TlsStream::connect(domain, stream, verify_mode) {
+            Ok(stream) => stream,
+            Err((mut stream, e)) => {
+                registration.deregister_io(&mut stream).unwrap();
+
+                return Err(e);
+            }
+        };
+
+        Ok(Self::new_with_registration(stream, registration))
     }
 
     pub fn ensure_handshake<'a>(&'a mut self) -> EnsureHandshakeFuture<'a> {
@@ -894,6 +905,19 @@ impl AsyncTlsStream {
         let stream = stream.change_inner(|stream| TcpStream::from_std(stream));
 
         Self::new(stream)
+    }
+
+    fn new_with_registration(s: TlsStream<TcpStream>, registration: Registration) -> Self {
+        // assume I/O operations are ready to be attempted
+        registration.set_readiness(Some(mio::Interest::READABLE | mio::Interest::WRITABLE));
+
+        // process TLS reads/writes after any socket event
+        registration.set_any_as_all(true);
+
+        Self {
+            registration,
+            stream: Some(s),
+        }
     }
 }
 

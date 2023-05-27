@@ -326,7 +326,7 @@ impl TlsAcceptor {
         &self,
         stream: mio::net::TcpStream,
     ) -> Result<TlsStream<mio::net::TcpStream>, ssl::Error> {
-        TlsStream::new(false, stream, |stream| {
+        let result = TlsStream::new(false, stream, |stream| {
             let stream = match self.acceptor.accept(stream) {
                 Ok(stream) => Stream::Ssl(stream),
                 Err(HandshakeError::SetupFailure(e)) => return Err(e.into()),
@@ -335,7 +335,12 @@ impl TlsAcceptor {
             };
 
             Ok(stream)
-        })
+        });
+
+        match result {
+            Ok(stream) => Ok(stream),
+            Err((_, e)) => Err(e),
+        }
     }
 }
 
@@ -384,7 +389,11 @@ impl<T> TlsStream<T>
 where
     T: Read + Write + Any + Send,
 {
-    pub fn connect(domain: &str, stream: T, verify_mode: VerifyMode) -> Result<Self, ssl::Error> {
+    pub fn connect(
+        domain: &str,
+        stream: T,
+        verify_mode: VerifyMode,
+    ) -> Result<Self, (T, ssl::Error)> {
         Self::new(true, stream, |stream| {
             let mut connector = SslConnector::builder(SslMethod::tls())?;
 
@@ -414,7 +423,7 @@ where
 
         let plain_stream: &mut dyn ReadWrite = Box::as_mut(plain_stream);
 
-        plain_stream.as_any().downcast_mut::<T>().unwrap()
+        plain_stream.as_any().downcast_mut().unwrap()
     }
 
     pub fn set_id(&mut self, id: &str) -> Result<(), ()> {
@@ -490,7 +499,7 @@ where
         let plain_stream: &mut Box<dyn ReadWrite> = Box::as_mut(&mut self.plain_stream);
 
         replace_at(plain_stream, |plain_stream: Box<dyn ReadWrite>| {
-            let plain_stream: Box<T> = plain_stream.into_any().downcast::<T>().unwrap();
+            let plain_stream: Box<T> = plain_stream.into_any().downcast().unwrap();
             let plain_stream: U = change_fn(*plain_stream);
 
             Box::new(plain_stream)
@@ -500,7 +509,7 @@ where
         unsafe { mem::transmute(self) }
     }
 
-    fn new<F>(client: bool, stream: T, init_fn: F) -> Result<Self, ssl::Error>
+    fn new<F>(client: bool, stream: T, init_fn: F) -> Result<Self, (T, ssl::Error)>
     where
         F: FnOnce(
             &'static mut Box<dyn ReadWrite>,
@@ -526,7 +535,15 @@ where
         // or MidHandshakeSslStream, or when known to be not wrapped
         let outer: &'static mut Box<dyn ReadWrite> = unsafe { mem::transmute(outer) };
 
-        let stream = init_fn(outer)?;
+        let stream = match init_fn(outer) {
+            Ok(stream) => stream,
+            Err(e) => {
+                let inner_box: Box<dyn ReadWrite> = *outer_box;
+                let stream: T = *inner_box.into_any().downcast().unwrap();
+
+                return Err((stream, e));
+            }
+        };
 
         Ok(Self {
             stream,
@@ -586,6 +603,7 @@ where
 mod tests {
     use super::*;
 
+    #[derive(Debug)]
     struct ReadWriteA {
         a: i32,
     }
@@ -606,6 +624,7 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
     struct ReadWriteB {
         b: i32,
     }
@@ -626,6 +645,27 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct ReadWriteC {
+        c: i32,
+    }
+
+    impl Read for ReadWriteC {
+        fn read(&mut self, _buf: &mut [u8]) -> Result<usize, io::Error> {
+            Err(io::Error::from(io::ErrorKind::Other))
+        }
+    }
+
+    impl Write for ReadWriteC {
+        fn write(&mut self, _buf: &[u8]) -> Result<usize, io::Error> {
+            Err(io::Error::from(io::ErrorKind::Other))
+        }
+
+        fn flush(&mut self) -> Result<(), io::Error> {
+            Err(io::Error::from(io::ErrorKind::Other))
+        }
+    }
+
     #[test]
     fn test_get_change_inner() {
         let a = ReadWriteA { a: 1 };
@@ -633,5 +673,16 @@ mod tests {
         assert_eq!(stream.get_inner().a, 1);
         let mut stream = stream.change_inner(|_| ReadWriteB { b: 2 });
         assert_eq!(stream.get_inner().b, 2);
+    }
+
+    #[test]
+    fn test_connect_error() {
+        let c = ReadWriteC { c: 1 };
+        let (stream, e) = match TlsStream::connect("localhost", c, VerifyMode::Full) {
+            Ok(_) => panic!("unexpected success"),
+            Err(ret) => ret,
+        };
+        assert_eq!(stream.c, 1);
+        assert_eq!(e.into_io_error().unwrap().kind(), io::ErrorKind::Other);
     }
 }

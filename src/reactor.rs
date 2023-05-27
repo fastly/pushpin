@@ -605,9 +605,13 @@ impl Drop for Reactor {
     }
 }
 
-pub struct IoEvented<S: mio::event::Source> {
+struct IoEventedInner<S: mio::event::Source> {
     registration: Registration,
-    io: Option<S>,
+    io: S,
+}
+
+pub struct IoEvented<S: mio::event::Source> {
+    inner: Option<IoEventedInner<S>>,
 }
 
 impl<S: mio::event::Source> IoEvented<S> {
@@ -615,31 +619,37 @@ impl<S: mio::event::Source> IoEvented<S> {
         let registration = reactor.register_io(&mut io, interest)?;
 
         Ok(Self {
-            registration,
-            io: Some(io),
+            inner: Some(IoEventedInner { registration, io }),
         })
     }
 
     pub fn registration(&self) -> &Registration {
-        &self.registration
+        &self.inner.as_ref().unwrap().registration
     }
 
     pub fn io(&self) -> &S {
-        &self.io.as_ref().unwrap()
+        &self.inner.as_ref().unwrap().io
+    }
+
+    // return registration and io object, without deregistering it
+    pub fn into_parts(mut self) -> (Registration, S) {
+        let inner = self.inner.take().unwrap();
+
+        (inner.registration, inner.io)
     }
 
     pub fn into_inner(mut self) -> S {
-        let mut io = self.io.take().unwrap();
-        self.registration().deregister_io(&mut io).unwrap();
+        let mut inner = self.inner.take().unwrap();
+        inner.registration.deregister_io(&mut inner.io).unwrap();
 
-        io
+        inner.io
     }
 }
 
 impl<S: mio::event::Source> Drop for IoEvented<S> {
     fn drop(&mut self) {
-        if let Some(mut io) = self.io.take() {
-            self.registration().deregister_io(&mut io).unwrap();
+        if let Some(mut inner) = self.inner.take() {
+            inner.registration.deregister_io(&mut inner.io).unwrap();
         }
     }
 }

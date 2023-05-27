@@ -5063,7 +5063,7 @@ async fn client_connect(
                 VerifyMode::Full
             };
 
-            let stream = match TlsStream::connect(host, stream.into_inner(), verify_mode) {
+            let stream = match AsyncTlsStream::connect(host, stream, verify_mode) {
                 Ok(stream) => stream,
                 Err(e) => {
                     debug!("client-conn {}: tls connect error: {}", log_id, e);
@@ -5072,7 +5072,7 @@ async fn client_connect(
                 }
             };
 
-            AsyncStream::Tls(AsyncTlsStream::new(stream))
+            AsyncStream::Tls(stream)
         } else {
             AsyncStream::Plain(stream)
         };
