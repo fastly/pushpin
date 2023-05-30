@@ -160,13 +160,11 @@ fn tnet_to_json(v: &TnValue) -> Result<serde_json::Value, io::Error> {
 
             for (k, v) in m {
                 if let TnValue::String(s) = v {
-                    if k == "body" || k == "content" {
-                        if str::from_utf8(s).is_err() {
-                            let k = k.to_owned() + "-bin";
-                            let v = base64::encode(s);
-                            out.insert(k, serde_json::Value::String(v));
-                            continue;
-                        }
+                    if (k == "body" || k == "content") && str::from_utf8(s).is_err() {
+                        let k = k.to_owned() + "-bin";
+                        let v = base64::encode(s);
+                        out.insert(k, serde_json::Value::String(v));
+                        continue;
                     }
                 }
 
@@ -187,7 +185,7 @@ struct ParsedUrl {
 }
 
 fn parse_url(url: &str) -> Result<ParsedUrl, io::Error> {
-    let pos = match url.find(":") {
+    let pos = match url.find(':') {
         Some(pos) => pos,
         None => return Err(io::Error::from(io::ErrorKind::InvalidData)),
     };
@@ -202,7 +200,7 @@ fn parse_url(url: &str) -> Result<ParsedUrl, io::Error> {
 
     let s = &s[2..];
 
-    let pos = match s.find("/") {
+    let pos = match s.find('/') {
         Some(pos) => pos,
         None => s.len(),
     };
@@ -266,9 +264,9 @@ impl TlsStream {
 impl Read for TlsStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         match self.stream.read(buf) {
-            Ok(ret) => return Ok(ret),
-            Err(e) if e.kind() == io::ErrorKind::ConnectionAborted => return Ok(0),
-            Err(e) => return Err(e),
+            Ok(ret) => Ok(ret),
+            Err(e) if e.kind() == io::ErrorKind::ConnectionAborted => Ok(0),
+            Err(e) => Err(e),
         }
     }
 }
@@ -285,7 +283,7 @@ impl Write for TlsStream {
 
 enum Stream {
     Plain(net::TcpStream),
-    Tls(TlsStream),
+    Tls(Box<TlsStream>),
 }
 
 impl Read for Stream {
@@ -325,8 +323,7 @@ fn publish_http(
 
     let path = parsed_url.path + "/publish/";
 
-    let mut items = Vec::new();
-    items.push(item.clone());
+    let items = vec![item.clone()];
 
     let mut data = serde_json::Map::new();
     data.insert("items".into(), serde_json::Value::Array(items));
@@ -359,14 +356,14 @@ fn publish_http(
         net::TcpStream::connect((parsed_url.connect_host.as_str(), parsed_url.connect_port))?;
 
     let mut stream = if parsed_url.scheme == "https" {
-        Stream::Tls(TlsStream::new(stream, &parsed_url.host)?)
+        Stream::Tls(Box::new(TlsStream::new(stream, &parsed_url.host)?))
     } else {
         Stream::Plain(stream)
     };
 
-    stream.write(req.as_bytes())?;
+    stream.write_all(req.as_bytes())?;
 
-    stream.write(&body)?;
+    stream.write_all(&body)?;
 
     let mut reader = io::BufReader::new(&mut stream);
 
@@ -479,9 +476,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
 
             match &msg.content {
                 Content::Value(s) => {
-                    let (http_content, ws_content) = if s.starts_with("@") {
-                        let name = &s[1..];
-
+                    let (http_content, ws_content) = if let Some(name) = s.strip_prefix('@') {
                         let mut f = match fs::File::open(name) {
                             Ok(f) => f,
                             Err(e) => return Err(format!("can't read file {}: {}", name, e).into()),
@@ -531,10 +526,10 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
                 let mut headers = Vec::new();
 
                 for (name, value) in config.headers.iter() {
-                    let mut header = Vec::new();
-
-                    header.push(TnValue::String(name.clone().into()));
-                    header.push(TnValue::String(value.clone().into()));
+                    let header = vec![
+                        TnValue::String(name.clone().into()),
+                        TnValue::String(value.clone().into()),
+                    ];
 
                     headers.push(TnValue::Array(header));
                 }
@@ -614,7 +609,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
     if config.spec.starts_with("https:") || config.spec.starts_with("http:") {
         let item = tnet_to_json(&item)?;
 
-        let basic_auth = config.basic_auth.as_ref().map(|s| s.as_str());
+        let basic_auth = config.basic_auth.as_deref();
 
         publish_http(&config.spec, basic_auth, &item)?;
     } else {
