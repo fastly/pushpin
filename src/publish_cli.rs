@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Fanout, Inc.
+ * Copyright (C) 2021-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -47,7 +47,7 @@ enum TnValue {
 }
 
 impl TnValue {
-    fn write_to<'a>(&'a self, w: &mut tnetstring::Writer<'a>) -> Result<(), io::Error> {
+    fn write_to<'a>(&'a self, w: &mut tnetstring::Writer<'a, '_>) -> Result<(), io::Error> {
         match self {
             Self::Null => w.write_null(),
             Self::Bool(b) => w.write_bool(*b),
@@ -78,8 +78,9 @@ impl TnValue {
 
     pub fn serialize(&self) -> Result<Vec<u8>, io::Error> {
         let mut out = Vec::new();
+        let mut cursor = io::Cursor::new(&mut out[..]);
 
-        let mut w = tnetstring::Writer::new(&mut out);
+        let mut w = tnetstring::Writer::new(&mut cursor);
         self.write_to(&mut w)?;
 
         w.flush()?;

@@ -21,6 +21,7 @@ rustls-native-certs = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 slab = "0.4"
+thiserror = "1.0"
 webpki = "0.21"
 zmq = "0.9"
 
