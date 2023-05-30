@@ -43,15 +43,15 @@ jobs:
     - name: fmt
       run: cargo fmt --check
       shell: bash
-    - name: clippy
-      run: cargo clippy
-      shell: bash
-    - name: audit
-      run: cargo audit
-      shell: bash
     - name: build
       run: ./configure && cargo build && make
       shell: bash
     - name: test
       run: cargo test
+      shell: bash
+    - name: clippy
+      run: cargo clippy
+      shell: bash
+    - name: audit
+      run: cargo audit
       shell: bash
