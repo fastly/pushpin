@@ -42,15 +42,13 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
 
     let mut elapsed = newtime - curtime;
 
-    for wheel in 0..WHEEL_NUM {
+    for (wheel, item) in result.iter_mut().enumerate() {
         // we only care about the highest bits
         let trunc_bits = (wheel * WHEEL_BITS) as u64;
 
-        let pending;
-
-        if (elapsed >> trunc_bits) > (WHEEL_MAX as u64) {
+        let pending = if (elapsed >> trunc_bits) > (WHEEL_MAX as u64) {
             // all slots need processing
-            pending = !0;
+            !0
         } else {
             let old_slot = (curtime >> trunc_bits) & WHEEL_MASK;
             let new_slot = (newtime >> trunc_bits) & WHEEL_MASK;
@@ -61,16 +59,16 @@ fn need_resched(curtime: u64, newtime: u64) -> [u64; WHEEL_NUM] {
                 (WHEEL_LEN as u64) - old_slot + new_slot
             };
 
-            pending = if d >= WHEEL_LEN as u64 {
+            if d >= WHEEL_LEN as u64 {
                 !0
             } else if wheel > 0 {
                 ((1 << d) - 1u64).rotate_left(old_slot as u32)
             } else {
                 ((1 << d) - 1u64).rotate_left((old_slot + 1) as u32)
-            };
-        }
+            }
+        };
 
-        result[wheel] = pending;
+        *item = pending;
 
         let finished_bit = if wheel > 0 {
             // higher wheels have completed a full rotation when slot 63 is processed
@@ -152,6 +150,7 @@ impl TimerWheel {
         }
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn add(&mut self, expires: u64, user_data: usize) -> Result<usize, ()> {
         if self.nodes.len() == self.nodes.capacity() {
             return Err(());
@@ -243,9 +242,7 @@ impl TimerWheel {
 
         let mut l = list::List::default();
 
-        for wheel in 0..WHEEL_NUM {
-            let pending = need[wheel];
-
+        for (wheel, &pending) in need.iter().enumerate() {
             // loop as long as we still have slots to process
             while pending & self.pending[wheel] != 0 {
                 // get rightmost (earliest) slot that needs processing

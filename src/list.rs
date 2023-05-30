@@ -27,7 +27,7 @@ impl<T> Node<T> {
         Self {
             prev: None,
             next: None,
-            value: value,
+            value,
         }
     }
 }
@@ -40,7 +40,7 @@ pub struct List {
 
 impl List {
     pub fn is_empty(&self) -> bool {
-        !self.head.is_some()
+        self.head.is_none()
     }
 
     pub fn insert<T, S>(&mut self, nodes: &mut S, after: Option<usize>, key: usize)

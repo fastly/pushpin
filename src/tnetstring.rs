@@ -189,7 +189,7 @@ impl Op<'_> {
 // calculate the length of the first op and any dependants
 // return the number of ops processed
 fn calc_len(ops: &[Op], lens: &mut [usize]) -> usize {
-    assert!(ops.len() > 0);
+    assert!(!ops.is_empty());
     assert_eq!(ops.len(), lens.len());
 
     let (len, count) = match ops[0] {
@@ -277,7 +277,7 @@ impl<'a, 'b> Writer<'a, 'b> {
         Self {
             ops: [Op::Invalid; OPS_MAX],
             len: 0,
-            dest: dest,
+            dest,
         }
     }
 
@@ -365,7 +365,7 @@ pub fn parse_frame(src: &[u8]) -> Result<(Frame, usize), ParseError> {
         if c == b':' {
             size_end = Some(i);
             break;
-        } else if !(c as char).is_digit(10) {
+        } else if !(c as char).is_ascii_digit() {
             return Err(ParseError::InvalidData);
         }
     }
@@ -517,7 +517,7 @@ pub struct SequenceIterator<'a> {
 
 impl<'a> SequenceIterator<'a> {
     pub fn new(src: &'a [u8]) -> Self {
-        Self { src: src, pos: 0 }
+        Self { src, pos: 0 }
     }
 }
 
