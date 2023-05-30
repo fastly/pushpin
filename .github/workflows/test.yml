@@ -50,7 +50,7 @@ jobs:
       run: cargo audit
       shell: bash
     - name: build
-      run: cargo build
+      run: ./configure && cargo build && make
       shell: bash
     - name: test
       run: cargo test
