@@ -320,7 +320,8 @@ enum Error {
     TlsError,
     PolicyViolation,
     ValueActive,
-    Timeout,
+    StreamTimeout,
+    SessionTimeout,
     Stopped,
 }
 
@@ -331,7 +332,7 @@ impl Error {
                 "remote-connection-failed"
             }
             Error::BadRequest => "bad-request",
-            Error::Timeout => "connection-timeout",
+            Error::StreamTimeout => "connection-timeout",
             Error::TlsError => "tls-error",
             Error::PolicyViolation => "policy-violation",
             _ => "undefined-condition",
@@ -2214,7 +2215,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
 
             match select_3(pin!(handler), timeout.elapsed(), token.cancelled()).await {
                 Select3::R1(ret) => ret?,
-                Select3::R2(_) => return Err(Error::Timeout),
+                Select3::R2(_) => return Err(Error::StreamTimeout),
                 Select3::R3(_) => return Err(Error::Stopped),
             }
         };
@@ -4121,7 +4122,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
     tmp_buf: Rc<RefCell<Vec<u8>>>,
-    stream_timeout: Duration,
+    stream_timeout_duration: Duration,
     allow_compression: bool,
     instance_id: &str,
     zsender: AsyncLocalSender<zmq::Message>,
@@ -4142,26 +4143,15 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
         debug!("server-conn {}: assigning id", cid);
 
         let reuse = {
-            let stream_timeout_time = RefCell::new(reactor.now() + stream_timeout);
-            let session_timeout_time = RefCell::new(reactor.now() + ZHTTP_SESSION_TIMEOUT);
-
-            let soonest_time = || {
-                cmp::min(
-                    *stream_timeout_time.borrow(),
-                    *session_timeout_time.borrow(),
-                )
-            };
-
-            let timeout = Timeout::new(soonest_time());
+            let stream_timeout = Timeout::new(reactor.now() + stream_timeout_duration);
+            let session_timeout = Timeout::new(reactor.now() + ZHTTP_SESSION_TIMEOUT);
 
             let refresh_stream_timeout = || {
-                stream_timeout_time.replace(reactor.now() + stream_timeout);
-                timeout.set_deadline(soonest_time());
+                stream_timeout.set_deadline(reactor.now() + stream_timeout_duration);
             };
 
             let refresh_session_timeout = || {
-                session_timeout_time.replace(reactor.now() + ZHTTP_SESSION_TIMEOUT);
-                timeout.set_deadline(soonest_time());
+                session_timeout.set_deadline(reactor.now() + ZHTTP_SESSION_TIMEOUT);
             };
 
             let handler = pin!(server_stream_handler(
@@ -4184,65 +4174,73 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 &refresh_session_timeout,
             ));
 
-            match select_3(handler, timeout.elapsed(), token.cancelled()).await {
-                Select3::R1(ret) => match ret {
-                    Ok(reuse) => reuse,
-                    Err(e) => {
-                        let handler_caused = match &e {
-                            Error::BadMessage | Error::HandlerError | Error::HandlerCancel => true,
-                            _ => false,
-                        };
+            let ret = match select_4(
+                handler,
+                stream_timeout.elapsed(),
+                session_timeout.elapsed(),
+                token.cancelled(),
+            )
+            .await
+            {
+                Select4::R1(ret) => ret,
+                Select4::R2(_) => Err(Error::StreamTimeout),
+                Select4::R3(_) => return Err(Error::SessionTimeout),
+                Select4::R4(_) => return Err(Error::Stopped),
+            };
 
-                        if !handler_caused {
-                            let shared = shared.get();
+            match ret {
+                Ok(reuse) => reuse,
+                Err(e) => {
+                    let handler_caused = match &e {
+                        Error::BadMessage | Error::HandlerError | Error::HandlerCancel => true,
+                        _ => false,
+                    };
 
-                            let msg = if let Some(addr) = shared.to_addr().get() {
-                                let id = cid.as_ref();
+                    if !handler_caused {
+                        let shared = shared.get();
 
-                                let mut zreq = zhttppacket::Request::new_cancel(b"", &[]);
+                        let msg = if let Some(addr) = shared.to_addr().get() {
+                            let id = cid.as_ref();
 
-                                let ids = [zhttppacket::Id {
-                                    id: id.as_bytes(),
-                                    seq: Some(shared.out_seq()),
-                                }];
+                            let mut zreq = zhttppacket::Request::new_cancel(b"", &[]);
 
-                                zreq.from = instance_id.as_bytes();
-                                zreq.ids = &ids;
-                                zreq.multi = true;
+                            let ids = [zhttppacket::Id {
+                                id: id.as_bytes(),
+                                seq: Some(shared.out_seq()),
+                            }];
 
-                                let packet_buf = &mut *packet_buf.borrow_mut();
+                            zreq.from = instance_id.as_bytes();
+                            zreq.ids = &ids;
+                            zreq.multi = true;
 
-                                let size = zreq.serialize(packet_buf)?;
+                            let packet_buf = &mut *packet_buf.borrow_mut();
 
-                                let msg = zmq::Message::from(&packet_buf[..size]);
+                            let size = zreq.serialize(packet_buf)?;
 
-                                let addr = match ArrayVec::try_from(addr) {
-                                    Ok(v) => v,
-                                    Err(_) => {
-                                        return Err(
-                                            io::Error::from(io::ErrorKind::InvalidInput).into()
-                                        )
-                                    }
-                                };
+                            let msg = zmq::Message::from(&packet_buf[..size]);
 
-                                Some((addr, msg))
-                            } else {
-                                None
+                            let addr = match ArrayVec::try_from(addr) {
+                                Ok(v) => v,
+                                Err(_) => {
+                                    return Err(io::Error::from(io::ErrorKind::InvalidInput).into())
+                                }
                             };
 
-                            if let Some((addr, msg)) = msg {
-                                // best effort
-                                let _ = zsender_stream.try_send((addr, msg));
+                            Some((addr, msg))
+                        } else {
+                            None
+                        };
 
-                                shared.inc_out_seq();
-                            }
+                        if let Some((addr, msg)) = msg {
+                            // best effort
+                            let _ = zsender_stream.try_send((addr, msg));
+
+                            shared.inc_out_seq();
                         }
-
-                        return Err(e);
                     }
-                },
-                Select3::R2(_) => return Err(Error::Timeout),
-                Select3::R3(_) => return Err(Error::Stopped),
+
+                    return Err(e);
+                }
             }
         };
 
@@ -5395,7 +5393,7 @@ async fn client_req_connection_inner(
 
     let ret = match select_3(pin!(handler), timeout.elapsed(), token.cancelled()).await {
         Select3::R1(ret) => ret,
-        Select3::R2(_) => Err(Error::Timeout),
+        Select3::R2(_) => Err(Error::StreamTimeout),
         Select3::R3(_) => return Err(Error::Stopped),
     };
 
@@ -6127,7 +6125,7 @@ async fn client_stream_connection_inner<E>(
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
     tmp_buf: Rc<RefCell<Vec<u8>>>,
-    stream_timeout: Duration,
+    stream_timeout_duration: Duration,
     allow_compression: bool,
     deny: &[IpNet],
     instance_id: &str,
@@ -6146,26 +6144,15 @@ where
     let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
     let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
 
-    let stream_timeout_time = RefCell::new(reactor.now() + stream_timeout);
-    let session_timeout_time = RefCell::new(reactor.now() + ZHTTP_SESSION_TIMEOUT);
-
-    let soonest_time = || {
-        cmp::min(
-            *stream_timeout_time.borrow(),
-            *session_timeout_time.borrow(),
-        )
-    };
-
-    let timeout = Timeout::new(soonest_time());
+    let stream_timeout = Timeout::new(reactor.now() + stream_timeout_duration);
+    let session_timeout = Timeout::new(reactor.now() + ZHTTP_SESSION_TIMEOUT);
 
     let refresh_stream_timeout = || {
-        stream_timeout_time.replace(reactor.now() + stream_timeout);
-        timeout.set_deadline(soonest_time());
+        stream_timeout.set_deadline(reactor.now() + stream_timeout_duration);
     };
 
     let refresh_session_timeout = || {
-        session_timeout_time.replace(reactor.now() + ZHTTP_SESSION_TIMEOUT);
-        timeout.set_deadline(soonest_time());
+        session_timeout.set_deadline(reactor.now() + ZHTTP_SESSION_TIMEOUT);
     };
 
     let mut response_received = false;
@@ -6194,10 +6181,18 @@ where
             &refresh_session_timeout,
         ));
 
-        match select_3(handler, timeout.elapsed(), token.cancelled()).await {
-            Select3::R1(ret) => ret,
-            Select3::R2(_) => return Err(Error::Timeout),
-            Select3::R3(_) => return Err(Error::Stopped),
+        match select_4(
+            handler,
+            stream_timeout.elapsed(),
+            session_timeout.elapsed(),
+            token.cancelled(),
+        )
+        .await
+        {
+            Select4::R1(ret) => ret,
+            Select4::R2(_) => Err(Error::StreamTimeout),
+            Select4::R3(_) => return Err(Error::SessionTimeout),
+            Select4::R4(_) => return Err(Error::Stopped),
         }
     };
 
@@ -7642,7 +7637,7 @@ mod tests {
         executor.advance_time(now + Duration::from_millis(5_000));
 
         match executor.step() {
-            Poll::Ready(Err(Error::Timeout)) => {}
+            Poll::Ready(Err(Error::StreamTimeout)) => {}
             _ => panic!("unexpected state"),
         }
     }
