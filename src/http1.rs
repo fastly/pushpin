@@ -1414,6 +1414,12 @@ pub struct ClientRequestBody {
 }
 
 impl ClientRequestBody {
+    pub fn into_early_response(mut self) -> ClientResponse {
+        self.state.persistent = false;
+
+        ClientResponse { state: self.state }
+    }
+
     pub fn send<W: Write>(
         mut self,
         writer: &mut W,

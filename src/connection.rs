@@ -2770,6 +2770,7 @@ where
 
                 match ret {
                     SendStatus::Complete(resp) => return Ok(resp),
+                    SendStatus::EarlyResponse(resp) => return Ok(resp),
                     SendStatus::Partial((), _) => {
                         if !req_body.can_send() {
                             if let Some(overflow) = &mut overflow {
@@ -2825,6 +2826,7 @@ where
 
                 match ret {
                     SendStatus::Complete(resp) => break resp,
+                    SendStatus::EarlyResponse(resp) => break resp,
                     SendStatus::Partial((), size) => {
                         out_credits += size as u32;
 
@@ -2883,6 +2885,7 @@ where
 
                             match ret {
                                 SendStatus::Complete(resp) => break 'main resp,
+                                SendStatus::EarlyResponse(resp) => break 'main resp,
                                 SendStatus::Partial((), size) => {
                                     out_credits += size as u32;
 
@@ -4358,21 +4361,9 @@ where
     }
 }
 
-async fn fill_recv_buffer<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Error {
-    loop {
-        if let Err(e) = recv_nonzero(r, buf).await {
-            if e.kind() == io::ErrorKind::WriteZero {
-                // if there's no more space, suspend forever
-                let () = std::future::pending().await;
-            }
-
-            return e.into();
-        }
-    }
-}
-
 pub enum SendStatus<T, P, E> {
     Complete(T),
+    EarlyResponse(T),
     Partial(P, usize),
     Error(P, E),
 }
@@ -4525,60 +4516,37 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
     }
 
     async fn send(&self) -> SendStatus<ClientResponse<'a, R>, (), Error> {
-        let ret = if let Some(inner) = &*self.inner.borrow() {
-            let mut r = inner.r.borrow_mut();
-
-            let result = select_2(
-                AsyncOperation::new(
-                    |cx| {
-                        let w = &mut *inner.w.borrow_mut();
-
-                        if !w.stream.is_writable() {
-                            return None;
-                        }
-
-                        let req_body = w.req_body.take().unwrap();
-
-                        let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-                        let bufs = w.buf.get_ref_vectored(&mut buf_arr);
-
-                        match req_body.send(
-                            &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
-                            bufs,
-                            w.end,
-                            None,
-                        ) {
-                            http1::SendStatus::Error(req_body, http1::Error::Io(e))
-                                if e.kind() == io::ErrorKind::WouldBlock =>
-                            {
-                                w.req_body = Some(req_body);
-
-                                None
-                            }
-                            ret => Some(ret),
-                        }
-                    },
-                    || inner.w.borrow_mut().stream.cancel(),
-                ),
-                pin!(async {
-                    let r = &mut *r;
-                    fill_recv_buffer(&mut r.stream, r.buf).await
-                }),
-            )
-            .await;
-
-            match result {
-                Select2::R1(ret) => ret,
-                Select2::R2(e) => return SendStatus::Error((), e),
-            }
-        } else {
+        if self.inner.borrow().is_none() {
             return SendStatus::Error((), Error::Unusable);
+        }
+
+        let status = loop {
+            if let Some(inner) = self.take_inner_if_early_response() {
+                let r = inner.r.into_inner();
+                let w = inner.w.into_inner();
+                let resp = w.req_body.unwrap().into_early_response();
+
+                w.buf.clear();
+
+                return SendStatus::EarlyResponse(ClientResponse {
+                    r: r.stream,
+                    buf1: r.buf,
+                    buf2: w.buf,
+                    inner: resp,
+                });
+            }
+
+            match self.process().await {
+                Some(Ok(status)) => break status,
+                Some(Err(e)) => return SendStatus::Error((), e),
+                None => {} // received data. loop and check for early response
+            }
         };
 
         let mut inner = self.inner.borrow_mut();
         assert_eq!(inner.is_some(), true);
 
-        match ret {
+        match status {
             http1::SendStatus::Complete(resp, size) => {
                 let inner = inner.take().unwrap();
 
@@ -4613,6 +4581,115 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
 
                 SendStatus::Error((), e.into())
             }
+        }
+    }
+
+    // assumes self.inner is Some
+    async fn process(
+        &self,
+    ) -> Option<
+        Result<
+            http1::SendStatus<http1::ClientResponse, http1::ClientRequestBody, http1::Error>,
+            Error,
+        >,
+    > {
+        let inner = self.inner.borrow();
+        let inner = inner.as_ref().unwrap();
+
+        let mut r = inner.r.borrow_mut();
+
+        let result = select_2(
+            AsyncOperation::new(
+                |cx| {
+                    let w = &mut *inner.w.borrow_mut();
+
+                    if !w.stream.is_writable() {
+                        return None;
+                    }
+
+                    let req_body = w.req_body.take().unwrap();
+
+                    let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
+                    let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+
+                    match req_body.send(
+                        &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
+                        bufs,
+                        w.end,
+                        None,
+                    ) {
+                        http1::SendStatus::Error(req_body, http1::Error::Io(e))
+                            if e.kind() == io::ErrorKind::WouldBlock =>
+                        {
+                            w.req_body = Some(req_body);
+
+                            None
+                        }
+                        ret => Some(ret),
+                    }
+                },
+                || inner.w.borrow_mut().stream.cancel(),
+            ),
+            pin!(async {
+                let r = &mut *r;
+
+                if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
+                    if e.kind() == io::ErrorKind::WriteZero {
+                        // if there's no more space, suspend forever
+                        let () = std::future::pending().await;
+                    }
+
+                    return Err(Error::from(e));
+                }
+
+                Ok(())
+            }),
+        )
+        .await;
+
+        match result {
+            Select2::R1(ret) => match ret {
+                http1::SendStatus::Error(req_body, http1::Error::Io(e))
+                    if e.kind() == io::ErrorKind::BrokenPipe =>
+                {
+                    // if we get an error when trying to send, it could be
+                    // due to the server closing the connection after sending
+                    // an early response. here we'll check if the server left
+                    // us any data to read
+
+                    let w = &mut *inner.w.borrow_mut();
+
+                    w.req_body = Some(req_body);
+
+                    if r.buf.read_avail() == 0 {
+                        let r = &mut *r;
+
+                        match recv_nonzero(&mut r.stream, r.buf).await {
+                            Ok(()) => None,                // received data
+                            Err(e) => Some(Err(e.into())), // error while receiving data
+                        }
+                    } else {
+                        None // we already received data
+                    }
+                }
+                ret => Some(Ok(ret)),
+            },
+            Select2::R2(ret) => match ret {
+                Ok(()) => None,         // received data
+                Err(e) => Some(Err(e)), // error while receiving data
+            },
+        }
+    }
+
+    // assumes self.inner is Some
+    fn take_inner_if_early_response(&self) -> Option<ClientRequestBodyInner<'a, R, W>> {
+        let mut inner = self.inner.borrow_mut();
+        let inner_mut = inner.as_mut().unwrap();
+
+        if inner_mut.r.borrow().buf.read_avail() > 0 {
+            Some(inner.take().unwrap())
+        } else {
+            None
         }
     }
 }
@@ -5192,6 +5269,10 @@ where
             // send the buffer
             match req_body.send().await {
                 SendStatus::Complete(resp) => break resp,
+                SendStatus::EarlyResponse(resp) => {
+                    body_buf.clear();
+                    break resp;
+                }
                 SendStatus::Partial((), _) => {}
                 SendStatus::Error((), e) => return Err(e.into()),
             }
