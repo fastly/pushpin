@@ -55,7 +55,7 @@ use crate::zmq::MultipartHeader;
 use crate::{pin, Defer};
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
-use log::{debug, warn};
+use log::{debug, log, warn, Level};
 use sha1::{Digest, Sha1};
 use std::cell::{Ref, RefCell};
 use std::cmp;
@@ -2277,7 +2277,14 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     .await
     {
         Ok(()) => debug!("server-conn {}: finished", cid),
-        Err(e) => debug!("server-conn {}: process error: {:?}", cid, e),
+        Err(e) => {
+            let level = match e {
+                Error::ValueActive => Level::Error,
+                _ => Level::Debug,
+            };
+
+            log!(level, "server-conn {}: process error: {:?}", cid, e);
+        }
     }
 }
 
@@ -4307,7 +4314,14 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     .await
     {
         Ok(()) => debug!("server-conn {}: finished", cid),
-        Err(e) => debug!("server-conn {}: process error: {:?}", cid, e),
+        Err(e) => {
+            let level = match e {
+                Error::ValueActive => Level::Error,
+                _ => Level::Debug,
+            };
+
+            log!(level, "server-conn {}: process error: {:?}", cid, e);
+        }
     }
 }
 
@@ -5439,7 +5453,14 @@ pub async fn client_req_connection(
     .await
     {
         Ok(()) => debug!("client-conn {}: finished", log_id),
-        Err(e) => debug!("client-conn {}: process error: {:?}", log_id, e),
+        Err(e) => {
+            let level = match e {
+                Error::ValueActive => Level::Error,
+                _ => Level::Debug,
+            };
+
+            log!(level, "client-conn {}: process error: {:?}", log_id, e);
+        }
     }
 }
 
@@ -6277,7 +6298,14 @@ pub async fn client_stream_connection<E>(
     .await
     {
         Ok(()) => debug!("client-conn {}: finished", log_id),
-        Err(e) => debug!("client-conn {}: process error: {:?}", log_id, e),
+        Err(e) => {
+            let level = match e {
+                Error::ValueActive => Level::Error,
+                _ => Level::Debug,
+            };
+
+            log!(level, "client-conn {}: process error: {:?}", log_id, e);
+        }
     }
 }
 
