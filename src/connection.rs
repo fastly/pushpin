@@ -5481,6 +5481,7 @@ async fn client_stream_handler<S, E, R1, R2>(
     zsender: &AsyncLocalSender<zmq::Message>,
     shared: &StreamSharedData,
     enable_routing: &E,
+    response_received: &mut bool,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
 ) -> Result<bool, Error>
@@ -5930,6 +5931,8 @@ where
         (resp_body, ws_config)
     };
 
+    *response_received = true;
+
     if let Some(deflate_config) = ws_config {
         drop(resp_body);
 
@@ -5986,6 +5989,7 @@ async fn client_stream_connect<E, R1, R2>(
     zsender: &AsyncLocalSender<zmq::Message>,
     shared: &StreamSharedData,
     enable_routing: &E,
+    response_received: &mut bool,
     refresh_stream_timeout: &R1,
     refresh_session_timeout: &R2,
 ) -> Result<(), Error>
@@ -6064,6 +6068,7 @@ where
                 zsender,
                 shared,
                 enable_routing,
+                response_received,
                 refresh_stream_timeout,
                 refresh_session_timeout,
             )
@@ -6086,6 +6091,7 @@ where
                 zsender,
                 shared,
                 enable_routing,
+                response_received,
                 refresh_stream_timeout,
                 refresh_session_timeout,
             )
@@ -6162,32 +6168,37 @@ where
         timeout.set_deadline(soonest_time());
     };
 
-    let handler = pin!(client_stream_connect(
-        log_id,
-        id,
-        zreq,
-        &mut buf1,
-        &mut buf2,
-        messages_max,
-        allow_compression,
-        &packet_buf,
-        &tmp_buf,
-        deny,
-        instance_id,
-        resolver,
-        pool,
-        zreceiver,
-        &zsender,
-        shared.get(),
-        enable_routing,
-        &refresh_stream_timeout,
-        &refresh_session_timeout,
-    ));
+    let mut response_received = false;
 
-    let ret = match select_3(handler, timeout.elapsed(), token.cancelled()).await {
-        Select3::R1(ret) => ret,
-        Select3::R2(_) => return Err(Error::Timeout),
-        Select3::R3(_) => return Err(Error::Stopped),
+    let ret = {
+        let handler = pin!(client_stream_connect(
+            log_id,
+            id,
+            zreq,
+            &mut buf1,
+            &mut buf2,
+            messages_max,
+            allow_compression,
+            &packet_buf,
+            &tmp_buf,
+            deny,
+            instance_id,
+            resolver,
+            pool,
+            zreceiver,
+            &zsender,
+            shared.get(),
+            enable_routing,
+            &mut response_received,
+            &refresh_stream_timeout,
+            &refresh_session_timeout,
+        ));
+
+        match select_3(handler, timeout.elapsed(), token.cancelled()).await {
+            Select3::R1(ret) => ret,
+            Select3::R2(_) => return Err(Error::Timeout),
+            Select3::R3(_) => return Err(Error::Stopped),
+        }
     };
 
     match ret {
@@ -6202,14 +6213,18 @@ where
                 let shared = shared.get();
 
                 let msg = if let Some(addr) = shared.to_addr().get() {
-                    let mut zresp = zhttppacket::Response::new_error(
-                        b"",
-                        &[],
-                        zhttppacket::ResponseErrorData {
-                            condition: e.to_condition(),
-                            rejected_info: None,
-                        },
-                    );
+                    let mut zresp = if response_received {
+                        zhttppacket::Response::new_cancel(b"", &[])
+                    } else {
+                        zhttppacket::Response::new_error(
+                            b"",
+                            &[],
+                            zhttppacket::ResponseErrorData {
+                                condition: e.to_condition(),
+                                rejected_info: None,
+                            },
+                        )
+                    };
 
                     let ids = [zhttppacket::Id {
                         id,
@@ -9157,6 +9172,8 @@ mod tests {
         let packet_buf = RefCell::new(vec![0; 2048]);
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
+        let mut response_received = false;
+
         let refresh_stream_timeout = || {};
         let refresh_session_timeout = || {};
 
@@ -9176,6 +9193,7 @@ mod tests {
             &s_from_conn,
             shared.get(),
             &|| {},
+            &mut response_received,
             &refresh_stream_timeout,
             &refresh_session_timeout,
         )
