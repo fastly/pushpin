@@ -175,19 +175,10 @@ fn validate_ws_request(
     Err(())
 }
 
-fn validate_ws_response(
-    resp: &http1::Response,
-    ws_key: &[u8],
-    ws_accept: Option<&[u8]>,
-) -> Result<(), ()> {
-    // a websocket response must not have a body.
-    // some servers might send "Content-Length: 0", which we'll allow.
-    // chunked encoding will be rejected.
-    if resp.body_size == http1::BodySize::NoBody || resp.body_size == http1::BodySize::Known(0) {
-        if let Some(ws_accept) = ws_accept {
-            if calculate_ws_accept(ws_key)?.as_bytes() == ws_accept {
-                return Ok(());
-            }
+fn validate_ws_response(ws_key: &[u8], ws_accept: Option<&[u8]>) -> Result<(), ()> {
+    if let Some(ws_accept) = ws_accept {
+        if calculate_ws_accept(ws_key)?.as_bytes() == ws_accept {
+            return Ok(());
         }
     }
 
@@ -5818,8 +5809,8 @@ where
 
             if let Some(ws_key) = &ws_key {
                 if resp.code == 101 {
-                    if validate_ws_response(&resp, ws_key.as_bytes(), ws_accept).is_err() {
-                        return Err(Error::InvalidWebSocketRequest);
+                    if validate_ws_response(ws_key.as_bytes(), ws_accept).is_err() {
+                        return Err(Error::InvalidWebSocketResponse);
                     }
                 } else {
                     // websocket request rejected
