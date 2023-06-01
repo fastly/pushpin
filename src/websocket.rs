@@ -1550,11 +1550,20 @@ pub mod testutil {
 
             let mut msg = Vec::new();
             p.send_message_start(OPCODE_TEXT, None);
-            let (size, done) = p
-                .send_message_content(&mut msg, &mut [&mut content], true)
-                .unwrap();
-            assert_eq!(size, content.len());
-            assert_eq!(done, true);
+
+            let mut src_pos = 0;
+
+            loop {
+                let (size, done) = p
+                    .send_message_content(&mut msg, &mut [&mut content[src_pos..]], true)
+                    .unwrap();
+
+                src_pos += size;
+
+                if done {
+                    break;
+                }
+            }
 
             Self {
                 use_deflate,
@@ -2376,8 +2385,20 @@ mod tests {
     }
 
     #[test]
+    fn bench_send_message_with_deflate() {
+        let t = BenchSendMessage::new(true);
+        t.run(&mut t.init());
+    }
+
+    #[test]
     fn bench_recv_message() {
         let t = BenchRecvMessage::new(false);
+        t.run(&mut t.init());
+    }
+
+    #[test]
+    fn bench_recv_message_with_deflate() {
+        let t = BenchRecvMessage::new(true);
         t.run(&mut t.init());
     }
 }
