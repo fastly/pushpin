@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use clap::{crate_version, App, Arg};
+use clap::{crate_version, Arg, ArgAction, Command};
 use condure::app;
 use log::{error, Level, LevelFilter, Metadata, Record};
 use std::error::Error;
@@ -253,169 +253,174 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
-    let matches = App::new("condure")
+    let matches = Command::new("condure")
         .version(crate_version!())
         .about("HTTP/WebSocket connection manager")
         .arg(
-            Arg::with_name("log-level")
+            Arg::new("log-level")
                 .long("log-level")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Log level")
                 .default_value("2"),
         )
         .arg(
-            Arg::with_name("id")
+            Arg::new("id")
                 .long("id")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("ID")
                 .help("Instance ID")
                 .default_value("condure"),
         )
         .arg(
-            Arg::with_name("workers")
+            Arg::new("workers")
                 .long("workers")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Number of worker threads")
                 .default_value("2"),
         )
         .arg(
-            Arg::with_name("req-maxconn")
+            Arg::new("req-maxconn")
                 .long("req-maxconn")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Maximum number of concurrent connections in req mode")
                 .default_value("100"),
         )
         .arg(
-            Arg::with_name("stream-maxconn")
+            Arg::new("stream-maxconn")
                 .long("stream-maxconn")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Maximum number of concurrent connections in stream mode")
                 .default_value("10000"),
         )
         .arg(
-            Arg::with_name("buffer-size")
+            Arg::new("buffer-size")
                 .long("buffer-size")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Connection buffer size (two buffers per connection)")
                 .default_value("8192"),
         )
         .arg(
-            Arg::with_name("body-buffer-size")
+            Arg::new("body-buffer-size")
                 .long("body-buffer-size")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Body buffer size for connections in req mode")
                 .default_value("100000"),
         )
         .arg(
-            Arg::with_name("messages-max")
+            Arg::new("messages-max")
                 .long("messages-max")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Maximum number of queued WebSocket messages per connection")
                 .default_value("100"),
         )
         .arg(
-            Arg::with_name("req-timeout")
+            Arg::new("req-timeout")
                 .long("req-timeout")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Connection timeout in req mode (seconds)")
                 .default_value("30"),
         )
         .arg(
-            Arg::with_name("stream-timeout")
+            Arg::new("stream-timeout")
                 .long("stream-timeout")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Connection timeout in stream mode (seconds)")
                 .default_value("1800"),
         )
         .arg(
-            Arg::with_name("listen")
+            Arg::new("listen")
                 .long("listen")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("[addr:]port[,params...]")
-                .multiple(true)
+                .action(ArgAction::Append)
                 .help("Port to listen on"),
         )
         .arg(
-            Arg::with_name("zclient-req")
+            Arg::new("zclient-req")
                 .long("zclient-req")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("spec")
-                .multiple(true)
+                .action(ArgAction::Append)
                 .help("ZeroMQ client REQ spec")
                 .default_value("ipc://client"),
         )
         .arg(
-            Arg::with_name("zclient-stream")
+            Arg::new("zclient-stream")
                 .long("zclient-stream")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("spec-base")
-                .multiple(true)
+                .action(ArgAction::Append)
                 .help("ZeroMQ client PUSH/ROUTER/SUB spec base")
                 .default_value("ipc://client"),
         )
         .arg(
-            Arg::with_name("zclient-connect")
+            Arg::new("zclient-connect")
                 .long("zclient-connect")
+                .action(ArgAction::SetTrue)
                 .help("ZeroMQ client sockets should connect instead of bind"),
         )
         .arg(
-            Arg::with_name("zserver-req")
+            Arg::new("zserver-req")
                 .long("zserver-req")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("spec")
-                .multiple(true)
+                .action(ArgAction::Append)
                 .help("ZeroMQ server REQ spec"),
         )
         .arg(
-            Arg::with_name("zserver-stream")
+            Arg::new("zserver-stream")
                 .long("zserver-stream")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("spec-base")
-                .multiple(true)
+                .action(ArgAction::Append)
                 .help("ZeroMQ server PULL/ROUTER/PUB spec base"),
         )
         .arg(
-            Arg::with_name("zserver-connect")
+            Arg::new("zserver-connect")
                 .long("zserver-connect")
+                .action(ArgAction::SetTrue)
                 .help("ZeroMQ server sockets should connect instead of bind"),
         )
         .arg(
-            Arg::with_name("ipc-file-mode")
+            Arg::new("ipc-file-mode")
                 .long("ipc-file-mode")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("octal")
                 .help("Permissions for ZeroMQ IPC binds"),
         )
         .arg(
-            Arg::with_name("tls-identities-dir")
+            Arg::new("tls-identities-dir")
                 .long("tls-identities-dir")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("directory")
                 .help("Directory containing certificates and private keys")
                 .default_value("."),
         )
         .arg(
-            Arg::with_name("compression")
+            Arg::new("compression")
                 .long("compression")
+                .action(ArgAction::SetTrue)
                 .help("Allow compression to be used"),
         )
         .arg(
-            Arg::with_name("deny-out-internal")
+            Arg::new("deny-out-internal")
                 .long("deny-out-internal")
+                .action(ArgAction::SetTrue)
                 .help("Block outbound connections to local/internal IP address ranges"),
         )
         .arg(
-            Arg::with_name("sizes")
+            Arg::new("sizes")
                 .long("sizes")
+                .action(ArgAction::SetTrue)
                 .help("Prints sizes of tasks and other objects"),
         )
         .get_matches();
@@ -424,7 +429,7 @@ fn main() {
 
     log::set_max_level(LevelFilter::Info);
 
-    let level = matches.value_of("log-level").unwrap();
+    let level = matches.get_one::<String>("log-level").unwrap();
 
     let level: usize = match level.parse() {
         Ok(x) => x,
@@ -445,16 +450,16 @@ fn main() {
 
     log::set_max_level(level);
 
-    if matches.is_present("sizes") {
+    if *matches.get_one("sizes").unwrap() {
         for (name, size) in condure::app::App::sizes() {
             println!("{}: {} bytes", name, size);
         }
         process::exit(0);
     }
 
-    let id = matches.value_of("id").unwrap();
+    let id = matches.get_one::<String>("id").unwrap();
 
-    let workers = matches.value_of("workers").unwrap();
+    let workers = matches.get_one::<String>("workers").unwrap();
 
     let workers: usize = match workers.parse() {
         Ok(x) => x,
@@ -464,7 +469,7 @@ fn main() {
         }
     };
 
-    let req_maxconn = matches.value_of("req-maxconn").unwrap();
+    let req_maxconn = matches.get_one::<String>("req-maxconn").unwrap();
 
     let req_maxconn: usize = match req_maxconn.parse() {
         Ok(x) => x,
@@ -474,7 +479,7 @@ fn main() {
         }
     };
 
-    let stream_maxconn = matches.value_of("stream-maxconn").unwrap();
+    let stream_maxconn = matches.get_one::<String>("stream-maxconn").unwrap();
 
     let stream_maxconn: usize = match stream_maxconn.parse() {
         Ok(x) => x,
@@ -484,7 +489,7 @@ fn main() {
         }
     };
 
-    let buffer_size = matches.value_of("buffer-size").unwrap();
+    let buffer_size = matches.get_one::<String>("buffer-size").unwrap();
 
     let buffer_size: usize = match buffer_size.parse() {
         Ok(x) => x,
@@ -494,7 +499,7 @@ fn main() {
         }
     };
 
-    let body_buffer_size = matches.value_of("body-buffer-size").unwrap();
+    let body_buffer_size = matches.get_one::<String>("body-buffer-size").unwrap();
 
     let body_buffer_size: usize = match body_buffer_size.parse() {
         Ok(x) => x,
@@ -504,7 +509,7 @@ fn main() {
         }
     };
 
-    let messages_max = matches.value_of("messages-max").unwrap();
+    let messages_max = matches.get_one::<String>("messages-max").unwrap();
 
     let messages_max: usize = match messages_max.parse() {
         Ok(x) => x,
@@ -514,7 +519,7 @@ fn main() {
         }
     };
 
-    let req_timeout = matches.value_of("req-timeout").unwrap();
+    let req_timeout = matches.get_one::<String>("req-timeout").unwrap();
 
     let req_timeout: usize = match req_timeout.parse() {
         Ok(x) => x,
@@ -524,7 +529,7 @@ fn main() {
         }
     };
 
-    let stream_timeout = matches.value_of("stream-timeout").unwrap();
+    let stream_timeout = matches.get_one::<String>("stream-timeout").unwrap();
 
     let stream_timeout: usize = match stream_timeout.parse() {
         Ok(x) => x,
@@ -534,55 +539,46 @@ fn main() {
         }
     };
 
-    let mut listen: Vec<String> = if matches.is_present("listen") {
-        matches
-            .values_of("listen")
-            .unwrap()
-            .map(String::from)
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    let zclient_req_specs = matches
-        .values_of("zclient-req")
-        .unwrap()
-        .map(String::from)
+    let mut listen: Vec<String> = matches
+        .get_many::<String>("listen")
+        .unwrap_or_default()
+        .map(|v| v.to_owned())
         .collect();
 
-    let zclient_stream_specs = matches
-        .values_of("zclient-stream")
+    let zclient_req_specs: Vec<String> = matches
+        .get_many::<String>("zclient-req")
         .unwrap()
-        .map(String::from)
+        .map(|v| v.to_owned())
         .collect();
 
-    let zclient_connect = matches.is_present("zclient-connect");
+    let zclient_stream_specs: Vec<String> = matches
+        .get_many::<String>("zclient-stream")
+        .unwrap()
+        .map(|v| v.to_owned())
+        .collect();
 
-    let zserver_req_specs: Vec<String> = if matches.is_present("zserver-req") {
-        matches
-            .values_of("zserver-req")
-            .unwrap()
-            .map(String::from)
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let zclient_connect = *matches.get_one("zclient-connect").unwrap();
 
-    let zserver_stream_specs: Vec<String> = if matches.is_present("zserver-stream") {
-        matches
-            .values_of("zserver-stream")
-            .unwrap()
-            .map(String::from)
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let zserver_req_specs: Vec<String> = matches
+        .get_many::<String>("zserver-req")
+        .unwrap_or_default()
+        .map(|v| v.to_owned())
+        .collect();
 
-    let zserver_connect = matches.is_present("zserver-connect");
+    let zserver_stream_specs: Vec<String> = matches
+        .get_many::<String>("zserver-stream")
+        .unwrap_or_default()
+        .map(|v| v.to_owned())
+        .collect();
 
-    let ipc_file_mode = matches.value_of("ipc-file-mode").unwrap_or("0");
+    let zserver_connect = *matches.get_one("zserver-connect").unwrap();
 
-    let ipc_file_mode = match u32::from_str_radix(ipc_file_mode, 8) {
+    let ipc_file_mode = matches
+        .get_one::<String>("ipc-file-mode")
+        .cloned()
+        .unwrap_or(String::from("0"));
+
+    let ipc_file_mode = match u32::from_str_radix(&ipc_file_mode, 8) {
         Ok(x) => x,
         Err(e) => {
             error!("failed to parse ipc-file-mode: {}", e);
@@ -590,11 +586,11 @@ fn main() {
         }
     };
 
-    let tls_identities_dir = matches.value_of("tls-identities-dir").unwrap();
+    let tls_identities_dir = matches.get_one::<String>("tls-identities-dir").unwrap();
 
-    let allow_compression = matches.is_present("compression");
+    let allow_compression = *matches.get_one("compression").unwrap();
 
-    let deny_out_internal = matches.is_present("deny-out-internal");
+    let deny_out_internal = *matches.get_one("deny-out-internal").unwrap();
 
     // if no zmq server specs are set (needed by client mode), specify
     // default listen configuration in order to enable server mode. this

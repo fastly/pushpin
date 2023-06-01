@@ -21,7 +21,7 @@ panic = "abort"
 [dependencies]
 arrayvec = "0.7"
 base64 = "0.13"
-clap = { version = "3.2", features = ["cargo", "wrap_help"] }
+clap = { version = "4.3", features = ["cargo", "string", "wrap_help"] }
 httparse = "1.7"
 ipnet = "2"
 libc = "0.2"
