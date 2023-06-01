@@ -1234,7 +1234,7 @@ impl Worker {
                         }
                         Err(e) => {
                             error!("server-worker {}: tls accept: {}", id, e);
-                            break;
+                            continue;
                         }
                     },
                     None => {
