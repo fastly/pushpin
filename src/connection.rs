@@ -2686,14 +2686,20 @@ where
                     zhttppacket::ResponsePacket::HandoffStart => {
                         drop(zresp);
 
-                        // if handoff requested, flush send buffer responding
+                        // if handoff requested, flush what we can before accepting
+                        // so that the data is not delayed while we wait
+
                         if flush_body.is_none() && handler.can_flush() {
                             flush_body.set(Some(handler.flush_body()));
                         }
 
                         while let Some(fut) = flush_body.as_mut().as_pin_mut() {
-                            // ABR: discard_while
-                            let ret = discard_while(zsess_in.receiver, fut).await;
+                            // ABR: poll_async doesn't block
+                            let ret = match poll_async(fut).await {
+                                Poll::Ready(ret) => ret,
+                                Poll::Pending => break,
+                            };
+
                             flush_body.set(None);
 
                             let (size, done) = ret?;
@@ -2864,23 +2870,20 @@ where
                     zhttppacket::RequestPacket::HandoffStart => {
                         drop(zreq);
 
-                        // if handoff requested, flush send buffer before responding
+                        // if handoff requested, flush what we can before accepting
+                        // so that the data is not delayed while we wait
+
                         if send.is_none() && req_body.can_send() {
                             send.set(Some(req_body.send()));
                         }
 
                         while let Some(fut) = send.as_mut().as_pin_mut() {
-                            // ABR: discard_while
-                            let ret = server_discard_while(
-                                zsess_in.receiver,
-                                pin!(async {
-                                    match fut.await {
-                                        SendStatus::Error(_, e) => Err(e),
-                                        ret => Ok(ret),
-                                    }
-                                }),
-                            )
-                            .await?;
+                            // ABR: poll_async doesn't block
+                            let ret = match poll_async(fut).await {
+                                Poll::Ready(ret) => ret,
+                                Poll::Pending => break,
+                            };
+
                             send.set(None);
 
                             match ret {
@@ -2893,7 +2896,7 @@ where
                                         bytes_read();
                                     }
                                 }
-                                SendStatus::Error((), _) => unreachable!(), // handled above
+                                SendStatus::Error((), e) => return Err(e),
                             }
 
                             if req_body.can_send() {
@@ -3212,7 +3215,8 @@ where
                     zhttppacket::ResponsePacket::HandoffStart => {
                         drop(zresp);
 
-                        // if handoff requested, flush send buffer responding
+                        // if handoff requested, flush what we can before accepting
+                        // so that the data is not delayed while we wait
                         loop {
                             if send_content.is_none() {
                                 if let Some((mtype, avail, done)) = ws_in_tracker.current() {
@@ -3229,8 +3233,12 @@ where
                             }
 
                             if let Some(fut) = send_content.as_mut().as_pin_mut() {
-                                // ABR: discard_while
-                                let ret = discard_while(zsess_in.receiver, fut).await;
+                                // ABR: poll_async doesn't block
+                                let ret = match poll_async(fut).await {
+                                    Poll::Ready(ret) => ret,
+                                    Poll::Pending => break,
+                                };
+
                                 send_content.set(None);
 
                                 let (size, done) = ret?;
@@ -3558,7 +3566,8 @@ where
                     zhttppacket::RequestPacket::HandoffStart => {
                         drop(zreq);
 
-                        // if handoff requested, flush send buffer before responding
+                        // if handoff requested, flush what we can before accepting
+                        // so that the data is not delayed while we wait
                         loop {
                             if send_content.is_none() {
                                 if let Some((mtype, avail, done)) = ws_in_tracker.current() {
@@ -3575,8 +3584,12 @@ where
                             }
 
                             if let Some(fut) = send_content.as_mut().as_pin_mut() {
-                                // ABR: discard_while
-                                let ret = server_discard_while(zsess_in.receiver, fut).await;
+                                // ABR: poll_async doesn't block
+                                let ret = match poll_async(fut).await {
+                                    Poll::Ready(ret) => ret,
+                                    Poll::Pending => break,
+                                };
+
                                 send_content.set(None);
 
                                 let (size, done) = ret?;
