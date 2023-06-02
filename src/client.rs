@@ -130,7 +130,7 @@ impl<'a> BatchGroup<'a, '_> {
     }
 
     fn ids(&self) -> &[zhttppacket::Id<'a>] {
-        &*self.ids
+        &self.ids
     }
 }
 
@@ -636,6 +636,7 @@ struct Worker {
 }
 
 impl Worker {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         instance_id: &str,
         id: usize,
@@ -726,6 +727,7 @@ impl Worker {
         self.stop = None;
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn run(
         stop: channel::Receiver<()>,
         ready: channel::Sender<()>,
@@ -921,6 +923,7 @@ impl Worker {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn req_handle_task(
         id: usize,
         stop: AsyncLocalReceiver<()>,
@@ -1005,7 +1008,7 @@ impl Worker {
                         let ret = conns.remove(done.ckey);
 
                         // req mode doesn't have a sender
-                        assert_eq!(ret.is_none(), true);
+                        assert!(ret.is_none());
                     }
                     Err(e) => panic!("r_cdone channel error: {}", e),
                 },
@@ -1114,6 +1117,7 @@ impl Worker {
         debug!("client-worker {}: task stopped: req_handle", id);
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn stream_handle_task(
         id: usize,
         stop: AsyncLocalReceiver<()>,
@@ -1353,7 +1357,7 @@ impl Worker {
                             let mut count = 0;
 
                             for (i, rid) in ids.iter().enumerate() {
-                                let key = match conns.find_key(&rid.id) {
+                                let key = match conns.find_key(rid.id) {
                                     Some(key) => key,
                                     None => continue,
                                 };
@@ -1397,6 +1401,7 @@ impl Worker {
         debug!("client-worker {}: task stopped: stream_handle", id);
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn req_connection_task(
         token: CancellationToken,
         done: channel::LocalSender<ConnectionDone>,
@@ -1452,6 +1457,7 @@ impl Worker {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn stream_connection_task(
         token: CancellationToken,
         done: channel::LocalSender<ConnectionDone>,
@@ -1639,6 +1645,7 @@ pub struct Client {
 }
 
 impl Client {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         instance_id: &str,
         worker_count: usize,
@@ -1767,7 +1774,7 @@ impl Client {
 
             let batch = Batch::new(1);
             let conn_items = Rc::new(RefCell::new(ConnectionItems::new(1, batch)));
-            let conns = Rc::new(Connections::new(conn_items.clone(), 1));
+            let conns = Rc::new(Connections::new(conn_items, 1));
 
             let req_scratch_mem = Rc::new(arena::RcMemory::new(1));
             let req_req_mem = Rc::new(arena::RcMemory::new(1));
@@ -1828,15 +1835,13 @@ impl Client {
             mem::size_of_val(&fut)
         };
 
-        let mut v = Vec::new();
-
-        v.push(("client_req_connection_task".to_string(), req_task_size));
-        v.push((
-            "client_stream_connection_task".to_string(),
-            stream_task_size,
-        ));
-
-        v
+        vec![
+            ("client_req_connection_task".to_string(), req_task_size),
+            (
+                "client_stream_connection_task".to_string(),
+                stream_task_size,
+            ),
+        ]
     }
 }
 
@@ -1887,7 +1892,7 @@ impl TestClient {
         );
 
         zsockman
-            .set_server_req_specs(&vec![SpecInfo {
+            .set_server_req_specs(&[SpecInfo {
                 spec: String::from("inproc://client-test"),
                 bind: true,
                 ipc_file_mode: 0,
@@ -1915,17 +1920,17 @@ impl TestClient {
 
         zsockman
             .set_server_stream_specs(
-                &vec![SpecInfo {
+                &[SpecInfo {
                     spec: String::from("inproc://client-test-out"),
                     bind: true,
                     ipc_file_mode: 0,
                 }],
-                &vec![SpecInfo {
+                &[SpecInfo {
                     spec: String::from("inproc://client-test-out-stream"),
                     bind: true,
                     ipc_file_mode: 0,
                 }],
-                &vec![SpecInfo {
+                &[SpecInfo {
                     spec: String::from("inproc://client-test-in"),
                     bind: true,
                     ipc_file_mode: 0,
@@ -1983,7 +1988,7 @@ impl TestClient {
 
         let mut cursor = io::Cursor::new(&mut dest[..]);
 
-        cursor.write(b"T")?;
+        cursor.write_all(b"T")?;
 
         let mut w = tnetstring::Writer::new(&mut cursor);
 
@@ -2039,7 +2044,7 @@ impl TestClient {
 
         let mut cursor = io::Cursor::new(&mut dest[..]);
 
-        cursor.write(b"T")?;
+        cursor.write_all(b"T")?;
 
         let mut w = tnetstring::Writer::new(&mut cursor);
 
@@ -2113,7 +2118,7 @@ impl TestClient {
 
         let mut cursor = io::Cursor::new(&mut dest[..]);
 
-        cursor.write(b"T")?;
+        cursor.write_all(b"T")?;
 
         let mut w = tnetstring::Writer::new(&mut cursor);
 
@@ -2236,19 +2241,19 @@ impl TestClient {
 
                     match f.key {
                         "type" => {
-                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            let s = tnetstring::parse_string(f.data).unwrap();
                             ptype = str::from_utf8(s).unwrap();
                         }
                         "code" => {
-                            let x = tnetstring::parse_int(&f.data).unwrap();
+                            let x = tnetstring::parse_int(f.data).unwrap();
                             code = x as u16;
                         }
                         "reason" => {
-                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            let s = tnetstring::parse_string(f.data).unwrap();
                             reason = str::from_utf8(s).unwrap();
                         }
                         "body" => {
-                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            let s = tnetstring::parse_string(f.data).unwrap();
                             body = s;
                         }
                         _ => {}
@@ -2306,35 +2311,35 @@ impl TestClient {
 
                     match f.key {
                         "id" => {
-                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            let s = tnetstring::parse_string(f.data).unwrap();
                             id = str::from_utf8(s).unwrap();
                         }
                         "seq" => {
-                            let x = tnetstring::parse_int(&f.data).unwrap();
+                            let x = tnetstring::parse_int(f.data).unwrap();
                             seq = Some(x as u32);
                         }
                         "type" => {
-                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            let s = tnetstring::parse_string(f.data).unwrap();
                             ptype = str::from_utf8(s).unwrap();
                         }
                         "code" => {
-                            let x = tnetstring::parse_int(&f.data).unwrap();
+                            let x = tnetstring::parse_int(f.data).unwrap();
                             code = Some(x as u16);
                         }
                         "reason" => {
-                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            let s = tnetstring::parse_string(f.data).unwrap();
                             reason = str::from_utf8(s).unwrap();
                         }
                         "content-type" => {
-                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            let s = tnetstring::parse_string(f.data).unwrap();
                             content_type = str::from_utf8(s).unwrap();
                         }
                         "body" => {
-                            let s = tnetstring::parse_string(&f.data).unwrap();
+                            let s = tnetstring::parse_string(f.data).unwrap();
                             body = s;
                         }
                         "more" => {
-                            let b = tnetstring::parse_bool(&f.data).unwrap();
+                            let b = tnetstring::parse_bool(f.data).unwrap();
                             more = b;
                         }
                         _ => {}
@@ -2359,12 +2364,12 @@ impl TestClient {
                             if code == 200 {
                                 assert_eq!(reason, "OK");
                                 assert_eq!(body.len(), 0);
-                                assert_eq!(more, true);
+                                assert!(more);
                             } else {
                                 // 101
                                 assert_eq!(reason, "Switching Protocols");
                                 assert_eq!(body.len(), 0);
-                                assert_eq!(more, false);
+                                assert!(!more);
                             }
 
                             let msg =
@@ -2384,7 +2389,7 @@ impl TestClient {
                             // http body
 
                             assert_eq!(str::from_utf8(body).unwrap(), "hello\n");
-                            assert_eq!(more, false);
+                            assert!(!more);
 
                             status.send(StatusMessage::StreamFinished).unwrap();
                         }

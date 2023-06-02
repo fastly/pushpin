@@ -124,6 +124,7 @@ pub struct ParseScratch<'a> {
     headers: HeadersScratch<'a>,
 }
 
+#[allow(clippy::new_without_default)]
 impl ParseScratch<'_> {
     pub fn new() -> Self {
         Self {
@@ -160,6 +161,7 @@ impl<'buf: 'ids, 'ids> CommonData<'buf, 'ids> {
             w.write_string(self.from)?;
         }
 
+        #[allow(clippy::comparison_chain)]
         if self.ids.len() == 1 {
             w.write_string(b"id")?;
             w.write_string(self.ids[0].id)?;
@@ -214,7 +216,7 @@ impl<'buf: 'ids, 'ids> CommonData<'buf, 'ids> {
         let mut multi = false;
         let mut ptype_str = "";
 
-        for e in root.clone() {
+        for e in root {
             let e = e?;
 
             match e.key {
@@ -299,13 +301,10 @@ impl<'buf: 'ids, 'ids> CommonData<'buf, 'ids> {
                     for m in ext {
                         let m = m?;
 
-                        match m.key {
-                            "multi" => {
-                                let b = tnetstring::parse_bool(m.data).field("multi")?;
+                        if m.key == "multi" {
+                            let b = tnetstring::parse_bool(m.data).field("multi")?;
 
-                                multi = b;
-                            }
-                            _ => {} // skip unknown fields
+                            multi = b;
                         }
                     }
                 }
@@ -343,6 +342,7 @@ pub struct RequestData<'buf, 'headers> {
     pub follow_redirects: bool,
 }
 
+#[allow(clippy::new_without_default)]
 impl RequestData<'_, '_> {
     pub fn new() -> Self {
         Self {
@@ -670,6 +670,7 @@ pub struct ResponseData<'buf, 'headers> {
     pub body: &'buf [u8],
 }
 
+#[allow(clippy::new_without_default)]
 impl ResponseData<'_, '_> {
     pub fn new() -> Self {
         Self {
@@ -883,15 +884,12 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestErrorData<'buf> 
         for e in root {
             let e = e?;
 
-            match e.key {
-                "condition" => {
-                    let s = tnetstring::parse_string(e.data).field("condition")?;
+            if e.key == "condition" {
+                let s = tnetstring::parse_string(e.data).field("condition")?;
 
-                    let s = str::from_utf8(s).field("condition")?;
+                let s = str::from_utf8(s).field("condition")?;
 
-                    condition = s;
-                }
-                _ => {} // skip unknown fields
+                condition = s;
             }
         }
 
@@ -1077,17 +1075,14 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for CreditData {
         for e in root {
             let e = e?;
 
-            match e.key {
-                "credits" => {
-                    let x = tnetstring::parse_int(e.data).field("credits")?;
+            if e.key == "credits" {
+                let x = tnetstring::parse_int(e.data).field("credits")?;
 
-                    if x < 0 {
-                        return Err(ParseError::NegativeInt("credits"));
-                    }
-
-                    credits = x as u32;
+                if x < 0 {
+                    return Err(ParseError::NegativeInt("credits"));
                 }
-                _ => {} // skip unknown fields
+
+                credits = x as u32;
             }
         }
 
@@ -1283,51 +1278,45 @@ pub fn parse_ids<'buf, 'scratch>(
 
     let root = tnetstring::parse_map(&src[1..]).field("root")?;
 
-    for e in root.clone() {
+    for e in root {
         let e = e?;
 
-        match e.key {
-            "id" => {
-                match e.ftype {
-                    tnetstring::FrameType::Array => {
-                        for idm in tnetstring::parse_array(e.data)? {
-                            let idm = idm?;
+        if e.key == "id" {
+            match e.ftype {
+                tnetstring::FrameType::Array => {
+                    for idm in tnetstring::parse_array(e.data)? {
+                        let idm = idm?;
 
-                            if scratch.ids.remaining_capacity() == 0 {
-                                return Err(ParseError::TooManyIds);
-                            }
-
-                            let mut id = EMPTY_BYTES;
-
-                            for m in tnetstring::parse_map(idm.data)? {
-                                let m = m?;
-
-                                match m.key {
-                                    "id" => {
-                                        let s = tnetstring::parse_string(m.data).field("id")?;
-
-                                        id = s;
-                                    }
-                                    _ => {} // skip other fields
-                                }
-                            }
-
-                            scratch.ids.push(Id { id, seq: None });
+                        if scratch.ids.remaining_capacity() == 0 {
+                            return Err(ParseError::TooManyIds);
                         }
-                    }
-                    tnetstring::FrameType::String => {
-                        let s = tnetstring::parse_string(e.data)?;
 
-                        scratch.ids.push(Id { id: s, seq: None });
-                    }
-                    _ => {
-                        return Err(ParseError::NotMapOrString("id"));
+                        let mut id = EMPTY_BYTES;
+
+                        for m in tnetstring::parse_map(idm.data)? {
+                            let m = m?;
+
+                            if m.key == "id" {
+                                let s = tnetstring::parse_string(m.data).field("id")?;
+
+                                id = s;
+                            }
+                        }
+
+                        scratch.ids.push(Id { id, seq: None });
                     }
                 }
+                tnetstring::FrameType::String => {
+                    let s = tnetstring::parse_string(e.data)?;
 
-                return Ok(scratch.ids.as_slice());
+                    scratch.ids.push(Id { id: s, seq: None });
+                }
+                _ => {
+                    return Err(ParseError::NotMapOrString("id"));
+                }
             }
-            _ => {} // skip other fields
+
+            return Ok(scratch.ids.as_slice());
         }
     }
 
@@ -1351,7 +1340,7 @@ pub struct Request<'buf, 'ids, 'headers> {
     pub ptype_str: &'buf str,
 }
 
-impl<'buf, 'ids, 'headers, 'scratch> Request<'buf, 'ids, 'headers> {
+impl<'buf, 'ids, 'headers> Request<'buf, 'ids, 'headers> {
     pub fn new_data(
         from: &'buf [u8],
         ids: &'ids [Id<'buf>],
@@ -1464,8 +1453,8 @@ impl<'buf, 'ids, 'headers, 'scratch> Request<'buf, 'ids, 'headers> {
 
     fn new(from: &'buf [u8], ids: &'ids [Id<'buf>], ptype: RequestPacket<'buf, 'headers>) -> Self {
         Self {
-            from: from,
-            ids: ids,
+            from,
+            ids,
             multi: false,
             ptype,
             ptype_str: "",
@@ -1491,7 +1480,7 @@ impl<'buf: 'scratch, 'scratch> PacketParse<'buf, 'scratch> for Request<'buf, 'sc
             ids,
             multi,
             ptype_str,
-        } = CommonData::parse(root.clone(), &mut scratch.ids)?;
+        } = CommonData::parse(root, &mut scratch.ids)?;
 
         let ptype = match ptype_str {
             // data
@@ -1635,8 +1624,8 @@ impl<'buf, 'ids, 'headers> Response<'buf, 'ids, 'headers> {
 
     fn new(from: &'buf [u8], ids: &'ids [Id<'buf>], ptype: ResponsePacket<'buf, 'headers>) -> Self {
         Self {
-            from: from,
-            ids: ids,
+            from,
+            ids,
             multi: false,
             ptype,
             ptype_str: "",
@@ -1662,7 +1651,7 @@ impl<'buf: 'scratch, 'scratch> PacketParse<'buf, 'scratch> for Response<'buf, 's
             ids,
             multi,
             ptype_str,
-        } = CommonData::parse(root.clone(), &mut scratch.ids)?;
+        } = CommonData::parse(root, &mut scratch.ids)?;
 
         let ptype = match ptype_str {
             // data
@@ -1736,6 +1725,8 @@ where
 pub type OwnedRequest = OwnedPacket<Request<'static, 'static, 'static>>;
 
 impl OwnedRequest {
+    // the lifetimes are needed
+    #[allow(clippy::needless_lifetimes)]
     pub fn get<'a>(&'a self) -> &'a Request<'a, 'a, 'a> {
         let req: &Request = &self.inner;
 
@@ -1748,6 +1739,8 @@ impl OwnedRequest {
 pub type OwnedResponse = OwnedPacket<Response<'static, 'static, 'static>>;
 
 impl OwnedResponse {
+    // the lifetimes are needed
+    #[allow(clippy::needless_lifetimes)]
     pub fn get<'a>(&'a self) -> &'a Response<'a, 'a, 'a> {
         let resp: &Response = &self.inner;
 

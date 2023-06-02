@@ -126,7 +126,7 @@ where
 #[macro_export]
 macro_rules! pin {
     ($x:expr) => {
-        crate::Pinner {
+        $crate::Pinner {
             unsafe_pointer: &mut { $x },
         }
     };
@@ -231,13 +231,10 @@ pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
 }
 
 pub fn can_move_mio_sockets_between_threads() -> bool {
-    if cfg!(unix) {
-        // on unix platforms, mio always uses epoll or kqueue, which support this
-        true
-    } else {
-        // mio makes no guarantee about this on non-unix platforms, so assume it's not possible
-        false
-    }
+    // on unix platforms, mio always uses epoll or kqueue, which support
+    // this. mio makes no guarantee about supporting this on non-unix
+    // platforms
+    cfg!(unix)
 }
 
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {

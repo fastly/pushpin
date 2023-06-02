@@ -30,6 +30,9 @@
 // - Calling handle_other(), which itself will read messages.
 // - Awaiting something known to not block.
 
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::collapsible_else_if)]
+
 use crate::arena;
 use crate::buffer::{
     BaseRingBuffer, Buffer, LimitBufsMut, RefRead, RingBuffer, SliceRingBuffer, TmpBuffer,
@@ -114,18 +117,19 @@ fn get_host<'a>(headers: &'a [httparse::Header]) -> &'a str {
 fn gen_ws_key() -> ArrayString<WS_KEY_MAX> {
     let mut nonce = [0; 16];
     for b in nonce.iter_mut() {
-        *b = (random() % (256 as u64)) as u8;
+        *b = (random() % 256) as u8;
     }
 
     let mut output = [0; WS_KEY_MAX];
 
-    let size = base64::encode_config_slice(&nonce, base64::STANDARD, &mut output);
+    let size = base64::encode_config_slice(nonce, base64::STANDARD, &mut output);
 
     let output = str::from_utf8(&output[..size]).unwrap();
 
     ArrayString::from_str(output).unwrap()
 }
 
+#[allow(clippy::result_unit_err)]
 pub fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()> {
     let input_len = key.len() + websocket::WS_GUID.len();
 
@@ -146,7 +150,7 @@ pub fn calculate_ws_accept(key: &[u8]) -> Result<ArrayString<WS_ACCEPT_MAX>, ()>
 
     let mut output = [0; WS_ACCEPT_MAX];
 
-    let size = base64::encode_config_slice(&digest, base64::STANDARD, &mut output);
+    let size = base64::encode_config_slice(digest, base64::STANDARD, &mut output);
 
     let output = match str::from_utf8(&output[..size]) {
         Ok(s) => s,
@@ -167,9 +171,10 @@ fn validate_ws_request(
     if req.method == "GET"
         && (req.body_size == http1::BodySize::NoBody || req.body_size == http1::BodySize::Known(0))
         && ws_version == Some(b"13")
-        && ws_key.is_some()
     {
-        return calculate_ws_accept(&ws_key.unwrap());
+        if let Some(ws_key) = ws_key {
+            return calculate_ws_accept(ws_key);
+        }
     }
 
     Err(())
@@ -188,7 +193,7 @@ fn validate_ws_response(ws_key: &[u8], ws_accept: Option<&[u8]>) -> Result<(), (
 fn gen_mask() -> [u8; 4] {
     let mut out = [0; 4];
     for b in out.iter_mut() {
-        *b = (random() % (256 as u64)) as u8;
+        *b = (random() % 256) as u8;
     }
 
     out
@@ -203,6 +208,7 @@ fn write_ws_ext_header_value<W: Write>(
     config.serialize(dest)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_zhttp_request(
     instance: &str,
     ids: &[zhttppacket::Id],
@@ -284,7 +290,7 @@ fn make_zhttp_request(
         data.peer_port = peer_addr.port();
     }
 
-    let mut zreq = zhttppacket::Request::new_data(instance.as_bytes(), &ids, data);
+    let mut zreq = zhttppacket::Request::new_data(instance.as_bytes(), ids, data);
     zreq.multi = true;
 
     let size = zreq.serialize(packet_buf)?;
@@ -420,7 +426,7 @@ impl MessageTracker {
     }
 
     fn extend(&mut self, amt: usize) {
-        assert_eq!(self.last_partial, true);
+        assert!(self.last_partial);
 
         self.items.back_mut().unwrap().avail += amt;
     }
@@ -431,6 +437,7 @@ impl MessageTracker {
 
     // type, avail, done
     fn current(&self) -> Option<(u8, usize, bool)> {
+        #[allow(clippy::comparison_chain)]
         if self.items.len() > 1 {
             let m = self.items.front().unwrap();
             Some((m.mtype, m.avail, true))
@@ -477,6 +484,7 @@ pub struct StreamSharedData {
     inner: RefCell<StreamSharedDataInner>,
 }
 
+#[allow(clippy::new_without_default)]
 impl StreamSharedData {
     pub fn new() -> Self {
         Self {
@@ -719,7 +727,7 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 
         // from buf1. we'll plan to give the request's inner buffer to buf2
         // after the request is no longer needed
         let req = self.req_mem.as_ref().unwrap();
-        self.r.buf2.write(req.remaining_bytes())?;
+        self.r.buf2.write_all(req.remaining_bytes())?;
         self.r.buf1.swap_inner(self.r.buf2);
 
         let (recv_body, req_mem) = self.into_recv_body();
@@ -823,6 +831,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         self.protocol.borrow().state() == http1::ServerState::ReceivingBody
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn add_to_recv_buffer(&self) -> Result<(), Error> {
         let r = &mut *self.r.borrow_mut();
 
@@ -1033,6 +1042,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
         }
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn send_header(&self) -> Result<(), Error> {
         let mut stream = self.wstream.borrow_mut();
 
@@ -1050,7 +1060,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
         let mut early_body = self.early_body.borrow_mut();
 
         if let Some(overflow) = &mut early_body.overflow {
-            wbuf.inner.write(Buffer::read_buf(overflow))?;
+            wbuf.inner.write_all(Buffer::read_buf(overflow))?;
 
             early_body.overflow = None;
         }
@@ -1109,7 +1119,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
         let early_body = self.early_body.borrow();
 
         assert_eq!(wbuf.limit, 0);
-        assert_eq!(early_body.overflow.is_none(), true);
+        assert!(early_body.overflow.is_none());
 
         let (stream, buf1, buf2) = { ((r.stream, wstream), r.buf, wbuf.inner) };
 
@@ -1240,6 +1250,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
         Ok((size, true))
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn send_body(&self, body: &[u8], more: bool) -> Result<usize, Error> {
         let w = &mut *self.w.borrow_mut();
         let protocol = &mut *self.protocol.borrow_mut();
@@ -1251,6 +1262,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
             .await?)
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn fill_recv_buffer(&self) -> Error {
         let r = &mut *self.r.borrow_mut();
 
@@ -1358,6 +1370,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         self.protocol.state()
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn add_to_recv_buffer(&self) -> Result<(), Error> {
         let r = &mut *self.r.borrow_mut();
 
@@ -1372,7 +1385,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         Ok(())
     }
 
-    fn try_recv_message_content<'b>(
+    fn try_recv_message_content(
         &self,
         dest: &mut [u8],
     ) -> Option<Result<(u8, usize, bool), Error>> {
@@ -1659,7 +1672,7 @@ where
                 debug!("server-conn {}: handle packet: (data)", self.id);
             }
 
-            if zresp.ids.len() == 0 {
+            if zresp.ids.is_empty() {
                 return Err(Error::BadMessage);
             }
 
@@ -1806,7 +1819,7 @@ where
                 debug!("client-conn {}: handle packet: (data)", self.log_id);
             }
 
-            if zreq.ids.len() == 0 {
+            if zreq.ids.is_empty() {
                 return Err(Error::BadMessage);
             }
 
@@ -1877,14 +1890,9 @@ async fn discard_while<F, T>(
 where
     F: Future<Output = Result<T, Error>> + Unpin,
 {
-    loop {
-        match select_2(fut, pin!(receiver.recv())).await {
-            Select2::R1(v) => break v,
-            Select2::R2(_) => {
-                // unexpected message in current state
-                return Err(Error::BadMessage);
-            }
-        }
+    match select_2(fut, pin!(receiver.recv())).await {
+        Select2::R1(v) => v,
+        Select2::R2(_) => Err(Error::BadMessage), // unexpected message in current state
     }
 }
 
@@ -1895,18 +1903,14 @@ async fn server_discard_while<F, T>(
 where
     F: Future<Output = Result<T, Error>> + Unpin,
 {
-    loop {
-        match select_2(fut, pin!(receiver.recv())).await {
-            Select2::R1(v) => break v,
-            Select2::R2(_) => {
-                // unexpected message in current state
-                return Err(Error::BadMessage);
-            }
-        }
+    match select_2(fut, pin!(receiver.recv())).await {
+        Select2::R1(v) => v,
+        Select2::R2(_) => Err(Error::BadMessage), // unexpected message in current state
     }
 }
 
 // return true if persistent
+#[allow(clippy::too_many_arguments)]
 async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     id: &str,
     stream: &mut S,
@@ -2011,7 +2015,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
                 0,
                 peer_addr,
                 secure,
-                &mut *packet_buf.borrow_mut(),
+                &mut packet_buf.borrow_mut(),
             )?;
 
             // body consumed
@@ -2029,7 +2033,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         // send message
 
         // ABR: discard_while
-        discard_while(zreceiver, pin!(send_msg(&zsender, msg))).await?;
+        discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
 
         // receive message
 
@@ -2096,7 +2100,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
                 http1::BodySize::Known(rdata.body.len()),
             )?;
 
-            body_buf.write_all(&rdata.body)?;
+            body_buf.write_all(rdata.body)?;
 
             handler
         };
@@ -2160,6 +2164,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     Ok(persistent)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
     cid: &mut ArrayString<32>,
@@ -2229,6 +2234,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
     mut cid: ArrayString<32>,
@@ -2290,8 +2296,11 @@ where
     // discarding here is fine. the sender should cease sending
     // messages until we've replied with proceed
     discard_while(
-        &zsess_in.receiver,
-        pin!(async { Ok(zsess_out.check_send().await) }),
+        zsess_in.receiver,
+        pin!(async {
+            zsess_out.check_send().await;
+            Ok(())
+        }),
     )
     .await?;
 
@@ -2316,8 +2325,11 @@ where
     // discarding here is fine. the sender should cease sending
     // messages until we've replied with proceed
     server_discard_while(
-        &zsess_in.receiver,
-        pin!(async { Ok(zsess_out.check_send().await) }),
+        zsess_in.receiver,
+        pin!(async {
+            zsess_out.check_send().await;
+            Ok(())
+        }),
     )
     .await?;
 
@@ -2468,7 +2480,7 @@ where
                     let _defer = Defer::new(|| zsess_out.cancel_send());
 
                     assert!(zsess_in.credits() > 0);
-                    assert_eq!(add_to_recv_buffer.is_none(), true);
+                    assert!(add_to_recv_buffer.is_none());
 
                     let tmp_buf = &mut *tmp_buf.borrow_mut();
                     let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
@@ -2563,7 +2575,7 @@ where
                 let _defer = Defer::new(|| zsess_out.cancel_send());
 
                 assert!(zsess_in.credits() > 0);
-                assert_eq!(add_to_buffer.is_none(), true);
+                assert!(add_to_buffer.is_none());
 
                 let tmp_buf = &mut *tmp_buf.borrow_mut();
                 let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
@@ -2786,7 +2798,7 @@ where
                             }
                         }
                     }
-                    SendStatus::Error((), e) => return Err(e.into()),
+                    SendStatus::Error((), e) => return Err(e),
                 }
             }
             Select2::R2(ret) => {
@@ -2798,7 +2810,7 @@ where
         }
     }
 
-    assert_eq!(req_body.can_send(), false);
+    assert!(!req_body.can_send());
 
     let mut out_credits = recv_buf_size as u32;
 
@@ -2919,6 +2931,7 @@ where
     Ok(resp)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn stream_websocket<S, R1, R2>(
     log_id: &str,
     stream: RefCell<&mut S>,
@@ -3005,7 +3018,7 @@ where
                 let _defer = Defer::new(|| zsess_out.cancel_send());
 
                 if out_credits > 0 {
-                    let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits as u32);
+                    let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits);
                     out_credits = 0;
 
                     // check_send just finished, so this should succeed
@@ -3014,7 +3027,7 @@ where
                 }
 
                 assert!(zsess_in.credits() > 0);
-                assert_eq!(add_to_recv_buffer.is_none(), true);
+                assert!(add_to_recv_buffer.is_none());
 
                 let tmp_buf = &mut *tmp_buf.borrow_mut();
                 let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
@@ -3121,7 +3134,7 @@ where
                                     avail,
                                 );
 
-                                return Err(e.into());
+                                return Err(e);
                             }
 
                             let opcode = match &rdata.content_type {
@@ -3145,10 +3158,7 @@ where
                     },
                     zhttppacket::ResponsePacket::Close(cdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
-                            let (code, reason) = match cdata.status {
-                                Some(v) => v,
-                                None => (1000, ""),
-                            };
+                            let (code, reason) = cdata.status.unwrap_or((1000, ""));
 
                             let arr: [u8; 2] = code.to_be_bytes();
 
@@ -3177,7 +3187,7 @@ where
                                     avail,
                                 );
 
-                                return Err(e.into());
+                                return Err(e);
                             }
 
                             if ws_in_tracker.start(websocket::OPCODE_PING).is_err() {
@@ -3200,7 +3210,7 @@ where
                                     avail,
                                 );
 
-                                return Err(e.into());
+                                return Err(e);
                             }
 
                             if ws_in_tracker.start(websocket::OPCODE_PONG).is_err() {
@@ -3270,6 +3280,7 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn server_stream_websocket<S, R1, R2>(
     log_id: &str,
     stream: RefCell<&mut S>,
@@ -3356,7 +3367,7 @@ where
                 let _defer = Defer::new(|| zsess_out.cancel_send());
 
                 if out_credits > 0 {
-                    let zresp = zhttppacket::Response::new_credit(b"", &[], out_credits as u32);
+                    let zresp = zhttppacket::Response::new_credit(b"", &[], out_credits);
                     out_credits = 0;
 
                     // check_send just finished, so this should succeed
@@ -3365,7 +3376,7 @@ where
                 }
 
                 assert!(zsess_in.credits() > 0);
-                assert_eq!(add_to_recv_buffer.is_none(), true);
+                assert!(add_to_recv_buffer.is_none());
 
                 let tmp_buf = &mut *tmp_buf.borrow_mut();
                 let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
@@ -3472,7 +3483,7 @@ where
                                     avail,
                                 );
 
-                                return Err(e.into());
+                                return Err(e);
                             }
 
                             let opcode = match &rdata.content_type {
@@ -3496,10 +3507,7 @@ where
                     },
                     zhttppacket::RequestPacket::Close(cdata) => match handler.state() {
                         websocket::State::Connected | websocket::State::PeerClosed => {
-                            let (code, reason) = match cdata.status {
-                                Some(v) => v,
-                                None => (1000, ""),
-                            };
+                            let (code, reason) = cdata.status.unwrap_or((1000, ""));
 
                             let arr: [u8; 2] = code.to_be_bytes();
 
@@ -3528,7 +3536,7 @@ where
                                     avail,
                                 );
 
-                                return Err(e.into());
+                                return Err(e);
                             }
 
                             if ws_in_tracker.start(websocket::OPCODE_PING).is_err() {
@@ -3551,7 +3559,7 @@ where
                                     avail,
                                 );
 
-                                return Err(e.into());
+                                return Err(e);
                             }
 
                             if ws_in_tracker.start(websocket::OPCODE_PONG).is_err() {
@@ -3622,6 +3630,7 @@ where
 }
 
 // return true if persistent
+#[allow(clippy::too_many_arguments)]
 async fn server_stream_handler<S, R1, R2>(
     id: &str,
     stream: &mut S,
@@ -3801,7 +3810,7 @@ where
             credits as u32,
             peer_addr,
             secure,
-            &mut *packet_buf.borrow_mut(),
+            &mut packet_buf.borrow_mut(),
         )?;
 
         shared.inc_out_seq();
@@ -3812,7 +3821,7 @@ where
     // send request message
 
     // ABR: discard_while
-    discard_while(zreceiver, pin!(send_msg(&zsender, msg))).await?;
+    discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
 
     let mut zsess_in = ZhttpStreamSessionIn::new(
         id,
@@ -4085,6 +4094,8 @@ where
     };
 
     if let Some(deflate_config) = ws_config {
+        // reduce size of future
+        #[allow(clippy::drop_non_drop)]
         drop(handler);
 
         // handle as websocket connection
@@ -4117,6 +4128,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
     cid: &mut ArrayString<32>,
@@ -4198,10 +4210,10 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
             match ret {
                 Ok(reuse) => reuse,
                 Err(e) => {
-                    let handler_caused = match &e {
-                        Error::BadMessage | Error::HandlerError | Error::HandlerCancel => true,
-                        _ => false,
-                    };
+                    let handler_caused = matches!(
+                        &e,
+                        Error::BadMessage | Error::HandlerError | Error::HandlerCancel
+                    );
 
                     if !handler_caused {
                         let shared = shared.get();
@@ -4269,6 +4281,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite + Identify>(
     token: CancellationToken,
     mut cid: ArrayString<32>,
@@ -4407,6 +4420,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequest<'a, R, W> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn prepare_header(
         self,
         method: &str,
@@ -4557,7 +4571,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
         };
 
         let mut inner = self.inner.borrow_mut();
-        assert_eq!(inner.is_some(), true);
+        assert!(inner.is_some());
 
         match status {
             http1::SendStatus::Complete(resp, size) => {
@@ -4598,6 +4612,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
     }
 
     // assumes self.inner is Some
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn process(
         &self,
     ) -> Option<
@@ -4768,7 +4783,7 @@ impl<'a, R: AsyncRead> ClientResponse<'a, R> {
         // buf1 has no inner buffer
 
         // put remaining readable bytes in buf2
-        self.buf2.write(resp.remaining_bytes())?;
+        self.buf2.write_all(resp.remaining_bytes())?;
 
         // swap inner buffers, such that buf1 now contains the remaining
         // readable bytes, and buf2 is now the one with no inner buffer
@@ -4801,6 +4816,7 @@ struct ClientResponseBody<'a, R: AsyncRead> {
 }
 
 impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn add_to_buffer(&self) -> Result<(), Error> {
         if let Some(inner) = &mut *self.inner.borrow_mut() {
             if let Err(e) = recv_nonzero(&mut inner.r, inner.buf1).await {
@@ -4997,16 +5013,15 @@ impl ConnectionPool {
 
             thread::Builder::new()
                 .name("connection-pool".into())
-                .spawn(move || loop {
-                    match r.recv_timeout(Duration::from_secs(1)) {
-                        Err(mpsc::RecvTimeoutError::Timeout) => {}
-                        _ => break,
-                    }
+                .spawn(move || {
+                    while let Err(mpsc::RecvTimeoutError::Timeout) =
+                        r.recv_timeout(Duration::from_secs(1))
+                    {
+                        let now = Instant::now();
 
-                    let now = Instant::now();
-
-                    while let Some((key, _)) = inner.lock().unwrap().expire(now) {
-                        debug!("closing idle connection to {:?} for {}", key.addr, key.host);
+                        while let Some((key, _)) = inner.lock().unwrap().expire(now) {
+                            debug!("closing idle connection to {:?} for {}", key.addr, key.host);
+                        }
                     }
                 })
                 .unwrap()
@@ -5019,6 +5034,7 @@ impl ConnectionPool {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     fn push(
         &self,
         addr: std::net::SocketAddr,
@@ -5097,7 +5113,7 @@ async fn client_connect(
         (uri_host, uri.port().unwrap_or(default_port))
     };
 
-    let resolver = AsyncResolver::new(&resolver);
+    let resolver = AsyncResolver::new(resolver);
 
     debug!("client-conn {}: resolving: [{}]", log_id, connect_host);
 
@@ -5193,6 +5209,7 @@ async fn client_connect(
 }
 
 // return (_, true) if persistent
+#[allow(clippy::too_many_arguments)]
 async fn client_req_handler<S>(
     log_id: &str,
     id: Option<&[u8]>,
@@ -5287,7 +5304,7 @@ where
                     break resp;
                 }
                 SendStatus::Partial((), _) => {}
-                SendStatus::Error((), e) => return Err(e.into()),
+                SendStatus::Error((), e) => return Err(e),
             }
         }
     };
@@ -5351,7 +5368,7 @@ where
         let zresp = make_zhttp_req_response(
             id,
             zhttppacket::ResponsePacket::Data(rdata),
-            &mut *packet_buf.borrow_mut(),
+            &mut packet_buf.borrow_mut(),
         )?;
 
         (zresp, finished)
@@ -5362,6 +5379,7 @@ where
     Ok((zresp, finished.inner.persistent))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn client_req_connect(
     log_id: &str,
     id: Option<&[u8]>,
@@ -5438,6 +5456,7 @@ async fn client_req_connect(
     Ok(zresp)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn client_req_connection_inner(
     token: CancellationToken,
     log_id: &str,
@@ -5491,7 +5510,7 @@ async fn client_req_connection_inner(
                     condition: e.to_condition(),
                     rejected_info: None,
                 }),
-                &mut *packet_buf.borrow_mut(),
+                &mut packet_buf.borrow_mut(),
             )?;
 
             zsender.send((zheader, zresp)).await?;
@@ -5503,6 +5522,7 @@ async fn client_req_connection_inner(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn client_req_connection(
     token: CancellationToken,
     log_id: &str,
@@ -5548,6 +5568,7 @@ pub async fn client_req_connection(
 }
 
 // return true if persistent
+#[allow(clippy::too_many_arguments)]
 async fn client_stream_handler<S, E, R1, R2>(
     log_id: &str,
     id: &[u8],
@@ -5751,7 +5772,14 @@ where
     // ack request
 
     // ABR: discard_while
-    server_discard_while(zreceiver, pin!(async { Ok(zsess_out.check_send().await) })).await?;
+    server_discard_while(
+        zreceiver,
+        pin!(async {
+            zsess_out.check_send().await;
+            Ok(())
+        }),
+    )
+    .await?;
 
     zsess_out.try_send_msg(zhttppacket::Response::new_keep_alive(b"", &[]))?;
 
@@ -5989,7 +6017,7 @@ where
 
             let rdata = zhttppacket::ResponseData {
                 credits,
-                more: !ws_key.is_some(),
+                more: ws_key.is_none(),
                 code: resp.code,
                 reason: resp.reason,
                 headers: &zheaders,
@@ -6017,8 +6045,6 @@ where
     *response_received = true;
 
     if let Some(deflate_config) = ws_config {
-        drop(resp_body);
-
         // handle as websocket connection
 
         // ABR: function contains read
@@ -6054,6 +6080,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn client_stream_connect<E, R1, R2>(
     log_id: &str,
     id: &[u8],
@@ -6200,6 +6227,7 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn client_stream_connection_inner<E>(
     token: CancellationToken,
     log_id: &str,
@@ -6284,10 +6312,10 @@ where
     match ret {
         Ok(()) => {}
         Err(e) => {
-            let handler_caused = match &e {
-                Error::BadMessage | Error::HandlerError | Error::HandlerCancel => true,
-                _ => false,
-            };
+            let handler_caused = matches!(
+                &e,
+                Error::BadMessage | Error::HandlerError | Error::HandlerCancel
+            );
 
             if !handler_caused {
                 let shared = shared.get();
@@ -6339,6 +6367,7 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn client_stream_connection<E>(
     token: CancellationToken,
     log_id: &str,
@@ -6419,6 +6448,7 @@ pub mod testutil {
 
     pub struct NoopWaker {}
 
+    #[allow(clippy::new_without_default)]
     impl NoopWaker {
         pub fn new() -> Self {
             Self {}
@@ -6483,6 +6513,7 @@ pub mod testutil {
         out_allow: usize,
     }
 
+    #[allow(clippy::new_without_default)]
     impl FakeSock {
         pub fn new() -> Self {
             Self {
@@ -6524,7 +6555,7 @@ pub mod testutil {
 
     impl Write for FakeSock {
         fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-            if buf.len() > 0 && self.out_allow == 0 {
+            if !buf.is_empty() && self.out_allow == 0 {
                 return Err(io::Error::from(io::ErrorKind::WouldBlock));
             }
 
@@ -6646,6 +6677,7 @@ pub mod testutil {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn server_req_handler_fut(
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
@@ -6694,6 +6726,7 @@ pub mod testutil {
         packet_buf: Rc<RefCell<Vec<u8>>>,
     }
 
+    #[allow(clippy::new_without_default)]
     impl BenchServerReqHandler {
         pub fn new() -> Self {
             Self {
@@ -6784,7 +6817,7 @@ pub mod testutil {
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
             let resp = arena::Rc::new(resp, resp_mem).unwrap();
 
-            assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+            assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
             assert_eq!(check_poll(executor.step()), Some(false));
 
@@ -6852,6 +6885,7 @@ pub mod testutil {
         packet_buf: Rc<RefCell<Vec<u8>>>,
     }
 
+    #[allow(clippy::new_without_default)]
     impl BenchServerReqConnection {
         pub fn new() -> Self {
             Self {
@@ -6935,7 +6969,7 @@ pub mod testutil {
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
             let resp = arena::Rc::new(resp, resp_mem).unwrap();
 
-            assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+            assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
             assert_eq!(check_poll(executor.step()), Some(()));
 
@@ -6954,6 +6988,7 @@ pub mod testutil {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn server_stream_handler_fut(
         sock: Rc<RefCell<FakeSock>>,
         secure: bool,
@@ -7013,6 +7048,7 @@ pub mod testutil {
         tmp_buf: Rc<RefCell<Vec<u8>>>,
     }
 
+    #[allow(clippy::new_without_default)]
     impl BenchServerStreamHandler {
         pub fn new() -> Self {
             Self {
@@ -7059,7 +7095,7 @@ pub mod testutil {
                 let s_from_conn = s_from_conn
                     .try_clone(&reactor.local_registration_memory())
                     .unwrap();
-                let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+                let shared = arena::Rc::new(StreamSharedData::new(), shared_mem).unwrap();
 
                 server_stream_handler_fut(
                     sock,
@@ -7075,7 +7111,7 @@ pub mod testutil {
                 )
             };
 
-            let mut executor = StepExecutor::new(&reactor, fut);
+            let mut executor = StepExecutor::new(reactor, fut);
 
             assert_eq!(check_poll(executor.step()), None);
 
@@ -7097,16 +7133,16 @@ pub mod testutil {
             );
 
             let msg = zmq::Message::from(msg.as_bytes());
-            let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+            let msg = arena::Arc::new(msg, msg_mem).unwrap();
 
             let scratch =
-                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
                     .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+            let resp = arena::Rc::new(resp, resp_mem).unwrap();
 
-            assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+            assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
             assert_eq!(check_poll(executor.step()), Some(true));
 
@@ -7124,6 +7160,7 @@ pub mod testutil {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn server_stream_connection_inner_fut(
         token: CancellationToken,
         sock: Rc<RefCell<FakeSock>>,
@@ -7184,6 +7221,7 @@ pub mod testutil {
         tmp_buf: Rc<RefCell<Vec<u8>>>,
     }
 
+    #[allow(clippy::new_without_default)]
     impl BenchServerStreamConnection {
         pub fn new() -> Self {
             Self {
@@ -7225,7 +7263,7 @@ pub mod testutil {
                 let s_from_conn = s_from_conn
                     .try_clone(&reactor.local_registration_memory())
                     .unwrap();
-                let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+                let shared = arena::Rc::new(StreamSharedData::new(), shared_mem).unwrap();
 
                 server_stream_connection_inner_fut(
                     token,
@@ -7241,7 +7279,7 @@ pub mod testutil {
                 )
             };
 
-            let mut executor = StepExecutor::new(&reactor, fut);
+            let mut executor = StepExecutor::new(reactor, fut);
 
             assert_eq!(check_poll(executor.step()), None);
 
@@ -7263,16 +7301,16 @@ pub mod testutil {
             );
 
             let msg = zmq::Message::from(msg.as_bytes());
-            let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+            let msg = arena::Arc::new(msg, msg_mem).unwrap();
 
             let scratch =
-                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem)
+                arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), scratch_mem)
                     .unwrap();
 
             let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
-            let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+            let resp = arena::Rc::new(resp, resp_mem).unwrap();
 
-            assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+            assert!(s_to_conn.try_send((resp, 0)).is_ok());
 
             // connection reusable
             assert_eq!(check_poll(executor.step()), None);

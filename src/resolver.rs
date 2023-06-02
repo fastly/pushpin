@@ -119,14 +119,12 @@ impl Queries {
             Err(_) => {
                 sr.set_readiness(Interest::READABLE).unwrap();
 
-                let nkey = queries.nodes.insert(list::Node::new(QueryItem {
+                queries.nodes.insert(list::Node::new(QueryItem {
                     host: Hostname::new(),
                     result: Some(Err(io::Error::from(io::ErrorKind::InvalidInput))),
                     set_readiness: sr,
                     invalidated: None,
-                }));
-
-                nkey
+                }))
             }
         };
 
@@ -152,7 +150,7 @@ impl Queries {
                 invalidated.store(false, Ordering::Relaxed);
                 qi.invalidated = Some(invalidated.clone());
 
-                return Some((nkey, qi.host.clone()));
+                return Some((nkey, qi.host));
             }
 
             queries_guard = cvar.wait(queries_guard).unwrap();
@@ -252,6 +250,7 @@ impl ResolverInner {
         Self { workers, queries }
     }
 
+    #[allow(clippy::result_unit_err)]
     fn resolve(&self, host: &str) -> Result<Query, ()> {
         let (item_key, reg) = self.queries.add(host)?;
 
@@ -288,6 +287,7 @@ impl Resolver {
         Self { inner }
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn resolve(&self, host: &str) -> Result<Query, ()> {
         self.inner.resolve(host)
     }

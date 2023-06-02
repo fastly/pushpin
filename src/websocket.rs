@@ -71,9 +71,8 @@ impl fmt::Display for Bufs<'_> {
         let data: Vec<u8> = self
             .data
             .iter()
-            .map(|v| *v)
-            .flatten()
-            .map(|v| *v)
+            .flat_map(|v| *v)
+            .copied()
             .take(LOG_CONTENT_MAX + 1)
             .collect();
 
@@ -124,6 +123,7 @@ pub fn read_header(buf: &[u8]) -> Result<FrameInfo, io::Error> {
 
     let b1 = buf[1] & 0x7f;
 
+    #[allow(clippy::comparison_chain)]
     let (mut hsize, psize) = if b1 < (PSIZE_3BYTE as u8) {
         (2, b1 as usize)
     } else if b1 == (PSIZE_3BYTE as u8) {
@@ -263,7 +263,7 @@ fn parse_bits(s: &str, dest: &mut Option<u8>, default: Option<u8>) -> Result<(),
     };
 
     // number must be between 8 and 15, inclusive
-    if x >= 8 && x <= 15 {
+    if (8..=15).contains(&x) {
         *dest = Some(x);
         return Ok(());
     }
@@ -305,6 +305,7 @@ impl PerMessageDeflateConfig {
         })
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn create_response(&self) -> Result<Self, ()> {
         // we don't support non-default server_max_window_bits
         if self.server_max_window_bits != DEFAULT_MAX_WINDOW_BITS {
@@ -323,6 +324,7 @@ impl PerMessageDeflateConfig {
         })
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn check_response(&self) -> Result<(), ()> {
         // we don't support non-default client_max_window_bits
         if self.client_max_window_bits != DEFAULT_MAX_WINDOW_BITS {
@@ -381,6 +383,7 @@ impl<T: Copy, const N: usize> ArrayVecExt<T> for ArrayVec<T, N> {
     fn resize(&mut self, new_len: usize, value: T) {
         assert!(new_len <= self.capacity());
 
+        #[allow(clippy::comparison_chain)]
         if new_len > self.len() {
             let old_len = self.len();
             unsafe {
@@ -409,9 +412,10 @@ pub struct DeflateEncoder {
     end: bool,
 }
 
+#[allow(clippy::new_without_default)]
 impl DeflateEncoder {
     pub fn new() -> Self {
-        let mut enc = Box::new(deflate::core::CompressorOxide::default());
+        let mut enc = Box::<deflate::core::CompressorOxide>::default();
 
         enc.set_format_and_level(
             DataFormat::Raw,
@@ -534,7 +538,7 @@ impl DeflateEncoder {
                 // keep back the ending bytes in next_buf
                 assert!(next_buf.is_empty());
                 let keep = cmp::min(ENC_NEXT_BUF_SIZE, dest.len());
-                next_buf.write(&dest[(dest.len() - keep)..]).unwrap();
+                next_buf.write_all(&dest[(dest.len() - keep)..]).unwrap();
 
                 let written = dest.len() - keep;
 
@@ -608,7 +612,7 @@ impl DeflateEncoder {
                 }
 
                 // append tmp to next_buf
-                next_buf.write(tmp.as_ref()).unwrap();
+                next_buf.write_all(tmp.as_ref()).unwrap();
 
                 (result.bytes_consumed, written, maybe_more)
             };
@@ -638,6 +642,7 @@ pub struct DeflateDecoder {
     suffix_pos: Option<usize>,
 }
 
+#[allow(clippy::new_without_default)]
 impl DeflateDecoder {
     pub fn new() -> Self {
         Self {
@@ -664,7 +669,7 @@ impl Decoder for DeflateDecoder {
         dest: &mut [u8],
     ) -> Result<(usize, usize, bool), io::Error> {
         let (consumed, mut written) = if self.suffix_pos.is_none() {
-            let result = inflate(&mut self.dec, &src, dest, MZFlush::None);
+            let result = inflate(&mut self.dec, src, dest, MZFlush::None);
 
             match result.status {
                 Ok(MZStatus::Ok) => {}
@@ -943,17 +948,16 @@ pub struct Protocol<T> {
     deflate_state: Option<RefCell<DeflateState<T>>>,
 }
 
-impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
+impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
     pub fn new(deflate_config: Option<(bool, BaseRingBuffer<T>)>) -> Self {
-        let deflate_state = match deflate_config {
-            Some((allow_takeover, enc_buf)) => Some(RefCell::new(DeflateState {
+        let deflate_state = deflate_config.map(|(allow_takeover, enc_buf)| {
+            RefCell::new(DeflateState {
                 enc: DeflateEncoder::new(),
                 dec: DeflateDecoder::new(),
                 allow_takeover,
                 enc_buf,
-            })),
-            None => None,
-        };
+            })
+        });
 
         Self {
             state: Cell::new(State::Connected),
@@ -1042,8 +1046,8 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                 trace!("OUT sock {} -> {:?}", Bufs::new(out.as_slice()), ret);
             }
 
-            let size = match ret {
-                Ok(size) => size,
+            let size = match &ret {
+                Ok(size) => *size,
                 Err(_) => 0,
             };
 
@@ -1081,7 +1085,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
     // on success, it's up to the caller to advance the buffer by frame.data.len()
     #[cfg(test)]
-    pub fn recv_frame<R: RefRead>(
+    pub fn recv_frame<'buf, R: RefRead>(
         &mut self,
         rbuf: &'buf mut R,
     ) -> Option<Result<Frame<'buf>, Error>> {
@@ -1139,7 +1143,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
         let sending_message = &mut *self.sending.message.borrow_mut();
 
-        assert_eq!(sending_message.is_some(), false);
+        assert!(sending_message.is_none());
 
         *sending_message = Some(SendingMessage {
             opcode,
@@ -1175,7 +1179,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             // once the caller has passed end=true, it must continue to pass
             // end=true in all subsequent calls until this method returns
             // done
-            assert_eq!(end, true);
+            assert!(end);
 
             // once the caller has passed end=true, it must continue to
             // provide the expected number of src bytes in all subsequent
@@ -1403,7 +1407,7 @@ impl<'buf, T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
             let left = fi.payload_size - msg.frame_payload_read;
 
-            if left > 0 && buf.len() == 0 {
+            if left > 0 && buf.is_empty() {
                 return None;
             }
 
@@ -1584,8 +1588,7 @@ pub mod testutil {
             let size = rbuf.write(&self.msg).unwrap();
             assert_eq!(size, self.msg.len());
 
-            let mut dest = Vec::with_capacity(16_384);
-            dest.resize(dest.capacity(), 0);
+            let dest = vec![0; 16_384];
 
             BenchRecvMessageArgs {
                 protocol: Protocol::new(deflate_config),

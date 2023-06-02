@@ -69,8 +69,8 @@ where
 }
 
 fn range_unordered(dest: &mut [usize]) -> &[usize] {
-    for i in 0..dest.len() {
-        dest[i] = i;
+    for (index, v) in dest.iter_mut().enumerate() {
+        *v = index;
     }
 
     shuffle(dest);
@@ -134,6 +134,7 @@ macro_rules! declare_select {
                 }
             }
 
+            #[allow(clippy::too_many_arguments)]
             pub fn [<select_ $count>]<$([<F $num>], )*>(
                 $(
                     [<f $num>]: [<F $num>],
@@ -343,7 +344,7 @@ pub trait AsyncWriteExt: AsyncWrite {
         }
     }
 
-    fn close<'a>(&'a mut self) -> CloseFuture<'a, Self> {
+    fn close(&mut self) -> CloseFuture<'_, Self> {
         CloseFuture { w: self }
     }
 
@@ -483,7 +484,7 @@ impl<T> AsyncSender<T> {
         self.evented.registration().is_ready()
     }
 
-    pub fn wait_writable<'a>(&'a self) -> WaitWritableFuture<'a, T> {
+    pub fn wait_writable(&self) -> WaitWritableFuture<'_, T> {
         WaitWritableFuture { s: self }
     }
 
@@ -506,7 +507,7 @@ impl<T> AsyncSender<T> {
         }
     }
 
-    pub fn send<'a>(&'a self, t: T) -> SendFuture<'a, T> {
+    pub fn send(&self, t: T) -> SendFuture<'_, T> {
         SendFuture {
             s: self,
             t: Some(t),
@@ -533,7 +534,7 @@ impl<T> AsyncReceiver<T> {
         Self { evented, inner: r }
     }
 
-    pub fn recv<'a>(&'a self) -> RecvFuture<'a, T> {
+    pub fn recv(&self) -> RecvFuture<'_, T> {
         RecvFuture { r: self }
     }
 }
@@ -569,7 +570,7 @@ impl<T> AsyncLocalSender<T> {
         self.inner
     }
 
-    pub fn send<'a>(&'a self, t: T) -> LocalSendFuture<'a, T> {
+    pub fn send(&self, t: T) -> LocalSendFuture<'_, T> {
         LocalSendFuture {
             s: self,
             t: Some(t),
@@ -578,7 +579,7 @@ impl<T> AsyncLocalSender<T> {
 
     // it's okay to run multiple instances of this future within the same
     // task. see the comment on the CheckSendFuture struct
-    pub fn check_send<'a>(&'a self) -> CheckSendFuture<'a, T> {
+    pub fn check_send(&self) -> CheckSendFuture<'_, T> {
         CheckSendFuture { s: self }
     }
 
@@ -622,7 +623,7 @@ impl<T> AsyncLocalReceiver<T> {
         self.inner
     }
 
-    pub fn recv<'a>(&'a self) -> LocalRecvFuture<'a, T> {
+    pub fn recv(&self) -> LocalRecvFuture<'_, T> {
         LocalRecvFuture { r: self }
     }
 }
@@ -672,7 +673,7 @@ impl AsyncTcpListener {
         self.evented.io().local_addr()
     }
 
-    pub fn accept<'a>(&'a self) -> AcceptFuture<'a> {
+    pub fn accept(&self) -> AcceptFuture<'_> {
         AcceptFuture { l: self }
     }
 
@@ -704,7 +705,7 @@ impl AsyncUnixListener {
         self.evented.io().local_addr()
     }
 
-    pub fn accept<'a>(&'a self) -> UnixAcceptFuture<'a> {
+    pub fn accept(&self) -> UnixAcceptFuture<'_> {
         UnixAcceptFuture { l: self }
     }
 }
@@ -722,7 +723,7 @@ impl AsyncNetListener {
         }
     }
 
-    pub fn accept<'a>(&'a self) -> NetAcceptFuture<'a> {
+    pub fn accept(&self) -> NetAcceptFuture<'_> {
         match self {
             Self::Tcp(l) => NetAcceptFuture::Tcp(l.accept()),
             Self::Unix(l) => NetAcceptFuture::Unix(l.accept()),
@@ -752,7 +753,7 @@ impl AsyncTcpStream {
         Self { evented }
     }
 
-    pub async fn connect<'a>(addrs: &[std::net::SocketAddr]) -> Result<Self, io::Error> {
+    pub async fn connect(addrs: &[std::net::SocketAddr]) -> Result<Self, io::Error> {
         let mut last_err = None;
 
         for addr in addrs {
@@ -823,7 +824,7 @@ impl AsyncUnixStream {
         Self { evented }
     }
 
-    pub async fn connect<'a, P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
+    pub async fn connect<P: AsRef<Path>>(path: P) -> Result<Self, io::Error> {
         let stream = UnixStream::connect(path)?;
         let mut stream = Self::new(stream);
 
@@ -874,7 +875,7 @@ impl AsyncTlsStream {
         Ok(Self::new_with_registration(stream, registration))
     }
 
-    pub fn ensure_handshake<'a>(&'a mut self) -> EnsureHandshakeFuture<'a> {
+    pub fn ensure_handshake(&mut self) -> EnsureHandshakeFuture<'_> {
         EnsureHandshakeFuture { s: self }
     }
 
@@ -902,7 +903,7 @@ impl AsyncTlsStream {
 
     // assumes stream is in non-blocking mode
     pub fn from_std(stream: TlsStream<std::net::TcpStream>) -> Self {
-        let stream = stream.change_inner(|stream| TcpStream::from_std(stream));
+        let stream = stream.change_inner(TcpStream::from_std);
 
         Self::new(stream)
     }
@@ -948,7 +949,7 @@ impl Timeout {
         self.evented.registration().set_ready(true);
     }
 
-    pub fn elapsed<'a>(&'a self) -> TimeoutFuture<'a> {
+    pub fn elapsed(&self) -> TimeoutFuture<'_> {
         TimeoutFuture { t: self }
     }
 }
@@ -999,7 +1000,7 @@ impl CancellationToken {
         (sender, token)
     }
 
-    pub fn cancelled<'a>(&'a self) -> CancelledFuture<'a> {
+    pub fn cancelled(&self) -> CancelledFuture<'_> {
         CancelledFuture { t: self }
     }
 }
@@ -1041,15 +1042,11 @@ impl AsyncZmqSocket {
         self.timeout.set(timeout);
     }
 
-    pub fn send<'a>(&'a self, msg: zmq::Message) -> ZmqSendFuture<'a> {
+    pub fn send(&self, msg: zmq::Message) -> ZmqSendFuture<'_> {
         ZmqSendFuture { s: self, msg }
     }
 
-    pub fn send_to<'a>(
-        &'a self,
-        header: MultipartHeader,
-        content: zmq::Message,
-    ) -> ZmqSendToFuture<'a> {
+    pub fn send_to(&self, header: MultipartHeader, content: zmq::Message) -> ZmqSendToFuture<'_> {
         ZmqSendToFuture {
             s: self,
             header,
@@ -1058,11 +1055,11 @@ impl AsyncZmqSocket {
         }
     }
 
-    pub fn recv<'a>(&'a self) -> ZmqRecvFuture<'a> {
+    pub fn recv(&self) -> ZmqRecvFuture<'_> {
         ZmqRecvFuture { s: self }
     }
 
-    pub fn recv_routed<'a>(&'a self) -> ZmqRecvRoutedFuture<'a> {
+    pub fn recv_routed(&self) -> ZmqRecvRoutedFuture<'_> {
         ZmqRecvRoutedFuture { s: self }
     }
 }
@@ -1727,7 +1724,7 @@ impl Future for TcpConnectFuture<'_> {
 
                 Poll::Pending
             }
-            Err(e) => return Poll::Ready(Err(e)),
+            Err(e) => Poll::Ready(Err(e)),
         }
     }
 }
@@ -1772,7 +1769,7 @@ impl Future for UnixConnectFuture<'_> {
 
                 Poll::Pending
             }
-            Err(e) => return Poll::Ready(Err(e)),
+            Err(e) => Poll::Ready(Err(e)),
         }
     }
 }

@@ -24,12 +24,14 @@ use std::io;
 use std::mem;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Waker};
 use std::time::Duration;
 
 thread_local! {
     static EXECUTOR: RefCell<Option<Weak<Tasks>>> = RefCell::new(None);
 }
+
+type BoxFuture = Pin<Box<dyn Future<Output = ()>>>;
 
 struct TaskWaker {
     tasks: Weak<Tasks>,
@@ -44,16 +46,13 @@ impl waker::RcWake for TaskWaker {
     }
 }
 
-fn poll_fut(fut: &mut Pin<Box<dyn Future<Output = ()>>>, waker: Waker) -> bool {
+fn poll_fut(fut: &mut BoxFuture, waker: Waker) -> bool {
     // convert from Pin<Box> to Pin<&mut>
     let fut: Pin<&mut dyn Future<Output = ()>> = fut.as_mut();
 
     let mut cx = Context::from_waker(&waker);
 
-    match fut.poll(&mut cx) {
-        Poll::Ready(_) => true,
-        Poll::Pending => false,
-    }
+    fut.poll(&mut cx).is_ready()
 }
 
 struct Task {
@@ -164,10 +163,7 @@ impl Tasks {
         data.next.concat(&mut data.nodes, &mut l);
     }
 
-    fn take_task(
-        &self,
-        l: &mut list::List,
-    ) -> Option<(usize, Pin<Box<dyn Future<Output = ()>>>, Waker)> {
+    fn take_task(&self, l: &mut list::List) -> Option<(usize, BoxFuture, Waker)> {
         let nkey = match l.head {
             Some(nkey) => nkey,
             None => return None,
@@ -191,28 +187,23 @@ impl Tasks {
     fn process_next(&self) {
         let mut l = self.take_next_list();
 
-        loop {
-            match self.take_task(&mut l) {
-                Some((task_id, mut fut, waker)) => {
-                    self.pre_poll();
+        while let Some((task_id, mut fut, waker)) = self.take_task(&mut l) {
+            self.pre_poll();
 
-                    let done = poll_fut(&mut fut, waker);
+            let done = poll_fut(&mut fut, waker);
 
-                    // take_task() took the future out of the task, so we
-                    // could poll it without having to maintain a borrow of
-                    // the tasks set. we'll put it back now
-                    self.set_fut(task_id, fut);
+            // take_task() took the future out of the task, so we
+            // could poll it without having to maintain a borrow of
+            // the tasks set. we'll put it back now
+            self.set_fut(task_id, fut);
 
-                    if done {
-                        self.remove(task_id);
-                    }
-                }
-                None => break,
+            if done {
+                self.remove(task_id);
             }
         }
     }
 
-    fn set_fut(&self, task_id: usize, fut: Pin<Box<dyn Future<Output = ()>>>) {
+    fn set_fut(&self, task_id: usize, fut: BoxFuture) {
         let nkey = task_id;
 
         let data = &mut *self.data.borrow_mut();
@@ -273,6 +264,7 @@ impl Executor {
         Self { tasks }
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn spawn<F>(&self, fut: F) -> Result<(), ()>
     where
         F: Future<Output = ()> + 'static,
@@ -337,11 +329,10 @@ impl Executor {
     }
 
     pub fn current() -> Option<Self> {
-        EXECUTOR.with(|ex| match &mut *ex.borrow_mut() {
-            Some(tasks) => Some(Self {
+        EXECUTOR.with(|ex| {
+            (*ex.borrow_mut()).as_mut().map(|tasks| Self {
                 tasks: tasks.upgrade().unwrap(),
-            }),
-            None => None,
+            })
         })
     }
 
@@ -367,6 +358,7 @@ pub struct Spawner {
 }
 
 impl Spawner {
+    #[allow(clippy::result_unit_err)]
     pub fn spawn<F>(&self, fut: F) -> Result<(), ()>
     where
         F: Future<Output = ()> + 'static,
@@ -387,6 +379,7 @@ mod tests {
     use super::*;
     use std::cell::Cell;
     use std::mem;
+    use std::task::Poll;
 
     struct TestFutureData {
         ready: bool,

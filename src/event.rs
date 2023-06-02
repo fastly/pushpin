@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Fanout, Inc.
+ * Copyright (C) 2021-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,8 +113,8 @@ impl LocalSources {
 
         let item = &mut sources.nodes[key].value;
 
-        if !(item.interests.is_readable() && readiness.is_readable())
-            && !(item.interests.is_writable() && readiness.is_writable())
+        if !((item.interests.is_readable() && readiness.is_readable())
+            || (item.interests.is_writable() && readiness.is_writable()))
         {
             // not of interest
             return Ok(());
@@ -204,8 +204,8 @@ impl SyncSources {
 
         let item = &mut sources.nodes[key].value;
 
-        if !(item.interests.is_readable() && readiness.is_readable())
-            && !(item.interests.is_writable() && readiness.is_writable())
+        if !((item.interests.is_readable() && readiness.is_readable())
+            || (item.interests.is_writable() && readiness.is_writable()))
         {
             // not of interest
             return Ok(());
@@ -650,7 +650,7 @@ impl Iterator for EventsIterator<'_, '_> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(event) = self.events.next() {
+        for event in self.events.by_ref() {
             if event.token() == Token(0) {
                 continue;
             }

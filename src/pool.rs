@@ -95,7 +95,7 @@ where
         let nkey = l.pop_front(&mut self.nodes)?;
 
         if l.is_empty() {
-            self.by_key.remove(&key);
+            self.by_key.remove(key);
         }
 
         let pi = self.nodes.remove(nkey).value;

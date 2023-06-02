@@ -189,7 +189,7 @@ impl fmt::Display for Packet<'_> {
 }
 
 fn packet_to_string(data: &[u8]) -> String {
-    if data.len() == 0 {
+    if data.is_empty() {
         return String::from("<packet is 0 bytes>");
     }
 
@@ -200,7 +200,7 @@ fn packet_to_string(data: &[u8]) -> String {
         };
 
         if frame.ftype != tnetstring::FrameType::Map {
-            return format!("<not a map>");
+            return String::from("<not a map>");
         }
 
         let p = Packet {
@@ -214,9 +214,9 @@ fn packet_to_string(data: &[u8]) -> String {
 
         let mut pos = None;
 
-        for i in 0..data.len() {
-            if data[i] == b' ' {
-                pos = Some(i);
+        for (index, b) in data.iter().enumerate() {
+            if *b == b' ' {
+                pos = Some(index);
                 break;
             }
         }
@@ -234,7 +234,7 @@ fn packet_to_string(data: &[u8]) -> String {
 
         let payload = &data[(pos + 1)..];
 
-        if payload.len() == 0 {
+        if payload.is_empty() {
             return String::from("<payload is 0 bytes>");
         }
 
@@ -250,7 +250,7 @@ fn packet_to_string(data: &[u8]) -> String {
         };
 
         if frame.ftype != tnetstring::FrameType::Map {
-            return format!("<not a map>");
+            return String::from("<not a map>");
         }
 
         let p = Packet {
@@ -449,6 +449,7 @@ impl ReqHandles {
         self.list.push_back(&mut self.nodes, key);
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn recv(&self) -> zmq::Message {
         let mut scratch = self.recv_scratch.borrow_mut();
 
@@ -583,6 +584,7 @@ impl StreamHandles {
         self.list.push_back(&mut self.nodes, key);
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn recv_any(&self) -> zmq::Message {
         let mut scratch = self.recv_any_scratch.borrow_mut();
 
@@ -621,6 +623,7 @@ impl StreamHandles {
         }
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn recv_addr(&self) -> (ArrayVec<u8, 64>, zmq::Message) {
         let mut scratch = self.recv_addr_scratch.borrow_mut();
 
@@ -754,6 +757,7 @@ impl ServerReqHandles {
         self.list.push_back(&mut self.nodes, key);
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn recv(&self) -> (MultipartHeader, zmq::Message) {
         let mut scratch = self.recv_scratch.borrow_mut();
 
@@ -900,6 +904,7 @@ impl ServerStreamHandles {
         self.list.push_back(&mut self.nodes, key);
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn recv(&self) -> zmq::Message {
         let mut scratch = self.recv_scratch.borrow_mut();
 
@@ -977,6 +982,7 @@ impl ServerStreamHandles {
         }
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn send_direct(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>]) {
         if self.nodes.is_empty() {
             return;
@@ -1469,11 +1475,11 @@ impl ClientSocketManager {
     }
 
     fn apply_req_specs(client_req: &ClientReqSockets, specs: &[SpecInfo]) -> Result<(), String> {
-        if let Err(e) = client_req.sock.inner().apply_specs(&specs) {
+        if let Err(e) = client_req.sock.inner().apply_specs(specs) {
             return Err(e.to_string());
         }
 
-        return Ok(());
+        Ok(())
     }
 
     fn apply_stream_specs(
@@ -1482,19 +1488,19 @@ impl ClientSocketManager {
         out_stream_specs: &[SpecInfo],
         in_specs: &[SpecInfo],
     ) -> Result<(), String> {
-        if let Err(e) = client_stream.out.inner().apply_specs(&out_specs) {
+        if let Err(e) = client_stream.out.inner().apply_specs(out_specs) {
             return Err(e.to_string());
         }
 
         if let Err(e) = client_stream
             .out_stream
             .inner()
-            .apply_specs(&out_stream_specs)
+            .apply_specs(out_stream_specs)
         {
             return Err(e.to_string());
         }
 
-        if let Err(e) = client_stream.in_.inner().apply_specs(&in_specs) {
+        if let Err(e) = client_stream.in_.inner().apply_specs(in_specs) {
             return Err(e.to_string());
         }
 
@@ -1557,7 +1563,7 @@ impl ClientSocketManager {
 
         let mut scratch = ParseScratch::new();
 
-        let ids = match parse_ids(&buf, &mut scratch) {
+        let ids = match parse_ids(buf, &mut scratch) {
             Ok(ids) => ids,
             Err(e) => {
                 warn!("unable to determine packet id(s): {}", e);
@@ -1970,11 +1976,11 @@ impl ServerSocketManager {
     }
 
     fn apply_req_specs(sock: &AsyncZmqSocket, specs: &[SpecInfo]) -> Result<(), String> {
-        if let Err(e) = sock.inner().apply_specs(&specs) {
+        if let Err(e) = sock.inner().apply_specs(specs) {
             return Err(e.to_string());
         }
 
-        return Ok(());
+        Ok(())
     }
 
     fn apply_stream_specs(
@@ -1983,15 +1989,15 @@ impl ServerSocketManager {
         in_stream_specs: &[SpecInfo],
         out_specs: &[SpecInfo],
     ) -> Result<(), String> {
-        if let Err(e) = socks.in_.inner().apply_specs(&in_specs) {
+        if let Err(e) = socks.in_.inner().apply_specs(in_specs) {
             return Err(e.to_string());
         }
 
-        if let Err(e) = socks.in_stream.inner().apply_specs(&in_stream_specs) {
+        if let Err(e) = socks.in_stream.inner().apply_specs(in_stream_specs) {
             return Err(e.to_string());
         }
 
-        if let Err(e) = socks.out.inner().apply_specs(&out_specs) {
+        if let Err(e) = socks.out.inner().apply_specs(out_specs) {
             return Err(e.to_string());
         }
 

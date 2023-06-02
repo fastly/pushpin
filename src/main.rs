@@ -131,7 +131,7 @@ struct Args {
 }
 
 fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
-    if args.id.is_empty() || args.id.contains(" ") {
+    if args.id.is_empty() || args.id.contains(' ') {
         return Err("failed to parse id: value cannot be empty or contain a space".into());
     }
 

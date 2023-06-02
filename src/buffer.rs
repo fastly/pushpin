@@ -56,6 +56,7 @@ pub fn trim_for_display(s: &str, max: usize) -> String {
     }
 }
 
+#[allow(clippy::len_without_is_empty)]
 pub trait RefRead {
     fn len(&self) -> usize;
     fn get_ref(&self) -> &[u8];
@@ -66,7 +67,7 @@ pub trait RefRead {
         &'data self,
         bufs: &'bufs mut [&'data [u8]],
     ) -> &'bufs mut [&'data [u8]] {
-        assert!(bufs.len() >= 1);
+        assert!(!bufs.is_empty());
 
         bufs[0] = self.get_ref();
 
@@ -139,12 +140,8 @@ pub fn write_vectored_offset<W: Write>(
     let mut arr = [io::IoSlice::new(&b""[..]); VECTORED_MAX];
     let mut arr_len = 0;
 
-    for i in start..bufs.len() {
-        let buf = if i == start {
-            &bufs[i][offset..]
-        } else {
-            bufs[i]
-        };
+    for (index, &buf) in bufs.iter().enumerate().skip(start) {
+        let buf = if index == start { &buf[offset..] } else { buf };
 
         arr[arr_len] = io::IoSlice::new(buf);
         arr_len += 1;
@@ -183,12 +180,8 @@ pub async fn write_vectored_offset_async<W: AsyncWrite>(
     let mut arr = [io::IoSlice::new(&b""[..]); VECTORED_MAX];
     let mut arr_len = 0;
 
-    for i in start..bufs.len() {
-        let buf = if i == start {
-            &bufs[i][offset..]
-        } else {
-            bufs[i]
-        };
+    for (index, &buf) in bufs.iter().enumerate().skip(start) {
+        let buf = if index == start { &buf[offset..] } else { buf };
 
         arr[arr_len] = io::IoSlice::new(buf);
         arr_len += 1;
@@ -271,23 +264,24 @@ impl<'a: 'b, 'b> LimitBufs<'a, 'b> for [&'a [u8]] {
         let mut restore = None;
         let mut want = size;
 
-        for i in 0..self.len() {
-            let buf_len = self[i].len();
+        for (index, item) in self.iter_mut().enumerate() {
+            let buf: &[u8] = item;
+            let buf_len = buf.len();
 
             if buf_len >= want {
-                let len = self[i].len();
-                let ptr = self[i].as_ptr();
+                let len = buf.len();
+                let ptr = buf.as_ptr();
 
-                restore = Some(LimitBufsRestore { index: i, ptr, len });
+                restore = Some(LimitBufsRestore { index, ptr, len });
 
                 // SAFETY: ptr and len were obtained above and are still
                 // valid. we just need to be careful about using them again
                 // later on from the restore field
                 unsafe {
-                    self[i] = &slice::from_raw_parts(ptr, len)[..want];
+                    *item = &slice::from_raw_parts(ptr, len)[..want];
                 }
 
-                end = i + 1;
+                end = index + 1;
                 break;
             }
 
@@ -315,23 +309,24 @@ impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
         let mut restore = None;
         let mut skip = size;
 
-        for i in 0..self.len() {
-            let buf_len = self[i].len();
+        for (index, item) in self.iter_mut().enumerate() {
+            let buf: &mut [u8] = item;
+            let buf_len = buf.len();
 
             if buf_len >= skip {
-                let len = self[i].len();
-                let ptr = self[i].as_mut_ptr();
+                let len = buf.len();
+                let ptr = buf.as_mut_ptr();
 
-                restore = Some(LimitBufsRestore { index: i, ptr, len });
+                restore = Some(LimitBufsRestore { index, ptr, len });
 
                 // SAFETY: ptr and len were obtained above and are still
                 // valid. we just need to be careful about using them again
                 // later on from the restore field
                 unsafe {
-                    self[i] = &mut slice::from_raw_parts_mut(ptr, len)[skip..];
+                    *item = &mut slice::from_raw_parts_mut(ptr, len)[skip..];
                 }
 
-                start = i;
+                start = index;
                 break;
             }
 
@@ -351,23 +346,24 @@ impl<'a: 'b, 'b> LimitBufsMut<'a, 'b> for [&'a mut [u8]] {
         let mut restore = None;
         let mut want = size;
 
-        for i in 0..self.len() {
-            let buf_len = self[i].len();
+        for (index, item) in self.iter_mut().enumerate() {
+            let buf: &mut [u8] = item;
+            let buf_len = buf.len();
 
             if buf_len >= want {
-                let len = self[i].len();
-                let ptr = self[i].as_mut_ptr();
+                let len = buf.len();
+                let ptr = buf.as_mut_ptr();
 
-                restore = Some(LimitBufsRestore { index: i, ptr, len });
+                restore = Some(LimitBufsRestore { index, ptr, len });
 
                 // SAFETY: ptr and len were obtained above and are still
                 // valid. we just need to be careful about using them again
                 // later on from the restore field
                 unsafe {
-                    self[i] = &mut slice::from_raw_parts_mut(ptr, len)[..want];
+                    *item = &mut slice::from_raw_parts_mut(ptr, len)[..want];
                 }
 
-                end = i + 1;
+                end = index + 1;
                 break;
             }
 
@@ -475,6 +471,7 @@ impl Write for Buffer {
 
 pub struct TmpBuffer(RefCell<Vec<u8>>);
 
+#[allow(clippy::len_without_is_empty)]
 impl TmpBuffer {
     pub fn new(size: usize) -> Self {
         Self(RefCell::new(vec![0; size]))
@@ -657,7 +654,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> BaseRingBuffer<T> {
 
             tmp[..lsize].copy_from_slice(&buf[lsrc..(lsrc + lsize)]);
             buf.copy_within(hsrc..(hsrc + hsize), hdest);
-            buf[ldest..(ldest + lsize)].copy_from_slice(&mut tmp[..lsize]);
+            buf[ldest..(ldest + lsize)].copy_from_slice(&tmp[..lsize]);
         }
 
         self.start = 0;
@@ -741,7 +738,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RefRead for BaseRingBuffer<T> {
         &'data self,
         bufs: &'bufs mut [&'data [u8]],
     ) -> &'bufs mut [&'data [u8]] {
-        assert!(bufs.len() >= 1);
+        assert!(!bufs.is_empty());
 
         let buf = self.buf.as_ref();
         let buf_len = buf.len();

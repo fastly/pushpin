@@ -486,11 +486,10 @@ impl Reactor {
     }
 
     pub fn current() -> Option<Self> {
-        REACTOR.with(|r| match &mut *r.borrow_mut() {
-            Some(inner) => Some(Self {
+        REACTOR.with(|r| {
+            (*r.borrow_mut()).as_mut().map(|inner| Self {
                 inner: inner.upgrade().unwrap(),
-            }),
-            None => None,
+            })
         })
     }
 
@@ -501,10 +500,7 @@ impl Reactor {
     fn next_timeout(&self, user_timeout: Option<Duration>) -> Option<Duration> {
         let timer = &mut *self.inner.timer.borrow_mut();
 
-        let timer_timeout = match timer.wheel.timeout() {
-            Some(ticks) => Some(ticks_to_duration(ticks)),
-            None => None,
-        };
+        let timer_timeout = timer.wheel.timeout().map(ticks_to_duration);
 
         match user_timeout {
             Some(user_timeout) => Some(match timer_timeout {

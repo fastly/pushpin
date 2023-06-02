@@ -152,7 +152,7 @@ where
 
 // wrap a future and a shared flag representing the liveness of some value.
 // if the value is true after polling the inner future, return an error
-pub fn track_future<'a, F>(fut: F, value_active: &'a TrackFlag) -> TrackFuture<'a, F>
+pub fn track_future<F>(fut: F, value_active: &TrackFlag) -> TrackFuture<'_, F>
 where
     F: Future,
 {

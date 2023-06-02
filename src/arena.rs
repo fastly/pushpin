@@ -225,11 +225,11 @@ impl<T> ReusableValue<T> {
     //   ReusableValue, therefore it is safe to assume the element will
     //   live at least as long as the ReusableValue
 
-    fn get<'a>(&'a self) -> &'a T {
+    fn get(&self) -> &T {
         unsafe { &*self.value }
     }
 
-    fn get_mut<'a>(&'a mut self) -> &'a mut T {
+    fn get_mut(&mut self) -> &mut T {
         unsafe { &mut *self.value }
     }
 }
@@ -287,6 +287,7 @@ impl<T> Reusable<T> {
         entries.0.len()
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn reserve(self: &std::sync::Arc<Self>) -> Result<ReusableValue<T>, ()> {
         let mut entries = self.entries.lock().unwrap();
 
@@ -320,6 +321,7 @@ pub struct Rc<T> {
 }
 
 impl<T> Rc<T> {
+    #[allow(clippy::result_unit_err)]
     pub fn new(v: T, memory: &std::rc::Rc<RcMemory<T>>) -> Result<Self, ()> {
         let key = memory.insert(RcEntry { value: v, refs: 1 })?;
 
@@ -329,6 +331,7 @@ impl<T> Rc<T> {
         })
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn clone(rc: &Rc<T>) -> Self {
         let mut e = rc.memory.get(rc.key).unwrap();
 
@@ -376,6 +379,7 @@ pub struct Arc<T> {
 }
 
 impl<T> Arc<T> {
+    #[allow(clippy::result_unit_err)]
     pub fn new(v: T, memory: &std::sync::Arc<ArcMemory<T>>) -> Result<Self, ()> {
         let key = memory.insert(RcEntry { value: v, refs: 1 })?;
 
@@ -385,6 +389,7 @@ impl<T> Arc<T> {
         })
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn clone(rc: &Arc<T>) -> Self {
         let mut e = rc.memory.get(rc.key).unwrap();
 
@@ -444,11 +449,11 @@ pub struct ReusableVecHandle<'a, T> {
 
 impl<T> ReusableVecHandle<'_, T> {
     pub fn get_ref(&self) -> &Vec<T> {
-        &self.vec
+        self.vec
     }
 
     pub fn get_mut(&mut self) -> &mut Vec<T> {
-        &mut self.vec
+        self.vec
     }
 }
 
@@ -492,7 +497,7 @@ impl ReusableVec {
         Self { vec, size, align }
     }
 
-    pub fn get_as_new<'a, U>(&'a mut self) -> ReusableVecHandle<'a, U> {
+    pub fn get_as_new<U>(&mut self) -> ReusableVecHandle<'_, U> {
         let size = mem::size_of::<U>();
         let align = mem::align_of::<U>();
 

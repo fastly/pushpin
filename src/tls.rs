@@ -109,6 +109,7 @@ impl Identity {
         let cert_modified = cert_metadata.modified();
         let key_modified = key_metadata.modified();
 
+        #[allow(clippy::unnecessary_unwrap)]
         let modified = if cert_modified.is_ok() && key_modified.is_ok() {
             Some(cmp::max(cert_modified.unwrap(), key_modified.unwrap()))
         } else {
@@ -226,10 +227,8 @@ impl IdentityCache {
 
         if let Some(value) = data.get(name) {
             if let Some(modified) = value.modified {
-                update = match modified_after(&[&value.cert_fname, &value.key_fname], modified) {
-                    Ok(b) => b,
-                    Err(_) => true,
-                };
+                update = modified_after(&[&value.cert_fname, &value.key_fname], modified)
+                    .unwrap_or(true);
             }
         } else {
             update = true;
@@ -416,8 +415,8 @@ where
 
     pub fn get_inner<'a>(&'a mut self) -> &'a mut T {
         let plain_stream: &'a mut Box<dyn ReadWrite> = match &mut self.stream {
-            Stream::Ssl(stream) => *stream.get_mut(),
-            Stream::MidHandshakeSsl(stream) => *stream.get_mut(),
+            Stream::Ssl(stream) => stream.get_mut(),
+            Stream::MidHandshakeSsl(stream) => stream.get_mut(),
             Stream::NoSsl => Box::as_mut(&mut self.plain_stream),
         };
 
@@ -426,6 +425,7 @@ where
         plain_stream.as_any().downcast_mut().unwrap()
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn set_id(&mut self, id: &str) -> Result<(), ()> {
         self.id = match ArrayString::from_str(id) {
             Ok(s) => s,

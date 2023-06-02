@@ -69,13 +69,11 @@ impl Listener {
     ) {
         let stop = AsyncReceiver::new(stop);
 
-        let mut listeners: Vec<AsyncNetListener> = listeners
-            .into_iter()
-            .map(|l| AsyncNetListener::new(l))
-            .collect();
+        let mut listeners: Vec<AsyncNetListener> =
+            listeners.into_iter().map(AsyncNetListener::new).collect();
 
         let mut senders: Vec<AsyncSender<(usize, NetStream, SocketAddr)>> =
-            senders.into_iter().map(|s| AsyncSender::new(s)).collect();
+            senders.into_iter().map(AsyncSender::new).collect();
 
         let mut listeners_pos = 0;
         let mut senders_pos = 0;

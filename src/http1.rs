@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::collapsible_else_if)]
+
 use crate::buffer::{
     write_vectored_offset, write_vectored_offset_async, FilledBuf, LimitBufs, VECTORED_MAX,
 };
@@ -201,7 +204,7 @@ impl<'a> Iterator for HeaderParamsIterator<'a> {
         self.s = remainder;
         self.done = done;
 
-        return Some(Ok((k, v)));
+        Some(Ok((k, v)))
     }
 }
 
@@ -224,7 +227,7 @@ impl<'a> Iterator for HeaderValueIterator<'a> {
                 let mut params = HeaderParamsIterator::new(&self.s[(pos + 1)..]);
 
                 // drive it to the end
-                while let Some(p) = params.next() {
+                for p in params.by_ref() {
                     if let Err(e) = p {
                         return Some(Err(e));
                     }
@@ -232,7 +235,7 @@ impl<'a> Iterator for HeaderValueIterator<'a> {
 
                 // when HeaderParamsIterator completes, its remaining value
                 // will either start with a comma or be empty
-                let (remainder, done) = if params.s.starts_with(",") {
+                let (remainder, done) = if params.s.starts_with(',') {
                     (&params.s[1..], false)
                 } else if params.s.is_empty() {
                     ("", true)
@@ -459,6 +462,7 @@ pub struct ParseScratch<const N: usize> {
     headers: [httparse::Header<'static>; N],
 }
 
+#[allow(clippy::new_without_default)]
 impl<const N: usize> ParseScratch<N> {
     pub fn new() -> Self {
         Self {
@@ -546,7 +550,7 @@ impl<'s, const N: usize> OwnedHttparseRequest<'s, N> {
         req
     }
 
-    fn remaining_bytes<'a>(&'a self) -> &'a [u8] {
+    fn remaining_bytes(&self) -> &[u8] {
         let s = self.inner.as_ref().unwrap();
 
         &s.buf.filled()[s.size..]
@@ -633,7 +637,7 @@ impl<'s, const N: usize> OwnedHttparseResponse<'s, N> {
         resp
     }
 
-    fn remaining_bytes<'a>(&'a self) -> &'a [u8] {
+    fn remaining_bytes(&self) -> &[u8] {
         let s = self.inner.as_ref().unwrap();
 
         &s.buf.filled()[s.size..]
@@ -786,6 +790,7 @@ pub struct ServerProtocol {
     sending_chunk: Option<Chunk>,
 }
 
+#[allow(clippy::new_without_default)]
 impl<'buf, 'headers> ServerProtocol {
     pub fn new() -> Self {
         Self {
@@ -988,7 +993,7 @@ impl<'buf, 'headers> ServerProtocol {
     }
 
     pub fn send_100_continue<W: Write>(&mut self, writer: &mut W) -> Result<(), Error> {
-        writer.write(b"HTTP/1.1 100 Continue\r\n\r\n")?;
+        writer.write_all(b"HTTP/1.1 100 Continue\r\n\r\n")?;
 
         Ok(())
     }
@@ -1020,16 +1025,12 @@ impl<'buf, 'headers> ServerProtocol {
             _ => {}
         }
 
-        let chunked = if body_size == BodySize::Unknown && self.ver_min >= 1 {
-            true
-        } else {
-            false
-        };
+        let chunked = body_size == BodySize::Unknown && self.ver_min >= 1;
 
         if self.ver_min >= 1 {
-            writer.write(b"HTTP/1.1 ")?;
+            writer.write_all(b"HTTP/1.1 ")?;
         } else {
-            writer.write(b"HTTP/1.0 ")?;
+            writer.write_all(b"HTTP/1.0 ")?;
         }
 
         write!(writer, "{} {}\r\n", code, reason)?;
@@ -1044,20 +1045,20 @@ impl<'buf, 'headers> ServerProtocol {
             }
 
             write!(writer, "{}: ", h.name)?;
-            writer.write(h.value)?;
-            writer.write(b"\r\n")?;
+            writer.write_all(h.value)?;
+            writer.write_all(b"\r\n")?;
         }
 
         // Connection header
 
         if self.persistent && self.ver_min == 0 {
-            writer.write(b"Connection: keep-alive\r\n")?;
+            writer.write_all(b"Connection: keep-alive\r\n")?;
         } else if !self.persistent && self.ver_min >= 1 {
-            writer.write(b"Connection: close\r\n")?;
+            writer.write_all(b"Connection: close\r\n")?;
         }
 
         if chunked {
-            writer.write(b"Connection: Transfer-Encoding\r\n")?;
+            writer.write_all(b"Connection: Transfer-Encoding\r\n")?;
         }
 
         // Content-Length header
@@ -1069,10 +1070,10 @@ impl<'buf, 'headers> ServerProtocol {
         // Transfer-Encoding header
 
         if chunked {
-            writer.write(b"Transfer-Encoding: chunked\r\n")?;
+            writer.write_all(b"Transfer-Encoding: chunked\r\n")?;
         }
 
-        writer.write(b"\r\n")?;
+        writer.write_all(b"\r\n")?;
 
         self.state = ServerState::SendingBody;
         self.body_size = body_size;
@@ -1307,6 +1308,7 @@ struct ClientState {
     sending_chunk: Option<Chunk>,
 }
 
+#[allow(clippy::new_without_default)]
 impl ClientState {
     fn new() -> Self {
         Self {
@@ -1325,6 +1327,7 @@ pub struct ClientRequest {
     state: ClientState,
 }
 
+#[allow(clippy::new_without_default)]
 impl ClientRequest {
     pub fn new() -> Self {
         Self {
@@ -1361,14 +1364,14 @@ impl ClientRequest {
             }
 
             write!(writer, "{}: ", h.name)?;
-            writer.write(h.value)?;
-            writer.write(b"\r\n")?;
+            writer.write_all(h.value)?;
+            writer.write_all(b"\r\n")?;
         }
 
         // Connection header
 
         if chunked {
-            writer.write(b"Connection: Transfer-Encoding\r\n")?;
+            writer.write_all(b"Connection: Transfer-Encoding\r\n")?;
         }
 
         // Content-Length header
@@ -1386,10 +1389,10 @@ impl ClientRequest {
         // Transfer-Encoding header
 
         if chunked {
-            writer.write(b"Transfer-Encoding: chunked\r\n")?;
+            writer.write_all(b"Transfer-Encoding: chunked\r\n")?;
         }
 
-        writer.write(b"\r\n")?;
+        writer.write_all(b"\r\n")?;
 
         self.state.body_size = body_size;
         self.state.chunked = chunked;
@@ -1511,11 +1514,11 @@ pub struct ClientResponse {
 }
 
 impl ClientResponse {
-    pub fn recv_header<'a, const N: usize>(
+    pub fn recv_header<const N: usize>(
         mut self,
         rbuf: FilledBuf,
-        scratch: &'a mut ParseScratch<N>,
-    ) -> ParseStatus<'a, (OwnedResponse<'a, N>, ClientResponseBody), Self, Error, N> {
+        scratch: &mut ParseScratch<N>,
+    ) -> ParseStatus<'_, (OwnedResponse<'_, N>, ClientResponseBody), Self, Error, N> {
         let resp = match OwnedHttparseResponse::parse(rbuf, scratch) {
             ParseStatus::Complete(resp) => resp,
             ParseStatus::Incomplete((), rbuf, scratch) => {

@@ -25,8 +25,8 @@ use std::os::unix::fs::PermissionsExt;
 const MULTIPART_HEADERS_MAX: usize = 8;
 
 fn trim_prefix<'a>(s: &'a str, prefix: &str) -> Result<&'a str, ()> {
-    if s.starts_with(prefix) {
-        Ok(&s[prefix.len()..])
+    if let Some(s) = s.strip_prefix(prefix) {
+        Ok(s)
     } else {
         Err(())
     }
@@ -362,7 +362,7 @@ impl ZmqSocket {
                 if spec.ipc_file_mode > 0 {
                     match fs::metadata(path) {
                         Ok(meta) => {
-                            let perms = fs::Permissions::from_mode(spec.ipc_file_mode as u32);
+                            let perms = fs::Permissions::from_mode(spec.ipc_file_mode);
                             match fs::set_permissions(path, perms) {
                                 Ok(_) => {
                                     prev_perms.push((String::from(path), meta.permissions()));
@@ -401,7 +401,7 @@ impl ZmqSocket {
         }
 
         // move current specs aside
-        let prev_specs = std::mem::replace(&mut *specs, Vec::new());
+        let prev_specs = std::mem::take(&mut *specs);
 
         // recompute current specs
         for new in new_specs {

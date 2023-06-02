@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -356,6 +356,7 @@ impl<T> LocalSender<T> {
 
     // NOTE: if the receiver is dropped while there are multiple senders,
     // only one of the senders will be notified of the disconnect
+    #[allow(clippy::result_unit_err)]
     pub fn try_clone(
         &self,
         memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
@@ -372,6 +373,7 @@ impl<T> LocalSender<T> {
     }
 
     // returns error if a receiver already exists
+    #[allow(clippy::result_unit_err)]
     pub fn make_receiver(
         &self,
         memory: &Rc<arena::RcMemory<event::LocalRegistrationEntry>>,
@@ -473,7 +475,7 @@ pub fn local_channel<T>(
     };
 
     let receiver = LocalReceiver {
-        channel: channel.clone(),
+        channel,
         read_registration: read_reg,
     };
 
