@@ -1104,4 +1104,48 @@ mod tests {
         let size = r.read(&mut buf).unwrap();
         assert_eq!(&buf[..size], b"567890ab");
     }
+
+    #[test]
+    fn test_limitbufs() {
+        let mut buf1 = [b'1', b'2', b'3', b'4'];
+        let mut buf2 = [b'5', b'6', b'7', b'8'];
+        let mut buf3 = [b'9', b'0', b'a', b'b'];
+
+        let mut bufs = [buf1.as_slice(), buf2.as_slice(), buf3.as_slice()];
+        {
+            let limited = bufs.limit(7);
+            let limited = limited.as_slice();
+            assert_eq!(limited.len(), 2);
+            assert_eq!(&limited[0], b"1234");
+            assert_eq!(&limited[1], b"567");
+        }
+        assert_eq!(bufs.len(), 3);
+        assert_eq!(&bufs[0], b"1234");
+        assert_eq!(&bufs[1], b"5678");
+        assert_eq!(&bufs[2], b"90ab");
+
+        let mut bufs = [
+            buf1.as_mut_slice(),
+            buf2.as_mut_slice(),
+            buf3.as_mut_slice(),
+        ];
+        {
+            let mut limited = bufs.limit(7);
+            let limited = limited.as_slice();
+            assert_eq!(limited.len(), 2);
+            assert_eq!(&limited[0], b"1234");
+            assert_eq!(&limited[1], b"567");
+        }
+        {
+            let mut limited = bufs.skip(7);
+            let limited = limited.as_slice();
+            assert_eq!(limited.len(), 2);
+            assert_eq!(&limited[0], b"8");
+            assert_eq!(&limited[1], b"90ab");
+        }
+        assert_eq!(bufs.len(), 3);
+        assert_eq!(&bufs[0], b"1234");
+        assert_eq!(&bufs[1], b"5678");
+        assert_eq!(&bufs[2], b"90ab");
+    }
 }
