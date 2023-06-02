@@ -54,9 +54,9 @@ def validate_id(s):
 
 
 def validate_backend(s):
-    if len(s) < 1 or len(s) > 63:
+    if len(s) < 1 or len(s) > 512:
         raise ValidationError(
-            'backend name must have a length between 1 and 63 characters')
+            'backend name must have a length between 1 and 512 characters')
 
     for c in s:
         if c not in '._- ' and c not in alphanumerics:
