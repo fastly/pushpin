@@ -330,6 +330,7 @@ impl Error {
             Error::Io(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
                 "remote-connection-failed"
             }
+            Error::Io(e) if e.kind() == io::ErrorKind::TimedOut => "connection-timeout",
             Error::BadRequest => "bad-request",
             Error::StreamTimeout => "connection-timeout",
             Error::TlsError => "tls-error",
@@ -5695,9 +5696,8 @@ pub async fn client_req_connection(
 
 // return true if persistent
 #[allow(clippy::too_many_arguments)]
-async fn client_stream_handler<S, E, R1, R2>(
+async fn client_stream_handler<S, R1, R2>(
     log_id: &str,
-    id: &[u8],
     stream: &mut S,
     zreq: &zhttppacket::Request<'_, '_, '_>,
     method: &str,
@@ -5708,20 +5708,14 @@ async fn client_stream_handler<S, E, R1, R2>(
     buf2: &mut RingBuffer,
     messages_max: usize,
     allow_compression: bool,
-    packet_buf: &RefCell<Vec<u8>>,
     tmp_buf: &RefCell<Vec<u8>>,
-    instance_id: &str,
-    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-    zsender: &AsyncLocalSender<zmq::Message>,
-    shared: &StreamSharedData,
-    enable_routing: &E,
+    zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
+    zsess_out: &ZhttpServerStreamSessionOut<'_>,
     response_received: &mut bool,
     refresh_stream_timeout: &R1,
-    refresh_session_timeout: &R2,
 ) -> Result<ClientHandlerDone<()>, Error>
 where
     S: AsyncRead + AsyncWrite,
-    E: Fn(),
     R1: Fn(),
     R2: Fn(),
 {
@@ -5732,9 +5726,7 @@ where
 
     let req = ClientRequest::new(io_split(&stream), buf1, buf2);
 
-    let zsess_out = ZhttpServerStreamSessionOut::new(instance_id, id, packet_buf, zsender, shared);
-
-    let (credits, req_header, ws_key, overflow) = {
+    let (req_header, ws_key, overflow) = {
         let rdata = match &zreq.ptype {
             zhttppacket::RequestPacket::Data(data) => data,
             _ => return Err(Error::BadRequest),
@@ -5884,34 +5876,8 @@ where
             req.prepare_header(method, path, &headers, body_size, false, initial_body, end)?
         };
 
-        (rdata.credits, req_header, ws_key, overflow)
+        (req_header, ws_key, overflow)
     };
-
-    // ack request
-
-    // ABR: discard_while
-    server_discard_while(
-        zreceiver,
-        pin!(async {
-            zsess_out.check_send().await;
-            Ok(())
-        }),
-    )
-    .await?;
-
-    zsess_out.try_send_msg(zhttppacket::Response::new_keep_alive(b"", &[]))?;
-
-    let mut zsess_in = ZhttpServerStreamSessionIn::new(
-        log_id,
-        id,
-        credits,
-        zreceiver,
-        shared,
-        refresh_session_timeout,
-    );
-
-    // allow receiving subsequent messages
-    enable_routing();
 
     // send request header
 
@@ -5928,7 +5894,7 @@ where
                     let zreq = ret?;
 
                     // ABR: handle_other
-                    server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
+                    server_handle_other(zreq, zsess_in, zsess_out).await?;
                 }
             }
         }
@@ -5944,8 +5910,8 @@ where
         req_body,
         overflow,
         recv_buf_size,
-        &mut zsess_in,
-        &zsess_out,
+        zsess_in,
+        zsess_out,
     )
     .await?;
 
@@ -5965,7 +5931,7 @@ where
                     let zreq = ret?;
 
                     // ABR: handle_other
-                    server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
+                    server_handle_other(zreq, zsess_in, zsess_out).await?;
                 }
             }
         };
@@ -5989,7 +5955,7 @@ where
                         let zreq = ret?;
 
                         // ABR: handle_other
-                        server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
+                        server_handle_other(zreq, zsess_in, zsess_out).await?;
                     }
                 }
             }
@@ -6032,12 +5998,8 @@ where
                                                 let zreq = ret?;
 
                                                 // ABR: handle_other
-                                                server_handle_other(
-                                                    zreq,
-                                                    &mut zsess_in,
-                                                    &zsess_out,
-                                                )
-                                                .await?;
+                                                server_handle_other(zreq, zsess_in, zsess_out)
+                                                    .await?;
                                             }
                                         }
                                     }
@@ -6155,12 +6117,8 @@ where
                                                 let zreq = ret?;
 
                                                 // ABR: handle_other
-                                                server_handle_other(
-                                                    zreq,
-                                                    &mut zsess_in,
-                                                    &zsess_out,
-                                                )
-                                                .await?;
+                                                server_handle_other(zreq, zsess_in, zsess_out)
+                                                    .await?;
                                             }
                                         }
                                     }
@@ -6246,8 +6204,8 @@ where
             tmp_buf,
             refresh_stream_timeout,
             deflate_config,
-            &mut zsess_in,
-            &zsess_out,
+            zsess_in,
+            zsess_out,
         )
         .await?;
 
@@ -6260,8 +6218,8 @@ where
             tmp_buf,
             refresh_stream_timeout,
             resp_body,
-            &mut zsess_in,
-            &zsess_out,
+            zsess_in,
+            zsess_out,
         )
         .await?;
 
@@ -6335,6 +6293,34 @@ where
 
     debug!("client-conn {}: request: {} {}", log_id, method, rdata.uri);
 
+    let zsess_out = ZhttpServerStreamSessionOut::new(instance_id, id, packet_buf, zsender, shared);
+
+    // ack request
+
+    // ABR: discard_while
+    server_discard_while(
+        zreceiver,
+        pin!(async {
+            zsess_out.check_send().await;
+            Ok(())
+        }),
+    )
+    .await?;
+
+    zsess_out.try_send_msg(zhttppacket::Response::new_keep_alive(b"", &[]))?;
+
+    let mut zsess_in = ZhttpServerStreamSessionIn::new(
+        log_id,
+        id,
+        rdata.credits,
+        zreceiver,
+        shared,
+        refresh_session_timeout,
+    );
+
+    // allow receiving subsequent messages
+    enable_routing();
+
     let deny = if rdata.ignore_policies { &[] } else { deny };
 
     let mut last_redirect: Option<(url::Url, bool)> = None;
@@ -6359,18 +6345,29 @@ where
             None => return Err(Error::BadRequest),
         };
 
-        // ABR: discard_while
-        let (peer_addr, using_tls, mut stream) = server_discard_while(
-            zreceiver,
-            pin!(client_connect(log_id, rdata, url, resolver, deny, pool)),
-        )
-        .await?;
+        let (peer_addr, using_tls, mut stream) = {
+            let mut client_connect = pin!(client_connect(log_id, rdata, url, resolver, deny, pool));
+
+            loop {
+                // ABR: select contains read
+                let ret = select_2(client_connect.as_mut(), pin!(zsess_in.recv_msg())).await;
+
+                match ret {
+                    Select2::R1(ret) => break ret?,
+                    Select2::R2(ret) => {
+                        let zreq = ret?;
+
+                        // ABR: handle_other
+                        server_handle_other(zreq, &mut zsess_in, &zsess_out).await?;
+                    }
+                }
+            }
+        };
 
         let done = match &mut stream {
             AsyncStream::Plain(stream) => {
                 client_stream_handler(
                     log_id,
-                    id,
                     stream,
                     zreq,
                     method,
@@ -6381,23 +6378,17 @@ where
                     buf2,
                     messages_max,
                     allow_compression,
-                    packet_buf,
                     tmp_buf,
-                    instance_id,
-                    zreceiver,
-                    zsender,
-                    shared,
-                    enable_routing,
+                    &mut zsess_in,
+                    &zsess_out,
                     response_received,
                     refresh_stream_timeout,
-                    refresh_session_timeout,
                 )
                 .await?
             }
             AsyncStream::Tls(stream) => {
                 client_stream_handler(
                     log_id,
-                    id,
                     stream,
                     zreq,
                     method,
@@ -6408,16 +6399,11 @@ where
                     buf2,
                     messages_max,
                     allow_compression,
-                    packet_buf,
                     tmp_buf,
-                    instance_id,
-                    zreceiver,
-                    zsender,
-                    shared,
-                    enable_routing,
+                    &mut zsess_in,
+                    &zsess_out,
                     response_received,
                     refresh_stream_timeout,
-                    refresh_session_timeout,
                 )
                 .await?
             }
@@ -9553,9 +9539,32 @@ mod tests {
 
         let url = url::Url::parse(rdata.uri).unwrap();
 
+        let log_id = "test";
+        let instance_id = "test";
+
+        let zsess_out = ZhttpServerStreamSessionOut::new(
+            instance_id,
+            &id,
+            &packet_buf,
+            &s_from_conn,
+            shared.get(),
+        );
+
+        zsess_out.check_send().await;
+
+        zsess_out.try_send_msg(zhttppacket::Response::new_keep_alive(b"", &[]))?;
+
+        let mut zsess_in = ZhttpServerStreamSessionIn::new(
+            log_id,
+            &id,
+            rdata.credits,
+            &r_to_conn,
+            shared.get(),
+            &refresh_session_timeout,
+        );
+
         let _persistent = client_stream_handler(
             "test",
-            &id,
             &mut sock,
             zreq,
             rdata.method,
@@ -9566,16 +9575,11 @@ mod tests {
             &mut buf2,
             10,
             allow_compression,
-            &packet_buf,
             &tmp_buf,
-            "test",
-            &r_to_conn,
-            &s_from_conn,
-            shared.get(),
-            &|| {},
+            &mut zsess_in,
+            &zsess_out,
             &mut response_received,
             &refresh_stream_timeout,
-            &refresh_session_timeout,
         )
         .await?;
 
