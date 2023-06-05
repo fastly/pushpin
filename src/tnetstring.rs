@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ use std::fmt;
 use std::io;
 use std::io::Write;
 use std::str;
+use thiserror::Error;
 
 const F64_SIZE_MAX: usize = 64;
 const OPS_MAX: usize = 1_000;
@@ -75,7 +76,7 @@ fn bool_len(value: bool) -> usize {
     bool_bytes(value).len()
 }
 
-fn write_exact(w: &mut dyn io::Write, data: &[u8]) -> Result<(), io::Error> {
+fn write_exact(w: &mut io::Cursor<&mut [u8]>, data: &[u8]) -> Result<(), io::Error> {
     let size = w.write(data)?;
     if size < data.len() {
         return Err(io::Error::from(io::ErrorKind::WriteZero));
@@ -116,25 +117,19 @@ impl From<FrameType> for &str {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Error, PartialEq)]
 pub enum ParseError {
+    #[error("unexpected eof")]
     UnexpectedEof,
-    InvalidData,
-    WrongType(FrameType, FrameType), // got, expected
-    InvalidKey,
-}
 
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnexpectedEof => write!(f, "unexpected eof"),
-            Self::InvalidData => write!(f, "invalid data"),
-            Self::WrongType(got, expected) => {
-                write!(f, "wrong type {}, expected {}", got, expected)
-            }
-            Self::InvalidKey => write!(f, "map key must be a utf-8 string"),
-        }
-    }
+    #[error("invalid data")]
+    InvalidData,
+
+    #[error("wrong type {0}, expected {1}")]
+    WrongType(FrameType, FrameType), // got, expected
+
+    #[error("map key must be a utf-8 string")]
+    InvalidKey,
 }
 
 #[derive(Copy, Clone)]
@@ -154,7 +149,7 @@ enum Op<'a> {
 }
 
 impl Op<'_> {
-    fn serialize(&self, w: &mut dyn io::Write, len: usize) -> Result<(), io::Error> {
+    fn serialize(&self, w: &mut io::Cursor<&mut [u8]>, len: usize) -> Result<(), io::Error> {
         match self {
             Op::Invalid => unreachable!(),
             Op::Null => {
@@ -194,7 +189,7 @@ impl Op<'_> {
 // calculate the length of the first op and any dependants
 // return the number of ops processed
 fn calc_len(ops: &[Op], lens: &mut [usize]) -> usize {
-    assert!(ops.len() > 0);
+    assert!(!ops.is_empty());
     assert_eq!(ops.len(), lens.len());
 
     let (len, count) = match ops[0] {
@@ -271,14 +266,14 @@ fn calc_len(ops: &[Op], lens: &mut [usize]) -> usize {
     count
 }
 
-pub struct Writer<'a> {
+pub struct Writer<'a, 'b> {
     ops: [Op<'a>; OPS_MAX],
     len: usize,
-    dest: &'a mut dyn io::Write,
+    dest: &'a mut io::Cursor<&'b mut [u8]>,
 }
 
-impl<'a> Writer<'a> {
-    pub fn new(dest: &'a mut dyn io::Write) -> Self {
+impl<'a, 'b> Writer<'a, 'b> {
+    pub fn new(dest: &'a mut io::Cursor<&'b mut [u8]>) -> Self {
         Self {
             ops: [Op::Invalid; OPS_MAX],
             len: 0,
@@ -368,7 +363,7 @@ pub fn parse_frame(src: &[u8]) -> Result<(Frame, usize), ParseError> {
         if c == b':' {
             size_end = Some(i);
             break;
-        } else if !(c as char).is_digit(10) {
+        } else if !(c as char).is_ascii_digit() {
             return Err(ParseError::InvalidData);
         }
     }
@@ -520,7 +515,7 @@ pub struct SequenceIterator<'a> {
 
 impl<'a> SequenceIterator<'a> {
     pub fn new(src: &'a [u8]) -> Self {
-        Self { src: src, pos: 0 }
+        Self { src, pos: 0 }
     }
 }
 

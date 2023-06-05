@@ -13,9 +13,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             let line = line?;
 
             if line.starts_with("APP_VERSION =") {
-                let pos = line.find("=").unwrap();
+                let pos = line.find('=').unwrap();
 
-                s = (&line[(pos + 1)..]).trim().into();
+                s = line[(pos + 1)..].trim().into();
             }
         }
 
