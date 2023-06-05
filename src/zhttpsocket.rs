@@ -1068,7 +1068,8 @@ impl ClientSocketManager {
         ctx: Arc<zmq::Context>,
         instance_id: &str,
         retained_max: usize,
-        hwm: usize,
+        init_hwm: usize,
+        other_hwm: usize,
         handle_bound: usize,
     ) -> Self {
         let (s1, r1) = channel::channel(1);
@@ -1093,7 +1094,16 @@ impl ClientSocketManager {
                 let executor = Executor::new(EXECUTOR_TASKS_MAX);
 
                 executor
-                    .spawn(Self::run(ctx, s1, r2, instance_id, retained_max, hwm))
+                    .spawn(Self::run(
+                        ctx,
+                        s1,
+                        r2,
+                        instance_id,
+                        retained_max,
+                        init_hwm,
+                        other_hwm,
+                        handle_bound,
+                    ))
                     .unwrap();
 
                 executor.run(|timeout| reactor.poll(timeout)).unwrap();
@@ -1182,13 +1192,16 @@ impl ClientSocketManager {
         pipe.1.recv().unwrap()
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn run(
         ctx: Arc<zmq::Context>,
         control_sender: channel::Sender<ControlResponse>,
         control_receiver: channel::Receiver<ControlRequest>,
         instance_id: String,
         retained_max: usize,
-        hwm: usize,
+        init_hwm: usize,
+        other_hwm: usize,
+        handle_bound: usize,
     ) {
         let control_sender = AsyncSender::new(control_sender);
         let control_receiver = AsyncReceiver::new(control_receiver);
@@ -1197,7 +1210,7 @@ impl ClientSocketManager {
         //   still need to be processed. this is the entire channel queue for every handle, plus
         //   the most number of messages the user might retain, plus 1 extra for the next message
         //   we are preparing to send to the handles
-        let arena_size = (HANDLES_MAX * hwm) + retained_max + 1;
+        let arena_size = (HANDLES_MAX * handle_bound) + retained_max + 1;
 
         let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
 
@@ -1215,32 +1228,32 @@ impl ClientSocketManager {
             .sock
             .inner()
             .inner()
-            .set_sndhwm(hwm as i32)
+            .set_sndhwm(init_hwm as i32)
             .unwrap();
         client_req
             .sock
             .inner()
             .inner()
-            .set_rcvhwm(hwm as i32)
+            .set_rcvhwm(other_hwm as i32)
             .unwrap();
 
         client_stream
             .out
             .inner()
             .inner()
-            .set_sndhwm(hwm as i32)
+            .set_sndhwm(init_hwm as i32)
             .unwrap();
         client_stream
             .out_stream
             .inner()
             .inner()
-            .set_sndhwm(hwm as i32)
+            .set_sndhwm(other_hwm as i32)
             .unwrap();
         client_stream
             .in_
             .inner()
             .inner()
-            .set_rcvhwm(hwm as i32)
+            .set_rcvhwm(other_hwm as i32)
             .unwrap();
 
         client_stream
@@ -1605,7 +1618,8 @@ impl ServerSocketManager {
         ctx: Arc<zmq::Context>,
         instance_id: &str,
         retained_max: usize,
-        hwm: usize,
+        init_hwm: usize,
+        other_hwm: usize,
         handle_bound: usize,
     ) -> Self {
         let (s1, r1) = channel::channel(1);
@@ -1630,7 +1644,16 @@ impl ServerSocketManager {
                 let executor = Executor::new(EXECUTOR_TASKS_MAX);
 
                 executor
-                    .spawn(Self::run(ctx, s1, r2, instance_id, retained_max, hwm))
+                    .spawn(Self::run(
+                        ctx,
+                        s1,
+                        r2,
+                        instance_id,
+                        retained_max,
+                        init_hwm,
+                        other_hwm,
+                        handle_bound,
+                    ))
                     .unwrap();
 
                 executor.run(|timeout| reactor.poll(timeout)).unwrap();
@@ -1715,13 +1738,16 @@ impl ServerSocketManager {
         pipe.1.recv().unwrap()
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn run(
         ctx: Arc<zmq::Context>,
         control_sender: channel::Sender<ControlResponse>,
         control_receiver: channel::Receiver<ServerControlRequest>,
         instance_id: String,
         retained_max: usize,
-        hwm: usize,
+        init_hwm: usize,
+        other_hwm: usize,
+        handle_bound: usize,
     ) {
         let control_sender = AsyncSender::new(control_sender);
         let control_receiver = AsyncReceiver::new(control_receiver);
@@ -1731,7 +1757,7 @@ impl ServerSocketManager {
         //   the most number of messages the user might retain, plus 1 extra for the next message
         //   we are preparing to send to the handles, x2 since there are two sending channels
         //   per stream handle
-        let arena_size = ((HANDLES_MAX * hwm) + retained_max + 1) * 2;
+        let arena_size = ((HANDLES_MAX * handle_bound) + retained_max + 1) * 2;
 
         let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
 
@@ -1744,26 +1770,34 @@ impl ServerSocketManager {
             specs_applied: false,
         };
 
-        req_sock.inner().inner().set_sndhwm(hwm as i32).unwrap();
-        req_sock.inner().inner().set_rcvhwm(hwm as i32).unwrap();
+        req_sock
+            .inner()
+            .inner()
+            .set_sndhwm(init_hwm as i32)
+            .unwrap();
+        req_sock
+            .inner()
+            .inner()
+            .set_rcvhwm(other_hwm as i32)
+            .unwrap();
 
         stream_socks
             .in_
             .inner()
             .inner()
-            .set_rcvhwm(hwm as i32)
+            .set_rcvhwm(init_hwm as i32)
             .unwrap();
         stream_socks
             .in_stream
             .inner()
             .inner()
-            .set_rcvhwm(hwm as i32)
+            .set_rcvhwm(other_hwm as i32)
             .unwrap();
         stream_socks
             .out
             .inner()
             .inner()
-            .set_sndhwm(hwm as i32)
+            .set_sndhwm(other_hwm as i32)
             .unwrap();
 
         stream_socks
@@ -2445,7 +2479,7 @@ mod tests {
     fn test_client_send_flow() {
         let zmq_context = Arc::new(zmq::Context::new());
 
-        let mut zsockman = ClientSocketManager::new(Arc::clone(&zmq_context), "test", 1, 1, 1);
+        let mut zsockman = ClientSocketManager::new(Arc::clone(&zmq_context), "test", 1, 1, 1, 1);
 
         zsockman
             .set_client_stream_specs(
@@ -2556,7 +2590,8 @@ mod tests {
     fn test_client_req() {
         let zmq_context = Arc::new(zmq::Context::new());
 
-        let mut zsockman = ClientSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100);
+        let mut zsockman =
+            ClientSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100, 100);
 
         zsockman
             .set_client_req_specs(&vec![SpecInfo {
@@ -2669,7 +2704,8 @@ mod tests {
     fn test_client_stream() {
         let zmq_context = Arc::new(zmq::Context::new());
 
-        let mut zsockman = ClientSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100);
+        let mut zsockman =
+            ClientSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100, 100);
 
         zsockman
             .set_client_stream_specs(
@@ -2865,7 +2901,8 @@ mod tests {
     fn test_server_req() {
         let zmq_context = Arc::new(zmq::Context::new());
 
-        let mut zsockman = ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100);
+        let mut zsockman =
+            ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100, 100);
 
         let h1 = zsockman.server_req_handle();
         let h2 = zsockman.server_req_handle();
@@ -2956,7 +2993,7 @@ mod tests {
 
         let zmq_context = Arc::new(zmq::Context::new());
 
-        let zsockman = ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100);
+        let zsockman = ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100, 100);
 
         let h1 = zsockman.server_stream_handle();
         let h2 = zsockman.server_stream_handle();

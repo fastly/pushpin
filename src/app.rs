@@ -30,6 +30,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 
+const INIT_HWM: usize = 128;
+
 fn make_specs(base: &str, is_server: bool) -> Result<(String, String, String), String> {
     if base.starts_with("ipc:") {
         if is_server {
@@ -122,9 +124,9 @@ impl App {
         let zmq_context = Arc::new(zmq::Context::new());
 
         // set hwm to 5% of maxconn
-        let hwm = cmp::max((config.req_maxconn + config.stream_maxconn) / 20, 1);
+        let other_hwm = cmp::max((config.req_maxconn + config.stream_maxconn) / 20, 1);
 
-        let handle_bound = cmp::max(hwm / config.workers, 1);
+        let handle_bound = cmp::max(other_hwm / config.workers, 1);
 
         let maxconn = config.req_maxconn + config.stream_maxconn;
 
@@ -145,7 +147,8 @@ impl App {
                 &config.instance_id,
                 (MSG_RETAINED_PER_CONNECTION_MAX * maxconn)
                     + (MSG_RETAINED_PER_WORKER_MAX * config.workers),
-                hwm,
+                INIT_HWM,
+                other_hwm,
                 handle_bound,
             );
 
@@ -243,7 +246,8 @@ impl App {
                 &config.instance_id,
                 (MSG_RETAINED_PER_CONNECTION_MAX * maxconn)
                     + (MSG_RETAINED_PER_WORKER_MAX * config.workers),
-                hwm,
+                INIT_HWM,
+                other_hwm,
                 handle_bound,
             );
 

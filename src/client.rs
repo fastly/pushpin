@@ -1889,6 +1889,7 @@ impl TestClient {
             (MSG_RETAINED_PER_CONNECTION_MAX * maxconn) + (MSG_RETAINED_PER_WORKER_MAX * workers),
             100,
             100,
+            100,
         );
 
         zsockman
