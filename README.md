@@ -1,6 +1,6 @@
 # Condure
 
-Condure is a service that manages network connections on behalf of server applications, in order to allow controlling the connections from multiple processes. Applications communicate with Condure over [ZeroMQ](https://zeromq.org/).
+Condure is a service that manages network connections in order to allow controlling the connections from multiple processes. It can manage incoming connections as well as outgoing connections. Applications communicate with Condure over [ZeroMQ](https://zeromq.org/).
 
 Condure can only manage connections for protocols it knows about. Currently this is HTTP/1 and WebSockets. See [Supported protocols](#supported-protocols).
 
@@ -167,10 +167,11 @@ Condure manages connections at layer 7 and only supports protocols it knows abou
 
 ## Performance
 
-Condure was built for high performance. It uses numerous optimization techniques, including minimal heap allocations, ring buffers, vectored I/O, hierarchical timing wheels, and fast data structures (e.g. slabs). Over 1M concurrent connections have been tested on a single instance using just 2 workers (4 threads total). More detailed benchmarks to come.
+Condure was built for high performance. It uses numerous optimization techniques, including minimal heap allocations, ring buffers, vectored I/O, hierarchical timing wheels, and fast data structures (e.g. slabs). Over 1M concurrent connections have been tested on a single instance using just 2 workers (4 threads total). See https://blog.fanout.io/2020/08/11/rewriting-pushpins-connection-manager-in-rust/
 
 ## Comparison to Mongrel2
 
+* Condure supports acting as a server and as a client.
 * Condure supports multiple cores.
 * Condure supports listening on multiple ports without requiring multiple processes.
 * Condure does not support multiple routes and is not intended to be a shared server. Each application that wants to keep connections in a separate process should spawn its own Condure instance.
