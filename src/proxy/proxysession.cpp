@@ -1320,6 +1320,7 @@ public slots:
 			}
 
 			adata.route = route.id;
+			adata.separateStats = route.separateStats;
 			adata.channelPrefix = route.prefix;
 			foreach(const QString &s, target.subscriptions)
 				adata.channels += s.toUtf8();

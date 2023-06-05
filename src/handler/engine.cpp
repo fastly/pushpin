@@ -1040,6 +1040,7 @@ private:
 			adata.jsonpExtendedResponse = rs.jsonpExtendedResponse;
 			adata.unreportedTime = rs.unreportedTime;
 			adata.route = route;
+			adata.statsRoute = statsRoute;
 			adata.channelPrefix = channelPrefix;
 			adata.implicitChannels = implicitChannels.toSet();
 			adata.sid = sid;
