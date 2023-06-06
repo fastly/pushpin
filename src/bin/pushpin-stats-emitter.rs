@@ -1,4 +1,4 @@
-use clap::{App, Arg};
+use clap::{Arg, ArgAction, Command};
 use pushpin::stats_emitter::{get_host_info, run, Config, HostInfo};
 use std::env;
 use std::error::Error;
@@ -43,84 +43,85 @@ fn main() {
         Err(e) => (HostInfo::default(), Some(e)),
     };
 
-    let matches = App::new(PROGRAM_NAME)
+    let matches = Command::new(PROGRAM_NAME)
         .version(env!("APP_VERSION"))
         .about("Read stats from Pushpin and emit to NSQ")
         .arg(
-            Arg::with_name("spec")
+            Arg::new("spec")
                 .required(true)
-                .takes_value(true)
+                .num_args(1)
                 .value_name("stats-spec")
                 .help("ZeroMQ SUB spec to read from"),
         )
         .arg(
-            Arg::with_name("endpoint")
+            Arg::new("endpoint")
                 .required(true)
-                .takes_value(true)
+                .num_args(1)
                 .value_name("nsq-endpoint")
                 .help("NSQ endpoint to send to"),
         )
         .arg(
-            Arg::with_name("log-level")
+            Arg::new("log-level")
                 .long("log-level")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Log level")
                 .default_value("2"),
         )
         .arg(
-            Arg::with_name("pop")
+            Arg::new("pop")
                 .long("pop")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("name")
                 .help("The POP to send metrics for")
                 .default_value(&defaults.pop),
         )
         .arg(
-            Arg::with_name("hostname")
+            Arg::new("hostname")
                 .long("hostname")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("name")
                 .help("The server name to send metrics for")
                 .default_value(&defaults.hostname),
         )
         .arg(
-            Arg::with_name("queue-size")
+            Arg::new("queue-size")
                 .long("queue-size")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("N")
                 .help("Output queue size")
                 .default_value("120"), // same as xqd default
         )
         .arg(
-            Arg::with_name("nsq-cert")
+            Arg::new("nsq-cert")
                 .long("nsq-cert")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("file")
                 .help("NSQ client cert"),
         )
         .arg(
-            Arg::with_name("nsq-key")
+            Arg::new("nsq-key")
                 .long("nsq-key")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("file")
                 .help("NSQ client key"),
         )
         .arg(
-            Arg::with_name("nsq-ca")
+            Arg::new("nsq-ca")
                 .long("nsq-ca")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("file")
                 .help("NSQ client CA"),
         )
         .arg(
-            Arg::with_name("no-verify-peer")
+            Arg::new("no-verify-peer")
                 .long("no-verify-peer")
+                .action(ArgAction::SetTrue)
                 .help("Disable peer cert verification"),
         )
         .get_matches();
 
-    let level = matches.value_of("log-level").unwrap();
+    let level = matches.get_one::<String>("log-level").unwrap();
 
     let level: usize = match level.parse() {
         Ok(x) => x,
@@ -143,11 +144,11 @@ fn main() {
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let spec = matches.value_of("spec").unwrap();
-    let endpoint = matches.value_of("endpoint").unwrap();
+    let spec = matches.get_one::<String>("spec").unwrap().clone();
+    let endpoint = matches.get_one::<String>("endpoint").unwrap().clone();
 
-    let datacenter = matches.value_of("pop").unwrap();
-    let server = matches.value_of("hostname").unwrap();
+    let datacenter = matches.get_one::<String>("pop").unwrap().clone();
+    let server = matches.get_one::<String>("hostname").unwrap().clone();
 
     if datacenter.is_empty() || server.is_empty() {
         // if these are empty because we failed to read the defaults, explain this
@@ -160,7 +161,7 @@ fn main() {
         }
     }
 
-    let queue_size = matches.value_of("queue-size").unwrap();
+    let queue_size = matches.get_one::<String>("queue-size").unwrap();
 
     let queue_size: u32 = match queue_size.parse() {
         Ok(x) => x,
@@ -170,20 +171,29 @@ fn main() {
         }
     };
 
-    let nsq_cert = matches.value_of("nsq-cert").unwrap_or("");
-    let nsq_key = matches.value_of("nsq-key").unwrap_or("");
-    let nsq_ca = matches.value_of("nsq-ca").unwrap_or("");
-    let verify = !matches.is_present("no-verify-peer");
+    let nsq_cert = matches
+        .get_one::<String>("nsq-cert")
+        .cloned()
+        .unwrap_or_default();
+    let nsq_key = matches
+        .get_one::<String>("nsq-key")
+        .cloned()
+        .unwrap_or_default();
+    let nsq_ca = matches
+        .get_one::<String>("nsq-ca")
+        .cloned()
+        .unwrap_or_default();
+    let verify = !*matches.get_one::<bool>("no-verify-peer").unwrap();
 
     let args = Args {
-        spec: spec.to_string(),
-        endpoint: endpoint.to_string(),
-        datacenter: datacenter.to_string(),
-        server: server.to_string(),
+        spec,
+        endpoint,
+        datacenter,
+        server,
         queue_size,
-        nsq_cert: nsq_cert.to_string(),
-        nsq_key: nsq_key.to_string(),
-        nsq_ca: nsq_ca.to_string(),
+        nsq_cert,
+        nsq_key,
+        nsq_ca,
         verify,
     };
 
