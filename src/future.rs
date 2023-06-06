@@ -162,6 +162,7 @@ declare_select!(5, (1, 2, 3, 4, 5));
 declare_select!(6, (1, 2, 3, 4, 5, 6));
 declare_select!(8, (1, 2, 3, 4, 5, 6, 7, 8));
 declare_select!(9, (1, 2, 3, 4, 5, 6, 7, 8, 9));
+declare_select!(10, (1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
 
 pub struct SelectSliceFuture<'a, F> {
     futures: &'a mut [F],
