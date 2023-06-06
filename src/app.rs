@@ -249,6 +249,7 @@ impl App {
                 INIT_HWM,
                 other_hwm,
                 handle_bound,
+                config.stream_maxconn,
             );
 
             if !config.zserver_req.is_empty() {

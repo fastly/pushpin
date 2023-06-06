@@ -34,10 +34,10 @@ use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, log_enabled, trace, warn};
 use slab::Slab;
 use std::cell::{Cell, RefCell};
-use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fmt;
 use std::future::Future;
-use std::hash::{Hash, Hasher};
 use std::io;
 use std::marker;
 use std::pin::Pin;
@@ -53,6 +53,8 @@ const STREAM_OUT_STREAM_DELAY: Duration = Duration::from_millis(50);
 const LOG_METADATA_MAX: usize = 1_000;
 const LOG_CONTENT_MAX: usize = 1_000;
 const EXECUTOR_TASKS_MAX: usize = 1;
+const FROM_MAX: usize = 64;
+const REQ_ID_MAX: usize = 64;
 
 struct Packet<'a> {
     map_frame: tnetstring::Frame<'a>,
@@ -262,11 +264,103 @@ fn packet_to_string(data: &[u8]) -> String {
     }
 }
 
-fn hash(s: &[u8]) -> usize {
-    let mut state = DefaultHasher::new();
-    s.hash(&mut state);
+type SessionKey = (ArrayVec<u8, FROM_MAX>, ArrayVec<u8, REQ_ID_MAX>);
 
-    state.finish() as usize
+struct SessionItem {
+    key: SessionKey,
+    handle_index: usize,
+}
+
+struct SessionDataInner {
+    items: Slab<SessionItem>,
+    items_by_key: HashMap<SessionKey, usize>,
+}
+
+#[derive(Clone)]
+struct SessionData {
+    inner: Arc<Mutex<SessionDataInner>>,
+}
+
+impl SessionData {
+    fn new(capacity: usize) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(SessionDataInner {
+                items: Slab::with_capacity(capacity),
+                items_by_key: HashMap::with_capacity(capacity),
+            })),
+        }
+    }
+
+    fn add(&self, key: SessionKey, handle_index: usize) -> Result<Session, ()> {
+        let inner = &mut *self.inner.lock().unwrap();
+
+        if inner.items.len() == inner.items.capacity() || inner.items_by_key.contains_key(&key) {
+            return Err(());
+        }
+
+        let item_key = inner.items.insert(SessionItem {
+            key: key.clone(),
+            handle_index,
+        });
+
+        inner.items_by_key.insert(key, item_key);
+
+        Ok(Session {
+            data: self.clone(),
+            item_key,
+        })
+    }
+
+    // returns handle_index
+    fn get(&self, key: &SessionKey) -> Option<usize> {
+        let inner = &*self.inner.lock().unwrap();
+
+        if let Some(item_key) = inner.items_by_key.get(key) {
+            return Some(inner.items[*item_key].handle_index);
+        }
+
+        None
+    }
+
+    fn remove(&self, item_key: usize) {
+        let inner = &mut *self.inner.lock().unwrap();
+
+        let item = &inner.items[item_key];
+
+        inner.items_by_key.remove(&item.key);
+        inner.items.remove(item_key);
+    }
+}
+
+pub struct Session {
+    data: SessionData,
+    item_key: usize,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.data.remove(self.item_key);
+    }
+}
+
+struct SessionTable {
+    data: SessionData,
+}
+
+impl SessionTable {
+    fn new(capacity: usize) -> Self {
+        Self {
+            data: SessionData::new(capacity),
+        }
+    }
+
+    fn add(&self, key: SessionKey, handle_index: usize) -> Result<Session, ()> {
+        self.data.add(key, handle_index)
+    }
+
+    fn get(&self, key: &SessionKey) -> Option<usize> {
+        self.data.get(key)
+    }
 }
 
 struct ClientReqSockets {
@@ -322,7 +416,7 @@ struct ServerReqPipeEnd {
 }
 
 struct ServerStreamPipeEnd {
-    sender_any: channel::Sender<arena::Arc<zmq::Message>>,
+    sender_any: channel::Sender<(arena::Arc<zmq::Message>, Session)>,
     sender_direct: channel::Sender<arena::Arc<zmq::Message>>,
     receiver: channel::Receiver<zmq::Message>,
 }
@@ -333,7 +427,7 @@ struct AsyncServerReqPipeEnd {
 }
 
 struct AsyncServerStreamPipeEnd {
-    sender_any: AsyncSender<arena::Arc<zmq::Message>>,
+    sender_any: AsyncSender<(arena::Arc<zmq::Message>, Session)>,
     sender_direct: AsyncSender<arena::Arc<zmq::Message>>,
     receiver: AsyncReceiver<zmq::Message>,
 }
@@ -935,18 +1029,22 @@ struct ServerStreamHandles {
     nodes: Slab<list::Node<ServerStreamPipe>>,
     list: list::List,
     recv_scratch: RefCell<RecvScratch<zmq::Message>>,
-    send_direct_scratch: RefCell<Vec<(usize, bool)>>,
+    send_direct_scratch: RefCell<Vec<bool>>,
     need_cleanup: Cell<bool>,
+    send_index: Cell<usize>,
+    sessions: SessionTable,
 }
 
 impl ServerStreamHandles {
-    fn new(capacity: usize) -> Self {
+    fn new(capacity: usize, sessions_capacity: usize) -> Self {
         Self {
             nodes: Slab::with_capacity(capacity),
             list: list::List::default(),
             recv_scratch: RefCell::new(RecvScratch::new(capacity)),
             send_direct_scratch: RefCell::new(Vec::with_capacity(capacity)),
             need_cleanup: Cell::new(false),
+            send_index: Cell::new(0),
+            sessions: SessionTable::new(sessions_capacity),
         }
     }
 
@@ -1022,47 +1120,95 @@ impl ServerStreamHandles {
     }
 
     // non-blocking send. caller should use check_send_any() first
-    fn send_any(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>]) {
+    fn send_any(&self, msg: &arena::Arc<zmq::Message>, from: &[u8], ids: &[Id<'_>]) {
         if self.nodes.is_empty() || ids.is_empty() {
             return;
         }
 
-        let x = hash(ids[0].id) % self.nodes.len();
-        let (_, p) = self.list.iter(&self.nodes).nth(x).unwrap();
+        let mut skip = self.send_index.get();
+        self.send_index.set((skip + 1) % self.nodes.len());
 
-        if p.valid.get() {
-            match p.pe.sender_any.try_send(arena::Arc::clone(msg)) {
-                Ok(_) => {}
-                Err(mpsc::TrySendError::Full(_)) => error!("stream sender_any is full"),
-                Err(mpsc::TrySendError::Disconnected(_)) => {
-                    p.valid.set(false);
+        // select the nth ready node, else the latest ready node
+        let mut selected = None;
+        for (nkey, p) in self.list.iter(&self.nodes) {
+            if p.valid.get() && p.pe.sender_any.is_writable() {
+                selected = Some(nkey);
+            }
 
-                    self.need_cleanup.set(true);
+            if skip > 0 {
+                skip -= 1;
+            } else if selected.is_some() {
+                break;
+            }
+        }
+
+        if let Some(nkey) = selected {
+            let n = &self.nodes[nkey];
+            let p = &n.value;
+
+            let from = match ArrayVec::try_from(from) {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+
+            let id = match ArrayVec::try_from(ids[0].id) {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+
+            let key = (from, id);
+
+            if let Ok(session) = self.sessions.add(key, nkey) {
+                match p.pe.sender_any.try_send((arena::Arc::clone(msg), session)) {
+                    Ok(_) => {}
+                    Err(mpsc::TrySendError::Full(_)) => error!("stream sender_any is full"),
+                    Err(mpsc::TrySendError::Disconnected(_)) => {
+                        p.valid.set(false);
+
+                        self.need_cleanup.set(true);
+                    }
                 }
             }
         }
     }
 
     #[allow(clippy::await_holding_refcell_ref)]
-    async fn send_direct(&self, msg: &arena::Arc<zmq::Message>, ids: &[Id<'_>]) {
+    async fn send_direct(&self, msg: &arena::Arc<zmq::Message>, from: &[u8], ids: &[Id<'_>]) {
         if self.nodes.is_empty() {
             return;
         }
 
+        let from = match ArrayVec::try_from(from) {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+
         let indexes = &mut *self.send_direct_scratch.borrow_mut();
         indexes.clear();
 
-        for (nkey, _) in self.list.iter(&self.nodes) {
-            indexes.push((nkey, false));
+        for _ in 0..self.nodes.capacity() {
+            indexes.push(false);
         }
 
         for id in ids {
-            let x = hash(id.id) % self.nodes.len();
-            indexes[x].1 = true;
+            let id = match ArrayVec::try_from(id.id) {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+
+            let key = (from.clone(), id);
+
+            if let Some(nkey) = self.sessions.get(&key) {
+                indexes[nkey] = true;
+            }
         }
 
-        for &(nkey, do_send) in indexes.iter() {
-            let n = &self.nodes[nkey];
+        for (nkey, &do_send) in indexes.iter().enumerate() {
+            let n = match self.nodes.get(nkey) {
+                Some(n) => n,
+                None => continue,
+            };
+
             let p = &n.value;
 
             if p.valid.get() && do_send {
@@ -1590,8 +1736,8 @@ impl ClientSocketManager {
 
         let mut scratch = ParseScratch::new();
 
-        let ids = match parse_ids(msg.get(), &mut scratch) {
-            Ok(ids) => ids,
+        let (_, ids) = match parse_ids(msg.get(), &mut scratch) {
+            Ok(ret) => ret,
             Err(e) => {
                 warn!("unable to determine packet id(s): {}", e);
                 return;
@@ -1637,8 +1783,8 @@ impl ClientSocketManager {
 
         let mut scratch = ParseScratch::new();
 
-        let ids = match parse_ids(buf, &mut scratch) {
-            Ok(ids) => ids,
+        let (_, ids) = match parse_ids(buf, &mut scratch) {
+            Ok(ret) => ret,
             Err(e) => {
                 warn!("unable to determine packet id(s): {}", e);
                 return;
@@ -1682,6 +1828,7 @@ impl ServerSocketManager {
         init_hwm: usize,
         other_hwm: usize,
         handle_bound: usize,
+        stream_maxconn: usize,
     ) -> Self {
         let (s1, r1) = channel::channel(1);
         let (s2, r2) = channel::channel(1);
@@ -1714,6 +1861,7 @@ impl ServerSocketManager {
                         init_hwm,
                         other_hwm,
                         handle_bound,
+                        stream_maxconn,
                     ))
                     .unwrap();
 
@@ -1809,6 +1957,7 @@ impl ServerSocketManager {
         init_hwm: usize,
         other_hwm: usize,
         handle_bound: usize,
+        stream_maxconn: usize,
     ) {
         let control_sender = AsyncSender::new(control_sender);
         let control_receiver = AsyncReceiver::new(control_receiver);
@@ -1821,6 +1970,8 @@ impl ServerSocketManager {
         let arena_size = ((HANDLES_MAX * handle_bound) + retained_max + 1) * 2;
 
         let messages_memory = Arc::new(arena::SyncMemory::new(arena_size));
+
+        let sessions_max = stream_maxconn + (HANDLES_MAX * handle_bound);
 
         let req_sock = AsyncZmqSocket::new(ZmqSocket::new(&ctx, zmq::ROUTER));
 
@@ -1869,7 +2020,7 @@ impl ServerSocketManager {
             .unwrap();
 
         let mut req_handles = ServerReqHandles::new(HANDLES_MAX);
-        let mut stream_handles = ServerStreamHandles::new(HANDLES_MAX);
+        let mut stream_handles = ServerStreamHandles::new(HANDLES_MAX, sessions_max);
 
         let mut req_send: Option<ZmqSendToFuture> = None;
         let mut stream_out_send: Option<ZmqSendFuture> = None;
@@ -2138,15 +2289,15 @@ impl ServerSocketManager {
 
         let mut scratch = ParseScratch::new();
 
-        let ids = match parse_ids(msg.get(), &mut scratch) {
-            Ok(ids) => ids,
+        let (from, ids) = match parse_ids(msg.get(), &mut scratch) {
+            Ok(ret) => ret,
             Err(e) => {
                 warn!("unable to determine packet id(s): {}", e);
                 return;
             }
         };
 
-        handles.send_any(&msg, ids);
+        handles.send_any(&msg, from, ids);
     }
 
     async fn handle_stream_message_direct(
@@ -2158,15 +2309,15 @@ impl ServerSocketManager {
 
         let mut scratch = ParseScratch::new();
 
-        let ids = match parse_ids(msg.get(), &mut scratch) {
-            Ok(ids) => ids,
+        let (from, ids) = match parse_ids(msg.get(), &mut scratch) {
+            Ok(ret) => ret,
             Err(e) => {
                 warn!("unable to determine packet id(s): {}", e);
                 return;
             }
         };
 
-        handles.send_direct(&msg, ids).await;
+        handles.send_direct(&msg, from, ids).await;
     }
 }
 
@@ -2409,7 +2560,7 @@ impl AsyncServerReqHandle {
 
 pub struct ServerStreamHandle {
     sender: channel::Sender<zmq::Message>,
-    receiver_any: channel::Receiver<arena::Arc<zmq::Message>>,
+    receiver_any: channel::Receiver<(arena::Arc<zmq::Message>, Session)>,
     receiver_direct: channel::Receiver<arena::Arc<zmq::Message>>,
 }
 
@@ -2426,9 +2577,9 @@ impl ServerStreamHandle {
         self.sender.get_write_registration()
     }
 
-    pub fn recv_from_any(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub fn recv_from_any(&self) -> Result<(arena::Arc<zmq::Message>, Session), io::Error> {
         match self.receiver_any.try_recv() {
-            Ok(msg) => Ok(msg),
+            Ok(ret) => Ok(ret),
             Err(mpsc::TryRecvError::Empty) => Err(io::Error::from(io::ErrorKind::WouldBlock)),
             Err(mpsc::TryRecvError::Disconnected) => {
                 Err(io::Error::from(io::ErrorKind::BrokenPipe))
@@ -2459,7 +2610,7 @@ impl ServerStreamHandle {
 
 pub struct AsyncServerStreamHandle {
     sender: AsyncSender<zmq::Message>,
-    receiver_any: AsyncReceiver<arena::Arc<zmq::Message>>,
+    receiver_any: AsyncReceiver<(arena::Arc<zmq::Message>, Session)>,
     receiver_direct: AsyncReceiver<arena::Arc<zmq::Message>>,
 }
 
@@ -2472,9 +2623,9 @@ impl AsyncServerStreamHandle {
         }
     }
 
-    pub async fn recv_from_any(&self) -> Result<arena::Arc<zmq::Message>, io::Error> {
+    pub async fn recv_from_any(&self) -> Result<(arena::Arc<zmq::Message>, Session), io::Error> {
         match self.receiver_any.recv().await {
-            Ok(msg) => Ok(msg),
+            Ok(ret) => Ok(ret),
             Err(mpsc::RecvError) => Err(io::Error::from(io::ErrorKind::BrokenPipe)),
         }
     }
@@ -2501,35 +2652,7 @@ mod tests {
     use crate::zhttppacket::{
         PacketParse, Request, RequestData, RequestPacket, Response, ResponsePacket,
     };
-    use std::mem;
     use test_log::test;
-
-    fn uniquely_hashable_values(count: usize) -> Vec<String> {
-        let mut out = Vec::new();
-        out.resize(count, String::new());
-
-        let mut found = 0;
-
-        for x in 0..=0xffff {
-            let s = format!("{:04x}", x);
-            let index = hash(s.as_bytes()) % count;
-
-            if out[index].is_empty() {
-                out[index] = s;
-                found += 1;
-
-                if found == count {
-                    break;
-                }
-            }
-        }
-
-        if found < count {
-            panic!("failed to find {} uniquely hashable values", count);
-        }
-
-        out
-    }
 
     fn wait_readable(poller: &mut event::Poller, token: mio::Token) {
         loop {
@@ -2775,9 +2898,9 @@ mod tests {
         };
         assert_eq!(rdata.body, b"world");
 
-        mem::drop(h1);
-        mem::drop(h2);
-        mem::drop(zsockman);
+        drop(h1);
+        drop(h2);
+        drop(zsockman);
     }
 
     #[test]
@@ -2972,9 +3095,9 @@ mod tests {
         assert!(parts[1].is_empty());
         assert_eq!(parts[2], b"hello b");
 
-        mem::drop(h1);
-        mem::drop(h2);
-        mem::drop(zsockman);
+        drop(h1);
+        drop(h2);
+        drop(zsockman);
     }
 
     #[test]
@@ -2982,7 +3105,7 @@ mod tests {
         let zmq_context = Arc::new(zmq::Context::new());
 
         let mut zsockman =
-            ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100, 100);
+            ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100, 100, 0);
 
         let h1 = zsockman.server_req_handle();
         let h2 = zsockman.server_req_handle();
@@ -3062,18 +3185,17 @@ mod tests {
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0], b"world b");
 
-        mem::drop(h1);
-        mem::drop(h2);
-        mem::drop(zsockman);
+        drop(h1);
+        drop(h2);
+        drop(zsockman);
     }
 
     #[test]
     fn test_server_stream() {
-        let ids = uniquely_hashable_values(2);
-
         let zmq_context = Arc::new(zmq::Context::new());
 
-        let zsockman = ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100, 100);
+        let zsockman =
+            ServerSocketManager::new(Arc::clone(&zmq_context), "test", 1, 100, 100, 100, 2);
 
         let h1 = zsockman.server_stream_handle();
         let h2 = zsockman.server_stream_handle();
@@ -3155,7 +3277,7 @@ mod tests {
             let size = Request::new_data(
                 b"test-handler",
                 &[Id {
-                    id: ids[0].as_bytes(),
+                    id: b"a-1",
                     seq: None,
                 }],
                 rdata,
@@ -3168,9 +3290,9 @@ mod tests {
 
         out_sock.send(req, 0).unwrap();
 
-        let msg = loop {
+        let (msg, sess_a) = loop {
             match h1.recv_from_any() {
-                Ok(m) => break m,
+                Ok(ret) => break ret,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     wait_readable(&mut poller, mio::Token(1));
                     continue;
@@ -3204,7 +3326,7 @@ mod tests {
             let size = Request::new_data(
                 b"test-handler",
                 &[Id {
-                    id: ids[1].as_bytes(),
+                    id: b"b-1",
                     seq: None,
                 }],
                 rdata,
@@ -3217,9 +3339,9 @@ mod tests {
 
         out_sock.send(req, 0).unwrap();
 
-        let msg = loop {
+        let (msg, sess_b) = loop {
             match h2.recv_from_any() {
-                Ok(m) => break m,
+                Ok(ret) => break ret,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     wait_readable(&mut poller, mio::Token(3));
                     continue;
@@ -3253,7 +3375,7 @@ mod tests {
             let size = Request::new_data(
                 b"test-handler",
                 &[Id {
-                    id: ids[0].as_bytes(),
+                    id: b"a-1",
                     seq: None,
                 }],
                 rdata,
@@ -3297,7 +3419,7 @@ mod tests {
             let size = Request::new_data(
                 b"test-handler",
                 &[Id {
-                    id: ids[1].as_bytes(),
+                    id: b"b-1",
                     seq: None,
                 }],
                 rdata,
@@ -3333,8 +3455,10 @@ mod tests {
         };
         assert_eq!(rdata.body, b"hello b");
 
-        mem::drop(h1);
-        mem::drop(h2);
-        mem::drop(zsockman);
+        drop(sess_a);
+        drop(sess_b);
+        drop(h1);
+        drop(h2);
+        drop(zsockman);
     }
 }

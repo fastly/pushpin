@@ -1271,18 +1271,23 @@ pub enum ResponsePacket<'buf, 'headers> {
 pub fn parse_ids<'buf, 'scratch>(
     src: &'buf [u8],
     scratch: &'scratch mut ParseScratch<'buf>,
-) -> Result<&'scratch [Id<'buf>], ParseError> {
+) -> Result<(&'buf [u8], &'scratch [Id<'buf>]), ParseError> {
     if src.is_empty() || src[0] != b'T' {
         return Err(ParseError::Unrecognized);
     }
 
     let root = tnetstring::parse_map(&src[1..]).field("root")?;
 
+    let mut from = EMPTY_BYTES;
+
     for e in root {
         let e = e?;
 
-        if e.key == "id" {
-            match e.ftype {
+        match e.key {
+            "from" => {
+                from = tnetstring::parse_string(e.data).field("from")?;
+            }
+            "id" => match e.ftype {
                 tnetstring::FrameType::Array => {
                     for idm in tnetstring::parse_array(e.data)? {
                         let idm = idm?;
@@ -1314,13 +1319,12 @@ pub fn parse_ids<'buf, 'scratch>(
                 _ => {
                     return Err(ParseError::NotMapOrString("id"));
                 }
-            }
-
-            return Ok(scratch.ids.as_slice());
+            },
+            _ => {} // skip other fields
         }
     }
 
-    Ok(scratch.ids.as_slice())
+    Ok((from, scratch.ids.as_slice()))
 }
 
 pub trait PacketParse<'buf: 'scratch, 'scratch> {

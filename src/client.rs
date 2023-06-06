@@ -1218,7 +1218,9 @@ impl Worker {
                     },
                     // stream_handle_recv_from_any
                     Select6::R5(result) => match result {
-                        Ok(msg) => {
+                        Ok(ret) => {
+                            let (msg, session) = ret;
+
                             let scratch = arena::Rc::new(
                                 RefCell::new(zhttppacket::ParseScratch::new()),
                                 &stream_scratch_mem,
@@ -1316,6 +1318,7 @@ impl Worker {
                                         sender: zstream_out_sender,
                                     },
                                     shared,
+                                    Some(session),
                                 ))
                                 .is_err()
                             {
@@ -1473,6 +1476,7 @@ impl Worker {
         opts: ConnectionOpts,
         stream_opts: ConnectionStreamOpts,
         shared: arena::Rc<StreamSharedData>,
+        session: Option<zhttpsocket::Session>,
     ) {
         let done = AsyncLocalSender::new(done);
         let zreceiver = AsyncLocalReceiver::new(zreceiver);
@@ -1512,6 +1516,8 @@ impl Worker {
             &|| conns.set_id(ckey, Some(&cid)),
         )
         .await;
+
+        drop(session);
 
         done.send(ConnectionDone { ckey }).await.unwrap();
 
@@ -1830,6 +1836,7 @@ impl Client {
                     sender,
                 },
                 shared,
+                None,
             );
 
             mem::size_of_val(&fut)
@@ -1890,6 +1897,7 @@ impl TestClient {
             100,
             100,
             100,
+            stream_maxconn,
         );
 
         zsockman
