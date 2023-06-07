@@ -2609,6 +2609,7 @@ pub fn yield_to_local_events() -> YieldToLocalEvents {
 mod tests {
     use super::*;
     use crate::executor::Executor;
+    use crate::tls::TlsAcceptor;
     use crate::zmq::SpecInfo;
     use std::cmp;
     use std::fs;
@@ -3140,6 +3141,65 @@ mod tests {
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
 
         fs::remove_file("test-unixstream").unwrap();
+    }
+
+    #[test]
+    fn test_tlsstream() {
+        let reactor = Reactor::new(3); // 3 registrations
+        let executor = Executor::new(2); // 2 tasks
+
+        let spawner = executor.spawner();
+
+        executor
+            .spawn(async move {
+                let addr = "127.0.0.1:0".parse().unwrap();
+                let listener = AsyncTcpListener::bind(addr).expect("failed to bind");
+                let acceptor = TlsAcceptor::new_self_signed();
+                let addr = listener.local_addr().unwrap();
+
+                spawner
+                    .spawn(async move {
+                        let stream = AsyncTcpStream::connect(&[addr]).await.unwrap();
+
+                        let mut stream =
+                            AsyncTlsStream::connect("localhost", stream, VerifyMode::None).unwrap();
+
+                        let size = stream.write("hello".as_bytes()).await.unwrap();
+                        assert_eq!(size, 5);
+
+                        stream.close().await.unwrap();
+                    })
+                    .unwrap();
+
+                let (stream, _) = listener.accept().await.unwrap();
+                let stream = acceptor.accept(stream).unwrap();
+
+                let mut stream = AsyncTlsStream::new(stream);
+
+                let mut resp = [0u8; 1024];
+                let mut resp = io::Cursor::new(&mut resp[..]);
+
+                loop {
+                    let mut buf = [0; 1024];
+
+                    let size = stream.read(&mut buf).await.unwrap();
+                    if size == 0 {
+                        break;
+                    }
+
+                    resp.write(&buf[..size]).unwrap();
+                }
+
+                let size = resp.position() as usize;
+                let resp = str::from_utf8(&resp.get_ref()[..size]).unwrap();
+
+                assert_eq!(resp, "hello");
+
+                stream.close().await.unwrap();
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
 
     #[test]

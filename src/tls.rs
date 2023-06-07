@@ -17,10 +17,12 @@
 use arrayvec::ArrayString;
 use log::debug;
 use openssl::error::ErrorStack;
+use openssl::pkey::PKey;
 use openssl::ssl::{
     self, HandshakeError, MidHandshakeSslStream, NameType, SniError, SslAcceptor, SslConnector,
     SslContext, SslContextBuilder, SslFiletype, SslMethod, SslStream, SslVerifyMode,
 };
+use openssl::x509::X509;
 use std::any::Any;
 use std::cmp;
 use std::collections::HashMap;
@@ -315,6 +317,53 @@ impl TlsAcceptor {
 
             Ok(())
         });
+
+        Self {
+            acceptor: acceptor.build(),
+        }
+    }
+
+    pub fn new_self_signed() -> Self {
+        let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+
+        let cert_pem = concat!(
+            "-----BEGIN CERTIFICATE-----\n",
+            "MIIBnzCCAQgCCQCxQ/hcU1Ac0TANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQDDAls\n",
+            "b2NhbGhvc3QwHhcNMjMwNjA3MDUxNjMxWhcNMjMwNjA4MDUxNjMxWjAUMRIwEAYD\n",
+            "VQQDDAlsb2NhbGhvc3QwgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAOgNk9yF\n",
+            "6A4Ey/cxWlz9U0aecVEyBVS72X/a+ySVySEgvzs54sA7oWOzgiMsNsQjJiJE5yv3\n",
+            "Kr0nfuPBEADxGufJOdy/S57y3unxtpE9nUJY2WVuBjXIN9MzH3fIMQWXX9yBr/Ij\n",
+            "cfvnDDOAu6VtBFCrdZNjIz0NJZlyUuI+YQJHAgMBAAEwDQYJKoZIhvcNAQELBQAD\n",
+            "gYEAPo38vYyMUi3uzK2F/jXhQW5R/6eIxL/KvNuY+gVpogVea66jx+y2VgEaUC3C\n",
+            "wqH1SHPt5EN511NED0lEfH5CCpjGxjcl5jbTMb4/F0jCaIk+H8uzyOl6aHP5OTT3\n",
+            "WCt/kBSEiCkG5FSE9dHThd2plDCwlnNOOx13UzCga6eh0gc=\n",
+            "-----END CERTIFICATE-----"
+        );
+
+        let key_pem = concat!(
+            "-----BEGIN PRIVATE KEY-----\n",
+            "MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBAOgNk9yF6A4Ey/cx\n",
+            "Wlz9U0aecVEyBVS72X/a+ySVySEgvzs54sA7oWOzgiMsNsQjJiJE5yv3Kr0nfuPB\n",
+            "EADxGufJOdy/S57y3unxtpE9nUJY2WVuBjXIN9MzH3fIMQWXX9yBr/IjcfvnDDOA\n",
+            "u6VtBFCrdZNjIz0NJZlyUuI+YQJHAgMBAAECgYEAjeBHR+vjDjcmkXLuQa5srN+Q\n",
+            "fskrczwK5d338M1XlFaWNNrWZRvQN8n3xhNxRIgM96TTBhFvYwjzzsIqS7kd7fD+\n",
+            "dm0B5X2q4Fw0fT8cuD7WPrYRjR5akvJmCFZhfBq6ndEQ8o1U7MU2i5EXEne4IeuH\n",
+            "mdxC3D5rBaYquKJfuCECQQD5dY7ZZQWVxVRFdfufDOLelgRp6XL425hqbgcXT9tW\n",
+            "jCRAERG9cztxh5YH330KyVwiZlNwybYjgdawjJ2Zz4k3AkEA7iMvMIqJfwktdjIz\n",
+            "MX3UcYa9qSAOdmbvhZ8rXizj+RzOYiX+PVODg4IEJtcwoHfH1Xfq/kk+oeIkb9O7\n",
+            "IdqXcQJAVQ66eHGzp8+y3kROWXsBWDf6pUpOQ4BMxe1iSZaXCTmbmqS3Ucuatyku\n",
+            "BN01O5pQ6gHN7aU5j33UADrR+gIDnQJACJfycwD81z3Aizxiho2w5evj2j+S5gju\n",
+            "6daFnR9nlqzIcdhHJXVnEI7XkYNAePn5lyV9sHF6NiNQB00PurgFsQJAcVp3zlrL\n",
+            "hT4mZo+nwtQIAV8UaI8e4/jGmHuPdkCqQRyGVLqf7IWiKvsYptlnn0wcluQiCZVk\n",
+            "wEt0AuQ0pfQPig==\n",
+            "-----END PRIVATE KEY-----"
+        );
+
+        let cert = X509::from_pem(cert_pem.as_bytes()).unwrap();
+        let key = PKey::private_key_from_pem(key_pem.as_bytes()).unwrap();
+
+        acceptor.set_certificate(&cert).unwrap();
+        acceptor.set_private_key(&key).unwrap();
 
         Self {
             acceptor: acceptor.build(),
