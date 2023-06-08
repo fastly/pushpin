@@ -413,6 +413,18 @@ impl TlsStreamError {
     }
 }
 
+impl From<ssl::Error> for TlsStreamError {
+    fn from(e: ssl::Error) -> Self {
+        match e.into_io_error() {
+            Ok(e) => Self::Io(e),
+            Err(e) => match e.ssl_error() {
+                Some(e) => Self::Ssl(e.clone()),
+                None => Self::Io(io::Error::from(io::ErrorKind::Other)),
+            },
+        }
+    }
+}
+
 fn replace_at<T, F>(value_at: &mut T, replace_fn: F)
 where
     F: FnOnce(T) -> T,
@@ -425,11 +437,23 @@ where
     }
 }
 
+fn apply_wants(e: &ssl::Error, interests: &mut Option<mio::Interest>) {
+    match e.code() {
+        ssl::ErrorCode::WANT_READ => *interests = Some(mio::Interest::READABLE),
+        ssl::ErrorCode::WANT_WRITE => *interests = Some(mio::Interest::WRITABLE),
+        _ => {}
+    }
+}
+
 pub struct TlsStream<T> {
     stream: Stream<&'static mut Box<dyn ReadWrite>>,
     plain_stream: Box<Box<dyn ReadWrite>>,
     id: ArrayString<64>,
     client: bool,
+    interests_for_handshake: Option<mio::Interest>,
+    interests_for_shutdown: Option<mio::Interest>,
+    interests_for_read: Option<mio::Interest>,
+    interests_for_write: Option<mio::Interest>,
     _marker: PhantomData<T>,
 }
 
@@ -484,7 +508,25 @@ where
         Ok(())
     }
 
+    pub fn interests_for_handshake(&self) -> Option<mio::Interest> {
+        self.interests_for_handshake
+    }
+
+    pub fn interests_for_shutdown(&self) -> Option<mio::Interest> {
+        self.interests_for_shutdown
+    }
+
+    pub fn interests_for_read(&self) -> Option<mio::Interest> {
+        self.interests_for_read
+    }
+
+    pub fn interests_for_write(&self) -> Option<mio::Interest> {
+        self.interests_for_write
+    }
+
     pub fn ensure_handshake(&mut self) -> Result<(), TlsStreamError> {
+        self.interests_for_handshake = None;
+
         match &self.stream {
             Stream::Ssl(_) => Ok(()),
             Stream::MidHandshakeSsl(_) => match mem::replace(&mut self.stream, Stream::NoSsl) {
@@ -496,20 +538,10 @@ where
                         Ok(())
                     }
                     Err(HandshakeError::SetupFailure(e)) => Err(TlsStreamError::Ssl(e)),
-                    Err(HandshakeError::Failure(stream)) => {
-                        let e = stream.into_error();
-
-                        match e.into_io_error() {
-                            Ok(e) => Err(TlsStreamError::Io(e)),
-                            Err(e) => match e.ssl_error() {
-                                Some(e) => Err(TlsStreamError::Ssl(e.clone())),
-                                None => {
-                                    Err(TlsStreamError::Io(io::Error::from(io::ErrorKind::Other)))
-                                }
-                            },
-                        }
-                    }
+                    Err(HandshakeError::Failure(stream)) => Err(stream.into_error().into()),
                     Err(HandshakeError::WouldBlock(stream)) => {
+                        apply_wants(stream.error(), &mut self.interests_for_handshake);
+
                         self.stream = Stream::MidHandshakeSsl(stream);
 
                         Err(TlsStreamError::Io(io::Error::from(
@@ -524,20 +556,25 @@ where
     }
 
     pub fn shutdown(&mut self) -> Result<(), io::Error> {
-        match &mut self.stream {
-            Stream::Ssl(stream) => match stream.shutdown() {
-                Ok(_) => {
-                    debug!("{} {}: tls shutdown sent", self.log_prefix(), self.id);
+        self.interests_for_shutdown = None;
 
-                    Ok(())
-                }
-                Err(e) => Err(match e.into_io_error() {
-                    Ok(e) => e,
-                    Err(_) => io::Error::from(io::ErrorKind::Other),
-                }),
-            },
-            _ => Err(io::Error::from(io::ErrorKind::Other)),
+        let stream = match &mut self.stream {
+            Stream::Ssl(stream) => stream,
+            _ => return Err(io::Error::from(io::ErrorKind::Other)),
+        };
+
+        if let Err(e) = stream.shutdown() {
+            apply_wants(&e, &mut self.interests_for_shutdown);
+
+            match e.into_io_error() {
+                Ok(e) => return Err(e),
+                Err(_) => return Err(io::Error::from(io::ErrorKind::Other)),
+            }
         }
+
+        debug!("{} {}: tls shutdown sent", self.log_prefix(), self.id);
+
+        Ok(())
     }
 
     pub fn change_inner<F, U>(mut self, change_fn: F) -> TlsStream<U>
@@ -597,8 +634,12 @@ where
         Ok(Self {
             stream,
             plain_stream: outer_box,
-            id: ArrayString::new(),
+            id: ArrayString::from("<unknown>").unwrap(),
             client,
+            interests_for_handshake: None,
+            interests_for_shutdown: None,
+            interests_for_read: None,
+            interests_for_write: None,
             _marker: PhantomData,
         })
     }
@@ -610,6 +651,65 @@ where
             "conn"
         }
     }
+
+    fn ssl_read(&mut self, buf: &mut [u8]) -> Result<usize, TlsStreamError> {
+        self.interests_for_read = None;
+
+        if let Err(e) = self.ensure_handshake() {
+            match &e {
+                TlsStreamError::Io(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    self.interests_for_read = self.interests_for_handshake;
+                }
+                _ => {}
+            }
+
+            return Err(e);
+        }
+
+        let stream = match &mut self.stream {
+            Stream::Ssl(stream) => stream,
+            _ => unreachable!(),
+        };
+
+        match stream.ssl_read(buf) {
+            Ok(size) => Ok(size),
+            Err(e) if e.code() == ssl::ErrorCode::ZERO_RETURN => Ok(0),
+            Err(e) => {
+                apply_wants(&e, &mut self.interests_for_read);
+
+                Err(e.into())
+            }
+        }
+    }
+
+    fn ssl_write(&mut self, buf: &[u8]) -> Result<usize, TlsStreamError> {
+        self.interests_for_write = None;
+
+        if let Err(e) = self.ensure_handshake() {
+            match &e {
+                TlsStreamError::Io(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    self.interests_for_write = self.interests_for_handshake;
+                }
+                _ => {}
+            }
+
+            return Err(e);
+        }
+
+        let stream = match &mut self.stream {
+            Stream::Ssl(stream) => stream,
+            _ => unreachable!(),
+        };
+
+        match stream.ssl_write(buf) {
+            Ok(size) => Ok(size),
+            Err(e) => {
+                apply_wants(&e, &mut self.interests_for_write);
+
+                Err(e.into())
+            }
+        }
+    }
 }
 
 impl<T> Read for TlsStream<T>
@@ -617,13 +717,9 @@ where
     T: Read + Write + Any + Send,
 {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        if let Err(e) = self.ensure_handshake() {
-            return Err(e.into_io_error());
-        }
-
-        match &mut self.stream {
-            Stream::Ssl(stream) => SslStream::read(stream, buf),
-            _ => unreachable!(),
+        match self.ssl_read(buf) {
+            Ok(size) => Ok(size),
+            Err(e) => Err(e.into_io_error()),
         }
     }
 }
@@ -633,13 +729,9 @@ where
     T: Read + Write + Any + Send,
 {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-        if let Err(e) = self.ensure_handshake() {
-            return Err(e.into_io_error());
-        }
-
-        match &mut self.stream {
-            Stream::Ssl(stream) => SslStream::write(stream, buf),
-            _ => unreachable!(),
+        match self.ssl_write(buf) {
+            Ok(size) => Ok(size),
+            Err(e) => Err(e.into_io_error()),
         }
     }
 
