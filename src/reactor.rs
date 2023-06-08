@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,6 +46,211 @@ fn ticks_to_duration(t: u64) -> Duration {
     Duration::from_millis(t * TICK_DURATION_MS)
 }
 
+enum WakerInterest {
+    Single(Waker, mio::Interest),
+    Separate(Waker, Waker),
+}
+
+impl WakerInterest {
+    fn interest(&self) -> mio::Interest {
+        match self {
+            Self::Single(_, interest) => *interest,
+            Self::Separate(_, _) => mio::Interest::READABLE | mio::Interest::WRITABLE,
+        }
+    }
+
+    fn change(self, waker: &Waker, interest: mio::Interest) -> Self {
+        match self {
+            Self::Single(current_waker, current_interest) => {
+                if (interest.is_readable() && interest.is_writable())
+                    || current_interest == interest
+                {
+                    // all interest or interest unchanged. stay using a
+                    // single waker
+
+                    let waker = if current_waker.will_wake(waker) {
+                        // keep the current waker
+                        current_waker
+                    } else {
+                        // switch to the new waker
+                        waker.clone()
+                    };
+
+                    Self::Single(waker, interest)
+                } else {
+                    assert!(interest.is_readable() != interest.is_writable());
+
+                    // one interest was specified when we had at least the
+                    // opposite interest. switch to separate
+
+                    match (interest.is_readable(), interest.is_writable()) {
+                        (true, false) => Self::Separate(waker.clone(), current_waker),
+                        (false, true) => Self::Separate(current_waker, waker.clone()),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            Self::Separate(read_waker, write_waker) => {
+                match (interest.is_readable(), interest.is_writable()) {
+                    (true, true) => {
+                        // if multiple interests on one waker, switch to single
+
+                        let waker = if read_waker.will_wake(waker) {
+                            read_waker
+                        } else if write_waker.will_wake(waker) {
+                            write_waker
+                        } else {
+                            waker.clone()
+                        };
+
+                        Self::Single(waker, interest)
+                    }
+                    (true, false) => {
+                        let read_waker = if read_waker.will_wake(waker) {
+                            // keep the current waker
+                            read_waker
+                        } else {
+                            // switch to the new waker
+                            waker.clone()
+                        };
+
+                        Self::Separate(read_waker, write_waker)
+                    }
+                    (false, true) => {
+                        let write_waker = if write_waker.will_wake(waker) {
+                            // keep the current waker
+                            write_waker
+                        } else {
+                            // switch to the new waker
+                            waker.clone()
+                        };
+
+                        Self::Separate(read_waker, write_waker)
+                    }
+                    (false, false) => unreachable!(), // interest always has a value
+                }
+            }
+        }
+    }
+
+    fn merge(self, other: Self) -> Self {
+        match self {
+            Self::Single(waker, interest) => {
+                if (interest.is_readable() && interest.is_writable())
+                    || interest == other.interest()
+                {
+                    // there is already a single waker of both interests or
+                    // of one interest that is the same interest as the
+                    // other. leave alone
+                    Self::Single(waker, interest)
+                } else {
+                    assert!(interest.is_readable() != interest.is_writable());
+
+                    // there is a single waker of one interest, and the other
+                    // has at least the opposite interest. switch to separate
+
+                    match (interest.is_readable(), interest.is_writable()) {
+                        (true, false) => {
+                            let other_waker = match other {
+                                Self::Single(waker, _) => waker,
+                                Self::Separate(_, waker) => waker,
+                            };
+
+                            Self::Separate(waker, other_waker)
+                        }
+                        (false, true) => {
+                            let other_waker = match other {
+                                Self::Single(waker, _) => waker,
+                                Self::Separate(waker, _) => waker,
+                            };
+
+                            Self::Separate(other_waker, waker)
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            separate => {
+                // there are already separate wakers for both interests.
+                // leave alone
+                separate
+            }
+        }
+    }
+
+    fn clear_interest(self, interest: mio::Interest) -> Option<Self> {
+        match self {
+            Self::Single(waker, cur) => cur.remove(interest).map(|i| Self::Single(waker, i)),
+            Self::Separate(read_waker, write_waker) => {
+                match (interest.is_readable(), interest.is_writable()) {
+                    (true, true) => None, // clear all
+                    (true, false) => Some(Self::Single(write_waker, mio::Interest::WRITABLE)),
+                    (false, true) => Some(Self::Single(read_waker, mio::Interest::READABLE)),
+                    (false, false) => unreachable!(), // interest always has a value
+                }
+            }
+        }
+    }
+
+    fn wake(self, readiness: mio::Interest) -> Option<Self> {
+        match self {
+            Self::Single(waker, interest) => {
+                if (interest.is_readable() && readiness.is_readable())
+                    || (interest.is_writable() && readiness.is_writable())
+                {
+                    waker.wake();
+
+                    None
+                } else {
+                    Some(Self::Single(waker, interest))
+                }
+            }
+            Self::Separate(read_waker, write_waker) => {
+                match (readiness.is_readable(), readiness.is_writable()) {
+                    (true, true) => {
+                        read_waker.wake();
+                        write_waker.wake();
+
+                        None
+                    }
+                    (true, false) => {
+                        read_waker.wake();
+
+                        Some(Self::Single(write_waker, mio::Interest::WRITABLE))
+                    }
+                    (false, true) => {
+                        write_waker.wake();
+
+                        Some(Self::Single(read_waker, mio::Interest::READABLE))
+                    }
+                    (false, false) => unreachable!(), // interest always has a value
+                }
+            }
+        }
+    }
+
+    fn wake_by_ref(&self, readiness: mio::Interest) {
+        match self {
+            Self::Single(waker, interest) => {
+                if (interest.is_readable() && readiness.is_readable())
+                    || (interest.is_writable() && readiness.is_writable())
+                {
+                    waker.wake_by_ref();
+                }
+            }
+            Self::Separate(read_waker, write_waker) => {
+                if readiness.is_readable() {
+                    read_waker.wake_by_ref();
+                }
+
+                if readiness.is_writable() {
+                    write_waker.wake_by_ref();
+                }
+            }
+        }
+    }
+}
+
 pub struct Registration {
     reactor: Weak<ReactorData>,
     key: usize,
@@ -65,6 +270,15 @@ impl Registration {
         let reg_data = &mut registrations[self.key];
 
         reg_data.any_as_all = enabled;
+    }
+
+    pub fn set_waker_persistent(&self, enabled: bool) {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+        let registrations = &mut *reactor.registrations.borrow_mut();
+
+        let reg_data = &mut registrations[self.key];
+
+        reg_data.waker_persistent = enabled;
     }
 
     pub fn readiness(&self) -> event::Readiness {
@@ -116,20 +330,10 @@ impl Registration {
 
         let reg_data = &mut registrations[self.key];
 
-        let waker = if let Some((current_waker, _)) = reg_data.waker.take() {
-            if current_waker.will_wake(waker) {
-                // keep the current waker
-                current_waker
-            } else {
-                // switch to the new waker
-                waker.clone()
-            }
-        } else {
-            // we didn't have a waker yet, so we'll use this one
-            waker.clone()
-        };
-
-        reg_data.waker = Some((waker, interest));
+        match reg_data.waker.take() {
+            Some(wi) => reg_data.waker = Some(wi.change(waker, interest)),
+            None => reg_data.waker = Some(WakerInterest::Single(waker.clone(), interest)),
+        }
     }
 
     pub fn clear_waker(&self) {
@@ -147,11 +351,8 @@ impl Registration {
 
         let reg_data = &mut registrations[self.key];
 
-        if let Some((waker, cur)) = reg_data.waker.take() {
-            match cur.remove(interest) {
-                Some(interest) => reg_data.waker = Some((waker, interest)),
-                None => reg_data.waker = None,
-            }
+        if let Some(wi) = reg_data.waker.take() {
+            reg_data.waker = wi.clear_interest(interest);
         }
     }
 
@@ -182,16 +383,59 @@ impl Registration {
     pub fn pull_from_budget(&self) -> bool {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
 
-        let registrations = &mut *reactor.registrations.borrow_mut();
+        let mut registrations = reactor.registrations.borrow_mut();
         let reg_data = &mut registrations[self.key];
 
         if reg_data.waker.is_none() {
             panic!("pull_from_budget requires a waker to be set");
         }
 
+        let ok = self.pull_from_budget_inner();
+
+        if !ok {
+            let wi = reg_data.waker.take().unwrap();
+            let persistent = reg_data.waker_persistent;
+            drop(registrations);
+
+            let wi_remaining = if persistent {
+                wi.wake_by_ref(mio::Interest::READABLE | mio::Interest::WRITABLE);
+
+                Some(wi)
+            } else {
+                wi.wake(mio::Interest::READABLE | mio::Interest::WRITABLE)
+            };
+
+            if let Some(wi_remaining) = wi_remaining {
+                let mut registrations = reactor.registrations.borrow_mut();
+
+                if let Some(event_reg) = registrations.get_mut(self.key) {
+                    match event_reg.waker.take() {
+                        Some(wi) => event_reg.waker = Some(wi.merge(wi_remaining)),
+                        None => event_reg.waker = Some(wi_remaining),
+                    }
+                }
+            }
+        }
+
+        ok
+    }
+
+    pub fn pull_from_budget_with_waker(&self, waker: &Waker) -> bool {
+        let ok = self.pull_from_budget_inner();
+
+        if !ok {
+            waker.wake_by_ref();
+        }
+
+        ok
+    }
+
+    fn pull_from_budget_inner(&self) -> bool {
+        let reactor = self.reactor.upgrade().expect("reactor is gone");
+
         let budget = &mut *reactor.budget.borrow_mut();
 
-        let ok = match budget {
+        match budget {
             Some(budget) => {
                 if *budget > 0 {
                     *budget -= 1;
@@ -202,16 +446,7 @@ impl Registration {
                 }
             }
             None => true,
-        };
-
-        // if no budget left, trigger the waker to try again soon
-        if !ok {
-            let (waker, _) = reg_data.waker.take().unwrap();
-
-            waker.wake();
         }
-
-        ok
     }
 
     pub fn reregister_timer(&self, expires: Instant) -> Result<(), io::Error> {
@@ -257,9 +492,10 @@ impl Drop for Registration {
 
 struct RegistrationData {
     readiness: event::Readiness,
-    waker: Option<(Waker, mio::Interest)>,
+    waker: Option<WakerInterest>,
     timer_key: Option<usize>,
     any_as_all: bool,
+    waker_persistent: bool,
 }
 
 struct TimerData {
@@ -329,6 +565,7 @@ impl Reactor {
             waker: None,
             timer_key: None,
             any_as_all: false,
+            waker_persistent: false,
         });
 
         if let Err(e) = self
@@ -364,6 +601,7 @@ impl Reactor {
             waker: None,
             timer_key: None,
             any_as_all: false,
+            waker_persistent: false,
         });
 
         if let Err(e) =
@@ -399,6 +637,7 @@ impl Reactor {
             waker: None,
             timer_key: None,
             any_as_all: false,
+            waker_persistent: false,
         });
 
         if let Err(e) =
@@ -430,6 +669,7 @@ impl Reactor {
             waker: None,
             timer_key: None,
             any_as_all: false,
+            waker_persistent: false,
         });
 
         let timer = &mut *self.inner.timer.borrow_mut();
@@ -526,7 +766,6 @@ impl Reactor {
 
     fn process_events(&self) {
         let poll = &mut *self.inner.poll.borrow_mut();
-        let registrations = &mut *self.inner.registrations.borrow_mut();
 
         for event in poll.iter_events() {
             let key = usize::from(event.token());
@@ -534,6 +773,8 @@ impl Reactor {
             assert!(key > 0);
 
             let key = key - 1;
+
+            let mut registrations = self.inner.registrations.borrow_mut();
 
             if let Some(event_reg) = registrations.get_mut(key) {
                 let event_readiness = if event_reg.any_as_all {
@@ -556,12 +797,33 @@ impl Reactor {
                 };
 
                 if became_readable || became_writable {
-                    if let Some((_, interest)) = &event_reg.waker {
+                    if let Some(wi) = event_reg.waker.take() {
+                        let interest = wi.interest();
+
                         if (became_readable && interest.is_readable())
                             || (became_writable && interest.is_writable())
                         {
-                            let (waker, _) = event_reg.waker.take().unwrap();
-                            waker.wake();
+                            let persistent = event_reg.waker_persistent;
+                            drop(registrations);
+
+                            let wi_remaining = if persistent {
+                                wi.wake_by_ref(event_readiness);
+
+                                Some(wi)
+                            } else {
+                                wi.wake(event_readiness)
+                            };
+
+                            if let Some(wi_remaining) = wi_remaining {
+                                let mut registrations = self.inner.registrations.borrow_mut();
+
+                                if let Some(event_reg) = registrations.get_mut(key) {
+                                    match event_reg.waker.take() {
+                                        Some(wi) => event_reg.waker = Some(wi.merge(wi_remaining)),
+                                        None => event_reg.waker = Some(wi_remaining),
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -573,12 +835,34 @@ impl Reactor {
         let mut expire_count = 0;
 
         while let Some((_, key)) = timer.wheel.take_expired() {
+            let mut registrations = self.inner.registrations.borrow_mut();
+
             if let Some(event_reg) = registrations.get_mut(key) {
                 event_reg.readiness = Some(mio::Interest::READABLE);
                 event_reg.timer_key = None;
 
-                if let Some((waker, _)) = event_reg.waker.take() {
-                    waker.wake();
+                if let Some(wi) = event_reg.waker.take() {
+                    let persistent = event_reg.waker_persistent;
+                    drop(registrations);
+
+                    let wi_remaining = if persistent {
+                        wi.wake_by_ref(mio::Interest::READABLE);
+
+                        Some(wi)
+                    } else {
+                        wi.wake(mio::Interest::READABLE)
+                    };
+
+                    if let Some(wi_remaining) = wi_remaining {
+                        let mut registrations = self.inner.registrations.borrow_mut();
+
+                        if let Some(event_reg) = registrations.get_mut(key) {
+                            match event_reg.waker.take() {
+                                Some(wi) => event_reg.waker = Some(wi.merge(wi_remaining)),
+                                None => event_reg.waker = Some(wi_remaining),
+                            }
+                        }
+                    }
                 }
             }
 
