@@ -27,7 +27,7 @@ use crate::future::{
     event_wait, select_2, select_3, select_6, select_8, select_option, yield_to_local_events,
     AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver, AsyncTcpStream, AsyncTlsStream,
     AsyncUnixStream, CancellationSender, CancellationToken, Select2, Select3, Select6, Select8,
-    Timeout,
+    Timeout, TlsWaker,
 };
 use crate::list;
 use crate::listener::Listener;
@@ -35,6 +35,7 @@ use crate::net::{set_socket_opts, NetListener, NetStream, SocketAddr};
 use crate::reactor::Reactor;
 use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
 use crate::tnetstring;
+use crate::waker::RefWakerData;
 use crate::zhttppacket;
 use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
@@ -217,7 +218,7 @@ impl Identify for AsyncUnixStream {
     }
 }
 
-impl Identify for AsyncTlsStream {
+impl Identify for AsyncTlsStream<'_> {
     fn set_id(&mut self, id: &str) {
         // server generates ids known to always be accepted
         self.inner().set_id(id).unwrap();
@@ -1762,11 +1763,13 @@ impl Worker {
                 }
             },
             Stream::Tls(stream) => {
+                let tls_waker_data = RefWakerData::new(TlsWaker::new());
+
                 server_req_connection(
                     token,
                     cid,
                     &mut cid_provider,
-                    AsyncTlsStream::new(stream),
+                    AsyncTlsStream::new(stream, &tls_waker_data),
                     Some(&peer_addr),
                     true,
                     opts.buffer_size,
@@ -1864,11 +1867,13 @@ impl Worker {
                 }
             },
             Stream::Tls(stream) => {
+                let tls_waker_data = RefWakerData::new(TlsWaker::new());
+
                 server_stream_connection(
                     token,
                     cid,
                     &mut cid_provider,
-                    AsyncTlsStream::new(stream),
+                    AsyncTlsStream::new(stream, &tls_waker_data),
                     Some(&peer_addr),
                     true,
                     opts.buffer_size,

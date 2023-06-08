@@ -263,15 +263,6 @@ impl Registration {
         Reactor { inner: reactor }
     }
 
-    pub fn set_any_as_all(&self, enabled: bool) {
-        let reactor = self.reactor.upgrade().expect("reactor is gone");
-        let registrations = &mut *reactor.registrations.borrow_mut();
-
-        let reg_data = &mut registrations[self.key];
-
-        reg_data.any_as_all = enabled;
-    }
-
     pub fn set_waker_persistent(&self, enabled: bool) {
         let reactor = self.reactor.upgrade().expect("reactor is gone");
         let registrations = &mut *reactor.registrations.borrow_mut();
@@ -494,7 +485,6 @@ struct RegistrationData {
     readiness: event::Readiness,
     waker: Option<WakerInterest>,
     timer_key: Option<usize>,
-    any_as_all: bool,
     waker_persistent: bool,
 }
 
@@ -564,7 +554,6 @@ impl Reactor {
             readiness: None,
             waker: None,
             timer_key: None,
-            any_as_all: false,
             waker_persistent: false,
         });
 
@@ -600,7 +589,6 @@ impl Reactor {
             readiness: None,
             waker: None,
             timer_key: None,
-            any_as_all: false,
             waker_persistent: false,
         });
 
@@ -636,7 +624,6 @@ impl Reactor {
             readiness: None,
             waker: None,
             timer_key: None,
-            any_as_all: false,
             waker_persistent: false,
         });
 
@@ -668,7 +655,6 @@ impl Reactor {
             readiness: None,
             waker: None,
             timer_key: None,
-            any_as_all: false,
             waker_persistent: false,
         });
 
@@ -777,11 +763,7 @@ impl Reactor {
             let mut registrations = self.inner.registrations.borrow_mut();
 
             if let Some(event_reg) = registrations.get_mut(key) {
-                let event_readiness = if event_reg.any_as_all {
-                    mio::Interest::READABLE | mio::Interest::WRITABLE
-                } else {
-                    event.readiness()
-                };
+                let event_readiness = event.readiness();
 
                 let (became_readable, became_writable) = {
                     let prev_readiness = event_reg.readiness;

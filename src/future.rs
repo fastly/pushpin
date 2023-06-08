@@ -16,27 +16,27 @@
 
 use crate::arena;
 use crate::channel;
-use crate::event;
-use crate::event::ReadinessExt;
+use crate::event::{self, ReadinessExt};
 use crate::net::{NetListener, NetStream, SocketAddr};
 use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented};
 use crate::resolver;
 use crate::shuffle::shuffle;
 use crate::tls::{TlsStream, TlsStreamError, VerifyMode};
+use crate::waker::{RefWake, RefWaker, RefWakerData};
 use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use openssl::ssl;
 use paste::paste;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::future::Future;
-use std::io;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
+use std::mem;
 use std::os::fd::{FromRawFd, IntoRawFd};
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::mpsc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 
 pub const REGISTRATIONS_PER_CHANNEL: usize = 1;
@@ -840,13 +840,156 @@ impl AsyncUnixStream {
     }
 }
 
-pub struct AsyncTlsStream {
-    registration: Registration,
+struct TlsOpInner {
+    readiness: event::Readiness,
+    waker: Option<(Waker, mio::Interest)>,
+}
+
+struct TlsOp {
+    inner: RefCell<TlsOpInner>,
+}
+
+impl TlsOp {
+    fn new() -> Self {
+        Self {
+            inner: RefCell::new(TlsOpInner {
+                readiness: None,
+                waker: None,
+            }),
+        }
+    }
+
+    fn readiness(&self) -> event::Readiness {
+        self.inner.borrow().readiness
+    }
+
+    pub fn set_readiness(&self, readiness: event::Readiness) {
+        self.inner.borrow_mut().readiness = readiness;
+    }
+
+    pub fn clear_readiness(&self, readiness: mio::Interest) {
+        let inner = &mut *self.inner.borrow_mut();
+
+        if let Some(cur) = inner.readiness.take() {
+            inner.readiness = cur.remove(readiness);
+        }
+    }
+
+    fn set_waker(&self, waker: &Waker, interest: mio::Interest) {
+        let inner = &mut *self.inner.borrow_mut();
+
+        let waker = if let Some((current_waker, _)) = inner.waker.take() {
+            if current_waker.will_wake(waker) {
+                // keep the current waker
+                current_waker
+            } else {
+                // switch to the new waker
+                waker.clone()
+            }
+        } else {
+            // we didn't have a waker yet, so we'll use this one
+            waker.clone()
+        };
+
+        inner.waker = Some((waker, interest));
+    }
+
+    fn clear_waker(&self) {
+        let inner = &mut *self.inner.borrow_mut();
+
+        inner.waker = None;
+    }
+
+    fn apply_readiness(&self, readiness: mio::Interest) {
+        let inner = &mut *self.inner.borrow_mut();
+
+        let (became_readable, became_writable) = {
+            let prev_readiness = inner.readiness;
+
+            inner.readiness.merge(readiness);
+
+            (
+                !prev_readiness.contains_any(mio::Interest::READABLE)
+                    && inner.readiness.contains_any(mio::Interest::READABLE),
+                !prev_readiness.contains_any(mio::Interest::WRITABLE)
+                    && inner.readiness.contains_any(mio::Interest::WRITABLE),
+            )
+        };
+
+        if became_readable || became_writable {
+            if let Some((_, interest)) = &inner.waker {
+                if (became_readable && interest.is_readable())
+                    || (became_writable && interest.is_writable())
+                {
+                    let (waker, _) = inner.waker.take().unwrap();
+                    waker.wake();
+                }
+            }
+        }
+    }
+}
+
+pub struct TlsWaker {
+    registration: RefCell<Option<Registration>>,
+    handshake: TlsOp,
+    shutdown: TlsOp,
+    read: TlsOp,
+    write: TlsOp,
+}
+
+#[allow(clippy::new_without_default)]
+impl TlsWaker {
+    pub fn new() -> Self {
+        Self {
+            registration: RefCell::new(None),
+            handshake: TlsOp::new(),
+            shutdown: TlsOp::new(),
+            read: TlsOp::new(),
+            write: TlsOp::new(),
+        }
+    }
+
+    fn registration(&self) -> Ref<'_, Registration> {
+        Ref::map(self.registration.borrow(), |b| b.as_ref().unwrap())
+    }
+
+    fn set_registration(&self, registration: Registration) {
+        let readiness = registration.readiness();
+
+        registration.clear_readiness(mio::Interest::READABLE | mio::Interest::WRITABLE);
+
+        for op in [&self.handshake, &self.shutdown, &self.read, &self.write] {
+            op.set_readiness(readiness);
+        }
+
+        *self.registration.borrow_mut() = Some(registration);
+    }
+
+    fn take_registration(&self) -> Registration {
+        self.registration.borrow_mut().take().unwrap()
+    }
+}
+
+impl RefWake for TlsWaker {
+    fn wake(&self) {
+        if let Some(readiness) = self.registration().readiness() {
+            self.registration()
+                .clear_readiness(mio::Interest::READABLE | mio::Interest::WRITABLE);
+
+            for op in [&self.handshake, &self.shutdown, &self.read, &self.write] {
+                op.apply_readiness(readiness);
+            }
+        }
+    }
+}
+
+pub struct AsyncTlsStream<'a> {
+    waker: RefWaker<'a, TlsWaker>,
     stream: Option<TlsStream<TcpStream>>,
 }
 
-impl AsyncTlsStream {
-    pub fn new(mut s: TlsStream<TcpStream>) -> Self {
+impl<'a: 'b, 'b> AsyncTlsStream<'a> {
+    pub fn new(mut s: TlsStream<TcpStream>, waker_data: &'a RefWakerData<TlsWaker>) -> Self {
         let registration = get_reactor()
             .register_io(
                 s.get_inner(),
@@ -854,13 +997,17 @@ impl AsyncTlsStream {
             )
             .unwrap();
 
-        Self::new_with_registration(s, registration)
+        // assume I/O operations are ready to be attempted
+        registration.set_readiness(Some(mio::Interest::READABLE | mio::Interest::WRITABLE));
+
+        Self::new_with_registration(s, waker_data, registration)
     }
 
     pub fn connect(
         domain: &str,
         stream: AsyncTcpStream,
         verify_mode: VerifyMode,
+        waker_data: &'a RefWakerData<TlsWaker>,
     ) -> Result<Self, ssl::Error> {
         let (registration, stream) = stream.evented.into_parts();
 
@@ -873,10 +1020,14 @@ impl AsyncTlsStream {
             }
         };
 
-        Ok(Self::new_with_registration(stream, registration))
+        Ok(Self::new_with_registration(
+            stream,
+            waker_data,
+            registration,
+        ))
     }
 
-    pub fn ensure_handshake(&mut self) -> EnsureHandshakeFuture<'_> {
+    pub fn ensure_handshake(&'b mut self) -> EnsureHandshakeFuture<'a, 'b> {
         EnsureHandshakeFuture { s: self }
     }
 
@@ -887,7 +1038,10 @@ impl AsyncTlsStream {
     pub fn into_inner(mut self) -> TlsStream<TcpStream> {
         let mut stream = self.stream.take().unwrap();
 
-        self.registration.deregister_io(stream.get_inner()).unwrap();
+        self.waker
+            .registration()
+            .deregister_io(stream.get_inner())
+            .unwrap();
 
         stream
     }
@@ -895,7 +1049,10 @@ impl AsyncTlsStream {
     pub fn into_std(mut self) -> TlsStream<std::net::TcpStream> {
         let mut stream = self.stream.take().unwrap();
 
-        self.registration.deregister_io(stream.get_inner()).unwrap();
+        self.waker
+            .registration()
+            .deregister_io(stream.get_inner())
+            .unwrap();
 
         stream.change_inner(|stream| unsafe {
             std::net::TcpStream::from_raw_fd(stream.into_raw_fd())
@@ -903,30 +1060,42 @@ impl AsyncTlsStream {
     }
 
     // assumes stream is in non-blocking mode
-    pub fn from_std(stream: TlsStream<std::net::TcpStream>) -> Self {
+    pub fn from_std(
+        stream: TlsStream<std::net::TcpStream>,
+        waker_data: &'a RefWakerData<TlsWaker>,
+    ) -> Self {
         let stream = stream.change_inner(TcpStream::from_std);
 
-        Self::new(stream)
+        Self::new(stream, waker_data)
     }
 
-    fn new_with_registration(s: TlsStream<TcpStream>, registration: Registration) -> Self {
-        // assume I/O operations are ready to be attempted
-        registration.set_readiness(Some(mio::Interest::READABLE | mio::Interest::WRITABLE));
+    fn new_with_registration(
+        s: TlsStream<TcpStream>,
+        waker_data: &'a RefWakerData<TlsWaker>,
+        registration: Registration,
+    ) -> Self {
+        let waker = RefWaker::new(waker_data);
+        waker.set_registration(registration);
 
-        // process TLS reads/writes after any socket event
-        registration.set_any_as_all(true);
+        waker.registration().set_waker_persistent(true);
+        waker.registration().set_waker(
+            waker.as_std(&mut mem::MaybeUninit::uninit()),
+            mio::Interest::READABLE | mio::Interest::WRITABLE,
+        );
 
         Self {
-            registration,
+            waker,
             stream: Some(s),
         }
     }
 }
 
-impl Drop for AsyncTlsStream {
+impl<'a> Drop for AsyncTlsStream<'a> {
     fn drop(&mut self) {
+        let registration = self.waker.take_registration();
+
         if let Some(stream) = &mut self.stream {
-            self.registration.deregister_io(stream.get_inner()).unwrap();
+            registration.deregister_io(stream.get_inner()).unwrap();
         }
     }
 }
@@ -2057,7 +2226,7 @@ impl AsyncWrite for AsyncUnixStream {
     }
 }
 
-impl AsyncRead for AsyncTlsStream {
+impl AsyncRead for AsyncTlsStream<'_> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
@@ -2065,25 +2234,30 @@ impl AsyncRead for AsyncTlsStream {
     ) -> Poll<Result<usize, io::Error>> {
         let f = &mut *self;
 
-        f.registration
-            .set_waker(cx.waker(), mio::Interest::READABLE);
+        let registration = f.waker.registration();
+        let op = &f.waker.read;
+        let stream = f.stream.as_mut().unwrap();
 
-        if !f
-            .registration
-            .readiness()
-            .contains_any(mio::Interest::READABLE)
-        {
+        let interests = stream.interests_for_read();
+
+        if let Some(interests) = interests {
+            if !op.readiness().contains_any(interests) {
+                op.set_waker(cx.waker(), interests);
+
+                return Poll::Pending;
+            }
+        }
+
+        if !registration.pull_from_budget_with_waker(cx.waker()) {
             return Poll::Pending;
         }
 
-        if !f.registration.pull_from_budget() {
-            return Poll::Pending;
-        }
-
-        match f.stream.as_mut().unwrap().read(buf) {
+        match stream.read(buf) {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                f.registration.clear_readiness(mio::Interest::READABLE);
+                let interests = stream.interests_for_read().unwrap();
+                op.clear_readiness(interests);
+                op.set_waker(cx.waker(), interests);
 
                 Poll::Pending
             }
@@ -2092,12 +2266,13 @@ impl AsyncRead for AsyncTlsStream {
     }
 
     fn cancel(&mut self) {
-        self.registration
-            .clear_waker_interest(mio::Interest::READABLE);
+        let op = &self.waker.read;
+
+        op.clear_waker();
     }
 }
 
-impl AsyncWrite for AsyncTlsStream {
+impl AsyncWrite for AsyncTlsStream<'_> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
@@ -2105,25 +2280,30 @@ impl AsyncWrite for AsyncTlsStream {
     ) -> Poll<Result<usize, io::Error>> {
         let f = &mut *self;
 
-        f.registration
-            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+        let registration = f.waker.registration();
+        let op = &f.waker.write;
+        let stream = f.stream.as_mut().unwrap();
 
-        if !f
-            .registration
-            .readiness()
-            .contains_any(mio::Interest::WRITABLE)
-        {
+        let interests = stream.interests_for_write();
+
+        if let Some(interests) = interests {
+            if !op.readiness().contains_any(interests) {
+                op.set_waker(cx.waker(), interests);
+
+                return Poll::Pending;
+            }
+        }
+
+        if !registration.pull_from_budget_with_waker(cx.waker()) {
             return Poll::Pending;
         }
 
-        if !f.registration.pull_from_budget() {
-            return Poll::Pending;
-        }
-
-        match f.stream.as_mut().unwrap().write(buf) {
+        match stream.write(buf) {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                f.registration.clear_readiness(mio::Interest::WRITABLE);
+                let interests = stream.interests_for_write().unwrap();
+                op.clear_readiness(interests);
+                op.set_waker(cx.waker(), interests);
 
                 Poll::Pending
             }
@@ -2134,25 +2314,30 @@ impl AsyncWrite for AsyncTlsStream {
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         let f = &mut *self;
 
-        f.registration
-            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+        let registration = f.waker.registration();
+        let op = &f.waker.shutdown;
+        let stream = f.stream.as_mut().unwrap();
 
-        if !f
-            .registration
-            .readiness()
-            .contains_any(mio::Interest::WRITABLE)
-        {
+        let interests = stream.interests_for_shutdown();
+
+        if let Some(interests) = interests {
+            if !op.readiness().contains_any(interests) {
+                op.set_waker(cx.waker(), interests);
+
+                return Poll::Pending;
+            }
+        }
+
+        if !registration.pull_from_budget_with_waker(cx.waker()) {
             return Poll::Pending;
         }
 
-        if !f.registration.pull_from_budget() {
-            return Poll::Pending;
-        }
-
-        match f.stream.as_mut().unwrap().shutdown() {
+        match stream.shutdown() {
             Ok(size) => Poll::Ready(Ok(size)),
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                f.registration.clear_readiness(mio::Interest::WRITABLE);
+                let interests = stream.interests_for_shutdown().unwrap();
+                op.clear_readiness(interests);
+                op.set_waker(cx.waker(), interests);
 
                 Poll::Pending
             }
@@ -2161,50 +2346,59 @@ impl AsyncWrite for AsyncTlsStream {
     }
 
     fn is_writable(&self) -> bool {
-        self.registration
-            .readiness()
-            .contains_any(mio::Interest::WRITABLE)
+        let op = &self.waker.write;
+        let stream = self.stream.as_ref().unwrap();
+
+        if let Some(interests) = stream.interests_for_write() {
+            op.readiness().contains_any(interests)
+        } else {
+            true
+        }
     }
 
     fn cancel(&mut self) {
-        self.registration
-            .clear_waker_interest(mio::Interest::WRITABLE);
+        let write_op = &self.waker.write;
+        let shutdown_op = &self.waker.shutdown;
+
+        write_op.clear_waker();
+        shutdown_op.clear_waker();
     }
 }
 
-pub struct EnsureHandshakeFuture<'a> {
-    s: &'a mut AsyncTlsStream,
+pub struct EnsureHandshakeFuture<'a, 'b> {
+    s: &'b mut AsyncTlsStream<'a>,
 }
 
-impl Future for EnsureHandshakeFuture<'_> {
+impl Future for EnsureHandshakeFuture<'_, '_> {
     type Output = Result<(), TlsStreamError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
-        f.s.registration.set_waker(
-            cx.waker(),
-            mio::Interest::READABLE | mio::Interest::WRITABLE,
-        );
+        let registration = f.s.waker.registration();
+        let op = &f.s.waker.handshake;
+        let stream = f.s.stream.as_mut().unwrap();
 
-        if !f
-            .s
-            .registration
-            .readiness()
-            .contains_any(mio::Interest::READABLE | mio::Interest::WRITABLE)
-        {
+        let interests = stream.interests_for_handshake();
+
+        if let Some(interests) = interests {
+            if !op.readiness().contains_any(interests) {
+                op.set_waker(cx.waker(), interests);
+
+                return Poll::Pending;
+            }
+        }
+
+        if !registration.pull_from_budget_with_waker(cx.waker()) {
             return Poll::Pending;
         }
 
-        if !f.s.registration.pull_from_budget() {
-            return Poll::Pending;
-        }
-
-        match f.s.stream.as_mut().unwrap().ensure_handshake() {
+        match stream.ensure_handshake() {
             Ok(()) => Poll::Ready(Ok(())),
             Err(TlsStreamError::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
-                f.s.registration
-                    .clear_readiness(mio::Interest::READABLE | mio::Interest::WRITABLE);
+                let interests = stream.interests_for_handshake().unwrap();
+                op.clear_readiness(interests);
+                op.set_waker(cx.waker(), interests);
 
                 Poll::Pending
             }
@@ -2213,9 +2407,11 @@ impl Future for EnsureHandshakeFuture<'_> {
     }
 }
 
-impl Drop for EnsureHandshakeFuture<'_> {
+impl Drop for EnsureHandshakeFuture<'_, '_> {
     fn drop(&mut self) {
-        self.s.registration.clear_waker();
+        let op = &self.s.waker.handshake;
+
+        op.clear_waker();
     }
 }
 
@@ -3160,9 +3356,16 @@ mod tests {
                 spawner
                     .spawn(async move {
                         let stream = AsyncTcpStream::connect(&[addr]).await.unwrap();
+                        let tls_waker_data = RefWakerData::new(TlsWaker::new());
+                        let mut stream = AsyncTlsStream::connect(
+                            "localhost",
+                            stream,
+                            VerifyMode::None,
+                            &tls_waker_data,
+                        )
+                        .unwrap();
 
-                        let mut stream =
-                            AsyncTlsStream::connect("localhost", stream, VerifyMode::None).unwrap();
+                        stream.ensure_handshake().await.unwrap();
 
                         let size = stream.write("hello".as_bytes()).await.unwrap();
                         assert_eq!(size, 5);
@@ -3174,7 +3377,8 @@ mod tests {
                 let (stream, _) = listener.accept().await.unwrap();
                 let stream = acceptor.accept(stream).unwrap();
 
-                let mut stream = AsyncTlsStream::new(stream);
+                let tls_waker_data = RefWakerData::new(TlsWaker::new());
+                let mut stream = AsyncTlsStream::new(stream, &tls_waker_data);
 
                 let mut resp = [0u8; 1024];
                 let mut resp = io::Cursor::new(&mut resp[..]);

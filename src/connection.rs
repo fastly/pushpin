@@ -42,7 +42,7 @@ use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
     AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncResolver, AsyncTcpStream, AsyncTlsStream,
     AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf, Select2, Select3, Select4,
-    StdWriteWrapper, Timeout, WriteHalf,
+    StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
 };
 use crate::http1;
 use crate::net::SocketAddr;
@@ -52,6 +52,7 @@ use crate::resolver;
 use crate::shuffle::random;
 use crate::tls::{TlsStream, VerifyMode};
 use crate::track::{track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError};
+use crate::waker::RefWakerData;
 use crate::websocket;
 use crate::zhttppacket;
 use crate::zmq::MultipartHeader;
@@ -4964,25 +4965,16 @@ impl Read for Stream {
     }
 }
 
-enum AsyncStream {
+enum AsyncStream<'a> {
     Plain(AsyncTcpStream),
-    Tls(AsyncTlsStream),
+    Tls(AsyncTlsStream<'a>),
 }
 
-impl AsyncStream {
+impl<'a> AsyncStream<'a> {
     fn into_inner(self) -> Stream {
         match self {
             Self::Plain(stream) => Stream::Plain(stream.into_std()),
             Self::Tls(stream) => Stream::Tls(stream.into_std()),
-        }
-    }
-}
-
-impl From<Stream> for AsyncStream {
-    fn from(s: Stream) -> Self {
-        match s {
-            Stream::Plain(stream) => Self::Plain(AsyncTcpStream::from_std(stream)),
-            Stream::Tls(stream) => Self::Tls(AsyncTlsStream::from_std(stream)),
         }
     }
 }
@@ -5094,14 +5086,15 @@ fn is_allowed(addr: &IpAddr, deny: &[IpNet]) -> bool {
     true
 }
 
-async fn client_connect(
+async fn client_connect<'a>(
     log_id: &str,
     rdata: &zhttppacket::RequestData<'_, '_>,
     uri: &url::Url,
     resolver: &resolver::Resolver,
     deny: &[IpNet],
     pool: &ConnectionPool,
-) -> Result<(std::net::SocketAddr, bool, AsyncStream), Error> {
+    tls_waker_data: &'a RefWakerData<TlsWaker>,
+) -> Result<(std::net::SocketAddr, bool, AsyncStream<'a>), Error> {
     let use_tls = ["https", "wss"].contains(&uri.scheme());
 
     let uri_host = match uri.host_str() {
@@ -5149,7 +5142,14 @@ async fn client_connect(
             log_id, peer_addr,
         );
 
-        (peer_addr, stream.into(), false)
+        let stream = match stream {
+            Stream::Plain(stream) => AsyncStream::Plain(AsyncTcpStream::from_std(stream)),
+            Stream::Tls(stream) => {
+                AsyncStream::Tls(AsyncTlsStream::from_std(stream, tls_waker_data))
+            }
+        };
+
+        (peer_addr, stream, false)
     } else {
         if addrs.is_empty() && denied {
             return Err(Error::PolicyViolation);
@@ -5176,7 +5176,7 @@ async fn client_connect(
                 VerifyMode::Full
             };
 
-            let stream = match AsyncTlsStream::connect(host, stream, verify_mode) {
+            let stream = match AsyncTlsStream::connect(host, stream, verify_mode, tls_waker_data) {
                 Ok(stream) => stream,
                 Err(e) => {
                     debug!("client-conn {}: tls connect error: {}", log_id, e);
@@ -5507,8 +5507,10 @@ async fn client_req_connect(
             None => return Err(Error::BadRequest),
         };
 
+        let tls_waker_data = RefWakerData::new(TlsWaker::new());
+
         let (peer_addr, using_tls, mut stream) =
-            client_connect(log_id, rdata, url, resolver, deny, pool).await?;
+            client_connect(log_id, rdata, url, resolver, deny, pool, &tls_waker_data).await?;
 
         let done = match &mut stream {
             AsyncStream::Plain(stream) => {
@@ -6345,8 +6347,18 @@ where
             None => return Err(Error::BadRequest),
         };
 
+        let tls_waker_data = RefWakerData::new(TlsWaker::new());
+
         let (peer_addr, using_tls, mut stream) = {
-            let mut client_connect = pin!(client_connect(log_id, rdata, url, resolver, deny, pool));
+            let mut client_connect = pin!(client_connect(
+                log_id,
+                rdata,
+                url,
+                resolver,
+                deny,
+                pool,
+                &tls_waker_data
+            ));
 
             loop {
                 // ABR: select contains read
