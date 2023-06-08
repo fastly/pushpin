@@ -34,7 +34,7 @@ use crate::reactor::Reactor;
 use crate::resolver::Resolver;
 use crate::tnetstring;
 use crate::zhttppacket;
-use crate::zhttpsocket;
+use crate::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
 use crate::zmq::{MultipartHeader, SpecInfo};
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
@@ -136,7 +136,7 @@ impl<'a> BatchGroup<'a, '_> {
 
 struct Batch {
     nodes: Slab<list::Node<usize>>,
-    addrs: Vec<(ArrayVec<u8, 64>, list::List)>,
+    addrs: Vec<(ArrayVec<u8, FROM_MAX>, list::List)>,
     addr_index: usize,
     group_ids: arena::ReusableVec,
     last_group_ckeys: Vec<usize>,
@@ -181,7 +181,7 @@ impl Batch {
         }
 
         if pos == self.addrs.len() {
-            // connection limits to_addr to 64 so this is guaranteed to succeed
+            // connection limits to_addr to FROM_MAX so this is guaranteed to succeed
             let a = ArrayVec::try_from(to_addr).unwrap();
 
             self.addrs.push((a, list::List::default()));
@@ -285,7 +285,7 @@ struct ConnectionDone {
 }
 
 struct ConnectionItem {
-    id: Option<ArrayVec<u8, 64>>,
+    id: Option<SessionKey>,
     stop: Option<CancellationSender>,
     zreceiver_sender: Option<channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>>,
     shared: Option<arena::Rc<StreamSharedData>>,
@@ -294,7 +294,7 @@ struct ConnectionItem {
 
 struct ConnectionItems {
     nodes: Slab<list::Node<ConnectionItem>>,
-    nodes_by_id: HashMap<ArrayVec<u8, 64>, usize>,
+    nodes_by_id: HashMap<SessionKey, usize>,
     batch: Batch,
 }
 
@@ -396,7 +396,7 @@ impl Connections {
         ci.zreceiver_sender
     }
 
-    fn set_id(&self, ckey: usize, id: Option<&[u8]>) {
+    fn set_id(&self, ckey: usize, id: Option<&SessionKey>) {
         let nkey = ckey;
 
         let items = &mut *self.items.borrow_mut();
@@ -408,10 +408,7 @@ impl Connections {
             ci.id = None;
         }
 
-        if let Some(id) = id {
-            // connection limits id to 64 so this is guaranteed to succeed
-            let id = ArrayVec::try_from(id).unwrap();
-
+        if let Some(id) = id.cloned() {
             ci.id = Some(id.clone());
             items.nodes_by_id.insert(id, nkey);
         } else {
@@ -422,7 +419,7 @@ impl Connections {
         }
     }
 
-    fn find_key(&self, id: &[u8]) -> Option<usize> {
+    fn find_key(&self, id: &SessionKey) -> Option<usize> {
         let items = &*self.items.borrow();
 
         items.nodes_by_id.get(id).copied()
@@ -543,7 +540,7 @@ impl Connections {
                     // removed then the item is removed from the batch
                     let id = ci.id.as_ref().unwrap();
 
-                    (id, cshared.out_seq())
+                    (&id.1, cshared.out_seq())
                 })
                 .unwrap();
 
@@ -1029,7 +1026,9 @@ impl Worker {
                             }
                         };
 
-                        let ids = zreq.get().ids;
+                        let zreq_ref = zreq.get();
+
+                        let ids = zreq_ref.ids;
 
                         if ids.len() > 1 {
                             warn!(
@@ -1040,7 +1039,15 @@ impl Worker {
                             continue;
                         }
 
-                        let cid: Option<ArrayVec<u8, 64>> = if !ids.is_empty() {
+                        let from: ArrayVec<u8, FROM_MAX> = match ArrayVec::try_from(zreq_ref.from) {
+                            Ok(v) => v,
+                            Err(_) => {
+                                warn!("client-worker {}: from address too long, skipping", id);
+                                continue;
+                            }
+                        };
+
+                        let cid: Option<ArrayVec<u8, REQ_ID_MAX>> = if !ids.is_empty() {
                             match ArrayVec::try_from(ids[0].id) {
                                 Ok(v) => Some(v),
                                 Err(_) => {
@@ -1068,7 +1075,8 @@ impl Worker {
                         let ckey = conns.add(cstop, None, None).unwrap();
 
                         if let Some(cid) = &cid {
-                            conns.set_id(ckey, Some(cid.as_slice()));
+                            let cid = (from, cid.clone());
+                            conns.set_id(ckey, Some(&cid));
                         }
 
                         debug!(
@@ -1235,9 +1243,7 @@ impl Worker {
                                 }
                             };
 
-                            let zreq = arena::Rc::new(zreq, &stream_req_mem).unwrap();
-
-                            let zreq_ref = zreq.get().get();
+                            let zreq_ref = zreq.get();
 
                             let ids = zreq_ref.ids;
 
@@ -1256,13 +1262,21 @@ impl Worker {
                                 continue;
                             }
 
-                            let cid: ArrayVec<u8, 64> = match ArrayVec::try_from(ids[0].id) {
+                            if zreq_ref.from.len() > FROM_MAX {
+                                warn!("client-worker {}: from address too long, skipping", id);
+                                continue;
+                            }
+
+                            let cid: ArrayVec<u8, REQ_ID_MAX> = match ArrayVec::try_from(ids[0].id)
+                            {
                                 Ok(v) => v,
                                 Err(_) => {
                                     warn!("client-worker {}: request id too long, skipping", id);
                                     continue;
                                 }
                             };
+
+                            let zreq = arena::Rc::new(zreq, &stream_req_mem).unwrap();
 
                             let (cstop, r_cstop) =
                                 CancellationToken::new(&reactor.local_registration_memory());
@@ -1357,10 +1371,36 @@ impl Worker {
                                 continue;
                             }
 
+                            let from: ArrayVec<u8, FROM_MAX> =
+                                match ArrayVec::try_from(zreq_ref.from) {
+                                    Ok(v) => v,
+                                    Err(_) => {
+                                        warn!(
+                                            "client-worker {}: from address too long, skipping",
+                                            id
+                                        );
+                                        continue;
+                                    }
+                                };
+
                             let mut count = 0;
 
                             for (i, rid) in ids.iter().enumerate() {
-                                let key = match conns.find_key(rid.id) {
+                                let cid: ArrayVec<u8, REQ_ID_MAX> = match ArrayVec::try_from(rid.id)
+                                {
+                                    Ok(v) => v,
+                                    Err(_) => {
+                                        warn!(
+                                            "client-worker {}: request id too long, skipping",
+                                            id
+                                        );
+                                        continue;
+                                    }
+                                };
+
+                                let cid = (from.clone(), cid);
+
+                                let key = match conns.find_key(&cid) {
                                     Some(key) => key,
                                     None => continue,
                                 };
@@ -1410,7 +1450,7 @@ impl Worker {
         done: channel::LocalSender<ConnectionDone>,
         worker_id: usize,
         ckey: usize,
-        cid: Option<ArrayVec<u8, 64>>,
+        cid: Option<ArrayVec<u8, REQ_ID_MAX>>,
         zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
         resolver: Arc<Resolver>,
         pool: Arc<ConnectionPool>,
@@ -1466,7 +1506,7 @@ impl Worker {
         done: channel::LocalSender<ConnectionDone>,
         worker_id: usize,
         ckey: usize,
-        cid: ArrayVec<u8, 64>,
+        cid: ArrayVec<u8, REQ_ID_MAX>,
         zreq: arena::Rc<zhttppacket::OwnedRequest>,
         resolver: Arc<Resolver>,
         pool: Arc<ConnectionPool>,
@@ -1498,7 +1538,7 @@ impl Worker {
             token,
             &log_id,
             &cid,
-            zreq,
+            arena::Rc::clone(&zreq),
             opts.buffer_size,
             stream_opts.messages_max,
             &opts.rb_tmp,
@@ -1513,7 +1553,14 @@ impl Worker {
             zreceiver,
             AsyncLocalSender::new(stream_opts.sender),
             shared,
-            &|| conns.set_id(ckey, Some(&cid)),
+            &|| {
+                // handle task limits addr to FROM_MAX so this is guaranteed to succeed
+                let from: ArrayVec<u8, FROM_MAX> =
+                    ArrayVec::try_from(zreq.get().get().from).unwrap();
+
+                let cid = (from, cid.clone());
+                conns.set_id(ckey, Some(&cid))
+            },
         )
         .await;
 

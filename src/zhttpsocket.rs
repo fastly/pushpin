@@ -48,13 +48,14 @@ use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
 
+pub const FROM_MAX: usize = 64;
+pub const REQ_ID_MAX: usize = 64;
+
 const HANDLES_MAX: usize = 1_024;
 const STREAM_OUT_STREAM_DELAY: Duration = Duration::from_millis(50);
 const LOG_METADATA_MAX: usize = 1_000;
 const LOG_CONTENT_MAX: usize = 1_000;
 const EXECUTOR_TASKS_MAX: usize = 1;
-const FROM_MAX: usize = 64;
-const REQ_ID_MAX: usize = 64;
 
 struct Packet<'a> {
     map_frame: tnetstring::Frame<'a>,
@@ -264,7 +265,7 @@ fn packet_to_string(data: &[u8]) -> String {
     }
 }
 
-type SessionKey = (ArrayVec<u8, FROM_MAX>, ArrayVec<u8, REQ_ID_MAX>);
+pub type SessionKey = (ArrayVec<u8, FROM_MAX>, ArrayVec<u8, REQ_ID_MAX>);
 
 struct SessionItem {
     key: SessionKey,
