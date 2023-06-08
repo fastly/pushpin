@@ -80,7 +80,7 @@ where
 
                         stream
                             .write(
-                                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nhello\n",
+                                b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nhello\n",
                             ).await
                             .unwrap();
                     })
