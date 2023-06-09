@@ -582,7 +582,19 @@ public:
 
 			QString certsDir = QDir(configDir).filePath("certs");
 
-			services += new CondureService(condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, this);
+			QString serverName = "condure";
+			bool useClient = false;
+
+			if(!serviceNames.contains("zurl") && CondureService::hasClientMode(condureBin))
+			{
+				serverName = "condure-in";
+				useClient = true;
+			}
+
+			services += new CondureService(serverName, condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, this);
+
+			if(useClient)
+				services += new CondureService("condure-out", condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), QString(), clientBufferSize, clientMaxConnections, allowCompression, QList<ListenPort>(), this);
 		}
 
 		if(serviceNames.contains("mongrel2"))

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Fanout, Inc.
+ * Copyright (C) 2020-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -38,6 +38,7 @@ class CondureService : public Service
 
 public:
 	CondureService(
+		const QString &name,
 		const QString &binFile,
 		const QString &runDir,
 		const QString &logDir,
@@ -50,6 +51,8 @@ public:
 		bool allowCompression,
 		const QList<ListenPort> &ports,
 		QObject *parent = 0);
+
+	static bool hasClientMode(const QString &binFile);
 
 	// reimplemented
 

@@ -265,6 +265,12 @@ public:
 		trimlist(&m2a_in_stream_specs);
 		QStringList m2a_out_specs = settings.value("proxy/m2a_out_specs").toStringList();
 		trimlist(&m2a_out_specs);
+		QStringList condure_client_out_specs = settings.value("proxy/condure_client_out_specs").toStringList();
+		trimlist(&condure_client_out_specs);
+		QStringList condure_client_out_stream_specs = settings.value("proxy/condure_client_out_stream_specs").toStringList();
+		trimlist(&condure_client_out_stream_specs);
+		QStringList condure_client_in_specs = settings.value("proxy/condure_client_in_specs").toStringList();
+		trimlist(&condure_client_in_specs);
 		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
 		trimlist(&zurl_out_specs);
 		QStringList zurl_out_stream_specs = settings.value("proxy/zurl_out_stream_specs").toStringList();
@@ -331,9 +337,9 @@ public:
 			return;
 		}
 
-		if(zurl_out_specs.isEmpty() || zurl_out_stream_specs.isEmpty() || zurl_in_specs.isEmpty())
+		if(!(!condure_client_out_specs.isEmpty() && !condure_client_out_stream_specs.isEmpty() && !condure_client_in_specs.isEmpty()) && !(!zurl_out_specs.isEmpty() && !zurl_out_stream_specs.isEmpty() && !zurl_in_specs.isEmpty()))
 		{
-			log_error("must set zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
+			log_error("must set condure_client_out_specs, condure_client_out_stream_specs, and condure_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
 			emit q->quit();
 			return;
 		}
@@ -356,9 +362,18 @@ public:
 			config.serverInStreamSpecs = m2a_in_stream_specs;
 			config.serverOutSpecs = m2a_out_specs;
 		}
-		config.clientOutSpecs = zurl_out_specs;
-		config.clientOutStreamSpecs = zurl_out_stream_specs;
-		config.clientInSpecs = zurl_in_specs;
+		if(!services.contains("zurl") && (!condure_client_out_specs.isEmpty() || !condure_client_out_stream_specs.isEmpty() || !condure_client_in_specs.isEmpty()))
+		{
+			config.clientOutSpecs = condure_client_out_specs;
+			config.clientOutStreamSpecs = condure_client_out_stream_specs;
+			config.clientInSpecs = condure_client_in_specs;
+		}
+		else
+		{
+			config.clientOutSpecs = zurl_out_specs;
+			config.clientOutStreamSpecs = zurl_out_stream_specs;
+			config.clientInSpecs = zurl_in_specs;
+		}
 		config.inspectSpec = handler_inspect_spec;
 		config.acceptSpec = handler_accept_spec;
 		config.retryInSpec = handler_retry_in_spec;
