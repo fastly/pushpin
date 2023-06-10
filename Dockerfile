@@ -8,7 +8,7 @@ WORKDIR /build
 COPY . .
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake qconf fst-rustc-1.65.0=1.65.0-120 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake qconf fst-rustc-1.70.0=1.70.0-147 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake
 
 RUN ls -alhrt
 ENV CFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
@@ -16,7 +16,7 @@ ENV CXXFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
 ENV LDFLAGS="-Wl,-z,now -Wl,-z,relro"
 ENV CC=/opt/fst-gcc/9.1.0/bin/gcc
 ENV CXX=/opt/fst-gcc/9.1.0/bin/g++
-ENV RUST_TOOLCHAIN=/opt/fst-rust/1.65.0
+ENV RUST_TOOLCHAIN=/opt/fst-rust/1.70.0
 ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
 RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make DESTDIR=/ install
