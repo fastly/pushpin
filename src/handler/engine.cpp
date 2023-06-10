@@ -3013,6 +3013,7 @@ private slots:
 
 		// consolidate data
 		StatsPacket all;
+		all.type = StatsPacket::Report;
 		all.connectionsMax = 0;
 		all.connectionsMinutes = 0;
 		all.messagesReceived = 0;
@@ -3020,11 +3021,11 @@ private slots:
 		all.httpResponseMessagesSent = 0;
 		foreach(const StatsPacket &p, packets)
 		{
-			all.connectionsMax += p.connectionsMax;
-			all.connectionsMinutes += p.connectionsMinutes;
-			all.messagesReceived += p.messagesReceived;
-			all.messagesSent += p.messagesSent;
-			all.httpResponseMessagesSent += p.httpResponseMessagesSent;
+			all.connectionsMax += qMax(p.connectionsMax, 0);
+			all.connectionsMinutes += qMax(p.connectionsMinutes, 0);
+			all.messagesReceived += qMax(p.messagesReceived, 0);
+			all.messagesSent += qMax(p.messagesSent, 0);
+			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
 		}
 
 		report = ControlRequest::report(proxyControlClient, all, this);

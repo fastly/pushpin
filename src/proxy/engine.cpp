@@ -1000,14 +1000,20 @@ private slots:
 				return;
 			}
 
+			int connectionsMax = qMax(p.connectionsMax, 0);
+			int connectionsMinutes = qMax(p.connectionsMinutes, 0);
+			int messagesReceived = qMax(p.messagesReceived, 0);
+			int messagesSent = qMax(p.messagesSent, 0);
+			int httpResponseMessagesSent = qMax(p.httpResponseMessagesSent, 0);
+
 			Updater::Report report;
-			report.connectionsMax = p.connectionsMax;
-			report.connectionsMinutes = p.connectionsMinutes;
-			report.messagesReceived = p.messagesReceived;
-			report.messagesSent = p.messagesSent;
+			report.connectionsMax = connectionsMax;
+			report.connectionsMinutes = connectionsMinutes;
+			report.messagesReceived = messagesReceived;
+			report.messagesSent = messagesSent;
 
 			// fanout cloud style ops calculation
-			report.ops = p.connectionsMinutes + p.messagesReceived + p.messagesSent - p.httpResponseMessagesSent;
+			report.ops = connectionsMinutes + messagesReceived + messagesSent - httpResponseMessagesSent;
 
 			updater->setReport(report);
 
