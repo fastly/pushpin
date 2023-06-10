@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Fanout, Inc.
+ * Copyright (C) 2022-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +29,7 @@
 #ifndef STATS_H
 #define STATS_H
 
+#include <QtGlobal>
 #include <assert.h>
 #include <string.h>
 
@@ -73,7 +74,7 @@ public:
         _empty = true;
     }
 
-    int get(Counter c)
+    quint32 get(Counter c)
     {
         int index = (int)c;
 
@@ -82,7 +83,7 @@ public:
         return _values[index];
     }
 
-    void inc(Counter c, int count = 1)
+    void inc(Counter c, quint32 count = 1)
     {
         int index = (int)c;
 
@@ -97,7 +98,7 @@ public:
     void add(const Counters &other);
 
 private:
-    int _values[STATS_COUNTERS_MAX];
+    quint32 _values[STATS_COUNTERS_MAX];
     bool _empty;
 };
 

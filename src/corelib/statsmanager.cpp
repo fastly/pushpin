@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2014-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -121,7 +121,7 @@ public:
 	public:
 		QString mode;
 		QString channel;
-		int subscriberCount;
+		quint32 subscriberCount;
 		qint64 lastRefresh;
 		int refreshBucket;
 		bool linger;
@@ -139,15 +139,15 @@ public:
 	{
 	public:
 		QByteArray routeId;
-		int connectionsMax;
+		quint32 connectionsMax;
 		bool connectionsMaxStale;
-		int connectionsMinutes;
-		int messagesReceived;
-		int messagesSent;
-		int httpResponseMessagesSent;
+		quint32 connectionsMinutes;
+		quint32 messagesReceived;
+		quint32 messagesSent;
+		quint32 httpResponseMessagesSent;
 		int blocksReceived;
 		int blocksSent;
-		int requestsReceived;
+		quint32 requestsReceived;
 		Stats::Counters counters;
 		qint64 lastUpdate;
 		qint64 startTime;
@@ -181,9 +181,9 @@ public:
 				counters.isEmpty());
 		}
 
-		int externalConnectionsMax() const
+		quint32 externalConnectionsMax() const
 		{
-			int count = 0;
+			quint32 count = 0;
 
 			QHashIterator<QByteArray, Report> it(externalReports);
 			while(it.hasNext())
@@ -197,9 +197,9 @@ public:
 			return count;
 		}
 
-		int externalConnectionsMinutes() const
+		quint32 externalConnectionsMinutes() const
 		{
-			int count = 0;
+			quint32 count = 0;
 
 			QHashIterator<QByteArray, Report> it(externalReports);
 			while(it.hasNext())
@@ -213,7 +213,7 @@ public:
 			return count;
 		}
 
-		void addConnectionsMinutes(int mins, qint64 now)
+		void addConnectionsMinutes(quint32 mins, qint64 now)
 		{
 			connectionsMinutes += mins;
 
@@ -253,14 +253,14 @@ public:
 			lastUpdate = now;
 		}
 
-		void addRequestsReceived(int count, qint64 now)
+		void addRequestsReceived(quint32 count, qint64 now)
 		{
 			requestsReceived += count;
 
 			lastUpdate = now;
 		}
 
-		void incCounter(Stats::Counter c, int count, qint64 now)
+		void incCounter(Stats::Counter c, quint32 count, qint64 now)
 		{
 			counters.inc(c, count);
 
@@ -278,7 +278,7 @@ public:
 	class Counts
 	{
 	public:
-		int requestsReceived;
+		quint32 requestsReceived;
 
 		Counts() :
 			requestsReceived(0)
@@ -336,7 +336,7 @@ public:
 	SimpleHttpServer *prometheusServer;
 	QString prometheusPrefix;
 	QList<PrometheusMetric> prometheusMetrics;
-	QHash<QByteArray, int> routeActivity;
+	QHash<QByteArray, quint32> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
 	QHash<QByteArray, QSet<ConnectionInfo*> > connectionInfoByRoute;
 	QVector<QSet<ConnectionInfo*> > connectionInfoRefreshBuckets;
@@ -776,7 +776,7 @@ public:
 		}
 	}
 
-	void sendActivity(const QByteArray &routeId, int count)
+	void sendActivity(const QByteArray &routeId, quint32 count)
 	{
 		if(!sock)
 			return;
@@ -789,7 +789,7 @@ public:
 		write(p);
 	}
 
-	void sendMessage(const QString &channel, const QString &itemId, const QString &transport, int count, int blocks)
+	void sendMessage(const QString &channel, const QString &itemId, const QString &transport, quint32 count, int blocks)
 	{
 		if(!sock)
 			return;
@@ -882,16 +882,16 @@ public:
 	{
 		Report *report = getOrCreateReport(routeId);
 
-		int localConns = connectionInfoByRoute.value(routeId).count();
-		int extConns = externalConnectionInfoByRoute.value(routeId).count();
+		quint32 localConns = connectionInfoByRoute.value(routeId).count();
+		quint32 extConns = externalConnectionInfoByRoute.value(routeId).count();
 
-		int conns = localConns + extConns;
+		quint32 conns = localConns + extConns;
 
 		// subtract the current total from the combined report
 		combinedReport.connectionsMax -= report->connectionsMax;
 
 		// update the individual report
-		if(report->connectionsMaxStale)
+		if(report->connectionsMax < 0 || report->connectionsMaxStale)
 		{
 			report->connectionsMax = conns;
 			report->connectionsMaxStale = false;
@@ -1113,8 +1113,8 @@ public:
 
 			Report &r = report->externalReports[packet.from];
 
-			r.connectionsMinutes += packet.connectionsMinutes;
-			r.connectionsMax = qMax(r.connectionsMax, packet.connectionsMax);
+			r.connectionsMinutes += qMax(packet.connectionsMinutes, 0);
+			r.connectionsMax = qMax(r.connectionsMax, (quint32)qMax(packet.connectionsMax, 0));
 		}
 	}
 
@@ -1187,7 +1187,7 @@ public:
 private slots:
 	void activity_timeout()
 	{
-		QHashIterator<QByteArray, int> it(routeActivity);
+		QHashIterator<QByteArray, quint32> it(routeActivity);
 		while(it.hasNext())
 		{
 			it.next();
@@ -1376,7 +1376,7 @@ void StatsManager::setPrometheusPrefix(const QString &prefix)
 	d->prometheusPrefix = prefix;
 }
 
-void StatsManager::addActivity(const QByteArray &routeId, int count)
+void StatsManager::addActivity(const QByteArray &routeId, quint32 count)
 {
 	assert(count >= 0);
 
@@ -1389,7 +1389,7 @@ void StatsManager::addActivity(const QByteArray &routeId, int count)
 		d->activityTimer->start(ACTIVITY_TIMEOUT);
 }
 
-void StatsManager::addMessage(const QString &channel, const QString &itemId, const QString &transport, int count, int blocks)
+void StatsManager::addMessage(const QString &channel, const QString &itemId, const QString &transport, quint32 count, int blocks)
 {
 	d->sendMessage(channel, itemId, transport, count, blocks);
 }
@@ -1525,7 +1525,7 @@ void StatsManager::refreshConnection(const QByteArray &id)
 	d->sendConnected(c);
 }
 
-void StatsManager::addSubscription(const QString &mode, const QString &channel, int subscriberCount)
+void StatsManager::addSubscription(const QString &mode, const QString &channel, quint32 subscriberCount)
 {
 	Private::SubscriptionKey subKey(mode, channel);
 	Private::Subscription *s = d->subscriptionsByKey.value(subKey);
@@ -1546,7 +1546,7 @@ void StatsManager::addSubscription(const QString &mode, const QString &channel, 
 	}
 	else
 	{
-		int oldSubscriberCount = s->subscriberCount;
+		quint32 oldSubscriberCount = s->subscriberCount;
 
 		s->subscriberCount = subscriberCount;
 
@@ -1631,7 +1631,7 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 	d->combinedReport.addMessageSent(transport, blocks, now);
 }
 
-void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, int count)
+void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint32 count)
 {
 	if(d->reportInterval <= 0)
 		return;
@@ -1644,7 +1644,7 @@ void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, int c
 	d->combinedReport.incCounter(c, count, now);
 }
 
-void StatsManager::addRequestsReceived(int count)
+void StatsManager::addRequestsReceived(quint32 count)
 {
 	assert(count >= 0);
 
