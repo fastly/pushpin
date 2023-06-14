@@ -61,7 +61,7 @@ For more details, see the [HTTP streaming](https://pushpin.org/docs/usage/#http-
 
 ## Example using a library
 
-Using a library on the backend makes integration is even easier. Here's another HTTP streaming example, similar to the one shown above, except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](https://pushpin.org/docs/usage/#libraries).
+Using a library on the backend makes integration even easier. Here's another HTTP streaming example, similar to the one shown above, except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](https://pushpin.org/docs/usage/#libraries).
 
 The Django library requires configuration in `settings.py`:
 ```python
