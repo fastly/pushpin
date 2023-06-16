@@ -48,6 +48,7 @@ CondureService::CondureService(
 	int maxconn,
 	bool allowCompression,
 	const QList<ListenPort> &ports,
+	bool enableClient,
 	QObject *parent) :
 	Service(parent)
 {
@@ -60,6 +61,13 @@ CondureService::CondureService(
 
 	if(logLevel >= 0)
 		args_ += "--log-level=" + QString::number(logLevel);
+
+	args_ += "--buffer-size=" + QString::number(clientBufferSize);
+
+	args_ += "--stream-maxconn=" + QString::number(maxconn);
+
+	if(allowCompression)
+		args_ += "--compression";
 
 	if(!ports.isEmpty())
 	{
@@ -105,28 +113,15 @@ CondureService::CondureService(
 
 		args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "condure";
 
-		args_ += "--buffer-size=" + QString::number(clientBufferSize);
-
-		args_ += "--stream-maxconn=" + QString::number(maxconn);
-
-		if(allowCompression)
-			args_ += "--compression";
-
 		if(usingSsl)
 			args_ += "--tls-identities-dir=" + certsDir;
 	}
-	else
+
+	if(enableClient)
 	{
 		// client mode
 
 		args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "condure-client";
-
-		args_ += "--buffer-size=" + QString::number(clientBufferSize);
-
-		args_ += "--stream-maxconn=" + QString::number(maxconn);
-
-		if(allowCompression)
-			args_ += "--compression";
 
 		args_ += "--deny-out-internal";
 	}

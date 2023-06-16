@@ -50,6 +50,7 @@ public:
 		int maxconn,
 		bool allowCompression,
 		const QList<ListenPort> &ports,
+		bool enableClient,
 		QObject *parent = 0);
 
 	static bool hasClientMode(const QString &binFile);
