@@ -1,9 +1,3 @@
-/*
- * Copyright (C) 2012-2013 Fanout, Inc.
- *
- * This file is part of Pushpin.
- *
- * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,22 +11,3 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * $FANOUT_END_LICENSE$
- */
-
-#ifndef HTTPREQUESTDATA_H
-#define HTTPREQUESTDATA_H
-
-#include "httpheaders.h"
-#include <QUrl>
-
-class HttpRequestData
-{
-public:
-	QString method;
-	QUrl uri;
-	HttpHeaders headers;
-	QByteArray body;
-};
-
-#endif

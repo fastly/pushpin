@@ -3,25 +3,19 @@
  *
  * This file is part of Pushpin.
  *
- * $FANOUT_BEGIN_LICENSE:AGPL$
+ * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
- * Pushpin is free software: you can redistribute it and/or modify it under
- * the terms of the GNU Affero General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * Pushpin is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
- * more details.
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
- * Alternatively, Pushpin may be used under the terms of a commercial license,
- * where the commercial license agreement is provided with the software or
- * contained in a written agreement between you and Fanout. For further
- * information use the contact form at <https://fanout.io/enterprise/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
  * $FANOUT_END_LICENSE$
  */
@@ -339,20 +333,20 @@ public:
 		if(requestData.headers.contains("Pushpin-Check"))
 		{
 			QString str =
-			"Copyright (C) 2012-2017 Fanout, Inc.\n"
+			"Copyright (C) 2012-2023 Fanout, Inc.\n"
+			"Copyright (C) 2023 Fastly, Inc.\n"
 			"\n"
-			"Pushpin is free software: you can redistribute it and/or modify it under\n"
-			"the terms of the GNU Affero General Public License as published by the Free\n"
-			"Software Foundation, either version 3 of the License, or (at your option)\n"
-			"any later version.\n"
+			"Pushpin is licensed under the Apache License, Version 2.0 (the \"License\");\n"
+			"you may not use this software except in compliance with the License.\n"
+			"You may obtain a copy of the License at\n"
 			"\n"
-			"Pushpin is distributed in the hope that it will be useful, but WITHOUT ANY\n"
-			"WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS\n"
-			"FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for\n"
-			"more details.\n"
+			"    http://www.apache.org/licenses/LICENSE-2.0\n"
 			"\n"
-			"You should have received a copy of the GNU Affero General Public License\n"
-			"along with this program. If not, see <http://www.gnu.org/licenses/>.\n";
+			"Unless required by applicable law or agreed to in writing, software\n"
+			"distributed under the License is distributed on an \"AS IS\" BASIS,\n"
+			"WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n"
+			"See the License for the specific language governing permissions and\n"
+			"limitations under the License.\n";
 
 			state = WaitingForResponse;
 			respondSuccess(str);
