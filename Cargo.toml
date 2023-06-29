@@ -1,7 +1,7 @@
 [package]
 name = "pushpin"
-version = "1.37.0-dev"
-authors = ["Justin Karneges <justin@karneges.com>"]
+version = "1.38.0-dev"
+authors = ["Justin Karneges <jkarneges@fastly.com>"]
 edition = "2018"
 
 [profile.dev]
