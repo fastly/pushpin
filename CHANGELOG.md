@@ -1,6 +1,14 @@
 Pushpin Changelog
 =================
 
+v. 1.37.0 (2023-06-29)
+
+  * Ability to use Condure instead of Zurl for outgoing connections.
+  * Ability to set mode/user/group when listening on Unix socket.
+  * WebSocket performance optimizations.
+  * New config options: allow_compression, stats_connection_send, cdn_loop.
+  * Relicense to Apache 2.0.
+
 v. 1.36.0 (2022-11-14)
 
   * Ability to accept client connections via IPv6.

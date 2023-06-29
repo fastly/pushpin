@@ -1,27 +1,22 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
- * $FANOUT_BEGIN_LICENSE:AGPL$
+ * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
- * Pushpin is free software: you can redistribute it and/or modify it under
- * the terms of the GNU Affero General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * Pushpin is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
- * more details.
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
- * Alternatively, Pushpin may be used under the terms of a commercial license,
- * where the commercial license agreement is provided with the software or
- * contained in a written agreement between you and Fanout. For further
- * information use the contact form at <https://fanout.io/enterprise/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
  * $FANOUT_END_LICENSE$
  */
@@ -162,10 +157,18 @@ QVariant StatsPacket::toVariant() const
 		if(serverMessagesSent >= 0)
 			obj["server-messages-sent"] = serverMessagesSent;
 	}
-	else // Counts
+	else if(type == Counts)
 	{
 		if(requestsReceived > 0)
 			obj["requests-received"] = requestsReceived;
+	}
+	else // ConnectionsMax
+	{
+		obj["max"] = qMax(connectionsMax, 0);
+		obj["ttl"] = qMax(ttl, 0);
+
+		if(retrySeq >= 0)
+			obj["retry-seq"] = retrySeq;
 	}
 
 	return obj;
@@ -447,6 +450,40 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 				return false;
 
 			requestsReceived = x;
+		}
+	}
+	else if(_type == "conn-max")
+	{
+		type = ConnectionsMax;
+
+		if(!obj.contains("max") || !obj["max"].canConvert(QVariant::Int))
+			return false;
+
+		int x = obj["max"].toInt();
+		if(x < 0)
+			return false;
+
+		connectionsMax = x;
+
+		if(!obj.contains("ttl") || !obj["ttl"].canConvert(QVariant::Int))
+			return false;
+
+		x = obj["ttl"].toInt();
+		if(x < 0)
+			return false;
+
+		ttl = x;
+
+		if(obj.contains("retry-seq"))
+		{
+			if(!obj["retry-seq"].canConvert(QVariant::LongLong))
+				return false;
+
+			int x = obj["retry-seq"].toLongLong();
+			if(x < 0)
+				return false;
+
+			retrySeq = x;
 		}
 	}
 	else

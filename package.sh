@@ -12,7 +12,7 @@ DESTDIR=build/pushpin-$VERSION
 
 mkdir -p $DESTDIR
 
-cp -a .gitignore build.rs Cargo.lock Cargo.toml CHANGELOG.md configure COPYING examples pushpin.pro pushpin.qc qcm README.md src tools $DESTDIR
+cp -a .gitignore build.rs Cargo.lock Cargo.toml CHANGELOG.md configure examples LICENSE pushpin.pro pushpin.qc qcm README.md src tools $DESTDIR
 rm -rf $DESTDIR/src/corelib/qzmq/.git $DESTDIR/src/corelib/common/.git
 
 sed -i -e "s/^version = .*/version = \"$VERSION\"/g" $DESTDIR/Cargo.toml

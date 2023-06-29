@@ -1,27 +1,22 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
- * $FANOUT_BEGIN_LICENSE:AGPL$
+ * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
- * Pushpin is free software: you can redistribute it and/or modify it under
- * the terms of the GNU Affero General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * Pushpin is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
- * more details.
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
- * Alternatively, Pushpin may be used under the terms of a commercial license,
- * where the commercial license agreement is provided with the software or
- * contained in a written agreement between you and Fanout. For further
- * information use the contact form at <https://fanout.io/enterprise/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
  * $FANOUT_END_LICENSE$
  */
@@ -265,6 +260,12 @@ public:
 		trimlist(&m2a_in_stream_specs);
 		QStringList m2a_out_specs = settings.value("proxy/m2a_out_specs").toStringList();
 		trimlist(&m2a_out_specs);
+		QStringList condure_client_out_specs = settings.value("proxy/condure_client_out_specs").toStringList();
+		trimlist(&condure_client_out_specs);
+		QStringList condure_client_out_stream_specs = settings.value("proxy/condure_client_out_stream_specs").toStringList();
+		trimlist(&condure_client_out_stream_specs);
+		QStringList condure_client_in_specs = settings.value("proxy/condure_client_in_specs").toStringList();
+		trimlist(&condure_client_in_specs);
 		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
 		trimlist(&zurl_out_specs);
 		QStringList zurl_out_stream_specs = settings.value("proxy/zurl_out_stream_specs").toStringList();
@@ -311,6 +312,7 @@ public:
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		bool statsConnectionSend = settings.value("global/stats_connection_send", true).toBool();
 		int statsConnectionTtl = settings.value("global/stats_connection_ttl", 120).toInt();
+		int statsConnectionsMaxTtl = settings.value("proxy/stats_connections_max_ttl", 60).toInt();
 		int statsReportInterval = settings.value("proxy/stats_report_interval", 10).toInt();
 		QString prometheusPort = settings.value("proxy/prometheus_port").toString();
 		QString prometheusPrefix = settings.value("proxy/prometheus_prefix").toString();
@@ -331,9 +333,9 @@ public:
 			return;
 		}
 
-		if(zurl_out_specs.isEmpty() || zurl_out_stream_specs.isEmpty() || zurl_in_specs.isEmpty())
+		if(!(!condure_client_out_specs.isEmpty() && !condure_client_out_stream_specs.isEmpty() && !condure_client_in_specs.isEmpty()) && !(!zurl_out_specs.isEmpty() && !zurl_out_stream_specs.isEmpty() && !zurl_in_specs.isEmpty()))
 		{
-			log_error("must set zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
+			log_error("must set condure_client_out_specs, condure_client_out_stream_specs, and condure_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
 			emit q->quit();
 			return;
 		}
@@ -356,9 +358,18 @@ public:
 			config.serverInStreamSpecs = m2a_in_stream_specs;
 			config.serverOutSpecs = m2a_out_specs;
 		}
-		config.clientOutSpecs = zurl_out_specs;
-		config.clientOutStreamSpecs = zurl_out_stream_specs;
-		config.clientInSpecs = zurl_in_specs;
+		if(!services.contains("zurl") && (!condure_client_out_specs.isEmpty() || !condure_client_out_stream_specs.isEmpty() || !condure_client_in_specs.isEmpty()))
+		{
+			config.clientOutSpecs = condure_client_out_specs;
+			config.clientOutStreamSpecs = condure_client_out_stream_specs;
+			config.clientInSpecs = condure_client_in_specs;
+		}
+		else
+		{
+			config.clientOutSpecs = zurl_out_specs;
+			config.clientOutStreamSpecs = zurl_out_stream_specs;
+			config.clientInSpecs = zurl_in_specs;
+		}
 		config.inspectSpec = handler_inspect_spec;
 		config.acceptSpec = handler_accept_spec;
 		config.retryInSpec = handler_retry_in_spec;
@@ -397,6 +408,7 @@ public:
 		config.connectionsMax = clientMaxconn;
 		config.statsConnectionSend = statsConnectionSend;
 		config.statsConnectionTtl = statsConnectionTtl;
+		config.statsConnectionsMaxTtl = statsConnectionsMaxTtl;
 		config.statsReportInterval = statsReportInterval;
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
