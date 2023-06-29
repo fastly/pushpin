@@ -1729,7 +1729,7 @@ impl Client {
         let pool = Arc::new(ConnectionPool::new(pool_max));
 
         if !deny.is_empty() {
-            info!("blocking outgoing connections to: {:?}", deny);
+            info!("default policy: block outgoing connections to {:?}", deny);
         }
 
         let mut workers = Vec::new();
