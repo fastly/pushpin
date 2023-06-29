@@ -1,6 +1,11 @@
 Condure Changelog
 =================
 
+v. 1.10.0 (2023-06-29)
+
+  * Add support for outgoing connections.
+  * Ability to set mode/user/group when listening on Unix socket.
+
 v. 1.9.2 (2023-02-06)
 
   * Fix WebSocket compression with fragmented messages.
