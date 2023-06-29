@@ -1,27 +1,21 @@
 /*
- * Copyright (C) 2022 Fanout, Inc.
+ * Copyright (C) 2022-2023 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
- * $FANOUT_BEGIN_LICENSE:AGPL$
+ * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
- * Pushpin is free software: you can redistribute it and/or modify it under
- * the terms of the GNU Affero General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option)
- * any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * Pushpin is distributed in the hope that it will be useful, but WITHOUT ANY
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
- * more details.
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
- * Alternatively, Pushpin may be used under the terms of a commercial license,
- * where the commercial license agreement is provided with the software or
- * contained in a written agreement between you and Fanout. For further
- * information use the contact form at <https://fanout.io/enterprise/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  *
  * $FANOUT_END_LICENSE$
  */
@@ -29,6 +23,7 @@
 #ifndef STATS_H
 #define STATS_H
 
+#include <QtGlobal>
 #include <assert.h>
 #include <string.h>
 
@@ -73,7 +68,7 @@ public:
         _empty = true;
     }
 
-    int get(Counter c)
+    quint32 get(Counter c)
     {
         int index = (int)c;
 
@@ -82,7 +77,7 @@ public:
         return _values[index];
     }
 
-    void inc(Counter c, int count = 1)
+    void inc(Counter c, quint32 count = 1)
     {
         int index = (int)c;
 
@@ -97,7 +92,7 @@ public:
     void add(const Counters &other);
 
 private:
-    int _values[STATS_COUNTERS_MAX];
+    quint32 _values[STATS_COUNTERS_MAX];
     bool _empty;
 };
 

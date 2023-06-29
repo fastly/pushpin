@@ -1,7 +1,7 @@
 # Pushpin
 
 Website: https://pushpin.org/  
-Chat Room: [![Join the chat at https://gitter.im/fanout/pushpin](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/fanout/pushpin?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+Forum: https://community.fastly.com/c/pushpin/12
 
 Pushpin is a reverse proxy server written in C++ and Rust that makes it easy to implement WebSocket, HTTP streaming, and HTTP long-polling services. The project is unique among realtime push solutions in that it is designed to address the needs of API creators. Pushpin is transparent to clients and integrates easily into an API stack.
 
@@ -61,7 +61,7 @@ For more details, see the [HTTP streaming](https://pushpin.org/docs/usage/#http-
 
 ## Example using a library
 
-Using a library on the backend makes integration is even easier. Here's another HTTP streaming example, similar to the one shown above, except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](https://pushpin.org/docs/usage/#libraries).
+Using a library on the backend makes integration even easier. Here's another HTTP streaming example, similar to the one shown above, except using Pushpin's [Django library](https://github.com/fanout/django-grip). Please note that Pushpin is not Python/Django-specific and there are backend libraries for [other languages/frameworks, too](https://pushpin.org/docs/usage/#libraries).
 
 The Django library requires configuration in `settings.py`:
 ```python
@@ -241,7 +241,7 @@ Pushpin means to "pin" connections open for "pushing".
 
 ## License
 
-Pushpin is offered under the GNU AGPL. See the COPYING file.
+Pushpin is offered under the Apache License, Version 2.0. See the LICENSE file.
 
 ## Footnotes
 
