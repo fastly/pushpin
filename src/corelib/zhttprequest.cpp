@@ -528,7 +528,7 @@ public:
 		{
 			if(seq != inSeq)
 			{
-				log_warning("zhttp server: error id=%s received message out of sequence, canceling", id.data());
+				log_warning("zhttp server: error id=%s received message out of sequence (expected %d, got %d), canceling", id.data(), inSeq, seq);
 
 				// if this was not an error packet, send cancel
 				if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
@@ -666,7 +666,7 @@ public:
 		// if non-req mode, check sequencing
 		if(!doReq && seq != inSeq)
 		{
-			log_warning("zhttp client: error id=%s received message out of sequence, canceling", id.data());
+			log_warning("zhttp client: error id=%s received message out of sequence (expected %d, got %d), canceling", id.data(), inSeq, seq);
 
 			// if this was not an error packet, send cancel
 			if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
