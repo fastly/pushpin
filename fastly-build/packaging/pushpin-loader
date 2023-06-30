@@ -245,7 +245,7 @@ def make_routes(service, backend):
     routes = []
 
     if int(backend.get('loader-grip-enabled', '0')):
-        cond_opts = 'prefix=g:ck:{}:'.format(service_id)
+        cond_opts = 'prefix=g:ck:{}:,sig_iss=fastly:{}'.format(service_id, service_id)
         if service.aco_enabled:
             cond_opts += ',aco'
 
