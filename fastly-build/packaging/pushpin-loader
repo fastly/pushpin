@@ -59,7 +59,7 @@ def validate_backend(s):
             'backend name must have a length between 1 and 512 characters')
 
     for c in s:
-        if c not in '._- ' and c not in alphanumerics:
+        if c not in '._-* ' and c not in alphanumerics:
             raise ValidationError('backend name cannot contain: {}'.format(repr(c)))
 
     return s
