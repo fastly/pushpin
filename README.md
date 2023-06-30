@@ -1,3 +1,11 @@
+This repository contains Fastly's private fork of Pushpin.
+
+To learn about Pushpin in general, see https://pushpin.org/docs/about/
+
+For on-call, see [RUNBOOK](./RUNBOOK.md) and the [opslevel page](https://app.opslevel.com/services/pushpin).
+
+Original README below:
+
 # Pushpin
 
 Website: https://pushpin.org/  
