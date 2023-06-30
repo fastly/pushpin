@@ -412,16 +412,14 @@ public:
 
 		requestData.uri.setPath(QString::fromUtf8(path), QUrl::StrictMode);
 
-		if(!route.sigIss.isEmpty() && !route.sigKey.isNull())
-		{
+		sigIss = defaultSigIss;
+		sigKey = defaultSigKey;
+
+		if(!route.sigIss.isEmpty())
 			sigIss = route.sigIss;
+
+		if(!route.sigKey.isNull())
 			sigKey = route.sigKey;
-		}
-		else
-		{
-			sigIss = defaultSigIss;
-			sigKey = defaultSigKey;
-		}
 
 		pathBeg = route.pathBeg;
 		channelPrefix = route.prefix;
