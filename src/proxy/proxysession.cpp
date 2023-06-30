@@ -272,18 +272,14 @@ public:
 
 			requestData.uri.setPath(QString::fromUtf8(path), QUrl::StrictMode);
 
-			QByteArray sigIss;
-			Jwt::EncodingKey sigKey;
-			if(!route.sigIss.isEmpty() && !route.sigKey.isNull())
-			{
+			QByteArray sigIss = defaultSigIss;
+			Jwt::EncodingKey sigKey = defaultSigKey;
+
+			if(!route.sigIss.isEmpty())
 				sigIss = route.sigIss;
+
+			if(!route.sigKey.isNull())
 				sigKey = route.sigKey;
-			}
-			else
-			{
-				sigIss = defaultSigIss;
-				sigKey = defaultSigKey;
-			}
 
 			targets = route.targets;
 
@@ -1256,18 +1252,14 @@ public slots:
 		{
 			assert(!acceptRequest);
 
-			QByteArray sigIss;
-			Jwt::EncodingKey sigKey;
-			if(!route.sigIss.isEmpty() && !route.sigKey.isNull())
-			{
+			QByteArray sigIss = defaultSigIss;
+			Jwt::EncodingKey sigKey = defaultSigKey;
+
+			if(!route.sigIss.isEmpty())
 				sigIss = route.sigIss;
+
+			if(!route.sigKey.isNull())
 				sigKey = route.sigKey;
-			}
-			else
-			{
-				sigIss = defaultSigIss;
-				sigKey = defaultSigKey;
-			}
 
 			acceptResponseData.body = responseBody.take();
 
