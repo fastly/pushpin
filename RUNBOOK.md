@@ -43,6 +43,9 @@ journalctl -u pushpin --since '2022-04-03 14:00'
 # View logs using systemctl
 systemctl status pushpin
 
+# View varnish logs (currently loader only)
+varnishlog -c -o rxurl /config/service rxheader "User-Agent: pushpin*"
+
 # View hardware logs
 dmesg
 ```
