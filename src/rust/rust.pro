@@ -18,9 +18,17 @@ CONFIG(debug, debug|release) {
 
 rust_build.commands = cd "$$root_dir" && cargo build --offline $$cargo_flags
 
+condure_build.target = $$target_dir/condure
+condure_build.depends = rust_build
+condure_build.commands = @:
+
 publish_build.target = $$target_dir/pushpin-publish
 publish_build.depends = rust_build
 publish_build.commands = @:
+
+condure_bin.target = $$bin_dir/condure
+condure_bin.depends = condure_build
+condure_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/condure $$bin_dir/condure
 
 publish_bin.target = $$bin_dir/pushpin-publish
 publish_bin.depends = publish_build
@@ -28,15 +36,19 @@ publish_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-publish 
 
 QMAKE_EXTRA_TARGETS += \
 	rust_build \
+	condure_build \
 	publish_build \
+	condure_bin \
 	publish_bin
 
 PRE_TARGETDEPS += \
+	$$bin_dir/condure
 	$$bin_dir/pushpin-publish
 
 unix:!isEmpty(BINDIR) {
 	binfiles.path = $$BINDIR
 	binfiles.files = \
+		$$bin_dir/condure
 		$$bin_dir/pushpin-publish
 	binfiles.CONFIG += no_check_exist executable
 
