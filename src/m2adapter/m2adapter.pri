@@ -1,12 +1,10 @@
 CORE_DIR = $$PWD/../corelib
 QZMQ_DIR = $$PWD/../corelib/qzmq
-COMMON_DIR = $$PWD/../corelib/common
 
 INCLUDEPATH += $$CORE_DIR
 
 INCLUDEPATH += $$QZMQ_DIR/src
 
-INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
 
 HEADERS += \

@@ -23,7 +23,7 @@
 #ifndef HTTPREQUESTDATA_H
 #define HTTPREQUESTDATA_H
 
-#include "httpheaders.h"
+#include "../httpheaders.h"
 #include <QUrl>
 
 class HttpRequestData

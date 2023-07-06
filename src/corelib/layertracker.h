@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2012-2013 Fanout, Inc.
- *
- * This file is part of Pushpin.
+ * Copyright (C) 2014 Fanout, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -20,23 +18,32 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef HTTPRESPONSEDATA_H
-#define HTTPRESPONSEDATA_H
+#ifndef LAYERTRACKER_H
+#define LAYERTRACKER_H
 
-#include "../httpheaders.h"
+#include <QList>
 
-class HttpResponseData
+class LayerTracker
 {
 public:
-	int code;
-	QByteArray reason;
-	HttpHeaders headers;
-	QByteArray body;
+	LayerTracker();
 
-	HttpResponseData() :
-		code(-1)
+	void reset();
+
+	void addPlain(int plain);
+	void specifyEncoded(int encoded, int plain);
+	int finished(int encoded);
+
+private:
+	class Item
 	{
-	}
+	public:
+		int plain;
+		int encoded;
+	};
+
+	int plain_;
+	QList<Item> items_;
 };
 
 #endif
