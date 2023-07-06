@@ -20,11 +20,11 @@
  * $FANOUT_END_LICENSE$
  */
 
-pub mod app;
 pub mod arena;
 pub mod buffer;
 pub mod channel;
 pub mod client;
+pub mod condure;
 pub mod connection;
 pub mod event;
 pub mod executor;
@@ -51,16 +51,13 @@ pub mod zhttppacket;
 pub mod zhttpsocket;
 pub mod zmq;
 
-use app::Config;
-use log::info;
-use std::error::Error;
 use std::ffi::CString;
 use std::future::Future;
 use std::io;
 use std::mem;
 use std::ops::Deref;
 use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::ptr;
 use std::task::{Context, Poll};
@@ -246,25 +243,21 @@ pub fn can_move_mio_sockets_between_threads() -> bool {
     cfg!(unix)
 }
 
-pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
-    info!("starting...");
+pub enum ListenSpec {
+    Tcp {
+        addr: std::net::SocketAddr,
+        tls: bool,
+        default_cert: Option<String>,
+    },
+    Local {
+        path: PathBuf,
+        mode: Option<u32>,
+        user: Option<String>,
+        group: Option<String>,
+    },
+}
 
-    {
-        let a = match app::App::new(config) {
-            Ok(a) => a,
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-
-        info!("started");
-
-        a.wait_for_term();
-
-        info!("stopping...");
-    }
-
-    info!("stopped");
-
-    Ok(())
+pub struct ListenConfig {
+    pub spec: ListenSpec,
+    pub stream: bool,
 }

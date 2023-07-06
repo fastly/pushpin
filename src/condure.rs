@@ -19,12 +19,14 @@ use crate::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WO
 use crate::websocket;
 use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
+use crate::ListenConfig;
 use ipnet::IpNet;
 use log::info;
 use signal_hook;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
 use std::cmp;
+use std::error::Error;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -62,25 +64,6 @@ fn make_specs(base: &str, is_server: bool) -> Result<(String, String, String), S
     } else {
         Err("base spec must be ipc or tcp".into())
     }
-}
-
-pub enum ListenSpec {
-    Tcp {
-        addr: std::net::SocketAddr,
-        tls: bool,
-        default_cert: Option<String>,
-    },
-    Local {
-        path: PathBuf,
-        mode: Option<u32>,
-        user: Option<String>,
-        group: Option<String>,
-    },
-}
-
-pub struct ListenConfig {
-    pub spec: ListenSpec,
-    pub stream: bool,
 }
 
 pub struct Config {
@@ -388,4 +371,27 @@ impl App {
 
         out
     }
+}
+
+pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
+    info!("starting...");
+
+    {
+        let a = match App::new(config) {
+            Ok(a) => a,
+            Err(e) => {
+                return Err(e.into());
+            }
+        };
+
+        info!("started");
+
+        a.wait_for_term();
+
+        info!("stopping...");
+    }
+
+    info!("stopped");
+
+    Ok(())
 }

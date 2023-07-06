@@ -2586,7 +2586,7 @@ pub mod tests {
 
         assert_eq!(batch.capacity(), 3);
         assert_eq!(batch.len(), 0);
-        assert_eq!(batch.last_group_ckeys(), &[]);
+        assert!(batch.last_group_ckeys().is_empty());
 
         assert!(batch.add(b"addr-a", 1).is_ok());
         assert!(batch.add(b"addr-a", 2).is_ok());

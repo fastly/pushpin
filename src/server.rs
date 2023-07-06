@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use crate::app::{ListenConfig, ListenSpec};
 use crate::arena;
 use crate::buffer::TmpBuffer;
 use crate::channel;
@@ -40,6 +39,7 @@ use crate::zhttppacket;
 use crate::zhttpsocket;
 use crate::zmq::SpecInfo;
 use crate::{pin, set_group, set_user};
+use crate::{ListenConfig, ListenSpec};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
 use mio::net::{TcpListener, TcpStream, UnixListener};
@@ -2944,7 +2944,7 @@ pub mod tests {
 
         assert_eq!(batch.capacity(), 3);
         assert_eq!(batch.len(), 0);
-        assert_eq!(batch.last_group_ckeys(), &[]);
+        assert!(batch.last_group_ckeys().is_empty());
 
         assert!(batch.add(b"addr-a", 1).is_ok());
         assert!(batch.add(b"addr-a", 2).is_ok());

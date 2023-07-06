@@ -15,8 +15,9 @@
  */
 
 use clap::{crate_version, Arg, ArgAction, Command};
-use condure::app;
 use log::{error, Level, LevelFilter, Metadata, Record};
+use pushpin::condure::{run, App, Config};
+use pushpin::{ListenConfig, ListenSpec};
 use std::error::Error;
 use std::io;
 use std::mem;
@@ -143,7 +144,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         return Err("total maxconn is too large".into());
     }
 
-    let mut config = app::Config {
+    let mut config = Config {
         instance_id: args.id,
         workers: args.workers,
         req_maxconn: args.req_maxconn,
@@ -203,7 +204,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         }
 
         let spec = if local {
-            app::ListenSpec::Local {
+            ListenSpec::Local {
                 path: PathBuf::from(part1),
                 mode,
                 user,
@@ -233,14 +234,14 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
                 }
             };
 
-            app::ListenSpec::Tcp {
+            ListenSpec::Tcp {
                 addr,
                 tls,
                 default_cert,
             }
         };
 
-        config.listen.push(app::ListenConfig { spec, stream });
+        config.listen.push(ListenConfig { spec, stream });
     }
 
     if args.deny_out_internal {
@@ -249,7 +250,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    condure::run(&config)
+    run(&config)
 }
 
 fn main() {
@@ -451,7 +452,7 @@ fn main() {
     log::set_max_level(level);
 
     if *matches.get_one("sizes").unwrap() {
-        for (name, size) in condure::app::App::sizes() {
+        for (name, size) in App::sizes() {
             println!("{}: {} bytes", name, size);
         }
         process::exit(0);
