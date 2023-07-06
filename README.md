@@ -98,63 +98,56 @@ publish('test', HttpStreamFormat('hello there\n'))
 
 ## Example using WebSockets
 
-Pushpin supports WebSockets by converting connection activity/messages into HTTP requests and sending them to the backend. For this example, we'll use Pushpin's [Express library](https://github.com/fanout/express-grip). As before, please note that Pushpin is not Node/Express-specific and there are backend libraries for [other languages/frameworks, too](https://pushpin.org/docs/usage/#libraries).
+Pushpin supports WebSockets by converting connection activity/messages into HTTP requests and sending them to the backend. For this example, we'll use Pushpin's [Express library](https://github.com/fanout/js-serve-grip). As before, please note that Pushpin is not Node/Express-specific and there are backend libraries for [other languages/frameworks, too](https://pushpin.org/docs/usage/#libraries).
 
-The Express library requires configuration and setting up middleware handlers before and after any endpoints:
+The Express library requires configuration and setting up a middleware handler:
 ```javascript
-var express = require('express');
-var grip = require('grip');
-var expressGrip = require('express-grip');
-
-expressGrip.configure({
-gripProxies: [{'control_uri': 'http://localhost:5561', 'key': 'changeme'}]
-});
+const express = require('express');
+const { ServeGrip } = require('@fanoutio/serve-grip');
 
 var app = express();
 
-// Add the pre-handler middleware to the front of the stack
-app.use(expressGrip.preHandlerGripMiddleware);
-
-// put your normal endpoint handlers here, for example:
-app.get('/hello', function(req, res, next) {
-res.send('hello world\n');
-
-// next() must be called for the post-handler middleware to execute
-next();
+// Instantiate the middleware and register it with Express
+const serveGrip = new ServeGrip({
+    grip: { 'control_uri': 'http://localhost:5561', 'key': 'changeme' }
 });
+app.use(serveGrip);
 
-// Add the post-handler middleware to the back of the stack
-app.use(expressGrip.postHandlerGripMiddleware);
+// Instantiate the publisher to use from your code to publish messages
+const publisher = serveGrip.getPublisher();
+
+app.get('/hello', (req, res) => {
+    res.send('hello world\n');
+});
 ```
-
-Because of the post-handler middleware, it's important that you call `next()` at the end of your handlers.
 
 With that structure in place, here's an example of a WebSocket endpoint:
 ```javascript
-app.post('/websocket', function(req, res, next) {
-var ws = expressGrip.getWsContext(res);
+const { WebSocketMessageFormat } = require( '@fanoutio/grip' );
 
-// If this is a new connection, accept it and subscribe it to a channel
-if (ws.isOpening()) {
-ws.accept();
-ws.subscribe('all');
-}
+app.post('/websocket', async (req, res) => {
+    const { wsContext } = req.grip;
 
-while (ws.canRecv()) {
-var message = ws.recv();
-
-// If return value is null then connection is closed
-if (message == null) {
-    ws.close();
-    break;
-}
-
-// broadcast the message to everyone connected
-expressGrip.publish('all', new grip.WebSocketMessageFormat(message));
-}
-
-// next() must be called for the post-handler middleware to execute
-next();
+    // If this is a new connection, accept it and subscribe it to a channel
+    if (wsContext.isOpening()) {
+        wsContext.accept();
+        wsContext.subscribe('all');
+    }
+    
+    while (wsContext.canRecv()) {
+        var message = wsContext.recv();
+        
+        // If return value is null then connection is closed
+        if (message == null) {
+            wsContext.close();
+            break;
+        }
+        
+        // broadcast the message to everyone connected
+        await publisher.publishFormats('all', WebSocketMessageFormat(message));
+    }
+    
+    res.end();
 });
 ```
 
@@ -162,7 +155,7 @@ The above code binds all incoming connections to a channel called `all`. Any rec
 
 What's particularly noteworthy is that the above endpoint is stateless. The app doesn't keep track of connections, and the handler code only runs whenever messages arrive. Restarting the app won't disconnect clients.
 
-The `while` loop is deceptive. It looks like it's looping for the lifetime of the WebSocket connection, but what it's really doing is looping through a batch of WebSocket messages that was just received via HTTP. Often this will be one message, and so the loop performs one iteration and then exits. Similarly, the `ws` object only exists for the duration of the handler invocation, rather than for the lifetime of the connection as you might expect. It may look like socket code, but it's all an illusion. :tophat:
+The `while` loop is deceptive. It looks like it's looping for the lifetime of the WebSocket connection, but what it's really doing is looping through a batch of WebSocket messages that was just received via HTTP. Often this will be one message, and so the loop performs one iteration and then exits. Similarly, the `wsContext` object only exists for the duration of the handler invocation, rather than for the lifetime of the connection as you might expect. It may look like socket code, but it's all an illusion. :tophat:
 
 For details on the underlying protocol conversion, see the [WebSocket-Over-HTTP Protocol spec](https://pushpin.org/docs/protocols/websocket-over-http/).
 
