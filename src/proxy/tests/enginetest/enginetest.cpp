@@ -458,6 +458,10 @@ private slots:
 		log_debug("accept: %s", qPrintable(TnetString::variantToString(v, -1)));
 
 		QVariantHash vreq = v.toHash();
+
+		if(vreq["method"].toString() != "accept")
+			return;
+
 		QVariantHash vaccept = vreq["args"].toHash();
 		QVariantHash vresponse = vaccept["response"].toHash();
 
