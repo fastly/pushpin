@@ -10,7 +10,7 @@ Pushpin is a reverse proxy server written in C++ and Rust that makes it easy to 
 Pushpin is placed in the network path between the backend and any clients:
 
 <p align="center">
-  <img src="https://pushpin.org/image/pushpin-abstract.png" alt="pushpin-abstract"/>
+<img src="https://pushpin.org/image/pushpin-abstract.png" alt="pushpin-abstract"/>
 </p>
 
 Pushpin communicates with backend web applications using regular, short-lived HTTP requests. This allows backend applications to be written in any language and use any webserver. There are two main integration points:
@@ -51,8 +51,8 @@ Data can then be pushed to the client by publishing data on the `test` channel:
 
 ```bash
 curl -d '{ "items": [ { "channel": "test", "formats": { "http-stream": \
-    { "content": "hello there\n" } } } ] }' \
-    http://localhost:5561/publish
+{ "content": "hello there\n" } } } ] }' \
+http://localhost:5561/publish
 ```
 
 The client would then see the line "hello there" appended to the response stream. Ta-da, transparent realtime push!
@@ -66,8 +66,8 @@ Using a library on the backend makes integration even easier. Here's another HTT
 The Django library requires configuration in `settings.py`:
 ```python
 MIDDLEWARE_CLASSES = (
-    'django_grip.GripMiddleware',
-    ...
+'django_grip.GripMiddleware',
+...
 )
 
 GRIP_PROXIES = [{'control_uri': 'http://localhost:5561'}]
@@ -79,11 +79,11 @@ from django.http import HttpResponse
 from django_grip import set_hold_stream
 
 def myendpoint(request):
-    if request.method == 'GET':
-        # subscribe every incoming request to a channel in stream mode
-        set_hold_stream(request, 'test')
-        return HttpResponse('welcome to the stream\n', content_type='text/plain')
-    ...
+if request.method == 'GET':
+# subscribe every incoming request to a channel in stream mode
+set_hold_stream(request, 'test')
+return HttpResponse('welcome to the stream\n', content_type='text/plain')
+...
 ```
 
 What happens here is the `set_hold_stream()` method flags the request as needing to turn into a stream, bound to channel `test`. The middleware will see this and add the necessary `Grip-Hold` and `Grip-Channel` headers to the response.
@@ -107,7 +107,7 @@ var grip = require('grip');
 var expressGrip = require('express-grip');
 
 expressGrip.configure({
-    gripProxies: [{'control_uri': 'http://localhost:5561', 'key': 'changeme'}]
+gripProxies: [{'control_uri': 'http://localhost:5561', 'key': 'changeme'}]
 });
 
 var app = express();
@@ -117,10 +117,10 @@ app.use(expressGrip.preHandlerGripMiddleware);
 
 // put your normal endpoint handlers here, for example:
 app.get('/hello', function(req, res, next) {
-    res.send('hello world\n');
+res.send('hello world\n');
 
-    // next() must be called for the post-handler middleware to execute
-    next();
+// next() must be called for the post-handler middleware to execute
+next();
 });
 
 // Add the post-handler middleware to the back of the stack
@@ -132,29 +132,29 @@ Because of the post-handler middleware, it's important that you call `next()` at
 With that structure in place, here's an example of a WebSocket endpoint:
 ```javascript
 app.post('/websocket', function(req, res, next) {
-    var ws = expressGrip.getWsContext(res);
+var ws = expressGrip.getWsContext(res);
 
-    // If this is a new connection, accept it and subscribe it to a channel
-    if (ws.isOpening()) {
-        ws.accept();
-        ws.subscribe('all');
-    }
+// If this is a new connection, accept it and subscribe it to a channel
+if (ws.isOpening()) {
+ws.accept();
+ws.subscribe('all');
+}
 
-    while (ws.canRecv()) {
-        var message = ws.recv();
+while (ws.canRecv()) {
+var message = ws.recv();
 
-        // If return value is null then connection is closed
-        if (message == null) {
-            ws.close();
-            break;
-        }
+// If return value is null then connection is closed
+if (message == null) {
+    ws.close();
+    break;
+}
 
-        // broadcast the message to everyone connected
-        expressGrip.publish('all', new grip.WebSocketMessageFormat(message));
-    }
+// broadcast the message to everyone connected
+expressGrip.publish('all', new grip.WebSocketMessageFormat(message));
+}
 
-    // next() must be called for the post-handler middleware to execute
-    next();
+// next() must be called for the post-handler middleware to execute
+next();
 });
 ```
 
@@ -187,21 +187,21 @@ sock = zmq_context.socket(zmq.REP)
 sock.connect('tcp://127.0.0.1:10000')
 
 while True:
-    req = tnetstring.loads(sock.recv()[1:])
+req = tnetstring.loads(sock.recv()[1:])
 
-    resp = {
-        'id': req['id'],
-        'code': 200,
-        'reason': 'OK',
-        'headers': [
-            ['Grip-Hold', 'stream'],
-            ['Grip-Channel', 'test'],
-            ['Content-Type', 'text/plain']
-        ],
-        'body': 'welcome to the stream\n'
-    }
+resp = {
+'id': req['id'],
+'code': 200,
+'reason': 'OK',
+'headers': [
+    ['Grip-Hold', 'stream'],
+    ['Grip-Channel', 'test'],
+    ['Content-Type', 'text/plain']
+],
+'body': 'welcome to the stream\n'
+}
 
-    sock.send('T' + tnetstring.dumps(resp))
+sock.send('T' + tnetstring.dumps(resp))
 ```
 
 ## Why another realtime solution?

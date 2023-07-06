@@ -2,6 +2,10 @@
 name = "pushpin"
 version = "1.38.0-dev"
 authors = ["Justin Karneges <jkarneges@fastly.com>"]
+description = "Reverse proxy for realtime web services"
+repository = "https://github.com/fastly/pushpin"
+readme = "README.md"
+license = "Apache-2.0"
 edition = "2018"
 
 [profile.dev]
@@ -11,19 +15,41 @@ panic = "abort"
 panic = "abort"
 
 [dependencies]
-base64 = "0.12"
-clap = { version = "4.3", features = ["string", "wrap_help"] }
+arrayvec = "0.7"
+base64 = "0.13"
+clap = { version = "4.3", features = ["cargo", "string", "wrap_help"] }
+httparse = "1.7"
+ipnet = "2"
 jsonwebtoken = "8"
 libc = "0.2"
 log = "0.4"
+miniz_oxide = "0.6"
+mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
+openssl = "0.10"
+paste = "1.0"
 rustls = "0.19"
 rustls-native-certs = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha1 = "0.10"
+signal-hook = "0.3"
 slab = "0.4"
+socket2 = "0.4"
 thiserror = "1.0"
+time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+url = "2.3"
 webpki = "0.21"
 zmq = "0.9"
 
-[lib]
-crate-type = ["rlib", "staticlib"]
+[dev-dependencies]
+criterion = "0.5"
+env_logger = { version = "0.9", default-features = false }
+test-log = "0.2"
+
+[[bench]]
+name = "server"
+harness = false
+
+[[bench]]
+name = "client"
+harness = false
