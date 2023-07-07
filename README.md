@@ -133,20 +133,20 @@ app.post('/websocket', async (req, res) => {
         wsContext.accept();
         wsContext.subscribe('all');
     }
-    
+
     while (wsContext.canRecv()) {
         var message = wsContext.recv();
-        
+
         // If return value is null then connection is closed
         if (message == null) {
             wsContext.close();
             break;
         }
-        
+
         // broadcast the message to everyone connected
         await publisher.publishFormats('all', WebSocketMessageFormat(message));
     }
-    
+
     res.end();
 });
 ```
