@@ -4,36 +4,34 @@ QMAKE_LFLAGS += $$(LDFLAGS)
 
 SRC_DIR = $$PWD/..
 QZMQ_DIR = $$SRC_DIR/qzmq
-COMMON_DIR = $$SRC_DIR/common
 RUST_DIR = $$SRC_DIR/../rust
 
 INCLUDEPATH += $$QZMQ_DIR/src
 include($$QZMQ_DIR/src/src.pri)
 
-INCLUDEPATH += $$COMMON_DIR
 DEFINES += NO_IRISNET
-HEADERS += $$COMMON_DIR/processquit.h
-SOURCES += $$COMMON_DIR/processquit.cpp
+HEADERS += $$SRC_DIR/processquit.h
+SOURCES += $$SRC_DIR/processquit.cpp
 
 INCLUDEPATH += $$RUST_DIR/include
 
 HEADERS += \
-	$$COMMON_DIR/tnetstring.h \
-	$$COMMON_DIR/httpheaders.h \
-	$$COMMON_DIR/zhttprequestpacket.h \
-	$$COMMON_DIR/zhttpresponsepacket.h \
-	$$COMMON_DIR/log.h \
-	$$COMMON_DIR/bufferlist.h \
-	$$COMMON_DIR/layertracker.h
+	$$SRC_DIR/tnetstring.h \
+	$$SRC_DIR/httpheaders.h \
+	$$SRC_DIR/zhttprequestpacket.h \
+	$$SRC_DIR/zhttpresponsepacket.h \
+	$$SRC_DIR/log.h \
+	$$SRC_DIR/bufferlist.h \
+	$$SRC_DIR/layertracker.h
 
 SOURCES += \
-	$$COMMON_DIR/tnetstring.cpp \
-	$$COMMON_DIR/httpheaders.cpp \
-	$$COMMON_DIR/zhttprequestpacket.cpp \
-	$$COMMON_DIR/zhttpresponsepacket.cpp \
-	$$COMMON_DIR/log.cpp \
-	$$COMMON_DIR/bufferlist.cpp \
-	$$COMMON_DIR/layertracker.cpp
+	$$SRC_DIR/tnetstring.cpp \
+	$$SRC_DIR/httpheaders.cpp \
+	$$SRC_DIR/zhttprequestpacket.cpp \
+	$$SRC_DIR/zhttpresponsepacket.cpp \
+	$$SRC_DIR/log.cpp \
+	$$SRC_DIR/bufferlist.cpp \
+	$$SRC_DIR/layertracker.cpp
 
 HEADERS += \
 	$$SRC_DIR/packet/httprequestdata.h \

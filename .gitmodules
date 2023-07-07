@@ -1,6 +1,3 @@
-[submodule "common"]
-	path = src/corelib/common
-	url = https://github.com/fanout/common.git
 [submodule "qzmq"]
 	path = src/corelib/qzmq
 	url = https://github.com/jkarneges/qzmq.git
