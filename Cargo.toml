@@ -61,6 +61,10 @@ toml = "^0.5.8"
 tracing = "^0.1.26"
 tracing-subscriber = "^0.3"
 
+# for seccomp
+nix = "^0.22.0"
+memoffset = "^0.6.4"
+
 [dev-dependencies]
 criterion = "0.5"
 env_logger = { version = "0.9", default-features = false }
