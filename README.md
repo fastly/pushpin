@@ -3,7 +3,7 @@
 Website: https://pushpin.org/  
 Forum: https://community.fastly.com/c/pushpin/12
 
-Pushpin is a reverse proxy server written in C++ and Rust that makes it easy to implement WebSocket, HTTP streaming, and HTTP long-polling services. The project is unique among realtime push solutions in that it is designed to address the needs of API creators. Pushpin is transparent to clients and integrates easily into an API stack.
+Pushpin is a reverse proxy server written in Rust & C++ that makes it easy to implement WebSocket, HTTP streaming, and HTTP long-polling services. The project is unique among realtime push solutions in that it is designed to address the needs of API creators. Pushpin is transparent to clients and integrates easily into an API stack.
 
 ## How it works
 
