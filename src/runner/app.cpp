@@ -452,6 +452,11 @@ public:
 		if(fi.isFile())
 			m2aBin = fi.canonicalFilePath();
 
+		QString condureBin = "condure";
+		fi = QFileInfo(QDir(exeDir).filePath("bin/condure"));
+		if(fi.isFile())
+			condureBin = fi.canonicalFilePath();
+
 		QString proxyBin = "pushpin-proxy";
 		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-proxy"));
 		if(fi.isFile())
@@ -570,10 +575,6 @@ public:
 
 		if(serviceNames.contains("condure"))
 		{
-			QString condureBin = "condure";
-			if(settings.contains("runner/condure_bin"))
-				condureBin = settings.value("runner/condure_bin").toString();
-
 			QString certsDir = QDir(configDir).filePath("certs");
 
 			bool useClient = false;

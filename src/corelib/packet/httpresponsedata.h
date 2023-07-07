@@ -23,7 +23,7 @@
 #ifndef HTTPRESPONSEDATA_H
 #define HTTPRESPONSEDATA_H
 
-#include "httpheaders.h"
+#include "../httpheaders.h"
 
 class HttpResponseData
 {

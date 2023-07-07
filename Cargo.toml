@@ -2,6 +2,10 @@
 name = "pushpin"
 version = "1.38.0-dev"
 authors = ["Justin Karneges <jkarneges@fastly.com>"]
+description = "Reverse proxy for realtime web services"
+repository = "https://github.com/fastly/pushpin"
+readme = "README.md"
+license = "Apache-2.0"
 edition = "2018"
 
 [profile.dev]
@@ -10,18 +14,33 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 
+[lib]
+crate-type = ["rlib", "staticlib"]
+
 [dependencies]
-base64 = "0.12"
-clap = { version = "4.3", features = ["string", "wrap_help"] }
+arrayvec = "0.7"
+base64 = "0.13"
+clap = { version = "4.3", features = ["cargo", "string", "wrap_help"] }
+httparse = "1.7"
+ipnet = "2"
 jsonwebtoken = "8"
 libc = "0.2"
 log = "0.4"
+miniz_oxide = "0.6"
+mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
+openssl = "0.10"
+paste = "1.0"
 rustls = "0.19"
 rustls-native-certs = "0.5"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
+sha1 = "0.10"
+signal-hook = "0.3"
 slab = "0.4"
+socket2 = "0.4"
 thiserror = "1.0"
+time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+url = "2.3"
 webpki = "0.21"
 zmq = "0.9"
 
@@ -32,7 +51,6 @@ http = "^0.2.7"
 hyper = { version = "^0.14.11", features = ["full"] }
 hyper-openssl = "0.9.1"
 lazy_static = "^1.4.0"
-openssl = "^0.10.38"
 pin-project = "1.0.8"
 prometheus = "^0.12.0"
 prometheus-utils = "^0.6.1"
@@ -43,12 +61,25 @@ toml = "^0.5.8"
 tracing = "^0.1.26"
 tracing-subscriber = "^0.3"
 
-# for stats-emitter
+# for seccomp
+nix = "^0.22.0"
+memoffset = "^0.6.4"
+
 [dev-dependencies]
+criterion = "0.5"
+env_logger = { version = "0.9", default-features = false }
+test-log = "0.2"
+
+# for stats-emitter
 bincode = "^1.3.3"
 maplit = "^1.0.2"
 tempdir = "^0.3.7"
 wiremock = "^0.5.6"
 
-[lib]
-crate-type = ["rlib", "staticlib"]
+[[bench]]
+name = "server"
+harness = false
+
+[[bench]]
+name = "client"
+harness = false
