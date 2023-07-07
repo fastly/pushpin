@@ -42,13 +42,13 @@ QMAKE_EXTRA_TARGETS += \
 	publish_bin
 
 PRE_TARGETDEPS += \
-	$$bin_dir/condure
+	$$bin_dir/condure \
 	$$bin_dir/pushpin-publish
 
 unix:!isEmpty(BINDIR) {
 	binfiles.path = $$BINDIR
 	binfiles.files = \
-		$$bin_dir/condure
+		$$bin_dir/condure \
 		$$bin_dir/pushpin-publish
 	binfiles.CONFIG += no_check_exist executable
 
