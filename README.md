@@ -10,7 +10,7 @@ Pushpin is a reverse proxy server written in C++ and Rust that makes it easy to 
 Pushpin is placed in the network path between the backend and any clients:
 
 <p align="center">
-<img src="https://pushpin.org/image/pushpin-abstract.png" alt="pushpin-abstract"/>
+  <img src="https://pushpin.org/image/pushpin-abstract.png" alt="pushpin-abstract"/>
 </p>
 
 Pushpin communicates with backend web applications using regular, short-lived HTTP requests. This allows backend applications to be written in any language and use any webserver. There are two main integration points:
@@ -51,8 +51,8 @@ Data can then be pushed to the client by publishing data on the `test` channel:
 
 ```bash
 curl -d '{ "items": [ { "channel": "test", "formats": { "http-stream": \
-{ "content": "hello there\n" } } } ] }' \
-http://localhost:5561/publish
+    { "content": "hello there\n" } } } ] }' \
+    http://localhost:5561/publish
 ```
 
 The client would then see the line "hello there" appended to the response stream. Ta-da, transparent realtime push!
@@ -66,8 +66,8 @@ Using a library on the backend makes integration even easier. Here's another HTT
 The Django library requires configuration in `settings.py`:
 ```python
 MIDDLEWARE_CLASSES = (
-'django_grip.GripMiddleware',
-...
+    'django_grip.GripMiddleware',
+    ...
 )
 
 GRIP_PROXIES = [{'control_uri': 'http://localhost:5561'}]
@@ -79,11 +79,11 @@ from django.http import HttpResponse
 from django_grip import set_hold_stream
 
 def myendpoint(request):
-if request.method == 'GET':
-# subscribe every incoming request to a channel in stream mode
-set_hold_stream(request, 'test')
-return HttpResponse('welcome to the stream\n', content_type='text/plain')
-...
+    if request.method == 'GET':
+        # subscribe every incoming request to a channel in stream mode
+        set_hold_stream(request, 'test')
+        return HttpResponse('welcome to the stream\n', content_type='text/plain')
+    ...
 ```
 
 What happens here is the `set_hold_stream()` method flags the request as needing to turn into a stream, bound to channel `test`. The middleware will see this and add the necessary `Grip-Hold` and `Grip-Channel` headers to the response.
@@ -180,21 +180,21 @@ sock = zmq_context.socket(zmq.REP)
 sock.connect('tcp://127.0.0.1:10000')
 
 while True:
-req = tnetstring.loads(sock.recv()[1:])
+    req = tnetstring.loads(sock.recv()[1:])
 
-resp = {
-'id': req['id'],
-'code': 200,
-'reason': 'OK',
-'headers': [
-    ['Grip-Hold', 'stream'],
-    ['Grip-Channel', 'test'],
-    ['Content-Type', 'text/plain']
-],
-'body': 'welcome to the stream\n'
-}
+    resp = {
+        'id': req['id'],
+        'code': 200,
+        'reason': 'OK',
+        'headers': [
+            ['Grip-Hold', 'stream'],
+            ['Grip-Channel', 'test'],
+            ['Content-Type', 'text/plain']
+        ],
+        'body': 'welcome to the stream\n'
+    }
 
-sock.send('T' + tnetstring.dumps(resp))
+    sock.send('T' + tnetstring.dumps(resp))
 ```
 
 ## Why another realtime solution?
