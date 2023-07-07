@@ -34,7 +34,6 @@ install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-sig-key.pe
 rm -rf "${secrets_tmp_dir}"
 
 cp /opt/fst-pushpin/etc/pushpin.service /etc/systemd/system
-cp /opt/fst-pushpin/etc/pushpin-socat.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-condure-in.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-condure-out.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-proxy.service /etc/systemd/system
@@ -53,4 +52,7 @@ if [ "X$status" = Xrunning -o "X$status" = Xdegraded ]; then
   # 2) cachectl will make sure that the service is restarted when the
   #    node is enabled
   systemctl restart pushpin || true
+
+  # stop old socat service if present
+  systemctl stop pushpin-socat || true
 fi
