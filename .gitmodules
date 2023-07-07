@@ -4,6 +4,3 @@
 [submodule "qzmq"]
 	path = src/corelib/qzmq
 	url = https://github.com/jkarneges/qzmq.git
-[submodule "condure"]
-	path = condure
-	url = git@github.com:fastly/fst-condure
