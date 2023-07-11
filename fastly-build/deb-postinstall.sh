@@ -12,7 +12,7 @@ chown pushpin:pushpin /var/run/pushpin
 chown pushpin:pushpin-listener /opt/fst-pushpin/bin/pushpin-healthcheck
 chmod g+s /opt/fst-pushpin/bin/pushpin-healthcheck
 
-SECRETS="pushpin-nsq-client-cert.pem pushpin-nsq-client-key.pem pushpin-nsq-ca-cert.pem pushpin-sig-key.pem"
+SECRETS="pushpin-nsq-client-cert.pem pushpin-nsq-client-key.pem pushpin-nsq-ca-cert.pem pushpin-sig-key.pem fanout-message-key-a fanout-staging-message-key-a"
 
 secrets_tmp_dir=/etc/pushpin/private/tmp
 install -d -o root -g root -m 0700 "${secrets_tmp_dir}"
@@ -26,10 +26,13 @@ if [ -r /etc/chef/client.pem -a -x /opt/chef/embedded/bin/ruby ]; then
   /opt/fst-executed/bin/get-from-chef-vault --vault secrets --item cache_public --dest "${secrets_tmp_dir}" $SECRETS && secrets_src_dir="${secrets_tmp_dir}" || echo >&2 'WARNING: chef-vault fetch failed.'
 fi
 
-install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-cert.pem /etc/pushpin/private/nsq-client-cert.pem || ${on_secrets_fail}
-install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-key.pem  /etc/pushpin/private/nsq-client-key.pem  || ${on_secrets_fail}
-install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-ca-cert.pem     /etc/pushpin/private/nsq-ca-cert.pem     || ${on_secrets_fail}
-install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-sig-key.pem         /etc/pushpin/private/sig-key.pem         || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-cert.pem  /etc/pushpin/private/nsq-client-cert.pem   || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-key.pem   /etc/pushpin/private/nsq-client-key.pem    || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-ca-cert.pem      /etc/pushpin/private/nsq-ca-cert.pem       || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-sig-key.pem          /etc/pushpin/private/sig-key.pem           || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/fanout-message-key-a         /etc/pushpin/private/message-key-a         || ${on_secrets_fail}
+install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/fanout-staging-message-key-a /etc/pushpin/private/staging-message-key-a || ${on_secrets_fail}
+
 
 rm -rf "${secrets_tmp_dir}"
 
