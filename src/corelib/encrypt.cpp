@@ -1,6 +1,32 @@
 #include "encrypt.h"
 
+#include <QString>
+#include <QDir>
+
 namespace Encrypt {
+
+QByteArray keyFromConfigString(const QString &s, const QDir &baseDir)
+{
+    if(s.startsWith("file:"))
+    {
+        QString keyFile = s.mid(5);
+        QFileInfo fi(keyFile);
+        if(fi.isRelative())
+            keyFile = QFileInfo(baseDir, keyFile).filePath();
+
+        QFile f(keyFile);
+        if(!f.open(QFile::ReadOnly))
+            return QByteArray();
+
+        QByteArray data = f.readAll().trimmed();
+
+        return QByteArray::fromHex(data);
+    }
+    else
+    {
+        return QByteArray::fromHex(s.toUtf8());
+    }
+}
 
 QByteArray decryptMessage(const QByteArray &data, const QByteArray &key, Error *error)
 {

@@ -5,6 +5,7 @@ QMAKE_LFLAGS += $$(LDFLAGS)
 SRC_DIR = $$PWD/..
 CORE_DIR = $$PWD/../../corelib
 QZMQ_DIR = $$CORE_DIR/qzmq
+RUST_DIR = $$SRC_DIR/../rust
 
 INCLUDEPATH += $$SRC_DIR
 INCLUDEPATH += $$CORE_DIR
@@ -12,6 +13,8 @@ INCLUDEPATH += $$CORE_DIR
 INCLUDEPATH += $$QZMQ_DIR/src
 
 DEFINES += NO_IRISNET
+
+INCLUDEPATH += $$RUST_DIR/include
 
 HEADERS += \
 	$$SRC_DIR/deferred.h \
