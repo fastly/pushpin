@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,6 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
+use crate::encrypt;
 use crate::jwt;
 use crate::timer::TimerWheel;
 use libc;
@@ -346,4 +348,71 @@ pub unsafe extern "C" fn jwt_decode(
     *out_claim = claim.into_raw();
 
     0
+}
+
+#[repr(C)]
+pub struct EncryptBuffer {
+    data: *const u8,
+    len: libc::size_t,
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn encrypt_decrypt_message(
+    data: *const u8,
+    len: libc::size_t,
+    key: *const u8,
+    out_plain: *mut EncryptBuffer,
+) -> libc::c_int {
+    if data.is_null() || key.is_null() {
+        return 1; // null pointers
+    }
+
+    let data = slice::from_raw_parts(data, len);
+
+    let key = {
+        let key = slice::from_raw_parts(key, 16);
+
+        let mut buf = [0; 16];
+        buf.copy_from_slice(&key[..16]);
+
+        buf
+    };
+
+    let out_plain = match out_plain.as_mut() {
+        Some(r) => r,
+        None => return 1, // null pointer
+    };
+
+    let plain = match encrypt::decrypt_message(data, &key) {
+        Ok(v) => v,
+        Err(encrypt::DecryptError::UnsupportedAlgorithm) => return 2,
+        Err(encrypt::DecryptError::BadFormat) => return 3,
+        Err(encrypt::DecryptError::InvalidData) => return 4,
+    };
+
+    let plain = plain.into_boxed_slice();
+
+    out_plain.len = plain.len();
+    out_plain.data = Box::into_raw(plain) as *const u8;
+
+    return 0;
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[no_mangle]
+pub unsafe extern "C" fn encrypt_buffer_deinit(buf: *mut EncryptBuffer) {
+    let buf = match buf.as_mut() {
+        Some(r) => r,
+        None => return, // null pointer
+    };
+
+    if !buf.data.is_null() {
+        let data = slice::from_raw_parts_mut(buf.data as *mut u8, buf.len);
+
+        drop(Box::from_raw(data));
+
+        buf.data = ptr::null();
+        buf.len = 0;
+    }
 }

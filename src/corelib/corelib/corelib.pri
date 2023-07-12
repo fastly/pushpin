@@ -53,6 +53,7 @@ HEADERS += \
 	$$SRC_DIR/callback.h \
 	$$SRC_DIR/timerwheel.h \
 	$$SRC_DIR/jwt.h \
+	$$SRC_DIR/encrypt.h \
 	$$SRC_DIR/rtimer.h \
 	$$SRC_DIR/logutil.h \
 	$$SRC_DIR/uuidutil.h \
@@ -76,6 +77,7 @@ HEADERS += \
 SOURCES += \
 	$$SRC_DIR/timerwheel.cpp \
 	$$SRC_DIR/jwt.cpp \
+	$$SRC_DIR/encrypt.cpp \
 	$$SRC_DIR/rtimer.cpp \
 	$$SRC_DIR/logutil.cpp \
 	$$SRC_DIR/uuidutil.cpp \

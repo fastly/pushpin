@@ -26,6 +26,7 @@ pub mod channel;
 pub mod client;
 pub mod condure;
 pub mod connection;
+pub mod encrypt;
 pub mod event;
 pub mod executor;
 pub mod ffi;
