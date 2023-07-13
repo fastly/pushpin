@@ -67,6 +67,35 @@ mod tests {
 
     #[test]
     fn decrypt() {
+        // doesn't start with E:
+        assert!(matches!(
+            decrypt_message(b"", &[0; 16]),
+            Err(DecryptError::BadFormat)
+        ));
+
+        // no key ID end marker
+        assert!(matches!(
+            decrypt_message(b"E:abc", &[0; 16]),
+            Err(DecryptError::BadFormat)
+        ));
+
+        // no algorithm end marker
+        assert!(matches!(
+            decrypt_message(b"E:abc:rot26", &[0; 16]),
+            Err(DecryptError::BadFormat)
+        ));
+
+        assert!(matches!(
+            decrypt_message(b"E:abc:rot26:", &[0; 16]),
+            Err(DecryptError::UnsupportedAlgorithm)
+        ));
+
+        // no nonce/tag
+        assert!(matches!(
+            decrypt_message(b"E:abc:aegis128l:12345678", &[0; 16]),
+            Err(DecryptError::BadFormat)
+        ));
+
         let data = b"hello world";
         let key = b"abababababababab";
         let nonce = b"cdcdcdcdcdcdcdcd";
@@ -82,6 +111,12 @@ mod tests {
         out.extend(nonce);
         out.extend(&encrypted);
         out.extend(&tag);
+
+        // wrong key
+        assert!(matches!(
+            decrypt_message(&out, b"aaaaaaaaaaaaaaaa"),
+            Err(DecryptError::InvalidData),
+        ));
 
         let plain = decrypt_message(&out, key).unwrap();
         assert_eq!(plain, b"hello world");
