@@ -62,7 +62,9 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
+#[cfg(not(test))]
 mod seccomp;
+#[cfg(not(test))]
 use seccomp::install_seccomp_connect_filter;
 
 const RESP_SENDER_BOUND: usize = 1;
@@ -2149,6 +2151,7 @@ impl Server {
             }
         }
 
+        #[cfg(not(test))]
         install_seccomp_connect_filter();
 
         let mut workers = Vec::new();

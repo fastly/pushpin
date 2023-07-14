@@ -8,7 +8,7 @@ WORKDIR /build
 COPY . .
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake qconf fst-rustc-1.70.0=1.70.0-147 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake qconf fst-rustc-1.70.0=1.70.0-147 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake
 
 RUN ls -alhrt
 ENV CFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
@@ -20,7 +20,10 @@ ENV RUST_TOOLCHAIN=/opt/fst-rust/1.70.0
 ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
 RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make DESTDIR=/ install
-RUN ./configure --prefix=/opt/fst-pushpin && make -j $(nproc) && make install
+RUN ./configure --prefix=/opt/fst-pushpin && make -j $(nproc)
+RUN env LD_LIBRARY_PATH=/usr/local/lib make check
+RUN env LD_LIBRARY_PATH=/usr/local/lib cargo test
+RUN make install
 RUN cd pushpin-healthcheck && cargo build --release && cp ./target/release/pushpin-healthcheck /opt/fst-pushpin/bin
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-handler
