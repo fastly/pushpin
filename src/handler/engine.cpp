@@ -35,6 +35,7 @@
 #include "qzmqvalve.h"
 #include "tnetstring.h"
 #include "rtimer.h"
+#include "encrypt.h"
 #include "log.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -107,6 +108,50 @@ static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, Q
 
 	setSuccess(ok, errorMessage);
 	return out;
+}
+
+static QByteArray decryptMessage(const QByteArray &data, const QHash<QString, QByteArray> &keys, QString *errorMessage)
+{
+	if(!data.startsWith("E:"))
+	{
+		*errorMessage = "bad format";
+		return QByteArray();
+	}
+
+	int pos = data.indexOf(':', 2);
+	if(pos < 0)
+	{
+		*errorMessage = "bad format";
+		return QByteArray();
+	}
+
+	QString keyId = data.mid(2, pos - 2);
+
+	QByteArray key = keys.value(keyId);
+	if(key.isNull())
+	{
+		*errorMessage = QString("key '%1' not found").arg(keyId);
+		return QByteArray();
+	}
+
+	Encrypt::Error e;
+	QByteArray plain = Encrypt::decryptMessage(data, key, &e);
+
+	if(plain.isNull())
+	{
+		switch(e)
+		{
+			case Encrypt::InvalidInput: *errorMessage = "invalid input"; break;
+			case Encrypt::UnsupportedAlgorithm: *errorMessage = "unsupported algorithm"; break;
+			case Encrypt::BadFormat: *errorMessage = "bad format"; break;
+			case Encrypt::InvalidData: *errorMessage = "invalid data"; break;
+			default: *errorMessage = "general error"; break;
+		}
+
+		return QByteArray();
+	}
+
+	return plain;
 }
 
 class InspectWorker : public Deferred
@@ -2344,9 +2389,22 @@ private slots:
 			return;
 		}
 
+		QByteArray payload = message[1];
+
+		if(payload.startsWith("E:"))
+		{
+			QString errorMessage;
+			payload = decryptMessage(payload, config.messageKeys, &errorMessage);
+			if(payload.isNull())
+			{
+				log_warning("IN sub: failed to decrypt message: %s", qPrintable(errorMessage));
+				return;
+			}
+		}
+
 		bool ok;
 		QString errorMessage;
-		QVariant data = parseJsonOrTnetstring(message[1], &ok, &errorMessage);
+		QVariant data = parseJsonOrTnetstring(payload, &ok, &errorMessage);
 		if(!ok) {
 			log_warning("IN sub: %s, skipping", qPrintable(errorMessage));
 			return;

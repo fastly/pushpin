@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,6 +34,7 @@
 #include "settings.h"
 #include "engine.h"
 #include "config.h"
+#include "encrypt.h"
 
 #define DEFAULT_HTTP_MAX_HEADERS_SIZE 10000
 #define DEFAULT_HTTP_MAX_BODY_SIZE 1000000
@@ -221,6 +223,8 @@ public:
 			}
 		}
 
+		QDir configDir = QFileInfo(configFile).absoluteDir();
+
 		Settings settings(configFile);
 
 		if(!args.ipcPrefix.isEmpty())
@@ -273,6 +277,7 @@ public:
 		int messageHwm = settings.value("handler/message_hwm", -1).toInt();
 		int messageBlockSize = settings.value("handler/message_block_size", -1).toInt();
 		int messageWait = settings.value("handler/message_wait", 5000).toInt();
+		QStringList rawMessageKeys = settings.value("handler/message_keys").toStringList();
 		int idCacheTtl = settings.value("handler/id_cache_ttl", 0).toInt();
 		int clientMaxconn = settings.value("runner/client_maxconn", 50000).toInt();
 		int connectionSubscriptionMax = settings.value("handler/connection_subscription_max", 20).toInt();
@@ -297,6 +302,34 @@ public:
 			log_error("must set proxy_inspect_spec, proxy_accept_spec, and proxy_retry_out_spec");
 			emit q->quit();
 			return;
+		}
+
+		QHash<QString, QByteArray> messageKeys;
+		foreach(const QString &s, rawMessageKeys)
+		{
+			if(s.isEmpty())
+				continue;
+
+			int pos = s.indexOf(':');
+			if(pos < 0)
+			{
+				log_error("message_keys must contain values of the form 'id:value'");
+				emit q->quit();
+				return;
+			}
+
+			QString id = s.mid(0, pos);
+			QString value = s.mid(pos + 1);
+
+			QByteArray keyData = Encrypt::keyFromConfigString(value, configDir);
+			if(keyData.isNull())
+			{
+				log_error("failed to process message_keys value: %s", qPrintable(value));
+				emit q->quit();
+				return;
+			}
+
+			messageKeys[id] = keyData;
 		}
 
 		Engine::Configuration config;
@@ -338,6 +371,7 @@ public:
 		config.messageHwm = messageHwm;
 		config.messageBlockSize = messageBlockSize;
 		config.messageWait = messageWait;
+		config.messageKeys = messageKeys;
 		config.idCacheTtl = idCacheTtl;
 		config.connectionsMax = clientMaxconn;
 		config.connectionSubscriptionMax = connectionSubscriptionMax;
