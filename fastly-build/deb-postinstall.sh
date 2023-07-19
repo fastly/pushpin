@@ -23,7 +23,7 @@ on_secrets_fail=true
 if [ -r /etc/chef/client.pem -a -x /opt/chef/embedded/bin/ruby ]; then
   fail() { echo >&2 "ERROR: chef-vault fetch failed and fallback files are unavailable."; exit 1; }
   on_secrets_fail=fail
-  /opt/fst-executed/bin/get-from-chef-vault --vault secrets --item cache_public --dest "${secrets_tmp_dir}" $SECRETS && secrets_src_dir="${secrets_tmp_dir}" || echo >&2 'WARNING: chef-vault fetch failed.'
+  /opt/fst-pushpin/bin/get-from-chef-vault --vault secrets --item cache_public --dest "${secrets_tmp_dir}" $SECRETS && secrets_src_dir="${secrets_tmp_dir}" || echo >&2 'WARNING: chef-vault fetch failed.'
 fi
 
 install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/pushpin-nsq-client-cert.pem  /etc/pushpin/private/nsq-client-cert.pem   || ${on_secrets_fail}

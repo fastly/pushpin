@@ -1,0 +1,50 @@
+#!/opt/chef/embedded/bin/ruby
+
+t0 = Time.now.getutc.to_f
+
+require 'chef/application/client'
+require 'chef-vault'
+require 'optparse'
+require 'json'
+
+t1 = Time.now.getutc.to_f
+
+options = {}
+OptionParser.new do |opt|
+  opt.on('--vault NAME') { |o| options[:vault] = o }
+  opt.on('--item NAME') { |o| options[:item] = o }
+  opt.on('--dest DIR') { |o| options[:dest] = o }
+end.parse!
+
+raise 'Option --vault NAME is required'    if options[:vault].nil?
+raise 'Option --item NAME is required'     if options[:item].nil?
+raise 'Option --dest DIR is required'      if options[:dest].nil?
+raise 'At least one filename is required'  if ARGV.empty?
+
+t2 = Time.now.getutc.to_f
+
+Chef::Application::Client.new.configure_chef
+
+t3 = Time.now.getutc.to_f
+
+data = ChefVault::Item.load(options[:vault], options[:item]).to_h
+
+t4 = Time.now.getutc.to_f
+
+ARGV.each do |filename|
+  m = data['files'].select { |rec| rec['filename'] == filename }
+  raise "Filename #{filename} not found in vault item" if m.empty?
+  raise "Multiple entries for filename #{filename} found in vault item" if m.length != 1
+  content = m[0]['content']
+
+  abs_filename = File.join(options[:dest], filename)
+  File.delete(abs_filename) if File.exists?(abs_filename)
+  File.open(abs_filename, 'wb', 0600) do |f|
+    f.write(content)
+  end
+end
+
+t5 = Time.now.getutc.to_f
+
+STDERR.puts('Timing: %.3f + %.3f + %.3f + %.3f + %.3f = %.3f (seconds)' % [
+    t1 - t0, t2 - t1, t3 - t2, t4 - t3, t5 - t4, t5 - t0])
