@@ -208,10 +208,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::error::Error;
     use std::net::SocketAddr;
     use std::path::PathBuf;
-    use std::collections::HashMap;
 
     use crate::{ArgsData, CliArgs};
 
