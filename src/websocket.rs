@@ -1273,6 +1273,10 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             _ => {
                 let read = self.send_frame(writer, opcode, src, end, false, msg.mask)?;
 
+                if let Some(end_len) = &mut msg.end_len {
+                    *end_len -= read;
+                }
+
                 msg.frame_sent = true;
 
                 (read, end && read == src_len)
@@ -2040,6 +2044,29 @@ mod tests {
 
         let r = p.send_message_content(&mut writer, &mut [&mut make_buf(b"hello")], false);
         assert!(r.is_err());
+
+        let p = Protocol::<[u8; 0]>::new(None);
+
+        writer.data.clear();
+        writer.allow = 3;
+
+        p.send_message_start(OPCODE_TEXT, None);
+
+        let (size, done) = p
+            .send_message_content(&mut writer, &mut [&mut make_buf(b"hello")], true)
+            .unwrap();
+        assert_eq!(size, 1);
+        assert_eq!(done, false);
+        assert_eq!(writer.data, b"\x81\x05h");
+
+        writer.allow = 4;
+
+        let (size, done) = p
+            .send_message_content(&mut writer, &mut [&mut make_buf(b"ello")], true)
+            .unwrap();
+        assert_eq!(size, 4);
+        assert_eq!(done, true);
+        assert_eq!(writer.data, b"\x81\x05hello");
     }
 
     #[test]
