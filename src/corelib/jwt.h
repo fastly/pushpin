@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -56,7 +57,7 @@ public:
 
 	static EncodingKey fromSecret(const QByteArray &key);
 	static EncodingKey fromPem(const QByteArray &key);
-	static EncodingKey fromPemFile(const QString &fileName);
+	static EncodingKey fromFile(const QString &fileName);
 	static EncodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
 
 private:
@@ -84,7 +85,7 @@ public:
 
 	static DecodingKey fromSecret(const QByteArray &key);
 	static DecodingKey fromPem(const QByteArray &key);
-	static DecodingKey fromPemFile(const QString &fileName);
+	static DecodingKey fromFile(const QString &fileName);
 	static DecodingKey fromConfigString(const QString &s, const QDir &baseDir = QDir());
 
 private:

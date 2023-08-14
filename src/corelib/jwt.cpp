@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -61,7 +62,7 @@ EncodingKey EncodingKey::fromPem(const QByteArray &key)
 	return k;
 }
 
-EncodingKey EncodingKey::fromPemFile(const QString &fileName)
+EncodingKey EncodingKey::fromFile(const QString &fileName)
 {
 	QFile f(fileName);
 	if(!f.open(QFile::ReadOnly))
@@ -69,7 +70,12 @@ EncodingKey EncodingKey::fromPemFile(const QString &fileName)
 		return EncodingKey();
 	}
 
-	return fromPem(f.readAll());
+	QByteArray data = f.readAll();
+
+	if(data.startsWith("-----BEGIN"))
+		return fromPem(data);
+	else
+		return fromSecret(QByteArray::fromHex(data.trimmed()));
 }
 
 EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir)
@@ -81,7 +87,7 @@ EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 		if(fi.isRelative())
 			keyFile = QFileInfo(baseDir, keyFile).filePath();
 
-		return EncodingKey::fromPemFile(keyFile);
+		return fromFile(keyFile);
 	}
 	else
 	{
@@ -92,7 +98,7 @@ EncodingKey EncodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 		else
 			secret = s.toUtf8();
 
-		return EncodingKey::fromSecret(secret);
+		return fromSecret(secret);
 	}
 }
 
@@ -127,7 +133,7 @@ DecodingKey DecodingKey::fromPem(const QByteArray &key)
 	return k;
 }
 
-DecodingKey DecodingKey::fromPemFile(const QString &fileName)
+DecodingKey DecodingKey::fromFile(const QString &fileName)
 {
 	QFile f(fileName);
 	if(!f.open(QFile::ReadOnly))
@@ -135,7 +141,12 @@ DecodingKey DecodingKey::fromPemFile(const QString &fileName)
 		return DecodingKey();
 	}
 
-	return fromPem(f.readAll());
+	QByteArray data = f.readAll();
+
+	if(data.startsWith("-----BEGIN"))
+		return fromPem(data);
+	else
+		return fromSecret(QByteArray::fromHex(data.trimmed()));
 }
 
 DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
@@ -147,7 +158,7 @@ DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 		if(fi.isRelative())
 			keyFile = QFileInfo(baseDir, keyFile).filePath();
 
-		return DecodingKey::fromPemFile(keyFile);
+		return fromFile(keyFile);
 	}
 	else
 	{
@@ -158,7 +169,7 @@ DecodingKey DecodingKey::fromConfigString(const QString &s, const QDir &baseDir)
 		else
 			secret = s.toUtf8();
 
-		return DecodingKey::fromSecret(secret);
+		return fromSecret(secret);
 	}
 }
 
