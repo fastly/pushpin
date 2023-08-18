@@ -14,6 +14,7 @@ from pwd import getpwnam
 import re
 import string
 import sys
+import tempfile
 import time
 
 
@@ -328,41 +329,76 @@ def make_routes(service, backend, sig_keys_dir):
     return routes
 
 
-def write_routes(routes, routes_file):
+def my_chown(path, uid, gid):
     """
-    Returns True if routes file was changed.
+    Wraps os.chown(). If either uid or gid are None, pass -1 to os.chown().
+    If both are None, do nothing.
     """
-    newdata = ''
-    for route in routes:
-        newdata += route + '\n'
+    uid = uid if uid is not None else -1
+    gid = gid if gid is not None else -1
 
+    if uid != -1 or gid != -1:
+        os.chown(path, uid, gid)
+
+
+def write_file(fname, data, mode=None, uid=None, gid=None, force=False):
+    """
+    Write data to file fname. If the file already contains the exact data to
+    be written, then nothing is written and the file is left alone. Pass
+    force=True to always write the data. When writing, data is first written
+    to a temporary file and then moved to the desired location in order to
+    achieve an atomic write.
+
+    Returns True if file was changed.
+    """
     try:
-        with open(routes_file, 'r', encoding='utf-8') as f:
+        with open(fname, 'r', encoding='utf-8') as f:
             curdata = f.read()
     except Exception:
-        # failed to read original routes. no big deal
+        # failed to read original data. no big deal
         curdata = ''
 
-    if newdata != curdata:
-        tmpfile = '{}.tmp'.format(routes_file)
+    if force or data != curdata:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as f:
+            temp_fname = f.name
+            f.write(data)
 
-        with open(tmpfile, 'w', encoding='utf-8') as f:
-            f.write(newdata)
+        if mode is not None:
+            os.chmod(temp_fname, mode)
 
-        os.rename(tmpfile, routes_file)
+        my_chown(temp_fname, uid, gid)
+
+        os.rename(temp_fname, fname)
 
         return True
     else:
         return False
 
 
-def open_private(path, flags):
-    return os.open(path, flags, 0o400)
+def write_routes(fname, routes, force=False):
+    """
+    Returns True if file was changed.
+    """
+    data = ''
+    for route in routes:
+        data += route + '\n'
+
+    return write_file(fname, data, mode=0o644, force=force)
+
+
+def write_sig_key(fname, key, uid=None, gid=None):
+    """
+    Returns True if file was changed.
+    """
+    return write_file(fname, key.hex() + '\n', mode=0o400, uid=uid, gid=gid)
 
 
 def write_sig_keys(keys, dir, user=None, group=None):
-    uid = -1
-    gid = -1
+    """
+    Returns True if any files were changed/removed.
+    """
+    uid = None
+    gid = None
 
     if user:
         uid = getpwnam(user).pw_uid
@@ -376,21 +412,33 @@ def write_sig_keys(keys, dir, user=None, group=None):
         # already exists. that's fine
         pass
 
-    if uid != -1 or gid != -1:
-        os.chown(dir, uid, gid)
+    my_chown(dir, uid, gid)
 
+    old_key_files = set()
+
+    # look up existing key files
     for fname in os.listdir(dir):
         if fname.endswith('.key'):
-            os.remove(os.path.join(dir, fname))
+            old_key_files.add(os.path.abspath(os.path.join(dir, fname)))
 
+    changed = False
+
+    # write new key files as necessary, removing from old_key_files
     for service_id, key in keys.items():
         fname = sig_key_filename(service_id, dir)
 
-        with open(fname, 'w', encoding='utf-8', opener=open_private) as f:
-            f.write(key.hex() + '\n')
+        if fname in old_key_files:
+            old_key_files.remove(fname)
 
-        if uid != -1 or gid != -1:
-            os.chown(fname, uid, gid)
+        if write_sig_key(fname, key, uid=uid, gid=gid):
+            changed = True
+
+    # remove unneeded key files
+    for fname in old_key_files:
+        os.remove(fname)
+        changed = True
+
+    return changed
 
 
 def update_routes(api_key, routes_file, sig_keys_dir, sig_keys_user=None, sig_keys_group=None):
@@ -406,7 +454,9 @@ def update_routes(api_key, routes_file, sig_keys_dir, sig_keys_user=None, sig_ke
         if key:
             custom_sig_keys[service.id] = b64decode(key)
 
-    write_sig_keys(custom_sig_keys, sig_keys_dir, user=sig_keys_user, group=sig_keys_group)
+    keys_changed = write_sig_keys(custom_sig_keys, sig_keys_dir, user=sig_keys_user, group=sig_keys_group)
+    if keys_changed:
+        logging.info("sig keys changed")
 
     for service, backends in services.values():
         for backend in backends:
@@ -416,7 +466,7 @@ def update_routes(api_key, routes_file, sig_keys_dir, sig_keys_user=None, sig_ke
                 logging.warning(
                     'failed to make route for service {} backend {}: {}'.format(service.id, repr(backend['name']), e))
 
-    if write_routes(routes, routes_file):
+    if write_routes(routes_file, routes, force=keys_changed):
         logging.info('wrote {}'.format(routes_file))
     else:
         logging.debug('no changes')
