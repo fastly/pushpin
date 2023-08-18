@@ -380,8 +380,8 @@ def write_sig_keys(keys, dir, user=None, group=None):
         os.chown(dir, uid, gid)
 
     for fname in os.listdir(dir):
-        if fname.ends_with('.key'):
-            os.remove(fname)
+        if fname.endswith('.key'):
+            os.remove(os.path.join(dir, fname))
 
     for service_id, key in keys.items():
         fname = sig_key_filename(service_id, dir)
