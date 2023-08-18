@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
 import argparse
+from base64 import b64decode
 from collections import namedtuple
+from grp import getgrnam
 import gzip
 from http.client import HTTPConnection, HTTPSConnection
 from io import BytesIO
 import json
 import logging
 import os
+from pwd import getpwnam
 import re
 import string
 import sys
@@ -169,7 +172,7 @@ class FanoutInternalClient(BaseClient):
 
 def fetch_service_backends(api_key):
     """
-    Returns {service_id: [backend]}.
+    Returns {service_id: (service, [backend])}.
     """
     heavenly_client = HeavenlyClient()
     internal_client = FanoutInternalClient(api_key)
@@ -261,7 +264,11 @@ def fetch_service_backends(api_key):
     return service_backends
 
 
-def make_routes(service, backend):
+def sig_key_filename(service_id, dir):
+    return os.path.abspath(os.path.join(dir, '{}.key'.format(service_id)))
+
+
+def make_routes(service, backend, sig_keys_dir):
     service_id = validate_id(service.id)
     backend_name = validate_backend(backend['name'])
     host = validate_host(backend['address'])
@@ -301,6 +308,9 @@ def make_routes(service, backend):
             cond_opts += ',sig_iss={}'.format(realm_id)
         else:
             cond_opts += ',sig_iss=fastly:{}'.format(service_id)
+
+        if service.realm.get('key', ''):
+            cond_opts += ',sig_key=file:{}'.format(sig_key_filename(service_id, sig_keys_dir))
 
         if service.aco_enabled or realm_id:
             cond_opts += ',aco'
@@ -346,15 +356,62 @@ def write_routes(routes, routes_file):
         return False
 
 
-def update_routes(api_key, routes_file):
+def open_private(path, flags):
+    return os.open(path, flags, 0o400)
+
+
+def write_sig_keys(keys, dir, user=None, group=None):
+    uid = -1
+    gid = -1
+
+    if user:
+        uid = getpwnam(user).pw_uid
+
+    if group:
+        gid = getgrnam(group).gr_gid
+
+    try:
+        os.mkdir(dir)
+    except FileExistsError:
+        # already exists. that's fine
+        pass
+
+    if uid != -1 or gid != -1:
+        os.chown(dir, uid, gid)
+
+    for fname in os.listdir(dir):
+        if fname.ends_with('.key'):
+            os.remove(fname)
+
+    for service_id, key in keys.items():
+        fname = sig_key_filename(service_id, dir)
+
+        with open(fname, 'w', encoding='utf-8', opener=open_private) as f:
+            f.write(key.hex() + '\n')
+
+        if uid != -1 or gid != -1:
+            os.chown(fname, uid, gid)
+
+
+def update_routes(api_key, routes_file, sig_keys_dir, sig_keys_user=None, sig_keys_group=None):
     routes = []
 
     routes.append('pushpin.healthcheck.test test')
 
-    for service, backends in fetch_service_backends(api_key).values():
+    services = fetch_service_backends(api_key)
+
+    custom_sig_keys = {}
+    for service, _ in services.values():
+        key = service.realm.get('key', '')
+        if key:
+            custom_sig_keys[service.id] = b64decode(key)
+
+    write_sig_keys(custom_sig_keys, sig_keys_dir, user=sig_keys_user, group=sig_keys_group)
+
+    for service, backends in services.values():
         for backend in backends:
             try:
-                routes.extend(make_routes(service, backend))
+                routes.extend(make_routes(service, backend, sig_keys_dir))
             except Exception as e:
                 logging.warning(
                     'failed to make route for service {} backend {}: {}'.format(service.id, repr(backend['name']), e))
@@ -374,6 +431,12 @@ def main():
                         default='./key', help='location of API key file (default: ./key)')
     parser.add_argument('--output', metavar='FILENAME', dest='output',
                         default='routes', help='location of routes file (default: ./routes)')
+    parser.add_argument('--sig-keys-dir', metavar='PATH', dest='sig_keys_dir',
+                        default='./sig-keys', help='directory to write sig keys (default: ./sig-keys)')
+    parser.add_argument('--sig-keys-user', metavar='USERNAME', dest='sig_keys_user',
+                        help='owning user to set for sig keys')
+    parser.add_argument('--sig-keys-group', metavar='GROUP', dest='sig_keys_group',
+                        help='owning group to set for sig keys')
     parser.add_argument('--loop', metavar='SECONDS', type=int,
                         dest='loop', help='repeat the process on an interval')
 
@@ -394,7 +457,7 @@ def main():
 
     while True:
         try:
-            update_routes(api_key, routes_file)
+            update_routes(api_key, routes_file, args.sig_keys_dir, sig_keys_user=args.sig_keys_user, sig_keys_group=args.sig_keys_group)
         except Exception:
             logging.exception('update_routes failed')
 
