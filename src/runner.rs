@@ -448,7 +448,10 @@ pub fn get_config_file(arg_config: &Path) -> Result<String, Box<dyn Error>> {
         // ./examples/config
         config_files.push(PathBuf::from("./examples/config/pushpin.conf"));
         // default
-        config_files.push(PathBuf::from(format!("{:?}/pushpin.conf", env::var("CONFIGDIR"))));
+        config_files.push(PathBuf::from(format!(
+            "{:?}/pushpin.conf",
+            env::var("CONFIGDIR")
+        )));
     }
 
     let mut config_file = "";
