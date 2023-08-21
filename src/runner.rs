@@ -496,7 +496,7 @@ mod tests {
     use std::error::Error;
     use std::path::PathBuf;
 
-    use crate::config::get_config_file;
+    use crate::runner::get_config_file;
 
     struct TestArgs {
         name: &'static str,
