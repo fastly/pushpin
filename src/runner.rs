@@ -493,10 +493,9 @@ pub fn get_config_file(arg_config: &Path) -> Result<String, Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
     use std::path::PathBuf;
-
-    use crate::runner::get_config_file;
 
     struct TestArgs {
         name: &'static str,
