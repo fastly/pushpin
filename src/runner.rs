@@ -17,10 +17,9 @@
 use config::{Config, ConfigError, File};
 use log::info;
 use serde::Deserialize;
+use std::env;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-
-const CONFIG_DIR: &str = "/usr/local/etc/pushpin";
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Global {
@@ -449,7 +448,7 @@ pub fn get_config_file(arg_config: &Path) -> Result<String, Box<dyn Error>> {
         // ./examples/config
         config_files.push(PathBuf::from("./examples/config/pushpin.conf"));
         // default
-        config_files.push(PathBuf::from(format!("{}/pushpin.conf", CONFIG_DIR)));
+        config_files.push(PathBuf::from(format!("{:?}/pushpin.conf", env::var("CONFIGDIR"))));
     }
 
     let mut config_file = "";
