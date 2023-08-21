@@ -7,6 +7,7 @@ from grp import getgrnam
 import gzip
 from http.client import HTTPConnection, HTTPSConnection
 from io import BytesIO
+from itertools import islice
 import json
 import logging
 import os
@@ -28,6 +29,7 @@ GRIP_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-grip-enabled:'
 WOH_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-woh-enabled:'
 
 alphanumerics = string.ascii_lowercase + string.ascii_uppercase + string.digits
+nonspaces = string.ascii_lowercase + string.ascii_uppercase + string.digits + string.punctuation
 Response = namedtuple('Response', 'status data etag')
 
 
@@ -84,6 +86,42 @@ def validate_host(s):
 
 def vclify_backend(s):
     return re.sub('[^A-Za-z0-9_]', '_', s)
+
+
+def validate_header_name(s):
+    if len(s) < 1 or len(s) > 32:
+        raise ValidationError(
+            'header name must have a length between 1 and 32 characters')
+
+    for c in s:
+        if c not in '-' and c not in alphanumerics:
+            raise ValidationError('header name cannot contain: {}'.format(repr(c)))
+
+    return s
+
+
+def validate_header_value(s):
+    if len(s) < 1 or len(s) > 512:
+        raise ValidationError(
+            'header value must have a length between 1 and 512 characters')
+
+    for c in s:
+        if c not in ' ' and c not in nonspaces:
+            raise ValidationError('header value cannot contain: {}'.format(repr(c)))
+
+    return s
+
+
+def escape_route_param(s):
+    out = ''
+    for c in s:
+        if c == '\\':
+            out += '\\\\'
+        elif c == '\"':
+            out += '\\"'
+        else:
+            out += c
+    return out
 
 
 class BaseClient(object):
@@ -312,6 +350,13 @@ def make_routes(service, backend, sig_keys_dir):
 
         if service.realm.get('key', ''):
             cond_opts += ',sig_key=file:{}'.format(sig_key_filename(service_id, sig_keys_dir))
+
+        # up to 3 headers allowed
+        for k, v in islice(realm_domain_config.get('headers', {}).items(), 3):
+            k = validate_header_name(k)
+            v = validate_header_value(v)
+
+            cond_opts += ',header=\"{}:{}\"'.format(escape_route_param(k), escape_route_param(v))
 
         if service.aco_enabled or realm_id:
             cond_opts += ',aco'
