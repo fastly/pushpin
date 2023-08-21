@@ -22,7 +22,6 @@ use std::path::{Path, PathBuf};
 
 const CONFIG_DIR: &str = "/usr/local/etc/pushpin";
 
-#[allow(unused)]
 #[derive(Debug, Deserialize, Default)]
 pub struct Global {
     pub include: String,
@@ -61,7 +60,6 @@ impl From<Global> for config::ValueKind {
     }
 }
 
-#[allow(unused)]
 #[derive(serde::Deserialize, Eq, PartialEq, Debug, Default)]
 pub struct Runner {
     //runner rundir is deprecated
@@ -115,7 +113,6 @@ impl From<Runner> for config::ValueKind {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Deserialize, Default)]
 pub struct Proxy {
     pub routesfile: String,
@@ -203,7 +200,6 @@ impl From<Proxy> for config::ValueKind {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Deserialize, Default)]
 pub struct Handler {
     pub ipc_file_mode: u16,
@@ -331,7 +327,6 @@ impl From<Handler> for config::ValueKind {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Deserialize, Default)]
 pub struct CustomConfig {
     pub global: Global,
