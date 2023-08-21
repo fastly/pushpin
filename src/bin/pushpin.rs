@@ -1,9 +1,5 @@
 /*
- * Copyright (C) 2021-2023 Fanout, Inc.
- *
- * This file is part of Pushpin.
- *
- * $FANOUT_BEGIN_LICENSE:APACHE2$
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * $FANOUT_END_LICENSE$
  */
 
 use clap::{ArgAction, Parser};
+use pushpin::runner::get_config_file;
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -214,8 +209,10 @@ impl ArgsData {
 
 fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let args_data = ArgsData::new(args)?;
-    println!("Processed: {:?}", args_data);
+    let config_file = get_config_file(args_data.config_file.as_ref())?;
+    println!("Processed config file: {:?}", config_file);
     //To be implemented in the next PR
+
     Ok(())
 }
 

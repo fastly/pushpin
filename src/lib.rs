@@ -39,6 +39,7 @@ pub mod pool;
 pub mod publish_cli;
 pub mod reactor;
 pub mod resolver;
+pub mod runner;
 pub mod server;
 pub mod shuffle;
 pub mod timer;
