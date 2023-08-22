@@ -223,7 +223,6 @@ pub struct Handler {
     pub stats_format: String,
     pub prometheus_port: String,
     pub prometheus_prefix: String,
-    pub message_keys: String,
 }
 
 impl From<Handler> for config::ValueKind {
@@ -317,10 +316,6 @@ impl From<Handler> for config::ValueKind {
             "prometheus_prefix".to_string(),
             config::Value::from(handler.prometheus_prefix),
         );
-        properties.insert(
-            "message_keys".to_string(),
-            config::Value::from(handler.message_keys),
-        );
 
         Self::Table(properties)
     }
@@ -351,94 +346,95 @@ impl CustomConfig {
     #[cfg(test)]
     pub fn new(_config_file: &str) -> Result<CustomConfig, ConfigError> {
         let config = Config::builder()
-             .set_default(
-                 "global",
-                 Global {
-                     include: String::from("{libdir}/internal.conf"),
-                     rundir: String::from("run"),
-                     ipc_prefix: String::from("pushpin-"),
-                     port_offset: 0,
-                     stats_connection_ttl: 120,
-                     stats_connection_send: false,
-                     libdir: String::new(),
-                 },
-             )?
-             .set_default(
-                 "runner",
-                 Runner {
-                     rundir: String::new(),
-                     services: String::from("condure,pushpin-proxy,pushpin-handler"),
-                     http_port: String::from("1031"),
-                     https_ports: String::from("443"),
-                     local_ports: String::from("{rundir}/{ipc_prefix}server?user=pushpin&group=pushpin-listener&mode=777"),
-                     logdir: String::from("log"),
-                     log_level: String::from("1"),
-                     client_buffer_size: 8192,
-                     client_maxconn: 100100,
-                     allow_compression: true,
-                     condure_bin: String::from("condure"),
-                 },
-             )?
-             .set_default(
-                 "proxy",
-                 Proxy {
-                     routesfile: String::from("routes"),
-                     debug: false,
-                     auto_cross_origin: false,
-                     accept_x_forwarded_protocol: false,
-                     set_x_forwarded_protocol: String::from(""),
-                     x_forwarded_for: String::new(),
-                     x_forwarded_for_trusted: String::new(),
-                     orig_headers_need_mark: String::new(),
-                     accept_pushpin_route: true,
-                     cdn_loop: String::from("Fanout"),
-                     log_from: false,
-                     log_user_agent: false,
-                     sig_iss: String::from("fastly"),
-                     sig_key: String::from("file:/etc/pushpin/private/sig-key.pem"),
-                     upstream_key: String::new(),
-                     sockjs_url: String::from("http://cdn.jsdelivr.net/sockjs/0.3.4/sockjs.min.js"),
-                     updates_check: String::from("off"),
-                     organization_name: String::new(),
-                 },
-             )?
-             .set_default(
-                 "handler",
-                 Handler {
-                     ipc_file_mode: 777,
-                     push_in_spec: String::from("tcp://127.0.0.1:5560"),
-                     push_in_sub_specs: String::from("ipc:///var/lib/powderhorn/zmq.sock"),
-                     push_in_sub_connect: true,
-                     push_in_http_addr: String::from("127.0.0.1"),
-                     push_in_http_port:  5561,
-                     push_in_http_max_headers_size: 10000,
-                     push_in_http_max_body_size: 1000000,
-                     stats_spec: String::from("ipc://{rundir}/{ipc_prefix}stats"),
-                     command_spec: String::from("tcp://127.0.0.1:5563"),
-                     message_rate: 2500,
-                     message_hwm: 25000,
-                     message_block_size: 0,
-                     message_wait: 5000,
-                     id_cache_ttl: 60,
-                     connection_subscription_max: 20,
-                     subscription_linger: 60,
-                     stats_subscription_ttl: 60,
-                     stats_report_interval: 10,
-                     stats_format: String::from("json"),
-                     prometheus_port: String::from("127.0.0.1:1030"),
-                     prometheus_prefix: String::from("pushpin_"),
-                     message_keys: String::from("prod-a:file:/etc/pushpin/private/message-key-a,staging-a:file:/etc/pushpin/private/staging-message-key-a"),
-                 },
-             )?
-             .build()?;
+            .set_default(
+                "global",
+                Global {
+                    include: String::from("{libdir}/internal.conf"),
+                    rundir: String::from("run"),
+                    ipc_prefix: String::from("pushpin-"),
+                    port_offset: 0,
+                    stats_connection_ttl: 120,
+                    stats_connection_send: false,
+                    libdir: String::new(),
+                },
+            )?
+            .set_default(
+                "runner",
+                Runner {
+                    rundir: String::new(),
+                    services: String::from("condure,pushpin-proxy,pushpin-handler"),
+                    http_port: String::from("1031"),
+                    https_ports: String::from("443"),
+                    local_ports: String::from(
+                        "{rundir}/{ipc_prefix}server?user=pushpin&group=pushpin-listener&mode=777",
+                    ),
+                    logdir: String::from("log"),
+                    log_level: String::from("1"),
+                    client_buffer_size: 8192,
+                    client_maxconn: 100100,
+                    allow_compression: true,
+                    condure_bin: String::from("condure"),
+                },
+            )?
+            .set_default(
+                "proxy",
+                Proxy {
+                    routesfile: String::from("routes"),
+                    debug: false,
+                    auto_cross_origin: false,
+                    accept_x_forwarded_protocol: false,
+                    set_x_forwarded_protocol: String::from(""),
+                    x_forwarded_for: String::new(),
+                    x_forwarded_for_trusted: String::new(),
+                    orig_headers_need_mark: String::new(),
+                    accept_pushpin_route: true,
+                    cdn_loop: String::from("Fanout"),
+                    log_from: false,
+                    log_user_agent: false,
+                    sig_iss: String::from("fastly"),
+                    sig_key: String::from("file:/etc/pushpin/private/sig-key.pem"),
+                    upstream_key: String::new(),
+                    sockjs_url: String::from("http://cdn.jsdelivr.net/sockjs/0.3.4/sockjs.min.js"),
+                    updates_check: String::from("off"),
+                    organization_name: String::new(),
+                },
+            )?
+            .set_default(
+                "handler",
+                Handler {
+                    ipc_file_mode: 777,
+                    push_in_spec: String::from("tcp://127.0.0.1:5560"),
+                    push_in_sub_specs: String::from("ipc:///var/lib/powderhorn/zmq.sock"),
+                    push_in_sub_connect: true,
+                    push_in_http_addr: String::from("127.0.0.1"),
+                    push_in_http_port: 5561,
+                    push_in_http_max_headers_size: 10000,
+                    push_in_http_max_body_size: 1000000,
+                    stats_spec: String::from("ipc://{rundir}/{ipc_prefix}stats"),
+                    command_spec: String::from("tcp://127.0.0.1:5563"),
+                    message_rate: 2500,
+                    message_hwm: 25000,
+                    message_block_size: 0,
+                    message_wait: 5000,
+                    id_cache_ttl: 60,
+                    connection_subscription_max: 20,
+                    subscription_linger: 60,
+                    stats_subscription_ttl: 60,
+                    stats_report_interval: 10,
+                    stats_format: String::from("json"),
+                    prometheus_port: String::from("127.0.0.1:1030"),
+                    prometheus_prefix: String::from("pushpin_"),
+                },
+            )?
+            .build()?;
 
         config.try_deserialize()
     }
 }
 
-pub fn get_config_file(arg_config: &Path) -> Result<String, Box<dyn Error>> {
+pub fn get_config_file(arg_config: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let mut config_files: Vec<PathBuf> = vec![];
-    if !arg_config.to_str().unwrap_or("").is_empty() {
+    if !arg_config.as_os_str().is_empty() {
         config_files.push(arg_config.to_path_buf())
     } else {
         // ./config
@@ -450,7 +446,7 @@ pub fn get_config_file(arg_config: &Path) -> Result<String, Box<dyn Error>> {
         // default
         config_files.push(PathBuf::from(format!(
             "{:?}/pushpin.conf",
-            env::var("CONFIGDIR")
+            env!("CONFIG_DIR")
         )));
     }
 
@@ -467,27 +463,25 @@ pub fn get_config_file(arg_config: &Path) -> Result<String, Box<dyn Error>> {
             "no configuration file found. Tried: {}",
             config_files
                 .iter()
-                .map(|path_buf| path_buf.to_str().unwrap_or(""))
-                .collect::<Vec<&str>>()
+                .map(|path_buf| path_buf.display().to_string())
+                .collect::<Vec<String>>()
                 .join(" ")
         )
         .into());
     }
 
     match Path::new(config_file).try_exists() {
-        Ok(x) => {
-            if !x {
-                return Err(format!("failed to open {}", config_file).into());
-            }
+        Ok(true) => {}
+        Ok(false) => {
+            return Err(format!("failed to open {}", config_file).into());
         }
         Err(e) => {
             return Err(format!("failed to open {}, with error: {:?}", config_file, e).into());
         }
     }
 
-    if arg_config.to_str().unwrap_or("").is_empty() {
+    if arg_config.as_os_str().is_empty() {
         info!("using config: {:?}", config_file);
-        println!("using config: {:?}", config_file);
     }
 
     Ok(config_file.into())
@@ -502,7 +496,7 @@ mod tests {
     struct TestArgs {
         name: &'static str,
         input: PathBuf,
-        output: Result<String, Box<dyn Error>>,
+        output: Result<PathBuf, Box<dyn Error>>,
     }
 
     #[test]
@@ -510,7 +504,7 @@ mod tests {
         let test_args: Vec<TestArgs> = vec![TestArgs {
             name: "no input",
             input: PathBuf::from(""),
-            output: Ok(String::from("./examples/config/pushpin.conf")),
+            output: Ok(PathBuf::from("./examples/config/pushpin.conf")),
         }];
 
         for test_arg in test_args.iter() {
