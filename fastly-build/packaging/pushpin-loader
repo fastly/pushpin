@@ -326,7 +326,13 @@ def make_routes(service, backend, sig_keys_dir):
     if int(backend.get('use_ssl', '0')):
         target += ',ssl'
 
+    cert_hostname = backend.get('ssl_cert_hostname', '')
+    sni_hostname = backend.get('ssl_sni_hostname', '')
     override_host = backend.get('override_host', '')
+
+    if cert_hostname == host and sni_hostname == host and (not override_host or override_host != host):
+        target += ',trust_connect_host'
+
     if override_host:
         override_host = validate_host(override_host)
         target += ',host={}'.format(override_host)
