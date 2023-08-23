@@ -43,6 +43,7 @@ time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
 url = "2.3"
 webpki = "0.21"
 zmq = "0.9"
+config = "0.13.3"
 
 [dev-dependencies]
 criterion = "0.5"
