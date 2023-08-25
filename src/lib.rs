@@ -25,6 +25,7 @@ pub mod buffer;
 pub mod channel;
 pub mod client;
 pub mod condure;
+pub mod config;
 pub mod connection;
 pub mod event;
 pub mod executor;
