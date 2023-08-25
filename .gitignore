@@ -13,6 +13,7 @@ target_wrapper.sh
 **/*.rs.bk
 .cargo
 vendor
+.vscode
 
 /pushpin
 /bin/*
