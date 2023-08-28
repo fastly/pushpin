@@ -214,10 +214,8 @@ impl ArgsData {
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
 pub struct Settings {
+    pub service_names: Vec<String>,
     pub config_file: PathBuf,
-    pub exec_dir: PathBuf,
-    pub lib_dir: PathBuf,
-    pub config_dir: PathBuf,
     pub run_dir: PathBuf,
     pub log_dir: PathBuf,
     pub certs_dir: PathBuf,
@@ -225,12 +223,11 @@ pub struct Settings {
     pub proxy_bin: PathBuf,
     pub handler_bin: PathBuf,
     pub ipc_prefix: String,
-    pub service_names: Vec<String>,
     pub ports: Vec<ListenPort>,
+    pub port_offset: u32,
     pub client_buffer_size: i32,
     pub client_max_connections: i32,
     pub allow_compression: bool,
-    pub port_offset: u32,
     pub file_prefix: String,
     pub log_levels: HashMap<String, u8>,
     pub route_lines: Vec<String>,
@@ -244,20 +241,9 @@ impl Settings {
         };
 
         let exec_dir = &env::current_dir()?;
-        // NOTE: libdir in config file is deprecated
-        let mut lib_dir = PathBuf::from(config.global.libdir.clone());
 
         let config_dir = config_file_path.parent().unwrap().join("runner");
         let certs_dir = config_dir.join("certs");
-
-        if !lib_dir.as_os_str().is_empty() {
-            lib_dir = exec_dir.join(lib_dir.join("runner"));
-        } else {
-            lib_dir = match Path::new("src/pushpin/pushpin.pro").try_exists() {
-                Ok(_) => exec_dir.join("src/runner"),
-                _ => exec_dir.join(Path::new(env!("LIB_DIR")).join("runner")),
-            };
-        }
 
         let mut log_levels: HashMap<String, u8> = HashMap::new();
         let config_log_levels: Vec<String> = config
@@ -408,10 +394,13 @@ impl Settings {
         }
 
         Ok(Self {
+            service_names: config
+                .runner
+                .services
+                .split(',')
+                .map(|s| s.to_string())
+                .collect(),
             config_file: config_file_path.to_path_buf(),
-            exec_dir: exec_dir.into(),
-            lib_dir: lib_dir,
-            config_dir: config_dir,
             run_dir: run_dir,
             log_dir: log_dir,
             condure_bin: get_service_dir(exec_dir.into(), "condure", "bin/condure")?,
@@ -423,12 +412,6 @@ impl Settings {
             )?,
             certs_dir: certs_dir,
             ipc_prefix: ipc_prefix,
-            service_names: config
-                .runner
-                .services
-                .split(',')
-                .map(|s| s.to_string())
-                .collect(),
             ports: ports,
             client_buffer_size: config.runner.client_buffer_size,
             client_max_connections: config.runner.client_maxconn,
@@ -843,10 +826,12 @@ mod tests {
                 socket: None,
             },
             output: Ok(Settings {
+                service_names: vec![
+                    "condure".to_string(),
+                    "pushpin-proxy".to_string(),
+                    "pushpin-handler".to_string(),
+                ],
                 config_file: PathBuf::from("mock/cfg"),
-                exec_dir: exec_dir.clone(),
-                lib_dir: exec_dir.clone().join("src/runner"),
-                config_dir: PathBuf::from("mock/runner"),
                 run_dir: exec_dir.clone().join("run"),
                 log_dir: exec_dir.clone().join("log"),
                 certs_dir: PathBuf::from("mock/runner/certs"),
@@ -866,11 +851,6 @@ mod tests {
                     PathBuf::from("pushpin-handler")
                 },
                 ipc_prefix: String::from("pushpin-"),
-                service_names: vec![
-                    "condure".to_string(),
-                    "pushpin-proxy".to_string(),
-                    "pushpin-handler".to_string(),
-                ],
                 ports: vec![
                     ListenPort {
                         ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
