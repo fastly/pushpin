@@ -223,6 +223,7 @@ pub struct Handler {
     pub stats_format: String,
     pub prometheus_port: String,
     pub prometheus_prefix: String,
+    pub message_keys: String,
 }
 
 impl From<Handler> for config::ValueKind {
@@ -315,6 +316,10 @@ impl From<Handler> for config::ValueKind {
         properties.insert(
             "prometheus_prefix".to_string(),
             config::Value::from(handler.prometheus_prefix),
+        );
+        properties.insert(
+            "message_keys".to_string(),
+            config::Value::from(handler.message_keys),
         );
 
         Self::Table(properties)
@@ -422,6 +427,7 @@ impl CustomConfig {
                     stats_format: String::from("tnetstring"),
                     prometheus_port: String::new(),
                     prometheus_prefix: String::new(),
+                    message_keys: String::from("prod-a:file:/etc/pushpin/private/message-key-a,staging-a:file:/etc/pushpin/private/staging-message-key-a"),
                 },
             )?
             .build()?;
