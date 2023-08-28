@@ -34,7 +34,7 @@ fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
 fn main() {
     let args = CliArgs::parse();
     println!("starting...");
-    
+
     if let Err(e) = process_args_and_run(args) {
         eprintln!("Error: {}", e);
         process::exit(1);
