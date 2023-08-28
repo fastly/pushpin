@@ -16,14 +16,16 @@
 
 use clap::Parser;
 use pushpin::config::get_config_file;
-use pushpin::runner::{ArgsData, CliArgs};
+use pushpin::runner::{ArgsData, CliArgs, Settings};
 use std::error::Error;
 use std::process;
 
 fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let args_data = ArgsData::new(args)?;
     let config_file = get_config_file(args_data.config_file.as_ref())?;
-    println!("Processed config file: {:?}", config_file);
+    println!("using config: {:?}", config_file.as_os_str());
+    let settings = Settings::new(args_data, &config_file)?;
+    println!("settings: {:?}", settings);
     //To be implemented in the next PR
 
     Ok(())
@@ -31,7 +33,8 @@ fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
 
 fn main() {
     let args = CliArgs::parse();
-
+    println!("starting...");
+    
     if let Err(e) = process_args_and_run(args) {
         eprintln!("Error: {}", e);
         process::exit(1);
