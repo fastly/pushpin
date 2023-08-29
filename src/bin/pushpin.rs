@@ -15,6 +15,7 @@
  */
 
 use clap::Parser;
+use log::info;
 use pushpin::config::get_config_file;
 use pushpin::runner::{ArgsData, CliArgs, Settings};
 use std::error::Error;
@@ -33,7 +34,7 @@ fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
 
 fn main() {
     let args = CliArgs::parse();
-    println!("starting...");
+    info!("starting...");
 
     if let Err(e) = process_args_and_run(args) {
         eprintln!("Error: {}", e);
