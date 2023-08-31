@@ -62,11 +62,6 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
-#[cfg(not(test))]
-mod seccomp;
-#[cfg(not(test))]
-use seccomp::install_seccomp_connect_filter;
-
 const RESP_SENDER_BOUND: usize = 1;
 const HANDLE_ACCEPT_BOUND: usize = 100;
 
@@ -2151,8 +2146,8 @@ impl Server {
             }
         }
 
-        #[cfg(not(test))]
-        install_seccomp_connect_filter();
+        #[cfg(all(target_os = "linux", not(test)))]
+        crate::seccomp::install_seccomp_connect_filter();
 
         let mut workers = Vec::new();
         let mut req_lsenders = Vec::new();
