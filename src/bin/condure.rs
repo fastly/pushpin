@@ -15,19 +15,14 @@
  */
 
 use clap::{crate_version, Arg, ArgAction, Command};
-use log::{error, Level, LevelFilter, Metadata, Record};
+use log::{error, LevelFilter};
 use pushpin::condure::{run, App, Config};
+use pushpin::log::get_simple_logger;
 use pushpin::{ListenConfig, ListenSpec};
 use std::error::Error;
-use std::io;
-use std::mem;
 use std::path::PathBuf;
 use std::process;
-use std::str;
-use std::sync::Once;
 use std::time::Duration;
-use time::macros::format_description;
-use time::{OffsetDateTime, UtcOffset};
 
 // safety values
 const WORKERS_MAX: usize = 1024;
@@ -43,70 +38,6 @@ const PRIVATE_SUBNETS: &[&str] = &[
     "fc00::/7",
     "fe80::/10",
 ];
-
-struct SimpleLogger {
-    local_offset: UtcOffset,
-}
-
-impl log::Log for SimpleLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Trace
-    }
-
-    fn log(&self, record: &Record) {
-        if !self.enabled(record.metadata()) {
-            return;
-        }
-
-        let now = OffsetDateTime::now_utc().to_offset(self.local_offset);
-
-        let format = format_description!(
-            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
-        );
-
-        let mut ts = [0u8; 64];
-
-        let size = {
-            let mut ts = io::Cursor::new(&mut ts[..]);
-
-            now.format_into(&mut ts, &format)
-                .expect("failed to write timestamp");
-
-            ts.position() as usize
-        };
-
-        let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
-
-        let lname = match record.level() {
-            log::Level::Error => "ERR",
-            log::Level::Warn => "WARN",
-            log::Level::Info => "INFO",
-            log::Level::Debug => "DEBUG",
-            log::Level::Trace => "TRACE",
-        };
-
-        println!("[{}] {} [{}] {}", lname, ts, record.target(), record.args());
-    }
-
-    fn flush(&self) {}
-}
-
-static mut LOGGER: mem::MaybeUninit<SimpleLogger> = mem::MaybeUninit::uninit();
-
-fn get_simple_logger() -> &'static SimpleLogger {
-    static INIT: Once = Once::new();
-
-    unsafe {
-        INIT.call_once(|| {
-            let local_offset =
-                UtcOffset::current_local_offset().expect("failed to get local time offset");
-
-            LOGGER.write(SimpleLogger { local_offset });
-        });
-
-        LOGGER.as_ptr().as_ref().unwrap()
-    }
-}
 
 struct Args {
     id: String,
