@@ -2146,7 +2146,7 @@ impl Server {
             }
         }
 
-        #[cfg(all(linux, not(test)))]
+        #[cfg(all(target_os = "linux", not(test)))]
         crate::seccomp::install_seccomp_connect_filter();
 
         let mut workers = Vec::new();

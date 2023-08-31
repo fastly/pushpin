@@ -16,7 +16,7 @@ pub mod syscalls;
 use nix::errno::Errno;
 use std::convert::TryInto;
 use std::sync::Mutex;
-use tracing::{error, trace};
+use log::{error, trace};
 
 lazy_static::lazy_static! {
     static ref SECCOMP_ACTIVE: Mutex<bool> = Mutex::new(false);
@@ -36,7 +36,6 @@ macro_rules! SECCOMP_ALLOW {
     };
 }
 
-#[cfg(target_os = "linux")]
 pub fn install_seccomp_connect_filter() {
     use self::syscalls::*;
     let mut syscall_allow_list = SECCOMP_ALLOW!(

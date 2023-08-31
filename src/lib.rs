@@ -55,7 +55,7 @@ pub mod zhttppacket;
 pub mod zhttpsocket;
 pub mod zmq;
 
-#[cfg(linux)]
+#[cfg(target_os = "linux")]
 pub mod seccomp;
 
 use std::ffi::CString;
