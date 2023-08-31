@@ -21,6 +21,7 @@
  */
 
 #include <unistd.h>
+#include <QDateTime>
 #include <QtTest/QtTest>
 #include <QSignalSpy>
 #include <QJsonDocument>
@@ -28,6 +29,7 @@
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
+#include "rust/log.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "zhttprequestpacket.h"
@@ -557,6 +559,9 @@ private:
 private slots:
 	void initTestCase()
 	{
+		QDateTime now = QDateTime::currentDateTime();
+		log_init(now.timeZone().offsetFromUtc(now));
+
 		qRegisterMetaType<QList<StatsPacket>>();
 
 		log_setOutputLevel(LOG_LEVEL_WARNING);

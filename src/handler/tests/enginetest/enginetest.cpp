@@ -20,10 +20,12 @@
  * $FANOUT_END_LICENSE$
  */
 
+#include <QDateTime>
 #include <QtTest/QtTest>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
+#include "rust/log.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "zhttprequestpacket.h"
@@ -259,6 +261,9 @@ private:
 private slots:
 	void initTestCase()
 	{
+		QDateTime now = QDateTime::currentDateTime();
+		log_init(now.timeZone().offsetFromUtc(now));
+
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 

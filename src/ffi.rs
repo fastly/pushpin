@@ -23,6 +23,7 @@
 
 use crate::encrypt;
 use crate::jwt;
+use crate::log::{ensure_init_simple_logger, get_simple_logger};
 use crate::timer::TimerWheel;
 use libc;
 use std::collections::HashSet;
@@ -415,4 +416,32 @@ pub unsafe extern "C" fn encrypt_buffer_deinit(buf: *mut EncryptBuffer) {
         buf.data = ptr::null();
         buf.len = 0;
     }
+}
+
+#[no_mangle]
+pub extern "C" fn log_init(offset_seconds: i32) {
+    ensure_init_simple_logger(Some(offset_seconds));
+}
+
+#[no_mangle]
+pub extern "C" fn log_set_level(level: libc::c_int) {
+    log::set_logger(get_simple_logger()).unwrap();
+
+    let level = match level {
+        core::i32::MIN..=0 => log::LevelFilter::Error,
+        1 => log::LevelFilter::Warn,
+        2 => log::LevelFilter::Info,
+        3 => log::LevelFilter::Debug,
+        4..=core::i32::MAX => log::LevelFilter::Trace,
+    };
+
+    log::set_max_level(level);
+}
+
+#[no_mangle]
+pub extern "C" fn security_limit_permissions() {
+    // for now all we do is set up seccomp if running on linux
+
+    #[cfg(target_os = "linux")]
+    crate::seccomp::install_seccomp_connect_filter()
 }
