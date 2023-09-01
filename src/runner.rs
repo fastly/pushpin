@@ -338,53 +338,55 @@ impl Settings {
                     .replace("{ipc_prefix}", &ipc_prefix)
                     .split(',')
                 {
-                    let uri = if port.starts_with("unix:/") {
-                        port.to_string()
-                    } else {
-                        format!("unix:/{}", port)
-                    };
-                    let uri = match Url::parse(uri.as_str()) {
-                        Ok(x) => x,
-                        _ => {
-                            error!("invalid local port: {:?}", port);
-                            return Err(format!("invalid local port: {:?}", port).into());
-                        }
-                    };
-                    let params = uri
-                        .query()
-                        .map(|v| {
-                            url::form_urlencoded::parse(v.as_bytes())
-                                .into_owned()
-                                .collect()
-                        })
-                        .unwrap_or_else(HashMap::new);
-
-                    let mut mode = -1;
-                    if params.contains_key("mode") {
-                        let mode_string = match params.get("mode") {
-                            Some(x) => x,
-                            None => {
-                                error!("invalid uri: {:?}", uri);
-                                return Err(format!("invalid uri: {:?}", uri).into());
-                            }
+                    if !port.is_empty() {
+                        let uri = if port.starts_with("unix:/") {
+                            port.to_string()
+                        } else {
+                            format!("unix:/{}", port)
                         };
-                        mode = match mode_string.parse::<i32>() {
+                        let uri = match Url::parse(uri.as_str()) {
                             Ok(x) => x,
-                            Err(_) => {
-                                error!("invalid mode: {:?}", mode_string);
-                                return Err(format!("invalid mode: {:?}", mode_string).into());
+                            _ => {
+                                error!("invalid local port: {:?}", port);
+                                return Err(format!("invalid local port: {:?}", port).into());
                             }
                         };
+                        let params = uri
+                            .query()
+                            .map(|v| {
+                                url::form_urlencoded::parse(v.as_bytes())
+                                    .into_owned()
+                                    .collect()
+                            })
+                            .unwrap_or_else(HashMap::new);
+
+                        let mut mode = -1;
+                        if params.contains_key("mode") {
+                            let mode_string = match params.get("mode") {
+                                Some(x) => x,
+                                None => {
+                                    error!("invalid uri: {:?}", uri);
+                                    return Err(format!("invalid uri: {:?}", uri).into());
+                                }
+                            };
+                            mode = match mode_string.parse::<i32>() {
+                                Ok(x) => x,
+                                Err(_) => {
+                                    error!("invalid mode: {:?}", mode_string);
+                                    return Err(format!("invalid mode: {:?}", mode_string).into());
+                                }
+                            };
+                        }
+                        ports.push(ListenPort::new(
+                            None,
+                            Some(0),
+                            Some(true),
+                            Some(uri.path().into()),
+                            Some(mode),
+                            params.get("user").cloned(),
+                            params.get("group").cloned(),
+                        ));
                     }
-                    ports.push(ListenPort::new(
-                        None,
-                        Some(0),
-                        Some(true),
-                        Some(uri.path().into()),
-                        Some(mode),
-                        params.get("user").cloned(),
-                        params.get("group").cloned(),
-                    ));
                 }
             }
         }
