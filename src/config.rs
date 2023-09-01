@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
-use config::{Config, ConfigError, File};
+use config::{Config, ConfigError};
 use log::info;
 use serde::Deserialize;
 use std::env;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+
+#[cfg(not(test))]
+use config::File;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Global {
