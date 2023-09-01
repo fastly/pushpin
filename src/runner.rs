@@ -277,24 +277,24 @@ impl Settings {
         let log_dir = exec_dir.join(config.runner.logdir);
 
         let mut port_offset = 0;
-        let mut ipc_prefix =
-            Some(config.global.ipc_prefix.clone()).unwrap_or("pushpin-".to_string());
-        let mut file_prefix = String::new();
-        match args_data.id {
-            Some(x) => {
-                ipc_prefix = format!("{:?}-", x);
-                port_offset = x * 10;
-                file_prefix = ipc_prefix.clone();
-            }
-            None => {}
+        let mut ipc_prefix = if !config.global.ipc_prefix.is_empty() {
+            config.global.ipc_prefix.clone()
+        } else {
+            "pushpin-".to_string()
         };
+        let mut file_prefix = String::new();
+        if let Some(x) = args_data.id {
+            ipc_prefix = format!("{:?}-", x);
+            port_offset = x * 10;
+            file_prefix = ipc_prefix.clone();
+        }
 
         let mut ports: Vec<ListenPort> = vec![];
         match args_data.socket {
             Some(x) => {
                 ports.push(ListenPort::new(
                     Some(x.ip()),
-                    Some(x.port().into()),
+                    Some(x.port()),
                     None,
                     None,
                     None,
@@ -303,12 +303,12 @@ impl Settings {
                 ));
             }
             None => {
-                for port in config.runner.http_port.split(",") {
+                for port in config.runner.http_port.split(',') {
                     if !port.is_empty() {
                         let socket = get_socket(Some(port))?.unwrap();
                         ports.push(ListenPort::new(
                             Some(socket.ip()),
-                            Some(socket.port().into()),
+                            Some(socket.port()),
                             None,
                             None,
                             None,
@@ -317,12 +317,12 @@ impl Settings {
                         ));
                     }
                 }
-                for port in config.runner.https_ports.split(",") {
+                for port in config.runner.https_ports.split(',') {
                     if !port.is_empty() {
                         let socket = get_socket(Some(port))?.unwrap();
                         ports.push(ListenPort::new(
                             Some(socket.ip()),
-                            Some(socket.port().into()),
+                            Some(socket.port()),
                             Some(true),
                             None,
                             None,
@@ -336,7 +336,7 @@ impl Settings {
                     .local_ports
                     .replace("{rundir}", config.global.rundir.as_str())
                     .replace("{ipc_prefix}", &ipc_prefix)
-                    .split(",")
+                    .split(',')
                 {
                     let uri = if port.starts_with("unix:/") {
                         port.to_string()
@@ -401,8 +401,8 @@ impl Settings {
                 .map(|s| s.to_string())
                 .collect(),
             config_file: config_file_path.to_path_buf(),
-            run_dir: run_dir,
-            log_dir: log_dir,
+            run_dir,
+            log_dir,
             condure_bin: get_service_dir(exec_dir.into(), "condure", "bin/condure")?,
             proxy_bin: get_service_dir(exec_dir.into(), "pushpin-proxy", "bin/pushpin-proxy")?,
             handler_bin: get_service_dir(
@@ -410,15 +410,15 @@ impl Settings {
                 "pushpin-handler",
                 "bin/pushpin-handler",
             )?,
-            certs_dir: certs_dir,
-            ipc_prefix: ipc_prefix,
-            ports: ports,
+            certs_dir,
+            ipc_prefix,
+            ports,
             client_buffer_size: config.runner.client_buffer_size,
             client_max_connections: config.runner.client_maxconn,
             allow_compression: config.runner.allow_compression,
-            port_offset: port_offset,
-            file_prefix: file_prefix,
-            log_levels: log_levels,
+            port_offset,
+            file_prefix,
+            log_levels,
             route_lines: args_data.route_lines,
         })
     }
