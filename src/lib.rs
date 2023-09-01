@@ -35,6 +35,7 @@ pub mod http1;
 pub mod jwt;
 pub mod list;
 pub mod listener;
+pub mod log;
 pub mod net;
 pub mod pool;
 pub mod publish_cli;
