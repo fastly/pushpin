@@ -277,24 +277,24 @@ impl Settings {
         let log_dir = exec_dir.join(config.runner.logdir);
 
         let mut port_offset = 0;
-        let mut ipc_prefix =
-            Some(config.global.ipc_prefix.clone()).unwrap_or("pushpin-".to_string());
-        let mut file_prefix = String::new();
-        match args_data.id {
-            Some(x) => {
-                ipc_prefix = format!("{:?}-", x);
-                port_offset = x * 10;
-                file_prefix = ipc_prefix.clone();
-            }
-            None => {}
+        let mut ipc_prefix = if !config.global.ipc_prefix.is_empty() {
+            config.global.ipc_prefix.clone()
+        } else {
+            "pushpin-".to_string()
         };
+        let mut file_prefix = String::new();
+        if let Some(x) = args_data.id {
+            ipc_prefix = format!("{:?}-", x);
+            port_offset = x * 10;
+            file_prefix = ipc_prefix.clone();
+        }
 
         let mut ports: Vec<ListenPort> = vec![];
         match args_data.socket {
             Some(x) => {
                 ports.push(ListenPort::new(
                     Some(x.ip()),
-                    Some(x.port().into()),
+                    Some(x.port()),
                     None,
                     None,
                     None,
@@ -303,12 +303,12 @@ impl Settings {
                 ));
             }
             None => {
-                for port in config.runner.http_port.split(",") {
+                for port in config.runner.http_port.split(',') {
                     if !port.is_empty() {
                         let socket = get_socket(Some(port))?.unwrap();
                         ports.push(ListenPort::new(
                             Some(socket.ip()),
-                            Some(socket.port().into()),
+                            Some(socket.port()),
                             None,
                             None,
                             None,
@@ -317,12 +317,12 @@ impl Settings {
                         ));
                     }
                 }
-                for port in config.runner.https_ports.split(",") {
+                for port in config.runner.https_ports.split(',') {
                     if !port.is_empty() {
                         let socket = get_socket(Some(port))?.unwrap();
                         ports.push(ListenPort::new(
                             Some(socket.ip()),
-                            Some(socket.port().into()),
+                            Some(socket.port()),
                             Some(true),
                             None,
                             None,
@@ -336,55 +336,57 @@ impl Settings {
                     .local_ports
                     .replace("{rundir}", config.global.rundir.as_str())
                     .replace("{ipc_prefix}", &ipc_prefix)
-                    .split(",")
+                    .split(',')
                 {
-                    let uri = if port.starts_with("unix:/") {
-                        port.to_string()
-                    } else {
-                        format!("unix:/{}", port)
-                    };
-                    let uri = match Url::parse(uri.as_str()) {
-                        Ok(x) => x,
-                        _ => {
-                            error!("invalid local port: {:?}", port);
-                            return Err(format!("invalid local port: {:?}", port).into());
-                        }
-                    };
-                    let params = uri
-                        .query()
-                        .map(|v| {
-                            url::form_urlencoded::parse(v.as_bytes())
-                                .into_owned()
-                                .collect()
-                        })
-                        .unwrap_or_else(HashMap::new);
-
-                    let mut mode = -1;
-                    if params.contains_key("mode") {
-                        let mode_string = match params.get("mode") {
-                            Some(x) => x,
-                            None => {
-                                error!("invalid uri: {:?}", uri);
-                                return Err(format!("invalid uri: {:?}", uri).into());
-                            }
+                    if !port.is_empty() {
+                        let uri = if port.starts_with("unix:/") {
+                            port.to_string()
+                        } else {
+                            format!("unix:/{}", port)
                         };
-                        mode = match mode_string.parse::<i32>() {
+                        let uri = match Url::parse(uri.as_str()) {
                             Ok(x) => x,
-                            Err(_) => {
-                                error!("invalid mode: {:?}", mode_string);
-                                return Err(format!("invalid mode: {:?}", mode_string).into());
+                            _ => {
+                                error!("invalid local port: {:?}", port);
+                                return Err(format!("invalid local port: {:?}", port).into());
                             }
                         };
+                        let params = uri
+                            .query()
+                            .map(|v| {
+                                url::form_urlencoded::parse(v.as_bytes())
+                                    .into_owned()
+                                    .collect()
+                            })
+                            .unwrap_or_else(HashMap::new);
+
+                        let mut mode = -1;
+                        if params.contains_key("mode") {
+                            let mode_string = match params.get("mode") {
+                                Some(x) => x,
+                                None => {
+                                    error!("invalid uri: {:?}", uri);
+                                    return Err(format!("invalid uri: {:?}", uri).into());
+                                }
+                            };
+                            mode = match mode_string.parse::<i32>() {
+                                Ok(x) => x,
+                                Err(_) => {
+                                    error!("invalid mode: {:?}", mode_string);
+                                    return Err(format!("invalid mode: {:?}", mode_string).into());
+                                }
+                            };
+                        }
+                        ports.push(ListenPort::new(
+                            None,
+                            Some(0),
+                            Some(true),
+                            Some(uri.path().into()),
+                            Some(mode),
+                            params.get("user").cloned(),
+                            params.get("group").cloned(),
+                        ));
                     }
-                    ports.push(ListenPort::new(
-                        None,
-                        Some(0),
-                        Some(true),
-                        Some(uri.path().into()),
-                        Some(mode),
-                        params.get("user").cloned(),
-                        params.get("group").cloned(),
-                    ));
                 }
             }
         }
@@ -401,8 +403,8 @@ impl Settings {
                 .map(|s| s.to_string())
                 .collect(),
             config_file: config_file_path.to_path_buf(),
-            run_dir: run_dir,
-            log_dir: log_dir,
+            run_dir,
+            log_dir,
             condure_bin: get_service_dir(exec_dir.into(), "condure", "bin/condure")?,
             proxy_bin: get_service_dir(exec_dir.into(), "pushpin-proxy", "bin/pushpin-proxy")?,
             handler_bin: get_service_dir(
@@ -410,15 +412,15 @@ impl Settings {
                 "pushpin-handler",
                 "bin/pushpin-handler",
             )?,
-            certs_dir: certs_dir,
-            ipc_prefix: ipc_prefix,
-            ports: ports,
+            certs_dir,
+            ipc_prefix,
+            ports,
             client_buffer_size: config.runner.client_buffer_size,
             client_max_connections: config.runner.client_maxconn,
             allow_compression: config.runner.allow_compression,
-            port_offset: port_offset,
-            file_prefix: file_prefix,
-            log_levels: log_levels,
+            port_offset,
+            file_prefix,
+            log_levels,
             route_lines: args_data.route_lines,
         })
     }
