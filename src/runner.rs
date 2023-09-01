@@ -360,7 +360,7 @@ impl Settings {
                             })
                             .unwrap_or_else(HashMap::new);
 
-                        let mut mode = -1;
+                        let mut mode = None;
                         if params.contains_key("mode") {
                             let mode_string = match params.get("mode") {
                                 Some(x) => x,
@@ -370,7 +370,7 @@ impl Settings {
                                 }
                             };
                             mode = match mode_string.parse::<i32>() {
-                                Ok(x) => x,
+                                Ok(x) => Some(x),
                                 Err(_) => {
                                     error!("invalid mode: {:?}", mode_string);
                                     return Err(format!("invalid mode: {:?}", mode_string).into());
@@ -382,7 +382,7 @@ impl Settings {
                             Some(0),
                             Some(true),
                             Some(uri.path().into()),
-                            Some(mode),
+                            mode,
                             params.get("user").cloned(),
                             params.get("group").cloned(),
                         ));
