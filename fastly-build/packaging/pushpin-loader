@@ -370,10 +370,10 @@ def make_routes(service, backend, sig_keys_dir):
         if bool(realm_domain_config.get('debug', False)):
             cond_opts += ',debug'
 
-        routes.append('id="gr:ht:{}:{}",{} {}'.format(service_id, backend_name, cond_opts, target))
-        routes.append('id="gr:ws:{}:{}",{} {}'.format(service_id, backend_name, cond_opts, target))
+        routes.append('id="gr:ht:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
+        routes.append('id="gr:ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
     else:
-        routes.append('id="ws:{}:{}",no_grip {}'.format(service_id, backend_name, target))
+        routes.append('id="ws:{}:{}",no_grip {}'.format(service_id, escape_route_param(backend_name), target))
         routes.append('id=ws:{}:{}--{},no_grip {}'.format(service_id, service_id, vclify_backend(backend_name), target))
         routes.append('id=ws:{}:{}--F_{},no_grip {}'.format(service_id, service_id, vclify_backend(backend_name), target))
 
