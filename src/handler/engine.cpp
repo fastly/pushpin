@@ -33,6 +33,8 @@
 #include <QJsonArray>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
+#include "rust/log.h"
+#include "rust/security.h"
 #include "tnetstring.h"
 #include "rtimer.h"
 #include "encrypt.h"
@@ -1604,6 +1606,13 @@ public:
 
 			log_info("http control server: %s:%d", qPrintable(config.pushInHttpAddr.toString()), config.pushInHttpPort);
 		}
+
+		// NOTE: this enables the rust logger which always logs to stdout,
+		// which is fine because we don't log to a file in production and
+		// we also plan to remove file logging capability
+		log_set_level(log_outputLevel());
+
+		security_limit_permissions();
 
 		if(inPullValve)
 			inPullValve->open();

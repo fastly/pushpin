@@ -71,8 +71,7 @@ HEADERS += \
 	$$SRC_DIR/simplehttpserver.h \
 	$$SRC_DIR/stats.h \
 	$$SRC_DIR/statsmanager.h \
-	$$SRC_DIR/settings.h \
-	$$SRC_DIR/seccomp.h
+	$$SRC_DIR/settings.h
 
 SOURCES += \
 	$$SRC_DIR/timerwheel.cpp \
@@ -92,5 +91,4 @@ SOURCES += \
 	$$SRC_DIR/simplehttpserver.cpp \
 	$$SRC_DIR/stats.cpp \
 	$$SRC_DIR/statsmanager.cpp \
-	$$SRC_DIR/settings.cpp \
-	$$SRC_DIR/seccomp.cpp
+	$$SRC_DIR/settings.cpp

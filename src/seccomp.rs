@@ -13,10 +13,10 @@
 
 pub mod syscalls;
 
+use log::{error, trace};
 use nix::errno::Errno;
 use std::convert::TryInto;
 use std::sync::Mutex;
-use log::{error, trace};
 
 lazy_static::lazy_static! {
     static ref SECCOMP_ACTIVE: Mutex<bool> = Mutex::new(false);
@@ -72,6 +72,10 @@ pub fn install_seccomp_connect_filter() {
         __NR_GETTID,
         __NR_GETTIMEOFDAY,
         __NR_GETUID,
+        __NR_INOTIFY_INIT,
+        __NR_INOTIFY_INIT1,
+        __NR_INOTIFY_ADD_WATCH,
+        __NR_INOTIFY_RM_WATCH,
         __NR_IOCTL,
         __NR_KILL,
         __NR_LISTEN,
@@ -99,7 +103,9 @@ pub fn install_seccomp_connect_filter() {
         __NR_RT_SIGPROCMASK,
         __NR_RT_SIGRETURN,
         __NR_SCHED_GETAFFINITY,
+        __NR_SCHED_GETPARAM,
         __NR_SCHED_GET_PRIORITY_MAX,
+        __NR_SCHED_GETSCHEDULER,
         __NR_SCHED_SETSCHEDULER,
         __NR_SCHED_YIELD,
         __NR_SENDFILE,
@@ -139,7 +145,7 @@ pub fn install_seccomp_connect_filter() {
         error!("failed to install seccomp filter: {}", e);
         std::process::exit(1);
     }
-    trace!("loaded socket(2) filter, non-Unix sockets are now denied to xqd");
+    trace!("loaded socket(2) filter, non-Unix sockets are now denied");
 
     #[cfg(debug_assertions)]
     {

@@ -7,6 +7,7 @@ TESTS_DIR = $$PWD
 SRC_DIR = $$PWD/..
 CORE_DIR = $$PWD/../../corelib
 QZMQ_DIR = $$CORE_DIR/qzmq
+RUST_DIR = $$SRC_DIR/../rust
 
 LIBS += -L$$SRC_DIR -lpushpin-handler
 PRE_TARGETDEPS += $$PWD/../libpushpin-handler.a
@@ -22,3 +23,5 @@ INCLUDEPATH += $$CORE_DIR
 INCLUDEPATH += $$QZMQ_DIR/src
 
 DEFINES += NO_IRISNET
+
+INCLUDEPATH += $$RUST_DIR/include

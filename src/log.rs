@@ -72,17 +72,25 @@ impl Log for SimpleLogger {
 
 static mut LOGGER: mem::MaybeUninit<SimpleLogger> = mem::MaybeUninit::uninit();
 
-pub fn get_simple_logger() -> &'static impl Log {
+pub fn ensure_init_simple_logger(utc_offset_seconds: Option<i32>) {
     static INIT: Once = Once::new();
 
-    unsafe {
-        INIT.call_once(|| {
-            let local_offset =
-                UtcOffset::current_local_offset().expect("failed to get local time offset");
+    INIT.call_once(|| {
+        let local_offset = match utc_offset_seconds {
+            Some(x) => UtcOffset::from_whole_seconds(x).expect("offset out of range"),
+            None => UtcOffset::current_local_offset().expect("failed to get local time offset"),
+        };
 
+        // SAFETY: this is only called once
+        unsafe {
             LOGGER.write(SimpleLogger { local_offset });
-        });
+        }
+    });
+}
 
-        LOGGER.as_ptr().as_ref().unwrap()
-    }
+pub fn get_simple_logger() -> &'static impl Log {
+    ensure_init_simple_logger(None);
+
+    // SAFETY: logger is guaranteed to have been initialized
+    unsafe { LOGGER.as_ptr().as_ref().unwrap() }
 }
