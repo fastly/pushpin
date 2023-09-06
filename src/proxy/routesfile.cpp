@@ -125,14 +125,22 @@ public:
 						{
 							++at;
 							if(at >= str_.length())
-								return Token(Token::Error);
+							{
+								Token token(Token::Error);
+								token.value = "unterminated escape sequence";
+								return token;
+							}
 
 							if(str_[at] == '\\')
 								part += '\\';
 							else if(str_[at] == '\"')
 								part += '\"';
 							else
-								return Token(Token::Error);
+							{
+								Token token(Token::Error);
+								token.value = "unexpected escape character: " + str_[at];
+								return token;
+							}
 						}
 						else if(str_[at] == '\"')
 						{
@@ -144,7 +152,11 @@ public:
 						}
 					}
 					if(at >= str_.length())
-						return Token(Token::Error);
+					{
+						Token token(Token::Error);
+						token.value = "unterminated quoted section";
+						return token;
+					}
 
 					index_ = at + 1;
 					continue;
