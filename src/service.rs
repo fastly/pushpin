@@ -17,13 +17,15 @@
 use crate::runner::Settings;
 use log::{error, info};
 use mpsc::{channel, Sender};
+use signal_hook::consts::{SIGINT, SIGTERM, TERM_SIGNALS};
+use signal_hook::iterator::Signals;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 use std::{process::Command, thread};
 use url::Url;
 
 pub enum ServiceError {
-    ProcessError(String),
+    TermSignal(String),
     ThreadError(String),
 }
 
@@ -43,22 +45,46 @@ pub fn start_services(settings: Settings) {
         threads.push(service.start(sender.clone()));
     }
 
+    // Spawn a signal handling thread
+    threads.push(Some(thread::spawn(move || {
+        for signal in Signals::new(TERM_SIGNALS)
+            .expect("Error creating signal iterator")
+            .forever()
+        {
+            match signal {
+                SIGINT | SIGTERM => {
+                    sender
+                        .send(Err(ServiceError::TermSignal(
+                            "termination signal received".to_string(),
+                        )))
+                        .unwrap();
+                    break;
+                }
+                _ => {}
+            }
+        }
+    })));
+
     // Receive error messages from other threads.
     loop {
-        match receiver.try_recv() {
-            Ok(ServiceError::ThreadError(error_message)) => {
+        match receiver.recv() {
+            Ok(Err(ServiceError::ThreadError(error_message))) => {
                 error!("error received: {}", error_message);
-                for thread in &mut threads {
-                    let thread = thread.take().unwrap();
-                    thread.join().unwrap();
-                }
+                break;
             }
+            Ok(Err(ServiceError::TermSignal(error_message))) => {
+                error!("signal received: {}", error_message);
+                break;
+            }
+            Ok(_) => {}
             Err(_) => error!("Failed to receive error message from thread"),
-            _ => (),
         }
+    }
 
-        // If the channel is empty, wait for a message to be sent.
-        thread::sleep(std::time::Duration::from_secs(1));
+    // Wait for all threads to finish.
+    for thread in &mut threads {
+        let thread = thread.take().unwrap();
+        thread.join().unwrap();
     }
 }
 
@@ -70,11 +96,10 @@ impl Service {
     pub fn start(
         &mut self,
         args: Vec<String>,
-        sender: mpsc::Sender<ServiceError>,
+        sender: Sender<Result<(), ServiceError>>,
     ) -> Option<thread::JoinHandle<()>> {
         info!("starting {}", self.name);
 
-        // self.state = State::Starting;
         let name = self.name.clone();
 
         Some(thread::spawn(move || {
@@ -84,20 +109,19 @@ impl Service {
             let status = command.status().expect("Failed to execute command");
 
             if status.success() {
-                // *state = State::Started;
+                sender.send(Ok(())).unwrap();
             } else {
                 let error_message = format!("Failed to start {} service.", name);
                 sender
-                    .send(ServiceError::ThreadError(error_message.clone()))
+                    .send(Err(ServiceError::ThreadError(error_message)))
                     .unwrap();
-                error!("{}", error_message);
             }
         }))
     }
 }
 
 pub trait RunnerService {
-    fn start(&mut self, sender: Sender<ServiceError>) -> Option<JoinHandle<()>>;
+    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>>;
 }
 
 pub struct CondureService {
@@ -140,9 +164,8 @@ impl CondureService {
             let mut using_ssl = false;
 
             for port in &settings.ports {
-                let mut arg = String::new();
                 if !port.local_path.is_empty() {
-                    arg = format!("--listen={},local,stream", port.local_path);
+                    let mut arg = format!("--listen={},local,stream", port.local_path);
                     if port.mode >= 0 {
                         arg = format!("{},mode={}", arg, port.mode);
                     }
@@ -152,18 +175,19 @@ impl CondureService {
                     if !port.group.is_empty() {
                         arg = format!("{},group={}", arg, port.group);
                     }
+                    args.push(arg);
                 } else {
                     let url_string = format!("http://{}:{}", port.ip, port.port);
                     let url = Url::parse(&url_string).expect("Failed to parse Condure URL");
 
-                    arg = format!("--listen={},stream", url.authority());
+                    let mut arg = format!("--listen={},stream", url.authority());
 
                     if port.ssl {
                         using_ssl = true;
                         arg = format!("{},tls,default-cert=default_{}", arg, port.port);
                     }
+                    args.push(arg);
                 }
-                args.push(arg);
             }
 
             args.push(format!(
@@ -208,7 +232,7 @@ impl CondureService {
 }
 
 impl RunnerService for CondureService {
-    fn start(&mut self, sender: Sender<ServiceError>) -> Option<JoinHandle<()>> {
+    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>> {
         self.service.start(self.args.clone(), sender)
     }
 }
