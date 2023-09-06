@@ -33,6 +33,7 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stag
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/condure
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-healthcheck
 RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
+RUN cp ./fastly-build/pushpin.conf /opt/fst-pushpin/etc/pushpin/pushpin.conf
 RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-condure-in.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-condure-out.service /opt/fst-pushpin/etc
