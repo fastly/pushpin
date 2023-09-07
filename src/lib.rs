@@ -43,6 +43,7 @@ pub mod reactor;
 pub mod resolver;
 pub mod runner;
 pub mod server;
+pub mod service;
 pub mod shuffle;
 pub mod timer;
 pub mod tls;
