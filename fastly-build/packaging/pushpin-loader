@@ -13,6 +13,7 @@ import logging
 import os
 from pwd import getpwnam
 import re
+import socket
 import string
 import sys
 import tempfile
@@ -124,6 +125,20 @@ def escape_route_param(s):
     return out
 
 
+class HTTPUnixSocketConnection(HTTPConnection):
+    def __init__(self, unix_socket: str, timeout=None, blocksize=8192):
+        super().__init__("localhost", timeout, blocksize)
+        self.unix_socket = unix_socket
+    
+    def connect(self):
+        if not os.path.exists(self.unix_socket):
+            raise IOError(f"Socket {self.unix_socket} does not exist")
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.unix_socket)
+
+
 class BaseClient(object):
     def __init__(self):
         self.conn = None
@@ -132,7 +147,7 @@ class BaseClient(object):
         raise NotImplementedError()
 
     def request(self, url, accept, inm=None):
-        connect_hostport, tls, host, headers = self.get_request_details()
+        connect_hostport, conn_type, host, headers = self.get_request_details()
 
         # Use an established connection, open a new one if that fails.
         for reuse in (True, False):
@@ -140,7 +155,9 @@ class BaseClient(object):
                 continue
             if not reuse:
                 self.conn = None
-                if tls:
+                if conn_type == 'unix':
+                    self.conn = HTTPUnixSocketConnection(connect_hostport)
+                elif conn_type == 'tls':
                     self.conn = HTTPSConnection(connect_hostport)
                 else:
                     self.conn = HTTPConnection(connect_hostport)
@@ -194,9 +211,15 @@ class BaseClient(object):
         return Response(resp.status, data, resp.getheader('ETag'))
 
 
+class FetchlyClient(BaseClient):
+    def get_request_details(self):
+        consumer_name = 'pushpin-loader/' + PKG_VERSION
+        return ('/run/fetchly/fetchly.sock', 'unix', '', {'Fetchly-Consumer': consumer_name})
+
+
 class HeavenlyClient(BaseClient):
     def get_request_details(self):
-        return ('localhost:8001', False, 'fastly-config-loader-2', {'Fastly-CDN': 'fastly', 'Fastly-Debug': '1', 'Heavenly-Canary': '0'})
+        return ('localhost:8001', 'non_tls', 'fastly-config-loader-2', {'Fastly-CDN': 'fastly', 'Fastly-Debug': '1', 'Heavenly-Canary': '0'})
 
 
 class FanoutInternalClient(BaseClient):
@@ -206,7 +229,7 @@ class FanoutInternalClient(BaseClient):
         self.key = key
 
     def get_request_details(self):
-        return ('fanout-internal.edgecompute.app:443', True, 'fanout-internal.edgecompute.app', {'Fastly-Key': self.key})
+        return ('fanout-internal.edgecompute.app:443', 'tls', 'fanout-internal.edgecompute.app', {'Fastly-Key': self.key})
 
 
 def fetch_service_backends(api_key):
@@ -214,12 +237,13 @@ def fetch_service_backends(api_key):
     Returns {service_id: (service, [backend])}.
     """
     heavenly_client = HeavenlyClient()
+    fetchly_client = FetchlyClient()
     internal_client = FanoutInternalClient(api_key)
 
     logging.info('fetching service manifest')
 
-    resp = heavenly_client.request('/config/service/', 'application/json')
-    services = json.loads(resp.data)
+    resp = fetchly_client.request('/v1/config/service', 'application/json')
+    services = json.loads(resp.data)['service']
 
     pushpin_services = []
 
