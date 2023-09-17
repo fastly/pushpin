@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +36,7 @@
 
 use crate::arena;
 use crate::buffer::{
-    BaseRingBuffer, Buffer, LimitBufsMut, RefRead, RingBuffer, SliceRingBuffer, TmpBuffer,
+    ContiguousBuffer, LimitBufsMut, RefRead, RingBuffer, SliceRingBuffer, TmpBuffer, VecRingBuffer,
     VECTORED_MAX,
 };
 use crate::future::{
@@ -578,8 +579,8 @@ fn make_zhttp_response(
     Ok(zmq::Message::from(v))
 }
 
-async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Result<(), io::Error> {
-    if buf.write_avail() == 0 {
+async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut VecRingBuffer) -> Result<(), io::Error> {
+    if buf.remaining_capacity() == 0 {
         return Err(io::Error::from(io::ErrorKind::WriteZero));
     }
 
@@ -598,13 +599,13 @@ async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Result<(
 }
 
 struct LimitedRingBuffer<'a> {
-    inner: &'a mut RingBuffer,
+    inner: &'a mut VecRingBuffer,
     limit: usize,
 }
 
 impl AsRef<[u8]> for LimitedRingBuffer<'_> {
     fn as_ref(&self) -> &[u8] {
-        let buf = BaseRingBuffer::read_buf(self.inner);
+        let buf = RingBuffer::read_buf(self.inner);
         let limit = cmp::min(buf.len(), self.limit);
 
         &buf[..limit]
@@ -613,8 +614,8 @@ impl AsRef<[u8]> for LimitedRingBuffer<'_> {
 
 struct HttpRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf1: &'a mut RingBuffer,
-    buf2: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
+    buf2: &'a mut VecRingBuffer,
 }
 
 struct HttpWrite<'a, W: AsyncWrite> {
@@ -629,8 +630,8 @@ struct RequestHandler<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut RingBuffer,
-        buf2: &'a mut RingBuffer,
+        buf1: &'a mut VecRingBuffer,
+        buf2: &'a mut VecRingBuffer,
     ) -> Self {
         buf1.align();
         buf2.clear();
@@ -821,13 +822,13 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 
 
 struct RecvBodyRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct RequestRecvBody<'a, R: AsyncRead, W: AsyncWrite> {
     r: RefCell<RecvBodyRead<'a, R>>,
     wstream: WriteHalf<'a, W>,
-    buf2: &'a mut RingBuffer,
+    buf2: &'a mut VecRingBuffer,
     protocol: RefCell<http1::ServerProtocol>,
 }
 
@@ -858,7 +859,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         if protocol.state() == http1::ServerState::ReceivingBody {
             loop {
                 let (size, read_size) = {
-                    let mut buf = io::Cursor::new(BaseRingBuffer::read_buf(r.buf));
+                    let mut buf = io::Cursor::new(RingBuffer::read_buf(r.buf));
 
                     let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
@@ -1005,11 +1006,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestStartResponse<'a, R, W> {
 
 struct SendHeaderRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct EarlyBody {
-    overflow: Option<Buffer>,
+    overflow: Option<ContiguousBuffer>,
     done: bool,
 }
 
@@ -1024,8 +1025,8 @@ struct RequestSendHeader<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut RingBuffer,
-        buf2: &'a mut RingBuffer,
+        buf1: &'a mut VecRingBuffer,
+        buf2: &'a mut VecRingBuffer,
         protocol: http1::ServerProtocol,
         header_size: usize,
     ) -> Self {
@@ -1065,7 +1066,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
         let mut early_body = self.early_body.borrow_mut();
 
         if let Some(overflow) = &mut early_body.overflow {
-            wbuf.inner.write_all(Buffer::read_buf(overflow))?;
+            wbuf.inner.write_all(ContiguousBuffer::read_buf(overflow))?;
 
             early_body.overflow = None;
         }
@@ -1099,7 +1100,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
                 if early_body.overflow.is_none() {
                     // only allow overflowing as much as there are header
                     // bytes left
-                    early_body.overflow = Some(Buffer::new(wbuf.limit));
+                    early_body.overflow = Some(ContiguousBuffer::new(wbuf.limit));
                 }
 
                 let overflow = early_body.overflow.as_mut().unwrap();
@@ -1145,12 +1146,12 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
 
 struct HttpSendBodyRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct HttpSendBodyWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
     body_done: bool,
 }
 
@@ -1216,7 +1217,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
     fn can_flush(&self) -> bool {
         let w = &*self.w.borrow();
 
-        w.buf.read_avail() > 0 || w.body_done
+        w.buf.len() > 0 || w.body_done
     }
 
     async fn flush_body(&self) -> Result<(usize, bool), Error> {
@@ -1227,7 +1228,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
 
             let w = &*self.w.borrow();
 
-            if w.buf.read_avail() == 0 && !w.body_done {
+            if w.buf.len() == 0 && !w.body_done {
                 return Ok((0, false));
             }
         }
@@ -1243,10 +1244,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
 
         w.buf.read_commit(size);
 
-        if w.buf.read_avail() > 0
-            || !w.body_done
-            || protocol.state() == http1::ServerState::SendingBody
-        {
+        if w.buf.len() > 0 || !w.body_done || protocol.state() == http1::ServerState::SendingBody {
             return Ok((size, false));
         }
 
@@ -1290,12 +1288,12 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
 
 struct WebSocketRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct WebSocketWrite<'a, W: AsyncWrite, M> {
     stream: WriteHalf<'a, W>,
-    buf: &'a mut BaseRingBuffer<M>,
+    buf: &'a mut RingBuffer<M>,
 }
 
 struct SendMessageContentFuture<'a, 'b, W: AsyncWrite, M> {
@@ -1352,7 +1350,7 @@ struct WebSocketHandler<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut RingBuffer,
+        buf1: &'a mut VecRingBuffer,
         buf2: &'a mut SliceRingBuffer<'a>,
         deflate_config: Option<(bool, SliceRingBuffer<'a>)>,
     ) -> Self {
@@ -1413,7 +1411,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
     }
 
     fn accept_avail(&self) -> usize {
-        self.w.borrow().buf.write_avail()
+        self.w.borrow().buf.remaining_capacity()
     }
 
     fn accept_body(&self, body: &[u8]) -> Result<(), Error> {
@@ -1921,9 +1919,9 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     stream: &mut S,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
-    body_buf: &mut Buffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
     zsender: &AsyncLocalSender<zmq::Message>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
@@ -2014,7 +2012,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
                 req.method,
                 req.uri,
                 req.headers,
-                Buffer::read_buf(body_buf),
+                ContiguousBuffer::read_buf(body_buf),
                 false,
                 Mode::HttpReq,
                 0,
@@ -2149,11 +2147,11 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
     // send response body
 
-    while body_buf.read_avail() > 0 {
+    while body_buf.len() > 0 {
         // ABR: discard_while
         let size = discard_while(
             zreceiver,
-            pin!(handler.send_body(Buffer::read_buf(body_buf), false)),
+            pin!(handler.send_body(ContiguousBuffer::read_buf(body_buf), false)),
         )
         .await?;
 
@@ -2187,9 +2185,9 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
-    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut body_buf = Buffer::new(body_buffer_size);
+    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut body_buf = ContiguousBuffer::new(body_buffer_size);
 
     loop {
         stream.set_id(cid);
@@ -2753,7 +2751,7 @@ where
 }
 
 struct Overflow {
-    buf: Buffer,
+    buf: ContiguousBuffer,
     end: bool,
 }
 
@@ -2940,8 +2938,8 @@ where
 async fn stream_websocket<S, R1, R2>(
     log_id: &str,
     stream: RefCell<&mut S>,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -2955,7 +2953,7 @@ where
     R2: Fn(),
 {
     // buf2 must be empty since we will repurpose the memory
-    assert_eq!(buf2.read_avail(), 0);
+    assert_eq!(buf2.len(), 0);
     let rb_tmp = buf2.get_tmp().clone();
     let mut wbuf = buf2.take_inner().into_inner();
 
@@ -3289,8 +3287,8 @@ where
 async fn server_stream_websocket<S, R1, R2>(
     log_id: &str,
     stream: RefCell<&mut S>,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -3304,7 +3302,7 @@ where
     R2: Fn(),
 {
     // buf2 must be empty since we will repurpose the memory
-    assert_eq!(buf2.read_avail(), 0);
+    assert_eq!(buf2.len(), 0);
     let rb_tmp = buf2.get_tmp().clone();
     let mut wbuf = buf2.take_inner().into_inner();
 
@@ -3641,8 +3639,8 @@ async fn server_stream_handler<S, R1, R2>(
     stream: &mut S,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -4156,8 +4154,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
-    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
 
     loop {
         stream.set_id(cid);
@@ -4407,15 +4405,15 @@ pub enum RecvStatus<T, C> {
 struct ClientRequest<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    buf1: &'a mut RingBuffer,
-    buf2: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
+    buf2: &'a mut VecRingBuffer,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequest<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut RingBuffer,
-        buf2: &'a mut RingBuffer,
+        buf1: &'a mut VecRingBuffer,
+        buf2: &'a mut VecRingBuffer,
     ) -> Self {
         Self {
             r: stream.0,
@@ -4462,16 +4460,16 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequest<'a, R, W> {
 struct ClientRequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    buf1: &'a mut RingBuffer,
-    buf2: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
+    buf2: &'a mut VecRingBuffer,
     req_body: http1::ClientRequestBody,
     end: bool,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
     async fn send(mut self) -> Result<ClientRequestBody<'a, R, W>, Error> {
-        while self.buf1.read_avail() > 0 {
-            let size = self.w.write(BaseRingBuffer::read_buf(self.buf1)).await?;
+        while self.buf1.len() > 0 {
+            let size = self.w.write(RingBuffer::read_buf(self.buf1)).await?;
             self.buf1.read_commit(size);
         }
 
@@ -4494,12 +4492,12 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
 
 struct ClientRequestBodyRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct ClientRequestBodyWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
     req_body: Option<http1::ClientRequestBody>,
     end: bool,
 }
@@ -4541,7 +4539,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &*inner.w.borrow();
 
-            w.buf.read_avail() > 0 || w.end
+            w.buf.len() > 0 || w.end
         } else {
             false
         }
@@ -4587,7 +4585,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
 
                 w.buf.read_commit(size);
 
-                assert_eq!(w.buf.read_avail(), 0);
+                assert_eq!(w.buf.len(), 0);
 
                 SendStatus::Complete(ClientResponse {
                     r: r.stream,
@@ -4694,7 +4692,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
 
                     w.req_body = Some(req_body);
 
-                    if r.buf.read_avail() == 0 {
+                    if r.buf.len() == 0 {
                         let r = &mut *r;
 
                         match recv_nonzero(&mut r.stream, r.buf).await {
@@ -4719,7 +4717,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
         let mut inner = self.inner.borrow_mut();
         let inner_mut = inner.as_mut().unwrap();
 
-        if inner_mut.r.borrow().buf.read_avail() > 0 {
+        if inner_mut.r.borrow().buf.len() > 0 {
             Some(inner.take().unwrap())
         } else {
             None
@@ -4729,8 +4727,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
 
 struct ClientResponse<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
-    buf1: &'a mut RingBuffer,
-    buf2: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
+    buf2: &'a mut VecRingBuffer,
     inner: http1::ClientResponse,
 }
 
@@ -4812,7 +4810,7 @@ impl<'a, R: AsyncRead> ClientResponse<'a, R> {
 
 struct ClientResponseBodyInner<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
-    buf1: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
     resp_body: http1::ClientResponseBody,
 }
 
@@ -4845,11 +4843,10 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
             if let Some(inner) = b_inner.take() {
                 let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
-                match inner.resp_body.recv(
-                    BaseRingBuffer::read_buf(inner.buf1),
-                    dest,
-                    &mut scratch,
-                )? {
+                match inner
+                    .resp_body
+                    .recv(RingBuffer::read_buf(inner.buf1), dest, &mut scratch)?
+                {
                     http1::RecvStatus::Complete(finished, read, written) => {
                         inner.buf1.read_commit(read);
 
@@ -4890,7 +4887,7 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
 
 struct ClientResponseBodyKeepHeader<'a, R: AsyncRead> {
     inner: ClientResponseBody<'a, R>,
-    buf2: RefCell<Option<&'a mut RingBuffer>>,
+    buf2: RefCell<Option<&'a mut VecRingBuffer>>,
 }
 
 impl<'a, R: AsyncRead> ClientResponseBodyKeepHeader<'a, R> {
@@ -4939,7 +4936,7 @@ struct ClientFinished {
 
 struct ClientFinishedKeepHeader<'a> {
     inner: ClientFinished,
-    buf2: &'a mut RingBuffer,
+    buf2: &'a mut VecRingBuffer,
 }
 
 impl<'a> ClientFinishedKeepHeader<'a> {
@@ -5275,9 +5272,9 @@ async fn client_req_handler<S>(
     url: &url::Url,
     include_body: bool,
     follow_redirects: bool,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
-    body_buf: &mut Buffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
 ) -> Result<ClientHandlerDone<zmq::Message>, Error>
 where
@@ -5339,7 +5336,7 @@ where
 
         loop {
             // fill the buffer as much as possible
-            let size = req_body.prepare(Buffer::read_buf(body_buf), true)?;
+            let size = req_body.prepare(ContiguousBuffer::read_buf(body_buf), true)?;
             body_buf.read_commit(size);
 
             // send the buffer
@@ -5355,7 +5352,7 @@ where
         }
     };
 
-    assert_eq!(body_buf.read_avail(), 0);
+    assert_eq!(body_buf.len(), 0);
 
     // receive response header
 
@@ -5423,7 +5420,7 @@ where
             reason: resp_ref.reason,
             headers: &zheaders,
             content_type: None,
-            body: Buffer::read_buf(body_buf),
+            body: ContiguousBuffer::read_buf(body_buf),
         };
 
         let zresp = make_zhttp_req_response(
@@ -5448,9 +5445,9 @@ async fn client_req_connect(
     log_id: &str,
     id: Option<&[u8]>,
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
-    body_buf: &mut Buffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
@@ -5605,9 +5602,9 @@ async fn client_req_connection_inner(
 
     let (zheader, zreq) = zreq;
 
-    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut body_buf = Buffer::new(body_buffer_size);
+    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut body_buf = ContiguousBuffer::new(body_buffer_size);
 
     let handler = client_req_connect(
         log_id,
@@ -5706,8 +5703,8 @@ async fn client_stream_handler<S, R1, R2>(
     url: &url::Url,
     include_body: bool,
     mut follow_redirects: bool,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
     messages_max: usize,
     allow_compression: bool,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -5852,13 +5849,13 @@ where
                 if rdata.body.len() > recv_buf_size {
                     let body = &rdata.body[..recv_buf_size];
 
-                    let mut remainder = Buffer::new(rdata.body.len() - body.len());
+                    let mut remainder = ContiguousBuffer::new(rdata.body.len() - body.len());
                     remainder.write_all(&rdata.body[body.len()..])?;
 
                     debug!(
                         "initial={} overflow={} end={}",
                         body.len(),
-                        remainder.read_avail(),
+                        remainder.len(),
                         !rdata.more
                     );
 
@@ -6086,7 +6083,7 @@ where
                     // we need to allocate to collect the response body,
                     // since buf1 holds bytes read from the socket, and
                     // resp is using buf2's inner buffer
-                    let mut body_buf = Buffer::new(send_buf_size);
+                    let mut body_buf = ContiguousBuffer::new(send_buf_size);
 
                     // receive response body
 
@@ -6234,8 +6231,8 @@ async fn client_stream_connect<E, R1, R2>(
     log_id: &str,
     id: &[u8],
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -6484,8 +6481,8 @@ where
 {
     let reactor = Reactor::current().unwrap();
 
-    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
 
     let stream_timeout = Timeout::new(reactor.now() + stream_timeout_duration);
     let session_timeout = Timeout::new(reactor.now() + ZHTTP_SESSION_TIMEOUT);
@@ -6914,9 +6911,9 @@ pub mod testutil {
         s_from_conn: channel::LocalSender<zmq::Message>,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
-        buf1: &mut RingBuffer,
-        buf2: &mut RingBuffer,
-        body_buf: &mut Buffer,
+        buf1: &mut VecRingBuffer,
+        buf2: &mut VecRingBuffer,
+        body_buf: &mut ContiguousBuffer,
     ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
@@ -6942,9 +6939,9 @@ pub mod testutil {
 
     pub struct BenchServerReqHandlerArgs {
         sock: Rc<RefCell<FakeSock>>,
-        buf1: RingBuffer,
-        buf2: RingBuffer,
-        body_buf: Buffer,
+        buf1: VecRingBuffer,
+        buf2: VecRingBuffer,
+        body_buf: ContiguousBuffer,
     }
 
     pub struct BenchServerReqHandler {
@@ -6974,9 +6971,9 @@ pub mod testutil {
 
             BenchServerReqHandlerArgs {
                 sock: Rc::new(RefCell::new(FakeSock::new())),
-                buf1: RingBuffer::new(buffer_size, &self.rb_tmp),
-                buf2: RingBuffer::new(buffer_size, &self.rb_tmp),
-                body_buf: Buffer::new(buffer_size),
+                buf1: VecRingBuffer::new(buffer_size, &self.rb_tmp),
+                buf2: VecRingBuffer::new(buffer_size, &self.rb_tmp),
+                body_buf: ContiguousBuffer::new(buffer_size),
             }
         }
 
@@ -7227,8 +7224,8 @@ pub mod testutil {
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
-        buf1: &mut RingBuffer,
-        buf2: &mut RingBuffer,
+        buf1: &mut VecRingBuffer,
+        buf2: &mut VecRingBuffer,
         shared: arena::Rc<StreamSharedData>,
     ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
@@ -7263,8 +7260,8 @@ pub mod testutil {
 
     pub struct BenchServerStreamHandlerArgs {
         sock: Rc<RefCell<FakeSock>>,
-        buf1: RingBuffer,
-        buf2: RingBuffer,
+        buf1: VecRingBuffer,
+        buf2: VecRingBuffer,
     }
 
     pub struct BenchServerStreamHandler {
@@ -7298,8 +7295,8 @@ pub mod testutil {
 
             BenchServerStreamHandlerArgs {
                 sock: Rc::new(RefCell::new(FakeSock::new())),
-                buf1: RingBuffer::new(buffer_size, &self.rb_tmp),
-                buf2: RingBuffer::new(buffer_size, &self.rb_tmp),
+                buf1: VecRingBuffer::new(buffer_size, &self.rb_tmp),
+                buf2: VecRingBuffer::new(buffer_size, &self.rb_tmp),
             }
         }
 
@@ -7646,8 +7643,8 @@ mod tests {
 
         let rb_tmp = Rc::new(TmpBuffer::new(12));
 
-        let mut buf1 = RingBuffer::new(12, &rb_tmp);
-        let mut buf2 = RingBuffer::new(12, &rb_tmp);
+        let mut buf1 = VecRingBuffer::new(12, &rb_tmp);
+        let mut buf2 = VecRingBuffer::new(12, &rb_tmp);
 
         buf2.write(b"foo").unwrap();
 
@@ -9258,9 +9255,9 @@ mod tests {
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
 
-        let mut buf1 = RingBuffer::new(buffer_size, &rb_tmp);
-        let mut buf2 = RingBuffer::new(buffer_size, &rb_tmp);
-        let mut body_buf = Buffer::new(buffer_size);
+        let mut buf1 = VecRingBuffer::new(buffer_size, &rb_tmp);
+        let mut buf2 = VecRingBuffer::new(buffer_size, &rb_tmp);
+        let mut body_buf = ContiguousBuffer::new(buffer_size);
         let packet_buf = RefCell::new(vec![0; 2048]);
 
         let zreq = zreq.get().get();
@@ -9532,8 +9529,8 @@ mod tests {
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
 
-        let mut buf1 = RingBuffer::new(buffer_size, &rb_tmp);
-        let mut buf2 = RingBuffer::new(buffer_size, &rb_tmp);
+        let mut buf1 = VecRingBuffer::new(buffer_size, &rb_tmp);
+        let mut buf2 = VecRingBuffer::new(buffer_size, &rb_tmp);
         let packet_buf = RefCell::new(vec![0; 2048]);
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
