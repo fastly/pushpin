@@ -19,10 +19,13 @@ use crate::future::{AsyncWrite, AsyncWriteExt};
 use std::cell::RefCell;
 use std::cmp;
 use std::io;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::mem::{self, MaybeUninit};
 use std::rc::Rc;
 use std::slice;
+
+#[cfg(test)]
+use std::io::Read;
 
 pub const VECTORED_MAX: usize = 8;
 
@@ -74,53 +77,76 @@ where
     unsafe { slice::from_raw_parts_mut(arr[0].as_mut_ptr(), len) }
 }
 
-#[allow(clippy::len_without_is_empty)]
-pub trait RefRead {
+pub trait Buffer {
     fn len(&self) -> usize;
-    fn get_ref(&self) -> &[u8];
-    fn get_mut(&mut self) -> &mut [u8];
-    fn consume(&mut self, amt: usize);
+    fn remaining_capacity(&self) -> usize;
 
-    fn get_ref_vectored<'data, 'bufs>(
+    fn read_buf(&self) -> &[u8];
+    fn read_buf_mut(&mut self) -> &mut [u8];
+    fn read_commit(&mut self, amount: usize);
+
+    fn write_buf(&mut self) -> &mut [u8];
+    fn write_commit(&mut self, amount: usize);
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn read_bufs<'data, 'bufs>(
         &'data self,
         bufs: &'bufs mut [&'data [u8]],
     ) -> &'bufs mut [&'data [u8]] {
-        assert!(!bufs.is_empty());
+        if !bufs.is_empty() {
+            bufs[0] = self.read_buf();
 
-        bufs[0] = self.get_ref();
-
-        &mut bufs[..1]
+            &mut bufs[..1]
+        } else {
+            &mut []
+        }
     }
 
-    fn get_mut_vectored<'data, 'bufs, const N: usize>(
+    fn read_bufs_mut<'data, 'bufs, const N: usize>(
         &'data mut self,
         bufs: &'bufs mut MaybeUninit<[&'data mut [u8]; N]>,
     ) -> &'bufs mut [&'data mut [u8]] {
-        init_array(bufs, &mut [self.get_mut()])
+        init_array(bufs, &mut [self.read_buf_mut()])
     }
 }
 
-impl RefRead for io::Cursor<&mut [u8]> {
+// for reading only
+impl Buffer for io::Cursor<&mut [u8]> {
     fn len(&self) -> usize {
-        RefRead::get_ref(self).len()
+        Buffer::read_buf(self).len()
     }
 
-    fn get_ref(&self) -> &[u8] {
+    fn remaining_capacity(&self) -> usize {
+        0
+    }
+
+    fn read_buf(&self) -> &[u8] {
         let pos = self.position() as usize;
 
         &self.get_ref()[pos..]
     }
 
-    fn get_mut(&mut self) -> &mut [u8] {
+    fn read_buf_mut(&mut self) -> &mut [u8] {
         let pos = self.position() as usize;
 
         &mut self.get_mut()[pos..]
     }
 
-    fn consume(&mut self, amt: usize) {
+    fn read_commit(&mut self, amount: usize) {
         let pos = self.position();
 
-        self.set_position(pos + (amt as u64));
+        self.set_position(pos + (amount as u64));
+    }
+
+    fn write_buf(&mut self) -> &mut [u8] {
+        &mut []
+    }
+
+    fn write_commit(&mut self, amount: usize) {
+        assert_eq!(amount, 0);
     }
 }
 
@@ -415,32 +441,38 @@ impl ContiguousBuffer {
         self.start = 0;
         self.end = 0;
     }
+}
 
-    pub fn len(&self) -> usize {
+impl Buffer for ContiguousBuffer {
+    fn len(&self) -> usize {
         self.end - self.start
     }
 
-    pub fn read_buf(&self) -> &[u8] {
+    fn remaining_capacity(&self) -> usize {
+        self.buf.len() - self.end
+    }
+
+    fn read_buf(&self) -> &[u8] {
         &self.buf[self.start..self.end]
     }
 
-    pub fn read_commit(&mut self, amount: usize) {
+    fn read_buf_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[self.start..self.end]
+    }
+
+    fn read_commit(&mut self, amount: usize) {
         assert!(self.start + amount <= self.end);
 
         self.start += amount;
     }
 
-    pub fn remaining_capacity(&self) -> usize {
-        self.buf.len() - self.end
-    }
-
-    pub fn write_buf(&mut self) -> &mut [u8] {
+    fn write_buf(&mut self) -> &mut [u8] {
         let len = self.buf.len();
 
         &mut self.buf[self.end..len]
     }
 
-    pub fn write_commit(&mut self, amount: usize) {
+    fn write_commit(&mut self, amount: usize) {
         assert!(self.end + amount <= self.buf.len());
 
         self.end += amount;
@@ -452,7 +484,7 @@ impl Read for ContiguousBuffer {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
         // fully qualified to work around future method warning
         // https://github.com/rust-lang/rust/issues/48919
-        let src = Self::read_buf(self);
+        let src = Buffer::read_buf(self);
         let size = cmp::min(src.len(), buf.len());
 
         buf[..size].copy_from_slice(&src[..size]);
@@ -544,73 +576,6 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RingBuffer<T> {
         self.end = 0;
     }
 
-    pub fn write_from<R: Read>(&mut self, r: &mut R) -> Result<usize, io::Error> {
-        let size = match r.read(self.write_buf()) {
-            Ok(size) => size,
-            Err(e) => return Err(e),
-        };
-
-        self.write_commit(size);
-
-        Ok(size)
-    }
-
-    pub fn len(&self) -> usize {
-        self.end - self.start
-    }
-
-    pub fn read_buf(&self) -> &[u8] {
-        let buf = self.buf.as_ref();
-        let end = cmp::min(self.end, buf.len());
-
-        &buf[self.start..end]
-    }
-
-    pub fn read_buf_mut(&mut self) -> &mut [u8] {
-        let buf = self.buf.as_mut();
-        let end = cmp::min(self.end, buf.len());
-
-        &mut buf[self.start..end]
-    }
-
-    pub fn read_commit(&mut self, amount: usize) {
-        assert!(self.start + amount <= self.end);
-
-        let buf = self.buf.as_ref();
-
-        self.start += amount;
-
-        if self.start == self.end {
-            self.start = 0;
-            self.end = 0;
-        } else if self.start >= buf.len() {
-            self.start -= buf.len();
-            self.end -= buf.len();
-        }
-    }
-
-    pub fn remaining_capacity(&self) -> usize {
-        self.buf.as_ref().len() - (self.end - self.start)
-    }
-
-    pub fn write_buf(&mut self) -> &mut [u8] {
-        let buf = self.buf.as_mut();
-
-        let (start, end) = if self.end < buf.len() {
-            (self.end, buf.len())
-        } else {
-            (self.end - buf.len(), self.start)
-        };
-
-        &mut buf[start..end]
-    }
-
-    pub fn write_commit(&mut self, amount: usize) {
-        assert!((self.end - self.start) + amount <= self.buf.as_ref().len());
-
-        self.end += amount;
-    }
-
     // return true if the readable bytes have not wrapped
     pub fn is_readable_contiguous(&self) -> bool {
         self.end <= self.buf.as_ref().len()
@@ -692,7 +657,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Read for RingBuffer<T> {
         while pos < buf.len() && self.len() > 0 {
             // fully qualified to work around future method warning
             // https://github.com/rust-lang/rust/issues/48919
-            let src = Self::read_buf(self);
+            let src = Buffer::read_buf(self);
             let size = cmp::min(src.len(), buf.len() - pos);
 
             buf[pos..(pos + size)].copy_from_slice(&src[..size]);
@@ -733,24 +698,64 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Write for RingBuffer<T> {
     }
 }
 
-impl<T: AsRef<[u8]> + AsMut<[u8]>> RefRead for RingBuffer<T> {
+impl<T: AsRef<[u8]> + AsMut<[u8]>> Buffer for RingBuffer<T> {
     fn len(&self) -> usize {
-        Self::len(self)
+        self.end - self.start
     }
 
-    fn get_ref(&self) -> &[u8] {
-        self.read_buf()
+    fn remaining_capacity(&self) -> usize {
+        self.buf.as_ref().len() - (self.end - self.start)
     }
 
-    fn get_mut(&mut self) -> &mut [u8] {
-        self.read_buf_mut()
+    fn read_buf(&self) -> &[u8] {
+        let buf = self.buf.as_ref();
+        let end = cmp::min(self.end, buf.len());
+
+        &buf[self.start..end]
     }
 
-    fn consume(&mut self, amt: usize) {
-        self.read_commit(amt);
+    fn read_buf_mut(&mut self) -> &mut [u8] {
+        let buf = self.buf.as_mut();
+        let end = cmp::min(self.end, buf.len());
+
+        &mut buf[self.start..end]
     }
 
-    fn get_ref_vectored<'data, 'bufs>(
+    fn read_commit(&mut self, amount: usize) {
+        assert!(self.start + amount <= self.end);
+
+        let buf = self.buf.as_ref();
+
+        self.start += amount;
+
+        if self.start == self.end {
+            self.start = 0;
+            self.end = 0;
+        } else if self.start >= buf.len() {
+            self.start -= buf.len();
+            self.end -= buf.len();
+        }
+    }
+
+    fn write_buf(&mut self) -> &mut [u8] {
+        let buf = self.buf.as_mut();
+
+        let (start, end) = if self.end < buf.len() {
+            (self.end, buf.len())
+        } else {
+            (self.end - buf.len(), self.start)
+        };
+
+        &mut buf[start..end]
+    }
+
+    fn write_commit(&mut self, amount: usize) {
+        assert!((self.end - self.start) + amount <= self.buf.as_ref().len());
+
+        self.end += amount;
+    }
+
+    fn read_bufs<'data, 'bufs>(
         &'data self,
         bufs: &'bufs mut [&'data [u8]],
     ) -> &'bufs mut [&'data [u8]] {
@@ -773,7 +778,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RefRead for RingBuffer<T> {
         }
     }
 
-    fn get_mut_vectored<'data, 'bufs, const N: usize>(
+    fn read_bufs_mut<'data, 'bufs, const N: usize>(
         &'data mut self,
         bufs: &'bufs mut MaybeUninit<[&'data mut [u8]; N]>,
     ) -> &'bufs mut [&'data mut [u8]] {
@@ -992,7 +997,7 @@ mod tests {
 
         r.write(b"678").unwrap();
         let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.get_ref_vectored(&mut bufs_arr);
+        let bufs = r.read_bufs(&mut bufs_arr);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.remaining_capacity(), 0);
@@ -1027,7 +1032,7 @@ mod tests {
         r.read(&mut buf[..2]).unwrap();
 
         let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.get_ref_vectored(&mut bufs_arr);
+        let bufs = r.read_bufs(&mut bufs_arr);
 
         assert_eq!(r.len(), 3);
         assert_eq!(r.read_buf(), b"345");
@@ -1047,7 +1052,7 @@ mod tests {
         r.read(&mut buf[..2]).unwrap();
         r.write(b"bc").unwrap();
         let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.get_ref_vectored(&mut bufs_arr);
+        let bufs = r.read_bufs(&mut bufs_arr);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"56789a");
@@ -1065,7 +1070,7 @@ mod tests {
         r.read(&mut buf[..6]).unwrap();
         r.write(b"def123").unwrap();
         let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.get_ref_vectored(&mut bufs_arr);
+        let bufs = r.read_bufs(&mut bufs_arr);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bc");
@@ -1076,7 +1081,7 @@ mod tests {
 
         r.align();
         let mut bufs_arr = [&b""[..]; VECTORED_MAX];
-        let bufs = r.get_ref_vectored(&mut bufs_arr);
+        let bufs = r.read_bufs(&mut bufs_arr);
 
         assert_eq!(r.len(), 8);
         assert_eq!(r.read_buf(), b"bcdef123");

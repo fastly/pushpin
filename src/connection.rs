@@ -36,7 +36,7 @@
 
 use crate::arena;
 use crate::buffer::{
-    ContiguousBuffer, LimitBufsMut, RefRead, RingBuffer, SliceRingBuffer, TmpBuffer, VecRingBuffer,
+    Buffer, ContiguousBuffer, LimitBufsMut, RingBuffer, SliceRingBuffer, TmpBuffer, VecRingBuffer,
     VECTORED_MAX,
 };
 use crate::future::{
@@ -605,7 +605,7 @@ struct LimitedRingBuffer<'a> {
 
 impl AsRef<[u8]> for LimitedRingBuffer<'_> {
     fn as_ref(&self) -> &[u8] {
-        let buf = RingBuffer::read_buf(self.inner);
+        let buf = Buffer::read_buf(self.inner);
         let limit = cmp::min(buf.len(), self.limit);
 
         &buf[..limit]
@@ -859,7 +859,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         if protocol.state() == http1::ServerState::ReceivingBody {
             loop {
                 let (size, read_size) = {
-                    let mut buf = io::Cursor::new(RingBuffer::read_buf(r.buf));
+                    let mut buf = io::Cursor::new(Buffer::read_buf(r.buf));
 
                     let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
@@ -1066,7 +1066,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
         let mut early_body = self.early_body.borrow_mut();
 
         if let Some(overflow) = &mut early_body.overflow {
-            wbuf.inner.write_all(ContiguousBuffer::read_buf(overflow))?;
+            wbuf.inner.write_all(Buffer::read_buf(overflow))?;
 
             early_body.overflow = None;
         }
@@ -1177,7 +1177,7 @@ impl<'a, 'b, W: AsyncWrite> Future for SendBodyFuture<'a, 'b, W> {
         let protocol = &mut *f.protocol.borrow_mut();
 
         let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-        let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+        let bufs = w.buf.read_bufs(&mut buf_arr);
 
         match protocol.send_body(
             &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -1321,7 +1321,7 @@ impl<'a, 'b, W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
 
         // protocol.send_message_content may add 1 element to vector
         let mut buf_arr = mem::MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
-        let mut bufs = w.buf.get_mut_vectored(&mut buf_arr).limit(f.avail);
+        let mut bufs = w.buf.read_bufs_mut(&mut buf_arr).limit(f.avail);
 
         match f.protocol.send_message_content(
             &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -2012,7 +2012,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
                 req.method,
                 req.uri,
                 req.headers,
-                ContiguousBuffer::read_buf(body_buf),
+                Buffer::read_buf(body_buf),
                 false,
                 Mode::HttpReq,
                 0,
@@ -2151,7 +2151,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
         // ABR: discard_while
         let size = discard_while(
             zreceiver,
-            pin!(handler.send_body(ContiguousBuffer::read_buf(body_buf), false)),
+            pin!(handler.send_body(Buffer::read_buf(body_buf), false)),
         )
         .await?;
 
@@ -4469,7 +4469,7 @@ struct ClientRequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
     async fn send(mut self) -> Result<ClientRequestBody<'a, R, W>, Error> {
         while self.buf1.len() > 0 {
-            let size = self.w.write(RingBuffer::read_buf(self.buf1)).await?;
+            let size = self.w.write(Buffer::read_buf(self.buf1)).await?;
             self.buf1.read_commit(size);
         }
 
@@ -4641,7 +4641,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
                     let req_body = w.req_body.take().unwrap();
 
                     let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-                    let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+                    let bufs = w.buf.read_bufs(&mut buf_arr);
 
                     match req_body.send(
                         &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -4845,7 +4845,7 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
 
                 match inner
                     .resp_body
-                    .recv(RingBuffer::read_buf(inner.buf1), dest, &mut scratch)?
+                    .recv(Buffer::read_buf(inner.buf1), dest, &mut scratch)?
                 {
                     http1::RecvStatus::Complete(finished, read, written) => {
                         inner.buf1.read_commit(read);
@@ -5336,7 +5336,7 @@ where
 
         loop {
             // fill the buffer as much as possible
-            let size = req_body.prepare(ContiguousBuffer::read_buf(body_buf), true)?;
+            let size = req_body.prepare(Buffer::read_buf(body_buf), true)?;
             body_buf.read_commit(size);
 
             // send the buffer
@@ -5420,7 +5420,7 @@ where
             reason: resp_ref.reason,
             headers: &zheaders,
             content_type: None,
-            body: ContiguousBuffer::read_buf(body_buf),
+            body: Buffer::read_buf(body_buf),
         };
 
         let zresp = make_zhttp_req_response(
@@ -7680,7 +7680,7 @@ mod tests {
 
         let w = handler.w.borrow();
         let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-        let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+        let bufs = w.buf.read_bufs(&mut buf_arr);
         assert_eq!(bufs[0], b"hello wor");
         assert_eq!(bufs[1], b"ld!");
     }
