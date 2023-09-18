@@ -582,6 +582,8 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RingBuffer<T> {
     }
 
     pub fn align(&mut self) -> usize {
+        assert!(self.buf.as_ref().len() <= self.tmp.len());
+
         if self.start == 0 {
             return 0;
         }
@@ -842,6 +844,19 @@ impl RingBuffer<Vec<u8>> {
         let buf = self.take_inner();
         self.set_inner(other.take_inner());
         other.set_inner(buf);
+    }
+
+    pub fn resize(&mut self, size: usize) {
+        if size == self.buf.len() {
+            return;
+        }
+
+        self.align();
+
+        self.buf.resize(size, 0);
+        self.buf.shrink_to_fit();
+
+        self.end = cmp::min(self.end, size);
     }
 }
 
@@ -1161,5 +1176,48 @@ mod tests {
         assert_eq!(&bufs[0], b"1234");
         assert_eq!(&bufs[1], b"5678");
         assert_eq!(&bufs[2], b"90ab");
+    }
+
+    #[test]
+    fn test_resize() {
+        let tmp = Rc::new(TmpBuffer::new(16));
+        let mut r = VecRingBuffer::new(8, &tmp);
+
+        assert_eq!(r.capacity(), 8);
+
+        let size = r.write(b"12345678").unwrap();
+        assert_eq!(size, 8);
+
+        let mut buf = [0; 4];
+        let size = r.read(&mut buf).unwrap();
+        assert_eq!(size, 4);
+        assert_eq!(&buf[..size], b"1234");
+
+        let size = r.write(b"90ab").unwrap();
+        assert_eq!(size, 4);
+
+        assert!(r.write(b"cdef").is_err());
+
+        r.resize(12);
+        assert_eq!(r.capacity(), 12);
+
+        let size = r.write(b"cdef").unwrap();
+        assert_eq!(size, 4);
+
+        let mut buf = [0; 12];
+        let size = r.read(&mut buf).unwrap();
+        assert_eq!(size, 12);
+        assert_eq!(&buf[..size], b"567890abcdef");
+
+        let size = r.write(b"1234567890").unwrap();
+        assert_eq!(size, 10);
+
+        r.resize(8);
+        assert_eq!(r.capacity(), 8);
+
+        let mut buf = [0; 12];
+        let size = r.read(&mut buf).unwrap();
+        assert_eq!(size, 8);
+        assert_eq!(&buf[..size], b"12345678");
     }
 }
