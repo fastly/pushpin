@@ -57,6 +57,23 @@ pub fn trim_for_display(s: &str, max: usize) -> String {
     }
 }
 
+fn init_array<'a, T, const N: usize>(arr: &'a mut MaybeUninit<[T; N]>, src: &mut [T]) -> &'a mut [T]
+where
+    T: Default,
+{
+    // SAFETY: T and MaybeUninit<T> have the same layout
+    let arr: &mut [MaybeUninit<T>; N] = unsafe { mem::transmute(arr) };
+
+    let len = cmp::min(arr.len(), src.len());
+
+    for (d, s) in arr.iter_mut().zip(src) {
+        d.write(mem::take(s));
+    }
+
+    // SAFETY: the slice will contain only initialized elements
+    unsafe { slice::from_raw_parts_mut(arr[0].as_mut_ptr(), len) }
+}
+
 #[allow(clippy::len_without_is_empty)]
 pub trait RefRead {
     fn len(&self) -> usize;
@@ -79,11 +96,7 @@ pub trait RefRead {
         &'data mut self,
         bufs: &'bufs mut MaybeUninit<[&'data mut [u8]; N]>,
     ) -> &'bufs mut [&'data mut [u8]] {
-        let bufs = unsafe { bufs.assume_init_mut() };
-
-        bufs[0] = self.get_mut();
-
-        &mut bufs[..1]
+        init_array(bufs, &mut [self.get_mut()])
     }
 }
 
@@ -764,22 +777,15 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> RefRead for RingBuffer<T> {
         &'data mut self,
         bufs: &'bufs mut MaybeUninit<[&'data mut [u8]; N]>,
     ) -> &'bufs mut [&'data mut [u8]] {
-        let bufs = unsafe { bufs.assume_init_mut() };
-
         let buf = self.buf.as_mut();
         let buf_len = buf.len();
 
-        if self.end > buf_len && bufs.len() >= 2 {
+        if self.end > buf_len {
             let (part1, part2) = buf.split_at_mut(self.start);
 
-            bufs[0] = part2;
-            bufs[1] = &mut part1[..(self.end - buf_len)];
-
-            &mut bufs[..2]
+            init_array(bufs, &mut [part2, &mut part1[..(self.end - buf_len)]])
         } else {
-            bufs[0] = &mut buf[self.start..self.end];
-
-            &mut bufs[..1]
+            init_array(bufs, &mut [&mut buf[self.start..self.end]])
         }
     }
 }
