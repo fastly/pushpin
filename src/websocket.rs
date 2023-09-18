@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +16,7 @@
  */
 
 use crate::buffer::{
-    trim_for_display, write_vectored_offset, BaseRingBuffer, LimitBufsMut, RefRead, VECTORED_MAX,
+    trim_for_display, write_vectored_offset, LimitBufsMut, RefRead, RingBuffer, VECTORED_MAX,
 };
 use crate::http1::HeaderParamsIterator;
 use arrayvec::ArrayVec;
@@ -456,7 +457,7 @@ impl DeflateEncoder {
         &mut self,
         src: &[u8],
         end: bool,
-        dest: &mut BaseRingBuffer<T>,
+        dest: &mut RingBuffer<T>,
     ) -> Result<(usize, bool), io::Error> {
         let wbuf = dest.write_buf();
 
@@ -465,7 +466,7 @@ impl DeflateEncoder {
         let write_maxed = written == wbuf.len();
         dest.write_commit(written);
 
-        if !end_ack && write_maxed && dest.write_avail() > 0 {
+        if !end_ack && write_maxed && dest.remaining_capacity() > 0 {
             let (r, written, ea) = self.encode(&src[read..], end, dest.write_buf())?;
 
             dest.write_commit(written);
@@ -938,7 +939,7 @@ struct DeflateState<T> {
     enc: DeflateEncoder,
     dec: DeflateDecoder,
     allow_takeover: bool,
-    enc_buf: BaseRingBuffer<T>,
+    enc_buf: RingBuffer<T>,
 }
 
 pub struct Protocol<T> {
@@ -949,7 +950,7 @@ pub struct Protocol<T> {
 }
 
 impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
-    pub fn new(deflate_config: Option<(bool, BaseRingBuffer<T>)>) -> Self {
+    pub fn new(deflate_config: Option<(bool, RingBuffer<T>)>) -> Self {
         let deflate_state = deflate_config.map(|(allow_takeover, enc_buf)| {
             RefCell::new(DeflateState {
                 enc: DeflateEncoder::new(),
@@ -1250,7 +1251,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                 // to report, so that if the write returns an error
                 // (including WouldBlock) we can propagate the error without
                 // data loss
-                if read == 0 && (state.enc_buf.read_avail() > 0 || msg.enc_output_end) {
+                if read == 0 && (state.enc_buf.len() > 0 || msg.enc_output_end) {
                     // send_frame adds 1 element to vector
                     let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
                     let bufs = state.enc_buf.get_mut_vectored(&mut bufs_arr);
@@ -1265,7 +1266,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
                     msg.frame_sent = true;
 
-                    sent_all = msg.enc_output_end && state.enc_buf.read_avail() == 0;
+                    sent_all = msg.enc_output_end && state.enc_buf.len() == 0;
                 }
 
                 (read, sent_all)
@@ -1461,7 +1462,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
 pub mod testutil {
     use super::*;
-    use crate::buffer::{RingBuffer, TmpBuffer};
+    use crate::buffer::{TmpBuffer, VecRingBuffer};
     use std::rc::Rc;
 
     pub struct BenchSendMessageArgs {
@@ -1491,7 +1492,7 @@ pub mod testutil {
             let deflate_config = if self.use_deflate {
                 let tmp = Rc::new(TmpBuffer::new(256));
 
-                Some((true, RingBuffer::new(256, &tmp)))
+                Some((true, VecRingBuffer::new(256, &tmp)))
             } else {
                 None
             };
@@ -1529,7 +1530,7 @@ pub mod testutil {
 
     pub struct BenchRecvMessageArgs {
         protocol: Protocol<Vec<u8>>,
-        rbuf: RingBuffer,
+        rbuf: VecRingBuffer,
         dest: Vec<u8>,
     }
 
@@ -1549,7 +1550,7 @@ pub mod testutil {
             let tmp = Rc::new(TmpBuffer::new(16_384));
 
             let deflate_config = if use_deflate {
-                Some((true, RingBuffer::new(16_384, &tmp)))
+                Some((true, VecRingBuffer::new(16_384, &tmp)))
             } else {
                 None
             };
@@ -1582,12 +1583,12 @@ pub mod testutil {
 
         pub fn init(&self) -> BenchRecvMessageArgs {
             let deflate_config = if self.use_deflate {
-                Some((true, RingBuffer::new(256, &self.tmp)))
+                Some((true, VecRingBuffer::new(256, &self.tmp)))
             } else {
                 None
             };
 
-            let mut rbuf = RingBuffer::new(16_384, &self.tmp);
+            let mut rbuf = VecRingBuffer::new(16_384, &self.tmp);
 
             let size = rbuf.write(&self.msg).unwrap();
             assert_eq!(size, self.msg.len());
@@ -1630,7 +1631,7 @@ pub mod testutil {
 mod tests {
     use super::testutil::*;
     use super::*;
-    use crate::buffer::{RingBuffer, TmpBuffer};
+    use crate::buffer::{TmpBuffer, VecRingBuffer};
     use std::collections::VecDeque;
     use std::rc::Rc;
 
@@ -2202,7 +2203,7 @@ mod tests {
     fn test_send_recv_compressed() {
         let tmp = Rc::new(TmpBuffer::new(1024));
 
-        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
+        let p = Protocol::new(Some((true, VecRingBuffer::new(1024, &tmp))));
 
         let mut writer = MyWriter::new();
 
@@ -2229,7 +2230,7 @@ mod tests {
 
         let mut rbuf = io::Cursor::new(writer.data.as_mut());
 
-        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
+        let p = Protocol::new(Some((true, VecRingBuffer::new(1024, &tmp))));
 
         let mut dest = [0; 1024];
 
@@ -2248,7 +2249,7 @@ mod tests {
     fn test_send_recv_compressed_fragmented() {
         let tmp = Rc::new(TmpBuffer::new(1024));
 
-        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
+        let p = Protocol::new(Some((true, VecRingBuffer::new(1024, &tmp))));
 
         let mut writer = MyWriter::new();
 
@@ -2290,7 +2291,7 @@ mod tests {
         assert_eq!(size, 0);
         assert_eq!(done, true);
 
-        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
+        let p = Protocol::new(Some((true, VecRingBuffer::new(1024, &tmp))));
 
         let mut writer_data = VecDeque::from(writer.data);
         let mut input = Vec::new();
