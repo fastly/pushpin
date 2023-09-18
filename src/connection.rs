@@ -36,8 +36,7 @@
 
 use crate::arena;
 use crate::buffer::{
-    Buffer, ContiguousBuffer, LimitBufsMut, RingBuffer, SliceRingBuffer, TmpBuffer, VecRingBuffer,
-    VECTORED_MAX,
+    Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
@@ -1291,13 +1290,13 @@ struct WebSocketRead<'a, R: AsyncRead> {
     buf: &'a mut VecRingBuffer,
 }
 
-struct WebSocketWrite<'a, W: AsyncWrite, M> {
+struct WebSocketWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
-    buf: &'a mut RingBuffer<M>,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct SendMessageContentFuture<'a, 'b, W: AsyncWrite, M> {
-    w: &'a RefCell<WebSocketWrite<'b, W, M>>,
+    w: &'a RefCell<WebSocketWrite<'b, W>>,
     protocol: &'a websocket::Protocol<M>,
     avail: usize,
     done: bool,
@@ -1343,16 +1342,16 @@ impl<W: AsyncWrite, M> Drop for SendMessageContentFuture<'_, '_, W, M> {
 
 struct WebSocketHandler<'a, R: AsyncRead, W: AsyncWrite> {
     r: RefCell<WebSocketRead<'a, R>>,
-    w: RefCell<WebSocketWrite<'a, W, &'a mut [u8]>>,
-    protocol: websocket::Protocol<&'a mut [u8]>,
+    w: RefCell<WebSocketWrite<'a, W>>,
+    protocol: websocket::Protocol<Vec<u8>>,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
         buf1: &'a mut VecRingBuffer,
-        buf2: &'a mut SliceRingBuffer<'a>,
-        deflate_config: Option<(bool, SliceRingBuffer<'a>)>,
+        buf2: &'a mut VecRingBuffer,
+        deflate_config: Option<(bool, VecRingBuffer)>,
     ) -> Self {
         buf2.clear();
 
@@ -2952,24 +2951,16 @@ where
     R1: Fn(),
     R2: Fn(),
 {
-    // buf2 must be empty since we will repurpose the memory
-    assert_eq!(buf2.len(), 0);
-    let rb_tmp = buf2.get_tmp().clone();
-    let mut wbuf = buf2.take_inner().into_inner();
+    let deflate_config = match deflate_config {
+        Some((config, enc_buf_size)) => {
+            let ebuf = VecRingBuffer::new(enc_buf_size, buf2.get_tmp());
 
-    let (mut wbuf, deflate_config) = match deflate_config {
-        Some((config, write_buf_size)) => {
-            let (wbuf, ebuf) = wbuf.split_at_mut(write_buf_size);
-
-            let wbuf = SliceRingBuffer::new(wbuf, &rb_tmp);
-            let ebuf = SliceRingBuffer::new(ebuf, &rb_tmp);
-
-            (wbuf, Some((!config.server_no_context_takeover, ebuf)))
+            Some((!config.server_no_context_takeover, ebuf))
         }
-        None => (SliceRingBuffer::new(&mut wbuf, &rb_tmp), None),
+        None => None,
     };
 
-    let handler = WebSocketHandler::new(io_split(&stream), buf1, &mut wbuf, deflate_config);
+    let handler = WebSocketHandler::new(io_split(&stream), buf1, buf2, deflate_config);
     let mut ws_in_tracker = MessageTracker::new(messages_max);
 
     let mut out_credits = 0;
@@ -3301,24 +3292,16 @@ where
     R1: Fn(),
     R2: Fn(),
 {
-    // buf2 must be empty since we will repurpose the memory
-    assert_eq!(buf2.len(), 0);
-    let rb_tmp = buf2.get_tmp().clone();
-    let mut wbuf = buf2.take_inner().into_inner();
+    let deflate_config = match deflate_config {
+        Some((config, enc_buf_size)) => {
+            let ebuf = VecRingBuffer::new(enc_buf_size, buf2.get_tmp());
 
-    let (mut wbuf, deflate_config) = match deflate_config {
-        Some((config, write_buf_size)) => {
-            let (wbuf, ebuf) = wbuf.split_at_mut(write_buf_size);
-
-            let wbuf = SliceRingBuffer::new(wbuf, &rb_tmp);
-            let ebuf = SliceRingBuffer::new(ebuf, &rb_tmp);
-
-            (wbuf, Some((!config.client_no_context_takeover, ebuf)))
+            Some((!config.client_no_context_takeover, ebuf))
         }
-        None => (SliceRingBuffer::new(&mut wbuf, &rb_tmp), None),
+        None => None,
     };
 
-    let handler = WebSocketHandler::new(io_split(&stream), buf1, &mut wbuf, deflate_config);
+    let handler = WebSocketHandler::new(io_split(&stream), buf1, buf2, deflate_config);
     let mut ws_in_tracker = MessageTracker::new(messages_max);
 
     let mut out_credits = 0;
@@ -3723,11 +3706,11 @@ where
                                     websocket::PerMessageDeflateConfig::from_params(params)
                                 {
                                     if let Ok(resp_config) = config.create_response() {
-                                        // split the original recv buffer memory:
-                                        // 75% for a new recv buffer, 25% for an encoded buffer
-                                        let recv_buf_size = recv_buf_size * 3 / 4;
+                                        // set the encoded buffer to be 25% the size of the
+                                        // recv buffer
+                                        let enc_buf_size = recv_buf_size / 4;
 
-                                        ws_deflate_config = Some((resp_config, recv_buf_size));
+                                        ws_deflate_config = Some((resp_config, enc_buf_size));
                                     }
                                 }
                             }
@@ -3795,12 +3778,6 @@ where
             (Mode::HttpStream, more)
         };
 
-        let credits = if let Some((_, Some((_, recv_buf_size)))) = &ws_config {
-            *recv_buf_size
-        } else {
-            recv_buf_size
-        };
-
         let msg = make_zhttp_request(
             instance_id,
             &ids,
@@ -3810,7 +3787,7 @@ where
             b"",
             more,
             mode,
-            credits as u32,
+            recv_buf_size as u32,
             peer_addr,
             secure,
             &mut packet_buf.borrow_mut(),
@@ -6049,11 +6026,11 @@ where
                                         websocket::PerMessageDeflateConfig::from_params(params)
                                     {
                                         if config.check_response().is_ok() {
-                                            // split the original recv buffer memory:
-                                            // 75% for a new recv buffer, 25% for an encoded buffer
-                                            let recv_buf_size = recv_buf_size * 3 / 4;
+                                            // set the encoded buffer to be 25% the size of the
+                                            // recv buffer
+                                            let enc_buf_size = recv_buf_size / 4;
 
-                                            ws_deflate_config = Some((config, recv_buf_size));
+                                            ws_deflate_config = Some((config, enc_buf_size));
                                         }
                                     }
                                 }
@@ -6151,11 +6128,7 @@ where
 
             let credits = if ws_key.is_some() {
                 // for websockets, provide credits when sending response to handler
-                if let Some((_, recv_buf_size)) = &ws_deflate_config {
-                    *recv_buf_size as u32
-                } else {
-                    recv_buf_size as u32
-                }
+                recv_buf_size as u32
             } else {
                 // for http, it is not necessary to provide credits when responding
                 0
@@ -9106,12 +9079,12 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T308:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T309:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,21:ws://example.com/path,7:heade",
             "rs,173:22:4:Host,11:example.com,]22:7:Upgrade,9:websocket,",
             "]30:21:Sec-WebSocket-Version,2:13,]29:17:Sec-WebSocket-Key",
             ",5:abcde,]50:24:Sec-WebSocket-Extensions,18:permessage-def",
-            "late,]]7:credits,3:768#}",
+            "late,]]7:credits,4:1024#}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -10197,12 +10170,12 @@ mod tests {
 
         let expected = format!(
             concat!(
-                "handler T302:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
+                "handler T303:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
                 "ulti,4:true!}}4:code,3:101#6:reason,19:Switching Protocols",
                 ",7:headers,168:22:7:Upgrade,9:websocket,]24:10:Connection,",
                 "7:Upgrade,]56:20:Sec-WebSocket-Accept,28:{},]50:24:Sec-Web",
-                "Socket-Extensions,18:permessage-deflate,]]7:credits,3:768#",
-                "}}",
+                "Socket-Extensions,18:permessage-deflate,]]7:credits,4:1024",
+                "#}}",
             ),
             ws_accept
         );
