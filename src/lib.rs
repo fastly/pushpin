@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -27,6 +28,7 @@ pub mod client;
 pub mod condure;
 pub mod config;
 pub mod connection;
+pub mod counter;
 pub mod event;
 pub mod executor;
 pub mod ffi;
