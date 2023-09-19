@@ -65,6 +65,7 @@ public:
 	virtual HttpHeaders responseHeaders() const;
 	virtual QByteArray responseBody() const;
 	virtual int framesAvailable() const;
+	virtual int writeBytesAvailable() const;
 	virtual int peerCloseCode() const;
 	virtual QString peerCloseReason() const;
 	virtual ErrorCondition errorCondition() const;

@@ -1041,7 +1041,10 @@ public slots:
 		}
 		else if(state == ClientRequesting)
 		{
+			QPointer<QObject> self = this;
 			tryWrite();
+			if(!self)
+				return;
 
 			if(writableChanged)
 			{
@@ -1138,7 +1141,10 @@ public slots:
 		}
 		else if(state == ServerResponding)
 		{
+			QPointer<QObject> self = this;
 			tryWrite();
+			if(!self)
+				return;
 
 			if(writableChanged)
 			{

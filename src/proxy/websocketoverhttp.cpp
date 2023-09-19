@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -850,6 +851,18 @@ private slots:
 				return;
 		}
 
+		bool hadContent = reqContentSize > 0;
+
+		reqFrames = 0;
+		reqContentSize = 0;
+
+		if(hadContent)
+		{
+			emit q->writeBytesChanged();
+			if(!self)
+				return;
+		}
+
 		if(reqClose)
 			closeSent = true;
 
@@ -1142,6 +1155,11 @@ QByteArray WebSocketOverHttp::responseBody() const
 int WebSocketOverHttp::framesAvailable() const
 {
 	return d->inFrames.count();
+}
+
+int WebSocketOverHttp::writeBytesAvailable() const
+{
+	return d->writeBytesAvailable();
 }
 
 int WebSocketOverHttp::peerCloseCode() const

@@ -82,12 +82,14 @@ public:
 	QVariant userData;
 	bool pendingUpdate;
 	bool readableChanged;
+	bool writableChanged;
 	ErrorCondition errorCondition;
 	RTimer *expireTimer;
 	RTimer *keepAliveTimer;
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int inSize;
+	int outSize;
 	int inContentType;
 	int outContentType;
 	bool multi;
@@ -113,9 +115,11 @@ public:
 		peerCloseCode(-1),
 		pendingUpdate(false),
 		readableChanged(false),
+		writableChanged(false),
 		expireTimer(0),
 		keepAliveTimer(0),
 		inSize(0),
+		outSize(0),
 		inContentType(-1),
 		outContentType((int)Frame::Text),
 		multi(false)
@@ -139,6 +143,7 @@ public:
 	void cleanup()
 	{
 		readableChanged = false;
+		writableChanged = false;
 
 		if(expireTimer)
 		{
@@ -308,6 +313,7 @@ public:
 			return;
 
 		outFrames += frame;
+		outSize += frame.data.size();
 		update();
 	}
 
@@ -386,6 +392,7 @@ public:
 					nextFrame.data = nextFrame.data.mid(contentSize);
 				}
 
+				outSize -= f.data.size();
 				outCredits -= f.data.size();
 
 				int credits = -1;
@@ -535,14 +542,7 @@ public:
 			if(packet.credits > 0)
 			{
 				outCredits += packet.credits;
-				if(outCredits > 0)
-				{
-					// try to write anything that was waiting on credits
-					QPointer<QObject> self = this;
-					tryWrite();
-					if(!self)
-						return;
-				}
+				writableChanged = true;
 			}
 
 			readableChanged = true;
@@ -557,7 +557,8 @@ public:
 			if(packet.credits > 0)
 			{
 				outCredits += packet.credits;
-				tryWrite();
+				writableChanged = true;
+				update();
 			}
 		}
 		else if(packet.type == ZhttpRequestPacket::KeepAlive)
@@ -693,14 +694,7 @@ public:
 				if(packet.credits > 0)
 				{
 					outCredits += packet.credits;
-					if(outCredits > 0)
-					{
-						// try to write anything that was waiting on credits
-						QPointer<QObject> self = this;
-						tryWrite();
-						if(!self)
-							return;
-					}
+					writableChanged = true;
 				}
 
 				readableChanged = true;
@@ -716,8 +710,8 @@ public:
 			if(packet.credits > 0)
 			{
 				outCredits += packet.credits;
-				if(outCredits > 0)
-					tryWrite();
+				writableChanged = true;
+				update();
 			}
 		}
 		else if(packet.type == ZhttpResponsePacket::KeepAlive)
@@ -1019,47 +1013,47 @@ public slots:
 			}
 		}
 
-		if(server)
+		if(state == AboutToConnect)
 		{
-			if(state == Connected || state == ConnectedPeerClosed)
+			if(!manager->canWriteImmediately())
 			{
-				tryWrite();
+				state = Idle;
+				errorCondition = ErrorUnavailable;
+				emit q->error();
+				cleanup();
+				return;
 			}
+
+			state = Connecting;
+
+			ZhttpRequestPacket p;
+			p.type = ZhttpRequestPacket::Data;
+			p.uri = requestUri;
+			p.headers = requestHeaders;
+			p.connectHost = connectHost;
+			p.connectPort = connectPort;
+			if(ignorePolicies)
+				p.ignorePolicies = true;
+			if(trustConnectHost)
+				p.trustConnectHost = true;
+			if(ignoreTlsErrors)
+				p.ignoreTlsErrors = true;
+			p.credits = IDEAL_CREDITS;
+			p.multi = true;
+			writePacket(p);
 		}
-		else
+		else if(state == Connected || state == ConnectedPeerClosed)
 		{
-			if(state == AboutToConnect)
-			{
-				if(!manager->canWriteImmediately())
-				{
-					state = Idle;
-					errorCondition = ErrorUnavailable;
-					emit q->error();
-					cleanup();
-					return;
-				}
+			QPointer<QObject> self = this;
+			tryWrite();
+			if(!self)
+				return;
 
-				state = Connecting;
-
-				ZhttpRequestPacket p;
-				p.type = ZhttpRequestPacket::Data;
-				p.uri = requestUri;
-				p.headers = requestHeaders;
-				p.connectHost = connectHost;
-				p.connectPort = connectPort;
-				if(ignorePolicies)
-					p.ignorePolicies = true;
-				if(trustConnectHost)
-					p.trustConnectHost = true;
-				if(ignoreTlsErrors)
-					p.ignoreTlsErrors = true;
-				p.credits = IDEAL_CREDITS;
-				p.multi = true;
-				writePacket(p);
-			}
-			else if(state == Connected || state == ConnectedPeerClosed)
+			if(writableChanged)
 			{
-				tryWrite();
+				writableChanged = false;
+
+				emit q->writeBytesChanged();
 			}
 		}
 	}
@@ -1228,6 +1222,14 @@ QByteArray ZWebSocket::responseBody() const
 int ZWebSocket::framesAvailable() const
 {
 	return d->inFrames.count();
+}
+
+int ZWebSocket::writeBytesAvailable() const
+{
+	if(d->outSize < d->outCredits)
+		return d->outCredits - d->outSize;
+	else
+		return 0;
 }
 
 int ZWebSocket::peerCloseCode() const
