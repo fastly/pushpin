@@ -1558,7 +1558,7 @@ impl Worker {
             arena::Rc::clone(&zreq),
             opts.buffer_size,
             stream_opts.blocks_max,
-            Some(&stream_opts.blocks_avail),
+            &stream_opts.blocks_avail,
             stream_opts.messages_max,
             &opts.rb_tmp,
             opts.packet_buf,
