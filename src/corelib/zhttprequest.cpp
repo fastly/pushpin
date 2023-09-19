@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2021 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -94,6 +95,7 @@ public:
 	bool paused;
 	bool pendingUpdate;
 	bool needPause;
+	bool readableChanged;
 	bool errored;
 	ErrorCondition errorCondition;
 	RTimer *expireTimer;
@@ -124,6 +126,7 @@ public:
 		paused(false),
 		pendingUpdate(false),
 		needPause(false),
+		readableChanged(false),
 		errored(false),
 		expireTimer(0),
 		keepAliveTimer(0),
@@ -149,6 +152,7 @@ public:
 	void cleanup()
 	{
 		needPause = false;
+		readableChanged = false;
 
 		if(expireTimer)
 		{
@@ -579,7 +583,10 @@ public:
 				outCredits += packet.credits;
 
 			if(!packet.body.isEmpty() || (!done && haveRequestBody))
-				emit q->readyRead();
+			{
+				readableChanged = true;
+				update();
+			}
 		}
 		else if(packet.type == ZhttpRequestPacket::Credit)
 		{
@@ -751,7 +758,10 @@ public:
 			if(packet.more)
 			{
 				if(needToSendHeaders || !packet.body.isEmpty())
-					emit q->readyRead();
+				{
+					readableChanged = true;
+					update();
+				}
 			}
 			else
 			{
@@ -1027,6 +1037,14 @@ public slots:
 		{
 			tryWrite();
 		}
+		else if(state == ClientReceiving)
+		{
+			if(readableChanged)
+			{
+				readableChanged = false;
+				emit q->readyRead();
+			}
+		}
 		else if(state == ServerStarting)
 		{
 			if(haveRequestBody)
@@ -1055,9 +1073,23 @@ public slots:
 
 			emit q->readyRead();
 		}
+		else if(state == ServerReceiving)
+		{
+			if(readableChanged)
+			{
+				readableChanged = false;
+				emit q->readyRead();
+			}
+		}
 		else if(state == ServerResponseWait)
 		{
 			trySendPause();
+
+			if(readableChanged)
+			{
+				readableChanged = false;
+				emit q->readyRead();
+			}
 		}
 		else if(state == ServerResponseStarting)
 		{
