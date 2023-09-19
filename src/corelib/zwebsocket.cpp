@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -80,6 +81,7 @@ public:
 	QString peerCloseReason;
 	QVariant userData;
 	bool pendingUpdate;
+	bool readableChanged;
 	ErrorCondition errorCondition;
 	RTimer *expireTimer;
 	RTimer *keepAliveTimer;
@@ -110,6 +112,7 @@ public:
 		closeCode(-1),
 		peerCloseCode(-1),
 		pendingUpdate(false),
+		readableChanged(false),
 		expireTimer(0),
 		keepAliveTimer(0),
 		inSize(0),
@@ -135,6 +138,8 @@ public:
 
 	void cleanup()
 	{
+		readableChanged = false;
+
 		if(expireTimer)
 		{
 			expireTimer->disconnect(this);
@@ -540,7 +545,8 @@ public:
 				}
 			}
 
-			emit q->readyRead();
+			readableChanged = true;
+			update();
 		}
 		else if(packet.type == ZhttpRequestPacket::Close)
 		{
@@ -697,7 +703,8 @@ public:
 					}
 				}
 
-				emit q->readyRead();
+				readableChanged = true;
+				update();
 			}
 		}
 		else if(packet.type == ZhttpResponsePacket::Close)
@@ -994,6 +1001,18 @@ public slots:
 					QPointer<QObject> self = this;
 					state = ConnectedPeerClosed;
 					emit q->peerClosed();
+					if(!self)
+						return;
+				}
+			}
+			else
+			{
+				if(readableChanged)
+				{
+					readableChanged = false;
+
+					QPointer<QObject> self = this;
+					emit q->readyRead();
 					if(!self)
 						return;
 				}
