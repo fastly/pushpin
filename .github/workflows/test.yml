@@ -48,6 +48,9 @@ jobs:
     - name: build
       run: ./configure && cargo build && make
       shell: bash
+    - name: check
+      run: make check
+      shell: bash
     - name: test
       run: RUSTFLAGS="-D warnings" cargo test
       shell: bash
