@@ -21,6 +21,7 @@ use crate::channel;
 use crate::connection::{
     server_req_connection, server_stream_connection, CidProvider, Identify, StreamSharedData,
 };
+use crate::counter::Counter;
 use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
@@ -741,6 +742,8 @@ struct ConnectionReqOpts {
 }
 
 struct ConnectionStreamOpts {
+    blocks_max: usize,
+    blocks_avail: Arc<Counter>,
     messages_max: usize,
     allow_compression: bool,
     sender: channel::LocalSender<zmq::Message>,
@@ -767,6 +770,8 @@ impl Worker {
         stream_maxconn: usize,
         buffer_size: usize,
         body_buffer_size: usize,
+        connection_blocks_max: usize,
+        blocks_avail: &Arc<Counter>,
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
@@ -785,6 +790,7 @@ impl Worker {
         let (s_ready, ready) = channel::channel(1);
 
         let instance_id = String::from(instance_id);
+        let blocks_avail = Arc::clone(blocks_avail);
         let req_acceptor_tls = req_acceptor_tls.to_owned();
         let stream_acceptor_tls = stream_acceptor_tls.to_owned();
         let identities = Arc::clone(identities);
@@ -822,6 +828,8 @@ impl Worker {
                         stream_maxconn,
                         buffer_size,
                         body_buffer_size,
+                        connection_blocks_max,
+                        blocks_avail,
                         messages_max,
                         req_timeout,
                         stream_timeout,
@@ -864,6 +872,8 @@ impl Worker {
         stream_maxconn: usize,
         buffer_size: usize,
         body_buffer_size: usize,
+        connection_blocks_max: usize,
+        blocks_avail: Arc<Counter>,
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
@@ -884,7 +894,7 @@ impl Worker {
 
         debug!("server-worker {}: allocating buffers", id);
 
-        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
+        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * connection_blocks_max));
 
         // large enough to fit anything
         let packet_buf = Rc::new(RefCell::new(vec![0; buffer_size + body_buffer_size + 4096]));
@@ -1036,6 +1046,8 @@ impl Worker {
                         tmp_buf: tmp_buf.clone(),
                     },
                     ConnectionModeOpts::Stream(ConnectionStreamOpts {
+                        blocks_max: connection_blocks_max,
+                        blocks_avail,
                         messages_max,
                         allow_compression,
                         sender: zstream_out_sender,
@@ -1318,6 +1330,8 @@ impl Worker {
                     );
 
                     let mode_opts = ConnectionModeOpts::Stream(ConnectionStreamOpts {
+                        blocks_max: stream_opts.blocks_max,
+                        blocks_avail: Arc::clone(&stream_opts.blocks_avail),
                         messages_max: stream_opts.messages_max,
                         allow_compression: stream_opts.allow_compression,
                         sender: zstream_out_sender,
@@ -1829,8 +1843,8 @@ impl Worker {
                         Some(&peer_addr),
                         false,
                         opts.buffer_size,
-                        2,
-                        None,
+                        stream_opts.blocks_max,
+                        Some(&stream_opts.blocks_avail),
                         stream_opts.messages_max,
                         &opts.rb_tmp,
                         opts.packet_buf,
@@ -1854,8 +1868,8 @@ impl Worker {
                         Some(&peer_addr),
                         false,
                         opts.buffer_size,
-                        2,
-                        None,
+                        stream_opts.blocks_max,
+                        Some(&stream_opts.blocks_avail),
                         stream_opts.messages_max,
                         &opts.rb_tmp,
                         opts.packet_buf,
@@ -1882,8 +1896,8 @@ impl Worker {
                     Some(&peer_addr),
                     true,
                     opts.buffer_size,
-                    2,
-                    None,
+                    stream_opts.blocks_max,
+                    Some(&stream_opts.blocks_avail),
                     stream_opts.messages_max,
                     &opts.rb_tmp,
                     opts.packet_buf,
@@ -2045,6 +2059,8 @@ impl Server {
         stream_maxconn: usize,
         buffer_size: usize,
         body_buffer_size: usize,
+        blocks_max: usize,
+        connection_blocks_max: usize,
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
@@ -2054,6 +2070,8 @@ impl Server {
         zsockman: zhttpsocket::ClientSocketManager,
         handle_bound: usize,
     ) -> Result<Self, String> {
+        assert!(blocks_max >= stream_maxconn * 2);
+
         let identities = Arc::new(IdentityCache::new(certs_dir));
 
         let mut req_listeners = Vec::new();
@@ -2153,6 +2171,8 @@ impl Server {
             }
         }
 
+        let blocks_avail = Arc::new(Counter::new(blocks_max - (stream_maxconn * 2)));
+
         let mut workers = Vec::new();
         let mut req_lsenders = Vec::new();
         let mut stream_lsenders = Vec::new();
@@ -2171,6 +2191,8 @@ impl Server {
                 stream_maxconn / worker_count,
                 buffer_size,
                 body_buffer_size,
+                connection_blocks_max,
+                &blocks_avail,
                 messages_max,
                 req_timeout,
                 stream_timeout,
@@ -2301,6 +2323,8 @@ impl Server {
                     tmp_buf: Rc::new(RefCell::new(Vec::new())),
                 },
                 ConnectionStreamOpts {
+                    blocks_max: 2,
+                    blocks_avail: Arc::new(Counter::new(0)),
                     messages_max: 0,
                     allow_compression: false,
                     sender,
@@ -2393,6 +2417,8 @@ impl TestServer {
             stream_maxconn,
             1024,
             1024,
+            stream_maxconn * 2,
+            2,
             10,
             Duration::from_secs(5),
             Duration::from_secs(5),

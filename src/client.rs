@@ -22,6 +22,7 @@ use crate::channel;
 use crate::connection::{
     client_req_connection, client_stream_connection, ConnectionPool, StreamSharedData,
 };
+use crate::counter::Counter;
 use crate::event;
 use crate::executor::{Executor, Spawner};
 use crate::future::{
@@ -623,6 +624,8 @@ struct ConnectionReqOpts {
 }
 
 struct ConnectionStreamOpts {
+    blocks_max: usize,
+    blocks_avail: Arc<Counter>,
     messages_max: usize,
     allow_compression: bool,
     sender: channel::LocalSender<zmq::Message>,
@@ -642,6 +645,8 @@ impl Worker {
         stream_maxconn: usize,
         buffer_size: usize,
         body_buffer_size: usize,
+        connection_blocks_max: usize,
+        blocks_avail: &Arc<Counter>,
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
@@ -658,6 +663,7 @@ impl Worker {
         let (s_ready, ready) = channel::channel(1);
 
         let instance_id = String::from(instance_id);
+        let blocks_avail = Arc::clone(blocks_avail);
         let deny = deny.to_vec();
         let resolver = Arc::clone(resolver);
         let pool = Arc::clone(pool);
@@ -695,6 +701,8 @@ impl Worker {
                         stream_maxconn,
                         buffer_size,
                         body_buffer_size,
+                        connection_blocks_max,
+                        blocks_avail,
                         messages_max,
                         req_timeout,
                         stream_timeout,
@@ -735,6 +743,8 @@ impl Worker {
         stream_maxconn: usize,
         buffer_size: usize,
         body_buffer_size: usize,
+        connection_blocks_max: usize,
+        blocks_avail: Arc<Counter>,
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
@@ -751,7 +761,7 @@ impl Worker {
 
         debug!("client-worker {}: allocating buffers", id);
 
-        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
+        let rb_tmp = Rc::new(TmpBuffer::new(buffer_size * connection_blocks_max));
 
         // large enough to fit anything
         let packet_buf = Rc::new(RefCell::new(vec![0; buffer_size + body_buffer_size + 4096]));
@@ -836,6 +846,8 @@ impl Worker {
                     stream_handle,
                     stream_maxconn,
                     stream_conns.clone(),
+                    connection_blocks_max,
+                    blocks_avail,
                     messages_max,
                     allow_compression,
                     Rc::clone(&deny),
@@ -1139,6 +1151,8 @@ impl Worker {
         stream_handle: zhttpsocket::AsyncServerStreamHandle,
         stream_maxconn: usize,
         conns: Rc<Connections>,
+        connection_blocks_max: usize,
+        blocks_avail: Arc<Counter>,
         messages_max: usize,
         allow_compression: bool,
         deny: Rc<Vec<IpNet>>,
@@ -1328,6 +1342,8 @@ impl Worker {
                                     Rc::clone(&conns),
                                     opts.clone(),
                                     ConnectionStreamOpts {
+                                        blocks_max: connection_blocks_max,
+                                        blocks_avail: Arc::clone(&blocks_avail),
                                         messages_max,
                                         allow_compression,
                                         sender: zstream_out_sender,
@@ -1541,8 +1557,8 @@ impl Worker {
             &cid,
             arena::Rc::clone(&zreq),
             opts.buffer_size,
-            2,
-            None,
+            stream_opts.blocks_max,
+            Some(&stream_opts.blocks_avail),
             stream_opts.messages_max,
             &opts.rb_tmp,
             opts.packet_buf,
@@ -1709,6 +1725,8 @@ impl Client {
         stream_maxconn: usize,
         buffer_size: usize,
         body_buffer_size: usize,
+        blocks_max: usize,
+        connection_blocks_max: usize,
         messages_max: usize,
         req_timeout: Duration,
         stream_timeout: Duration,
@@ -1717,6 +1735,8 @@ impl Client {
         zsockman: Arc<zhttpsocket::ServerSocketManager>,
         handle_bound: usize,
     ) -> Result<Self, String> {
+        assert!(blocks_max >= stream_maxconn * 2);
+
         // 1 active query per connection
         let queries_max = req_maxconn + stream_maxconn;
 
@@ -1735,6 +1755,8 @@ impl Client {
             info!("default policy: block outgoing connections to {:?}", deny);
         }
 
+        let blocks_avail = Arc::new(Counter::new(blocks_max - (stream_maxconn * 2)));
+
         let mut workers = Vec::new();
 
         for i in 0..worker_count {
@@ -1745,6 +1767,8 @@ impl Client {
                 stream_maxconn / worker_count,
                 buffer_size,
                 body_buffer_size,
+                connection_blocks_max,
+                &blocks_avail,
                 messages_max,
                 req_timeout,
                 stream_timeout,
@@ -1881,6 +1905,8 @@ impl Client {
                     tmp_buf: Rc::new(RefCell::new(Vec::new())),
                 },
                 ConnectionStreamOpts {
+                    blocks_max: 2,
+                    blocks_avail: Arc::new(Counter::new(0)),
                     messages_max: 0,
                     allow_compression: false,
                     sender,
@@ -1967,6 +1993,8 @@ impl TestClient {
             stream_maxconn,
             1024,
             1024,
+            stream_maxconn * 2,
+            2,
             10,
             Duration::from_secs(5),
             Duration::from_secs(5),
