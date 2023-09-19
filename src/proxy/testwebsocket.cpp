@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -257,6 +258,18 @@ int TestWebSocket::framesAvailable() const
 	return d->inFrames.count();
 }
 
+int TestWebSocket::writeBytesAvailable() const
+{
+	int inSize = 0;
+	foreach(const Frame &f, d->inFrames)
+		inSize += f.data.size();
+
+	if(inSize < BUFFER_SIZE)
+		return BUFFER_SIZE - inSize;
+	else
+		return 0;
+}
+
 int TestWebSocket::peerCloseCode() const
 {
 	return d->peerCloseCode;
@@ -289,6 +302,8 @@ void TestWebSocket::writeFrame(const Frame &frame)
 
 WebSocket::Frame TestWebSocket::readFrame()
 {
+	QMetaObject::invokeMethod(this, "writeBytesChanged", Qt::QueuedConnection);
+
 	return d->inFrames.takeFirst();
 }
 

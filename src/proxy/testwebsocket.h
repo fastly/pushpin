@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -58,6 +59,7 @@ public:
 	virtual HttpHeaders responseHeaders() const;
 	virtual QByteArray responseBody() const;
 	virtual int framesAvailable() const;
+	virtual int writeBytesAvailable() const;
 	virtual int peerCloseCode() const;
 	virtual QString peerCloseReason() const;
 	virtual ErrorCondition errorCondition() const;

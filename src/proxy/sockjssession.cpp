@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2021 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -260,6 +261,7 @@ public:
 		{
 			connect(sock, &ZWebSocket::readyRead, this, &Private::sock_readyRead);
 			connect(sock, &ZWebSocket::framesWritten, this, &Private::sock_framesWritten);
+			connect(sock, &ZWebSocket::writeBytesChanged, this, &Private::sock_writeBytesChanged);
 			connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
 			connect(sock, &ZWebSocket::peerClosed, this, &Private::sock_peerClosed);
 			connect(sock, &ZWebSocket::error, this, &Private::sock_error);
@@ -496,7 +498,20 @@ public:
 
 			if(mode == Http)
 			{
+				int outSize = 0;
+				foreach(const Frame &f, outFrames)
+					outSize += f.data.size();
+
+				if(outSize + frame.data.size() > BUFFER_SIZE)
+				{
+					errored = true;
+					errorCondition = ErrorGeneric;
+					update();
+					return;
+				}
+
 				outFrames += frame;
+
 				tryWrite();
 			}
 			else // WebSocketFramed
@@ -600,6 +615,14 @@ public:
 
 			pendingWrites += WriteItem(WriteItem::User, data.size());
 			messages += QString::fromUtf8(data);
+		}
+
+		if(bytes > 0)
+		{
+			QPointer<QObject> self = this;
+			emit q->writeBytesChanged();
+			if(!self)
+				return;
 		}
 
 		ri->receiveFrames = frames;
@@ -964,6 +987,11 @@ private slots:
 		handleWritten(count, contentBytes);
 	}
 
+	void sock_writeBytesChanged()
+	{
+		emit q->writeBytesChanged();
+	}
+
 	void sock_peerClosed()
 	{
 		peerCloseCode = sock->peerCloseCode();
@@ -991,6 +1019,14 @@ private slots:
 	void doUpdate()
 	{
 		updating = false;
+
+		if(errored)
+		{
+			state = Idle;
+			cleanup();
+			emit q->error();
+			return;
+		}
 
 		if(mode == Http || mode == WebSocketFramed)
 		{
@@ -1179,6 +1215,25 @@ int SockJsSession::framesAvailable() const
 	else
 	{
 		return d->sock->framesAvailable();
+	}
+}
+
+int SockJsSession::writeBytesAvailable() const
+{
+	if(d->mode == Private::WebSocketFramed || d->mode == Private::WebSocketPassthrough)
+	{
+		return d->sock->writeBytesAvailable();
+	}
+	else
+	{
+		int outSize = 0;
+		foreach(const Frame &f, d->outFrames)
+			outSize += f.data.size();
+
+		if(outSize < BUFFER_SIZE)
+			return BUFFER_SIZE - outSize;
+		else
+			return 0;
 	}
 }
 
