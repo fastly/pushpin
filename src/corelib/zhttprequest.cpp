@@ -96,6 +96,7 @@ public:
 	bool pendingUpdate;
 	bool needPause;
 	bool readableChanged;
+	bool writableChanged;
 	bool errored;
 	ErrorCondition errorCondition;
 	RTimer *expireTimer;
@@ -127,6 +128,7 @@ public:
 		pendingUpdate(false),
 		needPause(false),
 		readableChanged(false),
+		writableChanged(false),
 		errored(false),
 		expireTimer(0),
 		keepAliveTimer(0),
@@ -153,6 +155,7 @@ public:
 	{
 		needPause = false;
 		readableChanged = false;
+		writableChanged = false;
 
 		if(expireTimer)
 		{
@@ -425,7 +428,9 @@ public:
 				// also send credits if we need to.
 
 				QByteArray buf = requestBodyBuf.take(outCredits);
+
 				outCredits -= buf.size();
+				writableChanged = true;
 
 				ZhttpRequestPacket p;
 				p.type = ZhttpRequestPacket::Data;
@@ -466,7 +471,11 @@ public:
 				ZhttpResponsePacket packet;
 				packet.type = ZhttpResponsePacket::Data;
 				packet.body = responseBodyBuf.take(outCredits);
+
 				outCredits -= packet.body.size();
+				if(!packet.body.isEmpty())
+					writableChanged = true;
+
 				packet.more = (!responseBodyBuf.isEmpty() || !bodyFinished);
 
 				writePacket(packet);
@@ -580,20 +589,24 @@ public:
 			}
 
 			if(packet.credits > 0)
+			{
 				outCredits += packet.credits;
+				writableChanged = true;
+			}
 
 			if(!packet.body.isEmpty() || (!done && haveRequestBody))
-			{
 				readableChanged = true;
+
+			if(readableChanged || writableChanged)
 				update();
-			}
 		}
 		else if(packet.type == ZhttpRequestPacket::Credit)
 		{
 			if(packet.credits > 0)
 			{
 				outCredits += packet.credits;
-				tryWrite();
+				writableChanged = true;
+				update();
 			}
 		}
 		else if(packet.type == ZhttpRequestPacket::KeepAlive)
@@ -742,26 +755,19 @@ public:
 
 			responseBodyBuf += packet.body;
 
-			if(!doReq && packet.credits > 0)
-			{
-				outCredits += packet.credits;
-				if(outCredits > 0)
-				{
-					// try to write anything that was waiting on credits
-					QPointer<QObject> self = this;
-					tryWrite();
-					if(!self)
-						return;
-				}
-			}
-
 			if(packet.more)
 			{
-				if(needToSendHeaders || !packet.body.isEmpty())
+				if(!doReq && packet.credits > 0)
 				{
-					readableChanged = true;
-					update();
+					outCredits += packet.credits;
+					writableChanged = true;
 				}
+
+				if(needToSendHeaders || !packet.body.isEmpty())
+					readableChanged = true;
+
+				if(readableChanged || writableChanged)
+					update();
 			}
 			else
 			{
@@ -776,8 +782,8 @@ public:
 			if(packet.credits > 0)
 			{
 				outCredits += packet.credits;
-				if(outCredits > 0)
-					tryWrite();
+				writableChanged = true;
+				update();
 			}
 		}
 		else if(packet.type == ZhttpResponsePacket::KeepAlive)
@@ -1036,6 +1042,12 @@ public slots:
 		else if(state == ClientRequesting)
 		{
 			tryWrite();
+
+			if(writableChanged)
+			{
+				writableChanged = false;
+				emit q->writeBytesChanged();
+			}
 		}
 		else if(state == ClientReceiving)
 		{
@@ -1127,6 +1139,12 @@ public slots:
 		else if(state == ServerResponding)
 		{
 			tryWrite();
+
+			if(writableChanged)
+			{
+				writableChanged = false;
+				emit q->writeBytesChanged();
+			}
 		}
 	}
 
@@ -1296,8 +1314,10 @@ int ZhttpRequest::bytesAvailable() const
 
 int ZhttpRequest::writeBytesAvailable() const
 {
-	if(d->responseBodyBuf.size() <= IDEAL_CREDITS)
-		return (IDEAL_CREDITS - d->responseBodyBuf.size());
+	if(d->server && d->responseBodyBuf.size() < d->outCredits)
+		return d->outCredits - d->responseBodyBuf.size();
+	else if(!d->server && d->requestBodyBuf.size() < d->outCredits)
+		return d->outCredits - d->requestBodyBuf.size();
 	else
 		return 0;
 }

@@ -200,6 +200,7 @@ public:
 
 		req->setParent(this);
 		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
+		connect(req, &ZhttpRequest::writeBytesChanged, this, &Private::req_writeBytesChanged);
 		connect(req, &ZhttpRequest::error, this, &Private::req_error);
 
 		timer = new RTimer(this);
@@ -1420,7 +1421,10 @@ private slots:
 			doFinish();
 			return;
 		}
+	}
 
+	void req_writeBytesChanged()
+	{
 		if(state == SendingFirstInstructResponse)
 		{
 			tryWriteFirstInstructResponse();

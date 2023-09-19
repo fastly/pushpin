@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -88,6 +89,7 @@ signals:
 	void readyRead();
 	// indicates output data written and/or output finished
 	void bytesWritten(int count);
+	void writeBytesChanged();
 	void paused();
 	void error();
 };
