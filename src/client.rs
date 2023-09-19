@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1540,6 +1541,8 @@ impl Worker {
             &cid,
             arena::Rc::clone(&zreq),
             opts.buffer_size,
+            2,
+            None,
             stream_opts.messages_max,
             &opts.rb_tmp,
             opts.packet_buf,
