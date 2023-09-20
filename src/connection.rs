@@ -2679,7 +2679,7 @@ async fn stream_send_body<'a, R1, R2, R, W>(
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
 ) -> Result<(), Error>
 where
     R1: Fn(),
@@ -2744,9 +2744,7 @@ where
                     zhttppacket::ResponsePacket::Data(rdata) => {
                         handler.append_body(rdata.body, rdata.more)?;
 
-                        if let Some(avail) = blocks_avail {
-                            out_credits += handler.expand_write_buffer(blocks_max, avail) as u32;
-                        }
+                        out_credits += handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
                     }
                     zhttppacket::ResponsePacket::HandoffStart => {
                         drop(zresp);
@@ -2814,7 +2812,7 @@ async fn server_stream_send_body<'a, R1, R2, R, W>(
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
 ) -> Result<ClientResponse<'a, R>, Error>
 where
     R1: Fn(),
@@ -2932,10 +2930,8 @@ where
                         }
 
                         if rdata.more {
-                            if let Some(avail) = blocks_avail {
-                                out_credits +=
-                                    req_body.expand_write_buffer(blocks_max, avail)? as u32;
-                            }
+                            out_credits +=
+                                req_body.expand_write_buffer(blocks_max, blocks_avail)? as u32;
                         } else {
                             prepare_done = true;
                         }
@@ -2999,7 +2995,7 @@ async fn stream_websocket<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -3192,10 +3188,8 @@ where
                                 return Err(e);
                             }
 
-                            if let Some(avail) = blocks_avail {
-                                out_credits +=
-                                    handler.expand_write_buffer(blocks_max, avail) as u32;
-                            }
+                            out_credits +=
+                                handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
 
                             let opcode = match &rdata.content_type {
                                 Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
@@ -3347,7 +3341,7 @@ async fn server_stream_websocket<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -3540,10 +3534,8 @@ where
                                 return Err(e);
                             }
 
-                            if let Some(avail) = blocks_avail {
-                                out_credits +=
-                                    handler.expand_write_buffer(blocks_max, avail) as u32;
-                            }
+                            out_credits +=
+                                handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
 
                             let opcode = match &rdata.content_type {
                                 Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
@@ -3698,7 +3690,7 @@ async fn server_stream_handler<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -4203,7 +4195,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     secure: bool,
     buffer_size: usize,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -4344,9 +4336,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
         buf2.resize(buffer_size);
         shared.get().reset();
 
-        if let Some(blocks_avail) = blocks_avail {
-            blocks_avail.inc(additional_blocks).unwrap();
-        }
+        blocks_avail.inc(additional_blocks).unwrap();
 
         *cid = cid_provider.get_new_assigned_cid();
     }
@@ -4367,7 +4357,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     secure: bool,
     buffer_size: usize,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -5806,7 +5796,7 @@ async fn client_stream_handler<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     allow_compression: bool,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -6337,7 +6327,7 @@ async fn client_stream_connect<E, R1, R2>(
     buf2: &mut VecRingBuffer,
     buffer_size: usize,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -6532,9 +6522,7 @@ where
 
             buf2.resize(buffer_size);
 
-            if let Some(blocks_avail) = blocks_avail {
-                blocks_avail.inc(additional_blocks).unwrap();
-            }
+            blocks_avail.inc(additional_blocks).unwrap();
 
             if pool
                 .push(
@@ -6579,7 +6567,7 @@ async fn client_stream_connection_inner<E>(
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
     buffer_size: usize,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -6724,7 +6712,7 @@ pub async fn client_stream_connection<E>(
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
     buffer_size: usize,
     blocks_max: usize,
-    blocks_avail: Option<&Counter>,
+    blocks_avail: &Counter,
     messages_max: usize,
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -7378,7 +7366,7 @@ pub mod testutil {
             buf1,
             buf2,
             2,
-            None,
+            &Counter::new(0),
             10,
             false,
             &packet_buf,
@@ -7559,7 +7547,7 @@ pub mod testutil {
             secure,
             buffer_size,
             2,
-            None,
+            &Counter::new(0),
             10,
             &rb_tmp,
             packet_buf,
@@ -8450,7 +8438,7 @@ mod tests {
             secure,
             buffer_size,
             3,
-            Some(&Counter::new(1)),
+            &Counter::new(1),
             10,
             &rb_tmp,
             packet_buf,
@@ -10021,7 +10009,7 @@ mod tests {
             &mut buf1,
             &mut buf2,
             3,
-            Some(&Counter::new(1)),
+            &Counter::new(1),
             10,
             allow_compression,
             &tmp_buf,
