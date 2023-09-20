@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -100,6 +101,7 @@ public:
 	virtual HttpHeaders responseHeaders() const = 0;
 	virtual QByteArray responseBody() const = 0;
 	virtual int framesAvailable() const = 0;
+	virtual int writeBytesAvailable() const = 0;
 	virtual int peerCloseCode() const = 0;
 	virtual QString peerCloseReason() const = 0;
 	virtual ErrorCondition errorCondition() const = 0;
@@ -112,6 +114,7 @@ signals:
 	void connected();
 	void readyRead();
 	void framesWritten(int count, int contentBytes);
+	void writeBytesChanged();
 	void peerClosed(); // emitted only if peer closes before we do
 	void closed(); // emitted after peer acks our close, or immediately if we were acking
 	void error();

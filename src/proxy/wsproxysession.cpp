@@ -49,7 +49,6 @@
 
 #define ACTIVITY_TIMEOUT 60000
 #define KEEPALIVE_RAND_MAX 1000
-#define PENDING_MAX 16384
 
 class HttpExtension
 {
@@ -262,9 +261,7 @@ public:
 	Jwt::EncodingKey sigKey;
 	WebSocket *inSock;
 	WebSocket *outSock;
-	int inPendingBytes;
 	QList<bool> inPendingFrames; // true means we should ack a send event
-	int outPendingBytes;
 	int outReadInProgress; // frame type or -1
 	QByteArray pathBeg;
 	QByteArray channelPrefix;
@@ -302,8 +299,6 @@ public:
 		trustedClient(false),
 		inSock(0),
 		outSock(0),
-		inPendingBytes(0),
-		outPendingBytes(0),
 		outReadInProgress(-1),
 		acceptGripMessages(false),
 		detached(false),
@@ -374,6 +369,7 @@ public:
 		inSock->setParent(this);
 		connect(inSock, &WebSocket::readyRead, this, &Private::in_readyRead);
 		connect(inSock, &WebSocket::framesWritten, this, &Private::in_framesWritten);
+		connect(inSock, &WebSocket::writeBytesChanged, this, &Private::in_writeBytesChanged);
 		connect(inSock, &WebSocket::peerClosed, this, &Private::in_peerClosed);
 		connect(inSock, &WebSocket::closed, this, &Private::in_closed);
 		connect(inSock, &WebSocket::error, this, &Private::in_error);
@@ -453,7 +449,6 @@ public:
 
 	void writeInFrame(const WebSocket::Frame &frame, bool fromSendEvent = false)
 	{
-		inPendingBytes += frame.data.size();
 		inPendingFrames += fromSendEvent;
 
 		inSock->writeFrame(frame);
@@ -553,7 +548,7 @@ public:
 
 		connect(outSock, &WebSocket::connected, this, &Private::out_connected);
 		connect(outSock, &WebSocket::readyRead, this, &Private::out_readyRead);
-		connect(outSock, &WebSocket::framesWritten, this, &Private::out_framesWritten);
+		connect(outSock, &WebSocket::writeBytesChanged, this, &Private::out_writeBytesChanged);
 		connect(outSock, &WebSocket::peerClosed, this, &Private::out_peerClosed);
 		connect(outSock, &WebSocket::closed, this, &Private::out_closed);
 		connect(outSock, &WebSocket::error, this, &Private::out_error);
@@ -606,7 +601,7 @@ public:
 
 	void tryReadIn()
 	{
-		while(inSock->framesAvailable() > 0 && ((outSock && outPendingBytes < PENDING_MAX) || detached))
+		while(inSock->framesAvailable() > 0 && ((outSock && outSock->writeBytesAvailable() > 0) || detached))
 		{
 			WebSocket::Frame f = inSock->readFrame();
 
@@ -620,7 +615,6 @@ public:
 				continue;
 
 			outSock->writeFrame(f);
-			outPendingBytes += f.data.size();
 
 			incCounter(Stats::ServerContentBytesSent, f.data.size());
 			if(!f.more)
@@ -630,7 +624,7 @@ public:
 
 	void tryReadOut()
 	{
-		while(outSock->framesAvailable() > 0 && ((inSock && inPendingBytes < PENDING_MAX) || detached))
+		while(outSock->framesAvailable() > 0 && ((inSock && inSock->writeBytesAvailable() > 0) || detached))
 		{
 			WebSocket::Frame f = outSock->readFrame();
 
@@ -800,9 +794,7 @@ private slots:
 
 	void in_framesWritten(int count, int contentBytes)
 	{
-		Q_UNUSED(count);
-
-		inPendingBytes -= contentBytes;
+		Q_UNUSED(contentBytes);
 
 		for(int n = 0; n < count; ++n)
 		{
@@ -810,7 +802,10 @@ private slots:
 			if(fromSendEvent)
 				wsControl->sendEventWritten();
 		}
+	}
 
+	void in_writeBytesChanged()
+	{
 		if(!detached && outSock)
 			tryReadOut();
 	}
@@ -935,12 +930,8 @@ private slots:
 		tryReadOut();
 	}
 
-	void out_framesWritten(int count, int contentBytes)
+	void out_writeBytesChanged()
 	{
-		Q_UNUSED(count);
-
-		outPendingBytes -= contentBytes;
-
 		if(!detached && inSock)
 			tryReadIn();
 	}
@@ -1039,7 +1030,7 @@ private slots:
 		}
 
 		// if queue == false, drop if we can't send right now
-		if(!queue && (inPendingBytes >= PENDING_MAX || outReadInProgress != -1))
+		if(!queue && (inSock->writeBytesAvailable() == 0 || outReadInProgress != -1))
 		{
 			// if drop is allowed, drop is success :)
 			wsControl->sendEventWritten();

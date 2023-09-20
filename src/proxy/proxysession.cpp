@@ -128,7 +128,6 @@ public:
 	BufferList responseBody;
 	QHash<RequestSession*, SessionItem*> sessionItemsBySession;
 	QByteArray initialRequestBody;
-	int requestBytesToWrite;
 	bool requestBodySent;
 	int total;
 	bool buffering;
@@ -164,7 +163,6 @@ public:
 		addAllowed(true),
 		haveInspectData(false),
 		shared(false),
-		requestBytesToWrite(0),
 		requestBodySent(false),
 		total(0),
 		trustedClient(false),
@@ -439,7 +437,7 @@ public:
 		}
 
 		connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
-		connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+		connect(zhttpRequest, &ZhttpRequest::writeBytesChanged, this, &Private::zhttpRequest_writeBytesChanged);
 		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
 
 		if(target.trusted)
@@ -469,7 +467,6 @@ public:
 		{
 			incCounter(Stats::ServerContentBytesSent, initialRequestBody.size());
 
-			requestBytesToWrite += initialRequestBody.size();
 			zhttpRequest->writeBody(initialRequestBody);
 		}
 
@@ -494,11 +491,13 @@ public:
 		if(state != Requesting)
 			return;
 
+		int maxBytes = buffering ? MAX_STREAM_BUFFER : zhttpRequest->writeBytesAvailable();
+
 		// if we're not buffering, then sync to speed of server
-		if(!buffering && requestBytesToWrite > 0)
+		if(maxBytes == 0)
 			return;
 
-		QByteArray buf = inRequest->request()->readBody(MAX_STREAM_BUFFER);
+		QByteArray buf = inRequest->request()->readBody(maxBytes);
 		if(!buf.isEmpty())
 		{
 			log_debug("proxysession: %p input chunk: %d", q, buf.size());
@@ -522,7 +521,6 @@ public:
 
 			incCounter(Stats::ServerContentBytesSent, buf.size());
 
-			requestBytesToWrite += buf.size();
 			zhttpRequest->writeBody(buf);
 		}
 
@@ -1115,12 +1113,9 @@ public slots:
 		tryResponseRead();
 	}
 
-	void zhttpRequest_bytesWritten(int count)
+	void zhttpRequest_writeBytesChanged()
 	{
-		requestBytesToWrite -= count;
-		assert(requestBytesToWrite >= 0);
-
-		if(inRequest && requestBytesToWrite == 0)
+		if(inRequest)
 			tryRequestRead();
 	}
 

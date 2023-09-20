@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -80,12 +81,15 @@ public:
 	QString peerCloseReason;
 	QVariant userData;
 	bool pendingUpdate;
+	bool readableChanged;
+	bool writableChanged;
 	ErrorCondition errorCondition;
 	RTimer *expireTimer;
 	RTimer *keepAliveTimer;
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int inSize;
+	int outSize;
 	int inContentType;
 	int outContentType;
 	bool multi;
@@ -110,9 +114,12 @@ public:
 		closeCode(-1),
 		peerCloseCode(-1),
 		pendingUpdate(false),
+		readableChanged(false),
+		writableChanged(false),
 		expireTimer(0),
 		keepAliveTimer(0),
 		inSize(0),
+		outSize(0),
 		inContentType(-1),
 		outContentType((int)Frame::Text),
 		multi(false)
@@ -135,6 +142,9 @@ public:
 
 	void cleanup()
 	{
+		readableChanged = false;
+		writableChanged = false;
+
 		if(expireTimer)
 		{
 			expireTimer->disconnect(this);
@@ -303,6 +313,7 @@ public:
 			return;
 
 		outFrames += frame;
+		outSize += frame.data.size();
 		update();
 	}
 
@@ -381,6 +392,7 @@ public:
 					nextFrame.data = nextFrame.data.mid(contentSize);
 				}
 
+				outSize -= f.data.size();
 				outCredits -= f.data.size();
 
 				int credits = -1;
@@ -530,17 +542,11 @@ public:
 			if(packet.credits > 0)
 			{
 				outCredits += packet.credits;
-				if(outCredits > 0)
-				{
-					// try to write anything that was waiting on credits
-					QPointer<QObject> self = this;
-					tryWrite();
-					if(!self)
-						return;
-				}
+				writableChanged = true;
 			}
 
-			emit q->readyRead();
+			readableChanged = true;
+			update();
 		}
 		else if(packet.type == ZhttpRequestPacket::Close)
 		{
@@ -551,7 +557,8 @@ public:
 			if(packet.credits > 0)
 			{
 				outCredits += packet.credits;
-				tryWrite();
+				writableChanged = true;
+				update();
 			}
 		}
 		else if(packet.type == ZhttpRequestPacket::KeepAlive)
@@ -687,17 +694,11 @@ public:
 				if(packet.credits > 0)
 				{
 					outCredits += packet.credits;
-					if(outCredits > 0)
-					{
-						// try to write anything that was waiting on credits
-						QPointer<QObject> self = this;
-						tryWrite();
-						if(!self)
-							return;
-					}
+					writableChanged = true;
 				}
 
-				emit q->readyRead();
+				readableChanged = true;
+				update();
 			}
 		}
 		else if(packet.type == ZhttpResponsePacket::Close)
@@ -709,8 +710,8 @@ public:
 			if(packet.credits > 0)
 			{
 				outCredits += packet.credits;
-				if(outCredits > 0)
-					tryWrite();
+				writableChanged = true;
+				update();
 			}
 		}
 		else if(packet.type == ZhttpResponsePacket::KeepAlive)
@@ -998,49 +999,61 @@ public slots:
 						return;
 				}
 			}
-		}
-
-		if(server)
-		{
-			if(state == Connected || state == ConnectedPeerClosed)
+			else
 			{
-				tryWrite();
-			}
-		}
-		else
-		{
-			if(state == AboutToConnect)
-			{
-				if(!manager->canWriteImmediately())
+				if(readableChanged)
 				{
-					state = Idle;
-					errorCondition = ErrorUnavailable;
-					emit q->error();
-					cleanup();
-					return;
+					readableChanged = false;
+
+					QPointer<QObject> self = this;
+					emit q->readyRead();
+					if(!self)
+						return;
 				}
-
-				state = Connecting;
-
-				ZhttpRequestPacket p;
-				p.type = ZhttpRequestPacket::Data;
-				p.uri = requestUri;
-				p.headers = requestHeaders;
-				p.connectHost = connectHost;
-				p.connectPort = connectPort;
-				if(ignorePolicies)
-					p.ignorePolicies = true;
-				if(trustConnectHost)
-					p.trustConnectHost = true;
-				if(ignoreTlsErrors)
-					p.ignoreTlsErrors = true;
-				p.credits = IDEAL_CREDITS;
-				p.multi = true;
-				writePacket(p);
 			}
-			else if(state == Connected || state == ConnectedPeerClosed)
+		}
+
+		if(state == AboutToConnect)
+		{
+			if(!manager->canWriteImmediately())
 			{
-				tryWrite();
+				state = Idle;
+				errorCondition = ErrorUnavailable;
+				emit q->error();
+				cleanup();
+				return;
+			}
+
+			state = Connecting;
+
+			ZhttpRequestPacket p;
+			p.type = ZhttpRequestPacket::Data;
+			p.uri = requestUri;
+			p.headers = requestHeaders;
+			p.connectHost = connectHost;
+			p.connectPort = connectPort;
+			if(ignorePolicies)
+				p.ignorePolicies = true;
+			if(trustConnectHost)
+				p.trustConnectHost = true;
+			if(ignoreTlsErrors)
+				p.ignoreTlsErrors = true;
+			p.credits = IDEAL_CREDITS;
+			p.multi = true;
+			writePacket(p);
+		}
+		else if(state == Connected || state == ConnectedPeerClosed)
+		{
+			QPointer<QObject> self = this;
+			tryWrite();
+			if(!self)
+				return;
+
+			if(writableChanged)
+			{
+				writableChanged = false;
+
+				emit q->writeBytesChanged();
 			}
 		}
 	}
@@ -1209,6 +1222,14 @@ QByteArray ZWebSocket::responseBody() const
 int ZWebSocket::framesAvailable() const
 {
 	return d->inFrames.count();
+}
+
+int ZWebSocket::writeBytesAvailable() const
+{
+	if(d->outSize < d->outCredits)
+		return d->outCredits - d->outSize;
+	else
+		return 0;
 }
 
 int ZWebSocket::peerCloseCode() const
