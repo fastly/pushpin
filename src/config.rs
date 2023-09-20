@@ -446,7 +446,7 @@ pub fn get_config_file(arg_config: &Path) -> Result<PathBuf, Box<dyn Error>> {
         config_files.push(PathBuf::from("./examples/config/pushpin.conf"));
         // default
         config_files.push(PathBuf::from(format!(
-            "{:?}/pushpin.conf",
+            "{}/pushpin.conf",
             env!("CONFIG_DIR")
         )));
     }
