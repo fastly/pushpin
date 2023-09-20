@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +16,7 @@
  */
 
 use crate::buffer::{
-    trim_for_display, write_vectored_offset, BaseRingBuffer, LimitBufsMut, RefRead, VECTORED_MAX,
+    trim_for_display, write_vectored_offset, Buffer, LimitBufsMut, RingBuffer, VECTORED_MAX,
 };
 use crate::http1::HeaderParamsIterator;
 use arrayvec::ArrayVec;
@@ -456,7 +457,7 @@ impl DeflateEncoder {
         &mut self,
         src: &[u8],
         end: bool,
-        dest: &mut BaseRingBuffer<T>,
+        dest: &mut RingBuffer<T>,
     ) -> Result<(usize, bool), io::Error> {
         let wbuf = dest.write_buf();
 
@@ -465,7 +466,7 @@ impl DeflateEncoder {
         let write_maxed = written == wbuf.len();
         dest.write_commit(written);
 
-        if !end_ack && write_maxed && dest.write_avail() > 0 {
+        if !end_ack && write_maxed && dest.remaining_capacity() > 0 {
             let (r, written, ea) = self.encode(&src[read..], end, dest.write_buf())?;
 
             dest.write_commit(written);
@@ -744,7 +745,7 @@ pub fn deflate_codec_state_size() -> usize {
 
 // call preprocess_fn on any bytes about to be decoded. this can be used
 // to apply mask processing as needed
-fn decode_from_refread<T, D, F>(
+fn decode_from_buffer<T, D, F>(
     src: &mut T,
     limit: usize,
     end: bool,
@@ -753,11 +754,11 @@ fn decode_from_refread<T, D, F>(
     mut preprocess_fn: F,
 ) -> Result<(usize, bool), io::Error>
 where
-    T: RefRead + ?Sized,
+    T: Buffer + ?Sized,
     D: Decoder,
     F: FnMut(&mut [u8], usize),
 {
-    let buf = src.get_mut();
+    let buf = src.read_buf_mut();
     let limit = cmp::min(limit, buf.len());
     let buf = &mut buf[..limit];
 
@@ -766,9 +767,9 @@ where
     let (read, mut written, mut end_ack) = dec.decode(buf, end, dest)?;
 
     let read_maxed = read == buf.len();
-    src.consume(read);
+    src.read_commit(read);
 
-    let buf = src.get_mut();
+    let buf = src.read_buf_mut();
     let buf = &mut buf[..(limit - read)];
 
     if !end_ack && read_maxed && !buf.is_empty() {
@@ -777,7 +778,7 @@ where
 
         let (read, w, ea) = dec.decode(buf, end, &mut dest[written..])?;
 
-        src.consume(read);
+        src.read_commit(read);
 
         written += w;
         end_ack = ea;
@@ -796,7 +797,7 @@ fn unmask_and_decode<T, D>(
     dest: &mut [u8],
 ) -> Result<(usize, usize, bool), io::Error>
 where
-    T: RefRead + ?Sized,
+    T: Buffer + ?Sized,
     D: Decoder,
 {
     // if a mask needs to be applied, it needs to be applied to the
@@ -812,7 +813,7 @@ where
     let mut masked = 0;
     let orig_len = src.len();
 
-    let (written, output_end) = decode_from_refread(src, limit, end, dec, dest, |buf, offset| {
+    let (written, output_end) = decode_from_buffer(src, limit, end, dec, dest, |buf, offset| {
         if let Some(mask) = mask {
             apply_mask(buf, mask, mask_offset + offset);
             masked += buf.len();
@@ -828,7 +829,7 @@ where
         masked -= read;
 
         let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX]>::uninit();
-        let mut bufs = src.get_mut_vectored(&mut bufs_arr).limit(masked);
+        let mut bufs = src.read_bufs_mut(&mut bufs_arr).limit(masked);
 
         apply_mask_vectored(bufs.as_slice(), mask, mask_offset + read);
     }
@@ -938,7 +939,7 @@ struct DeflateState<T> {
     enc: DeflateEncoder,
     dec: DeflateDecoder,
     allow_takeover: bool,
-    enc_buf: BaseRingBuffer<T>,
+    enc_buf: RingBuffer<T>,
 }
 
 pub struct Protocol<T> {
@@ -949,7 +950,7 @@ pub struct Protocol<T> {
 }
 
 impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
-    pub fn new(deflate_config: Option<(bool, BaseRingBuffer<T>)>) -> Self {
+    pub fn new(deflate_config: Option<(bool, RingBuffer<T>)>) -> Self {
         let deflate_state = deflate_config.map(|(allow_takeover, enc_buf)| {
             RefCell::new(DeflateState {
                 enc: DeflateEncoder::new(),
@@ -1085,29 +1086,29 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
     // on success, it's up to the caller to advance the buffer by frame.data.len()
     #[cfg(test)]
-    pub fn recv_frame<'buf, R: RefRead>(
+    pub fn recv_frame<'buf, B: Buffer>(
         &mut self,
-        rbuf: &'buf mut R,
+        rbuf: &'buf mut B,
     ) -> Option<Result<Frame<'buf>, Error>> {
         assert!(self.state.get() == State::Connected || self.state.get() == State::Closing);
 
         let receiving = &mut *self.receiving.borrow_mut();
 
         if receiving.frame.is_none() {
-            let fi = match read_header(rbuf.get_ref()) {
+            let fi = match read_header(rbuf.read_buf()) {
                 Ok(fi) => fi,
                 Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return None,
                 Err(e) => return Some(Err(e.into())),
             };
 
-            rbuf.consume(fi.payload_offset);
+            rbuf.read_commit(fi.payload_offset);
 
             receiving.frame = Some(fi);
         }
 
         let fi = receiving.frame.unwrap();
 
-        if rbuf.get_ref().len() < fi.payload_size {
+        if rbuf.read_buf().len() < fi.payload_size {
             return None;
         }
 
@@ -1119,7 +1120,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
             }
         }
 
-        let buf = rbuf.get_mut();
+        let buf = rbuf.read_buf_mut();
 
         if let Some(mask) = fi.mask {
             apply_mask(buf, mask, 0);
@@ -1250,10 +1251,10 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
                 // to report, so that if the write returns an error
                 // (including WouldBlock) we can propagate the error without
                 // data loss
-                if read == 0 && (state.enc_buf.read_avail() > 0 || msg.enc_output_end) {
+                if read == 0 && (state.enc_buf.len() > 0 || msg.enc_output_end) {
                     // send_frame adds 1 element to vector
                     let mut bufs_arr = MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
-                    let bufs = state.enc_buf.get_mut_vectored(&mut bufs_arr);
+                    let bufs = state.enc_buf.read_bufs_mut(&mut bufs_arr);
 
                     // set on first frame
                     let rsv1 = opcode != OPCODE_CONTINUATION;
@@ -1265,7 +1266,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
                     msg.frame_sent = true;
 
-                    sent_all = msg.enc_output_end && state.enc_buf.read_avail() == 0;
+                    sent_all = msg.enc_output_end && state.enc_buf.len() == 0;
                 }
 
                 (read, sent_all)
@@ -1300,9 +1301,9 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         Ok((read, done))
     }
 
-    pub fn recv_message_content<R: RefRead>(
+    pub fn recv_message_content<B: Buffer>(
         &self,
-        rbuf: &mut R,
+        rbuf: &mut B,
         dest: &mut [u8],
     ) -> Option<Result<(u8, usize, bool), Error>> {
         assert!(self.state.get() == State::Connected || self.state.get() == State::Closing);
@@ -1310,13 +1311,13 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
         let receiving = &mut *self.receiving.borrow_mut();
 
         if receiving.frame.is_none() {
-            let fi = match read_header(rbuf.get_ref()) {
+            let fi = match read_header(rbuf.read_buf()) {
                 Ok(fi) => fi,
                 Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return None,
                 Err(e) => return Some(Err(e.into())),
             };
 
-            rbuf.consume(fi.payload_offset);
+            rbuf.read_commit(fi.payload_offset);
 
             receiving.frame = Some(fi);
 
@@ -1402,7 +1403,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
             (written, frame_read_end)
         } else {
-            let buf = rbuf.get_ref();
+            let buf = rbuf.read_buf();
 
             // control frames must be available in their entirety
             if fi.opcode & 0x08 != 0 && buf.len() < fi.payload_size {
@@ -1423,7 +1424,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
             dest.copy_from_slice(&buf[..size]);
 
-            rbuf.consume(size);
+            rbuf.read_commit(size);
 
             if let Some(mask) = fi.mask {
                 apply_mask(dest, mask, msg.frame_payload_read);
@@ -1461,7 +1462,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
 pub mod testutil {
     use super::*;
-    use crate::buffer::{RingBuffer, TmpBuffer};
+    use crate::buffer::{TmpBuffer, VecRingBuffer};
     use std::rc::Rc;
 
     pub struct BenchSendMessageArgs {
@@ -1491,7 +1492,7 @@ pub mod testutil {
             let deflate_config = if self.use_deflate {
                 let tmp = Rc::new(TmpBuffer::new(256));
 
-                Some((true, RingBuffer::new(256, &tmp)))
+                Some((true, VecRingBuffer::new(256, &tmp)))
             } else {
                 None
             };
@@ -1529,7 +1530,7 @@ pub mod testutil {
 
     pub struct BenchRecvMessageArgs {
         protocol: Protocol<Vec<u8>>,
-        rbuf: RingBuffer,
+        rbuf: VecRingBuffer,
         dest: Vec<u8>,
     }
 
@@ -1549,7 +1550,7 @@ pub mod testutil {
             let tmp = Rc::new(TmpBuffer::new(16_384));
 
             let deflate_config = if use_deflate {
-                Some((true, RingBuffer::new(16_384, &tmp)))
+                Some((true, VecRingBuffer::new(16_384, &tmp)))
             } else {
                 None
             };
@@ -1582,12 +1583,12 @@ pub mod testutil {
 
         pub fn init(&self) -> BenchRecvMessageArgs {
             let deflate_config = if self.use_deflate {
-                Some((true, RingBuffer::new(256, &self.tmp)))
+                Some((true, VecRingBuffer::new(256, &self.tmp)))
             } else {
                 None
             };
 
-            let mut rbuf = RingBuffer::new(16_384, &self.tmp);
+            let mut rbuf = VecRingBuffer::new(16_384, &self.tmp);
 
             let size = rbuf.write(&self.msg).unwrap();
             assert_eq!(size, self.msg.len());
@@ -1630,7 +1631,7 @@ pub mod testutil {
 mod tests {
     use super::testutil::*;
     use super::*;
-    use crate::buffer::{RingBuffer, TmpBuffer};
+    use crate::buffer::{TmpBuffer, VecRingBuffer};
     use std::collections::VecDeque;
     use std::rc::Rc;
 
@@ -2086,7 +2087,7 @@ mod tests {
         assert_eq!(frame.fin, true);
 
         let size = frame.data.len();
-        rbuf.consume(size);
+        rbuf.read_commit(size);
 
         assert_eq!(p.state(), State::Connected);
     }
@@ -2202,7 +2203,7 @@ mod tests {
     fn test_send_recv_compressed() {
         let tmp = Rc::new(TmpBuffer::new(1024));
 
-        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
+        let p = Protocol::new(Some((true, VecRingBuffer::new(1024, &tmp))));
 
         let mut writer = MyWriter::new();
 
@@ -2229,7 +2230,7 @@ mod tests {
 
         let mut rbuf = io::Cursor::new(writer.data.as_mut());
 
-        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
+        let p = Protocol::new(Some((true, VecRingBuffer::new(1024, &tmp))));
 
         let mut dest = [0; 1024];
 
@@ -2248,7 +2249,7 @@ mod tests {
     fn test_send_recv_compressed_fragmented() {
         let tmp = Rc::new(TmpBuffer::new(1024));
 
-        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
+        let p = Protocol::new(Some((true, VecRingBuffer::new(1024, &tmp))));
 
         let mut writer = MyWriter::new();
 
@@ -2290,7 +2291,7 @@ mod tests {
         assert_eq!(size, 0);
         assert_eq!(done, true);
 
-        let p = Protocol::new(Some((true, RingBuffer::new(1024, &tmp))));
+        let p = Protocol::new(Some((true, VecRingBuffer::new(1024, &tmp))));
 
         let mut writer_data = VecDeque::from(writer.data);
         let mut input = Vec::new();

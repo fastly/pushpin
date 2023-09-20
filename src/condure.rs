@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,6 +74,8 @@ pub struct Config {
     pub stream_maxconn: usize,
     pub buffer_size: usize,
     pub body_buffer_size: usize,
+    pub blocks_max: usize,
+    pub connection_blocks_max: usize,
     pub messages_max: usize,
     pub req_timeout: Duration,
     pub stream_timeout: Duration,
@@ -210,6 +213,8 @@ impl App {
                 config.stream_maxconn,
                 config.buffer_size,
                 config.body_buffer_size,
+                config.blocks_max,
+                config.connection_blocks_max,
                 config.messages_max,
                 config.req_timeout,
                 config.stream_timeout,
@@ -266,6 +271,8 @@ impl App {
                 config.stream_maxconn,
                 config.buffer_size,
                 config.body_buffer_size,
+                config.blocks_max,
+                config.connection_blocks_max,
                 config.messages_max,
                 config.req_timeout,
                 config.stream_timeout,

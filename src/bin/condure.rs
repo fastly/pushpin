@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,6 +47,8 @@ struct Args {
     stream_maxconn: usize,
     buffer_size: usize,
     body_buffer_size: usize,
+    blocks_max: usize,
+    connection_blocks_max: usize,
     messages_max: usize,
     req_timeout: usize,
     stream_timeout: usize,
@@ -75,6 +78,14 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         return Err("total maxconn is too large".into());
     }
 
+    if args.blocks_max < args.stream_maxconn * 2 {
+        return Err("blocks-max is too small".into());
+    }
+
+    if args.connection_blocks_max < 2 {
+        return Err("connection-blocks-max is too small".into());
+    }
+
     let mut config = Config {
         instance_id: args.id,
         workers: args.workers,
@@ -82,6 +93,8 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
         stream_maxconn: args.stream_maxconn,
         buffer_size: args.buffer_size,
         body_buffer_size: args.body_buffer_size,
+        blocks_max: args.blocks_max,
+        connection_blocks_max: args.connection_blocks_max,
         messages_max: args.messages_max,
         req_timeout: Duration::from_secs(args.req_timeout as u64),
         stream_timeout: Duration::from_secs(args.stream_timeout as u64),
@@ -243,6 +256,21 @@ fn main() {
                 .value_name("N")
                 .help("Body buffer size for connections in req mode")
                 .default_value("100000"),
+        )
+        .arg(
+            Arg::new("blocks-max")
+                .long("blocks-max")
+                .num_args(1)
+                .value_name("N")
+                .help("Maximum number of buffer blocks in stream mode (minimum 2*maxconn)"),
+        )
+        .arg(
+            Arg::new("connection-blocks-max")
+                .long("connection-blocks-max")
+                .num_args(1)
+                .value_name("N")
+                .help("Maximum number of buffer blocks per connection in stream mode (minimum 2)")
+                .default_value("2"),
         )
         .arg(
             Arg::new("messages-max")
@@ -441,6 +469,27 @@ fn main() {
         }
     };
 
+    let blocks_max: usize = match matches.get_one::<String>("blocks-max") {
+        Some(v) => match v.parse() {
+            Ok(x) => x,
+            Err(e) => {
+                error!("failed to parse blocks-max: {}", e);
+                process::exit(1);
+            }
+        },
+        None => (req_maxconn + stream_maxconn) * 2,
+    };
+
+    let connection_blocks_max = matches.get_one::<String>("connection-blocks-max").unwrap();
+
+    let connection_blocks_max: usize = match connection_blocks_max.parse() {
+        Ok(x) => x,
+        Err(e) => {
+            error!("failed to parse connection-blocks-max: {}", e);
+            process::exit(1);
+        }
+    };
+
     let messages_max = matches.get_one::<String>("messages-max").unwrap();
 
     let messages_max: usize = match messages_max.parse() {
@@ -539,6 +588,8 @@ fn main() {
         stream_maxconn,
         buffer_size,
         body_buffer_size,
+        blocks_max,
+        connection_blocks_max,
         messages_max,
         req_timeout,
         stream_timeout,

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,9 +36,9 @@
 
 use crate::arena;
 use crate::buffer::{
-    BaseRingBuffer, Buffer, LimitBufsMut, RefRead, RingBuffer, SliceRingBuffer, TmpBuffer,
-    VECTORED_MAX,
+    Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
+use crate::counter::Counter;
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
     AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncResolver, AsyncTcpStream, AsyncTlsStream,
@@ -298,6 +299,30 @@ fn make_zhttp_request(
     let size = zreq.serialize(packet_buf)?;
 
     Ok(zmq::Message::from(&packet_buf[..size]))
+}
+
+// return the capacity increase
+fn resize_write_buffer_if_full(
+    buf: &mut VecRingBuffer,
+    block_size: usize,
+    blocks_max: usize,
+    blocks_avail: &Counter,
+) -> usize {
+    assert!(blocks_max >= 2);
+
+    // all but one block can be used for writing
+    let allowed = blocks_max - 1;
+
+    if buf.remaining_capacity() == 0
+        && buf.capacity() < block_size * allowed
+        && blocks_avail.dec(1).is_ok()
+    {
+        buf.resize(buf.capacity() + block_size);
+
+        block_size
+    } else {
+        0
+    }
 }
 
 #[derive(Debug)]
@@ -578,8 +603,8 @@ fn make_zhttp_response(
     Ok(zmq::Message::from(v))
 }
 
-async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Result<(), io::Error> {
-    if buf.write_avail() == 0 {
+async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut VecRingBuffer) -> Result<(), io::Error> {
+    if buf.remaining_capacity() == 0 {
         return Err(io::Error::from(io::ErrorKind::WriteZero));
     }
 
@@ -598,13 +623,13 @@ async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut RingBuffer) -> Result<(
 }
 
 struct LimitedRingBuffer<'a> {
-    inner: &'a mut RingBuffer,
+    inner: &'a mut VecRingBuffer,
     limit: usize,
 }
 
 impl AsRef<[u8]> for LimitedRingBuffer<'_> {
     fn as_ref(&self) -> &[u8] {
-        let buf = BaseRingBuffer::read_buf(self.inner);
+        let buf = Buffer::read_buf(self.inner);
         let limit = cmp::min(buf.len(), self.limit);
 
         &buf[..limit]
@@ -613,8 +638,8 @@ impl AsRef<[u8]> for LimitedRingBuffer<'_> {
 
 struct HttpRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf1: &'a mut RingBuffer,
-    buf2: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
+    buf2: &'a mut VecRingBuffer,
 }
 
 struct HttpWrite<'a, W: AsyncWrite> {
@@ -629,8 +654,8 @@ struct RequestHandler<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut RingBuffer,
-        buf2: &'a mut RingBuffer,
+        buf1: &'a mut VecRingBuffer,
+        buf2: &'a mut VecRingBuffer,
     ) -> Self {
         buf1.align();
         buf2.clear();
@@ -821,13 +846,13 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 
 
 struct RecvBodyRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct RequestRecvBody<'a, R: AsyncRead, W: AsyncWrite> {
     r: RefCell<RecvBodyRead<'a, R>>,
     wstream: WriteHalf<'a, W>,
-    buf2: &'a mut RingBuffer,
+    buf2: &'a mut VecRingBuffer,
     protocol: RefCell<http1::ServerProtocol>,
 }
 
@@ -858,7 +883,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         if protocol.state() == http1::ServerState::ReceivingBody {
             loop {
                 let (size, read_size) = {
-                    let mut buf = io::Cursor::new(BaseRingBuffer::read_buf(r.buf));
+                    let mut buf = io::Cursor::new(Buffer::read_buf(r.buf));
 
                     let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
@@ -1005,11 +1030,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestStartResponse<'a, R, W> {
 
 struct SendHeaderRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct EarlyBody {
-    overflow: Option<Buffer>,
+    overflow: Option<ContiguousBuffer>,
     done: bool,
 }
 
@@ -1024,8 +1049,8 @@ struct RequestSendHeader<'a, R: AsyncRead, W: AsyncWrite> {
 impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut RingBuffer,
-        buf2: &'a mut RingBuffer,
+        buf1: &'a mut VecRingBuffer,
+        buf2: &'a mut VecRingBuffer,
         protocol: http1::ServerProtocol,
         header_size: usize,
     ) -> Self {
@@ -1099,7 +1124,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
                 if early_body.overflow.is_none() {
                     // only allow overflowing as much as there are header
                     // bytes left
-                    early_body.overflow = Some(Buffer::new(wbuf.limit));
+                    early_body.overflow = Some(ContiguousBuffer::new(wbuf.limit));
                 }
 
                 let overflow = early_body.overflow.as_mut().unwrap();
@@ -1128,6 +1153,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
 
         let (stream, buf1, buf2) = { ((r.stream, wstream), r.buf, wbuf.inner) };
 
+        let block_size = buf2.capacity();
+
         RequestSendBody {
             r: RefCell::new(HttpSendBodyRead {
                 stream: stream.0,
@@ -1137,6 +1164,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
                 stream: stream.1,
                 buf: buf2,
                 body_done: early_body.done,
+                block_size,
             }),
             protocol: RefCell::new(self.protocol),
         }
@@ -1145,13 +1173,14 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
 
 struct HttpSendBodyRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct HttpSendBodyWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
     body_done: bool,
+    block_size: usize,
 }
 
 struct SendBodyFuture<'a, 'b, W: AsyncWrite> {
@@ -1176,7 +1205,7 @@ impl<'a, 'b, W: AsyncWrite> Future for SendBodyFuture<'a, 'b, W> {
         let protocol = &mut *f.protocol.borrow_mut();
 
         let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-        let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+        let bufs = w.buf.read_bufs(&mut buf_arr);
 
         match protocol.send_body(
             &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -1213,10 +1242,16 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
         Ok(())
     }
 
+    fn expand_write_buffer(&self, blocks_max: usize, blocks_avail: &Counter) -> usize {
+        let w = &mut *self.w.borrow_mut();
+
+        resize_write_buffer_if_full(w.buf, w.block_size, blocks_max, blocks_avail)
+    }
+
     fn can_flush(&self) -> bool {
         let w = &*self.w.borrow();
 
-        w.buf.read_avail() > 0 || w.body_done
+        w.buf.len() > 0 || w.body_done
     }
 
     async fn flush_body(&self) -> Result<(usize, bool), Error> {
@@ -1227,7 +1262,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
 
             let w = &*self.w.borrow();
 
-            if w.buf.read_avail() == 0 && !w.body_done {
+            if w.buf.len() == 0 && !w.body_done {
                 return Ok((0, false));
             }
         }
@@ -1243,10 +1278,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
 
         w.buf.read_commit(size);
 
-        if w.buf.read_avail() > 0
-            || !w.body_done
-            || protocol.state() == http1::ServerState::SendingBody
-        {
+        if w.buf.len() > 0 || !w.body_done || protocol.state() == http1::ServerState::SendingBody {
             return Ok((size, false));
         }
 
@@ -1290,16 +1322,17 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
 
 struct WebSocketRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
-struct WebSocketWrite<'a, W: AsyncWrite, M> {
+struct WebSocketWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
-    buf: &'a mut BaseRingBuffer<M>,
+    buf: &'a mut VecRingBuffer,
+    block_size: usize,
 }
 
 struct SendMessageContentFuture<'a, 'b, W: AsyncWrite, M> {
-    w: &'a RefCell<WebSocketWrite<'b, W, M>>,
+    w: &'a RefCell<WebSocketWrite<'b, W>>,
     protocol: &'a websocket::Protocol<M>,
     avail: usize,
     done: bool,
@@ -1323,7 +1356,7 @@ impl<'a, 'b, W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
 
         // protocol.send_message_content may add 1 element to vector
         let mut buf_arr = mem::MaybeUninit::<[&mut [u8]; VECTORED_MAX - 1]>::uninit();
-        let mut bufs = w.buf.get_mut_vectored(&mut buf_arr).limit(f.avail);
+        let mut bufs = w.buf.read_bufs_mut(&mut buf_arr).limit(f.avail);
 
         match f.protocol.send_message_content(
             &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -1345,18 +1378,20 @@ impl<W: AsyncWrite, M> Drop for SendMessageContentFuture<'_, '_, W, M> {
 
 struct WebSocketHandler<'a, R: AsyncRead, W: AsyncWrite> {
     r: RefCell<WebSocketRead<'a, R>>,
-    w: RefCell<WebSocketWrite<'a, W, &'a mut [u8]>>,
-    protocol: websocket::Protocol<&'a mut [u8]>,
+    w: RefCell<WebSocketWrite<'a, W>>,
+    protocol: websocket::Protocol<Vec<u8>>,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut RingBuffer,
-        buf2: &'a mut SliceRingBuffer<'a>,
-        deflate_config: Option<(bool, SliceRingBuffer<'a>)>,
+        buf1: &'a mut VecRingBuffer,
+        buf2: &'a mut VecRingBuffer,
+        deflate_config: Option<(bool, VecRingBuffer)>,
     ) -> Self {
         buf2.clear();
+
+        let block_size = buf2.capacity();
 
         Self {
             r: RefCell::new(WebSocketRead {
@@ -1366,6 +1401,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
             w: RefCell::new(WebSocketWrite {
                 stream: stream.1,
                 buf: buf2,
+                block_size,
             }),
             protocol: websocket::Protocol::new(deflate_config),
         }
@@ -1413,7 +1449,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
     }
 
     fn accept_avail(&self) -> usize {
-        self.w.borrow().buf.write_avail()
+        self.w.borrow().buf.remaining_capacity()
     }
 
     fn accept_body(&self, body: &[u8]) -> Result<(), Error> {
@@ -1422,6 +1458,12 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         w.buf.write_all(body)?;
 
         Ok(())
+    }
+
+    fn expand_write_buffer(&self, blocks_max: usize, blocks_avail: &Counter) -> usize {
+        let w = &mut *self.w.borrow_mut();
+
+        resize_write_buffer_if_full(w.buf, w.block_size, blocks_max, blocks_avail)
     }
 
     fn is_sending_message(&self) -> bool {
@@ -1921,9 +1963,9 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
     stream: &mut S,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
-    body_buf: &mut Buffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
     zsender: &AsyncLocalSender<zmq::Message>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
@@ -2149,7 +2191,7 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 
     // send response body
 
-    while body_buf.read_avail() > 0 {
+    while body_buf.len() > 0 {
         // ABR: discard_while
         let size = discard_while(
             zreceiver,
@@ -2187,9 +2229,9 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
-    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut body_buf = Buffer::new(body_buffer_size);
+    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut body_buf = ContiguousBuffer::new(body_buffer_size);
 
     loop {
         stream.set_id(cid);
@@ -2636,6 +2678,8 @@ async fn stream_send_body<'a, R1, R2, R, W>(
     handler: &RequestSendBody<'a, R, W>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
+    blocks_max: usize,
+    blocks_avail: &Counter,
 ) -> Result<(), Error>
 where
     R1: Fn(),
@@ -2699,6 +2743,8 @@ where
                 match &zresp.get().get().ptype {
                     zhttppacket::ResponsePacket::Data(rdata) => {
                         handler.append_body(rdata.body, rdata.more)?;
+
+                        out_credits += handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
                     }
                     zhttppacket::ResponsePacket::HandoffStart => {
                         drop(zresp);
@@ -2753,10 +2799,11 @@ where
 }
 
 struct Overflow {
-    buf: Buffer,
+    buf: ContiguousBuffer,
     end: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn server_stream_send_body<'a, R1, R2, R, W>(
     bytes_read: &R1,
     req_body: ClientRequestBody<'a, R, W>,
@@ -2764,6 +2811,8 @@ async fn server_stream_send_body<'a, R1, R2, R, W>(
     recv_buf_size: usize,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
+    blocks_max: usize,
+    blocks_avail: &Counter,
 ) -> Result<ClientResponse<'a, R>, Error>
 where
     R1: Fn(),
@@ -2880,7 +2929,10 @@ where
                             return Err(Error::BufferExceeded);
                         }
 
-                        if !rdata.more {
+                        if rdata.more {
+                            out_credits +=
+                                req_body.expand_write_buffer(blocks_max, blocks_avail)? as u32;
+                        } else {
                             prepare_done = true;
                         }
                     }
@@ -2940,8 +2992,10 @@ where
 async fn stream_websocket<S, R1, R2>(
     log_id: &str,
     stream: RefCell<&mut S>,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -2954,24 +3008,16 @@ where
     R1: Fn(),
     R2: Fn(),
 {
-    // buf2 must be empty since we will repurpose the memory
-    assert_eq!(buf2.read_avail(), 0);
-    let rb_tmp = buf2.get_tmp().clone();
-    let mut wbuf = buf2.take_inner().into_inner();
+    let deflate_config = match deflate_config {
+        Some((config, enc_buf_size)) => {
+            let ebuf = VecRingBuffer::new(enc_buf_size, buf2.get_tmp());
 
-    let (mut wbuf, deflate_config) = match deflate_config {
-        Some((config, write_buf_size)) => {
-            let (wbuf, ebuf) = wbuf.split_at_mut(write_buf_size);
-
-            let wbuf = SliceRingBuffer::new(wbuf, &rb_tmp);
-            let ebuf = SliceRingBuffer::new(ebuf, &rb_tmp);
-
-            (wbuf, Some((!config.server_no_context_takeover, ebuf)))
+            Some((!config.server_no_context_takeover, ebuf))
         }
-        None => (SliceRingBuffer::new(&mut wbuf, &rb_tmp), None),
+        None => None,
     };
 
-    let handler = WebSocketHandler::new(io_split(&stream), buf1, &mut wbuf, deflate_config);
+    let handler = WebSocketHandler::new(io_split(&stream), buf1, buf2, deflate_config);
     let mut ws_in_tracker = MessageTracker::new(messages_max);
 
     let mut out_credits = 0;
@@ -3142,6 +3188,9 @@ where
                                 return Err(e);
                             }
 
+                            out_credits +=
+                                handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
+
                             let opcode = match &rdata.content_type {
                                 Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
                                 _ => websocket::OPCODE_TEXT,
@@ -3289,8 +3338,10 @@ where
 async fn server_stream_websocket<S, R1, R2>(
     log_id: &str,
     stream: RefCell<&mut S>,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -3303,24 +3354,16 @@ where
     R1: Fn(),
     R2: Fn(),
 {
-    // buf2 must be empty since we will repurpose the memory
-    assert_eq!(buf2.read_avail(), 0);
-    let rb_tmp = buf2.get_tmp().clone();
-    let mut wbuf = buf2.take_inner().into_inner();
+    let deflate_config = match deflate_config {
+        Some((config, enc_buf_size)) => {
+            let ebuf = VecRingBuffer::new(enc_buf_size, buf2.get_tmp());
 
-    let (mut wbuf, deflate_config) = match deflate_config {
-        Some((config, write_buf_size)) => {
-            let (wbuf, ebuf) = wbuf.split_at_mut(write_buf_size);
-
-            let wbuf = SliceRingBuffer::new(wbuf, &rb_tmp);
-            let ebuf = SliceRingBuffer::new(ebuf, &rb_tmp);
-
-            (wbuf, Some((!config.client_no_context_takeover, ebuf)))
+            Some((!config.client_no_context_takeover, ebuf))
         }
-        None => (SliceRingBuffer::new(&mut wbuf, &rb_tmp), None),
+        None => None,
     };
 
-    let handler = WebSocketHandler::new(io_split(&stream), buf1, &mut wbuf, deflate_config);
+    let handler = WebSocketHandler::new(io_split(&stream), buf1, buf2, deflate_config);
     let mut ws_in_tracker = MessageTracker::new(messages_max);
 
     let mut out_credits = 0;
@@ -3491,6 +3534,9 @@ where
                                 return Err(e);
                             }
 
+                            out_credits +=
+                                handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
+
                             let opcode = match &rdata.content_type {
                                 Some(zhttppacket::ContentType::Binary) => websocket::OPCODE_BINARY,
                                 _ => websocket::OPCODE_TEXT,
@@ -3641,8 +3687,10 @@ async fn server_stream_handler<S, R1, R2>(
     stream: &mut S,
     peer_addr: Option<&SocketAddr>,
     secure: bool,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -3725,11 +3773,11 @@ where
                                     websocket::PerMessageDeflateConfig::from_params(params)
                                 {
                                     if let Ok(resp_config) = config.create_response() {
-                                        // split the original recv buffer memory:
-                                        // 75% for a new recv buffer, 25% for an encoded buffer
-                                        let recv_buf_size = recv_buf_size * 3 / 4;
+                                        // set the encoded buffer to be 25% the size of the
+                                        // recv buffer
+                                        let enc_buf_size = recv_buf_size / 4;
 
-                                        ws_deflate_config = Some((resp_config, recv_buf_size));
+                                        ws_deflate_config = Some((resp_config, enc_buf_size));
                                     }
                                 }
                             }
@@ -3797,12 +3845,6 @@ where
             (Mode::HttpStream, more)
         };
 
-        let credits = if let Some((_, Some((_, recv_buf_size)))) = &ws_config {
-            *recv_buf_size
-        } else {
-            recv_buf_size
-        };
-
         let msg = make_zhttp_request(
             instance_id,
             &ids,
@@ -3812,7 +3854,7 @@ where
             b"",
             more,
             mode,
-            credits as u32,
+            recv_buf_size as u32,
             peer_addr,
             secure,
             &mut packet_buf.borrow_mut(),
@@ -4111,6 +4153,8 @@ where
             stream,
             buf1,
             buf2,
+            blocks_max,
+            blocks_avail,
             messages_max,
             tmp_buf,
             refresh_stream_timeout,
@@ -4125,7 +4169,15 @@ where
         // send response body
 
         // ABR: function contains read
-        stream_send_body(refresh_stream_timeout, &handler, &mut zsess_in, &zsess_out).await?;
+        stream_send_body(
+            refresh_stream_timeout,
+            &handler,
+            &mut zsess_in,
+            &zsess_out,
+            blocks_max,
+            blocks_avail,
+        )
+        .await?;
 
         let persistent = handler.finish();
 
@@ -4142,6 +4194,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     peer_addr: Option<&SocketAddr>,
     secure: bool,
     buffer_size: usize,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -4156,8 +4210,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 ) -> Result<(), Error> {
     let reactor = Reactor::current().unwrap();
 
-    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
 
     loop {
         stream.set_id(cid);
@@ -4185,6 +4239,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 secure,
                 &mut buf1,
                 &mut buf2,
+                blocks_max,
+                blocks_avail,
                 messages_max,
                 allow_compression,
                 &packet_buf,
@@ -4274,8 +4330,13 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 
         // note: buf1 is not cleared as there may be data to read
 
+        let additional_blocks = (buf2.capacity() / buffer_size) - 1;
+
         buf2.clear();
+        buf2.resize(buffer_size);
         shared.get().reset();
+
+        blocks_avail.inc(additional_blocks).unwrap();
 
         *cid = cid_provider.get_new_assigned_cid();
     }
@@ -4295,6 +4356,8 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     peer_addr: Option<&SocketAddr>,
     secure: bool,
     buffer_size: usize,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -4320,6 +4383,8 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
             peer_addr,
             secure,
             buffer_size,
+            blocks_max,
+            blocks_avail,
             messages_max,
             rb_tmp,
             packet_buf,
@@ -4407,15 +4472,15 @@ pub enum RecvStatus<T, C> {
 struct ClientRequest<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    buf1: &'a mut RingBuffer,
-    buf2: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
+    buf2: &'a mut VecRingBuffer,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequest<'a, R, W> {
     fn new(
         stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut RingBuffer,
-        buf2: &'a mut RingBuffer,
+        buf1: &'a mut VecRingBuffer,
+        buf2: &'a mut VecRingBuffer,
     ) -> Self {
         Self {
             r: stream.0,
@@ -4462,18 +4527,20 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequest<'a, R, W> {
 struct ClientRequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    buf1: &'a mut RingBuffer,
-    buf2: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
+    buf2: &'a mut VecRingBuffer,
     req_body: http1::ClientRequestBody,
     end: bool,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
     async fn send(mut self) -> Result<ClientRequestBody<'a, R, W>, Error> {
-        while self.buf1.read_avail() > 0 {
-            let size = self.w.write(BaseRingBuffer::read_buf(self.buf1)).await?;
+        while self.buf1.len() > 0 {
+            let size = self.w.write(Buffer::read_buf(self.buf1)).await?;
             self.buf1.read_commit(size);
         }
+
+        let block_size = self.buf2.capacity();
 
         Ok(ClientRequestBody {
             inner: RefCell::new(Some(ClientRequestBodyInner {
@@ -4486,6 +4553,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
                     buf: self.buf2,
                     req_body: Some(self.req_body),
                     end: self.end,
+                    block_size,
                 }),
             })),
         })
@@ -4494,14 +4562,15 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
 
 struct ClientRequestBodyRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
 }
 
 struct ClientRequestBodyWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
-    buf: &'a mut RingBuffer,
+    buf: &'a mut VecRingBuffer,
     req_body: Option<http1::ClientRequestBody>,
     end: bool,
+    block_size: usize,
 }
 
 struct ClientRequestBodyInner<'a, R: AsyncRead, W: AsyncWrite> {
@@ -4537,11 +4606,30 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
         }
     }
 
+    fn expand_write_buffer(
+        &self,
+        blocks_max: usize,
+        blocks_avail: &Counter,
+    ) -> Result<usize, Error> {
+        if let Some(inner) = &*self.inner.borrow() {
+            let w = &mut *inner.w.borrow_mut();
+
+            Ok(resize_write_buffer_if_full(
+                w.buf,
+                w.block_size,
+                blocks_max,
+                blocks_avail,
+            ))
+        } else {
+            Err(Error::Unusable)
+        }
+    }
+
     fn can_send(&self) -> bool {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &*inner.w.borrow();
 
-            w.buf.read_avail() > 0 || w.end
+            w.buf.len() > 0 || w.end
         } else {
             false
         }
@@ -4587,7 +4675,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
 
                 w.buf.read_commit(size);
 
-                assert_eq!(w.buf.read_avail(), 0);
+                assert_eq!(w.buf.len(), 0);
 
                 SendStatus::Complete(ClientResponse {
                     r: r.stream,
@@ -4643,7 +4731,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
                     let req_body = w.req_body.take().unwrap();
 
                     let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-                    let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+                    let bufs = w.buf.read_bufs(&mut buf_arr);
 
                     match req_body.send(
                         &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
@@ -4694,7 +4782,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
 
                     w.req_body = Some(req_body);
 
-                    if r.buf.read_avail() == 0 {
+                    if r.buf.len() == 0 {
                         let r = &mut *r;
 
                         match recv_nonzero(&mut r.stream, r.buf).await {
@@ -4719,7 +4807,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
         let mut inner = self.inner.borrow_mut();
         let inner_mut = inner.as_mut().unwrap();
 
-        if inner_mut.r.borrow().buf.read_avail() > 0 {
+        if inner_mut.r.borrow().buf.len() > 0 {
             Some(inner.take().unwrap())
         } else {
             None
@@ -4729,8 +4817,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
 
 struct ClientResponse<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
-    buf1: &'a mut RingBuffer,
-    buf2: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
+    buf2: &'a mut VecRingBuffer,
     inner: http1::ClientResponse,
 }
 
@@ -4812,7 +4900,7 @@ impl<'a, R: AsyncRead> ClientResponse<'a, R> {
 
 struct ClientResponseBodyInner<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
-    buf1: &'a mut RingBuffer,
+    buf1: &'a mut VecRingBuffer,
     resp_body: http1::ClientResponseBody,
 }
 
@@ -4845,11 +4933,10 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
             if let Some(inner) = b_inner.take() {
                 let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
-                match inner.resp_body.recv(
-                    BaseRingBuffer::read_buf(inner.buf1),
-                    dest,
-                    &mut scratch,
-                )? {
+                match inner
+                    .resp_body
+                    .recv(Buffer::read_buf(inner.buf1), dest, &mut scratch)?
+                {
                     http1::RecvStatus::Complete(finished, read, written) => {
                         inner.buf1.read_commit(read);
 
@@ -4890,7 +4977,7 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
 
 struct ClientResponseBodyKeepHeader<'a, R: AsyncRead> {
     inner: ClientResponseBody<'a, R>,
-    buf2: RefCell<Option<&'a mut RingBuffer>>,
+    buf2: RefCell<Option<&'a mut VecRingBuffer>>,
 }
 
 impl<'a, R: AsyncRead> ClientResponseBodyKeepHeader<'a, R> {
@@ -4939,7 +5026,7 @@ struct ClientFinished {
 
 struct ClientFinishedKeepHeader<'a> {
     inner: ClientFinished,
-    buf2: &'a mut RingBuffer,
+    buf2: &'a mut VecRingBuffer,
 }
 
 impl<'a> ClientFinishedKeepHeader<'a> {
@@ -5275,9 +5362,9 @@ async fn client_req_handler<S>(
     url: &url::Url,
     include_body: bool,
     follow_redirects: bool,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
-    body_buf: &mut Buffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
 ) -> Result<ClientHandlerDone<zmq::Message>, Error>
 where
@@ -5355,7 +5442,7 @@ where
         }
     };
 
-    assert_eq!(body_buf.read_avail(), 0);
+    assert_eq!(body_buf.len(), 0);
 
     // receive response header
 
@@ -5448,9 +5535,9 @@ async fn client_req_connect(
     log_id: &str,
     id: Option<&[u8]>,
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
-    body_buf: &mut Buffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    body_buf: &mut ContiguousBuffer,
     packet_buf: &RefCell<Vec<u8>>,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
@@ -5605,9 +5692,9 @@ async fn client_req_connection_inner(
 
     let (zheader, zreq) = zreq;
 
-    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut body_buf = Buffer::new(body_buffer_size);
+    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut body_buf = ContiguousBuffer::new(body_buffer_size);
 
     let handler = client_req_connect(
         log_id,
@@ -5706,8 +5793,10 @@ async fn client_stream_handler<S, R1, R2>(
     url: &url::Url,
     include_body: bool,
     mut follow_redirects: bool,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     allow_compression: bool,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -5852,13 +5941,13 @@ where
                 if rdata.body.len() > recv_buf_size {
                     let body = &rdata.body[..recv_buf_size];
 
-                    let mut remainder = Buffer::new(rdata.body.len() - body.len());
+                    let mut remainder = ContiguousBuffer::new(rdata.body.len() - body.len());
                     remainder.write_all(&rdata.body[body.len()..])?;
 
                     debug!(
                         "initial={} overflow={} end={}",
                         body.len(),
-                        remainder.read_avail(),
+                        remainder.len(),
                         !rdata.more
                     );
 
@@ -5914,6 +6003,8 @@ where
         recv_buf_size,
         zsess_in,
         zsess_out,
+        blocks_max,
+        blocks_avail,
     )
     .await?;
 
@@ -6052,11 +6143,11 @@ where
                                         websocket::PerMessageDeflateConfig::from_params(params)
                                     {
                                         if config.check_response().is_ok() {
-                                            // split the original recv buffer memory:
-                                            // 75% for a new recv buffer, 25% for an encoded buffer
-                                            let recv_buf_size = recv_buf_size * 3 / 4;
+                                            // set the encoded buffer to be 25% the size of the
+                                            // recv buffer
+                                            let enc_buf_size = recv_buf_size / 4;
 
-                                            ws_deflate_config = Some((config, recv_buf_size));
+                                            ws_deflate_config = Some((config, enc_buf_size));
                                         }
                                     }
                                 }
@@ -6086,7 +6177,7 @@ where
                     // we need to allocate to collect the response body,
                     // since buf1 holds bytes read from the socket, and
                     // resp is using buf2's inner buffer
-                    let mut body_buf = Buffer::new(send_buf_size);
+                    let mut body_buf = ContiguousBuffer::new(send_buf_size);
 
                     // receive response body
 
@@ -6154,11 +6245,7 @@ where
 
             let credits = if ws_key.is_some() {
                 // for websockets, provide credits when sending response to handler
-                if let Some((_, recv_buf_size)) = &ws_deflate_config {
-                    *recv_buf_size as u32
-                } else {
-                    recv_buf_size as u32
-                }
+                recv_buf_size as u32
             } else {
                 // for http, it is not necessary to provide credits when responding
                 0
@@ -6202,6 +6289,8 @@ where
             stream,
             buf1,
             buf2,
+            blocks_max,
+            blocks_avail,
             messages_max,
             tmp_buf,
             refresh_stream_timeout,
@@ -6234,8 +6323,11 @@ async fn client_stream_connect<E, R1, R2>(
     log_id: &str,
     id: &[u8],
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
-    buf1: &mut RingBuffer,
-    buf2: &mut RingBuffer,
+    buf1: &mut VecRingBuffer,
+    buf2: &mut VecRingBuffer,
+    buffer_size: usize,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -6388,6 +6480,8 @@ where
                     rdata.follow_redirects,
                     buf1,
                     buf2,
+                    blocks_max,
+                    blocks_avail,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -6409,6 +6503,8 @@ where
                     rdata.follow_redirects,
                     buf1,
                     buf2,
+                    blocks_max,
+                    blocks_avail,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -6422,6 +6518,12 @@ where
         };
 
         if done.is_persistent() {
+            let additional_blocks = (buf2.capacity() / buffer_size) - 1;
+
+            buf2.resize(buffer_size);
+
+            blocks_avail.inc(additional_blocks).unwrap();
+
             if pool
                 .push(
                     peer_addr,
@@ -6464,6 +6566,8 @@ async fn client_stream_connection_inner<E>(
     id: &[u8],
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
     buffer_size: usize,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -6484,8 +6588,8 @@ where
 {
     let reactor = Reactor::current().unwrap();
 
-    let mut buf1 = RingBuffer::new(buffer_size, rb_tmp);
-    let mut buf2 = RingBuffer::new(buffer_size, rb_tmp);
+    let mut buf1 = VecRingBuffer::new(buffer_size, rb_tmp);
+    let mut buf2 = VecRingBuffer::new(buffer_size, rb_tmp);
 
     let stream_timeout = Timeout::new(reactor.now() + stream_timeout_duration);
     let session_timeout = Timeout::new(reactor.now() + ZHTTP_SESSION_TIMEOUT);
@@ -6507,6 +6611,9 @@ where
             zreq,
             &mut buf1,
             &mut buf2,
+            buffer_size,
+            blocks_max,
+            blocks_avail,
             messages_max,
             allow_compression,
             &packet_buf,
@@ -6604,6 +6711,8 @@ pub async fn client_stream_connection<E>(
     id: &[u8],
     zreq: arena::Rc<zhttppacket::OwnedRequest>,
     buffer_size: usize,
+    blocks_max: usize,
+    blocks_avail: &Counter,
     messages_max: usize,
     rb_tmp: &Rc<TmpBuffer>,
     packet_buf: Rc<RefCell<Vec<u8>>>,
@@ -6632,6 +6741,8 @@ pub async fn client_stream_connection<E>(
             id,
             zreq,
             buffer_size,
+            blocks_max,
+            blocks_avail,
             messages_max,
             rb_tmp,
             packet_buf,
@@ -6764,6 +6875,10 @@ pub mod testutil {
         pub fn allow_write(&mut self, size: usize) {
             self.out_allow += size;
         }
+
+        pub fn clear_write_allowed(&mut self) {
+            self.out_allow = 0;
+        }
     }
 
     impl Read for FakeSock {
@@ -6802,7 +6917,11 @@ pub mod testutil {
             let mut total = 0;
 
             for buf in bufs {
-                if self.out_allow == 0 {
+                if !buf.is_empty() && self.out_allow == 0 {
+                    if total == 0 {
+                        return Err(io::Error::from(io::ErrorKind::WouldBlock));
+                    }
+
                     break;
                 }
 
@@ -6914,9 +7033,9 @@ pub mod testutil {
         s_from_conn: channel::LocalSender<zmq::Message>,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
-        buf1: &mut RingBuffer,
-        buf2: &mut RingBuffer,
-        body_buf: &mut Buffer,
+        buf1: &mut VecRingBuffer,
+        buf2: &mut VecRingBuffer,
+        body_buf: &mut ContiguousBuffer,
     ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
 
@@ -6942,9 +7061,9 @@ pub mod testutil {
 
     pub struct BenchServerReqHandlerArgs {
         sock: Rc<RefCell<FakeSock>>,
-        buf1: RingBuffer,
-        buf2: RingBuffer,
-        body_buf: Buffer,
+        buf1: VecRingBuffer,
+        buf2: VecRingBuffer,
+        body_buf: ContiguousBuffer,
     }
 
     pub struct BenchServerReqHandler {
@@ -6974,9 +7093,9 @@ pub mod testutil {
 
             BenchServerReqHandlerArgs {
                 sock: Rc::new(RefCell::new(FakeSock::new())),
-                buf1: RingBuffer::new(buffer_size, &self.rb_tmp),
-                buf2: RingBuffer::new(buffer_size, &self.rb_tmp),
-                body_buf: Buffer::new(buffer_size),
+                buf1: VecRingBuffer::new(buffer_size, &self.rb_tmp),
+                buf2: VecRingBuffer::new(buffer_size, &self.rb_tmp),
+                body_buf: ContiguousBuffer::new(buffer_size),
             }
         }
 
@@ -7227,8 +7346,8 @@ pub mod testutil {
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedResponse>, usize)>,
         packet_buf: Rc<RefCell<Vec<u8>>>,
         tmp_buf: Rc<RefCell<Vec<u8>>>,
-        buf1: &mut RingBuffer,
-        buf2: &mut RingBuffer,
+        buf1: &mut VecRingBuffer,
+        buf2: &mut VecRingBuffer,
         shared: arena::Rc<StreamSharedData>,
     ) -> Result<bool, Error> {
         let mut sock = AsyncFakeSock::new(sock);
@@ -7246,6 +7365,8 @@ pub mod testutil {
             secure,
             buf1,
             buf2,
+            2,
+            &Counter::new(0),
             10,
             false,
             &packet_buf,
@@ -7263,8 +7384,8 @@ pub mod testutil {
 
     pub struct BenchServerStreamHandlerArgs {
         sock: Rc<RefCell<FakeSock>>,
-        buf1: RingBuffer,
-        buf2: RingBuffer,
+        buf1: VecRingBuffer,
+        buf2: VecRingBuffer,
     }
 
     pub struct BenchServerStreamHandler {
@@ -7298,8 +7419,8 @@ pub mod testutil {
 
             BenchServerStreamHandlerArgs {
                 sock: Rc::new(RefCell::new(FakeSock::new())),
-                buf1: RingBuffer::new(buffer_size, &self.rb_tmp),
-                buf2: RingBuffer::new(buffer_size, &self.rb_tmp),
+                buf1: VecRingBuffer::new(buffer_size, &self.rb_tmp),
+                buf2: VecRingBuffer::new(buffer_size, &self.rb_tmp),
             }
         }
 
@@ -7425,6 +7546,8 @@ pub mod testutil {
             None,
             secure,
             buffer_size,
+            2,
+            &Counter::new(0),
             10,
             &rb_tmp,
             packet_buf,
@@ -7571,6 +7694,7 @@ mod tests {
     use std::sync::Arc;
     use std::task::Poll;
     use std::time::Instant;
+    use test_log::test;
 
     #[test]
     fn ws_ext_header() {
@@ -7646,8 +7770,8 @@ mod tests {
 
         let rb_tmp = Rc::new(TmpBuffer::new(12));
 
-        let mut buf1 = RingBuffer::new(12, &rb_tmp);
-        let mut buf2 = RingBuffer::new(12, &rb_tmp);
+        let mut buf1 = VecRingBuffer::new(12, &rb_tmp);
+        let mut buf2 = VecRingBuffer::new(12, &rb_tmp);
 
         buf2.write(b"foo").unwrap();
 
@@ -7683,7 +7807,7 @@ mod tests {
 
         let w = handler.w.borrow();
         let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-        let bufs = w.buf.get_ref_vectored(&mut buf_arr);
+        let bufs = w.buf.read_bufs(&mut buf_arr);
         assert_eq!(bufs[0], b"hello wor");
         assert_eq!(bufs[1], b"ld!");
     }
@@ -8313,6 +8437,8 @@ mod tests {
             None,
             secure,
             buffer_size,
+            3,
+            &Counter::new(1),
             10,
             &rb_tmp,
             packet_buf,
@@ -8881,6 +9007,151 @@ mod tests {
     }
 
     #[test]
+    fn server_stream_expand_write_buffer() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let resp_mem = Rc::new(arena::RcMemory::new(1));
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (s_stream_from_conn, r_stream_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            server_stream_fut(
+                token,
+                sock,
+                false,
+                false,
+                s_from_conn,
+                s_stream_from_conn,
+                r_to_conn,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        let req_data =
+            concat!("GET /path HTTP/1.1\r\n", "Host: example.com\r\n", "\r\n").as_bytes();
+
+        sock.borrow_mut().add_readable(req_data);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert!(r_from_conn.try_recv().is_err());
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T179:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "rue!}6:method,3:GET,3:uri,23:http://example.com/path,7:hea",
+            "ders,26:22:4:Host,11:example.com,]]7:credits,4:1024#6:stre",
+            "am,4:true!}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        sock.borrow_mut().allow_write(1024);
+
+        let msg = concat!(
+            "T125:2:id,1:1,6:reason,2:OK,7:headers,34:30:12:Content-Typ",
+            "e,10:text/plain,]]3:seq,1:0#4:from,7:handler,4:code,3:200#",
+            "4:more,4:true!}",
+        );
+
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+
+        assert!(s_to_conn.try_send((resp, 0)).is_ok());
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let data = sock.borrow_mut().take_writable();
+
+        let expected = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Connection: Transfer-Encoding\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+        );
+
+        assert_eq!(str::from_utf8(&data).unwrap(), expected);
+
+        // no more messages yet
+        assert!(r_stream_from_conn.try_recv().is_err());
+
+        sock.borrow_mut().clear_write_allowed();
+
+        let body = vec![0; 1024];
+
+        let mut rdata = zhttppacket::ResponseData::new();
+        rdata.body = body.as_slice();
+        rdata.more = true;
+
+        let resp = zhttppacket::Response::new_data(
+            b"handler",
+            &[zhttppacket::Id {
+                id: b"1",
+                seq: Some(1),
+            }],
+            rdata,
+        );
+
+        let mut buf = [0; 2048];
+        let size = resp.serialize(&mut buf).unwrap();
+
+        let msg = zmq::Message::from(&buf[..size]);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+
+        assert!(s_to_conn.try_send((resp, 0)).is_ok());
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let (_, msg) = r_stream_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert!(r_stream_from_conn.try_recv().is_err());
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T91:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4:tr",
+            "ue!}4:type,6:credit,7:credits,4:1024#}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
+    #[test]
     fn server_websocket() {
         let reactor = Reactor::new(100);
 
@@ -9109,12 +9380,12 @@ mod tests {
         let buf = &msg[..];
 
         let expected = concat!(
-            "T308:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "T309:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
             "rue!}6:method,3:GET,3:uri,21:ws://example.com/path,7:heade",
             "rs,173:22:4:Host,11:example.com,]22:7:Upgrade,9:websocket,",
             "]30:21:Sec-WebSocket-Version,2:13,]29:17:Sec-WebSocket-Key",
             ",5:abcde,]50:24:Sec-WebSocket-Extensions,18:permessage-def",
-            "late,]]7:credits,3:768#}",
+            "late,]]7:credits,4:1024#}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -9245,6 +9516,158 @@ mod tests {
         assert_eq!(str::from_utf8(&content).unwrap(), "world");
     }
 
+    #[test]
+    fn server_websocket_expand_write_buffer() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(2));
+        let scratch_mem = Rc::new(arena::RcMemory::new(2));
+        let resp_mem = Rc::new(arena::RcMemory::new(2));
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (s_stream_from_conn, r_stream_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+
+            server_stream_fut(
+                token,
+                sock,
+                false,
+                false,
+                s_from_conn,
+                s_stream_from_conn,
+                r_to_conn,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        let req_data = concat!(
+            "GET /path HTTP/1.1\r\n",
+            "Host: example.com\r\n",
+            "Upgrade: websocket\r\n",
+            "Sec-WebSocket-Version: 13\r\n",
+            "Sec-WebSocket-Key: abcde\r\n",
+            "\r\n"
+        )
+        .as_bytes();
+
+        sock.borrow_mut().add_readable(req_data);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T255:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "rue!}6:method,3:GET,3:uri,21:ws://example.com/path,7:heade",
+            "rs,119:22:4:Host,11:example.com,]22:7:Upgrade,9:websocket,",
+            "]30:21:Sec-WebSocket-Version,2:13,]29:17:Sec-WebSocket-Key",
+            ",5:abcde,]]7:credits,4:1024#}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        let msg = concat!(
+            "T98:2:id,1:1,6:reason,19:Switching Protocols,3:seq,1:0#4:f",
+            "rom,7:handler,4:code,3:101#7:credits,4:1024#}",
+        );
+
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+
+        assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let data = sock.borrow_mut().take_writable();
+        assert_eq!(data.is_empty(), true);
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let data = sock.borrow_mut().take_writable();
+
+        let expected = concat!(
+            "HTTP/1.1 101 Switching Protocols\r\n",
+            "Upgrade: websocket\r\n",
+            "Connection: Upgrade\r\n",
+            "Sec-WebSocket-Accept: 8m4i+0BpIKblsbf+VgYANfQKX4w=\r\n",
+            "\r\n",
+        );
+
+        assert_eq!(str::from_utf8(&data).unwrap(), expected);
+
+        sock.borrow_mut().clear_write_allowed();
+
+        let body = vec![0; 1024];
+
+        let mut rdata = zhttppacket::ResponseData::new();
+        rdata.body = body.as_slice();
+        rdata.content_type = Some(zhttppacket::ContentType::Text);
+
+        let resp = zhttppacket::Response::new_data(
+            b"handler",
+            &[zhttppacket::Id {
+                id: b"1",
+                seq: Some(1),
+            }],
+            rdata,
+        );
+
+        let mut buf = [0; 2048];
+        let size = resp.serialize(&mut buf).unwrap();
+
+        let msg = zmq::Message::from(&buf[..size]);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+
+        assert!(s_to_conn.try_send((resp, 0)).is_ok());
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let (_, msg) = r_stream_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert!(r_stream_from_conn.try_recv().is_err());
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T91:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4:tr",
+            "ue!}4:type,6:credit,7:credits,4:1024#}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
     async fn client_req_fut(
         id: Option<Vec<u8>>,
         zreq: arena::Rc<zhttppacket::OwnedRequest>,
@@ -9258,9 +9681,9 @@ mod tests {
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
 
-        let mut buf1 = RingBuffer::new(buffer_size, &rb_tmp);
-        let mut buf2 = RingBuffer::new(buffer_size, &rb_tmp);
-        let mut body_buf = Buffer::new(buffer_size);
+        let mut buf1 = VecRingBuffer::new(buffer_size, &rb_tmp);
+        let mut buf2 = VecRingBuffer::new(buffer_size, &rb_tmp);
+        let mut body_buf = ContiguousBuffer::new(buffer_size);
         let packet_buf = RefCell::new(vec![0; 2048]);
 
         let zreq = zreq.get().get();
@@ -9532,8 +9955,8 @@ mod tests {
 
         let rb_tmp = Rc::new(TmpBuffer::new(buffer_size));
 
-        let mut buf1 = RingBuffer::new(buffer_size, &rb_tmp);
-        let mut buf2 = RingBuffer::new(buffer_size, &rb_tmp);
+        let mut buf1 = VecRingBuffer::new(buffer_size, &rb_tmp);
+        let mut buf2 = VecRingBuffer::new(buffer_size, &rb_tmp);
         let packet_buf = RefCell::new(vec![0; 2048]);
         let tmp_buf = Rc::new(RefCell::new(vec![0; buffer_size]));
 
@@ -9585,6 +10008,8 @@ mod tests {
             false,
             &mut buf1,
             &mut buf2,
+            3,
+            &Counter::new(1),
             10,
             allow_compression,
             &tmp_buf,
@@ -9790,6 +10215,162 @@ mod tests {
         let expected = concat!(
             "handler T74:4:from,4:test,2:id,1:1,3:seq,1:3#3:ext,15:5:mu",
             "lti,4:true!}4:body,6:hello\n,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
+    #[test]
+    fn client_stream_expand_write_buffer() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(2));
+        let scratch_mem = Rc::new(arena::RcMemory::new(2));
+        let req_mem = Rc::new(arena::RcMemory::new(2));
+
+        let data = concat!(
+            "T165:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
+            "t-Type,10:text/plain,]]3:uri,24:https://example.com/path,6:me",
+            "thod,4:POST,3:seq,1:0#2:id,1:1,4:from,7:handler,}",
+        )
+        .as_bytes();
+
+        let msg = zmq::Message::from(data);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            let shared_mem = Rc::new(arena::RcMemory::new(1));
+            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
+            shared.get().set_to_addr(Some(addr));
+
+            client_stream_fut(
+                b"1".to_vec(),
+                zreq,
+                sock,
+                false,
+                r_to_conn,
+                s_from_conn,
+                shared,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert!(r_from_conn.try_recv().is_err());
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T79:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:mu",
+            "lti,4:true!}4:type,10:keep-alive,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // no data yet
+        assert!(sock.borrow_mut().take_writable().is_empty());
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected = concat!(
+            "POST /path HTTP/1.1\r\n",
+            "Host: example.com\r\n",
+            "Content-Type: text/plain\r\n",
+            "Connection: Transfer-Encoding\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+        );
+
+        let buf = sock.borrow_mut().take_writable();
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        sock.borrow_mut().clear_write_allowed();
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert!(r_from_conn.try_recv().is_err());
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T91:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:mu",
+            "lti,4:true!}4:type,6:credit,7:credits,4:1024#}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        let body = vec![0; 1024];
+
+        let mut rdata = zhttppacket::RequestData::new();
+        rdata.body = body.as_slice();
+        rdata.more = true;
+
+        let req = zhttppacket::Request::new_data(
+            b"handler",
+            &[zhttppacket::Id {
+                id: b"1",
+                seq: Some(1),
+            }],
+            rdata,
+        );
+
+        let mut buf = [0; 2048];
+        let size = req.serialize(&mut buf).unwrap();
+
+        let msg = zmq::Message::from(&buf[..size]);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let req = arena::Rc::new(req, &req_mem).unwrap();
+
+        assert!(s_to_conn.try_send((req, 0)).is_ok());
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert!(r_from_conn.try_recv().is_err());
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "handler T91:4:from,4:test,2:id,1:1,3:seq,1:2#3:ext,15:5:mu",
+            "lti,4:true!}4:type,6:credit,7:credits,4:1024#}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -10200,12 +10781,12 @@ mod tests {
 
         let expected = format!(
             concat!(
-                "handler T302:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
+                "handler T303:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:m",
                 "ulti,4:true!}}4:code,3:101#6:reason,19:Switching Protocols",
                 ",7:headers,168:22:7:Upgrade,9:websocket,]24:10:Connection,",
                 "7:Upgrade,]56:20:Sec-WebSocket-Accept,28:{},]50:24:Sec-Web",
-                "Socket-Extensions,18:permessage-deflate,]]7:credits,3:768#",
-                "}}",
+                "Socket-Extensions,18:permessage-deflate,]]7:credits,4:1024",
+                "#}}",
             ),
             ws_accept
         );
