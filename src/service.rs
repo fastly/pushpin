@@ -38,6 +38,12 @@ pub fn start_services(settings: Settings) {
     if settings.service_names.contains(&String::from("condure")) {
         services.push(Box::new(CondureService::new(&settings)));
     }
+    if settings
+        .service_names
+        .contains(&String::from("pushpin-proxy"))
+    {
+        services.push(Box::new(PushpinProxyService::new(&settings)));
+    }
 
     let (sender, receiver) = channel();
     let mut threads: Vec<Option<JoinHandle<()>>> = vec![];
@@ -232,6 +238,47 @@ impl CondureService {
 }
 
 impl RunnerService for CondureService {
+    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>> {
+        self.service.start(self.args.clone(), sender)
+    }
+}
+
+pub struct PushpinProxyService {
+    args: Vec<String>,
+    pub service: Service,
+}
+
+impl PushpinProxyService {
+    pub fn new(settings: &Settings) -> Self {
+        let mut args: Vec<String> = vec![];
+        let service_name = "proxy";
+
+        args.push(settings.proxy_bin.display().to_string());
+        args.push(format!("--config={}", settings.config_file.display()));
+
+        if !settings.ipc_prefix.is_empty() {
+            args.push(format!("--ipc-prefix={}", settings.ipc_prefix));
+        }
+        let log_level = match settings.log_levels.get("pushpin-proxy") {
+            Some(&x) => x as i8,
+            None => -1,
+        };
+        if log_level >= 0 {
+            args.push(format!("--loglevel={}", log_level));
+        }
+
+        for route in settings.route_lines.clone() {
+            args.push(format!("--route={}", route));
+        }
+
+        Self {
+            service: Service::new(String::from(service_name)),
+            args,
+        }
+    }
+}
+
+impl RunnerService for PushpinProxyService {
     fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>> {
         self.service.start(self.args.clone(), sender)
     }
