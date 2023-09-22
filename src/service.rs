@@ -44,6 +44,12 @@ pub fn start_services(settings: Settings) {
     {
         services.push(Box::new(PushpinProxyService::new(&settings)));
     }
+    if settings
+        .service_names
+        .contains(&String::from("pushpin-handler"))
+    {
+        services.push(Box::new(PushpinHandlerService::new(&settings)));
+    }
 
     let (sender, receiver) = channel();
     let mut threads: Vec<Option<JoinHandle<()>>> = vec![];
@@ -279,6 +285,46 @@ impl PushpinProxyService {
 }
 
 impl RunnerService for PushpinProxyService {
+    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>> {
+        self.service.start(self.args.clone(), sender)
+    }
+}
+
+pub struct PushpinHandlerService {
+    args: Vec<String>,
+    pub service: Service,
+}
+
+impl PushpinHandlerService {
+    pub fn new(settings: &Settings) -> Self {
+        let mut args: Vec<String> = vec![];
+        let service_name = "handler";
+
+        args.push(settings.proxy_bin.display().to_string());
+        args.push(format!("--config={}", settings.config_file.display()));
+
+        if settings.port_offset > 0 {
+            args.push(format!("--port-offset={}", settings.port_offset));
+        }
+        if !settings.ipc_prefix.is_empty() {
+            args.push(format!("--ipc-prefix={}", settings.ipc_prefix));
+        }
+        let log_level = match settings.log_levels.get("pushpin-handler") {
+            Some(&x) => x as i8,
+            None => -1,
+        };
+        if log_level >= 0 {
+            args.push(format!("--loglevel={}", log_level));
+        }
+
+        Self {
+            service: Service::new(String::from(service_name)),
+            args,
+        }
+    }
+}
+
+impl RunnerService for PushpinHandlerService {
     fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>> {
         self.service.start(self.args.clone(), sender)
     }
