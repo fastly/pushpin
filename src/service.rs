@@ -300,7 +300,7 @@ impl PushpinHandlerService {
         let mut args: Vec<String> = vec![];
         let service_name = "handler";
 
-        args.push(settings.proxy_bin.display().to_string());
+        args.push(settings.handler_bin.display().to_string());
         args.push(format!("--config={}", settings.config_file.display()));
 
         if settings.port_offset > 0 {
