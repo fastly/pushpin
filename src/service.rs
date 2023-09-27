@@ -162,7 +162,7 @@ impl CondureService {
             settings.ipc_prefix
         ));
         args.push("--deny-out-internal".to_string());
-    
+
         if !settings.ports.is_empty() {
             //server mode
             let mut using_ssl = false;
