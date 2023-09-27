@@ -156,15 +156,13 @@ impl CondureService {
         if settings.allow_compression {
             args.push("--compression".to_string());
         }
-        if Self::has_client_mode(settings.condure_bin.display().to_string()) {
-            // client mode
-            args.push(format!(
-                "--zserver-stream=ipc://{}/{}condure-client",
-                settings.run_dir.display(),
-                settings.ipc_prefix
-            ));
-            args.push("--deny-out-internal".to_string());
-        }
+        args.push(format!(
+            "--zserver-stream=ipc://{}/{}condure-client",
+            settings.run_dir.display(),
+            settings.ipc_prefix
+        ));
+        args.push("--deny-out-internal".to_string());
+
         if !settings.ports.is_empty() {
             //server mode
             let mut using_ssl = false;
@@ -213,26 +211,6 @@ impl CondureService {
         Self {
             service: Service::new(String::from(service_name)),
             args,
-        }
-    }
-
-    fn has_client_mode(condure_bin: String) -> bool {
-        let result: Result<std::process::Output, std::io::Error> =
-            Command::new(condure_bin).arg("--help").output();
-
-        match result {
-            Ok(output) => {
-                if !output.status.success() {
-                    error!("Condure returned non-zero status: {}", output.status);
-                    return false;
-                }
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                stdout.contains("--zserver-stream")
-            }
-            Err(e) => {
-                error!("Failed to run condure: process error: {}", e);
-                false
-            }
         }
     }
 }
