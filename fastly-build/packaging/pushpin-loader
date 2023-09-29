@@ -361,7 +361,12 @@ def make_routes(service, backend, sig_keys_dir):
         override_host = validate_host(override_host)
         target += ',host={}'.format(override_host)
 
-    if (int(backend.get('loader-woh-enabled', '0')) and 'id' not in service.realm) or bool(realm_domain_config.get('woh', False)):
+    if 'id' in service.realm:
+        woh = backend_name == 'bayeux-handler' or bool(realm_domain_config.get('woh', False))
+    else:
+        woh = int(backend.get('loader-woh-enabled', '0'))
+
+    if woh:
         target += ',over_http'
 
     target += ',untrusted'
