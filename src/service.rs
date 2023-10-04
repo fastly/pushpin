@@ -15,7 +15,7 @@
  */
 
 use crate::runner::Settings;
-use log::{error, info};
+use log::error;
 use mpsc::{channel, Sender};
 use signal_hook::consts::{SIGINT, SIGTERM, TERM_SIGNALS};
 use signal_hook::iterator::Signals;
