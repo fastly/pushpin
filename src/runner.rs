@@ -217,7 +217,7 @@ pub struct Settings {
     pub service_names: Vec<String>,
     pub config_file: PathBuf,
     pub run_dir: PathBuf,
-    pub log_dir: PathBuf,
+    pub log_dir: Option<PathBuf>,
     pub certs_dir: PathBuf,
     pub condure_bin: PathBuf,
     pub proxy_bin: PathBuf,
@@ -274,7 +274,11 @@ impl Settings {
         run_dir = exec_dir.join(run_dir);
         ensure_dir(run_dir.as_ref())?;
 
-        let log_dir = exec_dir.join(config.runner.logdir);
+        let log_dir = if config.runner.logdir.is_empty() {
+            None
+        } else {
+            Some(exec_dir.join(config.runner.logdir))
+        };
 
         let mut port_offset = 0;
         let mut ipc_prefix = if !config.global.ipc_prefix.is_empty() {
@@ -835,7 +839,7 @@ mod tests {
                 ],
                 config_file: PathBuf::from("mock/cfg"),
                 run_dir: exec_dir.clone().join("run"),
-                log_dir: exec_dir.clone().join("log"),
+                log_dir: Some(exec_dir.clone().join("log")),
                 certs_dir: PathBuf::from("mock/runner/certs"),
                 condure_bin: if exec_dir.clone().join("bin/condure").exists() {
                     exec_dir.clone().join("bin/condure")
