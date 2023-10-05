@@ -15,7 +15,7 @@
  */
 
 use crate::runner::Settings;
-use log::{error, info};
+use log::error;
 use mpsc::{channel, Sender};
 use signal_hook::consts::{SIGINT, SIGTERM, TERM_SIGNALS};
 use signal_hook::iterator::Signals;
@@ -110,8 +110,6 @@ impl Service {
         args: Vec<String>,
         sender: Sender<Result<(), ServiceError>>,
     ) -> Option<thread::JoinHandle<()>> {
-        info!("starting {}", self.name);
-
         let name = self.name.clone();
 
         Some(thread::spawn(move || {
@@ -148,12 +146,14 @@ impl CondureService {
 
         args.push(settings.condure_bin.display().to_string());
 
-        let ll = settings
-            .log_levels
-            .get(service_name)
-            .unwrap_or(settings.log_levels.get("default").unwrap());
+        let log_level = match settings.log_levels.get(service_name) {
+            Some(&x) => x as i8,
+            None => settings.log_levels.get("default").unwrap().to_owned() as i8,
+        };
+        if log_level >= 0 {
+            args.push(format!("--log-level={}", log_level));
+        }
 
-        args.push(format!("--log-level={}", ll.to_owned()));
         args.push(format!("--buffer-size={}", settings.client_buffer_size));
         args.push(format!(
             "--stream-maxconn={}",
@@ -245,7 +245,7 @@ impl PushpinProxyService {
         }
         let log_level = match settings.log_levels.get("pushpin-proxy") {
             Some(&x) => x as i8,
-            None => -1,
+            None => settings.log_levels.get("default").unwrap().to_owned() as i8,
         };
         if log_level >= 0 {
             args.push(format!("--loglevel={}", log_level));
@@ -289,7 +289,7 @@ impl PushpinHandlerService {
         }
         let log_level = match settings.log_levels.get("pushpin-handler") {
             Some(&x) => x as i8,
-            None => -1,
+            None => settings.log_levels.get("default").unwrap().to_owned() as i8,
         };
         if log_level >= 0 {
             args.push(format!("--loglevel={}", log_level));
