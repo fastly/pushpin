@@ -85,7 +85,7 @@ impl ArgsData {
         Ok(Self {
             id: Self::get_id(cli_args.id)?,
             config_file: Self::get_config_file(cli_args.config.as_deref()),
-            log_file: cli_args.logfile.as_deref().map(|x| x.to_path_buf()),
+            log_file: cli_args.logfile,
             route_lines: Self::get_route_lines(cli_args.route.as_deref()),
             log_levels: Self::get_log_levels(cli_args.loglevel.as_deref(), cli_args.verbose)?,
             socket: Self::get_socket(cli_args.port.as_deref())?,
