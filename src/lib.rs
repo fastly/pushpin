@@ -148,8 +148,7 @@ fn try_with_increasing_buffer<T, U>(starting_size: usize, f: T) -> Result<U, io:
 where
     T: Fn(&mut [u8]) -> Result<U, io::Error>,
 {
-    let mut buf = Vec::new();
-    buf.resize(starting_size, 0);
+    let mut buf = vec![0; starting_size];
 
     loop {
         match f(&mut buf) {
