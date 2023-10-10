@@ -818,10 +818,10 @@ mod tests {
                     "pushpin-proxy".to_string(),
                     "pushpin-handler".to_string(),
                 ],
-                config_file: PathBuf::from("mock/cfg"),
+                config_file: PathBuf::from("./examples/config/pushpin.conf"),
                 run_dir: exec_dir.clone().join("run"),
                 log_file: None,
-                certs_dir: PathBuf::from("mock/runner/certs"),
+                certs_dir: PathBuf::from("./examples/config/runner/certs"),
                 condure_bin: if exec_dir.clone().join("bin/condure").exists() {
                     exec_dir.clone().join("bin/condure")
                 } else {
@@ -879,7 +879,7 @@ mod tests {
 
         for test_arg in test_args.iter() {
             assert_eq!(
-                Settings::new(test_arg.input.clone(), "mock/cfg".as_ref()).unwrap(),
+                Settings::new(test_arg.input.clone()).unwrap(),
                 test_arg.output.as_ref().unwrap().clone(),
                 "{}",
                 test_arg.name

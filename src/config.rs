@@ -506,7 +506,7 @@ mod tests {
 
         for test_arg in test_args.iter() {
             assert_eq!(
-                get_config_file(test_arg.input).unwrap(),
+                get_config_file(test_arg.input.clone()).unwrap(),
                 test_arg.output.as_deref().unwrap(),
                 "{}",
                 test_arg.name
@@ -523,7 +523,7 @@ mod tests {
         }];
 
         for test_arg in test_args.iter() {
-            match get_config_file(test_arg.input) {
+            match get_config_file(test_arg.input.clone()) {
                 Ok(x) => panic!(
                     "Test case {} should fail, but its passing with this output {:?}",
                     test_arg.name, x
