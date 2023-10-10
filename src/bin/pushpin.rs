@@ -15,8 +15,8 @@
  */
 
 use clap::Parser;
-use log::info;
-use pushpin::config::get_config_file;
+use log::{info, LevelFilter};
+use pushpin::log::get_simple_logger;
 use pushpin::runner::{ArgsData, CliArgs, Settings};
 use pushpin::service::start_services;
 use std::error::Error;
@@ -24,9 +24,10 @@ use std::process;
 
 fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let args_data = ArgsData::new(args)?;
-    let config_file = get_config_file(args_data.config_file.as_ref())?;
-    println!("using config: {:?}", config_file.as_os_str());
+    let settings = Settings::new(args_data)?;
+
     let settings = Settings::new(args_data, &config_file)?;
+    info!("using config: {:?}", settings.config_file.display());
     start_services(settings);
     //To be implemented in the next PR
 
