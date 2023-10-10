@@ -24,8 +24,6 @@ use std::process;
 fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let args_data = ArgsData::new(args)?;
     let settings = Settings::new(args_data)?;
-
-    println!("settings: {:?}", settings);
     info!("using config: {:?}", settings.config_file.display());
     start_services(settings);
     //To be implemented in the next PR
