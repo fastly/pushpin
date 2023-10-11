@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::string::String;
 use url::Url;
 
-use crate::config::CustomConfig;
+use crate::config::{get_config_file, CustomConfig};
 
 #[derive(Parser, Clone)]
 #[command(
@@ -73,8 +73,8 @@ pub struct CliArgs {
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ArgsData {
     id: Option<u32>,
-    pub config_file: PathBuf,
-    log_file: PathBuf,
+    pub config_file: Option<PathBuf>,
+    log_file: Option<PathBuf>,
     route_lines: Vec<String>,
     log_levels: HashMap<String, u8>,
     socket: Option<SocketAddr>,
@@ -84,8 +84,8 @@ impl ArgsData {
     pub fn new(cli_args: CliArgs) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             id: Self::get_id(cli_args.id)?,
-            config_file: Self::get_config_file(cli_args.config.as_deref()),
-            log_file: Self::get_log_file(cli_args.logfile.as_deref()),
+            config_file: cli_args.config,
+            log_file: cli_args.logfile,
             route_lines: Self::get_route_lines(cli_args.route.as_deref()),
             log_levels: Self::get_log_levels(cli_args.loglevel.as_deref(), cli_args.verbose)?,
             socket: Self::get_socket(cli_args.port.as_deref())?,
@@ -102,20 +102,6 @@ impl ArgsData {
             Ok(Some(id as u32))
         } else {
             Err("id must be greater than or equal to 0".into())
-        }
-    }
-
-    fn get_config_file(config_file: Option<&Path>) -> PathBuf {
-        match config_file {
-            Some(x) => x.to_path_buf(),
-            _ => PathBuf::new(),
-        }
-    }
-
-    fn get_log_file(log_file: Option<&Path>) -> PathBuf {
-        match log_file {
-            Some(x) => x.to_path_buf(),
-            _ => PathBuf::new(),
         }
     }
 
@@ -217,7 +203,7 @@ pub struct Settings {
     pub service_names: Vec<String>,
     pub config_file: PathBuf,
     pub run_dir: PathBuf,
-    pub log_dir: PathBuf,
+    pub log_file: Option<PathBuf>,
     pub certs_dir: PathBuf,
     pub condure_bin: PathBuf,
     pub proxy_bin: PathBuf,
@@ -234,7 +220,8 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new(args_data: ArgsData, config_file_path: &Path) -> Result<Self, Box<dyn Error>> {
+    pub fn new(args_data: ArgsData) -> Result<Self, Box<dyn Error>> {
+        let config_file_path = get_config_file(args_data.config_file)?;
         let config = match CustomConfig::new(config_file_path.to_str().unwrap()) {
             Ok(x) => x,
             Err(e) => return Err(format!("error: parsing config. {:?}", e).into()),
@@ -273,8 +260,6 @@ impl Settings {
         }
         run_dir = exec_dir.join(run_dir);
         ensure_dir(run_dir.as_ref())?;
-
-        let log_dir = exec_dir.join(config.runner.logdir);
 
         let mut port_offset = 0;
         let mut ipc_prefix = if !config.global.ipc_prefix.is_empty() {
@@ -404,7 +389,7 @@ impl Settings {
                 .collect(),
             config_file: config_file_path.to_path_buf(),
             run_dir,
-            log_dir,
+            log_file: args_data.log_file,
             condure_bin: get_service_dir(exec_dir.into(), "condure", "bin/condure")?,
             proxy_bin: get_service_dir(exec_dir.into(), "pushpin-proxy", "bin/pushpin-proxy")?,
             handler_bin: get_service_dir(
@@ -588,8 +573,8 @@ mod tests {
                 },
                 output: Ok(ArgsData {
                     id: None,
-                    config_file: PathBuf::new(),
-                    log_file: PathBuf::new(),
+                    config_file: None,
+                    log_file: None,
                     route_lines: vec![],
                     log_levels: HashMap::from([(String::new(), 2)]),
                     socket: None,
@@ -608,8 +593,8 @@ mod tests {
                 },
                 output: Ok(ArgsData {
                     id: Some(123),
-                    config_file: PathBuf::from("/cfg/path"),
-                    log_file: PathBuf::from("/log/path"),
+                    config_file: Some(PathBuf::from("/cfg/path")),
+                    log_file: Some(PathBuf::from("/log/path")),
                     route_lines: vec![String::from("* test")],
                     log_levels: HashMap::from([(String::new(), 2)]),
                     socket: Some("0.0.0.0:1234".parse::<SocketAddr>().unwrap()),
@@ -628,8 +613,8 @@ mod tests {
                 },
                 output: Ok(ArgsData {
                     id: Some(123),
-                    config_file: PathBuf::from("/cfg/path"),
-                    log_file: PathBuf::from("/log/path"),
+                    config_file: Some(PathBuf::from("/cfg/path")),
+                    log_file: Some(PathBuf::from("/log/path")),
                     route_lines: vec![String::from("* test")],
                     log_levels: HashMap::from([(String::new(), 3)]),
                     socket: Some("0.0.0.0:1234".parse::<SocketAddr>().unwrap()),
@@ -648,8 +633,8 @@ mod tests {
                 },
                 output: Ok(ArgsData {
                     id: Some(123),
-                    config_file: PathBuf::from("/cfg/path"),
-                    log_file: PathBuf::from("/log/path"),
+                    config_file: Some(PathBuf::from("/cfg/path")),
+                    log_file: Some(PathBuf::from("/log/path")),
                     route_lines: vec![String::from("* test")],
                     log_levels: HashMap::from([
                         (String::new(), 2u8),
@@ -671,8 +656,8 @@ mod tests {
                 },
                 output: Ok(ArgsData {
                     id: Some(123),
-                    config_file: PathBuf::from("/cfg/path"),
-                    log_file: PathBuf::from("/log/path"),
+                    config_file: Some(PathBuf::from("/cfg/path")),
+                    log_file: Some(PathBuf::from("/log/path")),
                     route_lines: vec![String::from("* test")],
                     log_levels: HashMap::from([(String::new(), 2u8)]),
                     socket: Some("127.0.0.1:1234".parse::<SocketAddr>().unwrap()),
@@ -821,8 +806,8 @@ mod tests {
             name: "no input",
             input: ArgsData {
                 id: None,
-                config_file: PathBuf::new(),
-                log_file: PathBuf::new(),
+                config_file: None,
+                log_file: None,
                 route_lines: vec![],
                 log_levels: HashMap::from([(String::new(), 2)]),
                 socket: None,
@@ -833,10 +818,10 @@ mod tests {
                     "pushpin-proxy".to_string(),
                     "pushpin-handler".to_string(),
                 ],
-                config_file: PathBuf::from("mock/cfg"),
+                config_file: PathBuf::from("./examples/config/pushpin.conf"),
                 run_dir: exec_dir.clone().join("run"),
-                log_dir: exec_dir.clone().join("log"),
-                certs_dir: PathBuf::from("mock/runner/certs"),
+                log_file: None,
+                certs_dir: PathBuf::from("./examples/config/runner/certs"),
                 condure_bin: if exec_dir.clone().join("bin/condure").exists() {
                     exec_dir.clone().join("bin/condure")
                 } else {
@@ -894,7 +879,7 @@ mod tests {
 
         for test_arg in test_args.iter() {
             assert_eq!(
-                Settings::new(test_arg.input.clone(), "mock/cfg".as_ref()).unwrap(),
+                Settings::new(test_arg.input.clone()).unwrap(),
                 test_arg.output.as_ref().unwrap().clone(),
                 "{}",
                 test_arg.name

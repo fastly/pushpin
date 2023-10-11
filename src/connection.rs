@@ -52,7 +52,9 @@ use crate::reactor::Reactor;
 use crate::resolver;
 use crate::shuffle::random;
 use crate::tls::{TlsStream, VerifyMode};
-use crate::track::{track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError};
+use crate::track::{
+    self, track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError,
+};
 use crate::waker::RefWakerData;
 use crate::websocket;
 use crate::zhttppacket;
@@ -396,12 +398,6 @@ impl<T> From<mpsc::TrySendError<T>> for Error {
     }
 }
 
-impl From<mpsc::RecvError> for Error {
-    fn from(_e: mpsc::RecvError) -> Self {
-        Self::Io(io::Error::from(io::ErrorKind::UnexpectedEof))
-    }
-}
-
 impl From<http1::Error> for Error {
     fn from(e: http1::Error) -> Self {
         Self::Http(e)
@@ -417,6 +413,17 @@ impl From<websocket::Error> for Error {
 impl From<ValueActiveError> for Error {
     fn from(_e: ValueActiveError) -> Self {
         Self::ValueActive
+    }
+}
+
+impl From<track::RecvError> for Error {
+    fn from(e: track::RecvError) -> Self {
+        match e {
+            track::RecvError::Disconnected => {
+                Self::Io(io::Error::from(io::ErrorKind::UnexpectedEof))
+            }
+            track::RecvError::ValueActive => Self::ValueActive,
+        }
     }
 }
 
@@ -1939,7 +1946,12 @@ where
 {
     match select_2(fut, pin!(receiver.recv())).await {
         Select2::R1(v) => v,
-        Select2::R2(_) => Err(Error::BadMessage), // unexpected message in current state
+        Select2::R2(ret) => {
+            ret?;
+
+            // unexpected message in current state
+            Err(Error::BadMessage)
+        }
     }
 }
 
@@ -3969,14 +3981,14 @@ where
                         )?
                     };
 
+                    handler.append_body(rdata.body, false, id)?;
+
+                    drop(zresp);
+
                     // ABR: discard_while
                     discard_while(zreceiver, pin!(handler.send_header())).await?;
 
                     let handler = handler.send_header_done();
-
-                    handler.append_body(rdata.body, false)?;
-
-                    drop(zresp);
 
                     loop {
                         // ABR: discard_while

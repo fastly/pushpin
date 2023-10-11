@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2023 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -85,6 +86,12 @@ impl<'a, T> Deref for Track<'a, T> {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum RecvError {
+    Disconnected,
+    ValueActive,
+}
+
 // wrap an AsyncLocalReceiver and a shared flag representing the liveness of
 // one received value at a time. each received value is wrapped in Track and
 // must be dropped before reading the next value
@@ -105,12 +112,15 @@ impl<'a, T> TrackedAsyncLocalReceiver<'a, T> {
 
     // attempt to receive a value from the inner receiver. if a previously
     // received value has not been dropped, this method returns an error
-    pub async fn recv(&self) -> Result<Track<'a, T>, mpsc::RecvError> {
+    pub async fn recv(&self) -> Result<Track<'a, T>, RecvError> {
         if self.value_active.get() {
-            return Err(mpsc::RecvError);
+            return Err(RecvError::ValueActive);
         }
 
-        let v = self.inner.recv().await?;
+        let v = match self.inner.recv().await {
+            Ok(v) => v,
+            Err(mpsc::RecvError) => return Err(RecvError::Disconnected),
+        };
 
         Ok(Track::new(v, self.value_active))
     }

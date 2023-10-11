@@ -15,7 +15,6 @@
  */
 
 use config::{Config, ConfigError};
-use log::info;
 use serde::Deserialize;
 use std::env;
 use std::error::Error;
@@ -439,22 +438,23 @@ impl CustomConfig {
     }
 }
 
-pub fn get_config_file(arg_config: &Path) -> Result<PathBuf, Box<dyn Error>> {
+pub fn get_config_file(arg_config: Option<PathBuf>) -> Result<PathBuf, Box<dyn Error>> {
     let mut config_files: Vec<PathBuf> = vec![];
-    if !arg_config.as_os_str().is_empty() {
-        config_files.push(arg_config.to_path_buf())
-    } else {
-        // ./config
-        config_files.push(PathBuf::from("./config/pushpin.conf"));
-        // same dir as executable (NOTE: deprecated)
-        config_files.push(PathBuf::from("./pushpin.conf"));
-        // ./examples/config
-        config_files.push(PathBuf::from("./examples/config/pushpin.conf"));
-        // default
-        config_files.push(PathBuf::from(format!(
-            "{}/pushpin.conf",
-            env!("CONFIG_DIR")
-        )));
+    match arg_config {
+        Some(x) => config_files.push(x),
+        None => {
+            // ./config
+            config_files.push(PathBuf::from("./config/pushpin.conf"));
+            // same dir as executable (NOTE: deprecated)
+            config_files.push(PathBuf::from("./pushpin.conf"));
+            // ./examples/config
+            config_files.push(PathBuf::from("./examples/config/pushpin.conf"));
+            // default
+            config_files.push(PathBuf::from(format!(
+                "{}/pushpin.conf",
+                env!("CONFIG_DIR")
+            )));
+        }
     }
 
     let mut config_file = "";
@@ -487,10 +487,6 @@ pub fn get_config_file(arg_config: &Path) -> Result<PathBuf, Box<dyn Error>> {
         }
     }
 
-    if arg_config.as_os_str().is_empty() {
-        info!("using config: {:?}", config_file);
-    }
-
     Ok(config_file.into())
 }
 
@@ -502,7 +498,7 @@ mod tests {
 
     struct TestArgs {
         name: &'static str,
-        input: PathBuf,
+        input: Option<PathBuf>,
         output: Result<PathBuf, Box<dyn Error>>,
     }
 
@@ -510,13 +506,13 @@ mod tests {
     fn it_works() {
         let test_args: Vec<TestArgs> = vec![TestArgs {
             name: "no input",
-            input: PathBuf::from(""),
+            input: None,
             output: Ok(PathBuf::from("./examples/config/pushpin.conf")),
         }];
 
         for test_arg in test_args.iter() {
             assert_eq!(
-                get_config_file(&test_arg.input).unwrap(),
+                get_config_file(test_arg.input.clone()).unwrap(),
                 test_arg.output.as_deref().unwrap(),
                 "{}",
                 test_arg.name
@@ -528,12 +524,12 @@ mod tests {
     fn it_fails() {
         let test_args: Vec<TestArgs> = vec![TestArgs {
             name: "invalid config file",
-            input: PathBuf::from("no/such/file"),
+            input: Some(PathBuf::from("no/such/file")),
             output: Err("no configuration file found. Tried: no/such/file".into()),
         }];
 
         for test_arg in test_args.iter() {
-            match get_config_file(&test_arg.input) {
+            match get_config_file(test_arg.input.clone()) {
                 Ok(x) => panic!(
                     "Test case {} should fail, but its passing with this output {:?}",
                     test_arg.name, x
