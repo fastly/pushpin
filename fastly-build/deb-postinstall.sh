@@ -21,7 +21,7 @@ install -d -o root -g root -m 0700 "${secrets_tmp_dir}"
 secrets_src_dir=/etc/vaultly/cache
 on_secrets_fail=true
 
-if [ -r /etc/chef/client.pem -a -x /opt/chef/embedded/bin/ruby ]; then
+if [ -r /etc/cinc/client.pem -a -x /opt/cinc/embedded/bin/ruby ]; then
   fail() { echo >&2 "ERROR: chef-vault fetch failed and fallback files are unavailable."; exit 1; }
   on_secrets_fail=fail
   /opt/fst-pushpin/bin/get-from-chef-vault --vault secrets --item cache_public --dest "${secrets_tmp_dir}" $SECRETS && secrets_src_dir="${secrets_tmp_dir}" || echo >&2 'WARNING: chef-vault fetch failed.'
