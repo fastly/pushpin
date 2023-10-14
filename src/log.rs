@@ -71,14 +71,12 @@ impl Log for SimpleLogger {
             || message.starts_with("[DEBUG]")
             || message.starts_with("[TRACE]")
         {
-            let mut cnt = 0;
             let mut log_message = String::new();
-            for msg in message.splitn(4, ' ') {
+            for (cnt, msg) in message.splitn(4, ' ').enumerate() {
                 if cnt == 3 {
                     log_message.push_str(&format!("[{}] ", record.target()));
                 }
                 log_message.push_str(&format!("{} ", msg));
-                cnt += 1;
             }
             println!("{}", log_message);
         } else {
