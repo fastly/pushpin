@@ -87,6 +87,8 @@ public:
 	int serverContentBytesSent; // report
 	int serverMessagesReceived; // report
 	int serverMessagesSent; // report
+	int requestsWithoutTls; // report
+	int requestsWithBody; // report
 
 	StatsPacket() :
 		type((Type)-1),
@@ -117,7 +119,9 @@ public:
 		serverContentBytesReceived(-1),
 		serverContentBytesSent(-1),
 		serverMessagesReceived(-1),
-		serverMessagesSent(-1)
+		serverMessagesSent(-1),
+		requestsWithoutTls(-1),
+		requestsWithBody(-1)
 	{
 	}
 

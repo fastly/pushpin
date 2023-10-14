@@ -444,6 +444,9 @@ public:
 		if(trustedClient || !route.grip)
 			passToUpstream = true;
 
+		if(inSock->requestUri().scheme() != "wss")
+			incCounter(Stats::RequestsWithoutTls);
+
 		tryNextTarget();
 	}
 

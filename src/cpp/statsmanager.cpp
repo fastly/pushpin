@@ -1315,6 +1315,8 @@ public:
 		counters.inc(Stats::ServerContentBytesSent, qMax(packet.serverContentBytesSent, 0));
 		counters.inc(Stats::ServerMessagesReceived, qMax(packet.serverMessagesReceived, 0));
 		counters.inc(Stats::ServerMessagesSent, qMax(packet.serverMessagesSent, 0));
+		counters.inc(Stats::RequestsWithoutTls, qMax(packet.requestsWithoutTls, 0));
+		counters.inc(Stats::RequestsWithBody, qMax(packet.requestsWithBody, 0));
 
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
 
@@ -1363,6 +1365,8 @@ public:
 		p.serverContentBytesSent = report->counters.get(Stats::ServerContentBytesSent);
 		p.serverMessagesReceived = report->counters.get(Stats::ServerMessagesReceived);
 		p.serverMessagesSent = report->counters.get(Stats::ServerMessagesSent);
+		p.requestsWithoutTls = report->counters.get(Stats::RequestsWithoutTls);
+		p.requestsWithBody = report->counters.get(Stats::RequestsWithBody);
 
 		report->startTime = now;
 		report->connectionsMaxStale = true;

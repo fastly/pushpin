@@ -321,6 +321,12 @@ public:
 				buffering = false;
 			}
 
+			if(!isHttps)
+				incCounter(Stats::RequestsWithoutTls);
+
+			if(!initialRequestBody.isEmpty())
+				incCounter(Stats::RequestsWithBody);
+
 			tryNextTarget();
 		}
 		else if(state == Requesting)

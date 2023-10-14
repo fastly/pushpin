@@ -156,6 +156,10 @@ QVariant StatsPacket::toVariant() const
 			obj["server-messages-received"] = serverMessagesReceived;
 		if(serverMessagesSent >= 0)
 			obj["server-messages-sent"] = serverMessagesSent;
+		if(requestsWithoutTls >= 0)
+			obj["requests-without-tls"] = requestsWithoutTls;
+		if(requestsWithBody >= 0)
+			obj["requests-with-body"] = requestsWithBody;
 	}
 	else if(type == Counts)
 	{
@@ -434,6 +438,10 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 		if(!tryGetInt(obj, "server-messages-received", &serverMessagesReceived))
 			return false;
 		if(!tryGetInt(obj, "server-messages-sent", &serverMessagesSent))
+			return false;
+		if(!tryGetInt(obj, "requests-without-tls", &requestsWithoutTls))
+			return false;
+		if(!tryGetInt(obj, "requests-with-body", &requestsWithBody))
 			return false;
 	}
 	else if(_type == "counts")
