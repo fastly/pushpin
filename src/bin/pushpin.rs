@@ -15,7 +15,8 @@
  */
 
 use clap::Parser;
-use log::info;
+use log::{info, LevelFilter};
+use pushpin::log::get_simple_logger;
 use pushpin::runner::{ArgsData, CliArgs, Settings};
 use pushpin::service::start_services;
 use std::error::Error;
@@ -24,9 +25,23 @@ use std::process;
 fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let args_data = ArgsData::new(args)?;
     let settings = Settings::new(args_data)?;
+
+    log::set_logger(get_simple_logger()).unwrap();
+    let ll = settings
+        .log_levels
+        .get("")
+        .unwrap_or(settings.log_levels.get("default").unwrap());
+    let level = match ll {
+        0 => LevelFilter::Error,
+        1 => LevelFilter::Warn,
+        2 => LevelFilter::Info,
+        3 => LevelFilter::Debug,
+        4..=u8::MAX => LevelFilter::Trace,
+    };
+    log::set_max_level(level);
+
     info!("using config: {:?}", settings.config_file.display());
     start_services(settings);
-    //To be implemented in the next PR
 
     Ok(())
 }

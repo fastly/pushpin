@@ -64,7 +64,26 @@ impl Log for SimpleLogger {
             log::Level::Trace => "TRACE",
         };
 
-        println!("[{}] {} [{}] {}", lname, ts, record.target(), record.args());
+        let message: String = format!("{}", record.args());
+        if message.starts_with("[ERR]")
+            || message.starts_with("[WARN]")
+            || message.starts_with("[INFO]")
+            || message.starts_with("[DEBUG]")
+            || message.starts_with("[TRACE]")
+        {
+            let mut cnt = 0;
+            let mut log_message = String::new();
+            for msg in message.splitn(4, ' ') {
+                if cnt == 3 {
+                    log_message.push_str(&format!("[{}] ", record.target()));
+                }
+                log_message.push_str(&format!("{} ", msg));
+                cnt += 1;
+            }
+            println!("{}", log_message);
+        } else {
+            println!("[{}] {} [{}] {}", lname, ts, record.target(), record.args());
+        }
     }
 
     fn flush(&self) {}
