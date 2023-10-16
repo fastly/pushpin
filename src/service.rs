@@ -350,11 +350,14 @@ fn start_log_handler(
         for line in reader.lines() {
             match line {
                 Ok(msg) => log_message(&name_str, log::Level::Info, &msg),
-                Err(_) => log_message(
-                    &name_str,
-                    log::Level::Error,
-                    "failed to capture log message.",
-                ),
+                Err(_) => {
+                    log_message(
+                        &name_str,
+                        log::Level::Error,
+                        "failed to read from standard out.",
+                    );
+                    break;
+                }
             }
         }
     })));
@@ -364,7 +367,14 @@ fn start_log_handler(
         for line in reader_err.lines() {
             match line {
                 Ok(msg) => log_message(&name, log::Level::Error, &msg),
-                Err(_) => log_message(&name, log::Level::Error, "failed to capture log message."),
+                Err(_) => {
+                    log_message(
+                        &name,
+                        log::Level::Error,
+                        "failed to read from standard out.",
+                    );
+                    break;
+                }
             }
         }
     })));
@@ -373,11 +383,22 @@ fn start_log_handler(
 }
 
 fn log_message(name: &str, level: log::Level, msg: &str) {
+    let mut msg_to_log = msg.to_string();
+
+    let pieces: Vec<&str> = msg.splitn(4, ' ').collect();
+    if pieces.len() == 4 && pieces[0].starts_with('[') {
+        msg_to_log = pieces[3].to_string();
+        let pieces: Vec<&str> = msg_to_log.splitn(2, ' ').collect();
+        if pieces.len() == 2 && pieces[0].starts_with('[') {
+            msg_to_log = pieces[1].to_string();
+        }
+    }
+
     log::logger().log(
         &log::Record::builder()
             .level(level)
             .target(name)
-            .args(format_args!("{}", msg))
+            .args(format_args!("{}", msg_to_log))
             .build(),
     );
 }
