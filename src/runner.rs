@@ -16,14 +16,21 @@
 
 use clap::{ArgAction, Parser};
 use log::{error, warn};
+use log::{Level, Log, Metadata, Record};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::io;
+use std::mem;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::str;
 use std::string::String;
+use std::sync::Once;
+use time::macros::format_description;
+use time::{OffsetDateTime, UtcOffset};
 use url::Url;
 
 use crate::config::{get_config_file, CustomConfig};
@@ -885,5 +892,88 @@ mod tests {
                 test_arg.name
             );
         }
+    }
+}
+
+struct RunnerLogger {
+    local_offset: UtcOffset,
+}
+
+impl Log for RunnerLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Trace
+    }
+
+    fn log(&self, record: &Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+
+        let now = OffsetDateTime::now_utc().to_offset(self.local_offset);
+
+        let format = format_description!(
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
+        );
+
+        let mut ts = [0u8; 64];
+
+        let size = {
+            let mut ts = io::Cursor::new(&mut ts[..]);
+
+            now.format_into(&mut ts, &format)
+                .expect("failed to write timestamp");
+
+            ts.position() as usize
+        };
+
+        let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
+
+        let lname = match record.level() {
+            log::Level::Error => "ERR",
+            log::Level::Warn => "WARN",
+            log::Level::Info => "INFO",
+            log::Level::Debug => "DEBUG",
+            log::Level::Trace => "TRACE",
+        };
+
+        let message: String = format!("{}", record.args());
+        if message.starts_with("[ERR]")
+            || message.starts_with("[WARN]")
+            || message.starts_with("[INFO]")
+            || message.starts_with("[DEBUG]")
+            || message.starts_with("[TRACE]")
+        {
+            let mut cnt = 0;
+            let mut log_message = String::new();
+            for msg in message.splitn(4, ' ') {
+                if cnt == 3 {
+                    log_message.push_str(&format!("[{}] ", record.target()));
+                }
+                log_message.push_str(&format!("{} ", msg));
+                cnt += 1;
+            }
+            println!("{}", log_message);
+        } else {
+            println!("[{}] {} [{}] {}", lname, ts, record.target(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static mut LOGGER: mem::MaybeUninit<RunnerLogger> = mem::MaybeUninit::uninit();
+
+pub fn get_runner_logger() -> &'static impl Log {
+    static INIT: Once = Once::new();
+
+    unsafe {
+        INIT.call_once(|| {
+            let local_offset =
+                UtcOffset::current_local_offset().expect("failed to get local time offset");
+
+            LOGGER.write(RunnerLogger { local_offset });
+        });
+
+        LOGGER.as_ptr().as_ref().unwrap()
     }
 }

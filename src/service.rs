@@ -383,22 +383,11 @@ fn start_log_handler(
 }
 
 fn log_message(name: &str, level: log::Level, msg: &str) {
-    let mut msg_to_log = msg.to_string();
-
-    let pieces: Vec<&str> = msg.splitn(4, ' ').collect();
-    if pieces.len() == 4 && pieces[0].starts_with('[') {
-        msg_to_log = pieces[3].to_string();
-        let pieces: Vec<&str> = msg_to_log.splitn(2, ' ').collect();
-        if pieces.len() == 2 && pieces[0].starts_with('[') {
-            msg_to_log = pieces[1].to_string();
-        }
-    }
-
     log::logger().log(
         &log::Record::builder()
             .level(level)
             .target(name)
-            .args(format_args!("{}", msg_to_log))
+            .args(format_args!("{}", msg))
             .build(),
     );
 }
