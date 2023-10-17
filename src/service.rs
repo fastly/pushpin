@@ -371,7 +371,7 @@ fn start_log_handler(
                     log_message(
                         &name,
                         log::Level::Error,
-                        "failed to read from standard out.",
+                        "failed to read from standard error.",
                     );
                     break;
                 }
