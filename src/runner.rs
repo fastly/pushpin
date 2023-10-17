@@ -909,49 +909,46 @@ impl Log for RunnerLogger {
             return;
         }
 
-        let now = OffsetDateTime::now_utc().to_offset(self.local_offset);
+        let binding = record.args().to_string();
+        let msg_parts: Vec<&str> = binding.split_whitespace().collect();
 
-        let format = format_description!(
-            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
-        );
-
-        let mut ts = [0u8; 64];
-
-        let size = {
-            let mut ts = io::Cursor::new(&mut ts[..]);
-
-            now.format_into(&mut ts, &format)
-                .expect("failed to write timestamp");
-
-            ts.position() as usize
-        };
-
-        let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
-
-        let lname = match record.level() {
-            log::Level::Error => "ERR",
-            log::Level::Warn => "WARN",
-            log::Level::Info => "INFO",
-            log::Level::Debug => "DEBUG",
-            log::Level::Trace => "TRACE",
-        };
-
-        let message: String = format!("{}", record.args());
-        if message.starts_with("[ERR]")
-            || message.starts_with("[WARN]")
-            || message.starts_with("[INFO]")
-            || message.starts_with("[DEBUG]")
-            || message.starts_with("[TRACE]")
-        {
-            let mut log_message = String::new();
-            for (cnt, msg) in message.splitn(4, ' ').enumerate(){
-                if cnt == 3 {
-                    log_message.push_str(&format!("[{}] ", record.target()));
-                }
-                log_message.push_str(&format!("{} ", msg));
-            }
-            println!("{}", log_message);
+        if msg_parts.len() >= 4 {
+            println!(
+                "{} {} {} [{}] {}",
+                msg_parts[0],
+                msg_parts[1],
+                msg_parts[2],
+                record.target(),
+                msg_parts[3..].join(" ")
+            );
         } else {
+            let now = OffsetDateTime::now_utc().to_offset(self.local_offset);
+
+            let format = format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
+            );
+
+            let mut ts = [0u8; 64];
+
+            let size = {
+                let mut ts = io::Cursor::new(&mut ts[..]);
+
+                now.format_into(&mut ts, &format)
+                    .expect("failed to write timestamp");
+
+                ts.position() as usize
+            };
+
+            let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
+
+            let lname = match record.level() {
+                log::Level::Error => "ERR",
+                log::Level::Warn => "WARN",
+                log::Level::Info => "INFO",
+                log::Level::Debug => "DEBUG",
+                log::Level::Trace => "TRACE",
+            };
+
             println!("[{}] {} [{}] {}", lname, ts, record.target(), record.args());
         }
     }
