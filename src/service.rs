@@ -15,10 +15,12 @@
  */
 
 use crate::runner::Settings;
-use log::error;
+use log::{error, LevelFilter};
 use mpsc::{channel, Sender};
 use signal_hook::consts::{SIGINT, SIGTERM, TERM_SIGNALS};
 use signal_hook::iterator::Signals;
+use std::io::{BufRead, BufReader};
+use std::process::{ChildStderr, ChildStdout, Stdio};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 use std::{process::Command, thread};
@@ -31,6 +33,7 @@ pub enum ServiceError {
 
 pub struct Service {
     pub name: String,
+    pub log_level: u8,
 }
 
 pub fn start_services(settings: Settings) {
@@ -54,7 +57,7 @@ pub fn start_services(settings: Settings) {
     let (sender, receiver) = channel();
     let mut threads: Vec<Option<JoinHandle<()>>> = vec![];
     for mut service in services {
-        threads.push(service.start(sender.clone()));
+        threads.extend(service.start(sender.clone()));
     }
 
     // Spawn a signal handling thread
@@ -101,22 +104,49 @@ pub fn start_services(settings: Settings) {
 }
 
 impl Service {
-    fn new(name: String) -> Self {
-        Self { name }
+    fn new(name: String, log_level: u8) -> Self {
+        Self { name, log_level }
     }
-
     pub fn start(
         &mut self,
         args: Vec<String>,
         sender: Sender<Result<(), ServiceError>>,
-    ) -> Option<thread::JoinHandle<()>> {
+    ) -> Vec<Option<JoinHandle<()>>> {
         let name = self.name.clone();
+        let name_str = self.name.clone();
 
-        Some(thread::spawn(move || {
-            let mut command = Command::new(args[0].clone());
+        let level = match self.log_level {
+            0 => LevelFilter::Error,
+            1 => LevelFilter::Warn,
+            2 => LevelFilter::Info,
+            3 => LevelFilter::Debug,
+            4..=u8::MAX => LevelFilter::Trace,
+        };
+        log::set_max_level(level);
+
+        // Create a channel for sending thread handles back to main thread
+        let (handle_sender, handle_receiver) = channel();
+
+        let mut result: Vec<Option<JoinHandle<()>>> = Vec::new();
+
+        result.push(Some(thread::spawn(move || {
+            let mut command = Command::new(&args[0]);
             command.args(&args[1..]);
 
-            let status = command.status().expect("Failed to execute command");
+            // Capture stdout and stderr
+            command.stdout(Stdio::piped());
+            command.stderr(Stdio::piped());
+
+            let mut child = command.spawn().expect("Failed to execute command");
+
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+            let handles = start_log_handler(stdout, stderr, name_str);
+
+            // Send the handles back to main thread
+            handle_sender.send(handles).unwrap();
+
+            let status = child.wait().expect("Failed to wait for command");
 
             if status.success() {
                 sender.send(Ok(())).unwrap();
@@ -126,12 +156,17 @@ impl Service {
                     .send(Err(ServiceError::ThreadError(error_message)))
                     .unwrap();
             }
-        }))
+        })));
+        // Receive the handles from the channel and add them to the result vector
+        let received_handles: Vec<Option<JoinHandle<()>>> = handle_receiver.recv().unwrap();
+        result.extend(received_handles);
+
+        result
     }
 }
 
 pub trait RunnerService {
-    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>>;
+    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Vec<Option<JoinHandle<()>>>;
 }
 
 pub struct CondureService {
@@ -147,12 +182,10 @@ impl CondureService {
         args.push(settings.condure_bin.display().to_string());
 
         let log_level = match settings.log_levels.get(service_name) {
-            Some(&x) => x as i8,
-            None => settings.log_levels.get("default").unwrap().to_owned() as i8,
+            Some(&x) => x,
+            None => settings.log_levels.get("default").unwrap().to_owned(),
         };
-        if log_level >= 0 {
-            args.push(format!("--log-level={}", log_level));
-        }
+        args.push(format!("--log-level={}", log_level));
 
         args.push(format!("--buffer-size={}", settings.client_buffer_size));
         args.push(format!(
@@ -215,14 +248,14 @@ impl CondureService {
         }
 
         Self {
-            service: Service::new(String::from(service_name)),
+            service: Service::new(String::from(service_name), log_level),
             args,
         }
     }
 }
 
 impl RunnerService for CondureService {
-    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>> {
+    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Vec<Option<JoinHandle<()>>> {
         self.service.start(self.args.clone(), sender)
     }
 }
@@ -244,26 +277,24 @@ impl PushpinProxyService {
             args.push(format!("--ipc-prefix={}", settings.ipc_prefix));
         }
         let log_level = match settings.log_levels.get("pushpin-proxy") {
-            Some(&x) => x as i8,
-            None => settings.log_levels.get("default").unwrap().to_owned() as i8,
+            Some(&x) => x,
+            None => settings.log_levels.get("default").unwrap().to_owned(),
         };
-        if log_level >= 0 {
-            args.push(format!("--loglevel={}", log_level));
-        }
+        args.push(format!("--loglevel={}", log_level));
 
         for route in settings.route_lines.clone() {
             args.push(format!("--route={}", route));
         }
 
         Self {
-            service: Service::new(String::from(service_name)),
+            service: Service::new(String::from(service_name), log_level),
             args,
         }
     }
 }
 
 impl RunnerService for PushpinProxyService {
-    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>> {
+    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Vec<Option<JoinHandle<()>>> {
         self.service.start(self.args.clone(), sender)
     }
 }
@@ -288,22 +319,75 @@ impl PushpinHandlerService {
             args.push(format!("--ipc-prefix={}", settings.ipc_prefix));
         }
         let log_level = match settings.log_levels.get("pushpin-handler") {
-            Some(&x) => x as i8,
-            None => settings.log_levels.get("default").unwrap().to_owned() as i8,
+            Some(&x) => x,
+            None => settings.log_levels.get("default").unwrap().to_owned(),
         };
-        if log_level >= 0 {
-            args.push(format!("--loglevel={}", log_level));
-        }
+        args.push(format!("--loglevel={}", log_level));
 
         Self {
-            service: Service::new(String::from(service_name)),
+            service: Service::new(String::from(service_name), log_level),
             args,
         }
     }
 }
 
 impl RunnerService for PushpinHandlerService {
-    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Option<JoinHandle<()>> {
+    fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Vec<Option<JoinHandle<()>>> {
         self.service.start(self.args.clone(), sender)
     }
+}
+
+fn start_log_handler(
+    stdout: ChildStdout,
+    stderr: ChildStderr,
+    name: String,
+) -> Vec<Option<JoinHandle<()>>> {
+    let mut result: Vec<Option<JoinHandle<()>>> = Vec::new();
+
+    let name_str = name.clone();
+    result.push(Some(thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(msg) => log_message(&name_str, log::Level::Info, &msg),
+                Err(_) => {
+                    log_message(
+                        &name_str,
+                        log::Level::Error,
+                        "failed to read from standard out.",
+                    );
+                    break;
+                }
+            }
+        }
+    })));
+
+    result.push(Some(thread::spawn(move || {
+        let reader_err = BufReader::new(stderr);
+        for line in reader_err.lines() {
+            match line {
+                Ok(msg) => log_message(&name, log::Level::Error, &msg),
+                Err(_) => {
+                    log_message(
+                        &name,
+                        log::Level::Error,
+                        "failed to read from standard error.",
+                    );
+                    break;
+                }
+            }
+        }
+    })));
+
+    result
+}
+
+fn log_message(name: &str, level: log::Level, msg: &str) {
+    log::logger().log(
+        &log::Record::builder()
+            .level(level)
+            .target(name)
+            .args(format_args!("{}", msg))
+            .build(),
+    );
 }
