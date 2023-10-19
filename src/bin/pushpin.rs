@@ -25,7 +25,7 @@ fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let args_data = ArgsData::new(args)?;
     let settings = Settings::new(args_data)?;
 
-    log::set_logger(get_runner_logger()).unwrap();
+    log::set_logger(get_runner_logger(settings.log_file.clone())).unwrap();
     let ll = settings
         .log_levels
         .get("")

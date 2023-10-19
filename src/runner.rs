@@ -21,16 +21,14 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use std::fs;
-use std::io;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::mem;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::str;
 use std::string::String;
-use std::sync::Once;
-use time::macros::format_description;
-use time::{OffsetDateTime, UtcOffset};
+use std::sync::{Arc, Once, RwLock};
 use url::Url;
 
 use crate::config::{get_config_file, CustomConfig};
@@ -896,7 +894,28 @@ mod tests {
 }
 
 struct RunnerLogger {
-    local_offset: UtcOffset,
+    log_file: Option<Arc<RwLock<File>>>,
+}
+
+impl RunnerLogger {
+    fn new(log_file_path: Option<PathBuf>) -> Result<Self, Box<dyn Error>> {
+        let log_file = match log_file_path {
+            Some(x) => {
+                ensure_dir(x.parent().unwrap())?;
+                match OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(x)
+                {
+                    Ok(x) => Some(Arc::new(RwLock::new(x))),
+                    Err(_) => None,
+                }
+            }
+            None => None,
+        };
+        Ok(RunnerLogger { log_file })
+    }
 }
 
 impl Log for RunnerLogger {
@@ -909,47 +928,12 @@ impl Log for RunnerLogger {
             return;
         }
 
-        let binding = record.args().to_string();
-        let msg_parts: Vec<&str> = binding.split_whitespace().collect();
-
-        if msg_parts.len() >= 4 {
-            println!(
-                "{} {} {} [{}] {}",
-                msg_parts[0],
-                msg_parts[1],
-                msg_parts[2],
-                record.target(),
-                msg_parts[3..].join(" ")
-            );
+        if let Some(log_file) = &self.log_file {
+            if let Ok(mut file) = log_file.write() {
+                writeln!(file, "{}", record.args()).expect("Failed to write to log file");
+            }
         } else {
-            let now = OffsetDateTime::now_utc().to_offset(self.local_offset);
-
-            let format = format_description!(
-                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
-            );
-
-            let mut ts = [0u8; 64];
-
-            let size = {
-                let mut ts = io::Cursor::new(&mut ts[..]);
-
-                now.format_into(&mut ts, &format)
-                    .expect("failed to write timestamp");
-
-                ts.position() as usize
-            };
-
-            let ts = str::from_utf8(&ts[..size]).expect("timestamp is not utf-8");
-
-            let lname = match record.level() {
-                log::Level::Error => "ERR",
-                log::Level::Warn => "WARN",
-                log::Level::Info => "INFO",
-                log::Level::Debug => "DEBUG",
-                log::Level::Trace => "TRACE",
-            };
-
-            println!("[{}] {} [{}] {}", lname, ts, record.target(), record.args());
+            println!("{}", record.args());
         }
     }
 
@@ -958,15 +942,12 @@ impl Log for RunnerLogger {
 
 static mut LOGGER: mem::MaybeUninit<RunnerLogger> = mem::MaybeUninit::uninit();
 
-pub fn get_runner_logger() -> &'static impl Log {
+pub fn get_runner_logger(log_file_path: Option<PathBuf>) -> &'static impl Log {
     static INIT: Once = Once::new();
 
     unsafe {
         INIT.call_once(|| {
-            let local_offset =
-                UtcOffset::current_local_offset().expect("failed to get local time offset");
-
-            LOGGER.write(RunnerLogger { local_offset });
+            LOGGER.write(RunnerLogger::new(log_file_path).expect("failed to set logger"));
         });
 
         LOGGER.as_ptr().as_ref().unwrap()
