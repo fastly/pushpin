@@ -362,7 +362,7 @@ def make_routes(service, backend, sig_keys_dir):
         target += ',host={}'.format(override_host)
 
     if 'id' in service.realm:
-        woh = backend_name == 'bayeux-handler' or bool(realm_domain_config.get('woh', False))
+        woh = backend_name.startswith('self_') or backend_name == 'bayeux-handler' or bool(realm_domain_config.get('woh', False))
     else:
         woh = int(backend.get('loader-woh-enabled', '0'))
 
