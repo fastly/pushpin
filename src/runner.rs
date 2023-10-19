@@ -28,7 +28,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::str;
 use std::string::String;
-use std::sync::{Arc, Once, RwLock};
+use std::sync::{Mutex, MutexGuard, Once};
 use url::Url;
 
 use crate::config::{get_config_file, CustomConfig};
@@ -894,7 +894,7 @@ mod tests {
 }
 
 struct RunnerLogger {
-    log_file: Option<Arc<RwLock<File>>>,
+    log_file: Option<Mutex<File>>,
 }
 
 impl RunnerLogger {
@@ -908,7 +908,7 @@ impl RunnerLogger {
                     .truncate(true)
                     .open(x)
                 {
-                    Ok(x) => Some(Arc::new(RwLock::new(x))),
+                    Ok(x) => Some(Mutex::new(x)),
                     Err(_) => None,
                 }
             }
@@ -929,9 +929,10 @@ impl Log for RunnerLogger {
         }
 
         if let Some(log_file) = &self.log_file {
-            if let Ok(mut file) = log_file.write() {
-                writeln!(file, "{}", record.args()).expect("Failed to write to log file");
-            }
+            let mut log_file_guard: MutexGuard<'_, File> = log_file.lock().unwrap();
+            log_file_guard
+                .write_all(format!("{}\n", record.args()).as_bytes())
+                .expect("failed to write to log file");
         } else {
             println!("{}", record.args());
         }
@@ -946,8 +947,13 @@ pub fn get_runner_logger(log_file_path: Option<PathBuf>) -> &'static impl Log {
     static INIT: Once = Once::new();
 
     unsafe {
-        INIT.call_once(|| {
-            LOGGER.write(RunnerLogger::new(log_file_path).expect("failed to set logger"));
+        INIT.call_once(|| match RunnerLogger::new(log_file_path) {
+            Ok(x) => {
+                LOGGER.write(x);
+            }
+            Err(e) => {
+                eprintln!("error setting up logger: {}", e);
+            }
         });
 
         LOGGER.as_ptr().as_ref().unwrap()
