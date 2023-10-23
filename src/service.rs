@@ -72,7 +72,7 @@ pub fn start_services(settings: Settings) {
                         .send(Err(ServiceError::TermSignal(
                             "termination signal received".to_string(),
                         )))
-                        .unwrap();
+                        .expect("failed to send message.");
                     break;
                 }
                 _ => {}
@@ -92,7 +92,7 @@ pub fn start_services(settings: Settings) {
                 break;
             }
             Ok(_) => {}
-            Err(_) => error!("Failed to receive error message from thread"),
+            Err(_) => error!("failed to receive error message from thread"),
         }
     }
 
@@ -137,16 +137,40 @@ impl Service {
             command.stdout(Stdio::piped());
             command.stderr(Stdio::piped());
 
-            let mut child = command.spawn().expect("Failed to execute command");
+            let mut child = match command.spawn() {
+                Ok(x) => x,
+                Err(e) => {
+                    sender
+                        .send(Err(ServiceError::ThreadError(format!(
+                            "failed to execute command: {}",
+                            e
+                        ))))
+                        .expect("failed to send message.");
+                    return;
+                }
+            };
 
             let stdout = child.stdout.take().unwrap();
             let stderr = child.stderr.take().unwrap();
             let handles = start_log_handler(stdout, stderr, name_str);
 
             // Send the handles back to main thread
-            handle_sender.send(handles).unwrap();
+            handle_sender
+                .send(handles)
+                .expect("failed to send message.");
 
-            let status = child.wait().expect("Failed to wait for command");
+            let status = match child.wait() {
+                Ok(x) => x,
+                Err(e) => {
+                    sender
+                        .send(Err(ServiceError::ThreadError(format!(
+                            "failed to wait for command: {}",
+                            e
+                        ))))
+                        .expect("failed to send message.");
+                    return;
+                }
+            };
 
             if status.success() {
                 sender.send(Ok(())).unwrap();
@@ -154,11 +178,12 @@ impl Service {
                 let error_message = format!("Failed to start {} service.", name);
                 sender
                     .send(Err(ServiceError::ThreadError(error_message)))
-                    .unwrap();
+                    .expect("failed to send message.");
             }
         })));
         // Receive the handles from the channel and add them to the result vector
-        let received_handles: Vec<Option<JoinHandle<()>>> = handle_receiver.recv().unwrap();
+        let received_handles: Vec<Option<JoinHandle<()>>> =
+            handle_receiver.recv().expect("failed to receive message.");
         result.extend(received_handles);
 
         result
