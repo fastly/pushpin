@@ -929,10 +929,8 @@ impl Log for RunnerLogger {
         }
 
         if let Some(log_file) = &self.log_file {
-            let mut log_file_guard: MutexGuard<'_, File> = log_file.lock().unwrap();
-            log_file_guard
-                .write_all(format!("{}\n", record.args()).as_bytes())
-                .expect("failed to write to log file");
+            let mut log_file: MutexGuard<'_, File> = log_file.lock().unwrap();
+            writeln!(log_file, "{}", record.args()).expect("failed to write to log file");
         } else {
             println!("{}", record.args());
         }
