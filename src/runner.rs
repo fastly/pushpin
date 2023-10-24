@@ -893,29 +893,8 @@ mod tests {
     }
 }
 
-struct RunnerLogger {
+pub struct RunnerLogger {
     log_file: Option<Mutex<File>>,
-}
-
-impl RunnerLogger {
-    fn new(log_file_path: Option<PathBuf>) -> Result<Self, Box<dyn Error>> {
-        let log_file = match log_file_path {
-            Some(x) => {
-                ensure_dir(x.parent().unwrap())?;
-                match OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open(x)
-                {
-                    Ok(x) => Some(Mutex::new(x)),
-                    Err(_) => None,
-                }
-            }
-            None => None,
-        };
-        Ok(RunnerLogger { log_file })
-    }
 }
 
 impl Log for RunnerLogger {
@@ -935,25 +914,40 @@ impl Log for RunnerLogger {
             println!("{}", record.args());
         }
     }
-
     fn flush(&self) {}
 }
 
 static mut LOGGER: mem::MaybeUninit<RunnerLogger> = mem::MaybeUninit::uninit();
 
-pub fn get_runner_logger(log_file_path: Option<PathBuf>) -> &'static impl Log {
+pub fn get_runner_logger(log_file: Option<Mutex<File>>) -> &'static RunnerLogger {
     static INIT: Once = Once::new();
 
     unsafe {
-        INIT.call_once(|| match RunnerLogger::new(log_file_path) {
-            Ok(x) => {
-                LOGGER.write(x);
-            }
-            Err(e) => {
-                eprintln!("error setting up logger: {}", e);
-            }
+        INIT.call_once(|| {
+            LOGGER.write(RunnerLogger { log_file });
         });
 
         LOGGER.as_ptr().as_ref().unwrap()
+    }
+}
+
+pub fn get_log_file(log_file_path: Option<PathBuf>) -> Option<Mutex<File>> {
+    match log_file_path {
+        Some(x) => {
+            match ensure_dir(x.parent().unwrap()) {
+                Ok(_) => (),
+                Err(_) => return None,
+            }
+            match OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(x)
+            {
+                Ok(x) => return Some(Mutex::new(x)),
+                Err(_) => None,
+            }
+        }
+        None => None,
     }
 }
