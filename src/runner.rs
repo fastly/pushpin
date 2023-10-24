@@ -931,23 +931,18 @@ pub fn get_runner_logger(log_file: Option<Mutex<File>>) -> &'static RunnerLogger
     }
 }
 
-pub fn get_log_file(log_file_path: Option<PathBuf>) -> Option<Mutex<File>> {
-    match log_file_path {
-        Some(x) => {
-            match ensure_dir(x.parent().unwrap()) {
-                Ok(_) => (),
-                Err(_) => return None,
-            }
-            match OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(x)
-            {
-                Ok(x) => return Some(Mutex::new(x)),
-                Err(_) => None,
-            }
-        }
-        None => None,
+pub fn open_log_file(log_file_path: PathBuf) -> Option<Mutex<File>> {
+    match ensure_dir(log_file_path.parent().unwrap()) {
+        Ok(_) => (),
+        Err(_) => return None,
+    }
+    match OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(log_file_path)
+    {
+        Ok(x) => Some(Mutex::new(x)),
+        Err(_) => None,
     }
 }
