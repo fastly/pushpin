@@ -15,7 +15,7 @@
  */
 
 use clap::Parser;
-use log::{info, LevelFilter};
+use log::{error, info, LevelFilter};
 use pushpin::runner::{get_runner_logger, open_log_file, ArgsData, CliArgs, Settings};
 use pushpin::service::start_services;
 use std::error::Error;
@@ -26,7 +26,16 @@ fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let settings = Settings::new(args_data)?;
 
     let logger = match settings.log_file.clone() {
-        Some(x) => get_runner_logger(open_log_file(x)),
+        Some(x) => {
+            let log_file = match open_log_file(x) {
+                Ok(x) => Some(x),
+                Err(_) => {
+                    error!("unable to open log file. logging to standard out.");
+                    None
+                }
+            };
+            get_runner_logger(log_file)
+        }
         None => get_runner_logger(None),
     };
     log::set_logger(logger).unwrap();

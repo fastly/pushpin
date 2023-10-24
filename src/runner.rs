@@ -28,7 +28,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::str;
 use std::string::String;
-use std::sync::{Mutex, MutexGuard, Once};
+use std::sync::{Mutex, Once};
 use url::Url;
 
 use crate::config::{get_config_file, CustomConfig};
@@ -449,7 +449,7 @@ impl ListenPort {
     }
 }
 
-fn ensure_dir(directory_path: &Path) -> Result<(), Box<dyn Error>> {
+fn ensure_dir(directory_path: &Path) -> Result<(), std::io::Error> {
     if !directory_path.exists() {
         fs::create_dir_all(directory_path)?;
     }
@@ -908,7 +908,7 @@ impl Log for RunnerLogger {
         }
 
         if let Some(log_file) = &self.log_file {
-            let mut log_file: MutexGuard<'_, File> = log_file.lock().unwrap();
+            let mut log_file = log_file.lock().unwrap();
             writeln!(log_file, "{}", record.args()).expect("failed to write to log file");
         } else {
             println!("{}", record.args());
@@ -919,30 +919,28 @@ impl Log for RunnerLogger {
 
 static mut LOGGER: mem::MaybeUninit<RunnerLogger> = mem::MaybeUninit::uninit();
 
-pub fn get_runner_logger(log_file: Option<Mutex<File>>) -> &'static RunnerLogger {
+pub fn get_runner_logger(log_file: Option<File>) -> &'static RunnerLogger {
     static INIT: Once = Once::new();
 
     unsafe {
         INIT.call_once(|| {
-            LOGGER.write(RunnerLogger { log_file });
+            LOGGER.write(RunnerLogger {
+                log_file: log_file.map(Mutex::new),
+            });
         });
 
         LOGGER.as_ptr().as_ref().unwrap()
     }
 }
 
-pub fn open_log_file(log_file_path: PathBuf) -> Option<Mutex<File>> {
+pub fn open_log_file(log_file_path: PathBuf) -> Result<File, std::io::Error> {
     match ensure_dir(log_file_path.parent().unwrap()) {
         Ok(_) => (),
-        Err(_) => return None,
+        Err(e) => return Err(e),
     }
-    match OpenOptions::new()
+    OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .open(log_file_path)
-    {
-        Ok(x) => Some(Mutex::new(x)),
-        Err(_) => None,
-    }
 }
