@@ -408,11 +408,24 @@ fn start_log_handler(
 }
 
 fn log_message(name: &str, level: log::Level, msg: &str) {
+    // Find the position of the 3rd space (' ') in the string
+    let index = msg
+        .char_indices()
+        .filter(|&(_, c)| c == ' ')
+        .nth(2)
+        .map(|(i, _)| i)
+        .unwrap_or_else(|| 0);
+
     log::logger().log(
         &log::Record::builder()
             .level(level)
             .target(name)
-            .args(format_args!("{}", msg))
+            .args(format_args!(
+                "{} [{}]{}",
+                &msg[..index],
+                name,
+                &msg[index..]
+            ))
             .build(),
     );
 }
