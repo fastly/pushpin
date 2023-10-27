@@ -24,19 +24,19 @@
 #include "qzmqcontext.h"
 
 #include <assert.h>
-#include <zmq.h>
+#include "rust/wzmq.h"
 
 namespace QZmq {
 
 Context::Context(int ioThreads)
 {
-	context_ = zmq_init(ioThreads);
+	context_ = wzmq_init(ioThreads);
 	assert(context_);
 }
 
 Context::~Context()
 {
-	zmq_term(context_);
+	wzmq_term(context_);
 }
 
 }
