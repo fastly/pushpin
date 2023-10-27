@@ -1,0 +1,24 @@
+QZmq
+----
+
+Author: Justin Karneges <justin@fanout.io>
+
+Yet another Qt binding for ZeroMQ. It wraps the C API of libzmq. It is
+compatible with libzmq versions 2.x, 3.x, and 4.x.
+
+Some features:
+  - Completely event-driven, with both read and write notifications.
+  - For convenience, it is not necessary to create a Context explicitly. If a
+    Socket is created without one, then a globally shared Context will be
+    created automatically.
+  - Some handy extra classes. For example, RepRouter makes it easy to write a
+    REP socket server that handles multiple requests simultaneously, and Valve
+    makes it easy to regulate reads.
+
+To build the examples:
+
+  echo "LIBS += -lzmq" > conf.pri
+  qmake && make
+
+To include the code in your project, just use the files in src. From a qmake
+project you can include src.pri. It's your responsibility to link to libzmq.
