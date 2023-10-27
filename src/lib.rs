@@ -57,6 +57,7 @@ pub mod zhttppacket;
 pub mod zhttpsocket;
 pub mod zmq;
 
+use std::env;
 use std::ffi::CString;
 use std::future::Future;
 use std::io;
@@ -265,4 +266,18 @@ pub enum ListenSpec {
 pub struct ListenConfig {
     pub spec: ListenSpec,
     pub stream: bool,
+}
+
+/// # Safety
+///
+/// * `main_fn` must be safe to call.
+pub unsafe fn call_c_main(
+    main_fn: unsafe extern "C" fn(libc::c_int, *const *const libc::c_char) -> libc::c_int,
+) -> u8 {
+    let args: Vec<CString> = env::args_os()
+        .map(|s| CString::new(s.into_string().unwrap()).unwrap())
+        .collect();
+    let args: Vec<*const libc::c_char> = args.iter().map(|s| s.as_c_str().as_ptr()).collect();
+
+    main_fn(args.len() as libc::c_int, args.as_ptr()) as u8
 }

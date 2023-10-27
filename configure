@@ -496,6 +496,15 @@ public:
 
 		conf->addIncludePath("\$\$PWD/src");
 
+		QByteArray out;
+		if(conf->doCommand(conf->qmake_path, QStringList() << "-query" << "QT_INSTALL_LIBS", &out) != 0)
+		{
+			return false;
+		}
+
+		QString qtlibdir = QString::fromUtf8(out).trimmed();
+		conf->addExtra(QString("QT_INSTALL_LIBS = %1").arg(qtlibdir));
+
 		QFile file("src/config.h");
 		if(file.open(QIODevice::WriteOnly | QIODevice::Text))
 		{

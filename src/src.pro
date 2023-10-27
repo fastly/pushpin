@@ -2,32 +2,19 @@ TEMPLATE = subdirs
 
 include($$OUT_PWD/../conf.pri)
 
-rust.subdir = rust
-
 cpp.subdir = cpp
-cpp.depends = rust
 
-m2adapter.subdir = m2adapter
-m2adapter.depends = cpp
+rust.subdir = rust
+rust.depends = cpp
 
-proxy.subdir = proxy
-proxy.depends = cpp
-
-handler.subdir = handler
-handler.depends = cpp
-
-runner.subdir = runner
-runner.depends = cpp
+cpp_tests.subdir = cpp/tests
+cpp_tests.depends = cpp rust
+cpp_tests.CONFIG += no_default_install
 
 pushpin.subdir = pushpin
 
 SUBDIRS += \
-	rust \
 	cpp \
-	m2adapter \
-	proxy \
-	handler \
-
-SUBDIRS += \
-	runner \
+	rust \
+	cpp_tests \
 	pushpin
