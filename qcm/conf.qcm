@@ -74,9 +74,9 @@ public:
 		if(file.open(QIODevice::WriteOnly | QIODevice::Text))
 		{
 			QTextStream stream( &file );
-			stream << "#define VERSION \"" << version << "\"" << endl;
-			stream << "#define LIBDIR \"" << libdir << "/pushpin\"" << endl;
-			stream << "#define CONFIGDIR \"" << configdir << "/pushpin\"" << endl;
+			stream << "#define VERSION \"" << version << "\"" << Qt::endl;
+			stream << "#define LIBDIR \"" << libdir << "/pushpin\"" << Qt::endl;
+			stream << "#define CONFIGDIR \"" << configdir << "/pushpin\"" << Qt::endl;
 		}
 
 		conf->addDefine("HAVE_CONFIG");

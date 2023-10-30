@@ -35,7 +35,6 @@
 #include "log.h"
 #include "tnetstring.h"
 #include "httpheaders.h"
-#include "packet/statspacket.h"
 #include "simplehttpserver.h"
 #include "zutil.h"
 
