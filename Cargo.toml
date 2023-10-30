@@ -41,7 +41,7 @@ socket2 = "0.4"
 thiserror = "1.0"
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
 url = "2.3"
-zmq = "0.9"
+zmq = "0.10"
 config = "0.13.3"
 
 [dev-dependencies]
