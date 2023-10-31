@@ -33,7 +33,7 @@ static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key)
 {
 	QVariantMap claim;
 	claim["iss"] = QString::fromUtf8(iss);
-	claim["exp"] = QDateTime::currentDateTimeUtc().toTime_t() + 3600;
+	claim["exp"] = QDateTime::currentDateTimeUtc().toSecsSinceEpoch() + 3600;
 	return Jwt::encode(claim, key);
 }
 
@@ -46,7 +46,7 @@ static bool validate_token(const QByteArray &token, const Jwt::DecodingKey &key)
 	QVariantMap claim = claimObj.toMap();
 
 	int exp = claim.value("exp").toInt();
-	if(exp <= 0 || (int)QDateTime::currentDateTimeUtc().toTime_t() >= exp)
+	if(exp <= 0 || (int)QDateTime::currentDateTimeUtc().toSecsSinceEpoch() >= exp)
 		return false;
 
 	return true;

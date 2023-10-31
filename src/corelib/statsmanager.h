@@ -25,11 +25,10 @@
 #define STATSMANAGER_H
 
 #include <QObject>
+#include "packet/statspacket.h"
 #include "stats.h"
 
 class QHostAddress;
-
-class StatsPacket;
 
 class StatsManager : public QObject
 {

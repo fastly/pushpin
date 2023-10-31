@@ -1078,6 +1078,10 @@ private:
 			// take over responsibility for request
 			ZhttpRequest *httpReq = zhttpIn->createRequestFromState(ss);
 
+			QSet<QString> implicitChannelsSet;
+			foreach(const QString &channel, implicitChannels)
+				implicitChannelsSet += channel;
+
 			HttpSession::AcceptData adata;
 			adata.requestData = origRequestData;
 			adata.logicalPeerAddress = rs.logicalPeerAddress;
@@ -1090,7 +1094,7 @@ private:
 			adata.route = route;
 			adata.statsRoute = statsRoute;
 			adata.channelPrefix = channelPrefix;
-			adata.implicitChannels = implicitChannels.toSet();
+			adata.implicitChannels = implicitChannelsSet;
 			adata.sid = sid;
 			adata.responseSent = responseSent;
 			adata.trusted = trusted;

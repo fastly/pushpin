@@ -138,7 +138,7 @@ public:
 							else
 							{
 								Token token(Token::Error);
-								token.value = "unexpected escape character: " + str_[at];
+								token.value = QString("unexpected escape character: ") + str_[at];
 								return token;
 							}
 						}
