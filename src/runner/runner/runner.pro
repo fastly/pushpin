@@ -2,7 +2,7 @@ CONFIG += console
 CONFIG -= app_bundle
 QT -= gui
 QT += network
-TARGET = pushpin
+TARGET = pushpin-legacy
 DESTDIR = ../../..
 
 MOC_DIR = $$OUT_PWD/_moc
