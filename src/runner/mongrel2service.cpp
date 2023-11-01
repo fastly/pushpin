@@ -186,19 +186,25 @@ QString Mongrel2Service::formatLogLine(const QString &line) const
 		{
 			return filterLogLine(LOG_LEVEL_WARNING, "Can't parse mongrel2 log: " + line);
 		}
-		if(line.midRef(at + 1, end - at - 1) == "DEBUG")
+
+#if QT_VERSION >= 0x060000
+		QStringView s = QStringView(line).mid(at + 1, end - at - 1);
+#else
+		QStringRef s = line.midRef(at + 1, end - at - 1);
+#endif
+		if(s.compare(QLatin1String("DEBUG")) == 0)
 		{
 			level = LOG_LEVEL_DEBUG;
 		}
-		else if(line.midRef(at + 1, end - at - 1) == "INFO")
+		else if(s.compare(QLatin1String("INFO")) == 0)
 		{
 			level = LOG_LEVEL_INFO;
 		}
-		else if(line.midRef(at + 1, end - at - 1) == "ERROR")
+		else if(s.compare(QLatin1String("ERROR")) == 0)
 		{
 			level = LOG_LEVEL_ERROR;
 		}
-		else if(line.midRef(at + 1, end - at - 1) == "WARN")
+		else if(s.compare(QLatin1String("WARN")) == 0)
 		{
 			level = LOG_LEVEL_WARNING;
 		}

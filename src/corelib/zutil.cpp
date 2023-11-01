@@ -22,7 +22,6 @@
 
 #include "zutil.h"
 
-#include <QStringList>
 #include <QFile>
 #include "qzmqsocket.h"
 

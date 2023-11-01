@@ -32,6 +32,17 @@
 
 #define STOP_TIMEOUT 4000
 
+static void setupChild()
+{
+	signal(SIGINT, SIG_IGN);
+
+	// subprocesses hopefully respect SIG_IGN, but are not required
+	//   to. in case subprocess might reinstate a SIGINT handler,
+	//   detach from process group to ensure ctrl-c in a shell
+	//   doesn't cause SIGINT to be sent directly to subprocesses
+	setpgid(0, 0);
+}
+
 class ServiceProcess : public QProcess
 {
 	Q_OBJECT
@@ -40,19 +51,18 @@ public:
 	ServiceProcess(QObject *parent = 0) :
 		QProcess(parent)
 	{
+#if QT_VERSION >= 0x060000
+		setChildProcessModifier(setupChild);
+#endif
 	}
 
+#if QT_VERSION < 0x060000
 	// reimplemented
 	virtual void setupChildProcess()
 	{
-		signal(SIGINT, SIG_IGN);
-
-		// subprocesses hopefully respect SIG_IGN, but are not required
-		//   to. in case subprocess might reinstate a SIGINT handler,
-		//   detach from process group to ensure ctrl-c in a shell
-		//   doesn't cause SIGINT to be sent directly to subprocesses
-		setpgid(0, 0);
+		setupChild();
 	}
+#endif
 };
 
 class Service::Private : public QObject
