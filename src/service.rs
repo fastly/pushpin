@@ -15,7 +15,7 @@
  */
 
 use crate::runner::Settings;
-use log::{error, LevelFilter};
+use log::{debug, error, LevelFilter};
 use mpsc::{channel, Sender};
 use signal_hook::consts::{SIGINT, SIGTERM, TERM_SIGNALS};
 use signal_hook::iterator::Signals;
@@ -136,6 +136,8 @@ impl Service {
             // Capture stdout and stderr
             command.stdout(Stdio::piped());
             command.stderr(Stdio::piped());
+
+            debug!("running: {}", args.join(" "));
 
             let mut child = match command.spawn() {
                 Ok(x) => x,

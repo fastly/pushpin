@@ -1,0 +1,7 @@
+conf.pri
+Makefile
+*.o
+*.moc
+moc_*.cpp
+/examples/helloclient/helloclient
+/examples/helloserver/helloserver

@@ -432,6 +432,12 @@ arg: logdir=[path],Directory for log files.  Default: /var/log
 #include <QDateTime>
 #include <QSettings>
 
+#if QT_VERSION >= 0x050e00
+#define ENDL Qt::endl
+#else
+#define ENDL endl
+#endif
+
 static QString getVersion()
 {
 	QSettings settings("Cargo.toml", QSettings::IniFormat);
@@ -494,9 +500,9 @@ public:
 		if(file.open(QIODevice::WriteOnly | QIODevice::Text))
 		{
 			QTextStream stream( &file );
-			stream << "#define VERSION \\"" << version << "\\"" << endl;
-			stream << "#define LIBDIR \\"" << libdir << "/pushpin\\"" << endl;
-			stream << "#define CONFIGDIR \\"" << configdir << "/pushpin\\"" << endl;
+			stream << "#define VERSION \\"" << version << "\\"" << ENDL;
+			stream << "#define LIBDIR \\"" << libdir << "/pushpin\\"" << ENDL;
+			stream << "#define CONFIGDIR \\"" << configdir << "/pushpin\\"" << ENDL;
 		}
 
 		conf->addDefine("HAVE_CONFIG");
@@ -737,10 +743,15 @@ QStringList qc_pathlist()
     QStringList list;
     QString     path = qc_getenv("PATH");
     if (!path.isEmpty()) {
-#ifdef Q_OS_WIN
-        list = path.split(';', QString::SkipEmptyParts);
+#if QT_VERSION >= 0x060000
+        Qt::SplitBehavior flags = Qt::SkipEmptyParts;
 #else
-        list = path.split(':', QString::SkipEmptyParts);
+        QString::SplitBehavior flags = QString::SkipEmptyParts;
+#endif
+#ifdef Q_OS_WIN
+        list = path.split(';', flags);
+#else
+        list = path.split(':', flags);
 #endif
     }
 #ifdef Q_OS_WIN

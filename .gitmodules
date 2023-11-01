@@ -1,3 +1,0 @@
-[submodule "qzmq"]
-	path = src/corelib/qzmq
-	url = https://github.com/jkarneges/qzmq.git
