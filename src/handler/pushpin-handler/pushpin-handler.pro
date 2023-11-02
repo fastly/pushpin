@@ -10,8 +10,8 @@ OBJECTS_DIR = $$OUT_PWD/_obj
 LIBS += -L$$PWD/.. -lpushpin-handler
 PRE_TARGETDEPS += $$PWD/../libpushpin-handler.a
 
-LIBS += -L$$PWD/../../corelib -lpushpin-core
-PRE_TARGETDEPS += $$PWD/../../corelib/libpushpin-core.a
+LIBS += -L$$PWD/../../cpp -lpushpin-cpp
+PRE_TARGETDEPS += $$PWD/../../cpp/libpushpin-cpp.a
 
 include($$OUT_PWD/../../rust/lib.pri)
 include($$OUT_PWD/../../../conf.pri)

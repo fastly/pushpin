@@ -11,8 +11,8 @@ OBJECTS_DIR = $$OUT_PWD/_obj
 LIBS += -L$$PWD/.. -lrunner
 PRE_TARGETDEPS += $$PWD/../librunner.a
 
-LIBS += -L$$PWD/../../corelib -lpushpin-core
-PRE_TARGETDEPS += $$PWD/../../corelib/libpushpin-core.a
+LIBS += -L$$PWD/../../cpp -lpushpin-cpp
+PRE_TARGETDEPS += $$PWD/../../cpp/libpushpin-cpp.a
 
 include($$OUT_PWD/../../../conf.pri)
 include(runner.pri)

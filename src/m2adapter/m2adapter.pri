@@ -1,7 +1,7 @@
-CORE_DIR = $$PWD/../corelib
-QZMQ_DIR = $$PWD/../corelib/qzmq
+CPP_DIR = $$PWD/../cpp
+QZMQ_DIR = $$PWD/../cpp/qzmq
 
-INCLUDEPATH += $$CORE_DIR
+INCLUDEPATH += $$CPP_DIR
 
 INCLUDEPATH += $$QZMQ_DIR/src
 

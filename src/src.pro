@@ -4,26 +4,26 @@ include($$OUT_PWD/../conf.pri)
 
 rust.subdir = rust
 
-corelib.subdir = corelib
-corelib.depends = rust
+cpp.subdir = cpp
+cpp.depends = rust
 
 m2adapter.subdir = m2adapter
-m2adapter.depends = corelib
+m2adapter.depends = cpp
 
 proxy.subdir = proxy
-proxy.depends = corelib
+proxy.depends = cpp
 
 handler.subdir = handler
-handler.depends = corelib
+handler.depends = cpp
 
 runner.subdir = runner
-runner.depends = corelib
+runner.depends = cpp
 
 pushpin.subdir = pushpin
 
 SUBDIRS += \
 	rust \
-	corelib \
+	cpp \
 	m2adapter \
 	proxy \
 	handler \

@@ -1,11 +1,11 @@
 TEMPLATE = subdirs
 
-corelib.subdir = corelib
+cpp.subdir = cpp
 tests.subdir = tests
-tests.depends = corelib
+tests.depends = cpp
 
 tests.CONFIG += no_default_install
 
 SUBDIRS += \
-	corelib \
+	cpp \
 	tests
