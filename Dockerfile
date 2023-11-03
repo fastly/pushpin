@@ -25,6 +25,7 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib make check
 RUN env LD_LIBRARY_PATH=/usr/local/lib cargo test
 RUN make install
 RUN cd pushpin-healthcheck && cargo build --release && cp ./target/release/pushpin-healthcheck /opt/fst-pushpin/bin
+RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-legacy
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-handler
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-proxy
