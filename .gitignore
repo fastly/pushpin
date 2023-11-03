@@ -30,12 +30,6 @@ vendor
 /src/cpp/tests/*test/*test
 /src/m2adapter/Makefile
 /src/proxy/Makefile
-/src/proxy/libpushpin-proxy/Makefile
-/src/proxy/pushpin-proxy/Makefile
-/src/proxy/libpushpin-proxy.a
-/src/proxy/tests/Makefile
-/src/proxy/tests/*test/Makefile
-/src/proxy/tests/*test/*test
 /src/handler/Makefile
 /src/handler/libpushpin-handler/Makefile
 /src/handler/pushpin-handler/Makefile

@@ -2,4 +2,6 @@ TEMPLATE = subdirs
 
 SUBDIRS += \
 	httpheaderstest \
-	jwttest
+	jwttest \
+	routesfiletest \
+	proxyenginetest
