@@ -21,7 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "engine.h"
+#include "handlerengine.h"
 
 #include <assert.h>
 #include <algorithm>
@@ -1181,7 +1181,7 @@ private slots:
 	}
 };
 
-class Engine::Private : public QObject
+class HandlerEngine::Private : public QObject
 {
 	Q_OBJECT
 
@@ -1189,12 +1189,12 @@ public:
 	class PublishAction : public RateLimiter::Action
 	{
 	public:
-		Engine::Private *ep;
+		HandlerEngine::Private *ep;
 		QPointer<QObject> target;
 		PublishItem item;
 		QList<QByteArray> exposeHeaders;
 
-		PublishAction(Engine::Private *_ep, QObject *_target, const PublishItem &_item, const QList<QByteArray> &_exposeHeaders = QList<QByteArray>()) :
+		PublishAction(HandlerEngine::Private *_ep, QObject *_target, const PublishItem &_item, const QList<QByteArray> &_exposeHeaders = QList<QByteArray>()) :
 			ep(_ep),
 			target(_target),
 			item(_item),
@@ -1212,7 +1212,7 @@ public:
 		}
 	};
 
-	Engine *q;
+	HandlerEngine *q;
 	Configuration config;
 	ZhttpManager *zhttpIn;
 	ZhttpManager *zhttpOut;
@@ -1244,7 +1244,7 @@ public:
 	QSet<Deferred*> deferreds;
 	Deferred *report;
 
-	Private(Engine *_q) :
+	Private(HandlerEngine *_q) :
 		QObject(_q),
 		q(_q),
 		zhttpIn(0),
@@ -3143,25 +3143,25 @@ private slots:
 	}
 };
 
-Engine::Engine(QObject *parent) :
+HandlerEngine::HandlerEngine(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
 }
 
-Engine::~Engine()
+HandlerEngine::~HandlerEngine()
 {
 	delete d;
 }
 
-bool Engine::start(const Configuration &config)
+bool HandlerEngine::start(const Configuration &config)
 {
 	return d->start(config);
 }
 
-void Engine::reload()
+void HandlerEngine::reload()
 {
 	d->reload();
 }
 
-#include "engine.moc"
+#include "handlerengine.moc"

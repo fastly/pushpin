@@ -31,12 +31,6 @@ vendor
 /src/m2adapter/Makefile
 /src/proxy/Makefile
 /src/handler/Makefile
-/src/handler/libpushpin-handler/Makefile
-/src/handler/pushpin-handler/Makefile
-/src/handler/libpushpin-handler.a
-/src/handler/tests/Makefile
-/src/handler/tests/*test/Makefile
-/src/handler/tests/*test/*test
 /src/rust/Makefile
 /src/runner/Makefile
 /src/runner/librunner/Makefile

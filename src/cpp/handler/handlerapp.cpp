@@ -20,7 +20,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "app.h"
+#include "handlerapp.h"
 
 #include <assert.h>
 #include <QCoreApplication>
@@ -31,7 +31,7 @@
 #include "processquit.h"
 #include "log.h"
 #include "settings.h"
-#include "engine.h"
+#include "handlerengine.h"
 #include "config.h"
 
 #define DEFAULT_HTTP_MAX_HEADERS_SIZE 10000
@@ -144,16 +144,16 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
-class App::Private : public QObject
+class HandlerApp::Private : public QObject
 {
 	Q_OBJECT
 
 public:
-	App *q;
+	HandlerApp *q;
 	ArgsData args;
-	Engine *engine;
+	HandlerEngine *engine;
 
-	Private(App *_q) :
+	Private(HandlerApp *_q) :
 		QObject(_q),
 		q(_q),
 		engine(0)
@@ -299,7 +299,7 @@ public:
 			return;
 		}
 
-		Engine::Configuration config;
+		HandlerEngine::Configuration config;
 		config.appVersion = VERSION;
 		config.instanceId = "pushpin-handler_" + QByteArray::number(QCoreApplication::applicationPid());
 		if(!services.contains("mongrel2") && (!condure_in_stream_specs.isEmpty() || !condure_out_specs.isEmpty()))
@@ -350,7 +350,7 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		engine = new Engine(this);
+		engine = new HandlerEngine(this);
 		if(!engine->start(config))
 		{
 			emit q->quit();
@@ -383,20 +383,20 @@ private slots:
 	}
 };
 
-App::App(QObject *parent) :
+HandlerApp::HandlerApp(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
 }
 
-App::~App()
+HandlerApp::~HandlerApp()
 {
 	delete d;
 }
 
-void App::start()
+void HandlerApp::start()
 {
 	d->start();
 }
 
-#include "app.moc"
+#include "handlerapp.moc"

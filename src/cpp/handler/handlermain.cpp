@@ -22,20 +22,20 @@
 
 #include <QCoreApplication>
 #include <QTimer>
-#include "app.h"
+#include "handlerapp.h"
 
-class AppMain : public QObject
+class HandlerAppMain : public QObject
 {
 	Q_OBJECT
 
 public:
-	App *app;
+	HandlerApp *app;
 
 public slots:
 	void start()
 	{
-		app = new App(this);
-		connect(app, &App::quit, this, &AppMain::app_quit);
+		app = new HandlerApp(this);
+		connect(app, &HandlerApp::quit, this, &HandlerAppMain::app_quit);
 		app->start();
 	}
 
@@ -46,13 +46,17 @@ public slots:
 	}
 };
 
-int main(int argc, char **argv)
+extern "C" {
+
+int handler_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
-	AppMain appMain;
+	HandlerAppMain appMain;
 	QTimer::singleShot(0, &appMain, SLOT(start()));
 	return qapp.exec();
 }
 
-#include "main.moc"
+}
+
+#include "handlermain.moc"

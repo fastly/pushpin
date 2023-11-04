@@ -1,14 +1,21 @@
-TEMPLATE = subdirs
+CONFIG += console
+CONFIG -= app_bundle
+QT -= gui
+QT += network
+TARGET = pushpin-handler
+DESTDIR = ../../bin
 
-libpushpin_handler.subdir = libpushpin-handler
-pushpin_handler.subdir = pushpin-handler
-pushpin_handler.depends = libpushpin_handler
-tests.subdir = tests
-tests.depends = libpushpin_handler
+MOC_DIR = $$OUT_PWD/_moc
+OBJECTS_DIR = $$OUT_PWD/_obj
 
-tests.CONFIG += no_default_install
+LIBS += -L$$PWD/../cpp -lpushpin-cpp
+PRE_TARGETDEPS += $$PWD/../cpp/libpushpin-cpp.a
 
-SUBDIRS += \
-	libpushpin_handler \
-	pushpin_handler \
-	tests
+include($$OUT_PWD/../rust/lib.pri)
+include($$OUT_PWD/../../conf.pri)
+include(handler.pri)
+
+unix:!isEmpty(BINDIR) {
+	target.path = $$BINDIR
+	INSTALLS += target
+}

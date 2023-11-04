@@ -29,7 +29,7 @@
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "packet/httpresponsedata.h"
-#include "engine.h"
+#include "handlerengine.h"
 
 class Wrapper : public QObject
 {
@@ -253,7 +253,7 @@ class EngineTest : public QObject
 	Q_OBJECT
 
 private:
-	Engine *engine;
+	HandlerEngine *engine;
 	Wrapper *wrapper;
 
 private slots:
@@ -266,9 +266,9 @@ private slots:
 		wrapper->startHttp();
 		wrapper->startProxy();
 
-		engine = new Engine(this);
+		engine = new HandlerEngine(this);
 
-		Engine::Configuration config;
+		HandlerEngine::Configuration config;
 		config.instanceId = "handler";
 		config.serverInStreamSpecs = QStringList() << "ipc://client-out-stream";
 		config.serverOutSpecs = QStringList() << "ipc://client-in";

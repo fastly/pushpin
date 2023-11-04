@@ -20,14 +20,14 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef ENGINE_H
-#define ENGINE_H
+#ifndef HANDLERENGINE_H
+#define HANDLERENGINE_H
 
 #include <QObject>
 #include <QStringList>
 #include <QHostAddress>
 
-class Engine : public QObject
+class HandlerEngine : public QObject
 {
 	Q_OBJECT
 
@@ -100,8 +100,8 @@ public:
 		}
 	};
 
-	Engine(QObject *parent = 0);
-	~Engine();
+	HandlerEngine(QObject *parent = 0);
+	~HandlerEngine();
 
 	bool start(const Configuration &config);
 	void reload();
