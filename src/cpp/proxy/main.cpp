@@ -46,13 +46,17 @@ public slots:
 	}
 };
 
-int main(int argc, char **argv)
+extern "C" {
+
+int proxy_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
 	AppMain appMain;
 	QTimer::singleShot(0, &appMain, SLOT(start()));
 	return qapp.exec();
+}
+
 }
 
 #include "main.moc"

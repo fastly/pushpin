@@ -6,6 +6,7 @@ SRC_DIR = $$PWD/..
 QZMQ_DIR = $$SRC_DIR/qzmq
 RUST_DIR = $$SRC_DIR/../rust
 
+INCLUDEPATH += $$SRC_DIR
 INCLUDEPATH += $$QZMQ_DIR/src
 include($$QZMQ_DIR/src/src.pri)
 
@@ -90,3 +91,55 @@ SOURCES += \
 	$$SRC_DIR/stats.cpp \
 	$$SRC_DIR/statsmanager.cpp \
 	$$SRC_DIR/settings.cpp
+
+PSRC_DIR = $$SRC_DIR/proxy
+
+HEADERS += \
+	$$PSRC_DIR/testhttprequest.h \
+	$$PSRC_DIR/testwebsocket.h \
+	$$PSRC_DIR/websocketoverhttp.h \
+	$$PSRC_DIR/zrpcchecker.h \
+	$$PSRC_DIR/sockjsmanager.h \
+	$$PSRC_DIR/sockjssession.h \
+	$$PSRC_DIR/inspectrequest.h \
+	$$PSRC_DIR/acceptrequest.h \
+	$$PSRC_DIR/connectionmanager.h \
+	$$PSRC_DIR/wscontrolmanager.h \
+	$$PSRC_DIR/wscontrolsession.h \
+	$$PSRC_DIR/acceptdata.h \
+	$$PSRC_DIR/routesfile.h \
+	$$PSRC_DIR/domainmap.h \
+	$$PSRC_DIR/zroutes.h \
+	$$PSRC_DIR/xffrule.h \
+	$$PSRC_DIR/requestsession.h \
+	$$PSRC_DIR/proxyutil.h \
+	$$PSRC_DIR/proxysession.h \
+	$$PSRC_DIR/wsproxysession.h \
+	$$PSRC_DIR/updater.h \
+	$$PSRC_DIR/engine.h \
+	$$PSRC_DIR/app.h \
+	$$PSRC_DIR/main.h
+
+SOURCES += \
+	$$PSRC_DIR/testhttprequest.cpp \
+	$$PSRC_DIR/testwebsocket.cpp \
+	$$PSRC_DIR/websocketoverhttp.cpp \
+	$$PSRC_DIR/zrpcchecker.cpp \
+	$$PSRC_DIR/sockjsmanager.cpp \
+	$$PSRC_DIR/sockjssession.cpp \
+	$$PSRC_DIR/inspectrequest.cpp \
+	$$PSRC_DIR/acceptrequest.cpp \
+	$$PSRC_DIR/connectionmanager.cpp \
+	$$PSRC_DIR/wscontrolmanager.cpp \
+	$$PSRC_DIR/wscontrolsession.cpp \
+	$$PSRC_DIR/routesfile.cpp \
+	$$PSRC_DIR/domainmap.cpp \
+	$$PSRC_DIR/zroutes.cpp \
+	$$PSRC_DIR/requestsession.cpp \
+	$$PSRC_DIR/proxyutil.cpp \
+	$$PSRC_DIR/proxysession.cpp \
+	$$PSRC_DIR/wsproxysession.cpp \
+	$$PSRC_DIR/updater.cpp \
+	$$PSRC_DIR/engine.cpp \
+	$$PSRC_DIR/app.cpp \
+	$$PSRC_DIR/main.cpp

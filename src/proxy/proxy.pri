@@ -2,12 +2,10 @@ QMAKE_CXXFLAGS += $$(CXXFLAGS)
 QMAKE_CFLAGS += $$(CFLAGS)
 QMAKE_LFLAGS += $$(LDFLAGS)
 
-SRC_DIR = $$PWD/..
-CPP_DIR = $$PWD/../../cpp
+CPP_DIR = $$PWD/../cpp
 QZMQ_DIR = $$CPP_DIR/qzmq
-RUST_DIR = $$SRC_DIR/../rust
+RUST_DIR = $$PWD/../rust
 
-INCLUDEPATH += $$SRC_DIR
 INCLUDEPATH += $$CPP_DIR
 INCLUDEPATH += $$QZMQ_DIR/src
 
@@ -15,9 +13,4 @@ DEFINES += NO_IRISNET
 
 INCLUDEPATH += $$RUST_DIR/include
 
-HEADERS += \
-	$$SRC_DIR/app.h
-
-SOURCES += \
-	$$SRC_DIR/app.cpp \
-	$$SRC_DIR/main.cpp
+SOURCES += $$PWD/main.c

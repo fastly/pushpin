@@ -15,6 +15,7 @@ include($$PWD/../../rust/lib.pri)
 include($$PWD/../../../conf.pri)
 
 INCLUDEPATH += $$SRC_DIR
+INCLUDEPATH += $$SRC_DIR/proxy
 INCLUDEPATH += $$QZMQ_DIR/src
 
 DEFINES += NO_IRISNET
