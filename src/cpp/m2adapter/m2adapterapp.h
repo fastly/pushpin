@@ -20,18 +20,18 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef APP_H
-#define APP_H
+#ifndef M2ADAPTERAPP_H
+#define M2ADAPTERAPP_H
 
 #include <QObject>
 
-class App : public QObject
+class M2AdapterApp : public QObject
 {
 	Q_OBJECT
 
 public:
-	App(QObject *parent = 0);
-	~App();
+	M2AdapterApp(QObject *parent = 0);
+	~M2AdapterApp();
 
 	void start();
 

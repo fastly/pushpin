@@ -204,3 +204,44 @@ SOURCES += \
 	$$HSRC_DIR/handlerengine.cpp \
 	$$HSRC_DIR/handlerapp.cpp \
 	$$HSRC_DIR/handlermain.cpp
+
+MSRC_DIR = $$SRC_DIR/m2adapter
+
+HEADERS += \
+	$$MSRC_DIR/m2requestpacket.h \
+        $$MSRC_DIR/m2responsepacket.h \
+        $$MSRC_DIR/m2adapterapp.h \
+	$$MSRC_DIR/main.h
+
+SOURCES += \
+	$$MSRC_DIR/m2requestpacket.cpp \
+	$$MSRC_DIR/m2responsepacket.cpp \
+	$$MSRC_DIR/m2adapterapp.cpp \
+	$$MSRC_DIR/m2adaptermain.cpp
+
+RSRC_DIR = $$SRC_DIR/runner
+
+HEADERS += \
+	$$RSRC_DIR/template.h \
+	$$RSRC_DIR/service.h \
+	$$RSRC_DIR/listenport.h \
+	$$RSRC_DIR/condureservice.h \
+	$$RSRC_DIR/mongrel2service.h \
+	$$RSRC_DIR/m2adapterservice.h \
+	$$RSRC_DIR/zurlservice.h \
+	$$RSRC_DIR/pushpinproxyservice.h \
+	$$RSRC_DIR/pushpinhandlerservice.h \
+	$$RSRC_DIR/runnerapp.h \
+	$$RSRC_DIR/main.h
+
+SOURCES += \
+	$$RSRC_DIR/template.cpp \
+	$$RSRC_DIR/service.cpp \
+	$$RSRC_DIR/condureservice.cpp \
+	$$RSRC_DIR/mongrel2service.cpp \
+	$$RSRC_DIR/m2adapterservice.cpp \
+	$$RSRC_DIR/zurlservice.cpp \
+	$$RSRC_DIR/pushpinproxyservice.cpp \
+	$$RSRC_DIR/pushpinhandlerservice.cpp \
+	$$RSRC_DIR/runnerapp.cpp \
+	$$RSRC_DIR/runnermain.cpp

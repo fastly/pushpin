@@ -20,7 +20,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "app.h"
+#include "m2adapterapp.h"
 
 #include <assert.h>
 #include <QCoreApplication>
@@ -230,7 +230,7 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
-class App::Private : public QObject
+class M2AdapterApp::Private : public QObject
 {
 	Q_OBJECT
 
@@ -412,7 +412,7 @@ public:
 		}
 	};
 
-	App *q;
+	M2AdapterApp *q;
 	ArgsData args;
 	QByteArray zhttpInstanceId;
 	QByteArray zwsInstanceId;
@@ -451,7 +451,7 @@ public:
 	QTimer *statusTimer;
 	QTimer *refreshTimer;
 
-	Private(App *_q) :
+	Private(M2AdapterApp *_q) :
 		QObject(_q),
 		q(_q),
 		m2_in_sock(0),
@@ -2870,20 +2870,20 @@ private slots:
 	}
 };
 
-App::App(QObject *parent) :
+M2AdapterApp::M2AdapterApp(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
 }
 
-App::~App()
+M2AdapterApp::~M2AdapterApp()
 {
 	delete d;
 }
 
-void App::start()
+void M2AdapterApp::start()
 {
 	d->start();
 }
 
-#include "app.moc"
+#include "m2adapterapp.moc"
