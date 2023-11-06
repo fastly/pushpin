@@ -1,4 +1,4 @@
-#!/opt/chef/embedded/bin/ruby
+#!/opt/cinc/embedded/bin/ruby
 
 t0 = Time.now.getutc.to_f
 
