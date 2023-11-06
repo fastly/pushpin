@@ -16,6 +16,7 @@ include($$PWD/../../../conf.pri)
 
 INCLUDEPATH += $$SRC_DIR
 INCLUDEPATH += $$SRC_DIR/proxy
+INCLUDEPATH += $$SRC_DIR/handler
 INCLUDEPATH += $$QZMQ_DIR/src
 
 DEFINES += NO_IRISNET

@@ -4,4 +4,10 @@ SUBDIRS += \
 	httpheaderstest \
 	jwttest \
 	routesfiletest \
-	proxyenginetest
+	proxyenginetest \
+	jsonpatchtest \
+	instructtest \
+	idformattest \
+	publishformattest \
+	publishitemtest \
+	handlerenginetest

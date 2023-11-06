@@ -143,3 +143,64 @@ SOURCES += \
 	$$PSRC_DIR/engine.cpp \
 	$$PSRC_DIR/app.cpp \
 	$$PSRC_DIR/main.cpp
+
+HSRC_DIR = $$SRC_DIR/handler
+
+HEADERS += \
+	$$HSRC_DIR/deferred.h \
+	$$HSRC_DIR/variantutil.h \
+	$$HSRC_DIR/jsonpointer.h \
+	$$HSRC_DIR/jsonpatch.h \
+	$$HSRC_DIR/detectrule.h \
+	$$HSRC_DIR/lastids.h \
+	$$HSRC_DIR/cidset.h \
+	$$HSRC_DIR/sessionrequest.h \
+	$$HSRC_DIR/requeststate.h \
+	$$HSRC_DIR/wscontrolmessage.h \
+	$$HSRC_DIR/publishformat.h \
+	$$HSRC_DIR/publishitem.h \
+	$$HSRC_DIR/instruct.h \
+	$$HSRC_DIR/format.h \
+	$$HSRC_DIR/idformat.h \
+	$$HSRC_DIR/httpsession.h \
+	$$HSRC_DIR/httpsessionupdatemanager.h \
+	$$HSRC_DIR/wssession.h \
+	$$HSRC_DIR/publishlastids.h \
+	$$HSRC_DIR/controlrequest.h \
+	$$HSRC_DIR/conncheckworker.h \
+	$$HSRC_DIR/refreshworker.h \
+	$$HSRC_DIR/ratelimiter.h \
+	$$HSRC_DIR/sequencer.h \
+	$$HSRC_DIR/filter.h \
+	$$HSRC_DIR/filterstack.h \
+	$$HSRC_DIR/handlerengine.h \
+	$$HSRC_DIR/handlerapp.h \
+	$$HSRC_DIR/main.h
+
+SOURCES += \
+	$$HSRC_DIR/deferred.cpp \
+	$$HSRC_DIR/variantutil.cpp \
+	$$HSRC_DIR/jsonpointer.cpp \
+	$$HSRC_DIR/jsonpatch.cpp \
+	$$HSRC_DIR/sessionrequest.cpp \
+	$$HSRC_DIR/requeststate.cpp \
+	$$HSRC_DIR/wscontrolmessage.cpp \
+	$$HSRC_DIR/publishformat.cpp \
+	$$HSRC_DIR/publishitem.cpp \
+	$$HSRC_DIR/instruct.cpp \
+	$$HSRC_DIR/format.cpp \
+	$$HSRC_DIR/idformat.cpp \
+	$$HSRC_DIR/httpsession.cpp \
+	$$HSRC_DIR/httpsessionupdatemanager.cpp \
+	$$HSRC_DIR/wssession.cpp \
+	$$HSRC_DIR/publishlastids.cpp \
+	$$HSRC_DIR/controlrequest.cpp \
+	$$HSRC_DIR/conncheckworker.cpp \
+	$$HSRC_DIR/refreshworker.cpp \
+	$$HSRC_DIR/ratelimiter.cpp \
+	$$HSRC_DIR/sequencer.cpp \
+	$$HSRC_DIR/filter.cpp \
+	$$HSRC_DIR/filterstack.cpp \
+	$$HSRC_DIR/handlerengine.cpp \
+	$$HSRC_DIR/handlerapp.cpp \
+	$$HSRC_DIR/handlermain.cpp
