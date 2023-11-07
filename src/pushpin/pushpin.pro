@@ -11,12 +11,18 @@ pushpin_conf_inst.depends = ../../examples/config/pushpin.conf
 QMAKE_EXTRA_TARGETS += pushpin_conf_inst
 PRE_TARGETDEPS += pushpin.conf.inst
 
-# install general lib files
+# install lib files
 
 libfiles.path = $$LIBDIR
 libfiles.files = internal.conf
 
+runnerlibfiles.path = $$LIBDIR/runner
+runnerlibfiles.files = $$PWD/../runner/*.template
+
 # install config files
+
+runnerconfigfiles.path = $$CONFIGDIR/runner
+runnerconfigfiles.files = $$PWD/../../examples/config/runner/certs
 
 routes.path = $$CONFIGDIR
 routes.extra = test -e $(INSTALL_ROOT)$$routes.path/routes || cp -f ../../examples/config/routes $(INSTALL_ROOT)$$routes.path/routes
@@ -24,4 +30,4 @@ routes.extra = test -e $(INSTALL_ROOT)$$routes.path/routes || cp -f ../../exampl
 pushpinconf.path = $$CONFIGDIR
 pushpinconf.extra = test -e $(INSTALL_ROOT)$$pushpinconf.path/pushpin.conf || cp -f pushpin.conf.inst $(INSTALL_ROOT)$$pushpinconf.path/pushpin.conf
 
-INSTALLS += libfiles routes pushpinconf
+INSTALLS += libfiles runnerlibfiles runnerconfigfiles routes pushpinconf
