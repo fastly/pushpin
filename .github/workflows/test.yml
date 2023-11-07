@@ -46,7 +46,7 @@ jobs:
       run: cargo fmt --check
       shell: bash
     - name: build
-      run: ./configure && cargo build && make
+      run: ./configure && cargo check && make
       shell: bash
     - name: check
       run: make check
