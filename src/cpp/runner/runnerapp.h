@@ -20,18 +20,18 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef APP_H
-#define APP_H
+#ifndef RUNNERAPP_H
+#define RUNNERAPP_H
 
 #include <QObject>
 
-class App : public QObject
+class RunnerApp : public QObject
 {
 	Q_OBJECT
 
 public:
-	App(QObject *parent = 0);
-	~App();
+	RunnerApp(QObject *parent = 0);
+	~RunnerApp();
 
 	void start();
 

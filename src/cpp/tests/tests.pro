@@ -10,4 +10,5 @@ SUBDIRS += \
 	idformattest \
 	publishformattest \
 	publishitemtest \
-	handlerenginetest
+	handlerenginetest \
+	templatetest

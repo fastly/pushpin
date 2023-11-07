@@ -22,20 +22,20 @@
 
 #include <QCoreApplication>
 #include <QTimer>
-#include "app.h"
+#include "m2adapterapp.h"
 
-class AppMain : public QObject
+class M2AdapterAppMain : public QObject
 {
 	Q_OBJECT
 
 public:
-	App *app;
+	M2AdapterApp *app;
 
 public slots:
 	void start()
 	{
-		app = new App(this);
-		connect(app, &App::quit, this, &AppMain::app_quit);
+		app = new M2AdapterApp(this);
+		connect(app, &M2AdapterApp::quit, this, &M2AdapterAppMain::app_quit);
 		app->start();
 	}
 
@@ -46,13 +46,17 @@ public slots:
 	}
 };
 
-int main(int argc, char **argv)
+extern "C" {
+
+int m2adapter_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
-	AppMain appMain;
+	M2AdapterAppMain appMain;
 	QTimer::singleShot(0, &appMain, SLOT(start()));
 	return qapp.exec();
 }
 
-#include "main.moc"
+}
+
+#include "m2adaptermain.moc"

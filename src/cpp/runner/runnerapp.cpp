@@ -20,7 +20,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "app.h"
+#include "runnerapp.h"
 
 #include <QCoreApplication>
 #include <QCommandLineParser>
@@ -246,18 +246,18 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
-class App::Private : public QObject
+class RunnerApp::Private : public QObject
 {
 	Q_OBJECT
 
 public:
-	App *q;
+	RunnerApp *q;
 	ArgsData args;
 	QList<Service*> services;
 	bool stopping;
 	bool errored;
 
-	Private(App *_q) :
+	Private(RunnerApp *_q) :
 		QObject(_q),
 		q(_q),
 		stopping(false),
@@ -792,20 +792,20 @@ private slots:
 	}
 };
 
-App::App(QObject *parent) :
+RunnerApp::RunnerApp(QObject *parent) :
 	QObject(parent)
 {
 	d = new Private(this);
 }
 
-App::~App()
+RunnerApp::~RunnerApp()
 {
 	delete d;
 }
 
-void App::start()
+void RunnerApp::start()
 {
 	d->start();
 }
 
-#include "app.moc"
+#include "runnerapp.moc"

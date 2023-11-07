@@ -33,9 +33,6 @@ vendor
 /src/handler/Makefile
 /src/rust/Makefile
 /src/runner/Makefile
-/src/runner/librunner/Makefile
-/src/runner/runner/Makefile
-/src/runner/librunner.a
 /src/runner/tests/Makefile
 /src/runner/tests/*test/Makefile
 /src/runner/tests/*test/*test
