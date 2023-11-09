@@ -1,0 +1,16 @@
+/*
+-----BEGIN QCMOD-----
+name: Qt >= 5.12.0
+-----END QCMOD-----
+*/
+class qc_boost : public ConfObj
+{
+public:
+	qc_boost(Conf *c) : ConfObj(c) {}
+	QString name() const { return "Qt >= 5.12.0"; }
+	QString shortname() const { return "boost"; }
+	bool exec()
+	{
+		return(QT_VERSION >= 0x050c00);
+	}
+};
