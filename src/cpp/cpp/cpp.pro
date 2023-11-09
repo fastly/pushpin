@@ -4,10 +4,12 @@ CONFIG += staticlib
 QT -= gui
 QT += network
 TARGET = pushpin-cpp
-DESTDIR = ..
+DESTDIR = ../../../target/cpp
 
-MOC_DIR = $$OUT_PWD/_moc
-OBJECTS_DIR = $$OUT_PWD/_obj
+cpp_build_dir = $$OUT_PWD/../../../target/cpp
+
+MOC_DIR = $$cpp_build_dir/moc
+OBJECTS_DIR = $$cpp_build_dir/obj
 
 include($$OUT_PWD/../../../conf.pri)
 include(cpp.pri)

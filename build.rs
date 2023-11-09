@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let conf = {
@@ -35,7 +36,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let lib_dir = conf.get("LIBDIR").unwrap();
     let qt_install_libs = conf.get("QT_INSTALL_LIBS").unwrap();
 
-    let cpp_lib_dir = fs::canonicalize(Path::new("src/cpp")).unwrap();
+    let cpp_lib_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join(Path::new("target/cpp"));
 
     println!("cargo:rustc-env=APP_VERSION={}", app_version);
     println!("cargo:rustc-env=CONFIG_DIR={}", config_dir);
@@ -50,6 +52,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rustc-link-search={}", qt_install_libs);
 
     println!("cargo:rerun-if-changed=conf.pri");
+    println!("cargo:rerun-if-changed=src");
+    println!(
+        "cargo:rerun-if-changed={}/libpushpin-cpp.a",
+        cpp_lib_dir.display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}/libpushpin-cpptest.a",
+        cpp_lib_dir.display()
+    );
 
     Ok(())
 }
