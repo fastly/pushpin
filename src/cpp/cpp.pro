@@ -2,4 +2,9 @@ TEMPLATE = subdirs
 
 cpp.subdir = cpp
 
-SUBDIRS += cpp
+tests.subdir = tests
+tests.depends = cpp
+
+SUBDIRS += \
+	cpp \
+	tests

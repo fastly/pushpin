@@ -117,5 +117,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(RoutesFileTest)
+extern "C" {
+
+int routesfile_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(RoutesFileTest)
+}
+
+}
+
 #include "routesfiletest.moc"

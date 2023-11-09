@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <QtTest/QtTest>
 #include <QSignalSpy>
+#include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qzmqsocket.h"
@@ -35,6 +36,7 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "packet/statspacket.h"
+#include "rtimer.h"
 #include "zhttpmanager.h"
 #include "statsmanager.h"
 #include "engine.h"
@@ -43,6 +45,8 @@ Q_DECLARE_METATYPE(QList<StatsPacket>);
 
 // NOTE: based on proxysession hardcoded max
 #define PROXY_MAX_ACCEPT_RESPONSE_BODY 100000
+
+namespace {
 
 class Wrapper : public QObject
 {
@@ -65,6 +69,7 @@ public:
 	QZmq::Valve *handlerAcceptValve;
 	QZmq::Socket *handlerRetryOutSock;
 
+	QDir workDir;
 	QHash<QByteArray, HttpRequestData> serverReqs;
 	bool isWs;
 	bool serverFailed;
@@ -81,8 +86,9 @@ public:
 	QByteArray requestBody;
 	QHash<QByteArray, HttpResponseData> responses;
 
-	Wrapper(QObject *parent) :
+	Wrapper(QObject *parent, QDir _workDir) :
 		QObject(parent),
+		workDir(_workDir),
 		isWs(false),
 		serverFailed(false),
 		inspectEnabled(true),
@@ -129,12 +135,12 @@ public:
 
 	void startHttp()
 	{
-		zhttpClientOutSock->bind("ipc://client-out");
-		zhttpClientOutStreamSock->bind("ipc://client-out-stream");
-		zhttpClientInSock->bind("ipc://client-in");
-		zhttpServerInSock->bind("ipc://server-in");
-		zhttpServerInStreamSock->bind("ipc://server-in-stream");
-		zhttpServerOutSock->bind("ipc://server-out");
+		zhttpClientOutSock->bind("ipc://" + workDir.filePath("client-out"));
+		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
+		zhttpClientInSock->bind("ipc://" + workDir.filePath("client-in"));
+		zhttpServerInSock->bind("ipc://" + workDir.filePath("server-in"));
+		zhttpServerInStreamSock->bind("ipc://" + workDir.filePath("server-in-stream"));
+		zhttpServerOutSock->bind("ipc://" + workDir.filePath("server-out"));
 
 		zhttpClientInSock->subscribe("test-client ");
 
@@ -145,9 +151,9 @@ public:
 
 	void startHandler()
 	{
-		handlerInspectSock->connectToAddress("ipc://inspect");
-		handlerAcceptSock->connectToAddress("ipc://accept");
-		handlerRetryOutSock->connectToAddress("ipc://retry-out");
+		handlerInspectSock->connectToAddress("ipc://" + workDir.filePath("inspect"));
+		handlerAcceptSock->connectToAddress("ipc://" + workDir.filePath("accept"));
+		handlerRetryOutSock->connectToAddress("ipc://" + workDir.filePath("retry-out"));
 
 		handlerInspectValve->open();
 		handlerAcceptValve->open();
@@ -539,7 +545,9 @@ private slots:
 	}
 };
 
-class EngineTest : public QObject
+}
+
+class ProxyEngineTest : public QObject
 {
 	Q_OBJECT
 
@@ -562,26 +570,29 @@ private slots:
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
-		wrapper = new Wrapper(this);
+		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
+		QDir workDir(rootDir.filePath("src/cpp/tests/proxyenginetest"));
+
+		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
 
 		engine = new Engine(this);
 
 		Engine::Configuration config;
 		config.clientId = "proxy";
-		config.serverInSpecs = QStringList() << "ipc://client-out";
-		config.serverInStreamSpecs = QStringList() << "ipc://client-out-stream";
-		config.serverOutSpecs = QStringList() << "ipc://client-in";
-		config.clientOutSpecs = QStringList() << "ipc://server-in";
-		config.clientOutStreamSpecs = QStringList() << "ipc://server-in-stream";
-		config.clientInSpecs = QStringList() << "ipc://server-out";
-		config.inspectSpec = "ipc://inspect";
-		config.acceptSpec = "ipc://accept";
-		config.retryInSpec = "ipc://retry-out";
-		config.statsSpec = "ipc://stats";
+		config.serverInSpecs = QStringList() << ("ipc://" + workDir.filePath("client-out"));
+		config.serverInStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("client-out-stream"));
+		config.serverOutSpecs = QStringList() << ("ipc://" + workDir.filePath("client-in"));
+		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in"));
+		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in-stream"));
+		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("server-out"));
+		config.inspectSpec = ("ipc://" + workDir.filePath("inspect"));
+		config.acceptSpec = ("ipc://" + workDir.filePath("accept"));
+		config.retryInSpec = ("ipc://" + workDir.filePath("retry-out"));
+		config.statsSpec = ("ipc://" + workDir.filePath("stats"));
 		config.inspectTimeout = 500;
 		config.inspectPrefetch = 5;
-		config.routesFile = "routes";
+		config.routesFile = workDir.filePath("routes");
 		config.sigIss = "pushpin";
 		config.sigKey = Jwt::EncodingKey::fromSecret("changeme");
 		config.connectionsMax = 20;
@@ -598,6 +609,8 @@ private slots:
 	{
 		delete engine;
 		delete wrapper;
+
+		RTimer::deinit();
 	}
 
 	void passthrough()
@@ -1381,5 +1394,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(EngineTest)
-#include "enginetest.moc"
+extern "C" {
+
+int proxyengine_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(ProxyEngineTest)
+}
+
+}
+
+#include "proxyenginetest.moc"

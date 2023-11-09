@@ -96,5 +96,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(JsonPatchTest)
+extern "C" {
+
+int jsonpatch_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(JsonPatchTest)
+}
+
+}
+
 #include "jsonpatchtest.moc"

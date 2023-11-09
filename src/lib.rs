@@ -277,7 +277,85 @@ pub unsafe fn call_c_main(
     let args: Vec<CString> = env::args_os()
         .map(|s| CString::new(s.into_string().unwrap()).unwrap())
         .collect();
-    let args: Vec<*const libc::c_char> = args.iter().map(|s| s.as_c_str().as_ptr()).collect();
+    let args: Vec<*const libc::c_char> = args.iter().map(|s| s.as_ptr()).collect();
 
     main_fn(args.len() as libc::c_int, args.as_ptr()) as u8
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[link(name = "pushpin-cpptest")]
+#[link(name = "pushpin-cpp")]
+#[link(name = "QtCore", kind = "framework")]
+#[link(name = "QtNetwork", kind = "framework")]
+#[link(name = "QtTest", kind = "framework")]
+extern "C" {
+    fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+}
+
+#[cfg(all(test, not(target_os = "macos")))]
+#[link(name = "pushpin-cpptest")]
+#[link(name = "pushpin-cpp")]
+#[link(name = "Qt5Core")]
+#[link(name = "Qt5Network")]
+#[link(name = "Qt5Test")]
+extern "C" {
+    fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+}
+
+/// # Safety
+///
+/// * `main_fn` must be safe to call.
+pub unsafe fn call_qtest_main(
+    main_fn: unsafe extern "C" fn(libc::c_int, *const *const libc::c_char) -> libc::c_int,
+) -> u8 {
+    let args: Vec<CString> = IntoIterator::into_iter(["qtest"])
+        .map(|s| CString::new(s.to_string()).unwrap())
+        .collect();
+    let args: Vec<*const libc::c_char> = args.iter().map(|s| s.as_ptr()).collect();
+
+    main_fn(args.len() as libc::c_int, args.as_ptr()) as u8
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpp() {
+        // NOTE: qt tests cannot be run concurrently within the same process,
+        // so we run them serially in a single rust test
+        unsafe {
+            assert_eq!(call_qtest_main(httpheaders_test), 0);
+            assert_eq!(call_qtest_main(jwt_test), 0);
+            assert_eq!(call_qtest_main(routesfile_test), 0);
+            assert_eq!(call_qtest_main(jsonpatch_test), 0);
+            assert_eq!(call_qtest_main(instruct_test), 0);
+            assert_eq!(call_qtest_main(idformat_test), 0);
+            assert_eq!(call_qtest_main(publishformat_test), 0);
+            assert_eq!(call_qtest_main(publishitem_test), 0);
+            assert_eq!(call_qtest_main(template_test), 0);
+            assert_eq!(call_qtest_main(proxyengine_test), 0);
+            assert_eq!(call_qtest_main(handlerengine_test), 0);
+        }
+    }
 }

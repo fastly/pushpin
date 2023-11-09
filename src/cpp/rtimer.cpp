@@ -219,6 +219,8 @@ void RTimer::stop()
 {
 	if(timerId_ >= 0)
 	{
+		assert(g_manager);
+
 		g_manager->remove(timerId_);
 
 		timerId_ = -1;
@@ -242,6 +244,12 @@ void RTimer::init(int capacity)
 	assert(!g_manager);
 
 	g_manager = new TimerManager(capacity);
+}
+
+void RTimer::deinit()
+{
+	delete g_manager;
+	g_manager = 0;
 }
 
 #include "rtimer.moc"

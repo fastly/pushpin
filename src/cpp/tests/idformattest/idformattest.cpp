@@ -85,5 +85,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(IdFormatTest)
+extern "C" {
+
+int idformat_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(IdFormatTest)
+}
+
+}
+
 #include "idformattest.moc"

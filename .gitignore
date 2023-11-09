@@ -25,6 +25,7 @@ vendor
 /src/cpp/Makefile
 /src/cpp/cpp/Makefile
 /src/cpp/libpushpin-cpp.a
+/src/cpp/libpushpin-cpptest.a
 /src/cpp/tests/Makefile
 /src/cpp/tests/*test/Makefile
 /src/cpp/tests/*test/*test

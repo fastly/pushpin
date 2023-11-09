@@ -86,5 +86,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(HttpHeadersTest)
+extern "C" {
+
+int httpheaders_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(HttpHeadersTest)
+}
+
+}
+
 #include "httpheaderstest.moc"
