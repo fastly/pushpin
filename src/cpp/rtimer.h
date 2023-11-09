@@ -44,6 +44,9 @@ public:
 
 	static void init(int capacity);
 
+	// only call if there are no active RTimers
+	static void deinit();
+
 signals:
 	void timeout();
 

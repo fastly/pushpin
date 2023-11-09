@@ -60,5 +60,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(TemplateTest)
+extern "C" {
+
+int template_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(TemplateTest)
+}
+
+}
+
 #include "templatetest.moc"

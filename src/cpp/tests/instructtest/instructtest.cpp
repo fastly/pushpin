@@ -298,5 +298,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(InstructTest)
+extern "C" {
+
+int instruct_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(InstructTest)
+}
+
+}
+
 #include "instructtest.moc"

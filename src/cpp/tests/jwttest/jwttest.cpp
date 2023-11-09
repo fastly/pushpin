@@ -174,5 +174,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(JwtTest)
+extern "C" {
+
+int jwt_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(JwtTest)
+}
+
+}
+
 #include "jwttest.moc"

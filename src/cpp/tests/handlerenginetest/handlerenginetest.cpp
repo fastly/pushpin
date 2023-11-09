@@ -21,6 +21,7 @@
  */
 
 #include <QtTest/QtTest>
+#include <QDir>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
@@ -29,7 +30,10 @@
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "packet/httpresponsedata.h"
+#include "rtimer.h"
 #include "handlerengine.h"
+
+namespace {
 
 class Wrapper : public QObject
 {
@@ -48,6 +52,7 @@ public:
 	QZmq::Valve *proxyAcceptValve;
 	QZmq::Socket *publishPushSock;
 
+	QDir workDir;
 	bool acceptSuccess;
 	QVariantHash acceptValue;
 	bool finished;
@@ -57,8 +62,9 @@ public:
 	int serverOutSeq;
 	QByteArray requestBody;
 
-	Wrapper(QObject *parent) :
+	Wrapper(QObject *parent, QDir _workDir) :
 		QObject(parent),
+		workDir(_workDir),
 		acceptSuccess(false),
 		finished(false),
 		serverReqs(0),
@@ -97,11 +103,11 @@ public:
 
 	void startHttp()
 	{
-		zhttpClientOutStreamSock->bind("ipc://client-out-stream");
-		zhttpClientInSock->bind("ipc://client-in");
-		zhttpServerInSock->bind("ipc://server-in");
-		zhttpServerInStreamSock->bind("ipc://server-in-stream");
-		zhttpServerOutSock->bind("ipc://server-out");
+		zhttpClientOutStreamSock->bind("ipc://" + workDir.filePath("client-out-stream"));
+		zhttpClientInSock->bind("ipc://" + workDir.filePath("client-in"));
+		zhttpServerInSock->bind("ipc://" + workDir.filePath("server-in"));
+		zhttpServerInStreamSock->bind("ipc://" + workDir.filePath("server-in-stream"));
+		zhttpServerOutSock->bind("ipc://" + workDir.filePath("server-out"));
 
 		zhttpClientInSock->subscribe("test-client ");
 
@@ -112,14 +118,14 @@ public:
 
 	void startProxy()
 	{
-		proxyAcceptSock->bind("ipc://accept");
+		proxyAcceptSock->bind("ipc://" + workDir.filePath("accept"));
 
 		proxyAcceptValve->open();
 	}
 
 	void startPublish()
 	{
-		publishPushSock->connectToAddress("ipc://publish-pull");
+		publishPushSock->connectToAddress("ipc://" + workDir.filePath("publish-pull"));
 	}
 
 	void reset()
@@ -248,7 +254,9 @@ private slots:
 	}
 };
 
-class EngineTest : public QObject
+}
+
+class HandlerEngineTest : public QObject
 {
 	Q_OBJECT
 
@@ -262,7 +270,10 @@ private slots:
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
-		wrapper = new Wrapper(this);
+		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
+		QDir workDir(rootDir.filePath("src/cpp/tests/handlerenginetest"));
+
+		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
 		wrapper->startProxy();
 
@@ -270,13 +281,13 @@ private slots:
 
 		HandlerEngine::Configuration config;
 		config.instanceId = "handler";
-		config.serverInStreamSpecs = QStringList() << "ipc://client-out-stream";
-		config.serverOutSpecs = QStringList() << "ipc://client-in";
-		config.clientOutSpecs = QStringList() << "ipc://server-in";
-		config.clientOutStreamSpecs = QStringList() << "ipc://server-in-stream";
-		config.clientInSpecs = QStringList() << "ipc://server-out";
-		config.acceptSpec = "ipc://accept";
-		config.pushInSpec = "ipc://publish-pull";
+		config.serverInStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("client-out-stream"));
+		config.serverOutSpecs = QStringList() << ("ipc://" + workDir.filePath("client-in"));
+		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in"));
+		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in-stream"));
+		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("server-out"));
+		config.acceptSpec = ("ipc://" + workDir.filePath("accept"));
+		config.pushInSpec = ("ipc://" + workDir.filePath("publish-pull"));
 		config.connectionSubscriptionMax = 20;
 		config.connectionsMax = 20;
 		QVERIFY(engine->start(config));
@@ -290,6 +301,8 @@ private slots:
 	{
 		delete engine;
 		delete wrapper;
+
+		RTimer::deinit();
 	}
 
 	void acceptNoHold()
@@ -814,5 +827,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(EngineTest)
-#include "enginetest.moc"
+extern "C" {
+
+int handlerengine_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(HandlerEngineTest)
+}
+
+}
+
+#include "handlerenginetest.moc"

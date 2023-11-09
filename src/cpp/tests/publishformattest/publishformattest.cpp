@@ -128,5 +128,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(PublishFormatTest)
+extern "C" {
+
+int publishformat_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(PublishFormatTest)
+}
+
+}
+
 #include "publishformattest.moc"

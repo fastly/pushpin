@@ -94,5 +94,13 @@ private slots:
 	}
 };
 
-QTEST_MAIN(PublishItemTest)
+extern "C" {
+
+int publishitem_test(int argc, char **argv)
+{
+	QTEST_MAIN_IMPL(PublishItemTest)
+}
+
+}
+
 #include "publishitemtest.moc"
