@@ -46,13 +46,10 @@ jobs:
       run: cargo fmt --check
       shell: bash
     - name: build
-      run: ./configure && cargo check && make
+      run: ./configure && cargo check --profile test && make
       shell: bash
     - name: check
-      run: make check
-      shell: bash
-    - name: test
-      run: RUSTFLAGS="-D warnings" cargo test
+      run: RUSTFLAGS="-D warnings" make check
       shell: bash
     - name: clippy
       run: cargo clippy -- -D warnings

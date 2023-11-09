@@ -16,7 +16,11 @@ CONFIG(debug, debug|release) {
 	target_dir = $$PWD/../../target/release
 }
 
+check.commands = cd "$$root_dir" && cargo test --offline $$cargo_flags
+
 rust_build.commands = cd "$$root_dir" && cargo build --offline $$cargo_flags
+
+rust_clean.commands = cd "$$root_dir" && cargo clean
 
 condure_build.target = $$target_dir/condure
 condure_build.depends = rust_build
@@ -76,7 +80,9 @@ publish_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-publish 
 
 
 QMAKE_EXTRA_TARGETS += \
+	check \
 	rust_build \
+	rust_clean \
 	condure_build \
 	m2adapter_build \
 	proxy_build \
@@ -91,6 +97,10 @@ QMAKE_EXTRA_TARGETS += \
 	runner_legacy_bin \
 	runner_bin \
 	publish_bin
+
+# make built-in clean depend on rust_clean
+clean.depends = rust_clean
+QMAKE_EXTRA_TARGETS += clean
 
 PRE_TARGETDEPS += \
 	$$bin_dir/condure \
