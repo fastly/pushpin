@@ -26,6 +26,7 @@
 #include <QObject>
 #include "logutil.h"
 #include "domainmap.h"
+#include <boost/signals2.hpp>
 
 namespace Jwt {
 	class EncodingKey;
@@ -62,10 +63,9 @@ public:
 	// takes ownership
 	void add(RequestSession *rs);
 
-signals:
-	void addNotAllowed(); // no more sharing, for whatever reason
-	void finished();
-	void requestSessionDestroyed(RequestSession *rs, bool accept);
+	boost::signals2::signal<void()> addNotAllowed; // no more sharing, for whatever reason
+	boost::signals2::signal<void()> finished;
+	boost::signals2::signal<void(RequestSession*, bool)> requestSessionDestroyed;
 
 private:
 	class Private;

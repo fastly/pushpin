@@ -26,6 +26,7 @@
 #include <QObject>
 #include "zhttprequest.h"
 #include "domainmap.h"
+#include <boost/signals2.hpp>
 
 class QHostAddress;
 
@@ -98,21 +99,20 @@ public:
 
 	int unregisterConnection(); // return unreported time
 
-signals:
-	void inspected(const InspectData &idata);
-	void inspectError();
-	void finished();
-	void finishedByAccept();
-	void bytesWritten(int count);
-	void paused();
-	void headerBytesSent(int count);
-	void bodyBytesSent(int count);
+	boost::signals2::signal<void(const InspectData&)> inspected;
+    boost::signals2::signal<void()> inspectError;
+    boost::signals2::signal<void()> finished;
+    boost::signals2::signal<void()> finishedByAccept;
+    boost::signals2::signal<void(int)> bytesWritten;
+    boost::signals2::signal<void()> paused;
+    boost::signals2::signal<void(int)> headerBytesSent;
+    boost::signals2::signal<void(int)> bodyBytesSent;
 
 	// this signal means some error was encountered while responding and
 	//   that you should not attempt to call further response-related
 	//   methods. the object remains in an active state though, and so you
 	//   should still wait for finished()
-	void errorResponding();
+    boost::signals2::signal<void()> errorResponding;
 
 private:
 	class Private;

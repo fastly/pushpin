@@ -529,7 +529,7 @@ public:
 				if(target.oneEvent)
 					woh->setMaxEventsPerRequest(1);
 
-				connect(woh, &WebSocketOverHttp::aboutToSendRequest, this, &Private::out_aboutToSendRequest);
+				woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, std::placeholders::_1));
 				outSock = woh;
 			}
 			else
@@ -785,7 +785,7 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-private slots:
+private :
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)
@@ -898,12 +898,12 @@ private slots:
 			if(wsControlManager)
 			{
 				wsControl = wsControlManager->createSession(publicCid);
-				connect(wsControl, &WsControlSession::sendEventReceived, this, &Private::wsControl_sendEventReceived);
-				connect(wsControl, &WsControlSession::keepAliveSetupEventReceived, this, &Private::wsControl_keepAliveSetupEventReceived);
-				connect(wsControl, &WsControlSession::closeEventReceived, this, &Private::wsControl_closeEventReceived);
-				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
-				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
-				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
+				wsControl->sendEventReceived.connect(boost::bind(&Private::wsControl_sendEventReceived, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+				wsControl->keepAliveSetupEventReceived.connect(boost::bind(&Private::wsControl_keepAliveSetupEventReceived, this, std::placeholders::_1, std::placeholders::_2));
+				wsControl->closeEventReceived.connect(boost::bind(&Private::wsControl_closeEventReceived, this, std::placeholders::_1, std::placeholders::_2));
+				wsControl->detachEventReceived.connect(boost::bind(&Private::wsControl_detachEventReceived, this));
+				wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this));
+				wsControl->error.connect(boost::bind(&Private::wsControl_error, this));
 				wsControl->start(route.id, route.separateStats, channelPrefix, inSock->requestUri());
 
 				foreach(const QString &subChannel, target.subscriptions)
@@ -1005,7 +1005,7 @@ private slots:
 		}
 	}
 
-	void out_aboutToSendRequest()
+	void out_aboutToSendRequest(int code)
 	{
 		WebSocketOverHttp *woh = (WebSocketOverHttp *)sender();
 

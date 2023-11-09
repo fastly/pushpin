@@ -22,6 +22,8 @@
 #ifndef PROCESSQUIT_H
 #define PROCESSQUIT_H
 
+#include <boost/signals2.hpp>
+
 #ifdef NO_IRISNET
 # include <QtCore>
 # define IRISNET_EXPORT
@@ -82,6 +84,7 @@ public:
 	*/
 	static void cleanup();
 
+	boost::signals2::signal<void()> hup;
 signals:
 	/**
 	   \brief Notification of termination request
@@ -94,7 +97,6 @@ signals:
 	*/
 	void quit();
 
-	void hup();
 
 private:
 	class Private;

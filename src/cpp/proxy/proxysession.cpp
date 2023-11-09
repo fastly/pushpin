@@ -232,12 +232,12 @@ public:
 
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
-		connect(rs, &RequestSession::bytesWritten, this, &Private::rs_bytesWritten);
-		connect(rs, &RequestSession::errorResponding, this, &Private::rs_errorResponding);
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::paused, this, &Private::rs_paused);
-		connect(rs, &RequestSession::headerBytesSent, this, &Private::rs_headerBytesSent);
-		connect(rs, &RequestSession::bodyBytesSent, this, &Private::rs_bodyBytesSent);
+		rs->bytesWritten.connect(boost::bind(&Private::rs_bytesWritten, this, std::placeholders::_1));
+		rs->errorResponding.connect(boost::bind(&ProxySession::Private::rs_errorResponding, this));
+		rs->finished.connect(boost::bind(&Private::rs_finished, this));
+		rs->paused.connect(boost::bind(&Private::rs_paused, this));
+		rs->headerBytesSent.connect(boost::bind(&Private::rs_headerBytesSent, this, std::placeholders::_1));
+		rs->bodyBytesSent.connect(boost::bind(&Private::rs_bodyBytesSent, this, std::placeholders::_1));
 
 		HttpRequestData rsRequestData = rs->requestData();
 
@@ -1026,7 +1026,7 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-public slots:
+public :
 	void inRequest_readyRead()
 	{
 		tryRequestRead();

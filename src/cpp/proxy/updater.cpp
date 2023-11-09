@@ -112,7 +112,7 @@ public:
 		req = 0;
 	}
 
-private slots:
+private :
 	void doRequest()
 	{
 		req = zhttpManager->createRequest();

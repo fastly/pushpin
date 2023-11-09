@@ -78,7 +78,7 @@ public:
 	void addSocket(WebSocketOverHttp *sock)
 	{
 		sock->setParent(this);
-		connect(sock, &WebSocketOverHttp::disconnected, this, &DisconnectManager::sock_disconnected);
+		sock->disconnected.connect(boost::bind(&DisconnectManager::sock_disconnected, this));
 		connect(sock, &WebSocketOverHttp::closed, this, &DisconnectManager::sock_closed);
 		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
 
@@ -96,7 +96,7 @@ private:
 		delete sock;
 	}
 
-private slots:
+private :
 	void sock_disconnected()
 	{
 		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
@@ -601,7 +601,7 @@ private:
 	{
 		assert(!req);
 
-		emit q->aboutToSendRequest();
+		emit q->aboutToSendRequest(0);
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
@@ -635,7 +635,7 @@ private:
 		req->endBody();
 	}
 
-private slots:
+private :
 	void req_readyRead()
 	{
 		if(inBuf.size() + req->bytesAvailable() > RESPONSE_BODY_MAX)
@@ -765,7 +765,7 @@ private slots:
 		if(disconnectSent)
 		{
 			cleanup();
-			emit q->disconnected();
+			emit q->disconnected(0);
 			return;
 		}
 

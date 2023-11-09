@@ -193,7 +193,7 @@ public:
 		else
 			domainMap = new DomainMap(config.routesFile, this);
 
-		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
+		domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		zhttpIn = new ZhttpManager(this);
 		connect(zhttpIn, &ZhttpManager::requestReady, this, &Private::zhttpIn_requestReady);
@@ -224,7 +224,7 @@ public:
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
 		sockJsManager = new SockJsManager(config.sockJsUrl, this);
-		connect(sockJsManager, &SockJsManager::sessionReady, this, &Private::sockjs_sessionReady);
+		sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
 
 		if(!config.inspectSpec.isEmpty())
 		{
@@ -386,9 +386,9 @@ public:
 
 			ps = new ProxySession(zroutes, accept, logConfig, stats);
 			// TODO: use callbacks for performance
-			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
-			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
-			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
+			ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this));
+			ps->finished.connect(boost::bind(&Private::ps_finished, this));
+			ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this, std::placeholders::_1, std::placeholders::_2));
 
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -581,10 +581,10 @@ public:
 		rs->setAutoShare(autoShare);
 
 		// TODO: use callbacks for performance
-		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
-		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
+		rs->inspected.connect(boost::bind(&Private::rs_inspected, this, std::placeholders::_1));
+		rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this));
+		rs->finished.connect(boost::bind(&Private::rs_finished, this));
+		rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this));
 
 		requestSessions += rs;
 
@@ -691,7 +691,7 @@ public:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
-private slots:
+private :
 	void zhttpIn_requestReady()
 	{
 		tryTakeNext();

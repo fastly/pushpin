@@ -25,6 +25,7 @@
 
 #include <QObject>
 #include "domainmap.h"
+#include <boost/signals2.hpp>
 
 class HttpHeaders;
 class ZhttpRequest;
@@ -44,8 +45,7 @@ public:
 
 	SockJsSession *takeNext();
 
-signals:
-	void sessionReady();
+	boost::signals2::signal<void()> sessionReady;	
 
 private:
 	class Private;

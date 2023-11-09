@@ -152,6 +152,7 @@ public:
 	HandlerApp *q;
 	ArgsData args;
 	HandlerEngine *engine;
+	boost::signals2::connection hupConnection;
 
 	Private(HandlerApp *_q) :
 		QObject(_q),
@@ -159,7 +160,7 @@ public:
 		engine(0)
 	{
 		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
+        hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&HandlerApp::Private::reload, this));
 	}
 
 	void start()
@@ -371,7 +372,9 @@ private slots:
 	void doQuit()
 	{
 		log_info("stopping...");
-
+		
+		hupConnection.disconnect();
+		
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 

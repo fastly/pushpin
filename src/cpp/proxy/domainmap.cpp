@@ -301,11 +301,10 @@ public:
 		return true;
 	}
 
-signals:
-	void started();
-	void changed();
+	boost::signals2::signal<void()> started;
+	boost::signals2::signal<void()> changed;
 
-public slots:
+public :
 	void start()
 	{
 		if(!fileName.isEmpty())
@@ -732,13 +731,13 @@ public:
 	{
 		worker = new Worker;
 		worker->fileName = fileName;
-		connect(worker, &Worker::started, this, &Thread::worker_started, Qt::DirectConnection);
+		worker->started.connect(boost::bind(&Thread::worker_started, this));
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
 		delete worker;
 	}
 
-public slots:
+public :
 	void worker_started()
 	{
 		QMutexLocker locker(&m);
@@ -773,10 +772,10 @@ public:
 		thread->start();
 
 		// worker guaranteed to exist after starting
-		connect(thread->worker, &Worker::changed, this, &Private::doChanged);
+		thread->worker->changed.connect(boost::bind(&Private::doChanged, this));
 	}
 
-public slots:
+public :
 	void doChanged()
 	{
 		emit q->changed();

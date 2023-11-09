@@ -63,7 +63,7 @@ public:
 	{
 	}
 
-public slots:
+public :
 	void processRequest()
 	{
 		if(!requestBodyFinished)

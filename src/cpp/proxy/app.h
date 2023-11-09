@@ -25,7 +25,6 @@
 
 #include <QObject>
 #include <boost/signals2.hpp>
-#include <boost/bind.hpp>
 
 class App : public QObject
 {

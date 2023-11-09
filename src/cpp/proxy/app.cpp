@@ -171,6 +171,7 @@ public:
 	ArgsData args;
 	Engine *engine;
 	boost::signals2::connection quitConnection;
+	boost::signals2::connection hupConnection;
 
 	Private(App *_q) :
 		QObject(_q),
@@ -180,7 +181,7 @@ public:
 		quitConnection.disconnect(); // Disconnect any previous connections
 
 		quitConnection = q->quit.connect(std::bind(&Private::doQuit, this, std::placeholders::_1));
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
+        hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
 	}
 
 	void start()
@@ -430,10 +431,11 @@ private:
 	{
 		log_info("stopping...");
 
+		hupConnection.disconnect();
+		quitConnection.disconnect();
+
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
-		
-		quitConnection.disconnect();
 
 		delete engine;
 		engine = 0;
@@ -442,7 +444,7 @@ private:
 		emit q->quit(returnCode);
 	}
 
-private slots:
+private :
 	void reload()
 	{
 		log_info("reloading");

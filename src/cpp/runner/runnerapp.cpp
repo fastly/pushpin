@@ -256,6 +256,7 @@ public:
 	QList<Service*> services;
 	bool stopping;
 	bool errored;
+	boost::signals2::connection hupConnection;
 
 	Private(RunnerApp *_q) :
 		QObject(_q),
@@ -264,7 +265,7 @@ public:
 		errored(false)
 	{
 		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::processQuit);
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
+        hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&RunnerApp::Private::reload, this));
 	}
 
 	void start()
@@ -784,6 +785,7 @@ private slots:
 		else
 		{
 			qDeleteAll(services);
+			hupConnection.disconnect();
 			ProcessQuit::cleanup();
 
 			// if we were already stopping, then exit immediately

@@ -869,7 +869,7 @@ public:
 		return closeValue;
 	}
 
-private slots:
+private :
 	void req_bytesWritten(int count)
 	{
 		Q_UNUSED(count);

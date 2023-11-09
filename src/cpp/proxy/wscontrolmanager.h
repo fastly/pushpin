@@ -25,6 +25,7 @@
 
 #include <QObject>
 #include "packet/wscontrolpacket.h"
+#include <boost/signals2.hpp>
 
 class WsControlSession;
 
