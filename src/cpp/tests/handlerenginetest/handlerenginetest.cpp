@@ -271,7 +271,7 @@ private slots:
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
 		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
-		QDir workDir(rootDir.filePath("src/cpp/tests/handlerenginetest"));
+		QDir workDir(rootDir.filePath("target/cpp/test-work"));
 
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();

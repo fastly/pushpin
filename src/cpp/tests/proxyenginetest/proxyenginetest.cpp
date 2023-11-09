@@ -571,7 +571,8 @@ private slots:
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
 		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
-		QDir workDir(rootDir.filePath("src/cpp/tests/proxyenginetest"));
+		QDir configDir(rootDir.filePath("src/cpp/tests/proxyenginetest"));
+		QDir workDir(rootDir.filePath("target/cpp/test-work"));
 
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
@@ -592,7 +593,7 @@ private slots:
 		config.statsSpec = ("ipc://" + workDir.filePath("stats"));
 		config.inspectTimeout = 500;
 		config.inspectPrefetch = 5;
-		config.routesFile = workDir.filePath("routes");
+		config.routesFile = configDir.filePath("routes");
 		config.sigIss = "pushpin";
 		config.sigKey = Jwt::EncodingKey::fromSecret("changeme");
 		config.connectionsMax = 20;

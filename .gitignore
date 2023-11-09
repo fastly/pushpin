@@ -16,6 +16,7 @@ vendor
 .vscode
 
 /pushpin
+/pushpin-legacy
 /bin/*
 /conf.log
 /conf.pri
@@ -23,26 +24,14 @@ vendor
 /src/config.h
 /src/Makefile
 /src/cpp/Makefile
+/src/cpp/makedirs/Makefile
 /src/cpp/cpp/Makefile
-/src/cpp/libpushpin-cpp.a
-/src/cpp/libpushpin-cpptest.a
 /src/cpp/tests/Makefile
-/src/cpp/tests/*test/Makefile
-/src/cpp/tests/*test/*test
-/src/m2adapter/Makefile
-/src/proxy/Makefile
-/src/handler/Makefile
 /src/rust/Makefile
-/src/runner/Makefile
-/src/runner/tests/Makefile
-/src/runner/tests/*test/Makefile
-/src/runner/tests/*test/*test
 /src/runner/certs/*.crt
 /src/runner/certs/*.key
 /src/pushpin/Makefile
 /src/pushpin/*.inst
-/tools/Makefile
-/tools/publish/Makefile
 /config
 /run
 /log
