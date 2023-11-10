@@ -86,11 +86,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(HttpHeadersTest)
+}
+}
+
 extern "C" {
 
 int httpheaders_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(HttpHeadersTest)
+	return Main::main(argc, argv);
 }
 
 }

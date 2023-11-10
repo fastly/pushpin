@@ -117,11 +117,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(RoutesFileTest)
+}
+}
+
 extern "C" {
 
 int routesfile_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(RoutesFileTest)
+	return Main::main(argc, argv);
 }
 
 }

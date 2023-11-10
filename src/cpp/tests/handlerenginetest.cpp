@@ -827,11 +827,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(HandlerEngineTest)
+}
+}
+
 extern "C" {
 
 int handlerengine_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(HandlerEngineTest)
+	return Main::main(argc, argv);
 }
 
 }
