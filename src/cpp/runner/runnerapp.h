@@ -24,6 +24,7 @@
 #define RUNNERAPP_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
 
 class RunnerApp : public QObject
 {
@@ -35,8 +36,7 @@ public:
 
 	void start();
 
-signals:
-	void quit(int returnCode = 0);
+	boost::signals2::signal<void(int)> quit;
 
 private:
 	class Private;

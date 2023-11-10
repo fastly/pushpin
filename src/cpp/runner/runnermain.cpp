@@ -31,11 +31,10 @@ class RunnerAppMain : public QObject
 public:
 	RunnerApp *app;
 
-public slots:
 	void start()
 	{
 		app = new RunnerApp(this);
-		connect(app, &RunnerApp::quit, this, &RunnerAppMain::app_quit);
+		app->quit.connect(boost::bind(&RunnerAppMain::app_quit, this, std::placeholders::_1));
 		app->start();
 	}
 
@@ -53,7 +52,7 @@ int runner_main(int argc, char **argv)
 	QCoreApplication qapp(argc, argv);
 
 	RunnerAppMain appMain;
-	QTimer::singleShot(0, &appMain, SLOT(start()));
+	QTimer::singleShot(0, [&appMain]() {appMain.start();});
 	return qapp.exec();
 }
 
