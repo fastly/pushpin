@@ -1,0 +1,20 @@
+/*
+-----BEGIN QCMOD-----
+name: Boost.Signals2
+section: libraries
+description: Configuration for the Boost.Signals2 library, a part of the Boost C++ Libraries.
+-----END QCMOD-----
+*/
+class qc_boost : public ConfObj
+{
+public:
+    qc_boost(Conf *c) : ConfObj(c) {}
+    QString name() const { return "Boost.Signals2"; }
+    QString shortname() const { return "boost"; }
+    bool exec()
+    {
+        QString boostIncludePath = "/usr/local/include";
+        conf->addIncludePath(boostIncludePath);
+        return true; 
+    }
+};
