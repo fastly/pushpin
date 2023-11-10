@@ -496,6 +496,15 @@ public:
 
 		conf->addIncludePath("\$\$PWD/src");
 
+		QByteArray out;
+		if(conf->doCommand(conf->qmake_path, QStringList() << "-query" << "QT_INSTALL_LIBS", &out) != 0)
+		{
+			return false;
+		}
+
+		QString qtlibdir = QString::fromUtf8(out).trimmed();
+		conf->addExtra(QString("QT_INSTALL_LIBS = %1").arg(qtlibdir));
+
 		QFile file("src/config.h");
 		if(file.open(QIODevice::WriteOnly | QIODevice::Text))
 		{
@@ -565,9 +574,6 @@ cat >"$1/modules_new.cpp" <<EOT
     o->required = true;
     o->disabled = false;
     o = new qc_conf(conf);
-    o->required = true;
-    o->disabled = false;
-    o = new qc_internal_pkgconfig(conf, "libzmq", "libzmq >= 2.0", VersionMin, "2.0");
     o->required = true;
     o->disabled = false;
     o = new qc_internal_pkgconfig(conf, "libcrypto", "libcrypto >= 1.0", VersionMin, "1.0");
