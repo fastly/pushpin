@@ -571,7 +571,7 @@ private slots:
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
 		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
-		QDir configDir(rootDir.filePath("src/cpp/tests/proxyenginetest"));
+		QDir configDir(rootDir.filePath("src/cpp/tests"));
 		QDir workDir(rootDir.filePath("target/cpp/test-work"));
 
 		wrapper = new Wrapper(this, workDir);

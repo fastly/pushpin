@@ -33,14 +33,14 @@ INCLUDES += \
 	main.h
 
 SOURCES += \
-	$$PWD/httpheaderstest/httpheaderstest.cpp \
-	$$PWD/jwttest/jwttest.cpp \
-	$$PWD/routesfiletest/routesfiletest.cpp \
-	$$PWD/proxyenginetest/proxyenginetest.cpp \
-	$$PWD/jsonpatchtest/jsonpatchtest.cpp \
-	$$PWD/instructtest/instructtest.cpp \
-	$$PWD/idformattest/idformattest.cpp \
-	$$PWD/publishformattest/publishformattest.cpp \
-	$$PWD/publishitemtest/publishitemtest.cpp \
-	$$PWD/handlerenginetest/handlerenginetest.cpp \
-	$$PWD/templatetest/templatetest.cpp
+	$$PWD/httpheaderstest.cpp \
+	$$PWD/jwttest.cpp \
+	$$PWD/routesfiletest.cpp \
+	$$PWD/proxyenginetest.cpp \
+	$$PWD/jsonpatchtest.cpp \
+	$$PWD/instructtest.cpp \
+	$$PWD/idformattest.cpp \
+	$$PWD/publishformattest.cpp \
+	$$PWD/publishitemtest.cpp \
+	$$PWD/handlerenginetest.cpp \
+	$$PWD/templatetest.cpp
