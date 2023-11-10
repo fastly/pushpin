@@ -85,7 +85,6 @@ public:
 	static void cleanup();
 
 	boost::signals2::signal<void()> hup;
-signals:
 	/**
 	   \brief Notification of termination request
 
@@ -95,8 +94,7 @@ signals:
 
 	   \sa reset
 	*/
-	void quit();
-
+	boost::signals2::signal<void()> quit;
 
 private:
 	class Private;

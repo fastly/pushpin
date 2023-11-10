@@ -450,6 +450,7 @@ public:
 	QElapsedTimer time;
 	QTimer *statusTimer;
 	QTimer *refreshTimer;
+	boost::signals2::connection quitConnection;
 	boost::signals2::connection hupConnection;
 
 	Private(M2AdapterApp *_q) :
@@ -470,7 +471,7 @@ public:
 		currentSessionRefreshBucket(0),
 		zhttpCancelMeter(0)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		quitConnection = ProcessQuit::instance()->quit.connect(std::bind(&M2AdapterApp::Private::doQuit, this));
         hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&M2AdapterApp::Private::reload, this));
 
 		statusTimer = new QTimer(this);
@@ -2864,12 +2865,13 @@ private slots:
 		log_info("stopping...");
 		
 		hupConnection.disconnect();
+		quitConnection.disconnect();
 
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
 		log_info("stopped");
-		emit q->quit();
+		emit q->quit(0);
 	}
 };
 

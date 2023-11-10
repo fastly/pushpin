@@ -256,6 +256,7 @@ public:
 	QList<Service*> services;
 	bool stopping;
 	bool errored;
+	boost::signals2::connection quitConnection;
 	boost::signals2::connection hupConnection;
 
 	Private(RunnerApp *_q) :
@@ -264,7 +265,7 @@ public:
 		stopping(false),
 		errored(false)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::processQuit);
+		quitConnection = ProcessQuit::instance()->quit.connect(std::bind(&Private::doQuit, this));
         hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&RunnerApp::Private::reload, this));
 	}
 
@@ -697,6 +698,9 @@ private:
 
 	void doQuit()
 	{
+		quitConnection.disconnect();
+		hupConnection.disconnect();
+
 		emit q->quit(errored ? 1 : 0);
 	}
 

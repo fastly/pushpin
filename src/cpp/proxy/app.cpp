@@ -178,9 +178,7 @@ public:
 		q(_q),
 		engine(0)
 	{
-		quitConnection.disconnect(); // Disconnect any previous connections
-
-		quitConnection = q->quit.connect(std::bind(&Private::doQuit, this, std::placeholders::_1));
+		quitConnection = ProcessQuit::instance()->quit.connect(std::bind(&Private::doQuit, this));
         hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
 	}
 
@@ -426,8 +424,9 @@ public:
 
 		log_info("started");
 	}
+
 private:
-	void doQuit(int returnCode)
+	void doQuit()
 	{
 		log_info("stopping...");
 
@@ -441,10 +440,9 @@ private:
 		engine = 0;
 
 		log_info("stopped");
-		emit q->quit(returnCode);
+		emit q->quit(0);
 	}
 
-private :
 	void reload()
 	{
 		log_info("reloading");

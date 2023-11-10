@@ -152,6 +152,7 @@ public:
 	HandlerApp *q;
 	ArgsData args;
 	HandlerEngine *engine;
+	boost::signals2::connection quitConnection;
 	boost::signals2::connection hupConnection;
 
 	Private(HandlerApp *_q) :
@@ -159,7 +160,7 @@ public:
 		q(_q),
 		engine(0)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
+		quitConnection = ProcessQuit::instance()->quit.connect(std::bind(&Private::doQuit, this));
         hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&HandlerApp::Private::reload, this));
 	}
 
@@ -217,7 +218,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				emit q->quit();
+				emit q->quit(0);
 				return;
 			}
 		}
@@ -289,14 +290,14 @@ public:
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
 			log_error("must set m2a_in_stream_specs and m2a_out_specs");
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
 		if(proxy_inspect_spec.isEmpty() || proxy_accept_spec.isEmpty() || proxy_retry_out_spec.isEmpty())
 		{
 			log_error("must set proxy_inspect_spec, proxy_accept_spec, and proxy_retry_out_spec");
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
@@ -354,19 +355,11 @@ public:
 		engine = new HandlerEngine(this);
 		if(!engine->start(config))
 		{
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
 		log_info("started");
-	}
-
-private slots:
-	void reload()
-	{
-		log_info("reloading");
-		log_rotate();
-		engine->reload();
 	}
 
 	void doQuit()
@@ -374,6 +367,7 @@ private slots:
 		log_info("stopping...");
 		
 		hupConnection.disconnect();
+		quitConnection.disconnect();
 		
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
@@ -382,7 +376,15 @@ private slots:
 		engine = 0;
 
 		log_info("stopped");
-		emit q->quit();
+		emit q->quit(0);
+	}
+	
+private slots:
+	void reload()
+	{
+		log_info("reloading");
+		log_rotate();
+		engine->reload();
 	}
 };
 
