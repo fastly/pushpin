@@ -31,11 +31,10 @@ class HandlerAppMain : public QObject
 public:
 	HandlerApp *app;
 
-public slots:
 	void start()
 	{
 		app = new HandlerApp(this);
-		connect(app, &HandlerApp::quit, this, &HandlerAppMain::app_quit);
+		app->quit.connect(boost::bind(&HandlerAppMain::app_quit, this, std::placeholders::_1));
 		app->start();
 	}
 
@@ -52,8 +51,8 @@ int handler_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
-	HandlerAppMain appMain;
-	QTimer::singleShot(0, &appMain, SLOT(start()));
+	HandlerAppMain appMain;	
+	QTimer::singleShot(0, [&appMain]() {appMain.start();});
 	return qapp.exec();
 }
 
