@@ -1400,11 +1400,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(ProxyEngineTest)
+}
+}
+
 extern "C" {
 
 int proxyengine_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(ProxyEngineTest)
+	return Main::main(argc, argv);
 }
 
 }

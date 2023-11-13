@@ -298,11 +298,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(InstructTest)
+}
+}
+
 extern "C" {
 
 int instruct_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(InstructTest)
+	return Main::main(argc, argv);
 }
 
 }

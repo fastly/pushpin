@@ -94,11 +94,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(PublishItemTest)
+}
+}
+
 extern "C" {
 
 int publishitem_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(PublishItemTest)
+	return Main::main(argc, argv);
 }
 
 }

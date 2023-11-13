@@ -96,11 +96,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(JsonPatchTest)
+}
+}
+
 extern "C" {
 
 int jsonpatch_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(JsonPatchTest)
+	return Main::main(argc, argv);
 }
 
 }

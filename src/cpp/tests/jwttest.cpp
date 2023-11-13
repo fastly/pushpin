@@ -174,11 +174,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(JwtTest)
+}
+}
+
 extern "C" {
 
 int jwt_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(JwtTest)
+	return Main::main(argc, argv);
 }
 
 }
