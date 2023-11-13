@@ -503,13 +503,44 @@ public:
 		return false;
 	}
 };
-
+#line 1 "boost.qcm"
+/*
+-----BEGIN QCMOD-----
+name: Boost.Signals2
+section: libraries
+description: Configuration for the Boost.Signals2 library, a part of the Boost C++ Libraries.
+-----END QCMOD-----
+*/
+class qc_boost : public ConfObj
+{
+public:
+    qc_boost(Conf *c) : ConfObj(c) {}
+    QString name() const { return "Boost.Signals2"; }
+    QString shortname() const { return "boost"; }
+    bool isBoostInstalled()
+    {
+        QString boostFilePath = "/usr/local/include/boost/signals2.hpp";
+        return QFile::exists(boostFilePath);
+    }
+    bool exec()
+    {
+        if (!isBoostInstalled()) {
+            return false;
+        }
+        QString boostIncludePath = "/usr/local/include";
+        conf->addIncludePath(boostIncludePath);
+        return true; 
+    }
+};
 EOT
 cat >"$1/modules_new.cpp" <<EOT
     o = new qc_conf(conf);
     o->required = true;
     o->disabled = false;
     o = new qc_cargo(conf);
+    o->required = true;
+    o->disabled = false;
+    o = new qc_boost(conf);
     o->required = true;
     o->disabled = false;
 
