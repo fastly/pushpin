@@ -519,15 +519,39 @@ public:
     QString shortname() const { return "boost"; }
     bool isBoostInstalled()
     {
-        QString boostFilePath = "/usr/local/include/boost/signals2.hpp";
-        return QFile::exists(boostFilePath);
+        QProcess process;
+        process.start("bash", QStringList() << "-c" << "dpkg -l | grep libboost");
+        process.waitForFinished();
+        QString output(process.readAllStandardOutput());
+
+        // Check if the output contains 'libboost'
+        return output.contains("libboost");
+    }
+    QString findBoostIncludePath()
+    {
+        QStringList possiblePaths = { "/usr/local/include", "/usr/include" };
+        QString boostHeader = "boost/config.hpp"; // Example Boost header file
+
+        foreach (const QString &path, possiblePaths) {
+            QDir dir(path);
+            if (dir.exists(boostHeader)) {
+                return path; // Return the path where Boost headers are found
+            }
+        }
+
+        return QString(); // Return empty if Boost headers are not found
     }
     bool exec()
     {
         if (!isBoostInstalled()) {
             return false;
         }
-        QString boostIncludePath = "/usr/local/include";
+
+        QString boostIncludePath = findBoostIncludePath();
+        if (boostIncludePath.isEmpty()) {
+            return false;
+        }
+
         conf->addIncludePath(boostIncludePath);
         return true; 
     }
