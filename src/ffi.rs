@@ -1148,6 +1148,6 @@ pub extern "C" fn log_set_level(level: libc::c_int) {
 pub extern "C" fn security_limit_permissions() {
     // for now all we do is set up seccomp if running on linux
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(test)))]
     crate::seccomp::install_seccomp_connect_filter()
 }
