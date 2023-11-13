@@ -85,11 +85,17 @@ private slots:
 	}
 };
 
+namespace {
+namespace Main {
+QTEST_MAIN(IdFormatTest)
+}
+}
+
 extern "C" {
 
 int idformat_test(int argc, char **argv)
 {
-	QTEST_MAIN_IMPL(IdFormatTest)
+	return Main::main(argc, argv);
 }
 
 }
