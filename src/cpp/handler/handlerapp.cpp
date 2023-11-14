@@ -152,15 +152,15 @@ public:
 	HandlerApp *q;
 	ArgsData args;
 	HandlerEngine *engine;
-	boost::signals2::connection quitConnection;
-	boost::signals2::connection hupConnection;
+	Connection quitConnection;
+	Connection hupConnection;
 
 	Private(HandlerApp *_q) :
 		QObject(_q),
 		q(_q),
 		engine(0)
 	{
-		quitConnection = ProcessQuit::instance()->quit.connect(std::bind(&Private::doQuit, this));
+		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
         hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
 	}
 

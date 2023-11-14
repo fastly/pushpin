@@ -53,7 +53,7 @@ int proxy_main(int argc, char **argv)
 
 	AppMain appMain;
 	QTimer::singleShot(0, [&appMain]() {appMain.start();});
-	return qapp.exec();	    
+	return qapp.exec();
 }
 
 }

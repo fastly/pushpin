@@ -25,6 +25,9 @@
 #include <QObject>
 #include <boost/signals2.hpp>
 
+using SignalInt = boost::signals2::signal<void(int)>;
+using Connection = boost::signals2::connection;
+
 class HandlerApp : public QObject
 {
 	Q_OBJECT
@@ -35,7 +38,7 @@ public:
 
 	void start();
 
-	boost::signals2::signal<void(int)> quit;
+	SignalInt quit;
 
 private:
 	class Private;

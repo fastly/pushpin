@@ -24,6 +24,8 @@
 
 #include <boost/signals2.hpp>
 
+using Signal = boost::signals2::signal<void()>;
+
 #ifdef NO_IRISNET
 # include <QtCore>
 # define IRISNET_EXPORT
@@ -84,9 +86,9 @@ public:
 	*/
 	static void cleanup();
 
-	boost::signals2::signal<void()> quit;
+	Signal quit;
 
-	boost::signals2::signal<void()> hup;
+	Signal hup;
 
 private:
 	class Private;

@@ -450,8 +450,8 @@ public:
 	QElapsedTimer time;
 	QTimer *statusTimer;
 	QTimer *refreshTimer;
-	boost::signals2::connection quitConnection;
-	boost::signals2::connection hupConnection;
+	Connection quitConnection;
+	Connection hupConnection;
 
 	Private(M2AdapterApp *_q) :
 		QObject(_q),
