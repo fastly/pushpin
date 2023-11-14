@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let conf = {
@@ -12,7 +13,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         let f = fs::File::open("conf.pri")?;
         let reader = BufReader::new(f);
 
-        const CONF_VARS: &[&str] = &["APP_VERSION", "CONFIGDIR", "LIBDIR", "QT_INSTALL_LIBS"];
+        const CONF_VARS: &[&str] = &[
+            "APP_VERSION",
+            "CONFIGDIR",
+            "LIBDIR",
+            "QT_INSTALL_LIBS",
+            "QMAKE_PATH",
+            "MAKETOOL",
+        ];
 
         for line in reader.lines() {
             let line = line?;
@@ -35,9 +43,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     let config_dir = conf.get("CONFIGDIR").unwrap();
     let lib_dir = conf.get("LIBDIR").unwrap();
     let qt_install_libs = conf.get("QT_INSTALL_LIBS").unwrap();
+    let qmake_path = fs::canonicalize(conf.get("QMAKE_PATH").unwrap())?;
+    let maketool = fs::canonicalize(conf.get("MAKETOOL").unwrap())?;
 
-    let cpp_lib_dir =
-        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join(Path::new("target/cpp"));
+    let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+    let cpp_src_dir = root_dir.join(Path::new("src/cpp"));
+    let cpp_lib_dir = root_dir.join(Path::new("target/cpp"));
+
+    if !cpp_src_dir.join("Makefile").try_exists()? {
+        assert!(Command::new(qmake_path)
+            .args(["-o", "Makefile", "cpp.pro"])
+            .current_dir(&cpp_src_dir)
+            .status()?
+            .success());
+    }
+
+    assert!(Command::new(maketool)
+        .current_dir(&cpp_src_dir)
+        .status()?
+        .success());
 
     println!("cargo:rustc-env=APP_VERSION={}", app_version);
     println!("cargo:rustc-env=CONFIG_DIR={}", config_dir);
@@ -53,14 +77,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("cargo:rerun-if-changed=conf.pri");
     println!("cargo:rerun-if-changed=src");
-    println!(
-        "cargo:rerun-if-changed={}/libpushpin-cpp.a",
-        cpp_lib_dir.display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}/libpushpin-cpptest.a",
-        cpp_lib_dir.display()
-    );
 
     Ok(())
 }
