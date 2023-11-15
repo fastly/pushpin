@@ -516,7 +516,7 @@ class qc_boost : public ConfObj
 {
 public:
     qc_boost(Conf *c) : ConfObj(c) {}
-    QString name() const { return "Boost.Signals2 >= 1.83"; }
+    QString name() const { return "Boost.Signals2 >= 1.71"; }
     QString shortname() const { return "boost"; }
     bool checkBoostVersion() {
         QProcess process;
@@ -533,7 +533,7 @@ public:
         int majorVersion = versionParts[0].toInt();
         int minorVersion = versionParts[1].toInt();
 
-        return (majorVersion > 1 || (majorVersion == 1 && minorVersion >= 83));
+        return (majorVersion > 1 || (majorVersion == 1 && minorVersion >= 71));
     }
     QString findBoostIncludePath()
     {
