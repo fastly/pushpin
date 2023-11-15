@@ -22,7 +22,6 @@ ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
 RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make DESTDIR=/ install
 RUN ./configure --prefix=/opt/fst-pushpin && make -j $(nproc)
 RUN env LD_LIBRARY_PATH=/usr/local/lib make check
-RUN env LD_LIBRARY_PATH=/usr/local/lib cargo test
 RUN make install
 RUN cd pushpin-healthcheck && cargo build --release && cp ./target/release/pushpin-healthcheck /opt/fst-pushpin/bin
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-legacy
