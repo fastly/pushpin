@@ -305,6 +305,9 @@ public:
 			trustedClient = rs->trusted();
 			QHostAddress clientAddress = rs->request()->peerAddress();
 
+			if(!requestBody.isEmpty())
+				route.grip = false;
+
 			ProxyUtil::manipulateRequestHeaders("proxysession", q, &requestData, trustedClient, route, sigIss, sigKey, acceptXForwardedProtocol, useXForwardedProto, useXForwardedProtocol, xffTrustedRule, xffRule, origHeadersNeedMark, acceptPushpinRoute, cdnLoop, clientAddress, idata, route.grip, intReq);
 
 			state = Requesting;
