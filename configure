@@ -505,6 +505,9 @@ public:
 		QString qtlibdir = QString::fromUtf8(out).trimmed();
 		conf->addExtra(QString("QT_INSTALL_LIBS = %1").arg(qtlibdir));
 
+		conf->addExtra(QString("QMAKE_PATH = %1").arg(conf->qmake_path));
+		conf->addExtra(QString("MAKETOOL = %1").arg(conf->maketool));
+
 		QFile file("src/config.h");
 		if(file.open(QIODevice::WriteOnly | QIODevice::Text))
 		{
