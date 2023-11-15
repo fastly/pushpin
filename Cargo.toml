@@ -20,7 +20,7 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 arrayvec = "0.7"
 base64 = "0.13"
-clap = { version = "4.3", features = ["cargo", "string", "wrap_help", "derive"] }
+clap = { version = "=4.2.1", features = ["cargo", "string", "wrap_help", "derive"] }
 httparse = "1.7"
 ipnet = "2"
 jsonwebtoken = "8"
@@ -39,9 +39,9 @@ signal-hook = "0.3"
 slab = "0.4"
 socket2 = "0.4"
 thiserror = "1.0"
-time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+time = { version = "=0.3.18", features = ["formatting", "local-offset", "macros"] }
 url = "2.3"
-zmq = "0.10"
+zmq = "0.9"
 config = "0.13.3"
 
 [dev-dependencies]
