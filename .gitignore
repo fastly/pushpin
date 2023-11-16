@@ -24,7 +24,6 @@ vendor
 /src/config.h
 /src/Makefile
 /src/cpp/Makefile
-/src/cpp/makedirs/Makefile
 /src/cpp/cpp/Makefile
 /src/cpp/tests/Makefile
 /src/rust/Makefile
