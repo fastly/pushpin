@@ -1,0 +1,61 @@
+/*
+-----BEGIN QCMOD-----
+name: Boost.Signals2
+section: libraries
+description: Configuration for the Boost.Signals2 library, a part of the Boost C++ Libraries.
+-----END QCMOD-----
+*/
+
+class qc_boost : public ConfObj
+{
+public:
+    qc_boost(Conf *c) : ConfObj(c) {}
+    QString name() const { return "Boost.Signals2 >= 1.71"; }
+    QString shortname() const { return "boost"; }
+    bool checkBoostVersion() {
+        QProcess process;
+        process.start("bash", QStringList() << "-c" << "grep \"BOOST_LIB_VERSION\" $(find /usr/local/Cellar/boost /usr/include /usr/local/include -name 'version.hpp' 2> /dev/null | grep 'boost/version.hpp') | grep -v \"//\" | cut -d '\"' -f2 | sed 's/_/./g'");
+        process.waitForFinished();
+        QString output(process.readAllStandardOutput());
+        output = output.trimmed();
+
+        QStringList versionParts = output.split(".");
+        if (versionParts.size() < 2) {
+            return false;  // Version format error
+        }
+
+        int majorVersion = versionParts[0].toInt();
+        int minorVersion = versionParts[1].toInt();
+
+        return (majorVersion > 1 || (majorVersion == 1 && minorVersion >= 71));
+    }
+    QString findBoostIncludePath()
+    {
+        QStringList possiblePaths = { "/usr/local/include", "/usr/include" };
+        QString boostHeader = "boost/signals2.hpp"; // Boost signals header file
+
+        foreach (const QString &path, possiblePaths) {
+            QDir dir(path);
+            if (dir.exists(boostHeader)) {
+                return path; // Return the path where Boost headers are found
+            }
+        }
+
+        return QString(); // Return empty if Boost headers are not found
+    }
+    bool exec()
+    {       
+        if (!checkBoostVersion()) {
+            printf("checkBoostVersion err \n");
+            return false;
+        }
+        QString boostIncludePath = findBoostIncludePath();
+        if (boostIncludePath.isEmpty()) {
+            printf("boostIncludePath err \n");
+            return false;
+        }
+
+        conf->addIncludePath(boostIncludePath);
+        return true; 
+    }
+};
