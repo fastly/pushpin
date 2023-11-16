@@ -55,5 +55,3 @@ int m2adapter_main(int argc, char **argv)
 }
 
 }
-
-#include "m2adaptermain.moc"

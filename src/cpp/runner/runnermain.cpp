@@ -55,5 +55,3 @@ int runner_main(int argc, char **argv)
 }
 
 }
-
-#include "runnermain.moc"

@@ -55,5 +55,3 @@ int proxy_main(int argc, char **argv)
 }
 
 }
-
-#include "main.moc"

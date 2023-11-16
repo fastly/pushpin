@@ -55,5 +55,3 @@ int handler_main(int argc, char **argv)
 }
 
 }
-
-#include "handlermain.moc"
