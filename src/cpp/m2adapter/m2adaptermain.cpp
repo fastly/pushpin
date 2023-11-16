@@ -24,16 +24,14 @@
 #include <QTimer>
 #include "m2adapterapp.h"
 
-class M2AdapterAppMain : public QObject
+class M2AdapterAppMain
 {
-	Q_OBJECT
-
 public:
 	M2AdapterApp *app;
 
 	void start()
 	{
-		app = new M2AdapterApp(this);
+		app = new M2AdapterApp();
 		app->quit.connect(boost::bind(&M2AdapterAppMain::app_quit, this, boost::placeholders::_1));
 		app->start();
 	}

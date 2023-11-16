@@ -24,16 +24,14 @@
 #include <QTimer>
 #include "app.h"
 
-class AppMain : public QObject
+class AppMain
 {
-	Q_OBJECT
-
 public:
 	App *app;
 
 	void start()
 	{
-		app = new App(this);
+		app = new App();
 		app->quit.connect(boost::bind(&AppMain::app_quit, this, boost::placeholders::_1));
 		app->start();
 	}
