@@ -50,6 +50,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cpp_src_dir = root_dir.join(Path::new("src/cpp"));
     let cpp_lib_dir = root_dir.join(Path::new("target/cpp"));
 
+    for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
+        fs::create_dir_all(cpp_lib_dir.join(Path::new(dir)))?;
+    }
+
     if !cpp_src_dir.join("Makefile").try_exists()? {
         assert!(Command::new(qmake_path)
             .args(["-o", "Makefile", "cpp.pro"])
