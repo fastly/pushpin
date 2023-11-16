@@ -110,18 +110,3 @@ PRE_TARGETDEPS += \
 	$$root_dir/pushpin-legacy \
 	$$root_dir/pushpin \
 	$$bin_dir/pushpin-publish
-
-unix:!isEmpty(BINDIR) {
-	binfiles.path = $$BINDIR
-	binfiles.files = \
-		$$bin_dir/condure \
-		$$bin_dir/m2adapter \
-		$$bin_dir/pushpin-proxy \
-		$$bin_dir/pushpin-handler \
-		$$root_dir/pushpin-legacy \
-		$$root_dir/pushpin \
-		$$bin_dir/pushpin-publish
-	binfiles.CONFIG += no_check_exist executable
-
-	INSTALLS += binfiles
-}
