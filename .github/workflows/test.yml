@@ -46,7 +46,7 @@ jobs:
       run: cargo fmt --check
       shell: bash
     - name: build
-      run: ./configure && cargo check --profile test && make
+      run: cargo fetch && ./configure && make
       shell: bash
     - name: check
       run: RUSTFLAGS="-D warnings" make check
