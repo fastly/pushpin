@@ -358,12 +358,8 @@ impl App {
         }
 
         // wait for termination
-        for signal in &mut signals {
-            match signal {
-                signal_type if TERM_SIGNALS.contains(&signal_type) => break,
-                _ => unreachable!(),
-            }
-        }
+        let signal_type = signals.into_iter().next().unwrap();
+        assert!(TERM_SIGNALS.contains(&signal_type));
     }
 
     pub fn sizes() -> Vec<(String, usize)> {
