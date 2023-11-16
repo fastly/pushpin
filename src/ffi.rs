@@ -435,12 +435,10 @@ fn set_errno(value: libc::c_int) {
 }
 
 #[no_mangle]
-pub extern "C" fn wzmq_init(io_threads: libc::c_int) -> *mut zmq::Context {
+pub extern "C" fn wzmq_init(_io_threads: libc::c_int) -> *mut zmq::Context {
     let ctx = zmq::Context::new();
 
-    if ctx.set_io_threads(io_threads).is_err() {
-        return ptr::null_mut();
-    }
+    // NOTE: io_threads is ignored since zmq 0.9 doesn't provide a way to specify it
 
     Box::into_raw(Box::new(ctx))
 }
