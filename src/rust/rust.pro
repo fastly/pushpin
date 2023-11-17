@@ -1,19 +1,16 @@
 TEMPLATE = aux
-OBJECTS_DIR = ./
-DESTDIR = ./
 CONFIG -= debug_and_release debug
 
 include($$OUT_PWD/../../conf.pri)
 
 root_dir = $$PWD/../..
-bin_dir = $$root_dir/bin
 
 CONFIG(debug, debug|release) {
 	cargo_flags =
-	target_dir = $$PWD/../../target/debug
+	target_dir = $$root_dir/target/debug
 } else {
 	cargo_flags = --release
-	target_dir = $$PWD/../../target/release
+	target_dir = $$root_dir/target/debug
 }
 
 check.commands = cd "$$root_dir" && cargo test --offline $$cargo_flags
@@ -50,35 +47,6 @@ publish_build.target = $$target_dir/pushpin-publish
 publish_build.depends = rust_build
 publish_build.commands = @:
 
-condure_bin.target = $$bin_dir/condure
-condure_bin.depends = condure_build
-condure_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/condure $$bin_dir/condure
-
-m2adapter_bin.target = $$bin_dir/m2adapter
-m2adapter_bin.depends = m2adapter_build
-m2adapter_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/m2adapter $$bin_dir/m2adapter
-
-proxy_bin.target = $$bin_dir/pushpin-proxy
-proxy_bin.depends = proxy_build
-proxy_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-proxy $$bin_dir/pushpin-proxy
-
-handler_bin.target = $$bin_dir/pushpin-handler
-handler_bin.depends = handler_build
-handler_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-handler $$bin_dir/pushpin-handler
-
-runner_legacy_bin.target = $$root_dir/pushpin-legacy
-runner_legacy_bin.depends = runner_legacy_build
-runner_legacy_bin.commands = cp -a $$target_dir/pushpin-legacy $$root_dir/pushpin-legacy
-
-runner_bin.target = $$root_dir/pushpin
-runner_bin.depends = runner_build
-runner_bin.commands = cp -a $$target_dir/pushpin $$root_dir/pushpin
-
-publish_bin.target = $$bin_dir/pushpin-publish
-publish_bin.depends = publish_build
-publish_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-publish $$bin_dir/pushpin-publish
-
-
 QMAKE_EXTRA_TARGETS += \
 	check \
 	rust_build \
@@ -89,24 +57,17 @@ QMAKE_EXTRA_TARGETS += \
 	handler_build \
 	runner_legacy_build \
 	runner_build \
-	publish_build \
-	condure_bin \
-	m2adapter_bin \
-	proxy_bin \
-	handler_bin \
-	runner_legacy_bin \
-	runner_bin \
-	publish_bin
+	publish_build
 
 # make built-in clean depend on rust_clean
 clean.depends = rust_clean
 QMAKE_EXTRA_TARGETS += clean
 
 PRE_TARGETDEPS += \
-	$$bin_dir/condure \
-	$$bin_dir/m2adapter \
-	$$bin_dir/pushpin-proxy \
-	$$bin_dir/pushpin-handler \
-	$$root_dir/pushpin-legacy \
-	$$root_dir/pushpin \
-	$$bin_dir/pushpin-publish
+	$$target_dir/condure \
+	$$target_dir/m2adapter \
+	$$target_dir/pushpin-proxy \
+	$$target_dir/pushpin-handler \
+	$$target_dir/pushpin-legacy \
+	$$target_dir/pushpin \
+	$$target_dir/pushpin-publish
