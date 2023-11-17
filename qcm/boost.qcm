@@ -55,7 +55,7 @@ public:
             return false;
         }
 
-        conf->addIncludePath(boostIncludePath);
+       // conf->addIncludePath(boostIncludePath);
         return true; 
     }
 };
