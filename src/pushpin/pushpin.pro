@@ -2,8 +2,8 @@ TEMPLATE = aux
 
 include($$OUT_PWD/../../conf.pri)
 
-bin_dir = $$PWD/../../bin
 root_dir = $$PWD/../..
+bin_dir = $$root_dir/bin
 
 # generate pushpin.conf for installation
 

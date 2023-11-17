@@ -5,8 +5,8 @@ CONFIG -= debug_and_release debug
 
 include($$OUT_PWD/../../conf.pri)
 
-bin_dir = $$PWD/../../bin
 root_dir = $$PWD/../..
+bin_dir = $$root_dir/bin
 
 CONFIG(debug, debug|release) {
 	cargo_flags =
