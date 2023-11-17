@@ -2,6 +2,9 @@ TEMPLATE = aux
 
 include($$OUT_PWD/../../conf.pri)
 
+root_dir = $$PWD/../..
+bin_dir = $$root_dir/bin
+
 # generate pushpin.conf for installation
 
 pushpin_conf_inst.target = pushpin.conf.inst
@@ -10,6 +13,23 @@ pushpin_conf_inst.depends = ../../examples/config/pushpin.conf
 
 QMAKE_EXTRA_TARGETS += pushpin_conf_inst
 PRE_TARGETDEPS += pushpin.conf.inst
+
+# install bin files
+
+unix:!isEmpty(BINDIR) {
+	binfiles.path = $$BINDIR
+	binfiles.files = \
+		$$bin_dir/condure \
+		$$bin_dir/m2adapter \
+		$$bin_dir/pushpin-proxy \
+		$$bin_dir/pushpin-handler \
+		$$root_dir/pushpin-legacy \
+		$$root_dir/pushpin \
+		$$bin_dir/pushpin-publish
+	binfiles.CONFIG += no_check_exist executable
+
+	INSTALLS += binfiles
+}
 
 # install lib files
 

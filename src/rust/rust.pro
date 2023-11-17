@@ -5,8 +5,8 @@ CONFIG -= debug_and_release debug
 
 include($$OUT_PWD/../../conf.pri)
 
-bin_dir = $$PWD/../../bin
 root_dir = $$PWD/../..
+bin_dir = $$root_dir/bin
 
 CONFIG(debug, debug|release) {
 	cargo_flags =
@@ -110,18 +110,3 @@ PRE_TARGETDEPS += \
 	$$root_dir/pushpin-legacy \
 	$$root_dir/pushpin \
 	$$bin_dir/pushpin-publish
-
-unix:!isEmpty(BINDIR) {
-	binfiles.path = $$BINDIR
-	binfiles.files = \
-		$$bin_dir/condure \
-		$$bin_dir/m2adapter \
-		$$bin_dir/pushpin-proxy \
-		$$bin_dir/pushpin-handler \
-		$$root_dir/pushpin-legacy \
-		$$root_dir/pushpin \
-		$$bin_dir/pushpin-publish
-	binfiles.CONFIG += no_check_exist executable
-
-	INSTALLS += binfiles
-}
