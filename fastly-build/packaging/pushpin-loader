@@ -248,7 +248,15 @@ def fetch_service_backends(api_key):
     pushpin_services = []
 
     for (service_id, service) in services.items():
-        assert(service_id == service['service'])
+        # Check if 'service' key exists in the 'service' dictionary
+        if 'service' not in service:
+            logging.warning(f"Error: 'service' key not found in service: {service}")
+            continue
+
+        # Check if service_id matches the 'service' key in the 'service' dictionary
+        if service_id != service['service']:
+            logging.warning(f"Error: service_id {service_id} does not match service['service'] {service['service']}")
+            continue
 
         features = service.get('features', {})
 
