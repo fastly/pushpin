@@ -2,4 +2,7 @@ TEMPLATE = subdirs
 
 src.subdir = src
 
-SUBDIRS += src
+postbuild.subdir = postbuild
+postbuild.depends = src
+
+SUBDIRS += src postbuild
