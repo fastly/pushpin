@@ -14,7 +14,7 @@ public:
     QString shortname() const { return "boost"; }
     bool checkBoostVersion() {
         QProcess process;
-        process.start("bash", QStringList() << "-c" << "grep \"BOOST_LIB_VERSION\" $(find /usr/include -name 'version.hpp' 2> /dev/null | grep 'boost/version.hpp') | grep -v \"//\" | cut -d '\"' -f2 | sed 's/_/./g'");
+        process.start("bash", QStringList() << "-c" << "grep \"BOOST_LIB_VERSION\" $(find /usr/local/Cellar/boost/ /usr/include /usr/local/include -name 'version.hpp' 2> /dev/null | grep 'boost/version.hpp') | grep -v \"//\" | cut -d '\"' -f2 | sed 's/_/./g'");
         process.waitForFinished();
         QString output(process.readAllStandardOutput());
         output = output.trimmed();
