@@ -5,6 +5,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let conf = {
@@ -62,7 +63,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             .success());
     }
 
+    let proc_count = thread::available_parallelism().map_or(1, |x| x.get());
+
     assert!(Command::new(maketool)
+        .args(["-j", &proc_count.to_string()])
         .current_dir(&cpp_src_dir)
         .status()?
         .success());
