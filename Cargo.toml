@@ -50,6 +50,9 @@ criterion = "0.5"
 env_logger = { version = "0.9", default-features = false }
 test-log = "0.2"
 
+[build-dependencies]
+pkg-config = "0.3"
+
 [[bench]]
 name = "server"
 harness = false
