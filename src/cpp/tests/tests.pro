@@ -15,8 +15,6 @@ SRC_DIR = $$PWD/..
 QZMQ_DIR = $$SRC_DIR/qzmq
 RUST_DIR = $$SRC_DIR/../rust
 
-PRE_TARGETDEPS += $$cpp_build_dir/libpushpin-cpp.a
-
 include($$PWD/../../../conf.pri)
 
 INCLUDEPATH += $$SRC_DIR
