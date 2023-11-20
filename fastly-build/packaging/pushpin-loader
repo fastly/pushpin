@@ -3,6 +3,7 @@
 import argparse
 from base64 import b64decode
 from collections import namedtuple
+from datetime import datetime
 from grp import getgrnam
 import gzip
 from http.client import HTTPConnection, HTTPSConnection
@@ -232,6 +233,33 @@ class FanoutInternalClient(BaseClient):
         return ('fanout-internal.edgecompute.app:443', 'tls', 'fanout-internal.edgecompute.app', {'Fastly-Key': self.key})
 
 
+def is_deleted(backend):
+    try:
+        # field present and valid means deleted
+        datetime.strptime(backend['deleted'], '%Y-%m-%d %H:%M:%S')
+        return True
+    except Exception:
+        # field missing or invalid ('0000-00-00 00:00:00' is invalid) means not deleted
+        return False
+
+
+# skip deleted, and de-dup by name just in case
+def clean_backends(backends):
+    out = []
+    names = set()
+
+    for b in backends:
+        name = b['name']
+
+        if name in names or is_deleted(b):
+            continue
+
+        names.add(name)
+        out.append(b)
+
+    return out
+
+
 def fetch_service_backends(api_key):
     """
     Returns {service_id: (service, [backend])}.
@@ -301,6 +329,8 @@ def fetch_service_backends(api_key):
         resp = heavenly_client.request(
             '/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
         backends = json.loads(resp.data)['backends']
+
+        backends = clean_backends(backends)
 
         # apply the backend-specific loader flags to the backend object
         for (backend_name, flags) in service.backend_flags.items():
