@@ -1,7 +1,7 @@
 TEMPLATE = aux
 CONFIG -= debug_and_release debug
 
-include($$OUT_PWD/../conf.pri)
+include($$OUT_PWD/../target/postbuild_conf.pri)
 
 root_dir = $$PWD/..
 bin_dir = $$root_dir/bin

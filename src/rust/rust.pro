@@ -1,8 +1,6 @@
 TEMPLATE = aux
 CONFIG -= debug_and_release debug
 
-include($$OUT_PWD/../../conf.pri)
-
 root_dir = $$PWD/../..
 
 CONFIG(debug, debug|release) {
