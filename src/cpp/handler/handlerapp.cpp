@@ -396,6 +396,8 @@ HandlerApp::HandlerApp(QObject *parent) :
 
 HandlerApp::~HandlerApp()
 {
+	d->hupConnection.disconnect();
+	d->quitConnection.disconnect();
 	delete d;
 }
 

@@ -41,6 +41,12 @@ public:
 		delete app;
 		QCoreApplication::exit(returnCode);
 	}
+	
+	~HandlerAppMain()
+	{
+		app->~HandlerApp();
+        delete app;
+	}
 };
 
 extern "C" {
