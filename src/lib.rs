@@ -268,6 +268,10 @@ pub struct ListenConfig {
     pub stream: bool,
 }
 
+pub fn version() -> &'static str {
+    env!("APP_VERSION")
+}
+
 /// # Safety
 ///
 /// * `main_fn` must be safe to call.

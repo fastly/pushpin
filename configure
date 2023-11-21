@@ -421,24 +421,6 @@ arg: logdir=[path],Directory for log files.  Default: /var/log
 #define ENDL endl
 #endif
 
-static QString getVersion()
-{
-	QSettings settings("Cargo.toml", QSettings::IniFormat);
-
-	QString version = settings.value("package/version").toString();
-
-	if(version.isEmpty())
-		return QString();
-
-	if(version.endsWith("-dev"))
-	{
-		QString nowstr = QDateTime::currentDateTime().toString("yyyyMMdd");
-		version += QString("-") + nowstr;
-	}
-
-	return version;
-}
-
 class qc_conf : public ConfObj
 {
 public:
@@ -448,12 +430,6 @@ public:
 	QString checkString() const { return QString(); }
 	bool exec()
 	{
-		QString version = getVersion();
-		if(version.isEmpty())
-			return false;
-
-		conf->addExtra(QString("APP_VERSION = %1").arg(version));
-
 		QString prefix = conf->getenv("PREFIX");
 		QString varprefix = "/var";
 
@@ -477,20 +453,7 @@ public:
 			logdir = varprefix + "/log";
 		conf->addExtra(QString("LOGDIR = %1/pushpin").arg(logdir));
 
-		conf->addIncludePath("\$\$PWD/src");
-
 		conf->addExtra(QString("MAKETOOL = %1").arg(conf->maketool));
-
-		QFile file("src/config.h");
-		if(file.open(QIODevice::WriteOnly | QIODevice::Text))
-		{
-			QTextStream stream( &file );
-			stream << "#define VERSION \\"" << version << "\\"" << ENDL;
-			stream << "#define LIBDIR \\"" << libdir << "/pushpin\\"" << ENDL;
-			stream << "#define CONFIGDIR \\"" << configdir << "/pushpin\\"" << ENDL;
-		}
-
-		conf->addDefine("HAVE_CONFIG");
 
 		return true;
 	}

@@ -6,6 +6,22 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
+use time::macros::format_description;
+use time::OffsetDateTime;
+
+fn get_version() -> String {
+    let mut version = env!("CARGO_PKG_VERSION").to_string();
+
+    if version.ends_with("-dev") {
+        let format = format_description!("[year][month][day]");
+
+        let date_str = OffsetDateTime::now_utc().format(&format).unwrap();
+
+        version.push_str(&format!("-{}", date_str));
+    }
+
+    version
+}
 
 fn check_version(
     pkg: &str,
@@ -81,7 +97,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let f = fs::File::open("conf.pri")?;
         let reader = BufReader::new(f);
 
-        const CONF_VARS: &[&str] = &["APP_VERSION", "CONFIGDIR", "LIBDIR", "MAKETOOL"];
+        const CONF_VARS: &[&str] = &["CONFIGDIR", "LIBDIR", "MAKETOOL"];
 
         for line in reader.lines() {
             let line = line?;
@@ -100,7 +116,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         conf
     };
 
-    let app_version = conf.get("APP_VERSION").unwrap();
     let config_dir = conf.get("CONFIGDIR").unwrap();
     let lib_dir = conf.get("LIBDIR").unwrap();
     let maketool = fs::canonicalize(conf.get("MAKETOOL").unwrap())?;
@@ -129,7 +144,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .status()?
         .success());
 
-    println!("cargo:rustc-env=APP_VERSION={}", app_version);
+    println!("cargo:rustc-env=APP_VERSION={}", get_version());
     println!("cargo:rustc-env=CONFIG_DIR={}", config_dir);
     println!("cargo:rustc-env=LIB_DIR={}", lib_dir);
 

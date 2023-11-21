@@ -21,7 +21,6 @@ vendor
 /conf.log
 /conf.pri
 /Makefile
-/src/config.h
 /src/Makefile
 /src/cpp/Makefile
 /src/cpp/cpp/Makefile

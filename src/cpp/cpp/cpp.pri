@@ -52,6 +52,7 @@ SOURCES += \
 
 HEADERS += \
 	$$SRC_DIR/callback.h \
+	$$SRC_DIR/config.h \
 	$$SRC_DIR/timerwheel.h \
 	$$SRC_DIR/jwt.h \
 	$$SRC_DIR/rtimer.h \
@@ -74,6 +75,7 @@ HEADERS += \
 	$$SRC_DIR/settings.h
 
 SOURCES += \
+	$$SRC_DIR/config.cpp \
 	$$SRC_DIR/timerwheel.cpp \
 	$$SRC_DIR/jwt.cpp \
 	$$SRC_DIR/rtimer.cpp \
