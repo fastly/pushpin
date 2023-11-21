@@ -511,7 +511,6 @@ section: libraries
 description: Configuration for the Boost.Signals2 library, a part of the Boost C++ Libraries.
 -----END QCMOD-----
 */
-
 class qc_boost : public ConfObj
 {
 public:
@@ -561,7 +560,10 @@ public:
             return false;
         }
 
-       // conf->addIncludePath(boostIncludePath);
+        #ifdef Q_OS_MAC
+            conf->addIncludePath(boostIncludePath);
+        #endif
+
         return true; 
     }
 };

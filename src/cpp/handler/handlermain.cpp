@@ -49,7 +49,7 @@ int handler_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
-	HandlerAppMain appMain;	
+	HandlerAppMain appMain;
 	QTimer::singleShot(0, [&appMain]() {appMain.start();});
 	return qapp.exec();
 }

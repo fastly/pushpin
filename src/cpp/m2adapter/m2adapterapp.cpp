@@ -471,7 +471,7 @@ public:
 		currentSessionRefreshBucket(0),
 		zhttpCancelMeter(0)
 	{
-		quitConnection = ProcessQuit::instance()->quit.connect(std::bind(&Private::doQuit, this));
+		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
         hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&M2AdapterApp::Private::reload, this));
 
 		statusTimer = new QTimer(this);
