@@ -1,6 +1,6 @@
 TEMPLATE = lib
 CONFIG -= app_bundle
-CONFIG += staticlib
+CONFIG += staticlib c++11
 QT -= gui
 QT *= network testlib
 TARGET = pushpin-cpptest
@@ -15,7 +15,7 @@ SRC_DIR = $$PWD/..
 QZMQ_DIR = $$SRC_DIR/qzmq
 RUST_DIR = $$SRC_DIR/../rust
 
-include($$PWD/../../../conf.pri)
+include($$PWD/../../../target/cpp/conf.pri)
 
 INCLUDEPATH += $$SRC_DIR
 INCLUDEPATH += $$SRC_DIR/proxy

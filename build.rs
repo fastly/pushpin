@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
@@ -47,6 +47,33 @@ fn check_version(
         )
         .into());
     }
+
+    Ok(())
+}
+
+fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
+    let mut f = fs::File::create(path)?;
+
+    writeln!(&mut f)?;
+
+    Ok(())
+}
+
+fn write_postbuild_conf_pri(
+    path: &Path,
+    bin_dir: &str,
+    lib_dir: &str,
+    config_dir: &str,
+    run_dir: &str,
+    log_dir: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut f = fs::File::create(path)?;
+
+    writeln!(&mut f, "BINDIR = {}", bin_dir)?;
+    writeln!(&mut f, "LIBDIR = {}", lib_dir)?;
+    writeln!(&mut f, "CONFIGDIR = {}", config_dir)?;
+    writeln!(&mut f, "RUNDIR = {}", run_dir)?;
+    writeln!(&mut f, "LOGDIR = {}", log_dir)?;
 
     Ok(())
 }
@@ -97,7 +124,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         let f = fs::File::open("conf.pri")?;
         let reader = BufReader::new(f);
 
-        const CONF_VARS: &[&str] = &["CONFIGDIR", "LIBDIR", "MAKETOOL"];
+        const CONF_VARS: &[&str] = &[
+            "BINDIR",
+            "CONFIGDIR",
+            "LIBDIR",
+            "LOGDIR",
+            "RUNDIR",
+            "MAKETOOL",
+        ];
 
         for line in reader.lines() {
             let line = line?;
@@ -116,8 +150,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         conf
     };
 
+    let bin_dir = conf.get("BINDIR").unwrap();
     let config_dir = conf.get("CONFIGDIR").unwrap();
     let lib_dir = conf.get("LIBDIR").unwrap();
+    let log_dir = conf.get("LOGDIR").unwrap();
+    let run_dir = conf.get("RUNDIR").unwrap();
     let maketool = fs::canonicalize(conf.get("MAKETOOL").unwrap())?;
 
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
@@ -127,6 +164,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
         fs::create_dir_all(cpp_lib_dir.join(Path::new(dir)))?;
     }
+
+    write_cpp_conf_pri(&cpp_lib_dir.join(Path::new("conf.pri")))?;
+
+    write_postbuild_conf_pri(
+        &Path::new("target").join(Path::new("postbuild_conf.pri")),
+        bin_dir,
+        lib_dir,
+        config_dir,
+        run_dir,
+        log_dir,
+    )?;
 
     if !cpp_src_dir.join("Makefile").try_exists()? {
         assert!(Command::new(&qmake_path)
