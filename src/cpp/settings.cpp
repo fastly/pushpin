@@ -45,7 +45,7 @@ Settings::Settings(const QString &fileName) :
 		else
 		{
 			// use compiled value
-			libdir_ = LIBDIR;
+			libdir_ = Config::get().libDir;
 		}
 	}
 

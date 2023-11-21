@@ -165,7 +165,7 @@ public:
 	void start()
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
-		QCoreApplication::setApplicationVersion(VERSION);
+		QCoreApplication::setApplicationVersion(Config::get().version);
 
 		QCommandLineParser parser;
 		parser.setApplicationDescription("Pushpin handler component.");
@@ -208,7 +208,7 @@ public:
 
 		QString configFile = args.configFile;
 		if(configFile.isEmpty())
-			configFile = QDir(CONFIGDIR).filePath("pushpin.conf");
+			configFile = QDir(Config::get().configDir).filePath("pushpin.conf");
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{
@@ -300,7 +300,7 @@ public:
 		}
 
 		HandlerEngine::Configuration config;
-		config.appVersion = VERSION;
+		config.appVersion = Config::get().version;
 		config.instanceId = "pushpin-handler_" + QByteArray::number(QCoreApplication::applicationPid());
 		if(!services.contains("mongrel2") && (!condure_in_stream_specs.isEmpty() || !condure_out_specs.isEmpty()))
 		{
