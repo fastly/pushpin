@@ -37,10 +37,7 @@ public:
 		int ver_min = vparts[1].toInt();
 
 		if(ver_maj == 1 && ver_min >= 34)
-		{
-			conf->addExtra("CONFIG += use_cargo");
 			return true;
-		}
 
 		return false;
 	}
