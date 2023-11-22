@@ -124,14 +124,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let f = fs::File::open("conf.pri")?;
         let reader = BufReader::new(f);
 
-        const CONF_VARS: &[&str] = &[
-            "BINDIR",
-            "CONFIGDIR",
-            "LIBDIR",
-            "LOGDIR",
-            "RUNDIR",
-            "MAKETOOL",
-        ];
+        const CONF_VARS: &[&str] = &["BINDIR", "CONFIGDIR", "LIBDIR", "LOGDIR", "RUNDIR"];
 
         for line in reader.lines() {
             let line = line?;
@@ -155,7 +148,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let lib_dir = conf.get("LIBDIR").unwrap();
     let log_dir = conf.get("LOGDIR").unwrap();
     let run_dir = conf.get("RUNDIR").unwrap();
-    let maketool = fs::canonicalize(conf.get("MAKETOOL").unwrap())?;
 
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let cpp_src_dir = root_dir.join(Path::new("src/cpp"));
@@ -186,7 +178,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let proc_count = thread::available_parallelism().map_or(1, |x| x.get());
 
-    assert!(Command::new(maketool)
+    assert!(Command::new("make")
         .args(["-j", &proc_count.to_string()])
         .current_dir(&cpp_src_dir)
         .status()?
