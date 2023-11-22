@@ -51,10 +51,12 @@ fn check_version(
     Ok(())
 }
 
-fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
+fn write_cpp_conf_pri(path: &Path,
+    include_path: &str) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
-
+    
     writeln!(&mut f)?;
+    writeln!(&mut f, "{} {}", include_path, "/usr/local/include")?;
 
     Ok(())
 }
@@ -165,7 +167,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(cpp_lib_dir.join(Path::new(dir)))?;
     }
 
-    write_cpp_conf_pri(&cpp_lib_dir.join(Path::new("conf.pri")))?;
+    let include_path = match conf.get("INCLUDEPATH") {
+        Some(x) => 
+            x.to_string(),
+        None => 
+           String::from("INCLUDEPATH = "),
+        
+    };
+    write_cpp_conf_pri(&cpp_lib_dir.join(Path::new("conf.pri")), include_path.as_str())?;
 
     write_postbuild_conf_pri(
         &Path::new("target").join(Path::new("postbuild_conf.pri")),

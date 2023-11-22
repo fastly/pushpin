@@ -559,11 +559,7 @@ public:
             printf("boostIncludePath err \\n");
             return false;
         }
-
-        #ifdef Q_OS_MAC
-            conf->addIncludePath(boostIncludePath);
-        #endif
-
+        
         return true; 
     }
 };
