@@ -8,7 +8,4 @@
  <dep type='cargo'>
   <required/>
  </dep>
- <dep type='boost'>
-  <required/>
- </dep>
 </qconf>
