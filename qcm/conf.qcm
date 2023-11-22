@@ -50,8 +50,6 @@ public:
 			logdir = varprefix + "/log";
 		conf->addExtra(QString("LOGDIR = %1/pushpin").arg(logdir));
 
-		conf->addExtra(QString("MAKETOOL = %1").arg(conf->maketool));
-
 		return true;
 	}
 };
