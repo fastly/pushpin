@@ -44,8 +44,7 @@ public:
 	
 	~HandlerAppMain()
 	{
-		app->~HandlerApp();
-        delete app;
+        	delete app;
 	}
 };
 
