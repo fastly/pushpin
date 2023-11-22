@@ -152,14 +152,16 @@ public:
 	HandlerApp *q;
 	ArgsData args;
 	HandlerEngine *engine;
+	Connection quitConnection;
+	Connection hupConnection;
 
 	Private(HandlerApp *_q) :
 		QObject(_q),
 		q(_q),
 		engine(0)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
+		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
+		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
 	}
 
 	void start()
@@ -216,7 +218,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				emit q->quit();
+				emit q->quit(0);
 				return;
 			}
 		}
@@ -288,14 +290,14 @@ public:
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
 			log_error("must set m2a_in_stream_specs and m2a_out_specs");
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
 		if(proxy_inspect_spec.isEmpty() || proxy_accept_spec.isEmpty() || proxy_retry_out_spec.isEmpty())
 		{
 			log_error("must set proxy_inspect_spec, proxy_accept_spec, and proxy_retry_out_spec");
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
@@ -353,14 +355,14 @@ public:
 		engine = new HandlerEngine(this);
 		if(!engine->start(config))
 		{
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
 		log_info("started");
 	}
 
-private slots:
+private:
 	void reload()
 	{
 		log_info("reloading");
@@ -372,6 +374,9 @@ private slots:
 	{
 		log_info("stopping...");
 
+		hupConnection.disconnect();
+		quitConnection.disconnect();
+
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
@@ -379,7 +384,7 @@ private slots:
 		engine = 0;
 
 		log_info("stopped");
-		emit q->quit();
+		emit q->quit(0);
 	}
 };
 
@@ -391,6 +396,8 @@ HandlerApp::HandlerApp(QObject *parent) :
 
 HandlerApp::~HandlerApp()
 {
+	d->hupConnection.disconnect();
+	d->quitConnection.disconnect();
 	delete d;
 }
 

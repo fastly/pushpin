@@ -19,11 +19,14 @@
  *
  * $FANOUT_END_LICENSE$
  */
-
 #ifndef HANDLERAPP_H
 #define HANDLERAPP_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
+
+using SignalInt = boost::signals2::signal<void(int)>;
+using Connection = boost::signals2::connection;
 
 class HandlerApp : public QObject
 {
@@ -35,8 +38,7 @@ public:
 
 	void start();
 
-signals:
-	void quit(int returnCode = 0);
+	SignalInt quit;
 
 private:
 	class Private;

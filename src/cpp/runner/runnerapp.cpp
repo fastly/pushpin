@@ -256,6 +256,8 @@ public:
 	QList<Service*> services;
 	bool stopping;
 	bool errored;
+	Connection quitConnection;
+	Connection hupConnection;
 
 	Private(RunnerApp *_q) :
 		QObject(_q),
@@ -263,8 +265,8 @@ public:
 		stopping(false),
 		errored(false)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::processQuit);
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
+		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
+        hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
 	}
 
 	void start()
@@ -696,6 +698,9 @@ private:
 
 	void doQuit()
 	{
+		hupConnection.disconnect();
+		quitConnection.disconnect();
+		
 		emit q->quit(errored ? 1 : 0);
 	}
 
@@ -759,6 +764,7 @@ private slots:
 		}
 	}
 
+private:
 	void reload()
 	{
 		log_info("reloading");

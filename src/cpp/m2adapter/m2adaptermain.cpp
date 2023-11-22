@@ -24,18 +24,15 @@
 #include <QTimer>
 #include "m2adapterapp.h"
 
-class M2AdapterAppMain : public QObject
+class M2AdapterAppMain
 {
-	Q_OBJECT
-
 public:
 	M2AdapterApp *app;
 
-public slots:
 	void start()
 	{
-		app = new M2AdapterApp(this);
-		connect(app, &M2AdapterApp::quit, this, &M2AdapterAppMain::app_quit);
+		app = new M2AdapterApp();
+		app->quit.connect(boost::bind(&M2AdapterAppMain::app_quit, this, boost::placeholders::_1));
 		app->start();
 	}
 
@@ -53,10 +50,8 @@ int m2adapter_main(int argc, char **argv)
 	QCoreApplication qapp(argc, argv);
 
 	M2AdapterAppMain appMain;
-	QTimer::singleShot(0, &appMain, SLOT(start()));
+	QTimer::singleShot(0, [&appMain]() {appMain.start();});
 	return qapp.exec();
 }
 
 }
-
-#include "m2adaptermain.moc"

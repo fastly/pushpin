@@ -1651,8 +1651,6 @@ void StatsManager::setPrometheusPrefix(const QString &prefix)
 
 void StatsManager::addActivity(const QByteArray &routeId, quint32 count)
 {
-	assert(count >= 0);
-
 	if(d->routeActivity.contains(routeId))
 		d->routeActivity[routeId] += count;
 	else
@@ -1921,8 +1919,6 @@ void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint
 
 void StatsManager::addRequestsReceived(quint32 count)
 {
-	assert(count >= 0);
-
 	qint64 now = QDateTime::currentMSecsSinceEpoch();
 
 	d->combinedCounts.requestsReceived += count;

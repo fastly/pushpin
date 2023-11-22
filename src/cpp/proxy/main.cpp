@@ -24,18 +24,15 @@
 #include <QTimer>
 #include "app.h"
 
-class AppMain : public QObject
+class AppMain
 {
-	Q_OBJECT
-
 public:
 	App *app;
 
-public slots:
 	void start()
 	{
-		app = new App(this);
-		connect(app, &App::quit, this, &AppMain::app_quit);
+		app = new App();
+		app->quit.connect(boost::bind(&AppMain::app_quit, this, boost::placeholders::_1));
 		app->start();
 	}
 
@@ -53,10 +50,8 @@ int proxy_main(int argc, char **argv)
 	QCoreApplication qapp(argc, argv);
 
 	AppMain appMain;
-	QTimer::singleShot(0, &appMain, SLOT(start()));
+	QTimer::singleShot(0, [&appMain]() {appMain.start();});
 	return qapp.exec();
 }
 
 }
-
-#include "main.moc"

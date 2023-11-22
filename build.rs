@@ -55,6 +55,7 @@ fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
+    writeln!(&mut f, "INCLUDEPATH = /usr/local/include")?;
 
     Ok(())
 }

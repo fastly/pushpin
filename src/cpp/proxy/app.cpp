@@ -170,14 +170,16 @@ public:
 	App *q;
 	ArgsData args;
 	Engine *engine;
+	Connection quitConnection;
+	Connection hupConnection;
 
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
 		engine(0)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
+		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
+        hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
 	}
 
 	void start()
@@ -234,7 +236,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				emit q->quit();
+				emit q->quit(0);
 				return;
 			}
 		}
@@ -329,14 +331,14 @@ public:
 		if(!(!condure_in_specs.isEmpty() && !condure_in_stream_specs.isEmpty() && !condure_out_specs.isEmpty()) && !(!m2a_in_specs.isEmpty() && !m2a_in_stream_specs.isEmpty() && !m2a_out_specs.isEmpty()))
 		{
 			log_error("must set condure_in_specs, condure_in_stream_specs, and condure_out_specs, or m2a_in_specs, m2a_in_stream_specs, and m2a_out_specs");
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
 		if(!(!condure_client_out_specs.isEmpty() && !condure_client_out_stream_specs.isEmpty() && !condure_client_in_specs.isEmpty()) && !(!zurl_out_specs.isEmpty() && !zurl_out_stream_specs.isEmpty() && !zurl_in_specs.isEmpty()))
 		{
 			log_error("must set condure_client_out_specs, condure_client_out_stream_specs, and condure_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
@@ -416,7 +418,7 @@ public:
 		engine = new Engine(this);
 		if(!engine->start(config))
 		{
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
@@ -435,6 +437,9 @@ private slots:
 	{
 		log_info("stopping...");
 
+		hupConnection.disconnect();
+		quitConnection.disconnect();
+
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
@@ -442,7 +447,7 @@ private slots:
 		engine = 0;
 
 		log_info("stopped");
-		emit q->quit();
+		emit q->quit(0);
 	}
 };
 
