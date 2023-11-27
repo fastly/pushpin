@@ -21,11 +21,9 @@ vendor
 /conf.log
 /conf.pri
 /Makefile
-/src/cpp/Makefile
-/src/cpp/cpp/Makefile
-/src/cpp/tests/Makefile
 /src/runner/certs/*.crt
 /src/runner/certs/*.key
+/postbuild/conf.pri
 /postbuild/Makefile
 /postbuild/*.inst
 /config

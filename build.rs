@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -218,17 +219,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     let run_dir = env_or_default("RUNDIR", &default_vars);
 
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
-    let cpp_src_dir = root_dir.join(Path::new("src/cpp"));
-    let cpp_lib_dir = root_dir.join(Path::new("target/cpp"));
+    let cpp_src_dir = root_dir.join("src/cpp");
+    let cpp_tests_src_dir = root_dir.join("src/cpp/tests");
+    let cpp_out_dir = root_dir.join("target/cpp");
 
     for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
-        fs::create_dir_all(cpp_lib_dir.join(Path::new(dir)))?;
+        fs::create_dir_all(cpp_out_dir.join(dir))?;
     }
 
-    write_cpp_conf_pri(&cpp_lib_dir.join(Path::new("conf.pri")))?;
+    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"))?;
 
     write_postbuild_conf_pri(
-        &Path::new("target").join(Path::new("postbuild_conf.pri")),
+        &Path::new("postbuild").join("conf.pri"),
         &bin_dir,
         &lib_dir,
         &config_dir,
@@ -236,19 +238,37 @@ fn main() -> Result<(), Box<dyn Error>> {
         &log_dir,
     )?;
 
-    if !cpp_src_dir.join("Makefile").try_exists()? {
-        assert!(Command::new(&qmake_path)
-            .args(["-o", "Makefile", "cpp.pro"])
-            .current_dir(&cpp_src_dir)
-            .status()?
-            .success());
-    }
+    assert!(Command::new(&qmake_path)
+        .args([
+            OsStr::new("-o"),
+            cpp_out_dir.join("Makefile").as_os_str(),
+            cpp_src_dir.join("cpp.pro").as_os_str(),
+        ])
+        .status()?
+        .success());
+
+    assert!(Command::new(&qmake_path)
+        .args([
+            OsStr::new("-o"),
+            cpp_out_dir.join("Makefile.test").as_os_str(),
+            cpp_tests_src_dir.join("tests.pro").as_os_str(),
+        ])
+        .status()?
+        .success());
 
     let proc_count = thread::available_parallelism().map_or(1, |x| x.get());
 
     assert!(Command::new("make")
+        .args(["-f", "Makefile"])
         .args(["-j", &proc_count.to_string()])
-        .current_dir(&cpp_src_dir)
+        .current_dir(&cpp_out_dir)
+        .status()?
+        .success());
+
+    assert!(Command::new("make")
+        .args(["-f", "Makefile.test"])
+        .args(["-j", &proc_count.to_string()])
+        .current_dir(&cpp_out_dir)
         .status()?
         .success());
 
@@ -256,7 +276,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rustc-env=CONFIG_DIR={}/pushpin", config_dir);
     println!("cargo:rustc-env=LIB_DIR={}/pushpin", lib_dir);
 
-    println!("cargo:rustc-link-search={}", cpp_lib_dir.display());
+    println!("cargo:rustc-link-search={}", cpp_out_dir.display());
 
     #[cfg(target_os = "macos")]
     println!(
@@ -267,6 +287,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(not(target_os = "macos"))]
     println!("cargo:rustc-link-search={}", qt_install_libs.display());
 
+    println!("cargo:rerun-if-env-changed=RELEASE");
     println!("cargo:rerun-if-env-changed=PREFIX");
     println!("cargo:rerun-if-env-changed=BINDIR");
     println!("cargo:rerun-if-env-changed=CONFIGDIR");

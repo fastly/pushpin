@@ -1,9 +1,15 @@
-TEMPLATE = subdirs
+TEMPLATE = lib
+CONFIG -= app_bundle
+CONFIG += staticlib c++11
+QT -= gui
+QT += network
+TARGET = pushpin-cpp
+DESTDIR = ../../target/cpp
 
-cpp.subdir = cpp
+cpp_build_dir = $$OUT_PWD
 
-tests.subdir = tests
+MOC_DIR = $$cpp_build_dir/moc
+OBJECTS_DIR = $$cpp_build_dir/obj
 
-SUBDIRS += \
-	cpp \
-	tests
+include($$cpp_build_dir/conf.pri)
+include(cpp.pri)

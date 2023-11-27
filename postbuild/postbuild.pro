@@ -1,6 +1,6 @@
 TEMPLATE = aux
 
-include($$OUT_PWD/../target/postbuild_conf.pri)
+include(conf.pri)
 
 root_dir = $$PWD/..
 bin_dir = $$root_dir/bin

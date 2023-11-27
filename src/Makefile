@@ -16,3 +16,5 @@ distclean: clean
 
 check:
 	cd .. && cargo test $(cargo_flags)
+
+install:
