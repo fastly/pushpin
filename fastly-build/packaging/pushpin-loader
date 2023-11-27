@@ -278,7 +278,7 @@ def fetch_service_backends(api_key):
     for (service_id, service) in services.items():
         # Check if 'service' key exists in the 'service' dictionary
         if 'service' not in service:
-            logging.warning(f"Error: 'service' key not found in service: {service}")
+            logging.warning(f"Error: 'service' key not found in service: {service} with {resp.status} status code")
             continue
 
         # Check if service_id matches the 'service' key in the 'service' dictionary
