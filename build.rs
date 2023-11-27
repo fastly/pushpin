@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
@@ -51,6 +51,64 @@ fn check_version(
     Ok(())
 }
 
+fn prefixed_vars(prefix: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+
+    out.insert("BINDIR".into(), format!("{}/bin", prefix));
+    out.insert("CONFIGDIR".into(), format!("{}/etc", prefix));
+    out.insert("LIBDIR".into(), format!("{}/lib", prefix));
+    out.insert("LOGDIR".into(), "/var/log".into());
+    out.insert("RUNDIR".into(), "/var/run".into());
+
+    out
+}
+
+fn read_conf_pri() -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let mut conf = HashMap::new();
+
+    let f = fs::File::open("conf.pri")?;
+
+    let reader = BufReader::new(f);
+
+    const CONF_VARS: &[&str] = &["BINDIR", "CONFIGDIR", "LIBDIR", "LOGDIR", "RUNDIR"];
+
+    for line in reader.lines() {
+        let line = line?;
+
+        for name in CONF_VARS {
+            if line.starts_with(name) {
+                let pos = match line.find('=') {
+                    Some(pos) => pos,
+                    None => return Err(format!("no '=' character following var {}", name).into()),
+                };
+
+                conf.insert(name.to_string(), line[(pos + 1)..].trim().to_string());
+                break;
+            }
+        }
+    }
+
+    const SUFFIXED: &[&str] = &["CONFIGDIR", "LIBDIR", "LOGDIR", "RUNDIR"];
+
+    for (k, v) in conf.iter_mut() {
+        if SUFFIXED.contains(&k.as_str()) {
+            match v.strip_suffix("/pushpin") {
+                Some(s) => *v = s.to_string(),
+                None => return Err(format!("var {} missing /pushpin suffix", k).into()),
+            }
+        }
+    }
+
+    Ok(conf)
+}
+
+fn env_or_default(name: &str, defaults: &HashMap<String, String>) -> String {
+    match env::var(name) {
+        Ok(s) => s,
+        Err(_) => defaults.get(name).unwrap().to_string(),
+    }
+}
+
 fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
 
@@ -71,10 +129,10 @@ fn write_postbuild_conf_pri(
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f, "BINDIR = {}", bin_dir)?;
-    writeln!(&mut f, "LIBDIR = {}", lib_dir)?;
-    writeln!(&mut f, "CONFIGDIR = {}", config_dir)?;
-    writeln!(&mut f, "RUNDIR = {}", run_dir)?;
-    writeln!(&mut f, "LOGDIR = {}", log_dir)?;
+    writeln!(&mut f, "LIBDIR = {}/pushpin", lib_dir)?;
+    writeln!(&mut f, "CONFIGDIR = {}/pushpin", config_dir)?;
+    writeln!(&mut f, "RUNDIR = {}/pushpin", run_dir)?;
+    writeln!(&mut f, "LOGDIR = {}/pushpin", log_dir)?;
 
     Ok(())
 }
@@ -119,36 +177,45 @@ fn main() -> Result<(), Box<dyn Error>> {
         })?
     };
 
-    let conf = {
-        let mut conf = HashMap::new();
+    let default_vars = {
+        let prefix = match env::var("PREFIX") {
+            Ok(s) => Some(s),
+            Err(env::VarError::NotPresent) => None,
+            Err(env::VarError::NotUnicode(_)) => return Err("PREFIX not unicode".into()),
+        };
 
-        let f = fs::File::open("conf.pri")?;
-        let reader = BufReader::new(f);
+        let vars = if let Some(prefix) = prefix {
+            Some(prefixed_vars(&prefix))
+        } else {
+            match read_conf_pri() {
+                Ok(vars) => Some(vars),
+                Err(e) => {
+                    let e: Option<Box<dyn Error>> = match e.downcast::<io::Error>() {
+                        Ok(e) if e.kind() == io::ErrorKind::NotFound => None,
+                        Ok(e) => Some(e),
+                        Err(e) => Some(e),
+                    };
 
-        const CONF_VARS: &[&str] = &["BINDIR", "CONFIGDIR", "LIBDIR", "LOGDIR", "RUNDIR"];
+                    if let Some(e) = e {
+                        return Err(format!("failed to read conf.pri: {}", e).into());
+                    }
 
-        for line in reader.lines() {
-            let line = line?;
-
-            for name in CONF_VARS {
-                if line.starts_with(name) {
-                    let pos = line
-                        .find('=')
-                        .unwrap_or_else(|| panic!("no '=' character following var {}", name));
-                    conf.insert(name.to_string(), line[(pos + 1)..].trim().to_string());
-                    break;
+                    None
                 }
             }
-        }
+        };
 
-        conf
+        match vars {
+            Some(vars) => vars,
+            None => prefixed_vars("/usr/local"),
+        }
     };
 
-    let bin_dir = conf.get("BINDIR").unwrap();
-    let config_dir = conf.get("CONFIGDIR").unwrap();
-    let lib_dir = conf.get("LIBDIR").unwrap();
-    let log_dir = conf.get("LOGDIR").unwrap();
-    let run_dir = conf.get("RUNDIR").unwrap();
+    let bin_dir = env_or_default("BINDIR", &default_vars);
+    let config_dir = env_or_default("CONFIGDIR", &default_vars);
+    let lib_dir = env_or_default("LIBDIR", &default_vars);
+    let log_dir = env_or_default("LOGDIR", &default_vars);
+    let run_dir = env_or_default("RUNDIR", &default_vars);
 
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let cpp_src_dir = root_dir.join(Path::new("src/cpp"));
@@ -162,11 +229,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     write_postbuild_conf_pri(
         &Path::new("target").join(Path::new("postbuild_conf.pri")),
-        bin_dir,
-        lib_dir,
-        config_dir,
-        run_dir,
-        log_dir,
+        &bin_dir,
+        &lib_dir,
+        &config_dir,
+        &run_dir,
+        &log_dir,
     )?;
 
     if !cpp_src_dir.join("Makefile").try_exists()? {
@@ -186,8 +253,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .success());
 
     println!("cargo:rustc-env=APP_VERSION={}", get_version());
-    println!("cargo:rustc-env=CONFIG_DIR={}", config_dir);
-    println!("cargo:rustc-env=LIB_DIR={}", lib_dir);
+    println!("cargo:rustc-env=CONFIG_DIR={}/pushpin", config_dir);
+    println!("cargo:rustc-env=LIB_DIR={}/pushpin", lib_dir);
 
     println!("cargo:rustc-link-search={}", cpp_lib_dir.display());
 
@@ -200,6 +267,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(not(target_os = "macos"))]
     println!("cargo:rustc-link-search={}", qt_install_libs.display());
 
+    println!("cargo:rerun-if-env-changed=PREFIX");
+    println!("cargo:rerun-if-env-changed=BINDIR");
+    println!("cargo:rerun-if-env-changed=CONFIGDIR");
+    println!("cargo:rerun-if-env-changed=LIBDIR");
+    println!("cargo:rerun-if-env-changed=LOGDIR");
+    println!("cargo:rerun-if-env-changed=RUNDIR");
     println!("cargo:rerun-if-changed=conf.pri");
     println!("cargo:rerun-if-changed=src");
 
