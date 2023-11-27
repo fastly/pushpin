@@ -1,17 +1,16 @@
 TEMPLATE = aux
-CONFIG -= debug_and_release debug
 
 include($$OUT_PWD/../target/postbuild_conf.pri)
 
 root_dir = $$PWD/..
 bin_dir = $$root_dir/bin
 
-CONFIG(debug, debug|release) {
-	cargo_flags =
-	target_dir = $$root_dir/target/debug
-} else {
-	cargo_flags = --release
+RELEASE = $$(RELEASE)
+
+!isEmpty(RELEASE) {
 	target_dir = $$root_dir/target/release
+} else {
+	target_dir = $$root_dir/target/debug
 }
 
 # copy bin files
