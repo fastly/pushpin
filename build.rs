@@ -113,6 +113,8 @@ fn write_cpp_conf_pri(path: &Path, boost_include_path: &str) -> Result<(), Box<d
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
+
+    #[cfg(not(target_os = "linux"))]
     writeln!(&mut f, "INCLUDEPATH += {}", boost_include_path)?;
 
     Ok(())
