@@ -81,6 +81,8 @@ fn write_cpp_conf_pri(path: &Path, boost_include_path: &str) -> Result<(), Box<d
         "======= boost_include_path : {} =======",
         boost_include_path
     );
+
+    #[cfg(target_os = "macos")]
     writeln!(&mut f, "INCLUDEPATH += {}", boost_include_path)?;
 
     Ok(())
