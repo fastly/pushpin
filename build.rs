@@ -77,11 +77,7 @@ fn write_cpp_conf_pri(path: &Path, boost_include_path: &str) -> Result<(), Box<d
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
-    println!(
-        "======= boost_include_path : {} =======",
-        boost_include_path
-    );
-
+    println!("boost_include_path : {}", boost_include_path);
     #[cfg(target_os = "macos")]
     writeln!(&mut f, "INCLUDEPATH += {}", boost_include_path)?;
 
@@ -209,11 +205,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     match check_boost_version() {
-        Ok(true) => {
-            let boost_include_path =
-                find_boost_include_path().ok_or("Boost include path not found")?;
-            write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &boost_include_path)?;
-        }
+        Ok(true) => {}
         Ok(false) => {
             return Err("Boost version is not sufficient.".to_string().into());
         }
@@ -221,6 +213,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err("Error checking Boost version.".to_string().into());
         }
     }
+    let boost_include_path = find_boost_include_path().ok_or("Boost include path not found")?;
+    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &boost_include_path)?;
 
     write_postbuild_conf_pri(
         &Path::new("postbuild").join("conf.pri"),
