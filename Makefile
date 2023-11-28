@@ -1,19 +1,25 @@
+ifdef RELEASE
+cargo_flags = --offline --release
+else
+cargo_flags =
+endif
+
 all: postbuild
 
-src: FORCE
-	cd src && $(MAKE) -f Makefile
+build:
+	cargo build $(cargo_flags)
 
-postbuild: src FORCE
+cargo-test:
+	cargo test $(cargo_flags)
+
+cargo-clean:
+	cargo clean
+
+postbuild: build FORCE
 	cd postbuild && $(MAKE) -f Makefile
-
-src-check:
-	cd src && $(MAKE) -f Makefile check
 
 postbuild-install:
 	cd postbuild && $(MAKE) -f Makefile install
-
-src-clean:
-	cd src && $(MAKE) -f Makefile clean
 
 postbuild-clean:
 	cd postbuild && $(MAKE) -f Makefile clean
@@ -21,12 +27,12 @@ postbuild-clean:
 postbuild-distclean:
 	cd postbuild && $(MAKE) -f Makefile distclean
 
-check: src-check
+check: cargo-test
 
 install: postbuild-install
 
-clean: src-clean postbuild-clean
+clean: cargo-clean postbuild-clean
 
-distclean: src-clean postbuild-distclean
+distclean: cargo-clean postbuild-distclean
 
 FORCE:
