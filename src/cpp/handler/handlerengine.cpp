@@ -1767,13 +1767,13 @@ private:
 				i.code = f.code;
 				i.reason = f.reason;
 			}
-            else if(f.action == PublishFormat::Refresh)
-            {
-                Deferred *d = ControlRequest::refresh(proxyControlClient, i.cid, this);
-                connect(d, &Deferred::finished, this, &Private::deferred_finished);
-                deferreds += d;
-                return;
-            }
+			else if(f.action == PublishFormat::Refresh)
+			{
+				Deferred *d = ControlRequest::refresh(proxyControlClient, i.cid, this);
+				connect(d, &Deferred::finished, this, &Private::deferred_finished);
+				deferreds += d;
+				return;
+			}
 
 			writeWsControlItems(QList<WsControlPacket::Item>() << i);
 		}

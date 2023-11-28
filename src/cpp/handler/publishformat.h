@@ -42,7 +42,7 @@ public:
 	{
 		Send,
 		Hint,
-        Refresh,
+		Refresh,
 		Close
 	};
 
