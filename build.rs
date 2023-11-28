@@ -77,7 +77,7 @@ fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
-    writeln!(&mut f, "INCLUDEPATH = /usr/local/include")?;
+    writeln!(&mut f, "INCLUDEPATH += /usr/local/include")?;
 
     Ok(())
 }
@@ -99,6 +99,24 @@ fn write_postbuild_conf_pri(
     writeln!(&mut f, "LOGDIR = {}/pushpin", log_dir)?;
 
     Ok(())
+}
+
+fn check_boost_version() -> Result<bool, Box<dyn Error>> {
+    let output = Command::new("bash")
+    .args(["-c", "grep \"BOOST_LIB_VERSION\" $(find /usr/local/Cellar/boost/ /usr/include /usr/local/include -name 'version.hpp' 2> /dev/null | grep 'boost/version.hpp') | grep -v \"//\" | cut -d '\"' -f2 | sed 's/_/./g'"])
+    .output()?;
+
+    let version_str = String::from_utf8(output.stdout)?.trim().to_string();
+    let version_parts: Vec<&str> = version_str.split('.').collect();
+
+    if version_parts.len() < 2 {
+        return Ok(false);
+    }
+
+    let major_version = version_parts[0].parse::<i32>()?;
+    let minor_version = version_parts[1].parse::<i32>()?;
+
+    Ok(major_version > 1 || (major_version == 1 && minor_version >= 71))
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -168,6 +186,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
         fs::create_dir_all(cpp_out_dir.join(dir))?;
+    }
+
+    match check_boost_version() {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err("Boost version is not sufficient.".to_string().into());
+        }
+        Err(_) => {
+            return Err("Error checking Boost version.".to_string().into());
+        }
     }
 
     write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"))?;
