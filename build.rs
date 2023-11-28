@@ -73,10 +73,14 @@ fn env_or_default(name: &str, defaults: &HashMap<String, String>) -> String {
     }
 }
 
-fn write_cpp_conf_pri(path: &Path, _boost_include_path: &str) -> Result<(), Box<dyn Error>> {
+fn write_cpp_conf_pri(path: &Path, boost_include_path: &str) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
+    println!(
+        "======= boost_include_path : {} =======",
+        boost_include_path
+    );
     writeln!(&mut f, "INCLUDEPATH += /usr/local/include")?;
 
     Ok(())
@@ -202,11 +206,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(cpp_out_dir.join(dir))?;
     }
 
-    let mut _boost_include_path = String::new();
+    let mut boost_include_path = String::new();
     match check_boost_version() {
         Ok(true) => {
-            _boost_include_path =
-                find_boost_include_path().ok_or("Boost include path not found")?;
+            boost_include_path = find_boost_include_path().ok_or("Boost include path not found")?;
         }
         Ok(false) => {
             return Err("Boost version is not sufficient.".to_string().into());
@@ -215,7 +218,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err("Error checking Boost version.".to_string().into());
         }
     }
-    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &_boost_include_path)?;
+    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &boost_include_path)?;
 
     write_postbuild_conf_pri(
         &Path::new("postbuild").join("conf.pri"),
