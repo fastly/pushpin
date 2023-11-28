@@ -206,10 +206,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(cpp_out_dir.join(dir))?;
     }
 
-    let mut boost_include_path = String::new();
     match check_boost_version() {
         Ok(true) => {
-            boost_include_path = find_boost_include_path().ok_or("Boost include path not found")?;
+            let boost_include_path =
+                find_boost_include_path().ok_or("Boost include path not found")?;
+            write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &boost_include_path)?;
         }
         Ok(false) => {
             return Err("Boost version is not sufficient.".to_string().into());
@@ -218,7 +219,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err("Error checking Boost version.".to_string().into());
         }
     }
-    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &boost_include_path)?;
 
     write_postbuild_conf_pri(
         &Path::new("postbuild").join("conf.pri"),
