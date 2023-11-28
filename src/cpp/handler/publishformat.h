@@ -42,6 +42,7 @@ public:
 	{
 		Send,
 		Hint,
+		Refresh,
 		Close
 	};
 

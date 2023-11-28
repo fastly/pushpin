@@ -1733,7 +1733,7 @@ private:
 				return;
 
 			// TODO: hint support for websockets?
-			if(f.action != PublishFormat::Send && f.action != PublishFormat::Close)
+			if(f.action != PublishFormat::Send && f.action != PublishFormat::Close && f.action != PublishFormat::Refresh)
 				return;
 
 			WsControlPacket::Item i;
@@ -1766,6 +1766,13 @@ private:
 				i.type = WsControlPacket::Item::Close;
 				i.code = f.code;
 				i.reason = f.reason;
+			}
+			else if(f.action == PublishFormat::Refresh)
+			{
+				Deferred *d = ControlRequest::refresh(proxyControlClient, i.cid, this);
+				connect(d, &Deferred::finished, this, &Private::deferred_finished);
+				deferreds += d;
+				return;
 			}
 
 			writeWsControlItems(QList<WsControlPacket::Item>() << i);
