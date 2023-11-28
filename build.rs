@@ -81,7 +81,7 @@ fn write_cpp_conf_pri(path: &Path, boost_include_path: &str) -> Result<(), Box<d
         "======= boost_include_path : {} =======",
         boost_include_path
     );
-    writeln!(&mut f, "INCLUDEPATH += /usr/local/include")?;
+    writeln!(&mut f, "INCLUDEPATH += {}", boost_include_path)?;
 
     Ok(())
 }
