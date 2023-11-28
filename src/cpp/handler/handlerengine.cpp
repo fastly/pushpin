@@ -3068,7 +3068,6 @@ private slots:
 	}
 
 	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
-        g)
 	{
 		if(stateClient)
 		{
