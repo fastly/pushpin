@@ -3,7 +3,7 @@ use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Write, ErrorKind};
+use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
@@ -132,7 +132,7 @@ fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
-    writeln!(&mut f, "INCLUDEPATH = /usr/local/include")?;
+    writeln!(&mut f, "INCLUDEPATH += /usr/local/include")?;
 
     Ok(())
 }
@@ -244,10 +244,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
         fs::create_dir_all(cpp_out_dir.join(dir))?;
     }
-    
+
     match check_boost_version() {
-        Ok(true) => {
-        }
+        Ok(true) => {}
         Ok(false) => {
             return Err(Box::new(io::Error::new(
                 ErrorKind::Other,
