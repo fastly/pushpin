@@ -119,6 +119,20 @@ fn check_boost_version() -> Result<bool, Box<dyn Error>> {
     Ok(major_version > 1 || (major_version == 1 && minor_version >= 71))
 }
 
+fn find_boost_include_path() -> Option<String> {
+    let possible_paths = vec!["/usr/local/include", "/usr/include"];
+    let boost_header = "boost/signals2.hpp";
+
+    for path in possible_paths {
+        let full_path = Path::new(path).join(boost_header);
+        if full_path.exists() {
+            return Some(path.to_string());
+        }
+    }
+
+    None
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let qt_host_bins = {
         let pkg = "Qt5Core";
@@ -197,7 +211,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err("Error checking Boost version.".to_string().into());
         }
     }
-
+    let _boost_include_path = find_boost_include_path().ok_or("Boost include path not found")?;
     write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"))?;
 
     write_postbuild_conf_pri(
