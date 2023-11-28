@@ -12,9 +12,5 @@ build:
 clean:
 	cd .. && cargo clean
 
-distclean: clean
-
 check:
 	cd .. && cargo test $(cargo_flags)
-
-install:

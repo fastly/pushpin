@@ -14,16 +14,13 @@ target_wrapper.sh
 .cargo
 vendor
 .vscode
+conf.pri
 
 /pushpin
 /pushpin-legacy
 /bin/*
-/conf.log
-/conf.pri
-/Makefile
 /src/runner/certs/*.crt
 /src/runner/certs/*.key
-/postbuild/conf.pri
 /postbuild/Makefile
 /postbuild/*.inst
 /config

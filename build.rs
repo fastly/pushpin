@@ -3,12 +3,14 @@ use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use time::macros::format_description;
 use time::OffsetDateTime;
+
+const DEFAULT_PREFIX: &str = "/usr/local";
 
 fn get_version() -> String {
     let mut version = env!("CARGO_PKG_VERSION").to_string();
@@ -62,45 +64,6 @@ fn prefixed_vars(prefix: &str) -> HashMap<String, String> {
     out.insert("RUNDIR".into(), "/var/run".into());
 
     out
-}
-
-fn read_conf_pri() -> Result<HashMap<String, String>, Box<dyn Error>> {
-    let mut conf = HashMap::new();
-
-    let f = fs::File::open("conf.pri")?;
-
-    let reader = BufReader::new(f);
-
-    const CONF_VARS: &[&str] = &["BINDIR", "CONFIGDIR", "LIBDIR", "LOGDIR", "RUNDIR"];
-
-    for line in reader.lines() {
-        let line = line?;
-
-        for name in CONF_VARS {
-            if line.starts_with(name) {
-                let pos = match line.find('=') {
-                    Some(pos) => pos,
-                    None => return Err(format!("no '=' character following var {}", name).into()),
-                };
-
-                conf.insert(name.to_string(), line[(pos + 1)..].trim().to_string());
-                break;
-            }
-        }
-    }
-
-    const SUFFIXED: &[&str] = &["CONFIGDIR", "LIBDIR", "LOGDIR", "RUNDIR"];
-
-    for (k, v) in conf.iter_mut() {
-        if SUFFIXED.contains(&k.as_str()) {
-            match v.strip_suffix("/pushpin") {
-                Some(s) => *v = s.to_string(),
-                None => return Err(format!("var {} missing /pushpin suffix", k).into()),
-            }
-        }
-    }
-
-    Ok(conf)
 }
 
 fn env_or_default(name: &str, defaults: &HashMap<String, String>) -> String {
@@ -185,30 +148,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             Err(env::VarError::NotUnicode(_)) => return Err("PREFIX not unicode".into()),
         };
 
-        let vars = if let Some(prefix) = prefix {
-            Some(prefixed_vars(&prefix))
+        if let Some(prefix) = prefix {
+            prefixed_vars(&prefix)
         } else {
-            match read_conf_pri() {
-                Ok(vars) => Some(vars),
-                Err(e) => {
-                    let e: Option<Box<dyn Error>> = match e.downcast::<io::Error>() {
-                        Ok(e) if e.kind() == io::ErrorKind::NotFound => None,
-                        Ok(e) => Some(e),
-                        Err(e) => Some(e),
-                    };
-
-                    if let Some(e) = e {
-                        return Err(format!("failed to read conf.pri: {}", e).into());
-                    }
-
-                    None
-                }
-            }
-        };
-
-        match vars {
-            Some(vars) => vars,
-            None => prefixed_vars("/usr/local"),
+            prefixed_vars(DEFAULT_PREFIX)
         }
     };
 
@@ -256,6 +199,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         .status()?
         .success());
 
+    assert!(Command::new(&qmake_path)
+        .args(["-o", "Makefile", "postbuild.pro"])
+        .current_dir("postbuild")
+        .status()?
+        .success());
+
     let proc_count = thread::available_parallelism().map_or(1, |x| x.get());
 
     assert!(Command::new("make")
@@ -294,7 +243,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-env-changed=LIBDIR");
     println!("cargo:rerun-if-env-changed=LOGDIR");
     println!("cargo:rerun-if-env-changed=RUNDIR");
-    println!("cargo:rerun-if-changed=conf.pri");
     println!("cargo:rerun-if-changed=src");
 
     Ok(())
