@@ -530,7 +530,11 @@ def write_sig_keys(keys, dir, user=None, group=None):
         # already exists. that's fine
         pass
 
-    my_chown(dir, uid, gid)
+    if uid is not None or gid is not None:
+        statinfo = os.stat(dir)
+
+        if (uid is not None and statinfo.st_uid != uid) or (gid is not None and statinfo.st_gid != gid):
+            my_chown(dir, uid, gid)
 
     old_key_files = set()
 
