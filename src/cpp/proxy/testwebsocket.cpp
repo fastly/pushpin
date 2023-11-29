@@ -66,7 +66,7 @@ public:
 	{
 	}
 
-public slots:
+public:
 	void handleConnect()
 	{
 		QString path = request.uri.path();

@@ -425,7 +425,7 @@ public:
 		log_info("started");
 	}
 
-private slots:
+private:
 	void reload()
 	{
 		log_info("reloading");

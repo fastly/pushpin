@@ -301,11 +301,9 @@ public:
 		return true;
 	}
 
-signals:
-	void started();
-	void changed();
+	Signal started;
+	Signal changed;
 
-public slots:
 	void start()
 	{
 		if(!fileName.isEmpty())
@@ -714,6 +712,7 @@ public:
 	Worker *worker;
 	QMutex m;
 	QWaitCondition w;
+	Connection startedConnection;
 
 	~Thread()
 	{
@@ -732,13 +731,12 @@ public:
 	{
 		worker = new Worker;
 		worker->fileName = fileName;
-		connect(worker, &Worker::started, this, &Thread::worker_started, Qt::DirectConnection);
+		startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
 		delete worker;
 	}
 
-public slots:
 	void worker_started()
 	{
 		QMutexLocker locker(&m);
@@ -753,6 +751,7 @@ class DomainMap::Private : public QObject
 public:
 	DomainMap *q;
 	Thread *thread;
+	Connection changedConnection;
 
 	Private(DomainMap *_q) :
 		QObject(_q),
@@ -763,6 +762,8 @@ public:
 
 	~Private()
 	{
+		changedConnection.disconnect();
+
 		delete thread;
 	}
 
@@ -773,10 +774,10 @@ public:
 		thread->start();
 
 		// worker guaranteed to exist after starting
-		connect(thread->worker, &Worker::changed, this, &Private::doChanged);
+		changedConnection = thread->worker->changed.connect(boost::bind(&Private::doChanged, this));
 	}
 
-public slots:
+public:
 	void doChanged()
 	{
 		emit q->changed();
@@ -799,6 +800,8 @@ DomainMap::DomainMap(const QString &fileName, QObject *parent) :
 
 DomainMap::~DomainMap()
 {
+	d->changedConnection.disconnect();
+
 	delete d;
 }
 

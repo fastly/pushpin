@@ -110,6 +110,17 @@ public:
 	ConnectionManager connectionManager;
 	Updater *updater;
 	LogUtil::Config logConfig;
+	Connection changedConnection;
+	Connection requestReadyConnection;
+	Connection socketReadyConnection;
+	Connection sessionReadyConnection;		
+	Connection addNotAllowedConnection;
+	Connection finishedConnection;
+	Connection requestSessionDestroyedConnection;
+	Connection inspectedConnection;
+	Connection inspectErrorConnection;
+	Connection finishedRSConnection;
+	Connection finishedByAcceptConnection;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -167,6 +178,18 @@ public:
 
 		WebSocketOverHttp::clearDisconnectManager();
 
+		changedConnection.disconnect();
+		requestReadyConnection.disconnect();
+		socketReadyConnection.disconnect();
+		sessionReadyConnection.disconnect();
+		addNotAllowedConnection.disconnect();
+		finishedConnection.disconnect();
+		requestSessionDestroyedConnection.disconnect();
+		inspectedConnection.disconnect();
+		inspectErrorConnection.disconnect();
+		finishedRSConnection.disconnect();
+		finishedByAcceptConnection.disconnect();
+
 		// need to make sure this is deleted before inspect manager
 		delete inspectChecker;
 		inspectChecker = 0;
@@ -193,11 +216,13 @@ public:
 		else
 			domainMap = new DomainMap(config.routesFile, this);
 
-		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
+		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		zhttpIn = new ZhttpManager(this);
 		connect(zhttpIn, &ZhttpManager::requestReady, this, &Private::zhttpIn_requestReady);
 		connect(zhttpIn, &ZhttpManager::socketReady, this, &Private::zhttpIn_socketReady);
+		// requestReadyConnection = zhttpIn->requestReady.connect(boost::bind(&Private::zhttpIn_requestReady, this));
+		// socketReadyConnection = zhttpIn->socketReady.connect(boost::bind(&Private::zhttpIn_socketReady, this));
 
 		zhttpIn->setInstanceId(config.clientId);
 		zhttpIn->setServerInSpecs(config.serverInSpecs);
@@ -224,7 +249,7 @@ public:
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
 		sockJsManager = new SockJsManager(config.sockJsUrl, this);
-		connect(sockJsManager, &SockJsManager::sessionReady, this, &Private::sockjs_sessionReady);
+		sessionReadyConnection = sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
 
 		if(!config.inspectSpec.isEmpty())
 		{
@@ -386,9 +411,11 @@ public:
 
 			ps = new ProxySession(zroutes, accept, logConfig, stats);
 			// TODO: use callbacks for performance
-			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
-			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
-			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
+			addNotAllowedConnection = ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this));
+			finishedConnection = ps->finished.connect(boost::bind(&Private::ps_finished, this));
+			requestSessionDestroyedConnection = ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this, boost::placeholders::_1, boost::placeholders::_2));
+			// connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
+			// requestSessionDestroyedConnection = ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this));
 
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -581,10 +608,11 @@ public:
 		rs->setAutoShare(autoShare);
 
 		// TODO: use callbacks for performance
-		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
-		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
+		inspectedConnection = rs->inspected.connect(boost::bind(&Private::rs_inspected, this, boost::placeholders::_1));
+		inspectErrorConnection = rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this));
+		finishedRSConnection = rs->finished.connect(boost::bind(&Private::rs_finished, this));
+		// connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
+		finishedByAcceptConnection = rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this));
 
 		requestSessions += rs;
 
@@ -691,7 +719,7 @@ public:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
-private slots:
+private:
 	void zhttpIn_requestReady()
 	{
 		tryTakeNext();
@@ -1057,6 +1085,18 @@ Engine::Engine(QObject *parent) :
 
 Engine::~Engine()
 {
+	d->changedConnection.disconnect();
+	d->requestReadyConnection.disconnect();
+	d->socketReadyConnection.disconnect();
+	d->sessionReadyConnection.disconnect();
+	d->addNotAllowedConnection.disconnect();
+	d->finishedConnection.disconnect();
+	d->requestSessionDestroyedConnection.disconnect();
+	d->inspectedConnection.disconnect();
+	d->inspectErrorConnection.disconnect();
+	d->finishedRSConnection.disconnect();
+	d->finishedByAcceptConnection.disconnect();
+
 	delete d;
 }
 

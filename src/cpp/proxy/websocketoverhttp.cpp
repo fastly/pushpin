@@ -70,17 +70,30 @@ class WebSocketOverHttp::DisconnectManager : public QObject
 	Q_OBJECT
 
 public:
+	;
+	Connection disconnectedConnection;
+	// Connection closedConnection;
+	// Connection errorConnection;
+
 	DisconnectManager(QObject *parent = 0) :
 		QObject(parent)
 	{
 	}
 
+    ~DisconnectManager() {
+        disconnectedConnection.disconnect();
+        // closedConnection.disconnect();
+        // errorConnection.disconnect();
+    }
+
 	void addSocket(WebSocketOverHttp *sock)
 	{
 		sock->setParent(this);
-		connect(sock, &WebSocketOverHttp::disconnected, this, &DisconnectManager::sock_disconnected);
+		disconnectedConnection = sock->disconnected.connect(boost::bind(&DisconnectManager::sock_disconnected, this));
 		connect(sock, &WebSocketOverHttp::closed, this, &DisconnectManager::sock_closed);
 		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
+		// closedConnection = sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this));
+		// errorConnection = sock->error.connect(boost::bind(&DisconnectManager::sock_error, this));
 
 		sock->sendDisconnect();
 	}
@@ -96,7 +109,7 @@ private:
 		delete sock;
 	}
 
-private slots:
+private:
 	void sock_disconnected()
 	{
 		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
@@ -635,7 +648,7 @@ private:
 		req->endBody();
 	}
 
-private slots:
+private:
 	void req_readyRead()
 	{
 		if(inBuf.size() + req->bytesAvailable() > RESPONSE_BODY_MAX)
@@ -1019,7 +1032,7 @@ WebSocketOverHttp::~WebSocketOverHttp()
 		d = 0;
 		g_disconnectManager->addSocket(sock);
 	}
-
+	
 	delete d;
 }
 

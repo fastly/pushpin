@@ -27,6 +27,10 @@
 #include "callback.h"
 #include "logutil.h"
 #include "domainmap.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::connection;
 
 namespace Jwt {
 	class EncodingKey;

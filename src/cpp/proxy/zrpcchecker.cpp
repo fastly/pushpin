@@ -162,7 +162,7 @@ public:
 		}
 	}
 
-public slots:
+public:
 	void req_finished()
 	{
 		ZrpcRequest *req = (ZrpcRequest *)sender();

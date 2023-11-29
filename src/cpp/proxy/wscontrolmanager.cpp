@@ -219,7 +219,7 @@ public:
 			refreshTimer->stop();
 	}
 
-private slots:
+private:
 	void in_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)

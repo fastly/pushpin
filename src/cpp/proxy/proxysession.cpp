@@ -149,6 +149,12 @@ public:
 	AcceptRequest *acceptRequest;
 	LogUtil::Config logConfig;
 	StatsManager *statsManager;
+	Connection bytesWrittenConnection;
+	Connection errorRespondingConnection;
+	Connection finishedConnection;
+	Connection pausedConnection;
+	Connection headerBytesSentConnection;
+	Connection bodyBytesSentConnection;
 
 	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager) :
 		QObject(_q),
@@ -232,12 +238,12 @@ public:
 
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
-		connect(rs, &RequestSession::bytesWritten, this, &Private::rs_bytesWritten);
-		connect(rs, &RequestSession::errorResponding, this, &Private::rs_errorResponding);
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::paused, this, &Private::rs_paused);
-		connect(rs, &RequestSession::headerBytesSent, this, &Private::rs_headerBytesSent);
-		connect(rs, &RequestSession::bodyBytesSent, this, &Private::rs_bodyBytesSent);
+		bytesWrittenConnection = rs->bytesWritten.connect(boost::bind(&Private::rs_bytesWritten, this, boost::placeholders::_1));
+		errorRespondingConnection = rs->errorResponding.connect(boost::bind(&Private::rs_errorResponding, this));
+		finishedConnection = rs->finished.connect(boost::bind(&Private::rs_finished, this));
+		pausedConnection = rs->paused.connect(boost::bind(&Private::rs_paused, this));
+		headerBytesSentConnection = rs->headerBytesSent.connect(boost::bind(&Private::rs_headerBytesSent, this, boost::placeholders::_1));
+		bodyBytesSentConnection = rs->bodyBytesSent.connect(boost::bind(&Private::rs_bodyBytesSent, this, boost::placeholders::_1));
 
 		HttpRequestData rsRequestData = rs->requestData();
 
@@ -1026,7 +1032,6 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-public slots:
 	void inRequest_readyRead()
 	{
 		tryRequestRead();
@@ -1473,6 +1478,13 @@ ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const L
 
 ProxySession::~ProxySession()
 {
+	d->bytesWrittenConnection.disconnect();
+	d->errorRespondingConnection.disconnect();
+	d->finishedConnection.disconnect();
+	d->pausedConnection.disconnect();
+	d->headerBytesSentConnection.disconnect();
+	d->bodyBytesSentConnection.disconnect();
+
 	delete d;
 }
 

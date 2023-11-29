@@ -786,7 +786,6 @@ public:
 		return true;
 	}
 
-public slots:
 	void zhttpRequest_readyRead()
 	{
 		processIncomingRequest();

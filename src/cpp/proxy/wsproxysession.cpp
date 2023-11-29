@@ -279,6 +279,13 @@ public:
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
+	Connection aboutToSendRequestConnection;
+	Connection sendEventReceivedConnection;
+	Connection keepAliveSetupEventReceivedConnection;
+	Connection closeEventReceivedConnection;
+	Connection detachEventReceivedConnection;
+	Connection cancelEventReceivedConnection;
+	Connection errorConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -311,6 +318,14 @@ public:
 
 	~Private()
 	{
+		aboutToSendRequestConnection.disconnect();
+		sendEventReceivedConnection.disconnect();
+		keepAliveSetupEventReceivedConnection.disconnect();
+		closeEventReceivedConnection.disconnect();
+		detachEventReceivedConnection.disconnect();
+		cancelEventReceivedConnection.disconnect();
+		errorConnection.disconnect();
+		
 		cleanup();
 	}
 
@@ -529,7 +544,7 @@ public:
 				if(target.oneEvent)
 					woh->setMaxEventsPerRequest(1);
 
-				connect(woh, &WebSocketOverHttp::aboutToSendRequest, this, &Private::out_aboutToSendRequest);
+				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this));
 				outSock = woh;
 			}
 			else
@@ -785,7 +800,7 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-private slots:
+private:
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)
@@ -898,12 +913,12 @@ private slots:
 			if(wsControlManager)
 			{
 				wsControl = wsControlManager->createSession(publicCid);
-				connect(wsControl, &WsControlSession::sendEventReceived, this, &Private::wsControl_sendEventReceived);
-				connect(wsControl, &WsControlSession::keepAliveSetupEventReceived, this, &Private::wsControl_keepAliveSetupEventReceived);
-				connect(wsControl, &WsControlSession::closeEventReceived, this, &Private::wsControl_closeEventReceived);
-				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
-				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
-				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
+				sendEventReceivedConnection = wsControl->sendEventReceived.connect(boost::bind(&Private::wsControl_sendEventReceived, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3));
+				keepAliveSetupEventReceivedConnection = wsControl->keepAliveSetupEventReceived.connect(boost::bind(&Private::wsControl_keepAliveSetupEventReceived, this, boost::placeholders::_1, boost::placeholders::_2));
+				closeEventReceivedConnection = wsControl->closeEventReceived.connect(boost::bind(&Private::wsControl_closeEventReceived, this, boost::placeholders::_1, boost::placeholders::_2));
+				detachEventReceivedConnection = wsControl->detachEventReceived.connect(boost::bind(&Private::wsControl_detachEventReceived, this));
+				cancelEventReceivedConnection = wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this));
+				errorConnection = wsControl->error.connect(boost::bind(&Private::wsControl_error, this));
 				wsControl->start(route.id, route.separateStats, channelPrefix, inSock->requestUri());
 
 				foreach(const QString &subChannel, target.subscriptions)

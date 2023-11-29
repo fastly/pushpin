@@ -25,6 +25,10 @@
 #define WEBSOCKETOVERHTTP_H
 
 #include "websocket.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::connection;
 
 class ZhttpManager;
 
@@ -77,9 +81,8 @@ public:
 
 	void setHeaders(const HttpHeaders &headers);
 
-signals:
-	void aboutToSendRequest();
-	void disconnected();
+	Signal aboutToSendRequest;
+	Signal disconnected;
 
 private:
 	class DisconnectManager;

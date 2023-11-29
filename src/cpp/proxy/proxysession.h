@@ -38,6 +38,11 @@ class ZRoutes;
 class StatsManager;
 class XffRule;
 class RequestSession;
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using SignalReqSession = boost::signals2::signal<void(RequestSession*, bool)>;
+using Connection = boost::signals2::connection;
 
 class ProxySession : public QObject
 {
@@ -62,10 +67,9 @@ public:
 	// takes ownership
 	void add(RequestSession *rs);
 
-signals:
-	void addNotAllowed(); // no more sharing, for whatever reason
-	void finished();
-	void requestSessionDestroyed(RequestSession *rs, bool accept);
+	Signal addNotAllowed; // no more sharing, for whatever reason
+	Signal finished;
+	SignalReqSession requestSessionDestroyed;
 
 private:
 	class Private;

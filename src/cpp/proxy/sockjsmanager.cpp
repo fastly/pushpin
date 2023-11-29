@@ -572,7 +572,6 @@ public:
 		return s->ext;
 	}
 
-private slots:
 	void req_readyRead()
 	{
 		ZhttpRequest *req = (ZhttpRequest *)sender();

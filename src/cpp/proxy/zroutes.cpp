@@ -180,7 +180,7 @@ public:
 		delete i;
 	}
 
-public slots:
+public:
 	void removeUnused()
 	{
 		QList<Item*> toRemove;
