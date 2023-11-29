@@ -154,20 +154,28 @@ public:
 	HandlerApp *q;
 	ArgsData args;
 	HandlerEngine *engine;
+	Connection quitConnection;
+	Connection hupConnection;
 
 	Private(HandlerApp *_q) :
 		QObject(_q),
 		q(_q),
 		engine(0)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::doQuit);
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
+		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
+		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
+	}
+
+	~Private()
+	{
+		hupConnection.disconnect();
+		quitConnection.disconnect();
 	}
 
 	void start()
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
-		QCoreApplication::setApplicationVersion(VERSION);
+		QCoreApplication::setApplicationVersion(Config::get().version);
 
 		QCommandLineParser parser;
 		parser.setApplicationDescription("Pushpin handler component.");
@@ -210,7 +218,7 @@ public:
 
 		QString configFile = args.configFile;
 		if(configFile.isEmpty())
-			configFile = QDir(CONFIGDIR).filePath("pushpin.conf");
+			configFile = QDir(Config::get().configDir).filePath("pushpin.conf");
 
 		// QSettings doesn't inform us if the config file doesn't exist, so do that ourselves
 		{
@@ -218,7 +226,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				emit q->quit();
+				emit q->quit(0);
 				return;
 			}
 		}
@@ -293,14 +301,14 @@ public:
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
 			log_error("must set m2a_in_stream_specs and m2a_out_specs");
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
 		if(proxy_inspect_spec.isEmpty() || proxy_accept_spec.isEmpty() || proxy_retry_out_spec.isEmpty())
 		{
 			log_error("must set proxy_inspect_spec, proxy_accept_spec, and proxy_retry_out_spec");
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
@@ -314,7 +322,7 @@ public:
 			if(pos < 0)
 			{
 				log_error("message_keys must contain values of the form 'id:value'");
-				emit q->quit();
+				emit q->quit(0);
 				return;
 			}
 
@@ -325,7 +333,7 @@ public:
 			if(keyData.isNull())
 			{
 				log_error("failed to process message_keys value: %s", qPrintable(value));
-				emit q->quit();
+				emit q->quit(0);
 				return;
 			}
 
@@ -333,7 +341,7 @@ public:
 		}
 
 		HandlerEngine::Configuration config;
-		config.appVersion = VERSION;
+		config.appVersion = Config::get().version;
 		config.instanceId = "pushpin-handler_" + QByteArray::number(QCoreApplication::applicationPid());
 		if(!services.contains("mongrel2") && (!condure_in_stream_specs.isEmpty() || !condure_out_specs.isEmpty()))
 		{
@@ -387,14 +395,14 @@ public:
 		engine = new HandlerEngine(this);
 		if(!engine->start(config))
 		{
-			emit q->quit();
+			emit q->quit(0);
 			return;
 		}
 
 		log_info("started");
 	}
 
-private slots:
+private:
 	void reload()
 	{
 		log_info("reloading");
@@ -406,6 +414,9 @@ private slots:
 	{
 		log_info("stopping...");
 
+		hupConnection.disconnect();
+		quitConnection.disconnect();
+
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
@@ -413,7 +424,7 @@ private slots:
 		engine = 0;
 
 		log_info("stopped");
-		emit q->quit();
+		emit q->quit(0);
 	}
 };
 

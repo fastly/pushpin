@@ -273,6 +273,10 @@ pub struct ListenConfig {
     pub stream: bool,
 }
 
+pub fn version() -> &'static str {
+    env!("APP_VERSION")
+}
+
 /// # Safety
 ///
 /// * `main_fn` must be safe to call.
@@ -293,6 +297,7 @@ pub unsafe fn call_c_main(
 #[link(name = "QtCore", kind = "framework")]
 #[link(name = "QtNetwork", kind = "framework")]
 #[link(name = "QtTest", kind = "framework")]
+#[link(name = "c++")]
 extern "C" {
     fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
     fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
@@ -313,6 +318,7 @@ extern "C" {
 #[link(name = "Qt5Core")]
 #[link(name = "Qt5Network")]
 #[link(name = "Qt5Test")]
+#[link(name = "stdc++")]
 extern "C" {
     fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
     fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;

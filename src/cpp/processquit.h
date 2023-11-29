@@ -22,6 +22,10 @@
 #ifndef PROCESSQUIT_H
 #define PROCESSQUIT_H
 
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+
 #ifdef NO_IRISNET
 # include <QtCore>
 # define IRISNET_EXPORT
@@ -82,19 +86,9 @@ public:
 	*/
 	static void cleanup();
 
-signals:
-	/**
-	   \brief Notification of termination request
+	Signal quit;
 
-	   This signal is emitted when a termination request is received.  It is only emitted once, unless reset() is called.
-
-	   Upon receiving this signal, the application should proceed to exit gracefully, and generally without user interaction.
-
-	   \sa reset
-	*/
-	void quit();
-
-	void hup();
+	Signal hup;
 
 private:
 	class Private;

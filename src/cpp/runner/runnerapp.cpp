@@ -256,6 +256,8 @@ public:
 	QList<Service*> services;
 	bool stopping;
 	bool errored;
+	Connection quitConnection;
+	Connection hupConnection;
 
 	Private(RunnerApp *_q) :
 		QObject(_q),
@@ -263,14 +265,20 @@ public:
 		stopping(false),
 		errored(false)
 	{
-		connect(ProcessQuit::instance(), &ProcessQuit::quit, this, &Private::processQuit);
-		connect(ProcessQuit::instance(), &ProcessQuit::hup, this, &Private::reload);
+		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::processQuit, this));
+		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
+	}
+
+	~Private()
+	{
+		hupConnection.disconnect();
+		quitConnection.disconnect();
 	}
 
 	void start()
 	{
 		QCoreApplication::setApplicationName("pushpin");
-		QCoreApplication::setApplicationVersion(VERSION);
+		QCoreApplication::setApplicationVersion(Config::get().version);
 
 		QCommandLineParser parser;
 		parser.setApplicationDescription("Reverse proxy for realtime web services.");
@@ -324,7 +332,7 @@ public:
 			configFileList += QDir("examples/config").absoluteFilePath("pushpin.conf");
 
 			// default
-			configFileList += QDir(CONFIGDIR).filePath("pushpin.conf");
+			configFileList += QDir(Config::get().configDir).filePath("pushpin.conf");
 		}
 
 		QString configFile;
@@ -381,7 +389,7 @@ public:
 			else
 			{
 				// use compiled value
-				libDir = QDir(LIBDIR).absoluteFilePath("runner");
+				libDir = QDir(Config::get().libDir).absoluteFilePath("runner");
 			}
 		}
 
@@ -759,6 +767,7 @@ private slots:
 		}
 	}
 
+private:
 	void reload()
 	{
 		log_info("reloading");
@@ -784,6 +793,10 @@ private slots:
 		else
 		{
 			qDeleteAll(services);
+
+			hupConnection.disconnect();
+			quitConnection.disconnect();
+
 			ProcessQuit::cleanup();
 
 			// if we were already stopping, then exit immediately
