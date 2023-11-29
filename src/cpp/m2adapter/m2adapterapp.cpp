@@ -472,7 +472,7 @@ public:
 		zhttpCancelMeter(0)
 	{
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
-        hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&M2AdapterApp::Private::reload, this));
+		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&M2AdapterApp::Private::reload, this));
 
 		statusTimer = new QTimer(this);
 		connect(statusTimer, &QTimer::timeout, this, &Private::status_timeout);
@@ -488,6 +488,9 @@ public:
 		qDeleteAll(sessionsByZhttpRid);
 		qDeleteAll(sessionsByZwsRid);
 		qDeleteAll(m2ConnectionsByRid);
+
+		hupConnection.disconnect();
+		quitConnection.disconnect();
 	}
 
 	void start()

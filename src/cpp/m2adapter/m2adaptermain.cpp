@@ -31,7 +31,7 @@ public:
 
 	void start()
 	{
-		app = new M2AdapterApp();
+		app = new M2AdapterApp;
 		app->quit.connect(boost::bind(&M2AdapterAppMain::app_quit, this, boost::placeholders::_1));
 		app->start();
 	}

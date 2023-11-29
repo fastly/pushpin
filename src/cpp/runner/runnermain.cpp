@@ -31,7 +31,7 @@ public:
 
 	void start()
 	{
-		app = new RunnerApp();
+		app = new RunnerApp;
 		app->quit.connect(boost::bind(&RunnerAppMain::app_quit, this, boost::placeholders::_1));
 		app->start();
 	}

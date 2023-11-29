@@ -164,6 +164,12 @@ public:
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
 	}
 
+	~Private()
+	{
+		hupConnection.disconnect();
+		quitConnection.disconnect();
+	}
+
 	void start()
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
@@ -396,8 +402,6 @@ HandlerApp::HandlerApp(QObject *parent) :
 
 HandlerApp::~HandlerApp()
 {
-	d->hupConnection.disconnect();
-	d->quitConnection.disconnect();
 	delete d;
 }
 
