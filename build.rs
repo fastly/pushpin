@@ -73,13 +73,12 @@ fn env_or_default(name: &str, defaults: &HashMap<String, String>) -> String {
     }
 }
 
-fn write_cpp_conf_pri(path: &Path, boost_include_path: &str) -> Result<(), Box<dyn Error>> {
+fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
-    println!("boost_include_path : {}", boost_include_path);
     #[cfg(target_os = "macos")]
-    writeln!(&mut f, "INCLUDEPATH += {}", boost_include_path)?;
+    writeln!(&mut f, "INCLUDEPATH += {}", get_boost_path()?)?;
 
     Ok(())
 }
@@ -103,6 +102,7 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn get_boost_path() -> Result<String, Box<dyn Error>> {
     let possible_paths = vec!["/usr/local/include", "/usr/include"];
     let boost_version = "boost/version.hpp";
@@ -122,14 +122,12 @@ fn get_boost_path() -> Result<String, Box<dyn Error>> {
                                 let version = parts[1].replace('_', ".");
                                 check_version("boost", &version, 1, 71)?;
                             } else {
-                                return Err("Error finding boost package verion1"
-                                    .to_string()
-                                    .into());
+                                return Err("Error finding boost package verion".into());
                             }
                         }
                     }
                     Err(_) => {
-                        return Err("Error finding boost package verion".to_string().into());
+                        return Err("Error finding boost package verion".into());
                     }
                 };
             }
@@ -137,7 +135,7 @@ fn get_boost_path() -> Result<String, Box<dyn Error>> {
         }
     }
 
-    Err("No boost package found".to_string().into())
+    Err("No boost package found".into())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -209,7 +207,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(cpp_out_dir.join(dir))?;
     }
 
-    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &get_boost_path()?)?;
+    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"))?;
 
     write_postbuild_conf_pri(
         &Path::new("postbuild").join("conf.pri"),
