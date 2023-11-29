@@ -19,6 +19,7 @@
  *
  * $FANOUT_END_LICENSE$
  */
+
 #ifndef HANDLERAPP_H
 #define HANDLERAPP_H
 

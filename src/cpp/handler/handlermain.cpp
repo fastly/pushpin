@@ -31,20 +31,15 @@ public:
 
 	void start()
 	{
-		app = new HandlerApp();
+		app = new HandlerApp;
 		app->quit.connect(boost::bind(&HandlerAppMain::app_quit, this, boost::placeholders::_1));
 		app->start();
 	}
 
 	void app_quit(int returnCode)
 	{
-		delete app;
-		QCoreApplication::exit(returnCode);
-	}
-	
-	~HandlerAppMain()
-	{
         	delete app;
+		QCoreApplication::exit(returnCode);
 	}
 };
 

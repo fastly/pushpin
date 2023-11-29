@@ -265,8 +265,14 @@ public:
 		stopping(false),
 		errored(false)
 	{
-		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
-        hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
+		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::processQuit, this));
+		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
+	}
+
+	~Private()
+	{
+		hupConnection.disconnect();
+		quitConnection.disconnect();
 	}
 
 	void start()
@@ -698,9 +704,6 @@ private:
 
 	void doQuit()
 	{
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-		
 		emit q->quit(errored ? 1 : 0);
 	}
 
@@ -790,6 +793,10 @@ private:
 		else
 		{
 			qDeleteAll(services);
+
+			hupConnection.disconnect();
+			quitConnection.disconnect();
+
 			ProcessQuit::cleanup();
 
 			// if we were already stopping, then exit immediately

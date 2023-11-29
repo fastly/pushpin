@@ -179,7 +179,13 @@ public:
 		engine(0)
 	{
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
-        hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
+		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
+	}
+
+	~Private()
+	{
+		hupConnection.disconnect();
+		quitConnection.disconnect();
 	}
 
 	void start()
