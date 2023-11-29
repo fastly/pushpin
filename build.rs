@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
-use std::fs;
-use std::io::Write;
+use std::fs::{self, File};
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
+use std::{env, io};
 use time::macros::format_description;
 use time::OffsetDateTime;
 
@@ -103,36 +103,41 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
-fn check_boost_version() -> Result<bool, Box<dyn Error>> {
-    let output = Command::new("bash")
-    .args(["-c", "grep \"BOOST_LIB_VERSION\" $(find /usr/local/Cellar/boost/ /usr/include /usr/local/include -name 'version.hpp' 2> /dev/null | grep 'boost/version.hpp') | grep -v \"//\" | cut -d '\"' -f2 | sed 's/_/./g'"])
-    .output()?;
-
-    let version_str = String::from_utf8(output.stdout)?.trim().to_string();
-    let version_parts: Vec<&str> = version_str.split('.').collect();
-
-    if version_parts.len() < 2 {
-        return Ok(false);
-    }
-
-    let major_version = version_parts[0].parse::<i32>()?;
-    let minor_version = version_parts[1].parse::<i32>()?;
-
-    Ok(major_version > 1 || (major_version == 1 && minor_version >= 71))
-}
-
-fn find_boost_include_path() -> Option<String> {
+fn get_boost_path() -> Result<String, Box<dyn Error>> {
     let possible_paths = vec!["/usr/local/include", "/usr/include"];
-    let boost_header = "boost/signals2.hpp";
+    let boost_version = "boost/version.hpp";
 
     for path in possible_paths {
-        let full_path = Path::new(path).join(boost_header);
+        let full_path = Path::new(path).join(boost_version);
         if full_path.exists() {
-            return Some(path.to_string());
+            let file = File::open(full_path)?;
+            let reader = io::BufReader::new(file);
+
+            for line in reader.lines() {
+                match line {
+                    Ok(x) => {
+                        if x.contains("#define BOOST_LIB_VERSION") {
+                            let parts: Vec<&str> = x.split('"').collect();
+                            if parts.len() >= 2 {
+                                let version = parts[1].replace('_', ".");
+                                check_version("boost", &version, 1, 71)?;
+                            } else {
+                                return Err("Error finding boost package verion1"
+                                    .to_string()
+                                    .into());
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        return Err("Error finding boost package verion".to_string().into());
+                    }
+                };
+            }
+            return Ok(path.to_string());
         }
     }
 
-    None
+    Err("No boost package found".to_string().into())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -204,17 +209,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(cpp_out_dir.join(dir))?;
     }
 
-    match check_boost_version() {
-        Ok(true) => {}
-        Ok(false) => {
-            return Err("Boost version is not sufficient.".to_string().into());
-        }
-        Err(_) => {
-            return Err("Error checking Boost version.".to_string().into());
-        }
-    }
-    let boost_include_path = find_boost_include_path().ok_or("Boost include path not found")?;
-    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &boost_include_path)?;
+    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"), &get_boost_path()?)?;
 
     write_postbuild_conf_pri(
         &Path::new("postbuild").join("conf.pri"),
