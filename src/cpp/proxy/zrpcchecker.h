@@ -24,6 +24,13 @@
 #define ZRPCCHECKER_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
+#include <boost/asio.hpp>
+#include <boost/bind/bind.hpp>
+#include <iostream>
+
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::connection;
 
 class ZrpcRequest;
 

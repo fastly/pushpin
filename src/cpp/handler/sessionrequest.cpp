@@ -36,11 +36,13 @@ class DetectRulesSet : public Deferred
 	Q_OBJECT
 
 public:
+	Connection finishedConnection;
+
 	DetectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules, QObject *parent = 0) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &DetectRulesSet::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this));
 
 		QVariantList rlist;
 		foreach(const DetectRule &rule, rules)
@@ -59,7 +61,12 @@ public:
 		req->start("session-detect-rules-set", args);
 	}
 
-private slots:
+	~DetectRulesSet()
+	{
+		finishedConnection.disconnect();
+	}
+
+private:
 	void req_finished()
 	{
 		ZrpcRequest *req = (ZrpcRequest *)sender();

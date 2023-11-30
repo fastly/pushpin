@@ -25,6 +25,9 @@
 
 #include <QObject>
 #include <QVariant>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class ZrpcRequestPacket;
 class ZrpcResponsePacket;
@@ -64,8 +67,7 @@ protected:
 	virtual void onSuccess();
 	virtual void onError();
 
-signals:
-	void finished();
+	Signal finished;
 
 private:
 	class Private;

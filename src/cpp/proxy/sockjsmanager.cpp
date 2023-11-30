@@ -133,6 +133,11 @@ public:
 	QByteArray iframeHtml;
 	QByteArray iframeHtmlEtag;
 	QSet<ZhttpRequest*> discardedRequests;
+	Connection readyReadConnection;
+	Connection bytesWrittenConnection;
+	Connection errorConnection;
+	Connection closedConnection;
+	Connection errorWSConnection;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
@@ -148,6 +153,12 @@ public:
 
 		while(!pendingSessions.isEmpty())
 			removeSession(pendingSessions.takeFirst());
+
+		readyReadConnection.disconnect();
+		bytesWrittenConnection.disconnect();
+		errorConnection.disconnect();
+		closedConnection.disconnect();
+		errorWSConnection.disconnect();
 
 		assert(sessions.isEmpty());
 	}
@@ -238,9 +249,9 @@ public:
 
 		s->route = route;
 
-		connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
-		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-		connect(req, &ZhttpRequest::error, this, &Private::req_error);
+		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
+		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
 		sessions += s;
 		sessionsByRequest.insert(s->req, s);
@@ -262,8 +273,8 @@ public:
 			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
 		s->route = route;
 
-		connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
-		connect(sock, &ZWebSocket::error, this, &Private::sock_error);
+		closedConnection = sock->closed.connect(boost::bind(&Private::sock_closed, this));
+		errorWSConnection = sock->error.connect(boost::bind(&Private::sock_error, this));
 
 		sessions += s;
 		sessionsBySocket.insert(s->sock, s);
@@ -361,9 +372,9 @@ public:
 		{
 			discardedRequests += req;
 
-			connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
-			connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-			connect(req, &ZhttpRequest::error, this, &Private::req_error);
+			readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
+			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+			errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 		}
 
 		HttpHeaders headers;
@@ -572,6 +583,7 @@ public:
 		return s->ext;
 	}
 
+private:
 	void req_readyRead()
 	{
 		ZhttpRequest *req = (ZhttpRequest *)sender();

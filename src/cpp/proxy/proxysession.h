@@ -67,8 +67,9 @@ public:
 	// takes ownership
 	void add(RequestSession *rs);
 
-	Signal addNotAllowed; // no more sharing, for whatever reason
-	Signal finished;
+	// no more sharing, for whatever reason
+	Signal addNotAllowed; 
+	Signal proxyFinished;
 	SignalReqSession requestSessionDestroyed;
 
 private:

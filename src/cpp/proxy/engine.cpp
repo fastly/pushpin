@@ -412,11 +412,9 @@ public:
 			ps = new ProxySession(zroutes, accept, logConfig, stats);
 			// TODO: use callbacks for performance
 			addNotAllowedConnection = ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this));
-			finishedConnection = ps->finished.connect(boost::bind(&Private::ps_finished, this));
+			finishedConnection = ps->proxyFinished.connect(boost::bind(&Private::ps_finished, this));
 			requestSessionDestroyedConnection = ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this, boost::placeholders::_1, boost::placeholders::_2));
-			// connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
-			// requestSessionDestroyedConnection = ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this));
-
+			
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
 			ps->setAcceptXForwardedProtocol(config.acceptXForwardedProto);

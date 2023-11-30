@@ -46,7 +46,6 @@ class XffRule;
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
-// using SignalData = boost::signals2::signal<void(const InspectData&)>;
 
 class RequestSession : public QObject
 {
@@ -103,6 +102,7 @@ public:
 
 	int unregisterConnection(); // return unreported time
 
+public:
 	boost::signals2::signal<void(const InspectData&)> inspected;
 	Signal inspectError;
 	Signal finished;

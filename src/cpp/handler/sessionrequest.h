@@ -27,6 +27,10 @@
 #include <QList>
 #include <QHash>
 #include "lastids.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::connection;
 
 class QObject;
 

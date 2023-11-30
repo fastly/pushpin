@@ -72,8 +72,8 @@ class WebSocketOverHttp::DisconnectManager : public QObject
 public:
 	;
 	Connection disconnectedConnection;
-	// Connection closedConnection;
-	// Connection errorConnection;
+	Connection closedConnection;
+	Connection errorConnection;
 
 	DisconnectManager(QObject *parent = 0) :
 		QObject(parent)
@@ -82,18 +82,16 @@ public:
 
     ~DisconnectManager() {
         disconnectedConnection.disconnect();
-        // closedConnection.disconnect();
-        // errorConnection.disconnect();
+        closedConnection.disconnect();
+        errorConnection.disconnect();
     }
 
 	void addSocket(WebSocketOverHttp *sock)
 	{
 		sock->setParent(this);
 		disconnectedConnection = sock->disconnected.connect(boost::bind(&DisconnectManager::sock_disconnected, this));
-		connect(sock, &WebSocketOverHttp::closed, this, &DisconnectManager::sock_closed);
-		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
-		// closedConnection = sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this));
-		// errorConnection = sock->error.connect(boost::bind(&DisconnectManager::sock_error, this));
+		closedConnection = sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this));
+		errorConnection = sock->error.connect(boost::bind(&DisconnectManager::sock_error, this));
 
 		sock->sendDisconnect();
 	}
@@ -237,6 +235,9 @@ public:
 	QTimer *retryTimer;
 	int retries;
 	int maxEvents;
+	Connection readyReadConnection;
+	Connection bytesWrittenConnection;
+	Connection errorConnection;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -286,6 +287,10 @@ public:
 		retryTimer->disconnect(this);
 		retryTimer->setParent(0);
 		retryTimer->deleteLater();
+
+		readyReadConnection.disconnect();
+		bytesWrittenConnection.disconnect();
+		errorConnection.disconnect();
 	}
 
 	void cleanup()
@@ -618,9 +623,9 @@ private:
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
-		connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
-		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-		connect(req, &ZhttpRequest::error, this, &Private::req_error);
+		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
+		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
 		if(!connectHost.isEmpty())
 			req->setConnectHost(connectHost);

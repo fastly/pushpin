@@ -24,6 +24,10 @@
 
 #include <QObject>
 #include <QHostAddress>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::connection;
 
 class HttpHeaders;
 
@@ -69,8 +73,7 @@ public:
 	bool listenLocal(const QString &name);
 	SimpleHttpRequest *takeNext();
 
-signals:
-	void requestReady();
+	Signal requestReady();
 
 private:
 	friend class SimpleHttpServerPrivate;

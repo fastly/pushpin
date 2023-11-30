@@ -57,19 +57,30 @@ public:
 	bool avail;
 	QTimer *timer;
 	QHash<ZrpcRequest*, Item*> requestsByReq;
+    boost::asio::io_service io;
+    boost::asio::deadline_timer timer;
+	Connection finishedConnection;
+	Connection destroyedConnection;
+	Connection timeoutConnection;
 
 	Private(ZrpcChecker *_q) :
 		QObject(_q),
 		q(_q),
-		avail(true)
+		avail(true),
+		timer(io, boost::posix_time::seconds(1))
 	{
-		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
-		timer->setSingleShot(true);
+    	timer.async_wait(boost::bind(&MyClass::timer_timeout, this, boost::asio::placeholders::error));
+		io.run();
 	}
 
 	~Private()
 	{
+		io.stop();
+
+		finishedConnection.disconnect();
+		destroyedConnection.disconnect();
+		timeoutConnection.disconnect();
+
 		cleanup();
 	}
 
@@ -106,8 +117,8 @@ public:
 		if(i)
 			return; // already watching
 
-		connect(req, &ZrpcRequest::finished, this, &Private::req_finished);
-		connect(req, &ZrpcRequest::destroyed, this, &Private::req_destroyed);
+		finishedConnection = req->finished.connect(boost::bind(&Private::req_finished, this));
+		destroyedConnection = req->destroyed.connect(boost::bind(&Private::req_destroyed, this));
 
 		i = new Item;
 		i->req = req;
