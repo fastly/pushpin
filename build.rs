@@ -77,8 +77,10 @@ fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
-    #[cfg(target_os = "macos")]
-    writeln!(&mut f, "INCLUDEPATH += {}", get_boost_path()?)?;
+    let boost_path = get_boost_path()?;
+    if boost_path != "/usr/include" {
+        writeln!(&mut f, "INCLUDEPATH += {}", boost_path)?;
+    }
 
     Ok(())
 }
@@ -102,7 +104,6 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
-#[allow(dead_code)]
 fn get_boost_path() -> Result<String, Box<dyn Error>> {
     let possible_paths = vec!["/usr/local/include", "/usr/include"];
     let boost_version = "boost/version.hpp";
