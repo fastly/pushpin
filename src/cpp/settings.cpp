@@ -37,15 +37,15 @@ Settings::Settings(const QString &fileName) :
 	libdir_ = valueRaw("global/libdir").toString();
 	if(libdir_.isEmpty())
 	{
-		if(QFile::exists("src/pushpin/pushpin.pro"))
+		if(QFile::exists("src/bin/pushpin.rs"))
 		{
 			// running in tree
-			libdir_ = QFileInfo("src/pushpin").absoluteFilePath();
+			libdir_ = QFileInfo("src").absoluteFilePath();
 		}
 		else
 		{
 			// use compiled value
-			libdir_ = LIBDIR;
+			libdir_ = Config::get().libDir;
 		}
 	}
 

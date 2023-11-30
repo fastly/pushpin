@@ -15,10 +15,11 @@
  * limitations under the License.
  */
 
-use clap::{crate_version, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
 use pushpin::condure::{run, App, Config};
 use pushpin::log::get_simple_logger;
+use pushpin::version;
 use pushpin::{ListenConfig, ListenSpec};
 use std::error::Error;
 use std::path::PathBuf;
@@ -199,7 +200,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
 
 fn main() {
     let matches = Command::new("condure")
-        .version(crate_version!())
+        .version(version())
         .about("HTTP/WebSocket connection manager")
         .arg(
             Arg::new("log-level")

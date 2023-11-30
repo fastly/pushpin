@@ -2,7 +2,7 @@ QMAKE_CXXFLAGS += $$(CXXFLAGS)
 QMAKE_CFLAGS += $$(CFLAGS)
 QMAKE_LFLAGS += $$(LDFLAGS)
 
-SRC_DIR = $$PWD/..
+SRC_DIR = $$PWD
 QZMQ_DIR = $$SRC_DIR/qzmq
 RUST_DIR = $$SRC_DIR/../rust
 
@@ -52,6 +52,7 @@ SOURCES += \
 
 HEADERS += \
 	$$SRC_DIR/callback.h \
+	$$SRC_DIR/config.h \
 	$$SRC_DIR/timerwheel.h \
 	$$SRC_DIR/jwt.h \
 	$$SRC_DIR/encrypt.h \
@@ -75,6 +76,7 @@ HEADERS += \
 	$$SRC_DIR/settings.h
 
 SOURCES += \
+	$$SRC_DIR/config.cpp \
 	$$SRC_DIR/timerwheel.cpp \
 	$$SRC_DIR/jwt.cpp \
 	$$SRC_DIR/encrypt.cpp \

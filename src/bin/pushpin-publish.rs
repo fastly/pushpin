@@ -22,6 +22,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use pushpin::publish_cli::{run, Action, Config, Content, Message};
+use pushpin::version;
 use std::env;
 use std::error::Error;
 use std::process;
@@ -133,7 +134,7 @@ fn main() {
     };
 
     let matches = Command::new(PROGRAM_NAME)
-        .version(env!("APP_VERSION"))
+        .version(version())
         .about("Publish messages to Pushpin")
         .arg(
             Arg::new("channel")

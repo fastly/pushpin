@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,38 +20,30 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QCoreApplication>
-#include <QTimer>
-#include "m2adapterapp.h"
+#include "config.h"
 
-class M2AdapterAppMain
+#include "rust/build_config.h"
+
+namespace Config {
+
+static Config *g_config = 0;
+
+Config & get()
 {
-public:
-	M2AdapterApp *app;
-
-	void start()
+	if(!g_config)
 	{
-		app = new M2AdapterApp;
-		app->quit.connect(boost::bind(&M2AdapterAppMain::app_quit, this, boost::placeholders::_1));
-		app->start();
+		Config *c = new Config;
+
+		BuildConfig *bc = build_config_new();
+		c->version = QString(bc->version);
+		c->configDir = QString(bc->config_dir);
+		c->libDir = QString(bc->lib_dir);
+		build_config_destroy(bc);
+
+		g_config = c;
 	}
 
-	void app_quit(int returnCode)
-	{
-		delete app;
-		QCoreApplication::exit(returnCode);
-	}
-};
-
-extern "C" {
-
-int m2adapter_main(int argc, char **argv)
-{
-	QCoreApplication qapp(argc, argv);
-
-	M2AdapterAppMain appMain;
-	QTimer::singleShot(0, [&appMain]() {appMain.start();});
-	return qapp.exec();
+	return *g_config;
 }
 
 }
