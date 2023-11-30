@@ -431,6 +431,10 @@ def make_routes(service, backend, sig_keys_dir):
 
             cond_opts += ',header=\"{}:{}\"'.format(escape_route_param(k), escape_route_param(v))
 
+        # we can assume https since fanout/grip is only allowed via xqd which requires https
+        if realm_id:
+            cond_opts += ',header=X-Forwarded-Proto:https'
+
         if service.aco_enabled or realm_id:
             cond_opts += ',aco'
 
