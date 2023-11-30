@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
-use std::fs;
-use std::io::Write;
+use std::fs::{self, File};
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
+use std::{env, io};
 use time::macros::format_description;
 use time::OffsetDateTime;
 
@@ -77,7 +77,10 @@ fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(path)?;
 
     writeln!(&mut f)?;
-    writeln!(&mut f, "INCLUDEPATH = /usr/local/include")?;
+    let boost_path = get_boost_path()?;
+    if boost_path != "/usr/include" {
+        writeln!(&mut f, "INCLUDEPATH += {}", boost_path)?;
+    }
 
     Ok(())
 }
@@ -99,6 +102,41 @@ fn write_postbuild_conf_pri(
     writeln!(&mut f, "LOGDIR = {}/pushpin", log_dir)?;
 
     Ok(())
+}
+
+fn get_boost_path() -> Result<String, Box<dyn Error>> {
+    let possible_paths = vec!["/usr/local/include", "/usr/include"];
+    let boost_version = "boost/version.hpp";
+
+    for path in possible_paths {
+        let full_path = Path::new(path).join(boost_version);
+        if full_path.exists() {
+            let file = File::open(full_path)?;
+            let reader = io::BufReader::new(file);
+
+            for line in reader.lines() {
+                match line {
+                    Ok(x) => {
+                        if x.contains("#define BOOST_LIB_VERSION") {
+                            let parts: Vec<&str> = x.split('"').collect();
+                            if parts.len() >= 2 {
+                                let version = parts[1].replace('_', ".");
+                                check_version("boost", &version, 1, 71)?;
+                            } else {
+                                return Err("Error finding boost package verion".into());
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        return Err("Error finding boost package verion".into());
+                    }
+                };
+            }
+            return Ok(path.to_string());
+        }
+    }
+
+    Err("No boost package found".into())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
