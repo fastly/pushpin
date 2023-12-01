@@ -269,12 +269,6 @@ public:
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
 	}
 
-	~Private()
-	{
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-	}
-
 	void start()
 	{
 		QCoreApplication::setApplicationName("pushpin");
@@ -793,9 +787,6 @@ private:
 		else
 		{
 			qDeleteAll(services);
-
-			hupConnection.disconnect();
-			quitConnection.disconnect();
 
 			ProcessQuit::cleanup();
 

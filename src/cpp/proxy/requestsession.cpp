@@ -226,11 +226,6 @@ public:
 
 	~Private()
 	{
-		errorConnection.disconnect();
-		pausedConnection.disconnect();
-		readyReadConnection.disconnect();
-		bytesWrittenConnection.disconnect();
-
 		cleanup();
 	}
 
@@ -1186,11 +1181,6 @@ RequestSession::RequestSession(DomainMap *domainMap, SockJsManager *sockJsManage
 
 RequestSession::~RequestSession()
 {	
-	d->readyReadConnection.disconnect();
-	d->pausedConnection.disconnect();
-	d->errorConnection.disconnect();
-	d->bytesWrittenConnection.disconnect();
-
 	delete d;
 }
 

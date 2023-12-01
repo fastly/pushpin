@@ -246,13 +246,6 @@ public:
 		retryTimer->disconnect(this);
 		retryTimer->setParent(0);
 		retryTimer->deleteLater();
-
-		bytesWrittenConnection.disconnect();
-		writeBytesChangedConnection.disconnect();
-		errorConnection.disconnect();
-		pausedConnection.disconnect();
-		readyReadOutConnection.disconnect();
-		errorOutConnection.disconnect();
 	}
 
 	void start()

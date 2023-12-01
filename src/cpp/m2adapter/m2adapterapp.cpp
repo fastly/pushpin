@@ -488,9 +488,6 @@ public:
 		qDeleteAll(sessionsByZhttpRid);
 		qDeleteAll(sessionsByZwsRid);
 		qDeleteAll(m2ConnectionsByRid);
-
-		hupConnection.disconnect();
-		quitConnection.disconnect();
 	}
 
 	void start()
@@ -2866,9 +2863,6 @@ private slots:
 	void doQuit()
 	{
 		log_info("stopping...");
-
-		hupConnection.disconnect();
-		quitConnection.disconnect();
 
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();

@@ -102,9 +102,7 @@ public:
 	}
 
 	~Private()
-	{		
-		readyReadConnection.disconnect();
-		errorConnection.disconnect();
+	{
 		timer->disconnect(this);
 		timer->setParent(0);
 		timer->deleteLater();

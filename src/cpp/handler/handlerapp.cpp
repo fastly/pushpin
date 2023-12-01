@@ -164,12 +164,6 @@ public:
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
 	}
 
-	~Private()
-	{
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-	}
-
 	void start()
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
@@ -379,10 +373,7 @@ private:
 	void doQuit()
 	{
 		log_info("stopping...");
-
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-
+		
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 

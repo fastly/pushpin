@@ -175,12 +175,6 @@ public:
 
 	~Private()
 	{
-		bytesWrittenConnection.disconnect();
-		errorConnection.disconnect();
-		keepAliveTimer->disconnect(this);
-		keepAliveTimer->setParent(0);
-		keepAliveTimer->deleteLater();
-
 		cleanup();
 	}
 

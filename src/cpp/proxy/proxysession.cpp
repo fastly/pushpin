@@ -189,12 +189,6 @@ public:
 
 	~Private()
 	{
-		inReqReadyReadConnection.disconnect();
-		inReqErrorConnection.disconnect();
-		readyReadConnection.disconnect();
-		writeBytesChangedConnection.disconnect();
-		errorConnection.disconnect();
-
 		cleanup();
 	}
 
