@@ -186,7 +186,11 @@ public:
 	bool autoShare;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
-	bool isSockJs;
+	bool isSockJs;	
+	Connection errorConnection;
+	Connection pausedConnection;
+	Connection readyReadConnection;
+	Connection bytesWrittenConnection;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
@@ -222,6 +226,10 @@ public:
 
 	~Private()
 	{
+		errorConnection.disconnect();
+		pausedConnection.disconnect();
+		readyReadConnection.disconnect();
+
 		cleanup();
 	}
 
@@ -299,8 +307,8 @@ public:
 			}
 		}
 
-		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
-		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
+		pausedConnection = zhttpRequest->paused.connect(boost::bind(&Private::zhttpRequest_paused, this));
+		errorConnection = zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
 
 		if(!route.isNull())
 		{
@@ -373,7 +381,7 @@ public:
 
 		state = Prefetching;
 
-		connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+		readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 		processIncomingRequest();
 	}
 
@@ -384,8 +392,8 @@ public:
 		peerAddress = zhttpRequest->peerAddress();
 		logicalPeerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
 
-		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
-		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
+		pausedConnection = zhttpRequest->paused.connect(boost::bind(&Private::zhttpRequest_paused, this));
+		errorConnection = zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
 
 		state = WaitingForResponse;
 
@@ -433,7 +441,7 @@ public:
 			{
 				// we've read enough body to start inspection
 
-				disconnect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+				readyReadConnection.disconnect();
 
 				state = Inspecting;
 				requestData.body = in.toByteArray();
@@ -478,7 +486,7 @@ public:
 				//   disallow sharing before passing to proxysession. at that
 				//   point, proxysession will read the remainder of the data
 
-				disconnect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+				readyReadConnection.disconnect();
 
 				state = WaitingForResponse;
 				requestData.body = in.take();
@@ -888,7 +896,7 @@ public slots:
 
 			// successful inspect indicated we should not proxy. in that case,
 			//   collect the body and accept
-			connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+			readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 			processIncomingRequest();
 		}
 		else
@@ -899,7 +907,7 @@ public slots:
 				//   request body, so let's try to read it now
 				state = Receiving;
 
-				connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+				readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 				processIncomingRequest();
 			}
 			else
@@ -1019,7 +1027,7 @@ public slots:
 						}
 					}
 
-					connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+					bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 					zhttpRequest->beginResponse(200, "OK", headers);
 
@@ -1051,7 +1059,7 @@ public slots:
 				headers += HttpHeader("Content-Type", "application/javascript");
 				headers += HttpHeader("Transfer-Encoding", "chunked");
 
-				connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+				bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 				zhttpRequest->beginResponse(200, "OK", headers);
 
@@ -1065,7 +1073,7 @@ public slots:
 				if(autoCrossOrigin)
 					Cors::applyCorsHeaders(requestData.headers, &responseData.headers);
 
-				connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+				bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 				zhttpRequest->beginResponse(responseData.code, responseData.reason, responseData.headers);
 			}
@@ -1176,7 +1184,12 @@ RequestSession::RequestSession(DomainMap *domainMap, SockJsManager *sockJsManage
 }
 
 RequestSession::~RequestSession()
-{
+{	
+	d->readyReadConnection.disconnect();
+	d->pausedConnection.disconnect();
+	d->errorConnection.disconnect();
+	d->bytesWrittenConnection.disconnect();
+
 	delete d;
 }
 

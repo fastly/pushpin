@@ -25,6 +25,9 @@
 
 #include <QObject>
 #include "domainmap.h"
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::connection;
 
 class HttpHeaders;
 class ZhttpRequest;
