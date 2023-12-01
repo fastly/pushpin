@@ -229,6 +229,7 @@ public:
 		errorConnection.disconnect();
 		pausedConnection.disconnect();
 		readyReadConnection.disconnect();
+		bytesWrittenConnection.disconnect();
 
 		cleanup();
 	}
