@@ -79,7 +79,7 @@ public:
 	QTimer *timer;
 	ZhttpRequest *req;
 	Report report;
-	QDateTime lastLogTime;	
+	QDateTime lastLogTime;
 	Connection readyReadConnection;
 	Connection errorConnection;
 

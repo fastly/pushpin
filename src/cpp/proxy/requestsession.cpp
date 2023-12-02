@@ -186,7 +186,7 @@ public:
 	bool autoShare;
 	XffRule xffRule;
 	XffRule xffTrustedRule;
-	bool isSockJs;	
+	bool isSockJs;
 	Connection errorConnection;
 	Connection pausedConnection;
 	Connection readyReadConnection;
@@ -1180,7 +1180,7 @@ RequestSession::RequestSession(DomainMap *domainMap, SockJsManager *sockJsManage
 }
 
 RequestSession::~RequestSession()
-{	
+{
 	delete d;
 }
 

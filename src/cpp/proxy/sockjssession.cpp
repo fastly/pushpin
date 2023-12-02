@@ -175,6 +175,10 @@ public:
 
 	~Private()
 	{
+		keepAliveTimer->disconnect(this);
+		keepAliveTimer->setParent(0);
+		keepAliveTimer->deleteLater();
+
 		cleanup();
 	}
 
