@@ -495,7 +495,7 @@ private:
 			QLocalSocket *sock = ((QLocalServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
 			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
-			finishedConnection = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this));
+			finishedConnection = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 			accepting += req;
 			req->d->start(sock);
 		}
@@ -504,7 +504,7 @@ private:
 			QTcpSocket *sock = ((QTcpServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
 			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
-			finishedConnection = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this));
+			finishedConnection = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 			accepting += req;
 			req->d->start(sock);
 		}
@@ -519,9 +519,8 @@ private:
 		q->requestReady();
 	}
 
-	void req_finished()
+	void req_finished(SimpleHttpRequest *req)
 	{
-		SimpleHttpRequest *req = (SimpleHttpRequest *)sender();
 		accepting.remove(req);
 		pending.removeAll(req);
 		delete req;
