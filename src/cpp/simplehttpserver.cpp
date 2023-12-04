@@ -516,7 +516,7 @@ private:
 		SimpleHttpRequest *req = reqd->q;
 		accepting.remove(req);
 		pending += req;
-		emit q->requestReady();
+		q->requestReady();
 	}
 
 	void req_finished()
