@@ -30,6 +30,9 @@
 #include "httpheaders.h"
 #include "websocket.h"
 #include "domainmap.h"
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class ZhttpRequest;
 class ZWebSocket;

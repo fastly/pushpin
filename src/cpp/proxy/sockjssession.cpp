@@ -146,6 +146,8 @@ public:
 	int peerCloseCode;
 	QString peerCloseReason;
 	bool updating;
+	Connection bytesWrittenConnection;
+	Connection errorConnection;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -254,8 +256,8 @@ public:
 
 			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
 
-			connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-			connect(req, &ZhttpRequest::error, this, &Private::req_error);
+			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+			errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 		}
 		else
 		{
@@ -295,8 +297,8 @@ public:
 
 	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-		connect(_req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-		connect(_req, &ZhttpRequest::error, this, &Private::req_error);
+		bytesWrittenConnection = _req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+		errorConnection = _req->error.connect(boost::bind(&Private::req_error, this));
 
 		if(lastPart == "xhr" || lastPart == "jsonp")
 		{

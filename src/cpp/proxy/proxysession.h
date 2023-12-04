@@ -38,6 +38,9 @@ class ZRoutes;
 class StatsManager;
 class XffRule;
 class RequestSession;
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class ProxySession : public QObject
 {

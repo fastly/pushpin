@@ -224,6 +224,9 @@ public:
 	QTimer *retryTimer;
 	int retries;
 	int maxEvents;
+	Connection readyReadConnection;
+	Connection bytesWrittenConnection;
+	Connection errorConnection;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -605,9 +608,9 @@ private:
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
-		connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
-		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-		connect(req, &ZhttpRequest::error, this, &Private::req_error);
+		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
+		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
 		if(!connectHost.isEmpty())
 			req->setConnectHost(connectHost);

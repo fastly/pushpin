@@ -176,6 +176,12 @@ public:
 	Callback<std::tuple<HttpSession *, const QString &>> subscribeCallback;
 	Callback<std::tuple<HttpSession *, const QString &>> unsubscribeCallback;
 	Callback<std::tuple<HttpSession *>> finishedCallback;
+	Connection bytesWrittenConnection;
+	Connection writeBytesChangedConnection;
+	Connection errorConnection;
+	Connection pausedConnection;
+	Connection readyReadOutConnection;
+	Connection errorOutConnection;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -199,9 +205,9 @@ public:
 		state = NotStarted;
 
 		req->setParent(this);
-		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-		connect(req, &ZhttpRequest::writeBytesChanged, this, &Private::req_writeBytesChanged);
-		connect(req, &ZhttpRequest::error, this, &Private::req_error);
+		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+		writeBytesChangedConnection = req->writeBytesChanged.connect(boost::bind(&Private::req_writeBytesChanged, this));
+		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
 		timer = new RTimer(this);
 		connect(timer, &RTimer::timeout, this, &Private::timer_timeout);
@@ -595,7 +601,7 @@ private:
 			// stop activity while pausing
 			timer->stop();
 
-			connect(req, &ZhttpRequest::paused, this, &Private::req_paused);
+			pausedConnection = req->paused.connect(boost::bind(&Private::req_paused, this));
 			req->pause();
 		}
 		else
@@ -1158,8 +1164,8 @@ private:
 
 		outReq = outZhttp->createRequest();
 		outReq->setParent(this);
-		connect(outReq, &ZhttpRequest::readyRead, this, &Private::outReq_readyRead);
-		connect(outReq, &ZhttpRequest::error, this, &Private::outReq_error);
+		readyReadOutConnection = outReq->readyRead.connect(boost::bind(&Private::outReq_readyRead, this));
+		errorOutConnection = outReq->error.connect(boost::bind(&Private::outReq_error, this));
 
 		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 		int nextPort = nextUri.port(currentUri.scheme() == "https" ? 443 : 80);

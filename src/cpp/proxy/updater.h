@@ -24,6 +24,9 @@
 #define UPDATER_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class ZhttpManager;
 

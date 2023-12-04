@@ -25,6 +25,9 @@
 #define WEBSOCKETOVERHTTP_H
 
 #include "websocket.h"
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class ZhttpManager;
 
