@@ -790,7 +790,7 @@ public:
 		return true;
 	}
 
-public slots:
+public:
 	void zhttpRequest_readyRead()
 	{
 		processIncomingRequest();
@@ -868,6 +868,7 @@ public slots:
 		emit q->finished();
 	}
 
+public slots:
 	void inspectRequest_finished()
 	{
 		if(!inspectRequest->success())
