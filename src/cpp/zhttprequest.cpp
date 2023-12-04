@@ -103,6 +103,8 @@ public:
 	RTimer *keepAliveTimer;
 	bool multi;
 	bool quiet;
+	Connection expTimerConnection;
+	Connection keepAliveTimerConnection;
 
 	Private(ZhttpRequest *_q) :
 		QObject(_q),
@@ -136,11 +138,11 @@ public:
 		quiet(false)
 	{
 		expireTimer = new RTimer(this);
-		connect(expireTimer, &RTimer::timeout, this, &Private::expire_timeout);
+		expTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
 		keepAliveTimer = new RTimer(this);
-		connect(keepAliveTimer, &RTimer::timeout, this, &Private::keepAlive_timeout);
+		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
 	~Private()
@@ -933,6 +935,32 @@ public:
 			return ErrorGeneric;
 	}
 
+public:
+	void expire_timeout()
+	{
+		state = Stopped;
+		errored = true;
+		errorCondition = ErrorTimeout;
+		cleanup();
+		emit q->error();
+	}
+
+	void keepAlive_timeout()
+	{
+		if(server)
+		{
+			ZhttpResponsePacket p;
+			p.type = ZhttpResponsePacket::KeepAlive;
+			writePacket(p);
+		}
+		else
+		{
+			ZhttpRequestPacket p;
+			p.type = ZhttpRequestPacket::KeepAlive;
+			writePacket(p);
+		}
+	}
+
 public slots:
 	void doUpdate()
 	{
@@ -1151,31 +1179,6 @@ public slots:
 				writableChanged = false;
 				emit q->writeBytesChanged();
 			}
-		}
-	}
-
-	void expire_timeout()
-	{
-		state = Stopped;
-		errored = true;
-		errorCondition = ErrorTimeout;
-		cleanup();
-		emit q->error();
-	}
-
-	void keepAlive_timeout()
-	{
-		if(server)
-		{
-			ZhttpResponsePacket p;
-			p.type = ZhttpResponsePacket::KeepAlive;
-			writePacket(p);
-		}
-		else
-		{
-			ZhttpRequestPacket p;
-			p.type = ZhttpRequestPacket::KeepAlive;
-			writePacket(p);
 		}
 	}
 };

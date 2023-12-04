@@ -215,7 +215,7 @@ public:
 				emit q->keepAliveSetupEventReceived(mode, item.timeout);
 			}
 			else
-				emit q->keepAliveSetupEventReceived(WsControl::NoKeepAlive);
+				emit q->keepAliveSetupEventReceived(WsControl::NoKeepAlive, 0);
 		}
 		else if(item.type == WsControlPacket::Item::Close)
 		{

@@ -577,7 +577,7 @@ public:
 		return s->ext;
 	}
 
-private slots:
+private:
 	void req_readyRead()
 	{
 		ZhttpRequest *req = (ZhttpRequest *)sender();
@@ -663,6 +663,7 @@ private slots:
 			removeSession(s);
 	}
 
+private slots:
 	void timer_timeout()
 	{
 		QTimer *timer = (QTimer *)sender();

@@ -99,7 +99,7 @@ private:
 		delete sock;
 	}
 
-private slots:
+private:
 	void sock_disconnected()
 	{
 		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();

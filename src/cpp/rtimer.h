@@ -24,6 +24,9 @@
 #define RTIMER_H
 
 #include <qobject.h>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class TimerManager;
 
@@ -47,8 +50,7 @@ public:
 	// only call if there are no active RTimers
 	static void deinit();
 
-signals:
-	void timeout();
+	Signal timeout;
 
 private:
 	friend class TimerManager;

@@ -291,6 +291,13 @@ public:
 	Connection peerClosedOutConnection;
 	Connection closedOutConnection;
 	Connection errorOutConnection;
+	Connection keepAliveTimerConnection;
+	Connection wsControlSendEventReceivedConnection;
+	Connection wsControlKeepAliveSetupEventReceivedConnection;
+	Connection wsControlCloseEventReceivedConnection;
+	Connection wsControlDetachEventReceivedConnection;
+	Connection wsControlCancelEventReceivedConnection;
+	Connection wsControlErrorConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -797,7 +804,7 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-private slots:
+private:
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)
@@ -872,6 +879,106 @@ private slots:
 		tryFinish();
 	}
 
+	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
+	{
+		// this method accepts a full message, which must be typed
+		if(type == WebSocket::Frame::Continuation)
+			return;
+
+		// if we have no socket to write to, say the data was written anyway.
+		//   this is not quite correct but better than leaving the send event
+		//   dangling
+		if(!inSock || inSock->state() != WebSocket::Connected)
+		{
+			wsControl->sendEventWritten();
+			return;
+		}
+
+		// if queue == false, drop if we can't send right now
+		if(!queue && (inSock->writeBytesAvailable() == 0 || outReadInProgress != -1))
+		{
+			// if drop is allowed, drop is success :)
+			wsControl->sendEventWritten();
+			return;
+		}
+
+		WebSocket::Frame f(type, message, false);
+
+		if(outReadInProgress != -1)
+		{
+			queuedInFrames += QueuedFrame(f, true);
+		}
+		else
+		{
+			writeInFrame(f, true);
+		}
+
+		adjustKeepAlive();
+	}
+
+	void wsControl_keepAliveSetupEventReceived(WsControl::KeepAliveMode mode, int timeout)
+	{
+		keepAliveMode = mode;
+
+		if(keepAliveMode != WsControl::NoKeepAlive && timeout > 0)
+		{
+			keepAliveTimeout = timeout;
+
+			if(!keepAliveTimer)
+			{
+				keepAliveTimer = new RTimer(this);
+				keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
+				keepAliveTimer->setSingleShot(true);
+			}
+
+			setupKeepAlive();
+		}
+		else
+		{
+			cleanupKeepAliveTimer();
+		}
+	}
+
+	void wsControl_closeEventReceived(int code, const QByteArray &reason)
+	{
+		if(!detached && outSock && outSock->state() != WebSocket::Closing)
+			outSock->close();
+
+		if(inSock && inSock->state() != WebSocket::Closing)
+			inSock->close(code, reason);
+	}
+
+	void wsControl_detachEventReceived()
+	{
+		// if already detached, do nothing
+		if(detached)
+			return;
+
+		detached = true;
+
+		if(outSock && outSock->state() != WebSocket::Closing)
+			outSock->close();
+	}
+
+	void wsControl_cancelEventReceived()
+	{
+		if(outSock)
+		{
+			delete outSock;
+			outSock = 0;
+		}
+
+		cleanupInSock();
+
+		tryFinish();
+	}
+
+	void wsControl_error()
+	{
+		log_debug("wsproxysession: %p wscontrol session error", q);
+		wsControl_cancelEventReceived();
+	}
+
 	void out_connected()
 	{
 		log_debug("wsproxysession: %p connected", q);
@@ -910,12 +1017,12 @@ private slots:
 			if(wsControlManager)
 			{
 				wsControl = wsControlManager->createSession(publicCid);
-				connect(wsControl, &WsControlSession::sendEventReceived, this, &Private::wsControl_sendEventReceived);
-				connect(wsControl, &WsControlSession::keepAliveSetupEventReceived, this, &Private::wsControl_keepAliveSetupEventReceived);
-				connect(wsControl, &WsControlSession::closeEventReceived, this, &Private::wsControl_closeEventReceived);
-				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
-				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
-				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
+				wsControlSendEventReceivedConnection = wsControl->sendEventReceived.connect(boost::bind(&Private::wsControl_sendEventReceived, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3));
+				wsControlKeepAliveSetupEventReceivedConnection = wsControl->keepAliveSetupEventReceived.connect(boost::bind(&Private::wsControl_keepAliveSetupEventReceived, this, boost::placeholders::_1, boost::placeholders::_2));
+				wsControlCloseEventReceivedConnection = wsControl->closeEventReceived.connect(boost::bind(&Private::wsControl_closeEventReceived, this, boost::placeholders::_1, boost::placeholders::_2));
+				wsControlDetachEventReceivedConnection = wsControl->detachEventReceived.connect(boost::bind(&Private::wsControl_detachEventReceived, this));
+				wsControlCancelEventReceivedConnection = wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this));
+				wsControlErrorConnection = wsControl->error.connect(boost::bind(&Private::wsControl_error, this));
 				wsControl->start(route.id, route.separateStats, channelPrefix, inSock->requestUri());
 
 				foreach(const QString &subChannel, target.subscriptions)
@@ -1017,6 +1124,15 @@ private slots:
 		}
 	}
 
+	void keepAliveTimer_timeout()
+	{
+		wsControl->sendNeedKeepAlive();
+
+		if(keepAliveMode == WsControl::Interval)
+			setupKeepAlive();
+	}
+
+private slots:
 	void out_aboutToSendRequest()
 	{
 		WebSocketOverHttp *woh = (WebSocketOverHttp *)sender();
@@ -1024,114 +1140,6 @@ private slots:
 		ProxyUtil::applyGripSig("wsproxysession", q, &requestData.headers, sigIss, sigKey);
 
 		woh->setHeaders(requestData.headers);
-	}
-
-	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
-	{
-		// this method accepts a full message, which must be typed
-		if(type == WebSocket::Frame::Continuation)
-			return;
-
-		// if we have no socket to write to, say the data was written anyway.
-		//   this is not quite correct but better than leaving the send event
-		//   dangling
-		if(!inSock || inSock->state() != WebSocket::Connected)
-		{
-			wsControl->sendEventWritten();
-			return;
-		}
-
-		// if queue == false, drop if we can't send right now
-		if(!queue && (inSock->writeBytesAvailable() == 0 || outReadInProgress != -1))
-		{
-			// if drop is allowed, drop is success :)
-			wsControl->sendEventWritten();
-			return;
-		}
-
-		WebSocket::Frame f(type, message, false);
-
-		if(outReadInProgress != -1)
-		{
-			queuedInFrames += QueuedFrame(f, true);
-		}
-		else
-		{
-			writeInFrame(f, true);
-		}
-
-		adjustKeepAlive();
-	}
-
-	void wsControl_keepAliveSetupEventReceived(WsControl::KeepAliveMode mode, int timeout)
-	{
-		keepAliveMode = mode;
-
-		if(keepAliveMode != WsControl::NoKeepAlive && timeout > 0)
-		{
-			keepAliveTimeout = timeout;
-
-			if(!keepAliveTimer)
-			{
-				keepAliveTimer = new RTimer(this);
-				connect(keepAliveTimer, &RTimer::timeout, this, &Private::keepAliveTimer_timeout);
-				keepAliveTimer->setSingleShot(true);
-			}
-
-			setupKeepAlive();
-		}
-		else
-		{
-			cleanupKeepAliveTimer();
-		}
-	}
-
-	void wsControl_closeEventReceived(int code, const QByteArray &reason)
-	{
-		if(!detached && outSock && outSock->state() != WebSocket::Closing)
-			outSock->close();
-
-		if(inSock && inSock->state() != WebSocket::Closing)
-			inSock->close(code, reason);
-	}
-
-	void wsControl_detachEventReceived()
-	{
-		// if already detached, do nothing
-		if(detached)
-			return;
-
-		detached = true;
-
-		if(outSock && outSock->state() != WebSocket::Closing)
-			outSock->close();
-	}
-
-	void wsControl_cancelEventReceived()
-	{
-		if(outSock)
-		{
-			delete outSock;
-			outSock = 0;
-		}
-
-		cleanupInSock();
-
-		tryFinish();
-	}
-
-	void wsControl_error()
-	{
-		log_debug("wsproxysession: %p wscontrol session error", q);
-		wsControl_cancelEventReceived();
-	}
-
-	void keepAliveTimer_timeout()
-	{
-		wsControl->sendNeedKeepAlive();
-
-		if(keepAliveMode == WsControl::Interval)
-			setupKeepAlive();
 	}
 };
 

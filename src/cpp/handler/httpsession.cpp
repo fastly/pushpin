@@ -182,6 +182,8 @@ public:
 	Connection pausedConnection;
 	Connection readyReadOutConnection;
 	Connection errorOutConnection;
+	Connection timeoutConnection;
+	Connection retryTimerConneciton;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -210,10 +212,10 @@ public:
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
 		timer = new RTimer(this);
-		connect(timer, &RTimer::timeout, this, &Private::timer_timeout);
+		timeoutConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
 		retryTimer = new RTimer(this);
-		connect(retryTimer, &RTimer::timeout, this, &Private::retryTimer_timeout);
+		retryTimerConneciton = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 
 		adata = _adata;
@@ -1391,7 +1393,29 @@ private:
 		req->writeBody(body);
 	}
 
-private slots:
+private:
+	void timer_timeout()
+	{
+		if(instruct.holdMode == Instruct::ResponseHold)
+		{
+			// send timeout response
+			respond(instruct.response.code, instruct.response.reason, instruct.response.headers, instruct.response.body);
+		}
+		else if(instruct.holdMode == Instruct::StreamHold)
+		{
+			writeBody(instruct.keepAliveData);
+
+			setupKeepAlive();
+
+			stats->addActivity(adata.statsRoute.toUtf8(), 1);
+		}
+	}
+
+	void retryTimer_timeout()
+	{
+		requestNextLink();
+	}
+	
 	void doError()
 	{
 		if(instruct.holdMode == Instruct::ResponseHold)
@@ -1514,28 +1538,6 @@ private slots:
 			errorMessage = "Failed to retrieve next link.";
 			doError();
 		}
-	}
-
-	void timer_timeout()
-	{
-		if(instruct.holdMode == Instruct::ResponseHold)
-		{
-			// send timeout response
-			respond(instruct.response.code, instruct.response.reason, instruct.response.headers, instruct.response.body);
-		}
-		else if(instruct.holdMode == Instruct::StreamHold)
-		{
-			writeBody(instruct.keepAliveData);
-
-			setupKeepAlive();
-
-			stats->addActivity(adata.statsRoute.toUtf8(), 1);
-		}
-	}
-
-	void retryTimer_timeout()
-	{
-		requestNextLink();
 	}
 };
 

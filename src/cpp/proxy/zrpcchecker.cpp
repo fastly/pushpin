@@ -58,6 +58,7 @@ public:
 	QTimer *timer;
 	QHash<ZrpcRequest*, Item*> requestsByReq;
 	Connection finishedConnection;
+	Connection destroyedConnection;
 
 	Private(ZrpcChecker *_q) :
 		QObject(_q),
@@ -109,6 +110,7 @@ public:
 
 		finishedConnection = req->finished.connect(boost::bind(&Private::req_finished, this));
 		connect(req, &ZrpcRequest::destroyed, this, &Private::req_destroyed);
+		// destroyedConnection = req->destroyed.connect(boost::bind(&Private::req_destroyed, this));
 
 		i = new Item;
 		i->req = req;
@@ -163,6 +165,7 @@ public:
 		}
 	}
 
+public:
 	void req_finished()
 	{
 		ZrpcRequest *req = (ZrpcRequest *)sender();

@@ -879,7 +879,7 @@ public:
 		return closeValue;
 	}
 
-private slots:
+private:
 	void req_bytesWritten(int count)
 	{
 		Q_UNUSED(count);
@@ -1026,6 +1026,7 @@ private slots:
 		emit q->error();
 	}
 
+private slots:
 	void doUpdate()
 	{
 		updating = false;

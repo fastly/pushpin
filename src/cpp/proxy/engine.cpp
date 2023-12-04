@@ -692,6 +692,137 @@ public:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
+private:
+	void command_requestReady()
+	{
+		ZrpcRequest *req = command->takeNext();
+		if(req->method() == "conncheck")
+		{
+			if(!stats)
+			{
+				req->respondError("service-unavailable");
+				delete req;
+				return;
+			}
+
+			QVariantHash args = req->args();
+			if(!args.contains("ids") || args["ids"].type() != QVariant::List)
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			QVariantList vids = args["ids"].toList();
+
+			bool ok = true;
+			QList<QByteArray> ids;
+			foreach(const QVariant &vid, vids)
+			{
+				if(vid.type() != QVariant::ByteArray)
+				{
+					ok = false;
+					break;
+				}
+
+				ids += vid.toByteArray();
+			}
+			if(!ok)
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			QVariantList out;
+			foreach(const QByteArray &id, ids)
+			{
+				if(stats->checkConnection(id))
+					out += id;
+			}
+
+			req->respond(out);
+		}
+		else if(req->method() == "refresh")
+		{
+			QVariantHash args = req->args();
+			if(!args.contains("cid") || args["cid"].type() != QVariant::ByteArray)
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			QByteArray cid = args["cid"].toByteArray();
+
+			WsProxySession *ps = connectionManager.getProxyForConnection(cid);
+			if(!ps)
+			{
+				req->respondError("item-not-found");
+				delete req;
+				return;
+			}
+
+			WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(ps->outSocket());
+			if(woh)
+				woh->refresh();
+
+			req->respond();
+		}
+		else if(req->method() == "report")
+		{
+			QVariantHash args = req->args();
+			if(!args.contains("stats") || args["stats"].type() != QVariant::Hash)
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			QVariant data = args["stats"];
+
+			StatsPacket p;
+			if(!p.fromVariant("report", data))
+			{
+				req->respondError("bad-format");
+				delete req;
+				return;
+			}
+
+			if(!updater)
+			{
+				req->respondError("service-unavailable");
+				delete req;
+				return;
+			}
+
+			int connectionsMax = qMax(p.connectionsMax, 0);
+			int connectionsMinutes = qMax(p.connectionsMinutes, 0);
+			int messagesReceived = qMax(p.messagesReceived, 0);
+			int messagesSent = qMax(p.messagesSent, 0);
+			int httpResponseMessagesSent = qMax(p.httpResponseMessagesSent, 0);
+
+			Updater::Report report;
+			report.connectionsMax = connectionsMax;
+			report.connectionsMinutes = connectionsMinutes;
+			report.messagesReceived = messagesReceived;
+			report.messagesSent = messagesSent;
+
+			// fanout cloud style ops calculation
+			report.ops = connectionsMinutes + messagesReceived + messagesSent - httpResponseMessagesSent;
+
+			updater->setReport(report);
+
+			req->respond();
+		}
+		else
+		{
+			req->respondError("method-not-found");
+		}
+
+		delete req;
+	}
+
 private slots:
 	void zhttpIn_requestReady()
 	{
@@ -899,136 +1030,6 @@ private slots:
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0);
 		}
-	}
-
-	void command_requestReady()
-	{
-		ZrpcRequest *req = command->takeNext();
-		if(req->method() == "conncheck")
-		{
-			if(!stats)
-			{
-				req->respondError("service-unavailable");
-				delete req;
-				return;
-			}
-
-			QVariantHash args = req->args();
-			if(!args.contains("ids") || args["ids"].type() != QVariant::List)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			QVariantList vids = args["ids"].toList();
-
-			bool ok = true;
-			QList<QByteArray> ids;
-			foreach(const QVariant &vid, vids)
-			{
-				if(vid.type() != QVariant::ByteArray)
-				{
-					ok = false;
-					break;
-				}
-
-				ids += vid.toByteArray();
-			}
-			if(!ok)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			QVariantList out;
-			foreach(const QByteArray &id, ids)
-			{
-				if(stats->checkConnection(id))
-					out += id;
-			}
-
-			req->respond(out);
-		}
-		else if(req->method() == "refresh")
-		{
-			QVariantHash args = req->args();
-			if(!args.contains("cid") || args["cid"].type() != QVariant::ByteArray)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			QByteArray cid = args["cid"].toByteArray();
-
-			WsProxySession *ps = connectionManager.getProxyForConnection(cid);
-			if(!ps)
-			{
-				req->respondError("item-not-found");
-				delete req;
-				return;
-			}
-
-			WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(ps->outSocket());
-			if(woh)
-				woh->refresh();
-
-			req->respond();
-		}
-		else if(req->method() == "report")
-		{
-			QVariantHash args = req->args();
-			if(!args.contains("stats") || args["stats"].type() != QVariant::Hash)
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			QVariant data = args["stats"];
-
-			StatsPacket p;
-			if(!p.fromVariant("report", data))
-			{
-				req->respondError("bad-format");
-				delete req;
-				return;
-			}
-
-			if(!updater)
-			{
-				req->respondError("service-unavailable");
-				delete req;
-				return;
-			}
-
-			int connectionsMax = qMax(p.connectionsMax, 0);
-			int connectionsMinutes = qMax(p.connectionsMinutes, 0);
-			int messagesReceived = qMax(p.messagesReceived, 0);
-			int messagesSent = qMax(p.messagesSent, 0);
-			int httpResponseMessagesSent = qMax(p.httpResponseMessagesSent, 0);
-
-			Updater::Report report;
-			report.connectionsMax = connectionsMax;
-			report.connectionsMinutes = connectionsMinutes;
-			report.messagesReceived = messagesReceived;
-			report.messagesSent = messagesSent;
-
-			// fanout cloud style ops calculation
-			report.ops = connectionsMinutes + messagesReceived + messagesSent - httpResponseMessagesSent;
-
-			updater->setReport(report);
-
-			req->respond();
-		}
-		else
-		{
-			req->respondError("method-not-found");
-		}
-
-		delete req;
 	}
 
 	void domainMap_changed()

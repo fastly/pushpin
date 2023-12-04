@@ -792,7 +792,7 @@ public:
 		return true;
 	}
 
-public slots:
+public:
 	void zhttpRequest_readyRead()
 	{
 		processIncomingRequest();
@@ -961,6 +961,7 @@ public slots:
 		}
 	}
 
+public slots:
 	void doResponseUpdate()
 	{
 		pendingResponseUpdate = false;
