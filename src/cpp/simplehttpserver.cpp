@@ -554,7 +554,7 @@ SimpleHttpRequest *SimpleHttpServer::takeNext()
 	if(!d->pending.isEmpty())
 	{
 		SimpleHttpRequest *req = d->pending.takeFirst();
-		req->disconnect(d);
+		d->finishedConnection.disconnect();
 		return req;
 	}
 	else
