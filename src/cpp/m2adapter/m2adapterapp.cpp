@@ -505,12 +505,12 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			case CommandLineHelpRequested:
 				parser.showHelp();
@@ -519,7 +519,7 @@ public:
 
 		if(!init())
 		{
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -2868,7 +2868,7 @@ private slots:
 		ProcessQuit::cleanup();
 
 		log_info("stopped");
-		emit q->quit(0);
+		q->quit(0);
 	}
 };
 

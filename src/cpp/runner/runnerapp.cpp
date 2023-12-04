@@ -284,12 +284,12 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "error: %s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			case CommandLineHelpRequested:
 				parser.showHelp();
@@ -301,7 +301,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -343,7 +343,7 @@ public:
 		if(configFile.isEmpty())
 		{
 			log_error("no configuration file found. Tried: %s", qPrintable(configFileList.join(" ")));
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -354,7 +354,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s", qPrintable(configFile));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -428,7 +428,7 @@ public:
 			if(logLevels.isEmpty())
 			{
 				fprintf(stderr, "error: %s\n", qPrintable(errorMessage));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -472,14 +472,14 @@ public:
 		if(!ensureDir(runDir))
 		{
 			log_error("failed to create directory: %s", qPrintable(runDir));
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
 		if(!args.mergeOutput && !ensureDir(logDir))
 		{
 			log_error("failed to create directory: %s", qPrintable(logDir));
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -501,7 +501,7 @@ public:
 				if(p.second < 0)
 				{
 					log_error("invalid http port: %s", qPrintable(httpPortStr));
-					emit q->quit(1);
+					q->quit(1);
 					return;
 				}
 
@@ -514,7 +514,7 @@ public:
 				if(p.second < 1)
 				{
 					log_error("invalid https port: %s", qPrintable(httpsPortStr));
-					emit q->quit(1);
+					q->quit(1);
 					return;
 				}
 
@@ -527,7 +527,7 @@ public:
 				if(!path.isValid())
 				{
 					log_error("invalid local port: %s", qPrintable(localPortStr));
-					emit q->quit(1);
+					q->quit(1);
 					return;
 				}
 
@@ -542,7 +542,7 @@ public:
 					if(!ok)
 					{
 						log_error("invalid mode: %s", qPrintable(modeStr));
-						emit q->quit(1);
+						q->quit(1);
 						return;
 					}
 				}
@@ -557,7 +557,7 @@ public:
 		if(ports.isEmpty())
 		{
 			log_error("no server ports configured");
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -571,7 +571,7 @@ public:
 		if(serviceNames.contains("condure") && (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter")))
 		{
 			log_error("cannot enable the condure service at the same time as mongrel2 or m2adapter");
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -600,7 +600,7 @@ public:
 			QString certsDir = QDir(configDir).filePath("certs");
 			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, certsDir, clientBufferSize, clientMaxConnections, ports, logLevels.value("mongrel2", defaultLevel)))
 			{
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 
@@ -698,7 +698,7 @@ private:
 
 	void doQuit()
 	{
-		emit q->quit(errored ? 1 : 0);
+		q->quit(errored ? 1 : 0);
 	}
 
 private slots:

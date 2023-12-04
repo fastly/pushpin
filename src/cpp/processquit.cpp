@@ -225,7 +225,7 @@ public slots:
 
 		if(c == 1) // SIGHUP
 		{
-			emit q->hup();
+			q->hup();
 			return;
 		}
 
@@ -240,7 +240,7 @@ private:
 		if(!done)
 		{
 			done = true;
-			emit q->quit();
+			q->quit();
 		}
 	}
 };

@@ -420,7 +420,7 @@ public:
 				p.type = ZhttpRequestPacket::Data;
 				writePacket(p);
 
-				emit q->bytesWritten(0);
+				q->bytesWritten(0);
 			}
 			else if(!requestBodyBuf.isEmpty() && outCredits > 0)
 			{
@@ -448,7 +448,7 @@ public:
 
 				writePacket(p);
 
-				emit q->bytesWritten(buf.size());
+				q->bytesWritten(buf.size());
 			}
 		}
 		else if(state == ClientReceiving)
@@ -486,7 +486,7 @@ public:
 					cleanup();
 				}
 
-				emit q->bytesWritten(packet.body.size());
+				q->bytesWritten(packet.body.size());
 			}
 		}
 
@@ -522,7 +522,7 @@ public:
 
 			state = Stopped;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 		else if(packet.type == ZhttpRequestPacket::Cancel)
@@ -533,7 +533,7 @@ public:
 			errorCondition = ErrorGeneric;
 			state = Stopped;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -555,7 +555,7 @@ public:
 				errored = true;
 				errorCondition = ErrorGeneric;
 				cleanup();
-				emit q->error();
+				q->error();
 				return;
 			}
 
@@ -619,7 +619,7 @@ public:
 			{
 				pausing = false;
 				paused = true;
-				emit q->paused();
+				q->paused();
 			}
 		}
 		else
@@ -639,7 +639,7 @@ public:
 				errorCondition = ErrorGeneric;
 				cleanup();
 				log_warning("zhttp client: error id=%s initial ack for streamed input request did not contain from field", id.data());
-				emit q->error();
+				q->error();
 				return;
 			}
 
@@ -668,7 +668,7 @@ public:
 
 			state = Stopped;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 		else if(packet.type == ZhttpResponsePacket::Cancel)
@@ -679,7 +679,7 @@ public:
 			errorCondition = ErrorGeneric;
 			state = Stopped;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -700,7 +700,7 @@ public:
 			errored = true;
 			errorCondition = ErrorGeneric;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -723,7 +723,7 @@ public:
 			errored = true;
 			errorCondition = ErrorGeneric;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -774,7 +774,7 @@ public:
 				// always emit readyRead here even if body is empty, for EOF
 				state = Stopped;
 				cleanup();
-				emit q->readyRead();
+				q->readyRead();
 			}
 		}
 		else if(packet.type == ZhttpResponsePacket::Credit)
@@ -948,7 +948,7 @@ public slots:
 					errored = true;
 					errorCondition = ErrorRequestTooLarge;
 					cleanup();
-					emit q->error();
+					q->error();
 					return;
 				}
 
@@ -978,7 +978,7 @@ public slots:
 
 					state = ClientRequestFinishWait;
 
-					emit q->bytesWritten(p.body.size());
+					q->bytesWritten(p.body.size());
 				}
 			}
 			else
@@ -991,7 +991,7 @@ public slots:
 					errored = true;
 					errorCondition = ErrorUnavailable;
 					cleanup();
-					emit q->error();
+					q->error();
 					return;
 				}
 
@@ -1034,9 +1034,9 @@ public slots:
 					state = ClientRequestFinishWait;
 
 				if(!p.body.isEmpty())
-					emit q->bytesWritten(p.body.size());
+					q->bytesWritten(p.body.size());
 				else if(!p.more)
-					emit q->bytesWritten(0);
+					q->bytesWritten(0);
 			}
 		}
 		else if(state == ClientRequesting)
@@ -1049,7 +1049,7 @@ public slots:
 			if(writableChanged)
 			{
 				writableChanged = false;
-				emit q->writeBytesChanged();
+				q->writeBytesChanged();
 			}
 		}
 		else if(state == ClientReceiving)
@@ -1057,7 +1057,7 @@ public slots:
 			if(readableChanged)
 			{
 				readableChanged = false;
-				emit q->readyRead();
+				q->readyRead();
 			}
 		}
 		else if(state == ServerStarting)
@@ -1086,14 +1086,14 @@ public slots:
 				writePacket(p);
 			}
 
-			emit q->readyRead();
+			q->readyRead();
 		}
 		else if(state == ServerReceiving)
 		{
 			if(readableChanged)
 			{
 				readableChanged = false;
-				emit q->readyRead();
+				q->readyRead();
 			}
 		}
 		else if(state == ServerResponseWait)
@@ -1103,7 +1103,7 @@ public slots:
 			if(readableChanged)
 			{
 				readableChanged = false;
-				emit q->readyRead();
+				q->readyRead();
 			}
 		}
 		else if(state == ServerResponseStarting)
@@ -1130,9 +1130,9 @@ public slots:
 			QPointer<QObject> self = this;
 
 			if(!packet.body.isEmpty())
-				emit q->bytesWritten(packet.body.size());
+				q->bytesWritten(packet.body.size());
 			else if(!packet.more)
-				emit q->bytesWritten(0);
+				q->bytesWritten(0);
 
 			if(!self)
 				return;
@@ -1149,7 +1149,7 @@ public slots:
 			if(writableChanged)
 			{
 				writableChanged = false;
-				emit q->writeBytesChanged();
+				q->writeBytesChanged();
 			}
 		}
 	}
@@ -1160,7 +1160,7 @@ public slots:
 		errored = true;
 		errorCondition = ErrorTimeout;
 		cleanup();
-		emit q->error();
+		q->error();
 	}
 
 	void keepAlive_timeout()

@@ -804,10 +804,10 @@ public slots:
 		{
 			int actual = jsonpTracker.finished(count);
 			if(actual > 0)
-				emit q->bytesWritten(actual);
+				q->bytesWritten(actual);
 		}
 		else
-			emit q->bytesWritten(count);
+			q->bytesWritten(count);
 
 		if(!self)
 			return;
@@ -857,7 +857,7 @@ public slots:
 		}
 		else
 		{
-			emit q->paused();
+			q->paused();
 		}
 	}
 
