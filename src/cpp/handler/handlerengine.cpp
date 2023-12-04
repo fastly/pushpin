@@ -1683,7 +1683,7 @@ private:
 			outHeaders += HttpHeader("Content-Type", "text/plain");
 
 		req->respond(code, reason, outHeaders, body.toUtf8());
-		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
+		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
 
 		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod(), QString::fromUtf8(req->requestUri()), QString::number(code), QString::number(body.size()));
 		if(items > -1)

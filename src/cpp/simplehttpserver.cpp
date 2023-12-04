@@ -369,7 +369,7 @@ private slots:
 	{
 		cleanup();
 
-		emit q->finished();
+		q->finished();
 	}
 };
 
@@ -426,6 +426,7 @@ public:
 	QList<SimpleHttpRequest*> pending;
 	int maxHeadersSize;
 	int maxBodySize;
+	Connection finishedConnection;
 
 	SimpleHttpServerPrivate(int maxHeadersSize, int maxBodySize, SimpleHttpServer *_q) :
 		QObject(_q),
@@ -486,7 +487,7 @@ public:
 		return true;
 	}
 
-private slots:
+private:
 	void server_newConnection()
 	{
 		if(local)
@@ -494,7 +495,7 @@ private slots:
 			QLocalSocket *sock = ((QLocalServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
 			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
-			connect(req, &SimpleHttpRequest::finished, this, &SimpleHttpServerPrivate::req_finished);
+			finishedConnection = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this));
 			accepting += req;
 			req->d->start(sock);
 		}
@@ -503,7 +504,7 @@ private slots:
 			QTcpSocket *sock = ((QTcpServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
 			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
-			connect(req, &SimpleHttpRequest::finished, this, &SimpleHttpServerPrivate::req_finished);
+			finishedConnection = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this));
 			accepting += req;
 			req->d->start(sock);
 		}
