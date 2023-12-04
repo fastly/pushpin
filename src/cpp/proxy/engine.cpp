@@ -111,6 +111,7 @@ public:
 	Updater *updater;
 	LogUtil::Config logConfig;
 	Connection requestReadyConnection;
+	Connection changedConnection;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -194,7 +195,7 @@ public:
 		else
 			domainMap = new DomainMap(config.routesFile, this);
 
-		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
+		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		zhttpIn = new ZhttpManager(this);
 		connect(zhttpIn, &ZhttpManager::requestReady, this, &Private::zhttpIn_requestReady);
