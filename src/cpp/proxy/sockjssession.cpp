@@ -148,6 +148,14 @@ public:
 	bool updating;
 	Connection bytesWrittenConnection;
 	Connection errorConnection;
+	Connection reqBytesWrittenConnection;
+	Connection reqErrorConnection;
+	Connection readyReadConnection;
+	Connection framesWrittenConnection;
+	Connection writeBytesChangedConnection;
+	Connection closedConnection;
+	Connection peerClosedConnection;
+	Connection sockErrorConnection;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -256,17 +264,17 @@ public:
 
 			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
 
-			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-			errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+			reqBytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+			reqErrorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 		}
 		else
 		{
-			connect(sock, &ZWebSocket::readyRead, this, &Private::sock_readyRead);
-			connect(sock, &ZWebSocket::framesWritten, this, &Private::sock_framesWritten);
-			connect(sock, &ZWebSocket::writeBytesChanged, this, &Private::sock_writeBytesChanged);
-			connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
-			connect(sock, &ZWebSocket::peerClosed, this, &Private::sock_peerClosed);
-			connect(sock, &ZWebSocket::error, this, &Private::sock_error);
+			readyReadConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
+			framesWrittenConnection = sock->framesWritten.connect(boost::bind(&Private::sock_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2));
+			writeBytesChangedConnection = sock->writeBytesChanged.connect(boost::bind(&Private::sock_writeBytesChanged, this));
+			closedConnection = sock->closed.connect(boost::bind(&Private::sock_closed, this));
+			peerClosedConnection = sock->peerClosed.connect(boost::bind(&Private::sock_peerClosed, this));
+			sockErrorConnection = sock->error.connect(boost::bind(&Private::sock_error, this));
 		}
 	}
 

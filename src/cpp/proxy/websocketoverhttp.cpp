@@ -70,6 +70,9 @@ class WebSocketOverHttp::DisconnectManager : public QObject
 	Q_OBJECT
 
 public:
+	Connection closedConnection;
+	Connection errorConnection;
+	
 	DisconnectManager(QObject *parent = 0) :
 		QObject(parent)
 	{
@@ -79,8 +82,8 @@ public:
 	{
 		sock->setParent(this);
 		connect(sock, &WebSocketOverHttp::disconnected, this, &DisconnectManager::sock_disconnected);
-		connect(sock, &WebSocketOverHttp::closed, this, &DisconnectManager::sock_closed);
-		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
+		closedConnection = sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this));
+		errorConnection = sock->error.connect(boost::bind(&DisconnectManager::sock_error, this));
 
 		sock->sendDisconnect();
 	}
