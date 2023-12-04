@@ -57,6 +57,7 @@ public:
 	bool avail;
 	QTimer *timer;
 	QHash<ZrpcRequest*, Item*> requestsByReq;
+	Connection finishedConnection;
 
 	Private(ZrpcChecker *_q) :
 		QObject(_q),
@@ -106,7 +107,7 @@ public:
 		if(i)
 			return; // already watching
 
-		connect(req, &ZrpcRequest::finished, this, &Private::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&Private::req_finished, this));
 		connect(req, &ZrpcRequest::destroyed, this, &Private::req_destroyed);
 
 		i = new Item;
@@ -162,7 +163,6 @@ public:
 		}
 	}
 
-public slots:
 	void req_finished()
 	{
 		ZrpcRequest *req = (ZrpcRequest *)sender();
@@ -194,6 +194,7 @@ public slots:
 		}
 	}
 
+public slots:
 	void req_destroyed(QObject *obj)
 	{
 		Item *i = requestsByReq.value((ZrpcRequest *)obj);

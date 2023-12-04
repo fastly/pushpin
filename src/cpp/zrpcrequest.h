@@ -25,6 +25,9 @@
 
 #include <QObject>
 #include <QVariant>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class ZrpcRequestPacket;
 class ZrpcResponsePacket;
@@ -60,12 +63,11 @@ public:
 
 	void setError(ErrorCondition condition, const QVariant &result = QVariant());
 
+	Signal finished;
+
 protected:
 	virtual void onSuccess();
 	virtual void onError();
-
-signals:
-	void finished();
 
 private:
 	class Private;
