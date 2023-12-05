@@ -279,6 +279,18 @@ public:
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
+	Connection readyReadInConnection;
+	Connection framesWrittenInConnection;
+	Connection writeBytesChangedInConnection;
+	Connection peerInClosedInConnection;
+	Connection closedInConnection;
+	Connection errorInConnection;
+	Connection connectedOutConnection;
+	Connection readyReadOutConnection;
+	Connection writeBytesChangedOutConnection;
+	Connection peerClosedOutConnection;
+	Connection closedOutConnection;
+	Connection errorOutConnection;
 	Connection keepAliveConneciton;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
@@ -368,12 +380,12 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		connect(inSock, &WebSocket::readyRead, this, &Private::in_readyRead);
-		connect(inSock, &WebSocket::framesWritten, this, &Private::in_framesWritten);
-		connect(inSock, &WebSocket::writeBytesChanged, this, &Private::in_writeBytesChanged);
-		connect(inSock, &WebSocket::peerClosed, this, &Private::in_peerClosed);
-		connect(inSock, &WebSocket::closed, this, &Private::in_closed);
-		connect(inSock, &WebSocket::error, this, &Private::in_error);
+		readyReadInConnection = inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this));
+		framesWrittenInConnection = inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2));
+		writeBytesChangedInConnection = inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this));
+		peerInClosedInConnection = inSock->peerClosed.connect(boost::bind(&Private::in_peerClosed, this));
+		closedInConnection = inSock->closed.connect(boost::bind(&Private::in_closed, this));
+		errorInConnection = inSock->error.connect(boost::bind(&Private::in_error, this));
 
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
@@ -547,12 +559,12 @@ public:
 			}
 		}
 
-		connect(outSock, &WebSocket::connected, this, &Private::out_connected);
-		connect(outSock, &WebSocket::readyRead, this, &Private::out_readyRead);
-		connect(outSock, &WebSocket::writeBytesChanged, this, &Private::out_writeBytesChanged);
-		connect(outSock, &WebSocket::peerClosed, this, &Private::out_peerClosed);
-		connect(outSock, &WebSocket::closed, this, &Private::out_closed);
-		connect(outSock, &WebSocket::error, this, &Private::out_error);
+		connectedOutConnection = outSock->connected.connect(boost::bind(&Private::out_connected, this));
+		readyReadOutConnection = outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this));
+		writeBytesChangedOutConnection = outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this));
+		peerClosedOutConnection = outSock->peerClosed.connect(boost::bind(&Private::out_peerClosed, this));
+		closedOutConnection = outSock->closed.connect(boost::bind(&Private::out_closed, this));
+		errorOutConnection = outSock->error.connect(boost::bind(&Private::out_error, this));
 
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
@@ -786,7 +798,7 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-private slots:
+private:
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)
@@ -1006,6 +1018,7 @@ private slots:
 		}
 	}
 
+private slots:
 	void out_aboutToSendRequest()
 	{
 		WebSocketOverHttp *woh = (WebSocketOverHttp *)sender();

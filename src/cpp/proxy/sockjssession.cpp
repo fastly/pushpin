@@ -147,7 +147,15 @@ public:
 	QString peerCloseReason;
 	bool updating;
 	Connection bytesWrittenConnection;
-	Connection errorConnection;
+	Connection errorConnection;	
+	Connection reqBytesWrittenConnection;
+	Connection reqErrorConnection;
+	Connection readyReadConnection;
+	Connection framesWrittenConnection;
+	Connection writeBytesChangedConnection;
+	Connection closedConnection;
+	Connection peerClosedConnection;
+	Connection sockErrorConnection;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -261,12 +269,12 @@ public:
 		}
 		else
 		{
-			connect(sock, &ZWebSocket::readyRead, this, &Private::sock_readyRead);
-			connect(sock, &ZWebSocket::framesWritten, this, &Private::sock_framesWritten);
-			connect(sock, &ZWebSocket::writeBytesChanged, this, &Private::sock_writeBytesChanged);
-			connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
-			connect(sock, &ZWebSocket::peerClosed, this, &Private::sock_peerClosed);
-			connect(sock, &ZWebSocket::error, this, &Private::sock_error);
+			readyReadConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
+			framesWrittenConnection = sock->framesWritten.connect(boost::bind(&Private::sock_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2));
+			writeBytesChangedConnection = sock->writeBytesChanged.connect(boost::bind(&Private::sock_writeBytesChanged, this));
+			closedConnection = sock->closed.connect(boost::bind(&Private::sock_closed, this));
+			peerClosedConnection = sock->peerClosed.connect(boost::bind(&Private::sock_peerClosed, this));
+			sockErrorConnection = sock->error.connect(boost::bind(&Private::sock_error, this));
 		}
 	}
 
@@ -560,7 +568,8 @@ public:
 				state = Idle;
 				applyLinger();
 				cleanup();
-				QMetaObject::invokeMethod(q, "closed", Qt::QueuedConnection);
+				// QMetaObject::invokeMethod(q, "closed", Qt::QueuedConnection);
+				q->closed();
 			}
 			else
 				tryWrite();
@@ -622,7 +631,7 @@ public:
 		if(bytes > 0)
 		{
 			QPointer<QObject> self = this;
-			emit q->writeBytesChanged();
+			q->writeBytesChanged();
 			if(!self)
 				return;
 		}
@@ -692,7 +701,7 @@ public:
 
 			if(emitReadyRead)
 			{
-				emit q->readyRead();
+				q->readyRead();
 				if(!self)
 					return false;
 			}
@@ -799,7 +808,7 @@ public:
 			{
 				state = Idle;
 				cleanup();
-				emit q->error();
+				q->error();
 
 				// stop signals
 				return false;
@@ -807,7 +816,7 @@ public:
 
 			if(emitReadyRead)
 			{
-				emit q->readyRead();
+				q->readyRead();
 				if(!self)
 					return false;
 			}
@@ -850,7 +859,7 @@ public:
 			pendingWrittenBytes = 0;
 		}
 
-		emit q->framesWritten(count, contentBytes);
+		q->framesWritten(count, contentBytes);
 	}
 
 	QVariant applyLinger()
@@ -871,7 +880,7 @@ public:
 		return closeValue;
 	}
 
-private slots:
+private:
 	void req_bytesWritten(int count)
 	{
 		Q_UNUSED(count);
@@ -903,7 +912,7 @@ private slots:
 					state = Idle;
 					removeRequestItem(ri);
 					cleanup();
-					emit q->closed();
+					q->closed();
 					return;
 				}
 				else if(ri->type == RequestItem::Receive)
@@ -920,7 +929,7 @@ private slots:
 					state = Idle;
 					removeRequestItem(ri);
 					cleanup();
-					emit q->closed();
+					q->closed();
 					return;
 				}
 			}
@@ -954,7 +963,7 @@ private slots:
 			if(close && !peerClosed)
 			{
 				peerClosed = true;
-				emit q->peerClosed();
+				q->peerClosed();
 				return;
 			}
 
@@ -962,9 +971,9 @@ private slots:
 			cleanup();
 
 			if(close)
-				emit q->closed();
+				q->closed();
 			else
-				emit q->error();
+				q->error();
 		}
 		else
 		{
@@ -980,7 +989,7 @@ private slots:
 		}
 		else // WebSocketPassthrough
 		{
-			emit q->readyRead();
+			q->readyRead();
 		}
 	}
 
@@ -991,14 +1000,14 @@ private slots:
 
 	void sock_writeBytesChanged()
 	{
-		emit q->writeBytesChanged();
+		q->writeBytesChanged();
 	}
 
 	void sock_peerClosed()
 	{
 		peerCloseCode = sock->peerCloseCode();
 		peerCloseReason = sock->peerCloseReason();
-		emit q->peerClosed();
+		q->peerClosed();
 	}
 
 	void sock_closed()
@@ -1007,7 +1016,7 @@ private slots:
 		peerCloseReason = sock->peerCloseReason();
 		state = Idle;
 		cleanup();
-		emit q->closed();
+		q->closed();
 	}
 
 	void sock_error()
@@ -1015,9 +1024,10 @@ private slots:
 		state = Idle;
 		errorCondition = sock->errorCondition();
 		cleanup();
-		emit q->error();
+		q->error();
 	}
 
+private slots:
 	void doUpdate()
 	{
 		updating = false;
@@ -1026,7 +1036,7 @@ private slots:
 		{
 			state = Idle;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -1042,7 +1052,7 @@ private slots:
 				pendingWrittenFrames = 0;
 				pendingWrittenBytes = 0;
 
-				emit q->framesWritten(count, contentBytes);
+				q->framesWritten(count, contentBytes);
 			}
 		}
 	}
@@ -1066,7 +1076,7 @@ private slots:
 				// timeout while unconnected
 				state = Idle;
 				cleanup();
-				emit q->error();
+				q->error();
 			}
 		}
 		else
