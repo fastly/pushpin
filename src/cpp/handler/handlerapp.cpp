@@ -179,12 +179,12 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			case CommandLineHelpRequested:
 				parser.showHelp();
@@ -201,7 +201,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -218,7 +218,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			}
 		}
@@ -290,14 +290,14 @@ public:
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
 			log_error("must set m2a_in_stream_specs and m2a_out_specs");
-			emit q->quit(0);
+			q->quit(0);
 			return;
 		}
 
 		if(proxy_inspect_spec.isEmpty() || proxy_accept_spec.isEmpty() || proxy_retry_out_spec.isEmpty())
 		{
 			log_error("must set proxy_inspect_spec, proxy_accept_spec, and proxy_retry_out_spec");
-			emit q->quit(0);
+			q->quit(0);
 			return;
 		}
 
@@ -355,7 +355,7 @@ public:
 		engine = new HandlerEngine(this);
 		if(!engine->start(config))
 		{
-			emit q->quit(0);
+			q->quit(0);
 			return;
 		}
 
@@ -381,7 +381,7 @@ private:
 		engine = 0;
 
 		log_info("stopped");
-		emit q->quit(0);
+		q->quit(0);
 	}
 };
 
