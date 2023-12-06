@@ -554,10 +554,8 @@ SimpleHttpRequest *SimpleHttpServer::takeNext()
 	{
 		SimpleHttpRequest *req = d->pending.takeFirst();
 		auto conn = d->finishedConnections.find(req);
-		if (conn != d->finishedConnections.end()) {
-			conn->second.disconnect();
-			d->finishedConnections.erase(conn);
-		}
+		d->finishedConnections.erase(conn);
+		
 		return req;
 	}
 	else
