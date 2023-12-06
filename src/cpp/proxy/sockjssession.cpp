@@ -568,7 +568,6 @@ public:
 				state = Idle;
 				applyLinger();
 				cleanup();
-				// QMetaObject::invokeMethod(q, "closed", Qt::QueuedConnection);
 				q->closed();
 			}
 			else
