@@ -1557,7 +1557,7 @@ private slots:
 		}
 
 		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
-		
+
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
 		req->respond(200, "OK", headers, data.toUtf8());
