@@ -189,7 +189,7 @@ public:
 	bool isSockJs;
 	Connection errorConnection;
 	Connection pausedConnection;
-	Connection readyReadConnection;
+	map<ZhttpRequest*, Connection> readyReadConnections;
 	Connection bytesWrittenConnection;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
@@ -377,7 +377,7 @@ public:
 
 		state = Prefetching;
 
-		readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
+		readyReadConnections[zhttpRequest] = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 		processIncomingRequest();
 	}
 
@@ -437,7 +437,8 @@ public:
 			{
 				// we've read enough body to start inspection
 
-				readyReadConnection.disconnect();
+				auto conn = readyReadConnections.find(zhttpRequest);
+				readyReadConnections.erase(conn);
 
 				state = Inspecting;
 				requestData.body = in.toByteArray();
@@ -482,7 +483,8 @@ public:
 				//   disallow sharing before passing to proxysession. at that
 				//   point, proxysession will read the remainder of the data
 
-				readyReadConnection.disconnect();
+				auto conn = readyReadConnections.find(zhttpRequest);
+				readyReadConnections.erase(conn);
 
 				state = WaitingForResponse;
 				requestData.body = in.take();
@@ -893,7 +895,7 @@ public slots:
 
 			// successful inspect indicated we should not proxy. in that case,
 			//   collect the body and accept
-			readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
+			readyReadConnections[zhttpRequest] = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 			processIncomingRequest();
 		}
 		else
@@ -904,7 +906,7 @@ public slots:
 				//   request body, so let's try to read it now
 				state = Receiving;
 
-				readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
+				readyReadConnections[zhttpRequest] = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 				processIncomingRequest();
 			}
 			else
