@@ -24,6 +24,12 @@
 
 #include <QObject>
 #include <QHostAddress>
+#include <boost/signals2.hpp>
+#include <map>
+
+using std::map;
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::scoped_connection;
 
 class HttpHeaders;
 
@@ -45,8 +51,7 @@ public:
 	void respond(int code, const QByteArray &reason, const HttpHeaders &headers, const QByteArray &body);
 	void respond(int code, const QByteArray &reason, const QString &body);
 
-signals:
-	void finished();
+	Signal finished;
 
 private:
 	class Private;

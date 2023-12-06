@@ -1031,7 +1031,7 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-public slots:
+public:
 	void inRequest_readyRead()
 	{
 		tryRequestRead();
@@ -1166,6 +1166,7 @@ public slots:
 		}
 	}
 
+public slots:
 	void rs_bytesWritten(int count)
 	{
 		RequestSession *rs = (RequestSession *)sender();

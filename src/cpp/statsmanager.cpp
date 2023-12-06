@@ -1556,7 +1556,7 @@ private slots:
 			).arg(prometheusPrefix, m.name, m.help, prometheusPrefix, m.name, m.type, prometheusPrefix, m.name, value.toString());
 		}
 
-		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
+		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
 
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");

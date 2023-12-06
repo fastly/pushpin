@@ -369,7 +369,7 @@ private slots:
 	{
 		cleanup();
 
-		emit q->finished();
+		q->finished();
 	}
 };
 
@@ -426,6 +426,7 @@ public:
 	QList<SimpleHttpRequest*> pending;
 	int maxHeadersSize;
 	int maxBodySize;
+	map<SimpleHttpRequest*, Connection> finishedConnections;
 
 	SimpleHttpServerPrivate(int maxHeadersSize, int maxBodySize, SimpleHttpServer *_q) :
 		QObject(_q),
@@ -486,7 +487,7 @@ public:
 		return true;
 	}
 
-private slots:
+private:
 	void server_newConnection()
 	{
 		if(local)
@@ -494,7 +495,7 @@ private slots:
 			QLocalSocket *sock = ((QLocalServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
 			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
-			connect(req, &SimpleHttpRequest::finished, this, &SimpleHttpServerPrivate::req_finished);
+			finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 			accepting += req;
 			req->d->start(sock);
 		}
@@ -503,7 +504,7 @@ private slots:
 			QTcpSocket *sock = ((QTcpServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
 			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
-			connect(req, &SimpleHttpRequest::finished, this, &SimpleHttpServerPrivate::req_finished);
+			finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 			accepting += req;
 			req->d->start(sock);
 		}
@@ -515,12 +516,11 @@ private slots:
 		SimpleHttpRequest *req = reqd->q;
 		accepting.remove(req);
 		pending += req;
-		emit q->requestReady();
+		q->requestReady();
 	}
 
-	void req_finished()
+	void req_finished(SimpleHttpRequest *req)
 	{
-		SimpleHttpRequest *req = (SimpleHttpRequest *)sender();
 		accepting.remove(req);
 		pending.removeAll(req);
 		delete req;
@@ -553,7 +553,9 @@ SimpleHttpRequest *SimpleHttpServer::takeNext()
 	if(!d->pending.isEmpty())
 	{
 		SimpleHttpRequest *req = d->pending.takeFirst();
-		req->disconnect(d);
+		auto conn = d->finishedConnections.find(req);
+		d->finishedConnections.erase(conn);
+		
 		return req;
 	}
 	else
