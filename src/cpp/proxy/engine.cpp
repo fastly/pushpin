@@ -193,7 +193,7 @@ public:
 		else
 			domainMap = new DomainMap(config.routesFile, this);
 
-		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
+		domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		zhttpIn = new ZhttpManager(this);
 		connect(zhttpIn, &ZhttpManager::requestReady, this, &Private::zhttpIn_requestReady);
@@ -1030,12 +1030,6 @@ private slots:
 		delete req;
 	}
 
-	void domainMap_changed()
-	{
-		// connect to new zhttp targets, disconnect from old
-		zroutes->setup(domainMap->zhttpRoutes());
-	}
-
 	void stats_connMax(const StatsPacket &packet)
 	{
 		if(accept->canWriteImmediately())
@@ -1046,6 +1040,13 @@ private slots:
 
 			accept->write(p);
 		}
+	}
+
+private:
+	void domainMap_changed()
+	{
+		// connect to new zhttp targets, disconnect from old
+		zroutes->setup(domainMap->zhttpRoutes());
 	}
 };
 
