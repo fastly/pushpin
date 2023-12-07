@@ -25,6 +25,9 @@
 #define ZRPCMANAGER_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class ZrpcRequestPacket;
 class ZrpcResponsePacket;
@@ -53,8 +56,7 @@ public:
 	bool canWriteImmediately() const;
 	void write(const ZrpcRequestPacket &packet);
 
-signals:
-	void requestReady();
+	Signal requestReady;
 
 private:
 	class Private;

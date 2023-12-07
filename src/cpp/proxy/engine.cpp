@@ -336,7 +336,7 @@ public:
 			command = new ZrpcManager(this);
 			command->setBind(true);
 			command->setIpcFileMode(config.ipcFileMode);
-			connect(command, &ZrpcManager::requestReady, this, &Private::command_requestReady);
+			command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
@@ -900,6 +900,19 @@ private slots:
 		}
 	}
 
+	void stats_connMax(const StatsPacket &packet)
+	{
+		if(accept->canWriteImmediately())
+		{
+			ZrpcRequestPacket p;
+			p.method = "conn-max";
+			p.args["conn-max"] = QVariantList() << packet.toVariant();
+
+			accept->write(p);
+		}
+	}
+
+private:
 	void command_requestReady()
 	{
 		ZrpcRequest *req = command->takeNext();
@@ -1030,19 +1043,6 @@ private slots:
 		delete req;
 	}
 
-	void stats_connMax(const StatsPacket &packet)
-	{
-		if(accept->canWriteImmediately())
-		{
-			ZrpcRequestPacket p;
-			p.method = "conn-max";
-			p.args["conn-max"] = QVariantList() << packet.toVariant();
-
-			accept->write(p);
-		}
-	}
-
-private:
 	void domainMap_changed()
 	{
 		// connect to new zhttp targets, disconnect from old
