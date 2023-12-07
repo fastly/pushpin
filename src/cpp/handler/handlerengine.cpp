@@ -1325,7 +1325,7 @@ public:
 			inspectServer = new ZrpcManager(this);
 			inspectServer->setBind(false);
 			inspectServer->setIpcFileMode(config.ipcFileMode);
-			connect(inspectServer, &ZrpcManager::requestReady, this, &Private::inspectServer_requestReady);
+			inspectServer->requestReady.connect(boost::bind(&Private::inspectServer_requestReady, this));
 
 			if(!inspectServer->setServerSpecs(QStringList() << config.inspectSpec))
 			{
@@ -1341,7 +1341,7 @@ public:
 			acceptServer = new ZrpcManager(this);
 			acceptServer->setBind(false);
 			acceptServer->setIpcFileMode(config.ipcFileMode);
-			connect(acceptServer, &ZrpcManager::requestReady, this, &Private::acceptServer_requestReady);
+			acceptServer->requestReady.connect(boost::bind(&Private::acceptServer_requestReady, this));
 
 			if(!acceptServer->setServerSpecs(QStringList() << config.acceptSpec))
 			{
@@ -1373,7 +1373,7 @@ public:
 			controlServer = new ZrpcManager(this);
 			controlServer->setBind(true);
 			controlServer->setIpcFileMode(config.ipcFileMode);
-			connect(controlServer, &ZrpcManager::requestReady, this, &Private::controlServer_requestReady);
+			controlServer->requestReady.connect(boost::bind(&Private::controlServer_requestReady, this));
 
 			if(!controlServer->setServerSpecs(QStringList() << config.commandSpec))
 			{
@@ -1904,6 +1904,157 @@ private:
 
 		self->hs_finished(std::get<0>(value));
 	}
+	
+private:
+	void inspectServer_requestReady()
+	{
+		if(inspectWorkers.count() >= INSPECT_WORKERS_MAX)
+			return;
+
+		ZrpcRequest *req = inspectServer->takeNext();
+		if(!req)
+			return;
+
+		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
+		connect(w, &Deferred::finished, this, &Private::inspectWorker_finished);
+		inspectWorkers += w;
+	}
+
+	void acceptServer_requestReady()
+	{
+		if(acceptWorkers.count() >= ACCEPT_WORKERS_MAX)
+			return;
+
+		ZrpcRequest *req = acceptServer->takeNext();
+		if(!req)
+			return;
+
+		if(req->method() == "accept")
+		{
+			// NOTE: to ensure sequential processing of conn-max packets,
+			// we need to process any such packets contained within the
+			// accept request immediately before returning to the event loop.
+			// the start() call will do this
+
+			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
+			connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
+			connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
+			connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
+			acceptWorkers += w;
+
+			w->start();
+		}
+		else if(req->method() == "conn-max")
+		{
+			QVariantHash args = req->args();
+
+			if(args.contains("conn-max"))
+			{
+				if(args["conn-max"].type() == QVariant::List)
+				{
+					QVariantList packets = args["conn-max"].toList();
+
+					foreach(const QVariant &data, packets)
+					{
+						StatsPacket p;
+						if(!p.fromVariant("conn-max", data) || p.type != StatsPacket::ConnectionsMax)
+							continue;
+
+						stats->processExternalPacket(p, false);
+					}
+				}
+			}
+
+			delete req;
+		}
+		else
+		{
+			req->respondError("method-not-found");
+			delete req;
+		}
+	}
+
+	void controlServer_requestReady()
+	{
+		ZrpcRequest *req = controlServer->takeNext();
+		if(!req)
+			return;
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN command: %s args=%s", qPrintable(req->method()), qPrintable(TnetString::variantToString(req->args(), -1)));
+
+		if(req->method() == "conncheck")
+		{
+			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
+			connect(w, &ConnCheckWorker::finished, this, &Private::deferred_finished);
+			deferreds += w;
+		}
+		else if(req->method() == "get-zmq-uris")
+		{
+			QVariantHash out;
+			if(!config.commandSpec.isEmpty())
+				out["command"] = config.commandSpec.toUtf8();
+			if(!config.pushInSpec.isEmpty())
+				out["publish-pull"] = config.pushInSpec.toUtf8();
+			if(!config.pushInSubSpecs.isEmpty() && !config.pushInSubConnect)
+				out["publish-sub"] = config.pushInSubSpecs[0].toUtf8();
+			req->respond(out);
+			delete req;
+		}
+		else if(req->method() == "recover")
+		{
+			recoverCommand();
+			req->respond();
+			delete req;
+		}
+		else if(req->method() == "refresh")
+		{
+			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
+			connect(w, &RefreshWorker::finished, this, &Private::deferred_finished);
+			deferreds += w;
+		}
+		else if(req->method() == "publish")
+		{
+			QVariantHash args = req->args();
+
+			if(!args.contains("items"))
+			{
+				req->respondError("bad-request", "Invalid format: object does not contain 'items'");
+				delete req;
+				return;
+			}
+
+			if(args["items"].type() != QVariant::List)
+			{
+				req->respondError("bad-request", "Invalid format: object contains 'items' with wrong type");
+				delete req;
+				return;
+			}
+
+			QVariantList vitems = args["items"].toList();
+
+			bool ok;
+			QString errorMessage;
+			QList<PublishItem> items = parseItems(vitems, &ok, &errorMessage);
+			if(!ok)
+			{
+				req->respondError("bad-request", QString("Invalid format: %1").arg(errorMessage));
+				delete req;
+				return;
+			}
+
+			req->respond();
+			delete req;
+
+			foreach(const PublishItem &item, items)
+				handlePublishItem(item);
+		}
+		else
+		{
+			req->respondError("method-not-found");
+			delete req;
+		}
+	}
 
 private slots:
 	void sequencer_itemReady(const PublishItem &item)
@@ -2114,156 +2265,6 @@ private slots:
 			Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
 			connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
 			deferreds += d;
-		}
-	}
-
-	void inspectServer_requestReady()
-	{
-		if(inspectWorkers.count() >= INSPECT_WORKERS_MAX)
-			return;
-
-		ZrpcRequest *req = inspectServer->takeNext();
-		if(!req)
-			return;
-
-		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
-		connect(w, &Deferred::finished, this, &Private::inspectWorker_finished);
-		inspectWorkers += w;
-	}
-
-	void acceptServer_requestReady()
-	{
-		if(acceptWorkers.count() >= ACCEPT_WORKERS_MAX)
-			return;
-
-		ZrpcRequest *req = acceptServer->takeNext();
-		if(!req)
-			return;
-
-		if(req->method() == "accept")
-		{
-			// NOTE: to ensure sequential processing of conn-max packets,
-			// we need to process any such packets contained within the
-			// accept request immediately before returning to the event loop.
-			// the start() call will do this
-
-			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
-			connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
-			connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
-			connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
-			acceptWorkers += w;
-
-			w->start();
-		}
-		else if(req->method() == "conn-max")
-		{
-			QVariantHash args = req->args();
-
-			if(args.contains("conn-max"))
-			{
-				if(args["conn-max"].type() == QVariant::List)
-				{
-					QVariantList packets = args["conn-max"].toList();
-
-					foreach(const QVariant &data, packets)
-					{
-						StatsPacket p;
-						if(!p.fromVariant("conn-max", data) || p.type != StatsPacket::ConnectionsMax)
-							continue;
-
-						stats->processExternalPacket(p, false);
-					}
-				}
-			}
-
-			delete req;
-		}
-		else
-		{
-			req->respondError("method-not-found");
-			delete req;
-		}
-	}
-
-	void controlServer_requestReady()
-	{
-		ZrpcRequest *req = controlServer->takeNext();
-		if(!req)
-			return;
-
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("IN command: %s args=%s", qPrintable(req->method()), qPrintable(TnetString::variantToString(req->args(), -1)));
-
-		if(req->method() == "conncheck")
-		{
-			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
-			connect(w, &ConnCheckWorker::finished, this, &Private::deferred_finished);
-			deferreds += w;
-		}
-		else if(req->method() == "get-zmq-uris")
-		{
-			QVariantHash out;
-			if(!config.commandSpec.isEmpty())
-				out["command"] = config.commandSpec.toUtf8();
-			if(!config.pushInSpec.isEmpty())
-				out["publish-pull"] = config.pushInSpec.toUtf8();
-			if(!config.pushInSubSpecs.isEmpty() && !config.pushInSubConnect)
-				out["publish-sub"] = config.pushInSubSpecs[0].toUtf8();
-			req->respond(out);
-			delete req;
-		}
-		else if(req->method() == "recover")
-		{
-			recoverCommand();
-			req->respond();
-			delete req;
-		}
-		else if(req->method() == "refresh")
-		{
-			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
-			connect(w, &RefreshWorker::finished, this, &Private::deferred_finished);
-			deferreds += w;
-		}
-		else if(req->method() == "publish")
-		{
-			QVariantHash args = req->args();
-
-			if(!args.contains("items"))
-			{
-				req->respondError("bad-request", "Invalid format: object does not contain 'items'");
-				delete req;
-				return;
-			}
-
-			if(args["items"].type() != QVariant::List)
-			{
-				req->respondError("bad-request", "Invalid format: object contains 'items' with wrong type");
-				delete req;
-				return;
-			}
-
-			QVariantList vitems = args["items"].toList();
-
-			bool ok;
-			QString errorMessage;
-			QList<PublishItem> items = parseItems(vitems, &ok, &errorMessage);
-			if(!ok)
-			{
-				req->respondError("bad-request", QString("Invalid format: %1").arg(errorMessage));
-				delete req;
-				return;
-			}
-
-			req->respond();
-			delete req;
-
-			foreach(const PublishItem &item, items)
-				handlePublishItem(item);
-		}
-		else
-		{
-			req->respondError("method-not-found");
-			delete req;
 		}
 	}
 
