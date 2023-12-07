@@ -386,7 +386,7 @@ fn main() {
         )
         .get_matches();
 
-    log::set_logger(get_simple_logger()).unwrap();
+    log::set_logger(get_simple_logger(None, false)).unwrap();
 
     log::set_max_level(LevelFilter::Info);
 

@@ -16,15 +16,39 @@
  */
 
 use log::{Level, Log, Metadata, Record};
-use std::io;
+use std::fs::File;
+use std::io::{self, Write};
 use std::mem;
 use std::str;
-use std::sync::Once;
+use std::sync::{Mutex, Once};
 use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
 
+enum SharedOutput<'a> {
+    Stdout(io::Stdout),
+    File(&'a Mutex<File>),
+}
+
+impl Write for SharedOutput<'_> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+        match self {
+            Self::Stdout(g) => g.write(buf),
+            Self::File(g) => (*g).lock().unwrap().write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> Result<(), io::Error> {
+        match self {
+            Self::Stdout(g) => g.flush(),
+            Self::File(g) => (*g).lock().unwrap().flush(),
+        }
+    }
+}
+
 struct SimpleLogger {
     local_offset: UtcOffset,
+    output_file: Option<Mutex<File>>,
+    runner_mode: bool,
 }
 
 impl Log for SimpleLogger {
@@ -34,6 +58,16 @@ impl Log for SimpleLogger {
 
     fn log(&self, record: &Record) {
         if !self.enabled(record.metadata()) {
+            return;
+        }
+
+        let mut output = match &self.output_file {
+            Some(f) => SharedOutput::File(f),
+            None => SharedOutput::Stdout(io::stdout()),
+        };
+
+        if self.runner_mode {
+            writeln!(&mut output, "{}", record.args()).expect("failed to write log output");
             return;
         }
 
@@ -64,7 +98,15 @@ impl Log for SimpleLogger {
             log::Level::Trace => "TRACE",
         };
 
-        println!("[{}] {} [{}] {}", lname, ts, record.target(), record.args());
+        writeln!(
+            &mut output,
+            "[{}] {} [{}] {}",
+            lname,
+            ts,
+            record.target(),
+            record.args()
+        )
+        .expect("failed to write log output");
     }
 
     fn flush(&self) {}
@@ -72,7 +114,7 @@ impl Log for SimpleLogger {
 
 static mut LOGGER: mem::MaybeUninit<SimpleLogger> = mem::MaybeUninit::uninit();
 
-pub fn get_simple_logger() -> &'static impl Log {
+pub fn get_simple_logger(output_file: Option<File>, runner_mode: bool) -> &'static impl Log {
     static INIT: Once = Once::new();
 
     unsafe {
@@ -80,7 +122,11 @@ pub fn get_simple_logger() -> &'static impl Log {
             let local_offset =
                 UtcOffset::current_local_offset().expect("failed to get local time offset");
 
-            LOGGER.write(SimpleLogger { local_offset });
+            LOGGER.write(SimpleLogger {
+                local_offset,
+                output_file: output_file.map(Mutex::new),
+                runner_mode,
+            });
         });
 
         LOGGER.as_ptr().as_ref().unwrap()
