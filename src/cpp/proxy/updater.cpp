@@ -80,8 +80,6 @@ public:
 	ZhttpRequest *req;
 	Report report;
 	QDateTime lastLogTime;
-	Connection readyReadConnection;
-	Connection errorConnection;
 
 	Private(Updater *_q, Mode _mode, bool _quiet, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
 		QObject(_q),
@@ -119,8 +117,8 @@ private:
 	{
 		req = zhttpManager->createRequest();
 		req->setParent(this);
-		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+		req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
+		req->error.connect(boost::bind(&Private::req_error, this));
 
 		req->setIgnorePolicies(true);
 		req->setIgnoreTlsErrors(true);

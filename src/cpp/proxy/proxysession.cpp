@@ -149,11 +149,6 @@ public:
 	AcceptRequest *acceptRequest;
 	LogUtil::Config logConfig;
 	StatsManager *statsManager;
-	Connection inReqReadyReadConnection;
-	Connection inReqErrorConnection;
-	Connection readyReadConnection;
-	Connection writeBytesChangedConnection;
-	Connection errorConnection;
 
 	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager) :
 		QObject(_q),
@@ -299,8 +294,8 @@ public:
 
 				ZhttpRequest *req = inRequest->request();
 
-				inReqReadyReadConnection = req->readyRead.connect(boost::bind(&Private::inRequest_readyRead, this));
-				inReqErrorConnection = req->error.connect(boost::bind(&Private::inRequest_error, this));
+				req->readyRead.connect(boost::bind(&Private::inRequest_readyRead, this));
+				req->error.connect(boost::bind(&Private::inRequest_error, this));
 
 				requestBody += req->readBody();
 
@@ -441,9 +436,9 @@ public:
 			zhttpRequest->setParent(this);
 		}
 
-		readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
-		writeBytesChangedConnection = zhttpRequest->writeBytesChanged.connect(boost::bind(&Private::zhttpRequest_writeBytesChanged, this));
-		errorConnection = zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
+		zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
+		zhttpRequest->writeBytesChanged.connect(boost::bind(&Private::zhttpRequest_writeBytesChanged, this));
+		zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
 
 		if(target.trusted)
 			zhttpRequest->setIgnorePolicies(true);

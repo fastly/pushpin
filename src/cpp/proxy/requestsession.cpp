@@ -187,10 +187,7 @@ public:
 	XffRule xffRule;
 	XffRule xffTrustedRule;
 	bool isSockJs;
-	Connection errorConnection;
-	Connection pausedConnection;
 	Connection readyReadConnection;
-	Connection bytesWrittenConnection;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
@@ -303,8 +300,8 @@ public:
 			}
 		}
 
-		pausedConnection = zhttpRequest->paused.connect(boost::bind(&Private::zhttpRequest_paused, this));
-		errorConnection = zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
+		zhttpRequest->paused.connect(boost::bind(&Private::zhttpRequest_paused, this));
+		zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
 
 		if(!route.isNull())
 		{
@@ -388,8 +385,8 @@ public:
 		peerAddress = zhttpRequest->peerAddress();
 		logicalPeerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
 
-		pausedConnection = zhttpRequest->paused.connect(boost::bind(&Private::zhttpRequest_paused, this));
-		errorConnection = zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
+		zhttpRequest->paused.connect(boost::bind(&Private::zhttpRequest_paused, this));
+		zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
 
 		state = WaitingForResponse;
 
@@ -1024,7 +1021,7 @@ public slots:
 						}
 					}
 
-					bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
+					zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 					zhttpRequest->beginResponse(200, "OK", headers);
 
@@ -1056,7 +1053,7 @@ public slots:
 				headers += HttpHeader("Content-Type", "application/javascript");
 				headers += HttpHeader("Transfer-Encoding", "chunked");
 
-				bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
+				zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 				zhttpRequest->beginResponse(200, "OK", headers);
 
@@ -1070,7 +1067,7 @@ public slots:
 				if(autoCrossOrigin)
 					Cors::applyCorsHeaders(requestData.headers, &responseData.headers);
 
-				bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
+				zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 				zhttpRequest->beginResponse(responseData.code, responseData.reason, responseData.headers);
 			}

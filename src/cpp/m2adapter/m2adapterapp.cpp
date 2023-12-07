@@ -450,8 +450,6 @@ public:
 	QElapsedTimer time;
 	QTimer *statusTimer;
 	QTimer *refreshTimer;
-	Connection quitConnection;
-	Connection hupConnection;
 
 	Private(M2AdapterApp *_q) :
 		QObject(_q),
@@ -471,8 +469,8 @@ public:
 		currentSessionRefreshBucket(0),
 		zhttpCancelMeter(0)
 	{
-		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
-		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&M2AdapterApp::Private::reload, this));
+		ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
+		ProcessQuit::instance()->hup.connect(boost::bind(&M2AdapterApp::Private::reload, this));
 
 		statusTimer = new QTimer(this);
 		connect(statusTimer, &QTimer::timeout, this, &Private::status_timeout);

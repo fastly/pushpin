@@ -170,16 +170,14 @@ public:
 	App *q;
 	ArgsData args;
 	Engine *engine;
-	Connection quitConnection;
-	Connection hupConnection;
 
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
 		engine(0)
 	{
-		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
-		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
+		ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
+		ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
 	}
 
 	void start()

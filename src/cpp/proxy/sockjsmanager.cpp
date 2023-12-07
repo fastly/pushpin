@@ -133,9 +133,6 @@ public:
 	QByteArray iframeHtml;
 	QByteArray iframeHtmlEtag;
 	QSet<ZhttpRequest*> discardedRequests;
-	Connection readyReadConnection;
-	Connection bytesWrittenConnection;
-	Connection errorConnection;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
@@ -241,9 +238,9 @@ public:
 
 		s->route = route;
 
-		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+		req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
+		req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+		req->error.connect(boost::bind(&Private::req_error, this));
 
 		sessions += s;
 		sessionsByRequest.insert(s->req, s);
@@ -364,9 +361,9 @@ public:
 		{
 			discardedRequests += req;
 
-			readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-			errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+			req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
+			req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+			req->error.connect(boost::bind(&Private::req_error, this));
 		}
 
 		HttpHeaders headers;
