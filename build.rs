@@ -139,21 +139,46 @@ fn get_boost_path() -> Result<String, Box<dyn Error>> {
     Err("No boost package found".into())
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let qt_host_bins = {
-        let pkg = "Qt5Core";
-
-        let host_bins = pkg_config::get_variable(pkg, "host_bins")?;
-
-        if host_bins.is_empty() {
-            return Err(format!("pkg-config variable host_bins not found for {}", pkg).into());
+fn find_in_path(name: &str) -> Option<PathBuf> {
+    for d in env::var("PATH").unwrap_or_default().split(':') {
+        if d.is_empty() {
+            continue;
         }
 
-        PathBuf::from(host_bins)
-    };
+        let path = Path::new(d).join(name);
+        if path.exists() {
+            return Some(path);
+        }
+    }
 
-    let qmake_path = fs::canonicalize(qt_host_bins.join("qmake"))
-        .map_err(|_| format!("qmake not found in {}", qt_host_bins.display()).to_string())?;
+    None
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    // for qt 6, check for qmake in path. for previous versions, use pkg-config
+    let qmake_path = match find_in_path("qmake") {
+        Some(p) => p,
+        None => {
+            let qt_host_bins = {
+                let pkg = "Qt5Core";
+
+                let host_bins = pkg_config::get_variable(pkg, "host_bins")?;
+
+                if host_bins.is_empty() {
+                    return Err(format!(
+                        "qmake must be in PATH or pkg-config variable host_bins must exist for {}",
+                        pkg
+                    )
+                    .into());
+                }
+
+                PathBuf::from(host_bins)
+            };
+
+            fs::canonicalize(qt_host_bins.join("qmake"))
+                .map_err(|_| format!("qmake not found in {}", qt_host_bins.display()).to_string())?
+        }
+    };
 
     let qt_version = {
         let output = Command::new(&qmake_path)
