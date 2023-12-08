@@ -16,19 +16,15 @@
 
 use clap::{ArgAction, Parser};
 use log::{error, warn};
-use log::{Level, Log, Metadata, Record};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
-use std::mem;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::str;
 use std::string::String;
-use std::sync::{Mutex, Once};
 use url::Url;
 
 use crate::config::{get_config_file, CustomConfig};
@@ -891,46 +887,6 @@ mod tests {
                 test_arg.name
             );
         }
-    }
-}
-
-pub struct RunnerLogger {
-    log_file: Option<Mutex<File>>,
-}
-
-impl Log for RunnerLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Trace
-    }
-
-    fn log(&self, record: &Record) {
-        if !self.enabled(record.metadata()) {
-            return;
-        }
-
-        if let Some(log_file) = &self.log_file {
-            let mut log_file = log_file.lock().unwrap();
-            writeln!(log_file, "{}", record.args()).expect("failed to write to log file");
-        } else {
-            println!("{}", record.args());
-        }
-    }
-    fn flush(&self) {}
-}
-
-static mut LOGGER: mem::MaybeUninit<RunnerLogger> = mem::MaybeUninit::uninit();
-
-pub fn get_runner_logger(log_file: Option<File>) -> &'static RunnerLogger {
-    static INIT: Once = Once::new();
-
-    unsafe {
-        INIT.call_once(|| {
-            LOGGER.write(RunnerLogger {
-                log_file: log_file.map(Mutex::new),
-            });
-        });
-
-        LOGGER.as_ptr().as_ref().unwrap()
     }
 }
 
