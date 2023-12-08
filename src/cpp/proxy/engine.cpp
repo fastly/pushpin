@@ -111,7 +111,7 @@ public:
 	Updater *updater;
 	LogUtil::Config logConfig;
 	Connection changedConnection;
-	Connection cmdReqReadyConnetion;
+	Connection cmdReqReadyConnection;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -338,7 +338,7 @@ public:
 			command = new ZrpcManager(this);
 			command->setBind(true);
 			command->setIpcFileMode(config.ipcFileMode);
-			cmdReqReadyConnetion = command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
+			cmdReqReadyConnection = command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
