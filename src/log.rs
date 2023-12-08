@@ -45,8 +45,8 @@ impl Write for SharedOutput<'_> {
     }
 }
 
-struct SimpleLogger {
-    local_offset: UtcOffset,
+pub struct SimpleLogger {
+    local_offset: Option<UtcOffset>,
     output_file: Option<Mutex<File>>,
     runner_mode: bool,
 }
@@ -71,7 +71,7 @@ impl Log for SimpleLogger {
             return;
         }
 
-        let now = OffsetDateTime::now_utc().to_offset(self.local_offset);
+        let now = OffsetDateTime::now_utc().to_offset(self.local_offset.unwrap_or(UtcOffset::UTC));
 
         let format = format_description!(
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]"
@@ -112,23 +112,52 @@ impl Log for SimpleLogger {
     fn flush(&self) {}
 }
 
+// SAFETY: this method is unsound on platforms where another thread may
+// modify environment vars
+unsafe fn get_offset() -> Option<UtcOffset> {
+    time::util::local_offset::set_soundness(time::util::local_offset::Soundness::Unsound);
+
+    let offset = UtcOffset::current_local_offset().ok();
+
+    time::util::local_offset::set_soundness(time::util::local_offset::Soundness::Sound);
+
+    offset
+}
+
 static mut LOGGER: mem::MaybeUninit<SimpleLogger> = mem::MaybeUninit::uninit();
 
-pub fn get_simple_logger(output_file: Option<File>, runner_mode: bool) -> &'static impl Log {
+pub fn ensure_init_simple_logger(output_file: Option<File>, runner_mode: bool) {
     static INIT: Once = Once::new();
 
-    unsafe {
-        INIT.call_once(|| {
-            let local_offset =
-                UtcOffset::current_local_offset().expect("failed to get local time offset");
+    INIT.call_once(|| {
+        // SAFETY: we accept that this call is unsound. on some platforms it
+        // is the only way to know the time zone, with a chance of UB if
+        // another thread modifies environment vars during the call. the risk
+        // is low, as this call will happen very early in the program, and
+        // only once. we would rather accept this low risk and know the time
+        // zone than not know the time zone
+        let local_offset = unsafe { get_offset() };
 
+        // SAFETY: call_once ensures this only happens from one place
+        unsafe {
             LOGGER.write(SimpleLogger {
                 local_offset,
                 output_file: output_file.map(Mutex::new),
                 runner_mode,
             });
-        });
+        }
+    });
+}
 
-        LOGGER.as_ptr().as_ref().unwrap()
+pub fn get_simple_logger() -> &'static SimpleLogger {
+    ensure_init_simple_logger(None, false);
+
+    // SAFETY: logger is guaranteed to have been initialized
+    unsafe { LOGGER.assume_init_ref() }
+}
+
+pub fn local_offset_check() {
+    if get_simple_logger().local_offset.is_none() {
+        log::warn!("Failed to determine local time offset. Log timestamps will be in UTC.");
     }
 }
