@@ -106,7 +106,7 @@ public:
 		if(i)
 			return; // already watching
 
-		connect(req, &ZrpcRequest::finished, this, &Private::req_finished);
+		req->finished.connect(boost::bind(&Private::req_finished, this, req));
 		connect(req, &ZrpcRequest::destroyed, this, &Private::req_destroyed);
 
 		i = new Item;
@@ -162,10 +162,8 @@ public:
 		}
 	}
 
-public slots:
-	void req_finished()
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
 		Item *i = requestsByReq.value(req);
 		assert(i);
 
@@ -194,6 +192,7 @@ public slots:
 		}
 	}
 
+public slots:
 	void req_destroyed(QObject *obj)
 	{
 		Item *i = requestsByReq.value((ZrpcRequest *)obj);

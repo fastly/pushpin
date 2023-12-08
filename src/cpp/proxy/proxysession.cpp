@@ -1327,7 +1327,7 @@ public slots:
 			}
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);
+			acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 	}
@@ -1372,6 +1372,7 @@ public slots:
 			incCounter(Stats::ClientContentBytesSent, count);
 	}
 
+public:
 	void acceptRequest_finished()
 	{
 		if(acceptRequest->success())

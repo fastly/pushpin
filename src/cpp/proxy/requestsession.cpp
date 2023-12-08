@@ -451,7 +451,7 @@ public:
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
-						connect(inspectRequest, &InspectRequest::finished, this, &Private::inspectRequest_finished);
+						inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
 						inspectChecker->watch(inspectRequest);
 						inspectRequest->start(requestData, truncated, route.session, autoShare);
 					}
@@ -852,7 +852,7 @@ public:
 			adata.channelPrefix = route.prefix;
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);
+			acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 		else
@@ -868,7 +868,6 @@ public:
 		emit q->finished();
 	}
 
-public slots:
 	void inspectRequest_finished()
 	{
 		if(!inspectRequest->success())
@@ -960,6 +959,7 @@ public slots:
 		}
 	}
 
+public slots:
 	void doResponseUpdate()
 	{
 		pendingResponseUpdate = false;

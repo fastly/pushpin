@@ -40,7 +40,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &DetectRulesSet::req_finished);
+		req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this, req));
 
 		QVariantList rlist;
 		foreach(const DetectRule &rule, rules)
@@ -59,11 +59,9 @@ public:
 		req->start("session-detect-rules-set", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			setFinished(true);
@@ -84,7 +82,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &DetectRulesGet::req_finished);
+		req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this, req));
 
 		QVariantHash args;
 		args["domain"] = domain.toUtf8();
@@ -92,11 +90,9 @@ public:
 		req->start("session-detect-rules-get", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			QVariant vresult = req->result();
@@ -177,7 +173,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &CreateOrUpdate::req_finished);
+		req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this, req));
 
 		QVariantHash args;
 
@@ -195,11 +191,9 @@ public:
 		req->start("session-create-or-update", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			setFinished(true);
@@ -220,7 +214,7 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &UpdateMany::req_finished);
+		req->finished.connect(boost::bind(&UpdateMany::req_finished, this, req));
 
 		QVariantHash vsidLastIds;
 
@@ -248,11 +242,9 @@ public:
 		req->start("session-update-many", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			setFinished(true);
@@ -273,18 +265,16 @@ public:
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &GetLastIds::req_finished);
+		req->finished.connect(boost::bind(&GetLastIds::req_finished, this, req));
 
 		QVariantHash args;
 		args["sid"] = sid.toUtf8();
 		req->start("session-get-last-ids", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			QVariant vresult = req->result();
