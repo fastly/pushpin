@@ -32,6 +32,7 @@
 #include "packet/httpresponsedata.h"
 #include "rtimer.h"
 #include "handlerengine.h"
+#include "test_config.h"
 
 namespace {
 
@@ -270,8 +271,7 @@ private slots:
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
-		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
-		QDir workDir(rootDir.filePath("target/cpp/test-work"));
+		QDir workDir(QDir::current().relativeFilePath(TESTDIR));
 
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
