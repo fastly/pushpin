@@ -375,7 +375,7 @@ public:
 		}
 		else
 		{
-			if(QFile::exists("src/pushpin/pushpin.pro"))
+			if(QFile::exists("src/bin/pushpin.rs"))
 			{
 				// running in tree
 				libDir = QFileInfo("src/runner").absoluteFilePath();
