@@ -1115,6 +1115,7 @@ private slots:
 		wsControl_cancelEventReceived();
 	}
 
+private:
 	void keepAliveTimer_timeout()
 	{
 		wsControl->sendNeedKeepAlive();
