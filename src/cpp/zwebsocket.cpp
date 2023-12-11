@@ -414,7 +414,7 @@ public:
 
 			if(written > 0 || contentBytesWritten > 0)
 			{
-				emit q->framesWritten(written, contentBytesWritten);
+				q->framesWritten(written, contentBytesWritten);
 				if(!self)
 					return;
 			}
