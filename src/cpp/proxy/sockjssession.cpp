@@ -568,7 +568,7 @@ public:
 				state = Idle;
 				applyLinger();
 				cleanup();
-				q->closed();
+				QMetaObject::invokeMethod(q, "emit_closed", Qt::QueuedConnection);
 			}
 			else
 				tryWrite();
@@ -1026,6 +1026,10 @@ private:
 		q->error();
 	}
 
+	void emit_closed(){
+		q->closed();
+	}
+	
 private slots:
 	void doUpdate()
 	{
