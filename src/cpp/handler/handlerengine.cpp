@@ -1243,6 +1243,9 @@ public:
 	QSet<AcceptWorker*> acceptWorkers;
 	QSet<Deferred*> deferreds;
 	Deferred *report;
+	Connection inspectReqReadyConnection;
+	Connection acceptReqReadyConnection;
+	Connection controlReqReadyConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1325,7 +1328,7 @@ public:
 			inspectServer = new ZrpcManager(this);
 			inspectServer->setBind(false);
 			inspectServer->setIpcFileMode(config.ipcFileMode);
-			inspectServer->requestReady.connect(boost::bind(&Private::inspectServer_requestReady, this));
+			inspectReqReadyConnection = inspectServer->requestReady.connect(boost::bind(&Private::inspectServer_requestReady, this));
 
 			if(!inspectServer->setServerSpecs(QStringList() << config.inspectSpec))
 			{
@@ -1341,7 +1344,7 @@ public:
 			acceptServer = new ZrpcManager(this);
 			acceptServer->setBind(false);
 			acceptServer->setIpcFileMode(config.ipcFileMode);
-			acceptServer->requestReady.connect(boost::bind(&Private::acceptServer_requestReady, this));
+			acceptReqReadyConnection = acceptServer->requestReady.connect(boost::bind(&Private::acceptServer_requestReady, this));
 
 			if(!acceptServer->setServerSpecs(QStringList() << config.acceptSpec))
 			{
@@ -1373,7 +1376,7 @@ public:
 			controlServer = new ZrpcManager(this);
 			controlServer->setBind(true);
 			controlServer->setIpcFileMode(config.ipcFileMode);
-			controlServer->requestReady.connect(boost::bind(&Private::controlServer_requestReady, this));
+			controlReqReadyConnection = controlServer->requestReady.connect(boost::bind(&Private::controlServer_requestReady, this));
 
 			if(!controlServer->setServerSpecs(QStringList() << config.commandSpec))
 			{

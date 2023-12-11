@@ -26,6 +26,9 @@
 #include <QObject>
 #include <QStringList>
 #include <QHostAddress>
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class HandlerEngine : public QObject
 {

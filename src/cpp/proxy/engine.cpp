@@ -110,6 +110,8 @@ public:
 	ConnectionManager connectionManager;
 	Updater *updater;
 	LogUtil::Config logConfig;
+	Connection changedConnection;
+	Connection cmdReqReadyConnection;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -193,7 +195,7 @@ public:
 		else
 			domainMap = new DomainMap(config.routesFile, this);
 
-		domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
+		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		zhttpIn = new ZhttpManager(this);
 		connect(zhttpIn, &ZhttpManager::requestReady, this, &Private::zhttpIn_requestReady);
@@ -336,7 +338,7 @@ public:
 			command = new ZrpcManager(this);
 			command->setBind(true);
 			command->setIpcFileMode(config.ipcFileMode);
-			command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
+			cmdReqReadyConnection = command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
