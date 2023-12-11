@@ -191,6 +191,7 @@ public:
 	Connection pausedConnection;
 	Connection readyReadConnection;
 	Connection bytesWrittenConnection;
+	Connection finishedConnection;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
@@ -451,7 +452,7 @@ public:
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
-						inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
+						finishedConnection = inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
 						inspectChecker->watch(inspectRequest);
 						inspectRequest->start(requestData, truncated, route.session, autoShare);
 					}
@@ -852,7 +853,7 @@ public:
 			adata.channelPrefix = route.prefix;
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
+			finishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 		else

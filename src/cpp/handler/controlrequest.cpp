@@ -32,12 +32,14 @@ class ConnCheck : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	ConnCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		req->finished.connect(boost::bind(&ConnCheck::req_finished, this, req));
+		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this, req));
 
 		QVariantList vcids;
 		foreach(const QString &cid, cids)
@@ -87,12 +89,14 @@ class Refresh : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	Refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		req->finished.connect(boost::bind(&Refresh::req_finished, this, req));
+		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this, req));
 
 		QVariantHash args;
 		args["cid"] = cid;
@@ -112,12 +116,14 @@ class Report : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	Report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		req->finished.connect(boost::bind(&Report::req_finished, this, req));
+		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this, req));
 
 		QVariantHash args;
 		args["stats"] = packet.toVariant();
