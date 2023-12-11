@@ -182,7 +182,7 @@ public:
 	Connection pausedConnection;
 	Connection readyReadOutConnection;
 	Connection errorOutConnection;
-	Connection timeoutConnection;
+	Connection timerConnection;
 	Connection retryTimerConneciton;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
@@ -212,7 +212,7 @@ public:
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
 		timer = new RTimer(this);
-		timeoutConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
+		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
 		retryTimer = new RTimer(this);
 		retryTimerConneciton = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
@@ -241,11 +241,11 @@ public:
 
 		updateManager->unregisterSession(q);
 
-		timer->disconnect(this);
+		timerConnection.disconnect();
 		timer->setParent(0);
 		timer->deleteLater();
 
-		retryTimer->disconnect(this);
+		retryTimerConneciton.disconnect();
 		retryTimer->setParent(0);
 		retryTimer->deleteLater();
 	}
