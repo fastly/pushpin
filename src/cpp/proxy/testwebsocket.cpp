@@ -285,6 +285,18 @@ WebSocket::ErrorCondition TestWebSocket::errorCondition() const
 	return d->errorCondition;
 }
 
+void TestWebSocket::emit_readyRead(){
+	this->readyRead();
+}
+
+void TestWebSocket::emit_framesWritten(int count, int contentBytes){
+	this->framesWritten(count, contentBytes);
+}
+
+void TestWebSocket::emit_writeBytesChanged(){
+	this->writeBytesChanged();
+}
+
 void TestWebSocket::writeFrame(const Frame &frame)
 {
 	Frame tmp = frame;
@@ -296,13 +308,13 @@ void TestWebSocket::writeFrame(const Frame &frame)
 
 	d->inFrames += tmp;
 
-	this->framesWritten(1, tmp.data.size());
-	this->readyRead();
+	QMetaObject::invokeMethod(this, "emit_framesWritten", Qt::QueuedConnection, Q_ARG(int, 1), Q_ARG(int, tmp.data.size()));
+	QMetaObject::invokeMethod(this, "emit_readyRead", Qt::QueuedConnection);
 }
 
 WebSocket::Frame TestWebSocket::readFrame()
 {
-	this->writeBytesChanged();
+	QMetaObject::invokeMethod(this, "emit_writeBytesChanged", Qt::QueuedConnection);
 
 	return d->inFrames.takeFirst();
 }
