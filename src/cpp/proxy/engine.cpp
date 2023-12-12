@@ -112,7 +112,8 @@ public:
 	LogUtil::Config logConfig;
 	Connection changedConnection;
 	Connection cmdReqReadyConnection;
-
+	Connection sessionReadyConnection;
+	
 	Private(Engine *_q) :
 		QObject(_q),
 		q(_q),
@@ -226,7 +227,7 @@ public:
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
 		sockJsManager = new SockJsManager(config.sockJsUrl, this);
-		connect(sockJsManager, &SockJsManager::sessionReady, this, &Private::sockjs_sessionReady);
+		sessionReadyConnection = sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
 
 		if(!config.inspectSpec.isEmpty())
 		{
