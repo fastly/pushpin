@@ -74,8 +74,7 @@ public:
 	bool listenLocal(const QString &name);
 	SimpleHttpRequest *takeNext();
 
-signals:
-	void requestReady();
+	Signal requestReady;
 
 private:
 	friend class SimpleHttpServerPrivate;
