@@ -70,8 +70,8 @@ class WebSocketOverHttp::DisconnectManager : public QObject
 	Q_OBJECT
 
 public:	
-	Connection closedConnection;
-	Connection errorConnection;
+	map<WebSocketOverHttp*, Connection> closedConnections;
+	map<WebSocketOverHttp*, Connection> errorConnections;
 	
 	DisconnectManager(QObject *parent = 0) :
 		QObject(parent)
@@ -82,8 +82,8 @@ public:
 	{
 		sock->setParent(this);
 		connect(sock, &WebSocketOverHttp::disconnected, this, &DisconnectManager::sock_disconnected);
-		closedConnection = sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this, sock));
-		errorConnection = sock->error.connect(boost::bind(&DisconnectManager::sock_error, this, sock));
+		closedConnections[sock] = sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this, sock));
+		errorConnections[sock] = sock->error.connect(boost::bind(&DisconnectManager::sock_error, this, sock));
 
 		sock->sendDisconnect();
 	}
@@ -850,7 +850,7 @@ private:
 
 		if(reqFrames > 0)
 		{
-			emit q->framesWritten(reqFrames, reqContentSize);
+			q->framesWritten(reqFrames, reqContentSize);
 			if(!self)
 				return;
 		}
@@ -880,7 +880,7 @@ private:
 			}
 			else
 			{
-				emit q->peerClosed();
+				q->peerClosed();
 			}
 		}
 		else if(closeSent && keepAliveInterval == -1)

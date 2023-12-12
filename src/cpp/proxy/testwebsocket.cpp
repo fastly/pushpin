@@ -285,15 +285,15 @@ WebSocket::ErrorCondition TestWebSocket::errorCondition() const
 	return d->errorCondition;
 }
 
-void TestWebSocket::emit_readyRead(){
+void TestWebSocket::doReadyRead(){
 	this->readyRead();
 }
 
-void TestWebSocket::emit_framesWritten(int count, int contentBytes){
+void TestWebSocket::doFramesWritten(int count, int contentBytes){
 	this->framesWritten(count, contentBytes);
 }
 
-void TestWebSocket::emit_writeBytesChanged(){
+void TestWebSocket::doWriteBytesChanged(){
 	this->writeBytesChanged();
 }
 
@@ -308,13 +308,13 @@ void TestWebSocket::writeFrame(const Frame &frame)
 
 	d->inFrames += tmp;
 
-	QMetaObject::invokeMethod(this, "emit_framesWritten", Qt::QueuedConnection, Q_ARG(int, 1), Q_ARG(int, tmp.data.size()));
-	QMetaObject::invokeMethod(this, "emit_readyRead", Qt::QueuedConnection);
+	QMetaObject::invokeMethod(this, "doFramesWritten", Qt::QueuedConnection, Q_ARG(int, 1), Q_ARG(int, tmp.data.size()));
+	QMetaObject::invokeMethod(this, "doReadyRead", Qt::QueuedConnection);
 }
 
 WebSocket::Frame TestWebSocket::readFrame()
 {
-	QMetaObject::invokeMethod(this, "emit_writeBytesChanged", Qt::QueuedConnection);
+	QMetaObject::invokeMethod(this, "doWriteBytesChanged", Qt::QueuedConnection);
 
 	return d->inFrames.takeFirst();
 }

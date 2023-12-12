@@ -136,8 +136,8 @@ public:
 	Connection readyReadConnection;
 	Connection bytesWrittenConnection;
 	Connection errorConnection;
-	Connection sockClosedConnection;
-	Connection sockErrorConnection;
+	map<ZWebSocket*, Connection> sockClosedConnections;
+	map<ZWebSocket*, Connection> sockErrorConnections;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
@@ -267,8 +267,8 @@ public:
 			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
 		s->route = route;
 
-		sockClosedConnection = sock->closed.connect(boost::bind(&Private::sock_closed, this, sock));
-		sockErrorConnection = sock->error.connect(boost::bind(&Private::sock_error, this, sock));
+		sockClosedConnections[sock] = sock->closed.connect(boost::bind(&Private::sock_closed, this, sock));
+		sockErrorConnections[sock] = sock->error.connect(boost::bind(&Private::sock_error, this, sock));
 
 		sessions += s;
 		sessionsBySocket.insert(s->sock, s);

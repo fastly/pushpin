@@ -380,12 +380,12 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		readyReadInConnection = inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this));
-		framesWrittenInConnection = inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2));
-		writeBytesChangedInConnection = inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this));
-		peerInClosedInConnection = inSock->peerClosed.connect(boost::bind(&Private::in_peerClosed, this));
-		closedInConnection = inSock->closed.connect(boost::bind(&Private::in_closed, this));
-		errorInConnection = inSock->error.connect(boost::bind(&Private::in_error, this));
+		readyReadInConnections[inSock] = inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this));
+		framesWrittenInConnections[inSock] = inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2));
+		writeBytesChangedInConnections[inSock] = inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this));
+		peerInClosedInConnections[inSock] = inSock->peerClosed.connect(boost::bind(&Private::in_peerClosed, this));
+		closedInConnections[inSock] = inSock->closed.connect(boost::bind(&Private::in_closed, this));
+		errorInConnections[inSock] = inSock->error.connect(boost::bind(&Private::in_error, this));
 
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
@@ -559,12 +559,12 @@ public:
 			}
 		}
 
-		connectedOutConnection = outSock->connected.connect(boost::bind(&Private::out_connected, this));
-		readyReadOutConnection = outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this));
-		writeBytesChangedOutConnection = outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this));
-		peerClosedOutConnection = outSock->peerClosed.connect(boost::bind(&Private::out_peerClosed, this));
-		closedOutConnection = outSock->closed.connect(boost::bind(&Private::out_closed, this));
-		errorOutConnection = outSock->error.connect(boost::bind(&Private::out_error, this));
+		connectedOutConnections[outSock] = outSock->connected.connect(boost::bind(&Private::out_connected, this));
+		readyReadOutConnections[outSock] = outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this));
+		writeBytesChangedOutConnections[outSock] = outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this));
+		peerClosedOutConnections[outSock] = outSock->peerClosed.connect(boost::bind(&Private::out_peerClosed, this));
+		closedOutConnections[outSock] = outSock->closed.connect(boost::bind(&Private::out_closed, this));
+		errorOutConnections[outSock] = outSock->error.connect(boost::bind(&Private::out_error, this));
 
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
