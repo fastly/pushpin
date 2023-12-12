@@ -30,9 +30,7 @@
 #include "httpheaders.h"
 #include "jwt.h"
 #include <boost/signals2.hpp>
-#include <map>
 
-using std::map;
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 

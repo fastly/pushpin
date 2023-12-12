@@ -708,7 +708,7 @@ class DomainMap::Thread : public QThread
 {
 	Q_OBJECT
 
-	map<Worker*, Connection> startedConnections;
+	Connection startedConnection;
 
 public:
 	QString fileName;
@@ -733,7 +733,7 @@ public:
 	{
 		worker = new Worker;
 		worker->fileName = fileName;
-		startedConnections[worker] = worker->started.connect(boost::bind(&Thread::worker_started, this));
+		startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
 		delete worker;
@@ -751,7 +751,7 @@ class DomainMap::Private : public QObject
 {
 	Q_OBJECT
 
-	map<Thread*, Connection> changedConnections;
+	Connection changedConnection;
 	
 public:
 	DomainMap *q;
@@ -776,7 +776,7 @@ public:
 		thread->start();
 
 		// worker guaranteed to exist after starting
-		changedConnections[thread] = thread->worker->changed.connect(boost::bind(&Private::doChanged, this));
+		changedConnection = thread->worker->changed.connect(boost::bind(&Private::doChanged, this));
 	}
 
 public:
