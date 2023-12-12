@@ -26,7 +26,9 @@
 #include <QObject>
 #include "domainmap.h"
 #include <boost/signals2.hpp>
+#include <boost/signals2.hpp>
 
+using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
 class HttpHeaders;
@@ -47,8 +49,7 @@ public:
 
 	SockJsSession *takeNext();
 
-signals:
-	void sessionReady();
+	Signal sessionReady;
 
 private:
 	class Private;
