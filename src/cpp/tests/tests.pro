@@ -4,7 +4,6 @@ CONFIG += staticlib c++11
 QT -= gui
 QT *= network testlib
 TARGET = pushpin-cpptest
-DESTDIR = ../../../target/cpp
 
 cpp_build_dir = $$OUT_PWD
 

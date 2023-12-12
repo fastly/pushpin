@@ -73,27 +73,47 @@ fn env_or_default(name: &str, defaults: &HashMap<String, String>) -> String {
     }
 }
 
-fn write_cpp_conf_pri(path: &Path) -> Result<(), Box<dyn Error>> {
-    let mut f = fs::File::create(path)?;
+fn write_test_config_h(dest: &Path, test_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let mut f = fs::File::create(dest)?;
+
+    writeln!(&mut f, "#define TESTDIR \"{}\"", test_dir.display())?;
+
+    Ok(())
+}
+
+fn write_cpp_conf_pri(
+    dest: &Path,
+    release: bool,
+    include_paths: &[&Path],
+) -> Result<(), Box<dyn Error>> {
+    let mut f = fs::File::create(dest)?;
+
+    writeln!(&mut f, "CONFIG -= debug_and_release")?;
+
+    if release {
+        writeln!(&mut f, "CONFIG += release")?;
+    } else {
+        writeln!(&mut f, "CONFIG += debug")?;
+    }
 
     writeln!(&mut f)?;
-    let boost_path = get_boost_path()?;
-    if boost_path != "/usr/include" {
-        writeln!(&mut f, "INCLUDEPATH += {}", boost_path)?;
+
+    for path in include_paths {
+        writeln!(&mut f, "INCLUDEPATH += {}", path.display())?;
     }
 
     Ok(())
 }
 
 fn write_postbuild_conf_pri(
-    path: &Path,
+    dest: &Path,
     bin_dir: &str,
     lib_dir: &str,
     config_dir: &str,
     run_dir: &str,
     log_dir: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let mut f = fs::File::create(path)?;
+    let mut f = fs::File::create(dest)?;
 
     writeln!(&mut f, "BINDIR = {}", bin_dir)?;
     writeln!(&mut f, "LIBDIR = {}/pushpin", lib_dir)?;
@@ -104,12 +124,13 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
-fn get_boost_path() -> Result<String, Box<dyn Error>> {
+fn get_boost_path() -> Result<PathBuf, Box<dyn Error>> {
     let possible_paths = vec!["/usr/local/include", "/usr/include"];
     let boost_version = "boost/version.hpp";
 
     for path in possible_paths {
-        let full_path = Path::new(path).join(boost_version);
+        let path = PathBuf::from(path);
+        let full_path = path.join(boost_version);
         if full_path.exists() {
             let file = File::open(full_path)?;
             let reader = io::BufReader::new(file);
@@ -132,7 +153,7 @@ fn get_boost_path() -> Result<String, Box<dyn Error>> {
                     }
                 };
             }
-            return Ok(path.to_string());
+            return Ok(path);
         }
     }
 
@@ -191,6 +212,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     check_version("qt", &qt_version, 5, 12)?;
 
+    let boost_path = get_boost_path()?;
+
     let qt_install_libs = {
         let output = Command::new(&qmake_path)
             .args(["-query", "QT_INSTALL_LIBS"])
@@ -225,15 +248,33 @@ fn main() -> Result<(), Box<dyn Error>> {
     let run_dir = env_or_default("RUNDIR", &default_vars);
 
     let root_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
+    let profile = env::var("PROFILE")?;
+
     let cpp_src_dir = root_dir.join("src/cpp");
     let cpp_tests_src_dir = root_dir.join("src/cpp/tests");
-    let cpp_out_dir = root_dir.join("target/cpp");
 
     for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
-        fs::create_dir_all(cpp_out_dir.join(dir))?;
+        fs::create_dir_all(out_dir.join(dir))?;
     }
 
-    write_cpp_conf_pri(&cpp_out_dir.join("conf.pri"))?;
+    let cpp_test_work_dir = out_dir.join("test-work");
+
+    let mut include_paths = Vec::new();
+
+    include_paths.push(out_dir.as_ref());
+
+    if boost_path != Path::new("/usr/include") {
+        include_paths.push(boost_path.as_ref());
+    }
+
+    write_test_config_h(&out_dir.join("test_config.h"), &cpp_test_work_dir)?;
+
+    write_cpp_conf_pri(
+        &out_dir.join("conf.pri"),
+        profile == "release",
+        &include_paths,
+    )?;
 
     write_postbuild_conf_pri(
         &Path::new("postbuild").join("conf.pri"),
@@ -247,7 +288,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert!(Command::new(&qmake_path)
         .args([
             OsStr::new("-o"),
-            cpp_out_dir.join("Makefile").as_os_str(),
+            out_dir.join("Makefile").as_os_str(),
             cpp_src_dir.join("cpp.pro").as_os_str(),
         ])
         .status()?
@@ -256,7 +297,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert!(Command::new(&qmake_path)
         .args([
             OsStr::new("-o"),
-            cpp_out_dir.join("Makefile.test").as_os_str(),
+            out_dir.join("Makefile.test").as_os_str(),
             cpp_tests_src_dir.join("tests.pro").as_os_str(),
         ])
         .status()?
@@ -273,14 +314,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     assert!(Command::new("make")
         .args(["-f", "Makefile"])
         .args(["-j", &proc_count.to_string()])
-        .current_dir(&cpp_out_dir)
+        .current_dir(&out_dir)
         .status()?
         .success());
 
     assert!(Command::new("make")
         .args(["-f", "Makefile.test"])
         .args(["-j", &proc_count.to_string()])
-        .current_dir(&cpp_out_dir)
+        .current_dir(&out_dir)
         .status()?
         .success());
 
@@ -288,7 +329,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rustc-env=CONFIG_DIR={}/pushpin", config_dir);
     println!("cargo:rustc-env=LIB_DIR={}/pushpin", lib_dir);
 
-    println!("cargo:rustc-link-search={}", cpp_out_dir.display());
+    println!("cargo:rustc-link-search={}", out_dir.display());
 
     #[cfg(target_os = "macos")]
     println!(
