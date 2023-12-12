@@ -360,7 +360,7 @@ public:
 	{
 		if(keepAliveTimer)
 		{
-			keepAliveTimer->disconnect(this);
+			keepAliveTimer->disconnect();
 			keepAliveTimer->setParent(0);
 			keepAliveTimer->deleteLater();
 			keepAliveTimer = 0;
