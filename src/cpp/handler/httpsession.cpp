@@ -182,6 +182,8 @@ public:
 	Connection pausedConnection;
 	Connection readyReadOutConnection;
 	Connection errorOutConnection;
+	Connection timerConnection;
+	Connection retryTimerConneciton;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -210,10 +212,10 @@ public:
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
 		timer = new RTimer(this);
-		connect(timer, &RTimer::timeout, this, &Private::timer_timeout);
+		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
 		retryTimer = new RTimer(this);
-		connect(retryTimer, &RTimer::timeout, this, &Private::retryTimer_timeout);
+		retryTimerConneciton = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 
 		adata = _adata;
@@ -239,11 +241,11 @@ public:
 
 		updateManager->unregisterSession(q);
 
-		timer->disconnect(this);
+		timerConnection.disconnect();
 		timer->setParent(0);
 		timer->deleteLater();
 
-		retryTimer->disconnect(this);
+		retryTimerConneciton.disconnect();
 		retryTimer->setParent(0);
 		retryTimer->deleteLater();
 	}
@@ -1516,6 +1518,7 @@ private slots:
 		}
 	}
 
+private:
 	void timer_timeout()
 	{
 		if(instruct.holdMode == Instruct::ResponseHold)

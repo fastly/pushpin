@@ -236,7 +236,7 @@ void RTimer::timerReady()
 		start();
 	}
 
-	emit timeout();
+	timeout();
 }
 
 void RTimer::init(int capacity)

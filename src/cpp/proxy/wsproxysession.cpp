@@ -279,6 +279,7 @@ public:
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
+	Connection keepAliveConneciton;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -1062,7 +1063,7 @@ private slots:
 			if(!keepAliveTimer)
 			{
 				keepAliveTimer = new RTimer(this);
-				connect(keepAliveTimer, &RTimer::timeout, this, &Private::keepAliveTimer_timeout);
+				keepAliveConneciton = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 				keepAliveTimer->setSingleShot(true);
 			}
 
@@ -1114,6 +1115,7 @@ private slots:
 		wsControl_cancelEventReceived();
 	}
 
+private:
 	void keepAliveTimer_timeout()
 	{
 		wsControl->sendNeedKeepAlive();
