@@ -118,7 +118,7 @@ public slots:
 			q->connected();
 
 			if(gripEnabled && !channels.isEmpty())
-				q->readyRead();
+				QMetaObject::invokeMethod(q, "doReadyRead", Qt::QueuedConnection);
 		}
 		else
 		{
@@ -136,6 +136,10 @@ public slots:
 	{
 		state = Idle;
 		q->closed();
+	}
+
+	void doReadyRead(){
+		q->readyRead();
 	}
 };
 
