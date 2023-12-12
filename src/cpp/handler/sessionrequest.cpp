@@ -35,12 +35,14 @@ class DetectRulesSet : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	DetectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules, QObject *parent = 0) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &DetectRulesSet::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this, req));
 
 		QVariantList rlist;
 		foreach(const DetectRule &rule, rules)
@@ -59,11 +61,9 @@ public:
 		req->start("session-detect-rules-set", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			setFinished(true);
@@ -79,12 +79,14 @@ class DetectRulesGet : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	DetectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path, QObject *parent = 0) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &DetectRulesGet::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this, req));
 
 		QVariantHash args;
 		args["domain"] = domain.toUtf8();
@@ -92,11 +94,9 @@ public:
 		req->start("session-detect-rules-get", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			QVariant vresult = req->result();
@@ -172,12 +172,14 @@ class CreateOrUpdate : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+	
 public:
 	CreateOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds, QObject *parent = 0) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &CreateOrUpdate::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this, req));
 
 		QVariantHash args;
 
@@ -195,11 +197,9 @@ public:
 		req->start("session-create-or-update", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			setFinished(true);
@@ -215,12 +215,14 @@ class UpdateMany : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+	
 public:
 	UpdateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds, QObject *parent = 0) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &UpdateMany::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&UpdateMany::req_finished, this, req));
 
 		QVariantHash vsidLastIds;
 
@@ -248,11 +250,9 @@ public:
 		req->start("session-update-many", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			setFinished(true);
@@ -268,23 +268,23 @@ class GetLastIds : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+	
 public:
 	GetLastIds(ZrpcManager *stateClient, const QString &sid, QObject *parent = 0) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		connect(req, &ZrpcRequest::finished, this, &GetLastIds::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&GetLastIds::req_finished, this, req));
 
 		QVariantHash args;
 		args["sid"] = sid.toUtf8();
 		req->start("session-get-last-ids", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			QVariant vresult = req->result();

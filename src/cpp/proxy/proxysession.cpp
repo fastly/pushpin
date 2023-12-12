@@ -154,6 +154,7 @@ public:
 	Connection readyReadConnection;
 	Connection writeBytesChangedConnection;
 	Connection errorConnection;
+	Connection finishedConnection;
 
 	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager) :
 		QObject(_q),
@@ -1327,7 +1328,7 @@ public slots:
 			}
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);
+			finishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 	}
@@ -1372,6 +1373,7 @@ public slots:
 			incCounter(Stats::ClientContentBytesSent, count);
 	}
 
+public:
 	void acceptRequest_finished()
 	{
 		if(acceptRequest->success())
