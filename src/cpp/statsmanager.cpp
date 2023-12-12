@@ -417,6 +417,7 @@ public:
 	QTimer *reportTimer;
 	QTimer *refreshTimer;
 	QTimer *externalConnectionsMaxTimer;
+	Connection promServerConnection;
 
 	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
 		QObject(_q),
@@ -530,7 +531,7 @@ public:
 	bool setPrometheusPort(const QString &portStr)
 	{
 		prometheusServer = new SimpleHttpServer(8192, 8192, this);
-		connect(prometheusServer, &SimpleHttpServer::requestReady, this, &Private::prometheus_requestReady);
+		promServerConnection = prometheusServer->requestReady.connect(boost::bind(&Private::prometheus_requestReady, this));
 
 		if(portStr.startsWith("ipc://"))
 		{
@@ -1527,6 +1528,7 @@ private slots:
 		expireExternalConnectionsMaxes(currentTime);
 	}
 
+private:
 	void prometheus_requestReady()
 	{
 		SimpleHttpRequest *req = prometheusServer->takeNext();

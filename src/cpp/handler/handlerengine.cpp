@@ -1246,6 +1246,7 @@ public:
 	Connection inspectReqReadyConnection;
 	Connection acceptReqReadyConnection;
 	Connection controlReqReadyConnection;
+	Connection controlServerConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1561,7 +1562,7 @@ public:
 		if(config.pushInHttpPort != -1)
 		{
 			controlHttpServer = new SimpleHttpServer(config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize, this);
-			connect(controlHttpServer, &SimpleHttpServer::requestReady, this, &Private::controlHttpServer_requestReady);
+			controlServerConnection = controlHttpServer->requestReady.connect(boost::bind(&Private::controlHttpServer_requestReady, this));
 			controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
 
 			log_info("http control server: %s:%d", qPrintable(config.pushInHttpAddr.toString()), config.pushInHttpPort);
