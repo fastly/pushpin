@@ -150,8 +150,7 @@ public:
 		respond(code, reason, headers, body.toUtf8());
 	}
 
-signals:
-	void ready();
+	Signal ready;
 
 private:
 	void respondError(int code, const QByteArray &reason, const QString &body)
@@ -315,7 +314,7 @@ private:
 				else
 				{
 					state = WriteBody;
-					emit ready();
+					ready();
 				}
 			}
 			else if(inBuf.size() >= maxHeadersSize)
@@ -338,7 +337,7 @@ private:
 			if(reqBody.size() == contentLength)
 			{
 				state = WriteBody;
-				emit ready();
+				ready();
 			}
 		}
 	}
@@ -427,6 +426,7 @@ public:
 	int maxHeadersSize;
 	int maxBodySize;
 	map<SimpleHttpRequest*, Connection> finishedConnections;
+	map<SimpleHttpRequest*, Connection> readyConnections;
 
 	SimpleHttpServerPrivate(int maxHeadersSize, int maxBodySize, SimpleHttpServer *_q) :
 		QObject(_q),
@@ -494,7 +494,7 @@ private:
 		{
 			QLocalSocket *sock = ((QLocalServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
-			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
+			readyConnections[req] = req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q));
 			finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 			accepting += req;
 			req->d->start(sock);
@@ -503,17 +503,15 @@ private:
 		{
 			QTcpSocket *sock = ((QTcpServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
-			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
+			readyConnections[req] = req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q));
 			finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 			accepting += req;
 			req->d->start(sock);
 		}
 	}
 
-	void req_ready()
+	void req_ready(SimpleHttpRequest *req)
 	{
-		SimpleHttpRequest::Private *reqd = (SimpleHttpRequest::Private *)sender();
-		SimpleHttpRequest *req = reqd->q;
 		accepting.remove(req);
 		pending += req;
 		q->requestReady();
