@@ -113,7 +113,10 @@ public:
 	Connection changedConnection;
 	Connection cmdReqReadyConnection;
 	Connection sessionReadyConnection;
-	
+	Connection inspectErrorConnection;
+	Connection finishedConnection;
+	Connection finishedByAcceptConnection;
+
 	Private(Engine *_q) :
 		QObject(_q),
 		q(_q),
@@ -585,9 +588,9 @@ public:
 
 		// TODO: use callbacks for performance
 		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
-		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
+		inspectErrorConnection = rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs));
+		finishedConnection = rs->finished.connect(boost::bind(&Private::rs_finished, this, rs));
+		finishedByAcceptConnection = rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs));
 
 		requestSessions += rs;
 
@@ -726,18 +729,14 @@ private slots:
 		doProxy(rs, &idata);
 	}
 
-	void rs_inspectError()
+	void rs_inspectError(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		// default action is to proxy without sharing
 		doProxy(rs);
 	}
 
-	void rs_finished()
+	void rs_finished(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		if(!rs->isSockJs())
 			logFinished(rs);
 
@@ -747,10 +746,8 @@ private slots:
 		tryTakeNext();
 	}
 
-	void rs_finishedByAccept()
+	void rs_finishedByAccept(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		logFinished(rs, true);
 
 		requestSessions.remove(rs);

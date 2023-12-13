@@ -817,7 +817,7 @@ public:
 		if(zhttpRequest->isFinished())
 		{
 			cleanup();
-			emit q->finished();
+			q->finished();
 		}
 	}
 
@@ -867,7 +867,7 @@ public:
 	{
 		log_debug("requestsession: request error id=%s", rid.second.data());
 		cleanup();
-		emit q->finished();
+		q->finished();
 	}
 
 	void inspectRequest_finished()
@@ -935,7 +935,7 @@ public:
 				zhttpRequest = 0;
 
 				cleanup();
-				emit q->finishedByAccept();
+				q->finishedByAccept();
 			}
 			else
 			{
@@ -1004,7 +1004,7 @@ public slots:
 						zhttpRequest->writeBody(body);
 						responseBodySize += body.size();
 						zhttpRequest->endBody();
-						emit q->errorResponding();
+						q->errorResponding();
 						return;
 					}
 
@@ -1166,7 +1166,7 @@ public slots:
 	void doInspectError()
 	{
 		state = WaitingForResponse;
-		emit q->inspectError();
+		q->inspectError();
 	}
 };
 
