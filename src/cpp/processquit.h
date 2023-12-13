@@ -25,6 +25,7 @@
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
+using SignalInt = boost::signals2::signal<void(int)>;
 
 #ifdef NO_IRISNET
 # include <QtCore>

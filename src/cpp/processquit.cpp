@@ -58,7 +58,7 @@ public:
 		QObject(parent)
 	{
 		sn = new QSocketNotifier(socket, type, this);
-		connect(sn, SIGNAL(activated(int)), SIGNAL(activated(int)));
+		sn->activated.connect(boost::bind(&YourClass::relaySignal, this, boost::placehodlers::_1));
 	}
 
 	~SafeSocketNotifier()
@@ -74,8 +74,8 @@ public:
 public slots:
 	void setEnabled(bool enable)       { sn->setEnabled(enable); }
 
-signals:
-	void activated(int socket);
+public:
+	SignalInt activated;
 
 private:
 	QSocketNotifier *sn;
@@ -130,7 +130,7 @@ public:
 		}
 
 		sig_notifier = new SafeSocketNotifier(sig_pipe[0], QSocketNotifier::Read, this);
-		connect(sig_notifier, SIGNAL(activated(int)), SLOT(sig_activated(int)));
+		sig_notifier->activated.connect(boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
 		unixWatchAdd(SIGINT);
 		unixWatchAdd(SIGHUP);
 		unixWatchAdd(SIGTERM);
@@ -213,6 +213,7 @@ public slots:
 #endif
 	}
 
+public:
 	void sig_activated(int)
 	{
 #ifdef Q_OS_UNIX
