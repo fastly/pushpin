@@ -697,6 +697,34 @@ public:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
+private:
+	void rs_inspectError(RequestSession *rs)
+	{
+		// default action is to proxy without sharing
+		doProxy(rs);
+	}
+
+	void rs_finished(RequestSession *rs)
+	{
+		if(!rs->isSockJs())
+			logFinished(rs);
+
+		requestSessions.remove(rs);
+		delete rs;
+
+		tryTakeNext();
+	}
+
+	void rs_finishedByAccept(RequestSession *rs)
+	{
+		logFinished(rs, true);
+
+		requestSessions.remove(rs);
+		delete rs;
+
+		tryTakeNext();
+	}
+
 private slots:
 	void zhttpIn_requestReady()
 	{
@@ -727,33 +755,6 @@ private slots:
 		assert(idata.doProxy);
 
 		doProxy(rs, &idata);
-	}
-
-	void rs_inspectError(RequestSession *rs)
-	{
-		// default action is to proxy without sharing
-		doProxy(rs);
-	}
-
-	void rs_finished(RequestSession *rs)
-	{
-		if(!rs->isSockJs())
-			logFinished(rs);
-
-		requestSessions.remove(rs);
-		delete rs;
-
-		tryTakeNext();
-	}
-
-	void rs_finishedByAccept(RequestSession *rs)
-	{
-		logFinished(rs, true);
-
-		requestSessions.remove(rs);
-		delete rs;
-
-		tryTakeNext();
 	}
 
 	void ps_addNotAllowed()
