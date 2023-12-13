@@ -279,18 +279,18 @@ public:
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
-	Connection readyReadInConnection;
-	Connection framesWrittenInConnection;
-	Connection writeBytesChangedInConnection;
-	Connection peerInClosedInConnection;
-	Connection closedInConnection;
-	Connection errorInConnection;
-	Connection connectedOutConnection;
-	Connection readyReadOutConnection;
-	Connection writeBytesChangedOutConnection;
-	Connection peerClosedOutConnection;
-	Connection closedOutConnection;
-	Connection errorOutConnection;
+	map<WebSocket*, Connection> readyReadInConnections;
+	map<WebSocket*, Connection> framesWrittenInConnections;
+	map<WebSocket*, Connection> writeBytesChangedInConnections;
+	map<WebSocket*, Connection> peerInClosedInConnections;
+	map<WebSocket*, Connection> closedInConnections;
+	map<WebSocket*, Connection> errorInConnections;
+	map<WebSocket*, Connection> connectedOutConnections;
+	map<WebSocket*, Connection> readyReadOutConnections;
+	map<WebSocket*, Connection> writeBytesChangedOutConnections;
+	map<WebSocket*, Connection> peerClosedOutConnections;
+	map<WebSocket*, Connection> closedOutConnections;
+	map<WebSocket*, Connection> errorOutConnections;
 	Connection keepAliveConneciton;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :

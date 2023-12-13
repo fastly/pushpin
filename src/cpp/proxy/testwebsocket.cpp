@@ -307,13 +307,13 @@ void TestWebSocket::writeFrame(const Frame &frame)
 	}
 
 	d->inFrames += tmp;
-	QMetaObject::invokeMethod(this, "Private::doFramesWritten", Qt::QueuedConnection, Q_ARG(int, 1), Q_ARG(int, tmp.data.size()));
-	QMetaObject::invokeMethod(this, "Private::doReadyRead", Qt::QueuedConnection);
+	QMetaObject::invokeMethod(this, "&Private::doFramesWritten", Qt::QueuedConnection, Q_ARG(int, 1), Q_ARG(int, tmp.data.size()));
+	QMetaObject::invokeMethod(this, "&Private::doReadyRead", Qt::QueuedConnection);
 }
 
 WebSocket::Frame TestWebSocket::readFrame()
 {
-	QMetaObject::invokeMethod(this, "Private::doWriteBytesChanged", Qt::QueuedConnection);
+	QMetaObject::invokeMethod(this, "&Private::doWriteBytesChanged", Qt::QueuedConnection);
 
 	return d->inFrames.takeFirst();
 }
