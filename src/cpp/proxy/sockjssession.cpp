@@ -1026,11 +1026,11 @@ private:
 		q->error();
 	}
 
+private slots:
 	void doClosed(){
 		q->closed();
 	}
 	
-private slots:
 	void doUpdate()
 	{
 		updating = false;
