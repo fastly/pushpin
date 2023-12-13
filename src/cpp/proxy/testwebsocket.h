@@ -64,9 +64,6 @@ public:
 	virtual QString peerCloseReason() const;
 	virtual ErrorCondition errorCondition() const;
 
-	virtual void doReadyRead();
-	virtual void doFramesWritten(int count, int contentBytes);
-	virtual void doWriteBytesChanged();
 	virtual void writeFrame(const Frame &frame);
 	virtual Frame readFrame();
 	virtual void close(int code = -1, const QString &reason = QString());

@@ -141,6 +141,14 @@ public slots:
 	void doReadyRead(){
 		q->readyRead();
 	}
+
+	void doFramesWritten(int count, int contentBytes){
+		q->framesWritten(count, contentBytes);
+	}
+
+	void doWriteBytesChanged(){
+		q->writeBytesChanged();
+	}
 };
 
 TestWebSocket::TestWebSocket(QObject *parent) :
@@ -287,18 +295,6 @@ QString TestWebSocket::peerCloseReason() const
 WebSocket::ErrorCondition TestWebSocket::errorCondition() const
 {
 	return d->errorCondition;
-}
-
-void TestWebSocket::doReadyRead(){
-	this->readyRead();
-}
-
-void TestWebSocket::doFramesWritten(int count, int contentBytes){
-	this->framesWritten(count, contentBytes);
-}
-
-void TestWebSocket::doWriteBytesChanged(){
-	this->writeBytesChanged();
 }
 
 void TestWebSocket::writeFrame(const Frame &frame)
