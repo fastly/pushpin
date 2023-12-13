@@ -305,6 +305,11 @@ public:
 	Signal changed;
 
 public slots:
+	void doChanged()
+	{
+		changed();
+	}
+
 	void start()
 	{
 		if(!fileName.isEmpty())
@@ -708,8 +713,6 @@ class DomainMap::Thread : public QThread
 {
 	Q_OBJECT
 
-	Connection startedConnection;
-
 public:
 	QString fileName;
 	Worker *worker;
@@ -733,7 +736,7 @@ public:
 	{
 		worker = new Worker;
 		worker->fileName = fileName;
-		startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
+		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
 		delete worker;
