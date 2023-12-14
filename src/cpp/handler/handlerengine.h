@@ -34,6 +34,8 @@ class HandlerEngine : public QObject
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	class Configuration
 	{

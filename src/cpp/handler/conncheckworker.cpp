@@ -26,6 +26,7 @@
 #include "controlrequest.h"
 #include "statsmanager.h"
 
+
 ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats, QObject *parent) :
 	Deferred(parent),
 	req_(req)
@@ -63,7 +64,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 	{
 		// ask the proxy about any cids we don't know about
 		Deferred *d = ControlRequest::connCheck(proxyControlClient, missing_, this);
-		connect(d, &Deferred::finished, this, &ConnCheckWorker::proxyConnCheck_finished);
+		finishedConnection = d->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
 		return;
 	}
 

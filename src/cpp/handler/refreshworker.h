@@ -27,6 +27,9 @@
 #include <QHash>
 #include <QSet>
 #include "deferred.h"
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class ZrpcRequest;
 class ZrpcManager;
@@ -36,6 +39,8 @@ class WsSession;
 class RefreshWorker : public Deferred
 {
 	Q_OBJECT
+
+	Connection finishedConnection;
 
 public:
 	RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel, QObject *parent = 0);
