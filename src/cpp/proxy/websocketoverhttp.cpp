@@ -95,6 +95,7 @@ public:
 private:
 	void cleanupSocket(WebSocketOverHttp *sock)
 	{
+		disconnectedConnection.erase(sock);
 		delete sock;
 	}
 

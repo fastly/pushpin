@@ -280,7 +280,7 @@ public:
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
 	Connection keepAliveConneciton;
-	map<WebSocketOverHttp*, Connection> aboutToSendRequestConnection;
+	Connection aboutToSendRequestConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -531,7 +531,7 @@ public:
 				if(target.oneEvent)
 					woh->setMaxEventsPerRequest(1);
 
-				aboutToSendRequestConnection[woh] = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh));
+				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh));
 				outSock = woh;
 			}
 			else
