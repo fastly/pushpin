@@ -113,7 +113,8 @@ public:
 	Connection changedConnection;
 	Connection cmdReqReadyConnection;
 	Connection sessionReadyConnection;
-	
+	Connection inspectErrorConnection;
+
 	Private(Engine *_q) :
 		QObject(_q),
 		q(_q),
@@ -585,7 +586,7 @@ public:
 
 		// TODO: use callbacks for performance
 		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
-		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
+		inspectErrorConnection = rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs));
 		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
 		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
 
@@ -694,6 +695,13 @@ public:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
+private:
+	void rs_inspectError(RequestSession *rs)
+	{
+		// default action is to proxy without sharing
+		doProxy(rs);
+	}
+
 private slots:
 	void zhttpIn_requestReady()
 	{
@@ -724,14 +732,6 @@ private slots:
 		assert(idata.doProxy);
 
 		doProxy(rs, &idata);
-	}
-
-	void rs_inspectError()
-	{
-		RequestSession *rs = (RequestSession *)sender();
-
-		// default action is to proxy without sharing
-		doProxy(rs);
 	}
 
 	void rs_finished()
