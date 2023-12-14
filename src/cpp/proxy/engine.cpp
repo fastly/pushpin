@@ -113,6 +113,9 @@ public:
 	Connection changedConnection;
 	Connection cmdReqReadyConnection;
 	Connection sessionReadyConnection;
+	Connection requestReadyConnection;
+	Connection socketReadyConnection;
+	Connection iRequestReadyConnection;
 	
 	Private(Engine *_q) :
 		QObject(_q),
@@ -199,8 +202,8 @@ public:
 		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		zhttpIn = new ZhttpManager(this);
-		connect(zhttpIn, &ZhttpManager::requestReady, this, &Private::zhttpIn_requestReady);
-		connect(zhttpIn, &ZhttpManager::socketReady, this, &Private::zhttpIn_socketReady);
+		requestReadyConnection = zhttpIn->requestReady.connect(boost::bind(&Private::zhttpIn_requestReady, this));
+		socketReadyConnection = zhttpIn->socketReady.connect(boost::bind(&Private::zhttpIn_socketReady, this));
 
 		zhttpIn->setInstanceId(config.clientId);
 		zhttpIn->setServerInSpecs(config.serverInSpecs);
@@ -212,7 +215,7 @@ public:
 			intZhttpIn = new ZhttpManager(this);
 			intZhttpIn->setBind(true);
 			intZhttpIn->setIpcFileMode(config.ipcFileMode);
-			connect(intZhttpIn, &ZhttpManager::requestReady, this, &Private::intZhttpIn_requestReady);
+			iRequestReadyConnection = intZhttpIn->requestReady.connect(boost::bind(&Private::intZhttpIn_requestReady, this));
 
 			intZhttpIn->setInstanceId(config.clientId);
 			intZhttpIn->setServerInSpecs(config.intServerInSpecs);
@@ -694,7 +697,7 @@ public:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
-private slots:
+private:
 	void zhttpIn_requestReady()
 	{
 		tryTakeNext();
@@ -704,17 +707,16 @@ private slots:
 	{
 		tryTakeNext();
 	}
-
+	void intZhttpIn_requestReady()
+	{
+		tryTakeNext();
+	}
 	void sockjs_sessionReady()
 	{
 		tryTakeNext();
 	}
 
-	void intZhttpIn_requestReady()
-	{
-		tryTakeNext();
-	}
-
+private slots:
 	void rs_inspected(const InspectData &idata)
 	{
 		RequestSession *rs = (RequestSession *)sender();
