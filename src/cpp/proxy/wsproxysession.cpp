@@ -281,6 +281,13 @@ public:
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
 	Connection keepAliveConneciton;
 	Connection aboutToSendRequestConnection;
+	map<WebSocket*, Connection> readyReadConnections;
+	map<WebSocket*, Connection> framesWrittenConnections;
+	map<WebSocket*, Connection> writeBytesChangedConnections;
+	map<WebSocket*, Connection> peerClosedConnections;
+	map<WebSocket*, Connection> closedConnections;
+	map<WebSocket*, Connection> errorConnections;
+	map<WebSocket*, Connection> connectedConnections;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -369,12 +376,12 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		connect(inSock, &WebSocket::readyRead, this, &Private::in_readyRead);
-		connect(inSock, &WebSocket::framesWritten, this, &Private::in_framesWritten);
-		connect(inSock, &WebSocket::writeBytesChanged, this, &Private::in_writeBytesChanged);
-		connect(inSock, &WebSocket::peerClosed, this, &Private::in_peerClosed);
-		connect(inSock, &WebSocket::closed, this, &Private::in_closed);
-		connect(inSock, &WebSocket::error, this, &Private::in_error);
+		readyReadConnections[inSock] = inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this));
+		framesWrittenConnections[inSock] = inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2));
+		writeBytesChangedConnections[inSock] = inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this));
+		peerClosedConnections[inSock] = inSock->peerClosed.connect(boost::bind(&Private::in_peerClosed, this));
+		closedConnections[inSock] = inSock->closed.connect(boost::bind(&Private::in_closed, this));
+		errorConnections[inSock] = inSock->error.connect(boost::bind(&Private::in_error, this));
 
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
@@ -548,12 +555,12 @@ public:
 			}
 		}
 
-		connect(outSock, &WebSocket::connected, this, &Private::out_connected);
-		connect(outSock, &WebSocket::readyRead, this, &Private::out_readyRead);
-		connect(outSock, &WebSocket::writeBytesChanged, this, &Private::out_writeBytesChanged);
-		connect(outSock, &WebSocket::peerClosed, this, &Private::out_peerClosed);
-		connect(outSock, &WebSocket::closed, this, &Private::out_closed);
-		connect(outSock, &WebSocket::error, this, &Private::out_error);
+		connectedConnections[outSock] = outSock->connected.connect(boost::bind(&Private::out_connected, this));
+		readyReadConnections[outSock] = outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this));
+		writeBytesChangedConnections[outSock] = outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this));
+		peerClosedConnections[outSock] = outSock->peerClosed.connect(boost::bind(&Private::out_peerClosed, this));
+		closedConnections[outSock] = outSock->closed.connect(boost::bind(&Private::out_closed, this));
+		errorConnections[outSock] = outSock->error.connect(boost::bind(&Private::out_error, this));
 
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
@@ -787,7 +794,15 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-private slots:
+private:
+	void out_aboutToSendRequest(WebSocketOverHttp *woh)
+	{
+		ProxyUtil::applyGripSig("wsproxysession", q, &requestData.headers, sigIss, sigKey);
+
+		woh->setHeaders(requestData.headers);
+	}
+
+private:
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)
@@ -1007,13 +1022,7 @@ private slots:
 		}
 	}
 
-	void out_aboutToSendRequest(WebSocketOverHttp *woh)
-	{
-		ProxyUtil::applyGripSig("wsproxysession", q, &requestData.headers, sigIss, sigKey);
-
-		woh->setHeaders(requestData.headers);
-	}
-
+private slots:
 	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
 	{
 		// this method accepts a full message, which must be typed
