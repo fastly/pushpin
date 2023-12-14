@@ -24,6 +24,7 @@
 #define SEQUENCER_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
 
 class PublishLastIds;
 class PublishItem;
@@ -45,8 +46,7 @@ public:
 
 	void clearPendingForChannel(const QString &channel);
 
-signals:
-	void itemReady(const PublishItem &item);
+	boost::signals2::signal<void(const PublishItem&)> itemReady;
 
 private:
 	class Private;

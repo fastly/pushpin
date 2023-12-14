@@ -129,7 +129,7 @@ public:
 
 		if(!seq)
 		{
-			emit q->itemReady(item);
+			q->itemReady(item);
 			return;
 		}
 
@@ -191,7 +191,7 @@ public:
 		else
 			lastIds->remove(item.channel);
 
-		emit q->itemReady(item);
+		q->itemReady(item);
 
 		if(pendingItemsByChannel.contains(item.channel))
 		{
@@ -214,7 +214,7 @@ public:
 				else
 					lastIds->remove(pitem.channel);
 
-				emit q->itemReady(pitem);
+				q->itemReady(pitem);
 
 				id = pitem.id;
 			}

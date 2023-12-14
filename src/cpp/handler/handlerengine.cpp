@@ -1247,6 +1247,7 @@ public:
 	Connection acceptReqReadyConnection;
 	Connection controlReqReadyConnection;
 	Connection controlServerConnection;
+	Connection itemReadyConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1281,7 +1282,7 @@ public:
 		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
 
 		sequencer = new Sequencer(&cs.publishLastIds, this);
-		connect(sequencer, &Sequencer::itemReady, this, &Private::sequencer_itemReady);
+		itemReadyConnection = sequencer->itemReady.connect(boost::bind(&Private::sequencer_itemReady, this, boost::placeholders::_1));
 	}
 
 	~Private()
@@ -2060,7 +2061,7 @@ private:
 		}
 	}
 
-private slots:
+private:
 	void sequencer_itemReady(const PublishItem &item)
 	{
 		QList<HttpSession*> responseSessions;
@@ -2272,6 +2273,7 @@ private slots:
 		}
 	}
 
+private slots:
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
 		QVariant data;
 		bool ok_;
