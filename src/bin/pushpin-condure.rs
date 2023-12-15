@@ -199,7 +199,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
-    let matches = Command::new("condure")
+    let matches = Command::new("pushpin-condure")
         .version(version())
         .about("HTTP/WebSocket connection manager")
         .arg(

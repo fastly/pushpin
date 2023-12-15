@@ -454,8 +454,8 @@ public:
 		if(fi.isFile())
 			m2aBin = fi.canonicalFilePath();
 
-		QString condureBin = "condure";
-		fi = QFileInfo(QDir(exeDir).filePath("bin/condure"));
+		QString condureBin = "pushpin-condure";
+		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-condure"));
 		if(fi.isFile())
 			condureBin = fi.canonicalFilePath();
 
