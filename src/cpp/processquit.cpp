@@ -58,7 +58,7 @@ public:
 		QObject(parent)
 	{
 		sn = new QSocketNotifier(socket, type, this);
-		sn->activated.connect(boost::bind(&YourClass::relaySignal, this, boost::placehodlers::_1));
+		connect(sn, SIGNAL(activated(int)), SIGNAL(activated(int)));
 	}
 
 	~SafeSocketNotifier()
@@ -102,6 +102,9 @@ inline bool is_gui_app()
 class ProcessQuit::Private : public QObject
 {
 	Q_OBJECT
+
+	Connection activatedConnection;
+
 public:
 	ProcessQuit *q;
 
@@ -130,7 +133,7 @@ public:
 		}
 
 		sig_notifier = new SafeSocketNotifier(sig_pipe[0], QSocketNotifier::Read, this);
-		sig_notifier->activated.connect(boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
+		activatedConnection = sig_notifier->activated.connect(boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
 		unixWatchAdd(SIGINT);
 		unixWatchAdd(SIGHUP);
 		unixWatchAdd(SIGTERM);
