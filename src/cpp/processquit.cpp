@@ -103,10 +103,9 @@ class ProcessQuit::Private : public QObject
 {
 	Q_OBJECT
 
-	Connection activatedConnection;
-
 public:
 	ProcessQuit *q;
+	Connection activatedConnection;
 
 	bool done;
 #ifdef Q_OS_WIN
