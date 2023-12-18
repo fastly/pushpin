@@ -281,6 +281,18 @@ public:
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
 	Connection keepAliveConneciton;
 	Connection aboutToSendRequestConnection;
+	map<WebSocket*, Connection> readyReadInConnections;
+	map<WebSocket*, Connection> framesWrittenInConnections;
+	map<WebSocket*, Connection> writeBytesChangedInConnections;
+	map<WebSocket*, Connection> peerInClosedInConnections;
+	map<WebSocket*, Connection> closedInConnections;
+	map<WebSocket*, Connection> errorInConnections;
+	map<WebSocket*, Connection> connectedOutConnections;
+	map<WebSocket*, Connection> readyReadOutConnections;
+	map<WebSocket*, Connection> writeBytesChangedOutConnections;
+	map<WebSocket*, Connection> peerClosedOutConnections;
+	map<WebSocket*, Connection> closedOutConnections;
+	map<WebSocket*, Connection> errorOutConnections;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -322,6 +334,13 @@ public:
 
 		cleanupInSock();
 
+		connectedOutConnections.erase(outSock);
+		readyReadOutConnections.erase(outSock);
+		writeBytesChangedOutConnections.erase(outSock);
+		peerClosedOutConnections.erase(outSock);
+		closedOutConnections.erase(outSock);
+		errorOutConnections.erase(outSock);
+		
 		delete outSock;
 		outSock = 0;
 
@@ -340,6 +359,14 @@ public:
 		if(inSock)
 		{
 			connectionManager->removeConnection(inSock);
+			
+			readyReadInConnections.erase(inSock);
+			framesWrittenInConnections.erase(inSock);
+			writeBytesChangedInConnections.erase(inSock);
+			peerInClosedInConnections.erase(inSock);
+			closedInConnections.erase(inSock);
+			errorInConnections.erase(inSock);
+
 			delete inSock;
 			inSock = 0;
 		}
@@ -369,12 +396,12 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		connect(inSock, &WebSocket::readyRead, this, &Private::in_readyRead);
-		connect(inSock, &WebSocket::framesWritten, this, &Private::in_framesWritten);
-		connect(inSock, &WebSocket::writeBytesChanged, this, &Private::in_writeBytesChanged);
-		connect(inSock, &WebSocket::peerClosed, this, &Private::in_peerClosed);
-		connect(inSock, &WebSocket::closed, this, &Private::in_closed);
-		connect(inSock, &WebSocket::error, this, &Private::in_error);
+		readyReadInConnections[inSock] = inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this));
+		framesWrittenInConnections[inSock] = inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2));
+		writeBytesChangedInConnections[inSock] = inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this));
+		peerInClosedInConnections[inSock] = inSock->peerClosed.connect(boost::bind(&Private::in_peerClosed, this));
+		closedInConnections[inSock] = inSock->closed.connect(boost::bind(&Private::in_closed, this));
+		errorInConnections[inSock] = inSock->error.connect(boost::bind(&Private::in_error, this));
 
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
@@ -548,12 +575,12 @@ public:
 			}
 		}
 
-		connect(outSock, &WebSocket::connected, this, &Private::out_connected);
-		connect(outSock, &WebSocket::readyRead, this, &Private::out_readyRead);
-		connect(outSock, &WebSocket::writeBytesChanged, this, &Private::out_writeBytesChanged);
-		connect(outSock, &WebSocket::peerClosed, this, &Private::out_peerClosed);
-		connect(outSock, &WebSocket::closed, this, &Private::out_closed);
-		connect(outSock, &WebSocket::error, this, &Private::out_error);
+		connectedOutConnections[outSock] = outSock->connected.connect(boost::bind(&Private::out_connected, this));
+		readyReadOutConnections[outSock] = outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this));
+		writeBytesChangedOutConnections[outSock] = outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this));
+		peerClosedOutConnections[outSock] = outSock->peerClosed.connect(boost::bind(&Private::out_peerClosed, this));
+		closedOutConnections[outSock] = outSock->closed.connect(boost::bind(&Private::out_closed, this));
+		errorOutConnections[outSock] = outSock->error.connect(boost::bind(&Private::out_error, this));
 
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
@@ -787,7 +814,7 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-private slots:
+private:
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)
@@ -824,6 +851,13 @@ private slots:
 			{
 				if(outSock->state() == WebSocket::Connecting)
 				{
+					connectedOutConnections.erase(outSock);
+					readyReadOutConnections.erase(outSock);
+					writeBytesChangedOutConnections.erase(outSock);
+					peerClosedOutConnections.erase(outSock);
+					closedOutConnections.erase(outSock);
+					errorOutConnections.erase(outSock);
+
 					delete outSock;
 					outSock = 0;
 
@@ -855,6 +889,13 @@ private slots:
 
 		if(!detached)
 		{
+			connectedOutConnections.erase(outSock);
+			readyReadOutConnections.erase(outSock);
+			writeBytesChangedOutConnections.erase(outSock);
+			peerClosedOutConnections.erase(outSock);
+			closedOutConnections.erase(outSock);
+			errorOutConnections.erase(outSock);
+					
 			delete outSock;
 			outSock = 0;
 		}
@@ -948,6 +989,14 @@ private slots:
 	{
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
+		
+		connectedOutConnections.erase(outSock);
+		readyReadOutConnections.erase(outSock);
+		writeBytesChangedOutConnections.erase(outSock);
+		peerClosedOutConnections.erase(outSock);
+		closedOutConnections.erase(outSock);
+		errorOutConnections.erase(outSock);
+		
 		delete outSock;
 		outSock = 0;
 
@@ -964,6 +1013,13 @@ private slots:
 
 		if(detached)
 		{
+			connectedOutConnections.erase(outSock);
+			readyReadOutConnections.erase(outSock);
+			writeBytesChangedOutConnections.erase(outSock);
+			peerClosedOutConnections.erase(outSock);
+			closedOutConnections.erase(outSock);
+			errorOutConnections.erase(outSock);
+				
 			delete outSock;
 			outSock = 0;
 
@@ -989,6 +1045,12 @@ private slots:
 					reject(true, 502, "Bad Gateway", "Error while proxying to origin.");
 					break;
 			}
+			connectedOutConnections.erase(outSock);
+			readyReadOutConnections.erase(outSock);
+			writeBytesChangedOutConnections.erase(outSock);
+			peerClosedOutConnections.erase(outSock);
+			closedOutConnections.erase(outSock);
+			errorOutConnections.erase(outSock);
 
 			delete outSock;
 			outSock = 0;
@@ -999,6 +1061,13 @@ private slots:
 		else
 		{
 			cleanupInSock();
+			
+			connectedOutConnections.erase(outSock);
+			readyReadOutConnections.erase(outSock);
+			writeBytesChangedOutConnections.erase(outSock);
+			peerClosedOutConnections.erase(outSock);
+			closedOutConnections.erase(outSock);
+			errorOutConnections.erase(outSock);
 
 			delete outSock;
 			outSock = 0;
@@ -1014,6 +1083,7 @@ private slots:
 		woh->setHeaders(requestData.headers);
 	}
 
+private slots:
 	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
 	{
 		// this method accepts a full message, which must be typed
@@ -1099,6 +1169,13 @@ private slots:
 	{
 		if(outSock)
 		{
+			connectedOutConnections.erase(outSock);
+			readyReadOutConnections.erase(outSock);
+			writeBytesChangedOutConnections.erase(outSock);
+			peerClosedOutConnections.erase(outSock);
+			closedOutConnections.erase(outSock);
+			errorOutConnections.erase(outSock);
+				
 			delete outSock;
 			outSock = 0;
 		}

@@ -69,9 +69,11 @@ class WebSocketOverHttp::DisconnectManager : public QObject
 {
 	Q_OBJECT
 
-	map<WebSocketOverHttp *, Connection> disconnectedConnection;
-
 public:
+	map<WebSocketOverHttp*, Connection> disconnectedConnection;
+	map<WebSocketOverHttp*, Connection> closedConnections;
+	map<WebSocketOverHttp*, Connection> errorConnections;
+
 	DisconnectManager(QObject *parent = 0) :
 		QObject(parent)
 	{
@@ -81,8 +83,8 @@ public:
 	{
 		sock->setParent(this);
 		disconnectedConnection[sock] = sock->disconnected.connect(boost::bind(&DisconnectManager::sock_disconnected, this, sock));
-		connect(sock, &WebSocketOverHttp::closed, this, &DisconnectManager::sock_closed);
-		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
+		closedConnections[sock] = sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this, sock));
+		errorConnections[sock] = sock->error.connect(boost::bind(&DisconnectManager::sock_error, this, sock));
 
 		sock->sendDisconnect();
 	}
@@ -96,6 +98,8 @@ private:
 	void cleanupSocket(WebSocketOverHttp *sock)
 	{
 		disconnectedConnection.erase(sock);
+		closedConnections.erase(sock);
+		errorConnections.erase(sock);
 		delete sock;
 	}
 
@@ -105,16 +109,13 @@ private:
 		cleanupSocket(sock);
 	}
 
-private slots:
-	void sock_closed()
+	void sock_closed(WebSocketOverHttp *sock)
 	{
-		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
 		cleanupSocket(sock);
 	}
 
-	void sock_error()
+	void sock_error(WebSocketOverHttp *sock)
 	{
-		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
 		cleanupSocket(sock);
 	}
 };
@@ -647,7 +648,7 @@ private slots:
 		if(inBuf.size() + req->bytesAvailable() > RESPONSE_BODY_MAX)
 		{
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -691,7 +692,7 @@ private slots:
 				errorCondition = ErrorGeneric;
 
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -727,7 +728,7 @@ private slots:
 		if(!ok)
 		{
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -737,7 +738,7 @@ private slots:
 			if(events.isEmpty() && keepAliveInterval == -1)
 			{
 				cleanup();
-				emit q->error();
+				q->error();
 				return;
 			}
 
@@ -745,7 +746,7 @@ private slots:
 			if(!events.isEmpty() && events.first().type != "OPEN")
 			{
 				cleanup();
-				emit q->error();
+				q->error();
 				return;
 			}
 
@@ -838,21 +839,21 @@ private slots:
 
 		if(emitConnected)
 		{
-			emit q->connected();
+			q->connected();
 			if(!self)
 				return;
 		}
 
 		if(emitReadyRead)
 		{
-			emit q->readyRead();
+			q->readyRead();
 			if(!self)
 				return;
 		}
 
 		if(reqFrames > 0)
 		{
-			emit q->framesWritten(reqFrames, reqContentSize);
+			q->framesWritten(reqFrames, reqContentSize);
 			if(!self)
 				return;
 		}
@@ -864,7 +865,7 @@ private slots:
 
 		if(hadContent)
 		{
-			emit q->writeBytesChanged();
+			q->writeBytesChanged();
 			if(!self)
 				return;
 		}
@@ -877,12 +878,12 @@ private slots:
 			if(closeSent)
 			{
 				cleanup();
-				emit q->closed();
+				q->closed();
 				return;
 			}
 			else
 			{
-				emit q->peerClosed();
+				q->peerClosed();
 			}
 		}
 		else if(closeSent && keepAliveInterval == -1)
@@ -896,14 +897,14 @@ private slots:
 		if(disconnected)
 		{
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
 		if(reqClose && peerClosing)
 		{
 			cleanup();
-			emit q->closed();
+			q->closed();
 			return;
 		}
 
@@ -978,7 +979,7 @@ private slots:
 			errorCondition = WebSocket::ErrorTls;
 
 		cleanup();
-		emit q->error();
+		q->error();
 	}
 
 	void keepAliveTimer_timeout()
@@ -996,7 +997,7 @@ private slots:
 		cleanup();
 		errorCondition = pendingErrorCondition;
 		pendingErrorCondition = (ErrorCondition)-1;
-		emit q->error();
+		q->error();
 	}
 };
 
