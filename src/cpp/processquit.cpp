@@ -53,12 +53,14 @@ class SafeSocketNotifier : public QObject
 {
 	Q_OBJECT
 public:
+	Connection activatedConnection;
+
 	SafeSocketNotifier(int socket, QSocketNotifier::Type type,
 		QObject *parent = 0) :
 		QObject(parent)
 	{
 		sn = new QSocketNotifier(socket, type, this);
-		connect(sn, SIGNAL(activated(int)), SIGNAL(activated(int)));
+		connect(sn, SIGNAL(activated(int)), SLOT(doActivated()));
 	}
 
 	~SafeSocketNotifier()
@@ -73,6 +75,10 @@ public:
 
 public slots:
 	void setEnabled(bool enable)       { sn->setEnabled(enable); }
+
+	void doActivated(){
+		activated(sn->socket());
+	}
 
 public:
 	SignalInt activated;
