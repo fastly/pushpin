@@ -122,7 +122,7 @@ public:
 	bool autoShare;
 	QString sid;
 	LastIds lastIds;
-	Connection finishedConnection;
+	map<Deferred*, Connection> finishedConnection;
 
 	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll, QObject *parent = 0) :
 		Deferred(parent),
@@ -231,7 +231,7 @@ public:
 			{
 				// determine session info
 				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8(), this);
-				finishedConnection = d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, boost::placeholders::_1));
+				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, boost::placeholders::_1));
 				return;
 			}
 
@@ -350,7 +350,7 @@ private:
 			if(!sid.isEmpty())
 			{
 				Deferred *d = SessionRequest::getLastIds(stateClient, sid, this);
-				finishedConnection = d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, boost::placeholders::_1));
+				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, boost::placeholders::_1));
 				return;
 			}
 		}
@@ -434,8 +434,8 @@ public:
 	QList<HttpSession*> sessions;
 	int connectionSubscriptionMax;
 	QSet<QByteArray> needRemoveFromStats;
-	Connection finishedConnection;
-	Connection dFinishedConnection;
+	map<Deferred*, Connection> finishedConnection;
+	map<Deferred*, Connection> dFinishedConnection;
 
 	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
 		Deferred(parent),
@@ -795,7 +795,7 @@ public:
 			if(!rules.isEmpty())
 			{
 				Deferred *d = SessionRequest::detectRulesSet(stateClient, rules, this);
-				finishedConnection = d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, boost::placeholders::_1));
+				finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, boost::placeholders::_1));
 			}
 			else
 			{
@@ -878,7 +878,7 @@ private:
 		if(!sid.isEmpty())
 		{
 			Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, lastIds, this);
-			dFinishedConnection = d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, boost::placeholders::_1));
+			dFinishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, boost::placeholders::_1));
 		}
 		else
 		{
@@ -1126,6 +1126,7 @@ private:
 
 		afterSetRules();
 	}
+
 	void sessionCreateOrUpdate_finished(const DeferredResult &result)
 	{
 		if(!result.success)
@@ -1251,17 +1252,17 @@ public:
 	Connection controlReqReadyConnection;
 	Connection controlServerConnection;
 	Connection itemReadyConnection;
-	Connection sessionCreateOrUpdateFinishedConnection;
-	Connection finishedConnection;
-	Connection dFinishedConnection;
-	Connection deferredFinishedConnection;
-	Connection dFinishedConn;
-	Connection deferredFinishedConn;
-	Connection wFinishedConnection;
-	Connection awFinishedConnection;
-	Connection wsFinishedConnection;
-	Connection cwFinishedConnection;
-	Connection rwFinishedConnection;
+	map<Deferred*, Connection> sessionCreateOrUpdateFinishedConnection;
+	map<Deferred*, Connection> finishedConnection;
+	map<Deferred*, Connection> dFinishedConnection;
+	map<Deferred*, Connection> deferredFinishedConnection;
+	map<Deferred*, Connection> dFinishedConn;
+	map<Deferred*, Connection> deferredFinishedConn;
+	map<Deferred*, Connection> wFinishedConnection;
+	map<Deferred*, Connection> awFinishedConnection;
+	map<Deferred*, Connection> wsFinishedConnection;
+	map<Deferred*, Connection> cwFinishedConnection;
+	map<Deferred*, Connection> rwFinishedConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1789,7 +1790,7 @@ private:
 			else if(f.action == PublishFormat::Refresh)
 			{
 				Deferred *d = ControlRequest::refresh(proxyControlClient, i.cid, this);
-				finishedConnection = d->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, d));
+				finishedConnection[d] = d->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 				return;
 			}
@@ -1934,7 +1935,7 @@ private:
 			return;
 
 		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
-		wFinishedConnection = w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, boost::placeholders::_1, w));
+		wFinishedConnection[w] = w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, boost::placeholders::_1, w));
 		inspectWorkers += w;
 	}
 
@@ -1955,7 +1956,7 @@ private:
 			// the start() call will do this
 
 			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
-			awFinishedConnection = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
+			awFinishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
 			connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 			connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
 			acceptWorkers += w;
@@ -2004,7 +2005,7 @@ private:
 		if(req->method() == "conncheck")
 		{
 			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
-			cwFinishedConnection = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
+			cwFinishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}
 		else if(req->method() == "get-zmq-uris")
@@ -2028,7 +2029,7 @@ private:
 		else if(req->method() == "refresh")
 		{
 			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
-			rwFinishedConnection = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
+			rwFinishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}
 		else if(req->method() == "publish")
@@ -2280,7 +2281,7 @@ private:
 			}
 
 			Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-			deferredFinishedConnection = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
+			deferredFinishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 			deferreds += d;
 		}
 	}
@@ -2725,14 +2726,14 @@ private slots:
 			foreach(const QString &sid, createOrUpdateSids)
 			{
 				Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, LastIds(), this);
-				sessionCreateOrUpdateFinishedConnection = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d));
+				sessionCreateOrUpdateFinishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 
 			if(!updateSids.isEmpty())
 			{
 				Deferred *d = SessionRequest::updateMany(stateClient, updateSids, this);
-				dFinishedConnection = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
+				dFinishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 		}
@@ -3111,7 +3112,7 @@ private slots:
 			if(!sidLastIds.isEmpty())
 			{
 				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-				dFinishedConn = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
+				dFinishedConn[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 		}
@@ -3152,7 +3153,7 @@ private slots:
 		}
 
 		report = ControlRequest::report(proxyControlClient, all, this);
-		finishedConnection = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
+		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
 		deferreds += report;
 	}
 

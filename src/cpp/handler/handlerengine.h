@@ -27,14 +27,14 @@
 #include <QStringList>
 #include <QHostAddress>
 #include <boost/signals2.hpp>
+#include <map>
 
+using std::map;
 using Connection = boost::signals2::scoped_connection;
 
 class HandlerEngine : public QObject
 {
 	Q_OBJECT
-
-	Connection finishedConnection;
 
 public:
 	class Configuration

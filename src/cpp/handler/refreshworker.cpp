@@ -92,7 +92,7 @@ void RefreshWorker::refreshNextCid()
 	}
 
 	Deferred *d = ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8(), this);
-	finishedConnection = d->finished.connect(boost::bind(&RefreshWorker::proxyRefresh_finished, this, boost::placeholders::_1));
+	finishedConnection_ = d->finished.connect(boost::bind(&RefreshWorker::proxyRefresh_finished, this, boost::placeholders::_1));
 }
 
 void RefreshWorker::proxyRefresh_finished(const DeferredResult &result)

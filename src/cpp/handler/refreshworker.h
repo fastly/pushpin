@@ -40,8 +40,6 @@ class RefreshWorker : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-
 public:
 	RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel, QObject *parent = 0);
 
@@ -50,6 +48,7 @@ private:
 	bool ignoreErrors_;
 	ZrpcManager *proxyControlClient_;
 	ZrpcRequest *req_;
+	Connection finishedConnection_;
 
 	void refreshNextCid();
 	void respondError(const QByteArray &condition);
