@@ -18,7 +18,6 @@ use clap::{ArgAction, Parser};
 use log::{error, warn};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::fs::{self, File, OpenOptions};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -222,14 +221,14 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new(args_data: ArgsData) -> Result<Self, Box<dyn Error>> {
-        let config_file_path = get_config_file(args_data.config_file)?;
+    pub fn new(work_dir: &Path, args_data: ArgsData) -> Result<Self, Box<dyn Error>> {
+        let config_file_path = get_config_file(work_dir, args_data.config_file)?;
         let config = match CustomConfig::new(config_file_path.to_str().unwrap()) {
             Ok(x) => x,
             Err(e) => return Err(format!("error: parsing config. {:?}", e).into()),
         };
 
-        let exec_dir = &env::current_dir()?;
+        let exec_dir = work_dir;
 
         let config_dir = config_file_path.parent().unwrap().join("runner");
         let certs_dir = config_dir.join("certs");
@@ -544,8 +543,8 @@ fn parse_log_levels(log_levels: Vec<String>) -> Result<HashMap<String, u8>, Box<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ensure_example_config, test_dir};
     use std::collections::HashMap;
-    use std::env;
     use std::error::Error;
     use std::net::SocketAddr;
     use std::net::{IpAddr, Ipv4Addr};
@@ -804,7 +803,10 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let exec_dir = &env::current_dir().unwrap();
+        let test_dir = test_dir();
+        ensure_example_config(&test_dir);
+
+        let exec_dir = &test_dir;
         let mut log_map = HashMap::new();
         log_map.insert("".to_string(), 2);
         log_map.insert("default".to_string(), 2);
@@ -824,10 +826,17 @@ mod tests {
                     "pushpin-proxy".to_string(),
                     "pushpin-handler".to_string(),
                 ],
-                config_file: PathBuf::from("./examples/config/pushpin.conf"),
+                config_file: test_dir
+                    .join("examples")
+                    .join("config")
+                    .join("pushpin.conf"),
                 run_dir: exec_dir.clone().join("run"),
                 log_file: None,
-                certs_dir: PathBuf::from("./examples/config/runner/certs"),
+                certs_dir: test_dir
+                    .join("examples")
+                    .join("config")
+                    .join("runner")
+                    .join("certs"),
                 condure_bin: if exec_dir.clone().join("bin/pushpin-condure").exists() {
                     exec_dir.clone().join("bin/pushpin-condure")
                 } else {
@@ -885,7 +894,7 @@ mod tests {
 
         for test_arg in test_args.iter() {
             assert_eq!(
-                Settings::new(test_arg.input.clone()).unwrap(),
+                Settings::new(&test_dir, test_arg.input.clone()).unwrap(),
                 test_arg.output.as_ref().unwrap().clone(),
                 "{}",
                 test_arg.name

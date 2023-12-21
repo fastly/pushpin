@@ -293,6 +293,31 @@ where
 }
 
 #[cfg(test)]
+pub fn test_dir() -> PathBuf {
+    // "cargo test" ensures this is present
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+    out_dir.join("test-work")
+}
+
+#[cfg(test)]
+pub fn ensure_example_config(dest: &Path) {
+    use std::fs;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    INIT.call_once(|| {
+        let src_dir = Path::new("examples").join("config");
+        let dest_dir = dest.join("examples").join("config");
+
+        fs::create_dir_all(&dest_dir).unwrap();
+        fs::copy(src_dir.join("pushpin.conf"), dest_dir.join("pushpin.conf")).unwrap();
+        fs::copy(src_dir.join("routes"), dest_dir.join("routes")).unwrap();
+    });
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::ffi::OsString;
@@ -447,10 +472,7 @@ mod tests {
         let output_file = if output_direct {
             None
         } else {
-            // "cargo test" ensures this is present
-            let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-
-            Some(out_dir.join("test-work").join("output"))
+            Some(test_dir().join("output"))
         };
 
         let output_file = output_file.as_deref();
