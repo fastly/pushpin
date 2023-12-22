@@ -432,17 +432,25 @@ impl CustomConfig {
     }
 }
 
-pub fn get_config_file(arg_config: Option<PathBuf>) -> Result<PathBuf, Box<dyn Error>> {
+pub fn get_config_file(
+    work_dir: &Path,
+    arg_config: Option<PathBuf>,
+) -> Result<PathBuf, Box<dyn Error>> {
     let mut config_files: Vec<PathBuf> = vec![];
     match arg_config {
         Some(x) => config_files.push(x),
         None => {
             // ./config
-            config_files.push(PathBuf::from("./config/pushpin.conf"));
+            config_files.push(work_dir.join("config").join("pushpin.conf"));
             // same dir as executable (NOTE: deprecated)
-            config_files.push(PathBuf::from("./pushpin.conf"));
+            config_files.push(work_dir.join("pushpin.conf"));
             // ./examples/config
-            config_files.push(PathBuf::from("./examples/config/pushpin.conf"));
+            config_files.push(
+                work_dir
+                    .join("examples")
+                    .join("config")
+                    .join("pushpin.conf"),
+            );
             // default
             config_files.push(PathBuf::from(format!(
                 "{}/pushpin.conf",
@@ -487,26 +495,35 @@ pub fn get_config_file(arg_config: Option<PathBuf>) -> Result<PathBuf, Box<dyn E
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ensure_example_config, test_dir};
     use std::error::Error;
     use std::path::PathBuf;
 
     struct TestArgs {
         name: &'static str,
+        work_dir: PathBuf,
         input: Option<PathBuf>,
         output: Result<PathBuf, Box<dyn Error>>,
     }
 
     #[test]
     fn it_works() {
+        let test_dir = test_dir();
+        ensure_example_config(&test_dir);
+
         let test_args: Vec<TestArgs> = vec![TestArgs {
             name: "no input",
+            work_dir: test_dir.clone(),
             input: None,
-            output: Ok(PathBuf::from("./examples/config/pushpin.conf")),
+            output: Ok(test_dir
+                .join("examples")
+                .join("config")
+                .join("pushpin.conf")),
         }];
 
         for test_arg in test_args.iter() {
             assert_eq!(
-                get_config_file(test_arg.input.clone()).unwrap(),
+                get_config_file(&test_arg.work_dir, test_arg.input.clone()).unwrap(),
                 test_arg.output.as_deref().unwrap(),
                 "{}",
                 test_arg.name
@@ -518,12 +535,13 @@ mod tests {
     fn it_fails() {
         let test_args: Vec<TestArgs> = vec![TestArgs {
             name: "invalid config file",
+            work_dir: test_dir(),
             input: Some(PathBuf::from("no/such/file")),
             output: Err("no configuration file found. Tried: no/such/file".into()),
         }];
 
         for test_arg in test_args.iter() {
-            match get_config_file(test_arg.input.clone()) {
+            match get_config_file(&test_arg.work_dir, test_arg.input.clone()) {
                 Ok(x) => panic!(
                     "Test case {} should fail, but its passing with this output {:?}",
                     test_arg.name, x
