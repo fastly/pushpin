@@ -61,3 +61,38 @@ harness = false
 [[bench]]
 name = "client"
 harness = false
+
+[[bin]]
+name = "pushpin-condure"
+test = false
+bench = false
+
+[[bin]]
+name = "m2adapter"
+test = false
+bench = false
+
+[[bin]]
+name = "pushpin-proxy"
+test = false
+bench = false
+
+[[bin]]
+name = "pushpin-handler"
+test = false
+bench = false
+
+[[bin]]
+name = "pushpin-legacy"
+test = false
+bench = false
+
+[[bin]]
+name = "pushpin"
+test = false
+bench = false
+
+[[bin]]
+name = "pushpin-publish"
+test = false
+bench = false
