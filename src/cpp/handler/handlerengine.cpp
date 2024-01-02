@@ -1254,15 +1254,10 @@ public:
 	Connection itemReadyConnection;
 	map<Deferred*, Connection> sessionCreateOrUpdateFinishedConnection;
 	map<Deferred*, Connection> finishedConnection;
-	map<Deferred*, Connection> dFinishedConnection;
 	map<Deferred*, Connection> deferredFinishedConnection;
-	map<Deferred*, Connection> dFinishedConn;
 	map<Deferred*, Connection> deferredFinishedConn;
 	map<Deferred*, Connection> wFinishedConnection;
 	map<Deferred*, Connection> awFinishedConnection;
-	map<Deferred*, Connection> wsFinishedConnection;
-	map<Deferred*, Connection> cwFinishedConnection;
-	map<Deferred*, Connection> rwFinishedConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -2005,7 +2000,7 @@ private:
 		if(req->method() == "conncheck")
 		{
 			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
-			cwFinishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
+			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}
 		else if(req->method() == "get-zmq-uris")
@@ -2029,7 +2024,7 @@ private:
 		else if(req->method() == "refresh")
 		{
 			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
-			rwFinishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
+			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}
 		else if(req->method() == "publish")
@@ -2291,12 +2286,14 @@ private:
 	{
 		Q_UNUSED(result);
 
+		finishedConnection.erase(report);
 		deferreds.remove(report);
 		report = 0;
 	}
 
 	void sessionUpdateMany_finished(const DeferredResult &result, Deferred *d)
 	{
+		deferredFinishedConnection.erase(d);
 		deferreds.remove(d);
 
 		if(!result.success)
@@ -2305,6 +2302,7 @@ private:
 
 	void sessionCreateOrUpdate_finished(const DeferredResult &result, Deferred *d)
 	{
+		sessionCreateOrUpdateFinishedConnection.erase(d);
 		deferreds.remove(d);
 
 		if(!result.success)
@@ -2315,6 +2313,7 @@ private:
 	{
 		Q_UNUSED(result);
 
+		wFinishedConnection.erase(w);
 		inspectWorkers.remove(w);
 
 		// try to read again
@@ -2325,6 +2324,7 @@ private:
 	{
 		Q_UNUSED(result);
 
+		awFinishedConnection.erase(w);
 		acceptWorkers.remove(w);
 
 		// try to read again
@@ -2733,7 +2733,7 @@ private slots:
 			if(!updateSids.isEmpty())
 			{
 				Deferred *d = SessionRequest::updateMany(stateClient, updateSids, this);
-				dFinishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
+				deferredFinishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 		}
@@ -3112,7 +3112,7 @@ private slots:
 			if(!sidLastIds.isEmpty())
 			{
 				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-				dFinishedConn[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
+				deferredFinishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 		}
@@ -3162,6 +3162,7 @@ private:
 	{
 		Q_UNUSED(result);
 
+		finishedConnection.erase(w);
 		deferreds.remove(w);
 	}
 };
