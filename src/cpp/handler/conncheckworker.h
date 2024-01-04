@@ -38,8 +38,6 @@ class ConnCheckWorker : public Deferred
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-
 public:
 	ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats, QObject *parent = 0);
 
@@ -47,6 +45,7 @@ private:
 	ZrpcRequest *req_;
 	CidSet cids_;
 	CidSet missing_;
+	Connection finishedConnection_;
 
 	void respondError(const QByteArray &condition);
 	void doFinish();

@@ -1257,7 +1257,6 @@ public:
 	map<Deferred*, Connection> deferredFinishedConnection;
 	map<Deferred*, Connection> deferredFinishedConn;
 	map<Deferred*, Connection> wFinishedConnection;
-	map<Deferred*, Connection> awFinishedConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1951,7 +1950,7 @@ private:
 			// the start() call will do this
 
 			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
-			awFinishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
+			wFinishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
 			connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
 			connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
 			acceptWorkers += w;
@@ -2324,7 +2323,7 @@ private:
 	{
 		Q_UNUSED(result);
 
-		awFinishedConnection.erase(w);
+		wFinishedConnection.erase(w);
 		acceptWorkers.remove(w);
 
 		// try to read again

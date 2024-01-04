@@ -63,7 +63,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 	{
 		// ask the proxy about any cids we don't know about
 		Deferred *d = ControlRequest::connCheck(proxyControlClient, missing_, this);
-		finishedConnection = d->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
+		finishedConnection_ = d->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
 		return;
 	}
 
