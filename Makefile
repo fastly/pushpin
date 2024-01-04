@@ -6,25 +6,25 @@ endif
 
 all: postbuild
 
-build:
+build: FORCE
 	cargo build $(cargo_flags)
 
-cargo-test:
+cargo-test: FORCE
 	cargo test $(cargo_flags)
 
-cargo-clean:
+cargo-clean: FORCE
 	cargo clean
 
 postbuild: build FORCE
 	cd postbuild && $(MAKE) -f Makefile
 
-postbuild-install:
+postbuild-install: FORCE
 	cd postbuild && $(MAKE) -f Makefile install
 
-postbuild-clean:
+postbuild-clean: FORCE
 	cd postbuild && $(MAKE) -f Makefile clean
 
-postbuild-distclean:
+postbuild-distclean: FORCE
 	cd postbuild && $(MAKE) -f Makefile distclean
 
 check: cargo-test
