@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -754,11 +755,10 @@ class DomainMap::Private : public QObject
 {
 	Q_OBJECT
 
-	Connection changedConnection;
-	
 public:
 	DomainMap *q;
 	Thread *thread;
+	Connection changedConnection;
 
 	Private(DomainMap *_q) :
 		QObject(_q),
@@ -779,10 +779,17 @@ public:
 		thread->start();
 
 		// worker guaranteed to exist after starting
-		changedConnection = thread->worker->changed.connect(boost::bind(&Private::doChanged, this));
+		changedConnection = thread->worker->changed.connect(boost::bind(&Private::workerChanged, this));
 	}
 
-public:
+private:
+	// NOTE: must be thread-safe. called from separate thread
+	void workerChanged()
+	{
+		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
+	}
+
+private slots:
 	void doChanged()
 	{
 		q->changed();
