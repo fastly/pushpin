@@ -76,15 +76,17 @@ public:
 public slots:
 	void setEnabled(bool enable)       { sn->setEnabled(enable); }
 
-	void doActivated(){
-		activated(sn->socket());
-	}
-
 public:
 	SignalInt activated;
 
 private:
 	QSocketNotifier *sn;
+
+private slots:
+	void doActivated()
+	{
+		activated(sn->socket());
+	}
 };
 
 }
@@ -213,15 +215,6 @@ public:
 	}
 #endif
 
-public slots:
-	void ctrl_ready()
-	{
-#ifdef Q_OS_WIN
-		do_emit();
-#endif
-	}
-
-public:
 	void sig_activated(int)
 	{
 #ifdef Q_OS_UNIX
@@ -238,6 +231,14 @@ public:
 			return;
 		}
 
+		do_emit();
+#endif
+	}
+
+public slots:
+	void ctrl_ready()
+	{
+#ifdef Q_OS_WIN
 		do_emit();
 #endif
 	}
