@@ -4900,6 +4900,7 @@ impl<'a, R: AsyncRead> ClientResponse<'a, R> {
                 inner: ClientResponseBody {
                     inner: RefCell::new(Some(ClientResponseBodyInner {
                         r: self.r,
+                        closed: false,
                         buf1: self.buf1,
                         resp_body,
                     })),
@@ -4912,6 +4913,7 @@ impl<'a, R: AsyncRead> ClientResponse<'a, R> {
 
 struct ClientResponseBodyInner<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
+    closed: bool,
     buf1: &'a mut VecRingBuffer,
     resp_body: http1::ClientResponseBody,
 }
@@ -4921,15 +4923,19 @@ struct ClientResponseBody<'a, R: AsyncRead> {
 }
 
 impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
+    // on EOF and any subsequent calls, return success
     #[allow(clippy::await_holding_refcell_ref)]
     async fn add_to_buffer(&self) -> Result<(), Error> {
         if let Some(inner) = &mut *self.inner.borrow_mut() {
-            if let Err(e) = recv_nonzero(&mut inner.r, inner.buf1).await {
-                if e.kind() == io::ErrorKind::WriteZero {
-                    return Err(Error::BufferExceeded);
+            if !inner.closed {
+                match recv_nonzero(&mut inner.r, inner.buf1).await {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == io::ErrorKind::WriteZero => {
+                        return Err(Error::BufferExceeded)
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => inner.closed = true,
+                    Err(e) => return Err(e.into()),
                 }
-
-                return Err(e.into());
             }
 
             Ok(())
@@ -4945,10 +4951,12 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
             if let Some(inner) = b_inner.take() {
                 let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
-                match inner
-                    .resp_body
-                    .recv(Buffer::read_buf(inner.buf1), dest, &mut scratch)?
-                {
+                match inner.resp_body.recv(
+                    Buffer::read_buf(inner.buf1),
+                    dest,
+                    inner.closed,
+                    &mut scratch,
+                )? {
                     http1::RecvStatus::Complete(finished, read, written) => {
                         inner.buf1.read_commit(read);
 
@@ -4962,6 +4970,7 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
                     http1::RecvStatus::Read(resp_body, read, written) => {
                         *b_inner = Some(ClientResponseBodyInner {
                             r: inner.r,
+                            closed: inner.closed,
                             buf1: inner.buf1,
                             resp_body,
                         });

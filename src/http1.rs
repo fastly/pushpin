@@ -1547,6 +1547,7 @@ impl ClientResponse {
         let state = &mut self.state;
 
         let version = resp.version.unwrap();
+        let code = resp.code.unwrap();
 
         let mut content_len = None;
         let mut chunked = false;
@@ -1590,13 +1591,18 @@ impl ClientResponse {
             state.body_size = BodySize::Known(len);
             state.chunk_left = Some(len);
         } else {
-            state.body_size = BodySize::NoBody;
+            state.body_size = match code {
+                100..=199 | 204 | 304 => BodySize::NoBody,
+                _ => BodySize::Unknown,
+            };
         }
 
+        let close_end = state.body_size == BodySize::Unknown && !chunked;
+
         if version >= 1 {
-            state.persistent = !close;
+            state.persistent = !close && !close_end;
         } else {
-            state.persistent = keep_alive && !close;
+            state.persistent = keep_alive && !close && !close_end;
         }
 
         Ok(())
@@ -1616,12 +1622,13 @@ impl ClientResponseBody {
         mut self,
         src: &'buf [u8],
         dest: &mut [u8],
+        end: bool,
         scratch: &mut mem::MaybeUninit<[httparse::Header<'buf>; N]>,
     ) -> Result<RecvStatus<ClientResponseBody, ClientFinished>, Error> {
         let state = &mut self.state;
 
-        match state.body_size {
-            BodySize::Known(_) => {
+        match (state.body_size, state.chunked) {
+            (BodySize::Known(_), _) => {
                 let mut chunk_left = state.chunk_left.unwrap();
                 let read_size = cmp::min(chunk_left, dest.len());
 
@@ -1643,12 +1650,36 @@ impl ClientResponseBody {
                         size,
                     ))
                 } else {
+                    // if the input has ended, and we expected to read more,
+                    // and we had room to read more, return error
+                    if end && chunk_left > 0 && dest.len() - size > 0 {
+                        return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
+                    }
+
                     state.chunk_left = Some(chunk_left);
 
                     Ok(RecvStatus::Read(self, size, size))
                 }
             }
-            BodySize::Unknown => {
+            (BodySize::Unknown, false) => {
+                // src holds body as-is
+                let mut rbuf = io::Cursor::new(src);
+                let size = rbuf.read(dest)?;
+
+                if src.len() - size == 0 && end {
+                    Ok(RecvStatus::Complete(
+                        ClientFinished {
+                            headers_range: None,
+                            persistent: state.persistent,
+                        },
+                        size,
+                        size,
+                    ))
+                } else {
+                    Ok(RecvStatus::Read(self, size, size))
+                }
+            }
+            (BodySize::Unknown, true) => {
                 let mut pos = if state.chunk_left.is_none() {
                     match httparse::parse_chunk_size(src) {
                         Ok(httparse::Status::Complete((pos, size))) => {
@@ -1665,6 +1696,12 @@ impl ClientResponseBody {
                             pos
                         }
                         Ok(httparse::Status::Partial) => {
+                            if end {
+                                return Err(Error::Io(io::Error::from(
+                                    io::ErrorKind::UnexpectedEof,
+                                )));
+                            }
+
                             return Ok(RecvStatus::Read(self, 0, 0));
                         }
                         Err(_) => {
@@ -1714,6 +1751,12 @@ impl ClientResponseBody {
                                 ));
                             }
                             Ok(httparse::Status::Partial) => {
+                                if end {
+                                    return Err(Error::Io(io::Error::from(
+                                        io::ErrorKind::UnexpectedEof,
+                                    )));
+                                }
+
                                 return Ok(RecvStatus::Read(self, pos, size));
                             }
                             Err(e) => {
@@ -1722,6 +1765,12 @@ impl ClientResponseBody {
                         }
                     } else {
                         if buf.len() < 2 {
+                            if end {
+                                return Err(Error::Io(io::Error::from(
+                                    io::ErrorKind::UnexpectedEof,
+                                )));
+                            }
+
                             return Ok(RecvStatus::Read(self, pos, size));
                         }
 
@@ -1736,9 +1785,15 @@ impl ClientResponseBody {
                     }
                 }
 
+                // if the input has ended, and we expected to read more, and
+                // we had room to read more, return error
+                if end && chunk_left > 0 && dest.len() - size > 0 {
+                    return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
+                }
+
                 Ok(RecvStatus::Read(self, pos, size))
             }
-            BodySize::NoBody => Ok(RecvStatus::Complete(
+            (BodySize::NoBody, _) => Ok(RecvStatus::Complete(
                 ClientFinished {
                     headers_range: None,
                     persistent: state.persistent,
@@ -4500,6 +4555,20 @@ mod tests {
             },
             Test {
                 name: "body-size-unknown",
+                data: "HTTP/1.0 200 OK\r\n\r\n",
+                result: Some(Ok(Response {
+                    code: 200,
+                    reason: "OK",
+                    headers: &[],
+                    body_size: BodySize::Unknown,
+                })),
+                ver_min: 0,
+                chunk_left: None,
+                persistent: false,
+                rbuf_position: 19,
+            },
+            Test {
+                name: "body-size-unknown-chunked",
                 data: "HTTP/1.0 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n",
                 result: Some(Ok(Response {
                     code: 200,
@@ -4517,34 +4586,43 @@ mod tests {
             },
             Test {
                 name: "1.0-persistent",
-                data: "HTTP/1.0 200 OK\r\nConnection: keep-alive\r\n\r\n",
+                data: "HTTP/1.0 200 OK\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\n",
+                result: Some(Ok(Response {
+                    code: 200,
+                    reason: "OK",
+                    headers: &[
+                        httparse::Header {
+                            name: "Content-Length",
+                            value: b"5",
+                        },
+                        httparse::Header {
+                            name: "Connection",
+                            value: b"keep-alive",
+                        },
+                    ],
+                    body_size: BodySize::Known(5),
+                })),
+                ver_min: 0,
+                chunk_left: Some(5),
+                persistent: true,
+                rbuf_position: 62,
+            },
+            Test {
+                name: "1.1-persistent",
+                data: "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n",
                 result: Some(Ok(Response {
                     code: 200,
                     reason: "OK",
                     headers: &[httparse::Header {
-                        name: "Connection",
-                        value: b"keep-alive",
+                        name: "Content-Length",
+                        value: b"5",
                     }],
-                    body_size: BodySize::NoBody,
-                })),
-                ver_min: 0,
-                chunk_left: None,
-                persistent: true,
-                rbuf_position: 43,
-            },
-            Test {
-                name: "1.1-persistent",
-                data: "HTTP/1.1 200 OK\r\n\r\n",
-                result: Some(Ok(Response {
-                    code: 200,
-                    reason: "OK",
-                    headers: &[],
-                    body_size: BodySize::NoBody,
+                    body_size: BodySize::Known(5),
                 })),
                 ver_min: 1,
-                chunk_left: None,
+                chunk_left: Some(5),
                 persistent: true,
-                rbuf_position: 19,
+                rbuf_position: 38,
             },
             Test {
                 name: "1.1-non-persistent",
@@ -4556,7 +4634,7 @@ mod tests {
                         name: "Connection",
                         value: b"close",
                     }],
-                    body_size: BodySize::NoBody,
+                    body_size: BodySize::Unknown,
                 })),
                 ver_min: 1,
                 chunk_left: None,
@@ -4628,9 +4706,11 @@ mod tests {
         struct Test<'buf, 'headers> {
             name: &'static str,
             data: &'buf str,
+            end: bool,
             body_size: BodySize,
             chunk_left: Option<usize>,
             chunk_size: usize,
+            chunked: bool,
             result: Result<(bool, usize, Option<&'headers [httparse::Header<'buf>]>), Error>,
             chunk_left_after: Option<usize>,
             chunk_size_after: usize,
@@ -4640,11 +4720,13 @@ mod tests {
 
         let tests = [
             Test {
-                name: "partial",
+                name: "known-partial",
                 data: "hel",
+                end: false,
                 body_size: BodySize::Known(5),
                 chunk_left: Some(5),
                 chunk_size: 0,
+                chunked: false,
                 result: Ok((false, 3, None)),
                 chunk_left_after: Some(2),
                 chunk_size_after: 0,
@@ -4652,11 +4734,41 @@ mod tests {
                 dest_data: "hel",
             },
             Test {
-                name: "complete",
+                name: "known-complete",
                 data: "hello",
+                end: false,
                 body_size: BodySize::Known(5),
                 chunk_left: Some(5),
                 chunk_size: 0,
+                chunked: false,
+                result: Ok((true, 5, None)),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 5,
+                dest_data: "hello",
+            },
+            Test {
+                name: "unknown-partial",
+                data: "hel",
+                end: false,
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                chunked: false,
+                result: Ok((false, 3, None)),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 3,
+                dest_data: "hel",
+            },
+            Test {
+                name: "unknown-complete",
+                data: "hello",
+                end: true,
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                chunked: false,
                 result: Ok((true, 5, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -4666,9 +4778,11 @@ mod tests {
             Test {
                 name: "chunked-header-partial",
                 data: "5",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((false, 0, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -4678,9 +4792,11 @@ mod tests {
             Test {
                 name: "chunked-header-parse-error",
                 data: "z",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Err(Error::InvalidChunkSize),
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -4690,9 +4806,11 @@ mod tests {
             Test {
                 name: "chunked-too-large",
                 data: "ffffffffff\r\n",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Err(Error::ChunkTooLarge),
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -4702,9 +4820,11 @@ mod tests {
             Test {
                 name: "chunked-header-ok",
                 data: "5\r\n",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((false, 0, None)),
                 chunk_left_after: Some(5),
                 chunk_size_after: 5,
@@ -4714,9 +4834,11 @@ mod tests {
             Test {
                 name: "chunked-content-partial",
                 data: "5\r\nhel",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((false, 3, None)),
                 chunk_left_after: Some(2),
                 chunk_size_after: 5,
@@ -4726,9 +4848,11 @@ mod tests {
             Test {
                 name: "chunked-footer-partial-full-none",
                 data: "5\r\nhello",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((false, 5, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
@@ -4738,9 +4862,11 @@ mod tests {
             Test {
                 name: "chunked-footer-partial-full-r",
                 data: "5\r\nhello\r",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((false, 5, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
@@ -4750,9 +4876,11 @@ mod tests {
             Test {
                 name: "chunked-footer-partial-mid-r",
                 data: "\r",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: Some(0),
                 chunk_size: 5,
+                chunked: true,
                 result: Ok((false, 0, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
@@ -4762,9 +4890,11 @@ mod tests {
             Test {
                 name: "chunked-footer-parse-error",
                 data: "5\r\nhelloXX",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Err(Error::InvalidChunkSuffix),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
@@ -4774,9 +4904,11 @@ mod tests {
             Test {
                 name: "chunked-complete-full",
                 data: "5\r\nhello\r\n",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((false, 5, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -4786,9 +4918,11 @@ mod tests {
             Test {
                 name: "chunked-complete-mid",
                 data: "lo\r\n",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: Some(2),
                 chunk_size: 5,
+                chunked: true,
                 result: Ok((false, 2, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -4798,9 +4932,11 @@ mod tests {
             Test {
                 name: "chunked-complete-end",
                 data: "\r\n",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: Some(0),
                 chunk_size: 5,
+                chunked: true,
                 result: Ok((false, 0, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -4810,9 +4946,11 @@ mod tests {
             Test {
                 name: "chunked-empty",
                 data: "0\r\n\r\n",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((true, 0, Some(&[]))),
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -4822,9 +4960,11 @@ mod tests {
             Test {
                 name: "trailing-headers-partial",
                 data: "0\r\nhelloXX",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((false, 0, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
@@ -4834,9 +4974,11 @@ mod tests {
             Test {
                 name: "trailing-headers-parse-error",
                 data: "0\r\nhelloXX\n",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Err(Error::ParseError(httparse::Error::Token)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
@@ -4846,9 +4988,11 @@ mod tests {
             Test {
                 name: "trailing-headers-complete",
                 data: "0\r\nFoo: Bar\r\n\r\n",
+                end: false,
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
+                chunked: true,
                 result: Ok((
                     true,
                     0,
@@ -4872,7 +5016,7 @@ mod tests {
                     chunk_left: test.chunk_left,
                     chunk_size: test.chunk_size,
                     persistent: false,
-                    chunked: test.body_size == BodySize::Unknown,
+                    chunked: test.chunked,
                     sending_chunk: None,
                 },
             };
@@ -4880,7 +5024,7 @@ mod tests {
             let mut dest = [0; 1024];
             let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
-            let r = resp_body.recv(test.data.as_bytes(), &mut dest, &mut scratch);
+            let r = resp_body.recv(test.data.as_bytes(), &mut dest, test.end, &mut scratch);
 
             let (r, headers) = match r {
                 Ok(RecvStatus::Complete(finished, read, written)) => {
@@ -5038,7 +5182,7 @@ mod tests {
         let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
         let finished = match resp_body
-            .recv(resp.remaining_bytes(), &mut out, &mut scratch)
+            .recv(resp.remaining_bytes(), &mut out, false, &mut scratch)
             .unwrap()
         {
             RecvStatus::Complete(finished, read, written) => {
