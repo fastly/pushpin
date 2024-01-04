@@ -285,7 +285,7 @@ where
 {
     let args: Vec<CString> = args
         .into_iter()
-        .map(|s| CString::new(s.as_ref().as_encoded_bytes()).unwrap())
+        .map(|s| CString::new(s.as_ref().as_bytes()).unwrap())
         .collect();
     let args: Vec<*const libc::c_char> = args.iter().map(|s| s.as_ptr()).collect();
 
@@ -440,7 +440,7 @@ mod tests {
     }
 
     fn mkfifo<P: AsRef<Path>>(path: P) -> Result<(), io::Error> {
-        let path = CString::new(path.as_ref().as_os_str().as_encoded_bytes()).unwrap();
+        let path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
 
         unsafe {
             if libc::mkfifo(path.as_ptr(), 0o600) != 0 {
