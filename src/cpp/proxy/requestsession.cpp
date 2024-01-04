@@ -1166,7 +1166,7 @@ public slots:
 	void doInspectError()
 	{
 		state = WaitingForResponse;
-		emit q->inspectError();
+		q->inspectError();
 	}
 };
 
