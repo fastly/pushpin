@@ -1619,6 +1619,98 @@ impl ClientResponseBody {
     }
 
     pub fn recv<'buf, const N: usize>(
+        self,
+        src: &'buf [u8],
+        dest: &mut [u8],
+        end: bool,
+        scratch: &mut mem::MaybeUninit<[httparse::Header<'buf>; N]>,
+    ) -> Result<RecvStatus<ClientResponseBody, ClientFinished>, Error> {
+        match self.state.body_size {
+            BodySize::Known(_) => self.process_known_size(src, dest, end),
+            BodySize::Unknown => {
+                if self.state.chunked {
+                    self.process_unknown_size_chunked(src, dest, end, scratch)
+                } else {
+                    self.process_unknown_size(src, dest, end)
+                }
+            }
+            BodySize::NoBody => Ok(RecvStatus::Complete(
+                ClientFinished {
+                    headers_range: None,
+                    persistent: self.state.persistent,
+                },
+                0,
+                0,
+            )),
+        }
+    }
+
+    fn process_known_size(
+        mut self,
+        src: &[u8],
+        dest: &mut [u8],
+        end: bool,
+    ) -> Result<RecvStatus<ClientResponseBody, ClientFinished>, Error> {
+        let state = &mut self.state;
+
+        let mut chunk_left = state.chunk_left.unwrap();
+        let read_size = cmp::min(chunk_left, dest.len());
+
+        // src holds body as-is
+        let mut rbuf = io::Cursor::new(src);
+        let size = rbuf.read(&mut dest[..read_size])?;
+
+        chunk_left -= size;
+
+        if chunk_left == 0 {
+            state.chunk_left = None;
+
+            Ok(RecvStatus::Complete(
+                ClientFinished {
+                    headers_range: None,
+                    persistent: state.persistent,
+                },
+                size,
+                size,
+            ))
+        } else {
+            // if the input has ended, and we expected to read more,
+            // and we had room to read more, return error
+            if end && chunk_left > 0 && dest.len() - size > 0 {
+                return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
+            }
+
+            state.chunk_left = Some(chunk_left);
+
+            Ok(RecvStatus::Read(self, size, size))
+        }
+    }
+
+    fn process_unknown_size(
+        self,
+        src: &[u8],
+        dest: &mut [u8],
+        end: bool,
+    ) -> Result<RecvStatus<ClientResponseBody, ClientFinished>, Error> {
+        // src holds body as-is
+        let mut rbuf = io::Cursor::new(src);
+        let size = rbuf.read(dest)?;
+
+        if src.len() - size == 0 && end {
+            Ok(RecvStatus::Complete(
+                ClientFinished {
+                    headers_range: None,
+                    persistent: self.state.persistent,
+                },
+                size,
+                size,
+            ))
+        } else {
+            Ok(RecvStatus::Read(self, size, size))
+        }
+    }
+
+    fn process_unknown_size_chunked<'buf, const N: usize>(
         mut self,
         src: &'buf [u8],
         dest: &mut [u8],
@@ -1627,181 +1719,112 @@ impl ClientResponseBody {
     ) -> Result<RecvStatus<ClientResponseBody, ClientFinished>, Error> {
         let state = &mut self.state;
 
-        match (state.body_size, state.chunked) {
-            (BodySize::Known(_), _) => {
-                let mut chunk_left = state.chunk_left.unwrap();
-                let read_size = cmp::min(chunk_left, dest.len());
+        let mut pos = if state.chunk_left.is_none() {
+            match httparse::parse_chunk_size(src) {
+                Ok(httparse::Status::Complete((pos, size))) => {
+                    let size = match u32::try_from(size) {
+                        Ok(size) => size,
+                        Err(_) => return Err(Error::ChunkTooLarge),
+                    };
 
-                // src holds body as-is
-                let mut rbuf = io::Cursor::new(src);
-                let size = rbuf.read(&mut dest[..read_size])?;
+                    let size = size as usize;
 
-                chunk_left -= size;
+                    state.chunk_left = Some(size);
+                    state.chunk_size = size;
 
-                if chunk_left == 0 {
-                    state.chunk_left = None;
-
-                    Ok(RecvStatus::Complete(
-                        ClientFinished {
-                            headers_range: None,
-                            persistent: state.persistent,
-                        },
-                        size,
-                        size,
-                    ))
-                } else {
-                    // if the input has ended, and we expected to read more,
-                    // and we had room to read more, return error
-                    if end && chunk_left > 0 && dest.len() - size > 0 {
+                    pos
+                }
+                Ok(httparse::Status::Partial) => {
+                    if end {
                         return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
                     }
 
-                    state.chunk_left = Some(chunk_left);
-
-                    Ok(RecvStatus::Read(self, size, size))
+                    return Ok(RecvStatus::Read(self, 0, 0));
+                }
+                Err(_) => {
+                    return Err(Error::InvalidChunkSize);
                 }
             }
-            (BodySize::Unknown, false) => {
-                // src holds body as-is
-                let mut rbuf = io::Cursor::new(src);
-                let size = rbuf.read(dest)?;
+        } else {
+            0
+        };
 
-                if src.len() - size == 0 && end {
-                    Ok(RecvStatus::Complete(
-                        ClientFinished {
-                            headers_range: None,
-                            persistent: state.persistent,
-                        },
-                        size,
-                        size,
-                    ))
-                } else {
-                    Ok(RecvStatus::Read(self, size, size))
-                }
-            }
-            (BodySize::Unknown, true) => {
-                let mut pos = if state.chunk_left.is_none() {
-                    match httparse::parse_chunk_size(src) {
-                        Ok(httparse::Status::Complete((pos, size))) => {
-                            let size = match u32::try_from(size) {
-                                Ok(size) => size,
-                                Err(_) => return Err(Error::ChunkTooLarge),
-                            };
+        let mut chunk_left = state.chunk_left.unwrap();
 
-                            let size = size as usize;
+        let size = if chunk_left > 0 {
+            let read_size = cmp::min(chunk_left, dest.len());
 
-                            state.chunk_left = Some(size);
-                            state.chunk_size = size;
+            let mut rbuf = io::Cursor::new(&src[pos..]);
+            let size = rbuf.read(&mut dest[..read_size])?;
 
-                            pos
-                        }
-                        Ok(httparse::Status::Partial) => {
-                            if end {
-                                return Err(Error::Io(io::Error::from(
-                                    io::ErrorKind::UnexpectedEof,
-                                )));
-                            }
+            pos += size;
+            chunk_left -= size;
 
-                            return Ok(RecvStatus::Read(self, 0, 0));
-                        }
-                        Err(_) => {
-                            return Err(Error::InvalidChunkSize);
-                        }
+            state.chunk_left = Some(chunk_left);
+
+            size
+        } else {
+            0
+        };
+
+        if chunk_left == 0 {
+            let buf = &src[pos..];
+
+            if state.chunk_size == 0 {
+                // trailing headers
+                let scratch = unsafe { scratch.assume_init_mut() };
+                match httparse::parse_headers(buf, scratch) {
+                    Ok(httparse::Status::Complete((x, _))) => {
+                        let headers_start = pos;
+                        let headers_end = pos + x;
+
+                        return Ok(RecvStatus::Complete(
+                            ClientFinished {
+                                headers_range: Some((headers_start, headers_end)),
+                                persistent: state.persistent,
+                            },
+                            headers_end,
+                            size,
+                        ));
                     }
-                } else {
-                    0
-                };
-
-                let mut chunk_left = state.chunk_left.unwrap();
-
-                let size = if chunk_left > 0 {
-                    let read_size = cmp::min(chunk_left, dest.len());
-
-                    let mut rbuf = io::Cursor::new(&src[pos..]);
-                    let size = rbuf.read(&mut dest[..read_size])?;
-
-                    pos += size;
-                    chunk_left -= size;
-
-                    state.chunk_left = Some(chunk_left);
-
-                    size
-                } else {
-                    0
-                };
-
-                if chunk_left == 0 {
-                    let buf = &src[pos..];
-
-                    if state.chunk_size == 0 {
-                        // trailing headers
-                        let scratch = unsafe { scratch.assume_init_mut() };
-                        match httparse::parse_headers(buf, scratch) {
-                            Ok(httparse::Status::Complete((x, _))) => {
-                                let headers_start = pos;
-                                let headers_end = pos + x;
-
-                                return Ok(RecvStatus::Complete(
-                                    ClientFinished {
-                                        headers_range: Some((headers_start, headers_end)),
-                                        persistent: state.persistent,
-                                    },
-                                    headers_end,
-                                    size,
-                                ));
-                            }
-                            Ok(httparse::Status::Partial) => {
-                                if end {
-                                    return Err(Error::Io(io::Error::from(
-                                        io::ErrorKind::UnexpectedEof,
-                                    )));
-                                }
-
-                                return Ok(RecvStatus::Read(self, pos, size));
-                            }
-                            Err(e) => {
-                                return Err(Error::ParseError(e));
-                            }
-                        }
-                    } else {
-                        if buf.len() < 2 {
-                            if end {
-                                return Err(Error::Io(io::Error::from(
-                                    io::ErrorKind::UnexpectedEof,
-                                )));
-                            }
-
-                            return Ok(RecvStatus::Read(self, pos, size));
+                    Ok(httparse::Status::Partial) => {
+                        if end {
+                            return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
                         }
 
-                        if &buf[..2] != b"\r\n" {
-                            return Err(Error::InvalidChunkSuffix);
-                        }
-
-                        pos += 2;
-
-                        state.chunk_left = None;
-                        state.chunk_size = 0;
+                        return Ok(RecvStatus::Read(self, pos, size));
+                    }
+                    Err(e) => {
+                        return Err(Error::ParseError(e));
                     }
                 }
+            } else {
+                if buf.len() < 2 {
+                    if end {
+                        return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
+                    }
 
-                // if the input has ended, and we expected to read more, and
-                // we had room to read more, return error
-                if end && chunk_left > 0 && dest.len() - size > 0 {
-                    return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
+                    return Ok(RecvStatus::Read(self, pos, size));
                 }
 
-                Ok(RecvStatus::Read(self, pos, size))
+                if &buf[..2] != b"\r\n" {
+                    return Err(Error::InvalidChunkSuffix);
+                }
+
+                pos += 2;
+
+                state.chunk_left = None;
+                state.chunk_size = 0;
             }
-            (BodySize::NoBody, _) => Ok(RecvStatus::Complete(
-                ClientFinished {
-                    headers_range: None,
-                    persistent: state.persistent,
-                },
-                0,
-                0,
-            )),
         }
+
+        // if the input has ended, and we expected to read more, and
+        // we had room to read more, return error
+        if end && chunk_left > 0 && dest.len() - size > 0 {
+            return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
+        }
+
+        Ok(RecvStatus::Read(self, pos, size))
     }
 }
 
