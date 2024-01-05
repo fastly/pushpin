@@ -42,7 +42,7 @@ fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let ll = settings
         .log_levels
         .get("")
-        .unwrap_or(settings.log_levels.get("default").unwrap());
+        .unwrap_or_else(|| settings.log_levels.get("default").unwrap());
     let level = match ll {
         0 => LevelFilter::Error,
         1 => LevelFilter::Warn,
