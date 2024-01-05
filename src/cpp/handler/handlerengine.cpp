@@ -2061,7 +2061,6 @@ private:
 		}
 	}
 
-private:
 	void sequencer_itemReady(const PublishItem &item)
 	{
 		QList<HttpSession*> responseSessions;
