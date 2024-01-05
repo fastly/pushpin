@@ -335,15 +335,15 @@ enum Error {
     WebSocket(websocket::Error),
     InvalidWebSocketRequest,
     InvalidWebSocketResponse,
-    CompressionError,
+    Compression,
     BadMessage,
-    HandlerError,
+    Handler,
     HandlerCancel,
     BufferExceeded,
     Unusable,
     BadFrame,
     BadRequest,
-    TlsError,
+    Tls,
     PolicyViolation,
     TooManyRedirects,
     ValueActive,
@@ -361,7 +361,7 @@ impl Error {
             Error::Io(e) if e.kind() == io::ErrorKind::TimedOut => "connection-timeout",
             Error::BadRequest => "bad-request",
             Error::StreamTimeout => "connection-timeout",
-            Error::TlsError => "tls-error",
+            Error::Tls => "tls-error",
             Error::PolicyViolation => "policy-violation",
             Error::TooManyRedirects => "too-many-redirects",
             _ => "undefined-condition",
@@ -2422,7 +2422,7 @@ where
 
             Ok(())
         }
-        zhttppacket::ResponsePacket::Error(_) => Err(Error::HandlerError),
+        zhttppacket::ResponsePacket::Error(_) => Err(Error::Handler),
         zhttppacket::ResponsePacket::Cancel => Err(Error::HandlerCancel),
         _ => Err(Error::BadMessage), // unexpected type
     }
@@ -2447,7 +2447,7 @@ where
 
             Ok(())
         }
-        zhttppacket::RequestPacket::Error(_) => Err(Error::HandlerError),
+        zhttppacket::RequestPacket::Error(_) => Err(Error::Handler),
         zhttppacket::RequestPacket::Cancel => Err(Error::HandlerCancel),
         _ => Err(Error::BadMessage), // unexpected type
     }
@@ -4089,7 +4089,7 @@ where
 
                 if let Some((config, _)) = &ws_config.1 {
                     if write_ws_ext_header_value(config, &mut ws_ext).is_err() {
-                        return Err(Error::CompressionError);
+                        return Err(Error::Compression);
                     }
 
                     headers[headers_len] = http1::Header {
@@ -4285,7 +4285,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 Err(e) => {
                     let handler_caused = matches!(
                         &e,
-                        Error::BadMessage | Error::HandlerError | Error::HandlerCancel
+                        Error::BadMessage | Error::Handler | Error::HandlerCancel
                     );
 
                     if !handler_caused {
@@ -5289,7 +5289,7 @@ async fn client_connect<'a>(
                 Err(e) => {
                     debug!("client-conn {}: tls connect error: {}", log_id, e);
 
-                    return Err(Error::TlsError);
+                    return Err(Error::Tls);
                 }
             };
 
@@ -5312,7 +5312,7 @@ async fn client_connect<'a>(
             if let Err(e) = stream.ensure_handshake().await {
                 debug!("client-conn {}: tls handshake error: {:?}", log_id, e);
 
-                return Err(Error::TlsError);
+                return Err(Error::Tls);
             }
         }
     }
@@ -5891,7 +5891,7 @@ where
                 )
                 .is_err()
                 {
-                    return Err(Error::CompressionError);
+                    return Err(Error::Compression);
                 }
 
                 headers.push(http1::Header {
@@ -6672,7 +6672,7 @@ where
         Err(e) => {
             let handler_caused = matches!(
                 &e,
-                Error::BadMessage | Error::HandlerError | Error::HandlerCancel
+                Error::BadMessage | Error::Handler | Error::HandlerCancel
             );
 
             if !handler_caused {
