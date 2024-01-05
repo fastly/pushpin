@@ -1090,3 +1090,45 @@ pub unsafe fn build_config_destroy(c: *mut BuildConfig) {
     drop(CString::from_raw(c.config_dir));
     drop(CString::from_raw(c.lib_dir));
 }
+
+#[cfg(all(test, target_os = "macos"))]
+#[link(name = "pushpin-cpptest")]
+#[link(name = "pushpin-cpp")]
+#[link(name = "QtCore", kind = "framework")]
+#[link(name = "QtNetwork", kind = "framework")]
+#[link(name = "QtTest", kind = "framework")]
+#[link(name = "c++")]
+extern "C" {
+    pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+}
+
+#[cfg(all(test, not(target_os = "macos")))]
+#[link(name = "pushpin-cpptest")]
+#[link(name = "pushpin-cpp")]
+#[link(name = "Qt5Core")]
+#[link(name = "Qt5Network")]
+#[link(name = "Qt5Test")]
+#[link(name = "stdc++")]
+extern "C" {
+    pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+}

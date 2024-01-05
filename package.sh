@@ -12,9 +12,10 @@ DESTDIR=build/pushpin-$VERSION
 
 mkdir -p $DESTDIR
 
-cp -a .gitignore build.rs Cargo.lock Cargo.toml CHANGELOG.md examples LICENSE postbuild README.md src tools $DESTDIR
+cp -a .gitignore benches build.rs Cargo.lock Cargo.toml CHANGELOG.md examples LICENSE Makefile postbuild SECURITY.md README.md src tools $DESTDIR
 
-sed -i -e "s/^version = .*/version = \"$VERSION\"/g" $DESTDIR/Cargo.toml
+sed -i.orig -e "s/^version = .*/version = \"$VERSION\"/g" $DESTDIR/Cargo.toml
+rm $DESTDIR/Cargo.toml.orig
 
 cd $DESTDIR
 mkdir -p .cargo

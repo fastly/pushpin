@@ -53,12 +53,14 @@ class SafeSocketNotifier : public QObject
 {
 	Q_OBJECT
 public:
+	Connection activatedConnection;
+
 	SafeSocketNotifier(int socket, QSocketNotifier::Type type,
 		QObject *parent = 0) :
 		QObject(parent)
 	{
 		sn = new QSocketNotifier(socket, type, this);
-		connect(sn, SIGNAL(activated(int)), SIGNAL(activated(int)));
+		connect(sn, SIGNAL(activated(int)), SLOT(doActivated()));
 	}
 
 	~SafeSocketNotifier()
@@ -74,11 +76,17 @@ public:
 public slots:
 	void setEnabled(bool enable)       { sn->setEnabled(enable); }
 
-signals:
-	void activated(int socket);
+public:
+	SignalInt activated;
 
 private:
 	QSocketNotifier *sn;
+
+private slots:
+	void doActivated()
+	{
+		activated(sn->socket());
+	}
 };
 
 }
@@ -102,8 +110,10 @@ inline bool is_gui_app()
 class ProcessQuit::Private : public QObject
 {
 	Q_OBJECT
+
 public:
 	ProcessQuit *q;
+	Connection activatedConnection;
 
 	bool done;
 #ifdef Q_OS_WIN
@@ -130,7 +140,7 @@ public:
 		}
 
 		sig_notifier = new SafeSocketNotifier(sig_pipe[0], QSocketNotifier::Read, this);
-		connect(sig_notifier, SIGNAL(activated(int)), SLOT(sig_activated(int)));
+		activatedConnection = sig_notifier->activated.connect(boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
 		unixWatchAdd(SIGINT);
 		unixWatchAdd(SIGHUP);
 		unixWatchAdd(SIGTERM);
@@ -205,14 +215,6 @@ public:
 	}
 #endif
 
-public slots:
-	void ctrl_ready()
-	{
-#ifdef Q_OS_WIN
-		do_emit();
-#endif
-	}
-
 	void sig_activated(int)
 	{
 #ifdef Q_OS_UNIX
@@ -229,6 +231,14 @@ public slots:
 			return;
 		}
 
+		do_emit();
+#endif
+	}
+
+public slots:
+	void ctrl_ready()
+	{
+#ifdef Q_OS_WIN
 		do_emit();
 #endif
 	}

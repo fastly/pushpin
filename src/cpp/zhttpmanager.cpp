@@ -625,7 +625,7 @@ public slots:
 			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
 				server_in_valve->close();
 
-			emit q->socketReady();
+			q->socketReady();
 		}
 		else if(p.uri.scheme() == "https" || p.uri.scheme() == "http")
 		{
@@ -652,7 +652,7 @@ public slots:
 			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
 				server_in_valve->close();
 
-			emit q->requestReady();
+			q->requestReady();
 		}
 		else
 		{

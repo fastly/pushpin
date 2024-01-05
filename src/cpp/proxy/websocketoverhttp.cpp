@@ -69,6 +69,8 @@ class WebSocketOverHttp::DisconnectManager : public QObject
 {
 	Q_OBJECT
 
+	map<WebSocketOverHttp *, Connection> disconnectedConnection;
+
 public:
 	DisconnectManager(QObject *parent = 0) :
 		QObject(parent)
@@ -78,7 +80,7 @@ public:
 	void addSocket(WebSocketOverHttp *sock)
 	{
 		sock->setParent(this);
-		connect(sock, &WebSocketOverHttp::disconnected, this, &DisconnectManager::sock_disconnected);
+		disconnectedConnection[sock] = sock->disconnected.connect(boost::bind(&DisconnectManager::sock_disconnected, this, sock));
 		connect(sock, &WebSocketOverHttp::closed, this, &DisconnectManager::sock_closed);
 		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
 
@@ -93,16 +95,17 @@ public:
 private:
 	void cleanupSocket(WebSocketOverHttp *sock)
 	{
+		disconnectedConnection.erase(sock);
 		delete sock;
 	}
 
-private slots:
-	void sock_disconnected()
+private:
+	void sock_disconnected(WebSocketOverHttp *sock)
 	{
-		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
 		cleanupSocket(sock);
 	}
 
+private slots:
 	void sock_closed()
 	{
 		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
@@ -604,7 +607,7 @@ private:
 	{
 		assert(!req);
 
-		emit q->aboutToSendRequest();
+		q->aboutToSendRequest();
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
@@ -768,7 +771,7 @@ private slots:
 		if(disconnectSent)
 		{
 			cleanup();
-			emit q->disconnected();
+			q->disconnected();
 			return;
 		}
 

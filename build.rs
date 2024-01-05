@@ -73,14 +73,6 @@ fn env_or_default(name: &str, defaults: &HashMap<String, String>) -> String {
     }
 }
 
-fn write_test_config_h(dest: &Path, test_dir: &Path) -> Result<(), Box<dyn Error>> {
-    let mut f = fs::File::create(dest)?;
-
-    writeln!(&mut f, "#define TESTDIR \"{}\"", test_dir.display())?;
-
-    Ok(())
-}
-
 fn write_cpp_conf_pri(
     dest: &Path,
     release: bool,
@@ -258,8 +250,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(out_dir.join(dir))?;
     }
 
-    let cpp_test_work_dir = out_dir.join("test-work");
-
     let mut include_paths = Vec::new();
 
     include_paths.push(out_dir.as_ref());
@@ -267,8 +257,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     if boost_path != Path::new("/usr/include") {
         include_paths.push(boost_path.as_ref());
     }
-
-    write_test_config_h(&out_dir.join("test_config.h"), &cpp_test_work_dir)?;
 
     write_cpp_conf_pri(
         &out_dir.join("conf.pri"),

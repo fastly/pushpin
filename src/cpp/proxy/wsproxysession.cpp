@@ -280,6 +280,7 @@ public:
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
 	Connection keepAliveConneciton;
+	Connection aboutToSendRequestConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -348,7 +349,7 @@ public:
 	{
 		if(keepAliveTimer)
 		{
-			keepAliveTimer->disconnect(this);
+			keepAliveConneciton.disconnect();
 			keepAliveTimer->setParent(0);
 			keepAliveTimer->deleteLater();
 			keepAliveTimer = 0;
@@ -530,7 +531,7 @@ public:
 				if(target.oneEvent)
 					woh->setMaxEventsPerRequest(1);
 
-				connect(woh, &WebSocketOverHttp::aboutToSendRequest, this, &Private::out_aboutToSendRequest);
+				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh));
 				outSock = woh;
 			}
 			else
@@ -1006,10 +1007,8 @@ private slots:
 		}
 	}
 
-	void out_aboutToSendRequest()
+	void out_aboutToSendRequest(WebSocketOverHttp *woh)
 	{
-		WebSocketOverHttp *woh = (WebSocketOverHttp *)sender();
-
 		ProxyUtil::applyGripSig("wsproxysession", q, &requestData.headers, sigIss, sigKey);
 
 		woh->setHeaders(requestData.headers);

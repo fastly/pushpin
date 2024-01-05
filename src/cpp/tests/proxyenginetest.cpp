@@ -40,7 +40,6 @@
 #include "zhttpmanager.h"
 #include "statsmanager.h"
 #include "engine.h"
-#include "test_config.h"
 
 Q_DECLARE_METATYPE(QList<StatsPacket>);
 
@@ -573,7 +572,8 @@ private slots:
 
 		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
 		QDir configDir(rootDir.filePath("src/cpp/tests"));
-		QDir workDir(QDir::current().relativeFilePath(TESTDIR));
+		QDir outDir(qgetenv("OUT_DIR"));
+		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();

@@ -12,7 +12,7 @@ OBJECTS_DIR = $$cpp_build_dir/test-obj
 
 SRC_DIR = $$PWD/..
 QZMQ_DIR = $$SRC_DIR/qzmq
-RUST_DIR = $$SRC_DIR/../rust
+RUST_DIR = $$SRC_DIR/..
 
 include($$cpp_build_dir/conf.pri)
 
@@ -24,7 +24,7 @@ INCLUDEPATH += $$QZMQ_DIR/src
 
 DEFINES += NO_IRISNET
 
-INCLUDEPATH += $$RUST_DIR/include
+INCLUDEPATH += $$RUST_DIR
 
 INCLUDES += \
 	main.h

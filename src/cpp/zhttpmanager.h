@@ -26,6 +26,9 @@
 #include <QObject>
 #include "zhttprequest.h"
 #include "zwebsocket.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class ZhttpRequestPacket;
 class ZhttpResponsePacket;
@@ -70,9 +73,8 @@ public:
 	static int estimateRequestHeaderBytes(const QString &method, const QUrl &uri, const HttpHeaders &headers);
 	static int estimateResponseHeaderBytes(int code, const QByteArray &reason, const HttpHeaders &headers);
 
-signals:
-	void requestReady();
-	void socketReady();
+	Signal requestReady;
+	Signal socketReady;
 
 private:
 	class Private;

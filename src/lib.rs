@@ -58,7 +58,7 @@ pub mod zhttpsocket;
 pub mod zmq;
 
 use std::env;
-use std::ffi::CString;
+use std::ffi::{CString, OsStr};
 use std::future::Future;
 use std::io;
 use std::mem;
@@ -275,67 +275,17 @@ pub fn version() -> &'static str {
 /// # Safety
 ///
 /// * `main_fn` must be safe to call.
-pub unsafe fn call_c_main(
+pub unsafe fn call_c_main<I, S>(
     main_fn: unsafe extern "C" fn(libc::c_int, *const *const libc::c_char) -> libc::c_int,
-) -> u8 {
-    let args: Vec<CString> = env::args_os()
-        .map(|s| CString::new(s.into_string().unwrap()).unwrap())
-        .collect();
-    let args: Vec<*const libc::c_char> = args.iter().map(|s| s.as_ptr()).collect();
-
-    main_fn(args.len() as libc::c_int, args.as_ptr()) as u8
-}
-
-#[cfg(all(test, target_os = "macos"))]
-#[link(name = "pushpin-cpptest")]
-#[link(name = "pushpin-cpp")]
-#[link(name = "QtCore", kind = "framework")]
-#[link(name = "QtNetwork", kind = "framework")]
-#[link(name = "QtTest", kind = "framework")]
-#[link(name = "c++")]
-extern "C" {
-    fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-}
-
-#[cfg(all(test, not(target_os = "macos")))]
-#[link(name = "pushpin-cpptest")]
-#[link(name = "pushpin-cpp")]
-#[link(name = "Qt5Core")]
-#[link(name = "Qt5Network")]
-#[link(name = "Qt5Test")]
-#[link(name = "stdc++")]
-extern "C" {
-    fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-}
-
-/// # Safety
-///
-/// * `main_fn` must be safe to call.
-pub unsafe fn call_qtest_main(
-    main_fn: unsafe extern "C" fn(libc::c_int, *const *const libc::c_char) -> libc::c_int,
-) -> u8 {
-    let args: Vec<CString> = IntoIterator::into_iter(["qtest"])
-        .map(|s| CString::new(s.to_string()).unwrap())
+    args: I,
+) -> u8
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let args: Vec<CString> = args
+        .into_iter()
+        .map(|s| CString::new(s.as_ref().as_bytes()).unwrap())
         .collect();
     let args: Vec<*const libc::c_char> = args.iter().map(|s| s.as_ptr()).collect();
 
@@ -343,25 +293,210 @@ pub unsafe fn call_qtest_main(
 }
 
 #[cfg(test)]
+pub fn test_dir() -> PathBuf {
+    // "cargo test" ensures this is present
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+    out_dir.join("test-work")
+}
+
+#[cfg(test)]
+pub fn ensure_example_config(dest: &Path) {
+    use std::fs;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    INIT.call_once(|| {
+        let src_dir = Path::new("examples").join("config");
+        let dest_dir = dest.join("examples").join("config");
+
+        fs::create_dir_all(&dest_dir).unwrap();
+        fs::copy(src_dir.join("pushpin.conf"), dest_dir.join("pushpin.conf")).unwrap();
+        fs::copy(src_dir.join("routes"), dest_dir.join("routes")).unwrap();
+    });
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::fs::File;
+    use std::io::{BufRead, BufReader, Read};
+    use std::thread;
+
+    fn httpheaders_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::httpheaders_test, args) as u8 }
+    }
+
+    fn jwt_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::jwt_test, args) as u8 }
+    }
+
+    fn routesfile_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::routesfile_test, args) as u8 }
+    }
+
+    fn proxyengine_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::proxyengine_test, args) as u8 }
+    }
+
+    fn jsonpatch_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::jsonpatch_test, args) as u8 }
+    }
+
+    fn instruct_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::instruct_test, args) as u8 }
+    }
+
+    fn idformat_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::idformat_test, args) as u8 }
+    }
+
+    fn publishformat_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::publishformat_test, args) as u8 }
+    }
+
+    fn publishitem_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::publishitem_test, args) as u8 }
+    }
+
+    fn handlerengine_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::handlerengine_test, args) as u8 }
+    }
+
+    fn template_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::template_test, args) as u8 }
+    }
+
+    fn read_and_print_all<R: Read>(r: R) -> Result<(), io::Error> {
+        let r = BufReader::new(r);
+
+        for line in r.lines() {
+            let line = line?;
+
+            println!("{}", line);
+        }
+
+        Ok(())
+    }
+
+    fn run_qtest<F>(test_fn: F, output_file: Option<&Path>) -> bool
+    where
+        F: Fn(&[&OsStr]) -> u8,
+    {
+        let thread = if let Some(f) = output_file {
+            let f = f.to_owned();
+
+            let thread = thread::spawn(move || {
+                // this will block until the other side opens the file for writing
+                let f = File::open(&f).unwrap();
+
+                // forward the output until EOF or error
+                if let Err(e) = read_and_print_all(f) {
+                    eprintln!("failed to read log line: {}", e);
+                }
+            });
+
+            Some(thread)
+        } else {
+            None
+        };
+
+        let mut args = vec![OsStr::new("qtest")];
+
+        let output_arg = if let Some(f) = output_file {
+            let mut arg = OsString::from(f);
+            arg.push(",txt");
+
+            Some(arg)
+        } else {
+            None
+        };
+
+        if let Some(arg) = &output_arg {
+            args.push(OsStr::new("-o"));
+            args.push(arg);
+        }
+
+        let ret = test_fn(&args);
+
+        if let Some(thread) = thread {
+            thread.join().unwrap();
+        }
+
+        ret == 0
+    }
+
+    fn mkfifo<P: AsRef<Path>>(path: P) -> Result<(), io::Error> {
+        let path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+
+        unsafe {
+            if libc::mkfifo(path.as_ptr(), 0o600) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn cpp() {
+        // when cargo runs tests, it normally captures their output. however,
+        // it does not do this by capturing the actual stdout of the process.
+        // instead, it tracks calls made to the print family of functions in
+        // the rust standard library. this means any output that does not go
+        // through those functions, such as the output of our c++ tests, will
+        // not be captured. in order to capture the output of c++ tests, we
+        // use a fifo as an output file, and then any data read from the
+        // other side is passed to rust print functions
+
+        // one caveat of relaying output from the fifo is that it is
+        // asynchronous. if a c++ test crashes and immediately aborts the
+        // program, then it is possible some of its output may not get
+        // relayed. if you are investigating a crash, set OUTPUT_DIRECT=1 to
+        // opt out of the relaying
+        let output_direct = !env::var("OUTPUT_DIRECT").unwrap_or_default().is_empty();
+
+        let output_file = if output_direct {
+            None
+        } else {
+            Some(test_dir().join("output"))
+        };
+
+        let output_file = output_file.as_deref();
+
+        if let Some(f) = output_file {
+            match mkfifo(f) {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {} // ok
+                Err(e) => panic!("{}", e),
+            }
+        }
+
         // NOTE: qt tests cannot be run concurrently within the same process,
         // so we run them serially in a single rust test
-        unsafe {
-            assert_eq!(call_qtest_main(httpheaders_test), 0);
-            assert_eq!(call_qtest_main(jwt_test), 0);
-            assert_eq!(call_qtest_main(routesfile_test), 0);
-            assert_eq!(call_qtest_main(jsonpatch_test), 0);
-            assert_eq!(call_qtest_main(instruct_test), 0);
-            assert_eq!(call_qtest_main(idformat_test), 0);
-            assert_eq!(call_qtest_main(publishformat_test), 0);
-            assert_eq!(call_qtest_main(publishitem_test), 0);
-            assert_eq!(call_qtest_main(template_test), 0);
-            assert_eq!(call_qtest_main(proxyengine_test), 0);
-            assert_eq!(call_qtest_main(handlerengine_test), 0);
-        }
+        assert!(run_qtest(httpheaders_test, output_file));
+        assert!(run_qtest(jwt_test, output_file));
+        assert!(run_qtest(routesfile_test, output_file));
+        assert!(run_qtest(jsonpatch_test, output_file));
+        assert!(run_qtest(instruct_test, output_file));
+        assert!(run_qtest(idformat_test, output_file));
+        assert!(run_qtest(publishformat_test, output_file));
+        assert!(run_qtest(publishitem_test, output_file));
+        assert!(run_qtest(template_test, output_file));
+        assert!(run_qtest(proxyengine_test, output_file));
+        assert!(run_qtest(handlerengine_test, output_file));
     }
 }
