@@ -4951,12 +4951,10 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
             if let Some(inner) = b_inner.take() {
                 let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
-                match inner.resp_body.recv(
-                    Buffer::read_buf(inner.buf1),
-                    dest,
-                    inner.closed,
-                    &mut scratch,
-                )? {
+                let src = Buffer::read_buf(inner.buf1);
+                let end = src.len() == inner.buf1.len() && inner.closed;
+
+                match inner.resp_body.recv(src, dest, end, &mut scratch)? {
                     http1::RecvStatus::Complete(finished, read, written) => {
                         inner.buf1.read_commit(read);
 
