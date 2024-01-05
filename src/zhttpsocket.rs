@@ -941,7 +941,7 @@ impl ServerReqHandles {
         // if there are no valid pipes then hang forever. caller can
         // try again by dropping the future and making a new one
         if !any_valid {
-            let () = std::future::pending().await;
+            std::future::pending::<()>().await;
         }
 
         // there are valid pipes but none are writable. we'll wait
@@ -1116,7 +1116,7 @@ impl ServerStreamHandles {
         // if there are no valid pipes then hang forever. caller can
         // try again by dropping the future and making a new one
         if !at_least_one_writable {
-            let () = std::future::pending().await;
+            std::future::pending::<()>().await;
         }
     }
 

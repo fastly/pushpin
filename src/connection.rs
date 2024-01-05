@@ -994,7 +994,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestStartResponse<'a, R, W> {
             if let Err(e) = recv_nonzero(&mut self.r.stream, self.r.buf1).await {
                 if e.kind() == io::ErrorKind::WriteZero {
                     // if there's no more space, suspend forever
-                    let () = std::future::pending().await;
+                    std::future::pending::<()>().await;
                 }
 
                 return e.into();
@@ -1314,7 +1314,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
             if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
                     // if there's no more space, suspend forever
-                    let () = std::future::pending().await;
+                    std::future::pending::<()>().await;
                 }
 
                 return e.into();
@@ -4769,7 +4769,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
                 if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                     if e.kind() == io::ErrorKind::WriteZero {
                         // if there's no more space, suspend forever
-                        let () = std::future::pending().await;
+                        std::future::pending::<()>().await;
                     }
 
                     return Err(Error::from(e));

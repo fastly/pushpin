@@ -211,7 +211,7 @@ impl TimerWheel {
                 let pending = self.pending[wheel].rotate_right(slot as u32);
 
                 // for higher order wheels, timeouts are one step in the future
-                let offset = if wheel > 0 { 1 } else { 0 };
+                let offset = u64::from(wheel > 0);
 
                 // pending is guaranteed to be non-zero
                 let t = ((pending.trailing_zeros() as u64) + offset) << trunc_bits;
@@ -305,7 +305,7 @@ impl TimerWheel {
 
             // for higher order wheels, schedule 1 slot early. this way, fractional
             //   time remaining can be rescheduled to a lower wheel
-            let offset = if wheel > 0 { 1 } else { 0 };
+            let offset = u64::from(wheel > 0);
 
             // slot is selected by absolute time
             let slot = (((expires >> trunc_bits) - offset) & WHEEL_MASK) as usize;
