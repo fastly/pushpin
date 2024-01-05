@@ -189,7 +189,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             };
 
             fs::canonicalize(qt_host_bins.join("qmake"))
-                .map_err(|_| format!("qmake not found in {}", qt_host_bins.display()).to_string())?
+                .map_err(|_| format!("qmake not found in {}", qt_host_bins.display()))?
         }
     };
 
@@ -214,9 +214,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let libs_dir = PathBuf::from(String::from_utf8(output.stdout)?.trim());
 
-        fs::canonicalize(&libs_dir).map_err(|_| {
-            format!("QT_INSTALL_LIBS dir {} not found", libs_dir.display()).to_string()
-        })?
+        fs::canonicalize(&libs_dir)
+            .map_err(|_| format!("QT_INSTALL_LIBS dir {} not found", libs_dir.display()))?
     };
 
     let default_vars = {
