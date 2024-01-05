@@ -2325,6 +2325,14 @@ private:
 		acceptServer_requestReady();
 	}
 
+	void deferred_finished(const DeferredResult &result, Deferred *w)
+	{
+		Q_UNUSED(result);
+
+		finishedConnection.erase(w);
+		deferreds.remove(w);
+	}
+	
 private slots:
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
 		QVariant data;
@@ -3149,15 +3157,6 @@ private slots:
 		report = ControlRequest::report(proxyControlClient, all, this);
 		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
 		deferreds += report;
-	}
-
-private:
-	void deferred_finished(const DeferredResult &result, Deferred *w)
-	{
-		Q_UNUSED(result);
-
-		finishedConnection.erase(w);
-		deferreds.remove(w);
 	}
 };
 
