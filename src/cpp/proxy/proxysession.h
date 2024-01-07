@@ -68,7 +68,7 @@ public:
 
 	Signal addNotAllowed; // no more sharing, for whatever reason
 	Signal finished;
-    boost::signals2::signal<void(RequestSession*, bool)> requestSessionDestroyed;
+	boost::signals2::signal<void(RequestSession*, bool)> requestSessionDestroyed;
 
 private:
 	class Private;
