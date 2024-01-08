@@ -480,7 +480,7 @@ fn main() {
                 process::exit(1);
             }
         },
-        None => (req_maxconn + stream_maxconn) * 2,
+        None => stream_maxconn * 2,
     };
 
     let connection_blocks_max = matches.get_one::<String>("connection-blocks-max").unwrap();
