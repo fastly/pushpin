@@ -31,10 +31,6 @@ handler_bin.target = $$bin_dir/pushpin-handler
 handler_bin.depends = $$target_dir/pushpin-handler
 handler_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-handler $$bin_dir/pushpin-handler
 
-runner_legacy_bin.target = $$root_dir/pushpin-legacy
-runner_legacy_bin.depends = $$target_dir/pushpin-legacy
-runner_legacy_bin.commands = cp -a $$target_dir/pushpin-legacy $$root_dir/pushpin-legacy
-
 runner_bin.target = $$root_dir/pushpin
 runner_bin.depends = $$target_dir/pushpin
 runner_bin.commands = cp -a $$target_dir/pushpin $$root_dir/pushpin
@@ -48,7 +44,6 @@ QMAKE_EXTRA_TARGETS += \
 	m2adapter_bin \
 	proxy_bin \
 	handler_bin \
-	runner_legacy_bin \
 	runner_bin \
 	publish_bin
 
@@ -57,7 +52,6 @@ PRE_TARGETDEPS += \
 	$$bin_dir/m2adapter \
 	$$bin_dir/pushpin-proxy \
 	$$bin_dir/pushpin-handler \
-	$$root_dir/pushpin-legacy \
 	$$root_dir/pushpin \
 	$$bin_dir/pushpin-publish
 
@@ -79,7 +73,6 @@ unix:!isEmpty(BINDIR) {
 		$$bin_dir/m2adapter \
 		$$bin_dir/pushpin-proxy \
 		$$bin_dir/pushpin-handler \
-		$$root_dir/pushpin-legacy \
 		$$root_dir/pushpin \
 		$$bin_dir/pushpin-publish
 	binfiles.CONFIG += no_check_exist executable
