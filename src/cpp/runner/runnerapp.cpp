@@ -258,6 +258,10 @@ public:
 	bool errored;
 	Connection quitConnection;
 	Connection hupConnection;
+	map<Service*, Connection> startedConnection;
+	map<Service*, Connection> stoppedConnection;
+	map<Service*, Connection> logConnection;
+	map<Service*, Connection> errConnection;
 
 	Private(RunnerApp *_q) :
 		QObject(_q),
@@ -639,10 +643,10 @@ public:
 
 		foreach(Service *s, services)
 		{
-			connect(s, &Service::started, this, &Private::service_started);
-			connect(s, &Service::stopped, this, &Private::service_stopped);
-			connect(s, &Service::logLine, this, &Private::service_logLine);
-			connect(s, &Service::error, this, &Private::service_error);
+			startedConnection[s] = s->started.connect(boost::bind(&Private::service_started, this));
+			stoppedConnection[s] = s->stopped.connect(boost::bind(&Private::service_stopped, this, s));
+			logConnection[s] = s->logLine.connect(boost::bind(&Private::service_logLine, this, boost::placeholders::_1, s));
+			errConnection[s] = s->error.connect(boost::bind(&Private::service_error, this, boost::placeholders::_1, s));
 
 			if(!args.mergeOutput || qobject_cast<Mongrel2Service*>(s))
 				log_info("starting %s", qPrintable(s->name()));
@@ -701,7 +705,6 @@ private:
 		q->quit(errored ? 1 : 0);
 	}
 
-private slots:
 	void service_started()
 	{
 		bool allStarted = true;
@@ -718,9 +721,12 @@ private slots:
 			log_info("started");
 	}
 
-	void service_stopped()
+	void service_stopped(Service *s)
 	{
-		Service *s = (Service *)sender();
+		startedConnection.erase(s);
+		stoppedConnection.erase(s);
+		logConnection.erase(s);
+		errConnection.erase(s);
 
 		services.removeAll(s);
 		delete s;
@@ -728,21 +734,22 @@ private slots:
 		checkStopped();
 	}
 
-	void service_logLine(const QString &line)
+	void service_logLine(const QString &line, Service *s)
 	{
-		Service *s = (Service *)sender();
-
 		QString out = tryInsertPrefix(s->formatLogLine(line), '[' + s->name() + "] ");
 		if(!out.isEmpty()) {
 			log_raw(qPrintable(out));
 		}
 	}
 
-	void service_error(const QString &error)
+	void service_error(const QString &error, Service *s)
 	{
-		Service *s = (Service *)sender();
-
 		log_error("%s: %s", qPrintable(s->name()), qPrintable(error));
+
+		startedConnection.erase(s);
+		stoppedConnection.erase(s);
+		logConnection.erase(s);
+		errConnection.erase(s);
 
 		services.removeAll(s);
 		delete s;
@@ -761,7 +768,6 @@ private slots:
 		}
 	}
 
-private:
 	void reload()
 	{
 		log_info("reloading");

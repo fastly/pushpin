@@ -29,6 +29,7 @@
 
 using Signal = boost::signals2::signal<void()>;
 using SignalStr = boost::signals2::signal<void(const QString&)>;
+using Connection = boost::signals2::scoped_connection;
 
 class Service : public QObject
 {
@@ -53,15 +54,15 @@ public:
 
 	void sendSighup();
 
-protected:
-	void setName(const QString &name);
-	void setStandardOutputFile(const QString &file);
-	void setPidFile(const QString &file);
-
 	Signal started;
 	Signal stopped;
 	SignalStr logLine;
 	SignalStr error;
+
+protected:
+	void setName(const QString &name);
+	void setStandardOutputFile(const QString &file);
+	void setPidFile(const QString &file);
 
 private:
 	class Private;

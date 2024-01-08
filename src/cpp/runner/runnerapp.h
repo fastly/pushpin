@@ -25,7 +25,9 @@
 
 #include <QObject>
 #include <boost/signals2.hpp>
+#include <map>
 
+using std::map;
 using SignalInt = boost::signals2::signal<void(int)>;
 using Connection = boost::signals2::scoped_connection;
 
