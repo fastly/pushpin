@@ -782,7 +782,9 @@ private slots:
 		ProxyItem *i = proxyItemsBySession.value(ps);
 		assert(i);
 
+		addNotAllowedConnection.erase(ps);
 		finishedConnection.erase(ps);
+		reqSessionDestroyedConnection.erase(ps);
 		
 		if(i->shared)
 			proxyItemsByKey.remove(i->key);
