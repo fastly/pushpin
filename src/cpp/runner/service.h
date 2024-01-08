@@ -25,6 +25,10 @@
 
 #include <QObject>
 #include <QStringList>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using SignalStr = boost::signals2::signal<void(const QString&)>;
 
 class Service : public QObject
 {
@@ -54,11 +58,10 @@ protected:
 	void setStandardOutputFile(const QString &file);
 	void setPidFile(const QString &file);
 
-signals:
-	void started();
-	void stopped();
-	void logLine(const QString &line);
-	void error(const QString &message);
+	Signal started;
+	Signal stopped;
+	SignalStr logLine;
+	SignalStr error;
 
 private:
 	class Private;
