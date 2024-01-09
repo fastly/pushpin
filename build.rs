@@ -116,7 +116,7 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
-fn get_boost_path() -> Result<PathBuf, Box<dyn Error>> {
+fn find_boost_include_dir() -> Result<PathBuf, Box<dyn Error>> {
     let possible_paths = vec!["/usr/local/include", "/usr/include"];
     let boost_version = "boost/version.hpp";
 
@@ -204,8 +204,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     check_version("qt", &qt_version, 5, 12)?;
 
-    let boost_path = get_boost_path()?;
-
     let qt_install_libs = {
         let output = Command::new(&qmake_path)
             .args(["-query", "QT_INSTALL_LIBS"])
@@ -216,6 +214,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         fs::canonicalize(&libs_dir)
             .map_err(|_| format!("QT_INSTALL_LIBS dir {} not found", libs_dir.display()))?
+    };
+
+    let boost_include_dir = match env::var("BOOST_INCLUDE_DIR") {
+        Ok(s) => PathBuf::from(s),
+        Err(env::VarError::NotPresent) => find_boost_include_dir()?,
+        Err(env::VarError::NotUnicode(_)) => return Err("BOOST_INCLUDE_DIR not unicode".into()),
     };
 
     let default_vars = {
@@ -253,8 +257,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     include_paths.push(out_dir.as_ref());
 
-    if boost_path != Path::new("/usr/include") {
-        include_paths.push(boost_path.as_ref());
+    if boost_include_dir != Path::new("/usr/include") {
+        include_paths.push(boost_include_dir.as_ref());
     }
 
     write_cpp_conf_pri(
