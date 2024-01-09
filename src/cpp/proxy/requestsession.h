@@ -28,6 +28,7 @@
 #include "domainmap.h"
 #include <boost/signals2.hpp>
 
+using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
 class QHostAddress;
@@ -101,9 +102,10 @@ public:
 
 	int unregisterConnection(); // return unreported time
 
+	Signal inspectError;
+	
 signals:
 	void inspected(const InspectData &idata);
-	void inspectError();
 	void finished();
 	void finishedByAccept();
 	void bytesWritten(int count);

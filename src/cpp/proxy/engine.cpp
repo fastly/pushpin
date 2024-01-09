@@ -116,6 +116,7 @@ public:
 	Connection requestReadyConnection;
 	Connection socketReadyConnection;
 	Connection iRequestReadyConnection;
+	Connection inspectErrorConnection;
 	map<ProxySession*, Connection> addNotAllowedConnection;
 	map<ProxySession*, Connection> finishedConnection;
 	map<ProxySession*, Connection> reqSessionDestroyedConnection;
@@ -591,7 +592,7 @@ public:
 
 		// TODO: use callbacks for performance
 		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
-		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
+		inspectErrorConnection = rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs));
 		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
 		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
 
@@ -710,13 +711,21 @@ private:
 	{
 		tryTakeNext();
 	}
+
 	void intZhttpIn_requestReady()
 	{
 		tryTakeNext();
 	}
+
 	void sockjs_sessionReady()
 	{
 		tryTakeNext();
+	}
+
+	void rs_inspectError(RequestSession *rs)
+	{
+		// default action is to proxy without sharing
+		doProxy(rs);
 	}
 
 private slots:
@@ -729,14 +738,6 @@ private slots:
 		assert(idata.doProxy);
 
 		doProxy(rs, &idata);
-	}
-
-	void rs_inspectError()
-	{
-		RequestSession *rs = (RequestSession *)sender();
-
-		// default action is to proxy without sharing
-		doProxy(rs);
 	}
 
 	void rs_finished()
