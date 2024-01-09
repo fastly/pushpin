@@ -480,7 +480,7 @@ fn main() {
                 process::exit(1);
             }
         },
-        None => (req_maxconn + stream_maxconn) * 2,
+        None => stream_maxconn * 2,
     };
 
     let connection_blocks_max = matches.get_one::<String>("connection-blocks-max").unwrap();
@@ -560,7 +560,7 @@ fn main() {
     let ipc_file_mode = matches
         .get_one::<String>("ipc-file-mode")
         .cloned()
-        .unwrap_or(String::from("0"));
+        .unwrap_or_else(|| String::from("0"));
 
     let ipc_file_mode = match u32::from_str_radix(&ipc_file_mode, 8) {
         Ok(x) => x,

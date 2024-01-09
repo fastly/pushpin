@@ -117,6 +117,9 @@ public:
 	Connection socketReadyConnection;
 	Connection iRequestReadyConnection;
 	Connection inspectErrorConnection;
+	map<ProxySession*, Connection> addNotAllowedConnection;
+	map<ProxySession*, Connection> finishedConnection;
+	map<ProxySession*, Connection> reqSessionDestroyedConnection;
 	
 	Private(Engine *_q) :
 		QObject(_q),
@@ -393,9 +396,9 @@ public:
 
 			ps = new ProxySession(zroutes, accept, logConfig, stats);
 			// TODO: use callbacks for performance
-			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
-			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
-			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
+			addNotAllowedConnection[ps] = ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps));
+			finishedConnection[ps] = ps->finished.connect(boost::bind(&Private::ps_finished, this, ps));
+			reqSessionDestroyedConnection[ps] = ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this, boost::placeholders::_1, boost::placeholders::_2));
 
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -762,10 +765,8 @@ private slots:
 		tryTakeNext();
 	}
 
-	void ps_addNotAllowed()
+	void ps_addNotAllowed(ProxySession *ps)
 	{
-		ProxySession *ps = (ProxySession *)sender();
-
 		ProxyItem *i = proxyItemsBySession.value(ps);
 		assert(i);
 
@@ -777,13 +778,15 @@ private slots:
 		}
 	}
 
-	void ps_finished()
+	void ps_finished(ProxySession *ps)
 	{
-		ProxySession *ps = (ProxySession *)sender();
-
 		ProxyItem *i = proxyItemsBySession.value(ps);
 		assert(i);
 
+		addNotAllowedConnection.erase(ps);
+		finishedConnection.erase(ps);
+		reqSessionDestroyedConnection.erase(ps);
+		
 		if(i->shared)
 			proxyItemsByKey.remove(i->key);
 		proxyItemsBySession.remove(i->ps);

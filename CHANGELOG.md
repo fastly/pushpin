@@ -1,6 +1,17 @@
 Pushpin Changelog
 =================
 
+v. 1.38.0 (2024-01-08)
+
+  * Publish refresh action for triggering WebSocket-over-HTTP requests.
+  * Ability to read signing secrets from files.
+  * Move Condure into Pushpin and name the program pushpin-condure.
+  * Fix crash when writing partial uncompressed WebSocket frame.
+  * Fix WebSocket proxying flow control.
+  * Support receiving non-chunked responses of indefinite length.
+  * Qt 6 compatibility.
+  * Remove configure script. Configure via environment variables instead.
+
 v. 1.37.0 (2023-06-29)
 
   * Ability to use Condure instead of Zurl for outgoing connections.

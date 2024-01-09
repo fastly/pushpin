@@ -388,7 +388,7 @@ impl Settings {
                 .split(',')
                 .map(|s| s.to_string())
                 .collect(),
-            config_file: config_file_path.to_path_buf(),
+            config_file: config_file_path,
             run_dir,
             log_file: args_data.log_file,
             condure_bin: get_service_dir(
