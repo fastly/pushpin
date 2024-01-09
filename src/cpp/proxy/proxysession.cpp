@@ -198,7 +198,7 @@ public:
 		foreach(SessionItem *si, sessionItems)
 		{
 			// emitting a signal here is gross, but this way the engine cleans up the request sessions
-			emit q->requestSessionDestroyed(si->rs, false);
+			q->requestSessionDestroyed(si->rs, false);
 			delete si->rs;
 			delete si;
 		}
@@ -890,7 +890,7 @@ public:
 
 			if(wasAllowed && !addAllowed)
 			{
-				emit q->addNotAllowed();
+				q->addNotAllowed();
 				if(!self)
 					return;
 			}
@@ -921,7 +921,7 @@ public:
 			if(addAllowed)
 			{
 				addAllowed = false;
-				emit q->addNotAllowed();
+				q->addNotAllowed();
 				if(!self)
 					return;
 			}
@@ -1200,7 +1200,7 @@ public slots:
 			logFinished(si);
 
 		QPointer<QObject> self = this;
-		emit q->requestSessionDestroyed(si->rs, false);
+		q->requestSessionDestroyed(si->rs, false);
 		if(!self)
 			return;
 
@@ -1216,7 +1216,7 @@ public slots:
 		if(sessionItems.isEmpty())
 		{
 			log_debug("proxysession: %p finished by passthrough", q);
-			emit q->finished();
+			q->finished();
 		}
 		else if(wasInputRequest)
 		{
@@ -1403,7 +1403,7 @@ public:
 				QPointer<QObject> self = this;
 				foreach(RequestSession *rs, toDestroy)
 				{
-					emit q->requestSessionDestroyed(rs, true);
+					q->requestSessionDestroyed(rs, true);
 					delete rs;
 					if(!self)
 						return;
@@ -1411,7 +1411,7 @@ public:
 
 				log_debug("proxysession: %p finished for accept", q);
 				cleanup();
-				emit q->finished();
+				q->finished();
 			}
 			else
 			{
