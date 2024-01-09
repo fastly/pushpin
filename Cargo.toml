@@ -83,11 +83,6 @@ test = false
 bench = false
 
 [[bin]]
-name = "pushpin-legacy"
-test = false
-bench = false
-
-[[bin]]
 name = "pushpin"
 test = false
 bench = false
