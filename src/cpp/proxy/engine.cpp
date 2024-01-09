@@ -711,7 +711,7 @@ private:
 	{
 		tryTakeNext();
 	}
-	
+
 	void intZhttpIn_requestReady()
 	{
 		tryTakeNext();
