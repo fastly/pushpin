@@ -105,6 +105,9 @@ public:
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
+	Connection cosConnection;
+	Connection cossConnection;
+	Connection sosConnection;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -160,7 +163,7 @@ public:
 		delete client_out_sock;
 
 		client_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
-		connect(client_out_sock, &QZmq::Socket::messagesWritten, this, &Private::client_out_messagesWritten);
+		cosConnection = client_out_sock->messagesWritten.connect(boost::bind(&Private::client_out_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_sock->setHwm(OUT_HWM);
 		client_out_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
@@ -181,7 +184,7 @@ public:
 		delete client_out_stream_sock;
 
 		client_out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
-		connect(client_out_stream_sock, &QZmq::Socket::messagesWritten, this, &Private::client_out_stream_messagesWritten);
+		cossConnection = client_out_stream_sock->messagesWritten.connect(boost::bind(&Private::client_out_stream_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_stream_sock->setWriteQueueEnabled(false);
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
@@ -298,7 +301,7 @@ public:
 		delete server_out_sock;
 
 		server_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
-		connect(server_out_sock, &QZmq::Socket::messagesWritten, this, &Private::server_out_messagesWritten);
+		sosConnection = server_out_sock->messagesWritten.connect(boost::bind(&Private::server_out_messagesWritten, this, boost::placeholders::_1));
 
 		server_out_sock->setWriteQueueEnabled(false);
 		server_out_sock->setHwm(DEFAULT_HWM);
@@ -474,7 +477,6 @@ public:
 		write(type, zresp, zhttpAddress);
 	}
 
-public slots:
 	void client_out_messagesWritten(int count)
 	{
 		Q_UNUSED(count);
@@ -485,6 +487,12 @@ public slots:
 		Q_UNUSED(count);
 	}
 
+	void server_out_messagesWritten(int count)
+	{
+		Q_UNUSED(count);
+	}
+
+public slots:
 	void client_in_readyRead(const QList<QByteArray> &msg)
 	{
 		if(msg.count() != 1)
@@ -782,11 +790,6 @@ public slots:
 
 			log_debug("zhttp/zws server: received message for unknown request id, skipping");
 		}
-	}
-
-	void server_out_messagesWritten(int count)
-	{
-		Q_UNUSED(count);
 	}
 
 	void refresh_timeout()
