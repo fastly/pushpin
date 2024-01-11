@@ -272,6 +272,97 @@ pub fn version() -> &'static str {
     env!("APP_VERSION")
 }
 
+#[macro_export]
+macro_rules! import_cpp {
+    ($($tt:tt)*) => {
+        #[link(name = "pushpin-cpp")]
+        #[cfg_attr(
+            all(target_os = "macos", qt_lib_prefix = "Qt"),
+            link(name = "QtCore", kind = "framework"),
+            link(name = "QtNetwork", kind = "framework")
+        )]
+        #[cfg_attr(
+            all(target_os = "macos", qt_lib_prefix = "Qt6"),
+            link(name = "Qt6Core", kind = "framework"),
+            link(name = "Qt6Network", kind = "framework")
+        )]
+        #[cfg_attr(
+            all(target_os = "macos", qt_lib_prefix = "Qt5"),
+            link(name = "Qt5Core", kind = "framework"),
+            link(name = "Qt5Network", kind = "framework")
+        )]
+        #[cfg_attr(
+            all(not(target_os = "macos"), qt_lib_prefix = "Qt"),
+            link(name = "QtCore", kind = "dylib"),
+            link(name = "QtNetwork", kind = "dylib")
+        )]
+        #[cfg_attr(
+            all(not(target_os = "macos"), qt_lib_prefix = "Qt6"),
+            link(name = "Qt6Core", kind = "dylib"),
+            link(name = "Qt6Network", kind = "dylib")
+        )]
+        #[cfg_attr(
+            all(not(target_os = "macos"), qt_lib_prefix = "Qt5"),
+            link(name = "Qt5Core", kind = "dylib"),
+            link(name = "Qt5Network", kind = "dylib")
+        )]
+        #[cfg_attr(target_os = "macos", link(name = "c++"))]
+        #[cfg_attr(not(target_os = "macos"), link(name = "stdc++"))]
+        extern "C" {
+            $($tt)*
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! import_cpptest {
+    ($($tt:tt)*) => {
+        #[link(name = "pushpin-cpptest")]
+        #[link(name = "pushpin-cpp")]
+        #[cfg_attr(
+            all(target_os = "macos", qt_lib_prefix = "Qt"),
+            link(name = "QtCore", kind = "framework"),
+            link(name = "QtNetwork", kind = "framework"),
+            link(name = "QtTest", kind = "framework")
+        )]
+        #[cfg_attr(
+            all(target_os = "macos", qt_lib_prefix = "Qt6"),
+            link(name = "Qt6Core", kind = "framework"),
+            link(name = "Qt6Network", kind = "framework"),
+            link(name = "Qt6Test", kind = "framework")
+        )]
+        #[cfg_attr(
+            all(target_os = "macos", qt_lib_prefix = "Qt5"),
+            link(name = "Qt5Core", kind = "framework"),
+            link(name = "Qt5Network", kind = "framework"),
+            link(name = "Qt5Test", kind = "framework")
+        )]
+        #[cfg_attr(
+            all(not(target_os = "macos"), qt_lib_prefix = "Qt"),
+            link(name = "QtCore", kind = "dylib"),
+            link(name = "QtNetwork", kind = "dylib"),
+            link(name = "QtTest", kind = "dylib")
+        )]
+        #[cfg_attr(
+            all(not(target_os = "macos"), qt_lib_prefix = "Qt6"),
+            link(name = "Qt6Core", kind = "dylib"),
+            link(name = "Qt6Network", kind = "dylib"),
+            link(name = "Qt6Test", kind = "dylib")
+        )]
+        #[cfg_attr(
+            all(not(target_os = "macos"), qt_lib_prefix = "Qt5"),
+            link(name = "Qt5Core", kind = "dylib"),
+            link(name = "Qt5Network", kind = "dylib"),
+            link(name = "Qt5Test", kind = "dylib")
+        )]
+        #[cfg_attr(target_os = "macos", link(name = "c++"))]
+        #[cfg_attr(not(target_os = "macos"), link(name = "stdc++"))]
+        extern "C" {
+            $($tt)*
+        }
+    };
+}
+
 /// # Safety
 ///
 /// * `main_fn` must be safe to call.

@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::OsStr;
+use std::fmt;
 use std::fs::{self, File};
 use std::io::{BufRead, Write};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::str::FromStr;
 use std::thread;
 use std::{env, io};
 use time::macros::format_description;
@@ -26,27 +29,57 @@ fn get_version() -> String {
     version
 }
 
+#[derive(Clone)]
+struct LibVersion {
+    maj: u16,
+    min: u16,
+    orig: String,
+}
+
+#[derive(Debug)]
+struct ParseVersionError;
+
+impl fmt::Display for ParseVersionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(write!(f, "failed to parse version")?)
+    }
+}
+
+impl Error for ParseVersionError {}
+
+impl FromStr for LibVersion {
+    type Err = ParseVersionError;
+
+    fn from_str(s: &str) -> Result<LibVersion, Self::Err> {
+        let parts: Vec<&str> = s.split('.').collect();
+
+        if parts.len() < 2 {
+            return Err(ParseVersionError);
+        }
+
+        let (maj, min): (u16, u16) = match (parts[0].parse(), parts[1].parse()) {
+            (Ok(maj), Ok(min)) => (maj, min),
+            _ => return Err(ParseVersionError),
+        };
+
+        Ok(LibVersion {
+            maj,
+            min,
+            orig: s.to_string(),
+        })
+    }
+}
+
 fn check_version(
     pkg: &str,
-    found: &str,
+    found: LibVersion,
     expect_maj: u16,
     expect_min: u16,
 ) -> Result<(), Box<dyn Error>> {
-    let parts: Vec<&str> = found.split('.').collect();
-
-    if parts.len() < 2 {
-        return Err(format!("unexpected {} version string: {}", pkg, found).into());
-    }
-
-    let (maj, min): (u16, u16) = match (parts[0].parse(), parts[1].parse()) {
-        (Ok(maj), Ok(min)) => (maj, min),
-        _ => return Err(format!("unexpected {} version string: {}", pkg, found).into()),
-    };
-
-    if maj < expect_maj || (maj == expect_maj && min < expect_min) {
+    if found.maj < expect_maj || (found.maj == expect_maj && found.min < expect_min) {
         return Err(format!(
             "{} version >={}.{} required, found: {}",
-            pkg, expect_maj, expect_min, found
+            pkg, expect_maj, expect_min, found.orig,
         )
         .into());
     }
@@ -116,40 +149,25 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
-fn find_boost_include_dir() -> Result<PathBuf, Box<dyn Error>> {
-    let possible_paths = vec!["/usr/local/include", "/usr/include"];
-    let boost_version = "boost/version.hpp";
+fn check_qmake(qmake_path: &Path) -> Result<LibVersion, Box<dyn Error>> {
+    let version: LibVersion = {
+        let output = Command::new(qmake_path)
+            .args(["-query", "QT_VERSION"])
+            .output()?;
+        assert!(output.status.success());
 
-    for path in possible_paths {
-        let path = PathBuf::from(path);
-        let full_path = path.join(boost_version);
-        if full_path.exists() {
-            let file = File::open(full_path)?;
-            let reader = io::BufReader::new(file);
+        let s = String::from_utf8(output.stdout)?;
+        let s = s.trim();
 
-            for line in reader.lines() {
-                match line {
-                    Ok(x) => {
-                        if x.contains("#define BOOST_LIB_VERSION") {
-                            let parts: Vec<&str> = x.split('"').collect();
-                            if parts.len() >= 2 {
-                                let version = parts[1].replace('_', ".");
-                                check_version("boost", &version, 1, 71)?;
-                            } else {
-                                return Err("Error finding boost package verion".into());
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        return Err("Error finding boost package verion".into());
-                    }
-                };
-            }
-            return Ok(path);
+        match s.parse() {
+            Ok(v) => v,
+            Err(_) => return Err(format!("unexpected qt version string: [{}]", s).into()),
         }
-    }
+    };
 
-    Err("No boost package found".into())
+    check_version("qt", version.clone(), 5, 12)?;
+
+    Ok(version)
 }
 
 fn find_in_path(name: &str) -> Option<PathBuf> {
@@ -167,42 +185,158 @@ fn find_in_path(name: &str) -> Option<PathBuf> {
     None
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    // for qt 6, check for qmake in path. for previous versions, use pkg-config
-    let qmake_path = match find_in_path("qmake") {
-        Some(p) => p,
-        None => {
-            let qt_host_bins = {
-                let pkg = "Qt5Core";
+fn find_qmake() -> Result<(PathBuf, LibVersion), Box<dyn Error>> {
+    let mut errors = Vec::new();
 
-                let host_bins = pkg_config::get_variable(pkg, "host_bins")?;
+    // check for a usable qmake in PATH
 
-                if host_bins.is_empty() {
-                    return Err(format!(
-                        "qmake must be in PATH or pkg-config variable host_bins must exist for {}",
-                        pkg
-                    )
-                    .into());
-                }
+    let names = &["qmake", "qmake6", "qmake5"];
 
-                PathBuf::from(host_bins)
-            };
-
-            fs::canonicalize(qt_host_bins.join("qmake"))
-                .map_err(|_| format!("qmake not found in {}", qt_host_bins.display()))?
+    for name in names {
+        if let Some(p) = find_in_path(name) {
+            match check_qmake(&p) {
+                Ok(version) => return Ok((p, version)),
+                Err(e) => errors.push(format!("skipping {}: {}", p.display(), e)),
+            }
         }
+    }
+
+    if errors.is_empty() {
+        errors.push(format!("none of ({}) found in PATH", names.join(", ")));
+    }
+
+    // check pkg-config
+
+    let pkg = "Qt5Core";
+
+    match pkg_config::get_variable(pkg, "host_bins") {
+        Ok(host_bins) if !host_bins.is_empty() => {
+            let host_bins = PathBuf::from(host_bins);
+
+            match fs::canonicalize(host_bins.join("qmake")) {
+                Ok(p) => match check_qmake(&p) {
+                    Ok(version) => return Ok((p, version)),
+                    Err(e) => errors.push(format!("skipping {}: {}", p.display(), e)),
+                },
+                Err(e) => errors.push(format!("qmake not found in {}: {}", host_bins.display(), e)),
+            }
+        }
+        Ok(_) => errors.push(format!(
+            "pkg-config variable host_bins does not exist for {}",
+            pkg
+        )),
+        Err(e) => errors.push(format!("pkg-config error for {}: {}", pkg, e)),
+    }
+
+    Err(format!("unable to find a usable qmake: {}", errors.join(", ")).into())
+}
+
+fn get_qmake() -> Result<(PathBuf, LibVersion), Box<dyn Error>> {
+    match env::var("QMAKE") {
+        Ok(s) => {
+            let path = PathBuf::from(s);
+            let version = check_qmake(&path)?;
+
+            Ok((path, version))
+        }
+        Err(env::VarError::NotPresent) => find_qmake(),
+        Err(env::VarError::NotUnicode(_)) => Err("QMAKE not unicode".into()),
+    }
+}
+
+fn contains_file_prefix(dir: &Path, prefix: &str) -> Result<bool, io::Error> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+
+        if entry.file_name().as_bytes().starts_with(prefix.as_bytes()) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+fn get_qt_lib_prefix(lib_dir: &Path, version_maj: u16) -> Result<String, Box<dyn Error>> {
+    let prefixes = if cfg!(target_os = "macos") {
+        [format!("Qt{}", version_maj), "Qt".to_string()]
+    } else {
+        [format!("libQt{}", version_maj), "libQt".to_string()]
     };
 
-    let qt_version = {
-        let output = Command::new(&qmake_path)
-            .args(["-query", "QT_VERSION"])
-            .output()?;
-        assert!(output.status.success());
+    for prefix in &prefixes {
+        if contains_file_prefix(lib_dir, prefix)? {
+            return Ok(prefix.strip_prefix("lib").unwrap_or(prefix).to_string());
+        }
+    }
 
-        String::from_utf8(output.stdout)?.trim().to_string()
-    };
+    Err(format!(
+        "no files in {} beginning with any of: {}",
+        lib_dir.display(),
+        prefixes.join(", ")
+    )
+    .into())
+}
 
-    check_version("qt", &qt_version, 5, 12)?;
+fn find_boost_include_dir() -> Result<PathBuf, Box<dyn Error>> {
+    let paths = ["/usr/local/include", "/usr/include"];
+    let version_filename = "boost/version.hpp";
+
+    for path in paths {
+        let path = PathBuf::from(path);
+        let full_path = path.join(version_filename);
+
+        if !full_path.exists() {
+            continue;
+        }
+
+        let file = File::open(&full_path)?;
+        let reader = io::BufReader::new(file);
+
+        let mut version_line = None;
+
+        for line in reader.lines() {
+            match line {
+                Ok(s) if s.contains("#define BOOST_LIB_VERSION") => version_line = Some(s),
+                Ok(_) => continue,
+                Err(e) => {
+                    return Err(format!("failed to read {}: {}", full_path.display(), e).into())
+                }
+            }
+        }
+
+        let version_line = match version_line {
+            Some(s) => s,
+            None => return Err(format!("version line not found in {}", full_path.display()).into()),
+        };
+
+        let parts: Vec<&str> = version_line.split('"').collect();
+
+        if parts.len() < 2 {
+            return Err(format!("failed to parse version line in {}", full_path.display()).into());
+        }
+
+        let version = parts[1].replace('_', ".");
+
+        let version = match version.parse() {
+            Ok(v) => v,
+            Err(_) => return Err(format!("unexpected boost version string: {}", version).into()),
+        };
+
+        check_version("boost", version, 1, 71)?;
+
+        return Ok(path);
+    }
+
+    Err(format!(
+        "{} not found in any of: {}",
+        version_filename,
+        paths.join(", ")
+    )
+    .into())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let (qmake_path, qt_version) = get_qmake()?;
 
     let qt_install_libs = {
         let output = Command::new(&qmake_path)
@@ -215,6 +349,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         fs::canonicalize(&libs_dir)
             .map_err(|_| format!("QT_INSTALL_LIBS dir {} not found", libs_dir.display()))?
     };
+
+    let qt_lib_prefix = get_qt_lib_prefix(&qt_install_libs, qt_version.maj)?;
 
     let boost_include_dir = match env::var("BOOST_INCLUDE_DIR") {
         Ok(s) => PathBuf::from(s),
@@ -320,16 +456,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rustc-env=CONFIG_DIR={}/pushpin", config_dir);
     println!("cargo:rustc-env=LIB_DIR={}/pushpin", lib_dir);
 
+    println!("cargo:rustc-cfg=qt_lib_prefix=\"{}\"", qt_lib_prefix);
+
     println!("cargo:rustc-link-search={}", out_dir.display());
 
-    #[cfg(target_os = "macos")]
-    println!(
-        "cargo:rustc-link-search=framework={}",
-        qt_install_libs.display()
-    );
-
-    #[cfg(not(target_os = "macos"))]
-    println!("cargo:rustc-link-search={}", qt_install_libs.display());
+    if cfg!(target_os = "macos") {
+        println!(
+            "cargo:rustc-link-search=framework={}",
+            qt_install_libs.display()
+        );
+    } else {
+        println!("cargo:rustc-link-search={}", qt_install_libs.display());
+    }
 
     println!("cargo:rerun-if-env-changed=RELEASE");
     println!("cargo:rerun-if-env-changed=PREFIX");
