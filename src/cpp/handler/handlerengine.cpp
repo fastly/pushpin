@@ -1170,8 +1170,7 @@ public:
 		timer_->start(SUBSCRIBED_DELAY);
 	}
 
-signals:
-	void subscribed();
+	Signal subscribed;
 
 private:
 	QString channel_;
@@ -1180,7 +1179,7 @@ private:
 private slots:
 	void timer_timeout()
 	{
-		emit subscribed();
+		subscribed();
 	}
 };
 
@@ -1252,6 +1251,7 @@ public:
 	Connection controlServerConnection;
 	Connection itemReadyConnection;
 	map<Deferred*, Connection> finishedConnection;
+	map<Subscription*, Connection> subscribedConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1642,7 +1642,7 @@ private:
 		if(!cs.subs.contains(channel))
 		{
 			Subscription *sub = new Subscription(channel);
-			connect(sub, &Subscription::subscribed, this, &Private::sub_subscribed);
+			subscribedConnection[sub] = sub->subscribed.connect(boost::bind(&Private::sub_subscribed, this, sub));
 			cs.subs.insert(channel, sub);
 			sub->start();
 
@@ -1660,6 +1660,7 @@ private:
 		{
 			Subscription *sub = cs.subs[channel];
 			cs.subs.remove(channel);
+			subscribedConnection.erase(sub);
 			delete sub;
 
 			sequencer->clearPendingForChannel(channel);
@@ -2333,6 +2334,10 @@ private:
 		deferreds.remove(w);
 	}
 	
+	void sub_subscribed(Subscription *sub)
+	{
+		updateSessions(sub->channel());
+	}
 private slots:
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
 		QVariant data;
@@ -3085,13 +3090,6 @@ private slots:
 		writeWsControlItems(QList<WsControlPacket::Item>() << i);
 
 		removeWsSession(s);
-	}
-
-	void sub_subscribed()
-	{
-		Subscription *sub = (Subscription *)sender();
-
-		updateSessions(sub->channel());
 	}
 
 	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
