@@ -211,7 +211,7 @@ private slots:
 		}
 
 		state = Started;
-		emit q->started();
+		q->started();
 
 		if(terminateAfterStarted)
 			doStop();
@@ -225,7 +225,7 @@ private slots:
 			if(!line.isEmpty() && line[line.length() - 1] == '\n')
 				line.truncate(line.length() - 1);
 
-			emit q->logLine(QString::fromLocal8Bit(line));
+			q->logLine(QString::fromLocal8Bit(line));
 		}
 	}
 
@@ -238,7 +238,7 @@ private slots:
 		{
 			state = Stopped;
 			cleanup();
-			emit q->error("Exited unexpectedly");
+			q->error("Exited unexpectedly");
 			return;
 		}
 
@@ -248,19 +248,19 @@ private slots:
 		if(exitStatus == QProcess::CrashExit)
 		{
 			if(sentKill)
-				emit q->stopped();
+				q->stopped();
 			else
-				emit q->error("Exited uncleanly");
+				q->error("Exited uncleanly");
 			return;
 		}
 
 		if(exitCode != 0)
 		{
-			emit q->error("Unexpected return code: " + QString::number(exitCode));
+			q->error("Unexpected return code: " + QString::number(exitCode));
 			return;
 		}
 
-		emit q->stopped();
+		q->stopped();
 	}
 
 	void proc_errorOccurred(QProcess::ProcessError error)
@@ -271,7 +271,7 @@ private slots:
 			state = Stopped;
 			cleanup();
 
-			emit q->error("Error running: " + program);
+			q->error("Error running: " + program);
 		}
 		else
 		{
