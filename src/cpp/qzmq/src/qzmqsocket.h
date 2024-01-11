@@ -25,6 +25,11 @@
 #define QZMQSOCKET_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using SignalInt = boost::signals2::signal<void(int)>;
+using Connection = boost::signals2::scoped_connection;
 
 namespace QZmq {
 
@@ -98,9 +103,10 @@ public:
 	QList<QByteArray> read();
 	void write(const QList<QByteArray> &message);
 
+	SignalInt messagesWritten;
+
 signals:
 	void readyRead();
-	void messagesWritten(int count);
 
 private:
 	Q_DISABLE_COPY(Socket)

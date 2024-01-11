@@ -597,7 +597,7 @@ public:
 			int count = pendingWritten;
 			pendingWritten = 0;
 
-			emit q->messagesWritten(count);
+			q->messagesWritten(count);
 		}
 	}
 
