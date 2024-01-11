@@ -16,11 +16,16 @@ public:
 	{
 	}
 
+	void sock_messagesWritten(int count)
+	{
+		printf("messages written: %d\n", count);
+	}
+
 public slots:
 	void start()
 	{
 		connect(&sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(&sock, SIGNAL(messagesWritten(int)), SLOT(sock_messagesWritten(int)));
+		sock.messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this, boost::placeholders::_1));
 		sock.connectToAddress("tcp://localhost:5555");
 		QByteArray out = "hello";
 		printf("writing: %s\n", out.data());
@@ -36,11 +41,6 @@ private slots:
 		QList<QByteArray> resp = sock.read();
 		printf("read: %s\n", resp[0].data());
 		emit quit();
-	}
-
-	void sock_messagesWritten(int count)
-	{
-		printf("messages written: %d\n", count);
 	}
 };
 
