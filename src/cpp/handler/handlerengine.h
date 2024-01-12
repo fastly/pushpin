@@ -30,6 +30,7 @@
 #include <map>
 
 using std::map;
+using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
 class HandlerEngine : public QObject
