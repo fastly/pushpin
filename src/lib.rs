@@ -170,7 +170,7 @@ fn get_user_uid(name: &str) -> Result<libc::gid_t, io::Error> {
         if libc::getpwnam_r(
             name.as_ptr(),
             pwd.as_mut_ptr(),
-            buf.as_mut_ptr() as *mut i8,
+            buf.as_mut_ptr() as *mut libc::c_char,
             buf.len(),
             &mut passwd,
         ) != 0
@@ -197,7 +197,7 @@ fn get_group_gid(name: &str) -> Result<libc::gid_t, io::Error> {
         if libc::getgrnam_r(
             name.as_ptr(),
             grp.as_mut_ptr(),
-            buf.as_mut_ptr() as *mut i8,
+            buf.as_mut_ptr() as *mut libc::c_char,
             buf.len(),
             &mut group,
         ) != 0
