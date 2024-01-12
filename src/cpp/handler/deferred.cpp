@@ -42,7 +42,7 @@ void Deferred::setFinished(bool ok, const QVariant &value)
 	result_.success = ok;
 	result_.value = value;
 
-	QMetaObject::invokeMethod(this, "doFinish", Qt::QueuedConnection);
+	QMetaObject::invokeMethod(this, "doFinish", Qt::QueuedConnection); //sima
 }
 
 void Deferred::doFinish()
