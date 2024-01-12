@@ -818,9 +818,8 @@ public:
 		return out;
 	}
 
-signals:
-	void sessionsReady();
-	void retryPacketReady(const RetryRequestPacket &packet);
+	Signal sessionsReady;
+	boost::signals2::signal<void(const RetryRequestPacket&)> retryPacketReady;
 
 private:
 	static HttpRequestData parseRequestData(const QVariantHash &args, const QString &field)
@@ -1170,8 +1169,7 @@ public:
 		timer_->start(SUBSCRIBED_DELAY);
 	}
 
-signals:
-	void subscribed();
+	Signal subscribed;
 
 private:
 	QString channel_;
@@ -1180,7 +1178,7 @@ private:
 private slots:
 	void timer_timeout()
 	{
-		emit subscribed();
+		subscribed();
 	}
 };
 
@@ -1252,6 +1250,9 @@ public:
 	Connection controlServerConnection;
 	Connection itemReadyConnection;
 	map<Deferred*, Connection> finishedConnection;
+	map<Subscription*, Connection> subscribedConnection;
+	map<AcceptWorker*, Connection> retryPacketReadyConnection;
+	map<AcceptWorker*, Connection> sessionsReadyConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1642,7 +1643,7 @@ private:
 		if(!cs.subs.contains(channel))
 		{
 			Subscription *sub = new Subscription(channel);
-			connect(sub, &Subscription::subscribed, this, &Private::sub_subscribed);
+			subscribedConnection[sub] = sub->subscribed.connect(boost::bind(&Private::sub_subscribed, this, sub));
 			cs.subs.insert(channel, sub);
 			sub->start();
 
@@ -1660,6 +1661,7 @@ private:
 		{
 			Subscription *sub = cs.subs[channel];
 			cs.subs.remove(channel);
+			subscribedConnection.erase(sub);
 			delete sub;
 
 			sequencer->clearPendingForChannel(channel);
@@ -1946,8 +1948,8 @@ private:
 
 			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
-			connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
-			connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
+			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
+			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1));
 			acceptWorkers += w;
 
 			w->start();
@@ -2319,6 +2321,8 @@ private:
 		Q_UNUSED(result);
 
 		finishedConnection.erase(w);
+		sessionsReadyConnection.erase(w);
+		retryPacketReadyConnection.erase(w);
 		acceptWorkers.remove(w);
 
 		// try to read again
@@ -2333,6 +2337,34 @@ private:
 		deferreds.remove(w);
 	}
 	
+	void sub_subscribed(Subscription *sub)
+	{
+		updateSessions(sub->channel());
+	}
+
+	void acceptWorker_sessionsReady(AcceptWorker *w)
+	{
+		QList<HttpSession*> sessions = w->takeSessions();
+		foreach(HttpSession *hs, sessions)
+		{
+			// NOTE: for performance reasons we do not call hs->setParent and
+			// instead leave the object unparented
+
+			hs->subscribeCallback().add(Private::hs_subscribe_cb, this);
+			hs->unsubscribeCallback().add(Private::hs_unsubscribe_cb, this);
+			hs->finishedCallback().add(Private::hs_finished_cb, this);
+
+			cs.httpSessions.insert(hs->rid(), hs);
+
+			hs->start();
+		}
+	}
+
+	void acceptWorker_retryPacketReady(const RetryRequestPacket &packet)
+	{
+		writeRetryPacket(packet);
+	}
+
 private slots:
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
 		QVariant data;
@@ -2967,31 +2999,6 @@ private slots:
 		}
 	}
 
-	void acceptWorker_sessionsReady()
-	{
-		AcceptWorker *w = (AcceptWorker *)sender();
-
-		QList<HttpSession*> sessions = w->takeSessions();
-		foreach(HttpSession *hs, sessions)
-		{
-			// NOTE: for performance reasons we do not call hs->setParent and
-			// instead leave the object unparented
-
-			hs->subscribeCallback().add(Private::hs_subscribe_cb, this);
-			hs->unsubscribeCallback().add(Private::hs_unsubscribe_cb, this);
-			hs->finishedCallback().add(Private::hs_finished_cb, this);
-
-			cs.httpSessions.insert(hs->rid(), hs);
-
-			hs->start();
-		}
-	}
-
-	void acceptWorker_retryPacketReady(const RetryRequestPacket &packet)
-	{
-		writeRetryPacket(packet);
-	}
-
 	void hs_subscribe(HttpSession *hs, const QString &channel)
 	{
 		Instruct::HoldMode mode = hs->holdMode();
@@ -3085,13 +3092,6 @@ private slots:
 		writeWsControlItems(QList<WsControlPacket::Item>() << i);
 
 		removeWsSession(s);
-	}
-
-	void sub_subscribed()
-	{
-		Subscription *sub = (Subscription *)sender();
-
-		updateSessions(sub->channel());
 	}
 
 	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
