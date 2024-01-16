@@ -49,14 +49,14 @@ public:
 		QStringList clientOutStreamSpecs;
 		QStringList clientInSpecs;
 		QString inspectSpec;
-		QString acceptSpec;
+		QStringList acceptSpecs;
 		QString retryOutSpec;
 		QString wsControlInSpec;
 		QString wsControlOutSpec;
 		QString statsSpec;
 		QString commandSpec;
 		QString stateSpec;
-		QString proxyStatsSpec;
+		QStringList proxyStatsSpecs;
 		QString proxyCommandSpec;
 		QString pushInSpec;
 		QStringList pushInSubSpecs;

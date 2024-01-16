@@ -1346,20 +1346,20 @@ public:
 			log_info("inspect server: %s", qPrintable(config.inspectSpec));
 		}
 
-		if(!config.acceptSpec.isEmpty())
+		if(!config.acceptSpecs.isEmpty())
 		{
 			acceptServer = new ZrpcManager(this);
 			acceptServer->setBind(false);
 			acceptServer->setIpcFileMode(config.ipcFileMode);
 			acceptReqReadyConnection = acceptServer->requestReady.connect(boost::bind(&Private::acceptServer_requestReady, this));
 
-			if(!acceptServer->setServerSpecs(QStringList() << config.acceptSpec))
+			if(!acceptServer->setServerSpecs(config.acceptSpecs))
 			{
 				// zrpcmanager logs error
 				return false;
 			}
 
-			log_info("accept server: %s", qPrintable(config.acceptSpec));
+			log_info("accept server: %s", qPrintable(config.acceptSpecs.join(", ")));
 		}
 
 		if(!config.stateSpec.isEmpty())
@@ -1530,24 +1530,27 @@ public:
 			}
 		}
 
-		if(!config.proxyStatsSpec.isEmpty())
+		if(!config.proxyStatsSpecs.isEmpty())
 		{
 			proxyStatsSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			proxyStatsSock->setHwm(DEFAULT_HWM);
 			proxyStatsSock->setShutdownWaitTime(0);
 			proxyStatsSock->subscribe("");
 
-			QString errorMessage;
-			if(!ZUtil::setupSocket(proxyStatsSock, config.proxyStatsSpec, false, config.ipcFileMode, &errorMessage))
+			foreach(const QString &spec, config.proxyStatsSpecs)
 			{
-					log_error("%s", qPrintable(errorMessage));
-					return false;
+				QString errorMessage;
+				if(!ZUtil::setupSocket(proxyStatsSock, spec, false, config.ipcFileMode, &errorMessage))
+				{
+						log_error("%s", qPrintable(errorMessage));
+						return false;
+				}
 			}
 
 			proxyStatsValve = new QZmq::Valve(proxyStatsSock, this);
 			connect(proxyStatsValve, &QZmq::Valve::readyRead, this, &Private::proxyStats_readyRead);
 
-			log_info("proxy stats: %s", qPrintable(config.proxyStatsSpec));
+			log_info("proxy stats: %s", qPrintable(config.proxyStatsSpecs.join(", ")));
 		}
 
 		if(!config.proxyCommandSpec.isEmpty())
