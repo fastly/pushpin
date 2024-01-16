@@ -286,7 +286,7 @@ private slots:
 		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in"));
 		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in-stream"));
 		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("server-out"));
-		config.acceptSpec = ("ipc://" + workDir.filePath("accept"));
+		config.acceptSpecs = QStringList() << ("ipc://" + workDir.filePath("accept"));
 		config.pushInSpec = ("ipc://" + workDir.filePath("publish-pull"));
 		config.connectionSubscriptionMax = 20;
 		config.connectionsMax = 20;
