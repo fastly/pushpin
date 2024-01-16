@@ -108,6 +108,7 @@ public:
 	Connection cosConnection;
 	Connection cossConnection;
 	Connection sosConnection;
+	Connection rrConnection;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -234,7 +235,7 @@ public:
 		delete client_in_sock;
 
 		client_req_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
-		connect(client_req_sock, &QZmq::Socket::readyRead, this, &Private::client_req_readyRead);
+		rrConnection = client_req_sock->readyRead.connect(boost::bind(&Private::client_req_readyRead, this));
 
 		client_req_sock->setHwm(OUT_HWM);
 		client_req_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);

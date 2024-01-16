@@ -452,6 +452,7 @@ public:
 	QTimer *refreshTimer;
 	Connection quitConnection;
 	Connection hupConnection;
+	map<QZmq::Socket*, Connection> rrConnection;
 
 	Private(M2AdapterApp *_q) :
 		QObject(_q),
@@ -673,7 +674,7 @@ public:
 			sock->setShutdownWaitTime(0);
 			sock->setHwm(1); // queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
-			connect(sock, &QZmq::Socket::readyRead, this, &Private::m2_control_readyRead);
+			rrConnection[sock] = sock->readyRead.connect(boost::bind(&Private::m2_control_readyRead, this));
 
 			log_info("m2_control connect %s:%s", m2_send_idents[n].data(), qPrintable(spec));
 			sock->connectToAddress(spec);

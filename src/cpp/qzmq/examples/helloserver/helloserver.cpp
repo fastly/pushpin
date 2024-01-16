@@ -19,29 +19,13 @@ private:
 public slots:
 	void start()
 	{
-		connect(&sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		sock.messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this, boost::placeholders::_1));
+		rrConnection = sock.readyRead.connect(boost::bind(&Private::sock_readyRead, this));
+		mwConnection = sock.messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this, boost::placeholders::_1));
 		sock.bind("tcp://*:5555");
 	}
 
 signals:
 	void quit();
-
-private slots:
-	void sock_readyRead()
-	{
-		QZmq::ReqMessage msg = sock.read();
-		if(msg.content().isEmpty())
-		{
-			printf("error: received empty message\n");
-			return;
-		}
-
-		printf("read: %s\n", msg.content()[0].data());
-		QByteArray out = "world";
-		printf("writing: %s\n", out.data());
-		sock.write(msg.createReply(QList<QByteArray>() << out));
-	}
 };
 
 int main(int argc, char **argv)

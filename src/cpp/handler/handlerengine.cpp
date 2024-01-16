@@ -1253,6 +1253,7 @@ public:
 	map<Subscription*, Connection> subscribedConnection;
 	map<AcceptWorker*, Connection> retryPacketReadyConnection;
 	map<AcceptWorker*, Connection> sessionsReadyConnection;
+	map<QZmq::Valve*, Connection> rrConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1435,6 +1436,7 @@ public:
 
 			inSubValve = new QZmq::Valve(inSubSock, this);
 			connect(inSubValve, &QZmq::Valve::readyRead, this, &Private::inSub_readyRead);
+			// rrConnection[inSubValve] = inSubValve->readyRead.connect(boost::bind(&Private::inSub_readyRead, this));
 
 			log_info("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
 		}
@@ -2365,6 +2367,37 @@ private:
 		writeRetryPacket(packet);
 	}
 
+	void inSub_readyRead(const QList<QByteArray> &message)
+	{
+		if(message.count() != 2)
+		{
+			log_warning("IN sub: received message with parts != 2, skipping");
+			return;
+		}
+
+		bool ok;
+		QString errorMessage;
+		QVariant data = parseJsonOrTnetstring(message[1], &ok, &errorMessage);
+		if(!ok) {
+			log_warning("IN sub: %s, skipping", qPrintable(errorMessage));
+			return;
+		}
+
+		QString channel = QString::fromUtf8(message[0]);
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
+
+		PublishItem item = PublishItem::fromVariant(data, channel, &ok, &errorMessage);
+		if(!ok)
+		{
+			log_warning("IN sub: received message with invalid format: %s, skipping", qPrintable(errorMessage));
+			return;
+		}
+
+		handlePublishItem(item);
+	}
+
 private slots:
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
 		QVariant data;
@@ -2440,37 +2473,6 @@ private slots:
 		if(!ok)
 		{
 			log_warning("IN pull: received message with invalid format: %s, skipping", qPrintable(errorMessage));
-			return;
-		}
-
-		handlePublishItem(item);
-	}
-
-	void inSub_readyRead(const QList<QByteArray> &message)
-	{
-		if(message.count() != 2)
-		{
-			log_warning("IN sub: received message with parts != 2, skipping");
-			return;
-		}
-
-		bool ok;
-		QString errorMessage;
-		QVariant data = parseJsonOrTnetstring(message[1], &ok, &errorMessage);
-		if(!ok) {
-			log_warning("IN sub: %s, skipping", qPrintable(errorMessage));
-			return;
-		}
-
-		QString channel = QString::fromUtf8(message[0]);
-
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("IN sub: channel=%s %s", qPrintable(channel), qPrintable(TnetString::variantToString(data, -1)));
-
-		PublishItem item = PublishItem::fromVariant(data, channel, &ok, &errorMessage);
-		if(!ok)
-		{
-			log_warning("IN sub: received message with invalid format: %s, skipping", qPrintable(errorMessage));
 			return;
 		}
 
