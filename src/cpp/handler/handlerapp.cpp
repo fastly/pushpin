@@ -248,14 +248,22 @@ public:
 		QStringList intreq_in_specs = settings.value("handler/proxy_intreq_in_specs").toStringList();
 		trimlist(&intreq_in_specs);
 		QString proxy_inspect_spec = settings.value("handler/proxy_inspect_spec").toString();
+		QStringList proxy_accept_specs = settings.value("handler/proxy_accept_specs").toStringList();
+		trimlist(&proxy_accept_specs);
 		QString proxy_accept_spec = settings.value("handler/proxy_accept_spec").toString();
+		if(!proxy_accept_spec.isEmpty())
+			proxy_accept_specs += proxy_accept_spec;
 		QString proxy_retry_out_spec = settings.value("handler/proxy_retry_out_spec").toString();
 		QString ws_control_in_spec = settings.value("handler/proxy_ws_control_in_spec").toString();
 		QString ws_control_out_spec = settings.value("handler/proxy_ws_control_out_spec").toString();
 		QString stats_spec = settings.value("handler/stats_spec").toString();
 		QString command_spec = settings.value("handler/command_spec").toString();
 		QString state_spec = settings.value("handler/state_spec").toString();
+		QStringList proxy_stats_specs = settings.value("handler/proxy_stats_specs").toStringList();
+		trimlist(&proxy_stats_specs);
 		QString proxy_stats_spec = settings.value("handler/proxy_stats_spec").toString();
+		if(!proxy_stats_spec.isEmpty())
+			proxy_stats_specs += proxy_stats_spec;
 		QString proxy_command_spec = settings.value("handler/proxy_command_spec").toString();
 		QString push_in_spec = settings.value("handler/push_in_spec").toString();
 		QStringList push_in_sub_specs = settings.value("handler/push_in_sub_specs").toStringList();
@@ -294,9 +302,9 @@ public:
 			return;
 		}
 
-		if(proxy_inspect_spec.isEmpty() || proxy_accept_spec.isEmpty() || proxy_retry_out_spec.isEmpty())
+		if(proxy_inspect_spec.isEmpty() || proxy_accept_specs.isEmpty() || proxy_retry_out_spec.isEmpty())
 		{
-			log_error("must set proxy_inspect_spec, proxy_accept_spec, and proxy_retry_out_spec");
+			log_error("must set proxy_inspect_spec, proxy_accept_specs, and proxy_retry_out_spec");
 			q->quit(0);
 			return;
 		}
@@ -318,14 +326,14 @@ public:
 		config.clientOutStreamSpecs = intreq_out_stream_specs;
 		config.clientInSpecs = intreq_in_specs;
 		config.inspectSpec = proxy_inspect_spec;
-		config.acceptSpec = proxy_accept_spec;
+		config.acceptSpecs = proxy_accept_specs;
 		config.retryOutSpec = proxy_retry_out_spec;
 		config.wsControlInSpec = ws_control_in_spec;
 		config.wsControlOutSpec = ws_control_out_spec;
 		config.statsSpec = stats_spec;
 		config.commandSpec = command_spec;
 		config.stateSpec = state_spec;
-		config.proxyStatsSpec = proxy_stats_spec;
+		config.proxyStatsSpecs = proxy_stats_specs;
 		config.proxyCommandSpec = proxy_command_spec;
 		config.pushInSpec = push_in_spec;
 		config.pushInSubSpecs = push_in_sub_specs;
