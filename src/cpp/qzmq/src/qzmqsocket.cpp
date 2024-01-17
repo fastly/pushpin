@@ -587,7 +587,7 @@ public:
 		if(canRead)
 		{
 			QPointer<QObject> self = this;
-			emit q->readyRead();
+			q->readyRead();
 			if(!self)
 				return;
 		}

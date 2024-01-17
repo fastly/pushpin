@@ -452,6 +452,7 @@ public:
 	QTimer *refreshTimer;
 	Connection quitConnection;
 	Connection hupConnection;
+	map<QZmq::Socket*, Connection> rrConnection;
 
 	Private(M2AdapterApp *_q) :
 		QObject(_q),
@@ -673,7 +674,7 @@ public:
 			sock->setShutdownWaitTime(0);
 			sock->setHwm(1); // queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
-			connect(sock, &QZmq::Socket::readyRead, this, &Private::m2_control_readyRead);
+			rrConnection[sock] = sock->readyRead.connect(boost::bind(&Private::m2_control_readyRead, this, sock));
 
 			log_info("m2_control connect %s:%s", m2_send_idents[n].data(), qPrintable(spec));
 			sock->connectToAddress(spec);
@@ -2313,6 +2314,82 @@ public:
 		}
 	}
 
+	void m2_control_readyRead(QZmq::Socket *sock)
+	{
+		int index = -1;
+		for(int n = 0; n < controlPorts.count(); ++n)
+		{
+			if(controlPorts[n].sock == sock)
+			{
+				index = n;
+				break;
+			}
+		}
+
+		assert(index != -1);
+		ControlPort &c = controlPorts[index];
+
+		while(sock->canRead())
+		{
+			QList<QByteArray> message = sock->read();
+
+			if(message.count() != 2)
+			{
+				log_warning("m2: received control response with parts != 2, skipping");
+				continue;
+			}
+
+			QVariant data = TnetString::toVariant(message[1]);
+			if(data.isNull())
+			{
+				log_warning("m2: received control response with invalid format (tnetstring parse failed), skipping");
+				continue;
+			}
+
+			if(c.state != ControlPort::ExpectingResponse)
+			{
+				log_warning("m2: received unexpected control response, skipping");
+				continue;
+			}
+
+			handleControlResponse(index, data);
+
+			bool needControlPort = false;
+			QHashIterator<Rid, M2Connection*> it(m2ConnectionsByRid);
+			while(it.hasNext())
+			{
+				it.next();
+				M2Connection *conn = it.value();
+				if(!conn->outCreditsEnabled)
+					needControlPort = true;
+			}
+
+			if(needControlPort)
+			{
+				c.state = ControlPort::Idle;
+			}
+			else
+			{
+				log_debug("deactivating control port index=%d", index);
+				c.state = ControlPort::Disabled;
+
+				bool allDisabled = true;
+				foreach(const ControlPort &i, controlPorts)
+				{
+					if(i.state != ControlPort::Disabled)
+					{
+						allDisabled = false;
+						break;
+					}
+				}
+				if(allDisabled)
+					statusTimer->stop();
+			}
+
+			c.reqStartTime = -1;
+		}
+	}
+
 private slots:
 	void m2_in_readyRead(const QList<QByteArray> &message)
 	{
@@ -2730,83 +2807,6 @@ private slots:
 					}
 				}
 			}
-		}
-	}
-
-	void m2_control_readyRead()
-	{
-		QZmq::Socket *sock = (QZmq::Socket *)sender();
-		int index = -1;
-		for(int n = 0; n < controlPorts.count(); ++n)
-		{
-			if(controlPorts[n].sock == sock)
-			{
-				index = n;
-				break;
-			}
-		}
-
-		assert(index != -1);
-		ControlPort &c = controlPorts[index];
-
-		while(sock->canRead())
-		{
-			QList<QByteArray> message = sock->read();
-
-			if(message.count() != 2)
-			{
-				log_warning("m2: received control response with parts != 2, skipping");
-				continue;
-			}
-
-			QVariant data = TnetString::toVariant(message[1]);
-			if(data.isNull())
-			{
-				log_warning("m2: received control response with invalid format (tnetstring parse failed), skipping");
-				continue;
-			}
-
-			if(c.state != ControlPort::ExpectingResponse)
-			{
-				log_warning("m2: received unexpected control response, skipping");
-				continue;
-			}
-
-			handleControlResponse(index, data);
-
-			bool needControlPort = false;
-			QHashIterator<Rid, M2Connection*> it(m2ConnectionsByRid);
-			while(it.hasNext())
-			{
-				it.next();
-				M2Connection *conn = it.value();
-				if(!conn->outCreditsEnabled)
-					needControlPort = true;
-			}
-
-			if(needControlPort)
-			{
-				c.state = ControlPort::Idle;
-			}
-			else
-			{
-				log_debug("deactivating control port index=%d", index);
-				c.state = ControlPort::Disabled;
-
-				bool allDisabled = true;
-				foreach(const ControlPort &i, controlPorts)
-				{
-					if(i.state != ControlPort::Disabled)
-					{
-						allDisabled = false;
-						break;
-					}
-				}
-				if(allDisabled)
-					statusTimer->stop();
-			}
-
-			c.reqStartTime = -1;
 		}
 	}
 

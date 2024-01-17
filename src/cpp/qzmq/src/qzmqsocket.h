@@ -102,11 +102,9 @@ public:
 
 	QList<QByteArray> read();
 	void write(const QList<QByteArray> &message);
-
+	
+	Signal readyRead;
 	SignalInt messagesWritten;
-
-signals:
-	void readyRead();
 
 private:
 	Q_DISABLE_COPY(Socket)
