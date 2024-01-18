@@ -555,7 +555,6 @@ private:
 	Engine *engine;
 	Wrapper *wrapper;
 	QList<StatsPacket> trackedPackets;
-	boost::signals2::scoped_connection reportConnection;
 
 private:
 	void reset()
@@ -565,8 +564,9 @@ private:
 		trackedPackets.clear();		
 	}
 
-    void appendTrackedPackets(const QList<StatsPacket>& packets) {
-        trackedPackets.append(packets);
+    void appendTrackedPackets(const QList<StatsPacket>& packets) 
+	{
+		trackedPackets.append(packets);
     }
 
 private slots:
@@ -626,9 +626,9 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -746,7 +746,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -810,7 +810,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -871,7 +871,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -914,7 +914,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -979,7 +979,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -1041,7 +1041,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -1086,7 +1086,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -1130,7 +1130,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -1184,7 +1184,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -1245,7 +1245,7 @@ private slots:
 	{
 		reset();
 
-        reportConnection = engine->statsManager()->reported.connect(
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
@@ -1336,7 +1336,8 @@ private slots:
 	void passthroughWs()
 	{
 		reset();
-        reportConnection = engine->statsManager()->reported.connect(
+
+        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
             boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
         );
 
