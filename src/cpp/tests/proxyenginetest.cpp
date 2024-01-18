@@ -40,7 +40,6 @@
 #include "statsmanager.h"
 #include "engine.h"
 #include <boost/signals2.hpp>
-#include <QDebug>
 
 Q_DECLARE_METATYPE(QList<StatsPacket>);
 
@@ -568,8 +567,6 @@ private:
 
     void appendTrackedPackets(const QList<StatsPacket>& packets) {
         trackedPackets.append(packets);
-		qDebug() << "Cnt of packets:" << packets.size();
-		qDebug() << "Cnt of trackedPackets after append:" << trackedPackets.size();
     }
 
 private slots:
@@ -657,7 +654,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 23); // "GET" + "/path?a=b" + "Host" + "example"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -798,7 +795,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();	
+		StatsPacket p = trackedPackets.takeLast();	
 		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 11); // "hello world"
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -859,7 +856,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 5); // "hello"
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -902,7 +899,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 22); // "GET" + "/path?hold=response"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -946,7 +943,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 20); // "GET" + "/path?hold=stream"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -1008,7 +1005,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 18); // "GET" + "/path?hold=none"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1074,7 +1071,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 31); // "GET" + "/path?hold=stream&large=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 5); // "200" + "OK"
@@ -1118,7 +1115,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 29); // "GET" + "/path?hold=none&large=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 27); // "200" + "OK" + "Content-Type" + "text/plain"
@@ -1172,7 +1169,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 42); // "GET" + "/path2?hold=response&body-instruct=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1233,7 +1230,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 16); // "GET" + "/path" + "GET" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 86); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1325,7 +1322,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 18); // "POST" + "/path" + "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 22); // "hello world" + "hello world"
 		QCOMPARE(p.clientHeaderBytesSent, 86); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1381,7 +1378,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 2);
 
-		StatsPacket p = trackedPackets.takeFirst();
+		StatsPacket p = trackedPackets.takeLast();
 		QCOMPARE(p.clientHeaderBytesReceived, 8); // "GET" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 5);
 		QCOMPARE(p.clientHeaderBytesSent, 22); // "101" + "Switching Protocols"
