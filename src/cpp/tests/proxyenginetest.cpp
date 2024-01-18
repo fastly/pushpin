@@ -560,9 +560,9 @@ private:
 private:
 	void reset()
 	{
-		trackedPackets.clear();
 		wrapper->reset();
 		engine->statsManager()->flushReport(QByteArray());
+		trackedPackets.clear();		
 	}
 
     void appendTrackedPackets(const QList<StatsPacket>& packets) {
@@ -654,7 +654,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 23); // "GET" + "/path?a=b" + "Host" + "example"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -793,9 +793,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();	
+		StatsPacket p = trackedPackets.takeFirst();	
 		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 11); // "hello world"
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -854,9 +854,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 5); // "hello"
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -897,9 +897,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 22); // "GET" + "/path?hold=response"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -941,9 +941,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 20); // "GET" + "/path?hold=stream"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -1003,9 +1003,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 18); // "GET" + "/path?hold=none"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1069,9 +1069,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 31); // "GET" + "/path?hold=stream&large=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 5); // "200" + "OK"
@@ -1113,9 +1113,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 29); // "GET" + "/path?hold=none&large=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 27); // "200" + "OK" + "Content-Type" + "text/plain"
@@ -1167,9 +1167,9 @@ private slots:
 		headerBytes += ZhttpManager::estimateRequestHeaderBytes(req2Data.method, req2Data.uri, req2Data.headers);
 		contentBytes += req2Data.body.size();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 42); // "GET" + "/path2?hold=response&body-instruct=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1228,9 +1228,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 16); // "GET" + "/path" + "GET" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 86); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1320,9 +1320,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 18); // "POST" + "/path" + "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 22); // "hello world" + "hello world"
 		QCOMPARE(p.clientHeaderBytesSent, 86); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1376,9 +1376,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(trackedPackets.size(), 2);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeLast();
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 8); // "GET" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 5);
 		QCOMPARE(p.clientHeaderBytesSent, 22); // "101" + "Switching Protocols"
