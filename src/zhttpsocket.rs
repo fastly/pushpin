@@ -1120,6 +1120,7 @@ impl ServerStreamHandles {
         }
     }
 
+    //test sima
     // non-blocking send. caller should use check_send_any() first
     fn send_any(&self, msg: &arena::Arc<zmq::Message>, from: &[u8], ids: &[Id<'_>]) {
         if self.nodes.is_empty() || ids.is_empty() {
