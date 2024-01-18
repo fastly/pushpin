@@ -109,7 +109,7 @@ public:
 	StatsPacket getConnMaxPacket(const QByteArray &routeId);
 	void setRetrySeq(const QByteArray &routeId, int value);
 
-    boost::signals2::signal<void(const QList<QByteArray>&)> connectionsRefreshed;
+	boost::signals2::signal<void(const QList<QByteArray>&)> connectionsRefreshed;
 	boost::signals2::signal<void(const QString&, const QString&)> unsubscribed;
 	boost::signals2::signal<void(const QList<StatsPacket>&)> reported;
 	boost::signals2::signal<void(const StatsPacket&)> connMax;
