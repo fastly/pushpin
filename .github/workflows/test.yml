@@ -46,10 +46,13 @@ jobs:
       run: cargo fmt --check
       shell: bash
     - name: build
-      run: cargo fetch && make
+      run: RUSTFLAGS="-D warnings" make
       shell: bash
     - name: check
       run: RUSTFLAGS="-D warnings" make check
+      shell: bash
+    - name: cargo bench --no-run
+      run: RUSTFLAGS="-D warnings" cargo bench --no-run
       shell: bash
     - name: clippy
       run: cargo clippy -- -D warnings

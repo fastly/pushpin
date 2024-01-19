@@ -27,6 +27,7 @@
 #include <QObject>
 #include "packet/statspacket.h"
 #include "stats.h"
+#include <boost/signals2.hpp>
 
 class QHostAddress;
 
@@ -108,11 +109,10 @@ public:
 	StatsPacket getConnMaxPacket(const QByteArray &routeId);
 	void setRetrySeq(const QByteArray &routeId, int value);
 
-signals:
-	void connectionsRefreshed(const QList<QByteArray> &ids);
-	void unsubscribed(const QString &mode, const QString &channel);
-	void reported(const QList<StatsPacket> &packet);
-	void connMax(const StatsPacket &packet);
+	boost::signals2::signal<void(const QList<QByteArray>&)> connectionsRefreshed;
+	boost::signals2::signal<void(const QString&, const QString&)> unsubscribed;
+	boost::signals2::signal<void(const QList<StatsPacket>&)> reported;
+	boost::signals2::signal<void(const StatsPacket&)> connMax;
 
 private:
 	class Private;

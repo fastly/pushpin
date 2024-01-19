@@ -120,6 +120,7 @@ public:
 	map<ProxySession*, Connection> addNotAllowedConnection;
 	map<ProxySession*, Connection> finishedConnection;
 	map<ProxySession*, Connection> reqSessionDestroyedConnection;
+	Connection connMaxConnection;
 	
 	Private(Engine *_q) :
 		QObject(_q),
@@ -310,7 +311,7 @@ public:
 		{
 			stats = new StatsManager(config.connectionsMax, 0, this);
 
-			connect(stats, &StatsManager::connMax, this, &Private::stats_connMax);
+			connMaxConnection = stats->connMax.connect(boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
 
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);
@@ -909,6 +910,7 @@ private slots:
 		}
 	}
 
+private:
 	void stats_connMax(const StatsPacket &packet)
 	{
 		if(accept->canWriteImmediately())
@@ -921,7 +923,6 @@ private slots:
 		}
 	}
 
-private:
 	void command_requestReady()
 	{
 		ZrpcRequest *req = command->takeNext();
