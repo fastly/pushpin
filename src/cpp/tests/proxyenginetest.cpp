@@ -746,9 +746,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+            		boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -795,7 +795,7 @@ private slots:
 
 		QCOMPARE(trackedPackets.size(), 1);
 
-		StatsPacket p = trackedPackets.takeFirst();	
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 11); // "hello world"
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -810,9 +810,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -871,9 +871,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -914,9 +914,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -979,9 +979,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -1041,9 +1041,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -1086,9 +1086,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -1130,9 +1130,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -1184,9 +1184,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		wrapper->sharingKey = "test";
 
@@ -1245,9 +1245,9 @@ private slots:
 	{
 		reset();
 
-        boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		wrapper->sharingKey = "test";
 
@@ -1338,8 +1338,8 @@ private slots:
 		reset();
 
 		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
-            boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
-        );
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
