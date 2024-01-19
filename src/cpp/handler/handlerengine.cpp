@@ -1253,6 +1253,9 @@ public:
 	map<Subscription*, Connection> subscribedConnection;
 	map<AcceptWorker*, Connection> retryPacketReadyConnection;
 	map<AcceptWorker*, Connection> sessionsReadyConnection;
+	Connection connectionsRefreshedConnection;
+	Connection unsubscribedConnection;
+	Connection reportedConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1486,9 +1489,9 @@ public:
 		}
 
 		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, this);
-		connect(stats, &StatsManager::connectionsRefreshed, this, &Private::stats_connectionsRefreshed);
-		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
-		connect(stats, &StatsManager::reported, this, &Private::stats_reported);
+		connectionsRefreshedConnection = stats->connectionsRefreshed.connect(boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
+		unsubscribedConnection = stats->unsubscribed.connect(boost::bind(&Private::stats_unsubscribed, this, boost::placeholders::_1, boost::placeholders::_2));
+		reportedConnection = stats->reported.connect(boost::bind(&Private::stats_reported, this, boost::placeholders::_1));
 
 		stats->setConnectionSendEnabled(config.statsConnectionSend);
 		stats->setConnectionTtl(config.statsConnectionTtl);
@@ -2368,6 +2371,71 @@ private:
 		writeRetryPacket(packet);
 	}
 
+	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
+	{
+		if(stateClient)
+		{
+			// find sids of the connections
+			QHash<QString, LastIds> sidLastIds;
+			foreach(const QByteArray &id, ids)
+			{
+				int at = id.indexOf(':');
+				assert(at != -1);
+				ZhttpRequest::Rid rid(id.mid(0, at), id.mid(at + 1));
+
+				HttpSession *hs = cs.httpSessions.value(rid);
+				if(hs && !hs->sid().isEmpty())
+					sidLastIds[hs->sid()] = LastIds();
+			}
+
+			if(!sidLastIds.isEmpty())
+			{
+				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
+				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
+				deferreds += d;
+			}
+		}
+	}
+
+	void stats_unsubscribed(const QString &mode, const QString &channel)
+	{
+		// NOTE: this callback may be invoked while looping over certain structures,
+		//   so be careful what you touch
+
+		Q_UNUSED(mode);
+
+		if(!cs.responseSessionsByChannel.contains(channel) && !cs.streamSessionsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
+			removeSub(channel);
+	}
+
+	void stats_reported(const QList<StatsPacket> &packets)
+	{
+		// only one outstanding report at a time
+		if(report)
+			return;
+
+		// consolidate data
+		StatsPacket all;
+		all.type = StatsPacket::Report;
+		all.connectionsMax = 0;
+		all.connectionsMinutes = 0;
+		all.messagesReceived = 0;
+		all.messagesSent = 0;
+		all.httpResponseMessagesSent = 0;
+		foreach(const StatsPacket &p, packets)
+		{
+			all.connectionsMax += qMax(p.connectionsMax, 0);
+			all.connectionsMinutes += qMax(p.connectionsMinutes, 0);
+			all.messagesReceived += qMax(p.messagesReceived, 0);
+			all.messagesSent += qMax(p.messagesSent, 0);
+			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
+		}
+
+		report = ControlRequest::report(proxyControlClient, all, this);
+		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
+		deferreds += report;
+	}
+
 private slots:
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
 		QVariant data;
@@ -3095,71 +3163,6 @@ private slots:
 		writeWsControlItems(QList<WsControlPacket::Item>() << i);
 
 		removeWsSession(s);
-	}
-
-	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
-	{
-		if(stateClient)
-		{
-			// find sids of the connections
-			QHash<QString, LastIds> sidLastIds;
-			foreach(const QByteArray &id, ids)
-			{
-				int at = id.indexOf(':');
-				assert(at != -1);
-				ZhttpRequest::Rid rid(id.mid(0, at), id.mid(at + 1));
-
-				HttpSession *hs = cs.httpSessions.value(rid);
-				if(hs && !hs->sid().isEmpty())
-					sidLastIds[hs->sid()] = LastIds();
-			}
-
-			if(!sidLastIds.isEmpty())
-			{
-				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
-				deferreds += d;
-			}
-		}
-	}
-
-	void stats_unsubscribed(const QString &mode, const QString &channel)
-	{
-		// NOTE: this callback may be invoked while looping over certain structures,
-		//   so be careful what you touch
-
-		Q_UNUSED(mode);
-
-		if(!cs.responseSessionsByChannel.contains(channel) && !cs.streamSessionsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
-			removeSub(channel);
-	}
-
-	void stats_reported(const QList<StatsPacket> &packets)
-	{
-		// only one outstanding report at a time
-		if(report)
-			return;
-
-		// consolidate data
-		StatsPacket all;
-		all.type = StatsPacket::Report;
-		all.connectionsMax = 0;
-		all.connectionsMinutes = 0;
-		all.messagesReceived = 0;
-		all.messagesSent = 0;
-		all.httpResponseMessagesSent = 0;
-		foreach(const StatsPacket &p, packets)
-		{
-			all.connectionsMax += qMax(p.connectionsMax, 0);
-			all.connectionsMinutes += qMax(p.connectionsMinutes, 0);
-			all.messagesReceived += qMax(p.messagesReceived, 0);
-			all.messagesSent += qMax(p.messagesSent, 0);
-			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
-		}
-
-		report = ControlRequest::report(proxyControlClient, all, this);
-		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
-		deferreds += report;
 	}
 };
 

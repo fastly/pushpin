@@ -992,7 +992,7 @@ public:
 
 	void sendConnectionsMax(const QByteArray &routeId, ConnectionsMax *cm, qint64 now)
 	{
-		emit q->connMax(getConnMaxPacket(routeId, cm, now));
+		q->connMax(getConnMaxPacket(routeId, cm, now));
 	}
 
 	void updateConnectionsMax(const QByteArray &routeId, qint64 now)
@@ -1151,7 +1151,7 @@ public:
 						removeSubscription(s);
 						delete s;
 
-						emit q->unsubscribed(mode, channel);
+						q->unsubscribed(mode, channel);
 					}
 					else
 					{
@@ -1167,7 +1167,7 @@ public:
 		}
 
 		if(!refreshedConnIds.isEmpty())
-			emit q->connectionsRefreshed(refreshedConnIds);
+			q->connectionsRefreshed(refreshedConnIds);
 
 		foreach(const QByteArray &routeId, routesUpdated)
 			updateConnectionsMax(routeId, now);
@@ -1195,7 +1195,7 @@ public:
 		}
 
 		if(!refreshedIds.isEmpty())
-			emit q->connectionsRefreshed(refreshedIds);
+			q->connectionsRefreshed(refreshedIds);
 
 		++currentConnectionInfoRefreshBucket;
 		if(currentConnectionInfoRefreshBucket >= connectionInfoRefreshBuckets.count())
@@ -1396,7 +1396,7 @@ public:
 		if(sock)
 			write(p);
 
-		emit q->reported(QList<StatsPacket>() << p);
+		q->reported(QList<StatsPacket>() << p);
 	}
 
 	StatsPacket getConnMaxPacket(const QByteArray &routeId, ConnectionsMax *cm, qint64 now)
@@ -1499,7 +1499,7 @@ private slots:
 		}
 
 		if(!reportPackets.isEmpty())
-			emit q->reported(reportPackets);
+			q->reported(reportPackets);
 	}
 
 	void refresh_timeout()
@@ -1876,7 +1876,7 @@ void StatsManager::removeSubscription(const QString &mode, const QString &channe
 		d->removeSubscription(s);
 		delete s;
 
-		emit unsubscribed(mode, channel);
+		unsubscribed(mode, channel);
 	}
 }
 

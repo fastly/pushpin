@@ -22,7 +22,6 @@
 
 #include <unistd.h>
 #include <QtTest/QtTest>
-#include <QSignalSpy>
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -40,6 +39,7 @@
 #include "zhttpmanager.h"
 #include "statsmanager.h"
 #include "engine.h"
+#include <boost/signals2.hpp>
 
 Q_DECLARE_METATYPE(QList<StatsPacket>);
 
@@ -554,12 +554,19 @@ class ProxyEngineTest : public QObject
 private:
 	Engine *engine;
 	Wrapper *wrapper;
+	QList<StatsPacket> trackedPackets;
 
 private:
 	void reset()
 	{
 		wrapper->reset();
 		engine->statsManager()->flushReport(QByteArray());
+		trackedPackets.clear();		
+	}
+	
+	void appendTrackedPackets(const QList<StatsPacket>& packets)
+	{
+		trackedPackets.append(packets);
 	}
 
 private slots:
@@ -619,7 +626,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(	
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -643,12 +652,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 23); // "GET" + "/path?a=b" + "Host" + "example"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -740,7 +746,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+            		boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -785,12 +793,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 11); // "hello world"
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -805,7 +810,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -847,12 +854,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 9); // "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 5); // "hello"
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -867,7 +871,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -891,12 +897,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 22); // "GET" + "/path?hold=response"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -911,7 +914,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -936,12 +941,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 20); // "GET" + "/path?hold=stream"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 0);
@@ -977,7 +979,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -999,12 +1003,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 18); // "GET" + "/path?hold=none"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1040,7 +1041,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -1066,12 +1069,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 31); // "GET" + "/path?hold=stream&large=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 5); // "200" + "OK"
@@ -1086,7 +1086,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -1111,12 +1113,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 29); // "GET" + "/path?hold=none&large=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 27); // "200" + "OK" + "Content-Type" + "text/plain"
@@ -1131,7 +1130,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -1166,12 +1167,9 @@ private slots:
 		headerBytes += ZhttpManager::estimateRequestHeaderBytes(req2Data.method, req2Data.uri, req2Data.headers);
 		contentBytes += req2Data.body.size();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 42); // "GET" + "/path2?hold=response&body-instruct=true"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 43); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1186,7 +1184,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		wrapper->sharingKey = "test";
 
@@ -1228,12 +1228,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 16); // "GET" + "/path" + "GET" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 0);
 		QCOMPARE(p.clientHeaderBytesSent, 86); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1248,7 +1245,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		wrapper->sharingKey = "test";
 
@@ -1321,12 +1320,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 18); // "POST" + "/path" + "POST" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 22); // "hello world" + "hello world"
 		QCOMPARE(p.clientHeaderBytesSent, 86); // "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11" + "200" + "OK" + "Content-Type" + "text/plain" + "Content-Length" + "11"
@@ -1341,7 +1337,9 @@ private slots:
 	{
 		reset();
 
-		QSignalSpy spy(engine->statsManager(), SIGNAL(reported(const QList<StatsPacket> &)));
+		boost::signals2::scoped_connection reportConnection = engine->statsManager()->reported.connect(
+			boost::bind(&ProxyEngineTest::appendTrackedPackets, this, boost::placeholders::_1)
+		);
 
 		ZhttpRequestPacket zreq;
 		zreq.from = "test-client";
@@ -1379,12 +1377,9 @@ private slots:
 
 		HttpRequestData reqData = QHashIterator<QByteArray, HttpRequestData>(wrapper->serverReqs).next().value();
 
-		QCOMPARE(spy.count(), 1);
+		QCOMPARE(trackedPackets.size(), 1);
 
-		QList<StatsPacket> packets = qvariant_cast<QList<StatsPacket>>(spy.takeFirst().at(0));
-		QCOMPARE(packets.count(), 1);
-
-		StatsPacket p = packets[0];
+		StatsPacket p = trackedPackets.takeFirst();
 		QCOMPARE(p.clientHeaderBytesReceived, 8); // "GET" + "/path"
 		QCOMPARE(p.clientContentBytesReceived, 5);
 		QCOMPARE(p.clientHeaderBytesSent, 22); // "101" + "Switching Protocols"
