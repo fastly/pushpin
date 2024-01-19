@@ -16,6 +16,21 @@ private:
 		printf("messages written: %d\n", count);
 	}
 
+	void sock_readyRead()
+	{
+		QZmq::ReqMessage msg = sock.read();
+		if(msg.content().isEmpty())
+		{
+			printf("error: received empty message\n");
+			return;
+		}
+
+		printf("read: %s\n", msg.content()[0].data());
+		QByteArray out = "world";
+		printf("writing: %s\n", out.data());
+		sock.write(msg.createReply(QList<QByteArray>() << out));
+	}
+
 public slots:
 	void start()
 	{
