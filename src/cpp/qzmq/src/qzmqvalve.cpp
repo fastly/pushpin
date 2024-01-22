@@ -38,6 +38,7 @@ public:
 	bool isOpen;
 	bool pendingRead;
 	int maxReadsPerEvent;
+	boost::signals2::scoped_connection rrConnection;
 
 	Private(Valve *_q) :
 		QObject(_q),
@@ -52,7 +53,7 @@ public:
 	void setup(QZmq::Socket *_sock)
 	{
 		sock = _sock;
-		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
+		rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
 	}
 
 	void queueRead()
@@ -90,7 +91,6 @@ public:
 		}
 	}
 
-private slots:
 	void sock_readyRead()
 	{
 		if(pendingRead)
@@ -99,6 +99,7 @@ private slots:
 		tryRead();
 	}
 
+private slots:
 	void queuedRead()
 	{
 		pendingRead = false;

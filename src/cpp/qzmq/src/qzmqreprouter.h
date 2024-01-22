@@ -53,10 +53,8 @@ public:
 	ReqMessage read();
 	void write(const ReqMessage &message);
 
+	Signal readyRead;
 	SignalInt messagesWritten;
-
-signals:
-	void readyRead();
 
 private:
 	Q_DISABLE_COPY(RepRouter)

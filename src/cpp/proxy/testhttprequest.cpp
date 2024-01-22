@@ -74,7 +74,7 @@ public slots:
 			responseBody += QByteArray("request too large\n");
 
 			state = Responded;
-			emit q->readyRead();
+			q->readyRead();
 			return;
 		}
 
@@ -131,7 +131,7 @@ public slots:
 		}
 
 		state = Responded;
-		emit q->readyRead();
+		q->readyRead();
 	}
 };
 
