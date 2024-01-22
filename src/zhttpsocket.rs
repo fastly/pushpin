@@ -1599,9 +1599,7 @@ impl ClientSocketManager {
                         trace!("OUT req {}", packet_to_string(&msg));
                     }
 
-                    let h = MultipartHeader::new();
-
-                    req_send = Some(client_req.sock.send_to(h, msg));
+                    req_send = Some(client_req.sock.send_to(MultipartHeader::new(), msg));
                 }
                 // req_send
                 Select9::R3(result) => {
@@ -1640,8 +1638,7 @@ impl ClientSocketManager {
                 }
                 // stream_handles_recv_addr
                 Select9::R7((addr, msg)) => {
-                    let mut h = MultipartHeader::new();
-                    h.push(zmq::Message::from(addr.as_ref()));
+                    let h = vec![zmq::Message::from(addr.as_ref())];
 
                     if log_enabled!(log::Level::Trace) {
                         trace!("OUT stream to {}", packet_to_string(&msg));
