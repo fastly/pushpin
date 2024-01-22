@@ -845,7 +845,7 @@ private slots:
 
 		if(emitReadyRead)
 		{
-			emit q->readyRead();
+			q->readyRead();
 			if(!self)
 				return;
 		}
