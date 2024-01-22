@@ -116,10 +116,10 @@ public:
 	Connection requestReadyConnection;
 	Connection socketReadyConnection;
 	Connection iRequestReadyConnection;
-	Connection inspectErrorConnection;
-	Connection inspectedConnection;
-	Connection finConnection;
-	Connection finishedByAcceptConnection;
+	map<RequestSession*, Connection> inspectErrorConnection;
+	map<RequestSession*, Connection> inspectedConnection;
+	map<RequestSession*, Connection> finConnection;
+	map<RequestSession*, Connection> finishedByAcceptConnection;
 	map<ProxySession*, Connection> addNotAllowedConnection;
 	map<ProxySession*, Connection> finishedConnection;
 	map<ProxySession*, Connection> reqSessionDestroyedConnection;
@@ -595,10 +595,10 @@ public:
 		rs->setAutoShare(autoShare);
 
 		// TODO: use callbacks for performance
-		inspectedConnection = rs->inspected.connect(boost::bind(&Private::rs_inspected, this, boost::placeholders::_1, rs));
-		inspectErrorConnection = rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs));
-		finConnection = rs->finished.connect(boost::bind(&Private::rs_finished, this, rs));
-		finishedByAcceptConnection = rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs));
+		inspectedConnection[rs] = rs->inspected.connect(boost::bind(&Private::rs_inspected, this, boost::placeholders::_1, rs));
+		inspectErrorConnection[rs] = rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs));
+		finConnection[rs] = rs->finished.connect(boost::bind(&Private::rs_finished, this, rs));
+		finishedByAcceptConnection[rs] = rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs));
 
 		requestSessions += rs;
 
@@ -747,6 +747,12 @@ private:
 			logFinished(rs);
 
 		requestSessions.remove(rs);
+
+		inspectErrorConnection.erase(rs);
+		inspectedConnection.erase(rs);
+		finConnection.erase(rs);
+		finishedByAcceptConnection.erase(rs);
+
 		delete rs;
 
 		tryTakeNext();
@@ -757,6 +763,12 @@ private:
 		logFinished(rs, true);
 
 		requestSessions.remove(rs);
+
+		inspectErrorConnection.erase(rs);
+		inspectedConnection.erase(rs);
+		finConnection.erase(rs);
+		finishedByAcceptConnection.erase(rs);
+		
 		delete rs;
 
 		tryTakeNext();

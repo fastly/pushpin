@@ -155,11 +155,12 @@ public:
 	Connection writeBytesChangedConnection;
 	Connection errorConnection;
 	Connection finishedConnection;
-	Connection bytesConnection;
-	Connection errConnection;
-	Connection pausedConneciton;
-	Connection headerConneciton;
-	Connection bodyConnection;
+	map<RequestSession*, Connection> bytesConnection;
+	map<RequestSession*, Connection> errConnection;
+	map<RequestSession*, Connection> pausedConneciton;
+	map<RequestSession*, Connection> headerConneciton;
+	map<RequestSession*, Connection> bodyConnection;
+	map<RequestSession*, Connection> finConnection;
 
 	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager) :
 		QObject(_q),
@@ -244,12 +245,12 @@ public:
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
 
-		bytesConnection = rs->bytesWritten.connect(boost::bind(&Private::rs_bytesWritten, this, boost::placeholders::_1, rs));
-		errConnection = rs->errorResponding.connect(boost::bind(&Private::rs_errorResponding, this, rs));
-		finishedConnection = rs->finished.connect(boost::bind(&Private::rs_finished, this, rs));
-		pausedConneciton = rs->paused.connect(boost::bind(&Private::rs_paused, this, rs));
-		headerConneciton = rs->headerBytesSent.connect(boost::bind(&Private::rs_headerBytesSent, this, boost::placeholders::_1, rs));
-		bodyConnection = rs->bodyBytesSent.connect(boost::bind(&Private::rs_bodyBytesSent, this, boost::placeholders::_1, rs));
+		bytesConnection[rs] = rs->bytesWritten.connect(boost::bind(&Private::rs_bytesWritten, this, boost::placeholders::_1, rs));
+		errConnection[rs] = rs->errorResponding.connect(boost::bind(&Private::rs_errorResponding, this, rs));
+		finConnection[rs] = rs->finished.connect(boost::bind(&Private::rs_finished, this, rs));
+		pausedConneciton[rs] = rs->paused.connect(boost::bind(&Private::rs_paused, this, rs));
+		headerConneciton[rs] = rs->headerBytesSent.connect(boost::bind(&Private::rs_headerBytesSent, this, boost::placeholders::_1, rs));
+		bodyConnection[rs] = rs->bodyBytesSent.connect(boost::bind(&Private::rs_bodyBytesSent, this, boost::placeholders::_1, rs));
 
 		HttpRequestData rsRequestData = rs->requestData();
 
@@ -1209,6 +1210,13 @@ public:
 		ZhttpRequest *req = rs->request();
 		bool wasInputRequest = (req && inRequest && req == inRequest->request());
 
+		bytesConnection.erase(rs);
+		errConnection.erase(rs);
+		pausedConneciton.erase(rs);
+		headerConneciton.erase(rs);
+		bodyConnection.erase(rs);
+		finConnection.erase(rs);
+
 		sessionItemsBySession.remove(rs);
 		sessionItems.remove(si);
 		delete rs;
@@ -1395,7 +1403,14 @@ public:
 
 				QPointer<QObject> self = this;
 				foreach(RequestSession *rs, toDestroy)
-				{
+				{		
+					bytesConnection.erase(rs);
+					errConnection.erase(rs);
+					pausedConneciton.erase(rs);
+					headerConneciton.erase(rs);
+					bodyConnection.erase(rs);
+					finConnection.erase(rs);
+
 					q->requestSessionDestroyed(rs, true);
 					delete rs;
 					if(!self)
