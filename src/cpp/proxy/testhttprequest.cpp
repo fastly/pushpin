@@ -64,6 +64,10 @@ public:
 	}
 
 public slots:
+	void doBytesWritten(int cnt){
+		q->bytesWritten(cnt);
+	}
+
 	void processRequest()
 	{
 		if(!requestBodyFinished)
@@ -215,7 +219,7 @@ void TestHttpRequest::writeBody(const QByteArray &body)
 		{
 			d->requestBody += buf;
 
-			QMetaObject::invokeMethod(this, "bytesWritten", Qt::QueuedConnection, Q_ARG(int, buf.size()));
+			QMetaObject::invokeMethod(this, "doBytesWritten", Qt::QueuedConnection, Q_ARG(int, buf.size()));
 		}
 	}
 }
