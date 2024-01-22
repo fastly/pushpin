@@ -108,6 +108,7 @@ public:
 	Connection cosConnection;
 	Connection cossConnection;
 	Connection sosConnection;
+	Connection rrConnection;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -234,7 +235,7 @@ public:
 		delete client_in_sock;
 
 		client_req_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
-		connect(client_req_sock, &QZmq::Socket::readyRead, this, &Private::client_req_readyRead);
+		rrConnection = client_req_sock->readyRead.connect(boost::bind(&Private::client_req_readyRead, this));
 
 		client_req_sock->setHwm(OUT_HWM);
 		client_req_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
@@ -492,6 +493,67 @@ public:
 		Q_UNUSED(count);
 	}
 
+	void client_req_readyRead()
+	{
+		QPointer<QObject> self = this;
+
+		while(client_req_sock->canRead())
+		{
+			QList<QByteArray> msg = client_req_sock->read();
+			if(msg.count() != 2)
+			{
+				log_warning("zhttp/zws client req: received message with parts != 2, skipping");
+				continue;
+			}
+
+			QByteArray dataRaw = msg[1];
+			if(dataRaw.length() < 1 || dataRaw[0] != 'T')
+			{
+				log_warning("zhttp/zws client req: received message with invalid format (missing type), skipping");
+				continue;
+			}
+
+			QVariant data = TnetString::toVariant(dataRaw.mid(1));
+			if(data.isNull())
+			{
+				log_warning("zhttp/zws client req: received message with invalid format (tnetstring parse failed), skipping");
+				continue;
+			}
+
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client req: IN");
+
+			ZhttpResponsePacket p;
+			if(!p.fromVariant(data))
+			{
+				log_warning("zhttp/zws client req: received message with invalid format (parse failed), skipping");
+				continue;
+			}
+
+			if(p.ids.count() != 1)
+			{
+				log_warning("zhttp/zws client req: received message with multiple ids, skipping");
+				return;
+			}
+
+			const ZhttpResponsePacket::Id &id = p.ids.first();
+
+			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
+			if(req)
+			{
+				req->handle(id.id, id.seq, p);
+				if(!self)
+					return;
+
+				continue;
+			}
+
+			log_debug("zhttp/zws client req: received message for unknown request id");
+
+			// NOTE: we don't respond with a cancel message in req mode
+		}
+	}
+
 public slots:
 	void client_in_readyRead(const QList<QByteArray> &msg)
 	{
@@ -667,67 +729,6 @@ public slots:
 			log_debug("zhttp/zws server: rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
 			tryRespondCancel(UnknownSession, id.id, p);
 			return;
-		}
-	}
-
-	void client_req_readyRead()
-	{
-		QPointer<QObject> self = this;
-
-		while(client_req_sock->canRead())
-		{
-			QList<QByteArray> msg = client_req_sock->read();
-			if(msg.count() != 2)
-			{
-				log_warning("zhttp/zws client req: received message with parts != 2, skipping");
-				continue;
-			}
-
-			QByteArray dataRaw = msg[1];
-			if(dataRaw.length() < 1 || dataRaw[0] != 'T')
-			{
-				log_warning("zhttp/zws client req: received message with invalid format (missing type), skipping");
-				continue;
-			}
-
-			QVariant data = TnetString::toVariant(dataRaw.mid(1));
-			if(data.isNull())
-			{
-				log_warning("zhttp/zws client req: received message with invalid format (tnetstring parse failed), skipping");
-				continue;
-			}
-
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client req: IN");
-
-			ZhttpResponsePacket p;
-			if(!p.fromVariant(data))
-			{
-				log_warning("zhttp/zws client req: received message with invalid format (parse failed), skipping");
-				continue;
-			}
-
-			if(p.ids.count() != 1)
-			{
-				log_warning("zhttp/zws client req: received message with multiple ids, skipping");
-				return;
-			}
-
-			const ZhttpResponsePacket::Id &id = p.ids.first();
-
-			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
-			if(req)
-			{
-				req->handle(id.id, id.seq, p);
-				if(!self)
-					return;
-
-				continue;
-			}
-
-			log_debug("zhttp/zws client req: received message for unknown request id");
-
-			// NOTE: we don't respond with a cancel message in req mode
 		}
 	}
 
