@@ -71,6 +71,7 @@ public:
 	QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
+	Connection inValveConnection;
 
 	Private(WsControlManager *_q) :
 		QObject(_q),
@@ -111,7 +112,7 @@ public:
 		}
 
 		inValve = new QZmq::Valve(inSock, this);
-		connect(inValve, &QZmq::Valve::readyRead, this, &Private::in_readyRead);
+		inValveConnection = inValve->readyRead.connect(boost::bind(&Private::in_readyRead, this, boost::placeholders::_1));
 
 		inValve->open();
 
@@ -219,7 +220,7 @@ public:
 			refreshTimer->stop();
 	}
 
-private slots:
+private:
 	void in_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)
@@ -273,6 +274,7 @@ private slots:
 		}
 	}
 
+private slots:
 	void refresh_timeout()
 	{
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
