@@ -109,6 +109,9 @@ public:
 	Connection cossConnection;
 	Connection sosConnection;
 	Connection rrConnection;
+	Connection clientConnection;
+	Connection serverConnection;
+	Connection serverStreamConnection;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -221,7 +224,7 @@ public:
 		}
 
 		client_in_valve = new QZmq::Valve(client_in_sock, this);
-		connect(client_in_valve, &QZmq::Valve::readyRead, this, &Private::client_in_readyRead);
+		clientConnection = client_in_valve->readyRead.connect(boost::bind(&Private::client_in_readyRead, this, boost::placeholders::_1));
 
 		client_in_valve->open();
 
@@ -266,7 +269,7 @@ public:
 		}
 
 		server_in_valve = new QZmq::Valve(server_in_sock, this);
-		connect(server_in_valve, &QZmq::Valve::readyRead, this, &Private::server_in_readyRead);
+		serverConnection = server_in_valve->readyRead.connect(boost::bind(&Private::server_in_readyRead, this, boost::placeholders::_1));
 
 		server_in_valve->open();
 
@@ -290,7 +293,7 @@ public:
 		}
 
 		server_in_stream_valve = new QZmq::Valve(server_in_stream_sock, this);
-		connect(server_in_stream_valve, &QZmq::Valve::readyRead, this, &Private::server_in_stream_readyRead);
+		serverStreamConnection = server_in_stream_valve->readyRead.connect(boost::bind(&Private::server_in_stream_readyRead, this, boost::placeholders::_1));
 
 		server_in_stream_valve->open();
 
@@ -554,7 +557,6 @@ public:
 		}
 	}
 
-public slots:
 	void client_in_readyRead(const QList<QByteArray> &msg)
 	{
 		if(msg.count() != 1)
@@ -793,6 +795,7 @@ public slots:
 		}
 	}
 
+public slots:
 	void refresh_timeout()
 	{
 		QHash<QByteArray, QList<KeepAliveRegistration*> > clientSessionsBySender[2]; // index corresponds to type
