@@ -67,6 +67,8 @@ public:
 	QZmq::Valve *serverValve;
 	QHash<QByteArray, ZrpcRequest*> clientReqsById;
 	QList<PendingItem> pending;
+	Connection clientValveConnection;
+	Connection serverValveConnection;
 
 	Private(ZrpcManager *_q) :
 		QObject(_q),
@@ -104,7 +106,7 @@ public:
 		}
 
 		clientValve = new QZmq::Valve(clientSock, this);
-		connect(clientValve, &QZmq::Valve::readyRead, this, &Private::client_readyRead);
+		clientValveConnection = clientValve->readyRead.connect(boost::bind(&Private::client_readyRead, this, boost::placeholders::_1));
 
 		clientValve->open();
 
@@ -129,7 +131,7 @@ public:
 		}
 
 		serverValve = new QZmq::Valve(serverSock, this);
-		connect(serverValve, &QZmq::Valve::readyRead, this, &Private::server_readyRead);
+		serverValveConnection = serverValve->readyRead.connect(boost::bind(&Private::server_readyRead, this, boost::placeholders::_1));
 
 		serverValve->open();
 
@@ -166,7 +168,6 @@ public:
 		serverSock->write(message);
 	}
 
-private slots:
 	void client_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 2)

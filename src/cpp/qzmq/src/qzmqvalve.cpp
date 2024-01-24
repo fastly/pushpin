@@ -82,7 +82,7 @@ public:
 
 			if(!msg.isEmpty())
 			{
-				emit q->readyRead(msg);
+				q->readyRead(msg);
 				if(!self)
 					return;
 			}

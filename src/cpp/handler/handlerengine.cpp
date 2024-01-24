@@ -1256,6 +1256,10 @@ public:
 	Connection connectionsRefreshedConnection;
 	Connection unsubscribedConnection;
 	Connection reportedConnection;
+	Connection pullConnection;
+	Connection controlValveConnection;
+	Connection inSubValveConnection;
+	Connection proxyStatConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1410,7 +1414,7 @@ public:
 			}
 
 			inPullValve = new QZmq::Valve(inPullSock, this);
-			connect(inPullValve, &QZmq::Valve::readyRead, this, &Private::inPull_readyRead);
+			pullConnection = inPullValve->readyRead.connect(boost::bind(&Private::inPull_readyRead, this, boost::placeholders::_1));
 
 			log_info("in pull: %s", qPrintable(config.pushInSpec));
 		}
@@ -1437,7 +1441,7 @@ public:
 			}
 
 			inSubValve = new QZmq::Valve(inSubSock, this);
-			connect(inSubValve, &QZmq::Valve::readyRead, this, &Private::inSub_readyRead);
+			inSubValveConnection = inSubValve->readyRead.connect(boost::bind(&Private::inSub_readyRead, this, boost::placeholders::_1));
 
 			log_info("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
 		}
@@ -1471,7 +1475,7 @@ public:
 			}
 
 			wsControlInValve = new QZmq::Valve(wsControlInSock, this);
-			connect(wsControlInValve, &QZmq::Valve::readyRead, this, &Private::wsControlIn_readyRead);
+			controlValveConnection = wsControlInValve->readyRead.connect(boost::bind(&Private::wsControlIn_readyRead, this, boost::placeholders::_1));
 
 			log_info("ws control in: %s", qPrintable(config.wsControlInSpec));
 
@@ -1551,7 +1555,7 @@ public:
 			}
 
 			proxyStatsValve = new QZmq::Valve(proxyStatsSock, this);
-			connect(proxyStatsValve, &QZmq::Valve::readyRead, this, &Private::proxyStats_readyRead);
+			proxyStatConnection = proxyStatsValve->readyRead.connect(boost::bind(&Private::proxyStats_readyRead, this, boost::placeholders::_1));
 
 			log_info("proxy stats: %s", qPrintable(config.proxyStatsSpecs.join(", ")));
 		}
@@ -2436,7 +2440,6 @@ private:
 		deferreds += report;
 	}
 
-private slots:
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
 		QVariant data;
 		bool ok_;
@@ -3070,6 +3073,7 @@ private slots:
 		}
 	}
 
+private slots:
 	void hs_subscribe(HttpSession *hs, const QString &channel)
 	{
 		Instruct::HoldMode mode = hs->holdMode();

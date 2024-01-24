@@ -85,6 +85,11 @@ public:
 	int clientReqsFinished;
 	QByteArray requestBody;
 	QHash<QByteArray, HttpResponseData> responses;
+	Connection zhttpClientInValveConnection;
+	Connection zhttpServerInValveConnection;
+	Connection zhttpServerInStreamValveConnection;
+	Connection handlerAcceptValveConnection;
+	Connection handlerInspectValveConnection;
 
 	Wrapper(QObject *parent, QDir _workDir) :
 		QObject(parent),
@@ -106,16 +111,16 @@ public:
 
 		zhttpClientInSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 		zhttpClientInValve = new QZmq::Valve(zhttpClientInSock, this);
-		connect(zhttpClientInValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpClientIn_readyRead);
+		zhttpClientInValveConnection = zhttpClientInValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientIn_readyRead, this, boost::placeholders::_1));
 
 		zhttpServerInSock = new QZmq::Socket(QZmq::Socket::Pull, this);
 		zhttpServerInValve = new QZmq::Valve(zhttpServerInSock, this);
-		connect(zhttpServerInValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpServerIn_readyRead);
+		zhttpServerInValveConnection = zhttpServerInValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerIn_readyRead, this, boost::placeholders::_1));
 
 		zhttpServerInStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
 		zhttpServerInStreamSock->setIdentity("test-server");
 		zhttpServerInStreamValve = new QZmq::Valve(zhttpServerInStreamSock, this);
-		connect(zhttpServerInStreamValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpServerInStream_readyRead);
+		zhttpServerInStreamValveConnection = zhttpServerInStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerInStream_readyRead, this, boost::placeholders::_1));
 
 		zhttpServerOutSock = new QZmq::Socket(QZmq::Socket::Pub, this);
 
@@ -125,10 +130,10 @@ public:
 
 		handlerAcceptSock = new QZmq::Socket(QZmq::Socket::Router, this);
 		handlerAcceptValve = new QZmq::Valve(handlerAcceptSock, this);
-		connect(handlerAcceptValve, &QZmq::Valve::readyRead, this, &Wrapper::handlerAccept_readyRead);
+		handlerAcceptValveConnection = handlerAcceptValve->readyRead.connect(boost::bind(&Wrapper::handlerAccept_readyRead, this, boost::placeholders::_1));
 
 		handlerInspectValve = new QZmq::Valve(handlerInspectSock, this);
-		connect(handlerInspectValve, &QZmq::Valve::readyRead, this, &Wrapper::handlerInspect_readyRead);
+		handlerInspectValveConnection = handlerInspectValve->readyRead.connect(boost::bind(&Wrapper::handlerInspect_readyRead, this, boost::placeholders::_1));
 
 		handlerRetryOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
 	}
@@ -178,7 +183,7 @@ public:
 		responses.clear();
 	}
 
-private slots:
+private:
 	void zhttpClientIn_readyRead(const QList<QByteArray> &message)
 	{
 		log_debug("client in");
