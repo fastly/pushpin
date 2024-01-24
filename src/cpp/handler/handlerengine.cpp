@@ -1600,6 +1600,7 @@ public:
 		// nothing to do
 	}
 
+private:
 	void handlePublishItem(const PublishItem &item)
 	{
 		// only sequence if someone is listening, because we
