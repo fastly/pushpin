@@ -27,9 +27,9 @@
 #include "callback.h"
 #include "logutil.h"
 #include "domainmap.h"
-
 #include <boost/signals2.hpp>
 
+using std::map;
 using Connection = boost::signals2::scoped_connection;
 
 namespace Jwt {
@@ -79,6 +79,15 @@ private:
 	class Private;
 	friend class Private;
 	Private *d;
+};
+
+struct WSProxyConnections {
+    Connection sendEventReceivedConnection;
+    Connection keepAliveSetupEventReceivedConnection;
+    Connection closeEventReceivedConnection;
+    Connection detachEventReceivedConnection;
+    Connection cancelEventReceivedConnection;
+    Connection errorConnection;
 };
 
 #endif
