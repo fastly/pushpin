@@ -121,6 +121,7 @@ public:
 	map<ProxySession*, Connection> finishedConnection;
 	map<ProxySession*, Connection> reqSessionDestroyedConnection;
 	Connection connMaxConnection;
+	Connection rrConnection;
 	
 	Private(Engine *_q) :
 		QObject(_q),
@@ -282,7 +283,7 @@ public:
 			}
 
 			handler_retry_in_valve = new QZmq::Valve(handler_retry_in_sock, this);
-			connect(handler_retry_in_valve, &QZmq::Valve::readyRead, this, &Private::handler_retry_in_readyRead);
+			rrConnection = handler_retry_in_valve->readyRead.connect(boost::bind(&Private::handler_retry_in_readyRead, this, boost::placeholders::_1));
 		}
 
 		if(handler_retry_in_valve)
@@ -832,6 +833,7 @@ private slots:
 		tryTakeNext();
 	}
 
+private:
 	void handler_retry_in_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)
@@ -910,7 +912,6 @@ private slots:
 		}
 	}
 
-private:
 	void stats_connMax(const StatsPacket &packet)
 	{
 		if(accept->canWriteImmediately())
