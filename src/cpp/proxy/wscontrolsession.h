@@ -51,12 +51,12 @@ public:
 	// tell session that a received sendEvent has been written
 	void sendEventWritten();
 
-    boost::signals2::signal<void(WebSocket::Frame::Type, const QByteArray&, bool)> sendEventReceived;
-    boost::signals2::signal<void(WsControl::KeepAliveMode, int)> keepAliveSetupEventReceived;
-    boost::signals2::signal<void(int, const QByteArray&)> closeEventReceived; // Use -1 for no code
-    Signal detachEventReceived;
-    Signal cancelEventReceived;
-    Signal error;
+	boost::signals2::signal<void(WebSocket::Frame::Type, const QByteArray&, bool)> sendEventReceived;
+	boost::signals2::signal<void(WsControl::KeepAliveMode, int)> keepAliveSetupEventReceived;
+	boost::signals2::signal<void(int, const QByteArray&)> closeEventReceived; // Use -1 for no code
+	Signal detachEventReceived;
+	Signal cancelEventReceived;
+	Signal error;
 
 private:
 	class Private;

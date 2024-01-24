@@ -50,6 +50,15 @@
 #define ACTIVITY_TIMEOUT 60000
 #define KEEPALIVE_RAND_MAX 1000
 
+struct WSProxyConnections {
+    Connection sendEventReceivedConnection;
+    Connection keepAliveSetupEventReceivedConnection;
+    Connection closeEventReceivedConnection;
+    Connection detachEventReceivedConnection;
+    Connection cancelEventReceivedConnection;
+    Connection errorConnection;
+};
+
 class HttpExtension
 {
 public:

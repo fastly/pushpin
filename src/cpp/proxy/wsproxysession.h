@@ -81,13 +81,4 @@ private:
 	Private *d;
 };
 
-struct WSProxyConnections {
-    Connection sendEventReceivedConnection;
-    Connection keepAliveSetupEventReceivedConnection;
-    Connection closeEventReceivedConnection;
-    Connection detachEventReceivedConnection;
-    Connection cancelEventReceivedConnection;
-    Connection errorConnection;
-};
-
 #endif
