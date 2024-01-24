@@ -1256,6 +1256,9 @@ public:
 	Connection connectionsRefreshedConnection;
 	Connection unsubscribedConnection;
 	Connection reportedConnection;
+	Connection sendConnection;
+	Connection expConnection;
+	Connection errorConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1597,7 +1600,6 @@ public:
 		// nothing to do
 	}
 
-private:
 	void handlePublishItem(const PublishItem &item)
 	{
 		// only sequence if someone is listening, because we
@@ -2597,9 +2599,9 @@ private slots:
 				if(!s)
 				{
 					s = new WsSession(this);
-					connect(s, &WsSession::send, this, &Private::wssession_send);
-					connect(s, &WsSession::expired, this, &Private::wssession_expired);
-					connect(s, &WsSession::error, this, &Private::wssession_error);
+					sendConnection = s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, s));
+					expConnection = s->expired.connect(boost::bind(&Private::wssession_expired, this, s));
+					errorConnection = s->error.connect(boost::bind(&Private::wssession_error, this, s));
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
@@ -3128,10 +3130,9 @@ private slots:
 			writeRetryPacket(rp);
 	}
 
-	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message)
+private:
+	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message, WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		WsControlPacket::Item i;
 		i.cid = s->cid.toUtf8();
 		i.requestId = QByteArray::number(reqId);
@@ -3143,17 +3144,13 @@ private slots:
 		writeWsControlItems(QList<WsControlPacket::Item>() << i);
 	}
 
-	void wssession_expired()
+	void wssession_expired(WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		removeWsSession(s);
 	}
 
-	void wssession_error()
+	void wssession_error(WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		log_debug("ws session %s control error", qPrintable(s->cid));
 
 		WsControlPacket::Item i;
