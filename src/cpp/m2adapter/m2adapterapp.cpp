@@ -453,6 +453,9 @@ public:
 	Connection quitConnection;
 	Connection hupConnection;
 	map<QZmq::Socket*, Connection> rrConnection;
+	Connection m2InValveConnection;
+	Connection zhttpInValveConnection;
+	Connection zwsInValveConnection;
 
 	Private(M2AdapterApp *_q) :
 		QObject(_q),
@@ -654,7 +657,7 @@ public:
 		}
 
 		m2_in_valve = new QZmq::Valve(m2_in_sock, this);
-		connect(m2_in_valve, &QZmq::Valve::readyRead, this, &Private::m2_in_readyRead);
+		m2InValveConnection = m2_in_valve->readyRead.connect(boost::bind(&Private::m2_in_readyRead, this, boost::placeholders::_1));
 
 		m2_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
 		m2_out_sock->setShutdownWaitTime(0);
@@ -674,7 +677,7 @@ public:
 			sock->setShutdownWaitTime(0);
 			sock->setHwm(1); // queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
-			rrConnection[sock] = sock->readyRead.connect(boost::bind(&Private::m2_control_readyRead, this));
+			rrConnection[sock] = sock->readyRead.connect(boost::bind(&Private::m2_control_readyRead, this, sock));
 
 			log_info("m2_control connect %s:%s", m2_send_idents[n].data(), qPrintable(spec));
 			sock->connectToAddress(spec);
@@ -709,7 +712,7 @@ public:
 			}
 
 			zhttp_in_valve = new QZmq::Valve(zhttp_in_sock, this);
-			connect(zhttp_in_valve, &QZmq::Valve::readyRead, this, &Private::zhttp_in_readyRead);
+			zhttpInValveConnection = zhttp_in_valve->readyRead.connect(boost::bind(&Private::zhttp_in_readyRead, this, boost::placeholders::_1));
 
 			zhttp_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 			zhttp_out_sock->setShutdownWaitTime(0);
@@ -778,7 +781,7 @@ public:
 			}
 
 			zws_in_valve = new QZmq::Valve(zws_in_sock, this);
-			connect(zws_in_valve, &QZmq::Valve::readyRead, this, &Private::zws_in_readyRead);
+			zwsInValveConnection = zws_in_valve->readyRead.connect(boost::bind(&Private::zws_in_readyRead, this, boost::placeholders::_1));
 
 			zws_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 			zws_out_sock->setShutdownWaitTime(0);
@@ -2314,7 +2317,6 @@ public:
 		}
 	}
 
-private slots:
 	void m2_in_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)
@@ -2734,9 +2736,8 @@ private slots:
 		}
 	}
 
-	void m2_control_readyRead()
+	void m2_control_readyRead(QZmq::Socket *sock)
 	{
-		QZmq::Socket *sock = (QZmq::Socket *)sender();
 		int index = -1;
 		for(int n = 0; n < controlPorts.count(); ++n)
 		{
@@ -2821,6 +2822,7 @@ private slots:
 		handleZhttpIn(WebSocket, message);
 	}
 
+private slots:
 	void status_timeout()
 	{
 		int now = time.elapsed();
