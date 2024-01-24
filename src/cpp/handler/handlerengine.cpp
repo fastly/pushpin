@@ -3131,7 +3131,6 @@ private slots:
 			writeRetryPacket(rp);
 	}
 
-private:
 	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message, WsSession *s)
 	{
 		WsControlPacket::Item i;
