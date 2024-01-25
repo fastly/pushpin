@@ -27,9 +27,9 @@
 #include "callback.h"
 #include "logutil.h"
 #include "domainmap.h"
-
 #include <boost/signals2.hpp>
 
+using std::map;
 using Connection = boost::signals2::scoped_connection;
 
 namespace Jwt {
