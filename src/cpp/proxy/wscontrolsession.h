@@ -28,6 +28,9 @@
 #include "websocket.h"
 #include "wscontrol.h"
 #include "packet/wscontrolpacket.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class WsControlManager;
 
@@ -48,13 +51,12 @@ public:
 	// tell session that a received sendEvent has been written
 	void sendEventWritten();
 
-signals:
-	void sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue);
-	void keepAliveSetupEventReceived(WsControl::KeepAliveMode mode, int timeout = -1);
-	void closeEventReceived(int code, const QByteArray &reason); // -1 for no code
-	void detachEventReceived();
-	void cancelEventReceived();
-	void error();
+	boost::signals2::signal<void(WebSocket::Frame::Type, const QByteArray&, bool)> sendEventReceived;
+	boost::signals2::signal<void(WsControl::KeepAliveMode, int)> keepAliveSetupEventReceived;
+	boost::signals2::signal<void(int, const QByteArray&)> closeEventReceived; // Use -1 for no code
+	Signal detachEventReceived;
+	Signal cancelEventReceived;
+	Signal error;
 
 private:
 	class Private;
