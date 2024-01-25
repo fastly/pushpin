@@ -201,7 +201,7 @@ public:
 			else
 				pendingSendEventWrites += QByteArray(); // placeholder
 
-			emit q->sendEventReceived(type, item.message, item.queue);
+			q->sendEventReceived(type, item.message, item.queue);
 		}
 		else if(item.type == WsControlPacket::Item::KeepAliveSetup)
 		{
@@ -212,22 +212,22 @@ public:
 					mode = WsControl::Interval;
 				else // idle
 					mode = WsControl::Idle;
-				emit q->keepAliveSetupEventReceived(mode, item.timeout);
+				q->keepAliveSetupEventReceived(mode, item.timeout);
 			}
 			else
-				emit q->keepAliveSetupEventReceived(WsControl::NoKeepAlive);
+				q->keepAliveSetupEventReceived(WsControl::NoKeepAlive, -1);
 		}
 		else if(item.type == WsControlPacket::Item::Close)
 		{
-			emit q->closeEventReceived(item.code, item.reason);
+			q->closeEventReceived(item.code, item.reason);
 		}
 		else if(item.type == WsControlPacket::Item::Detach)
 		{
-			emit q->detachEventReceived();
+			q->detachEventReceived();
 		}
 		else if(item.type == WsControlPacket::Item::Cancel)
 		{
-			emit q->cancelEventReceived();
+			q->cancelEventReceived();
 		}
 		else if(item.type == WsControlPacket::Item::Ack)
 		{
@@ -261,7 +261,7 @@ private slots:
 		pendingRequests.clear();
 		setupRequestTimer();
 
-		emit q->error();
+		q->error();
 	}
 };
 

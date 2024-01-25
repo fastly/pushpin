@@ -50,6 +50,15 @@
 #define ACTIVITY_TIMEOUT 60000
 #define KEEPALIVE_RAND_MAX 1000
 
+struct WSProxyConnections {
+    Connection sendEventReceivedConnection;
+    Connection keepAliveSetupEventReceivedConnection;
+    Connection closeEventReceivedConnection;
+    Connection detachEventReceivedConnection;
+    Connection cancelEventReceivedConnection;
+    Connection errorConnection;
+};
+
 class HttpExtension
 {
 public:
@@ -281,6 +290,7 @@ public:
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
 	Connection keepAliveConneciton;
 	Connection aboutToSendRequestConnection;
+	map<WsControlSession*, WSProxyConnections> wsProxyConnectionMap;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -325,6 +335,7 @@ public:
 		delete outSock;
 		outSock = 0;
 
+		wsProxyConnectionMap.erase(wsControl);
 		delete wsControl;
 		wsControl = 0;
 
@@ -900,12 +911,14 @@ private slots:
 			if(wsControlManager)
 			{
 				wsControl = wsControlManager->createSession(publicCid);
-				connect(wsControl, &WsControlSession::sendEventReceived, this, &Private::wsControl_sendEventReceived);
-				connect(wsControl, &WsControlSession::keepAliveSetupEventReceived, this, &Private::wsControl_keepAliveSetupEventReceived);
-				connect(wsControl, &WsControlSession::closeEventReceived, this, &Private::wsControl_closeEventReceived);
-				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
-				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
-				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
+				wsProxyConnectionMap[wsControl] = {
+					wsControl->sendEventReceived.connect(boost::bind(&Private::wsControl_sendEventReceived, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3)),
+					wsControl->keepAliveSetupEventReceived.connect(boost::bind(&Private::wsControl_keepAliveSetupEventReceived, this, boost::placeholders::_1, boost::placeholders::_2)),
+					wsControl->closeEventReceived.connect(boost::bind(&Private::wsControl_closeEventReceived, this, boost::placeholders::_1, boost::placeholders::_2)),
+					wsControl->detachEventReceived.connect(boost::bind(&Private::wsControl_detachEventReceived, this)),
+					wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this)),
+					wsControl->error.connect(boost::bind(&Private::wsControl_error, this))
+				};
 				wsControl->start(route.id, route.separateStats, channelPrefix, inSock->requestUri());
 
 				foreach(const QString &subChannel, target.subscriptions)
@@ -1014,6 +1027,7 @@ private slots:
 		woh->setHeaders(requestData.headers);
 	}
 
+private:
 	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
 	{
 		// this method accepts a full message, which must be typed
@@ -1114,7 +1128,6 @@ private slots:
 		wsControl_cancelEventReceived();
 	}
 
-private:
 	void keepAliveTimer_timeout()
 	{
 		wsControl->sendNeedKeepAlive();
