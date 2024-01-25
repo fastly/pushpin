@@ -647,7 +647,7 @@ private slots:
 		if(inBuf.size() + req->bytesAvailable() > RESPONSE_BODY_MAX)
 		{
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -691,7 +691,7 @@ private slots:
 				errorCondition = ErrorGeneric;
 
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -727,7 +727,7 @@ private slots:
 		if(!ok)
 		{
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -737,7 +737,7 @@ private slots:
 			if(events.isEmpty() && keepAliveInterval == -1)
 			{
 				cleanup();
-				emit q->error();
+				q->error();
 				return;
 			}
 
@@ -745,7 +745,7 @@ private slots:
 			if(!events.isEmpty() && events.first().type != "OPEN")
 			{
 				cleanup();
-				emit q->error();
+				q->error();
 				return;
 			}
 
@@ -838,7 +838,7 @@ private slots:
 
 		if(emitConnected)
 		{
-			emit q->connected();
+			q->connected();
 			if(!self)
 				return;
 		}
@@ -852,7 +852,7 @@ private slots:
 
 		if(reqFrames > 0)
 		{
-			emit q->framesWritten(reqFrames, reqContentSize);
+			q->framesWritten(reqFrames, reqContentSize);
 			if(!self)
 				return;
 		}
@@ -864,7 +864,7 @@ private slots:
 
 		if(hadContent)
 		{
-			emit q->writeBytesChanged();
+			q->writeBytesChanged();
 			if(!self)
 				return;
 		}
@@ -877,12 +877,12 @@ private slots:
 			if(closeSent)
 			{
 				cleanup();
-				emit q->closed();
+				q->closed();
 				return;
 			}
 			else
 			{
-				emit q->peerClosed();
+				q->peerClosed();
 			}
 		}
 		else if(closeSent && keepAliveInterval == -1)
@@ -896,14 +896,14 @@ private slots:
 		if(disconnected)
 		{
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
 		if(reqClose && peerClosing)
 		{
 			cleanup();
-			emit q->closed();
+			q->closed();
 			return;
 		}
 
@@ -978,7 +978,7 @@ private slots:
 			errorCondition = WebSocket::ErrorTls;
 
 		cleanup();
-		emit q->error();
+		q->error();
 	}
 
 	void keepAliveTimer_timeout()
@@ -996,7 +996,7 @@ private slots:
 		cleanup();
 		errorCondition = pendingErrorCondition;
 		pendingErrorCondition = (ErrorCondition)-1;
-		emit q->error();
+		q->error();
 	}
 };
 
