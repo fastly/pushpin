@@ -68,9 +68,9 @@ public:
 	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
 	void ack(int reqId);
 
-    boost::signals2::signal<void(int, const QByteArray&, const QByteArray&)> send;
-    Signal expired;
-    Signal error;
+	boost::signals2::signal<void(int, const QByteArray&, const QByteArray&)> send;
+	Signal expired;
+	Signal error;
 
 private:
 	void setupRequestTimer();

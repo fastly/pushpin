@@ -87,6 +87,12 @@
 
 using namespace VariantUtil;
 
+struct WSSessionConnections {
+	Connection sendConnection;
+	Connection expConnection;
+	Connection errorConnection;
+};
+
 static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
 {
 	QList<PublishItem> out;
@@ -1256,9 +1262,7 @@ public:
 	Connection connectionsRefreshedConnection;
 	Connection unsubscribedConnection;
 	Connection reportedConnection;
-	Connection sendConnection;
-	Connection expConnection;
-	Connection errorConnection;
+	map<WsSession*, WSSessionConnections> wsSessionConnectionMap;
 	Connection pullConnection;
 	Connection controlValveConnection;
 	Connection inSubValveConnection;
@@ -1695,6 +1699,7 @@ private:
 		log_debug("removed ws session: %s", qPrintable(s->cid));
 
 		cs.wsSessions.remove(s->cid);
+		wsSessionConnectionMap.erase(s);
 		delete s;
 	}
 
@@ -2603,9 +2608,11 @@ private:
 				if(!s)
 				{
 					s = new WsSession(this);
-					sendConnection = s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, s));
-					expConnection = s->expired.connect(boost::bind(&Private::wssession_expired, this, s));
-					errorConnection = s->error.connect(boost::bind(&Private::wssession_error, this, s));
+					wsSessionConnectionMap[s] = {
+						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, s)),
+						s->expired.connect(boost::bind(&Private::wssession_expired, this, s)),
+						s->error.connect(boost::bind(&Private::wssession_error, this, s))
+					};
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
