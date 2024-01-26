@@ -118,9 +118,10 @@ public:
 
 		~Session()
 		{
-			if req{
-				owner->discardedRequests.remove(req);
-				delete req;
+			if(req)
+			{
+			    owner->reqConnectionMap.erase(req);
+			    delete req;
 			}
 			delete sock;
 
