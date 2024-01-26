@@ -247,7 +247,11 @@ public:
 		trimlist(&intreq_out_stream_specs);
 		QStringList intreq_in_specs = settings.value("handler/proxy_intreq_in_specs").toStringList();
 		trimlist(&intreq_in_specs);
+		QStringList proxy_inspect_specs = settings.value("handler/proxy_inspect_specs").toStringList();
+		trimlist(&proxy_inspect_specs);
 		QString proxy_inspect_spec = settings.value("handler/proxy_inspect_spec").toString();
+		if(!proxy_inspect_spec.isEmpty())
+			proxy_inspect_specs += proxy_inspect_spec;
 		QStringList proxy_accept_specs = settings.value("handler/proxy_accept_specs").toStringList();
 		trimlist(&proxy_accept_specs);
 		QString proxy_accept_spec = settings.value("handler/proxy_accept_spec").toString();
@@ -302,9 +306,9 @@ public:
 			return;
 		}
 
-		if(proxy_inspect_spec.isEmpty() || proxy_accept_specs.isEmpty() || proxy_retry_out_spec.isEmpty())
+		if(proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() || proxy_retry_out_spec.isEmpty())
 		{
-			log_error("must set proxy_inspect_spec, proxy_accept_specs, and proxy_retry_out_spec");
+			log_error("must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_spec");
 			q->quit(0);
 			return;
 		}
@@ -325,7 +329,7 @@ public:
 		config.clientOutSpecs = intreq_out_specs;
 		config.clientOutStreamSpecs = intreq_out_stream_specs;
 		config.clientInSpecs = intreq_in_specs;
-		config.inspectSpec = proxy_inspect_spec;
+		config.inspectSpecs = proxy_inspect_specs;
 		config.acceptSpecs = proxy_accept_specs;
 		config.retryOutSpec = proxy_retry_out_spec;
 		config.wsControlInSpec = ws_control_in_spec;
