@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2015 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -38,6 +39,7 @@ public:
 	ZrpcRequest *q;
 	ZrpcManager *manager;
 	QList<QByteArray> reqHeaders;
+	QByteArray from;
 	QByteArray id;
 	QString method;
 	QVariantHash args;
@@ -101,6 +103,7 @@ public:
 	void handle(const QList<QByteArray> &headers, const ZrpcRequestPacket &packet)
 	{
 		reqHeaders = headers;
+		from = packet.from;
 		id = packet.id;
 		method = packet.method;
 		args = packet.args;
@@ -187,6 +190,11 @@ ZrpcRequest::ZrpcRequest(ZrpcManager *manager, QObject *parent) :
 ZrpcRequest::~ZrpcRequest()
 {
 	delete d;
+}
+
+QByteArray ZrpcRequest::from() const
+{
+	return d->from;
 }
 
 QByteArray ZrpcRequest::id() const

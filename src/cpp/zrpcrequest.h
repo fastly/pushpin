@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2015 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -49,6 +50,7 @@ public:
 	ZrpcRequest(ZrpcManager *manager, QObject *parent = 0);
 	~ZrpcRequest();
 
+	QByteArray from() const;
 	QByteArray id() const;
 	QString method() const;
 	QVariantHash args() const;
