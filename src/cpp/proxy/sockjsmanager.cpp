@@ -68,6 +68,12 @@ static QByteArray serializeJsonString(const QString &s)
 	return tmp.mid(1, tmp.length() - 2);
 }
 
+struct ZhttpReqConnections{
+	Connection readyReadConnection;
+	Connection bytesWrittenConnection;
+	Connection errorConnection;
+};
+
 class SockJsManager::Private : public QObject
 {
 	Q_OBJECT
@@ -133,9 +139,7 @@ public:
 	QByteArray iframeHtml;
 	QByteArray iframeHtmlEtag;
 	QSet<ZhttpRequest*> discardedRequests;
-	Connection readyReadConnection;
-	Connection bytesWrittenConnection;
-	Connection errorConnection;
+	map<ZhttpRequest*, ZhttpReqConnections> reqConnectionMap;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
@@ -241,9 +245,11 @@ public:
 
 		s->route = route;
 
-		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req));
-		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
-		errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
+		reqConnectionMap[req] = {
+			req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req)),
+			req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
+			req->error.connect(boost::bind(&Private::req_error, this, req))
+		};
 
 		sessions += s;
 		sessionsByRequest.insert(s->req, s);
@@ -364,9 +370,11 @@ public:
 		{
 			discardedRequests += req;
 
-			readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req));
-			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
-			errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
+			reqConnectionMap[req] = {
+				req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req)),
+				req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
+				req->error.connect(boost::bind(&Private::req_error, this, req))
+			};
 		}
 
 		HttpHeaders headers;
@@ -596,6 +604,7 @@ public:
 			if(req->isFinished())
 			{
 				discardedRequests.remove(req);
+				reqConnectionMap.erase(req);
 				delete req;
 			}
 
@@ -614,6 +623,7 @@ public:
 
 	void req_error(ZhttpRequest *req)
 	{
+		reqConnectionMap.erase(req);
 		if(discardedRequests.contains(req))
 		{
 			discardedRequests.remove(req);
