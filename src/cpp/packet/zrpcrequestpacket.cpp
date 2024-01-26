@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,6 +27,9 @@ QVariant ZrpcRequestPacket::toVariant() const
 {
 	QVariantHash obj;
 
+	if(!from.isEmpty())
+		obj["from"] = from;
+
 	if(!id.isEmpty())
 		obj["id"] = id;
 
@@ -43,6 +47,14 @@ bool ZrpcRequestPacket::fromVariant(const QVariant &in)
 		return false;
 
 	QVariantHash obj = in.toHash();
+
+	if(obj.contains("from"))
+	{
+		if(obj["from"].type() != QVariant::ByteArray)
+			return false;
+
+		from = obj["from"].toByteArray();
+	}
 
 	if(obj.contains("id"))
 	{
