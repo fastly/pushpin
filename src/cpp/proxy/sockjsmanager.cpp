@@ -37,6 +37,8 @@
 #include "zwebsocket.h"
 #include "sockjssession.h"
 
+using std::map;
+
 #define MAX_REQUEST_BODY 100000
 
 const char *iframeHtmlTemplate =
@@ -116,7 +118,10 @@ public:
 
 		~Session()
 		{
-			delete req;
+			if req{
+				owner->discardedRequests.remove(req);
+				delete req;
+			}
 			delete sock;
 
 			if(timer)
@@ -623,10 +628,10 @@ public:
 
 	void req_error(ZhttpRequest *req)
 	{
-		reqConnectionMap.erase(req);
 		if(discardedRequests.contains(req))
 		{
 			discardedRequests.remove(req);
+			reqConnectionMap.erase(req);
 			delete req;
 			return;
 		}

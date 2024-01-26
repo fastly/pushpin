@@ -601,6 +601,7 @@ public:
 		}
 	}
 
+public slots:
 	void sn_read_activated()
 	{
 		if(!processEvents())
@@ -615,7 +616,6 @@ public:
 		doUpdate();
 	}
 
-public slots:
 	void update_timeout()
 	{
 		pendingUpdate = false;
