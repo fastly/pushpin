@@ -48,7 +48,7 @@ public:
 		QStringList clientOutSpecs;
 		QStringList clientOutStreamSpecs;
 		QStringList clientInSpecs;
-		QString inspectSpec;
+		QStringList inspectSpecs;
 		QStringList acceptSpecs;
 		QString retryOutSpec;
 		QString wsControlInSpec;
