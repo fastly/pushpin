@@ -32,6 +32,17 @@
 #include "log.h"
 #include "httpheaders.h"
 
+struct SocketConnections {
+	Connection readyReadConnection;
+	// Connection bytesWrittenConnection;
+	Connection disconnectedConnection;
+};
+
+struct SimpleHttpRequestConnections{
+	Connection readyConnection;
+	Connection finishedConnection;
+};
+
 class SimpleHttpRequest::Private : public QObject
 {
 	Q_OBJECT
@@ -59,6 +70,8 @@ public:
 	int pendingWritten;
 	int maxHeadersSize;
 	int maxBodySize;
+	map<QTcpSocket*, SocketConnections> tcpSocketConnectionMap;
+	map<QLocalSocket*, SocketConnections> localSocketConnectionMap;
 
 	Private(SimpleHttpRequest *_q, int maxHeadersSize, int maxBodySize) :
 		QObject(_q),
@@ -91,6 +104,10 @@ public:
 
 	void start(QTcpSocket *_sock)
 	{
+		// tcpSocketConnectionMap[_sock] = {
+		// 	_sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this)),
+		// 	_sock->disconnected.connect(boost::bind(&Private::sock_disconnected, this))
+		// };
 		connect(_sock, &QTcpSocket::readyRead, this, &Private::sock_readyRead);
 		connect(_sock, &QTcpSocket::bytesWritten, this, &Private::sock_bytesWritten);
 		connect(_sock, &QTcpSocket::disconnected, this, &Private::sock_disconnected);
@@ -103,6 +120,10 @@ public:
 
 	void start(QLocalSocket *_sock)
 	{
+		// localSocketConnectionMap[_sock] = {
+		// 	_sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this)),
+		// 	_sock->disconnected.connect(boost::bind(&Private::sock_disconnected, this))
+		// };
 		connect(_sock, &QLocalSocket::readyRead, this, &Private::sock_readyRead);
 		connect(_sock, &QLocalSocket::bytesWritten, this, &Private::sock_bytesWritten);
 		connect(_sock, &QLocalSocket::disconnected, this, &Private::sock_disconnected);
@@ -342,7 +363,6 @@ private:
 		}
 	}
 
-private slots:
 	void sock_readyRead()
 	{
 		if(state == ReadHeader || state == ReadBody)
@@ -425,8 +445,7 @@ public:
 	QList<SimpleHttpRequest*> pending;
 	int maxHeadersSize;
 	int maxBodySize;
-	map<SimpleHttpRequest*, Connection> finishedConnections;
-	map<SimpleHttpRequest*, Connection> readyConnections;
+	map<SimpleHttpRequest*, SimpleHttpRequestConnections> httpRequestConnectionMap;
 
 	SimpleHttpServerPrivate(int maxHeadersSize, int maxBodySize, SimpleHttpServer *_q) :
 		QObject(_q),
@@ -494,8 +513,10 @@ private:
 		{
 			QLocalSocket *sock = ((QLocalServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
-			readyConnections[req] = req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q));
-			finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
+			httpRequestConnectionMap[req] = {
+				req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q)),
+				req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req))
+			};
 			accepting += req;
 			req->d->start(sock);
 		}
@@ -503,8 +524,10 @@ private:
 		{
 			QTcpSocket *sock = ((QTcpServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
-			readyConnections[req] = req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q));
-			finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
+			httpRequestConnectionMap[req] = {
+				req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q)),
+				req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req))
+			};
 			accepting += req;
 			req->d->start(sock);
 		}
@@ -521,6 +544,7 @@ private:
 	{
 		accepting.remove(req);
 		pending.removeAll(req);
+		httpRequestConnectionMap.erase(req);
 		delete req;
 	}
 };
@@ -551,7 +575,7 @@ SimpleHttpRequest *SimpleHttpServer::takeNext()
 	if(!d->pending.isEmpty())
 	{
 		SimpleHttpRequest *req = d->pending.takeFirst();
-		d->finishedConnections.erase(req);
+		d->httpRequestConnectionMap.erase(req);
 		
 		return req;
 	}

@@ -37,6 +37,11 @@
 #include "zwebsocket.h"
 #include "sockjssession.h"
 
+struct WSConnections {
+	Connection closedConnection;
+ 	Connection errorConnection;
+};
+
 #define MAX_REQUEST_BODY 100000
 
 const char *iframeHtmlTemplate =
@@ -136,6 +141,7 @@ public:
 	Connection readyReadConnection;
 	Connection bytesWrittenConnection;
 	Connection errorConnection;
+	map<ZWebSocket*, WSConnections> wsConnectionMap;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
@@ -241,9 +247,9 @@ public:
 
 		s->route = route;
 
-		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req));
+		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
+		errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
 
 		sessions += s;
 		sessionsByRequest.insert(s->req, s);
@@ -265,8 +271,10 @@ public:
 			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
 		s->route = route;
 
-		connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
-		connect(sock, &ZWebSocket::error, this, &Private::sock_error);
+		wsConnectionMap[sock] = {
+			sock->closed.connect(boost::bind(&Private::sock_closed, this, sock)),
+			sock->error.connect(boost::bind(&Private::sock_error, this, sock))
+		};
 
 		sessions += s;
 		sessionsBySocket.insert(s->sock, s);
@@ -364,9 +372,9 @@ public:
 		{
 			discardedRequests += req;
 
-			readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-			errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+			readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req));
+			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
+			errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
 		}
 
 		HttpHeaders headers;
@@ -484,7 +492,7 @@ public:
 					sessionsById.insert(s->sid, s);
 					s->pending = true;
 					pendingSessions += s;
-					emit q->sessionReady();
+					q->sessionReady();
 					return;
 				}
 			}
@@ -499,7 +507,7 @@ public:
 		{
 			s->pending = true;
 			pendingSessions += s;
-			emit q->sessionReady();
+			q->sessionReady();
 			return;
 		}
 		else
@@ -514,7 +522,7 @@ public:
 				s->lastPart = lastPart;
 				s->pending = true;
 				pendingSessions += s;
-				emit q->sessionReady();
+				q->sessionReady();
 				return;
 			}
 
@@ -575,11 +583,8 @@ public:
 		return s->ext;
 	}
 
-private slots:
-	void req_readyRead()
+	void req_readyRead(ZhttpRequest *req)
 	{
-		ZhttpRequest *req = (ZhttpRequest *)sender();
-
 		// for a request to have been discardable, we must have read the
 		//   entire input already and handed to the session
 		assert(!discardedRequests.contains(req));
@@ -590,11 +595,9 @@ private slots:
 		processRequestInput(s);
 	}
 
-	void req_bytesWritten(int count)
+	void req_bytesWritten(int count, ZhttpRequest *req)
 	{
 		Q_UNUSED(count);
-
-		ZhttpRequest *req = (ZhttpRequest *)sender();
 
 		if(discardedRequests.contains(req))
 		{
@@ -617,10 +620,8 @@ private slots:
 		}
 	}
 
-	void req_error()
+	void req_error(ZhttpRequest *req)
 	{
-		ZhttpRequest *req = (ZhttpRequest *)sender();
-
 		if(discardedRequests.contains(req))
 		{
 			discardedRequests.remove(req);
@@ -637,9 +638,8 @@ private slots:
 			removeSession(s);
 	}
 
-	void sock_closed()
+	void sock_closed(ZWebSocket *sock)
 	{
-		ZWebSocket *sock = (ZWebSocket *)sender();
 		Session *s = sessionsBySocket.value(sock);
 		assert(s);
 
@@ -649,9 +649,8 @@ private slots:
 			removeSession(s);
 	}
 
-	void sock_error()
+	void sock_error(ZWebSocket *sock)
 	{
-		ZWebSocket *sock = (ZWebSocket *)sender();
 		Session *s = sessionsBySocket.value(sock);
 		assert(s);
 
@@ -661,6 +660,7 @@ private slots:
 			removeSession(s);
 	}
 
+private slots:
 	void timer_timeout()
 	{
 		QTimer *timer = (QTimer *)sender();

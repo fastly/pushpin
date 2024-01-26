@@ -65,11 +65,17 @@ public:
 
 }
 
+struct WebSocketOverHttpConnections{
+	Connection disconnectedConnection;
+	Connection closedConnection;
+	Connection errorConnection;
+};
+
 class WebSocketOverHttp::DisconnectManager : public QObject
 {
 	Q_OBJECT
 
-	map<WebSocketOverHttp *, Connection> disconnectedConnection;
+	map<WebSocketOverHttp*, WebSocketOverHttpConnections> wsOverHttpConnectionMap;
 
 public:
 	DisconnectManager(QObject *parent = 0) :
@@ -80,10 +86,11 @@ public:
 	void addSocket(WebSocketOverHttp *sock)
 	{
 		sock->setParent(this);
-		disconnectedConnection[sock] = sock->disconnected.connect(boost::bind(&DisconnectManager::sock_disconnected, this, sock));
-		connect(sock, &WebSocketOverHttp::closed, this, &DisconnectManager::sock_closed);
-		connect(sock, &WebSocketOverHttp::error, this, &DisconnectManager::sock_error);
-
+		wsOverHttpConnectionMap[sock] = {
+			sock->disconnected.connect(boost::bind(&DisconnectManager::sock_disconnected, this, sock)),
+			sock->closed.connect(boost::bind(&DisconnectManager::sock_closed, this, sock)),
+			sock->error.connect(boost::bind(&DisconnectManager::sock_error, this, sock))
+		};
 		sock->sendDisconnect();
 	}
 
@@ -95,7 +102,7 @@ public:
 private:
 	void cleanupSocket(WebSocketOverHttp *sock)
 	{
-		disconnectedConnection.erase(sock);
+		wsOverHttpConnectionMap.erase(sock);
 		delete sock;
 	}
 
@@ -105,16 +112,13 @@ private:
 		cleanupSocket(sock);
 	}
 
-private slots:
-	void sock_closed()
+	void sock_closed(WebSocketOverHttp *sock)
 	{
-		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
 		cleanupSocket(sock);
 	}
 
-	void sock_error()
+	void sock_error(WebSocketOverHttp *sock)
 	{
-		WebSocketOverHttp *sock = (WebSocketOverHttp *)sender();
 		cleanupSocket(sock);
 	}
 };

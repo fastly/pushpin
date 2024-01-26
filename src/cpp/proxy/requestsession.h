@@ -29,6 +29,7 @@
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
+using SignalInt = boost::signals2::signal<void(int)>;
 using Connection = boost::signals2::scoped_connection;
 
 class QHostAddress;
@@ -104,20 +105,18 @@ public:
 
 	Signal inspectError;
 	
-signals:
-	void inspected(const InspectData &idata);
-	void finished();
-	void finishedByAccept();
-	void bytesWritten(int count);
-	void paused();
-	void headerBytesSent(int count);
-	void bodyBytesSent(int count);
-
+    boost::signals2::signal<void(const InspectData&)> inspected;
+    Signal finished;
+    Signal finishedByAccept;
+    SignalInt bytesWritten;
+    Signal paused;
+    SignalInt headerBytesSent;
+    SignalInt bodyBytesSent;
 	// this signal means some error was encountered while responding and
 	//   that you should not attempt to call further response-related
 	//   methods. the object remains in an active state though, and so you
 	//   should still wait for finished()
-	void errorResponding();
+	Signal errorResponding;
 
 private:
 	class Private;

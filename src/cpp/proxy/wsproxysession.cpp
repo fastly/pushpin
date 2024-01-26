@@ -395,14 +395,13 @@ public:
 		inSock = sock;
 		inSock->setParent(this);
 		inWSConnectionMap[inSock] = {
-			,
-        	inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this)),
-			inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
-			inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this)),
-			inSock->peerClosed.connect(boost::bind(&Private::in_peerClosed, this)),
-			inSock->closed.connect(boost::bind(&Private::in_closed, this)),
-			inSock->error.connect(boost::bind(&Private::in_error, this))
-		}
+        	.readyReadConnection = inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this)),
+			.framesWrittenConnection = inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
+			.writeBytesChangedConnection = inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this)),
+			.peerClosedConnection = inSock->peerClosed.connect(boost::bind(&Private::in_peerClosed, this)),
+			.closedConnection = inSock->closed.connect(boost::bind(&Private::in_closed, this)),
+			.errorConnection = inSock->error.connect(boost::bind(&Private::in_error, this))
+		};
 
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
@@ -576,14 +575,13 @@ public:
 			}
 		}
 
-		outWSConnectionMap[outSocket] = {
-			outSock->connected.connect(boost::bind(&Private::out_connected, this)),
-			outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this)),
-			,
-			outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this)),
-			outSock->peerClosed.connect(boost::bind(&Private::out_peerClosed, this)),
-			outSock->closed.connect(boost::bind(&Private::out_closed, this)),
-			outSock->error.connect(boost::bind(&Private::out_error, this))
+		outWSConnectionMap[outSock] = {
+			.connectedConnection = outSock->connected.connect(boost::bind(&Private::out_connected, this)),
+			.readyReadConnection = outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this)),
+			.writeBytesChangedConnection = outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this)),
+			.peerClosedConnection = outSock->peerClosed.connect(boost::bind(&Private::out_peerClosed, this)),
+			.closedConnection = outSock->closed.connect(boost::bind(&Private::out_closed, this)),
+			.errorConnection = outSock->error.connect(boost::bind(&Private::out_error, this))
 		};
 
 		if(target.trusted)
@@ -1256,4 +1254,5 @@ Callback<std::tuple<WsProxySession *>> & WsProxySession::finishedByPassthroughCa
 {
 	return d->finishedByPassthroughCallback;
 }
+
 #include "wsproxysession.moc"

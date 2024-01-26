@@ -41,6 +41,15 @@
 #define KEEPALIVE_TIMEOUT 25
 #define UNCONNECTED_TIMEOUT 5
 
+struct WSConnections {
+	Connection readyReadConnection;
+	Connection framesWrittenConnection;
+	Connection writeBytesChangedConnection;
+	Connection peerClosedConnection;
+	Connection closedConnection;
+ 	Connection errorConnection;
+};
+
 class SockJsSession::Private : public QObject
 {
 	Q_OBJECT
@@ -148,6 +157,7 @@ public:
 	bool updating;
 	Connection bytesWrittenConnection;
 	Connection errorConnection;
+	map<ZWebSocket*, WSConnections> wsConnectionMap;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -231,6 +241,7 @@ public:
 		}
 		requests.clear();
 
+		wsConnectionMap.erase(sock);
 		delete sock;
 		sock = 0;
 
@@ -256,17 +267,19 @@ public:
 
 			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
 
-			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-			errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
+			errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
 		}
 		else
 		{
-			connect(sock, &ZWebSocket::readyRead, this, &Private::sock_readyRead);
-			connect(sock, &ZWebSocket::framesWritten, this, &Private::sock_framesWritten);
-			connect(sock, &ZWebSocket::writeBytesChanged, this, &Private::sock_writeBytesChanged);
-			connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
-			connect(sock, &ZWebSocket::peerClosed, this, &Private::sock_peerClosed);
-			connect(sock, &ZWebSocket::error, this, &Private::sock_error);
+			wsConnectionMap[sock] = {
+				sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this)),
+				sock->framesWritten.connect(boost::bind(&Private::sock_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
+				sock->writeBytesChanged.connect(boost::bind(&Private::sock_writeBytesChanged, this)),
+				sock->peerClosed.connect(boost::bind(&Private::sock_peerClosed, this)),
+				sock->closed.connect(boost::bind(&Private::sock_closed, this)),
+				sock->error.connect(boost::bind(&Private::sock_error, this))
+			};
 		}
 	}
 
@@ -297,8 +310,8 @@ public:
 
 	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-		bytesWrittenConnection = _req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-		errorConnection = _req->error.connect(boost::bind(&Private::req_error, this));
+		bytesWrittenConnection = _req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
+		errorConnection = _req->error.connect(boost::bind(&Private::req_error, this, req));
 
 		if(lastPart == "xhr" || lastPart == "jsonp")
 		{
@@ -871,12 +884,10 @@ public:
 		return closeValue;
 	}
 
-private slots:
-	void req_bytesWritten(int count)
+	void req_bytesWritten(int count, ZhttpRequest *_req)
 	{
 		Q_UNUSED(count);
 
-		ZhttpRequest *_req = (ZhttpRequest *)sender();
 		RequestItem *ri = requests.value(_req);
 		assert(ri);
 
@@ -929,9 +940,8 @@ private slots:
 		}
 	}
 
-	void req_error()
+	void req_error(ZhttpRequest *_req)
 	{
-		ZhttpRequest *_req = (ZhttpRequest *)sender();
 		RequestItem *ri = requests.value(_req);
 		assert(ri);
 

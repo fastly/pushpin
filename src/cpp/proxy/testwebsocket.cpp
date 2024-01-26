@@ -115,7 +115,7 @@ public slots:
 				}
 			}
 
-			emit q->connected();
+			q->connected();
 
 			if(gripEnabled && !channels.isEmpty())
 				QMetaObject::invokeMethod(q, "readyRead", Qt::QueuedConnection);
@@ -128,14 +128,14 @@ public slots:
 			response.body += QByteArray("no such test resource\n");
 
 			errorCondition = ErrorRejected;
-			emit q->error();
+			q->error();
 		}
 	}
 
 	void handleClose()
 	{
 		state = Idle;
-		emit q->closed();
+		q->closed();
 	}
 };
 

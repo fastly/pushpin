@@ -57,6 +57,13 @@
 
 #define DEFAULT_HWM 1000
 
+struct RequestSessionConnections{
+	Connection inspectErrorConnection;
+	Connection inspectedConnection;
+	Connection finishedConnection;
+	Connection finishedByAcceptConnection;
+};
+
 class Engine::Private : public QObject
 {
 	Q_OBJECT
@@ -122,6 +129,7 @@ public:
 	map<ProxySession*, Connection> reqSessionDestroyedConnection;
 	Connection connMaxConnection;
 	Connection rrConnection;
+	map<RequestSession*, RequestSessionConnections> requestSessionConnectionMap;
 	
 	Private(Engine *_q) :
 		QObject(_q),
@@ -593,10 +601,12 @@ public:
 		rs->setAutoShare(autoShare);
 
 		// TODO: use callbacks for performance
-		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
-		inspectErrorConnection = rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs));
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
+		requestSessionConnectionMap[rs] = {
+			rs->inspected.connect(boost::bind(&Private::rs_inspected, this, boost::placeholders::_1, rs)),
+			rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs)),
+			rs->finished.connect(boost::bind(&Private::rs_finished, this, rs)),
+			rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs))
+		};
 
 		requestSessions += rs;
 
@@ -730,11 +740,8 @@ private:
 		doProxy(rs);
 	}
 
-private slots:
-	void rs_inspected(const InspectData &idata)
+	void rs_inspected(const InspectData &idata, RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		// if we get here, then the request must be proxied. if it was to be directly
 		//   accepted, then finishedByAccept would have been emitted instead
 		assert(idata.doProxy);
@@ -742,26 +749,24 @@ private slots:
 		doProxy(rs, &idata);
 	}
 
-	void rs_finished()
+	void rs_finished(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		if(!rs->isSockJs())
 			logFinished(rs);
 
 		requestSessions.remove(rs);
+		requestSessionConnectionMap.erase(rs);
 		delete rs;
 
 		tryTakeNext();
 	}
 
-	void rs_finishedByAccept()
+	void rs_finishedByAccept(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		logFinished(rs, true);
 
 		requestSessions.remove(rs);
+		requestSessionConnectionMap.erase(rs);
 		delete rs;
 
 		tryTakeNext();
@@ -833,7 +838,6 @@ private slots:
 		tryTakeNext();
 	}
 
-private:
 	void handler_retry_in_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)

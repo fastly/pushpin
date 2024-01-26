@@ -122,7 +122,7 @@ void WsSession::expireTimer_timeout()
 {
 	log_debug("timing out ws session: %s", qPrintable(cid));
 
-	emit expired();
+	expired();
 }
 
 void WsSession::delayedTimer_timeout()

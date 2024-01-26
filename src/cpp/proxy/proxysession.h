@@ -40,6 +40,7 @@ class XffRule;
 class RequestSession;
 #include <boost/signals2.hpp>
 
+using std::map;
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 

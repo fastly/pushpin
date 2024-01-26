@@ -244,7 +244,7 @@ public:
 		if(pending.count() >= PENDING_MAX)
 			serverValve->close();
 
-		emit q->requestReady();
+		q->requestReady();
 	}
 };
 
