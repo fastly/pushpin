@@ -1344,20 +1344,20 @@ public:
 		log_info("zhttp in stream: %s", qPrintable(config.serverInStreamSpecs.join(", ")));
 		log_info("zhttp out: %s", qPrintable(config.serverOutSpecs.join(", ")));
 
-		if(!config.inspectSpec.isEmpty())
+		if(!config.inspectSpecs.isEmpty())
 		{
 			inspectServer = new ZrpcManager(this);
 			inspectServer->setBind(false);
 			inspectServer->setIpcFileMode(config.ipcFileMode);
 			inspectReqReadyConnection = inspectServer->requestReady.connect(boost::bind(&Private::inspectServer_requestReady, this));
 
-			if(!inspectServer->setServerSpecs(QStringList() << config.inspectSpec))
+			if(!inspectServer->setServerSpecs(config.inspectSpecs))
 			{
 				// zrpcmanager logs error
 				return false;
 			}
 
-			log_info("inspect server: %s", qPrintable(config.inspectSpec));
+			log_info("inspect server: %s", qPrintable(config.inspectSpecs.join(", ")));
 		}
 
 		if(!config.acceptSpecs.isEmpty())
