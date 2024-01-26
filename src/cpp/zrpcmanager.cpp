@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -56,6 +57,7 @@ public:
 	};
 
 	ZrpcManager *q;
+	QByteArray instanceId;
 	int ipcFileMode;
 	bool doBind;
 	int timeout;
@@ -142,7 +144,10 @@ public:
 	{
 		assert(clientSock);
 
-		QVariant vpacket = packet.toVariant();
+		ZrpcRequestPacket p = packet;
+		p.from = instanceId;
+
+		QVariant vpacket = p.toVariant();
 		QByteArray buf = TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -262,6 +267,11 @@ ZrpcManager::~ZrpcManager()
 int ZrpcManager::timeout() const
 {
 	return d->timeout;
+}
+
+void ZrpcManager::setInstanceId(const QByteArray &instanceId)
+{
+	d->instanceId = instanceId;
 }
 
 void ZrpcManager::setIpcFileMode(int mode)

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -963,11 +963,13 @@ private:
 			return;
 		}
 
+		QByteArray reqFrom = req->from();
+
 		QVariantHash result;
 		result["accepted"] = true;
 		req->respond(result);
 
-		log_debug("accepting %d requests", requestStates.count());
+		log_debug("accepting %d requests from %s", requestStates.count(), reqFrom.data());
 
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{

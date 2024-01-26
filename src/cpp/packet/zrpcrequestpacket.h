@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +30,7 @@
 class ZrpcRequestPacket
 {
 public:
+	QByteArray from;
 	QByteArray id;
 	QString method;
 	QVariantHash args;

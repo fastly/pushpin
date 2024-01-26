@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -257,6 +257,7 @@ public:
 		if(!config.acceptSpec.isEmpty())
 		{
 			accept = new ZrpcManager(this);
+			accept->setInstanceId(config.clientId);
 			accept->setBind(true);
 			accept->setIpcFileMode(config.ipcFileMode);
 			if(!accept->setClientSpecs(QStringList() << config.acceptSpec))
