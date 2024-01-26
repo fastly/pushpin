@@ -27,6 +27,10 @@
 #include <QHash>
 #include <QSet>
 #include "packet/httprequestdata.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::scoped_connection;
 
 class QTimer;
 
@@ -64,10 +68,9 @@ public:
 	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
 	void ack(int reqId);
 
-signals:
-	void send(int reqId, const QByteArray &type, const QByteArray &message);
-	void expired();
-	void error();
+	boost::signals2::signal<void(int, const QByteArray&, const QByteArray&)> send;
+	Signal expired;
+	Signal error;
 
 private:
 	void setupRequestTimer();
