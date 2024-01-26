@@ -129,7 +129,7 @@ public:
 			q->onError();
 		}
 
-		emit q->finished();
+		q->finished();
 	}
 
 private slots:
@@ -141,7 +141,7 @@ private slots:
 			condition = ErrorUnavailable;
 			conditionString = "service-unavailable";
 			cleanup();
-			emit q->finished();
+			q->finished();
 			return;
 		}
 
@@ -167,7 +167,7 @@ private slots:
 		condition = ErrorTimeout;
 		conditionString = "timeout";
 		cleanup();
-		emit q->finished();
+		q->finished();
 	}
 };
 

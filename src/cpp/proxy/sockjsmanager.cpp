@@ -241,9 +241,9 @@ public:
 
 		s->route = route;
 
-		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req));
+		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
+		errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
 
 		sessions += s;
 		sessionsByRequest.insert(s->req, s);
@@ -364,9 +364,9 @@ public:
 		{
 			discardedRequests += req;
 
-			readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-			errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+			readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req));
+			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
+			errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
 		}
 
 		HttpHeaders headers;
@@ -484,7 +484,7 @@ public:
 					sessionsById.insert(s->sid, s);
 					s->pending = true;
 					pendingSessions += s;
-					emit q->sessionReady();
+					q->sessionReady();
 					return;
 				}
 			}
@@ -499,7 +499,7 @@ public:
 		{
 			s->pending = true;
 			pendingSessions += s;
-			emit q->sessionReady();
+			q->sessionReady();
 			return;
 		}
 		else
@@ -514,7 +514,7 @@ public:
 				s->lastPart = lastPart;
 				s->pending = true;
 				pendingSessions += s;
-				emit q->sessionReady();
+				q->sessionReady();
 				return;
 			}
 
@@ -575,11 +575,8 @@ public:
 		return s->ext;
 	}
 
-private slots:
-	void req_readyRead()
+	void req_readyRead(ZhttpRequest *req)
 	{
-		ZhttpRequest *req = (ZhttpRequest *)sender();
-
 		// for a request to have been discardable, we must have read the
 		//   entire input already and handed to the session
 		assert(!discardedRequests.contains(req));
@@ -590,11 +587,9 @@ private slots:
 		processRequestInput(s);
 	}
 
-	void req_bytesWritten(int count)
+	void req_bytesWritten(int count, ZhttpRequest *req)
 	{
 		Q_UNUSED(count);
-
-		ZhttpRequest *req = (ZhttpRequest *)sender();
 
 		if(discardedRequests.contains(req))
 		{
@@ -617,10 +612,8 @@ private slots:
 		}
 	}
 
-	void req_error()
+	void req_error(ZhttpRequest *req)
 	{
-		ZhttpRequest *req = (ZhttpRequest *)sender();
-
 		if(discardedRequests.contains(req))
 		{
 			discardedRequests.remove(req);
@@ -637,6 +630,7 @@ private slots:
 			removeSession(s);
 	}
 
+private slots:
 	void sock_closed()
 	{
 		ZWebSocket *sock = (ZWebSocket *)sender();

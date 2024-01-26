@@ -1052,7 +1052,7 @@ private:
 				rp.route = route.toUtf8();
 				rp.retrySeq = stats->lastRetrySeq();
 
-				emit retryPacketReady(rp);
+				retryPacketReady(rp);
 
 				setFinished(true);
 				return;
@@ -1117,7 +1117,7 @@ private:
 
 		// engine should directly connect to this and register the holds
 		//   immediately, to avoid a race with the lastId check
-		emit sessionsReady();
+		sessionsReady();
 
 		setFinished(true);
 	}

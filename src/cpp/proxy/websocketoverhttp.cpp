@@ -641,7 +641,6 @@ private:
 		req->endBody();
 	}
 
-private slots:
 	void req_readyRead()
 	{
 		if(inBuf.size() + req->bytesAvailable() > RESPONSE_BODY_MAX)
@@ -981,6 +980,7 @@ private slots:
 		emit q->error();
 	}
 
+private slots:
 	void keepAliveTimer_timeout()
 	{
 		update();
