@@ -135,7 +135,7 @@ void WsSession::delayedTimer_timeout()
 	pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + WSCONTROL_REQUEST_TIMEOUT;
 	setupRequestTimer();
 
-	emit send(reqId, delayedType, message);
+	send(reqId, delayedType, message);
 }
 
 void WsSession::requestTimer_timeout()
@@ -144,5 +144,5 @@ void WsSession::requestTimer_timeout()
 	pendingRequests.clear();
 	setupRequestTimer();
 
-	emit error();
+	error();
 }

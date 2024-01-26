@@ -87,6 +87,12 @@
 
 using namespace VariantUtil;
 
+struct WSSessionConnections {
+	Connection sendConnection;
+	Connection expConnection;
+	Connection errorConnection;
+};
+
 static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
 {
 	QList<PublishItem> out;
@@ -1256,6 +1262,7 @@ public:
 	Connection connectionsRefreshedConnection;
 	Connection unsubscribedConnection;
 	Connection reportedConnection;
+	map<WsSession*, WSSessionConnections> wsSessionConnectionMap;
 	Connection pullConnection;
 	Connection controlValveConnection;
 	Connection inSubValveConnection;
@@ -1692,6 +1699,7 @@ private:
 		log_debug("removed ws session: %s", qPrintable(s->cid));
 
 		cs.wsSessions.remove(s->cid);
+		wsSessionConnectionMap.erase(s);
 		delete s;
 	}
 
@@ -2600,9 +2608,11 @@ private:
 				if(!s)
 				{
 					s = new WsSession(this);
-					connect(s, &WsSession::send, this, &Private::wssession_send);
-					connect(s, &WsSession::expired, this, &Private::wssession_expired);
-					connect(s, &WsSession::error, this, &Private::wssession_error);
+					wsSessionConnectionMap[s] = {
+						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, s)),
+						s->expired.connect(boost::bind(&Private::wssession_expired, this, s)),
+						s->error.connect(boost::bind(&Private::wssession_error, this, s))
+					};
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
@@ -3132,10 +3142,8 @@ private slots:
 			writeRetryPacket(rp);
 	}
 
-	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message)
+	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message, WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		WsControlPacket::Item i;
 		i.cid = s->cid.toUtf8();
 		i.requestId = QByteArray::number(reqId);
@@ -3147,17 +3155,13 @@ private slots:
 		writeWsControlItems(QList<WsControlPacket::Item>() << i);
 	}
 
-	void wssession_expired()
+	void wssession_expired(WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		removeWsSession(s);
 	}
 
-	void wssession_error()
+	void wssession_error(WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		log_debug("ws session %s control error", qPrintable(s->cid));
 
 		WsControlPacket::Item i;
