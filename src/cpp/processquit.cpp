@@ -60,7 +60,7 @@ public:
 		QObject(parent)
 	{
 		sn = new QSocketNotifier(socket, type, this);
-		connect(sn, SIGNAL(activated(int)), SLOT(doActivated()));
+		connect(sn, &QSocketNotifier::activated, this, &SafeSocketNotifier::doActivated);
 	}
 
 	~SafeSocketNotifier()
@@ -82,10 +82,9 @@ public:
 private:
 	QSocketNotifier *sn;
 
-private slots:
-	void doActivated()
+	void doActivated(int sock)
 	{
-		activated(sn->socket());
+		activated(sock);
 	}
 };
 
