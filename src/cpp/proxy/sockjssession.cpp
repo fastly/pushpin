@@ -256,8 +256,8 @@ public:
 
 			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
 
-			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-			errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
+			errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
 		}
 		else
 		{
@@ -297,8 +297,8 @@ public:
 
 	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-		bytesWrittenConnection = _req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-		errorConnection = _req->error.connect(boost::bind(&Private::req_error, this));
+		bytesWrittenConnection = _req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
+		errorConnection = _req->error.connect(boost::bind(&Private::req_error, this, req));
 
 		if(lastPart == "xhr" || lastPart == "jsonp")
 		{
@@ -871,12 +871,10 @@ public:
 		return closeValue;
 	}
 
-private slots:
-	void req_bytesWritten(int count)
+	void req_bytesWritten(int count, ZhttpRequest *_req)
 	{
 		Q_UNUSED(count);
 
-		ZhttpRequest *_req = (ZhttpRequest *)sender();
 		RequestItem *ri = requests.value(_req);
 		assert(ri);
 
@@ -929,9 +927,8 @@ private slots:
 		}
 	}
 
-	void req_error()
+	void req_error(ZhttpRequest *_req)
 	{
-		ZhttpRequest *_req = (ZhttpRequest *)sender();
 		RequestItem *ri = requests.value(_req);
 		assert(ri);
 
@@ -972,6 +969,7 @@ private slots:
 		}
 	}
 
+private slots:
 	void sock_readyRead()
 	{
 		if(mode == WebSocketFramed)

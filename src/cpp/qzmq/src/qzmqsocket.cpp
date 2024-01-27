@@ -407,7 +407,7 @@ public:
 		assert(sock != NULL);
 
 		sn_read = new QSocketNotifier(get_fd(sock), QSocketNotifier::Read, this);
-		connect(sn_read, SIGNAL(activated(int)), SLOT(sn_read_activated()));
+		connect(sn_read, &QSocketNotifier::activated, this, &Private::sn_read_activated);
 		sn_read->setEnabled(true);
 
 		updateTimer = new QTimer(this);
