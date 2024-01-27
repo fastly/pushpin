@@ -120,8 +120,8 @@ public:
 		{
 			if(req)
 			{
-			    owner->reqConnectionMap.erase(req);
-			    delete req;
+				owner->reqConnectionMap.erase(req);
+				delete req;
 			}
 			delete sock;
 
