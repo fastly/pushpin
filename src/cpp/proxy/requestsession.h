@@ -105,11 +105,11 @@ public:
 
 	Signal inspectError;
 	boost::signals2::signal<void(const InspectData&)> inspected;
-    Signal finishedByAccept;
-    SignalInt bytesWritten;
-    Signal paused;
-    SignalInt headerBytesSent;
-    SignalInt bodyBytesSent;
+	Signal finishedByAccept;
+	SignalInt bytesWritten;
+	Signal paused;
+	SignalInt headerBytesSent;
+	SignalInt bodyBytesSent;
 	// this signal means some error was encountered while responding and
 	//   that you should not attempt to call further response-related
 	//   methods. the object remains in an active state though, and so you

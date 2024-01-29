@@ -1220,6 +1220,7 @@ public slots:
 
 		sessionItemsBySession.remove(rs);
 		sessionItems.remove(si);
+		reqSessionConnectionMap.erase(rs);
 		delete rs;
 
 		delete si;
@@ -1407,6 +1408,7 @@ public:
 				foreach(RequestSession *rs, toDestroy)
 				{
 					q->requestSessionDestroyed(rs, true);
+					reqSessionConnectionMap.erase(rs);
 					delete rs;
 					if(!self)
 						return;
