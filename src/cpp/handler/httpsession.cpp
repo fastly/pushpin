@@ -167,6 +167,7 @@ public:
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
 	QList<PublishItem> publishQueue;
+	QByteArray retryToAddress;
 	RetryRequestPacket retryPacket;
 	LogUtil::Config logConfig;
 	FilterStack *responseFilters;
@@ -1138,6 +1139,7 @@ private:
 			rp.route = adata.route.toUtf8();
 			rp.retrySeq = stats->lastRetrySeq();
 
+			retryToAddress = adata.from;
 			retryPacket = rp;
 		}
 		else
@@ -1597,6 +1599,11 @@ QHash<QString, Instruct::Channel> HttpSession::channels() const
 QHash<QString, QString> HttpSession::meta() const
 {
 	return d->instruct.meta;
+}
+
+QByteArray HttpSession::retryToAddress() const
+{
+	return d->retryToAddress;
 }
 
 RetryRequestPacket HttpSession::retryPacket() const
