@@ -103,13 +103,13 @@ public:
 	int unregisterConnection(); // return unreported time
 
 	Signal inspectError;
-	
+	Signal paused;
+	Signal finishedByAccept;
+
 signals:
 	void inspected(const InspectData &idata);
 	void finished();
-	void finishedByAccept();
 	void bytesWritten(int count);
-	void paused();
 	void headerBytesSent(int count);
 	void bodyBytesSent(int count);
 

@@ -935,7 +935,7 @@ public:
 				zhttpRequest = 0;
 
 				cleanup();
-				emit q->finishedByAccept();
+				q->finishedByAccept();
 			}
 			else
 			{
