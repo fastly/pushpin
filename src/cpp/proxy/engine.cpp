@@ -58,6 +58,7 @@
 #define DEFAULT_HWM 1000
 
 struct RequestSessionConnections {
+	Connection inspectedConnection;
 	Connection inspectErrorConnection;
 	Connection finishedByAcceptConnection;
 };
@@ -599,9 +600,9 @@ public:
 		rs->setAutoShare(autoShare);
 
 		// TODO: use callbacks for performance
-		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
 		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
 		reqSessionConnectionMap[rs] = {
+			rs->inspected.connect(boost::bind(&Private::rs_inspected, this, boost::placeholders::_1, rs)),
 			rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs)),
 			rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs))
 		};
@@ -738,11 +739,8 @@ private:
 		doProxy(rs);
 	}
 
-private slots:
-	void rs_inspected(const InspectData &idata)
+	void rs_inspected(const InspectData &idata, RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		// if we get here, then the request must be proxied. if it was to be directly
 		//   accepted, then finishedByAccept would have been emitted instead
 		assert(idata.doProxy);
@@ -750,6 +748,7 @@ private slots:
 		doProxy(rs, &idata);
 	}
 
+private slots:
 	void rs_finished()
 	{
 		RequestSession *rs = (RequestSession *)sender();

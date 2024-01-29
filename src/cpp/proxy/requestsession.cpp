@@ -488,7 +488,7 @@ public:
 
 				state = WaitingForResponse;
 				requestData.body = in.take();
-				emit q->inspected(idata);
+				q->inspected(idata);
 			}
 		}
 		else if(state == ReceivingForAccept)
@@ -912,7 +912,7 @@ public:
 			{
 				state = WaitingForResponse;
 				requestData.body = in.take();
-				emit q->inspected(idata);
+				q->inspected(idata);
 			}
 		}
 	}

@@ -102,12 +102,12 @@ public:
 
 	int unregisterConnection(); // return unreported time
 
+	boost::signals2::signal<void(const InspectData&)> inspected;
 	Signal inspectError;
 	Signal paused;
 	Signal finishedByAccept;
 
 signals:
-	void inspected(const InspectData &idata);
 	void finished();
 	void bytesWritten(int count);
 	void headerBytesSent(int count);
