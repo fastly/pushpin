@@ -26,6 +26,7 @@
 #include <assert.h>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
+#include "qzmqreqmessage.h"
 #include "tnetstring.h"
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
@@ -272,8 +273,9 @@ public:
 
 		if(!config.retryInSpec.isEmpty())
 		{
-			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Router, this);
 
+			handler_retry_in_sock->setIdentity(config.clientId);
 			handler_retry_in_sock->setHwm(DEFAULT_HWM);
 
 			QString errorMessage;
@@ -837,14 +839,16 @@ private slots:
 private:
 	void handler_retry_in_readyRead(const QList<QByteArray> &message)
 	{
-		if(message.count() != 1)
+		QZmq::ReqMessage req(message);
+
+		if(req.content().count() != 1)
 		{
 			log_warning("retry: received message with parts != 1, skipping");
 			return;
 		}
 
 		bool ok;
-		QVariant data = TnetString::toVariant(message[0], 0, &ok);
+		QVariant data = TnetString::toVariant(req.content()[0], 0, &ok);
 		if(!ok)
 		{
 			log_warning("retry: received message with invalid format (tnetstring parse failed), skipping");
