@@ -300,7 +300,7 @@ public:
 				isSockJs = true;
 				sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
 				zhttpRequest = 0;
-				QMetaObject::invokeMethod(q, "doFinished", Qt::QueuedConnection);
+				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
 				return;
 			}
 		}
@@ -817,7 +817,7 @@ public:
 		if(zhttpRequest->isFinished())
 		{
 			cleanup();
-			q->finished();
+			emit q->finished();
 		}
 	}
 
@@ -867,7 +867,7 @@ public:
 	{
 		log_debug("requestsession: request error id=%s", rid.second.data());
 		cleanup();
-		q->finished();
+		emit q->finished();
 	}
 
 	void inspectRequest_finished()
@@ -962,10 +962,6 @@ public:
 	}
 
 public slots:
-	void doFinished(){
-		q->finished();
-	}
-
 	void doResponseUpdate()
 	{
 		pendingResponseUpdate = false;
