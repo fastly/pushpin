@@ -1004,7 +1004,7 @@ public slots:
 						zhttpRequest->writeBody(body);
 						responseBodySize += body.size();
 						zhttpRequest->endBody();
-						emit q->errorResponding();
+						q->errorResponding();
 						return;
 					}
 
@@ -1051,7 +1051,7 @@ public slots:
 					zhttpRequest->writeBody(body);
 					responseBodySize += body.size();
 					zhttpRequest->endBody();
-					emit q->errorResponding();
+					q->errorResponding();
 					return;
 				}
 
@@ -1119,7 +1119,7 @@ public slots:
 
 					// if we error while streaming, all we can do is give up
 					zhttpRequest->endBody();
-					emit q->errorResponding();
+					q->errorResponding();
 					return;
 				}
 

@@ -58,6 +58,7 @@ using std::map;
 #define MAX_STREAM_BUFFER 100000
 
 struct RequestSessionConnections {
+	Connection errorRespondingConnection;
 	Connection pausedConnection;
 };
 
@@ -246,9 +247,9 @@ public:
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
 		connect(rs, &RequestSession::bytesWritten, this, &Private::rs_bytesWritten);
-		connect(rs, &RequestSession::errorResponding, this, &Private::rs_errorResponding);
 		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
 		reqSessionConnectionMap[rs] = {
+			rs->errorResponding.connect(boost::bind(&Private::rs_errorResponding, this, rs)),
 			rs->paused.connect(boost::bind(&Private::rs_paused, this, rs))
 		};
 		connect(rs, &RequestSession::headerBytesSent, this, &Private::rs_headerBytesSent);
@@ -1340,10 +1341,8 @@ public slots:
 		}
 	}
 
-	void rs_errorResponding()
+	void rs_errorResponding(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response error id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
