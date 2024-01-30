@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -135,7 +136,7 @@ public:
 		handlerInspectValve = new QZmq::Valve(handlerInspectSock, this);
 		handlerInspectValveConnection = handlerInspectValve->readyRead.connect(boost::bind(&Wrapper::handlerInspect_readyRead, this, boost::placeholders::_1));
 
-		handlerRetryOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
+		handlerRetryOutSock = new QZmq::Socket(QZmq::Socket::Router, this);
 	}
 
 	void startHttp()
@@ -540,7 +541,12 @@ private:
 				vretry["request-data"] = vaccept["request-data"];
 				QByteArray buf = TnetString::fromVariant(vretry);
 				log_debug("retrying: %s", qPrintable(TnetString::variantToString(vretry, -1)));
-				handlerRetryOutSock->write(QList<QByteArray>() << buf);
+
+				QList<QByteArray> msg;
+				msg.append("proxy");
+				msg.append(QByteArray());
+				msg.append(buf);
+				handlerRetryOutSock->write(msg);
 				return;
 			}
 		}

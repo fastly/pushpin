@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2021-2022 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -383,6 +383,7 @@ const WZMQ_TCP_KEEPALIVE: libc::c_int = 10;
 const WZMQ_TCP_KEEPALIVE_IDLE: libc::c_int = 11;
 const WZMQ_TCP_KEEPALIVE_CNT: libc::c_int = 12;
 const WZMQ_TCP_KEEPALIVE_INTVL: libc::c_int = 13;
+const WZMQ_ROUTER_MANDATORY: libc::c_int = 14;
 
 // NOTE: must match values in wzmq.h
 const WZMQ_DONTWAIT: libc::c_int = 0x01;
@@ -721,6 +722,21 @@ pub unsafe extern "C" fn wzmq_setsockopt(
             };
 
             if let Err(e) = sock.set_immediate(*x != 0) {
+                set_errno(e.to_raw());
+                return -1;
+            }
+        }
+        WZMQ_ROUTER_MANDATORY => {
+            if option_len as u32 != libc::c_int::BITS / 8 {
+                return -1;
+            }
+
+            let x = match (option_value as *mut libc::c_int).as_ref() {
+                Some(x) => x,
+                None => return -1,
+            };
+
+            if let Err(e) = sock.set_router_mandatory(*x != 0) {
                 set_errno(e.to_raw());
                 return -1;
             }

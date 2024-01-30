@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -257,7 +258,11 @@ public:
 		QString proxy_accept_spec = settings.value("handler/proxy_accept_spec").toString();
 		if(!proxy_accept_spec.isEmpty())
 			proxy_accept_specs += proxy_accept_spec;
+		QStringList proxy_retry_out_specs = settings.value("handler/proxy_retry_out_specs").toStringList();
+		trimlist(&proxy_retry_out_specs);
 		QString proxy_retry_out_spec = settings.value("handler/proxy_retry_out_spec").toString();
+		if(!proxy_retry_out_spec.isEmpty())
+			proxy_retry_out_specs += proxy_retry_out_spec;
 		QString ws_control_in_spec = settings.value("handler/proxy_ws_control_in_spec").toString();
 		QString ws_control_out_spec = settings.value("handler/proxy_ws_control_out_spec").toString();
 		QString stats_spec = settings.value("handler/stats_spec").toString();
@@ -306,9 +311,9 @@ public:
 			return;
 		}
 
-		if(proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() || proxy_retry_out_spec.isEmpty())
+		if(proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() || proxy_retry_out_specs.isEmpty())
 		{
-			log_error("must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_spec");
+			log_error("must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs");
 			q->quit(0);
 			return;
 		}
@@ -331,7 +336,7 @@ public:
 		config.clientInSpecs = intreq_in_specs;
 		config.inspectSpecs = proxy_inspect_specs;
 		config.acceptSpecs = proxy_accept_specs;
-		config.retryOutSpec = proxy_retry_out_spec;
+		config.retryOutSpecs = proxy_retry_out_specs;
 		config.wsControlInSpec = ws_control_in_spec;
 		config.wsControlOutSpec = ws_control_out_spec;
 		config.statsSpec = stats_spec;

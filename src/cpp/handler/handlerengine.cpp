@@ -825,7 +825,7 @@ public:
 	}
 
 	Signal sessionsReady;
-	boost::signals2::signal<void(const RetryRequestPacket&)> retryPacketReady;
+	boost::signals2::signal<void(const QByteArray &,const RetryRequestPacket&)> retryPacketReady;
 
 private:
 	static HttpRequestData parseRequestData(const QVariantHash &args, const QString &field)
@@ -1054,7 +1054,7 @@ private:
 				rp.route = route.toUtf8();
 				rp.retrySeq = stats->lastRetrySeq();
 
-				retryPacketReady(rp);
+				retryPacketReady(reqFrom, rp);
 
 				setFinished(true);
 				return;
@@ -1093,6 +1093,7 @@ private:
 				implicitChannelsSet += channel;
 
 			HttpSession::AcceptData adata;
+			adata.from = reqFrom;
 			adata.requestData = origRequestData;
 			adata.logicalPeerAddress = rs.logicalPeerAddress;
 			adata.debug = rs.debug;
@@ -1455,20 +1456,24 @@ public:
 			log_info("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
 		}
 
-		if(!config.retryOutSpec.isEmpty())
+		if(!config.retryOutSpecs.isEmpty())
 		{
-			retrySock = new QZmq::Socket(QZmq::Socket::Push, this);
+			retrySock = new QZmq::Socket(QZmq::Socket::Router, this);
 			retrySock->setHwm(DEFAULT_HWM);
 			retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
+			retrySock->setRouterMandatoryEnabled(true);
 
-			QString errorMessage;
-			if(!ZUtil::setupSocket(retrySock, config.retryOutSpec, false, config.ipcFileMode, &errorMessage))
+			foreach(const QString &spec, config.retryOutSpecs)
 			{
-					log_error("%s", qPrintable(errorMessage));
-					return false;
+				QString errorMessage;
+				if(!ZUtil::setupSocket(retrySock, spec, false, config.ipcFileMode, &errorMessage))
+				{
+						log_error("%s", qPrintable(errorMessage));
+						return false;
+				}
 			}
 
-			log_info("retry: %s", qPrintable(config.retryOutSpec));
+			log_info("retry: %s", qPrintable(config.retryOutSpecs.join(", ")));
 		}
 
 		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
@@ -1622,7 +1627,7 @@ private:
 		sequencer->addItem(item, seq);
 	}
 
-	void writeRetryPacket(const RetryRequestPacket &packet)
+	void writeRetryPacket(const QByteArray &instanceAddress, const RetryRequestPacket &packet)
 	{
 		if(!retrySock)
 		{
@@ -1633,9 +1638,13 @@ private:
 		QVariant vout = packet.toVariant();
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
+			log_debug("OUT retry: to=%s %s", instanceAddress.data(), qPrintable(TnetString::variantToString(vout, -1)));
 
-		retrySock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
+		QList<QByteArray> msg;
+		msg += instanceAddress;
+		msg += QByteArray();
+		msg += TnetString::fromVariant(vout);
+		retrySock->write(msg);
 	}
 
 	void writeWsControlItems(const QList<WsControlPacket::Item> &items)
@@ -1969,7 +1978,7 @@ private:
 			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
 			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
-			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1));
+			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
 			acceptWorkers += w;
 
 			w->start();
@@ -2380,9 +2389,9 @@ private:
 		}
 	}
 
-	void acceptWorker_retryPacketReady(const RetryRequestPacket &packet)
+	void acceptWorker_retryPacketReady(const QByteArray &instanceAddress, const RetryRequestPacket &packet)
 	{
-		writeRetryPacket(packet);
+		writeRetryPacket(instanceAddress, packet);
 	}
 
 	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
@@ -3131,6 +3140,7 @@ private slots:
 
 	void hs_finished(HttpSession *hs)
 	{
+		QByteArray addr = hs->retryToAddress();
 		RetryRequestPacket rp = hs->retryPacket();
 
 		cs.httpSessions.remove(hs->rid());
@@ -3141,7 +3151,7 @@ private slots:
 		hs->deleteLater();
 
 		if(!rp.requests.isEmpty())
-			writeRetryPacket(rp);
+			writeRetryPacket(addr, rp);
 	}
 
 	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message, WsSession *s)
