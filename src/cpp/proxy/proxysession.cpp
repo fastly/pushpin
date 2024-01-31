@@ -47,6 +47,8 @@
 #include "acceptrequest.h"
 #include "testhttprequest.h"
 
+using std::map;
+
 #define MAX_ACCEPT_REQUEST_BODY 100000
 
 // NOTE: if this value is ever changed, fix enginetest to match
@@ -54,6 +56,14 @@
 
 #define MAX_INITIAL_BUFFER 100000
 #define MAX_STREAM_BUFFER 100000
+
+struct RequestSessionConnections {
+	Connection bytesWrittenConnection;
+	Connection errorRespondingConnection;
+	Connection pausedConnection;
+	Connection headerBytesSentConnection;
+	Connection bodyBytesSentConnection;
+};
 
 class ProxySession::Private : public QObject
 {
@@ -155,6 +165,7 @@ public:
 	Connection writeBytesChangedConnection;
 	Connection errorConnection;
 	Connection finishedConnection;
+	map<RequestSession*, RequestSessionConnections> reqSessionConnectionMap;
 
 	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager) :
 		QObject(_q),
@@ -238,12 +249,14 @@ public:
 
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
-		connect(rs, &RequestSession::bytesWritten, this, &Private::rs_bytesWritten);
-		connect(rs, &RequestSession::errorResponding, this, &Private::rs_errorResponding);
 		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::paused, this, &Private::rs_paused);
-		connect(rs, &RequestSession::headerBytesSent, this, &Private::rs_headerBytesSent);
-		connect(rs, &RequestSession::bodyBytesSent, this, &Private::rs_bodyBytesSent);
+		reqSessionConnectionMap[rs] = {
+			rs->bytesWritten.connect(boost::bind(&Private::rs_bytesWritten, this, boost::placeholders::_1, rs)),
+			rs->errorResponding.connect(boost::bind(&Private::rs_errorResponding, this, rs)),
+			rs->paused.connect(boost::bind(&Private::rs_paused, this, rs)),
+			rs->headerBytesSent.connect(boost::bind(&Private::rs_headerBytesSent, this, boost::placeholders::_1, rs)),
+			rs->bodyBytesSent.connect(boost::bind(&Private::rs_bodyBytesSent, this, boost::placeholders::_1, rs))
+		};
 
 		HttpRequestData rsRequestData = rs->requestData();
 
@@ -1168,10 +1181,8 @@ public:
 	}
 
 public slots:
-	void rs_bytesWritten(int count)
+	void rs_bytesWritten(int count, RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response bytes written id=%s: %d", q, rs->rid().second.data(), count);
 
 		SessionItem *si = sessionItemsBySession.value(rs);
@@ -1209,6 +1220,7 @@ public slots:
 
 		sessionItemsBySession.remove(rs);
 		sessionItems.remove(si);
+		reqSessionConnectionMap.erase(rs);
 		delete rs;
 
 		delete si;
@@ -1228,10 +1240,8 @@ public slots:
 		}
 	}
 
-	void rs_paused()
+	void rs_paused(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response paused id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
@@ -1333,10 +1343,8 @@ public slots:
 		}
 	}
 
-	void rs_errorResponding()
+	void rs_errorResponding(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response error id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
@@ -1351,10 +1359,8 @@ public slots:
 		// don't destroy the RequestSession here. a finished signal will arrive next.
 	}
 
-	void rs_headerBytesSent(int count)
+	void rs_headerBytesSent(int count, RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
@@ -1362,10 +1368,8 @@ public slots:
 			incCounter(Stats::ClientHeaderBytesSent, count);
 	}
 
-	void rs_bodyBytesSent(int count)
+	void rs_bodyBytesSent(int count, RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
@@ -1404,6 +1408,7 @@ public:
 				foreach(RequestSession *rs, toDestroy)
 				{
 					q->requestSessionDestroyed(rs, true);
+					reqSessionConnectionMap.erase(rs);
 					delete rs;
 					if(!self)
 						return;
