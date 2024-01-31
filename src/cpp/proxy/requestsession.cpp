@@ -488,7 +488,7 @@ public:
 
 				state = WaitingForResponse;
 				requestData.body = in.take();
-				emit q->inspected(idata);
+				q->inspected(idata);
 			}
 		}
 		else if(state == ReceivingForAccept)
@@ -912,7 +912,7 @@ public:
 			{
 				state = WaitingForResponse;
 				requestData.body = in.take();
-				emit q->inspected(idata);
+				q->inspected(idata);
 			}
 		}
 	}
@@ -935,7 +935,7 @@ public:
 				zhttpRequest = 0;
 
 				cleanup();
-				emit q->finishedByAccept();
+				q->finishedByAccept();
 			}
 			else
 			{
@@ -1004,7 +1004,7 @@ public slots:
 						zhttpRequest->writeBody(body);
 						responseBodySize += body.size();
 						zhttpRequest->endBody();
-						emit q->errorResponding();
+						q->errorResponding();
 						return;
 					}
 
@@ -1051,7 +1051,7 @@ public slots:
 					zhttpRequest->writeBody(body);
 					responseBodySize += body.size();
 					zhttpRequest->endBody();
-					emit q->errorResponding();
+					q->errorResponding();
 					return;
 				}
 
@@ -1119,7 +1119,7 @@ public slots:
 
 					// if we error while streaming, all we can do is give up
 					zhttpRequest->endBody();
-					emit q->errorResponding();
+					q->errorResponding();
 					return;
 				}
 
@@ -1357,7 +1357,7 @@ void RequestSession::startResponse(int code, const QByteArray &reason, const Htt
 {
 	assert(d->state == Private::ReceivingForAccept || d->state == Private::WaitingForResponse);
 
-	emit headerBytesSent(ZhttpManager::estimateResponseHeaderBytes(code, reason, headers));
+	headerBytesSent(ZhttpManager::estimateResponseHeaderBytes(code, reason, headers));
 
 	d->state = Private::RespondingStart;
 	d->responseData.code = code;
@@ -1372,7 +1372,7 @@ void RequestSession::writeResponseBody(const QByteArray &body)
 	assert(d->state == Private::RespondingStart || d->state == Private::Responding);
 	assert(!d->responseBodyFinished);
 
-	emit bodyBytesSent(body.size());
+	bodyBytesSent(body.size());
 
 	d->out += body;
 	d->responseUpdate();
