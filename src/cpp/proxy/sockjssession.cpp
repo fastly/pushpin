@@ -160,7 +160,7 @@ public:
 	bool updating;
 	Connection bytesWrittenConnection;
 	Connection errorConnection;
-	WSConnections wsConnection;
+	WSConnections* wsConnection;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -244,6 +244,7 @@ public:
 		}
 		requests.clear();
 
+		delete wsConnection;
 		delete sock;
 		sock = 0;
 
@@ -274,7 +275,7 @@ public:
 		}
 		else
 		{
-			wsConnection = {
+			wsConnection = new WSConnections{
 				sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this)),
 				sock->framesWritten.connect(boost::bind(&Private::sock_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
 				sock->writeBytesChanged.connect(boost::bind(&Private::sock_writeBytesChanged, this)),

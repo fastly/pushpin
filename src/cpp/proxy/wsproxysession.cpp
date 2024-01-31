@@ -309,8 +309,8 @@ public:
 	Connection keepAliveConneciton;
 	Connection aboutToSendRequestConnection;
 	map<WsControlSession*, WSProxyConnections> wsProxyConnectionMap;
-	WSConnections outWSConnection;
-	InWSConnections inWSConnection;
+	WSConnections* outWSConnection;
+	InWSConnections* inWSConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -351,7 +351,8 @@ public:
 		cleanupKeepAliveTimer();
 
 		cleanupInSock();
-
+		
+		delete outWSConnection;
 		delete outSock;
 		outSock = 0;
 
@@ -371,6 +372,7 @@ public:
 		if(inSock)
 		{
 			connectionManager->removeConnection(inSock);
+			delete inWSConnection;
 			delete inSock;
 			inSock = 0;
 		}
@@ -400,7 +402,7 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		inWSConnection = {
+		inWSConnection = new InWSConnections{
 			inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this)),
 			inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
 			inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this)),
@@ -580,7 +582,7 @@ public:
 				outSock->setParent(this);
 			}
 		}
-		outWSConnection = {
+		outWSConnection = new WSConnections{
 			outSock->connected.connect(boost::bind(&Private::out_connected, this)),
 			outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this)),
 			outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this)),
@@ -858,6 +860,7 @@ private slots:
 			{
 				if(outSock->state() == WebSocket::Connecting)
 				{
+					delete outWSConnection;
 					delete outSock;
 					outSock = 0;
 
@@ -889,6 +892,7 @@ private slots:
 
 		if(!detached)
 		{
+			delete outWSConnection;
 			delete outSock;
 			outSock = 0;
 		}
@@ -984,6 +988,7 @@ private slots:
 	{
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
+		delete outWSConnection;
 		delete outSock;
 		outSock = 0;
 
@@ -1000,6 +1005,7 @@ private slots:
 
 		if(detached)
 		{
+			delete outWSConnection;
 			delete outSock;
 			outSock = 0;
 
@@ -1026,6 +1032,7 @@ private slots:
 					break;
 			}
 
+			delete outWSConnection;
 			delete outSock;
 			outSock = 0;
 
@@ -1036,6 +1043,7 @@ private slots:
 		{
 			cleanupInSock();
 
+			delete outWSConnection;
 			delete outSock;
 			outSock = 0;
 
@@ -1136,6 +1144,7 @@ private:
 	{
 		if(outSock)
 		{
+			delete outWSConnection;
 			delete outSock;
 			outSock = 0;
 		}
