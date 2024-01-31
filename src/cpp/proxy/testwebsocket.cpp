@@ -115,7 +115,7 @@ public slots:
 				}
 			}
 
-			emit q->connected();
+			q->connected();
 
 			if(gripEnabled && !channels.isEmpty())
 				QMetaObject::invokeMethod(q, "readyRead", Qt::QueuedConnection);

@@ -837,7 +837,7 @@ private:
 
 		if(emitConnected)
 		{
-			emit q->connected();
+			q->connected();
 			if(!self)
 				return;
 		}

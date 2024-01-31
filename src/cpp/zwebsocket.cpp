@@ -671,7 +671,7 @@ public:
 
 				state = Connected;
 				update();
-				emit q->connected();
+				q->connected();
 			}
 			else
 			{

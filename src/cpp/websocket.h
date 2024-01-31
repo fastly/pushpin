@@ -28,6 +28,9 @@
 #include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class WebSocket : public QObject
 {
@@ -110,8 +113,9 @@ public:
 	virtual Frame readFrame() = 0;
 	virtual void close(int code = -1, const QString &reason = QString()) = 0;
 
+	Signal connected;
+
 signals:
-	void connected();
 	void readyRead();
 	void framesWritten(int count, int contentBytes);
 	void writeBytesChanged();
