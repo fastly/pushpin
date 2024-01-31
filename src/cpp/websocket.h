@@ -114,14 +114,12 @@ public:
 	virtual void close(int code = -1, const QString &reason = QString()) = 0;
 
 	Signal connected;
-
-signals:
-	void readyRead();
-	void framesWritten(int count, int contentBytes);
-	void writeBytesChanged();
-	void peerClosed(); // emitted only if peer closes before we do
-	void closed(); // emitted after peer acks our close, or immediately if we were acking
-	void error();
+	Signal readyRead;
+	boost::signals2::signal<void(int, int)> framesWritten;
+	Signal writeBytesChanged;
+	Signal peerClosed; // emitted only if peer closes before we do
+	Signal closed; // emitted after peer acks our close, or immediately if we were acking
+	Signal error;
 };
 
 #endif
