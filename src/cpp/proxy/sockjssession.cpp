@@ -44,7 +44,7 @@ using std::map;
 #define UNCONNECTED_TIMEOUT 5
 
 struct WSConnections {
-    Connection connectedConnection;
+	Connection connectedConnection;
 	Connection readyReadConnection;
 	Connection framesWrittenConnection;
 	Connection writeBytesChangedConnection;
@@ -160,7 +160,7 @@ public:
 	bool updating;
 	Connection bytesWrittenConnection;
 	Connection errorConnection;
-	map<ZWebSocket*, WSConnections> wsConnectionMap;
+	WSConnections wsConnection;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -244,7 +244,6 @@ public:
 		}
 		requests.clear();
 
-		wsConnectionMap.erase(sock);
 		delete sock;
 		sock = 0;
 
@@ -275,7 +274,7 @@ public:
 		}
 		else
 		{
-			wsConnectionMap[sock] = {
+			wsConnection = {
 				sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this)),
 				sock->framesWritten.connect(boost::bind(&Private::sock_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
 				sock->writeBytesChanged.connect(boost::bind(&Private::sock_writeBytesChanged, this)),

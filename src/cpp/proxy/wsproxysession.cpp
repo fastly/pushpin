@@ -309,8 +309,8 @@ public:
 	Connection keepAliveConneciton;
 	Connection aboutToSendRequestConnection;
 	map<WsControlSession*, WSProxyConnections> wsProxyConnectionMap;
-	map<WebSocket*, WSConnections> outWSConnectionMap;
-	map<WebSocket*, InWSConnections> inWSConnectionMap;
+	WSConnections outWSConnection;
+	InWSConnections inWSConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -352,7 +352,6 @@ public:
 
 		cleanupInSock();
 
-		outWSConnectionMap.erase(outSock);
 		delete outSock;
 		outSock = 0;
 
@@ -372,7 +371,6 @@ public:
 		if(inSock)
 		{
 			connectionManager->removeConnection(inSock);
-			inWSConnectionMap.erase(inSock);
 			delete inSock;
 			inSock = 0;
 		}
@@ -402,7 +400,7 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		inWSConnectionMap[inSock] = {
+		inWSConnection = {
 			inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this)),
 			inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
 			inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this)),
@@ -582,7 +580,7 @@ public:
 				outSock->setParent(this);
 			}
 		}
-		outWSConnectionMap[outSock] = {
+		outWSConnection = {
 			outSock->connected.connect(boost::bind(&Private::out_connected, this)),
 			outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this)),
 			outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this)),
@@ -860,7 +858,6 @@ private slots:
 			{
 				if(outSock->state() == WebSocket::Connecting)
 				{
-					outWSConnectionMap.erase(outSock);
 					delete outSock;
 					outSock = 0;
 
@@ -892,7 +889,6 @@ private slots:
 
 		if(!detached)
 		{
-			outWSConnectionMap.erase(outSock);
 			delete outSock;
 			outSock = 0;
 		}
@@ -988,7 +984,6 @@ private slots:
 	{
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
-		outWSConnectionMap.erase(outSock);
 		delete outSock;
 		outSock = 0;
 
@@ -1005,7 +1000,6 @@ private slots:
 
 		if(detached)
 		{
-			outWSConnectionMap.erase(outSock);
 			delete outSock;
 			outSock = 0;
 
@@ -1032,7 +1026,6 @@ private slots:
 					break;
 			}
 
-			outWSConnectionMap.erase(outSock);
 			delete outSock;
 			outSock = 0;
 
@@ -1043,7 +1036,6 @@ private slots:
 		{
 			cleanupInSock();
 
-			outWSConnectionMap.erase(outSock);
 			delete outSock;
 			outSock = 0;
 
@@ -1144,7 +1136,6 @@ private:
 	{
 		if(outSock)
 		{
-			outWSConnectionMap.erase(outSock);
 			delete outSock;
 			outSock = 0;
 		}

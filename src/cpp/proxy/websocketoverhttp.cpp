@@ -47,9 +47,9 @@
 namespace {
 
 struct WSConnections {
-    Connection disconnectedConnection;
-    Connection closedConnection;
-    Connection errorConnection;
+	Connection disconnectedConnection;
+	Connection closedConnection;
+	Connection errorConnection;
 };
 
 class WsEvent
