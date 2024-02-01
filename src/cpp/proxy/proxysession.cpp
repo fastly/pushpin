@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -1331,10 +1331,10 @@ public slots:
 			if(!statsManager->connectionSendEnabled())
 			{
 				// flush max. the count will include the connections we just unregistered
-				adata.connMaxPackets += statsManager->getConnMaxPacket(route.id).toVariant();
+				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 
 				// flush max again to get the count without the connections
-				adata.connMaxPackets += statsManager->getConnMaxPacket(route.id).toVariant();
+				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 			}
 
 			acceptRequest = new AcceptRequest(acceptManager, this);

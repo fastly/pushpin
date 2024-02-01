@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -383,7 +384,7 @@ public:
 		processIncomingRequest();
 	}
 
-	void startRetry(int unreportedTime)
+	void startRetry(int unreportedTime, int retrySeq)
 	{
 		trusted = ProxyUtil::checkTrustedClient("requestsession", q, requestData, defaultUpstreamKey);
 
@@ -417,6 +418,9 @@ public:
 
 		if(stats)
 		{
+			if(retrySeq >= 0)
+				stats->setRetrySeq(route.statsRoute(), retrySeq);
+
 			connectionRegistered = true;
 
 			int reportOffset = stats->connectionSendEnabled() ? -1 : qMax(unreportedTime, 0);
@@ -1323,7 +1327,7 @@ void RequestSession::start(ZhttpRequest *req)
 	d->start(req);
 }
 
-void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime)
+void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime, int retrySeq)
 {
 	d->isRetry = true;
 	d->zhttpRequest = req;
@@ -1337,7 +1341,7 @@ void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOri
 	d->requestData.headers = req->requestHeaders();
 	d->requestData.body = req->readBody();
 
-	d->startRetry(unreportedTime);
+	d->startRetry(unreportedTime, retrySeq);
 }
 
 void RequestSession::pause()
