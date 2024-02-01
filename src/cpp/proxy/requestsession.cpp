@@ -235,6 +235,10 @@ public:
 	{
 		if(zhttpRequest)
 		{
+			readyReadConnection.disconnect();
+			pausedConnection.disconnect();
+			errorConnection.disconnect();
+			bytesWrittenConnection.disconnect();
 			delete zhttpRequest;
 			zhttpRequest = 0;
 		}
@@ -923,6 +927,7 @@ public:
 		{
 			AcceptRequest::ResponseData rdata = acceptRequest->result();
 
+			acceptFinishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 
@@ -931,6 +936,10 @@ public:
 				accepted = true;
 
 				// the request was paused, so deleting it will leave the peer session active
+				readyReadConnection.disconnect();
+				pausedConnection.disconnect();
+				errorConnection.disconnect();
+				bytesWrittenConnection.disconnect();
 				delete zhttpRequest;
 				zhttpRequest = 0;
 
@@ -953,6 +962,7 @@ public:
 		}
 		else
 		{
+			acceptFinishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 

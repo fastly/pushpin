@@ -163,6 +163,8 @@ public:
 
 	bool setupClientOut()
 	{
+		cosConnection.disconnect();
+		rrConnection.disconnect();
 		delete client_req_sock;
 		delete client_out_sock;
 
@@ -184,6 +186,8 @@ public:
 
 	bool setupClientOutStream()
 	{
+		rrConnection.disconnect();
+		cossConnection.disconnect();
 		delete client_req_sock;
 		delete client_out_stream_sock;
 
@@ -207,6 +211,7 @@ public:
 
 	bool setupClientIn()
 	{
+		rrConnection.disconnect();
 		delete client_req_sock;
 		delete client_in_sock;
 
@@ -233,6 +238,8 @@ public:
 
 	bool setupClientReq()
 	{
+		cosConnection.disconnect();
+		cossConnection.disconnect();
 		delete client_out_sock;
 		delete client_out_stream_sock;
 		delete client_in_sock;
@@ -278,6 +285,7 @@ public:
 
 	bool setupServerInStream()
 	{
+		serverStreamConnection.disconnect();
 		delete server_in_stream_sock;
 
 		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
@@ -302,6 +310,7 @@ public:
 
 	bool setupServerOut()
 	{
+		sosConnection.disconnect();
 		delete server_out_sock;
 
 		server_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);

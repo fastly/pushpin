@@ -537,6 +537,7 @@ public:
 		{
 			if(!prometheusServer->listenLocal(portStr.mid(6)))
 			{
+				promServerConnection.disconnect();
 				delete prometheusServer;
 
 				return false;
@@ -560,6 +561,7 @@ public:
 
 			if(!prometheusServer->listen(addr, port))
 			{
+				promServerConnection.disconnect();
 				delete prometheusServer;
 
 				return false;
