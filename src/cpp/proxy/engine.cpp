@@ -874,9 +874,6 @@ private:
 
 		log_debug("IN (retry) %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
 
-		if(p.retrySeq >= 0)
-			stats->setRetrySeq(p.route, p.retrySeq);
-
 		InspectData idata;
 		if(p.haveInspectInfo)
 		{
@@ -918,7 +915,7 @@ private:
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse
 			//   stats processors tracking route+connection mappings.
-			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime);
+			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0);
 		}
