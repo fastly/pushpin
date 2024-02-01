@@ -115,10 +115,10 @@ public slots:
 				}
 			}
 
-			emit q->connected();
+			q->connected();
 
 			if(gripEnabled && !channels.isEmpty())
-				QMetaObject::invokeMethod(q, "readyRead", Qt::QueuedConnection);
+				QMetaObject::invokeMethod(this, "doReadyRead", Qt::QueuedConnection);
 		}
 		else
 		{
@@ -128,14 +128,29 @@ public slots:
 			response.body += QByteArray("no such test resource\n");
 
 			errorCondition = ErrorRejected;
-			emit q->error();
+			q->error();
 		}
+	}
+
+	void doReadyRead()
+	{
+		q->readyRead();
+	}
+
+	void doFramesWritten(int count, int bytes)
+	{
+		q->framesWritten(count, bytes);
+	}
+
+	void doWriteBytesChanged()
+	{
+		q->writeBytesChanged();
 	}
 
 	void handleClose()
 	{
 		state = Idle;
-		emit q->closed();
+		q->closed();
 	}
 };
 
@@ -296,13 +311,13 @@ void TestWebSocket::writeFrame(const Frame &frame)
 
 	d->inFrames += tmp;
 
-	QMetaObject::invokeMethod(this, "framesWritten", Qt::QueuedConnection, Q_ARG(int, 1), Q_ARG(int, tmp.data.size()));
-	QMetaObject::invokeMethod(this, "readyRead", Qt::QueuedConnection);
+	QMetaObject::invokeMethod(d, "doFramesWritten", Qt::QueuedConnection, Q_ARG(int, 1), Q_ARG(int, tmp.data.size()));
+	QMetaObject::invokeMethod(d, "doReadyRead", Qt::QueuedConnection);
 }
 
 WebSocket::Frame TestWebSocket::readFrame()
 {
-	QMetaObject::invokeMethod(this, "writeBytesChanged", Qt::QueuedConnection);
+	QMetaObject::invokeMethod(d, "doWriteBytesChanged", Qt::QueuedConnection);
 
 	return d->inFrames.takeFirst();
 }

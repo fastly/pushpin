@@ -297,7 +297,7 @@ public:
 
 		state = Idle;
 		cleanup();
-		QMetaObject::invokeMethod(q, "closed", Qt::QueuedConnection);
+		QMetaObject::invokeMethod(q, "doClosed", Qt::QueuedConnection);
 	}
 
 	Frame readFrame()
@@ -337,7 +337,7 @@ public:
 				// if peer was already closed, then we're done!
 				state = Idle;
 				cleanup();
-				QMetaObject::invokeMethod(q, "closed", Qt::QueuedConnection);
+				QMetaObject::invokeMethod(q, "doClosed", Qt::QueuedConnection);
 			}
 			else
 			{
@@ -414,7 +414,7 @@ public:
 
 			if(written > 0 || contentBytesWritten > 0)
 			{
-				emit q->framesWritten(written, contentBytesWritten);
+				q->framesWritten(written, contentBytesWritten);
 				if(!self)
 					return;
 			}
@@ -428,7 +428,7 @@ public:
 					// if peer was already closed, then we're done!
 					state = Idle;
 					cleanup();
-					emit q->closed();
+					q->closed();
 					return;
 				}
 				else
@@ -483,7 +483,7 @@ public:
 
 			state = Idle;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 		else if(packet.type == ZhttpRequestPacket::Cancel)
@@ -493,7 +493,7 @@ public:
 			errorCondition = ErrorGeneric;
 			state = Idle;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -506,7 +506,7 @@ public:
 			state = Idle;
 			errorCondition = ErrorGeneric;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -588,7 +588,7 @@ public:
 
 			state = Idle;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 		else if(packet.type == ZhttpResponsePacket::Cancel)
@@ -598,7 +598,7 @@ public:
 			errorCondition = ErrorGeneric;
 			state = Idle;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -614,7 +614,7 @@ public:
 			state = Idle;
 			errorCondition = ErrorGeneric;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -640,7 +640,7 @@ public:
 				errorCondition = ErrorGeneric;
 				cleanup();
 				log_warning("zws client: error id=%s initial response wrong type", id.data());
-				emit q->error();
+				q->error();
 				return;
 			}
 
@@ -650,7 +650,7 @@ public:
 				errorCondition = ErrorGeneric;
 				cleanup();
 				log_warning("zws client: error id=%s initial ack did not contain from field", id.data());
-				emit q->error();
+				q->error();
 				return;
 			}
 		}
@@ -671,7 +671,7 @@ public:
 
 				state = Connected;
 				update();
-				emit q->connected();
+				q->connected();
 			}
 			else
 			{
@@ -740,12 +740,12 @@ public:
 				{
 					state = Idle;
 					cleanup();
-					emit q->closed();
+					q->closed();
 				}
 				else
 				{
 					state = ConnectedPeerClosed;
-					emit q->peerClosed();
+					q->peerClosed();
 				}
 			}
 		}
@@ -977,6 +977,11 @@ public:
 	}
 
 public slots:
+	void doClosed()
+	{
+		q->closed();
+	}
+
 	void doUpdate()
 	{
 		pendingUpdate = false;
@@ -989,14 +994,14 @@ public slots:
 				{
 					state = Idle;
 					cleanup();
-					emit q->closed();
+					q->closed();
 					return;
 				}
 				else
 				{
 					QPointer<QObject> self = this;
 					state = ConnectedPeerClosed;
-					emit q->peerClosed();
+					q->peerClosed();
 					if(!self)
 						return;
 				}
@@ -1008,7 +1013,7 @@ public slots:
 					readableChanged = false;
 
 					QPointer<QObject> self = this;
-					emit q->readyRead();
+					q->readyRead();
 					if(!self)
 						return;
 				}
@@ -1021,7 +1026,7 @@ public slots:
 			{
 				state = Idle;
 				errorCondition = ErrorUnavailable;
-				emit q->error();
+				q->error();
 				cleanup();
 				return;
 			}
@@ -1055,7 +1060,7 @@ public slots:
 			{
 				writableChanged = false;
 
-				emit q->writeBytesChanged();
+				q->writeBytesChanged();
 			}
 		}
 	}
@@ -1066,7 +1071,7 @@ public:
 		state = Idle;
 		errorCondition = ErrorTimeout;
 		cleanup();
-		emit q->error();
+		q->error();
 	}
 
 	void keepAlive_timeout()

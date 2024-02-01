@@ -70,6 +70,11 @@ static QByteArray serializeJsonString(const QString &s)
 	return tmp.mid(1, tmp.length() - 2);
 }
 
+struct WSConnections {
+	Connection closedConnection;
+	Connection errorConnection;
+};
+
 struct ZhttpReqConnections{
 	Connection readyReadConnection;
 	Connection bytesWrittenConnection;
@@ -123,6 +128,7 @@ public:
 				owner->reqConnectionMap.erase(req);
 				delete req;
 			}
+			owner->wsConnectionMap.erase(sock);
 			delete sock;
 
 			if(timer)
@@ -146,6 +152,7 @@ public:
 	QByteArray iframeHtmlEtag;
 	QSet<ZhttpRequest*> discardedRequests;
 	map<ZhttpRequest*, ZhttpReqConnections> reqConnectionMap;
+	map<ZWebSocket*, WSConnections> wsConnectionMap;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
@@ -198,7 +205,10 @@ public:
 		{
 			// if there's a close value, hang around for a little bit
 			s->timer = new QTimer(this);
-			connect(s->timer, &QTimer::timeout, this, &Private::timer_timeout);
+			QObject::connect(s->timer, &QTimer::timeout, [this, timer=s->timer]() {
+				this->timer_timeout(timer);
+			});
+
 			s->timer->setSingleShot(true);
 			sessionsByTimer.insert(s->timer, s);
 			s->timer->start(5000);
@@ -277,8 +287,10 @@ public:
 			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
 		s->route = route;
 
-		connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
-		connect(sock, &ZWebSocket::error, this, &Private::sock_error);
+		wsConnectionMap[sock] = {
+			sock->closed.connect(boost::bind(&Private::sock_closed, this, sock)),
+			sock->error.connect(boost::bind(&Private::sock_error, this, sock))
+		};
 
 		sessions += s;
 		sessionsBySocket.insert(s->sock, s);
@@ -589,6 +601,7 @@ public:
 		return s->ext;
 	}
 
+private:
 	void req_readyRead(ZhttpRequest *req)
 	{
 		// for a request to have been discardable, we must have read the
@@ -646,10 +659,8 @@ public:
 			removeSession(s);
 	}
 
-private slots:
-	void sock_closed()
+	void sock_closed(ZWebSocket *sock)
 	{
-		ZWebSocket *sock = (ZWebSocket *)sender();
 		Session *s = sessionsBySocket.value(sock);
 		assert(s);
 
@@ -659,9 +670,8 @@ private slots:
 			removeSession(s);
 	}
 
-	void sock_error()
+	void sock_error(ZWebSocket *sock)
 	{
-		ZWebSocket *sock = (ZWebSocket *)sender();
 		Session *s = sessionsBySocket.value(sock);
 		assert(s);
 
@@ -671,9 +681,9 @@ private slots:
 			removeSession(s);
 	}
 
-	void timer_timeout()
+private:
+	void timer_timeout(QTimer *timer)
 	{
-		QTimer *timer = (QTimer *)sender();
 		Session *s = sessionsByTimer.value(timer);
 		assert(s);
 
