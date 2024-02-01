@@ -202,6 +202,11 @@ private:
 	}
 
 private slots:
+	void doError(const QString &str)
+	{
+		q->error(str);
+	}
+
 	void proc_started()
 	{
 		if(!pidFile.isEmpty())
@@ -328,7 +333,7 @@ void Service::start()
 	if(!preStart())
 	{
 		QString str = "Failure preparing to start";
-		QMetaObject::invokeMethod(this, "error", Qt::QueuedConnection, Q_ARG(QString, str));
+		QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QString, str));
 		return;
 	}
 

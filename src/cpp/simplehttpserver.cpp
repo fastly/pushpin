@@ -91,9 +91,15 @@ public:
 
 	void start(QTcpSocket *_sock)
 	{
-		connect(_sock, &QTcpSocket::readyRead, this, &Private::sock_readyRead);
-		connect(_sock, &QTcpSocket::bytesWritten, this, &Private::sock_bytesWritten);
-		connect(_sock, &QTcpSocket::disconnected, this, &Private::sock_disconnected);
+		QObject::connect(_sock, &QTcpSocket::readyRead, [this]() {
+			this->sock_readyRead();
+		});
+		QObject::connect(_sock, &QTcpSocket::bytesWritten, this, [this](qint64 bytes) {
+			this->sock_bytesWritten(bytes);
+		});
+		QObject::connect(_sock, &QTcpSocket::disconnected, [this]() {
+			this->sock_disconnected();
+		});
 
 		sock = _sock;
 		sock->setParent(this);
@@ -103,9 +109,15 @@ public:
 
 	void start(QLocalSocket *_sock)
 	{
-		connect(_sock, &QLocalSocket::readyRead, this, &Private::sock_readyRead);
-		connect(_sock, &QLocalSocket::bytesWritten, this, &Private::sock_bytesWritten);
-		connect(_sock, &QLocalSocket::disconnected, this, &Private::sock_disconnected);
+		QObject::connect(_sock, &QLocalSocket::readyRead, [this]() {
+			this->sock_readyRead();
+		});
+		QObject::connect(_sock, &QLocalSocket::bytesWritten, this, [this](qint64 bytes) {
+			this->sock_bytesWritten(bytes);
+		});
+		QObject::connect(_sock, &QLocalSocket::disconnected, [this]() {
+			this->sock_disconnected();
+		});
 
 		sock = _sock;
 		sock->setParent(this);
@@ -342,7 +354,6 @@ private:
 		}
 	}
 
-private slots:
 	void sock_readyRead()
 	{
 		if(state == ReadHeader || state == ReadBody)
