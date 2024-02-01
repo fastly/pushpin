@@ -738,12 +738,17 @@ public:
 		worker = new Worker;
 		worker->fileName = fileName;
 		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
-		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
+		QMetaObject::invokeMethod(this, "doStart", Qt::QueuedConnection);
 		exec();
 		delete worker;
 	}
 
-public:
+private slots:
+	void doStart()
+	{
+		worker->start();
+	}
+
 	void worker_started()
 	{
 		QMutexLocker locker(&m);

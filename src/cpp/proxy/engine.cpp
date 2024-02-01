@@ -61,6 +61,7 @@
 struct RequestSessionConnections {
 	Connection inspectedConnection;
 	Connection inspectErrorConnection;
+	Connection finishedConnection;
 	Connection finishedByAcceptConnection;
 };
 
@@ -602,10 +603,10 @@ public:
 		rs->setAutoShare(autoShare);
 
 		// TODO: use callbacks for performance
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
 		reqSessionConnectionMap[rs] = {
 			rs->inspected.connect(boost::bind(&Private::rs_inspected, this, boost::placeholders::_1, rs)),
 			rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs)),
+			rs->finished.connect(boost::bind(&Private::rs_finished, this, rs)),
 			rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs))
 		};
 
@@ -750,11 +751,8 @@ private:
 		doProxy(rs, &idata);
 	}
 
-private slots:
-	void rs_finished()
+	void rs_finished(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		if(!rs->isSockJs())
 			logFinished(rs);
 
@@ -765,7 +763,6 @@ private slots:
 		tryTakeNext();
 	}
 
-private:
 	void rs_finishedByAccept(RequestSession *rs)
 	{
 		logFinished(rs, true);
