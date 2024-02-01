@@ -263,8 +263,10 @@ public:
 		QString proxy_retry_out_spec = settings.value("handler/proxy_retry_out_spec").toString();
 		if(!proxy_retry_out_spec.isEmpty())
 			proxy_retry_out_specs += proxy_retry_out_spec;
-		QString ws_control_in_spec = settings.value("handler/proxy_ws_control_in_spec").toString();
-		QString ws_control_out_spec = settings.value("handler/proxy_ws_control_out_spec").toString();
+		QStringList ws_control_init_specs = settings.value("handler/proxy_ws_control_init_specs").toStringList();
+		trimlist(&ws_control_init_specs);
+		QStringList ws_control_stream_specs = settings.value("handler/proxy_ws_control_stream_specs").toStringList();
+		trimlist(&ws_control_stream_specs);
 		QString stats_spec = settings.value("handler/stats_spec").toString();
 		QString command_spec = settings.value("handler/command_spec").toString();
 		QString state_spec = settings.value("handler/state_spec").toString();
@@ -337,8 +339,8 @@ public:
 		config.inspectSpecs = proxy_inspect_specs;
 		config.acceptSpecs = proxy_accept_specs;
 		config.retryOutSpecs = proxy_retry_out_specs;
-		config.wsControlInSpec = ws_control_in_spec;
-		config.wsControlOutSpec = ws_control_out_spec;
+		config.wsControlInitSpecs = ws_control_init_specs;
+		config.wsControlStreamSpecs = ws_control_stream_specs;
 		config.statsSpec = stats_spec;
 		config.commandSpec = command_spec;
 		config.stateSpec = state_spec;

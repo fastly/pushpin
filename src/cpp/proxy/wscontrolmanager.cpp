@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2020 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -28,6 +29,7 @@
 #include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
+#include "qzmqreqmessage.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "zutil.h"
@@ -59,27 +61,28 @@ public:
 	};
 
 	WsControlManager *q;
+	QByteArray identity;
 	int ipcFileMode;
-	QString inSpec;
-	QString outSpec;
-	QZmq::Socket *inSock;
-	QZmq::Socket *outSock;
-	QZmq::Valve *inValve;
+	QStringList initSpecs;
+	QStringList streamSpecs;
+	QZmq::Socket *initSock;
+	QZmq::Socket *streamSock;
+	QZmq::Valve *streamValve;
 	QHash<QByteArray, WsControlSession*> sessionsByCid;
 	QTimer *refreshTimer;
 	QHash<WsControlSession*, KeepAliveRegistration*> keepAliveRegistrations;
 	QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
-	Connection inValveConnection;
+	Connection streamValveConnection;
 
 	Private(WsControlManager *_q) :
 		QObject(_q),
 		q(_q),
 		ipcFileMode(-1),
-		inSock(0),
-		outSock(0),
-		inValve(0),
+		initSock(0),
+		streamSock(0),
+		streamValve(0),
 		currentSessionRefreshBucket(0)
 	{
 		refreshTimer = new QTimer(this);
@@ -96,44 +99,52 @@ public:
 		refreshTimer->deleteLater();
 	}
 
-	bool setupIn()
+	bool setupInit()
 	{
-		delete inSock;
+		delete initSock;
 
-		inSock = new QZmq::Socket(QZmq::Socket::Pull, this);
+		initSock = new QZmq::Socket(QZmq::Socket::Push, this);
 
-		inSock->setHwm(DEFAULT_HWM);
+		initSock->setHwm(DEFAULT_HWM);
+		initSock->setShutdownWaitTime(0);
 
-		QString errorMessage;
-		if(!ZUtil::setupSocket(inSock, inSpec, true, ipcFileMode, &errorMessage))
+		foreach(const QString &spec, initSpecs)
 		{
-			log_error("%s", qPrintable(errorMessage));
-			return false;
+			QString errorMessage;
+			if(!ZUtil::setupSocket(initSock, spec, true, ipcFileMode, &errorMessage))
+			{
+				log_error("%s", qPrintable(errorMessage));
+				return false;
+			}
 		}
-
-		inValve = new QZmq::Valve(inSock, this);
-		inValveConnection = inValve->readyRead.connect(boost::bind(&Private::in_readyRead, this, boost::placeholders::_1));
-
-		inValve->open();
 
 		return true;
 	}
 
-	bool setupOut()
+	bool setupStream()
 	{
-		delete outSock;
+		delete streamSock;
 
-		outSock = new QZmq::Socket(QZmq::Socket::Push, this);
+		streamSock = new QZmq::Socket(QZmq::Socket::Router, this);
 
-		outSock->setHwm(DEFAULT_HWM);
-		outSock->setShutdownWaitTime(0);
+		streamSock->setIdentity(identity);
+		streamSock->setHwm(DEFAULT_HWM);
+		streamSock->setShutdownWaitTime(0);
 
-		QString errorMessage;
-		if(!ZUtil::setupSocket(outSock, outSpec, true, ipcFileMode, &errorMessage))
+		foreach(const QString &spec, streamSpecs)
 		{
-			log_error("%s", qPrintable(errorMessage));
-			return false;
+			QString errorMessage;
+			if(!ZUtil::setupSocket(streamSock, spec, true, ipcFileMode, &errorMessage))
+			{
+				log_error("%s", qPrintable(errorMessage));
+				return false;
+			}
 		}
+
+		streamValve = new QZmq::Valve(streamSock, this);
+		streamValveConnection = streamValve->readyRead.connect(boost::bind(&Private::stream_readyRead, this, boost::placeholders::_1));
+
+		streamValve->open();
 
 		return true;
 	}
@@ -155,9 +166,9 @@ public:
 		return best;
 	}
 
-	void write(const WsControlPacket &packet)
+	void writeInit(const WsControlPacket &packet)
 	{
-		assert(outSock);
+		assert(streamSock);
 
 		QVariant vpacket = packet.toVariant();
 		QByteArray buf = TnetString::fromVariant(vpacket);
@@ -165,14 +176,40 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT");
 
-		outSock->write(QList<QByteArray>() << buf);
+		initSock->write(QList<QByteArray>() << buf);
 	}
 
-	void write(const WsControlPacket::Item &item)
+	void writeStream(const WsControlPacket &packet, const QByteArray &instanceAddress)
+	{
+		assert(streamSock);
+
+		QVariant vpacket = packet.toVariant();
+		QByteArray buf = TnetString::fromVariant(vpacket);
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			LogUtil::logVariant(LOG_LEVEL_DEBUG, vpacket, "wscontrol: OUT to=%s", instanceAddress.data());
+
+		QList<QByteArray> msg;
+		msg += instanceAddress;
+		msg += QByteArray();
+		msg += buf;
+		streamSock->write(msg);
+	}
+
+	void writeInit(const WsControlPacket::Item &item)
 	{
 		WsControlPacket out;
+		out.from = identity;
 		out.items += item;
-		write(out);
+		writeInit(out);
+	}
+
+	void writeStream(const WsControlPacket::Item &item, const QByteArray &instanceAddress)
+	{
+		WsControlPacket out;
+		out.from = identity;
+		out.items += item;
+		writeStream(out, instanceAddress);
 	}
 
 	void registerKeepAlive(WsControlSession *s)
@@ -221,15 +258,17 @@ public:
 	}
 
 private:
-	void in_readyRead(const QList<QByteArray> &message)
+	void stream_readyRead(const QList<QByteArray> &message)
 	{
-		if(message.count() != 1)
+		QZmq::ReqMessage req(message);
+
+		if(req.content().count() != 1)
 		{
 			log_warning("wscontrol: received message with parts != 1, skipping");
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(message[0]);
+		QVariant data = TnetString::toVariant(req.content()[0]);
 		if(data.isNull())
 		{
 			log_warning("wscontrol: received message with invalid format (tnetstring parse failed), skipping");
@@ -243,6 +282,12 @@ private:
 		if(!p.fromVariant(data))
 		{
 			log_warning("wscontrol: received message with invalid format (parse failed), skipping");
+			return;
+		}
+
+		if(p.from.isEmpty())
+		{
+			log_warning("wscontrol: received message with invalid from value, skipping");
 			return;
 		}
 
@@ -261,13 +306,13 @@ private:
 					WsControlPacket::Item out;
 					out.cid = i.cid;
 					out.type = WsControlPacket::Item::Cancel;
-					write(out);
+					writeStream(out, p.from);
 				}
 
 				continue;
 			}
 
-			s->handle(i);
+			s->handle(p.from, i);
 
 			if(!self)
 				return;
@@ -279,7 +324,7 @@ private slots:
 	{
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-		WsControlPacket packet;
+		QHash<QByteArray, WsControlPacket> packets;
 
 		// process the current bucket
 		const QSet<KeepAliveRegistration*> &bucket = sessionRefreshBuckets[currentSessionRefreshBucket];
@@ -291,6 +336,17 @@ private slots:
 			r->lastRefresh = now;
 			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
+			QByteArray peer = r->s->peer();
+
+			if(!packets.contains(peer))
+			{
+				WsControlPacket packet;
+				packet.from = identity;
+				packets.insert(peer, packet);
+			}
+
+			WsControlPacket &packet = packets[peer];
+
 			WsControlPacket::Item i;
 			i.cid = r->s->cid();
 			i.type = WsControlPacket::Item::KeepAlive;
@@ -300,7 +356,7 @@ private slots:
 			// if we're at max, send out now
 			if(packet.items.count() >= PACKET_ITEMS_MAX)
 			{
-				write(packet);
+				writeStream(packet, peer);
 				packet.items.clear();
 			}
 		}
@@ -320,6 +376,17 @@ private slots:
 			r->lastRefresh = now;
 			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
+			QByteArray peer = r->s->peer();
+
+			if(!packets.contains(peer))
+			{
+				WsControlPacket packet;
+				packet.from = identity;
+				packets.insert(peer, packet);
+			}
+
+			WsControlPacket &packet = packets[peer];
+
 			WsControlPacket::Item i;
 			i.cid = r->s->cid();
 			i.type = WsControlPacket::Item::KeepAlive;
@@ -329,14 +396,22 @@ private slots:
 			// if we're at max, send out now
 			if(packet.items.count() >= PACKET_ITEMS_MAX)
 			{
-				write(packet);
+				writeStream(packet, peer);
 				packet.items.clear();
 			}
 		}
 
 		// send the rest
-		if(!packet.items.isEmpty())
-			write(packet);
+		QHashIterator<QByteArray, WsControlPacket> it(packets);
+		while(it.hasNext())
+		{
+			it.next();
+			const QByteArray &peer = it.key();
+			const WsControlPacket &packet = it.value();
+
+			if(!packet.items.isEmpty())
+				writeStream(packet, peer);
+		}
 
 		++currentSessionRefreshBucket;
 		if(currentSessionRefreshBucket >= SESSION_REFRESH_BUCKETS)
@@ -355,21 +430,26 @@ WsControlManager::~WsControlManager()
 	delete d;
 }
 
+void WsControlManager::setIdentity(const QByteArray &id)
+{
+	d->identity = id;
+}
+
 void WsControlManager::setIpcFileMode(int mode)
 {
 	d->ipcFileMode = mode;
 }
 
-bool WsControlManager::setInSpec(const QString &spec)
+bool WsControlManager::setInitSpecs(const QStringList &specs)
 {
-	d->inSpec = spec;
-	return d->setupIn();
+	d->initSpecs = specs;
+	return d->setupInit();
 }
 
-bool WsControlManager::setOutSpec(const QString &spec)
+bool WsControlManager::setStreamSpecs(const QStringList &specs)
 {
-	d->outSpec = spec;
-	return d->setupOut();
+	d->streamSpecs = specs;
+	return d->setupStream();
 }
 
 WsControlSession *WsControlManager::createSession(const QByteArray &cid)
@@ -389,16 +469,14 @@ void WsControlManager::unlink(const QByteArray &cid)
 	d->sessionsByCid.remove(cid);
 }
 
-bool WsControlManager::canWriteImmediately() const
+void WsControlManager::writeInit(const WsControlPacket::Item &item)
 {
-	assert(d->outSock);
-
-	return d->outSock->canWriteImmediately();
+	d->writeInit(item);
 }
 
-void WsControlManager::write(const WsControlPacket::Item &item)
+void WsControlManager::writeStream(const WsControlPacket::Item &item, const QByteArray &instanceAddress)
 {
-	d->write(item);
+	d->writeStream(item, instanceAddress);
 }
 
 void WsControlManager::registerKeepAlive(WsControlSession *s)

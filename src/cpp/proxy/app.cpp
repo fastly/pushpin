@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -277,8 +277,10 @@ public:
 		QString handler_inspect_spec = settings.value("proxy/handler_inspect_spec").toString();
 		QString handler_accept_spec = settings.value("proxy/handler_accept_spec").toString();
 		QString handler_retry_in_spec = settings.value("proxy/handler_retry_in_spec").toString();
-		QString handler_ws_control_in_spec = settings.value("proxy/handler_ws_control_in_spec").toString();
-		QString handler_ws_control_out_spec = settings.value("proxy/handler_ws_control_out_spec").toString();
+		QStringList handler_ws_control_init_specs = settings.value("proxy/handler_ws_control_init_specs").toStringList();
+		trimlist(&handler_ws_control_init_specs);
+		QStringList handler_ws_control_stream_specs = settings.value("proxy/handler_ws_control_stream_specs").toStringList();
+		trimlist(&handler_ws_control_stream_specs);
 		QString stats_spec = settings.value("proxy/stats_spec").toString();
 		QString command_spec = settings.value("proxy/command_spec").toString();
 		QStringList intreq_in_specs = settings.value("proxy/intreq_in_specs").toStringList();
@@ -375,8 +377,8 @@ public:
 		config.inspectSpec = handler_inspect_spec;
 		config.acceptSpec = handler_accept_spec;
 		config.retryInSpec = handler_retry_in_spec;
-		config.wsControlInSpec = handler_ws_control_in_spec;
-		config.wsControlOutSpec = handler_ws_control_out_spec;
+		config.wsControlInitSpecs = handler_ws_control_init_specs;
+		config.wsControlStreamSpecs = handler_ws_control_stream_specs;
 		config.statsSpec = stats_spec;
 		config.commandSpec = command_spec;
 		config.intServerInSpecs = intreq_in_specs;

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -39,6 +40,7 @@ class WsSession : public QObject
 	Q_OBJECT
 
 public:
+	QByteArray peer;
 	QString cid;
 	int nextReqId;
 	QString channelPrefix;

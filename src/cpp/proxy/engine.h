@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -56,8 +56,8 @@ public:
 		QString inspectSpec;
 		QString acceptSpec;
 		QString retryInSpec;
-		QString wsControlInSpec;
-		QString wsControlOutSpec;
+		QStringList wsControlInitSpecs;
+		QStringList wsControlStreamSpecs;
 		QString statsSpec;
 		QString commandSpec;
 		QStringList intServerInSpecs;
