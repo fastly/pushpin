@@ -41,6 +41,11 @@
 #define USER_AGENT "Pushpin-Updater"
 #define MAX_RESPONSE_SIZE 50000
 
+struct ReqConnections {
+	Connection readyReadConnection;
+	Connection errorConnection;
+};
+
 static QString getOs()
 {
 #if defined(Q_OS_MAC)
@@ -80,8 +85,7 @@ public:
 	ZhttpRequest *req;
 	Report report;
 	QDateTime lastLogTime;
-	Connection readyReadConnection;
-	Connection errorConnection;
+	ReqConnections reqConnections;
 
 	Private(Updater *_q, Mode _mode, bool _quiet, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
 		QObject(_q),
@@ -110,8 +114,7 @@ public:
 
 	void cleanupRequest()
 	{
-		readyReadConnection.disconnect();
-		errorConnection.disconnect();
+		reqConnections = ReqConnections();
 		delete req;
 		req = 0;
 	}
@@ -121,8 +124,10 @@ private:
 	{
 		req = zhttpManager->createRequest();
 		req->setParent(this);
-		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+		reqConnections = {
+			req->readyRead.connect(boost::bind(&Private::req_readyRead, this)),
+			req->error.connect(boost::bind(&Private::req_error, this))
+		};
 
 		req->setIgnorePolicies(true);
 		req->setIgnoreTlsErrors(true);
