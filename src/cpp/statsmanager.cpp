@@ -96,7 +96,7 @@ public:
 		bool linger;
 		qint64 lastReport;
 		qint64 retrySeq;
-		QByteArray from; // external
+		QByteArray from; // external or linger source
 		int ttl; // external
 		qint64 lastActive; // external
 
@@ -204,6 +204,18 @@ public:
 			}
 
 			return count;
+		}
+	};
+
+	class RetryInfo
+	{
+	public:
+		quint64 nextSeq;
+		QMap<quint64, ConnectionInfo*> connectionInfoBySeq;
+
+		RetryInfo() :
+			nextSeq(0)
+		{
 		}
 	};
 
@@ -397,7 +409,7 @@ public:
 	QHash<QByteArray, quint32> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
 	QHash<QByteArray, QSet<ConnectionInfo*> > connectionInfoByRoute;
-	QMap<quint64, ConnectionInfo*> connectionInfoByRetrySeq;
+	QHash<QByteArray, RetryInfo> retryInfoBySource;
 	QVector<QSet<ConnectionInfo*> > connectionInfoRefreshBuckets;
 	int currentConnectionInfoRefreshBucket;
 	QHash<QByteArray, QHash<QByteArray, ConnectionInfo*> > externalConnectionInfoByFrom;
@@ -412,7 +424,6 @@ public:
 	QHash<QByteArray, Report*> reports;
 	Counts combinedCounts;
 	Report combinedReport;
-	quint64 nextRetrySeq;
 	QTimer *activityTimer;
 	QTimer *reportTimer;
 	QTimer *refreshTimer;
@@ -439,7 +450,6 @@ public:
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
 		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)),
-		nextRetrySeq(0),
 		reportTimer(0)
 	{
 		activityTimer = new QTimer(this);
@@ -718,7 +728,15 @@ public:
 		}
 
 		if(c->retrySeq >= 0)
-			connectionInfoByRetrySeq.remove(c->retrySeq);
+		{
+			RetryInfo &ri = retryInfoBySource[c->from];
+			ri.connectionInfoBySeq.remove(c->retrySeq);
+
+			// FIXME: we keep the source entry even when there are no more
+			// connections, to avoid resetting the seq value. if there is
+			// a lot of proxy instance churn, retryInfoBySource could
+			// fill up with unused entries that will never be cleaned up.
+		}
 
 		if(c->lastRefresh >= 0)
 		{
@@ -764,20 +782,25 @@ public:
 		wheelRemove(c);
 	}
 
-	void removeLingeringConnections(quint64 retrySeq)
+	void removeLingeringConnections(const QByteArray &source, quint64 retrySeq)
 	{
+		if(!retryInfoBySource.contains(source))
+			return;
+
+		RetryInfo &ri = retryInfoBySource[source];
+
 		// invalid retry seq
-		if(retrySeq >= nextRetrySeq)
+		if(retrySeq >= ri.nextSeq)
 			return;
 
 		QList<ConnectionInfo*> toRemove;
 
-		QMap<quint64, ConnectionInfo*>::iterator it = connectionInfoByRetrySeq.find(retrySeq);
-		while(it != connectionInfoByRetrySeq.end())
+		QMap<quint64, ConnectionInfo*>::iterator it = ri.connectionInfoBySeq.find(retrySeq);
+		while(it != ri.connectionInfoBySeq.end())
 		{
 			toRemove += it.value();
 
-			if(it == connectionInfoByRetrySeq.begin())
+			if(it == ri.connectionInfoBySeq.begin())
 				break;
 
 			--it;
@@ -1280,7 +1303,7 @@ public:
 	void mergeExternalConnectionsMax(const StatsPacket &packet, qint64 now)
 	{
 		if(packet.retrySeq >= 0)
-			removeLingeringConnections((quint64)packet.retrySeq);
+			removeLingeringConnections(packet.from, (quint64)packet.retrySeq);
 
 		QHash<QByteArray, ExternalConnectionsMax> &maxes = externalConnectionsMaxes[packet.route].maxes;
 
@@ -1747,7 +1770,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 		d->sendConnected(c);
 }
 
-int StatsManager::removeConnection(const QByteArray &id, bool linger)
+int StatsManager::removeConnection(const QByteArray &id, bool linger, const QByteArray &source)
 {
 	Private::ConnectionInfo *c = d->connectionInfoById.value(id);
 	if(!c)
@@ -1765,9 +1788,16 @@ int StatsManager::removeConnection(const QByteArray &id, bool linger)
 		if(!c->linger)
 		{
 			c->linger = true;
-			c->retrySeq = (qint64)d->nextRetrySeq++;
 
-			d->connectionInfoByRetrySeq.insert((quint64)c->retrySeq, c);
+			if(!d->retryInfoBySource.contains(source))
+				d->retryInfoBySource.insert(source, Private::RetryInfo());
+
+			Private::RetryInfo &ri = d->retryInfoBySource[source];
+
+			c->from = source;
+			c->retrySeq = (qint64)ri.nextSeq++;
+
+			ri.connectionInfoBySeq.insert((quint64)c->retrySeq, c);
 
 			// hack to ensure full linger time honored by refresh processing
 			qint64 lingerStartTime = now + (d->connectionLinger - SHOULD_PROCESS_TIME(d->connectionTtl));
@@ -2087,9 +2117,14 @@ void StatsManager::flushReport(const QByteArray &routeId)
 	d->flushReport(routeId);
 }
 
-qint64 StatsManager::lastRetrySeq() const
+qint64 StatsManager::lastRetrySeq(const QByteArray &source) const
 {
-	return ((qint64)d->nextRetrySeq) - 1;
+	if(!d->retryInfoBySource.contains(source))
+		return -1;
+
+	Private::RetryInfo &ri = d->retryInfoBySource[source];
+
+	return ((qint64)ri.nextSeq) - 1;
 }
 
 StatsPacket StatsManager::getConnMaxPacket(const QByteArray &routeId)
