@@ -616,6 +616,9 @@ public:
 
 	void rejectAll(int code, const QString &reason, const QString &errorMessage, const QString &debugErrorMessage)
 	{
+		readyReadConnection.disconnect();
+		writeBytesChangedConnection.disconnect();
+		errorConnection.disconnect();
 		// kill the active target request, if any
 		delete zhttpRequest;
 		zhttpRequest = 0;
@@ -927,6 +930,9 @@ public:
 				return;
 			}
 
+			readyReadConnection.disconnect();
+			writeBytesChangedConnection.disconnect();
+			errorConnection.disconnect();			
 			delete zhttpRequest;
 			zhttpRequest = 0;
 
@@ -1384,6 +1390,7 @@ public:
 		{
 			AcceptRequest::ResponseData rdata = acceptRequest->result();
 
+			finishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 
@@ -1472,6 +1479,7 @@ public:
 				cannotAcceptAll();
 			}
 
+			finishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 		}

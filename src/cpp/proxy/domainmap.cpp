@@ -740,6 +740,7 @@ public:
 		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
+		startedConnection.disconnect();
 		delete worker;
 	}
 
@@ -769,6 +770,7 @@ public:
 
 	~Private()
 	{
+		changedConnection.disconnect();
 		delete thread;
 	}
 

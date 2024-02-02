@@ -197,6 +197,8 @@ public:
 
 	void removeRequestItem(RequestItem *ri)
 	{
+		bytesWrittenConnection.disconnect();
+		errorConnection.disconnect();
 		requests.remove(ri->req);
 		delete ri;
 	}
@@ -224,7 +226,8 @@ public:
 		{
 			RequestItem *ri = requests.value(req);
 			assert(ri);
-
+			bytesWrittenConnection.disconnect();
+			errorConnection.disconnect();
 			// detach req from RequestItem
 			requests.remove(req);
 			ri->req = 0;
