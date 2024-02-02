@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -41,6 +42,7 @@ class WsControlSession : public QObject
 public:
 	~WsControlSession();
 
+	QByteArray peer() const;
 	QByteArray cid() const;
 
 	void start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, const QUrl &uri);
@@ -66,7 +68,7 @@ private:
 	friend class WsControlManager;
 	WsControlSession(QObject *parent = 0);
 	void setup(WsControlManager *manager, const QByteArray &cid);
-	void handle(const WsControlPacket::Item &item);
+	void handle(const QByteArray &from, const WsControlPacket::Item &item);
 };
 
 #endif

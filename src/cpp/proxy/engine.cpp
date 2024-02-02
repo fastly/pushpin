@@ -298,21 +298,22 @@ public:
 		if(handler_retry_in_valve)
 			handler_retry_in_valve->open();
 
-		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
+		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
 			wsControl = new WsControlManager(this);
 
+			wsControl->setIdentity(config.clientId);
 			wsControl->setIpcFileMode(config.ipcFileMode);
 
-			if(!wsControl->setInSpec(config.wsControlInSpec))
+			if(!wsControl->setInitSpecs(config.wsControlInitSpecs))
 			{
-				log_error("unable to bind to handler_ws_control_in_spec: %s", qPrintable(config.wsControlInSpec));
+				log_error("unable to bind to handler_ws_control_init_specs: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 				return false;
 			}
 
-			if(!wsControl->setOutSpec(config.wsControlOutSpec))
+			if(!wsControl->setStreamSpecs(config.wsControlStreamSpecs))
 			{
-				log_error("unable to bind to handler_ws_control_out_spec: %s", qPrintable(config.wsControlOutSpec));
+				log_error("unable to bind to handler_ws_control_stream_specs: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 				return false;
 			}
 		}

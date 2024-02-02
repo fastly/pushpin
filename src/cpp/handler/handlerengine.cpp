@@ -33,6 +33,7 @@
 #include <QJsonArray>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
+#include "qzmqreqmessage.h"
 #include "tnetstring.h"
 #include "rtimer.h"
 #include "log.h"
@@ -1236,9 +1237,10 @@ public:
 	QZmq::Socket *inSubSock;
 	QZmq::Valve *inSubValve;
 	QZmq::Socket *retrySock;
-	QZmq::Socket *wsControlInSock;
-	QZmq::Valve *wsControlInValve;
-	QZmq::Socket *wsControlOutSock;
+	QZmq::Socket *wsControlInitSock;
+	QZmq::Valve *wsControlInitValve;
+	QZmq::Socket *wsControlStreamSock;
+	QZmq::Valve *wsControlStreamValve;
 	QZmq::Socket *statsSock;
 	QZmq::Socket *proxyStatsSock;
 	QZmq::Valve *proxyStatsValve;
@@ -1267,7 +1269,8 @@ public:
 	Connection reportedConnection;
 	map<WsSession*, WSSessionConnections> wsSessionConnectionMap;
 	Connection pullConnection;
-	Connection controlValveConnection;
+	Connection controlInitValveConnection;
+	Connection controlStreamValveConnection;
 	Connection inSubValveConnection;
 	Connection proxyStatConnection;
 
@@ -1286,9 +1289,10 @@ public:
 		inSubSock(0),
 		inSubValve(0),
 		retrySock(0),
-		wsControlInSock(0),
-		wsControlInValve(0),
-		wsControlOutSock(0),
+		wsControlInitSock(0),
+		wsControlInitValve(0),
+		wsControlStreamSock(0),
+		wsControlStreamValve(0),
 		statsSock(0),
 		proxyStatsSock(0),
 		proxyStatsValve(0),
@@ -1419,8 +1423,8 @@ public:
 			QString errorMessage;
 			if(!ZUtil::setupSocket(inPullSock, config.pushInSpec, true, config.ipcFileMode, &errorMessage))
 			{
-					log_error("%s", qPrintable(errorMessage));
-					return false;
+				log_error("%s", qPrintable(errorMessage));
+				return false;
 			}
 
 			inPullValve = new QZmq::Valve(inPullSock, this);
@@ -1438,8 +1442,8 @@ public:
 			QString errorMessage;
 			if(!ZUtil::setupSocket(inSubSock, config.pushInSubSpecs, !config.pushInSubConnect, config.ipcFileMode, &errorMessage))
 			{
-					log_error("%s", qPrintable(errorMessage));
-					return false;
+				log_error("%s", qPrintable(errorMessage));
+				return false;
 			}
 
 			if(config.pushInSubConnect)
@@ -1468,42 +1472,53 @@ public:
 				QString errorMessage;
 				if(!ZUtil::setupSocket(retrySock, spec, false, config.ipcFileMode, &errorMessage))
 				{
-						log_error("%s", qPrintable(errorMessage));
-						return false;
+					log_error("%s", qPrintable(errorMessage));
+					return false;
 				}
 			}
 
 			log_info("retry: %s", qPrintable(config.retryOutSpecs.join(", ")));
 		}
 
-		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
+		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
-			wsControlInSock = new QZmq::Socket(QZmq::Socket::Pull, this);
-			wsControlInSock->setHwm(DEFAULT_HWM);
+			wsControlInitSock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			wsControlInitSock->setHwm(DEFAULT_HWM);
 
-			QString errorMessage;
-			if(!ZUtil::setupSocket(wsControlInSock, config.wsControlInSpec, false, config.ipcFileMode, &errorMessage))
+			foreach(const QString &spec, config.wsControlInitSpecs)
 			{
+				QString errorMessage;
+				if(!ZUtil::setupSocket(wsControlInitSock, spec, false, config.ipcFileMode, &errorMessage))
+				{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
+				}
 			}
 
-			wsControlInValve = new QZmq::Valve(wsControlInSock, this);
-			controlValveConnection = wsControlInValve->readyRead.connect(boost::bind(&Private::wsControlIn_readyRead, this, boost::placeholders::_1));
+			wsControlInitValve = new QZmq::Valve(wsControlInitSock, this);
+			controlInitValveConnection = wsControlInitValve->readyRead.connect(boost::bind(&Private::wsControlInit_readyRead, this, boost::placeholders::_1));
 
-			log_info("ws control in: %s", qPrintable(config.wsControlInSpec));
+			log_info("ws control init: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 
-			wsControlOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
-			wsControlOutSock->setHwm(DEFAULT_HWM);
-			wsControlOutSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
+			wsControlStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
+			wsControlStreamSock->setIdentity(config.instanceId);
+			wsControlStreamSock->setHwm(DEFAULT_HWM);
+			wsControlStreamSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
 
-			if(!ZUtil::setupSocket(wsControlOutSock, config.wsControlOutSpec, false, config.ipcFileMode, &errorMessage))
+			foreach(const QString &spec, config.wsControlStreamSpecs)
 			{
+				QString errorMessage;
+				if(!ZUtil::setupSocket(wsControlStreamSock, spec, false, config.ipcFileMode, &errorMessage))
+				{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
+				}
 			}
 
-			log_info("ws control out: %s", qPrintable(config.wsControlOutSpec));
+			wsControlStreamValve = new QZmq::Valve(wsControlStreamSock, this);
+			controlStreamValveConnection = wsControlStreamValve->readyRead.connect(boost::bind(&Private::wsControlStream_readyRead, this, boost::placeholders::_1));
+
+			log_info("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 		}
 
 		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, this);
@@ -1602,8 +1617,10 @@ public:
 			inPullValve->open();
 		if(inSubValve)
 			inSubValve->open();
-		if(wsControlInValve)
-			wsControlInValve->open();
+		if(wsControlInitValve)
+			wsControlInitValve->open();
+		if(wsControlStreamValve)
+			wsControlStreamValve->open();
 		if(proxyStatsValve)
 			proxyStatsValve->open();
 
@@ -1647,23 +1664,28 @@ private:
 		retrySock->write(msg);
 	}
 
-	void writeWsControlItems(const QList<WsControlPacket::Item> &items)
+	void writeWsControlItems(const QByteArray &instanceAddress, const QList<WsControlPacket::Item> &items)
 	{
-		if(!wsControlOutSock)
+		if(!wsControlStreamSock)
 		{
 			log_error("wscontrol: can't write, no socket");
 			return;
 		}
 
 		WsControlPacket out;
+		out.from = config.instanceId;
 		out.items = items;
 
 		QVariant vout = out.toVariant();
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
+			log_debug("OUT wscontrol: to=%s %s", instanceAddress.data(), qPrintable(TnetString::variantToString(vout, -1)));
 
-		wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
+		QList<QByteArray> msg;
+		msg += instanceAddress;
+		msg += QByteArray();
+		msg += TnetString::fromVariant(vout);
+		wsControlStreamSock->write(msg);
 	}
 
 	void addSub(const QString &channel)
@@ -1815,7 +1837,7 @@ private:
 				return;
 			}
 
-			writeWsControlItems(QList<WsControlPacket::Item>() << i);
+			writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
 		}
 	}
 
@@ -2570,7 +2592,7 @@ private:
 		handlePublishItem(item);
 	}
 
-	void wsControlIn_readyRead(const QList<QByteArray> &message)
+	void wsControlInit_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2578,8 +2600,26 @@ private:
 			return;
 		}
 
+		wsControlIn_readyRead(message[0]);
+	}
+
+	void wsControlStream_readyRead(const QList<QByteArray> &message)
+	{
+		QZmq::ReqMessage req(message);
+
+		if(req.content().count() != 1)
+		{
+			log_warning("IN wscontrol: received message with parts != 1, skipping");
+			return;
+		}
+
+		wsControlIn_readyRead(req.content()[0]);
+	}
+
+	void wsControlIn_readyRead(const QByteArray &message)
+	{
 		bool ok;
-		QVariant data = TnetString::toVariant(message[0], 0, &ok);
+		QVariant data = TnetString::toVariant(message, 0, &ok);
 		if(!ok)
 		{
 			log_warning("IN wscontrol: received message with invalid format (tnetstring parse failed), skipping");
@@ -2624,6 +2664,7 @@ private:
 						s->expired.connect(boost::bind(&Private::wssession_expired, this, s)),
 						s->error.connect(boost::bind(&Private::wssession_error, this, s))
 					};
+					s->peer = packet.from;
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
@@ -2848,7 +2889,7 @@ private:
 		}
 
 		if(!outItems.isEmpty())
-			writeWsControlItems(outItems);
+			writeWsControlItems(packet.from, outItems);
 
 		if(stateClient)
 		{
@@ -3164,7 +3205,7 @@ private slots:
 		i.message = message;
 		i.queue = true;
 
-		writeWsControlItems(QList<WsControlPacket::Item>() << i);
+		writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
 	}
 
 	void wssession_expired(WsSession *s)
@@ -3180,7 +3221,7 @@ private slots:
 		i.cid = s->cid.toUtf8();
 		i.type = WsControlPacket::Item::Cancel;
 
-		writeWsControlItems(QList<WsControlPacket::Item>() << i);
+		writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
 
 		removeWsSession(s);
 	}
