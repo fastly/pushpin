@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -153,6 +154,8 @@ QVariant WsControlPacket::toVariant() const
 {
 	QVariantHash obj;
 
+	obj["from"] = from;
+
 	QVariantList vitems;
 	foreach(const Item &item, items)
 	{
@@ -236,8 +239,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 
 	QVariantHash obj = in.toHash();
 
+	if(!obj.contains("from") || obj["from"].type() != QVariant::ByteArray)
+		return false;
+
+	from = obj["from"].toByteArray();
+
 	if(!obj.contains("items") || obj["items"].type() != QVariant::List)
 		return false;
+
 	QVariantList vitems = obj["items"].toList();
 
 	items.clear();
