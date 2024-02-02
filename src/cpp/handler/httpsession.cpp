@@ -1081,7 +1081,7 @@ private:
 
 			needRemoveFromStats = false;
 
-			int unreportedTime = stats->removeConnection(cid, true);
+			int unreportedTime = stats->removeConnection(cid, true, adata.from);
 
 			ZhttpRequest::ServerState ss = req->serverState();
 
@@ -1137,7 +1137,7 @@ private:
 			}
 
 			rp.route = adata.route.toUtf8();
-			rp.retrySeq = stats->lastRetrySeq();
+			rp.retrySeq = stats->lastRetrySeq(adata.from);
 
 			retryToAddress = adata.from;
 			retryPacket = rp;
