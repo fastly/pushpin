@@ -1003,7 +1003,7 @@ private:
 
 					needRemoveFromStats.remove(cid);
 
-					int unreportedTime = stats->removeConnection(cid, true);
+					int unreportedTime = stats->removeConnection(cid, true, reqFrom);
 
 					RetryRequestPacket::Request rpreq;
 					rpreq.rid = rs.rid;
@@ -1052,7 +1052,7 @@ private:
 				}
 
 				rp.route = route.toUtf8();
-				rp.retrySeq = stats->lastRetrySeq();
+				rp.retrySeq = stats->lastRetrySeq(reqFrom);
 
 				retryPacketReady(reqFrom, rp);
 

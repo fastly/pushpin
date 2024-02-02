@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -73,7 +73,7 @@ public:
 	void addMessage(const QString &channel, const QString &itemId, const QString &transport, quint32 count = 1, int blocks = -1);
 
 	void addConnection(const QByteArray &id, const QByteArray &routeId, ConnectionType type, const QHostAddress &peerAddress, bool ssl, bool quiet, int reportOffset = -1);
-	int removeConnection(const QByteArray &id, bool linger); // return unreported time
+	int removeConnection(const QByteArray &id, bool linger, const QByteArray &source = QByteArray()); // return unreported time
 
 	// manager automatically refreshes, but it may be useful to force a
 	//   send before removing with linger
@@ -104,7 +104,7 @@ public:
 
 	void flushReport(const QByteArray &routeId);
 
-	qint64 lastRetrySeq() const;
+	qint64 lastRetrySeq(const QByteArray &source) const;
 
 	StatsPacket getConnMaxPacket(const QByteArray &routeId);
 	void setRetrySeq(const QByteArray &routeId, int value);
