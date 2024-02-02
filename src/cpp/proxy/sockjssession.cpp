@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2021 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -576,7 +576,7 @@ public:
 				state = Idle;
 				applyLinger();
 				cleanup();
-				QMetaObject::invokeMethod(q, "doClosed", Qt::QueuedConnection);
+				QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
 			}
 			else
 				tryWrite();
@@ -1061,7 +1061,8 @@ public:
 	}
 
 private slots:
-	void doClosed(){
+	void doClosed()
+	{
 		q->closed();
 	}
 
