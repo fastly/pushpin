@@ -156,6 +156,7 @@ public:
 		unixWatchRemove(SIGINT);
 		unixWatchRemove(SIGHUP);
 		unixWatchRemove(SIGTERM);
+		activatedConnection.disconnect();
 		delete sig_notifier;
 		close(sig_pipe[0]);
 		close(sig_pipe[1]);

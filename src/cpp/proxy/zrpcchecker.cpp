@@ -135,6 +135,7 @@ public:
 			// if we aren't watching (or were watching, but no
 			//   longer watching), then just delete what we were
 			//   given
+			finishedConnection.disconnect();
 			delete req;
 		}
 	}
