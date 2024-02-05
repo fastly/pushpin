@@ -743,7 +743,7 @@ public:
 		delete worker;
 	}
 
-private slots:
+public:
 	void worker_started()
 	{
 		QMutexLocker locker(&m);
