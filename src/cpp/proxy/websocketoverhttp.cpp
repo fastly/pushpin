@@ -295,6 +295,9 @@ public:
 		disconnecting = false;
 		updateQueued = false;
 
+		readyReadConnection.disconnect();
+		bytesWrittenConnection.disconnect();
+		errorConnection.disconnect();
 		delete req;
 		req = 0;
 
@@ -671,6 +674,9 @@ private:
 		HttpHeaders responseHeaders = req->responseHeaders();
 		QByteArray responseBody = inBuf.take();
 
+		readyReadConnection.disconnect();
+		bytesWrittenConnection.disconnect();
+		errorConnection.disconnect();
 		delete req;
 		req = 0;
 
@@ -951,6 +957,9 @@ private:
 				break;
 		}
 
+		readyReadConnection.disconnect();
+		bytesWrittenConnection.disconnect();
+		errorConnection.disconnect();
 		delete req;
 		req = 0;
 

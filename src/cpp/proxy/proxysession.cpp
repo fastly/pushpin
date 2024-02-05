@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -617,6 +617,9 @@ public:
 
 	void rejectAll(int code, const QString &reason, const QString &errorMessage, const QString &debugErrorMessage)
 	{
+		readyReadConnection.disconnect();
+		writeBytesChangedConnection.disconnect();
+		errorConnection.disconnect();
 		// kill the active target request, if any
 		delete zhttpRequest;
 		zhttpRequest = 0;
@@ -928,6 +931,9 @@ public:
 				return;
 			}
 
+			readyReadConnection.disconnect();
+			writeBytesChangedConnection.disconnect();
+			errorConnection.disconnect();			
 			delete zhttpRequest;
 			zhttpRequest = 0;
 
@@ -1329,10 +1335,10 @@ public:
 			if(!statsManager->connectionSendEnabled())
 			{
 				// flush max. the count will include the connections we just unregistered
-				adata.connMaxPackets += statsManager->getConnMaxPacket(route.id).toVariant();
+				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 
 				// flush max again to get the count without the connections
-				adata.connMaxPackets += statsManager->getConnMaxPacket(route.id).toVariant();
+				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 			}
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
@@ -1381,6 +1387,7 @@ public:
 		{
 			AcceptRequest::ResponseData rdata = acceptRequest->result();
 
+			finishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 
@@ -1469,6 +1476,7 @@ public:
 				cannotAcceptAll();
 			}
 
+			finishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 		}

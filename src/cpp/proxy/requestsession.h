@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -88,7 +89,7 @@ public:
 
 	// takes ownership
 	void start(ZhttpRequest *req);
-	void startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime);
+	void startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime, int retrySeq);
 
 	void pause();
 	void resume();

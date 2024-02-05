@@ -52,8 +52,8 @@ public:
 		QStringList inspectSpecs;
 		QStringList acceptSpecs;
 		QStringList retryOutSpecs;
-		QString wsControlInSpec;
-		QString wsControlOutSpec;
+		QStringList wsControlInitSpecs;
+		QStringList wsControlStreamSpecs;
 		QString statsSpec;
 		QString commandSpec;
 		QString stateSpec;

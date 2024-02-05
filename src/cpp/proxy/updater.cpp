@@ -110,6 +110,8 @@ public:
 
 	void cleanupRequest()
 	{
+		readyReadConnection.disconnect();
+		errorConnection.disconnect();
 		delete req;
 		req = 0;
 	}

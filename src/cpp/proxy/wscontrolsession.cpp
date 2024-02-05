@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -39,9 +40,11 @@ public:
 	WsControlSession *q;
 	WsControlManager *manager;
 	int nextReqId;
+	QList<WsControlPacket::Item> pendingItems;
 	QHash<int, qint64> pendingRequests;
 	QList<QByteArray> pendingSendEventWrites;
 	QTimer *requestTimer;
+	QByteArray peer;
 	QByteArray cid;
 	QByteArray route;
 	bool separateStats;
@@ -88,14 +91,17 @@ public:
 	{
 		manager->registerKeepAlive(q);
 
+		int reqId = nextReqId++;
+
 		WsControlPacket::Item i;
 		i.type = WsControlPacket::Item::Here;
+		i.requestId = QByteArray::number(reqId);
 		i.route = route;
 		i.separateStats = separateStats;
 		i.channelPrefix = channelPrefix;
 		i.uri = uri;
 		i.ttl = SESSION_TTL;
-		write(i);
+		write(i, true);
 	}
 
 	void setupRequestTimer()
@@ -161,15 +167,46 @@ public:
 		write(i);
 	}
 
-	void write(const WsControlPacket::Item &item)
+	void write(const WsControlPacket::Item &item, bool init = false)
 	{
-		WsControlPacket::Item out = item;
-		out.cid = cid;
-		manager->write(out);
+		if(init)
+		{
+			WsControlPacket::Item out = item;
+			out.cid = cid;
+
+			manager->writeInit(out);
+		}
+		else
+		{
+			if(!peer.isEmpty())
+			{
+				WsControlPacket::Item out = item;
+				out.cid = cid;
+
+				manager->writeStream(out, peer);
+			}
+			else
+				pendingItems += item;
+		}
 	}
 
-	void handle(const WsControlPacket::Item &item)
+	void flushPending()
 	{
+		while(!pendingItems.isEmpty())
+		{
+			WsControlPacket::Item out = pendingItems.takeFirst();
+			out.cid = cid;
+
+			manager->writeStream(out, peer);
+		}
+	}
+
+	void handle(const QByteArray &from, const WsControlPacket::Item &item)
+	{
+		peer = from;
+
+		flushPending();
+
 		if(item.type != WsControlPacket::Item::Ack && !item.requestId.isEmpty())
 		{
 			// ack non-sends immediately
@@ -276,6 +313,11 @@ WsControlSession::~WsControlSession()
 	delete d;
 }
 
+QByteArray WsControlSession::peer() const
+{
+	return d->peer;
+}
+
 QByteArray WsControlSession::cid() const
 {
 	return d->cid;
@@ -317,11 +359,11 @@ void WsControlSession::sendEventWritten()
 	d->sendEventWritten();
 }
 
-void WsControlSession::handle(const WsControlPacket::Item &item)
+void WsControlSession::handle(const QByteArray &from, const WsControlPacket::Item &item)
 {
 	assert(d->manager);
 
-	d->handle(item);
+	d->handle(from, item);
 }
 
 #include "wscontrolsession.moc"

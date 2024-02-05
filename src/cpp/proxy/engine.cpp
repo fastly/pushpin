@@ -299,21 +299,22 @@ public:
 		if(handler_retry_in_valve)
 			handler_retry_in_valve->open();
 
-		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
+		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
 			wsControl = new WsControlManager(this);
 
+			wsControl->setIdentity(config.clientId);
 			wsControl->setIpcFileMode(config.ipcFileMode);
 
-			if(!wsControl->setInSpec(config.wsControlInSpec))
+			if(!wsControl->setInitSpecs(config.wsControlInitSpecs))
 			{
-				log_error("unable to bind to handler_ws_control_in_spec: %s", qPrintable(config.wsControlInSpec));
+				log_error("unable to bind to handler_ws_control_init_specs: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 				return false;
 			}
 
-			if(!wsControl->setOutSpec(config.wsControlOutSpec))
+			if(!wsControl->setStreamSpecs(config.wsControlStreamSpecs))
 			{
-				log_error("unable to bind to handler_ws_control_out_spec: %s", qPrintable(config.wsControlOutSpec));
+				log_error("unable to bind to handler_ws_control_stream_specs: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 				return false;
 			}
 		}
@@ -871,9 +872,6 @@ private:
 
 		log_debug("IN (retry) %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
 
-		if(p.retrySeq >= 0)
-			stats->setRetrySeq(p.route, p.retrySeq);
-
 		InspectData idata;
 		if(p.haveInspectInfo)
 		{
@@ -915,7 +913,7 @@ private:
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse
 			//   stats processors tracking route+connection mappings.
-			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime);
+			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0);
 		}

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2021 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -197,6 +197,8 @@ public:
 
 	void removeRequestItem(RequestItem *ri)
 	{
+		bytesWrittenConnection.disconnect();
+		errorConnection.disconnect();
 		requests.remove(ri->req);
 		delete ri;
 	}
@@ -224,7 +226,8 @@ public:
 		{
 			RequestItem *ri = requests.value(req);
 			assert(ri);
-
+			bytesWrittenConnection.disconnect();
+			errorConnection.disconnect();
 			// detach req from RequestItem
 			requests.remove(req);
 			ri->req = 0;
@@ -576,7 +579,7 @@ public:
 				state = Idle;
 				applyLinger();
 				cleanup();
-				QMetaObject::invokeMethod(q, "doClosed", Qt::QueuedConnection);
+				QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
 			}
 			else
 				tryWrite();
@@ -1061,7 +1064,8 @@ public:
 	}
 
 private slots:
-	void doClosed(){
+	void doClosed()
+	{
 		q->closed();
 	}
 

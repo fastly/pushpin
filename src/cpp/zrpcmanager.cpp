@@ -92,6 +92,7 @@ public:
 
 	bool setupClient()
 	{
+		clientValveConnection.disconnect();
 		delete clientValve;
 		delete clientSock;
 
@@ -117,6 +118,7 @@ public:
 
 	bool setupServer()
 	{
+		serverValveConnection.disconnect();
 		delete serverValve;
 		delete serverSock;
 
