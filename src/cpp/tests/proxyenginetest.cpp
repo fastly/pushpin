@@ -167,12 +167,6 @@ public:
 
 	void reset()
 	{
-		zhttpClientInValveConnection.disconnect();
-		zhttpServerInValveConnection.disconnect();
-		zhttpServerInStreamValveConnection.disconnect();
-		handlerAcceptValveConnection.disconnect();
-		handlerInspectValveConnection.disconnect();
-
 		serverReqs.clear();
 		isWs = false;
 		serverFailed = false;

@@ -134,11 +134,6 @@ public:
 
 	void reset()
 	{
-		proxyAcceptValveConnection.disconnect();
-		zhttpServerInStreamValveConnection.disconnect();
-		zhttpServerInValveConnection.disconnect();
-		zhttpClientInValveConnection.disconnect();
-		
 		acceptSuccess = false;
 		acceptValue.clear();
 		finished = false;
