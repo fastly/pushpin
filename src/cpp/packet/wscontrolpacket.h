@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -78,6 +79,7 @@ public:
 		}
 	};
 
+	QByteArray from;
 	QList<Item> items;
 
 	QVariant toVariant() const;
