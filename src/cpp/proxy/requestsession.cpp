@@ -826,7 +826,7 @@ public:
 		if(zhttpRequest->isFinished())
 		{
 			cleanup();
-			emit q->finished();
+			q->finished();
 		}
 	}
 
@@ -876,7 +876,7 @@ public:
 	{
 		log_debug("requestsession: request error id=%s", rid.second.data());
 		cleanup();
-		emit q->finished();
+		q->finished();
 	}
 
 	void inspectRequest_finished()

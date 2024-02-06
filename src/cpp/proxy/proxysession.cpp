@@ -108,6 +108,7 @@ public:
 		Connection bytesWrittenConnection;
 		Connection errorRespondingConnection;
 		Connection pausedConnection;
+		Connection finishedConnection;
 		Connection headerBytesSentConnection;
 		Connection bodyBytesSentConnection;
 	};
@@ -253,11 +254,11 @@ public:
 
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
 		reqSessionConnectionMap[rs] = {
 			rs->bytesWritten.connect(boost::bind(&Private::rs_bytesWritten, this, boost::placeholders::_1, rs)),
 			rs->errorResponding.connect(boost::bind(&Private::rs_errorResponding, this, rs)),
 			rs->paused.connect(boost::bind(&Private::rs_paused, this, rs)),
+			rs->finished.connect(boost::bind(&Private::rs_finished, this, rs)),
 			rs->headerBytesSent.connect(boost::bind(&Private::rs_headerBytesSent, this, boost::placeholders::_1, rs)),
 			rs->bodyBytesSent.connect(boost::bind(&Private::rs_bodyBytesSent, this, boost::placeholders::_1, rs))
 		};
@@ -1188,7 +1189,6 @@ public:
 		}
 	}
 
-public slots:
 	void rs_bytesWritten(int count, RequestSession *rs)
 	{
 		log_debug("proxysession: %p response bytes written id=%s: %d", q, rs->rid().second.data(), count);
@@ -1206,10 +1206,8 @@ public slots:
 			tryResponseRead();
 	}
 
-	void rs_finished()
+	void rs_finished(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response finished id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
@@ -1385,7 +1383,6 @@ public slots:
 			incCounter(Stats::ClientContentBytesSent, count);
 	}
 
-public:
 	void acceptRequest_finished()
 	{
 		if(acceptRequest->success())
