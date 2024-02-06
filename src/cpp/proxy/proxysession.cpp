@@ -57,15 +57,6 @@ using std::map;
 #define MAX_INITIAL_BUFFER 100000
 #define MAX_STREAM_BUFFER 100000
 
-struct RequestSessionConnections {
-	Connection bytesWrittenConnection;
-	Connection errorRespondingConnection;
-	Connection pausedConnection;
-	Connection finishedConnection;
-	Connection headerBytesSentConnection;
-	Connection bodyBytesSentConnection;
-};
-
 class ProxySession::Private : public QObject
 {
 	Q_OBJECT
@@ -111,6 +102,21 @@ public:
 			countClientSentBytes(true)
 		{
 		}
+	};
+
+	struct RequestSessionConnections {
+		Connection bytesWrittenConnection;
+		Connection errorRespondingConnection;
+		Connection pausedConnection;
+		Connection finishedConnection;
+		Connection headerBytesSentConnection;
+		Connection bodyBytesSentConnection;
+	};
+
+	struct ZhttpReqConnections {
+		Connection readyReadConnection;
+		Connection writeBytesChangedConnection;
+		Connection errorConnection;
 	};
 
 	ProxySession *q;
@@ -162,9 +168,7 @@ public:
 	StatsManager *statsManager;
 	Connection inReqReadyReadConnection;
 	Connection inReqErrorConnection;
-	Connection readyReadConnection;
-	Connection writeBytesChangedConnection;
-	Connection errorConnection;
+	ZhttpReqConnections zhttpReqConnections;
 	Connection finishedConnection;
 	map<RequestSession*, RequestSessionConnections> reqSessionConnectionMap;
 
@@ -456,9 +460,11 @@ public:
 			zhttpRequest->setParent(this);
 		}
 
-		readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
-		writeBytesChangedConnection = zhttpRequest->writeBytesChanged.connect(boost::bind(&Private::zhttpRequest_writeBytesChanged, this));
-		errorConnection = zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
+		zhttpReqConnections = {
+			zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this)),
+			zhttpRequest->writeBytesChanged.connect(boost::bind(&Private::zhttpRequest_writeBytesChanged, this)),
+			zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this))
+		};
 
 		if(target.trusted)
 			zhttpRequest->setIgnorePolicies(true);
@@ -617,9 +623,7 @@ public:
 
 	void rejectAll(int code, const QString &reason, const QString &errorMessage, const QString &debugErrorMessage)
 	{
-		readyReadConnection.disconnect();
-		writeBytesChangedConnection.disconnect();
-		errorConnection.disconnect();
+		zhttpReqConnections = ZhttpReqConnections();
 		// kill the active target request, if any
 		delete zhttpRequest;
 		zhttpRequest = 0;
@@ -931,9 +935,7 @@ public:
 				return;
 			}
 
-			readyReadConnection.disconnect();
-			writeBytesChangedConnection.disconnect();
-			errorConnection.disconnect();			
+			zhttpReqConnections = ZhttpReqConnections();			
 			delete zhttpRequest;
 			zhttpRequest = 0;
 
