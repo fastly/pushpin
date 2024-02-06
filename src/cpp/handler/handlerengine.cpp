@@ -1831,10 +1831,7 @@ private:
 			}
 			else if(f.action == PublishFormat::Refresh)
 			{
-				Deferred *d = ControlRequest::refresh(proxyControlClient, i.cid, this);
-				finishedConnection[d] = d->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, d));
-				deferreds += d;
-				return;
+				i.type = WsControlPacket::Item::Refresh;
 			}
 
 			writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);

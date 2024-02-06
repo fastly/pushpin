@@ -55,6 +55,7 @@ public:
 
 	boost::signals2::signal<void(WebSocket::Frame::Type, const QByteArray&, bool)> sendEventReceived;
 	boost::signals2::signal<void(WsControl::KeepAliveMode, int)> keepAliveSetupEventReceived;
+	Signal refreshEventReceived;
 	boost::signals2::signal<void(int, const QByteArray&)> closeEventReceived; // Use -1 for no code
 	Signal detachEventReceived;
 	Signal cancelEventReceived;

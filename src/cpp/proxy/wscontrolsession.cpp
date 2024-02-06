@@ -254,6 +254,10 @@ public:
 			else
 				q->keepAliveSetupEventReceived(WsControl::NoKeepAlive, -1);
 		}
+		else if(item.type == WsControlPacket::Item::Refresh)
+		{
+			q->refreshEventReceived();
+		}
 		else if(item.type == WsControlPacket::Item::Close)
 		{
 			q->closeEventReceived(item.code, item.reason);

@@ -116,7 +116,6 @@ public:
 	};
 
 	struct WSConnections {
-		Connection connectedConnection;
 		Connection readyReadConnection;
 		Connection framesWrittenConnection;
 		Connection writeBytesChangedConnection;

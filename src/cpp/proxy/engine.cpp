@@ -134,7 +134,7 @@ public:
 	map<ProxySession*, ProxySessionConnections> proxySessionConnectionMap;
 	Connection connMaxConnection;
 	Connection rrConnection;
-	
+
 	Private(Engine *_q) :
 		QObject(_q),
 		q(_q),
@@ -185,8 +185,10 @@ public:
 
 		wsProxyItemsBySession.clear();
 
-		foreach(RequestSession *rs, requestSessions)
+		foreach(RequestSession *rs, requestSessions){
+			reqSessionConnectionMap.erase(rs);
 			delete rs;
+		}
 		requestSessions.clear();
 
 		WebSocketOverHttp::clearDisconnectManager();
