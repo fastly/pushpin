@@ -58,12 +58,6 @@
 
 #define DEFAULT_HWM 1000
 
-struct RequestSessionConnections {
-	Connection inspectedConnection;
-	Connection inspectErrorConnection;
-	Connection finishedByAcceptConnection;
-};
-
 class Engine::Private : public QObject
 {
 	Q_OBJECT
@@ -92,6 +86,18 @@ public:
 			ps(0)
 		{
 		}
+	};
+
+	struct RequestSessionConnections {
+		Connection inspectedConnection;
+		Connection inspectErrorConnection;
+		Connection finishedByAcceptConnection;
+	};
+
+	struct ProxySessionConnections {
+		Connection addNotAllowedConnection;
+		Connection finishedConnection;
+		Connection reqSessionDestroyedConnection;
 	};
 
 	Engine *q;
@@ -124,9 +130,7 @@ public:
 	Connection socketReadyConnection;
 	Connection iRequestReadyConnection;
 	map<RequestSession*, RequestSessionConnections> reqSessionConnectionMap;
-	map<ProxySession*, Connection> addNotAllowedConnection;
-	map<ProxySession*, Connection> finishedConnection;
-	map<ProxySession*, Connection> reqSessionDestroyedConnection;
+	map<ProxySession*, ProxySessionConnections> proxySessionConnectionMap;
 	Connection connMaxConnection;
 	Connection rrConnection;
 	
@@ -408,9 +412,11 @@ public:
 
 			ps = new ProxySession(zroutes, accept, logConfig, stats);
 			// TODO: use callbacks for performance
-			addNotAllowedConnection[ps] = ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps));
-			finishedConnection[ps] = ps->finished.connect(boost::bind(&Private::ps_finished, this, ps));
-			reqSessionDestroyedConnection[ps] = ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this, boost::placeholders::_1, boost::placeholders::_2));
+			proxySessionConnectionMap[ps] = {
+				ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps)),
+				ps->finished.connect(boost::bind(&Private::ps_finished, this, ps)),
+				ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this, boost::placeholders::_1, boost::placeholders::_2))
+			};
 
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -796,9 +802,7 @@ private:
 		ProxyItem *i = proxyItemsBySession.value(ps);
 		assert(i);
 
-		addNotAllowedConnection.erase(ps);
-		finishedConnection.erase(ps);
-		reqSessionDestroyedConnection.erase(ps);
+		proxySessionConnectionMap.erase(ps);
 		
 		if(i->shared)
 			proxyItemsByKey.remove(i->key);
