@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -253,6 +254,7 @@ public:
 	struct WSProxyConnections {
 		Connection sendEventReceivedConnection;
 		Connection keepAliveSetupEventReceivedConnection;
+		Connection refreshEventReceivedConnection;
 		Connection closeEventReceivedConnection;
 		Connection detachEventReceivedConnection;
 		Connection cancelEventReceivedConnection;
@@ -941,6 +943,7 @@ private slots:
 				wsProxyConnectionMap[wsControl] = {
 					wsControl->sendEventReceived.connect(boost::bind(&Private::wsControl_sendEventReceived, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3)),
 					wsControl->keepAliveSetupEventReceived.connect(boost::bind(&Private::wsControl_keepAliveSetupEventReceived, this, boost::placeholders::_1, boost::placeholders::_2)),
+					wsControl->refreshEventReceived.connect(boost::bind(&Private::wsControl_refreshEventReceived, this)),
 					wsControl->closeEventReceived.connect(boost::bind(&Private::wsControl_closeEventReceived, this, boost::placeholders::_1, boost::placeholders::_2)),
 					wsControl->detachEventReceived.connect(boost::bind(&Private::wsControl_detachEventReceived, this)),
 					wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this)),
@@ -1117,6 +1120,13 @@ private:
 		{
 			cleanupKeepAliveTimer();
 		}
+	}
+
+	void wsControl_refreshEventReceived()
+	{
+		WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(outSock);
+		if(woh)
+			woh->refresh();
 	}
 
 	void wsControl_closeEventReceived(int code, const QByteArray &reason)
