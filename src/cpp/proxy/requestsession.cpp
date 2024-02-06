@@ -52,13 +52,6 @@
 #define MAX_SHARED_REQUEST_BODY 100000
 #define MAX_ACCEPT_REQUEST_BODY 100000
 
-struct ZhttpReqConnections {
-	Connection readyReadConnection;
-	Connection pausedConnection;
-	Connection errorConnection;
-	Connection bytesWrittenConnection;
-};
-
 static int fromHex(char c)
 {
 	if(c >= '0' && c <= '9')
@@ -151,6 +144,13 @@ public:
 		RespondingStart,
 		Responding,
 		RespondingInternal
+	};
+
+	struct ZhttpReqConnections {
+		Connection readyReadConnection;
+		Connection pausedConnection;
+		Connection errorConnection;
+		Connection bytesWrittenConnection;
 	};
 
 	RequestSession *q;

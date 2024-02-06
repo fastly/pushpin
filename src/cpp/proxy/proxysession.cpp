@@ -57,20 +57,6 @@ using std::map;
 #define MAX_INITIAL_BUFFER 100000
 #define MAX_STREAM_BUFFER 100000
 
-struct RequestSessionConnections {
-	Connection bytesWrittenConnection;
-	Connection errorRespondingConnection;
-	Connection pausedConnection;
-	Connection headerBytesSentConnection;
-	Connection bodyBytesSentConnection;
-};
-
-struct ZhttpReqConnections {
-	Connection readyReadConnection;
-	Connection writeBytesChangedConnection;
-	Connection errorConnection;
-};
-
 class ProxySession::Private : public QObject
 {
 	Q_OBJECT
@@ -116,6 +102,20 @@ public:
 			countClientSentBytes(true)
 		{
 		}
+	};
+
+	struct RequestSessionConnections {
+		Connection bytesWrittenConnection;
+		Connection errorRespondingConnection;
+		Connection pausedConnection;
+		Connection headerBytesSentConnection;
+		Connection bodyBytesSentConnection;
+	};
+
+	struct ZhttpReqConnections {
+		Connection readyReadConnection;
+		Connection writeBytesChangedConnection;
+		Connection errorConnection;
 	};
 
 	ProxySession *q;

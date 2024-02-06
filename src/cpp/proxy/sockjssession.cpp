@@ -43,21 +43,6 @@ using std::map;
 #define KEEPALIVE_TIMEOUT 25
 #define UNCONNECTED_TIMEOUT 5
 
-struct WSConnections {
-	Connection connectedConnection;
-	Connection readyReadConnection;
-	Connection framesWrittenConnection;
-	Connection writeBytesChangedConnection;
-	Connection closedConnection;
-	Connection peerClosedConnection;
-	Connection sockErrorConnection;
-};
-
-struct ReqConnections {
-	Connection bytesWrittenConnection;
-	Connection errorConnection;
-};
-
 class SockJsSession::Private : public QObject
 {
 	Q_OBJECT
@@ -128,6 +113,21 @@ public:
 			size(_size)
 		{
 		}
+	};
+
+	struct WSConnections {
+		Connection connectedConnection;
+		Connection readyReadConnection;
+		Connection framesWrittenConnection;
+		Connection writeBytesChangedConnection;
+		Connection closedConnection;
+		Connection peerClosedConnection;
+		Connection sockErrorConnection;
+	};
+
+	struct ReqConnections {
+		Connection bytesWrittenConnection;
+		Connection errorConnection;
 	};
 
 	SockJsSession *q;

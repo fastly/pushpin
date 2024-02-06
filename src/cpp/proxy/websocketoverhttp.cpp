@@ -46,18 +46,6 @@
 
 namespace {
 
-struct WSConnections {
-	Connection disconnectedConnection;
-	Connection closedConnection;
-	Connection errorConnection;
-};
-
-struct ReqConnections {
-	Connection readyReadConnection;
-	Connection bytesWrittenConnection;
-	Connection errorConnection;
-};
-
 class WsEvent
 {
 public:
@@ -80,6 +68,12 @@ public:
 class WebSocketOverHttp::DisconnectManager : public QObject
 {
 	Q_OBJECT
+
+	struct WSConnections {
+		Connection disconnectedConnection;
+		Connection closedConnection;
+		Connection errorConnection;
+	};
 
 	map<WebSocketOverHttp *, WSConnections> wsConnectionMap;
 
@@ -200,6 +194,12 @@ class WebSocketOverHttp::Private : public QObject
 	Q_OBJECT
 
 public:
+	struct ReqConnections {
+		Connection readyReadConnection;
+		Connection bytesWrittenConnection;
+		Connection errorConnection;
+	};
+
 	WebSocketOverHttp *q;
 	ZhttpManager *zhttpManager;
 	QString connectHost;

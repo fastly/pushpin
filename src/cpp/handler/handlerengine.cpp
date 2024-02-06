@@ -88,12 +88,6 @@
 
 using namespace VariantUtil;
 
-struct WSSessionConnections {
-	Connection sendConnection;
-	Connection expConnection;
-	Connection errorConnection;
-};
-
 static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
 {
 	QList<PublishItem> out;
@@ -1221,6 +1215,12 @@ public:
 			ep->publishSend(target, item, exposeHeaders);
 			return true;
 		}
+	};
+
+	struct WSSessionConnections {
+		Connection sendConnection;
+		Connection expConnection;
+		Connection errorConnection;
 	};
 
 	HandlerEngine *q;

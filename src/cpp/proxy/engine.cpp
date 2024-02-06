@@ -58,18 +58,6 @@
 
 #define DEFAULT_HWM 1000
 
-struct RequestSessionConnections {
-	Connection inspectedConnection;
-	Connection inspectErrorConnection;
-	Connection finishedByAcceptConnection;
-};
-
-struct ProxySessionConnections {
-	Connection addNotAllowedConnection;
-	Connection finishedConnection;
-	Connection reqSessionDestroyedConnection;
-};
-
 class Engine::Private : public QObject
 {
 	Q_OBJECT
@@ -98,6 +86,18 @@ public:
 			ps(0)
 		{
 		}
+	};
+
+	struct RequestSessionConnections {
+		Connection inspectedConnection;
+		Connection inspectErrorConnection;
+		Connection finishedByAcceptConnection;
+	};
+
+	struct ProxySessionConnections {
+		Connection addNotAllowedConnection;
+		Connection finishedConnection;
+		Connection reqSessionDestroyedConnection;
 	};
 
 	Engine *q;

@@ -41,11 +41,6 @@
 #define USER_AGENT "Pushpin-Updater"
 #define MAX_RESPONSE_SIZE 50000
 
-struct ReqConnections {
-	Connection readyReadConnection;
-	Connection errorConnection;
-};
-
 static QString getOs()
 {
 #if defined(Q_OS_MAC)
@@ -75,6 +70,11 @@ class Updater::Private : public QObject
 	Q_OBJECT
 
 public:
+	struct ReqConnections {
+		Connection readyReadConnection;
+		Connection errorConnection;
+	};
+
 	Updater *q;
 	Mode mode;
 	bool quiet;

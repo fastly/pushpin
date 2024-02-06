@@ -50,33 +50,6 @@
 #define ACTIVITY_TIMEOUT 60000
 #define KEEPALIVE_RAND_MAX 1000
 
-struct WSConnections {
-	Connection connectedConnection;
-	Connection readyReadConnection;
-	Connection writeBytesChangedConnection;
-	Connection peerClosedConnection;
-	Connection closedConnection;
-	Connection errorConnection;
-};
-
-struct InWSConnections {
-	Connection readyReadConnection;
-	Connection framesWrittenConnection;
-	Connection writeBytesChangedConnection;
-	Connection peerClosedConnection;
-	Connection closedConnection;
-	Connection errorConnection;
-};
-
-struct WSProxyConnections {
-	Connection sendEventReceivedConnection;
-	Connection keepAliveSetupEventReceivedConnection;
-	Connection closeEventReceivedConnection;
-	Connection detachEventReceivedConnection;
-	Connection cancelEventReceivedConnection;
-	Connection errorConnection;
-};
-
 class HttpExtension
 {
 public:
@@ -258,6 +231,33 @@ public:
 	};
 
 	typedef QPair<WebSocket::Frame, bool> QueuedFrame;
+
+	struct WSConnections {
+		Connection connectedConnection;
+		Connection readyReadConnection;
+		Connection writeBytesChangedConnection;
+		Connection peerClosedConnection;
+		Connection closedConnection;
+		Connection errorConnection;
+	};
+
+	struct InWSConnections {
+		Connection readyReadConnection;
+		Connection framesWrittenConnection;
+		Connection writeBytesChangedConnection;
+		Connection peerClosedConnection;
+		Connection closedConnection;
+		Connection errorConnection;
+	};
+
+	struct WSProxyConnections {
+		Connection sendEventReceivedConnection;
+		Connection keepAliveSetupEventReceivedConnection;
+		Connection closeEventReceivedConnection;
+		Connection detachEventReceivedConnection;
+		Connection cancelEventReceivedConnection;
+		Connection errorConnection;
+	};
 
 	WsProxySession *q;
 	State state;

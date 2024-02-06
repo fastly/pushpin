@@ -70,17 +70,6 @@ static QByteArray serializeJsonString(const QString &s)
 	return tmp.mid(1, tmp.length() - 2);
 }
 
-struct WSConnections {
-	Connection closedConnection;
-	Connection errorConnection;
-};
-
-struct ZhttpReqConnections{
-	Connection readyReadConnection;
-	Connection bytesWrittenConnection;
-	Connection errorConnection;
-};
-
 class SockJsManager::Private : public QObject
 {
 	Q_OBJECT
@@ -138,6 +127,17 @@ public:
 				timer->deleteLater();
 			}
 		}
+	};
+
+	struct WSConnections {
+		Connection closedConnection;
+		Connection errorConnection;
+	};
+
+	struct ZhttpReqConnections{
+		Connection readyReadConnection;
+		Connection bytesWrittenConnection;
+		Connection errorConnection;
 	};
 
 	SockJsManager *q;
