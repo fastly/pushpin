@@ -46,6 +46,7 @@ public:
 			Cancel,
 			Send,
 			KeepAliveSetup,
+			Refresh,
 			Close,
 			Detach,
 			Ack

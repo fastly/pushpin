@@ -175,6 +175,7 @@ QVariant WsControlPacket::toVariant() const
 			case Item::Send:           typeStr = "send"; break;
 			case Item::NeedKeepAlive:  typeStr = "need-keep-alive"; break;
 			case Item::Subscribe:      typeStr = "subscribe"; break;
+			case Item::Refresh:        typeStr = "refresh"; break;
 			case Item::Close:          typeStr = "close"; break;
 			case Item::Detach:         typeStr = "detach"; break;
 			case Item::Ack:            typeStr = "ack"; break;
@@ -285,6 +286,8 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			item.type = Item::NeedKeepAlive;
 		else if(typeStr == "subscribe")
 			item.type = Item::Subscribe;
+		else if(typeStr == "refresh")
+			item.type = Item::Refresh;
 		else if(typeStr == "close")
 			item.type = Item::Close;
 		else if(typeStr == "detach")
