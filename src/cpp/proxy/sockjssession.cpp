@@ -43,16 +43,6 @@ using std::map;
 #define KEEPALIVE_TIMEOUT 25
 #define UNCONNECTED_TIMEOUT 5
 
-struct WSConnections {
-	Connection connectedConnection;
-	Connection readyReadConnection;
-	Connection framesWrittenConnection;
-	Connection writeBytesChangedConnection;
-	Connection closedConnection;
-	Connection peerClosedConnection;
-	Connection sockErrorConnection;
-};
-
 class SockJsSession::Private : public QObject
 {
 	Q_OBJECT
@@ -125,6 +115,21 @@ public:
 		}
 	};
 
+	struct WSConnections {
+		Connection connectedConnection;
+		Connection readyReadConnection;
+		Connection framesWrittenConnection;
+		Connection writeBytesChangedConnection;
+		Connection closedConnection;
+		Connection peerClosedConnection;
+		Connection sockErrorConnection;
+	};
+
+	struct ReqConnections {
+		Connection bytesWrittenConnection;
+		Connection errorConnection;
+	};
+
 	SockJsSession *q;
 	SockJsManager *manager;
 	Mode mode;
@@ -158,8 +163,7 @@ public:
 	int peerCloseCode;
 	QString peerCloseReason;
 	bool updating;
-	Connection bytesWrittenConnection;
-	Connection errorConnection;
+	ReqConnections reqConnections;
 	WSConnections wsConnection;
 
 	Private(SockJsSession *_q) :
@@ -197,8 +201,7 @@ public:
 
 	void removeRequestItem(RequestItem *ri)
 	{
-		bytesWrittenConnection.disconnect();
-		errorConnection.disconnect();
+		reqConnections = ReqConnections();
 		requests.remove(ri->req);
 		delete ri;
 	}
@@ -226,8 +229,7 @@ public:
 		{
 			RequestItem *ri = requests.value(req);
 			assert(ri);
-			bytesWrittenConnection.disconnect();
-			errorConnection.disconnect();
+			reqConnections = ReqConnections();
 			// detach req from RequestItem
 			requests.remove(req);
 			ri->req = 0;
@@ -273,8 +275,10 @@ public:
 
 			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
 
-			bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
-			errorConnection = req->error.connect(boost::bind(&Private::req_error, this, req));
+			reqConnections = {
+				req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
+				req->error.connect(boost::bind(&Private::req_error, this, req))
+			};
 		}
 		else
 		{
@@ -316,9 +320,10 @@ public:
 
 	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-		bytesWrittenConnection = _req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req));
-		errorConnection = _req->error.connect(boost::bind(&Private::req_error, this, req));
-
+		reqConnections = {
+			req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
+			req->error.connect(boost::bind(&Private::req_error, this, req))
+		};
 		if(lastPart == "xhr" || lastPart == "jsonp")
 		{
 			if(req)

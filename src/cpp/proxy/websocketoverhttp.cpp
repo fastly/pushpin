@@ -46,12 +46,6 @@
 
 namespace {
 
-struct WSConnections {
-	Connection disconnectedConnection;
-	Connection closedConnection;
-	Connection errorConnection;
-};
-
 class WsEvent
 {
 public:
@@ -74,6 +68,12 @@ public:
 class WebSocketOverHttp::DisconnectManager : public QObject
 {
 	Q_OBJECT
+
+	struct WSConnections {
+		Connection disconnectedConnection;
+		Connection closedConnection;
+		Connection errorConnection;
+	};
 
 	map<WebSocketOverHttp *, WSConnections> wsConnectionMap;
 
@@ -194,6 +194,12 @@ class WebSocketOverHttp::Private : public QObject
 	Q_OBJECT
 
 public:
+	struct ReqConnections {
+		Connection readyReadConnection;
+		Connection bytesWrittenConnection;
+		Connection errorConnection;
+	};
+
 	WebSocketOverHttp *q;
 	ZhttpManager *zhttpManager;
 	QString connectHost;
@@ -232,9 +238,7 @@ public:
 	QTimer *retryTimer;
 	int retries;
 	int maxEvents;
-	Connection readyReadConnection;
-	Connection bytesWrittenConnection;
-	Connection errorConnection;
+	ReqConnections reqConnections;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -295,9 +299,7 @@ public:
 		disconnecting = false;
 		updateQueued = false;
 
-		readyReadConnection.disconnect();
-		bytesWrittenConnection.disconnect();
-		errorConnection.disconnect();
+		reqConnections = ReqConnections();
 		delete req;
 		req = 0;
 
@@ -619,9 +621,11 @@ private:
 
 		req = zhttpManager->createRequest();
 		req->setParent(this);
-		readyReadConnection = req->readyRead.connect(boost::bind(&Private::req_readyRead, this));
-		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
-		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
+		reqConnections = {
+			req->readyRead.connect(boost::bind(&Private::req_readyRead, this)),
+			req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1)),
+			req->error.connect(boost::bind(&Private::req_error, this))
+		};
 
 		if(!connectHost.isEmpty())
 			req->setConnectHost(connectHost);
@@ -674,9 +678,7 @@ private:
 		HttpHeaders responseHeaders = req->responseHeaders();
 		QByteArray responseBody = inBuf.take();
 
-		readyReadConnection.disconnect();
-		bytesWrittenConnection.disconnect();
-		errorConnection.disconnect();
+		reqConnections = ReqConnections();
 		delete req;
 		req = 0;
 
@@ -957,9 +959,7 @@ private:
 				break;
 		}
 
-		readyReadConnection.disconnect();
-		bytesWrittenConnection.disconnect();
-		errorConnection.disconnect();
+		reqConnections = ReqConnections();
 		delete req;
 		req = 0;
 

@@ -41,6 +41,13 @@
 #include "pushpinhandlerservice.h"
 #include "config.h"
 
+struct ServiceConnections{
+	Connection startedConnection;
+	Connection stoppedConnection;
+	Connection logConnection;
+	Connection errConnection;
+};
+
 static void trimlist(QStringList *list)
 {
 	for(int n = 0; n < list->count(); ++n)
@@ -258,10 +265,7 @@ public:
 	bool errored;
 	Connection quitConnection;
 	Connection hupConnection;
-	map<Service*, Connection> startedConnection;
-	map<Service*, Connection> stoppedConnection;
-	map<Service*, Connection> logConnection;
-	map<Service*, Connection> errConnection;
+	map<Service*, ServiceConnections> serviceConnectionMap;
 
 	Private(RunnerApp *_q) :
 		QObject(_q),
@@ -643,10 +647,12 @@ public:
 
 		foreach(Service *s, services)
 		{
-			startedConnection[s] = s->started.connect(boost::bind(&Private::service_started, this));
-			stoppedConnection[s] = s->stopped.connect(boost::bind(&Private::service_stopped, this, s));
-			logConnection[s] = s->logLine.connect(boost::bind(&Private::service_logLine, this, boost::placeholders::_1, s));
-			errConnection[s] = s->error.connect(boost::bind(&Private::service_error, this, boost::placeholders::_1, s));
+			serviceConnectionMap[s] = {
+				s->started.connect(boost::bind(&Private::service_started, this)),
+				s->stopped.connect(boost::bind(&Private::service_stopped, this, s)),
+				s->logLine.connect(boost::bind(&Private::service_logLine, this, boost::placeholders::_1, s)),
+				s->error.connect(boost::bind(&Private::service_error, this, boost::placeholders::_1, s))
+			};
 
 			if(!args.mergeOutput || qobject_cast<Mongrel2Service*>(s))
 				log_info("starting %s", qPrintable(s->name()));
@@ -723,10 +729,7 @@ private:
 
 	void service_stopped(Service *s)
 	{
-		startedConnection.erase(s);
-		stoppedConnection.erase(s);
-		logConnection.erase(s);
-		errConnection.erase(s);
+		serviceConnectionMap.erase(s);
 
 		services.removeAll(s);
 		delete s;
@@ -746,10 +749,7 @@ private:
 	{
 		log_error("%s: %s", qPrintable(s->name()), qPrintable(error));
 
-		startedConnection.erase(s);
-		stoppedConnection.erase(s);
-		logConnection.erase(s);
-		errConnection.erase(s);
+		serviceConnectionMap.erase(s);
 
 		services.removeAll(s);
 		delete s;
