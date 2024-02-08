@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2016 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,19 +24,17 @@
 #ifndef HTTPREQUEST_H
 #define HTTPREQUEST_H
 
-#include <QObject>
 #include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
 #include <boost/signals2.hpp>
+#include <memory>
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
 
-class HttpRequest : public QObject
+class HttpRequest
 {
-	Q_OBJECT
-
 public:
 	enum ErrorCondition
 	{
@@ -52,7 +50,7 @@ public:
 		ErrorRequestTooLarge
 	};
 
-	HttpRequest(QObject *parent = 0) : QObject(parent) {}
+	HttpRequest() {}
 
 	virtual QHostAddress peerAddress() const = 0;
 

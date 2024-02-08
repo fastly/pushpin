@@ -32,16 +32,15 @@
 #include "rtimer.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
+#include <memory>
 
 #define IDEAL_CREDITS 200000
 #define SESSION_EXPIRE 60000
 #define KEEPALIVE_INTERVAL 45000
 #define REQ_BUF_MAX 1000000
 
-class ZhttpRequest::Private : public QObject
+class ZhttpRequest::Private
 {
-	Q_OBJECT
-
 public:
 	enum State
 	{
@@ -99,15 +98,14 @@ public:
 	bool writableChanged;
 	bool errored;
 	ErrorCondition errorCondition;
-	RTimer *expireTimer;
-	RTimer *keepAliveTimer;
+	std::unique_ptr<RTimer> expireTimer;
+	std::unique_ptr<RTimer> keepAliveTimer;
 	bool multi;
 	bool quiet;
 	Connection expTimerConnection;
 	Connection keepAliveTimerConnection;
 
 	Private(ZhttpRequest *_q) :
-		QObject(_q),
 		q(_q),
 		manager(0),
 		server(false),
@@ -132,16 +130,14 @@ public:
 		readableChanged(false),
 		writableChanged(false),
 		errored(false),
-		expireTimer(0),
-		keepAliveTimer(0),
 		multi(false),
 		quiet(false)
 	{
-		expireTimer = new RTimer(this);
+		expireTimer = std::make_unique<RTimer>(this);
 		expTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer(this);
+		keepAliveTimer = std::make_unique<RTimer>(this);
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
@@ -161,7 +157,7 @@ public:
 
 		if(expireTimer)
 		{
-			expireTimer->disconnect(this);
+			expireTimer->unref()->disconnect(this);
 			expireTimer->setParent(0);
 			expireTimer->deleteLater();
 			expireTimer = 0;
@@ -409,8 +405,6 @@ public:
 
 	void tryWrite()
 	{
-		QPointer<QObject> self = this;
-
 		if(state == ClientRequesting)
 		{
 			// if all we have to send is EOF, we don't need credits for that
@@ -1043,7 +1037,6 @@ public slots:
 		}
 		else if(state == ClientRequesting)
 		{
-			QPointer<QObject> self = this;
 			tryWrite();
 			if(!self)
 				return;
@@ -1129,8 +1122,6 @@ public slots:
 				cleanup();
 			}
 
-			QPointer<QObject> self = this;
-
 			if(!packet.body.isEmpty())
 				q->bytesWritten(packet.body.size());
 			else if(!packet.more)
@@ -1143,7 +1134,6 @@ public slots:
 		}
 		else if(state == ServerResponding)
 		{
-			QPointer<QObject> self = this;
 			tryWrite();
 			if(!self)
 				return;
@@ -1183,10 +1173,10 @@ public:
 	}
 };
 
-ZhttpRequest::ZhttpRequest(QObject *parent) :
-	HttpRequest(parent)
+ZhttpRequest::ZhttpRequest() :
+	HttpRequest()
 {
-	d = new Private(this);
+	d = std::make_unique<Private>();
 }
 
 ZhttpRequest::~ZhttpRequest()
@@ -1455,5 +1445,3 @@ void ZhttpRequest::handle(const QByteArray &id, int seq, const ZhttpResponsePack
 
 	d->handle(id, seq, packet);
 }
-
-#include "zhttprequest.moc"

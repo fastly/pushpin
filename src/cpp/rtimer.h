@@ -30,12 +30,10 @@ using Signal = boost::signals2::signal<void()>;
 
 class TimerManager;
 
-class RTimer : public QObject
+class RTimer
 {
-	Q_OBJECT
-
 public:
-	RTimer(QObject *parent = 0);
+	RTimer();
 	~RTimer();
 
 	bool isActive() const;

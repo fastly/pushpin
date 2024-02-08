@@ -35,6 +35,7 @@
 #include "log.h"
 #include "zutil.h"
 #include "logutil.h"
+#include <memory>
 
 #define OUT_HWM 100
 #define IN_HWM 100
@@ -54,10 +55,8 @@
 // needs to match the peer
 #define ZHTTP_IDS_MAX 128
 
-class ZhttpManager::Private : public QObject
+class ZhttpManager::Private
 {
-	Q_OBJECT
-
 public:
 	enum SessionType
 	{
@@ -82,25 +81,25 @@ public:
 	QStringList server_in_specs;
 	QStringList server_in_stream_specs;
 	QStringList server_out_specs;
-	QZmq::Socket *client_out_sock;
-	QZmq::Socket *client_out_stream_sock;
-	QZmq::Socket *client_in_sock;
-	QZmq::Socket *client_req_sock;
-	QZmq::Socket *server_in_sock;
-	QZmq::Socket *server_in_stream_sock;
-	QZmq::Socket *server_out_sock;
-	QZmq::Valve *client_in_valve;
-	QZmq::Valve *server_in_valve;
-	QZmq::Valve *server_in_stream_valve;
+    std::unique_ptr<QZmq::Socket> client_out_sock;
+    std::unique_ptr<QZmq::Socket> client_out_stream_sock;
+    std::unique_ptr<QZmq::Socket> client_in_sock;
+    std::unique_ptr<QZmq::Socket> client_req_sock;
+    std::unique_ptr<QZmq::Socket> server_in_sock;
+    std::unique_ptr<QZmq::Socket> server_in_stream_sock;
+    std::unique_ptr<QZmq::Socket> server_out_sock;
+    std::unique_ptr<QZmq::Valve> client_in_valve;
+    std::unique_ptr<QZmq::Valve> server_in_valve;
+    std::unique_ptr<QZmq::Valve> server_in_stream_valve;
 	QByteArray instanceId;
 	int ipcFileMode;
 	bool doBind;
-	QHash<ZhttpRequest::Rid, ZhttpRequest*> clientReqsByRid;
-	QHash<ZhttpRequest::Rid, ZhttpRequest*> serverReqsByRid;
+	QHash<ZhttpRequest::Rid, std::unique_ptr<ZhttpRequest>> clientReqsByRid;
+	QHash<ZhttpRequest::Rid, std::unique_ptr<ZhttpRequest>> serverReqsByRid;
 	QList<ZhttpRequest*> serverPendingReqs;
-	QHash<ZWebSocket::Rid, ZWebSocket*> clientSocksByRid;
-	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
-	QList<ZWebSocket*> serverPendingSocks;
+	QHash<ZWebSocket::Rid, std::unique_ptr<ZWebSocket>> clientSocksByRid;
+	QHash<ZWebSocket::Rid, std::unique_ptr<ZWebSocket>> serverSocksByRid;
+	QList<std::unique_ptr<ZWebSocket>> serverPendingSocks;
 	QTimer *refreshTimer;
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
@@ -114,7 +113,6 @@ public:
 	Connection serverStreamConnection;
 
 	Private(ZhttpManager *_q) :
-		QObject(_q),
 		q(_q),
 		client_out_sock(0),
 		client_out_stream_sock(0),
@@ -507,8 +505,6 @@ public:
 
 	void client_req_readyRead()
 	{
-		QPointer<QObject> self = this;
-
 		while(client_req_sock->canRead())
 		{
 			QList<QByteArray> msg = client_req_sock->read();
@@ -605,8 +601,6 @@ public:
 			log_warning("zhttp/zws client: received message with invalid format (parse failed), skipping");
 			return;
 		}
-
-		QPointer<QObject> self = this;
 
 		foreach(const ZhttpResponsePacket::Id &id, p.ids)
 		{
@@ -773,8 +767,6 @@ public:
 			log_warning("zhttp/zws server: received message with invalid format (parse failed), skipping");
 			return;
 		}
-
-		QPointer<QObject> self = this;
 
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
@@ -949,10 +941,8 @@ public slots:
 	}
 };
 
-ZhttpManager::ZhttpManager(QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this);
+ZhttpManager::ZhttpManager() {
+    d = std::make_unique<Private>(this);
 }
 
 ZhttpManager::~ZhttpManager()
@@ -1239,5 +1229,3 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 
 	return total;
 }
-
-#include "zhttpmanager.moc"

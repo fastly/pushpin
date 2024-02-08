@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,16 +25,15 @@
 #define TESTHTTPREQUEST_H
 
 #include "httprequest.h"
+#include <memory>
 
 class TestHttpRequest : public HttpRequest
 {
-	Q_OBJECT
-
 public:
 	// pair of sender + request id
 	typedef QPair<QByteArray, QByteArray> Rid;
 
-	TestHttpRequest(QObject *parent = 0);
+	TestHttpRequest();
 	~TestHttpRequest();
 
 	// reimplemented
@@ -74,7 +74,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 };
 
 #endif

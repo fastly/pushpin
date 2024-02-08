@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,10 +33,8 @@
 
 #define MAX_REQUEST_SIZE 100000
 
-class TestHttpRequest::Private : public QObject
-{
-	Q_OBJECT
-
+class TestHttpRequest::Private
+{ 
 public:
 	enum State
 	{
@@ -55,7 +54,6 @@ public:
 	ErrorCondition errorCondition;
 
 	Private(TestHttpRequest *_q) :
-		QObject(_q),
 		q(_q),
 		state(Idle),
 		requestBodyFinished(false),
@@ -139,10 +137,10 @@ public slots:
 	}
 };
 
-TestHttpRequest::TestHttpRequest(QObject *parent) :
-	HttpRequest(parent)
+TestHttpRequest::TestHttpRequest() :
+	HttpRequest()
 {
-	d = new Private(this);
+    d = std::make_unique<Private>(this);
 }
 
 TestHttpRequest::~TestHttpRequest()

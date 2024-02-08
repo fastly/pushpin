@@ -23,22 +23,20 @@
 #ifndef ZHTTPMANAGER_H
 #define ZHTTPMANAGER_H
 
-#include <QObject>
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include <boost/signals2.hpp>
+#include <memory>
 
 using Signal = boost::signals2::signal<void()>;
 
 class ZhttpRequestPacket;
 class ZhttpResponsePacket;
 
-class ZhttpManager : public QObject
+class ZhttpManager
 {
-	Q_OBJECT
-
 public:
-	ZhttpManager(QObject *parent = 0);
+	ZhttpManager();
 	~ZhttpManager();
 
 	int connectionCount() const;
@@ -79,7 +77,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 
 	friend class ZhttpRequest;
 	friend class ZWebSocket;
