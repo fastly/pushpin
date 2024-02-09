@@ -6,7 +6,7 @@ use std::fs::{self, File};
 use std::io::{BufRead, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 use std::thread;
 use std::{env, io};
@@ -149,14 +149,59 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
+fn check_command(command: &mut Command) -> Result<(), Box<dyn Error>> {
+    let program = command.get_program().to_string_lossy().into_owned();
+
+    let args: Vec<String> = command
+        .get_args()
+        .map(|s| s.to_string_lossy().into_owned())
+        .collect();
+
+    println!("{} {}", program, args.join(" "));
+
+    let status = match command.status() {
+        Ok(status) => status,
+        Err(e) => return Err(format!("command failed: {}", e).into()),
+    };
+
+    if !status.success() {
+        return Err(format!("{} failed", program).into());
+    }
+
+    Ok(())
+}
+
+fn check_command_capture(command: &mut Command) -> Result<Vec<u8>, Box<dyn Error>> {
+    let program = command.get_program().to_string_lossy().into_owned();
+
+    let args: Vec<String> = command
+        .get_args()
+        .map(|s| s.to_string_lossy().into_owned())
+        .collect();
+
+    println!("{} {}", program, args.join(" "));
+
+    // don't capture stderr
+    let command = command.stderr(Stdio::inherit());
+
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(e) => return Err(format!("command failed: {}", e).into()),
+    };
+
+    if !output.status.success() {
+        return Err(format!("{} failed", program).into());
+    }
+
+    Ok(output.stdout)
+}
+
 fn check_qmake(qmake_path: &Path) -> Result<LibVersion, Box<dyn Error>> {
     let version: LibVersion = {
-        let output = Command::new(qmake_path)
-            .args(["-query", "QT_VERSION"])
-            .output()?;
-        assert!(output.status.success());
+        let output =
+            check_command_capture(Command::new(qmake_path).args(["-query", "QT_VERSION"]))?;
 
-        let s = String::from_utf8(output.stdout)?;
+        let s = String::from_utf8(output)?;
         let s = s.trim();
 
         match s.parse() {
@@ -339,12 +384,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (qmake_path, qt_version) = get_qmake()?;
 
     let qt_install_libs = {
-        let output = Command::new(&qmake_path)
-            .args(["-query", "QT_INSTALL_LIBS"])
-            .output()?;
-        assert!(output.status.success());
+        let output =
+            check_command_capture(Command::new(&qmake_path).args(["-query", "QT_INSTALL_LIBS"]))?;
 
-        let libs_dir = PathBuf::from(String::from_utf8(output.stdout)?.trim());
+        let libs_dir = PathBuf::from(String::from_utf8(output)?.trim());
 
         fs::canonicalize(&libs_dir)
             .map_err(|_| format!("QT_INSTALL_LIBS dir {} not found", libs_dir.display()))?
@@ -412,45 +455,39 @@ fn main() -> Result<(), Box<dyn Error>> {
         &log_dir,
     )?;
 
-    assert!(Command::new(&qmake_path)
-        .args([
-            OsStr::new("-o"),
-            out_dir.join("Makefile").as_os_str(),
-            cpp_src_dir.join("cpp.pro").as_os_str(),
-        ])
-        .status()?
-        .success());
+    check_command(Command::new(&qmake_path).args([
+        OsStr::new("-o"),
+        out_dir.join("Makefile").as_os_str(),
+        cpp_src_dir.join("cpp.pro").as_os_str(),
+    ]))?;
 
-    assert!(Command::new(&qmake_path)
-        .args([
-            OsStr::new("-o"),
-            out_dir.join("Makefile.test").as_os_str(),
-            cpp_tests_src_dir.join("tests.pro").as_os_str(),
-        ])
-        .status()?
-        .success());
+    check_command(Command::new(&qmake_path).args([
+        OsStr::new("-o"),
+        out_dir.join("Makefile.test").as_os_str(),
+        cpp_tests_src_dir.join("tests.pro").as_os_str(),
+    ]))?;
 
-    assert!(Command::new(&qmake_path)
-        .args(["-o", "Makefile", "postbuild.pro"])
-        .current_dir("postbuild")
-        .status()?
-        .success());
+    check_command(
+        Command::new(&qmake_path)
+            .args(["-o", "Makefile", "postbuild.pro"])
+            .current_dir("postbuild"),
+    )?;
 
     let proc_count = thread::available_parallelism().map_or(1, |x| x.get());
 
-    assert!(Command::new("make")
-        .args(["-f", "Makefile"])
-        .args(["-j", &proc_count.to_string()])
-        .current_dir(&out_dir)
-        .status()?
-        .success());
+    check_command(
+        Command::new("make")
+            .args(["-f", "Makefile"])
+            .args(["-j", &proc_count.to_string()])
+            .current_dir(&out_dir),
+    )?;
 
-    assert!(Command::new("make")
-        .args(["-f", "Makefile.test"])
-        .args(["-j", &proc_count.to_string()])
-        .current_dir(&out_dir)
-        .status()?
-        .success());
+    check_command(
+        Command::new("make")
+            .args(["-f", "Makefile.test"])
+            .args(["-j", &proc_count.to_string()])
+            .current_dir(&out_dir),
+    )?;
 
     println!("cargo:rustc-env=APP_VERSION={}", get_version());
     println!("cargo:rustc-env=CONFIG_DIR={}/pushpin", config_dir);
