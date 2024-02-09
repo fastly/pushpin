@@ -33,6 +33,7 @@
 #include <QJsonArray>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "qtcompat.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "layertracker.h"
@@ -695,7 +696,7 @@ public:
 			{
 				vit.next();
 
-				if(vit.value().type() != QVariant::String)
+				if(typeId(vit.value()) != QMetaType::QString)
 				{
 					log_debug("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 					*ok = false;
