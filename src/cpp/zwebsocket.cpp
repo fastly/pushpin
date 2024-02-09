@@ -126,11 +126,11 @@ public:
 		outContentType((int)Frame::Text),
 		multi(false)
 	{
-		expireTimer = new RTimer(this);
+		expireTimer = new RTimer();
 		expireTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer(this);
+		keepAliveTimer = new RTimer();
 		keppAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
@@ -149,17 +149,15 @@ public:
 
 		if(expireTimer)
 		{
-			expireTimer->disconnect(this);
-			expireTimer->setParent(0);
-			expireTimer->deleteLater();
+			expireTimer->disconnect();
+			expireTimer->deinit();
 			expireTimer = 0;
 		}
 
 		if(keepAliveTimer)
 		{
-			keepAliveTimer->disconnect(this);
-			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
+			keepAliveTimer->disconnect();
+			keepAliveTimer->deinit();
 			keepAliveTimer = 0;
 		}
 
