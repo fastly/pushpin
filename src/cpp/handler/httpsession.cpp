@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +29,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QRandomGenerator>
+#include "qtcompat.h"
 #include "rtimer.h"
 #include "log.h"
 #include "bufferlist.h"
@@ -72,10 +73,10 @@ static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyP
 		vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
 		if(vbody.isValid())
 			vbody = VariantUtil::convertToJsonStyle(vbody);
-		if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
+		if(vbody.isValid() && (typeId(vbody) == QMetaType::QVariantMap || typeId(vbody) == QMetaType::QVariantList))
 		{
 			QJsonDocument doc;
-			if(vbody.type() == QVariant::Map)
+			if(typeId(vbody) == QMetaType::QVariantMap)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
 			else // List
 				doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
