@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,6 +26,7 @@
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
+#include "qtcompat.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "zhttprequestpacket.h"
@@ -245,7 +247,7 @@ private slots:
 		QZmq::ReqMessage message(_message);
 		QVariant v = TnetString::toVariant(message.content()[0]);
 
-		QVERIFY(v.type() == QVariant::Hash);
+		QVERIFY(typeId(v) == QMetaType::QVariantHash);
 		QVariantHash vresp = v.toHash();
 
 		QVERIFY(vresp.value("success").toBool());
@@ -253,7 +255,7 @@ private slots:
 		acceptSuccess = true;
 
 		v = vresp.value("value");
-		QVERIFY(v.type() == QVariant::Hash);
+		QVERIFY(typeId(v) == QMetaType::QVariantHash);
 		acceptValue = v.toHash();
 	}
 };
