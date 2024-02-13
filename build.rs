@@ -1,15 +1,15 @@
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File};
-use std::io::{BufRead, Write};
+use std::io::{self, BufRead, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Output, Stdio};
 use std::str::FromStr;
 use std::thread;
-use std::{env, io};
 use time::macros::format_description;
 use time::OffsetDateTime;
 
@@ -149,57 +149,67 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
-fn check_command(command: &mut Command) -> Result<(), Box<dyn Error>> {
-    let program = command.get_program().to_string_lossy().into_owned();
+// returned vec size guaranteed >= 1
+fn get_args_lossy(command: &mut Command) -> Vec<String> {
+    let mut args = vec![command.get_program().to_string_lossy().into_owned()];
 
-    let args: Vec<String> = command
-        .get_args()
-        .map(|s| s.to_string_lossy().into_owned())
-        .collect();
+    for s in command.get_args() {
+        args.push(s.to_string_lossy().into_owned());
+    }
 
-    println!("{} {}", program, args.join(" "));
+    args
+}
 
-    let status = match command.status() {
+// convert Result<Output> to Result<ExitStatus>, separating stdout
+fn take_stdout(result: io::Result<Output>) -> (io::Result<ExitStatus>, Vec<u8>) {
+    match result {
+        Ok(output) => (Ok(output.status), output.stdout),
+        Err(e) => (Err(e), Vec::new()),
+    }
+}
+
+fn check_command_result(
+    program: &str,
+    result: io::Result<ExitStatus>,
+) -> Result<(), Box<dyn Error>> {
+    let status = match result {
         Ok(status) => status,
-        Err(e) => return Err(format!("command failed: {}", e).into()),
+        Err(e) => return Err(format!("{} failed: {}", program, e).into()),
     };
 
     if !status.success() {
-        return Err(format!("{} failed", program).into());
+        return Err(format!("{} failed, {}", program, status).into());
     }
 
     Ok(())
 }
 
-fn check_command_capture(command: &mut Command) -> Result<Vec<u8>, Box<dyn Error>> {
-    let program = command.get_program().to_string_lossy().into_owned();
+fn check_command(command: &mut Command) -> Result<(), Box<dyn Error>> {
+    let args = get_args_lossy(command);
 
-    let args: Vec<String> = command
-        .get_args()
-        .map(|s| s.to_string_lossy().into_owned())
-        .collect();
+    println!("{}", args.join(" "));
 
-    println!("{} {}", program, args.join(" "));
+    check_command_result(&args[0], command.status())
+}
+
+fn check_command_capture_stdout(command: &mut Command) -> Result<Vec<u8>, Box<dyn Error>> {
+    let args = get_args_lossy(command);
+
+    println!("{}", args.join(" "));
 
     // don't capture stderr
     let command = command.stderr(Stdio::inherit());
 
-    let output = match command.output() {
-        Ok(output) => output,
-        Err(e) => return Err(format!("command failed: {}", e).into()),
-    };
+    let (result, output) = take_stdout(command.output());
+    check_command_result(&args[0], result)?;
 
-    if !output.status.success() {
-        return Err(format!("{} failed", program).into());
-    }
-
-    Ok(output.stdout)
+    Ok(output)
 }
 
 fn check_qmake(qmake_path: &Path) -> Result<LibVersion, Box<dyn Error>> {
     let version: LibVersion = {
         let output =
-            check_command_capture(Command::new(qmake_path).args(["-query", "QT_VERSION"]))?;
+            check_command_capture_stdout(Command::new(qmake_path).args(["-query", "QT_VERSION"]))?;
 
         let s = String::from_utf8(output)?;
         let s = s.trim();
@@ -384,8 +394,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (qmake_path, qt_version) = get_qmake()?;
 
     let qt_install_libs = {
-        let output =
-            check_command_capture(Command::new(&qmake_path).args(["-query", "QT_INSTALL_LIBS"]))?;
+        let output = check_command_capture_stdout(
+            Command::new(&qmake_path).args(["-query", "QT_INSTALL_LIBS"]),
+        )?;
 
         let libs_dir = PathBuf::from(String::from_utf8(output)?.trim());
 
