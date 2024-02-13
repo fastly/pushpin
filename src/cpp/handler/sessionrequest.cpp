@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,6 +25,7 @@
 
 #include <QVariant>
 #include <QObject>
+#include "qtcompat.h"
 #include "zrpcmanager.h"
 #include "zrpcrequest.h"
 #include "deferred.h"
@@ -100,7 +102,7 @@ private:
 		if(req->success())
 		{
 			QVariant vresult = req->result();
-			if(vresult.type() != QVariant::List)
+			if(typeId(vresult) != QMetaType::QVariantList)
 			{
 				setFinished(false);
 				return;
@@ -111,7 +113,7 @@ private:
 			QList<DetectRule> rules;
 			foreach(const QVariant &vr, result)
 			{
-				if(vr.type() != QVariant::Hash)
+				if(typeId(vr) != QMetaType::QVariantHash)
 				{
 					setFinished(false);
 					return;
@@ -121,7 +123,7 @@ private:
 
 				DetectRule rule;
 
-				if(!r.contains("domain") || r["domain"].type() != QVariant::ByteArray)
+				if(!r.contains("domain") || typeId(r["domain"]) != QMetaType::QByteArray)
 				{
 					setFinished(false);
 					return;
@@ -129,7 +131,7 @@ private:
 
 				rule.domain = QString::fromUtf8(r["domain"].toByteArray());
 
-				if(!r.contains("path-prefix") || r["path-prefix"].type() != QVariant::ByteArray)
+				if(!r.contains("path-prefix") || typeId(r["path-prefix"]) != QMetaType::QByteArray)
 				{
 					setFinished(false);
 					return;
@@ -137,7 +139,7 @@ private:
 
 				rule.pathPrefix = r["path-prefix"].toByteArray();
 
-				if(!r.contains("sid-ptr") || r["sid-ptr"].type() != QVariant::ByteArray)
+				if(!r.contains("sid-ptr") || typeId(r["sid-ptr"]) != QMetaType::QByteArray)
 				{
 					setFinished(false);
 					return;
@@ -147,7 +149,7 @@ private:
 
 				if(r.contains("json-param"))
 				{
-					if(r["json-param"].type() != QVariant::ByteArray)
+					if(typeId(r["json-param"]) != QMetaType::QByteArray)
 					{
 						setFinished(false);
 						return;
@@ -288,7 +290,7 @@ private:
 		if(req->success())
 		{
 			QVariant vresult = req->result();
-			if(vresult.type() != QVariant::Hash)
+			if(typeId(vresult) != QMetaType::QVariantHash)
 			{
 				setFinished(false);
 				return;
@@ -302,7 +304,7 @@ private:
 			{
 				it.next();
 				const QVariant &i = it.value();
-				if(i.type() != QVariant::ByteArray)
+				if(typeId(i) != QMetaType::QByteArray)
 				{
 					setFinished(false);
 					return;

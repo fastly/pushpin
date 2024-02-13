@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017-2020 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,6 +23,7 @@
 
 #include "refreshworker.h"
 
+#include "qtcompat.h"
 #include "zrpcrequest.h"
 #include "controlrequest.h"
 #include "statsmanager.h"
@@ -39,7 +41,7 @@ RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, 
 
 	if(args.contains("cid"))
 	{
-		if(args["cid"].type() != QVariant::ByteArray)
+		if(typeId(args["cid"]) != QMetaType::QByteArray)
 		{
 			respondError("bad-request");
 			return;
@@ -51,7 +53,7 @@ RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, 
 	}
 	else if(args.contains("channel"))
 	{
-		if(args["channel"].type() != QVariant::ByteArray)
+		if(typeId(args["channel"]) != QMetaType::QByteArray)
 		{
 			respondError("bad-request");
 			return;

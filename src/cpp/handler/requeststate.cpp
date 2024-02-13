@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,45 +23,47 @@
 
 #include "requeststate.h"
 
+#include "qtcompat.h"
+
 RequestState RequestState::fromVariant(const QVariant &in)
 {
-	if(in.type() != QVariant::Hash)
+	if(typeId(in) != QMetaType::QVariantHash)
 		return RequestState();
 
 	QVariantHash r = in.toHash();
 	RequestState rs;
 
-	if(!r.contains("rid") || r["rid"].type() != QVariant::Hash)
+	if(!r.contains("rid") || typeId(r["rid"]) != QMetaType::QVariantHash)
 		return RequestState();
 
 	QVariantHash vrid = r["rid"].toHash();
 
-	if(!vrid.contains("sender") || vrid["sender"].type() != QVariant::ByteArray)
+	if(!vrid.contains("sender") || typeId(vrid["sender"]) != QMetaType::QByteArray)
 		return RequestState();
 
-	if(!vrid.contains("id") || vrid["id"].type() != QVariant::ByteArray)
+	if(!vrid.contains("id") || typeId(vrid["id"]) != QMetaType::QByteArray)
 		return RequestState();
 
 	rs.rid = ZhttpRequest::Rid(vrid["sender"].toByteArray(), vrid["id"].toByteArray());
 
-	if(!r.contains("in-seq") || !r["in-seq"].canConvert(QVariant::Int))
+	if(!r.contains("in-seq") || !canConvert(r["in-seq"], QMetaType::Int))
 		return RequestState();
 
 	rs.inSeq = r["in-seq"].toInt();
 
-	if(!r.contains("out-seq") || !r["out-seq"].canConvert(QVariant::Int))
+	if(!r.contains("out-seq") || !canConvert(r["out-seq"], QMetaType::Int))
 		return RequestState();
 
 	rs.outSeq = r["out-seq"].toInt();
 
-	if(!r.contains("out-credits") || !r["out-credits"].canConvert(QVariant::Int))
+	if(!r.contains("out-credits") || !canConvert(r["out-credits"], QMetaType::Int))
 		return RequestState();
 
 	rs.outCredits = r["out-credits"].toInt();
 
 	if(r.contains("response-code"))
 	{
-		if(!r["response-code"].canConvert(QVariant::Int))
+		if(!canConvert(r["response-code"], QMetaType::Int))
 			return RequestState();
 
 		rs.responseCode = r["response-code"].toInt();
@@ -68,7 +71,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("peer-address"))
 	{
-		if(r["peer-address"].type() != QVariant::ByteArray)
+		if(typeId(r["peer-address"]) != QMetaType::QByteArray)
 			return RequestState();
 
 		if(!rs.peerAddress.setAddress(QString::fromUtf8(r["peer-address"].toByteArray())))
@@ -77,7 +80,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("logical-peer-address"))
 	{
-		if(r["logical-peer-address"].type() != QVariant::ByteArray)
+		if(typeId(r["logical-peer-address"]) != QMetaType::QByteArray)
 			return RequestState();
 
 		if(!rs.logicalPeerAddress.setAddress(QString::fromUtf8(r["logical-peer-address"].toByteArray())))
@@ -86,7 +89,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("https"))
 	{
-		if(r["https"].type() != QVariant::Bool)
+		if(typeId(r["https"]) != QMetaType::Bool)
 			return RequestState();
 
 		rs.isHttps = r["https"].toBool();
@@ -94,7 +97,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("debug"))
 	{
-		if(r["debug"].type() != QVariant::Bool)
+		if(typeId(r["debug"]) != QMetaType::Bool)
 			return RequestState();
 
 		rs.debug = r["debug"].toBool();
@@ -102,7 +105,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("is-retry"))
 	{
-		if(r["is-retry"].type() != QVariant::Bool)
+		if(typeId(r["is-retry"]) != QMetaType::Bool)
 			return RequestState();
 
 		rs.isRetry = r["is-retry"].toBool();
@@ -110,7 +113,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("auto-cross-origin"))
 	{
-		if(r["auto-cross-origin"].type() != QVariant::Bool)
+		if(typeId(r["auto-cross-origin"]) != QMetaType::Bool)
 			return RequestState();
 
 		rs.autoCrossOrigin = r["auto-cross-origin"].toBool();
@@ -118,7 +121,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("jsonp-callback"))
 	{
-		if(r["jsonp-callback"].type() != QVariant::ByteArray)
+		if(typeId(r["jsonp-callback"]) != QMetaType::QByteArray)
 			return RequestState();
 
 		rs.jsonpCallback = r["jsonp-callback"].toByteArray();
@@ -126,7 +129,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("jsonp-extended-response"))
 	{
-		if(r["jsonp-extended-response"].type() != QVariant::Bool)
+		if(typeId(r["jsonp-extended-response"]) != QMetaType::Bool)
 			return RequestState();
 
 		rs.jsonpExtendedResponse = r["jsonp-extended-response"].toBool();
@@ -134,7 +137,7 @@ RequestState RequestState::fromVariant(const QVariant &in)
 
 	if(r.contains("unreported-time"))
 	{
-		if(!r["unreported-time"].canConvert(QVariant::Int))
+		if(!canConvert(r["unreported-time"], QMetaType::Int))
 			return RequestState();
 
 		rs.unreportedTime = r["unreported-time"].toInt();
