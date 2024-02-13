@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,6 +24,7 @@
 #include "controlrequest.h"
 
 #include "packet/statspacket.h"
+#include "qtcompat.h"
 #include "deferred.h"
 #include "zrpcrequest.h"
 
@@ -56,7 +58,7 @@ private:
 		if(req->success())
 		{
 			QVariant vresult = req->result();
-			if(vresult.type() != QVariant::List)
+			if(typeId(vresult) != QMetaType::QVariantList)
 			{
 				setFinished(false);
 				return;
@@ -67,7 +69,7 @@ private:
 			CidSet out;
 			foreach(const QVariant &vcid, result)
 			{
-				if(vcid.type() != QVariant::ByteArray)
+				if(typeId(vcid) != QMetaType::QByteArray)
 				{
 					setFinished(false);
 					return;

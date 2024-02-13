@@ -34,6 +34,7 @@
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
+#include "qtcompat.h"
 #include "tnetstring.h"
 #include "rtimer.h"
 #include "log.h"
@@ -139,7 +140,7 @@ public:
 		{
 			QVariantHash args = req->args();
 
-			if(!args.contains("method") || args["method"].type() != QVariant::ByteArray)
+			if(!args.contains("method") || typeId(args["method"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -147,7 +148,7 @@ public:
 
 			requestData.method = QString::fromLatin1(args["method"].toByteArray());
 
-			if(!args.contains("uri") || args["uri"].type() != QVariant::ByteArray)
+			if(!args.contains("uri") || typeId(args["uri"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -160,7 +161,7 @@ public:
 				return;
 			}
 
-			if(!args.contains("headers") || args["headers"].type() != QVariant::List)
+			if(!args.contains("headers") || typeId(args["headers"]) != QMetaType::QVariantList)
 			{
 				respondError("bad-request");
 				return;
@@ -168,14 +169,14 @@ public:
 
 			foreach(const QVariant &vheader, args["headers"].toList())
 			{
-				if(vheader.type() != QVariant::List)
+				if(typeId(vheader) != QMetaType::QVariantList)
 				{
 					respondError("bad-request");
 					return;
 				}
 
 				QVariantList vlist = vheader.toList();
-				if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+				if(vlist.count() != 2 || typeId(vlist[0]) != QMetaType::QByteArray || typeId(vlist[1]) != QMetaType::QByteArray)
 				{
 					respondError("bad-request");
 					return;
@@ -184,7 +185,7 @@ public:
 				requestData.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
 			}
 
-			if(!args.contains("body") || args["body"].type() != QVariant::ByteArray)
+			if(!args.contains("body") || typeId(args["body"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -195,7 +196,7 @@ public:
 			truncated = false;
 			if(args.contains("truncated"))
 			{
-				if(args["truncated"].type() != QVariant::Bool)
+				if(typeId(args["truncated"]) != QMetaType::Bool)
 				{
 					respondError("bad-request");
 					return;
@@ -207,7 +208,7 @@ public:
 			bool getSession = false;
 			if(args.contains("get-session"))
 			{
-				if(args["get-session"].type() != QVariant::Bool)
+				if(typeId(args["get-session"]) != QMetaType::Bool)
 				{
 					respondError("bad-request");
 					return;
@@ -219,7 +220,7 @@ public:
 			autoShare = false;
 			if(args.contains("auto-share"))
 			{
-				if(args["auto-share"].type() != QVariant::Bool)
+				if(typeId(args["auto-share"]) != QMetaType::Bool)
 				{
 					respondError("bad-request");
 					return;
@@ -472,7 +473,7 @@ public:
 		// process conn-max packets before doing anything else
 		if(args.contains("conn-max"))
 		{
-			if(args["conn-max"].type() != QVariant::List)
+			if(typeId(args["conn-max"]) != QMetaType::QVariantList)
 			{
 				respondError("bad-request");
 				return;
@@ -495,7 +496,7 @@ public:
 
 		if(args.contains("route"))
 		{
-			if(args["route"].type() != QVariant::ByteArray)
+			if(typeId(args["route"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -506,7 +507,7 @@ public:
 
 		if(args.contains("separate-stats"))
 		{
-			if(args["separate-stats"].type() != QVariant::Bool)
+			if(typeId(args["separate-stats"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -520,7 +521,7 @@ public:
 
 		if(args.contains("channel-prefix"))
 		{
-			if(args["channel-prefix"].type() != QVariant::ByteArray)
+			if(typeId(args["channel-prefix"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -531,7 +532,7 @@ public:
 
 		if(args.contains("channels"))
 		{
-			if(args["channels"].type() != QVariant::List)
+			if(typeId(args["channels"]) != QMetaType::QVariantList)
 			{
 				respondError("bad-request");
 				return;
@@ -540,7 +541,7 @@ public:
 			QVariantList vchannels = args["channels"].toList();
 			foreach(const QVariant &v, vchannels)
 			{
-				if(v.type() != QVariant::ByteArray)
+				if(typeId(v) != QMetaType::QByteArray)
 				{
 					respondError("bad-request");
 					return;
@@ -552,7 +553,7 @@ public:
 
 		if(args.contains("trusted"))
 		{
-			if(args["trusted"].type() != QVariant::Bool)
+			if(typeId(args["trusted"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -563,7 +564,7 @@ public:
 
 		// parse requests
 
-		if(!args.contains("requests") || args["requests"].type() != QVariant::List)
+		if(!args.contains("requests") || typeId(args["requests"]) != QMetaType::QVariantList)
 		{
 			respondError("bad-request");
 			return;
@@ -601,7 +602,7 @@ public:
 
 		// parse response
 
-		if(!args.contains("response") || args["response"].type() != QVariant::Hash)
+		if(!args.contains("response") || typeId(args["response"]) != QMetaType::QVariantHash)
 		{
 			respondError("bad-request");
 			return;
@@ -609,7 +610,7 @@ public:
 
 		QVariantHash rd = args["response"].toHash();
 
-		if(!rd.contains("code") || !rd["code"].canConvert(QVariant::Int))
+		if(!rd.contains("code") || !canConvert(rd["code"], QMetaType::Int))
 		{
 			respondError("bad-request");
 			return;
@@ -617,7 +618,7 @@ public:
 
 		responseData.code = rd["code"].toInt();
 
-		if(!rd.contains("reason") || rd["reason"].type() != QVariant::ByteArray)
+		if(!rd.contains("reason") || typeId(rd["reason"]) != QMetaType::QByteArray)
 		{
 			respondError("bad-request");
 			return;
@@ -625,7 +626,7 @@ public:
 
 		responseData.reason = rd["reason"].toByteArray();
 
-		if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
+		if(!rd.contains("headers") || typeId(rd["headers"]) != QMetaType::QVariantList)
 		{
 			respondError("bad-request");
 			return;
@@ -633,14 +634,14 @@ public:
 
 		foreach(const QVariant &vheader, rd["headers"].toList())
 		{
-			if(vheader.type() != QVariant::List)
+			if(typeId(vheader) != QMetaType::QVariantList)
 			{
 				respondError("bad-request");
 				return;
 			}
 
 			QVariantList vlist = vheader.toList();
-			if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+			if(vlist.count() != 2 || typeId(vlist[0]) != QMetaType::QByteArray || typeId(vlist[1]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -649,7 +650,7 @@ public:
 			responseData.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
 		}
 
-		if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
+		if(!rd.contains("body") || typeId(rd["body"]) != QMetaType::QByteArray)
 		{
 			respondError("bad-request");
 			return;
@@ -659,7 +660,7 @@ public:
 
 		if(args.contains("inspect"))
 		{
-			if(args["inspect"].type() != QVariant::Hash)
+			if(typeId(args["inspect"]) != QMetaType::QVariantHash)
 			{
 				respondError("bad-request");
 				return;
@@ -667,7 +668,7 @@ public:
 
 			QVariantHash vinspect = args["inspect"].toHash();
 
-			if(!vinspect.contains("no-proxy") || vinspect["no-proxy"].type() != QVariant::Bool)
+			if(!vinspect.contains("no-proxy") || typeId(vinspect["no-proxy"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -678,7 +679,7 @@ public:
 			inspectInfo.sharingKey.clear();
 			if(vinspect.contains("sharing-key"))
 			{
-				if(vinspect["sharing-key"].type() != QVariant::ByteArray)
+				if(typeId(vinspect["sharing-key"]) != QMetaType::QByteArray)
 				{
 					respondError("bad-request");
 					return;
@@ -689,7 +690,7 @@ public:
 
 			if(vinspect.contains("sid"))
 			{
-				if(vinspect["sid"].type() != QVariant::ByteArray)
+				if(typeId(vinspect["sid"]) != QMetaType::QByteArray)
 				{
 					respondError("bad-request");
 					return;
@@ -700,7 +701,7 @@ public:
 
 			if(vinspect.contains("last-ids"))
 			{
-				if(vinspect["last-ids"].type() != QVariant::Hash)
+				if(typeId(vinspect["last-ids"]) != QMetaType::QVariantHash)
 				{
 					respondError("bad-request");
 					return;
@@ -712,7 +713,7 @@ public:
 				{
 					it.next();
 
-					if(it.value().type() != QVariant::ByteArray)
+					if(typeId(it.value()) != QMetaType::QByteArray)
 					{
 						respondError("bad-request");
 						return;
@@ -731,7 +732,7 @@ public:
 
 		if(args.contains("response-sent"))
 		{
-			if(args["response-sent"].type() != QVariant::Bool)
+			if(typeId(args["response-sent"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -743,7 +744,7 @@ public:
 		bool useSession = false;
 		if(args.contains("use-session"))
 		{
-			if(args["use-session"].type() != QVariant::Bool)
+			if(typeId(args["use-session"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -825,40 +826,40 @@ public:
 private:
 	static HttpRequestData parseRequestData(const QVariantHash &args, const QString &field)
 	{
-		if(!args.contains(field) || args[field].type() != QVariant::Hash)
+		if(!args.contains(field) || typeId(args[field]) != QMetaType::QVariantHash)
 			return HttpRequestData();
 
 		QVariantHash rd = args[field].toHash();
 
-		if(!rd.contains("method") || rd["method"].type() != QVariant::ByteArray)
+		if(!rd.contains("method") || typeId(rd["method"]) != QMetaType::QByteArray)
 			return HttpRequestData();
 
 		HttpRequestData out;
 		out.method = QString::fromLatin1(rd["method"].toByteArray());
 
-		if(!rd.contains("uri") || rd["uri"].type() != QVariant::ByteArray)
+		if(!rd.contains("uri") || typeId(rd["uri"]) != QMetaType::QByteArray)
 			return HttpRequestData();
 
 		out.uri = QUrl(rd["uri"].toString(), QUrl::StrictMode);
 		if(!out.uri.isValid())
 			return HttpRequestData();
 
-		if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
+		if(!rd.contains("headers") || typeId(rd["headers"]) != QMetaType::QVariantList)
 			return HttpRequestData();
 
 		foreach(const QVariant &vheader, rd["headers"].toList())
 		{
-			if(vheader.type() != QVariant::List)
+			if(typeId(vheader) != QMetaType::QVariantList)
 				return HttpRequestData();
 
 			QVariantList vlist = vheader.toList();
-			if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+			if(vlist.count() != 2 || typeId(vlist[0]) != QMetaType::QByteArray || typeId(vlist[1]) != QMetaType::QByteArray)
 				return HttpRequestData();
 
 			out.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
 		}
 
-		if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
+		if(!rd.contains("body") || typeId(rd["body"]) != QMetaType::QByteArray)
 			return HttpRequestData();
 
 		out.body = rd["body"].toByteArray();
@@ -2008,7 +2009,7 @@ private:
 
 			if(args.contains("conn-max"))
 			{
-				if(args["conn-max"].type() == QVariant::List)
+				if(typeId(args["conn-max"]) == QMetaType::QVariantList)
 				{
 					QVariantList packets = args["conn-max"].toList();
 
@@ -2082,7 +2083,7 @@ private:
 				return;
 			}
 
-			if(args["items"].type() != QVariant::List)
+			if(typeId(args["items"]) != QMetaType::QVariantList)
 			{
 				req->respondError("bad-request", "Invalid format: object contains 'items' with wrong type");
 				delete req;
@@ -3060,7 +3061,7 @@ private:
 					return;
 				}
 
-				if(mdata["items"].type() != QVariant::List)
+				if(typeId(mdata["items"]) != QMetaType::QVariantList)
 				{
 					httpControlRespond(req, 400, "Bad Request", "Invalid format: object contains 'items' with wrong type\n");
 					return;
