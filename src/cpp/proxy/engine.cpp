@@ -32,6 +32,7 @@
 #include "packet/retryrequestpacket.h"
 #include "packet/statspacket.h"
 #include "packet/zrpcrequestpacket.h"
+#include "qtcompat.h"
 #include "rtimer.h"
 #include "log.h"
 #include "inspectdata.h"
@@ -953,7 +954,7 @@ private:
 			}
 
 			QVariantHash args = req->args();
-			if(!args.contains("ids") || args["ids"].type() != QVariant::List)
+			if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
 			{
 				req->respondError("bad-format");
 				delete req;
@@ -966,7 +967,7 @@ private:
 			QList<QByteArray> ids;
 			foreach(const QVariant &vid, vids)
 			{
-				if(vid.type() != QVariant::ByteArray)
+				if(typeId(vid) != QMetaType::QByteArray)
 				{
 					ok = false;
 					break;
@@ -993,7 +994,7 @@ private:
 		else if(req->method() == "refresh")
 		{
 			QVariantHash args = req->args();
-			if(!args.contains("cid") || args["cid"].type() != QVariant::ByteArray)
+			if(!args.contains("cid") || typeId(args["cid"]) != QMetaType::QByteArray)
 			{
 				req->respondError("bad-format");
 				delete req;
@@ -1019,7 +1020,7 @@ private:
 		else if(req->method() == "report")
 		{
 			QVariantHash args = req->args();
-			if(!args.contains("stats") || args["stats"].type() != QVariant::Hash)
+			if(!args.contains("stats") || typeId(args["stats"]) != QMetaType::QVariantHash)
 			{
 				req->respondError("bad-format");
 				delete req;

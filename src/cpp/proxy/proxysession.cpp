@@ -31,6 +31,7 @@
 #include "packet/statspacket.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "qtcompat.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "jwt.h"
@@ -1468,7 +1469,7 @@ public:
 		{
 			// wake up receivers and reject
 
-			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && ((ZrpcRequest *)acceptRequest)->result().type() == QVariant::ByteArray)
+			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest)->result()) == QMetaType::QByteArray)
 			{
 				QString errorString = QString::fromUtf8(((ZrpcRequest *)acceptRequest)->result().toByteArray());
 				QString msg = "Error while proxying to origin.";
