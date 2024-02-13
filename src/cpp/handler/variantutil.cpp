@@ -274,7 +274,7 @@ bool convertToJsonStyleInPlace(QVariant *in)
 
 	bool changed = false;
 
-	int type = typeId(*in);
+	QMetaType::Type type = typeId(*in);
 	if(type == QMetaType::QVariantHash)
 	{
 		QVariantMap vmap;
