@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2020 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +30,7 @@
 
 #include <QVariantMap>
 #include <QFile>
+#include "qtcompat.h"
 #include "log.h"
 
 namespace Template {
@@ -248,7 +250,7 @@ static QVariant getVar(const QString &s, const QVariantMap &context)
 			return QVariant();
 
 		QVariant subContext = context[parent];
-		if(subContext.type() != QVariant::Map)
+		if(typeId(subContext) != QMetaType::QVariantMap)
 			return QVariant();
 
 		return getVar(member, subContext.toMap());
@@ -284,11 +286,11 @@ static bool evalCondition(const QString &s, const QVariantMap &context)
 	else
 	{
 		QVariant val = getVar(s, context);
-		if(val.type() == QVariant::String)
+		if(typeId(val) == QMetaType::QString)
 			return !val.toString().isEmpty();
-		else if(val.type() == QVariant::Bool)
+		else if(typeId(val) == QMetaType::Bool)
 			return val.toBool();
-		else if(val.canConvert(QVariant::Int))
+		else if(canConvert(val, QMetaType::Int))
 			return (val.toInt() != 0);
 		else
 			return false;
@@ -310,7 +312,7 @@ static QVariantList parseFor(const QString &s, QString *iterVarName, const QVari
 	QString containerName = s.mid(at + 4);
 
 	QVariant container = getVar(containerName, context);
-	if(container.type() != QVariant::List)
+	if(typeId(container) != QMetaType::QVariantList)
 	{
 		*error = "\"for\" container must be a list";
 		return QVariantList();
