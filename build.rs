@@ -110,6 +110,7 @@ fn write_cpp_conf_pri(
     dest: &Path,
     release: bool,
     include_paths: &[&Path],
+    deny_warnings: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(dest)?;
 
@@ -125,6 +126,12 @@ fn write_cpp_conf_pri(
 
     for path in include_paths {
         writeln!(&mut f, "INCLUDEPATH += {}", path.display())?;
+    }
+
+    writeln!(&mut f)?;
+
+    if deny_warnings {
+        writeln!(&mut f, "QMAKE_CXXFLAGS += \"-Werror\"")?;
     }
 
     Ok(())
@@ -390,6 +397,10 @@ fn find_boost_include_dir() -> Result<PathBuf, Box<dyn Error>> {
     .into())
 }
 
+fn contains_subslice<T: PartialEq>(haystack: &[T], needle: &[T]) -> bool {
+    haystack.windows(needle.len()).any(|w| w == needle)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let (qmake_path, qt_version) = get_qmake()?;
 
@@ -451,10 +462,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         include_paths.push(boost_include_dir.as_ref());
     }
 
+    let deny_warnings = match env::var("CARGO_ENCODED_RUSTFLAGS") {
+        Ok(s) => {
+            let flags: Vec<&str> = s.split('\x1f').collect();
+
+            contains_subslice(&flags, &["-D", "warnings"])
+        }
+        Err(env::VarError::NotPresent) => false,
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err("CARGO_ENCODED_RUSTFLAGS not unicode".into())
+        }
+    };
+
     write_cpp_conf_pri(
         &out_dir.join("conf.pri"),
         profile == "release",
         &include_paths,
+        deny_warnings,
     )?;
 
     write_postbuild_conf_pri(
