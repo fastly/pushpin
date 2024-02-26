@@ -451,6 +451,7 @@ public:
 
 		// proxysession will take it from here
 		// TODO: use callbacks for performance
+		reqSessionConnectionMap.erase(rs);
 		rs->disconnect(this);
 
 		ps->add(rs);
