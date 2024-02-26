@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -170,7 +171,7 @@ void TimerManager::updateTimeout(qint64 currentTime)
 	}
 }
 
-static TimerManager *g_manager = 0;
+static thread_local TimerManager *g_manager = 0;
 
 RTimer::RTimer(QObject *parent) :
 	QObject(parent),

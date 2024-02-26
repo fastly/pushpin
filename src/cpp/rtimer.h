@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -45,6 +46,7 @@ public:
 	void start();
 	void stop();
 
+	// initialization is thread local
 	static void init(int capacity);
 
 	// only call if there are no active RTimers

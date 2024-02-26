@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -35,6 +35,7 @@ public:
 	QString libDir;
 };
 
+// value is thread local
 Config & get();
 
 }

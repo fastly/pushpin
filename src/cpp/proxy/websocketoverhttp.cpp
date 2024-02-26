@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -124,8 +124,8 @@ private:
 	}
 };
 
-WebSocketOverHttp::DisconnectManager *WebSocketOverHttp::g_disconnectManager = 0;
-int WebSocketOverHttp::g_maxManagedDisconnects = -1;
+thread_local WebSocketOverHttp::DisconnectManager *WebSocketOverHttp::g_disconnectManager = 0;
+thread_local int WebSocketOverHttp::g_maxManagedDisconnects = -1;
 
 static QList<WsEvent> decodeEvents(const QByteArray &in, bool *ok = 0)
 {
