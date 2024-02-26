@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,6 +25,7 @@
 
 #include <assert.h>
 #include <stdarg.h>
+#include "qtcompat.h"
 #include "tnetstring.h"
 #include "log.h"
 
@@ -98,7 +100,7 @@ static void logPacket(int level, const QVariant &data, const QString &contentFie
 	QVariant meta;
 	QByteArray content;
 
-	if(data.type() == QVariant::Hash)
+	if(typeId(data) == QMetaType::QVariantHash)
 	{
 		// extract content. meta is the remaining data
 		QVariantHash hdata = data.toHash();

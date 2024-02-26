@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,6 +32,7 @@
 #include <QJsonArray>
 #include <QCryptographicHash>
 #include <QRandomGenerator>
+#include "qtcompat.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "zhttprequest.h"
@@ -340,7 +342,7 @@ public:
 		if(data.isValid())
 		{
 			QJsonDocument doc;
-			if(data.type() == QVariant::Map)
+			if(typeId(data) == QMetaType::QVariantMap)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
 			else // List
 				doc = QJsonDocument(QJsonArray::fromVariantList(data.toList()));

@@ -30,6 +30,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include "qtcompat.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
@@ -409,7 +410,7 @@ public:
 			int bytes = 0;
 			foreach(const QVariant &vmessage, messages)
 			{
-				if(vmessage.type() != QVariant::String)
+				if(typeId(vmessage) != QMetaType::QString)
 				{
 					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
 					respondError(_req, 400, "Bad Request", "Payload expected");
@@ -790,7 +791,7 @@ public:
 				int bytes = 0;
 				foreach(const QVariant &vmessage, messages)
 				{
-					if(vmessage.type() != QVariant::String)
+					if(typeId(vmessage) != QMetaType::QString)
 					{
 						error = true;
 						break;

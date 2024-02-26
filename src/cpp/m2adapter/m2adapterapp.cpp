@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,6 +33,7 @@
 #include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
+#include "qtcompat.h"
 #include "processquit.h"
 #include "tnetstring.h"
 #include "m2requestpacket.h"
@@ -87,7 +89,7 @@ static void trimlist(QStringList *list)
 
 static bool validateHost(const QByteArray &in)
 {
-	for(int n = 0; n < in.count(); ++n)
+	for(int n = 0; n < in.size(); ++n)
 	{
 		if(in[n] == '/')
 			return false;
@@ -1273,7 +1275,7 @@ public:
 			log_debug("m2: IN control %s %s", m2_send_idents[index].data(), qPrintable(TnetString::variantToString(data)));
 #endif
 
-		if(data.type() != QVariant::Hash)
+		if(typeId(data) != QMetaType::QVariantHash)
 			return;
 
 		QVariantHash vhash = data.toHash();
@@ -1293,7 +1295,7 @@ public:
 		QSet<QByteArray> ids;
 		foreach(const QVariant &row, rows.toList())
 		{
-			if(row.type() != QVariant::List)
+			if(typeId(row) != QMetaType::QVariantList)
 				break;
 
 			QVariantList vlist = row.toList();

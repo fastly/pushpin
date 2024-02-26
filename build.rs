@@ -1,15 +1,15 @@
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File};
-use std::io::{BufRead, Write};
+use std::io::{self, BufRead, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitStatus, Output, Stdio};
 use std::str::FromStr;
 use std::thread;
-use std::{env, io};
 use time::macros::format_description;
 use time::OffsetDateTime;
 
@@ -110,6 +110,7 @@ fn write_cpp_conf_pri(
     dest: &Path,
     release: bool,
     include_paths: &[&Path],
+    deny_warnings: bool,
 ) -> Result<(), Box<dyn Error>> {
     let mut f = fs::File::create(dest)?;
 
@@ -125,6 +126,12 @@ fn write_cpp_conf_pri(
 
     for path in include_paths {
         writeln!(&mut f, "INCLUDEPATH += {}", path.display())?;
+    }
+
+    writeln!(&mut f)?;
+
+    if deny_warnings {
+        writeln!(&mut f, "QMAKE_CXXFLAGS += \"-Werror\"")?;
     }
 
     Ok(())
@@ -149,14 +156,69 @@ fn write_postbuild_conf_pri(
     Ok(())
 }
 
+// returned vec size guaranteed >= 1
+fn get_args_lossy(command: &mut Command) -> Vec<String> {
+    let mut args = vec![command.get_program().to_string_lossy().into_owned()];
+
+    for s in command.get_args() {
+        args.push(s.to_string_lossy().into_owned());
+    }
+
+    args
+}
+
+// convert Result<Output> to Result<ExitStatus>, separating stdout
+fn take_stdout(result: io::Result<Output>) -> (io::Result<ExitStatus>, Vec<u8>) {
+    match result {
+        Ok(output) => (Ok(output.status), output.stdout),
+        Err(e) => (Err(e), Vec::new()),
+    }
+}
+
+fn check_command_result(
+    program: &str,
+    result: io::Result<ExitStatus>,
+) -> Result<(), Box<dyn Error>> {
+    let status = match result {
+        Ok(status) => status,
+        Err(e) => return Err(format!("{} failed: {}", program, e).into()),
+    };
+
+    if !status.success() {
+        return Err(format!("{} failed, {}", program, status).into());
+    }
+
+    Ok(())
+}
+
+fn check_command(command: &mut Command) -> Result<(), Box<dyn Error>> {
+    let args = get_args_lossy(command);
+
+    println!("{}", args.join(" "));
+
+    check_command_result(&args[0], command.status())
+}
+
+fn check_command_capture_stdout(command: &mut Command) -> Result<Vec<u8>, Box<dyn Error>> {
+    let args = get_args_lossy(command);
+
+    println!("{}", args.join(" "));
+
+    // don't capture stderr
+    let command = command.stderr(Stdio::inherit());
+
+    let (result, output) = take_stdout(command.output());
+    check_command_result(&args[0], result)?;
+
+    Ok(output)
+}
+
 fn check_qmake(qmake_path: &Path) -> Result<LibVersion, Box<dyn Error>> {
     let version: LibVersion = {
-        let output = Command::new(qmake_path)
-            .args(["-query", "QT_VERSION"])
-            .output()?;
-        assert!(output.status.success());
+        let output =
+            check_command_capture_stdout(Command::new(qmake_path).args(["-query", "QT_VERSION"]))?;
 
-        let s = String::from_utf8(output.stdout)?;
+        let s = String::from_utf8(output)?;
         let s = s.trim();
 
         match s.parse() {
@@ -335,16 +397,19 @@ fn find_boost_include_dir() -> Result<PathBuf, Box<dyn Error>> {
     .into())
 }
 
+fn contains_subslice<T: PartialEq>(haystack: &[T], needle: &[T]) -> bool {
+    haystack.windows(needle.len()).any(|w| w == needle)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let (qmake_path, qt_version) = get_qmake()?;
 
     let qt_install_libs = {
-        let output = Command::new(&qmake_path)
-            .args(["-query", "QT_INSTALL_LIBS"])
-            .output()?;
-        assert!(output.status.success());
+        let output = check_command_capture_stdout(
+            Command::new(&qmake_path).args(["-query", "QT_INSTALL_LIBS"]),
+        )?;
 
-        let libs_dir = PathBuf::from(String::from_utf8(output.stdout)?.trim());
+        let libs_dir = PathBuf::from(String::from_utf8(output)?.trim());
 
         fs::canonicalize(&libs_dir)
             .map_err(|_| format!("QT_INSTALL_LIBS dir {} not found", libs_dir.display()))?
@@ -397,10 +462,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         include_paths.push(boost_include_dir.as_ref());
     }
 
+    let deny_warnings = match env::var("CARGO_ENCODED_RUSTFLAGS") {
+        Ok(s) => {
+            let flags: Vec<&str> = s.split('\x1f').collect();
+
+            contains_subslice(&flags, &["-D", "warnings"])
+        }
+        Err(env::VarError::NotPresent) => false,
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err("CARGO_ENCODED_RUSTFLAGS not unicode".into())
+        }
+    };
+
     write_cpp_conf_pri(
         &out_dir.join("conf.pri"),
         profile == "release",
         &include_paths,
+        deny_warnings,
     )?;
 
     write_postbuild_conf_pri(
@@ -412,45 +490,39 @@ fn main() -> Result<(), Box<dyn Error>> {
         &log_dir,
     )?;
 
-    assert!(Command::new(&qmake_path)
-        .args([
-            OsStr::new("-o"),
-            out_dir.join("Makefile").as_os_str(),
-            cpp_src_dir.join("cpp.pro").as_os_str(),
-        ])
-        .status()?
-        .success());
+    check_command(Command::new(&qmake_path).args([
+        OsStr::new("-o"),
+        out_dir.join("Makefile").as_os_str(),
+        cpp_src_dir.join("cpp.pro").as_os_str(),
+    ]))?;
 
-    assert!(Command::new(&qmake_path)
-        .args([
-            OsStr::new("-o"),
-            out_dir.join("Makefile.test").as_os_str(),
-            cpp_tests_src_dir.join("tests.pro").as_os_str(),
-        ])
-        .status()?
-        .success());
+    check_command(Command::new(&qmake_path).args([
+        OsStr::new("-o"),
+        out_dir.join("Makefile.test").as_os_str(),
+        cpp_tests_src_dir.join("tests.pro").as_os_str(),
+    ]))?;
 
-    assert!(Command::new(&qmake_path)
-        .args(["-o", "Makefile", "postbuild.pro"])
-        .current_dir("postbuild")
-        .status()?
-        .success());
+    check_command(
+        Command::new(&qmake_path)
+            .args(["-o", "Makefile", "postbuild.pro"])
+            .current_dir("postbuild"),
+    )?;
 
     let proc_count = thread::available_parallelism().map_or(1, |x| x.get());
 
-    assert!(Command::new("make")
-        .args(["-f", "Makefile"])
-        .args(["-j", &proc_count.to_string()])
-        .current_dir(&out_dir)
-        .status()?
-        .success());
+    check_command(
+        Command::new("make")
+            .args(["-f", "Makefile"])
+            .args(["-j", &proc_count.to_string()])
+            .current_dir(&out_dir),
+    )?;
 
-    assert!(Command::new("make")
-        .args(["-f", "Makefile.test"])
-        .args(["-j", &proc_count.to_string()])
-        .current_dir(&out_dir)
-        .status()?
-        .success());
+    check_command(
+        Command::new("make")
+            .args(["-f", "Makefile.test"])
+            .args(["-j", &proc_count.to_string()])
+            .current_dir(&out_dir),
+    )?;
 
     println!("cargo:rustc-env=APP_VERSION={}", get_version());
     println!("cargo:rustc-env=CONFIG_DIR={}/pushpin", config_dir);

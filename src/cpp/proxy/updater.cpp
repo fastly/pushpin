@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2017 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,6 +31,7 @@
 #include <QJsonObject>
 #include <QCryptographicHash>
 #include <QHostInfo>
+#include "qtcompat.h"
 #include "log.h"
 #include "httpheaders.h"
 #include "zhttpmanager.h"
@@ -212,10 +214,10 @@ private:
 
 		QVariantMap body = doc.object().toVariantMap();
 
-		if(body.contains("updates") && body["updates"].type() == QVariant::List)
+		if(body.contains("updates") && typeId(body["updates"]) == QMetaType::QVariantList)
 		{
 			QVariantList updates = body["updates"].toList();
-			if(!updates.isEmpty() && updates[0].type() == QVariant::Map)
+			if(!updates.isEmpty() && typeId(updates[0]) == QMetaType::QVariantMap)
 			{
 				QVariantMap update = updates[0].toMap();
 				QString version = update.value("version").toString();

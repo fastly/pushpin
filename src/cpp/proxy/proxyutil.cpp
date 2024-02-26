@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,6 +26,7 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "qtcompat.h"
 #include "log.h"
 #include "jwt.h"
 #include "inspectdata.h"
@@ -40,7 +42,7 @@ static QByteArray make_token(const QByteArray &iss, const Jwt::EncodingKey &key)
 static bool validate_token(const QByteArray &token, const Jwt::DecodingKey &key)
 {
 	QVariant claimObj = Jwt::decode(token, key);
-	if(!claimObj.isValid() || claimObj.type() != QVariant::Map)
+	if(!claimObj.isValid() || typeId(claimObj) != QMetaType::QVariantMap)
 		return false;
 
 	QVariantMap claim = claimObj.toMap();
