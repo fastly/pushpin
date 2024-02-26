@@ -116,9 +116,7 @@ public:
 	//   methods. the object remains in an active state though, and so you
 	//   should still wait for finished()
 	Signal errorResponding;
-
-signals:
-	void finished();
+	Signal finished;
 
 private:
 	class Private;
