@@ -40,6 +40,7 @@
 #include "rtimer.h"
 #include "zhttpmanager.h"
 #include "statsmanager.h"
+#include "domainmap.h"
 #include "engine.h"
 
 Q_DECLARE_METATYPE(QList<StatsPacket>);
@@ -563,6 +564,7 @@ class ProxyEngineTest : public QObject
 	Q_OBJECT
 
 private:
+	DomainMap *domainMap;
 	Engine *engine;
 	Wrapper *wrapper;
 	QList<StatsPacket> trackedPackets;
@@ -596,7 +598,9 @@ private slots:
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
 
-		engine = new Engine(this);
+		domainMap = new DomainMap(configDir.filePath("routes"), this);
+
+		engine = new Engine(domainMap, this);
 
 		Engine::Configuration config;
 		config.clientId = "proxy";
@@ -613,7 +617,6 @@ private slots:
 		config.sessionsMax = 20;
 		config.inspectTimeout = 500;
 		config.inspectPrefetch = 5;
-		config.routesFile = configDir.filePath("routes");
 		config.sigIss = "pushpin";
 		config.sigKey = Jwt::EncodingKey::fromSecret("changeme");
 		config.statsConnectionTtl = 120;
@@ -628,6 +631,7 @@ private slots:
 	void cleanupTestCase()
 	{
 		delete engine;
+		delete domainMap;
 		delete wrapper;
 
 		RTimer::deinit();
