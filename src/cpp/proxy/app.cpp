@@ -291,7 +291,7 @@ public:
 		trimlist(&intreq_out_specs);
 		bool ok;
 		int ipcFileMode = settings.value("proxy/ipc_file_mode", -1).toString().toInt(&ok, 8);
-		int maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
+		int sessionsMax = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesFile = settings.value("proxy/routesfile").toString();
 		bool debug = settings.value("proxy/debug").toBool();
 		bool autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
@@ -347,6 +347,12 @@ public:
 		if(updatesCheck == "true")
 			updatesCheck = "check";
 
+		// sessionsMax should not exceed clientMaxconn
+		if(sessionsMax >= 0)
+			sessionsMax = qMin(sessionsMax, clientMaxconn);
+		else
+			sessionsMax = clientMaxconn;
+
 		Engine::Configuration config;
 		config.appVersion = Config::get().version;
 		config.clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
@@ -385,7 +391,7 @@ public:
 		config.intServerInStreamSpecs = intreq_in_stream_specs;
 		config.intServerOutSpecs = intreq_out_specs;
 		config.ipcFileMode = ipcFileMode;
-		config.maxWorkers = maxWorkers;
+		config.sessionsMax = sessionsMax;
 		if(!args.routeLines.isEmpty())
 			config.routeLines = args.routeLines;
 		else
@@ -409,7 +415,6 @@ public:
 		config.updatesCheck = updatesCheck;
 		config.organizationName = organizationName;
 		config.quietCheck = args.quietCheck;
-		config.connectionsMax = clientMaxconn;
 		config.statsConnectionSend = statsConnectionSend;
 		config.statsConnectionTtl = statsConnectionTtl;
 		config.statsConnectionsMaxTtl = statsConnectionsMaxTtl;
