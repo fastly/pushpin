@@ -64,7 +64,7 @@ public:
 		QStringList intServerInStreamSpecs;
 		QStringList intServerOutSpecs;
 		int ipcFileMode;
-		int maxWorkers;
+		int sessionsMax;
 		int inspectTimeout;
 		int inspectPrefetch;
 		QString routesFile;
@@ -88,7 +88,6 @@ public:
 		QString updatesCheck;
 		QString organizationName;
 		bool quietCheck;
-		int connectionsMax;
 		bool statsConnectionSend;
 		int statsConnectionTtl;
 		int statsConnectionsMaxTtl;
@@ -98,7 +97,7 @@ public:
 
 		Configuration() :
 			ipcFileMode(-1),
-			maxWorkers(-1),
+			sessionsMax(-1),
 			inspectTimeout(8000),
 			inspectPrefetch(10000),
 			debug(false),
@@ -111,7 +110,6 @@ public:
 			logUserAgent(false),
 			updatesCheck("check"),
 			quietCheck(false),
-			connectionsMax(-1),
 			statsConnectionSend(false),
 			statsConnectionTtl(-1),
 			statsConnectionsMaxTtl(-1),
