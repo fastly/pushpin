@@ -583,7 +583,7 @@ public:
 
 			route.targets += target;
 
-			rs = new RequestSession(stats);
+			rs = new RequestSession(config.id, stats);
 			rs->setRoute(route);
 		}
 		else
@@ -592,7 +592,7 @@ public:
 			// request with preferInternal=true. in that case, use domainmap
 			// for lookup, with route ID if available
 
-			rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+			rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
 			rs->setDebugEnabled(config.debug);
 			rs->setAutoCrossOrigin(config.autoCrossOrigin);
 			rs->setPrefetchSize(config.inspectPrefetch);
@@ -630,7 +630,7 @@ public:
 
 		QUrl requestUri = sock->requestUri();
 
-		log_debug("IN ws id=%s, %s", sock->rid().second.data(), requestUri.toEncoded().data());
+		log_debug("worker %d: IN ws id=%s, %s", config.id, sock->rid().second.data(), requestUri.toEncoded().data());
 
 		bool isSecure = (requestUri.scheme() == "wss");
 		QString host = requestUri.host();
@@ -898,7 +898,7 @@ private:
 
 			ZhttpRequest *zhttpRequest = zhttpIn->createRequestFromState(ss);
 
-			RequestSession *rs = new RequestSession(domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+			RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
 
 			requestSessions += rs;
 
