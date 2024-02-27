@@ -22,6 +22,7 @@
  */
 
 #include <unistd.h>
+#include <boost/signals2.hpp>
 #include <QtTest/QtTest>
 #include <QDir>
 #include <QJsonDocument>
@@ -40,7 +41,6 @@
 #include "zhttpmanager.h"
 #include "statsmanager.h"
 #include "engine.h"
-#include <boost/signals2.hpp>
 
 Q_DECLARE_METATYPE(QList<StatsPacket>);
 
@@ -610,12 +610,12 @@ private slots:
 		config.acceptSpec = ("ipc://" + workDir.filePath("accept"));
 		config.retryInSpec = ("ipc://" + workDir.filePath("retry-out"));
 		config.statsSpec = ("ipc://" + workDir.filePath("stats"));
+		config.sessionsMax = 20;
 		config.inspectTimeout = 500;
 		config.inspectPrefetch = 5;
 		config.routesFile = configDir.filePath("routes");
 		config.sigIss = "pushpin";
 		config.sigKey = Jwt::EncodingKey::fromSecret("changeme");
-		config.connectionsMax = 20;
 		config.statsConnectionTtl = 120;
 		config.statsReportInterval = 1000; // set a large interval so there's only one working report
 		QVERIFY(engine->start(config));

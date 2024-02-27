@@ -203,13 +203,13 @@ public:
 	{
 		config = _config;
 
-		// up to 10 timers per connection
-		RTimer::init(config.connectionsMax * 10);
+		// up to 10 timers per session
+		RTimer::init(config.sessionsMax * 10);
 
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
 
-		WebSocketOverHttp::setMaxManagedDisconnects(config.maxWorkers);
+		WebSocketOverHttp::setMaxManagedDisconnects(config.sessionsMax);
 
 		if(!config.routeLines.isEmpty())
 		{
@@ -328,7 +328,7 @@ public:
 
 		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
-			stats = new StatsManager(config.connectionsMax, 0, this);
+			stats = new StatsManager(config.sessionsMax, 0, this);
 
 			connMaxConnection = stats->connMax.connect(boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
 
@@ -492,13 +492,13 @@ public:
 
 	bool canTake()
 	{
-		// don't accept new connections during shutdown
+		// don't accept new sessions during shutdown
 		if(destroying)
 			return false;
 
-		// don't accept new connections if we're servicing maximum
-		int curWorkers = requestSessions.count() + wsProxyItemsBySession.count();
-		if(config.maxWorkers != -1 && curWorkers >= config.maxWorkers)
+		// don't accept new sessions if we're servicing maximum
+		int curSessions = requestSessions.count() + wsProxyItemsBySession.count();
+		if(curSessions >= config.sessionsMax)
 			return false;
 
 		return true;
