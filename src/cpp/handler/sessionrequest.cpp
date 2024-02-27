@@ -41,7 +41,7 @@ class DetectRulesSet : public Deferred
 
 public:
 	DetectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules, QObject *parent = 0) :
-		Deferred(parent)
+		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this, req));
@@ -85,7 +85,7 @@ class DetectRulesGet : public Deferred
 
 public:
 	DetectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path, QObject *parent = 0) :
-		Deferred(parent)
+		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this, req));
@@ -178,7 +178,7 @@ class CreateOrUpdate : public Deferred
 	
 public:
 	CreateOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds, QObject *parent = 0) :
-		Deferred(parent)
+		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this, req));
@@ -221,7 +221,7 @@ class UpdateMany : public Deferred
 	
 public:
 	UpdateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds, QObject *parent = 0) :
-		Deferred(parent)
+		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&UpdateMany::req_finished, this, req));
@@ -274,7 +274,7 @@ class GetLastIds : public Deferred
 	
 public:
 	GetLastIds(ZrpcManager *stateClient, const QString &sid, QObject *parent = 0) :
-		Deferred(parent)
+		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&GetLastIds::req_finished, this, req));

@@ -28,8 +28,8 @@
 #include "controlrequest.h"
 #include "statsmanager.h"
 
-ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats, QObject *parent) :
-	Deferred(parent),
+ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats) :
+	Deferred(),
 	req_(req)
 {
 	req_->setParent(this);

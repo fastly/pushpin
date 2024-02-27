@@ -22,8 +22,7 @@
 
 #include "deferred.h"
 
-Deferred::Deferred(QObject *parent) :
-	QObject(parent)
+Deferred::Deferred()
 {
 	qRegisterMetaType<DeferredResult>();
 }
@@ -41,7 +40,6 @@ void Deferred::setFinished(bool ok, const QVariant &value)
 {
 	result_.success = ok;
 	result_.value = value;
-
 	QMetaObject::invokeMethod(this, "doFinish", Qt::QueuedConnection);
 }
 

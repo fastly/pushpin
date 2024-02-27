@@ -30,7 +30,7 @@
 #include "wssession.h"
 
 RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel, QObject *parent) :
-	Deferred(parent),
+	Deferred(),
 	ignoreErrors_(false),
 	proxyControlClient_(proxyControlClient),
 	req_(req)

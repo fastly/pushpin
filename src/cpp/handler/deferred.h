@@ -24,8 +24,8 @@
 #define DEFERRED_H
 
 #include <QVariant>
-#include <QObject>
 #include <boost/signals2.hpp>
+#include <memory>
 
 class DeferredResult
 {
@@ -59,7 +59,7 @@ public:
 	boost::signals2::signal<void(const DeferredResult&)> finished;
 
 protected:
-	Deferred(QObject *parent = 0);
+	Deferred();
 
 	void setFinished(bool ok, const QVariant &value = QVariant());
 

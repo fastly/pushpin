@@ -127,7 +127,7 @@ public:
 	map<Deferred*, Connection> finishedConnection;
 
 	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll, QObject *parent = 0) :
-		Deferred(parent),
+		Deferred(),
 		req(_req),
 		stateClient(_stateClient),
 		shareAll(_shareAll),
@@ -439,7 +439,7 @@ public:
 	map<Deferred*, Connection> finishedConnection;
 
 	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
-		Deferred(parent),
+		Deferred(),
 		req(_req),
 		stateClient(_stateClient),
 		cs(_cs),
@@ -2044,7 +2044,7 @@ private:
 
 		if(req->method() == "conncheck")
 		{
-			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
+			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}

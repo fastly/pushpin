@@ -38,7 +38,7 @@ class ConnCheck : public Deferred
 
 public:
 	ConnCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0) :
-		Deferred(parent)
+		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this, req));
@@ -95,7 +95,7 @@ class Refresh : public Deferred
 
 public:
 	Refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent) :
-		Deferred(parent)
+		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this, req));
@@ -122,7 +122,7 @@ class Report : public Deferred
 
 public:
 	Report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent) :
-		Deferred(parent)
+		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this, req));
