@@ -126,7 +126,7 @@ public:
 	LastIds lastIds;
 	map<Deferred*, Connection> finishedConnection;
 
-	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll, QObject *parent = 0) :
+	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll) :
 		Deferred(),
 		req(_req),
 		stateClient(_stateClient),
@@ -232,7 +232,7 @@ public:
 			if(getSession && stateClient)
 			{
 				// determine session info
-				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8(), this);
+				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8());
 				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, boost::placeholders::_1));
 				return;
 			}
@@ -351,7 +351,7 @@ private:
 
 			if(!sid.isEmpty())
 			{
-				Deferred *d = SessionRequest::getLastIds(stateClient, sid, this);
+				Deferred *d = SessionRequest::getLastIds(stateClient, sid);
 				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, boost::placeholders::_1));
 				return;
 			}
@@ -438,7 +438,7 @@ public:
 	QSet<QByteArray> needRemoveFromStats;
 	map<Deferred*, Connection> finishedConnection;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax) :
 		Deferred(),
 		req(_req),
 		stateClient(_stateClient),
@@ -795,7 +795,7 @@ public:
 		{
 			if(!rules.isEmpty())
 			{
-				Deferred *d = SessionRequest::detectRulesSet(stateClient, rules, this);
+				Deferred *d = SessionRequest::detectRulesSet(stateClient, rules);
 				finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, boost::placeholders::_1));
 			}
 			else
@@ -877,7 +877,7 @@ private:
 	{
 		if(!sid.isEmpty())
 		{
-			Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, lastIds, this);
+			Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, lastIds);
 			finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, boost::placeholders::_1));
 		}
 		else
@@ -1974,7 +1974,7 @@ private:
 		if(!req)
 			return;
 
-		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
+		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll);
 		finishedConnection[w] = w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, boost::placeholders::_1, w));
 		inspectWorkers += w;
 	}
@@ -1995,7 +1995,7 @@ private:
 			// accept request immediately before returning to the event loop.
 			// the start() call will do this
 
-			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
+			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
 			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
 			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
@@ -2068,7 +2068,7 @@ private:
 		}
 		else if(req->method() == "refresh")
 		{
-			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
+			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}
@@ -2320,7 +2320,7 @@ private:
 				sidLastIds[sid] = lastIds;
 			}
 
-			Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
+			Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds);
 			finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 			deferreds += d;
 		}
@@ -2433,7 +2433,7 @@ private:
 
 			if(!sidLastIds.isEmpty())
 			{
-				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
+				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds);
 				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
@@ -2474,7 +2474,7 @@ private:
 			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
 		}
 
-		report = ControlRequest::report(proxyControlClient, all, this);
+		report = ControlRequest::report(proxyControlClient, all);
 		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
 		deferreds += report;
 	}
@@ -2893,14 +2893,14 @@ private:
 		{
 			foreach(const QString &sid, createOrUpdateSids)
 			{
-				Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, LastIds(), this);
+				Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, LastIds());
 				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 
 			if(!updateSids.isEmpty())
 			{
-				Deferred *d = SessionRequest::updateMany(stateClient, updateSids, this);
+				Deferred *d = SessionRequest::updateMany(stateClient, updateSids);
 				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}

@@ -37,7 +37,7 @@ class ConnCheck : public Deferred
 	Connection finishedConnection;
 
 public:
-	ConnCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0) :
+	ConnCheck(ZrpcManager *controlClient, const CidSet &cids) :
 		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
@@ -94,7 +94,7 @@ class Refresh : public Deferred
 	Connection finishedConnection;
 
 public:
-	Refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent) :
+	Refresh(ZrpcManager *controlClient, const QByteArray &cid) :
 		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
@@ -121,7 +121,7 @@ class Report : public Deferred
 	Connection finishedConnection;
 
 public:
-	Report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent) :
+	Report(ZrpcManager *controlClient, const StatsPacket &packet) :
 		Deferred()
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
@@ -141,19 +141,19 @@ public:
 	}
 };
 
-Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent)
+Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids)
 {
-	return new ConnCheck(controlClient, cids, parent);
+	return new ConnCheck(controlClient, cids);
 }
 
-Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent)
+Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid)
 {
-	return new Refresh(controlClient, cid, parent);
+	return new Refresh(controlClient, cid);
 }
 
-Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent)
+Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet)
 {
-	return new Report(controlClient, packet, parent);
+	return new Report(controlClient, packet);
 }
 
 }

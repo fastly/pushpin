@@ -39,11 +39,11 @@ class DetectRule;
 
 namespace SessionRequest {
 
-Deferred *detectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules, QObject *parent = 0);
-Deferred *detectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path, QObject *parent = 0);
-Deferred *createOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds, QObject *parent = 0);
-Deferred *updateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds, QObject *parent = 0);
-Deferred *getLastIds(ZrpcManager *stateClient, const QString &sid, QObject *parent = 0);
+Deferred *detectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules);
+Deferred *detectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path);
+Deferred *createOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds);
+Deferred *updateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds);
+Deferred *getLastIds(ZrpcManager *stateClient, const QString &sid);
 
 }
 

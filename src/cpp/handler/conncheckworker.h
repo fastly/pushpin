@@ -39,7 +39,7 @@ class ConnCheckWorker : public Deferred
 	Q_OBJECT
 
 public:
-	ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats, QObject *parent = 0);
+	ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, StatsManager *stats);
 
 private:
 	ZrpcRequest *req_;
