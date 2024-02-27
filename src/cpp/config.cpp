@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,7 +26,7 @@
 
 namespace Config {
 
-static Config *g_config = 0;
+static thread_local Config *g_config = 0;
 
 Config & get()
 {

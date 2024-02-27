@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2020 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -46,6 +46,7 @@ public:
 	void setMaxEventsPerRequest(int max);
 	void refresh();
 
+	// disconnection management is thread local
 	static void setMaxManagedDisconnects(int max);
 	static void clearDisconnectManager();
 
@@ -97,8 +98,8 @@ private:
 	friend class Private;
 	Private *d;
 
-	static DisconnectManager *g_disconnectManager;
-	static int g_maxManagedDisconnects;
+	static thread_local DisconnectManager *g_disconnectManager;
+	static thread_local int g_maxManagedDisconnects;
 };
 
 #endif
