@@ -104,13 +104,13 @@ public:
 
 	Engine *q;
 	bool destroying;
+	DomainMap *domainMap;
 	Configuration config;
 	ZhttpManager *zhttpIn;
 	ZhttpManager *intZhttpIn;
 	ZRoutes *zroutes;
 	ZrpcManager *inspect;
 	WsControlManager *wsControl;
-	DomainMap *domainMap;
 	ZrpcChecker *inspectChecker;
 	StatsManager *stats;
 	ZrpcManager *command;
@@ -125,7 +125,6 @@ public:
 	ConnectionManager connectionManager;
 	Updater *updater;
 	LogUtil::Config logConfig;
-	Connection changedConnection;
 	Connection cmdReqReadyConnection;
 	Connection sessionReadyConnection;
 	Connection requestReadyConnection;
@@ -136,16 +135,16 @@ public:
 	Connection connMaxConnection;
 	Connection rrConnection;
 
-	Private(Engine *_q) :
+	Private(Engine *_q, DomainMap *_domainMap) :
 		QObject(_q),
 		q(_q),
 		destroying(false),
+		domainMap(_domainMap),
 		zhttpIn(0),
 		intZhttpIn(0),
 		zroutes(0),
 		inspect(0),
 		wsControl(0),
-		domainMap(0),
 		inspectChecker(0),
 		stats(0),
 		command(0),
@@ -197,6 +196,8 @@ public:
 		// need to make sure this is deleted before inspect manager
 		delete inspectChecker;
 		inspectChecker = 0;
+
+		RTimer::deinit();
 	}
 
 	bool start(const Configuration &_config)
@@ -210,17 +211,6 @@ public:
 		logConfig.userAgent = config.logUserAgent;
 
 		WebSocketOverHttp::setMaxManagedDisconnects(config.sessionsMax);
-
-		if(!config.routeLines.isEmpty())
-		{
-			domainMap = new DomainMap(this);
-			foreach(const QString &line, config.routeLines)
-				domainMap->addRouteLine(line);
-		}
-		else
-			domainMap = new DomainMap(config.routesFile, this);
-
-		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		zhttpIn = new ZhttpManager(this);
 		requestReadyConnection = zhttpIn->requestReady.connect(boost::bind(&Private::zhttpIn_requestReady, this));
@@ -381,14 +371,15 @@ public:
 		}
 
 		// init zroutes
-		domainMap_changed();
+		routesChanged();
 
 		return true;
 	}
 
-	void reload()
+	void routesChanged()
 	{
-		domainMap->reload();
+		// connect to new zhttp targets, disconnect from old
+		zroutes->setup(domainMap->zhttpRoutes());
 	}
 
 	void doProxy(RequestSession *rs, const InspectData *idata = 0)
@@ -1067,18 +1058,12 @@ private:
 
 		delete req;
 	}
-
-	void domainMap_changed()
-	{
-		// connect to new zhttp targets, disconnect from old
-		zroutes->setup(domainMap->zhttpRoutes());
-	}
 };
 
-Engine::Engine(QObject *parent) :
+Engine::Engine(DomainMap *domainMap, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = new Private(this, domainMap);
 }
 
 Engine::~Engine()
@@ -1096,9 +1081,9 @@ bool Engine::start(const Configuration &config)
 	return d->start(config);
 }
 
-void Engine::reload()
+void Engine::routesChanged()
 {
-	d->reload();
+	d->routesChanged();
 }
 
 #include "engine.moc"
