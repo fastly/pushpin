@@ -33,8 +33,11 @@
 #include "log.h"
 #include "settings.h"
 #include "xffrule.h"
+#include "domainmap.h"
 #include "engine.h"
 #include "config.h"
+
+using Connection = boost::signals2::scoped_connection;
 
 static void trimlist(QStringList *list)
 {
@@ -162,6 +165,131 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
+class EngineWorker : public QObject
+{
+	Q_OBJECT
+
+public:
+	EngineWorker(const Engine::Configuration &config, DomainMap *domainMap) :
+		QObject(),
+		config_(config),
+		engine_(new Engine(domainMap, this))
+	{
+	}
+
+	Signal started;
+	Signal error;
+
+public slots:
+	void start()
+	{
+		if(!engine_->start(config_))
+		{
+			error();
+			return;
+		}
+
+		started();
+	}
+
+	void routesChanged()
+	{
+		engine_->routesChanged();
+	}
+
+private:
+	Engine::Configuration config_;
+	Engine *engine_;
+};
+
+class EngineThread : public QThread
+{
+	Q_OBJECT
+
+public:
+	QMutex m;
+	QWaitCondition w;
+	Engine::Configuration config;
+	DomainMap *domainMap;
+	EngineWorker *worker;
+
+	EngineThread(const Engine::Configuration &_config, DomainMap *_domainMap) :
+		config(_config),
+		domainMap(_domainMap),
+		worker(0)
+	{
+	}
+
+	~EngineThread()
+	{
+		stop();
+		wait();
+	}
+
+	bool start()
+	{
+		QMutexLocker locker(&m);
+		QThread::start();
+		w.wait(&m);
+		return (bool)worker;
+	}
+
+	void stop()
+	{
+		quit();
+	}
+
+	void routesChanged()
+	{
+		QMutexLocker locker(&m);
+
+		if(worker)
+			QMetaObject::invokeMethod(worker, "routesChanged", Qt::QueuedConnection);
+	}
+
+	virtual void run()
+	{
+		// will unlock during exec
+		m.lock();
+
+		EngineWorker *e = new EngineWorker(config, domainMap);
+		Connection startedConnection = e->started.connect(boost::bind(&EngineThread::worker_started, this, e));
+		Connection errorConnection = e->error.connect(boost::bind(&EngineThread::worker_error, this));
+		QMetaObject::invokeMethod(e, "start", Qt::QueuedConnection);
+		exec();
+
+		QMutexLocker locker(&m);
+
+		if(worker)
+		{
+			worker = 0;
+			log_debug("worker stopped");
+		}
+
+		startedConnection.disconnect();
+		errorConnection.disconnect();
+		delete e;
+	}
+
+private:
+	void worker_started(EngineWorker *e)
+	{
+		log_debug("worker started");
+
+		// set worker field and unblock start()
+		worker = e;
+		w.wakeOne();
+		m.unlock();
+	}
+
+	void worker_error()
+	{
+		// unblock start() without setting worker field
+		w.wakeOne();
+		m.unlock();
+	}
+};
+
 class App::Private : public QObject
 {
 	Q_OBJECT
@@ -169,14 +297,17 @@ class App::Private : public QObject
 public:
 	App *q;
 	ArgsData args;
-	Engine *engine;
+	DomainMap *domainMap;
+	EngineThread *thread;
 	Connection quitConnection;
 	Connection hupConnection;
+	Connection changedConnection;
 
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
-		engine(0)
+		domainMap(0),
+		thread(0)
 	{
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
@@ -353,6 +484,17 @@ public:
 		else
 			sessionsMax = clientMaxconn;
 
+		if(!args.routeLines.isEmpty())
+		{
+			domainMap = new DomainMap(this);
+			foreach(const QString &line, args.routeLines)
+				domainMap->addRouteLine(line);
+		}
+		else
+			domainMap = new DomainMap(routesFile, this);
+
+		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
+
 		Engine::Configuration config;
 		config.appVersion = Config::get().version;
 		config.clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
@@ -392,10 +534,6 @@ public:
 		config.intServerOutSpecs = intreq_out_specs;
 		config.ipcFileMode = ipcFileMode;
 		config.sessionsMax = sessionsMax;
-		if(!args.routeLines.isEmpty())
-			config.routeLines = args.routeLines;
-		else
-			config.routesFile = routesFile;
 		config.debug = debug;
 		config.autoCrossOrigin = autoCrossOrigin;
 		config.acceptXForwardedProto = acceptXForwardedProtocol;
@@ -422,12 +560,16 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		engine = new Engine(this);
-		if(!engine->start(config))
+		EngineThread *t = new EngineThread(config, domainMap);
+		if(!t->start())
 		{
+			delete t;
+
 			q->quit(0);
 			return;
 		}
+
+		thread = t;
 
 		log_info("started");
 	}
@@ -437,7 +579,13 @@ private slots:
 	{
 		log_info("reloading");
 		log_rotate();
-		engine->reload();
+
+		domainMap->reload();
+	}
+
+	void domainMap_changed()
+	{
+		thread->routesChanged();
 	}
 
 	void doQuit()
@@ -447,8 +595,11 @@ private slots:
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
-		delete engine;
-		engine = 0;
+		delete thread;
+		thread = 0;
+
+		delete domainMap;
+		domainMap = 0;
 
 		log_info("stopped");
 		q->quit(0);
