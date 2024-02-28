@@ -22,8 +22,7 @@
 
 #include "deferred.h"
 
-Deferred::Deferred(QObject *parent) :
-	QObject(parent)
+Deferred::Deferred() 
 {
 	qRegisterMetaType<DeferredResult>();
 }

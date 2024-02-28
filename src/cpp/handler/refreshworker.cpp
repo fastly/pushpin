@@ -29,8 +29,8 @@
 #include "statsmanager.h"
 #include "wssession.h"
 
-RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel, QObject *parent) :
-	Deferred(parent),
+RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel) :
+	Deferred(),
 	ignoreErrors_(false),
 	proxyControlClient_(proxyControlClient),
 	req_(req)
@@ -93,7 +93,7 @@ void RefreshWorker::refreshNextCid()
 		return;
 	}
 
-	Deferred *d = ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8(), this);
+	Deferred *d = ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8());
 	finishedConnection_ = d->finished.connect(boost::bind(&RefreshWorker::proxyRefresh_finished, this, boost::placeholders::_1));
 }
 
