@@ -96,7 +96,7 @@ public:
 		bool linger;
 		qint64 lastReport;
 		qint64 retrySeq;
-		QByteArray from; // external
+		QByteArray from; // external or linger source
 		int ttl; // external
 		qint64 lastActive; // external
 
@@ -204,6 +204,18 @@ public:
 			}
 
 			return count;
+		}
+	};
+
+	class RetryInfo
+	{
+	public:
+		quint64 nextSeq;
+		QMap<quint64, ConnectionInfo*> connectionInfoBySeq;
+
+		RetryInfo() :
+			nextSeq(0)
+		{
 		}
 	};
 
@@ -397,7 +409,7 @@ public:
 	QHash<QByteArray, quint32> routeActivity;
 	QHash<QByteArray, ConnectionInfo*> connectionInfoById;
 	QHash<QByteArray, QSet<ConnectionInfo*> > connectionInfoByRoute;
-	QMap<quint64, ConnectionInfo*> connectionInfoByRetrySeq;
+	QHash<QByteArray, RetryInfo> retryInfoBySource;
 	QVector<QSet<ConnectionInfo*> > connectionInfoRefreshBuckets;
 	int currentConnectionInfoRefreshBucket;
 	QHash<QByteArray, QHash<QByteArray, ConnectionInfo*> > externalConnectionInfoByFrom;
@@ -412,11 +424,11 @@ public:
 	QHash<QByteArray, Report*> reports;
 	Counts combinedCounts;
 	Report combinedReport;
-	quint64 nextRetrySeq;
 	QTimer *activityTimer;
 	QTimer *reportTimer;
 	QTimer *refreshTimer;
 	QTimer *externalConnectionsMaxTimer;
+	Connection promServerConnection;
 
 	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
 		QObject(_q),
@@ -438,7 +450,6 @@ public:
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
 		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)),
-		nextRetrySeq(0),
 		reportTimer(0)
 	{
 		activityTimer = new QTimer(this);
@@ -530,12 +541,13 @@ public:
 	bool setPrometheusPort(const QString &portStr)
 	{
 		prometheusServer = new SimpleHttpServer(8192, 8192, this);
-		connect(prometheusServer, &SimpleHttpServer::requestReady, this, &Private::prometheus_requestReady);
+		promServerConnection = prometheusServer->requestReady.connect(boost::bind(&Private::prometheus_requestReady, this));
 
 		if(portStr.startsWith("ipc://"))
 		{
 			if(!prometheusServer->listenLocal(portStr.mid(6)))
 			{
+				promServerConnection.disconnect();
 				delete prometheusServer;
 
 				return false;
@@ -559,6 +571,7 @@ public:
 
 			if(!prometheusServer->listen(addr, port))
 			{
+				promServerConnection.disconnect();
 				delete prometheusServer;
 
 				return false;
@@ -717,7 +730,15 @@ public:
 		}
 
 		if(c->retrySeq >= 0)
-			connectionInfoByRetrySeq.remove(c->retrySeq);
+		{
+			RetryInfo &ri = retryInfoBySource[c->from];
+			ri.connectionInfoBySeq.remove(c->retrySeq);
+
+			// FIXME: we keep the source entry even when there are no more
+			// connections, to avoid resetting the seq value. if there is
+			// a lot of proxy instance churn, retryInfoBySource could
+			// fill up with unused entries that will never be cleaned up.
+		}
 
 		if(c->lastRefresh >= 0)
 		{
@@ -763,20 +784,25 @@ public:
 		wheelRemove(c);
 	}
 
-	void removeLingeringConnections(quint64 retrySeq)
+	void removeLingeringConnections(const QByteArray &source, quint64 retrySeq)
 	{
+		if(!retryInfoBySource.contains(source))
+			return;
+
+		RetryInfo &ri = retryInfoBySource[source];
+
 		// invalid retry seq
-		if(retrySeq >= nextRetrySeq)
+		if(retrySeq >= ri.nextSeq)
 			return;
 
 		QList<ConnectionInfo*> toRemove;
 
-		QMap<quint64, ConnectionInfo*>::iterator it = connectionInfoByRetrySeq.find(retrySeq);
-		while(it != connectionInfoByRetrySeq.end())
+		QMap<quint64, ConnectionInfo*>::iterator it = ri.connectionInfoBySeq.find(retrySeq);
+		while(it != ri.connectionInfoBySeq.end())
 		{
 			toRemove += it.value();
 
-			if(it == connectionInfoByRetrySeq.begin())
+			if(it == ri.connectionInfoBySeq.begin())
 				break;
 
 			--it;
@@ -991,7 +1017,7 @@ public:
 
 	void sendConnectionsMax(const QByteArray &routeId, ConnectionsMax *cm, qint64 now)
 	{
-		emit q->connMax(getConnMaxPacket(routeId, cm, now));
+		q->connMax(getConnMaxPacket(routeId, cm, now));
 	}
 
 	void updateConnectionsMax(const QByteArray &routeId, qint64 now)
@@ -1150,7 +1176,7 @@ public:
 						removeSubscription(s);
 						delete s;
 
-						emit q->unsubscribed(mode, channel);
+						q->unsubscribed(mode, channel);
 					}
 					else
 					{
@@ -1166,7 +1192,7 @@ public:
 		}
 
 		if(!refreshedConnIds.isEmpty())
-			emit q->connectionsRefreshed(refreshedConnIds);
+			q->connectionsRefreshed(refreshedConnIds);
 
 		foreach(const QByteArray &routeId, routesUpdated)
 			updateConnectionsMax(routeId, now);
@@ -1194,7 +1220,7 @@ public:
 		}
 
 		if(!refreshedIds.isEmpty())
-			emit q->connectionsRefreshed(refreshedIds);
+			q->connectionsRefreshed(refreshedIds);
 
 		++currentConnectionInfoRefreshBucket;
 		if(currentConnectionInfoRefreshBucket >= connectionInfoRefreshBuckets.count())
@@ -1279,7 +1305,7 @@ public:
 	void mergeExternalConnectionsMax(const StatsPacket &packet, qint64 now)
 	{
 		if(packet.retrySeq >= 0)
-			removeLingeringConnections((quint64)packet.retrySeq);
+			removeLingeringConnections(packet.from, (quint64)packet.retrySeq);
 
 		QHash<QByteArray, ExternalConnectionsMax> &maxes = externalConnectionsMaxes[packet.route].maxes;
 
@@ -1395,7 +1421,7 @@ public:
 		if(sock)
 			write(p);
 
-		emit q->reported(QList<StatsPacket>() << p);
+		q->reported(QList<StatsPacket>() << p);
 	}
 
 	StatsPacket getConnMaxPacket(const QByteArray &routeId, ConnectionsMax *cm, qint64 now)
@@ -1498,7 +1524,7 @@ private slots:
 		}
 
 		if(!reportPackets.isEmpty())
-			emit q->reported(reportPackets);
+			q->reported(reportPackets);
 	}
 
 	void refresh_timeout()
@@ -1527,6 +1553,7 @@ private slots:
 		expireExternalConnectionsMaxes(currentTime);
 	}
 
+private:
 	void prometheus_requestReady()
 	{
 		SimpleHttpRequest *req = prometheusServer->takeNext();
@@ -1556,7 +1583,7 @@ private slots:
 			).arg(prometheusPrefix, m.name, m.help, prometheusPrefix, m.name, m.type, prometheusPrefix, m.name, value.toString());
 		}
 
-		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
+		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
 
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
@@ -1745,7 +1772,7 @@ void StatsManager::addConnection(const QByteArray &id, const QByteArray &routeId
 		d->sendConnected(c);
 }
 
-int StatsManager::removeConnection(const QByteArray &id, bool linger)
+int StatsManager::removeConnection(const QByteArray &id, bool linger, const QByteArray &source)
 {
 	Private::ConnectionInfo *c = d->connectionInfoById.value(id);
 	if(!c)
@@ -1763,9 +1790,16 @@ int StatsManager::removeConnection(const QByteArray &id, bool linger)
 		if(!c->linger)
 		{
 			c->linger = true;
-			c->retrySeq = (qint64)d->nextRetrySeq++;
 
-			d->connectionInfoByRetrySeq.insert((quint64)c->retrySeq, c);
+			if(!d->retryInfoBySource.contains(source))
+				d->retryInfoBySource.insert(source, Private::RetryInfo());
+
+			Private::RetryInfo &ri = d->retryInfoBySource[source];
+
+			c->from = source;
+			c->retrySeq = (qint64)ri.nextSeq++;
+
+			ri.connectionInfoBySeq.insert((quint64)c->retrySeq, c);
 
 			// hack to ensure full linger time honored by refresh processing
 			qint64 lingerStartTime = now + (d->connectionLinger - SHOULD_PROCESS_TIME(d->connectionTtl));
@@ -1874,7 +1908,7 @@ void StatsManager::removeSubscription(const QString &mode, const QString &channe
 		d->removeSubscription(s);
 		delete s;
 
-		emit unsubscribed(mode, channel);
+		unsubscribed(mode, channel);
 	}
 }
 
@@ -2085,9 +2119,14 @@ void StatsManager::flushReport(const QByteArray &routeId)
 	d->flushReport(routeId);
 }
 
-qint64 StatsManager::lastRetrySeq() const
+qint64 StatsManager::lastRetrySeq(const QByteArray &source) const
 {
-	return ((qint64)d->nextRetrySeq) - 1;
+	if(!d->retryInfoBySource.contains(source))
+		return -1;
+
+	Private::RetryInfo &ri = d->retryInfoBySource[source];
+
+	return ((qint64)ri.nextSeq) - 1;
 }
 
 StatsPacket StatsManager::getConnMaxPacket(const QByteArray &routeId)

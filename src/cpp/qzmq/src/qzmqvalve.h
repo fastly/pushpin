@@ -25,6 +25,10 @@
 #define QZMQVALVE_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
+
+using SignalList = boost::signals2::signal<void(const QList<QByteArray>&)>;
+using Connection = boost::signals2::scoped_connection;
 
 namespace QZmq {
 
@@ -45,8 +49,7 @@ public:
 	void open();
 	void close();
 
-signals:
-	void readyRead(const QList<QByteArray> &message);
+	SignalList readyRead;
 
 private:
 	class Private;

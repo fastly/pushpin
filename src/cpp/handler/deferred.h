@@ -25,6 +25,7 @@
 
 #include <QVariant>
 #include <QObject>
+#include <boost/signals2.hpp>
 
 class DeferredResult
 {
@@ -55,8 +56,7 @@ public:
 
 	virtual void cancel();
 
-signals:
-	void finished(const DeferredResult &result);
+	boost::signals2::signal<void(const DeferredResult&)> finished;
 
 protected:
 	Deferred(QObject *parent = 0);

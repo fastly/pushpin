@@ -27,6 +27,9 @@
 #include <QHash>
 #include <QSet>
 #include "deferred.h"
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class ZrpcRequest;
 class ZrpcManager;
@@ -45,6 +48,7 @@ private:
 	bool ignoreErrors_;
 	ZrpcManager *proxyControlClient_;
 	ZrpcRequest *req_;
+	Connection finishedConnection_;
 
 	void refreshNextCid();
 	void respondError(const QByteArray &condition);

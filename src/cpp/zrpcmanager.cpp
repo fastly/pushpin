@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -56,6 +57,7 @@ public:
 	};
 
 	ZrpcManager *q;
+	QByteArray instanceId;
 	int ipcFileMode;
 	bool doBind;
 	int timeout;
@@ -67,6 +69,8 @@ public:
 	QZmq::Valve *serverValve;
 	QHash<QByteArray, ZrpcRequest*> clientReqsById;
 	QList<PendingItem> pending;
+	Connection clientValveConnection;
+	Connection serverValveConnection;
 
 	Private(ZrpcManager *_q) :
 		QObject(_q),
@@ -88,6 +92,7 @@ public:
 
 	bool setupClient()
 	{
+		clientValveConnection.disconnect();
 		delete clientValve;
 		delete clientSock;
 
@@ -104,7 +109,7 @@ public:
 		}
 
 		clientValve = new QZmq::Valve(clientSock, this);
-		connect(clientValve, &QZmq::Valve::readyRead, this, &Private::client_readyRead);
+		clientValveConnection = clientValve->readyRead.connect(boost::bind(&Private::client_readyRead, this, boost::placeholders::_1));
 
 		clientValve->open();
 
@@ -113,6 +118,7 @@ public:
 
 	bool setupServer()
 	{
+		serverValveConnection.disconnect();
 		delete serverValve;
 		delete serverSock;
 
@@ -129,7 +135,7 @@ public:
 		}
 
 		serverValve = new QZmq::Valve(serverSock, this);
-		connect(serverValve, &QZmq::Valve::readyRead, this, &Private::server_readyRead);
+		serverValveConnection = serverValve->readyRead.connect(boost::bind(&Private::server_readyRead, this, boost::placeholders::_1));
 
 		serverValve->open();
 
@@ -140,7 +146,10 @@ public:
 	{
 		assert(clientSock);
 
-		QVariant vpacket = packet.toVariant();
+		ZrpcRequestPacket p = packet;
+		p.from = instanceId;
+
+		QVariant vpacket = p.toVariant();
 		QByteArray buf = TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
@@ -166,7 +175,6 @@ public:
 		serverSock->write(message);
 	}
 
-private slots:
 	void client_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 2)
@@ -243,7 +251,7 @@ private slots:
 		if(pending.count() >= PENDING_MAX)
 			serverValve->close();
 
-		emit q->requestReady();
+		q->requestReady();
 	}
 };
 
@@ -261,6 +269,11 @@ ZrpcManager::~ZrpcManager()
 int ZrpcManager::timeout() const
 {
 	return d->timeout;
+}
+
+void ZrpcManager::setInstanceId(const QByteArray &instanceId)
+{
+	d->instanceId = instanceId;
 }
 
 void ZrpcManager::setIpcFileMode(int mode)

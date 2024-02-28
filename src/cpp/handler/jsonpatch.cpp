@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,6 +24,7 @@
 #include "jsonpatch.h"
 
 #include <assert.h>
+#include "qtcompat.h"
 #include "jsonpointer.h"
 
 namespace JsonPatch {
@@ -45,14 +47,14 @@ static void setError(bool *ok, QString *errorMessage, const QString &msg)
 
 static bool isKeyedObject(const QVariant &in)
 {
-	return (in.type() == QVariant::Hash || in.type() == QVariant::Map);
+	return (typeId(in) == QMetaType::QVariantHash || typeId(in) == QMetaType::QVariantMap);
 }
 
 static bool keyedObjectContains(const QVariant &in, const QString &name)
 {
-	if(in.type() == QVariant::Hash)
+	if(typeId(in) == QMetaType::QVariantHash)
 		return in.toHash().contains(name);
-	else if(in.type() == QVariant::Map)
+	else if(typeId(in) == QMetaType::QVariantMap)
 		return in.toMap().contains(name);
 	else
 		return false;
@@ -60,9 +62,9 @@ static bool keyedObjectContains(const QVariant &in, const QString &name)
 
 static QVariant keyedObjectGetValue(const QVariant &in, const QString &name)
 {
-	if(in.type() == QVariant::Hash)
+	if(typeId(in) == QMetaType::QVariantHash)
 		return in.toHash().value(name);
-	else if(in.type() == QVariant::Map)
+	else if(typeId(in) == QMetaType::QVariantMap)
 		return in.toMap().value(name);
 	else
 		return QVariant();
@@ -80,7 +82,7 @@ static QVariant getChild(const QVariant &in, const QString &parentName, const QS
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
 
 	QVariant v;
-	if(in.type() == QVariant::Hash)
+	if(typeId(in) == QMetaType::QVariantHash)
 	{
 		QVariantHash h = in.toHash();
 
@@ -119,13 +121,13 @@ static QVariant getChild(const QVariant &in, const QString &parentName, const QS
 
 static QString getString(const QVariant &in, bool *ok = 0)
 {
-	if(in.type() == QVariant::String)
+	if(typeId(in) == QMetaType::QString)
 	{
 		if(ok)
 			*ok = true;
 		return in.toString();
 	}
-	else if(in.type() == QVariant::ByteArray)
+	else if(typeId(in) == QMetaType::QByteArray)
 	{
 		if(ok)
 			*ok = true;
@@ -177,8 +179,8 @@ static bool convertToJsonStyleInPlace(QVariant *in)
 
 	bool changed = false;
 
-	int type = in->type();
-	if(type == QVariant::Hash)
+	QMetaType::Type type = typeId(*in);
+	if(type == QMetaType::QVariantHash)
 	{
 		QVariantMap vmap;
 		QVariantHash vhash = in->toHash();
@@ -194,7 +196,7 @@ static bool convertToJsonStyleInPlace(QVariant *in)
 		*in = vmap;
 		changed = true;
 	}
-	else if(type == QVariant::List)
+	else if(type == QMetaType::QVariantList)
 	{
 		QVariantList vlist = in->toList();
 		for(int n = 0; n < vlist.count(); ++n)
@@ -207,7 +209,7 @@ static bool convertToJsonStyleInPlace(QVariant *in)
 		*in = vlist;
 		changed = true;
 	}
-	else if(type == QVariant::ByteArray)
+	else if(type == QMetaType::QByteArray)
 	{
 		*in = QVariant(QString::fromUtf8(in->toByteArray()));
 		changed = true;
@@ -225,7 +227,7 @@ static QVariant convertToJsonStyle(const QVariant &in)
 
 static bool _compareJsonValues(const QVariant &a, const QVariant &b)
 {
-	if(a.type() == QVariant::Map && b.type() == QVariant::Map)
+	if(typeId(a) == QMetaType::QVariantMap && typeId(b) == QMetaType::QVariantMap)
 	{
 		QVariantMap am = a.toMap();
 		QVariantMap bm = b.toMap();
@@ -248,7 +250,7 @@ static bool _compareJsonValues(const QVariant &a, const QVariant &b)
 
 		return true;
 	}
-	else if(a.type() == QVariant::List && b.type() == QVariant::List)
+	else if(typeId(a) == QMetaType::QVariantList && typeId(b) == QMetaType::QVariantList)
 	{
 		QVariantList al = a.toList();
 		QVariantList bl = b.toList();
@@ -264,19 +266,19 @@ static bool _compareJsonValues(const QVariant &a, const QVariant &b)
 
 		return true;
 	}
-	else if(a.type() == QVariant::String && b.type() == QVariant::String)
+	else if(typeId(a) == QMetaType::QString && typeId(b) == QMetaType::QString)
 	{
 		return (a.toString() == b.toString());
 	}
-	else if(a.type() == QVariant::Bool && b.type() == QVariant::Bool)
+	else if(typeId(a) == QMetaType::Bool && typeId(b) == QMetaType::Bool)
 	{
 		return (a.toBool() == b.toBool());
 	}
-	else if(a.type() == QVariant::Invalid && b.type() == QVariant::Invalid)
+	else if(typeId(a) == QMetaType::UnknownType && typeId(b) == QMetaType::UnknownType)
 	{
 		return true;
 	}
-	else if(a.canConvert(QVariant::Int) && b.canConvert(QVariant::Int))
+	else if(canConvert(a, QMetaType::Int) && canConvert(b, QMetaType::Int))
 	{
 		return (a.toInt() == b.toInt());
 	}

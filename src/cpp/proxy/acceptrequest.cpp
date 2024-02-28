@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,6 +23,7 @@
 
 #include "acceptrequest.h"
 
+#include "qtcompat.h"
 #include "acceptdata.h"
 
 static QVariant acceptDataToVariant(const AcceptData &adata)
@@ -220,7 +221,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 {
 	AcceptRequest::ResponseData out;
 
-	if(in.type() != QVariant::Hash)
+	if(typeId(in) != QMetaType::QVariantHash)
 	{
 		*ok = false;
 		return AcceptRequest::ResponseData();
@@ -230,7 +231,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 
 	if(obj.contains("accepted"))
 	{
-		if(obj["accepted"].type() != QVariant::Bool)
+		if(typeId(obj["accepted"]) != QMetaType::Bool)
 		{
 			*ok = false;
 			return AcceptRequest::ResponseData();
@@ -241,7 +242,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 
 	if(obj.contains("response"))
 	{
-		if(obj["response"].type() != QVariant::Hash)
+		if(typeId(obj["response"]) != QMetaType::QVariantHash)
 		{
 			*ok = false;
 			return AcceptRequest::ResponseData();
@@ -251,7 +252,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 
 		if(vresponse.contains("code"))
 		{
-			if(!vresponse["code"].canConvert(QVariant::Int))
+			if(!canConvert(vresponse["code"], QMetaType::Int))
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();
@@ -262,7 +263,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 
 		if(vresponse.contains("reason"))
 		{
-			if(vresponse["reason"].type() != QVariant::ByteArray)
+			if(typeId(vresponse["reason"]) != QMetaType::QByteArray)
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();
@@ -273,7 +274,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 
 		if(vresponse.contains("headers"))
 		{
-			if(vresponse["headers"].type() != QVariant::List)
+			if(typeId(vresponse["headers"]) != QMetaType::QVariantList)
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();
@@ -288,7 +289,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 					return AcceptRequest::ResponseData();
 				}
 
-				if(list[0].type() != QVariant::ByteArray || list[1].type() != QVariant::ByteArray)
+				if(typeId(list[0]) != QMetaType::QByteArray || typeId(list[1]) != QMetaType::QByteArray)
 				{
 					*ok = false;
 					return AcceptRequest::ResponseData();
@@ -300,7 +301,7 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 
 		if(vresponse.contains("body"))
 		{
-			if(vresponse["body"].type() != QVariant::ByteArray)
+			if(typeId(vresponse["body"]) != QMetaType::QByteArray)
 			{
 				*ok = false;
 				return AcceptRequest::ResponseData();

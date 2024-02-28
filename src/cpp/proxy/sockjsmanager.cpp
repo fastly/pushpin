@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,11 +32,14 @@
 #include <QJsonArray>
 #include <QCryptographicHash>
 #include <QRandomGenerator>
+#include "qtcompat.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjssession.h"
+
+using std::map;
 
 #define MAX_REQUEST_BODY 100000
 
@@ -110,7 +114,12 @@ public:
 
 		~Session()
 		{
-			delete req;
+			if(req)
+			{
+				owner->reqConnectionMap.erase(req);
+				delete req;
+			}
+			owner->wsConnectionMap.erase(sock);
 			delete sock;
 
 			if(timer)
@@ -120,6 +129,17 @@ public:
 				timer->deleteLater();
 			}
 		}
+	};
+
+	struct WSConnections {
+		Connection closedConnection;
+		Connection errorConnection;
+	};
+
+	struct ZhttpReqConnections{
+		Connection readyReadConnection;
+		Connection bytesWrittenConnection;
+		Connection errorConnection;
 	};
 
 	SockJsManager *q;
@@ -133,6 +153,8 @@ public:
 	QByteArray iframeHtml;
 	QByteArray iframeHtmlEtag;
 	QSet<ZhttpRequest*> discardedRequests;
+	map<ZhttpRequest*, ZhttpReqConnections> reqConnectionMap;
+	map<ZWebSocket*, WSConnections> wsConnectionMap;
 
 	Private(SockJsManager *_q, const QString &sockJsUrl) :
 		QObject(_q),
@@ -185,7 +207,10 @@ public:
 		{
 			// if there's a close value, hang around for a little bit
 			s->timer = new QTimer(this);
-			connect(s->timer, &QTimer::timeout, this, &Private::timer_timeout);
+			QObject::connect(s->timer, &QTimer::timeout, [this, timer=s->timer]() {
+				this->timer_timeout(timer);
+			});
+
 			s->timer->setSingleShot(true);
 			sessionsByTimer.insert(s->timer, s);
 			s->timer->start(5000);
@@ -238,9 +263,11 @@ public:
 
 		s->route = route;
 
-		connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
-		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-		connect(req, &ZhttpRequest::error, this, &Private::req_error);
+		reqConnectionMap[req] = {
+			req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req)),
+			req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
+			req->error.connect(boost::bind(&Private::req_error, this, req))
+		};
 
 		sessions += s;
 		sessionsByRequest.insert(s->req, s);
@@ -262,8 +289,10 @@ public:
 			s->asUri.setPath(QString::fromUtf8(encPath.mid(0, basePathStart) + "/websocket"), QUrl::StrictMode);
 		s->route = route;
 
-		connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
-		connect(sock, &ZWebSocket::error, this, &Private::sock_error);
+		wsConnectionMap[sock] = {
+			sock->closed.connect(boost::bind(&Private::sock_closed, this, sock)),
+			sock->error.connect(boost::bind(&Private::sock_error, this, sock))
+		};
 
 		sessions += s;
 		sessionsBySocket.insert(s->sock, s);
@@ -313,7 +342,7 @@ public:
 		if(data.isValid())
 		{
 			QJsonDocument doc;
-			if(data.type() == QVariant::Map)
+			if(typeId(data) == QMetaType::QVariantMap)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(data.toMap()));
 			else // List
 				doc = QJsonDocument(QJsonArray::fromVariantList(data.toList()));
@@ -361,9 +390,11 @@ public:
 		{
 			discardedRequests += req;
 
-			connect(req, &ZhttpRequest::readyRead, this, &Private::req_readyRead);
-			connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-			connect(req, &ZhttpRequest::error, this, &Private::req_error);
+			reqConnectionMap[req] = {
+				req->readyRead.connect(boost::bind(&Private::req_readyRead, this, req)),
+				req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
+				req->error.connect(boost::bind(&Private::req_error, this, req))
+			};
 		}
 
 		HttpHeaders headers;
@@ -481,7 +512,7 @@ public:
 					sessionsById.insert(s->sid, s);
 					s->pending = true;
 					pendingSessions += s;
-					emit q->sessionReady();
+					q->sessionReady();
 					return;
 				}
 			}
@@ -496,7 +527,7 @@ public:
 		{
 			s->pending = true;
 			pendingSessions += s;
-			emit q->sessionReady();
+			q->sessionReady();
 			return;
 		}
 		else
@@ -511,7 +542,7 @@ public:
 				s->lastPart = lastPart;
 				s->pending = true;
 				pendingSessions += s;
-				emit q->sessionReady();
+				q->sessionReady();
 				return;
 			}
 
@@ -572,11 +603,9 @@ public:
 		return s->ext;
 	}
 
-private slots:
-	void req_readyRead()
+private:
+	void req_readyRead(ZhttpRequest *req)
 	{
-		ZhttpRequest *req = (ZhttpRequest *)sender();
-
 		// for a request to have been discardable, we must have read the
 		//   entire input already and handed to the session
 		assert(!discardedRequests.contains(req));
@@ -587,17 +616,16 @@ private slots:
 		processRequestInput(s);
 	}
 
-	void req_bytesWritten(int count)
+	void req_bytesWritten(int count, ZhttpRequest *req)
 	{
 		Q_UNUSED(count);
-
-		ZhttpRequest *req = (ZhttpRequest *)sender();
 
 		if(discardedRequests.contains(req))
 		{
 			if(req->isFinished())
 			{
 				discardedRequests.remove(req);
+				reqConnectionMap.erase(req);
 				delete req;
 			}
 
@@ -614,13 +642,12 @@ private slots:
 		}
 	}
 
-	void req_error()
+	void req_error(ZhttpRequest *req)
 	{
-		ZhttpRequest *req = (ZhttpRequest *)sender();
-
 		if(discardedRequests.contains(req))
 		{
 			discardedRequests.remove(req);
+			reqConnectionMap.erase(req);
 			delete req;
 			return;
 		}
@@ -634,9 +661,8 @@ private slots:
 			removeSession(s);
 	}
 
-	void sock_closed()
+	void sock_closed(ZWebSocket *sock)
 	{
-		ZWebSocket *sock = (ZWebSocket *)sender();
 		Session *s = sessionsBySocket.value(sock);
 		assert(s);
 
@@ -646,9 +672,8 @@ private slots:
 			removeSession(s);
 	}
 
-	void sock_error()
+	void sock_error(ZWebSocket *sock)
 	{
-		ZWebSocket *sock = (ZWebSocket *)sender();
 		Session *s = sessionsBySocket.value(sock);
 		assert(s);
 
@@ -658,9 +683,9 @@ private slots:
 			removeSession(s);
 	}
 
-	void timer_timeout()
+private:
+	void timer_timeout(QTimer *timer)
 	{
-		QTimer *timer = (QTimer *)sender();
 		Session *s = sessionsByTimer.value(timer);
 		assert(s);
 

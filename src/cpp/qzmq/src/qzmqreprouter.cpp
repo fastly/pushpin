@@ -35,25 +35,26 @@ class RepRouter::Private : public QObject
 public:
 	RepRouter *q;
 	Socket *sock;
+	Connection mWConnection;
+	Connection rrConnection;
 
 	Private(RepRouter *_q) :
 		QObject(_q),
 		q(_q)
 	{
 		sock = new Socket(Socket::Router, this);
-		connect(sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(sock, SIGNAL(messagesWritten(int)), SLOT(sock_messagesWritten(int)));
-	}
-
-public slots:
-	void sock_readyRead()
-	{
-		emit q->readyRead();
+		rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
+		mWConnection = sock->messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this,  boost::placeholders::_1));
 	}
 
 	void sock_messagesWritten(int count)
 	{
-		emit q->messagesWritten(count);
+		q->messagesWritten(count);
+	}
+
+	void sock_readyRead()
+	{
+		q->readyRead();
 	}
 };
 

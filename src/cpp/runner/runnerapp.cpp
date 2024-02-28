@@ -41,6 +41,13 @@
 #include "pushpinhandlerservice.h"
 #include "config.h"
 
+struct ServiceConnections{
+	Connection startedConnection;
+	Connection stoppedConnection;
+	Connection logConnection;
+	Connection errConnection;
+};
+
 static void trimlist(QStringList *list)
 {
 	for(int n = 0; n < list->count(); ++n)
@@ -258,6 +265,7 @@ public:
 	bool errored;
 	Connection quitConnection;
 	Connection hupConnection;
+	map<Service*, ServiceConnections> serviceConnectionMap;
 
 	Private(RunnerApp *_q) :
 		QObject(_q),
@@ -267,12 +275,6 @@ public:
 	{
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::processQuit, this));
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
-	}
-
-	~Private()
-	{
-		hupConnection.disconnect();
-		quitConnection.disconnect();
 	}
 
 	void start()
@@ -290,12 +292,12 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "error: %s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			case CommandLineHelpRequested:
 				parser.showHelp();
@@ -307,7 +309,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -349,7 +351,7 @@ public:
 		if(configFile.isEmpty())
 		{
 			log_error("no configuration file found. Tried: %s", qPrintable(configFileList.join(" ")));
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -360,7 +362,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s", qPrintable(configFile));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -381,7 +383,7 @@ public:
 		}
 		else
 		{
-			if(QFile::exists("src/pushpin/pushpin.pro"))
+			if(QFile::exists("src/bin/pushpin.rs"))
 			{
 				// running in tree
 				libDir = QFileInfo("src/runner").absoluteFilePath();
@@ -434,7 +436,7 @@ public:
 			if(logLevels.isEmpty())
 			{
 				fprintf(stderr, "error: %s\n", qPrintable(errorMessage));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -460,8 +462,8 @@ public:
 		if(fi.isFile())
 			m2aBin = fi.canonicalFilePath();
 
-		QString condureBin = "condure";
-		fi = QFileInfo(QDir(exeDir).filePath("bin/condure"));
+		QString condureBin = "pushpin-condure";
+		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-condure"));
 		if(fi.isFile())
 			condureBin = fi.canonicalFilePath();
 
@@ -478,14 +480,14 @@ public:
 		if(!ensureDir(runDir))
 		{
 			log_error("failed to create directory: %s", qPrintable(runDir));
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
 		if(!args.mergeOutput && !ensureDir(logDir))
 		{
 			log_error("failed to create directory: %s", qPrintable(logDir));
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -507,7 +509,7 @@ public:
 				if(p.second < 0)
 				{
 					log_error("invalid http port: %s", qPrintable(httpPortStr));
-					emit q->quit(1);
+					q->quit(1);
 					return;
 				}
 
@@ -520,7 +522,7 @@ public:
 				if(p.second < 1)
 				{
 					log_error("invalid https port: %s", qPrintable(httpsPortStr));
-					emit q->quit(1);
+					q->quit(1);
 					return;
 				}
 
@@ -533,7 +535,7 @@ public:
 				if(!path.isValid())
 				{
 					log_error("invalid local port: %s", qPrintable(localPortStr));
-					emit q->quit(1);
+					q->quit(1);
 					return;
 				}
 
@@ -548,7 +550,7 @@ public:
 					if(!ok)
 					{
 						log_error("invalid mode: %s", qPrintable(modeStr));
-						emit q->quit(1);
+						q->quit(1);
 						return;
 					}
 				}
@@ -563,7 +565,7 @@ public:
 		if(ports.isEmpty())
 		{
 			log_error("no server ports configured");
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -577,7 +579,7 @@ public:
 		if(serviceNames.contains("condure") && (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter")))
 		{
 			log_error("cannot enable the condure service at the same time as mongrel2 or m2adapter");
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -606,7 +608,7 @@ public:
 			QString certsDir = QDir(configDir).filePath("certs");
 			if(!Mongrel2Service::generateConfigFile(m2shBin, QDir(libDir).filePath("mongrel2.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, certsDir, clientBufferSize, clientMaxConnections, ports, logLevels.value("mongrel2", defaultLevel)))
 			{
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 
@@ -645,10 +647,12 @@ public:
 
 		foreach(Service *s, services)
 		{
-			connect(s, &Service::started, this, &Private::service_started);
-			connect(s, &Service::stopped, this, &Private::service_stopped);
-			connect(s, &Service::logLine, this, &Private::service_logLine);
-			connect(s, &Service::error, this, &Private::service_error);
+			serviceConnectionMap[s] = {
+				s->started.connect(boost::bind(&Private::service_started, this)),
+				s->stopped.connect(boost::bind(&Private::service_stopped, this, s)),
+				s->logLine.connect(boost::bind(&Private::service_logLine, this, boost::placeholders::_1, s)),
+				s->error.connect(boost::bind(&Private::service_error, this, boost::placeholders::_1, s))
+			};
 
 			if(!args.mergeOutput || qobject_cast<Mongrel2Service*>(s))
 				log_info("starting %s", qPrintable(s->name()));
@@ -704,10 +708,9 @@ private:
 
 	void doQuit()
 	{
-		emit q->quit(errored ? 1 : 0);
+		q->quit(errored ? 1 : 0);
 	}
 
-private slots:
 	void service_started()
 	{
 		bool allStarted = true;
@@ -724,9 +727,9 @@ private slots:
 			log_info("started");
 	}
 
-	void service_stopped()
+	void service_stopped(Service *s)
 	{
-		Service *s = (Service *)sender();
+		serviceConnectionMap.erase(s);
 
 		services.removeAll(s);
 		delete s;
@@ -734,21 +737,19 @@ private slots:
 		checkStopped();
 	}
 
-	void service_logLine(const QString &line)
+	void service_logLine(const QString &line, Service *s)
 	{
-		Service *s = (Service *)sender();
-
 		QString out = tryInsertPrefix(s->formatLogLine(line), '[' + s->name() + "] ");
 		if(!out.isEmpty()) {
 			log_raw(qPrintable(out));
 		}
 	}
 
-	void service_error(const QString &error)
+	void service_error(const QString &error, Service *s)
 	{
-		Service *s = (Service *)sender();
-
 		log_error("%s: %s", qPrintable(s->name()), qPrintable(error));
+
+		serviceConnectionMap.erase(s);
 
 		services.removeAll(s);
 		delete s;
@@ -767,7 +768,6 @@ private slots:
 		}
 	}
 
-private:
 	void reload()
 	{
 		log_info("reloading");
@@ -793,9 +793,6 @@ private:
 		else
 		{
 			qDeleteAll(services);
-
-			hupConnection.disconnect();
-			quitConnection.disconnect();
 
 			ProcessQuit::cleanup();
 

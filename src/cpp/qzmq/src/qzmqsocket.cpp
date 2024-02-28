@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2020 Justin Karneges
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -89,6 +90,14 @@ static void set_immediate(void *sock, bool on)
 	int v = on ? 1 : 0;
 	size_t opt_len = sizeof(v);
 	int ret = wzmq_setsockopt(sock, WZMQ_IMMEDIATE, &v, opt_len);
+	assert(ret == 0);
+}
+
+static void set_router_mandatory(void *sock, bool on)
+{
+	int v = on ? 1 : 0;
+	size_t opt_len = sizeof(v);
+	int ret = wzmq_setsockopt(sock, WZMQ_ROUTER_MANDATORY, &v, opt_len);
 	assert(ret == 0);
 }
 
@@ -407,7 +416,7 @@ public:
 		assert(sock != NULL);
 
 		sn_read = new QSocketNotifier(get_fd(sock), QSocketNotifier::Read, this);
-		connect(sn_read, SIGNAL(activated(int)), SLOT(sn_read_activated()));
+		connect(sn_read, &QSocketNotifier::activated, this, &Private::sn_read_activated);
 		sn_read->setEnabled(true);
 
 		updateTimer = new QTimer(this);
@@ -587,7 +596,7 @@ public:
 		if(canRead)
 		{
 			QPointer<QObject> self = this;
-			emit q->readyRead();
+			q->readyRead();
 			if(!self)
 				return;
 		}
@@ -597,7 +606,7 @@ public:
 			int count = pendingWritten;
 			pendingWritten = 0;
 
-			emit q->messagesWritten(count);
+			q->messagesWritten(count);
 		}
 	}
 
@@ -706,6 +715,11 @@ void Socket::setReceiveHwm(int hwm)
 void Socket::setImmediateEnabled(bool on)
 {
 	set_immediate(d->sock, on);
+}
+
+void Socket::setRouterMandatoryEnabled(bool on)
+{
+	set_router_mandatory(d->sock, on);
 }
 
 void Socket::setTcpKeepAliveEnabled(bool on)

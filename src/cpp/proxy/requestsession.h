@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,6 +27,11 @@
 #include <QObject>
 #include "zhttprequest.h"
 #include "domainmap.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using SignalInt = boost::signals2::signal<void(int)>;
+using Connection = boost::signals2::scoped_connection;
 
 class QHostAddress;
 
@@ -83,7 +89,7 @@ public:
 
 	// takes ownership
 	void start(ZhttpRequest *req);
-	void startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime);
+	void startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime, int retrySeq);
 
 	void pause();
 	void resume();
@@ -98,21 +104,19 @@ public:
 
 	int unregisterConnection(); // return unreported time
 
-signals:
-	void inspected(const InspectData &idata);
-	void inspectError();
-	void finished();
-	void finishedByAccept();
-	void bytesWritten(int count);
-	void paused();
-	void headerBytesSent(int count);
-	void bodyBytesSent(int count);
-
+	Signal inspectError;
+	boost::signals2::signal<void(const InspectData&)> inspected;
+	Signal finishedByAccept;
+	SignalInt bytesWritten;
+	Signal paused;
+	SignalInt headerBytesSent;
+	SignalInt bodyBytesSent;
 	// this signal means some error was encountered while responding and
 	//   that you should not attempt to call further response-related
 	//   methods. the object remains in an active state though, and so you
 	//   should still wait for finished()
-	void errorResponding();
+	Signal errorResponding;
+	Signal finished;
 
 private:
 	class Private;

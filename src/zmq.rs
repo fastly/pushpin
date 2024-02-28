@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -127,7 +128,7 @@ fn unsetup_spec(sock: &zmq::Socket, spec: &ActiveSpec) {
     }
 }
 
-pub type MultipartHeader = ArrayVec<zmq::Message, MULTIPART_HEADERS_MAX>;
+pub type MultipartHeader = Vec<zmq::Message>;
 
 pub struct ZmqSocket {
     inner: zmq::Socket,
@@ -184,6 +185,10 @@ impl ZmqSocket {
         content: zmq::Message,
         flags: i32,
     ) -> Result<(), zmq::Error> {
+        if header.len() > MULTIPART_HEADERS_MAX {
+            return Err(zmq::Error::EINVAL);
+        }
+
         let mut headers: ArrayVec<&[u8], MULTIPART_HEADERS_MAX> = ArrayVec::new();
 
         for part in header {
@@ -242,7 +247,7 @@ impl ZmqSocket {
                         break;
                     }
 
-                    if header.len() == header.capacity() {
+                    if header.len() == MULTIPART_HEADERS_MAX {
                         // header too large
 
                         let flags = 0;

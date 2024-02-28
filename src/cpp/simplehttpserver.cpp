@@ -91,9 +91,15 @@ public:
 
 	void start(QTcpSocket *_sock)
 	{
-		connect(_sock, &QTcpSocket::readyRead, this, &Private::sock_readyRead);
-		connect(_sock, &QTcpSocket::bytesWritten, this, &Private::sock_bytesWritten);
-		connect(_sock, &QTcpSocket::disconnected, this, &Private::sock_disconnected);
+		QObject::connect(_sock, &QTcpSocket::readyRead, [this]() {
+			this->sock_readyRead();
+		});
+		QObject::connect(_sock, &QTcpSocket::bytesWritten, this, [this](qint64 bytes) {
+			this->sock_bytesWritten(bytes);
+		});
+		QObject::connect(_sock, &QTcpSocket::disconnected, [this]() {
+			this->sock_disconnected();
+		});
 
 		sock = _sock;
 		sock->setParent(this);
@@ -103,9 +109,15 @@ public:
 
 	void start(QLocalSocket *_sock)
 	{
-		connect(_sock, &QLocalSocket::readyRead, this, &Private::sock_readyRead);
-		connect(_sock, &QLocalSocket::bytesWritten, this, &Private::sock_bytesWritten);
-		connect(_sock, &QLocalSocket::disconnected, this, &Private::sock_disconnected);
+		QObject::connect(_sock, &QLocalSocket::readyRead, [this]() {
+			this->sock_readyRead();
+		});
+		QObject::connect(_sock, &QLocalSocket::bytesWritten, this, [this](qint64 bytes) {
+			this->sock_bytesWritten(bytes);
+		});
+		QObject::connect(_sock, &QLocalSocket::disconnected, [this]() {
+			this->sock_disconnected();
+		});
 
 		sock = _sock;
 		sock->setParent(this);
@@ -150,8 +162,7 @@ public:
 		respond(code, reason, headers, body.toUtf8());
 	}
 
-signals:
-	void ready();
+	Signal ready;
 
 private:
 	void respondError(int code, const QByteArray &reason, const QString &body)
@@ -315,7 +326,7 @@ private:
 				else
 				{
 					state = WriteBody;
-					emit ready();
+					ready();
 				}
 			}
 			else if(inBuf.size() >= maxHeadersSize)
@@ -338,12 +349,11 @@ private:
 			if(reqBody.size() == contentLength)
 			{
 				state = WriteBody;
-				emit ready();
+				ready();
 			}
 		}
 	}
 
-private slots:
 	void sock_readyRead()
 	{
 		if(state == ReadHeader || state == ReadBody)
@@ -369,7 +379,7 @@ private slots:
 	{
 		cleanup();
 
-		emit q->finished();
+		q->finished();
 	}
 };
 
@@ -426,6 +436,8 @@ public:
 	QList<SimpleHttpRequest*> pending;
 	int maxHeadersSize;
 	int maxBodySize;
+	map<SimpleHttpRequest*, Connection> finishedConnections;
+	map<SimpleHttpRequest*, Connection> readyConnections;
 
 	SimpleHttpServerPrivate(int maxHeadersSize, int maxBodySize, SimpleHttpServer *_q) :
 		QObject(_q),
@@ -486,15 +498,15 @@ public:
 		return true;
 	}
 
-private slots:
+private:
 	void server_newConnection()
 	{
 		if(local)
 		{
 			QLocalSocket *sock = ((QLocalServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
-			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
-			connect(req, &SimpleHttpRequest::finished, this, &SimpleHttpServerPrivate::req_finished);
+			readyConnections[req] = req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q));
+			finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 			accepting += req;
 			req->d->start(sock);
 		}
@@ -502,25 +514,22 @@ private slots:
 		{
 			QTcpSocket *sock = ((QTcpServer *)server)->nextPendingConnection();
 			SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
-			connect(req->d, &SimpleHttpRequest::Private::ready, this, &SimpleHttpServerPrivate::req_ready);
-			connect(req, &SimpleHttpRequest::finished, this, &SimpleHttpServerPrivate::req_finished);
+			readyConnections[req] = req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q));
+			finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 			accepting += req;
 			req->d->start(sock);
 		}
 	}
 
-	void req_ready()
+	void req_ready(SimpleHttpRequest *req)
 	{
-		SimpleHttpRequest::Private *reqd = (SimpleHttpRequest::Private *)sender();
-		SimpleHttpRequest *req = reqd->q;
 		accepting.remove(req);
 		pending += req;
-		emit q->requestReady();
+		q->requestReady();
 	}
 
-	void req_finished()
+	void req_finished(SimpleHttpRequest *req)
 	{
-		SimpleHttpRequest *req = (SimpleHttpRequest *)sender();
 		accepting.remove(req);
 		pending.removeAll(req);
 		delete req;
@@ -553,7 +562,8 @@ SimpleHttpRequest *SimpleHttpServer::takeNext()
 	if(!d->pending.isEmpty())
 	{
 		SimpleHttpRequest *req = d->pending.takeFirst();
-		req->disconnect(d);
+		d->finishedConnections.erase(req);
+		
 		return req;
 	}
 	else

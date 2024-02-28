@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -166,12 +166,6 @@ public:
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
 	}
 
-	~Private()
-	{
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-	}
-
 	void start()
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
@@ -187,12 +181,12 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			case CommandLineHelpRequested:
 				parser.showHelp();
@@ -209,7 +203,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -226,7 +220,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			}
 		}
@@ -257,15 +251,33 @@ public:
 		trimlist(&intreq_out_stream_specs);
 		QStringList intreq_in_specs = settings.value("handler/proxy_intreq_in_specs").toStringList();
 		trimlist(&intreq_in_specs);
+		QStringList proxy_inspect_specs = settings.value("handler/proxy_inspect_specs").toStringList();
+		trimlist(&proxy_inspect_specs);
 		QString proxy_inspect_spec = settings.value("handler/proxy_inspect_spec").toString();
+		if(!proxy_inspect_spec.isEmpty())
+			proxy_inspect_specs += proxy_inspect_spec;
+		QStringList proxy_accept_specs = settings.value("handler/proxy_accept_specs").toStringList();
+		trimlist(&proxy_accept_specs);
 		QString proxy_accept_spec = settings.value("handler/proxy_accept_spec").toString();
+		if(!proxy_accept_spec.isEmpty())
+			proxy_accept_specs += proxy_accept_spec;
+		QStringList proxy_retry_out_specs = settings.value("handler/proxy_retry_out_specs").toStringList();
+		trimlist(&proxy_retry_out_specs);
 		QString proxy_retry_out_spec = settings.value("handler/proxy_retry_out_spec").toString();
-		QString ws_control_in_spec = settings.value("handler/proxy_ws_control_in_spec").toString();
-		QString ws_control_out_spec = settings.value("handler/proxy_ws_control_out_spec").toString();
+		if(!proxy_retry_out_spec.isEmpty())
+			proxy_retry_out_specs += proxy_retry_out_spec;
+		QStringList ws_control_init_specs = settings.value("handler/proxy_ws_control_init_specs").toStringList();
+		trimlist(&ws_control_init_specs);
+		QStringList ws_control_stream_specs = settings.value("handler/proxy_ws_control_stream_specs").toStringList();
+		trimlist(&ws_control_stream_specs);
 		QString stats_spec = settings.value("handler/stats_spec").toString();
 		QString command_spec = settings.value("handler/command_spec").toString();
 		QString state_spec = settings.value("handler/state_spec").toString();
+		QStringList proxy_stats_specs = settings.value("handler/proxy_stats_specs").toStringList();
+		trimlist(&proxy_stats_specs);
 		QString proxy_stats_spec = settings.value("handler/proxy_stats_spec").toString();
+		if(!proxy_stats_spec.isEmpty())
+			proxy_stats_specs += proxy_stats_spec;
 		QString proxy_command_spec = settings.value("handler/proxy_command_spec").toString();
 		QString push_in_spec = settings.value("handler/push_in_spec").toString();
 		QStringList push_in_sub_specs = settings.value("handler/push_in_sub_specs").toStringList();
@@ -301,14 +313,14 @@ public:
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
 			log_error("must set m2a_in_stream_specs and m2a_out_specs");
-			emit q->quit(0);
+			q->quit(0);
 			return;
 		}
 
-		if(proxy_inspect_spec.isEmpty() || proxy_accept_spec.isEmpty() || proxy_retry_out_spec.isEmpty())
+		if(proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() || proxy_retry_out_specs.isEmpty())
 		{
-			log_error("must set proxy_inspect_spec, proxy_accept_spec, and proxy_retry_out_spec");
-			emit q->quit(0);
+			log_error("must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs");
+			q->quit(0);
 			return;
 		}
 
@@ -356,15 +368,15 @@ public:
 		config.clientOutSpecs = intreq_out_specs;
 		config.clientOutStreamSpecs = intreq_out_stream_specs;
 		config.clientInSpecs = intreq_in_specs;
-		config.inspectSpec = proxy_inspect_spec;
-		config.acceptSpec = proxy_accept_spec;
-		config.retryOutSpec = proxy_retry_out_spec;
-		config.wsControlInSpec = ws_control_in_spec;
-		config.wsControlOutSpec = ws_control_out_spec;
+		config.inspectSpecs = proxy_inspect_specs;
+		config.acceptSpecs = proxy_accept_specs;
+		config.retryOutSpecs = proxy_retry_out_specs;
+		config.wsControlInitSpecs = ws_control_init_specs;
+		config.wsControlStreamSpecs = ws_control_stream_specs;
 		config.statsSpec = stats_spec;
 		config.commandSpec = command_spec;
 		config.stateSpec = state_spec;
-		config.proxyStatsSpec = proxy_stats_spec;
+		config.proxyStatsSpecs = proxy_stats_specs;
 		config.proxyCommandSpec = proxy_command_spec;
 		config.pushInSpec = push_in_spec;
 		config.pushInSubSpecs = push_in_sub_specs;
@@ -395,7 +407,7 @@ public:
 		engine = new HandlerEngine(this);
 		if(!engine->start(config))
 		{
-			emit q->quit(0);
+			q->quit(0);
 			return;
 		}
 
@@ -413,10 +425,7 @@ private:
 	void doQuit()
 	{
 		log_info("stopping...");
-
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-
+		
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
@@ -424,7 +433,7 @@ private:
 		engine = 0;
 
 		log_info("stopped");
-		emit q->quit(0);
+		q->quit(0);
 	}
 };
 

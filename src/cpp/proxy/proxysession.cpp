@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -31,6 +31,7 @@
 #include "packet/statspacket.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "qtcompat.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "jwt.h"
@@ -46,6 +47,8 @@
 #include "statsmanager.h"
 #include "acceptrequest.h"
 #include "testhttprequest.h"
+
+using std::map;
 
 #define MAX_ACCEPT_REQUEST_BODY 100000
 
@@ -102,6 +105,21 @@ public:
 		}
 	};
 
+	struct RequestSessionConnections {
+		Connection bytesWrittenConnection;
+		Connection errorRespondingConnection;
+		Connection pausedConnection;
+		Connection finishedConnection;
+		Connection headerBytesSentConnection;
+		Connection bodyBytesSentConnection;
+	};
+
+	struct ZhttpReqConnections {
+		Connection readyReadConnection;
+		Connection writeBytesChangedConnection;
+		Connection errorConnection;
+	};
+
 	ProxySession *q;
 	State state;
 	ZRoutes *zroutes;
@@ -149,6 +167,11 @@ public:
 	AcceptRequest *acceptRequest;
 	LogUtil::Config logConfig;
 	StatsManager *statsManager;
+	Connection inReqReadyReadConnection;
+	Connection inReqErrorConnection;
+	ZhttpReqConnections zhttpReqConnections;
+	Connection finishedConnection;
+	map<RequestSession*, RequestSessionConnections> reqSessionConnectionMap;
 
 	Private(ProxySession *_q, ZRoutes *_zroutes, ZrpcManager *_acceptManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager) :
 		QObject(_q),
@@ -192,7 +215,7 @@ public:
 		foreach(SessionItem *si, sessionItems)
 		{
 			// emitting a signal here is gross, but this way the engine cleans up the request sessions
-			emit q->requestSessionDestroyed(si->rs, false);
+			q->requestSessionDestroyed(si->rs, false);
 			delete si->rs;
 			delete si;
 		}
@@ -232,12 +255,14 @@ public:
 
 		sessionItems += si;
 		sessionItemsBySession.insert(rs, si);
-		connect(rs, &RequestSession::bytesWritten, this, &Private::rs_bytesWritten);
-		connect(rs, &RequestSession::errorResponding, this, &Private::rs_errorResponding);
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::paused, this, &Private::rs_paused);
-		connect(rs, &RequestSession::headerBytesSent, this, &Private::rs_headerBytesSent);
-		connect(rs, &RequestSession::bodyBytesSent, this, &Private::rs_bodyBytesSent);
+		reqSessionConnectionMap[rs] = {
+			rs->bytesWritten.connect(boost::bind(&Private::rs_bytesWritten, this, boost::placeholders::_1, rs)),
+			rs->errorResponding.connect(boost::bind(&Private::rs_errorResponding, this, rs)),
+			rs->paused.connect(boost::bind(&Private::rs_paused, this, rs)),
+			rs->finished.connect(boost::bind(&Private::rs_finished, this, rs)),
+			rs->headerBytesSent.connect(boost::bind(&Private::rs_headerBytesSent, this, boost::placeholders::_1, rs)),
+			rs->bodyBytesSent.connect(boost::bind(&Private::rs_bodyBytesSent, this, boost::placeholders::_1, rs))
+		};
 
 		HttpRequestData rsRequestData = rs->requestData();
 
@@ -294,8 +319,8 @@ public:
 
 				ZhttpRequest *req = inRequest->request();
 
-				connect(req, &ZhttpRequest::readyRead, this, &Private::inRequest_readyRead);
-				connect(req, &ZhttpRequest::error, this, &Private::inRequest_error);
+				inReqReadyReadConnection = req->readyRead.connect(boost::bind(&Private::inRequest_readyRead, this));
+				inReqErrorConnection = req->error.connect(boost::bind(&Private::inRequest_error, this));
 
 				requestBody += req->readBody();
 
@@ -436,9 +461,11 @@ public:
 			zhttpRequest->setParent(this);
 		}
 
-		connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
-		connect(zhttpRequest, &ZhttpRequest::writeBytesChanged, this, &Private::zhttpRequest_writeBytesChanged);
-		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
+		zhttpReqConnections = {
+			zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this)),
+			zhttpRequest->writeBytesChanged.connect(boost::bind(&Private::zhttpRequest_writeBytesChanged, this)),
+			zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this))
+		};
 
 		if(target.trusted)
 			zhttpRequest->setIgnorePolicies(true);
@@ -597,6 +624,7 @@ public:
 
 	void rejectAll(int code, const QString &reason, const QString &errorMessage, const QString &debugErrorMessage)
 	{
+		zhttpReqConnections = ZhttpReqConnections();
 		// kill the active target request, if any
 		delete zhttpRequest;
 		zhttpRequest = 0;
@@ -884,7 +912,7 @@ public:
 
 			if(wasAllowed && !addAllowed)
 			{
-				emit q->addNotAllowed();
+				q->addNotAllowed();
 				if(!self)
 					return;
 			}
@@ -908,6 +936,7 @@ public:
 				return;
 			}
 
+			zhttpReqConnections = ZhttpReqConnections();			
 			delete zhttpRequest;
 			zhttpRequest = 0;
 
@@ -915,7 +944,7 @@ public:
 			if(addAllowed)
 			{
 				addAllowed = false;
-				emit q->addNotAllowed();
+				q->addNotAllowed();
 				if(!self)
 					return;
 			}
@@ -1026,7 +1055,7 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-public slots:
+public:
 	void inRequest_readyRead()
 	{
 		tryRequestRead();
@@ -1161,10 +1190,8 @@ public slots:
 		}
 	}
 
-	void rs_bytesWritten(int count)
+	void rs_bytesWritten(int count, RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response bytes written id=%s: %d", q, rs->rid().second.data(), count);
 
 		SessionItem *si = sessionItemsBySession.value(rs);
@@ -1180,10 +1207,8 @@ public slots:
 			tryResponseRead();
 	}
 
-	void rs_finished()
+	void rs_finished(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response finished id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
@@ -1193,7 +1218,7 @@ public slots:
 			logFinished(si);
 
 		QPointer<QObject> self = this;
-		emit q->requestSessionDestroyed(si->rs, false);
+		q->requestSessionDestroyed(si->rs, false);
 		if(!self)
 			return;
 
@@ -1202,6 +1227,7 @@ public slots:
 
 		sessionItemsBySession.remove(rs);
 		sessionItems.remove(si);
+		reqSessionConnectionMap.erase(rs);
 		delete rs;
 
 		delete si;
@@ -1209,7 +1235,7 @@ public slots:
 		if(sessionItems.isEmpty())
 		{
 			log_debug("proxysession: %p finished by passthrough", q);
-			emit q->finished();
+			q->finished();
 		}
 		else if(wasInputRequest)
 		{
@@ -1221,10 +1247,8 @@ public slots:
 		}
 	}
 
-	void rs_paused()
+	void rs_paused(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response paused id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
@@ -1314,22 +1338,20 @@ public slots:
 			if(!statsManager->connectionSendEnabled())
 			{
 				// flush max. the count will include the connections we just unregistered
-				adata.connMaxPackets += statsManager->getConnMaxPacket(route.id).toVariant();
+				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 
 				// flush max again to get the count without the connections
-				adata.connMaxPackets += statsManager->getConnMaxPacket(route.id).toVariant();
+				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 			}
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);
+			finishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 	}
 
-	void rs_errorResponding()
+	void rs_errorResponding(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		log_debug("proxysession: %p response error id=%s", q, rs->rid().second.data());
 
 		SessionItem *si = sessionItemsBySession.value(rs);
@@ -1344,10 +1366,8 @@ public slots:
 		// don't destroy the RequestSession here. a finished signal will arrive next.
 	}
 
-	void rs_headerBytesSent(int count)
+	void rs_headerBytesSent(int count, RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
@@ -1355,10 +1375,8 @@ public slots:
 			incCounter(Stats::ClientHeaderBytesSent, count);
 	}
 
-	void rs_bodyBytesSent(int count)
+	void rs_bodyBytesSent(int count, RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		SessionItem *si = sessionItemsBySession.value(rs);
 		assert(si);
 
@@ -1372,6 +1390,7 @@ public slots:
 		{
 			AcceptRequest::ResponseData rdata = acceptRequest->result();
 
+			finishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 
@@ -1395,7 +1414,8 @@ public slots:
 				QPointer<QObject> self = this;
 				foreach(RequestSession *rs, toDestroy)
 				{
-					emit q->requestSessionDestroyed(rs, true);
+					q->requestSessionDestroyed(rs, true);
+					reqSessionConnectionMap.erase(rs);
 					delete rs;
 					if(!self)
 						return;
@@ -1403,7 +1423,7 @@ public slots:
 
 				log_debug("proxysession: %p finished for accept", q);
 				cleanup();
-				emit q->finished();
+				q->finished();
 			}
 			else
 			{
@@ -1446,7 +1466,7 @@ public slots:
 		{
 			// wake up receivers and reject
 
-			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && ((ZrpcRequest *)acceptRequest)->result().type() == QVariant::ByteArray)
+			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest)->result()) == QMetaType::QByteArray)
 			{
 				QString errorString = QString::fromUtf8(((ZrpcRequest *)acceptRequest)->result().toByteArray());
 				QString msg = "Error while proxying to origin.";
@@ -1459,6 +1479,7 @@ public slots:
 				cannotAcceptAll();
 			}
 
+			finishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 		}

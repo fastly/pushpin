@@ -782,7 +782,7 @@ impl AsyncTcpStream {
             return Ok(stream);
         }
 
-        Err(last_err.unwrap_or(io::Error::from(io::ErrorKind::InvalidInput)))
+        Err(last_err.unwrap_or_else(|| io::Error::from(io::ErrorKind::InvalidInput)))
     }
 
     pub fn peer_addr(&self) -> Result<std::net::SocketAddr, io::Error> {

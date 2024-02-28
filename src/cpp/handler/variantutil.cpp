@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,6 +23,8 @@
 
 #include "variantutil.h"
 
+#include "qtcompat.h"
+
 namespace VariantUtil {
 
 void setSuccess(bool *ok, QString *errorMessage)
@@ -42,14 +45,14 @@ void setError(bool *ok, QString *errorMessage, const QString &msg)
 
 bool isKeyedObject(const QVariant &in)
 {
-	return (in.type() == QVariant::Hash || in.type() == QVariant::Map);
+	return (typeId(in) == QMetaType::QVariantHash || typeId(in) == QMetaType::QVariantMap);
 }
 
 QVariant createSameKeyedObject(const QVariant &in)
 {
-	if(in.type() == QVariant::Hash)
+	if(typeId(in) == QMetaType::QVariantHash)
 		return QVariantHash();
-	else if(in.type() == QVariant::Map)
+	else if(typeId(in) == QMetaType::QVariantMap)
 		return QVariantMap();
 	else
 		return QVariant();
@@ -57,9 +60,9 @@ QVariant createSameKeyedObject(const QVariant &in)
 
 bool keyedObjectIsEmpty(const QVariant &in)
 {
-	if(in.type() == QVariant::Hash)
+	if(typeId(in) == QMetaType::QVariantHash)
 		return in.toHash().isEmpty();
-	else if(in.type() == QVariant::Map)
+	else if(typeId(in) == QMetaType::QVariantMap)
 		return in.toMap().isEmpty();
 	else
 		return true;
@@ -67,9 +70,9 @@ bool keyedObjectIsEmpty(const QVariant &in)
 
 bool keyedObjectContains(const QVariant &in, const QString &name)
 {
-	if(in.type() == QVariant::Hash)
+	if(typeId(in) == QMetaType::QVariantHash)
 		return in.toHash().contains(name);
-	else if(in.type() == QVariant::Map)
+	else if(typeId(in) == QMetaType::QVariantMap)
 		return in.toMap().contains(name);
 	else
 		return false;
@@ -77,9 +80,9 @@ bool keyedObjectContains(const QVariant &in, const QString &name)
 
 QVariant keyedObjectGetValue(const QVariant &in, const QString &name)
 {
-	if(in.type() == QVariant::Hash)
+	if(typeId(in) == QMetaType::QVariantHash)
 		return in.toHash().value(name);
-	else if(in.type() == QVariant::Map)
+	else if(typeId(in) == QMetaType::QVariantMap)
 		return in.toMap().value(name);
 	else
 		return QVariant();
@@ -87,13 +90,13 @@ QVariant keyedObjectGetValue(const QVariant &in, const QString &name)
 
 void keyedObjectInsert(QVariant *in, const QString &name, const QVariant &value)
 {
-	if(in->type() == QVariant::Hash)
+	if(typeId(*in) == QMetaType::QVariantHash)
 	{
 		QVariantHash h = in->toHash();
 		h.insert(name, value);
 		*in = h;
 	}
-	else if(in->type() == QVariant::Map)
+	else if(typeId(*in) == QMetaType::QVariantMap)
 	{
 		QVariantMap h = in->toMap();
 		h.insert(name, value);
@@ -113,7 +116,7 @@ QVariant getChild(const QVariant &in, const QString &parentName, const QString &
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
 
 	QVariant v;
-	if(in.type() == QVariant::Hash)
+	if(typeId(in) == QMetaType::QVariantHash)
 	{
 		QVariantHash h = in.toHash();
 
@@ -198,7 +201,7 @@ QVariantList getList(const QVariant &in, const QString &parentName, const QStrin
 
 	QString pn = !parentName.isEmpty() ? parentName : QString("object");
 
-	if(v.type() != QVariant::List)
+	if(typeId(v) != QMetaType::QVariantList)
 	{
 		setError(ok, errorMessage, QString("%1 contains '%2' with wrong type").arg(pn, childName));
 		return QVariantList();
@@ -210,13 +213,13 @@ QVariantList getList(const QVariant &in, const QString &parentName, const QStrin
 
 QString getString(const QVariant &in, bool *ok)
 {
-	if(in.type() == QVariant::String)
+	if(typeId(in) == QMetaType::QString)
 	{
 		if(ok)
 			*ok = true;
 		return in.toString();
 	}
-	else if(in.type() == QVariant::ByteArray)
+	else if(typeId(in) == QMetaType::QByteArray)
 	{
 		QByteArray buf = in.toByteArray();
 		if(ok)
@@ -271,8 +274,8 @@ bool convertToJsonStyleInPlace(QVariant *in)
 
 	bool changed = false;
 
-	int type = in->type();
-	if(type == QVariant::Hash)
+	QMetaType::Type type = typeId(*in);
+	if(type == QMetaType::QVariantHash)
 	{
 		QVariantMap vmap;
 		QVariantHash vhash = in->toHash();
@@ -288,7 +291,7 @@ bool convertToJsonStyleInPlace(QVariant *in)
 		*in = vmap;
 		changed = true;
 	}
-	else if(type == QVariant::List)
+	else if(type == QMetaType::QVariantList)
 	{
 		QVariantList vlist = in->toList();
 		for(int n = 0; n < vlist.count(); ++n)
@@ -301,7 +304,7 @@ bool convertToJsonStyleInPlace(QVariant *in)
 		*in = vlist;
 		changed = true;
 	}
-	else if(type == QVariant::ByteArray)
+	else if(type == QMetaType::QByteArray)
 	{
 		QByteArray buf = in->toByteArray();
 		if(!buf.isNull())

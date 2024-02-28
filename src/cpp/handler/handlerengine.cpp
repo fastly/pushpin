@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -35,6 +35,8 @@
 #include "qzmqvalve.h"
 #include "rust/log.h"
 #include "rust/security.h"
+#include "qzmqreqmessage.h"
+#include "qtcompat.h"
 #include "tnetstring.h"
 #include "rtimer.h"
 #include "encrypt.h"
@@ -169,6 +171,7 @@ public:
 	bool autoShare;
 	QString sid;
 	LastIds lastIds;
+	map<Deferred*, Connection> finishedConnection;
 
 	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll, QObject *parent = 0) :
 		Deferred(parent),
@@ -184,7 +187,7 @@ public:
 		{
 			QVariantHash args = req->args();
 
-			if(!args.contains("method") || args["method"].type() != QVariant::ByteArray)
+			if(!args.contains("method") || typeId(args["method"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -192,7 +195,7 @@ public:
 
 			requestData.method = QString::fromLatin1(args["method"].toByteArray());
 
-			if(!args.contains("uri") || args["uri"].type() != QVariant::ByteArray)
+			if(!args.contains("uri") || typeId(args["uri"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -205,7 +208,7 @@ public:
 				return;
 			}
 
-			if(!args.contains("headers") || args["headers"].type() != QVariant::List)
+			if(!args.contains("headers") || typeId(args["headers"]) != QMetaType::QVariantList)
 			{
 				respondError("bad-request");
 				return;
@@ -213,14 +216,14 @@ public:
 
 			foreach(const QVariant &vheader, args["headers"].toList())
 			{
-				if(vheader.type() != QVariant::List)
+				if(typeId(vheader) != QMetaType::QVariantList)
 				{
 					respondError("bad-request");
 					return;
 				}
 
 				QVariantList vlist = vheader.toList();
-				if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+				if(vlist.count() != 2 || typeId(vlist[0]) != QMetaType::QByteArray || typeId(vlist[1]) != QMetaType::QByteArray)
 				{
 					respondError("bad-request");
 					return;
@@ -229,7 +232,7 @@ public:
 				requestData.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
 			}
 
-			if(!args.contains("body") || args["body"].type() != QVariant::ByteArray)
+			if(!args.contains("body") || typeId(args["body"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -240,7 +243,7 @@ public:
 			truncated = false;
 			if(args.contains("truncated"))
 			{
-				if(args["truncated"].type() != QVariant::Bool)
+				if(typeId(args["truncated"]) != QMetaType::Bool)
 				{
 					respondError("bad-request");
 					return;
@@ -252,7 +255,7 @@ public:
 			bool getSession = false;
 			if(args.contains("get-session"))
 			{
-				if(args["get-session"].type() != QVariant::Bool)
+				if(typeId(args["get-session"]) != QMetaType::Bool)
 				{
 					respondError("bad-request");
 					return;
@@ -264,7 +267,7 @@ public:
 			autoShare = false;
 			if(args.contains("auto-share"))
 			{
-				if(args["auto-share"].type() != QVariant::Bool)
+				if(typeId(args["auto-share"]) != QMetaType::Bool)
 				{
 					respondError("bad-request");
 					return;
@@ -277,7 +280,7 @@ public:
 			{
 				// determine session info
 				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8(), this);
-				connect(d, &Deferred::finished, this, &InspectWorker::sessionDetectRulesGet_finished);
+				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, boost::placeholders::_1));
 				return;
 			}
 
@@ -346,7 +349,7 @@ private:
 		setFinished(true);
 	}
 
-private slots:
+private:
 	void sessionDetectRulesGet_finished(const DeferredResult &result)
 	{
 		if(result.success)
@@ -396,7 +399,7 @@ private slots:
 			if(!sid.isEmpty())
 			{
 				Deferred *d = SessionRequest::getLastIds(stateClient, sid, this);
-				connect(d, &Deferred::finished, this, &InspectWorker::sessionGetLastIds_finished);
+				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, boost::placeholders::_1));
 				return;
 			}
 		}
@@ -409,6 +412,7 @@ private slots:
 		doFinish();
 	}
 
+private:
 	void sessionGetLastIds_finished(const DeferredResult &result)
 	{
 		if(result.success)
@@ -479,6 +483,7 @@ public:
 	QList<HttpSession*> sessions;
 	int connectionSubscriptionMax;
 	QSet<QByteArray> needRemoveFromStats;
+	map<Deferred*, Connection> finishedConnection;
 
 	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
 		Deferred(parent),
@@ -515,7 +520,7 @@ public:
 		// process conn-max packets before doing anything else
 		if(args.contains("conn-max"))
 		{
-			if(args["conn-max"].type() != QVariant::List)
+			if(typeId(args["conn-max"]) != QMetaType::QVariantList)
 			{
 				respondError("bad-request");
 				return;
@@ -538,7 +543,7 @@ public:
 
 		if(args.contains("route"))
 		{
-			if(args["route"].type() != QVariant::ByteArray)
+			if(typeId(args["route"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -549,7 +554,7 @@ public:
 
 		if(args.contains("separate-stats"))
 		{
-			if(args["separate-stats"].type() != QVariant::Bool)
+			if(typeId(args["separate-stats"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -563,7 +568,7 @@ public:
 
 		if(args.contains("channel-prefix"))
 		{
-			if(args["channel-prefix"].type() != QVariant::ByteArray)
+			if(typeId(args["channel-prefix"]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -574,7 +579,7 @@ public:
 
 		if(args.contains("channels"))
 		{
-			if(args["channels"].type() != QVariant::List)
+			if(typeId(args["channels"]) != QMetaType::QVariantList)
 			{
 				respondError("bad-request");
 				return;
@@ -583,7 +588,7 @@ public:
 			QVariantList vchannels = args["channels"].toList();
 			foreach(const QVariant &v, vchannels)
 			{
-				if(v.type() != QVariant::ByteArray)
+				if(typeId(v) != QMetaType::QByteArray)
 				{
 					respondError("bad-request");
 					return;
@@ -595,7 +600,7 @@ public:
 
 		if(args.contains("trusted"))
 		{
-			if(args["trusted"].type() != QVariant::Bool)
+			if(typeId(args["trusted"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -606,7 +611,7 @@ public:
 
 		// parse requests
 
-		if(!args.contains("requests") || args["requests"].type() != QVariant::List)
+		if(!args.contains("requests") || typeId(args["requests"]) != QMetaType::QVariantList)
 		{
 			respondError("bad-request");
 			return;
@@ -644,7 +649,7 @@ public:
 
 		// parse response
 
-		if(!args.contains("response") || args["response"].type() != QVariant::Hash)
+		if(!args.contains("response") || typeId(args["response"]) != QMetaType::QVariantHash)
 		{
 			respondError("bad-request");
 			return;
@@ -652,7 +657,7 @@ public:
 
 		QVariantHash rd = args["response"].toHash();
 
-		if(!rd.contains("code") || !rd["code"].canConvert(QVariant::Int))
+		if(!rd.contains("code") || !canConvert(rd["code"], QMetaType::Int))
 		{
 			respondError("bad-request");
 			return;
@@ -660,7 +665,7 @@ public:
 
 		responseData.code = rd["code"].toInt();
 
-		if(!rd.contains("reason") || rd["reason"].type() != QVariant::ByteArray)
+		if(!rd.contains("reason") || typeId(rd["reason"]) != QMetaType::QByteArray)
 		{
 			respondError("bad-request");
 			return;
@@ -668,7 +673,7 @@ public:
 
 		responseData.reason = rd["reason"].toByteArray();
 
-		if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
+		if(!rd.contains("headers") || typeId(rd["headers"]) != QMetaType::QVariantList)
 		{
 			respondError("bad-request");
 			return;
@@ -676,14 +681,14 @@ public:
 
 		foreach(const QVariant &vheader, rd["headers"].toList())
 		{
-			if(vheader.type() != QVariant::List)
+			if(typeId(vheader) != QMetaType::QVariantList)
 			{
 				respondError("bad-request");
 				return;
 			}
 
 			QVariantList vlist = vheader.toList();
-			if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+			if(vlist.count() != 2 || typeId(vlist[0]) != QMetaType::QByteArray || typeId(vlist[1]) != QMetaType::QByteArray)
 			{
 				respondError("bad-request");
 				return;
@@ -692,7 +697,7 @@ public:
 			responseData.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
 		}
 
-		if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
+		if(!rd.contains("body") || typeId(rd["body"]) != QMetaType::QByteArray)
 		{
 			respondError("bad-request");
 			return;
@@ -702,7 +707,7 @@ public:
 
 		if(args.contains("inspect"))
 		{
-			if(args["inspect"].type() != QVariant::Hash)
+			if(typeId(args["inspect"]) != QMetaType::QVariantHash)
 			{
 				respondError("bad-request");
 				return;
@@ -710,7 +715,7 @@ public:
 
 			QVariantHash vinspect = args["inspect"].toHash();
 
-			if(!vinspect.contains("no-proxy") || vinspect["no-proxy"].type() != QVariant::Bool)
+			if(!vinspect.contains("no-proxy") || typeId(vinspect["no-proxy"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -721,7 +726,7 @@ public:
 			inspectInfo.sharingKey.clear();
 			if(vinspect.contains("sharing-key"))
 			{
-				if(vinspect["sharing-key"].type() != QVariant::ByteArray)
+				if(typeId(vinspect["sharing-key"]) != QMetaType::QByteArray)
 				{
 					respondError("bad-request");
 					return;
@@ -732,7 +737,7 @@ public:
 
 			if(vinspect.contains("sid"))
 			{
-				if(vinspect["sid"].type() != QVariant::ByteArray)
+				if(typeId(vinspect["sid"]) != QMetaType::QByteArray)
 				{
 					respondError("bad-request");
 					return;
@@ -743,7 +748,7 @@ public:
 
 			if(vinspect.contains("last-ids"))
 			{
-				if(vinspect["last-ids"].type() != QVariant::Hash)
+				if(typeId(vinspect["last-ids"]) != QMetaType::QVariantHash)
 				{
 					respondError("bad-request");
 					return;
@@ -755,7 +760,7 @@ public:
 				{
 					it.next();
 
-					if(it.value().type() != QVariant::ByteArray)
+					if(typeId(it.value()) != QMetaType::QByteArray)
 					{
 						respondError("bad-request");
 						return;
@@ -774,7 +779,7 @@ public:
 
 		if(args.contains("response-sent"))
 		{
-			if(args["response-sent"].type() != QVariant::Bool)
+			if(typeId(args["response-sent"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -786,7 +791,7 @@ public:
 		bool useSession = false;
 		if(args.contains("use-session"))
 		{
-			if(args["use-session"].type() != QVariant::Bool)
+			if(typeId(args["use-session"]) != QMetaType::Bool)
 			{
 				respondError("bad-request");
 				return;
@@ -838,7 +843,7 @@ public:
 			if(!rules.isEmpty())
 			{
 				Deferred *d = SessionRequest::detectRulesSet(stateClient, rules, this);
-				connect(d, &Deferred::finished, this, &AcceptWorker::sessionDetectRulesSet_finished);
+				finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, boost::placeholders::_1));
 			}
 			else
 			{
@@ -862,47 +867,46 @@ public:
 		return out;
 	}
 
-signals:
-	void sessionsReady();
-	void retryPacketReady(const RetryRequestPacket &packet);
+	Signal sessionsReady;
+	boost::signals2::signal<void(const QByteArray &,const RetryRequestPacket&)> retryPacketReady;
 
 private:
 	static HttpRequestData parseRequestData(const QVariantHash &args, const QString &field)
 	{
-		if(!args.contains(field) || args[field].type() != QVariant::Hash)
+		if(!args.contains(field) || typeId(args[field]) != QMetaType::QVariantHash)
 			return HttpRequestData();
 
 		QVariantHash rd = args[field].toHash();
 
-		if(!rd.contains("method") || rd["method"].type() != QVariant::ByteArray)
+		if(!rd.contains("method") || typeId(rd["method"]) != QMetaType::QByteArray)
 			return HttpRequestData();
 
 		HttpRequestData out;
 		out.method = QString::fromLatin1(rd["method"].toByteArray());
 
-		if(!rd.contains("uri") || rd["uri"].type() != QVariant::ByteArray)
+		if(!rd.contains("uri") || typeId(rd["uri"]) != QMetaType::QByteArray)
 			return HttpRequestData();
 
 		out.uri = QUrl(rd["uri"].toString(), QUrl::StrictMode);
 		if(!out.uri.isValid())
 			return HttpRequestData();
 
-		if(!rd.contains("headers") || rd["headers"].type() != QVariant::List)
+		if(!rd.contains("headers") || typeId(rd["headers"]) != QMetaType::QVariantList)
 			return HttpRequestData();
 
 		foreach(const QVariant &vheader, rd["headers"].toList())
 		{
-			if(vheader.type() != QVariant::List)
+			if(typeId(vheader) != QMetaType::QVariantList)
 				return HttpRequestData();
 
 			QVariantList vlist = vheader.toList();
-			if(vlist.count() != 2 || vlist[0].type() != QVariant::ByteArray || vlist[1].type() != QVariant::ByteArray)
+			if(vlist.count() != 2 || typeId(vlist[0]) != QMetaType::QByteArray || typeId(vlist[1]) != QMetaType::QByteArray)
 				return HttpRequestData();
 
 			out.headers += HttpHeader(vlist[0].toByteArray(), vlist[1].toByteArray());
 		}
 
-		if(!rd.contains("body") || rd["body"].type() != QVariant::ByteArray)
+		if(!rd.contains("body") || typeId(rd["body"]) != QMetaType::QByteArray)
 			return HttpRequestData();
 
 		out.body = rd["body"].toByteArray();
@@ -921,7 +925,7 @@ private:
 		if(!sid.isEmpty())
 		{
 			Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, lastIds, this);
-			connect(d, &Deferred::finished, this, &AcceptWorker::sessionCreateOrUpdate_finished);
+			finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, boost::placeholders::_1));
 		}
 		else
 		{
@@ -1002,11 +1006,13 @@ private:
 			return;
 		}
 
+		QByteArray reqFrom = req->from();
+
 		QVariantHash result;
 		result["accepted"] = true;
 		req->respond(result);
 
-		log_debug("accepting %d requests", requestStates.count());
+		log_debug("accepting %d requests from %s", requestStates.count(), reqFrom.data());
 
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{
@@ -1040,7 +1046,7 @@ private:
 
 					needRemoveFromStats.remove(cid);
 
-					int unreportedTime = stats->removeConnection(cid, true);
+					int unreportedTime = stats->removeConnection(cid, true, reqFrom);
 
 					RetryRequestPacket::Request rpreq;
 					rpreq.rid = rs.rid;
@@ -1089,9 +1095,9 @@ private:
 				}
 
 				rp.route = route.toUtf8();
-				rp.retrySeq = stats->lastRetrySeq();
+				rp.retrySeq = stats->lastRetrySeq(reqFrom);
 
-				emit retryPacketReady(rp);
+				retryPacketReady(reqFrom, rp);
 
 				setFinished(true);
 				return;
@@ -1130,6 +1136,7 @@ private:
 				implicitChannelsSet += channel;
 
 			HttpSession::AcceptData adata;
+			adata.from = reqFrom;
 			adata.requestData = origRequestData;
 			adata.logicalPeerAddress = rs.logicalPeerAddress;
 			adata.debug = rs.debug;
@@ -1156,12 +1163,12 @@ private:
 
 		// engine should directly connect to this and register the holds
 		//   immediately, to avoid a race with the lastId check
-		emit sessionsReady();
+		sessionsReady();
 
 		setFinished(true);
 	}
 
-private slots:
+private:
 	void sessionDetectRulesSet_finished(const DeferredResult &result)
 	{
 		if(!result.success)
@@ -1214,8 +1221,7 @@ public:
 		timer_->start(SUBSCRIBED_DELAY);
 	}
 
-signals:
-	void subscribed();
+	Signal subscribed;
 
 private:
 	QString channel_;
@@ -1224,7 +1230,7 @@ private:
 private slots:
 	void timer_timeout()
 	{
-		emit subscribed();
+		subscribed();
 	}
 };
 
@@ -1259,6 +1265,12 @@ public:
 		}
 	};
 
+	struct WSSessionConnections {
+		Connection sendConnection;
+		Connection expConnection;
+		Connection errorConnection;
+	};
+
 	HandlerEngine *q;
 	Configuration config;
 	ZhttpManager *zhttpIn;
@@ -1273,9 +1285,10 @@ public:
 	QZmq::Socket *inSubSock;
 	QZmq::Valve *inSubValve;
 	QZmq::Socket *retrySock;
-	QZmq::Socket *wsControlInSock;
-	QZmq::Valve *wsControlInValve;
-	QZmq::Socket *wsControlOutSock;
+	QZmq::Socket *wsControlInitSock;
+	QZmq::Valve *wsControlInitValve;
+	QZmq::Socket *wsControlStreamSock;
+	QZmq::Valve *wsControlStreamValve;
 	QZmq::Socket *statsSock;
 	QZmq::Socket *proxyStatsSock;
 	QZmq::Valve *proxyStatsValve;
@@ -1290,6 +1303,24 @@ public:
 	QSet<AcceptWorker*> acceptWorkers;
 	QSet<Deferred*> deferreds;
 	Deferred *report;
+	Connection inspectReqReadyConnection;
+	Connection acceptReqReadyConnection;
+	Connection controlReqReadyConnection;
+	Connection controlServerConnection;
+	Connection itemReadyConnection;
+	map<Deferred*, Connection> finishedConnection;
+	map<Subscription*, Connection> subscribedConnection;
+	map<AcceptWorker*, Connection> retryPacketReadyConnection;
+	map<AcceptWorker*, Connection> sessionsReadyConnection;
+	Connection connectionsRefreshedConnection;
+	Connection unsubscribedConnection;
+	Connection reportedConnection;
+	map<WsSession*, WSSessionConnections> wsSessionConnectionMap;
+	Connection pullConnection;
+	Connection controlInitValveConnection;
+	Connection controlStreamValveConnection;
+	Connection inSubValveConnection;
+	Connection proxyStatConnection;
 
 	Private(HandlerEngine *_q) :
 		QObject(_q),
@@ -1306,9 +1337,10 @@ public:
 		inSubSock(0),
 		inSubValve(0),
 		retrySock(0),
-		wsControlInSock(0),
-		wsControlInValve(0),
-		wsControlOutSock(0),
+		wsControlInitSock(0),
+		wsControlInitValve(0),
+		wsControlStreamSock(0),
+		wsControlStreamValve(0),
 		statsSock(0),
 		proxyStatsSock(0),
 		proxyStatsValve(0),
@@ -1324,7 +1356,7 @@ public:
 		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
 
 		sequencer = new Sequencer(&cs.publishLastIds, this);
-		connect(sequencer, &Sequencer::itemReady, this, &Private::sequencer_itemReady);
+		itemReadyConnection = sequencer->itemReady.connect(boost::bind(&Private::sequencer_itemReady, this, boost::placeholders::_1));
 	}
 
 	~Private()
@@ -1367,36 +1399,36 @@ public:
 		log_info("zhttp in stream: %s", qPrintable(config.serverInStreamSpecs.join(", ")));
 		log_info("zhttp out: %s", qPrintable(config.serverOutSpecs.join(", ")));
 
-		if(!config.inspectSpec.isEmpty())
+		if(!config.inspectSpecs.isEmpty())
 		{
 			inspectServer = new ZrpcManager(this);
 			inspectServer->setBind(false);
 			inspectServer->setIpcFileMode(config.ipcFileMode);
-			connect(inspectServer, &ZrpcManager::requestReady, this, &Private::inspectServer_requestReady);
+			inspectReqReadyConnection = inspectServer->requestReady.connect(boost::bind(&Private::inspectServer_requestReady, this));
 
-			if(!inspectServer->setServerSpecs(QStringList() << config.inspectSpec))
+			if(!inspectServer->setServerSpecs(config.inspectSpecs))
 			{
 				// zrpcmanager logs error
 				return false;
 			}
 
-			log_info("inspect server: %s", qPrintable(config.inspectSpec));
+			log_info("inspect server: %s", qPrintable(config.inspectSpecs.join(", ")));
 		}
 
-		if(!config.acceptSpec.isEmpty())
+		if(!config.acceptSpecs.isEmpty())
 		{
 			acceptServer = new ZrpcManager(this);
 			acceptServer->setBind(false);
 			acceptServer->setIpcFileMode(config.ipcFileMode);
-			connect(acceptServer, &ZrpcManager::requestReady, this, &Private::acceptServer_requestReady);
+			acceptReqReadyConnection = acceptServer->requestReady.connect(boost::bind(&Private::acceptServer_requestReady, this));
 
-			if(!acceptServer->setServerSpecs(QStringList() << config.acceptSpec))
+			if(!acceptServer->setServerSpecs(config.acceptSpecs))
 			{
 				// zrpcmanager logs error
 				return false;
 			}
 
-			log_info("accept server: %s", qPrintable(config.acceptSpec));
+			log_info("accept server: %s", qPrintable(config.acceptSpecs.join(", ")));
 		}
 
 		if(!config.stateSpec.isEmpty())
@@ -1420,7 +1452,7 @@ public:
 			controlServer = new ZrpcManager(this);
 			controlServer->setBind(true);
 			controlServer->setIpcFileMode(config.ipcFileMode);
-			connect(controlServer, &ZrpcManager::requestReady, this, &Private::controlServer_requestReady);
+			controlReqReadyConnection = controlServer->requestReady.connect(boost::bind(&Private::controlServer_requestReady, this));
 
 			if(!controlServer->setServerSpecs(QStringList() << config.commandSpec))
 			{
@@ -1439,12 +1471,12 @@ public:
 			QString errorMessage;
 			if(!ZUtil::setupSocket(inPullSock, config.pushInSpec, true, config.ipcFileMode, &errorMessage))
 			{
-					log_error("%s", qPrintable(errorMessage));
-					return false;
+				log_error("%s", qPrintable(errorMessage));
+				return false;
 			}
 
 			inPullValve = new QZmq::Valve(inPullSock, this);
-			connect(inPullValve, &QZmq::Valve::readyRead, this, &Private::inPull_readyRead);
+			pullConnection = inPullValve->readyRead.connect(boost::bind(&Private::inPull_readyRead, this, boost::placeholders::_1));
 
 			log_info("in pull: %s", qPrintable(config.pushInSpec));
 		}
@@ -1458,8 +1490,8 @@ public:
 			QString errorMessage;
 			if(!ZUtil::setupSocket(inSubSock, config.pushInSubSpecs, !config.pushInSubConnect, config.ipcFileMode, &errorMessage))
 			{
-					log_error("%s", qPrintable(errorMessage));
-					return false;
+				log_error("%s", qPrintable(errorMessage));
+				return false;
 			}
 
 			if(config.pushInSubConnect)
@@ -1471,61 +1503,76 @@ public:
 			}
 
 			inSubValve = new QZmq::Valve(inSubSock, this);
-			connect(inSubValve, &QZmq::Valve::readyRead, this, &Private::inSub_readyRead);
+			inSubValveConnection = inSubValve->readyRead.connect(boost::bind(&Private::inSub_readyRead, this, boost::placeholders::_1));
 
 			log_info("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
 		}
 
-		if(!config.retryOutSpec.isEmpty())
+		if(!config.retryOutSpecs.isEmpty())
 		{
-			retrySock = new QZmq::Socket(QZmq::Socket::Push, this);
+			retrySock = new QZmq::Socket(QZmq::Socket::Router, this);
 			retrySock->setHwm(DEFAULT_HWM);
 			retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
+			retrySock->setRouterMandatoryEnabled(true);
 
-			QString errorMessage;
-			if(!ZUtil::setupSocket(retrySock, config.retryOutSpec, false, config.ipcFileMode, &errorMessage))
+			foreach(const QString &spec, config.retryOutSpecs)
 			{
+				QString errorMessage;
+				if(!ZUtil::setupSocket(retrySock, spec, false, config.ipcFileMode, &errorMessage))
+				{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
+				}
 			}
 
-			log_info("retry: %s", qPrintable(config.retryOutSpec));
+			log_info("retry: %s", qPrintable(config.retryOutSpecs.join(", ")));
 		}
 
-		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
+		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
-			wsControlInSock = new QZmq::Socket(QZmq::Socket::Pull, this);
-			wsControlInSock->setHwm(DEFAULT_HWM);
+			wsControlInitSock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			wsControlInitSock->setHwm(DEFAULT_HWM);
 
-			QString errorMessage;
-			if(!ZUtil::setupSocket(wsControlInSock, config.wsControlInSpec, false, config.ipcFileMode, &errorMessage))
+			foreach(const QString &spec, config.wsControlInitSpecs)
 			{
+				QString errorMessage;
+				if(!ZUtil::setupSocket(wsControlInitSock, spec, false, config.ipcFileMode, &errorMessage))
+				{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
+				}
 			}
 
-			wsControlInValve = new QZmq::Valve(wsControlInSock, this);
-			connect(wsControlInValve, &QZmq::Valve::readyRead, this, &Private::wsControlIn_readyRead);
+			wsControlInitValve = new QZmq::Valve(wsControlInitSock, this);
+			controlInitValveConnection = wsControlInitValve->readyRead.connect(boost::bind(&Private::wsControlInit_readyRead, this, boost::placeholders::_1));
 
-			log_info("ws control in: %s", qPrintable(config.wsControlInSpec));
+			log_info("ws control init: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 
-			wsControlOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
-			wsControlOutSock->setHwm(DEFAULT_HWM);
-			wsControlOutSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
+			wsControlStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
+			wsControlStreamSock->setIdentity(config.instanceId);
+			wsControlStreamSock->setHwm(DEFAULT_HWM);
+			wsControlStreamSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
 
-			if(!ZUtil::setupSocket(wsControlOutSock, config.wsControlOutSpec, false, config.ipcFileMode, &errorMessage))
+			foreach(const QString &spec, config.wsControlStreamSpecs)
 			{
+				QString errorMessage;
+				if(!ZUtil::setupSocket(wsControlStreamSock, spec, false, config.ipcFileMode, &errorMessage))
+				{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
+				}
 			}
 
-			log_info("ws control out: %s", qPrintable(config.wsControlOutSpec));
+			wsControlStreamValve = new QZmq::Valve(wsControlStreamSock, this);
+			controlStreamValveConnection = wsControlStreamValve->readyRead.connect(boost::bind(&Private::wsControlStream_readyRead, this, boost::placeholders::_1));
+
+			log_info("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 		}
 
 		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, this);
-		connect(stats, &StatsManager::connectionsRefreshed, this, &Private::stats_connectionsRefreshed);
-		connect(stats, &StatsManager::unsubscribed, this, &Private::stats_unsubscribed);
-		connect(stats, &StatsManager::reported, this, &Private::stats_reported);
+		connectionsRefreshedConnection = stats->connectionsRefreshed.connect(boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
+		unsubscribedConnection = stats->unsubscribed.connect(boost::bind(&Private::stats_unsubscribed, this, boost::placeholders::_1, boost::placeholders::_2));
+		reportedConnection = stats->reported.connect(boost::bind(&Private::stats_reported, this, boost::placeholders::_1));
 
 		stats->setConnectionSendEnabled(config.statsConnectionSend);
 		stats->setConnectionTtl(config.statsConnectionTtl);
@@ -1567,24 +1614,27 @@ public:
 			}
 		}
 
-		if(!config.proxyStatsSpec.isEmpty())
+		if(!config.proxyStatsSpecs.isEmpty())
 		{
 			proxyStatsSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 			proxyStatsSock->setHwm(DEFAULT_HWM);
 			proxyStatsSock->setShutdownWaitTime(0);
 			proxyStatsSock->subscribe("");
 
-			QString errorMessage;
-			if(!ZUtil::setupSocket(proxyStatsSock, config.proxyStatsSpec, false, config.ipcFileMode, &errorMessage))
+			foreach(const QString &spec, config.proxyStatsSpecs)
 			{
-					log_error("%s", qPrintable(errorMessage));
-					return false;
+				QString errorMessage;
+				if(!ZUtil::setupSocket(proxyStatsSock, spec, false, config.ipcFileMode, &errorMessage))
+				{
+						log_error("%s", qPrintable(errorMessage));
+						return false;
+				}
 			}
 
 			proxyStatsValve = new QZmq::Valve(proxyStatsSock, this);
-			connect(proxyStatsValve, &QZmq::Valve::readyRead, this, &Private::proxyStats_readyRead);
+			proxyStatConnection = proxyStatsValve->readyRead.connect(boost::bind(&Private::proxyStats_readyRead, this, boost::placeholders::_1));
 
-			log_info("proxy stats: %s", qPrintable(config.proxyStatsSpec));
+			log_info("proxy stats: %s", qPrintable(config.proxyStatsSpecs.join(", ")));
 		}
 
 		if(!config.proxyCommandSpec.isEmpty())
@@ -1605,7 +1655,7 @@ public:
 		if(config.pushInHttpPort != -1)
 		{
 			controlHttpServer = new SimpleHttpServer(config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize, this);
-			connect(controlHttpServer, &SimpleHttpServer::requestReady, this, &Private::controlHttpServer_requestReady);
+			controlServerConnection = controlHttpServer->requestReady.connect(boost::bind(&Private::controlHttpServer_requestReady, this));
 			controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
 
 			log_info("http control server: %s:%d", qPrintable(config.pushInHttpAddr.toString()), config.pushInHttpPort);
@@ -1622,8 +1672,10 @@ public:
 			inPullValve->open();
 		if(inSubValve)
 			inSubValve->open();
-		if(wsControlInValve)
-			wsControlInValve->open();
+		if(wsControlInitValve)
+			wsControlInitValve->open();
+		if(wsControlStreamValve)
+			wsControlStreamValve->open();
 		if(proxyStatsValve)
 			proxyStatsValve->open();
 
@@ -1647,7 +1699,7 @@ private:
 		sequencer->addItem(item, seq);
 	}
 
-	void writeRetryPacket(const RetryRequestPacket &packet)
+	void writeRetryPacket(const QByteArray &instanceAddress, const RetryRequestPacket &packet)
 	{
 		if(!retrySock)
 		{
@@ -1658,28 +1710,37 @@ private:
 		QVariant vout = packet.toVariant();
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("OUT retry: %s", qPrintable(TnetString::variantToString(vout, -1)));
+			log_debug("OUT retry: to=%s %s", instanceAddress.data(), qPrintable(TnetString::variantToString(vout, -1)));
 
-		retrySock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
+		QList<QByteArray> msg;
+		msg += instanceAddress;
+		msg += QByteArray();
+		msg += TnetString::fromVariant(vout);
+		retrySock->write(msg);
 	}
 
-	void writeWsControlItems(const QList<WsControlPacket::Item> &items)
+	void writeWsControlItems(const QByteArray &instanceAddress, const QList<WsControlPacket::Item> &items)
 	{
-		if(!wsControlOutSock)
+		if(!wsControlStreamSock)
 		{
 			log_error("wscontrol: can't write, no socket");
 			return;
 		}
 
 		WsControlPacket out;
+		out.from = config.instanceId;
 		out.items = items;
 
 		QVariant vout = out.toVariant();
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("OUT wscontrol: %s", qPrintable(TnetString::variantToString(vout, -1)));
+			log_debug("OUT wscontrol: to=%s %s", instanceAddress.data(), qPrintable(TnetString::variantToString(vout, -1)));
 
-		wsControlOutSock->write(QList<QByteArray>() << TnetString::fromVariant(vout));
+		QList<QByteArray> msg;
+		msg += instanceAddress;
+		msg += QByteArray();
+		msg += TnetString::fromVariant(vout);
+		wsControlStreamSock->write(msg);
 	}
 
 	void addSub(const QString &channel)
@@ -1687,7 +1748,7 @@ private:
 		if(!cs.subs.contains(channel))
 		{
 			Subscription *sub = new Subscription(channel);
-			connect(sub, &Subscription::subscribed, this, &Private::sub_subscribed);
+			subscribedConnection[sub] = sub->subscribed.connect(boost::bind(&Private::sub_subscribed, this, sub));
 			cs.subs.insert(channel, sub);
 			sub->start();
 
@@ -1705,6 +1766,7 @@ private:
 		{
 			Subscription *sub = cs.subs[channel];
 			cs.subs.remove(channel);
+			subscribedConnection.erase(sub);
 			delete sub;
 
 			sequencer->clearPendingForChannel(channel);
@@ -1725,6 +1787,7 @@ private:
 		log_debug("removed ws session: %s", qPrintable(s->cid));
 
 		cs.wsSessions.remove(s->cid);
+		wsSessionConnectionMap.erase(s);
 		delete s;
 	}
 
@@ -1737,7 +1800,7 @@ private:
 			outHeaders += HttpHeader("Content-Type", "text/plain");
 
 		req->respond(code, reason, outHeaders, body.toUtf8());
-		connect(req, &SimpleHttpRequest::finished, req, &QObject::deleteLater);
+		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
 
 		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod(), QString::fromUtf8(req->requestUri()), QString::number(code), QString::number(body.size()));
 		if(items > -1)
@@ -1823,13 +1886,10 @@ private:
 			}
 			else if(f.action == PublishFormat::Refresh)
 			{
-				Deferred *d = ControlRequest::refresh(proxyControlClient, i.cid, this);
-				connect(d, &Deferred::finished, this, &Private::deferred_finished);
-				deferreds += d;
-				return;
+				i.type = WsControlPacket::Item::Refresh;
 			}
 
-			writeWsControlItems(QList<WsControlPacket::Item>() << i);
+			writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
 		}
 	}
 
@@ -1959,7 +2019,156 @@ private:
 		self->hs_finished(std::get<0>(value));
 	}
 
-private slots:
+	void inspectServer_requestReady()
+	{
+		if(inspectWorkers.count() >= INSPECT_WORKERS_MAX)
+			return;
+
+		ZrpcRequest *req = inspectServer->takeNext();
+		if(!req)
+			return;
+
+		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
+		finishedConnection[w] = w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, boost::placeholders::_1, w));
+		inspectWorkers += w;
+	}
+
+	void acceptServer_requestReady()
+	{
+		if(acceptWorkers.count() >= ACCEPT_WORKERS_MAX)
+			return;
+
+		ZrpcRequest *req = acceptServer->takeNext();
+		if(!req)
+			return;
+
+		if(req->method() == "accept")
+		{
+			// NOTE: to ensure sequential processing of conn-max packets,
+			// we need to process any such packets contained within the
+			// accept request immediately before returning to the event loop.
+			// the start() call will do this
+
+			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
+			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
+			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
+			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
+			acceptWorkers += w;
+
+			w->start();
+		}
+		else if(req->method() == "conn-max")
+		{
+			QVariantHash args = req->args();
+
+			if(args.contains("conn-max"))
+			{
+				if(typeId(args["conn-max"]) == QMetaType::QVariantList)
+				{
+					QVariantList packets = args["conn-max"].toList();
+
+					foreach(const QVariant &data, packets)
+					{
+						StatsPacket p;
+						if(!p.fromVariant("conn-max", data) || p.type != StatsPacket::ConnectionsMax)
+							continue;
+
+						stats->processExternalPacket(p, false);
+					}
+				}
+			}
+
+			delete req;
+		}
+		else
+		{
+			req->respondError("method-not-found");
+			delete req;
+		}
+	}
+
+	void controlServer_requestReady()
+	{
+		ZrpcRequest *req = controlServer->takeNext();
+		if(!req)
+			return;
+
+		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+			log_debug("IN command: %s args=%s", qPrintable(req->method()), qPrintable(TnetString::variantToString(req->args(), -1)));
+
+		if(req->method() == "conncheck")
+		{
+			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
+			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
+			deferreds += w;
+		}
+		else if(req->method() == "get-zmq-uris")
+		{
+			QVariantHash out;
+			if(!config.commandSpec.isEmpty())
+				out["command"] = config.commandSpec.toUtf8();
+			if(!config.pushInSpec.isEmpty())
+				out["publish-pull"] = config.pushInSpec.toUtf8();
+			if(!config.pushInSubSpecs.isEmpty() && !config.pushInSubConnect)
+				out["publish-sub"] = config.pushInSubSpecs[0].toUtf8();
+			req->respond(out);
+			delete req;
+		}
+		else if(req->method() == "recover")
+		{
+			recoverCommand();
+			req->respond();
+			delete req;
+		}
+		else if(req->method() == "refresh")
+		{
+			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
+			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
+			deferreds += w;
+		}
+		else if(req->method() == "publish")
+		{
+			QVariantHash args = req->args();
+
+			if(!args.contains("items"))
+			{
+				req->respondError("bad-request", "Invalid format: object does not contain 'items'");
+				delete req;
+				return;
+			}
+
+			if(typeId(args["items"]) != QMetaType::QVariantList)
+			{
+				req->respondError("bad-request", "Invalid format: object contains 'items' with wrong type");
+				delete req;
+				return;
+			}
+
+			QVariantList vitems = args["items"].toList();
+
+			bool ok;
+			QString errorMessage;
+			QList<PublishItem> items = parseItems(vitems, &ok, &errorMessage);
+			if(!ok)
+			{
+				req->respondError("bad-request", QString("Invalid format: %1").arg(errorMessage));
+				delete req;
+				return;
+			}
+
+			req->respond();
+			delete req;
+
+			foreach(const PublishItem &item, items)
+				handlePublishItem(item);
+		}
+		else
+		{
+			req->respondError("method-not-found");
+			delete req;
+		}
+	}
+
 	void sequencer_itemReady(const PublishItem &item)
 	{
 		QList<HttpSession*> responseSessions;
@@ -2166,159 +2375,162 @@ private slots:
 			}
 
 			Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-			connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
+			finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 			deferreds += d;
 		}
 	}
 
-	void inspectServer_requestReady()
+private:
+	void report_finished(const DeferredResult &result)
 	{
-		if(inspectWorkers.count() >= INSPECT_WORKERS_MAX)
-			return;
+		Q_UNUSED(result);
 
-		ZrpcRequest *req = inspectServer->takeNext();
-		if(!req)
-			return;
-
-		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
-		connect(w, &Deferred::finished, this, &Private::inspectWorker_finished);
-		inspectWorkers += w;
+		finishedConnection.erase(report);
+		deferreds.remove(report);
+		report = 0;
 	}
 
-	void acceptServer_requestReady()
+	void sessionUpdateMany_finished(const DeferredResult &result, Deferred *d)
 	{
-		if(acceptWorkers.count() >= ACCEPT_WORKERS_MAX)
-			return;
+		finishedConnection.erase(d);
+		deferreds.remove(d);
 
-		ZrpcRequest *req = acceptServer->takeNext();
-		if(!req)
-			return;
+		if(!result.success)
+			log_error("couldn't update session: condition=%d", result.value.toInt());
+	}
 
-		if(req->method() == "accept")
+	void sessionCreateOrUpdate_finished(const DeferredResult &result, Deferred *d)
+	{
+		finishedConnection.erase(d);
+		deferreds.remove(d);
+
+		if(!result.success)
+			log_error("couldn't create/update session: condition=%d", result.value.toInt());
+	}
+
+	void inspectWorker_finished(const DeferredResult &result, InspectWorker *w)
+	{
+		Q_UNUSED(result);
+
+		finishedConnection.erase(w);
+		inspectWorkers.remove(w);
+
+		// try to read again
+		inspectServer_requestReady();
+	}
+
+	void acceptWorker_finished(const DeferredResult &result, AcceptWorker *w )
+	{
+		Q_UNUSED(result);
+
+		finishedConnection.erase(w);
+		sessionsReadyConnection.erase(w);
+		retryPacketReadyConnection.erase(w);
+		acceptWorkers.remove(w);
+
+		// try to read again
+		acceptServer_requestReady();
+	}
+
+	void deferred_finished(const DeferredResult &result, Deferred *w)
+	{
+		Q_UNUSED(result);
+
+		finishedConnection.erase(w);
+		deferreds.remove(w);
+	}
+	
+	void sub_subscribed(Subscription *sub)
+	{
+		updateSessions(sub->channel());
+	}
+
+	void acceptWorker_sessionsReady(AcceptWorker *w)
+	{
+		QList<HttpSession*> sessions = w->takeSessions();
+		foreach(HttpSession *hs, sessions)
 		{
-			// NOTE: to ensure sequential processing of conn-max packets,
-			// we need to process any such packets contained within the
-			// accept request immediately before returning to the event loop.
-			// the start() call will do this
+			// NOTE: for performance reasons we do not call hs->setParent and
+			// instead leave the object unparented
 
-			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
-			connect(w, &AcceptWorker::finished, this, &Private::acceptWorker_finished);
-			connect(w, &AcceptWorker::sessionsReady, this, &Private::acceptWorker_sessionsReady);
-			connect(w, &AcceptWorker::retryPacketReady, this, &Private::acceptWorker_retryPacketReady);
-			acceptWorkers += w;
+			hs->subscribeCallback().add(Private::hs_subscribe_cb, this);
+			hs->unsubscribeCallback().add(Private::hs_unsubscribe_cb, this);
+			hs->finishedCallback().add(Private::hs_finished_cb, this);
 
-			w->start();
-		}
-		else if(req->method() == "conn-max")
-		{
-			QVariantHash args = req->args();
+			cs.httpSessions.insert(hs->rid(), hs);
 
-			if(args.contains("conn-max"))
-			{
-				if(args["conn-max"].type() == QVariant::List)
-				{
-					QVariantList packets = args["conn-max"].toList();
-
-					foreach(const QVariant &data, packets)
-					{
-						StatsPacket p;
-						if(!p.fromVariant("conn-max", data) || p.type != StatsPacket::ConnectionsMax)
-							continue;
-
-						stats->processExternalPacket(p, false);
-					}
-				}
-			}
-
-			delete req;
-		}
-		else
-		{
-			req->respondError("method-not-found");
-			delete req;
+			hs->start();
 		}
 	}
 
-	void controlServer_requestReady()
+	void acceptWorker_retryPacketReady(const QByteArray &instanceAddress, const RetryRequestPacket &packet)
 	{
-		ZrpcRequest *req = controlServer->takeNext();
-		if(!req)
+		writeRetryPacket(instanceAddress, packet);
+	}
+
+	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
+	{
+		if(stateClient)
+		{
+			// find sids of the connections
+			QHash<QString, LastIds> sidLastIds;
+			foreach(const QByteArray &id, ids)
+			{
+				int at = id.indexOf(':');
+				assert(at != -1);
+				ZhttpRequest::Rid rid(id.mid(0, at), id.mid(at + 1));
+
+				HttpSession *hs = cs.httpSessions.value(rid);
+				if(hs && !hs->sid().isEmpty())
+					sidLastIds[hs->sid()] = LastIds();
+			}
+
+			if(!sidLastIds.isEmpty())
+			{
+				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
+				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
+				deferreds += d;
+			}
+		}
+	}
+
+	void stats_unsubscribed(const QString &mode, const QString &channel)
+	{
+		// NOTE: this callback may be invoked while looping over certain structures,
+		//   so be careful what you touch
+
+		Q_UNUSED(mode);
+
+		if(!cs.responseSessionsByChannel.contains(channel) && !cs.streamSessionsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
+			removeSub(channel);
+	}
+
+	void stats_reported(const QList<StatsPacket> &packets)
+	{
+		// only one outstanding report at a time
+		if(report)
 			return;
 
-		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			log_debug("IN command: %s args=%s", qPrintable(req->method()), qPrintable(TnetString::variantToString(req->args(), -1)));
-
-		if(req->method() == "conncheck")
+		// consolidate data
+		StatsPacket all;
+		all.type = StatsPacket::Report;
+		all.connectionsMax = 0;
+		all.connectionsMinutes = 0;
+		all.messagesReceived = 0;
+		all.messagesSent = 0;
+		all.httpResponseMessagesSent = 0;
+		foreach(const StatsPacket &p, packets)
 		{
-			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
-			connect(w, &ConnCheckWorker::finished, this, &Private::deferred_finished);
-			deferreds += w;
+			all.connectionsMax += qMax(p.connectionsMax, 0);
+			all.connectionsMinutes += qMax(p.connectionsMinutes, 0);
+			all.messagesReceived += qMax(p.messagesReceived, 0);
+			all.messagesSent += qMax(p.messagesSent, 0);
+			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
 		}
-		else if(req->method() == "get-zmq-uris")
-		{
-			QVariantHash out;
-			if(!config.commandSpec.isEmpty())
-				out["command"] = config.commandSpec.toUtf8();
-			if(!config.pushInSpec.isEmpty())
-				out["publish-pull"] = config.pushInSpec.toUtf8();
-			if(!config.pushInSubSpecs.isEmpty() && !config.pushInSubConnect)
-				out["publish-sub"] = config.pushInSubSpecs[0].toUtf8();
-			req->respond(out);
-			delete req;
-		}
-		else if(req->method() == "recover")
-		{
-			recoverCommand();
-			req->respond();
-			delete req;
-		}
-		else if(req->method() == "refresh")
-		{
-			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
-			connect(w, &RefreshWorker::finished, this, &Private::deferred_finished);
-			deferreds += w;
-		}
-		else if(req->method() == "publish")
-		{
-			QVariantHash args = req->args();
 
-			if(!args.contains("items"))
-			{
-				req->respondError("bad-request", "Invalid format: object does not contain 'items'");
-				delete req;
-				return;
-			}
-
-			if(args["items"].type() != QVariant::List)
-			{
-				req->respondError("bad-request", "Invalid format: object contains 'items' with wrong type");
-				delete req;
-				return;
-			}
-
-			QVariantList vitems = args["items"].toList();
-
-			bool ok;
-			QString errorMessage;
-			QList<PublishItem> items = parseItems(vitems, &ok, &errorMessage);
-			if(!ok)
-			{
-				req->respondError("bad-request", QString("Invalid format: %1").arg(errorMessage));
-				delete req;
-				return;
-			}
-
-			req->respond();
-			delete req;
-
-			foreach(const PublishItem &item, items)
-				handlePublishItem(item);
-		}
-		else
-		{
-			req->respondError("method-not-found");
-			delete req;
-		}
+		report = ControlRequest::report(proxyControlClient, all, this);
+		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
+		deferreds += report;
 	}
 
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
@@ -2445,7 +2657,7 @@ private slots:
 		handlePublishItem(item);
 	}
 
-	void wsControlIn_readyRead(const QList<QByteArray> &message)
+	void wsControlInit_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)
 		{
@@ -2453,8 +2665,26 @@ private slots:
 			return;
 		}
 
+		wsControlIn_readyRead(message[0]);
+	}
+
+	void wsControlStream_readyRead(const QList<QByteArray> &message)
+	{
+		QZmq::ReqMessage req(message);
+
+		if(req.content().count() != 1)
+		{
+			log_warning("IN wscontrol: received message with parts != 1, skipping");
+			return;
+		}
+
+		wsControlIn_readyRead(req.content()[0]);
+	}
+
+	void wsControlIn_readyRead(const QByteArray &message)
+	{
 		bool ok;
-		QVariant data = TnetString::toVariant(message[0], 0, &ok);
+		QVariant data = TnetString::toVariant(message, 0, &ok);
 		if(!ok)
 		{
 			log_warning("IN wscontrol: received message with invalid format (tnetstring parse failed), skipping");
@@ -2494,9 +2724,12 @@ private slots:
 				if(!s)
 				{
 					s = new WsSession(this);
-					connect(s, &WsSession::send, this, &Private::wssession_send);
-					connect(s, &WsSession::expired, this, &Private::wssession_expired);
-					connect(s, &WsSession::error, this, &Private::wssession_error);
+					wsSessionConnectionMap[s] = {
+						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, s)),
+						s->expired.connect(boost::bind(&Private::wssession_expired, this, s)),
+						s->error.connect(boost::bind(&Private::wssession_error, this, s))
+					};
+					s->peer = packet.from;
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
@@ -2721,21 +2954,21 @@ private slots:
 		}
 
 		if(!outItems.isEmpty())
-			writeWsControlItems(outItems);
+			writeWsControlItems(packet.from, outItems);
 
 		if(stateClient)
 		{
 			foreach(const QString &sid, createOrUpdateSids)
 			{
 				Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, LastIds(), this);
-				connect(d, &Deferred::finished, this, &Private::sessionCreateOrUpdate_finished);
+				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 
 			if(!updateSids.isEmpty())
 			{
 				Deferred *d = SessionRequest::updateMany(stateClient, updateSids, this);
-				connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
+				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
 				deferreds += d;
 			}
 		}
@@ -2895,7 +3128,7 @@ private slots:
 					return;
 				}
 
-				if(mdata["items"].type() != QVariant::List)
+				if(typeId(mdata["items"]) != QMetaType::QVariantList)
 				{
 					httpControlRespond(req, 400, "Bad Request", "Invalid format: object contains 'items' with wrong type\n");
 					return;
@@ -2967,71 +3200,7 @@ private slots:
 		}
 	}
 
-	void sessionCreateOrUpdate_finished(const DeferredResult &result)
-	{
-		Deferred *d = (Deferred *)sender();
-		deferreds.remove(d);
-
-		if(!result.success)
-			log_error("couldn't create/update session: condition=%d", result.value.toInt());
-	}
-
-	void sessionUpdateMany_finished(const DeferredResult &result)
-	{
-		Deferred *d = (Deferred *)sender();
-		deferreds.remove(d);
-
-		if(!result.success)
-			log_error("couldn't update session: condition=%d", result.value.toInt());
-	}
-
-	void inspectWorker_finished(const DeferredResult &result)
-	{
-		Q_UNUSED(result);
-
-		InspectWorker *w = (InspectWorker *)sender();
-		inspectWorkers.remove(w);
-
-		// try to read again
-		inspectServer_requestReady();
-	}
-
-	void acceptWorker_finished(const DeferredResult &result)
-	{
-		Q_UNUSED(result);
-
-		AcceptWorker *w = (AcceptWorker *)sender();
-		acceptWorkers.remove(w);
-
-		// try to read again
-		acceptServer_requestReady();
-	}
-
-	void acceptWorker_sessionsReady()
-	{
-		AcceptWorker *w = (AcceptWorker *)sender();
-
-		QList<HttpSession*> sessions = w->takeSessions();
-		foreach(HttpSession *hs, sessions)
-		{
-			// NOTE: for performance reasons we do not call hs->setParent and
-			// instead leave the object unparented
-
-			hs->subscribeCallback().add(Private::hs_subscribe_cb, this);
-			hs->unsubscribeCallback().add(Private::hs_unsubscribe_cb, this);
-			hs->finishedCallback().add(Private::hs_finished_cb, this);
-
-			cs.httpSessions.insert(hs->rid(), hs);
-
-			hs->start();
-		}
-	}
-
-	void acceptWorker_retryPacketReady(const RetryRequestPacket &packet)
-	{
-		writeRetryPacket(packet);
-	}
-
+private slots:
 	void hs_subscribe(HttpSession *hs, const QString &channel)
 	{
 		Instruct::HoldMode mode = hs->holdMode();
@@ -3077,6 +3246,7 @@ private slots:
 
 	void hs_finished(HttpSession *hs)
 	{
+		QByteArray addr = hs->retryToAddress();
 		RetryRequestPacket rp = hs->retryPacket();
 
 		cs.httpSessions.remove(hs->rid());
@@ -3087,13 +3257,11 @@ private slots:
 		hs->deleteLater();
 
 		if(!rp.requests.isEmpty())
-			writeRetryPacket(rp);
+			writeRetryPacket(addr, rp);
 	}
 
-	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message)
+	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message, WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		WsControlPacket::Item i;
 		i.cid = s->cid.toUtf8();
 		i.requestId = QByteArray::number(reqId);
@@ -3102,118 +3270,25 @@ private slots:
 		i.message = message;
 		i.queue = true;
 
-		writeWsControlItems(QList<WsControlPacket::Item>() << i);
+		writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
 	}
 
-	void wssession_expired()
+	void wssession_expired(WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		removeWsSession(s);
 	}
 
-	void wssession_error()
+	void wssession_error(WsSession *s)
 	{
-		WsSession *s = (WsSession *)sender();
-
 		log_debug("ws session %s control error", qPrintable(s->cid));
 
 		WsControlPacket::Item i;
 		i.cid = s->cid.toUtf8();
 		i.type = WsControlPacket::Item::Cancel;
 
-		writeWsControlItems(QList<WsControlPacket::Item>() << i);
+		writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
 
 		removeWsSession(s);
-	}
-
-	void sub_subscribed()
-	{
-		Subscription *sub = (Subscription *)sender();
-
-		updateSessions(sub->channel());
-	}
-
-	void stats_connectionsRefreshed(const QList<QByteArray> &ids)
-	{
-		if(stateClient)
-		{
-			// find sids of the connections
-			QHash<QString, LastIds> sidLastIds;
-			foreach(const QByteArray &id, ids)
-			{
-				int at = id.indexOf(':');
-				assert(at != -1);
-				ZhttpRequest::Rid rid(id.mid(0, at), id.mid(at + 1));
-
-				HttpSession *hs = cs.httpSessions.value(rid);
-				if(hs && !hs->sid().isEmpty())
-					sidLastIds[hs->sid()] = LastIds();
-			}
-
-			if(!sidLastIds.isEmpty())
-			{
-				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds, this);
-				connect(d, &Deferred::finished, this, &Private::sessionUpdateMany_finished);
-				deferreds += d;
-			}
-		}
-	}
-
-	void stats_unsubscribed(const QString &mode, const QString &channel)
-	{
-		// NOTE: this callback may be invoked while looping over certain structures,
-		//   so be careful what you touch
-
-		Q_UNUSED(mode);
-
-		if(!cs.responseSessionsByChannel.contains(channel) && !cs.streamSessionsByChannel.contains(channel) && !cs.wsSessionsByChannel.contains(channel))
-			removeSub(channel);
-	}
-
-	void stats_reported(const QList<StatsPacket> &packets)
-	{
-		// only one outstanding report at a time
-		if(report)
-			return;
-
-		// consolidate data
-		StatsPacket all;
-		all.type = StatsPacket::Report;
-		all.connectionsMax = 0;
-		all.connectionsMinutes = 0;
-		all.messagesReceived = 0;
-		all.messagesSent = 0;
-		all.httpResponseMessagesSent = 0;
-		foreach(const StatsPacket &p, packets)
-		{
-			all.connectionsMax += qMax(p.connectionsMax, 0);
-			all.connectionsMinutes += qMax(p.connectionsMinutes, 0);
-			all.messagesReceived += qMax(p.messagesReceived, 0);
-			all.messagesSent += qMax(p.messagesSent, 0);
-			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
-		}
-
-		report = ControlRequest::report(proxyControlClient, all, this);
-		connect(report, &Deferred::finished, this, &Private::report_finished);
-		deferreds += report;
-	}
-
-	void report_finished(const DeferredResult &result)
-	{
-		Q_UNUSED(result);
-
-		deferreds.remove(report);
-		report = 0;
-	}
-
-	void deferred_finished(const DeferredResult &result)
-	{
-		Q_UNUSED(result);
-
-		Deferred *w = (Deferred *)sender();
-
-		deferreds.remove(w);
 	}
 };
 

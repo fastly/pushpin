@@ -14,27 +14,14 @@
  * limitations under the License.
  */
 
-use pushpin::call_c_main;
+use pushpin::{call_c_main, import_cpp};
+use std::env;
 use std::process::ExitCode;
 
-#[cfg(target_os = "macos")]
-#[link(name = "pushpin-cpp")]
-#[link(name = "QtCore", kind = "framework")]
-#[link(name = "QtNetwork", kind = "framework")]
-#[link(name = "c++")]
-extern "C" {
-    fn m2adapter_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-}
-
-#[cfg(not(target_os = "macos"))]
-#[link(name = "pushpin-cpp")]
-#[link(name = "Qt5Core")]
-#[link(name = "Qt5Network")]
-#[link(name = "stdc++")]
-extern "C" {
+import_cpp! {
     fn m2adapter_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
 }
 
 fn main() -> ExitCode {
-    unsafe { ExitCode::from(call_c_main(m2adapter_main)) }
+    unsafe { ExitCode::from(call_c_main(m2adapter_main, env::args_os())) }
 }

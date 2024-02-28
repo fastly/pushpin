@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -28,11 +28,13 @@
 #include "qzmqvalve.h"
 #include "rust/log.h"
 #include "rust/security.h"
+#include "qzmqreqmessage.h"
 #include "tnetstring.h"
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
 #include "packet/statspacket.h"
 #include "packet/zrpcrequestpacket.h"
+#include "qtcompat.h"
 #include "rtimer.h"
 #include "log.h"
 #include "inspectdata.h"
@@ -89,6 +91,19 @@ public:
 		}
 	};
 
+	struct RequestSessionConnections {
+		Connection inspectedConnection;
+		Connection inspectErrorConnection;
+		Connection finishedConnection;
+		Connection finishedByAcceptConnection;
+	};
+
+	struct ProxySessionConnections {
+		Connection addNotAllowedConnection;
+		Connection finishedConnection;
+		Connection reqSessionDestroyedConnection;
+	};
+
 	Engine *q;
 	bool destroying;
 	Configuration config;
@@ -112,6 +127,16 @@ public:
 	ConnectionManager connectionManager;
 	Updater *updater;
 	LogUtil::Config logConfig;
+	Connection changedConnection;
+	Connection cmdReqReadyConnection;
+	Connection sessionReadyConnection;
+	Connection requestReadyConnection;
+	Connection socketReadyConnection;
+	Connection iRequestReadyConnection;
+	map<RequestSession*, RequestSessionConnections> reqSessionConnectionMap;
+	map<ProxySession*, ProxySessionConnections> proxySessionConnectionMap;
+	Connection connMaxConnection;
+	Connection rrConnection;
 
 	Private(Engine *_q) :
 		QObject(_q),
@@ -163,8 +188,10 @@ public:
 
 		wsProxyItemsBySession.clear();
 
-		foreach(RequestSession *rs, requestSessions)
+		foreach(RequestSession *rs, requestSessions){
+			reqSessionConnectionMap.erase(rs);
 			delete rs;
+		}
 		requestSessions.clear();
 
 		WebSocketOverHttp::clearDisconnectManager();
@@ -178,13 +205,13 @@ public:
 	{
 		config = _config;
 
-		// up to 10 timers per connection
-		RTimer::init(config.connectionsMax * 10);
+		// up to 10 timers per session
+		RTimer::init(config.sessionsMax * 10);
 
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
 
-		WebSocketOverHttp::setMaxManagedDisconnects(config.maxWorkers);
+		WebSocketOverHttp::setMaxManagedDisconnects(config.sessionsMax);
 
 		if(!config.routeLines.isEmpty())
 		{
@@ -195,11 +222,11 @@ public:
 		else
 			domainMap = new DomainMap(config.routesFile, this);
 
-		connect(domainMap, &DomainMap::changed, this, &Private::domainMap_changed);
+		changedConnection = domainMap->changed.connect(boost::bind(&Private::domainMap_changed, this));
 
 		zhttpIn = new ZhttpManager(this);
-		connect(zhttpIn, &ZhttpManager::requestReady, this, &Private::zhttpIn_requestReady);
-		connect(zhttpIn, &ZhttpManager::socketReady, this, &Private::zhttpIn_socketReady);
+		requestReadyConnection = zhttpIn->requestReady.connect(boost::bind(&Private::zhttpIn_requestReady, this));
+		socketReadyConnection = zhttpIn->socketReady.connect(boost::bind(&Private::zhttpIn_socketReady, this));
 
 		zhttpIn->setInstanceId(config.clientId);
 		zhttpIn->setServerInSpecs(config.serverInSpecs);
@@ -211,7 +238,7 @@ public:
 			intZhttpIn = new ZhttpManager(this);
 			intZhttpIn->setBind(true);
 			intZhttpIn->setIpcFileMode(config.ipcFileMode);
-			connect(intZhttpIn, &ZhttpManager::requestReady, this, &Private::intZhttpIn_requestReady);
+			iRequestReadyConnection = intZhttpIn->requestReady.connect(boost::bind(&Private::intZhttpIn_requestReady, this));
 
 			intZhttpIn->setInstanceId(config.clientId);
 			intZhttpIn->setServerInSpecs(config.intServerInSpecs);
@@ -226,7 +253,7 @@ public:
 		zroutes->setDefaultInSpecs(config.clientInSpecs);
 
 		sockJsManager = new SockJsManager(config.sockJsUrl, this);
-		connect(sockJsManager, &SockJsManager::sessionReady, this, &Private::sockjs_sessionReady);
+		sessionReadyConnection = sockJsManager->sessionReady.connect(boost::bind(&Private::sockjs_sessionReady, this));
 
 		if(!config.inspectSpec.isEmpty())
 		{
@@ -247,6 +274,7 @@ public:
 		if(!config.acceptSpec.isEmpty())
 		{
 			accept = new ZrpcManager(this);
+			accept->setInstanceId(config.clientId);
 			accept->setBind(true);
 			accept->setIpcFileMode(config.ipcFileMode);
 			if(!accept->setClientSpecs(QStringList() << config.acceptSpec))
@@ -261,8 +289,9 @@ public:
 
 		if(!config.retryInSpec.isEmpty())
 		{
-			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Router, this);
 
+			handler_retry_in_sock->setIdentity(config.clientId);
 			handler_retry_in_sock->setHwm(DEFAULT_HWM);
 
 			QString errorMessage;
@@ -273,36 +302,37 @@ public:
 			}
 
 			handler_retry_in_valve = new QZmq::Valve(handler_retry_in_sock, this);
-			connect(handler_retry_in_valve, &QZmq::Valve::readyRead, this, &Private::handler_retry_in_readyRead);
+			rrConnection = handler_retry_in_valve->readyRead.connect(boost::bind(&Private::handler_retry_in_readyRead, this, boost::placeholders::_1));
 		}
 
 		if(handler_retry_in_valve)
 			handler_retry_in_valve->open();
 
-		if(!config.wsControlInSpec.isEmpty() && !config.wsControlOutSpec.isEmpty())
+		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
 			wsControl = new WsControlManager(this);
 
+			wsControl->setIdentity(config.clientId);
 			wsControl->setIpcFileMode(config.ipcFileMode);
 
-			if(!wsControl->setInSpec(config.wsControlInSpec))
+			if(!wsControl->setInitSpecs(config.wsControlInitSpecs))
 			{
-				log_error("unable to bind to handler_ws_control_in_spec: %s", qPrintable(config.wsControlInSpec));
+				log_error("unable to bind to handler_ws_control_init_specs: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 				return false;
 			}
 
-			if(!wsControl->setOutSpec(config.wsControlOutSpec))
+			if(!wsControl->setStreamSpecs(config.wsControlStreamSpecs))
 			{
-				log_error("unable to bind to handler_ws_control_out_spec: %s", qPrintable(config.wsControlOutSpec));
+				log_error("unable to bind to handler_ws_control_stream_specs: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 				return false;
 			}
 		}
 
 		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
-			stats = new StatsManager(config.connectionsMax, 0, this);
+			stats = new StatsManager(config.sessionsMax, 0, this);
 
-			connect(stats, &StatsManager::connMax, this, &Private::stats_connMax);
+			connMaxConnection = stats->connMax.connect(boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
 
 			stats->setInstanceId(config.clientId);
 			stats->setIpcFileMode(config.ipcFileMode);
@@ -338,7 +368,7 @@ public:
 			command = new ZrpcManager(this);
 			command->setBind(true);
 			command->setIpcFileMode(config.ipcFileMode);
-			connect(command, &ZrpcManager::requestReady, this, &Private::command_requestReady);
+			cmdReqReadyConnection = command->requestReady.connect(boost::bind(&Private::command_requestReady, this));
 
 			if(!command->setServerSpecs(QStringList() << config.commandSpec))
 			{
@@ -395,9 +425,11 @@ public:
 
 			ps = new ProxySession(zroutes, accept, logConfig, stats);
 			// TODO: use callbacks for performance
-			connect(ps, &ProxySession::addNotAllowed, this, &Private::ps_addNotAllowed);
-			connect(ps, &ProxySession::finished, this, &Private::ps_finished);
-			connect(ps, &ProxySession::requestSessionDestroyed, this, &Private::ps_requestSessionDestroyed);
+			proxySessionConnectionMap[ps] = {
+				ps->addNotAllowed.connect(boost::bind(&Private::ps_addNotAllowed, this, ps)),
+				ps->finished.connect(boost::bind(&Private::ps_finished, this, ps)),
+				ps->requestSessionDestroyed.connect(boost::bind(&Private::ps_requestSessionDestroyed, this, boost::placeholders::_1, boost::placeholders::_2))
+			};
 
 			ps->setRoute(route);
 			ps->setDefaultSigKey(config.sigIss, config.sigKey);
@@ -428,7 +460,7 @@ public:
 
 		// proxysession will take it from here
 		// TODO: use callbacks for performance
-		rs->disconnect(this);
+		reqSessionConnectionMap.erase(rs);
 
 		ps->add(rs);
 	}
@@ -469,13 +501,13 @@ public:
 
 	bool canTake()
 	{
-		// don't accept new connections during shutdown
+		// don't accept new sessions during shutdown
 		if(destroying)
 			return false;
 
-		// don't accept new connections if we're servicing maximum
-		int curWorkers = requestSessions.count() + wsProxyItemsBySession.count();
-		if(config.maxWorkers != -1 && curWorkers >= config.maxWorkers)
+		// don't accept new sessions if we're servicing maximum
+		int curSessions = requestSessions.count() + wsProxyItemsBySession.count();
+		if(curSessions >= config.sessionsMax)
 			return false;
 
 		return true;
@@ -590,10 +622,12 @@ public:
 		rs->setAutoShare(autoShare);
 
 		// TODO: use callbacks for performance
-		connect(rs, &RequestSession::inspected, this, &Private::rs_inspected);
-		connect(rs, &RequestSession::inspectError, this, &Private::rs_inspectError);
-		connect(rs, &RequestSession::finished, this, &Private::rs_finished);
-		connect(rs, &RequestSession::finishedByAccept, this, &Private::rs_finishedByAccept);
+		reqSessionConnectionMap[rs] = {
+			rs->inspected.connect(boost::bind(&Private::rs_inspected, this, boost::placeholders::_1, rs)),
+			rs->inspectError.connect(boost::bind(&Private::rs_inspectError, this, rs)),
+			rs->finished.connect(boost::bind(&Private::rs_finished, this, rs)),
+			rs->finishedByAccept.connect(boost::bind(&Private::rs_finishedByAccept, this, rs))
+		};
 
 		requestSessions += rs;
 
@@ -700,7 +734,7 @@ public:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
-private slots:
+private:
 	void zhttpIn_requestReady()
 	{
 		tryTakeNext();
@@ -711,20 +745,24 @@ private slots:
 		tryTakeNext();
 	}
 
-	void sockjs_sessionReady()
-	{
-		tryTakeNext();
-	}
-
 	void intZhttpIn_requestReady()
 	{
 		tryTakeNext();
 	}
 
-	void rs_inspected(const InspectData &idata)
+	void sockjs_sessionReady()
 	{
-		RequestSession *rs = (RequestSession *)sender();
+		tryTakeNext();
+	}
 
+	void rs_inspectError(RequestSession *rs)
+	{
+		// default action is to proxy without sharing
+		doProxy(rs);
+	}
+
+	void rs_inspected(const InspectData &idata, RequestSession *rs)
+	{
 		// if we get here, then the request must be proxied. if it was to be directly
 		//   accepted, then finishedByAccept would have been emitted instead
 		assert(idata.doProxy);
@@ -732,43 +770,31 @@ private slots:
 		doProxy(rs, &idata);
 	}
 
-	void rs_inspectError()
+	void rs_finished(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
-		// default action is to proxy without sharing
-		doProxy(rs);
-	}
-
-	void rs_finished()
-	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		if(!rs->isSockJs())
 			logFinished(rs);
 
 		requestSessions.remove(rs);
+		reqSessionConnectionMap.erase(rs);
 		delete rs;
 
 		tryTakeNext();
 	}
 
-	void rs_finishedByAccept()
+	void rs_finishedByAccept(RequestSession *rs)
 	{
-		RequestSession *rs = (RequestSession *)sender();
-
 		logFinished(rs, true);
 
 		requestSessions.remove(rs);
+		reqSessionConnectionMap.erase(rs);
 		delete rs;
 
 		tryTakeNext();
 	}
 
-	void ps_addNotAllowed()
+	void ps_addNotAllowed(ProxySession *ps)
 	{
-		ProxySession *ps = (ProxySession *)sender();
-
 		ProxyItem *i = proxyItemsBySession.value(ps);
 		assert(i);
 
@@ -780,13 +806,13 @@ private slots:
 		}
 	}
 
-	void ps_finished()
+	void ps_finished(ProxySession *ps)
 	{
-		ProxySession *ps = (ProxySession *)sender();
-
 		ProxyItem *i = proxyItemsBySession.value(ps);
 		assert(i);
 
+		proxySessionConnectionMap.erase(ps);
+		
 		if(i->shared)
 			proxyItemsByKey.remove(i->key);
 		proxyItemsBySession.remove(i->ps);
@@ -831,16 +857,19 @@ private slots:
 		tryTakeNext();
 	}
 
+private:
 	void handler_retry_in_readyRead(const QList<QByteArray> &message)
 	{
-		if(message.count() != 1)
+		QZmq::ReqMessage req(message);
+
+		if(req.content().count() != 1)
 		{
 			log_warning("retry: received message with parts != 1, skipping");
 			return;
 		}
 
 		bool ok;
-		QVariant data = TnetString::toVariant(message[0], 0, &ok);
+		QVariant data = TnetString::toVariant(req.content()[0], 0, &ok);
 		if(!ok)
 		{
 			log_warning("retry: received message with invalid format (tnetstring parse failed), skipping");
@@ -858,9 +887,6 @@ private slots:
 		}
 
 		log_debug("IN (retry) %s %s", qPrintable(p.requestData.method), p.requestData.uri.toEncoded().data());
-
-		if(p.retrySeq >= 0)
-			stats->setRetrySeq(p.route, p.retrySeq);
 
 		InspectData idata;
 		if(p.haveInspectInfo)
@@ -903,9 +929,21 @@ private slots:
 			// note: if the routing table was changed, there's a chance the request
 			//   might get a different route id this time around. this could confuse
 			//   stats processors tracking route+connection mappings.
-			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime);
+			rs->startRetry(zhttpRequest, req.debug, req.autoCrossOrigin, req.jsonpCallback, req.jsonpExtendedResponse, req.unreportedTime, p.retrySeq);
 
 			doProxy(rs, p.haveInspectInfo ? &idata : 0);
+		}
+	}
+
+	void stats_connMax(const StatsPacket &packet)
+	{
+		if(accept->canWriteImmediately())
+		{
+			ZrpcRequestPacket p;
+			p.method = "conn-max";
+			p.args["conn-max"] = QVariantList() << packet.toVariant();
+
+			accept->write(p);
 		}
 	}
 
@@ -922,7 +960,7 @@ private slots:
 			}
 
 			QVariantHash args = req->args();
-			if(!args.contains("ids") || args["ids"].type() != QVariant::List)
+			if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
 			{
 				req->respondError("bad-format");
 				delete req;
@@ -935,7 +973,7 @@ private slots:
 			QList<QByteArray> ids;
 			foreach(const QVariant &vid, vids)
 			{
-				if(vid.type() != QVariant::ByteArray)
+				if(typeId(vid) != QMetaType::QByteArray)
 				{
 					ok = false;
 					break;
@@ -962,7 +1000,7 @@ private slots:
 		else if(req->method() == "refresh")
 		{
 			QVariantHash args = req->args();
-			if(!args.contains("cid") || args["cid"].type() != QVariant::ByteArray)
+			if(!args.contains("cid") || typeId(args["cid"]) != QMetaType::QByteArray)
 			{
 				req->respondError("bad-format");
 				delete req;
@@ -988,7 +1026,7 @@ private slots:
 		else if(req->method() == "report")
 		{
 			QVariantHash args = req->args();
-			if(!args.contains("stats") || args["stats"].type() != QVariant::Hash)
+			if(!args.contains("stats") || typeId(args["stats"]) != QMetaType::QVariantHash)
 			{
 				req->respondError("bad-format");
 				delete req;
@@ -1043,18 +1081,6 @@ private slots:
 	{
 		// connect to new zhttp targets, disconnect from old
 		zroutes->setup(domainMap->zhttpRoutes());
-	}
-
-	void stats_connMax(const StatsPacket &packet)
-	{
-		if(accept->canWriteImmediately())
-		{
-			ZrpcRequestPacket p;
-			p.method = "conn-max";
-			p.args["conn-max"] = QVariantList() << packet.toVariant();
-
-			accept->write(p);
-		}
 	}
 };
 

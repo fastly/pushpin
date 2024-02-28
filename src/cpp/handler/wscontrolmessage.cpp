@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2024 Fanout, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,6 +24,7 @@
 #include "wscontrolmessage.h"
 
 #include <QVariant>
+#include "qtcompat.h"
 #include "variantutil.h"
 
 using namespace VariantUtil;
@@ -181,9 +183,9 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		{
 			QVariant vcontentBin = keyedObjectGetValue(in, "content-bin");
 
-			if(in.type() == QVariant::Map) // JSON input
+			if(typeId(in) == QMetaType::QVariantMap) // JSON input
 			{
-				if(vcontentBin.type() != QVariant::String)
+				if(typeId(vcontentBin) != QMetaType::QString)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
 					return WsControlMessage();
@@ -193,7 +195,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 			}
 			else
 			{
-				if(vcontentBin.type() != QVariant::ByteArray)
+				if(typeId(vcontentBin) != QMetaType::QByteArray)
 				{
 					setError(ok, errorMessage, QString("%1 contains 'content-bin' with wrong type").arg(pn));
 					return WsControlMessage();
@@ -208,9 +210,9 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 		else if(keyedObjectContains(in, "content"))
 		{
 			QVariant vcontent = keyedObjectGetValue(in, "content");
-			if(vcontent.type() == QVariant::ByteArray)
+			if(typeId(vcontent) == QMetaType::QByteArray)
 				out.content = vcontent.toByteArray();
-			else if(vcontent.type() == QVariant::String)
+			else if(typeId(vcontent) == QMetaType::QString)
 				out.content = vcontent.toString().toUtf8();
 			else
 			{
@@ -227,7 +229,7 @@ WsControlMessage WsControlMessage::fromVariant(const QVariant &in, bool *ok, QSt
 			if(keyedObjectContains(in, "timeout"))
 			{
 				QVariant vtimeout = keyedObjectGetValue(in, "timeout");
-				if(!vtimeout.canConvert(QVariant::Int))
+				if(!canConvert(vtimeout, QMetaType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(pn));
 					return WsControlMessage();

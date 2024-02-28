@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,6 +23,7 @@
 
 #include "conncheckworker.h"
 
+#include "qtcompat.h"
 #include "zrpcrequest.h"
 #include "controlrequest.h"
 #include "statsmanager.h"
@@ -34,7 +36,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 
 	QVariantHash args = req_->args();
 
-	if(!args.contains("ids") || args["ids"].type() != QVariant::List)
+	if(!args.contains("ids") || typeId(args["ids"]) != QMetaType::QVariantList)
 	{
 		respondError("bad-request");
 		return;
@@ -44,7 +46,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 
 	foreach(const QVariant &vid, vids)
 	{
-		if(vid.type() != QVariant::ByteArray)
+		if(typeId(vid) != QMetaType::QByteArray)
 		{
 			respondError("bad-request");
 			return;
@@ -63,7 +65,7 @@ ConnCheckWorker::ConnCheckWorker(ZrpcRequest *req, ZrpcManager *proxyControlClie
 	{
 		// ask the proxy about any cids we don't know about
 		Deferred *d = ControlRequest::connCheck(proxyControlClient, missing_, this);
-		connect(d, &Deferred::finished, this, &ConnCheckWorker::proxyConnCheck_finished);
+		finishedConnection_ = d->finished.connect(boost::bind(&ConnCheckWorker::proxyConnCheck_finished, this, boost::placeholders::_1));
 		return;
 	}
 

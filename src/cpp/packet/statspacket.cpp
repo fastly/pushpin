@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,13 +23,13 @@
 
 #include "statspacket.h"
 
-#include <assert.h>
+#include "qtcompat.h"
 
 static bool tryGetInt(const QVariantHash &obj, const QString &name, int *result)
 {
 	if(obj.contains(name))
 	{
-		if(!obj[name].canConvert(QVariant::Int))
+		if(!canConvert(obj[name], QMetaType::Int))
 			return false;
 
 		*result = obj[name].toInt();
@@ -176,14 +176,14 @@ QVariant StatsPacket::toVariant() const
 
 bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 {
-	if(in.type() != QVariant::Hash)
+	if(typeId(in) != QMetaType::QVariantHash)
 		return false;
 
 	QVariantHash obj = in.toHash();
 
 	if(obj.contains("from"))
 	{
-		if(obj["from"].type() != QVariant::ByteArray)
+		if(typeId(obj["from"]) != QMetaType::QByteArray)
 			return false;
 
 		from = obj["from"].toByteArray();
@@ -191,7 +191,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 	if(obj.contains("route"))
 	{
-		if(obj["route"].type() != QVariant::ByteArray)
+		if(typeId(obj["route"]) != QMetaType::QByteArray)
 			return false;
 
 		route = obj["route"].toByteArray();
@@ -201,7 +201,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 	{
 		type = Activity;
 
-		if(!obj.contains("count") || !obj["count"].canConvert(QVariant::Int))
+		if(!obj.contains("count") || !canConvert(obj["count"], QMetaType::Int))
 			return false;
 
 		count = obj["count"].toInt();
@@ -212,20 +212,20 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 	{
 		type = Message;
 
-		if(!obj.contains("channel") || obj["channel"].type() != QVariant::ByteArray)
+		if(!obj.contains("channel") || typeId(obj["channel"]) != QMetaType::QByteArray)
 			return false;
 
 		channel = obj["channel"].toByteArray();
 
 		if(obj.contains("item-id"))
 		{
-			if(obj["item-id"].type() != QVariant::ByteArray)
+			if(typeId(obj["item-id"]) != QMetaType::QByteArray)
 				return false;
 
 			itemId = obj["item-id"].toByteArray();
 		}
 
-		if(!obj.contains("count") || !obj["count"].canConvert(QVariant::Int))
+		if(!obj.contains("count") || !canConvert(obj["count"], QMetaType::Int))
 			return false;
 
 		count = obj["count"].toInt();
@@ -234,20 +234,20 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("blocks"))
 		{
-			if(!obj["blocks"].canConvert(QVariant::Int))
+			if(!canConvert(obj["blocks"], QMetaType::Int))
 				return false;
 
 			blocks = obj["blocks"].toInt();
 		}
 
-		if(!obj.contains("transport") || obj["transport"].type() != QVariant::ByteArray)
+		if(!obj.contains("transport") || typeId(obj["transport"]) != QMetaType::QByteArray)
 			return false;
 
 		transport = obj["transport"].toByteArray();
 	}
 	else if(_type == "conn")
 	{
-		if(!obj.contains("id") || obj["id"].type() != QVariant::ByteArray)
+		if(!obj.contains("id") || typeId(obj["id"]) != QMetaType::QByteArray)
 			return false;
 
 		connectionId = obj["id"].toByteArray();
@@ -255,7 +255,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 		type = Connected;
 		if(obj.contains("unavailable"))
 		{
-			if(obj["unavailable"].type() != QVariant::Bool)
+			if(typeId(obj["unavailable"]) != QMetaType::Bool)
 				return false;
 
 			if(obj["unavailable"].toBool())
@@ -264,7 +264,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(type == Connected)
 		{
-			if(!obj.contains("type") || obj["type"].type() != QVariant::ByteArray)
+			if(!obj.contains("type") || typeId(obj["type"]) != QMetaType::QByteArray)
 				return false;
 
 			QByteArray typeStr = obj["type"].toByteArray();
@@ -277,7 +277,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 			if(obj.contains("peer-address"))
 			{
-				if(obj["peer-address"].type() != QVariant::ByteArray)
+				if(typeId(obj["peer-address"]) != QMetaType::QByteArray)
 					return false;
 
 				QByteArray peerAddressStr = obj["peer-address"].toByteArray();
@@ -287,13 +287,13 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 			if(obj.contains("ssl"))
 			{
-				if(obj["ssl"].type() != QVariant::Bool)
+				if(typeId(obj["ssl"]) != QMetaType::Bool)
 					return false;
 
 				ssl = obj["ssl"].toBool();
 			}
 
-			if(!obj.contains("ttl") || !obj["ttl"].canConvert(QVariant::Int))
+			if(!obj.contains("ttl") || !canConvert(obj["ttl"], QMetaType::Int))
 				return false;
 
 			ttl = obj["ttl"].toInt();
@@ -303,12 +303,12 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 	}
 	else if(_type == "sub")
 	{
-		if(!obj.contains("mode") || obj["mode"].type() != QVariant::ByteArray)
+		if(!obj.contains("mode") || typeId(obj["mode"]) != QMetaType::QByteArray)
 			return false;
 
 		mode = obj["mode"].toByteArray();
 
-		if(!obj.contains("channel") || obj["channel"].type() != QVariant::ByteArray)
+		if(!obj.contains("channel") || typeId(obj["channel"]) != QMetaType::QByteArray)
 			return false;
 
 		channel = obj["channel"].toByteArray();
@@ -316,7 +316,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 		type = Subscribed;
 		if(obj.contains("unavailable"))
 		{
-			if(obj["unavailable"].type() != QVariant::Bool)
+			if(typeId(obj["unavailable"]) != QMetaType::Bool)
 				return false;
 
 			if(obj["unavailable"].toBool())
@@ -325,7 +325,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(type == Subscribed)
 		{
-			if(!obj.contains("ttl") || !obj["ttl"].canConvert(QVariant::Int))
+			if(!obj.contains("ttl") || !canConvert(obj["ttl"], QMetaType::Int))
 				return false;
 
 			ttl = obj["ttl"].toInt();
@@ -334,7 +334,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 			if(obj.contains("subscribers"))
 			{
-				if(!obj["subscribers"].canConvert(QVariant::Int))
+				if(!canConvert(obj["subscribers"], QMetaType::Int))
 					return false;
 
 				subscribers = obj["subscribers"].toInt();
@@ -349,7 +349,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("connections"))
 		{
-			if(!obj["connections"].canConvert(QVariant::Int))
+			if(!canConvert(obj["connections"], QMetaType::Int))
 				return false;
 
 			connectionsMax = obj["connections"].toInt();
@@ -357,7 +357,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("minutes"))
 		{
-			if(!obj["minutes"].canConvert(QVariant::Int))
+			if(!canConvert(obj["minutes"], QMetaType::Int))
 				return false;
 
 			connectionsMinutes = obj["minutes"].toInt();
@@ -365,7 +365,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("received"))
 		{
-			if(!obj["received"].canConvert(QVariant::Int))
+			if(!canConvert(obj["received"], QMetaType::Int))
 				return false;
 
 			messagesReceived = obj["received"].toInt();
@@ -373,7 +373,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("sent"))
 		{
-			if(!obj["sent"].canConvert(QVariant::Int))
+			if(!canConvert(obj["sent"], QMetaType::Int))
 				return false;
 
 			messagesSent = obj["sent"].toInt();
@@ -381,7 +381,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("http-response-sent"))
 		{
-			if(!obj["http-response-sent"].canConvert(QVariant::Int))
+			if(!canConvert(obj["http-response-sent"], QMetaType::Int))
 				return false;
 
 			httpResponseMessagesSent = obj["http-response-sent"].toInt();
@@ -389,7 +389,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("blocks-received"))
 		{
-			if(!obj["blocks-received"].canConvert(QVariant::Int))
+			if(!canConvert(obj["blocks-received"], QMetaType::Int))
 				return false;
 
 			blocksReceived = obj["blocks-received"].toInt();
@@ -397,7 +397,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("blocks-sent"))
 		{
-			if(!obj["blocks-sent"].canConvert(QVariant::Int))
+			if(!canConvert(obj["blocks-sent"], QMetaType::Int))
 				return false;
 
 			blocksSent = obj["blocks-sent"].toInt();
@@ -405,7 +405,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("duration"))
 		{
-			if(!obj["duration"].canConvert(QVariant::Int))
+			if(!canConvert(obj["duration"], QMetaType::Int))
 				return false;
 
 			duration = obj["duration"].toInt();
@@ -442,7 +442,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("requests-received"))
 		{
-			if(!obj["requests-received"].canConvert(QVariant::Int))
+			if(!canConvert(obj["requests-received"], QMetaType::Int))
 				return false;
 
 			int x = obj["requests-received"].toInt();
@@ -456,7 +456,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 	{
 		type = ConnectionsMax;
 
-		if(!obj.contains("max") || !obj["max"].canConvert(QVariant::Int))
+		if(!obj.contains("max") || !canConvert(obj["max"], QMetaType::Int))
 			return false;
 
 		int x = obj["max"].toInt();
@@ -465,7 +465,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		connectionsMax = x;
 
-		if(!obj.contains("ttl") || !obj["ttl"].canConvert(QVariant::Int))
+		if(!obj.contains("ttl") || !canConvert(obj["ttl"], QMetaType::Int))
 			return false;
 
 		x = obj["ttl"].toInt();
@@ -476,7 +476,7 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 
 		if(obj.contains("retry-seq"))
 		{
-			if(!obj["retry-seq"].canConvert(QVariant::LongLong))
+			if(!canConvert(obj["retry-seq"], QMetaType::LongLong))
 				return false;
 
 			int x = obj["retry-seq"].toLongLong();

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2021 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,6 +25,9 @@
 #define RTIMER_H
 
 #include <qobject.h>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class TimerManager;
 
@@ -42,13 +46,13 @@ public:
 	void start();
 	void stop();
 
+	// initialization is thread local
 	static void init(int capacity);
 
 	// only call if there are no active RTimers
 	static void deinit();
 
-signals:
-	void timeout();
+	Signal timeout;
 
 private:
 	friend class TimerManager;

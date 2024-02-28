@@ -12,7 +12,7 @@ mod error;
 #[cfg(tests)]
 mod tests;
 
-pub use self::error::{InvalidID, ParseError};
+pub use self::error::ParseError;
 
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

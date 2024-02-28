@@ -28,6 +28,10 @@
 #include <QUrl>
 #include <QHostAddress>
 #include "httpheaders.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using SignalInt = boost::signals2::signal<void(int)>;
 
 class HttpRequest : public QObject
 {
@@ -84,14 +88,13 @@ public:
 
 	virtual QByteArray readBody(int size = -1) = 0; // takes from the buffer
 
-signals:
 	// indicates input data and/or input finished
-	void readyRead();
+	Signal readyRead;
 	// indicates output data written and/or output finished
-	void bytesWritten(int count);
-	void writeBytesChanged();
-	void paused();
-	void error();
+	SignalInt bytesWritten;
+	Signal writeBytesChanged;
+	Signal paused;
+	Signal error;
 };
 
 #endif

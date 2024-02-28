@@ -47,6 +47,6 @@ void Deferred::setFinished(bool ok, const QVariant &value)
 
 void Deferred::doFinish()
 {
-	emit finished(result_);
+	finished(result_);
 	delete this;
 }

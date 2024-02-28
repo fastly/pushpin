@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,6 +26,7 @@
 #include <QVariant>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "qtcompat.h"
 #include "variantutil.h"
 #include "statusreasons.h"
 
@@ -381,7 +383,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 		if(minstruct.contains("hold"))
 		{
-			if(minstruct["hold"].type() != QVariant::Map)
+			if(typeId(minstruct["hold"]) != QMetaType::QVariantMap)
 			{
 				setError(ok, errorMessage, "instruct contains 'hold' with wrong type");
 				return Instruct();
@@ -475,7 +477,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			if(keyedObjectContains(vhold, "timeout"))
 			{
 				QVariant vtimeout = keyedObjectGetValue(vhold, "timeout");
-				if(!vtimeout.canConvert(QVariant::Int))
+				if(!canConvert(vtimeout, QMetaType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(pn));
 					return Instruct();
@@ -517,9 +519,9 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				else if(keyedObjectContains(vka, "content"))
 				{
 					QVariant vcontent = keyedObjectGetValue(vka, "content");
-					if(vcontent.type() == QVariant::ByteArray)
+					if(typeId(vcontent) == QMetaType::QByteArray)
 						keepAliveData = vcontent.toByteArray();
-					else if(vcontent.type() == QVariant::String)
+					else if(typeId(vcontent) == QMetaType::QString)
 						keepAliveData = vcontent.toString().toUtf8();
 					else
 					{
@@ -531,7 +533,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				if(keyedObjectContains(vka, "timeout"))
 				{
 					QVariant vtimeout = keyedObjectGetValue(vka, "timeout");
-					if(!vtimeout.canConvert(QVariant::Int))
+					if(!canConvert(vtimeout, QMetaType::Int))
 					{
 						setError(ok, errorMessage, QString("%1 contains 'timeout' with wrong type").arg(kpn));
 						return Instruct();
@@ -561,7 +563,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 			if(vmeta.isValid())
 			{
-				if(vmeta.type() == QVariant::Hash)
+				if(typeId(vmeta) == QMetaType::QVariantHash)
 				{
 					QVariantHash hmeta = vmeta.toHash();
 
@@ -611,7 +613,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 		if(minstruct.contains("response"))
 		{
-			if(minstruct["response"].type() != QVariant::Map)
+			if(typeId(minstruct["response"]) != QMetaType::QVariantMap)
 			{
 				if(ok)
 					*ok = false;
@@ -625,7 +627,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			if(keyedObjectContains(in, "code"))
 			{
 				QVariant vcode = keyedObjectGetValue(in, "code");
-				if(!vcode.canConvert(QVariant::Int))
+				if(!canConvert(vcode, QMetaType::Int))
 				{
 					setError(ok, errorMessage, QString("%1 contains 'code' with wrong type").arg(pn));
 					return Instruct();
@@ -658,11 +660,11 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			if(keyedObjectContains(in, "headers"))
 			{
 				QVariant vheaders = keyedObjectGetValue(in, "headers");
-				if(vheaders.type() == QVariant::List)
+				if(typeId(vheaders) == QMetaType::QVariantList)
 				{
 					foreach(const QVariant &vheader, vheaders.toList())
 					{
-						if(vheader.type() != QVariant::List)
+						if(typeId(vheader) != QMetaType::QVariantList)
 						{
 							setError(ok, errorMessage, "headers contains element with wrong type");
 							return Instruct();
@@ -694,7 +696,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 				}
 				else if(isKeyedObject(vheaders))
 				{
-					if(vheaders.type() == QVariant::Hash)
+					if(typeId(vheaders) == QMetaType::QVariantHash)
 					{
 						QVariantHash hheaders = vheaders.toHash();
 
@@ -759,9 +761,9 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			else if(keyedObjectContains(in, "body"))
 			{
 				QVariant vcontent = keyedObjectGetValue(in, "body");
-				if(vcontent.type() == QVariant::ByteArray)
+				if(typeId(vcontent) == QMetaType::QByteArray)
 					newResponse.body = vcontent.toByteArray();
-				else if(vcontent.type() == QVariant::String)
+				else if(typeId(vcontent) == QMetaType::QString)
 					newResponse.body = vcontent.toString().toUtf8();
 				else
 				{

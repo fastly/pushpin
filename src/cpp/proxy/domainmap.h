@@ -29,6 +29,10 @@
 #include <QStringList>
 #include "httpheaders.h"
 #include "jwt.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::scoped_connection;
 
 // this class offers fast access to the routes file. the table is maintained
 //   by a background thread so that file access doesn't cause blocking.
@@ -190,8 +194,7 @@ public:
 
 	bool addRouteLine(const QString &line);
 
-signals:
-	void changed();
+	Signal changed;
 
 private:
 	class Private;

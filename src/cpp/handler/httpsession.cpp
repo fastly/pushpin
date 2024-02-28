@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +29,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QRandomGenerator>
+#include "qtcompat.h"
 #include "rtimer.h"
 #include "log.h"
 #include "bufferlist.h"
@@ -72,10 +73,10 @@ static QByteArray applyBodyPatch(const QByteArray &in, const QVariantList &bodyP
 		vbody = JsonPatch::patch(vbody, bodyPatch, &errorMessage);
 		if(vbody.isValid())
 			vbody = VariantUtil::convertToJsonStyle(vbody);
-		if(vbody.isValid() && (vbody.type() == QVariant::Map || vbody.type() == QVariant::List))
+		if(vbody.isValid() && (typeId(vbody) == QMetaType::QVariantMap || typeId(vbody) == QMetaType::QVariantList))
 		{
 			QJsonDocument doc;
-			if(vbody.type() == QVariant::Map)
+			if(typeId(vbody) == QMetaType::QVariantMap)
 				doc = QJsonDocument(QJsonObject::fromVariantMap(vbody.toMap()));
 			else // List
 				doc = QJsonDocument(QJsonArray::fromVariantList(vbody.toList()));
@@ -167,6 +168,7 @@ public:
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
 	QList<PublishItem> publishQueue;
+	QByteArray retryToAddress;
 	RetryRequestPacket retryPacket;
 	LogUtil::Config logConfig;
 	FilterStack *responseFilters;
@@ -176,6 +178,14 @@ public:
 	Callback<std::tuple<HttpSession *, const QString &>> subscribeCallback;
 	Callback<std::tuple<HttpSession *, const QString &>> unsubscribeCallback;
 	Callback<std::tuple<HttpSession *>> finishedCallback;
+	Connection bytesWrittenConnection;
+	Connection writeBytesChangedConnection;
+	Connection errorConnection;
+	Connection pausedConnection;
+	Connection readyReadOutConnection;
+	Connection errorOutConnection;
+	Connection timerConnection;
+	Connection retryTimerConneciton;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -199,15 +209,15 @@ public:
 		state = NotStarted;
 
 		req->setParent(this);
-		connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-		connect(req, &ZhttpRequest::writeBytesChanged, this, &Private::req_writeBytesChanged);
-		connect(req, &ZhttpRequest::error, this, &Private::req_error);
+		bytesWrittenConnection = req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1));
+		writeBytesChangedConnection = req->writeBytesChanged.connect(boost::bind(&Private::req_writeBytesChanged, this));
+		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
 		timer = new RTimer(this);
-		connect(timer, &RTimer::timeout, this, &Private::timer_timeout);
+		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
 		retryTimer = new RTimer(this);
-		connect(retryTimer, &RTimer::timeout, this, &Private::retryTimer_timeout);
+		retryTimerConneciton = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 
 		adata = _adata;
@@ -233,11 +243,11 @@ public:
 
 		updateManager->unregisterSession(q);
 
-		timer->disconnect(this);
+		timerConnection.disconnect();
 		timer->setParent(0);
 		timer->deleteLater();
 
-		retryTimer->disconnect(this);
+		retryTimerConneciton.disconnect();
 		retryTimer->setParent(0);
 		retryTimer->deleteLater();
 	}
@@ -595,7 +605,7 @@ private:
 			// stop activity while pausing
 			timer->stop();
 
-			connect(req, &ZhttpRequest::paused, this, &Private::req_paused);
+			pausedConnection = req->paused.connect(boost::bind(&Private::req_paused, this));
 			req->pause();
 		}
 		else
@@ -1072,7 +1082,7 @@ private:
 
 			needRemoveFromStats = false;
 
-			int unreportedTime = stats->removeConnection(cid, true);
+			int unreportedTime = stats->removeConnection(cid, true, adata.from);
 
 			ZhttpRequest::ServerState ss = req->serverState();
 
@@ -1128,8 +1138,9 @@ private:
 			}
 
 			rp.route = adata.route.toUtf8();
-			rp.retrySeq = stats->lastRetrySeq();
+			rp.retrySeq = stats->lastRetrySeq(adata.from);
 
+			retryToAddress = adata.from;
 			retryPacket = rp;
 		}
 		else
@@ -1158,8 +1169,8 @@ private:
 
 		outReq = outZhttp->createRequest();
 		outReq->setParent(this);
-		connect(outReq, &ZhttpRequest::readyRead, this, &Private::outReq_readyRead);
-		connect(outReq, &ZhttpRequest::error, this, &Private::outReq_error);
+		readyReadOutConnection = outReq->readyRead.connect(boost::bind(&Private::outReq_readyRead, this));
+		errorOutConnection = outReq->error.connect(boost::bind(&Private::outReq_error, this));
 
 		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 		int nextPort = nextUri.port(currentUri.scheme() == "https" ? 443 : 80);
@@ -1510,6 +1521,7 @@ private slots:
 		}
 	}
 
+private:
 	void timer_timeout()
 	{
 		if(instruct.holdMode == Instruct::ResponseHold)
@@ -1588,6 +1600,11 @@ QHash<QString, Instruct::Channel> HttpSession::channels() const
 QHash<QString, QString> HttpSession::meta() const
 {
 	return d->instruct.meta;
+}
+
+QByteArray HttpSession::retryToAddress() const
+{
+	return d->retryToAddress;
 }
 
 RetryRequestPacket HttpSession::retryPacket() const

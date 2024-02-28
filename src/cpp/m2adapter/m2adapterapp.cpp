@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,6 +33,7 @@
 #include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
+#include "qtcompat.h"
 #include "processquit.h"
 #include "tnetstring.h"
 #include "m2requestpacket.h"
@@ -87,7 +89,7 @@ static void trimlist(QStringList *list)
 
 static bool validateHost(const QByteArray &in)
 {
-	for(int n = 0; n < in.count(); ++n)
+	for(int n = 0; n < in.size(); ++n)
 	{
 		if(in[n] == '/')
 			return false;
@@ -452,6 +454,10 @@ public:
 	QTimer *refreshTimer;
 	Connection quitConnection;
 	Connection hupConnection;
+	map<QZmq::Socket*, Connection> rrConnection;
+	Connection m2InValveConnection;
+	Connection zhttpInValveConnection;
+	Connection zwsInValveConnection;
 
 	Private(M2AdapterApp *_q) :
 		QObject(_q),
@@ -488,9 +494,6 @@ public:
 		qDeleteAll(sessionsByZhttpRid);
 		qDeleteAll(sessionsByZwsRid);
 		qDeleteAll(m2ConnectionsByRid);
-
-		hupConnection.disconnect();
-		quitConnection.disconnect();
 	}
 
 	void start()
@@ -508,12 +511,12 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			case CommandLineHelpRequested:
 				parser.showHelp();
@@ -522,7 +525,7 @@ public:
 
 		if(!init())
 		{
-			emit q->quit(1);
+			q->quit(1);
 			return;
 		}
 
@@ -656,7 +659,7 @@ public:
 		}
 
 		m2_in_valve = new QZmq::Valve(m2_in_sock, this);
-		connect(m2_in_valve, &QZmq::Valve::readyRead, this, &Private::m2_in_readyRead);
+		m2InValveConnection = m2_in_valve->readyRead.connect(boost::bind(&Private::m2_in_readyRead, this, boost::placeholders::_1));
 
 		m2_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
 		m2_out_sock->setShutdownWaitTime(0);
@@ -676,7 +679,7 @@ public:
 			sock->setShutdownWaitTime(0);
 			sock->setHwm(1); // queue up 1 outstanding request at most
 			sock->setWriteQueueEnabled(false);
-			connect(sock, &QZmq::Socket::readyRead, this, &Private::m2_control_readyRead);
+			rrConnection[sock] = sock->readyRead.connect(boost::bind(&Private::m2_control_readyRead, this, sock));
 
 			log_info("m2_control connect %s:%s", m2_send_idents[n].data(), qPrintable(spec));
 			sock->connectToAddress(spec);
@@ -711,7 +714,7 @@ public:
 			}
 
 			zhttp_in_valve = new QZmq::Valve(zhttp_in_sock, this);
-			connect(zhttp_in_valve, &QZmq::Valve::readyRead, this, &Private::zhttp_in_readyRead);
+			zhttpInValveConnection = zhttp_in_valve->readyRead.connect(boost::bind(&Private::zhttp_in_readyRead, this, boost::placeholders::_1));
 
 			zhttp_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 			zhttp_out_sock->setShutdownWaitTime(0);
@@ -780,7 +783,7 @@ public:
 			}
 
 			zws_in_valve = new QZmq::Valve(zws_in_sock, this);
-			connect(zws_in_valve, &QZmq::Valve::readyRead, this, &Private::zws_in_readyRead);
+			zwsInValveConnection = zws_in_valve->readyRead.connect(boost::bind(&Private::zws_in_readyRead, this, boost::placeholders::_1));
 
 			zws_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
 			zws_out_sock->setShutdownWaitTime(0);
@@ -1272,7 +1275,7 @@ public:
 			log_debug("m2: IN control %s %s", m2_send_idents[index].data(), qPrintable(TnetString::variantToString(data)));
 #endif
 
-		if(data.type() != QVariant::Hash)
+		if(typeId(data) != QMetaType::QVariantHash)
 			return;
 
 		QVariantHash vhash = data.toHash();
@@ -1292,7 +1295,7 @@ public:
 		QSet<QByteArray> ids;
 		foreach(const QVariant &row, rows.toList())
 		{
-			if(row.type() != QVariant::List)
+			if(typeId(row) != QMetaType::QVariantList)
 				break;
 
 			QVariantList vlist = row.toList();
@@ -2316,7 +2319,6 @@ public:
 		}
 	}
 
-private slots:
 	void m2_in_readyRead(const QList<QByteArray> &message)
 	{
 		if(message.count() != 1)
@@ -2736,9 +2738,8 @@ private slots:
 		}
 	}
 
-	void m2_control_readyRead()
+	void m2_control_readyRead(QZmq::Socket *sock)
 	{
-		QZmq::Socket *sock = (QZmq::Socket *)sender();
 		int index = -1;
 		for(int n = 0; n < controlPorts.count(); ++n)
 		{
@@ -2823,6 +2824,7 @@ private slots:
 		handleZhttpIn(WebSocket, message);
 	}
 
+private slots:
 	void status_timeout()
 	{
 		int now = time.elapsed();
@@ -2867,14 +2869,11 @@ private slots:
 	{
 		log_info("stopping...");
 
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
 		log_info("stopped");
-		emit q->quit(0);
+		q->quit(0);
 	}
 };
 

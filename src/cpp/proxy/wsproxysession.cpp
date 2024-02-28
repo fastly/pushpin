@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -232,6 +233,34 @@ public:
 
 	typedef QPair<WebSocket::Frame, bool> QueuedFrame;
 
+	struct WSConnections {
+		Connection connectedConnection;
+		Connection readyReadConnection;
+		Connection writeBytesChangedConnection;
+		Connection peerClosedConnection;
+		Connection closedConnection;
+		Connection errorConnection;
+	};
+
+	struct InWSConnections {
+		Connection readyReadConnection;
+		Connection framesWrittenConnection;
+		Connection writeBytesChangedConnection;
+		Connection peerClosedConnection;
+		Connection closedConnection;
+		Connection errorConnection;
+	};
+
+	struct WSProxyConnections {
+		Connection sendEventReceivedConnection;
+		Connection keepAliveSetupEventReceivedConnection;
+		Connection refreshEventReceivedConnection;
+		Connection closeEventReceivedConnection;
+		Connection detachEventReceivedConnection;
+		Connection cancelEventReceivedConnection;
+		Connection errorConnection;
+	};
+
 	WsProxySession *q;
 	State state;
 	ZRoutes *zroutes;
@@ -279,6 +308,11 @@ public:
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
+	Connection keepAliveConneciton;
+	Connection aboutToSendRequestConnection;
+	map<WsControlSession*, WSProxyConnections> wsProxyConnectionMap;
+	WSConnections outWSConnection;
+	InWSConnections inWSConnection;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -319,10 +353,12 @@ public:
 		cleanupKeepAliveTimer();
 
 		cleanupInSock();
-
+		
+		outWSConnection = WSConnections();
 		delete outSock;
 		outSock = 0;
 
+		wsProxyConnectionMap.erase(wsControl);
 		delete wsControl;
 		wsControl = 0;
 
@@ -338,6 +374,7 @@ public:
 		if(inSock)
 		{
 			connectionManager->removeConnection(inSock);
+			inWSConnection = InWSConnections();
 			delete inSock;
 			inSock = 0;
 		}
@@ -347,7 +384,7 @@ public:
 	{
 		if(keepAliveTimer)
 		{
-			keepAliveTimer->disconnect(this);
+			keepAliveConneciton.disconnect();
 			keepAliveTimer->setParent(0);
 			keepAliveTimer->deleteLater();
 			keepAliveTimer = 0;
@@ -367,12 +404,14 @@ public:
 
 		inSock = sock;
 		inSock->setParent(this);
-		connect(inSock, &WebSocket::readyRead, this, &Private::in_readyRead);
-		connect(inSock, &WebSocket::framesWritten, this, &Private::in_framesWritten);
-		connect(inSock, &WebSocket::writeBytesChanged, this, &Private::in_writeBytesChanged);
-		connect(inSock, &WebSocket::peerClosed, this, &Private::in_peerClosed);
-		connect(inSock, &WebSocket::closed, this, &Private::in_closed);
-		connect(inSock, &WebSocket::error, this, &Private::in_error);
+		inWSConnection = InWSConnections{
+			inSock->readyRead.connect(boost::bind(&Private::in_readyRead, this)),
+			inSock->framesWritten.connect(boost::bind(&Private::in_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
+			inSock->writeBytesChanged.connect(boost::bind(&Private::in_writeBytesChanged, this)),
+			inSock->peerClosed.connect(boost::bind(&Private::in_peerClosed, this)),
+			inSock->closed.connect(boost::bind(&Private::in_closed, this)),
+			inSock->error.connect(boost::bind(&Private::in_error, this))
+		};
 
 		requestData.uri = inSock->requestUri();
 		requestData.headers = inSock->requestHeaders();
@@ -529,7 +568,7 @@ public:
 				if(target.oneEvent)
 					woh->setMaxEventsPerRequest(1);
 
-				connect(woh, &WebSocketOverHttp::aboutToSendRequest, this, &Private::out_aboutToSendRequest);
+				aboutToSendRequestConnection = woh->aboutToSendRequest.connect(boost::bind(&Private::out_aboutToSendRequest, this, woh));
 				outSock = woh;
 			}
 			else
@@ -545,13 +584,14 @@ public:
 				outSock->setParent(this);
 			}
 		}
-
-		connect(outSock, &WebSocket::connected, this, &Private::out_connected);
-		connect(outSock, &WebSocket::readyRead, this, &Private::out_readyRead);
-		connect(outSock, &WebSocket::writeBytesChanged, this, &Private::out_writeBytesChanged);
-		connect(outSock, &WebSocket::peerClosed, this, &Private::out_peerClosed);
-		connect(outSock, &WebSocket::closed, this, &Private::out_closed);
-		connect(outSock, &WebSocket::error, this, &Private::out_error);
+		outWSConnection = {
+			outSock->connected.connect(boost::bind(&Private::out_connected, this)),
+			outSock->readyRead.connect(boost::bind(&Private::out_readyRead, this)),
+			outSock->writeBytesChanged.connect(boost::bind(&Private::out_writeBytesChanged, this)),
+			outSock->peerClosed.connect(boost::bind(&Private::out_peerClosed, this)),
+			outSock->closed.connect(boost::bind(&Private::out_closed, this)),
+			outSock->error.connect(boost::bind(&Private::out_error, this))
+		};
 
 		if(target.trusted)
 			outSock->setIgnorePolicies(true);
@@ -822,6 +862,7 @@ private slots:
 			{
 				if(outSock->state() == WebSocket::Connecting)
 				{
+					outWSConnection = WSConnections();
 					delete outSock;
 					outSock = 0;
 
@@ -853,6 +894,7 @@ private slots:
 
 		if(!detached)
 		{
+			outWSConnection = WSConnections();
 			delete outSock;
 			outSock = 0;
 		}
@@ -898,12 +940,15 @@ private slots:
 			if(wsControlManager)
 			{
 				wsControl = wsControlManager->createSession(publicCid);
-				connect(wsControl, &WsControlSession::sendEventReceived, this, &Private::wsControl_sendEventReceived);
-				connect(wsControl, &WsControlSession::keepAliveSetupEventReceived, this, &Private::wsControl_keepAliveSetupEventReceived);
-				connect(wsControl, &WsControlSession::closeEventReceived, this, &Private::wsControl_closeEventReceived);
-				connect(wsControl, &WsControlSession::detachEventReceived, this, &Private::wsControl_detachEventReceived);
-				connect(wsControl, &WsControlSession::cancelEventReceived, this, &Private::wsControl_cancelEventReceived);
-				connect(wsControl, &WsControlSession::error, this, &Private::wsControl_error);
+				wsProxyConnectionMap[wsControl] = {
+					wsControl->sendEventReceived.connect(boost::bind(&Private::wsControl_sendEventReceived, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3)),
+					wsControl->keepAliveSetupEventReceived.connect(boost::bind(&Private::wsControl_keepAliveSetupEventReceived, this, boost::placeholders::_1, boost::placeholders::_2)),
+					wsControl->refreshEventReceived.connect(boost::bind(&Private::wsControl_refreshEventReceived, this)),
+					wsControl->closeEventReceived.connect(boost::bind(&Private::wsControl_closeEventReceived, this, boost::placeholders::_1, boost::placeholders::_2)),
+					wsControl->detachEventReceived.connect(boost::bind(&Private::wsControl_detachEventReceived, this)),
+					wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this)),
+					wsControl->error.connect(boost::bind(&Private::wsControl_error, this))
+				};
 				wsControl->start(route.id, route.separateStats, channelPrefix, inSock->requestUri());
 
 				foreach(const QString &subChannel, target.subscriptions)
@@ -946,6 +991,7 @@ private slots:
 	{
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
+		outWSConnection = WSConnections();
 		delete outSock;
 		outSock = 0;
 
@@ -962,6 +1008,7 @@ private slots:
 
 		if(detached)
 		{
+			outWSConnection = WSConnections();
 			delete outSock;
 			outSock = 0;
 
@@ -988,6 +1035,7 @@ private slots:
 					break;
 			}
 
+			outWSConnection = WSConnections();
 			delete outSock;
 			outSock = 0;
 
@@ -998,6 +1046,7 @@ private slots:
 		{
 			cleanupInSock();
 
+			outWSConnection = WSConnections();
 			delete outSock;
 			outSock = 0;
 
@@ -1005,15 +1054,14 @@ private slots:
 		}
 	}
 
-	void out_aboutToSendRequest()
+	void out_aboutToSendRequest(WebSocketOverHttp *woh)
 	{
-		WebSocketOverHttp *woh = (WebSocketOverHttp *)sender();
-
 		ProxyUtil::applyGripSig("wsproxysession", q, &requestData.headers, sigIss, sigKey);
 
 		woh->setHeaders(requestData.headers);
 	}
 
+private:
 	void wsControl_sendEventReceived(WebSocket::Frame::Type type, const QByteArray &message, bool queue)
 	{
 		// this method accepts a full message, which must be typed
@@ -1062,7 +1110,7 @@ private slots:
 			if(!keepAliveTimer)
 			{
 				keepAliveTimer = new RTimer(this);
-				connect(keepAliveTimer, &RTimer::timeout, this, &Private::keepAliveTimer_timeout);
+				keepAliveConneciton = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 				keepAliveTimer->setSingleShot(true);
 			}
 
@@ -1072,6 +1120,13 @@ private slots:
 		{
 			cleanupKeepAliveTimer();
 		}
+	}
+
+	void wsControl_refreshEventReceived()
+	{
+		WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(outSock);
+		if(woh)
+			woh->refresh();
 	}
 
 	void wsControl_closeEventReceived(int code, const QByteArray &reason)
@@ -1099,6 +1154,7 @@ private slots:
 	{
 		if(outSock)
 		{
+			outWSConnection = WSConnections();
 			delete outSock;
 			outSock = 0;
 		}
