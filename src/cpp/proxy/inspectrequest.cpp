@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2015 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,13 +24,14 @@
 #include "inspectrequest.h"
 
 #include "packet/httprequestdata.h"
+#include "qtcompat.h"
 #include "inspectdata.h"
 
 static InspectData resultToData(const QVariant &in, bool *ok)
 {
 	InspectData out;
 
-	if(in.type() != QVariant::Hash)
+	if(typeId(in) != QMetaType::QVariantHash)
 	{
 		*ok = false;
 		return InspectData();
@@ -37,7 +39,7 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 
 	QVariantHash obj = in.toHash();
 
-	if(!obj.contains("no-proxy") || obj["no-proxy"].type() != QVariant::Bool)
+	if(!obj.contains("no-proxy") || typeId(obj["no-proxy"]) != QMetaType::Bool)
 	{
 		*ok = false;
 		return InspectData();
@@ -47,7 +49,7 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 	out.sharingKey.clear();
 	if(obj.contains("sharing-key"))
 	{
-		if(obj["sharing-key"].type() != QVariant::ByteArray)
+		if(typeId(obj["sharing-key"]) != QMetaType::QByteArray)
 		{
 			*ok = false;
 			return InspectData();
@@ -59,7 +61,7 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 	out.sid.clear();
 	if(obj.contains("sid"))
 	{
-		if(obj["sid"].type() != QVariant::ByteArray)
+		if(typeId(obj["sid"]) != QMetaType::QByteArray)
 		{
 			*ok = false;
 			return InspectData();
@@ -71,7 +73,7 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 	out.lastIds.clear();
 	if(obj.contains("last-ids"))
 	{
-		if(obj["last-ids"].type() != QVariant::Hash)
+		if(typeId(obj["last-ids"]) != QMetaType::QVariantHash)
 		{
 			*ok = false;
 			return InspectData();
@@ -83,7 +85,7 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 		{
 			it.next();
 
-			if(it.value().type() != QVariant::ByteArray)
+			if(typeId(it.value()) != QMetaType::QByteArray)
 			{
 				*ok = false;
 				return InspectData();

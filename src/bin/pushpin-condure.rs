@@ -18,7 +18,7 @@
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
 use pushpin::condure::{run, App, Config};
-use pushpin::log::get_simple_logger;
+use pushpin::log::{get_simple_logger, local_offset_check};
 use pushpin::version;
 use pushpin::{ListenConfig, ListenSpec};
 use std::error::Error;
@@ -199,7 +199,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
-    let matches = Command::new("condure")
+    let matches = Command::new("pushpin-condure")
         .version(version())
         .about("HTTP/WebSocket connection manager")
         .arg(
@@ -411,6 +411,8 @@ fn main() {
 
     log::set_max_level(level);
 
+    local_offset_check();
+
     if *matches.get_one("sizes").unwrap() {
         for (name, size) in App::sizes() {
             println!("{}: {} bytes", name, size);
@@ -478,7 +480,7 @@ fn main() {
                 process::exit(1);
             }
         },
-        None => (req_maxconn + stream_maxconn) * 2,
+        None => stream_maxconn * 2,
     };
 
     let connection_blocks_max = matches.get_one::<String>("connection-blocks-max").unwrap();
@@ -558,7 +560,7 @@ fn main() {
     let ipc_file_mode = matches
         .get_one::<String>("ipc-file-mode")
         .cloned()
-        .unwrap_or(String::from("0"));
+        .unwrap_or_else(|| String::from("0"));
 
     let ipc_file_mode = match u32::from_str_radix(&ipc_file_mode, 8) {
         Ok(x) => x,

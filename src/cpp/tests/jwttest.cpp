@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,6 +24,7 @@
 #include <QtTest/QtTest>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "qtcompat.h"
 #include "jwt.h"
 
 static const char *test_ec_private_key_pem =
@@ -87,7 +89,7 @@ private slots:
 	void validToken()
 	{
 		QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.oBia0Fph39FwQWv0TS7Disg4qa0aFa8qpMaYDrIXZqs", Jwt::DecodingKey::fromSecret("secret"));
-		QVERIFY(vclaim.type() == QVariant::Map);
+		QVERIFY(typeId(vclaim) == QMetaType::QVariantMap);
 		QVariantMap claim = vclaim.toMap();
 		QVERIFY(claim.value("foo") == "bar");
 	}
@@ -100,7 +102,7 @@ private slots:
 		key += 0x80;
 		key += 0xfe;
 		QVariant vclaim = Jwt::decode("eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJmb28iOiAiYmFyIn0.-eLxyGEITnd6IP4WvGJx9CmIOt--Qcs3LB6wblJ7KXI", Jwt::DecodingKey::fromSecret(key));
-		QVERIFY(vclaim.type() == QVariant::Map);
+		QVERIFY(typeId(vclaim) == QMetaType::QVariantMap);
 		QVariantMap claim = vclaim.toMap();
 		QVERIFY(claim.value("foo") == "bar");
 	}

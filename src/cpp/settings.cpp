@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,6 +27,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
+#include "qtcompat.h"
 #include "config.h"
 
 Settings::Settings(const QString &fileName) :
@@ -153,11 +155,11 @@ QVariant Settings::value(const QString &key, const QVariant &defaultValue) const
 	QVariant v = valueRaw(key, defaultValue);
 	if(v.isValid())
 	{
-		if(v.type() == QVariant::String)
+		if(typeId(v) == QMetaType::QString)
 		{
 			v = resolveVars(v.toString());
 		}
-		else if(v.type() == QVariant::StringList)
+		else if(typeId(v) == QMetaType::QStringList)
 		{
 			QStringList oldList = v.toStringList();
 			QStringList newList;

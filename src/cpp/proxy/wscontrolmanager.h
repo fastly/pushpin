@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -36,10 +37,11 @@ public:
 	WsControlManager(QObject *parent = 0);
 	~WsControlManager();
 
+	void setIdentity(const QByteArray &id);
 	void setIpcFileMode(int mode);
 
-	bool setInSpec(const QString &spec);
-	bool setOutSpec(const QString &spec);
+	bool setInitSpecs(const QStringList &specs);
+	bool setStreamSpecs(const QStringList &specs);
 
 	WsControlSession *createSession(const QByteArray &cid);
 
@@ -50,8 +52,8 @@ private:
 	friend class WsControlSession;
 	void link(WsControlSession *s, const QByteArray &cid);
 	void unlink(const QByteArray &cid);
-	bool canWriteImmediately() const;
-	void write(const WsControlPacket::Item &item);
+	void writeInit(const WsControlPacket::Item &item);
+	void writeStream(const WsControlPacket::Item &item, const QByteArray &instanceAddress);
 	void registerKeepAlive(WsControlSession *s);
 	void unregisterKeepAlive(WsControlSession *s);
 };

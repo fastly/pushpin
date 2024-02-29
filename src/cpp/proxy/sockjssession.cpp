@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2021 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,12 +30,15 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include "qtcompat.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjsmanager.h"
+
+using std::map;
 
 #define BUFFER_SIZE 200000
 #define KEEPALIVE_TIMEOUT 25
@@ -113,6 +116,20 @@ public:
 		}
 	};
 
+	struct WSConnections {
+		Connection readyReadConnection;
+		Connection framesWrittenConnection;
+		Connection writeBytesChangedConnection;
+		Connection closedConnection;
+		Connection peerClosedConnection;
+		Connection sockErrorConnection;
+	};
+
+	struct ReqConnections {
+		Connection bytesWrittenConnection;
+		Connection errorConnection;
+	};
+
 	SockJsSession *q;
 	SockJsManager *manager;
 	Mode mode;
@@ -146,6 +163,8 @@ public:
 	int peerCloseCode;
 	QString peerCloseReason;
 	bool updating;
+	ReqConnections reqConnections;
+	WSConnections wsConnection;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -182,6 +201,7 @@ public:
 
 	void removeRequestItem(RequestItem *ri)
 	{
+		reqConnections = ReqConnections();
 		requests.remove(ri->req);
 		delete ri;
 	}
@@ -209,7 +229,7 @@ public:
 		{
 			RequestItem *ri = requests.value(req);
 			assert(ri);
-
+			reqConnections = ReqConnections();
 			// detach req from RequestItem
 			requests.remove(req);
 			ri->req = 0;
@@ -229,6 +249,7 @@ public:
 		}
 		requests.clear();
 
+		wsConnection = WSConnections();
 		delete sock;
 		sock = 0;
 
@@ -254,17 +275,21 @@ public:
 
 			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
 
-			connect(req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-			connect(req, &ZhttpRequest::error, this, &Private::req_error);
+			reqConnections = {
+				req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
+				req->error.connect(boost::bind(&Private::req_error, this, req))
+			};
 		}
 		else
 		{
-			connect(sock, &ZWebSocket::readyRead, this, &Private::sock_readyRead);
-			connect(sock, &ZWebSocket::framesWritten, this, &Private::sock_framesWritten);
-			connect(sock, &ZWebSocket::writeBytesChanged, this, &Private::sock_writeBytesChanged);
-			connect(sock, &ZWebSocket::closed, this, &Private::sock_closed);
-			connect(sock, &ZWebSocket::peerClosed, this, &Private::sock_peerClosed);
-			connect(sock, &ZWebSocket::error, this, &Private::sock_error);
+			wsConnection = WSConnections{
+				sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this)),
+				sock->framesWritten.connect(boost::bind(&Private::sock_framesWritten, this, boost::placeholders::_1, boost::placeholders::_2)),
+				sock->writeBytesChanged.connect(boost::bind(&Private::sock_writeBytesChanged, this)),
+				sock->closed.connect(boost::bind(&Private::sock_closed, this)),
+				sock->peerClosed.connect(boost::bind(&Private::sock_peerClosed, this)),
+				sock->error.connect(boost::bind(&Private::sock_error, this))
+			};
 		}
 	}
 
@@ -295,9 +320,10 @@ public:
 
 	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-		connect(_req, &ZhttpRequest::bytesWritten, this, &Private::req_bytesWritten);
-		connect(_req, &ZhttpRequest::error, this, &Private::req_error);
-
+		reqConnections = {
+			req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
+			req->error.connect(boost::bind(&Private::req_error, this, req))
+		};
 		if(lastPart == "xhr" || lastPart == "jsonp")
 		{
 			if(req)
@@ -384,7 +410,7 @@ public:
 			int bytes = 0;
 			foreach(const QVariant &vmessage, messages)
 			{
-				if(vmessage.type() != QVariant::String)
+				if(typeId(vmessage) != QMetaType::QString)
 				{
 					requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
 					respondError(_req, 400, "Bad Request", "Payload expected");
@@ -558,7 +584,7 @@ public:
 				state = Idle;
 				applyLinger();
 				cleanup();
-				QMetaObject::invokeMethod(q, "closed", Qt::QueuedConnection);
+				QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
 			}
 			else
 				tryWrite();
@@ -620,7 +646,7 @@ public:
 		if(bytes > 0)
 		{
 			QPointer<QObject> self = this;
-			emit q->writeBytesChanged();
+			q->writeBytesChanged();
 			if(!self)
 				return;
 		}
@@ -690,7 +716,7 @@ public:
 
 			if(emitReadyRead)
 			{
-				emit q->readyRead();
+				q->readyRead();
 				if(!self)
 					return false;
 			}
@@ -765,7 +791,7 @@ public:
 				int bytes = 0;
 				foreach(const QVariant &vmessage, messages)
 				{
-					if(vmessage.type() != QVariant::String)
+					if(typeId(vmessage) != QMetaType::QString)
 					{
 						error = true;
 						break;
@@ -797,7 +823,7 @@ public:
 			{
 				state = Idle;
 				cleanup();
-				emit q->error();
+				q->error();
 
 				// stop signals
 				return false;
@@ -805,7 +831,7 @@ public:
 
 			if(emitReadyRead)
 			{
-				emit q->readyRead();
+				q->readyRead();
 				if(!self)
 					return false;
 			}
@@ -848,7 +874,7 @@ public:
 			pendingWrittenBytes = 0;
 		}
 
-		emit q->framesWritten(count, contentBytes);
+		q->framesWritten(count, contentBytes);
 	}
 
 	QVariant applyLinger()
@@ -869,12 +895,10 @@ public:
 		return closeValue;
 	}
 
-private slots:
-	void req_bytesWritten(int count)
+	void req_bytesWritten(int count, ZhttpRequest *_req)
 	{
 		Q_UNUSED(count);
 
-		ZhttpRequest *_req = (ZhttpRequest *)sender();
 		RequestItem *ri = requests.value(_req);
 		assert(ri);
 
@@ -901,7 +925,7 @@ private slots:
 					state = Idle;
 					removeRequestItem(ri);
 					cleanup();
-					emit q->closed();
+					q->closed();
 					return;
 				}
 				else if(ri->type == RequestItem::Receive)
@@ -918,7 +942,7 @@ private slots:
 					state = Idle;
 					removeRequestItem(ri);
 					cleanup();
-					emit q->closed();
+					q->closed();
 					return;
 				}
 			}
@@ -927,9 +951,8 @@ private slots:
 		}
 	}
 
-	void req_error()
+	void req_error(ZhttpRequest *_req)
 	{
-		ZhttpRequest *_req = (ZhttpRequest *)sender();
 		RequestItem *ri = requests.value(_req);
 		assert(ri);
 
@@ -952,7 +975,7 @@ private slots:
 			if(close && !peerClosed)
 			{
 				peerClosed = true;
-				emit q->peerClosed();
+				q->peerClosed();
 				return;
 			}
 
@@ -960,9 +983,9 @@ private slots:
 			cleanup();
 
 			if(close)
-				emit q->closed();
+				q->closed();
 			else
-				emit q->error();
+				q->error();
 		}
 		else
 		{
@@ -978,7 +1001,7 @@ private slots:
 		}
 		else // WebSocketPassthrough
 		{
-			emit q->readyRead();
+			q->readyRead();
 		}
 	}
 
@@ -989,14 +1012,14 @@ private slots:
 
 	void sock_writeBytesChanged()
 	{
-		emit q->writeBytesChanged();
+		q->writeBytesChanged();
 	}
 
 	void sock_peerClosed()
 	{
 		peerCloseCode = sock->peerCloseCode();
 		peerCloseReason = sock->peerCloseReason();
-		emit q->peerClosed();
+		q->peerClosed();
 	}
 
 	void sock_closed()
@@ -1005,7 +1028,7 @@ private slots:
 		peerCloseReason = sock->peerCloseReason();
 		state = Idle;
 		cleanup();
-		emit q->closed();
+		q->closed();
 	}
 
 	void sock_error()
@@ -1013,7 +1036,7 @@ private slots:
 		state = Idle;
 		errorCondition = sock->errorCondition();
 		cleanup();
-		emit q->error();
+		q->error();
 	}
 
 	void doUpdate()
@@ -1024,7 +1047,7 @@ private slots:
 		{
 			state = Idle;
 			cleanup();
-			emit q->error();
+			q->error();
 			return;
 		}
 
@@ -1040,9 +1063,15 @@ private slots:
 				pendingWrittenFrames = 0;
 				pendingWrittenBytes = 0;
 
-				emit q->framesWritten(count, contentBytes);
+				q->framesWritten(count, contentBytes);
 			}
 		}
+	}
+
+private slots:
+	void doClosed()
+	{
+		q->closed();
 	}
 
 	void keepAliveTimer_timeout()
@@ -1064,7 +1093,7 @@ private slots:
 				// timeout while unconnected
 				state = Idle;
 				cleanup();
-				emit q->error();
+				q->error();
 			}
 		}
 		else

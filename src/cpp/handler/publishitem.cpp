@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,6 +23,7 @@
 
 #include "publishitem.h"
 
+#include "qtcompat.h"
 #include "variantutil.h"
 
 using namespace VariantUtil;
@@ -150,7 +152,7 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 
 	if(vmeta.isValid())
 	{
-		if(vmeta.type() == QVariant::Hash)
+		if(typeId(vmeta) == QMetaType::QVariantHash)
 		{
 			QVariantHash hmeta = vmeta.toHash();
 
@@ -197,7 +199,7 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 	if(keyedObjectContains(vitem, "size"))
 	{
 		QVariant vsize = keyedObjectGetValue(vitem, "size");
-		if(!vsize.canConvert(QVariant::Int))
+		if(!canConvert(vsize, QMetaType::Int))
 		{
 			setError(ok, errorMessage, QString("%1 contains 'size' with wrong type").arg(pn));
 			return PublishItem();
@@ -215,7 +217,7 @@ PublishItem PublishItem::fromVariant(const QVariant &vitem, const QString &chann
 	if(keyedObjectContains(vitem, "no-seq"))
 	{
 		QVariant vnoSeq = keyedObjectGetValue(vitem, "no-seq");
-		if(vnoSeq.type() != QVariant::Bool)
+		if(typeId(vnoSeq) != QMetaType::Bool)
 		{
 			setError(ok, errorMessage, QString("%1 contains 'no-seq' with wrong type").arg(pn));
 			return PublishItem();

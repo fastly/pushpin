@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -27,6 +28,10 @@
 #include <QHash>
 #include <QSet>
 #include "packet/httprequestdata.h"
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::scoped_connection;
 
 class QTimer;
 
@@ -35,6 +40,7 @@ class WsSession : public QObject
 	Q_OBJECT
 
 public:
+	QByteArray peer;
 	QString cid;
 	int nextReqId;
 	QString channelPrefix;
@@ -64,10 +70,9 @@ public:
 	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
 	void ack(int reqId);
 
-signals:
-	void send(int reqId, const QByteArray &type, const QByteArray &message);
-	void expired();
-	void error();
+	boost::signals2::signal<void(int, const QByteArray&, const QByteArray&)> send;
+	Signal expired;
+	Signal error;
 
 private:
 	void setupRequestTimer();

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,6 +25,9 @@
 #define ZRPCMANAGER_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class ZrpcRequestPacket;
 class ZrpcResponsePacket;
@@ -40,6 +43,7 @@ public:
 
 	int timeout() const;
 
+	void setInstanceId(const QByteArray &instanceId);
 	void setIpcFileMode(int mode);
 	void setBind(bool enable);
 	void setTimeout(int ms);
@@ -53,8 +57,7 @@ public:
 	bool canWriteImmediately() const;
 	void write(const ZrpcRequestPacket &packet);
 
-signals:
-	void requestReady();
+	Signal requestReady;
 
 private:
 	class Private;

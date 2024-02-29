@@ -24,6 +24,9 @@
 #define CONTROLREQUEST_H
 
 #include "cidset.h"
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class QObject;
 

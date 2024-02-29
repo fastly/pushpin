@@ -16,33 +16,33 @@
 
 use clap::Parser;
 use log::{error, info, LevelFilter};
-use pushpin::runner::{get_runner_logger, open_log_file, ArgsData, CliArgs, Settings};
+use pushpin::log::{ensure_init_simple_logger, get_simple_logger, local_offset_check};
+use pushpin::runner::{open_log_file, ArgsData, CliArgs, Settings};
 use pushpin::service::start_services;
+use std::env;
 use std::error::Error;
 use std::process;
 
 fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
     let args_data = ArgsData::new(args)?;
-    let settings = Settings::new(args_data)?;
+    let settings = Settings::new(&env::current_dir()?, args_data)?;
 
-    let logger = match settings.log_file.clone() {
-        Some(x) => {
-            let log_file = match open_log_file(x) {
-                Ok(x) => Some(x),
-                Err(_) => {
-                    error!("unable to open log file. logging to standard out.");
-                    None
-                }
-            };
-            get_runner_logger(log_file)
-        }
-        None => get_runner_logger(None),
+    let log_file = match settings.log_file.clone() {
+        Some(x) => match open_log_file(x) {
+            Ok(x) => Some(x),
+            Err(_) => {
+                error!("unable to open log file. logging to standard out.");
+                None
+            }
+        },
+        None => None,
     };
-    log::set_logger(logger).unwrap();
+    ensure_init_simple_logger(log_file, true);
+    log::set_logger(get_simple_logger()).unwrap();
     let ll = settings
         .log_levels
         .get("")
-        .unwrap_or(settings.log_levels.get("default").unwrap());
+        .unwrap_or_else(|| settings.log_levels.get("default").unwrap());
     let level = match ll {
         0 => LevelFilter::Error,
         1 => LevelFilter::Warn,
@@ -51,6 +51,8 @@ fn process_args_and_run(args: CliArgs) -> Result<(), Box<dyn Error>> {
         4..=u8::MAX => LevelFilter::Trace,
     };
     log::set_max_level(level);
+
+    local_offset_check();
 
     info!("using config: {:?}", settings.config_file.display());
     start_services(settings);

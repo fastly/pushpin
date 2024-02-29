@@ -335,15 +335,15 @@ enum Error {
     WebSocket(websocket::Error),
     InvalidWebSocketRequest,
     InvalidWebSocketResponse,
-    CompressionError,
+    Compression,
     BadMessage,
-    HandlerError,
+    Handler,
     HandlerCancel,
     BufferExceeded,
     Unusable,
     BadFrame,
     BadRequest,
-    TlsError,
+    Tls,
     PolicyViolation,
     TooManyRedirects,
     ValueActive,
@@ -361,7 +361,7 @@ impl Error {
             Error::Io(e) if e.kind() == io::ErrorKind::TimedOut => "connection-timeout",
             Error::BadRequest => "bad-request",
             Error::StreamTimeout => "connection-timeout",
-            Error::TlsError => "tls-error",
+            Error::Tls => "tls-error",
             Error::PolicyViolation => "policy-violation",
             Error::TooManyRedirects => "too-many-redirects",
             _ => "undefined-condition",
@@ -994,7 +994,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestStartResponse<'a, R, W> {
             if let Err(e) = recv_nonzero(&mut self.r.stream, self.r.buf1).await {
                 if e.kind() == io::ErrorKind::WriteZero {
                     // if there's no more space, suspend forever
-                    let () = std::future::pending().await;
+                    std::future::pending::<()>().await;
                 }
 
                 return e.into();
@@ -1314,7 +1314,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
             if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
                     // if there's no more space, suspend forever
-                    let () = std::future::pending().await;
+                    std::future::pending::<()>().await;
                 }
 
                 return e.into();
@@ -2422,7 +2422,7 @@ where
 
             Ok(())
         }
-        zhttppacket::ResponsePacket::Error(_) => Err(Error::HandlerError),
+        zhttppacket::ResponsePacket::Error(_) => Err(Error::Handler),
         zhttppacket::ResponsePacket::Cancel => Err(Error::HandlerCancel),
         _ => Err(Error::BadMessage), // unexpected type
     }
@@ -2447,7 +2447,7 @@ where
 
             Ok(())
         }
-        zhttppacket::RequestPacket::Error(_) => Err(Error::HandlerError),
+        zhttppacket::RequestPacket::Error(_) => Err(Error::Handler),
         zhttppacket::RequestPacket::Cancel => Err(Error::HandlerCancel),
         _ => Err(Error::BadMessage), // unexpected type
     }
@@ -4089,7 +4089,7 @@ where
 
                 if let Some((config, _)) = &ws_config.1 {
                     if write_ws_ext_header_value(config, &mut ws_ext).is_err() {
-                        return Err(Error::CompressionError);
+                        return Err(Error::Compression);
                     }
 
                     headers[headers_len] = http1::Header {
@@ -4285,7 +4285,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 Err(e) => {
                     let handler_caused = matches!(
                         &e,
-                        Error::BadMessage | Error::HandlerError | Error::HandlerCancel
+                        Error::BadMessage | Error::Handler | Error::HandlerCancel
                     );
 
                     if !handler_caused {
@@ -4769,7 +4769,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
                 if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
                     if e.kind() == io::ErrorKind::WriteZero {
                         // if there's no more space, suspend forever
-                        let () = std::future::pending().await;
+                        std::future::pending::<()>().await;
                     }
 
                     return Err(Error::from(e));
@@ -4900,6 +4900,7 @@ impl<'a, R: AsyncRead> ClientResponse<'a, R> {
                 inner: ClientResponseBody {
                     inner: RefCell::new(Some(ClientResponseBodyInner {
                         r: self.r,
+                        closed: false,
                         buf1: self.buf1,
                         resp_body,
                     })),
@@ -4912,6 +4913,7 @@ impl<'a, R: AsyncRead> ClientResponse<'a, R> {
 
 struct ClientResponseBodyInner<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
+    closed: bool,
     buf1: &'a mut VecRingBuffer,
     resp_body: http1::ClientResponseBody,
 }
@@ -4921,15 +4923,19 @@ struct ClientResponseBody<'a, R: AsyncRead> {
 }
 
 impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
+    // on EOF and any subsequent calls, return success
     #[allow(clippy::await_holding_refcell_ref)]
     async fn add_to_buffer(&self) -> Result<(), Error> {
         if let Some(inner) = &mut *self.inner.borrow_mut() {
-            if let Err(e) = recv_nonzero(&mut inner.r, inner.buf1).await {
-                if e.kind() == io::ErrorKind::WriteZero {
-                    return Err(Error::BufferExceeded);
+            if !inner.closed {
+                match recv_nonzero(&mut inner.r, inner.buf1).await {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == io::ErrorKind::WriteZero => {
+                        return Err(Error::BufferExceeded)
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => inner.closed = true,
+                    Err(e) => return Err(e.into()),
                 }
-
-                return Err(e.into());
             }
 
             Ok(())
@@ -4945,10 +4951,10 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
             if let Some(inner) = b_inner.take() {
                 let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
-                match inner
-                    .resp_body
-                    .recv(Buffer::read_buf(inner.buf1), dest, &mut scratch)?
-                {
+                let src = Buffer::read_buf(inner.buf1);
+                let end = src.len() == inner.buf1.len() && inner.closed;
+
+                match inner.resp_body.recv(src, dest, end, &mut scratch)? {
                     http1::RecvStatus::Complete(finished, read, written) => {
                         inner.buf1.read_commit(read);
 
@@ -4962,6 +4968,7 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
                     http1::RecvStatus::Read(resp_body, read, written) => {
                         *b_inner = Some(ClientResponseBodyInner {
                             r: inner.r,
+                            closed: inner.closed,
                             buf1: inner.buf1,
                             resp_body,
                         });
@@ -5280,7 +5287,7 @@ async fn client_connect<'a>(
                 Err(e) => {
                     debug!("client-conn {}: tls connect error: {}", log_id, e);
 
-                    return Err(Error::TlsError);
+                    return Err(Error::Tls);
                 }
             };
 
@@ -5303,7 +5310,7 @@ async fn client_connect<'a>(
             if let Err(e) = stream.ensure_handshake().await {
                 debug!("client-conn {}: tls handshake error: {:?}", log_id, e);
 
-                return Err(Error::TlsError);
+                return Err(Error::Tls);
             }
         }
     }
@@ -5882,7 +5889,7 @@ where
                 )
                 .is_err()
                 {
-                    return Err(Error::CompressionError);
+                    return Err(Error::Compression);
                 }
 
                 headers.push(http1::Header {
@@ -6663,7 +6670,7 @@ where
         Err(e) => {
             let handler_caused = matches!(
                 &e,
-                Error::BadMessage | Error::HandlerError | Error::HandlerCancel
+                Error::BadMessage | Error::Handler | Error::HandlerCancel
             );
 
             if !handler_caused {

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -285,7 +286,7 @@ public:
 
 		log_info("routes loaded with %d entries", allRules.count());
 
-		QMetaObject::invokeMethod(this, "changed", Qt::QueuedConnection);
+		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
 	}
 
 	// mutex must be locked when calling this method
@@ -301,11 +302,15 @@ public:
 		return true;
 	}
 
-signals:
-	void started();
-	void changed();
+	Signal started;
+	Signal changed;
 
 public slots:
+	void doChanged()
+	{
+		changed();
+	}
+
 	void start()
 	{
 		if(!fileName.isEmpty())
@@ -316,7 +321,7 @@ public slots:
 			reload();
 		}
 
-		emit started();
+		started();
 	}
 
 	void fileChanged(const QString &path)
@@ -732,13 +737,14 @@ public:
 	{
 		worker = new Worker;
 		worker->fileName = fileName;
-		connect(worker, &Worker::started, this, &Thread::worker_started, Qt::DirectConnection);
+		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
 		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
+		startedConnection.disconnect();
 		delete worker;
 	}
 
-public slots:
+public:
 	void worker_started()
 	{
 		QMutexLocker locker(&m);
@@ -753,6 +759,7 @@ class DomainMap::Private : public QObject
 public:
 	DomainMap *q;
 	Thread *thread;
+	Connection changedConnection;
 
 	Private(DomainMap *_q) :
 		QObject(_q),
@@ -763,6 +770,7 @@ public:
 
 	~Private()
 	{
+		changedConnection.disconnect();
 		delete thread;
 	}
 
@@ -773,13 +781,20 @@ public:
 		thread->start();
 
 		// worker guaranteed to exist after starting
-		connect(thread->worker, &Worker::changed, this, &Private::doChanged);
+		changedConnection = thread->worker->changed.connect(boost::bind(&Private::workerChanged, this));
 	}
 
-public slots:
+private:
+	// NOTE: must be thread-safe. called from separate thread
+	void workerChanged()
+	{
+		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
+	}
+
+private slots:
 	void doChanged()
 	{
-		emit q->changed();
+		q->changed();
 	}
 };
 

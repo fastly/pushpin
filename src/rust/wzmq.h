@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -58,6 +58,7 @@
 #define WZMQ_TCP_KEEPALIVE_IDLE 11
 #define WZMQ_TCP_KEEPALIVE_CNT 12
 #define WZMQ_TCP_KEEPALIVE_INTVL 13
+#define WZMQ_ROUTER_MANDATORY 14
 
 // NOTE: must match values in ffi.rs
 #define WZMQ_DONTWAIT 0x01

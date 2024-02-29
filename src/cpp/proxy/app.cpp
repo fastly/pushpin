@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -182,12 +182,6 @@ public:
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
 	}
 
-	~Private()
-	{
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-	}
-
 	void start()
 	{
 		QCoreApplication::setApplicationName("pushpin-proxy");
@@ -203,12 +197,12 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			case CommandLineHelpRequested:
 				parser.showHelp();
@@ -225,7 +219,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				emit q->quit(1);
+				q->quit(1);
 				return;
 			}
 		}
@@ -242,7 +236,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				emit q->quit(0);
+				q->quit(0);
 				return;
 			}
 		}
@@ -283,8 +277,10 @@ public:
 		QString handler_inspect_spec = settings.value("proxy/handler_inspect_spec").toString();
 		QString handler_accept_spec = settings.value("proxy/handler_accept_spec").toString();
 		QString handler_retry_in_spec = settings.value("proxy/handler_retry_in_spec").toString();
-		QString handler_ws_control_in_spec = settings.value("proxy/handler_ws_control_in_spec").toString();
-		QString handler_ws_control_out_spec = settings.value("proxy/handler_ws_control_out_spec").toString();
+		QStringList handler_ws_control_init_specs = settings.value("proxy/handler_ws_control_init_specs").toStringList();
+		trimlist(&handler_ws_control_init_specs);
+		QStringList handler_ws_control_stream_specs = settings.value("proxy/handler_ws_control_stream_specs").toStringList();
+		trimlist(&handler_ws_control_stream_specs);
 		QString stats_spec = settings.value("proxy/stats_spec").toString();
 		QString command_spec = settings.value("proxy/command_spec").toString();
 		QStringList intreq_in_specs = settings.value("proxy/intreq_in_specs").toStringList();
@@ -295,7 +291,7 @@ public:
 		trimlist(&intreq_out_specs);
 		bool ok;
 		int ipcFileMode = settings.value("proxy/ipc_file_mode", -1).toString().toInt(&ok, 8);
-		int maxWorkers = settings.value("proxy/max_open_requests", -1).toInt();
+		int sessionsMax = settings.value("proxy/max_open_requests", -1).toInt();
 		QString routesFile = settings.value("proxy/routesfile").toString();
 		bool debug = settings.value("proxy/debug").toBool();
 		bool autoCrossOrigin = settings.value("proxy/auto_cross_origin").toBool();
@@ -337,19 +333,25 @@ public:
 		if(!(!condure_in_specs.isEmpty() && !condure_in_stream_specs.isEmpty() && !condure_out_specs.isEmpty()) && !(!m2a_in_specs.isEmpty() && !m2a_in_stream_specs.isEmpty() && !m2a_out_specs.isEmpty()))
 		{
 			log_error("must set condure_in_specs, condure_in_stream_specs, and condure_out_specs, or m2a_in_specs, m2a_in_stream_specs, and m2a_out_specs");
-			emit q->quit(0);
+			q->quit(0);
 			return;
 		}
 
 		if(!(!condure_client_out_specs.isEmpty() && !condure_client_out_stream_specs.isEmpty() && !condure_client_in_specs.isEmpty()) && !(!zurl_out_specs.isEmpty() && !zurl_out_stream_specs.isEmpty() && !zurl_in_specs.isEmpty()))
 		{
 			log_error("must set condure_client_out_specs, condure_client_out_stream_specs, and condure_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
-			emit q->quit(0);
+			q->quit(0);
 			return;
 		}
 
 		if(updatesCheck == "true")
 			updatesCheck = "check";
+
+		// sessionsMax should not exceed clientMaxconn
+		if(sessionsMax >= 0)
+			sessionsMax = qMin(sessionsMax, clientMaxconn);
+		else
+			sessionsMax = clientMaxconn;
 
 		Engine::Configuration config;
 		config.appVersion = Config::get().version;
@@ -381,15 +383,15 @@ public:
 		config.inspectSpec = handler_inspect_spec;
 		config.acceptSpec = handler_accept_spec;
 		config.retryInSpec = handler_retry_in_spec;
-		config.wsControlInSpec = handler_ws_control_in_spec;
-		config.wsControlOutSpec = handler_ws_control_out_spec;
+		config.wsControlInitSpecs = handler_ws_control_init_specs;
+		config.wsControlStreamSpecs = handler_ws_control_stream_specs;
 		config.statsSpec = stats_spec;
 		config.commandSpec = command_spec;
 		config.intServerInSpecs = intreq_in_specs;
 		config.intServerInStreamSpecs = intreq_in_stream_specs;
 		config.intServerOutSpecs = intreq_out_specs;
 		config.ipcFileMode = ipcFileMode;
-		config.maxWorkers = maxWorkers;
+		config.sessionsMax = sessionsMax;
 		if(!args.routeLines.isEmpty())
 			config.routeLines = args.routeLines;
 		else
@@ -413,7 +415,6 @@ public:
 		config.updatesCheck = updatesCheck;
 		config.organizationName = organizationName;
 		config.quietCheck = args.quietCheck;
-		config.connectionsMax = clientMaxconn;
 		config.statsConnectionSend = statsConnectionSend;
 		config.statsConnectionTtl = statsConnectionTtl;
 		config.statsConnectionsMaxTtl = statsConnectionsMaxTtl;
@@ -424,7 +425,7 @@ public:
 		engine = new Engine(this);
 		if(!engine->start(config))
 		{
-			emit q->quit(0);
+			q->quit(0);
 			return;
 		}
 
@@ -443,9 +444,6 @@ private slots:
 	{
 		log_info("stopping...");
 
-		hupConnection.disconnect();
-		quitConnection.disconnect();
-
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
@@ -453,7 +451,7 @@ private slots:
 		engine = 0;
 
 		log_info("stopped");
-		emit q->quit(0);
+		q->quit(0);
 	}
 };
 

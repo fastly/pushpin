@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,6 +22,7 @@
  */
 
 #include <QtTest/QtTest>
+#include "qtcompat.h"
 #include "jsonpatch.h"
 
 class JsonPatchTest : public QObject
@@ -49,7 +51,7 @@ private slots:
 		ret = JsonPatch::patch(data, QVariantList() << op);
 		QVERIFY(ret.isValid());
 		data = ret.toMap();
-		QCOMPARE(data["fruit"].type(), QVariant::List);
+		QCOMPARE(typeId(data["fruit"]), QMetaType::QVariantList);
 		QCOMPARE(data["fruit"].toList()[0].toString(), QString("apple"));
 
 		op.clear();
@@ -71,7 +73,7 @@ private slots:
 		ret = JsonPatch::patch(data, QVariantList() << op);
 		QVERIFY(ret.isValid());
 		data = ret.toMap();
-		QCOMPARE(data["fruit"].toList()[1].type(), QVariant::Map);
+		QCOMPARE(typeId(data["fruit"].toList()[1]), QMetaType::QVariantMap);
 		QCOMPARE(data["fruit"].toList()[1].toMap().value("cherries").toBool(), true);
 		QCOMPARE(data["fruit"].toList()[1].toMap().value("grapes").toInt(), 5);
 

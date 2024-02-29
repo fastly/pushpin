@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,6 +31,9 @@
 #include "inspectdata.h"
 #include "zhttprequest.h"
 #include "instruct.h"
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class QTimer;
 class ZhttpManager;
@@ -50,6 +54,7 @@ public:
 	class AcceptData
 	{
 	public:
+		QByteArray from;
 		QHostAddress logicalPeerAddress;
 		bool debug;
 		bool isRetry;
@@ -92,6 +97,7 @@ public:
 	QString sid() const;
 	QHash<QString, Instruct::Channel> channels() const;
 	QHash<QString, QString> meta() const;
+	QByteArray retryToAddress() const;
 	RetryRequestPacket retryPacket() const;
 
 	void start();

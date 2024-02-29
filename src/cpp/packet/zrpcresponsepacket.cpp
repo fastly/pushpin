@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,6 +23,8 @@
 
 #include "zrpcresponsepacket.h"
 
+#include "qtcompat.h"
+
 QVariant ZrpcResponsePacket::toVariant() const
 {
 	QVariantHash obj;
@@ -33,7 +36,7 @@ QVariant ZrpcResponsePacket::toVariant() const
 
 	if(success)
 	{
-		if(value.type() == QVariant::String)
+		if(typeId(value) == QMetaType::QString)
 			obj["value"] = value.toString().toUtf8();
 		else
 			obj["value"] = value;
@@ -44,7 +47,7 @@ QVariant ZrpcResponsePacket::toVariant() const
 
 		if(value.isValid())
 		{
-			if(value.type() == QVariant::String)
+			if(typeId(value) == QMetaType::QString)
 				obj["value"] = value.toString().toUtf8();
 			else
 				obj["value"] = value;
@@ -56,20 +59,20 @@ QVariant ZrpcResponsePacket::toVariant() const
 
 bool ZrpcResponsePacket::fromVariant(const QVariant &in)
 {
-	if(in.type() != QVariant::Hash)
+	if(typeId(in) != QMetaType::QVariantHash)
 		return false;
 
 	QVariantHash obj = in.toHash();
 
 	if(obj.contains("id"))
 	{
-		if(obj["id"].type() != QVariant::ByteArray)
+		if(typeId(obj["id"]) != QMetaType::QByteArray)
 			return false;
 
 		id = obj["id"].toByteArray();
 	}
 
-	if(!obj.contains("success") || obj["success"].type() != QVariant::Bool)
+	if(!obj.contains("success") || typeId(obj["success"]) != QMetaType::Bool)
 		return false;
 	success = obj["success"].toBool();
 
@@ -83,7 +86,7 @@ bool ZrpcResponsePacket::fromVariant(const QVariant &in)
 	}
 	else
 	{
-		if(!obj.contains("condition") || obj["condition"].type() != QVariant::ByteArray)
+		if(!obj.contains("condition") || typeId(obj["condition"]) != QMetaType::QByteArray)
 			return false;
 		condition = obj["condition"].toByteArray();
 

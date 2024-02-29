@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +29,11 @@
 #include <QHostAddress>
 #include "jwt.h"
 #include "xffrule.h"
+#include <boost/signals2.hpp>
+#include <map>
+
+using std::map;
+using Connection = boost::signals2::scoped_connection;
 
 class StatsManager;
 
@@ -51,15 +56,15 @@ public:
 		QString inspectSpec;
 		QString acceptSpec;
 		QString retryInSpec;
-		QString wsControlInSpec;
-		QString wsControlOutSpec;
+		QStringList wsControlInitSpecs;
+		QStringList wsControlStreamSpecs;
 		QString statsSpec;
 		QString commandSpec;
 		QStringList intServerInSpecs;
 		QStringList intServerInStreamSpecs;
 		QStringList intServerOutSpecs;
 		int ipcFileMode;
-		int maxWorkers;
+		int sessionsMax;
 		int inspectTimeout;
 		int inspectPrefetch;
 		QString routesFile;
@@ -83,7 +88,6 @@ public:
 		QString updatesCheck;
 		QString organizationName;
 		bool quietCheck;
-		int connectionsMax;
 		bool statsConnectionSend;
 		int statsConnectionTtl;
 		int statsConnectionsMaxTtl;
@@ -93,7 +97,7 @@ public:
 
 		Configuration() :
 			ipcFileMode(-1),
-			maxWorkers(-1),
+			sessionsMax(-1),
 			inspectTimeout(8000),
 			inspectPrefetch(10000),
 			debug(false),
@@ -106,7 +110,6 @@ public:
 			logUserAgent(false),
 			updatesCheck("check"),
 			quietCheck(false),
-			connectionsMax(-1),
 			statsConnectionSend(false),
 			statsConnectionTtl(-1),
 			statsConnectionsMaxTtl(-1),

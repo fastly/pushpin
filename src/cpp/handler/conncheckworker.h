@@ -26,6 +26,9 @@
 #include <QByteArray>
 #include "deferred.h"
 #include "cidset.h"
+#include <boost/signals2.hpp>
+
+using Connection = boost::signals2::scoped_connection;
 
 class ZrpcRequest;
 class ZrpcManager;
@@ -42,11 +45,12 @@ private:
 	ZrpcRequest *req_;
 	CidSet cids_;
 	CidSet missing_;
+	Connection finishedConnection_;
 
 	void respondError(const QByteArray &condition);
 	void doFinish();
 
-private slots:
+private:
 	void proxyConnCheck_finished(const DeferredResult &result);
 };
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2021-2022 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,6 +33,9 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
+
+#[cfg(test)]
+use crate::import_cpptest;
 
 #[repr(C)]
 pub struct ExpiredTimer {
@@ -382,6 +385,7 @@ const WZMQ_TCP_KEEPALIVE: libc::c_int = 10;
 const WZMQ_TCP_KEEPALIVE_IDLE: libc::c_int = 11;
 const WZMQ_TCP_KEEPALIVE_CNT: libc::c_int = 12;
 const WZMQ_TCP_KEEPALIVE_INTVL: libc::c_int = 13;
+const WZMQ_ROUTER_MANDATORY: libc::c_int = 14;
 
 // NOTE: must match values in wzmq.h
 const WZMQ_DONTWAIT: libc::c_int = 0x01;
@@ -720,6 +724,21 @@ pub unsafe extern "C" fn wzmq_setsockopt(
             };
 
             if let Err(e) = sock.set_immediate(*x != 0) {
+                set_errno(e.to_raw());
+                return -1;
+            }
+        }
+        WZMQ_ROUTER_MANDATORY => {
+            if option_len as u32 != libc::c_int::BITS / 8 {
+                return -1;
+            }
+
+            let x = match (option_value as *mut libc::c_int).as_ref() {
+                Some(x) => x,
+                None => return -1,
+            };
+
+            if let Err(e) = sock.set_router_mandatory(*x != 0) {
                 set_errno(e.to_raw());
                 return -1;
             }
@@ -1161,8 +1180,8 @@ pub unsafe extern "C" fn encrypt_buffer_deinit(buf: *mut EncryptBuffer) {
 }
 
 #[no_mangle]
-pub extern "C" fn log_init(offset_seconds: i32) {
-    ensure_init_simple_logger(Some(offset_seconds));
+pub extern "C" fn log_init() {
+    ensure_init_simple_logger(None, false);
 }
 
 #[no_mangle]
@@ -1184,4 +1203,19 @@ pub extern "C" fn security_limit_permissions() {
 
     #[cfg(all(target_os = "linux", not(test)))]
     crate::seccomp::install_seccomp_connect_filter()
+}
+
+#[cfg(test)]
+import_cpptest! {
+    pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    pub fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
 }

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -28,6 +28,12 @@
 #include <QStringList>
 #include <QHash>
 #include <QHostAddress>
+#include <boost/signals2.hpp>
+#include <map>
+
+using std::map;
+using Signal = boost::signals2::signal<void()>;
+using Connection = boost::signals2::scoped_connection;
 
 class HandlerEngine : public QObject
 {
@@ -44,15 +50,15 @@ public:
 		QStringList clientOutSpecs;
 		QStringList clientOutStreamSpecs;
 		QStringList clientInSpecs;
-		QString inspectSpec;
-		QString acceptSpec;
-		QString retryOutSpec;
-		QString wsControlInSpec;
-		QString wsControlOutSpec;
+		QStringList inspectSpecs;
+		QStringList acceptSpecs;
+		QStringList retryOutSpecs;
+		QStringList wsControlInitSpecs;
+		QStringList wsControlStreamSpecs;
 		QString statsSpec;
 		QString commandSpec;
 		QString stateSpec;
-		QString proxyStatsSpec;
+		QStringList proxyStatsSpecs;
 		QString proxyCommandSpec;
 		QString pushInSpec;
 		QStringList pushInSubSpecs;

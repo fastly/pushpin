@@ -1,5 +1,9 @@
 /*
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
+ *
+ * This file is part of Pushpin.
+ *
+ * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,16 +16,27 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * $FANOUT_END_LICENSE$
  */
 
-use pushpin::{call_c_main, import_cpp};
-use std::env;
-use std::process::ExitCode;
+#include <QMetaType>
+#include <QVariant>
 
-import_cpp! {
-    fn handler_main(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+inline QMetaType::Type typeId(const QVariant &v)
+{
+#if QT_VERSION >= 0x060000
+	return (QMetaType::Type)v.typeId();
+#else
+	return (QMetaType::Type)v.type();
+#endif
 }
 
-fn main() -> ExitCode {
-    unsafe { ExitCode::from(call_c_main(handler_main, env::args_os())) }
+inline bool canConvert(const QVariant &v, QMetaType::Type type)
+{
+#if QT_VERSION >= 0x060000
+    return v.canConvert(QMetaType(type));
+#else
+    return v.canConvert(type);
+#endif
 }

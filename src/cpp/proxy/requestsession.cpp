@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -32,6 +33,7 @@
 #include <QJsonArray>
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
+#include "qtcompat.h"
 #include "bufferlist.h"
 #include "log.h"
 #include "layertracker.h"
@@ -145,6 +147,13 @@ public:
 		RespondingInternal
 	};
 
+	struct ZhttpReqConnections {
+		Connection readyReadConnection;
+		Connection pausedConnection;
+		Connection errorConnection;
+		Connection bytesWrittenConnection;
+	};
+
 	RequestSession *q;
 	State state;
 	ZhttpRequest::Rid rid;
@@ -187,6 +196,9 @@ public:
 	XffRule xffRule;
 	XffRule xffTrustedRule;
 	bool isSockJs;
+	ZhttpReqConnections zhttpReqConnections;
+	Connection inspectFinishedConnection;
+	Connection acceptFinishedConnection;
 
 	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
@@ -229,6 +241,7 @@ public:
 	{
 		if(zhttpRequest)
 		{
+			zhttpReqConnections = ZhttpReqConnections();
 			delete zhttpRequest;
 			zhttpRequest = 0;
 		}
@@ -299,8 +312,8 @@ public:
 			}
 		}
 
-		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
-		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
+		zhttpReqConnections.pausedConnection = zhttpRequest->paused.connect(boost::bind(&Private::zhttpRequest_paused, this));
+		zhttpReqConnections.errorConnection = zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
 
 		if(!route.isNull())
 		{
@@ -373,19 +386,19 @@ public:
 
 		state = Prefetching;
 
-		connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+		zhttpReqConnections.readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 		processIncomingRequest();
 	}
 
-	void startRetry(int unreportedTime)
+	void startRetry(int unreportedTime, int retrySeq)
 	{
 		trusted = ProxyUtil::checkTrustedClient("requestsession", q, requestData, defaultUpstreamKey);
 
 		peerAddress = zhttpRequest->peerAddress();
 		logicalPeerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
 
-		connect(zhttpRequest, &ZhttpRequest::error, this, &Private::zhttpRequest_error);
-		connect(zhttpRequest, &ZhttpRequest::paused, this, &Private::zhttpRequest_paused);
+		zhttpReqConnections.pausedConnection = zhttpRequest->paused.connect(boost::bind(&Private::zhttpRequest_paused, this));
+		zhttpReqConnections.errorConnection = zhttpRequest->error.connect(boost::bind(&Private::zhttpRequest_error, this));
 
 		state = WaitingForResponse;
 
@@ -411,6 +424,9 @@ public:
 
 		if(stats)
 		{
+			if(retrySeq >= 0)
+				stats->setRetrySeq(route.statsRoute(), retrySeq);
+
 			connectionRegistered = true;
 
 			int reportOffset = stats->connectionSendEnabled() ? -1 : qMax(unreportedTime, 0);
@@ -433,7 +449,7 @@ public:
 			{
 				// we've read enough body to start inspection
 
-				disconnect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+				zhttpReqConnections.readyReadConnection.disconnect();
 
 				state = Inspecting;
 				requestData.body = in.toByteArray();
@@ -447,7 +463,7 @@ public:
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
-						connect(inspectRequest, &InspectRequest::finished, this, &Private::inspectRequest_finished);
+						inspectFinishedConnection = inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
 						inspectChecker->watch(inspectRequest);
 						inspectRequest->start(requestData, truncated, route.session, autoShare);
 					}
@@ -478,11 +494,11 @@ public:
 				//   disallow sharing before passing to proxysession. at that
 				//   point, proxysession will read the remainder of the data
 
-				disconnect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+				zhttpReqConnections.readyReadConnection.disconnect();
 
 				state = WaitingForResponse;
 				requestData.body = in.take();
-				emit q->inspected(idata);
+				q->inspected(idata);
 			}
 		}
 		else if(state == ReceivingForAccept)
@@ -680,7 +696,7 @@ public:
 			{
 				vit.next();
 
-				if(vit.value().type() != QVariant::String)
+				if(typeId(vit.value()) != QMetaType::QString)
 				{
 					log_debug("requestsession: id=%s invalid _headers parameter, rejecting", rid.second.data());
 					*ok = false;
@@ -786,7 +802,7 @@ public:
 		return true;
 	}
 
-public slots:
+public:
 	void zhttpRequest_readyRead()
 	{
 		processIncomingRequest();
@@ -800,10 +816,10 @@ public slots:
 		{
 			int actual = jsonpTracker.finished(count);
 			if(actual > 0)
-				emit q->bytesWritten(actual);
+				q->bytesWritten(actual);
 		}
 		else
-			emit q->bytesWritten(count);
+			q->bytesWritten(count);
 
 		if(!self)
 			return;
@@ -811,7 +827,7 @@ public slots:
 		if(zhttpRequest->isFinished())
 		{
 			cleanup();
-			emit q->finished();
+			q->finished();
 		}
 	}
 
@@ -848,12 +864,12 @@ public slots:
 			adata.channelPrefix = route.prefix;
 
 			acceptRequest = new AcceptRequest(acceptManager, this);
-			connect(acceptRequest, &AcceptRequest::finished, this, &Private::acceptRequest_finished);
+			acceptFinishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 		else
 		{
-			emit q->paused();
+			q->paused();
 		}
 	}
 
@@ -861,7 +877,7 @@ public slots:
 	{
 		log_debug("requestsession: request error id=%s", rid.second.data());
 		cleanup();
-		emit q->finished();
+		q->finished();
 	}
 
 	void inspectRequest_finished()
@@ -888,7 +904,7 @@ public slots:
 
 			// successful inspect indicated we should not proxy. in that case,
 			//   collect the body and accept
-			connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+			zhttpReqConnections.readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 			processIncomingRequest();
 		}
 		else
@@ -899,14 +915,14 @@ public slots:
 				//   request body, so let's try to read it now
 				state = Receiving;
 
-				connect(zhttpRequest, &ZhttpRequest::readyRead, this, &Private::zhttpRequest_readyRead);
+				zhttpReqConnections.readyReadConnection = zhttpRequest->readyRead.connect(boost::bind(&Private::zhttpRequest_readyRead, this));
 				processIncomingRequest();
 			}
 			else
 			{
 				state = WaitingForResponse;
 				requestData.body = in.take();
-				emit q->inspected(idata);
+				q->inspected(idata);
 			}
 		}
 	}
@@ -917,6 +933,7 @@ public slots:
 		{
 			AcceptRequest::ResponseData rdata = acceptRequest->result();
 
+			acceptFinishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 
@@ -925,11 +942,12 @@ public slots:
 				accepted = true;
 
 				// the request was paused, so deleting it will leave the peer session active
+				zhttpReqConnections = ZhttpReqConnections();
 				delete zhttpRequest;
 				zhttpRequest = 0;
 
 				cleanup();
-				emit q->finishedByAccept();
+				q->finishedByAccept();
 			}
 			else
 			{
@@ -947,6 +965,7 @@ public slots:
 		}
 		else
 		{
+			acceptFinishedConnection.disconnect();
 			delete acceptRequest;
 			acceptRequest = 0;
 
@@ -955,6 +974,7 @@ public slots:
 		}
 	}
 
+public slots:
 	void doResponseUpdate()
 	{
 		pendingResponseUpdate = false;
@@ -997,7 +1017,7 @@ public slots:
 						zhttpRequest->writeBody(body);
 						responseBodySize += body.size();
 						zhttpRequest->endBody();
-						emit q->errorResponding();
+						q->errorResponding();
 						return;
 					}
 
@@ -1019,7 +1039,7 @@ public slots:
 						}
 					}
 
-					connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+					zhttpReqConnections.bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 					zhttpRequest->beginResponse(200, "OK", headers);
 
@@ -1044,14 +1064,14 @@ public slots:
 					zhttpRequest->writeBody(body);
 					responseBodySize += body.size();
 					zhttpRequest->endBody();
-					emit q->errorResponding();
+					q->errorResponding();
 					return;
 				}
 
 				headers += HttpHeader("Content-Type", "application/javascript");
 				headers += HttpHeader("Transfer-Encoding", "chunked");
 
-				connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+				zhttpReqConnections.bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 				zhttpRequest->beginResponse(200, "OK", headers);
 
@@ -1065,7 +1085,7 @@ public slots:
 				if(autoCrossOrigin)
 					Cors::applyCorsHeaders(requestData.headers, &responseData.headers);
 
-				connect(zhttpRequest, &ZhttpRequest::bytesWritten, this, &Private::zhttpRequest_bytesWritten);
+				zhttpReqConnections.bytesWrittenConnection = zhttpRequest->bytesWritten.connect(boost::bind(&Private::zhttpRequest_bytesWritten, this, boost::placeholders::_1));
 
 				zhttpRequest->beginResponse(responseData.code, responseData.reason, responseData.headers);
 			}
@@ -1112,7 +1132,7 @@ public slots:
 
 					// if we error while streaming, all we can do is give up
 					zhttpRequest->endBody();
-					emit q->errorResponding();
+					q->errorResponding();
 					return;
 				}
 
@@ -1159,7 +1179,7 @@ public slots:
 	void doInspectError()
 	{
 		state = WaitingForResponse;
-		emit q->inspectError();
+		q->inspectError();
 	}
 };
 
@@ -1316,7 +1336,7 @@ void RequestSession::start(ZhttpRequest *req)
 	d->start(req);
 }
 
-void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime)
+void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOrigin, const QByteArray &jsonpCallback, bool jsonpExtendedResponse, int unreportedTime, int retrySeq)
 {
 	d->isRetry = true;
 	d->zhttpRequest = req;
@@ -1330,7 +1350,7 @@ void RequestSession::startRetry(ZhttpRequest *req, bool debug, bool autoCrossOri
 	d->requestData.headers = req->requestHeaders();
 	d->requestData.body = req->readBody();
 
-	d->startRetry(unreportedTime);
+	d->startRetry(unreportedTime, retrySeq);
 }
 
 void RequestSession::pause()
@@ -1350,7 +1370,7 @@ void RequestSession::startResponse(int code, const QByteArray &reason, const Htt
 {
 	assert(d->state == Private::ReceivingForAccept || d->state == Private::WaitingForResponse);
 
-	emit headerBytesSent(ZhttpManager::estimateResponseHeaderBytes(code, reason, headers));
+	headerBytesSent(ZhttpManager::estimateResponseHeaderBytes(code, reason, headers));
 
 	d->state = Private::RespondingStart;
 	d->responseData.code = code;
@@ -1365,7 +1385,7 @@ void RequestSession::writeResponseBody(const QByteArray &body)
 	assert(d->state == Private::RespondingStart || d->state == Private::Responding);
 	assert(!d->responseBodyFinished);
 
-	emit bodyBytesSent(body.size());
+	bodyBytesSent(body.size());
 
 	d->out += body;
 	d->responseUpdate();

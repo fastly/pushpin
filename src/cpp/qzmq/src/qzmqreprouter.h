@@ -25,6 +25,11 @@
 #define QZMQREPROUTER_H
 
 #include <QObject>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
+using SignalInt = boost::signals2::signal<void(int)>;
+using Connection = boost::signals2::scoped_connection;
 
 namespace QZmq {
 
@@ -48,9 +53,8 @@ public:
 	ReqMessage read();
 	void write(const ReqMessage &message);
 
-signals:
-	void readyRead();
-	void messagesWritten(int count);
+	Signal readyRead;
+	SignalInt messagesWritten;
 
 private:
 	Q_DISABLE_COPY(RepRouter)

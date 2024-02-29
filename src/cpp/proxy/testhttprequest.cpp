@@ -64,6 +64,10 @@ public:
 	}
 
 public slots:
+	void doBytesWritten(int cnt){
+		q->bytesWritten(cnt);
+	}
+
 	void processRequest()
 	{
 		if(!requestBodyFinished)
@@ -74,7 +78,7 @@ public slots:
 			responseBody += QByteArray("request too large\n");
 
 			state = Responded;
-			emit q->readyRead();
+			q->readyRead();
 			return;
 		}
 
@@ -131,7 +135,7 @@ public slots:
 		}
 
 		state = Responded;
-		emit q->readyRead();
+		q->readyRead();
 	}
 };
 
@@ -215,7 +219,7 @@ void TestHttpRequest::writeBody(const QByteArray &body)
 		{
 			d->requestBody += buf;
 
-			QMetaObject::invokeMethod(this, "bytesWritten", Qt::QueuedConnection, Q_ARG(int, buf.size()));
+			QMetaObject::invokeMethod(this, "doBytesWritten", Qt::QueuedConnection, Q_ARG(int, buf.size()));
 		}
 	}
 }

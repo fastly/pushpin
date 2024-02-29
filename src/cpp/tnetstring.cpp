@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
@@ -21,6 +22,7 @@
 #include "tnetstring.h"
 
 #include <assert.h>
+#include "qtcompat.h"
 
 namespace TnetString {
 
@@ -54,22 +56,22 @@ QByteArray fromNull()
 
 QByteArray fromVariant(const QVariant &in)
 {
-	switch(in.type())
+	switch(typeId(in))
 	{
-		case QVariant::ByteArray:
+		case QMetaType::QByteArray:
 			return fromByteArray(in.toByteArray());
-		case QVariant::Double:
+		case QMetaType::Double:
 			return fromDouble(in.toDouble());
-		case QVariant::Bool:
+		case QMetaType::Bool:
 			return fromBool(in.toBool());
-		case QVariant::Invalid:
+		case QMetaType::UnknownType:
 			return fromNull();
-		case QVariant::Hash:
+		case QMetaType::QVariantHash:
 			return fromHash(in.toHash());
-		case QVariant::List:
+		case QMetaType::QVariantList:
 			return fromList(in.toList());
 		default:
-			if(in.canConvert(QVariant::LongLong))
+			if(canConvert(in, QMetaType::LongLong))
 				return fromInt(in.toLongLong());
 
 			// unsupported type
@@ -373,8 +375,8 @@ QString variantToString(const QVariant &in, int indent)
 {
 	QString out;
 
-	QVariant::Type type = in.type();
-	if(type == QVariant::Hash)
+	QMetaType::Type type = typeId(in);
+	if(type == QMetaType::QVariantHash)
 	{
 		QVariantHash hash = in.toHash();
 
@@ -406,7 +408,7 @@ QString variantToString(const QVariant &in, int indent)
 			out += QString(indent, ' ');
 		out += '}';
 	}
-	else if(type == QVariant::List)
+	else if(type == QMetaType::QVariantList)
 	{
 		QVariantList list = in.toList();
 
@@ -435,18 +437,18 @@ QString variantToString(const QVariant &in, int indent)
 			out += QString(indent, ' ');
 		out += ']';
 	}
-	else if(type == QVariant::ByteArray)
+	else if(type == QMetaType::QByteArray)
 	{
 		QByteArray val = in.toByteArray();
 		out += '\"' + byteArrayToEscapedString(val) + '\"';
 	}
-	else if(type == QVariant::Double)
+	else if(type == QMetaType::Double)
 		out += QString::number(in.toDouble());
-	else if(type == QVariant::Bool)
+	else if(type == QMetaType::Bool)
 		out += in.toBool() ? "true" : "false";
-	else if(type == QVariant::Invalid)
+	else if(type == QMetaType::UnknownType)
 		out += "null";
-	else if(in.canConvert(QVariant::LongLong))
+	else if(canConvert(in, QMetaType::LongLong))
 		out += QString::number(in.toLongLong());
 	else
 		out += QString("<unknown: %1>").arg((int)type);

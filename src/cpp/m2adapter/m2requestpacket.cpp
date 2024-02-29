@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2013 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,6 +26,7 @@
 #include <QSet>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "qtcompat.h"
 #include "tnetstring.h"
 
 static bool isAllCaps(const QString &s)
@@ -119,7 +121,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 			QString key = vit.key();
 			QVariant val = vit.value();
 
-			if(val.type() == QVariant::ByteArray)
+			if(typeId(val) == QMetaType::QByteArray)
 			{
 				QByteArray ba = val.toByteArray();
 
@@ -128,13 +130,13 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 				if(!isAllCaps(key) && !skipHeaders.contains(key))
 					headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
 			}
-			else if(val.type() == QVariant::List)
+			else if(typeId(val) == QMetaType::QVariantList)
 			{
 				QVariantList vl = val.toList();
 				if(vl.isEmpty())
 					return false;
 
-				if(vl[0].type() != QVariant::ByteArray)
+				if(typeId(vl[0]) != QMetaType::QByteArray)
 					return false;
 
 				m2headers[key] = vl[0].toByteArray();
@@ -145,7 +147,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 
 					foreach(const QVariant &v, vl)
 					{
-						if(v.type() != QVariant::ByteArray)
+						if(typeId(v) != QMetaType::QByteArray)
 							return false;
 
 						headers += HttpHeader(name, v.toByteArray());
@@ -172,7 +174,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 			QString key = vit.key();
 			QVariant val = vit.value();
 
-			if(val.type() == QVariant::String)
+			if(typeId(val) == QMetaType::QString)
 			{
 				QByteArray ba = val.toString().toUtf8();
 
@@ -181,13 +183,13 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 				if(!isAllCaps(key) && !skipHeaders.contains(key))
 					headers += HttpHeader(makeMixedCaseHeader(key).toLatin1(), ba);
 			}
-			else if(val.type() == QVariant::List)
+			else if(typeId(val) == QMetaType::QVariantList)
 			{
 				QVariantList vl = val.toList();
 				if(vl.isEmpty())
 					return false;
 
-				if(vl[0].type() != QVariant::String)
+				if(typeId(vl[0]) != QMetaType::QString)
 					return false;
 
 				m2headers[key] = vl[0].toString().toUtf8();
@@ -198,7 +200,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 
 					foreach(const QVariant &v, vl)
 					{
-						if(v.type() != QVariant::String)
+						if(typeId(v) != QMetaType::QString)
 							return false;
 
 						headers += HttpHeader(name, v.toString().toUtf8());
@@ -238,7 +240,7 @@ bool M2RequestPacket::fromByteArray(const QByteArray &in)
 			return false;
 
 		QVariantMap data = doc.object().toVariantMap();
-		if(!data.contains("type") || data["type"].type() != QVariant::String)
+		if(!data.contains("type") || typeId(data["type"]) != QMetaType::QString)
 			return false;
 
 		QString jtype = data["type"].toString();

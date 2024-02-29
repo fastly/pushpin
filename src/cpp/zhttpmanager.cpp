@@ -105,6 +105,13 @@ public:
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
+	Connection cosConnection;
+	Connection cossConnection;
+	Connection sosConnection;
+	Connection rrConnection;
+	Connection clientConnection;
+	Connection serverConnection;
+	Connection serverStreamConnection;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -156,11 +163,13 @@ public:
 
 	bool setupClientOut()
 	{
+		cosConnection.disconnect();
+		rrConnection.disconnect();
 		delete client_req_sock;
 		delete client_out_sock;
 
 		client_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
-		connect(client_out_sock, &QZmq::Socket::messagesWritten, this, &Private::client_out_messagesWritten);
+		cosConnection = client_out_sock->messagesWritten.connect(boost::bind(&Private::client_out_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_sock->setHwm(OUT_HWM);
 		client_out_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
@@ -177,11 +186,13 @@ public:
 
 	bool setupClientOutStream()
 	{
+		rrConnection.disconnect();
+		cossConnection.disconnect();
 		delete client_req_sock;
 		delete client_out_stream_sock;
 
 		client_out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
-		connect(client_out_stream_sock, &QZmq::Socket::messagesWritten, this, &Private::client_out_stream_messagesWritten);
+		cossConnection = client_out_stream_sock->messagesWritten.connect(boost::bind(&Private::client_out_stream_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_stream_sock->setWriteQueueEnabled(false);
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
@@ -200,6 +211,7 @@ public:
 
 	bool setupClientIn()
 	{
+		rrConnection.disconnect();
 		delete client_req_sock;
 		delete client_in_sock;
 
@@ -217,7 +229,7 @@ public:
 		}
 
 		client_in_valve = new QZmq::Valve(client_in_sock, this);
-		connect(client_in_valve, &QZmq::Valve::readyRead, this, &Private::client_in_readyRead);
+		clientConnection = client_in_valve->readyRead.connect(boost::bind(&Private::client_in_readyRead, this, boost::placeholders::_1));
 
 		client_in_valve->open();
 
@@ -226,12 +238,14 @@ public:
 
 	bool setupClientReq()
 	{
+		cosConnection.disconnect();
+		cossConnection.disconnect();
 		delete client_out_sock;
 		delete client_out_stream_sock;
 		delete client_in_sock;
 
 		client_req_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
-		connect(client_req_sock, &QZmq::Socket::readyRead, this, &Private::client_req_readyRead);
+		rrConnection = client_req_sock->readyRead.connect(boost::bind(&Private::client_req_readyRead, this));
 
 		client_req_sock->setHwm(OUT_HWM);
 		client_req_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
@@ -262,7 +276,7 @@ public:
 		}
 
 		server_in_valve = new QZmq::Valve(server_in_sock, this);
-		connect(server_in_valve, &QZmq::Valve::readyRead, this, &Private::server_in_readyRead);
+		serverConnection = server_in_valve->readyRead.connect(boost::bind(&Private::server_in_readyRead, this, boost::placeholders::_1));
 
 		server_in_valve->open();
 
@@ -271,6 +285,7 @@ public:
 
 	bool setupServerInStream()
 	{
+		serverStreamConnection.disconnect();
 		delete server_in_stream_sock;
 
 		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
@@ -286,7 +301,7 @@ public:
 		}
 
 		server_in_stream_valve = new QZmq::Valve(server_in_stream_sock, this);
-		connect(server_in_stream_valve, &QZmq::Valve::readyRead, this, &Private::server_in_stream_readyRead);
+		serverStreamConnection = server_in_stream_valve->readyRead.connect(boost::bind(&Private::server_in_stream_readyRead, this, boost::placeholders::_1));
 
 		server_in_stream_valve->open();
 
@@ -295,10 +310,11 @@ public:
 
 	bool setupServerOut()
 	{
+		sosConnection.disconnect();
 		delete server_out_sock;
 
 		server_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
-		connect(server_out_sock, &QZmq::Socket::messagesWritten, this, &Private::server_out_messagesWritten);
+		sosConnection = server_out_sock->messagesWritten.connect(boost::bind(&Private::server_out_messagesWritten, this, boost::placeholders::_1));
 
 		server_out_sock->setWriteQueueEnabled(false);
 		server_out_sock->setHwm(DEFAULT_HWM);
@@ -474,7 +490,6 @@ public:
 		write(type, zresp, zhttpAddress);
 	}
 
-public slots:
 	void client_out_messagesWritten(int count)
 	{
 		Q_UNUSED(count);
@@ -483,6 +498,72 @@ public slots:
 	void client_out_stream_messagesWritten(int count)
 	{
 		Q_UNUSED(count);
+	}
+
+	void server_out_messagesWritten(int count)
+	{
+		Q_UNUSED(count);
+	}
+
+	void client_req_readyRead()
+	{
+		QPointer<QObject> self = this;
+
+		while(client_req_sock->canRead())
+		{
+			QList<QByteArray> msg = client_req_sock->read();
+			if(msg.count() != 2)
+			{
+				log_warning("zhttp/zws client req: received message with parts != 2, skipping");
+				continue;
+			}
+
+			QByteArray dataRaw = msg[1];
+			if(dataRaw.length() < 1 || dataRaw[0] != 'T')
+			{
+				log_warning("zhttp/zws client req: received message with invalid format (missing type), skipping");
+				continue;
+			}
+
+			QVariant data = TnetString::toVariant(dataRaw.mid(1));
+			if(data.isNull())
+			{
+				log_warning("zhttp/zws client req: received message with invalid format (tnetstring parse failed), skipping");
+				continue;
+			}
+
+			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client req: IN");
+
+			ZhttpResponsePacket p;
+			if(!p.fromVariant(data))
+			{
+				log_warning("zhttp/zws client req: received message with invalid format (parse failed), skipping");
+				continue;
+			}
+
+			if(p.ids.count() != 1)
+			{
+				log_warning("zhttp/zws client req: received message with multiple ids, skipping");
+				return;
+			}
+
+			const ZhttpResponsePacket::Id &id = p.ids.first();
+
+			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
+			if(req)
+			{
+				req->handle(id.id, id.seq, p);
+				if(!self)
+					return;
+
+				continue;
+			}
+
+			log_debug("zhttp/zws client req: received message for unknown request id");
+
+			// NOTE: we don't respond with a cancel message in req mode
+		}
 	}
 
 	void client_in_readyRead(const QList<QByteArray> &msg)
@@ -625,7 +706,7 @@ public slots:
 			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
 				server_in_valve->close();
 
-			emit q->socketReady();
+			q->socketReady();
 		}
 		else if(p.uri.scheme() == "https" || p.uri.scheme() == "http")
 		{
@@ -652,74 +733,13 @@ public slots:
 			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
 				server_in_valve->close();
 
-			emit q->requestReady();
+			q->requestReady();
 		}
 		else
 		{
 			log_debug("zhttp/zws server: rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
 			tryRespondCancel(UnknownSession, id.id, p);
 			return;
-		}
-	}
-
-	void client_req_readyRead()
-	{
-		QPointer<QObject> self = this;
-
-		while(client_req_sock->canRead())
-		{
-			QList<QByteArray> msg = client_req_sock->read();
-			if(msg.count() != 2)
-			{
-				log_warning("zhttp/zws client req: received message with parts != 2, skipping");
-				continue;
-			}
-
-			QByteArray dataRaw = msg[1];
-			if(dataRaw.length() < 1 || dataRaw[0] != 'T')
-			{
-				log_warning("zhttp/zws client req: received message with invalid format (missing type), skipping");
-				continue;
-			}
-
-			QVariant data = TnetString::toVariant(dataRaw.mid(1));
-			if(data.isNull())
-			{
-				log_warning("zhttp/zws client req: received message with invalid format (tnetstring parse failed), skipping");
-				continue;
-			}
-
-			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client req: IN");
-
-			ZhttpResponsePacket p;
-			if(!p.fromVariant(data))
-			{
-				log_warning("zhttp/zws client req: received message with invalid format (parse failed), skipping");
-				continue;
-			}
-
-			if(p.ids.count() != 1)
-			{
-				log_warning("zhttp/zws client req: received message with multiple ids, skipping");
-				return;
-			}
-
-			const ZhttpResponsePacket::Id &id = p.ids.first();
-
-			ZhttpRequest *req = clientReqsByRid.value(ZhttpRequest::Rid(instanceId, id.id));
-			if(req)
-			{
-				req->handle(id.id, id.seq, p);
-				if(!self)
-					return;
-
-				continue;
-			}
-
-			log_debug("zhttp/zws client req: received message for unknown request id");
-
-			// NOTE: we don't respond with a cancel message in req mode
 		}
 	}
 
@@ -784,11 +804,7 @@ public slots:
 		}
 	}
 
-	void server_out_messagesWritten(int count)
-	{
-		Q_UNUSED(count);
-	}
-
+public slots:
 	void refresh_timeout()
 	{
 		QHash<QByteArray, QList<KeepAliveRegistration*> > clientSessionsBySender[2]; // index corresponds to type

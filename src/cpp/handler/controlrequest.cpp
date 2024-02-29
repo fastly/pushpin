@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2017 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,6 +24,7 @@
 #include "controlrequest.h"
 
 #include "packet/statspacket.h"
+#include "qtcompat.h"
 #include "deferred.h"
 #include "zrpcrequest.h"
 
@@ -32,12 +34,14 @@ class ConnCheck : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	ConnCheck(ZrpcManager *controlClient, const CidSet &cids, QObject *parent = 0) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		connect(req, &ZrpcRequest::finished, this, &ConnCheck::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this, req));
 
 		QVariantList vcids;
 		foreach(const QString &cid, cids)
@@ -48,15 +52,13 @@ public:
 		req->start("conncheck", args);
 	}
 
-private slots:
-	void req_finished()
+private:
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 		{
 			QVariant vresult = req->result();
-			if(vresult.type() != QVariant::List)
+			if(typeId(vresult) != QMetaType::QVariantList)
 			{
 				setFinished(false);
 				return;
@@ -67,7 +69,7 @@ private slots:
 			CidSet out;
 			foreach(const QVariant &vcid, result)
 			{
-				if(vcid.type() != QVariant::ByteArray)
+				if(typeId(vcid) != QMetaType::QByteArray)
 				{
 					setFinished(false);
 					return;
@@ -89,22 +91,22 @@ class Refresh : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	Refresh(ZrpcManager *controlClient, const QByteArray &cid, QObject *parent) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		connect(req, &ZrpcRequest::finished, this, &Refresh::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this, req));
 
 		QVariantHash args;
 		args["cid"] = cid;
 		req->start("refresh", args);
 	}
 
-	void req_finished()
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 			setFinished(true);
 		else
@@ -116,22 +118,22 @@ class Report : public Deferred
 {
 	Q_OBJECT
 
+	Connection finishedConnection;
+
 public:
 	Report(ZrpcManager *controlClient, const StatsPacket &packet, QObject *parent) :
 		Deferred(parent)
 	{
 		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		connect(req, &ZrpcRequest::finished, this, &Report::req_finished);
+		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this, req));
 
 		QVariantHash args;
 		args["stats"] = packet.toVariant();
 		req->start("report", args);
 	}
 
-	void req_finished()
+	void req_finished(ZrpcRequest *req)
 	{
-		ZrpcRequest *req = (ZrpcRequest *)sender();
-
 		if(req->success())
 			setFinished(true);
 		else

@@ -8,7 +8,7 @@ WORKDIR /build
 COPY . .
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake fst-rustc-1.70.0=1.70.0-147 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake fst-rustc-1.71.0=1.71.0-149 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
 RUN ls -alhrt
 ENV CFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
@@ -16,7 +16,7 @@ ENV CXXFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
 ENV LDFLAGS="-Wl,-z,now -Wl,-z,relro"
 ENV CC=/opt/fst-gcc/9.1.0/bin/gcc
 ENV CXX=/opt/fst-gcc/9.1.0/bin/g++
-ENV RUST_TOOLCHAIN=/opt/fst-rust/1.70.0
+ENV RUST_TOOLCHAIN=/opt/fst-rust/1.71.0
 ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
 RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make DESTDIR=/ install
@@ -30,7 +30,7 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stag
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-proxy
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-publish
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-stats-emitter
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/condure
+RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-condure
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-healthcheck
 RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
 RUN cp ./fastly-build/pushpin.conf /opt/fst-pushpin/etc/pushpin/pushpin.conf

@@ -11,18 +11,11 @@ class App : public QObject
 private:
 	QZmq::RepRouter sock;
 
-public slots:
-	void start()
+	void sock_messagesWritten(int count)
 	{
-		connect(&sock, SIGNAL(readyRead()), SLOT(sock_readyRead()));
-		connect(&sock, SIGNAL(messagesWritten(int)), SLOT(sock_messagesWritten(int)));
-		sock.bind("tcp://*:5555");
+		printf("messages written: %d\n", count);
 	}
 
-signals:
-	void quit();
-
-private slots:
 	void sock_readyRead()
 	{
 		QZmq::ReqMessage msg = sock.read();
@@ -38,10 +31,16 @@ private slots:
 		sock.write(msg.createReply(QList<QByteArray>() << out));
 	}
 
-	void sock_messagesWritten(int count)
+public slots:
+	void start()
 	{
-		printf("messages written: %d\n", count);
+		rrConnection = sock.readyRead.connect(boost::bind(&Private::sock_readyRead, this));
+		mwConnection = sock.messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this, boost::placeholders::_1));
+		sock.bind("tcp://*:5555");
 	}
+
+signals:
+	void quit();
 };
 
 int main(int argc, char **argv)

@@ -27,7 +27,7 @@
 #include <boost/signals2.hpp>
 
 using SignalInt = boost::signals2::signal<void(int)>;
-using Connection = boost::signals2::connection;
+using Connection = boost::signals2::scoped_connection;
 
 class HandlerApp : public QObject
 {

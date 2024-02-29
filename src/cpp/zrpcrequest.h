@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2015 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,6 +26,9 @@
 
 #include <QObject>
 #include <QVariant>
+#include <boost/signals2.hpp>
+
+using Signal = boost::signals2::signal<void()>;
 
 class ZrpcRequestPacket;
 class ZrpcResponsePacket;
@@ -46,6 +50,7 @@ public:
 	ZrpcRequest(ZrpcManager *manager, QObject *parent = 0);
 	~ZrpcRequest();
 
+	QByteArray from() const;
 	QByteArray id() const;
 	QString method() const;
 	QVariantHash args() const;
@@ -60,12 +65,11 @@ public:
 
 	void setError(ErrorCondition condition, const QVariant &result = QVariant());
 
+	Signal finished;
+
 protected:
 	virtual void onSuccess();
 	virtual void onError();
-
-signals:
-	void finished();
 
 private:
 	class Private;

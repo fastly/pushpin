@@ -21,8 +21,6 @@
  */
 
 #include <QCoreApplication>
-#include <QDateTime>
-#include <QTimeZone>
 #include <QTimer>
 #include "rust/log.h"
 #include "app.h"
@@ -50,13 +48,8 @@ extern "C" {
 
 int proxy_main(int argc, char **argv)
 {
-	// rust logger can only detect the local time zone when there are
-	// no other threads running. we can't guarantee there are no other
-	// threads when using qt (at least on mac, some threads seem to
-	// exist before main() runs), so we initialize the logger with an
-	// explicit time zone, as early as possible
-	QDateTime now = QDateTime::currentDateTime();
-	log_init(now.timeZone().offsetFromUtc(now));
+	// initialize logger as early as possible
+	log_init();
 
 	QCoreApplication qapp(argc, argv);
 

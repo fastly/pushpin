@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -20,13 +21,13 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <QDateTime>
 #include <QtTest/QtTest>
 #include <QDir>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
 #include "rust/log.h"
+#include "qtcompat.h"
 #include "log.h"
 #include "tnetstring.h"
 #include "zhttprequestpacket.h"
@@ -63,6 +64,10 @@ public:
 	bool serverFailed;
 	int serverOutSeq;
 	QByteArray requestBody;
+	Connection zhttpClientInValveConnection;
+	Connection zhttpServerInValveConnection;
+	Connection zhttpServerInStreamValveConnection;
+	Connection proxyAcceptValveConnection;
 
 	Wrapper(QObject *parent, QDir _workDir) :
 		QObject(parent),
@@ -79,16 +84,16 @@ public:
 
 		zhttpClientInSock = new QZmq::Socket(QZmq::Socket::Sub, this);
 		zhttpClientInValve = new QZmq::Valve(zhttpClientInSock, this);
-		connect(zhttpClientInValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpClientIn_readyRead);
+		zhttpClientInValveConnection = zhttpClientInValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientIn_readyRead, this, boost::placeholders::_1));
 
 		zhttpServerInSock = new QZmq::Socket(QZmq::Socket::Pull, this);
 		zhttpServerInValve = new QZmq::Valve(zhttpServerInSock, this);
-		connect(zhttpServerInValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpServerIn_readyRead);
+		zhttpServerInValveConnection = zhttpServerInValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerIn_readyRead, this, boost::placeholders::_1));
 
 		zhttpServerInStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
 		zhttpServerInStreamSock->setIdentity("test-server");
 		zhttpServerInStreamValve = new QZmq::Valve(zhttpServerInStreamSock, this);
-		connect(zhttpServerInStreamValve, &QZmq::Valve::readyRead, this, &Wrapper::zhttpServerInStream_readyRead);
+		zhttpServerInStreamValveConnection = zhttpServerInStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerInStream_readyRead, this, boost::placeholders::_1));
 
 		zhttpServerOutSock = new QZmq::Socket(QZmq::Socket::Pub, this);
 
@@ -96,7 +101,7 @@ public:
 
 		proxyAcceptSock = new QZmq::Socket(QZmq::Socket::Dealer, this);
 		proxyAcceptValve = new QZmq::Valve(proxyAcceptSock, this);
-		connect(proxyAcceptValve, &QZmq::Valve::readyRead, this, &Wrapper::proxyAccept_readyRead);
+		proxyAcceptValveConnection = proxyAcceptValve->readyRead.connect(boost::bind(&Wrapper::proxyAccept_readyRead, this, boost::placeholders::_1));
 
 		// publish sockets
 
@@ -243,7 +248,7 @@ private slots:
 		QZmq::ReqMessage message(_message);
 		QVariant v = TnetString::toVariant(message.content()[0]);
 
-		QVERIFY(v.type() == QVariant::Hash);
+		QVERIFY(typeId(v) == QMetaType::QVariantHash);
 		QVariantHash vresp = v.toHash();
 
 		QVERIFY(vresp.value("success").toBool());
@@ -251,7 +256,7 @@ private slots:
 		acceptSuccess = true;
 
 		v = vresp.value("value");
-		QVERIFY(v.type() == QVariant::Hash);
+		QVERIFY(typeId(v) == QMetaType::QVariantHash);
 		acceptValue = v.toHash();
 	}
 };
@@ -269,14 +274,13 @@ private:
 private slots:
 	void initTestCase()
 	{
-		QDateTime now = QDateTime::currentDateTime();
-		log_init(now.timeZone().offsetFromUtc(now));
+		log_init();
 
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
-		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
-		QDir workDir(rootDir.filePath("target/cpp/test-work"));
+		QDir outDir(qgetenv("OUT_DIR"));
+		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
@@ -291,7 +295,7 @@ private slots:
 		config.clientOutSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in"));
 		config.clientOutStreamSpecs = QStringList() << ("ipc://" + workDir.filePath("server-in-stream"));
 		config.clientInSpecs = QStringList() << ("ipc://" + workDir.filePath("server-out"));
-		config.acceptSpec = ("ipc://" + workDir.filePath("accept"));
+		config.acceptSpecs = QStringList() << ("ipc://" + workDir.filePath("accept"));
 		config.pushInSpec = ("ipc://" + workDir.filePath("publish-pull"));
 		config.connectionSubscriptionMax = 20;
 		config.connectionsMax = 20;
