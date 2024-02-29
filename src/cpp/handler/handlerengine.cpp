@@ -1232,7 +1232,7 @@ public:
 	ZrpcManager *acceptServer;
 	ZrpcManager *stateClient;
 	ZrpcManager *controlServer;
-	ZrpcManager *proxyControlClient;
+	std::unique_ptr<ZrpcManager> proxyControlClient;
 	QZmq::Socket *inPullSock;
 	QZmq::Valve *inPullValve;
 	QZmq::Socket *inSubSock;
@@ -1284,7 +1284,6 @@ public:
 		acceptServer(0),
 		stateClient(0),
 		controlServer(0),
-		proxyControlClient(0),
 		inPullSock(0),
 		inPullValve(0),
 		inSubSock(0),
@@ -1302,6 +1301,8 @@ public:
 		report(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
+
+		proxyControlClient = std::make_unique<ZrpcManager>(this);
 
 		publishLimiter = new RateLimiter(this);
 		updateLimiter = new RateLimiter(this);
@@ -1592,7 +1593,7 @@ public:
 
 		if(!config.proxyCommandSpec.isEmpty())
 		{
-			proxyControlClient = new ZrpcManager(this);
+			proxyControlClient = std::make_unique<ZrpcManager>(this);
 			proxyControlClient->setIpcFileMode(config.ipcFileMode);
 			proxyControlClient->setTimeout(PROXY_RPC_TIMEOUT);
 
@@ -2044,7 +2045,7 @@ private:
 
 		if(req->method() == "conncheck")
 		{
-			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats);
+			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient.get(), stats);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}
@@ -2068,7 +2069,7 @@ private:
 		}
 		else if(req->method() == "refresh")
 		{
-			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel);
+			RefreshWorker *w = new RefreshWorker(req, proxyControlClient.get(), &cs.wsSessionsByChannel);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}
@@ -2474,7 +2475,7 @@ private:
 			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
 		}
 
-		report = ControlRequest::report(proxyControlClient, all);
+		report = ControlRequest::report(proxyControlClient.get(), all);
 		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
 		deferreds += report;
 	}

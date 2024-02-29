@@ -43,8 +43,8 @@ public:
 	DetectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules) :
 		Deferred()
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this, req));
+		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this, req.get()));
 
 		QVariantList rlist;
 		foreach(const DetectRule &rule, rules)
@@ -87,8 +87,8 @@ public:
 	DetectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path) :
 		Deferred()
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this, req));
+		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		finishedConnection = req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this, req.get()));
 
 		QVariantHash args;
 		args["domain"] = domain.toUtf8();
@@ -180,8 +180,8 @@ public:
 	CreateOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds) :
 		Deferred()
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this, req));
+		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		finishedConnection = req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this, req.get()));
 
 		QVariantHash args;
 
@@ -223,8 +223,8 @@ public:
 	UpdateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds) :
 		Deferred()
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&UpdateMany::req_finished, this, req));
+		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		finishedConnection = req->finished.connect(boost::bind(&UpdateMany::req_finished, this, req.get()));
 
 		QVariantHash vsidLastIds;
 
@@ -276,8 +276,8 @@ public:
 	GetLastIds(ZrpcManager *stateClient, const QString &sid) :
 		Deferred()
 	{
-		ZrpcRequest *req = new ZrpcRequest(stateClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&GetLastIds::req_finished, this, req));
+		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		finishedConnection = req->finished.connect(boost::bind(&GetLastIds::req_finished, this, req.get()));
 
 		QVariantHash args;
 		args["sid"] = sid.toUtf8();

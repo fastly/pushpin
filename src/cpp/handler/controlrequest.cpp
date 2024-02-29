@@ -40,8 +40,8 @@ public:
 	ConnCheck(ZrpcManager *controlClient, const CidSet &cids) :
 		Deferred()
 	{
-		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this, req));
+		auto req = std::make_unique<ZrpcRequest>(controlClient, this);
+		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this, req.get()));
 
 		QVariantList vcids;
 		foreach(const QString &cid, cids)
@@ -97,8 +97,8 @@ public:
 	Refresh(ZrpcManager *controlClient, const QByteArray &cid) :
 		Deferred()
 	{
-		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this, req));
+		auto req = std::make_unique<ZrpcRequest>(controlClient, this);
+		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this, req.get()));
 
 		QVariantHash args;
 		args["cid"] = cid;
@@ -124,8 +124,8 @@ public:
 	Report(ZrpcManager *controlClient, const StatsPacket &packet) :
 		Deferred()
 	{
-		ZrpcRequest *req = new ZrpcRequest(controlClient, this);
-		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this, req));
+		auto req = std::make_unique<ZrpcRequest>(controlClient, this);
+		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this, req.get()));
 
 		QVariantHash args;
 		args["stats"] = packet.toVariant();
