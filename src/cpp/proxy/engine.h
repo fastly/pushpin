@@ -46,6 +46,7 @@ public:
 	class Configuration
 	{
 	public:
+		int id;
 		QString appVersion;
 		QByteArray clientId;
 		QStringList serverInSpecs;
@@ -95,6 +96,7 @@ public:
 		QString prometheusPrefix;
 
 		Configuration() :
+			id(0),
 			ipcFileMode(-1),
 			sessionsMax(-1),
 			inspectTimeout(8000),

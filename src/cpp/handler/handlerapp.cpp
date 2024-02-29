@@ -50,6 +50,30 @@ static void trimlist(QStringList *list)
 	}
 }
 
+static QStringList expandSpecs(const QStringList &l, int peerCount)
+{
+	if(l.count() == 1 && l[0].startsWith("ipc:") && peerCount > 1)
+	{
+		QString base = l[0];
+
+		QStringList out;
+		for(int i = 0; i < peerCount; ++i)
+			out += base + QString("-%1").arg(i);
+
+		return out;
+	}
+
+	return l;
+}
+
+static QString firstSpec(const QString &s, int peerCount)
+{
+	if(s.startsWith("ipc:") && peerCount > 1)
+		return s + "-0";
+
+	return s;
+}
+
 enum CommandLineParseResult
 {
 	CommandLineOk,
@@ -238,6 +262,7 @@ public:
 		trimlist(&condure_in_stream_specs);
 		QStringList condure_out_specs = settings.value("proxy/condure_out_specs").toStringList();
 		trimlist(&condure_out_specs);
+		int proxyWorkerCount = settings.value("proxy/workers", 1).toInt();
 		QStringList m2a_in_stream_specs = settings.value("handler/m2a_in_stream_specs").toStringList();
 		trimlist(&m2a_in_stream_specs);
 		QStringList m2a_out_specs = settings.value("handler/m2a_out_specs").toStringList();
@@ -333,19 +358,19 @@ public:
 			config.serverInStreamSpecs = m2a_in_stream_specs;
 			config.serverOutSpecs = m2a_out_specs;
 		}
-		config.clientOutSpecs = intreq_out_specs;
-		config.clientOutStreamSpecs = intreq_out_stream_specs;
-		config.clientInSpecs = intreq_in_specs;
-		config.inspectSpecs = proxy_inspect_specs;
-		config.acceptSpecs = proxy_accept_specs;
-		config.retryOutSpecs = proxy_retry_out_specs;
-		config.wsControlInitSpecs = ws_control_init_specs;
-		config.wsControlStreamSpecs = ws_control_stream_specs;
+		config.clientOutSpecs = expandSpecs(intreq_out_specs, proxyWorkerCount);
+		config.clientOutStreamSpecs = expandSpecs(intreq_out_stream_specs, proxyWorkerCount);
+		config.clientInSpecs = expandSpecs(intreq_in_specs, proxyWorkerCount);
+		config.inspectSpecs = expandSpecs(proxy_inspect_specs, proxyWorkerCount);
+		config.acceptSpecs = expandSpecs(proxy_accept_specs, proxyWorkerCount);
+		config.retryOutSpecs = expandSpecs(proxy_retry_out_specs, proxyWorkerCount);
+		config.wsControlInitSpecs = expandSpecs(ws_control_init_specs, proxyWorkerCount);
+		config.wsControlStreamSpecs = expandSpecs(ws_control_stream_specs, proxyWorkerCount);
 		config.statsSpec = stats_spec;
 		config.commandSpec = command_spec;
 		config.stateSpec = state_spec;
-		config.proxyStatsSpecs = proxy_stats_specs;
-		config.proxyCommandSpec = proxy_command_spec;
+		config.proxyStatsSpecs = expandSpecs(proxy_stats_specs, proxyWorkerCount);
+		config.proxyCommandSpec = firstSpec(proxy_command_spec, proxyWorkerCount);
 		config.pushInSpec = push_in_spec;
 		config.pushInSubSpecs = push_in_sub_specs;
 		config.pushInSubConnect = push_in_sub_connect;
