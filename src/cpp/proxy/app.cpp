@@ -71,6 +71,22 @@ static XffRule parse_xffRule(const QStringList &in)
 	return out;
 }
 
+static QString suffixSpec(const QString &s, int i)
+{
+	if(s.startsWith("ipc:"))
+		return s + QString("-%1").arg(i);
+
+	return s;
+}
+
+static QStringList suffixSpecs(const QStringList &l, int i)
+{
+	if(l.count() == 1 && l[0].startsWith("ipc:"))
+		return QStringList() << (l[0] + QString("-%1").arg(i));
+
+	return l;
+}
+
 enum CommandLineParseResult
 {
 	CommandLineOk,
@@ -228,6 +244,8 @@ public:
 
 	bool start()
 	{
+		setObjectName("proxy-worker-" + QString::number(config.id));
+
 		QMutexLocker locker(&m);
 		QThread::start();
 		w.wait(&m);
@@ -263,7 +281,7 @@ public:
 		if(worker)
 		{
 			worker = 0;
-			log_debug("worker stopped");
+			log_debug("worker %d: stopped", config.id);
 		}
 
 		startedConnection.disconnect();
@@ -274,7 +292,7 @@ public:
 private:
 	void worker_started(EngineWorker *e)
 	{
-		log_debug("worker started");
+		log_debug("worker %d: started", config.id);
 
 		// set worker field and unblock start()
 		worker = e;
@@ -298,7 +316,7 @@ public:
 	App *q;
 	ArgsData args;
 	DomainMap *domainMap;
-	EngineThread *thread;
+	std::list<EngineThread*> threads;
 	Connection quitConnection;
 	Connection hupConnection;
 	Connection changedConnection;
@@ -306,8 +324,7 @@ public:
 	Private(App *_q) :
 		QObject(_q),
 		q(_q),
-		domainMap(0),
-		thread(0)
+		domainMap(0)
 	{
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
@@ -381,6 +398,7 @@ public:
 
 		QStringList services = settings.value("runner/services").toStringList();
 
+		int workerCount = settings.value("proxy/workers", 1).toInt();
 		QStringList condure_in_specs = settings.value("proxy/condure_in_specs").toStringList();
 		trimlist(&condure_in_specs);
 		QStringList condure_in_stream_specs = settings.value("proxy/condure_in_stream_specs").toStringList();
@@ -533,7 +551,7 @@ public:
 		config.intServerInStreamSpecs = intreq_in_stream_specs;
 		config.intServerOutSpecs = intreq_out_specs;
 		config.ipcFileMode = ipcFileMode;
-		config.sessionsMax = sessionsMax;
+		config.sessionsMax = sessionsMax / workerCount;
 		config.debug = debug;
 		config.autoCrossOrigin = autoCrossOrigin;
 		config.acceptXForwardedProto = acceptXForwardedProtocol;
@@ -560,16 +578,44 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		EngineThread *t = new EngineThread(config, domainMap);
-		if(!t->start())
+		for(int n = 0; n < workerCount; ++n)
 		{
-			delete t;
+			Engine::Configuration wconfig = config;
 
-			q->quit(0);
-			return;
+			wconfig.id = n;
+
+			if(workerCount > 1)
+			{
+				wconfig.clientId += '-' + QByteArray::number(n);
+
+				wconfig.inspectSpec = suffixSpec(wconfig.inspectSpec, n);
+				wconfig.acceptSpec = suffixSpec(wconfig.acceptSpec, n);
+				wconfig.retryInSpec = suffixSpec(wconfig.retryInSpec, n);
+				wconfig.wsControlInitSpecs = suffixSpecs(wconfig.wsControlInitSpecs, n);
+				wconfig.wsControlStreamSpecs = suffixSpecs(wconfig.wsControlStreamSpecs, n);
+				wconfig.statsSpec = suffixSpec(wconfig.statsSpec, n);
+				wconfig.commandSpec = suffixSpec(wconfig.commandSpec, n);
+				wconfig.intServerInSpecs = suffixSpecs(wconfig.intServerInSpecs, n);
+				wconfig.intServerInStreamSpecs = suffixSpecs(wconfig.intServerInStreamSpecs, n);
+				wconfig.intServerOutSpecs = suffixSpecs(wconfig.intServerOutSpecs, n);
+			}
+
+			EngineThread *t = new EngineThread(wconfig, domainMap);
+			if(!t->start())
+			{
+				delete t;
+
+				for(EngineThread *t : threads)
+					delete t;
+
+				threads.clear();
+
+				q->quit(0);
+				return;
+			}
+
+			threads.push_back(t);
 		}
-
-		thread = t;
 
 		log_info("started");
 	}
@@ -585,7 +631,8 @@ private slots:
 
 	void domainMap_changed()
 	{
-		thread->routesChanged();
+		for(EngineThread *t : threads)
+			t->routesChanged();
 	}
 
 	void doQuit()
@@ -595,11 +642,13 @@ private slots:
 		// remove the handler, so if we get another signal then we crash out
 		ProcessQuit::cleanup();
 
-		delete thread;
-		thread = 0;
+		for(EngineThread *t : threads)
+			t->stop();
 
-		delete domainMap;
-		domainMap = 0;
+		for(EngineThread *t : threads)
+			delete t;
+
+		threads.clear();
 
 		log_info("stopped");
 		q->quit(0);
