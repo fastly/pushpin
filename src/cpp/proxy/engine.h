@@ -36,6 +36,7 @@ using std::map;
 using Connection = boost::signals2::scoped_connection;
 
 class StatsManager;
+class DomainMap;
 
 class Engine : public QObject
 {
@@ -67,8 +68,6 @@ public:
 		int sessionsMax;
 		int inspectTimeout;
 		int inspectPrefetch;
-		QString routesFile;
-		QStringList routeLines;
 		bool debug;
 		bool autoCrossOrigin;
 		bool acceptXForwardedProto;
@@ -118,13 +117,13 @@ public:
 		}
 	};
 
-	Engine(QObject *parent = 0);
+	Engine(DomainMap *domainMap, QObject *parent = 0);
 	~Engine();
 
 	StatsManager *statsManager() const;
 
 	bool start(const Configuration &config);
-	void reload();
+	void routesChanged();
 
 private:
 	class Private;
