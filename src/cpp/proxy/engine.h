@@ -36,6 +36,7 @@ using std::map;
 using Connection = boost::signals2::scoped_connection;
 
 class StatsManager;
+class DomainMap;
 
 class Engine : public QObject
 {
@@ -45,6 +46,7 @@ public:
 	class Configuration
 	{
 	public:
+		int id;
 		QString appVersion;
 		QByteArray clientId;
 		QStringList serverInSpecs;
@@ -67,8 +69,6 @@ public:
 		int sessionsMax;
 		int inspectTimeout;
 		int inspectPrefetch;
-		QString routesFile;
-		QStringList routeLines;
 		bool debug;
 		bool autoCrossOrigin;
 		bool acceptXForwardedProto;
@@ -96,6 +96,7 @@ public:
 		QString prometheusPrefix;
 
 		Configuration() :
+			id(0),
 			ipcFileMode(-1),
 			sessionsMax(-1),
 			inspectTimeout(8000),
@@ -118,13 +119,13 @@ public:
 		}
 	};
 
-	Engine(QObject *parent = 0);
+	Engine(DomainMap *domainMap, QObject *parent = 0);
 	~Engine();
 
 	StatsManager *statsManager() const;
 
 	bool start(const Configuration &config);
-	void reload();
+	void routesChanged();
 
 private:
 	class Private;

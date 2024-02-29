@@ -155,6 +155,7 @@ public:
 	};
 
 	RequestSession *q;
+	int workerId;
 	State state;
 	ZhttpRequest::Rid rid;
 	DomainMap *domainMap;
@@ -200,9 +201,10 @@ public:
 	Connection inspectFinishedConnection;
 	Connection acceptFinishedConnection;
 
-	Private(RequestSession *_q, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
+	Private(RequestSession *_q, int _workerId, DomainMap *_domainMap = 0, SockJsManager *_sockJsManager = 0, ZrpcManager *_inspectManager = 0, ZrpcChecker *_inspectChecker = 0, ZrpcManager *_acceptManager = 0, StatsManager *_stats = 0) :
 		QObject(_q),
 		q(_q),
+		workerId(_workerId),
 		state(Stopped),
 		domainMap(_domainMap),
 		sockJsManager(_sockJsManager),
@@ -286,7 +288,7 @@ public:
 		peerAddress = req->peerAddress();
 		logicalPeerAddress = ProxyUtil::getLogicalAddress(requestData.headers, trusted ? xffTrustedRule : xffRule, peerAddress);
 
-		log_debug("IN id=%s, %s %s", rid.second.data(), qPrintable(requestData.method), requestData.uri.toEncoded().data());
+		log_debug("worker %d: IN id=%s, %s %s", workerId, rid.second.data(), qPrintable(requestData.method), requestData.uri.toEncoded().data());
 
 		bool isHttps = (requestData.uri.scheme() == "https");
 		QString host = requestData.uri.host();
@@ -1183,16 +1185,16 @@ public slots:
 	}
 };
 
-RequestSession::RequestSession(StatsManager *stats, QObject *parent) :
+RequestSession::RequestSession(int workerId, StatsManager *stats, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, 0, 0, 0, 0, 0, stats);
+	d = new Private(this, workerId, 0, 0, 0, 0, 0, stats);
 }
 
-RequestSession::RequestSession(DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats, QObject *parent) :
+RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager, stats);
+	d = new Private(this, workerId, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager, stats);
 }
 
 RequestSession::~RequestSession()
