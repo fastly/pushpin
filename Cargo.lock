@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "pushpin"
-version = "1.38.0-dev"
+version = "1.39.0-dev"
 dependencies = [
  "arrayvec",
  "base64 0.13.1",
