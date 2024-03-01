@@ -232,7 +232,7 @@ public:
 			if(getSession && stateClient)
 			{
 				// determine session info
-				auto d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8());
+				auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8()));
 				finishedConnection[d.get()] = d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, boost::placeholders::_1));
 				return;
 			}
@@ -351,7 +351,7 @@ private:
 
 			if(!sid.isEmpty())
 			{
-				auto d = SessionRequest::getLastIds(stateClient, sid);
+				auto d = std::unique_ptr<Deferred>(SessionRequest::getLastIds(stateClient, sid));
 				finishedConnection[d.get()] = d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, boost::placeholders::_1));
 				return;
 			}
@@ -795,7 +795,7 @@ public:
 		{
 			if(!rules.isEmpty())
 			{
-				auto d = SessionRequest::detectRulesSet(stateClient, rules);
+				auto d = std::unique_ptr<Deferred>(SessionRequest::detectRulesSet(stateClient, rules));
 				finishedConnection[d.get()] = d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, boost::placeholders::_1));
 			}
 			else
@@ -877,7 +877,7 @@ private:
 	{
 		if(!sid.isEmpty())
 		{
-			auto d = SessionRequest::createOrUpdate(stateClient, sid, lastIds);
+			auto d = std::unique_ptr<Deferred>(SessionRequest::createOrUpdate(stateClient, sid, lastIds));
 			finishedConnection[d.get()] = d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, boost::placeholders::_1));
 		}
 		else
@@ -2320,7 +2320,7 @@ private:
 				sidLastIds[sid] = lastIds;
 			}
 
-			auto d = SessionRequest::updateMany(stateClient, sidLastIds);
+			auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient, sidLastIds));
 			finishedConnection[d.get()] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d.get()));
 			deferreds[d.get()] = std::move(d);
 		}
@@ -2433,7 +2433,7 @@ private:
 
 			if(!sidLastIds.isEmpty())
 			{
-				auto d = SessionRequest::updateMany(stateClient, sidLastIds);
+				auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient, sidLastIds));
 				finishedConnection[d.get()] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d.get()));
 				deferreds[d.get()] = std::move(d);
 			}
@@ -2474,7 +2474,7 @@ private:
 			all.httpResponseMessagesSent += qMax(p.httpResponseMessagesSent, 0);
 		}
 
-		report = ControlRequest::report(proxyControlClient.get(), all);
+		report = std::unique_ptr<Deferred>(ControlRequest::report(proxyControlClient.get(), all));
 		finishedConnection[report.get()] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
 		deferreds[report.get()] = std::move(report);
 	}
@@ -2893,14 +2893,14 @@ private:
 		{
 			foreach(const QString &sid, createOrUpdateSids)
 			{
-				auto d = SessionRequest::createOrUpdate(stateClient, sid, LastIds());
+				auto d = std::unique_ptr<Deferred>(SessionRequest::createOrUpdate(stateClient, sid, LastIds()));
 				finishedConnection[d.get()] = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d.get()));
 				deferreds[d.get()] = std::move(d);
 			}
 
 			if(!updateSids.isEmpty())
 			{
-				auto d = SessionRequest::updateMany(stateClient, updateSids);
+				auto d = std::unique_ptr<Deferred>(SessionRequest::updateMany(stateClient, updateSids));
 				finishedConnection[d.get()] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d.get()));
 				deferreds[d.get()] = std::move(d);
 			}

@@ -34,7 +34,6 @@ class ConnCheck : public Deferred
 {
 	Q_OBJECT
 	
-	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
@@ -54,6 +53,8 @@ public:
 	}
 
 private:
+	std::unique_ptr<ZrpcRequest> req;
+
 	void req_finished(ZrpcRequest *req)
 	{
 		if(req->success())
@@ -92,7 +93,6 @@ class Refresh : public Deferred
 {
 	Q_OBJECT
 	
-	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
@@ -114,13 +114,15 @@ public:
 		else
 			setFinished(false, req->errorConditionString());
 	}
+
+private:
+	std::unique_ptr<ZrpcRequest> req;
 };
 
 class Report : public Deferred
 {
 	Q_OBJECT
 
-	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
@@ -142,21 +144,24 @@ public:
 		else
 			setFinished(false, req->errorCondition());
 	}
+
+private:
+	std::unique_ptr<ZrpcRequest> req;
 };
 
-std::unique_ptr<Deferred> connCheck(ZrpcManager *controlClient, const CidSet &cids)
+Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids)
 {
-	return std::make_unique<ConnCheck>(controlClient, cids);
+	return new ConnCheck(controlClient, cids);
 }
 
-std::unique_ptr<Deferred> refresh(ZrpcManager *controlClient, const QByteArray &cid)
+Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid)
 {
-	return std::make_unique<Refresh>(controlClient, cid);
+	return new Refresh(controlClient, cid);
 }
 
-std::unique_ptr<Deferred> report(ZrpcManager *controlClient, const StatsPacket &packet)
+Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet)
 {
-	return std::make_unique<Report>(controlClient, packet);
+	return new Report(controlClient, packet);
 }
 
 }

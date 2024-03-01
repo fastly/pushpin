@@ -37,7 +37,6 @@ class DetectRulesSet : public Deferred
 {
 	Q_OBJECT
 
-	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
@@ -65,6 +64,8 @@ public:
 	}
 
 private:
+	std::unique_ptr<ZrpcRequest> req;
+
 	void req_finished(ZrpcRequest *req)
 	{
 		if(req->success())
@@ -82,7 +83,6 @@ class DetectRulesGet : public Deferred
 {
 	Q_OBJECT
 
-	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
@@ -99,6 +99,8 @@ public:
 	}
 
 private:
+	std::unique_ptr<ZrpcRequest> req;
+
 	void req_finished(ZrpcRequest *req)
 	{
 		if(req->success())
@@ -176,7 +178,6 @@ class CreateOrUpdate : public Deferred
 {
 	Q_OBJECT
 
-	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 	
 public:
@@ -203,6 +204,8 @@ public:
 	}
 
 private:
+	std::unique_ptr<ZrpcRequest> req;
+
 	void req_finished(ZrpcRequest *req)
 	{
 		if(req->success())
@@ -220,7 +223,6 @@ class UpdateMany : public Deferred
 {
 	Q_OBJECT
 
-	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 	
 public:
@@ -257,6 +259,8 @@ public:
 	}
 
 private:
+	std::unique_ptr<ZrpcRequest> req;
+
 	void req_finished(ZrpcRequest *req)
 	{
 		if(req->success())
@@ -274,7 +278,6 @@ class GetLastIds : public Deferred
 {
 	Q_OBJECT
 
-	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 	
 public:
@@ -290,6 +293,8 @@ public:
 	}
 
 private:
+	std::unique_ptr<ZrpcRequest> req;
+
 	void req_finished(ZrpcRequest *req)
 	{
 		if(req->success())
@@ -327,29 +332,29 @@ private:
 	}
 };
 
-std::unique_ptr<Deferred> detectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules)
+Deferred *detectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules)
 {
-	return std::make_unique<DetectRulesSet>(stateClient, rules);
+	return new DetectRulesSet(stateClient, rules);
 }
 
-std::unique_ptr<Deferred> detectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path)
+Deferred *detectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path)
 {
-	return std::make_unique<DetectRulesGet>(stateClient, domain, path);
+	return new DetectRulesGet(stateClient, domain, path);
 }
 
-std::unique_ptr<Deferred> createOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds)
+Deferred *createOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds)
 {
-	return std::make_unique<CreateOrUpdate>(stateClient, sid, lastIds);
+	return new CreateOrUpdate(stateClient, sid, lastIds);
 }
 
-std::unique_ptr<Deferred> updateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds)
+Deferred *updateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds)
 {
-	return std::make_unique<UpdateMany>(stateClient, sidLastIds);
+	return new UpdateMany(stateClient, sidLastIds);
 }
 
-std::unique_ptr<Deferred> getLastIds(ZrpcManager *stateClient, const QString &sid)
+Deferred *getLastIds(ZrpcManager *stateClient, const QString &sid)
 {
-	return std::make_unique<GetLastIds>(stateClient, sid);
+	return new GetLastIds(stateClient, sid);
 }
 
 }
