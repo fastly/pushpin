@@ -232,8 +232,8 @@ public:
 			if(getSession && stateClient)
 			{
 				// determine session info
-				Deferred *d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8());
-				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, boost::placeholders::_1));
+				auto d = SessionRequest::detectRulesGet(stateClient, requestData.uri.host().toUtf8(), requestData.uri.path(QUrl::FullyEncoded).toUtf8());
+				finishedConnection[d.get()] = d->finished.connect(boost::bind(&InspectWorker::sessionDetectRulesGet_finished, this, boost::placeholders::_1));
 				return;
 			}
 
@@ -351,8 +351,8 @@ private:
 
 			if(!sid.isEmpty())
 			{
-				Deferred *d = SessionRequest::getLastIds(stateClient, sid);
-				finishedConnection[d] = d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, boost::placeholders::_1));
+				auto d = SessionRequest::getLastIds(stateClient, sid);
+				finishedConnection[d.get()] = d->finished.connect(boost::bind(&InspectWorker::sessionGetLastIds_finished, this, boost::placeholders::_1));
 				return;
 			}
 		}
@@ -795,8 +795,8 @@ public:
 		{
 			if(!rules.isEmpty())
 			{
-				Deferred *d = SessionRequest::detectRulesSet(stateClient, rules);
-				finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, boost::placeholders::_1));
+				auto d = SessionRequest::detectRulesSet(stateClient, rules);
+				finishedConnection[d.get()] = d->finished.connect(boost::bind(&AcceptWorker::sessionDetectRulesSet_finished, this, boost::placeholders::_1));
 			}
 			else
 			{
@@ -877,8 +877,8 @@ private:
 	{
 		if(!sid.isEmpty())
 		{
-			Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, lastIds);
-			finishedConnection[d] = d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, boost::placeholders::_1));
+			auto d = SessionRequest::createOrUpdate(stateClient, sid, lastIds);
+			finishedConnection[d.get()] = d->finished.connect(boost::bind(&AcceptWorker::sessionCreateOrUpdate_finished, this, boost::placeholders::_1));
 		}
 		else
 		{
@@ -1254,8 +1254,8 @@ public:
 	CommonState cs;
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
-	QSet<Deferred*> deferreds;
-	Deferred *report;
+	map<Deferred*, std::unique_ptr<Deferred>> deferreds;
+	std::unique_ptr<Deferred> report;
 	Connection inspectReqReadyConnection;
 	Connection acceptReqReadyConnection;
 	Connection controlReqReadyConnection;
@@ -1297,8 +1297,7 @@ public:
 		proxyStatsSock(0),
 		proxyStatsValve(0),
 		controlHttpServer(0),
-		stats(0),
-		report(0)
+		stats(0)
 	{
 		qRegisterMetaType<DetectRuleList>();
 
@@ -1317,10 +1316,10 @@ public:
 	{
 		qDeleteAll(inspectWorkers);
 		qDeleteAll(acceptWorkers);
-		qDeleteAll(deferreds);
 		qDeleteAll(cs.wsSessions);
 		qDeleteAll(cs.httpSessions);
 		qDeleteAll(cs.subs);
+		deferreds.clear();
 	}
 
 	bool start(const Configuration &_config)
@@ -2045,9 +2044,9 @@ private:
 
 		if(req->method() == "conncheck")
 		{
-			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient.get(), stats);
-			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
-			deferreds += w;
+			auto w = std::make_unique<ConnCheckWorker>(req, proxyControlClient.get(), stats);
+			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
+			deferreds[w.get()] = std::move(w);
 		}
 		else if(req->method() == "get-zmq-uris")
 		{
@@ -2069,9 +2068,9 @@ private:
 		}
 		else if(req->method() == "refresh")
 		{
-			RefreshWorker *w = new RefreshWorker(req, proxyControlClient.get(), &cs.wsSessionsByChannel);
-			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
-			deferreds += w;
+			auto w = std::make_unique<RefreshWorker>(req, proxyControlClient.get(), &cs.wsSessionsByChannel);
+			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
+			deferreds[w.get()] = std::move(w);
 		}
 		else if(req->method() == "publish")
 		{
@@ -2321,9 +2320,9 @@ private:
 				sidLastIds[sid] = lastIds;
 			}
 
-			Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds);
-			finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
-			deferreds += d;
+			auto d = SessionRequest::updateMany(stateClient, sidLastIds);
+			finishedConnection[d.get()] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d.get()));
+			deferreds[d.get()] = std::move(d);
 		}
 	}
 
@@ -2332,15 +2331,15 @@ private:
 	{
 		Q_UNUSED(result);
 
-		finishedConnection.erase(report);
-		deferreds.remove(report);
-		report = 0;
+		finishedConnection.erase(report.get());
+		deferreds.erase(report.get());
+		report.reset();
 	}
 
 	void sessionUpdateMany_finished(const DeferredResult &result, Deferred *d)
 	{
 		finishedConnection.erase(d);
-		deferreds.remove(d);
+		deferreds.erase(d);
 
 		if(!result.success)
 			log_error("couldn't update session: condition=%d", result.value.toInt());
@@ -2349,7 +2348,7 @@ private:
 	void sessionCreateOrUpdate_finished(const DeferredResult &result, Deferred *d)
 	{
 		finishedConnection.erase(d);
-		deferreds.remove(d);
+		deferreds.erase(d);
 
 		if(!result.success)
 			log_error("couldn't create/update session: condition=%d", result.value.toInt());
@@ -2384,7 +2383,7 @@ private:
 		Q_UNUSED(result);
 
 		finishedConnection.erase(w);
-		deferreds.remove(w);
+		deferreds.erase(w);
 	}
 	
 	void sub_subscribed(Subscription *sub)
@@ -2434,9 +2433,9 @@ private:
 
 			if(!sidLastIds.isEmpty())
 			{
-				Deferred *d = SessionRequest::updateMany(stateClient, sidLastIds);
-				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
-				deferreds += d;
+				auto d = SessionRequest::updateMany(stateClient, sidLastIds);
+				finishedConnection[d.get()] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d.get()));
+				deferreds[d.get()] = std::move(d);
 			}
 		}
 	}
@@ -2476,8 +2475,8 @@ private:
 		}
 
 		report = ControlRequest::report(proxyControlClient.get(), all);
-		finishedConnection[report] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
-		deferreds += report;
+		finishedConnection[report.get()] = report->finished.connect(boost::bind(&Private::report_finished, this, boost::placeholders::_1));
+		deferreds[report.get()] = std::move(report);
 	}
 
 	QVariant parseJsonOrTnetstring(const QByteArray &message, bool *ok = 0, QString *errorMessage = 0) {
@@ -2894,16 +2893,16 @@ private:
 		{
 			foreach(const QString &sid, createOrUpdateSids)
 			{
-				Deferred *d = SessionRequest::createOrUpdate(stateClient, sid, LastIds());
-				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d));
-				deferreds += d;
+				auto d = SessionRequest::createOrUpdate(stateClient, sid, LastIds());
+				finishedConnection[d.get()] = d->finished.connect(boost::bind(&Private::sessionCreateOrUpdate_finished, this, boost::placeholders::_1, d.get()));
+				deferreds[d.get()] = std::move(d);
 			}
 
 			if(!updateSids.isEmpty())
 			{
-				Deferred *d = SessionRequest::updateMany(stateClient, updateSids);
-				finishedConnection[d] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d));
-				deferreds += d;
+				auto d = SessionRequest::updateMany(stateClient, updateSids);
+				finishedConnection[d.get()] = d->finished.connect(boost::bind(&Private::sessionUpdateMany_finished, this, boost::placeholders::_1, d.get()));
+				deferreds[d.get()] = std::move(d);
 			}
 		}
 	}

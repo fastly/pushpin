@@ -36,9 +36,9 @@ class Deferred;
 
 namespace ControlRequest {
 
-Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids);
-Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid);
-Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet);
+std::unique_ptr<Deferred> connCheck(ZrpcManager *controlClient, const CidSet &cids);
+std::unique_ptr<Deferred> refresh(ZrpcManager *controlClient, const QByteArray &cid);
+std::unique_ptr<Deferred> report(ZrpcManager *controlClient, const StatsPacket &packet);
 
 }
 

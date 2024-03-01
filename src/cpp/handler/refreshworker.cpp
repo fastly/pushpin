@@ -93,7 +93,7 @@ void RefreshWorker::refreshNextCid()
 		return;
 	}
 
-	Deferred *d = ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8());
+	auto d = ControlRequest::refresh(proxyControlClient_, cids_.takeFirst().toUtf8());
 	finishedConnection_ = d->finished.connect(boost::bind(&RefreshWorker::proxyRefresh_finished, this, boost::placeholders::_1));
 }
 

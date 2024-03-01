@@ -37,13 +37,14 @@ class DetectRulesSet : public Deferred
 {
 	Q_OBJECT
 
+	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
 	DetectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules) :
 		Deferred()
 	{
-		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		req = std::make_unique<ZrpcRequest>(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&DetectRulesSet::req_finished, this, req.get()));
 
 		QVariantList rlist;
@@ -81,13 +82,14 @@ class DetectRulesGet : public Deferred
 {
 	Q_OBJECT
 
+	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
 	DetectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path) :
 		Deferred()
 	{
-		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		req = std::make_unique<ZrpcRequest>(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&DetectRulesGet::req_finished, this, req.get()));
 
 		QVariantHash args;
@@ -174,13 +176,14 @@ class CreateOrUpdate : public Deferred
 {
 	Q_OBJECT
 
+	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 	
 public:
 	CreateOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds) :
 		Deferred()
 	{
-		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		req = std::make_unique<ZrpcRequest>(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&CreateOrUpdate::req_finished, this, req.get()));
 
 		QVariantHash args;
@@ -217,13 +220,14 @@ class UpdateMany : public Deferred
 {
 	Q_OBJECT
 
+	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 	
 public:
 	UpdateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds) :
 		Deferred()
 	{
-		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		req = std::make_unique<ZrpcRequest>(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&UpdateMany::req_finished, this, req.get()));
 
 		QVariantHash vsidLastIds;
@@ -270,13 +274,14 @@ class GetLastIds : public Deferred
 {
 	Q_OBJECT
 
+	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 	
 public:
 	GetLastIds(ZrpcManager *stateClient, const QString &sid) :
 		Deferred()
 	{
-		auto req = std::make_unique<ZrpcRequest>(stateClient, this);
+		req = std::make_unique<ZrpcRequest>(stateClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&GetLastIds::req_finished, this, req.get()));
 
 		QVariantHash args;
@@ -322,29 +327,29 @@ private:
 	}
 };
 
-Deferred *detectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules)
+std::unique_ptr<Deferred> detectRulesSet(ZrpcManager *stateClient, const QList<DetectRule> &rules)
 {
-	return new DetectRulesSet(stateClient, rules);
+	return std::make_unique<DetectRulesSet>(stateClient, rules);
 }
 
-Deferred *detectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path)
+std::unique_ptr<Deferred> detectRulesGet(ZrpcManager *stateClient, const QString &domain, const QByteArray &path)
 {
-	return new DetectRulesGet(stateClient, domain, path);
+	return std::make_unique<DetectRulesGet>(stateClient, domain, path);
 }
 
-Deferred *createOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds)
+std::unique_ptr<Deferred> createOrUpdate(ZrpcManager *stateClient, const QString &sid, const LastIds &lastIds)
 {
-	return new CreateOrUpdate(stateClient, sid, lastIds);
+	return std::make_unique<CreateOrUpdate>(stateClient, sid, lastIds);
 }
 
-Deferred *updateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds)
+std::unique_ptr<Deferred> updateMany(ZrpcManager *stateClient, const QHash<QString, LastIds> &sidLastIds)
 {
-	return new UpdateMany(stateClient, sidLastIds);
+	return std::make_unique<UpdateMany>(stateClient, sidLastIds);
 }
 
-Deferred *getLastIds(ZrpcManager *stateClient, const QString &sid)
+std::unique_ptr<Deferred> getLastIds(ZrpcManager *stateClient, const QString &sid)
 {
-	return new GetLastIds(stateClient, sid);
+	return std::make_unique<GetLastIds>(stateClient, sid);
 }
 
 }

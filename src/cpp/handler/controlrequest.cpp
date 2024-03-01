@@ -33,14 +33,15 @@ namespace ControlRequest {
 class ConnCheck : public Deferred
 {
 	Q_OBJECT
-
+	
+	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
 	ConnCheck(ZrpcManager *controlClient, const CidSet &cids) :
 		Deferred()
 	{
-		auto req = std::make_unique<ZrpcRequest>(controlClient, this);
+		req = std::make_unique<ZrpcRequest>(controlClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&ConnCheck::req_finished, this, req.get()));
 
 		QVariantList vcids;
@@ -90,14 +91,15 @@ private:
 class Refresh : public Deferred
 {
 	Q_OBJECT
-
+	
+	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
 	Refresh(ZrpcManager *controlClient, const QByteArray &cid) :
 		Deferred()
 	{
-		auto req = std::make_unique<ZrpcRequest>(controlClient, this);
+		req = std::make_unique<ZrpcRequest>(controlClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&Refresh::req_finished, this, req.get()));
 
 		QVariantHash args;
@@ -118,13 +120,14 @@ class Report : public Deferred
 {
 	Q_OBJECT
 
+	std::unique_ptr<ZrpcRequest> req;
 	Connection finishedConnection;
 
 public:
 	Report(ZrpcManager *controlClient, const StatsPacket &packet) :
 		Deferred()
 	{
-		auto req = std::make_unique<ZrpcRequest>(controlClient, this);
+		req = std::make_unique<ZrpcRequest>(controlClient, this);
 		finishedConnection = req->finished.connect(boost::bind(&Report::req_finished, this, req.get()));
 
 		QVariantHash args;
@@ -141,19 +144,19 @@ public:
 	}
 };
 
-Deferred *connCheck(ZrpcManager *controlClient, const CidSet &cids)
+std::unique_ptr<Deferred> connCheck(ZrpcManager *controlClient, const CidSet &cids)
 {
-	return new ConnCheck(controlClient, cids);
+	return std::make_unique<ConnCheck>(controlClient, cids);
 }
 
-Deferred *refresh(ZrpcManager *controlClient, const QByteArray &cid)
+std::unique_ptr<Deferred> refresh(ZrpcManager *controlClient, const QByteArray &cid)
 {
-	return new Refresh(controlClient, cid);
+	return std::make_unique<Refresh>(controlClient, cid);
 }
 
-Deferred *report(ZrpcManager *controlClient, const StatsPacket &packet)
+std::unique_ptr<Deferred> report(ZrpcManager *controlClient, const StatsPacket &packet)
 {
-	return new Report(controlClient, packet);
+	return std::make_unique<Report>(controlClient, packet);
 }
 
 }
