@@ -29,6 +29,8 @@
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
+#include "rust/log.h"
+#include "rust/security.h"
 #include "processquit.h"
 #include "log.h"
 #include "settings.h"
@@ -616,6 +618,13 @@ public:
 
 			threads.push_back(t);
 		}
+
+		// NOTE: this enables the rust logger which always logs to stdout,
+		// which is fine because we don't log to a file in production and
+		// we also plan to remove file logging capability
+		log_set_level(log_outputLevel());
+
+		security_limit_permissions();
 
 		log_info("started");
 	}
