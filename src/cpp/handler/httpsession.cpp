@@ -1353,7 +1353,8 @@ private:
 	{
 		LogUtil::RequestData rd;
 
-		if(!adata.route.isEmpty())
+		// only log route id if explicitly set
+		if(!adata.statsRoute.isEmpty())
 			rd.routeId = adata.route;
 
 		rd.status = LogUtil::Response;
@@ -1372,7 +1373,8 @@ private:
 	{
 		LogUtil::RequestData rd;
 
-		if(!adata.route.isEmpty())
+		// only log route id if explicitly set
+		if(!adata.statsRoute.isEmpty())
 			rd.routeId = adata.route;
 
 		rd.status = LogUtil::Error;

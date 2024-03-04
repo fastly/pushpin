@@ -34,9 +34,7 @@ ZurlService::ZurlService(
 	const QString &logDir,
 	const QString &ipcPrefix,
 	const QString &filePrefix,
-	int logLevel,
-	QObject *parent) :
-	Service(parent)
+	int logLevel)
 {
 	args_ += binFile;
 	args_ += "--config=" + QDir(runDir).filePath(filePrefix + "zurl.conf");

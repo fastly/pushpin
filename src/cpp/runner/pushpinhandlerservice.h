@@ -27,8 +27,6 @@
 
 class PushpinHandlerService : public Service
 {
-	Q_OBJECT
-
 public:
 	PushpinHandlerService(
 		const QString &binFile,
@@ -38,8 +36,7 @@ public:
 		const QString &ipcPrefix,
 		const QString &filePrefix,
 		int portOffset,
-		int logLevel,
-		QObject *parent = 0);
+		int logLevel);
 
 	// reimplemented
 
