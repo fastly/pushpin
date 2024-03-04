@@ -27,8 +27,6 @@
 
 class PushpinHandlerService : public Service
 {
-	Q_OBJECT
-
 public:
 	PushpinHandlerService(
 		const QString &binFile,
