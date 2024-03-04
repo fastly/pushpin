@@ -33,9 +33,7 @@ PushpinHandlerService::PushpinHandlerService(
 	const QString &ipcPrefix,
 	const QString &filePrefix,
 	int portOffset,
-	int logLevel,
-	QObject *parent) :
-	Service(parent)
+	int logLevel)
 {
 	args_ += binFile;
 	args_ += "--config=" + configFile;
