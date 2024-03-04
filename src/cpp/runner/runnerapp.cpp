@@ -633,7 +633,7 @@ public:
 			if(settings.contains("runner/zurl_bin"))
 				zurlBin = settings.value("runner/zurl_bin").toString();
 
-			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("zurl", defaultLevel), this);
+			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("zurl", defaultLevel));
 
 			// when zurl is managed by pushpin, log updates checks as debug level
 			quietCheck = true;

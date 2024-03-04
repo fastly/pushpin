@@ -27,8 +27,6 @@
 
 class ZurlService : public Service
 {
-	Q_OBJECT
-
 public:
 	ZurlService(
 		const QString &binFile,
@@ -37,8 +35,7 @@ public:
 		const QString &logDir,
 		const QString &ipcPrefix,
 		const QString &filePrefix,
-		int logLevel,
-		QObject *parent = 0);
+		int logLevel);
 
 	// reimplemented
 
