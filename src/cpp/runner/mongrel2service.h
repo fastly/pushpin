@@ -40,8 +40,7 @@ public:
 		const QString &filePrefix,
 		int port,
 		bool ssl,
-		int logLevel,
-		QObject *parent = 0);
+		int logLevel);
 
 	static bool generateConfigFile(const QString &m2shBinFile, const QString &configTemplateFile, const QString &runDir, const QString &logDir, const QString &ipcPrefix, const QString &filePrefix, const QString &certsDir, int clientBufferSize, int maxconn, const QList<ListenPort> &ports, int logLevel);
 
