@@ -27,8 +27,6 @@
 
 class M2AdapterService : public Service
 {
-	Q_OBJECT
-
 public:
 	M2AdapterService(
 		const QString &binFile,
@@ -38,8 +36,7 @@ public:
 		const QString &ipcPrefix,
 		const QString &filePrefix,
 		int logLevel,
-		const QList<int> &ports,
-		QObject *parent = 0);
+		const QList<int> &ports);
 
 	// reimplemented
 
