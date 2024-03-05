@@ -1,6 +1,6 @@
 [package]
 name = "pushpin"
-version = "1.38.0-dev"
+version = "1.39.0-dev"
 authors = ["Justin Karneges <jkarneges@fastly.com>"]
 description = "Reverse proxy for realtime web services"
 repository = "https://github.com/fastly/pushpin"
@@ -23,6 +23,7 @@ aegis = "^0.4.2"
 arrayvec = "0.7"
 base64 = "0.13"
 clap = { version = "=4.2.1", features = ["cargo", "string", "wrap_help", "derive"] }
+config = "0.13.3"
 httparse = "1.7"
 ipnet = "2"
 jsonwebtoken = "8"
@@ -44,7 +45,6 @@ thiserror = "1.0"
 time = { version = "=0.3.18", features = ["formatting", "local-offset", "macros"] }
 url = "2.3"
 zmq = "0.9"
-config = "0.13.3"
 
 # for stats-emitter
 anyhow = "^1.0.42"

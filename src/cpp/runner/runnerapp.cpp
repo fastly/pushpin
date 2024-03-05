@@ -633,7 +633,7 @@ public:
 			if(settings.contains("runner/zurl_bin"))
 				zurlBin = settings.value("runner/zurl_bin").toString();
 
-			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("zurl", defaultLevel), this);
+			services += new ZurlService(zurlBin, QDir(libDir).filePath("zurl.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("zurl", defaultLevel));
 
 			// when zurl is managed by pushpin, log updates checks as debug level
 			quietCheck = true;
@@ -643,7 +643,7 @@ public:
 			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("pushpin-proxy", defaultLevel), args.routeLines, quietCheck, this);
 
 		if(serviceNames.contains("pushpin-handler"))
-			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("pushpin-handler", defaultLevel), this);
+			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("pushpin-handler", defaultLevel));
 
 		foreach(Service *s, services)
 		{

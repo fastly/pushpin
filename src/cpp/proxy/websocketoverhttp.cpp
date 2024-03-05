@@ -26,7 +26,6 @@
 #include <assert.h>
 #include <QTimer>
 #include <QPointer>
-#include <QCoreApplication>
 #include <QRandomGenerator>
 #include "log.h"
 #include "bufferlist.h"
@@ -268,7 +267,7 @@ public:
 		maxEvents(0)
 	{
 		if(!g_disconnectManager)
-			g_disconnectManager = new DisconnectManager(QCoreApplication::instance());
+			g_disconnectManager = new DisconnectManager;
 
 		keepAliveTimer = new QTimer(this);
 		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
