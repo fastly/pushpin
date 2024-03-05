@@ -34,9 +34,7 @@ PushpinProxyService::PushpinProxyService(
 	const QString &filePrefix,
 	int logLevel,
 	const QStringList &routeLines,
-	bool quietCheck,
-	QObject *parent) :
-	Service(parent)
+	bool quietCheck)
 {
 	args_ += binFile;
 	args_ += "--config=" + configFile;
