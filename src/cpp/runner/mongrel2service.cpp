@@ -40,9 +40,7 @@ Mongrel2Service::Mongrel2Service(
 	const QString &filePrefix,
 	int port,
 	bool ssl,
-	int logLevel,
-	QObject *parent) :
-	Service(parent),
+	int logLevel) :
 	logLevel_(logLevel)
 {
 	args_ += binFile;

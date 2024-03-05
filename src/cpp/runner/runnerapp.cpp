@@ -613,7 +613,7 @@ public:
 			}
 
 			foreach(const ListenPort &p, ports)
-				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(p.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, p.port, p.ssl, logLevels.value("mongrel2", defaultLevel), this);
+				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(p.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, p.port, p.ssl, logLevels.value("mongrel2", defaultLevel));
 		}
 
 		if(serviceNames.contains("m2adapter"))
