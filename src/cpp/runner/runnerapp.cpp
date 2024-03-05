@@ -640,7 +640,7 @@ public:
 		}
 
 		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("pushpin-proxy", defaultLevel), args.routeLines, quietCheck, this);
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("pushpin-proxy", defaultLevel), args.routeLines, quietCheck);
 
 		if(serviceNames.contains("pushpin-handler"))
 			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("pushpin-handler", defaultLevel));

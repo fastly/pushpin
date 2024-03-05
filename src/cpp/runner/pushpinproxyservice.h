@@ -27,8 +27,6 @@
 
 class PushpinProxyService : public Service
 {
-	Q_OBJECT
-
 public:
 	PushpinProxyService(
 		const QString &binFile,
@@ -39,8 +37,7 @@ public:
 		const QString &filePrefix,
 		int logLevel,
 		const QStringList &routeLines,
-		bool quietCheck,
-		QObject *parent = 0);
+		bool quietCheck);
 
 	// reimplemented
 
