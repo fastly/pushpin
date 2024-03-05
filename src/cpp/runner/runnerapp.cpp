@@ -622,7 +622,7 @@ public:
 			foreach(const ListenPort &p, ports)
 				portsOnly += p.port;
 
-			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("m2adapter", defaultLevel), portsOnly, this);
+			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("m2adapter", defaultLevel), portsOnly);
 		}
 
 		bool quietCheck = false;
