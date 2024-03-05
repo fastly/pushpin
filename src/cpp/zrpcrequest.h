@@ -66,6 +66,7 @@ public:
 	void setError(ErrorCondition condition, const QVariant &result = QVariant());
 
 	Signal finished;
+	Signal destroyed;
 
 protected:
 	virtual void onSuccess();

@@ -189,6 +189,7 @@ ZrpcRequest::ZrpcRequest(ZrpcManager *manager, QObject *parent) :
 
 ZrpcRequest::~ZrpcRequest()
 {
+	destroyed();
 	delete d;
 }
 
