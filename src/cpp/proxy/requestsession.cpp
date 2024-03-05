@@ -250,7 +250,7 @@ public:
 
 		if(inspectRequest)
 		{
-			inspectRequest->disconnect(this);
+			inspectFinishedConnection.disconnect();
 			inspectChecker->give(inspectRequest);
 			inspectRequest = 0;
 		}
@@ -886,7 +886,7 @@ public:
 	{
 		if(!inspectRequest->success())
 		{
-			inspectRequest->disconnect(this);
+			inspectFinishedConnection.disconnect();
 			inspectChecker->give(inspectRequest);
 			inspectRequest = 0;
 
@@ -896,7 +896,7 @@ public:
 
 		idata = inspectRequest->result();
 
-		inspectRequest->disconnect(this);
+		inspectFinishedConnection.disconnect();
 		inspectChecker->give(inspectRequest);
 		inspectRequest = 0;
 
