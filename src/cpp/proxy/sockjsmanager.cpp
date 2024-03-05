@@ -476,7 +476,7 @@ public:
 						ZhttpRequest *req = s->req;
 						QByteArray body = s->reqBody.toByteArray();
 						QByteArray jsonpCallback = s->jsonpCallback;
-						s->req->disconnect(this);
+						reqConnectionMap.erase(req);
 						s->req = 0;
 						removeSession(s);
 
@@ -579,7 +579,7 @@ public:
 
 			s->ext->setupServer(q, s->req, s->jsonpCallback, s->asUri, s->sid, s->lastPart, s->reqBody.toByteArray(), s->route);
 
-			s->req->disconnect(this);
+			reqConnectionMap.erase(s->req);
 			sessionsByRequest.remove(s->req);
 			s->req = 0;
 		}
@@ -593,7 +593,7 @@ public:
 			else
 				s->ext->setupServer(q, s->sock, s->asUri, s->route);
 
-			s->sock->disconnect(this);
+			reqConnectionMap.erase(s->req);
 			sessionsBySocket.remove(s->sock);
 			s->sock = 0;
 		}
