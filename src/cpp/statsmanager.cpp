@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -44,6 +44,7 @@
 #define ACTIVITY_TIMEOUT 100
 #define REFRESH_INTERVAL 1000
 #define EXTERNAL_CONNECTIONS_MAX_INTERVAL 10000
+#define EXPIRE_MAX 10000
 
 #define SHOULD_PROCESS_TIME(x) (x * 3 / 4)
 
@@ -1099,7 +1100,7 @@ public:
 		QList<QByteArray> refreshedConnIds;
 		QSet<QByteArray> routesUpdated;
 
-		while(true)
+		for(int i = 0; i < EXPIRE_MAX; ++i)
 		{
 			TimerWheel::Expired expired = wheel.takeExpired();
 
