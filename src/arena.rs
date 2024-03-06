@@ -478,7 +478,7 @@ impl<T> DerefMut for ReusableVecHandle<'_, T> {
 }
 
 pub struct ReusableVec {
-    vec: Vec<()>,
+    vec: Vec<u8>,
     size: usize,
     align: usize,
 }
@@ -492,7 +492,7 @@ impl ReusableVec {
 
         // safety: we must cast to Vec<U> before using, where U has the same
         // size and alignment as T
-        let vec: Vec<()> = unsafe { mem::transmute(vec) };
+        let vec: Vec<u8> = unsafe { mem::transmute(vec) };
 
         Self { vec, size, align }
     }
@@ -506,7 +506,7 @@ impl ReusableVec {
         assert_eq!(self.size, size);
         assert_eq!(self.align, align);
 
-        let vec: &mut Vec<()> = &mut self.vec;
+        let vec: &mut Vec<u8> = &mut self.vec;
 
         // safety: U has the expected size and alignment
         let vec: &mut Vec<U> = unsafe { mem::transmute(vec) };
