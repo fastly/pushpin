@@ -160,7 +160,8 @@ public:
 	{
 		destroying = true;
 
-		// need to delete all objects that may have outgoing connections before zroutes
+		// need to delete all objects that may have connections before
+		// deleting zhttpmanagers/zroutes
 
 		delete updater;
 
@@ -190,6 +191,10 @@ public:
 			delete rs;
 		}
 		requestSessions.clear();
+
+		// may have background connections
+		delete sockJsManager;
+		sockJsManager = 0;
 
 		WebSocketOverHttp::clearDisconnectManager();
 
