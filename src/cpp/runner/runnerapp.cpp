@@ -592,7 +592,7 @@ public:
 			if(!serviceNames.contains("zurl") && CondureService::hasClientMode(condureBin))
 				useClient = true;
 
-			services += new CondureService("condure", condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, useClient, this);
+			services += new CondureService("condure", condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, useClient);
 		}
 
 		if(serviceNames.contains("mongrel2"))
