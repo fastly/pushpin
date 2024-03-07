@@ -317,6 +317,11 @@ bool Service::acceptSighup() const
 	return false;
 }
 
+bool Service::alwaysLogStatus() const
+{
+	return false;
+}
+
 bool Service::isStarted() const
 {
 	return (d->state != Private::NotStarted && d->state != Private::Starting);

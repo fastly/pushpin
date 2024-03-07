@@ -122,6 +122,10 @@ bool Mongrel2Service::acceptSighup() const
 	return true;
 }
 
+bool Mongrel2Service::alwaysLogStatus() const
+{
+	return true;
+}
 
 QString Mongrel2Service::filterLogLine(const int level, const QString &line) const
 {
