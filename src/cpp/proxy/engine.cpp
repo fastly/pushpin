@@ -196,8 +196,6 @@ public:
 		// need to make sure this is deleted before inspect manager
 		delete inspectChecker;
 		inspectChecker = 0;
-
-		RTimer::deinit();
 	}
 
 	bool start(const Configuration &_config)
