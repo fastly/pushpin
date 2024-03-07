@@ -253,10 +253,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
-class RunnerApp::Private : public QObject
+class RunnerApp::Private
 {
-	Q_OBJECT
-
 public:
 	RunnerApp *q;
 	ArgsData args;
@@ -268,7 +266,6 @@ public:
 	map<Service*, ServiceConnections> serviceConnectionMap;
 
 	Private(RunnerApp *_q) :
-		QObject(_q),
 		q(_q),
 		stopping(false),
 		errored(false)
@@ -654,7 +651,7 @@ public:
 				s->error.connect(boost::bind(&Private::service_error, this, boost::placeholders::_1, s))
 			};
 
-			if(!args.mergeOutput || qobject_cast<Mongrel2Service*>(s))
+			if(!args.mergeOutput || s->alwaysLogStatus())
 				log_info("starting %s", qPrintable(s->name()));
 
 			s->start();
@@ -690,7 +687,7 @@ private:
 	{
 		foreach(Service *s, services)
 		{
-			if(!args.mergeOutput || qobject_cast<Mongrel2Service*>(s))
+			if(!args.mergeOutput || s->alwaysLogStatus())
 				log_info("stopping %s", qPrintable(s->name()));
 
 			s->stop();
@@ -802,20 +799,14 @@ private:
 	}
 };
 
-RunnerApp::RunnerApp(QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this);
+RunnerApp::RunnerApp() {
+	d = std::make_unique<Private>(this);
 }
 
-RunnerApp::~RunnerApp()
-{
-	delete d;
-}
+RunnerApp::~RunnerApp() = default;
 
 void RunnerApp::start()
 {
 	d->start();
 }
 
-#include "runnerapp.moc"
