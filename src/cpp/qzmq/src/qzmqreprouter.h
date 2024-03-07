@@ -35,12 +35,10 @@ namespace QZmq {
 
 class ReqMessage;
 
-class RepRouter : public QObject
+class RepRouter
 {
-	Q_OBJECT
-
 public:
-	RepRouter(QObject *parent = 0);
+	RepRouter();
 	~RepRouter();
 
 	void setShutdownWaitTime(int msecs);
@@ -61,7 +59,7 @@ private:
 
 	class Private;
 	friend class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 };
 
 }

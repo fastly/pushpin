@@ -28,21 +28,18 @@
 
 namespace QZmq {
 
-class RepRouter::Private : public QObject
+class RepRouter::Private
 {
-	Q_OBJECT
-
 public:
 	RepRouter *q;
-	Socket *sock;
+	std::unique_ptr<Socket> sock;
 	Connection mWConnection;
 	Connection rrConnection;
 
 	Private(RepRouter *_q) :
-		QObject(_q),
 		q(_q)
 	{
-		sock = new Socket(Socket::Router, this);
+		sock = std::make_unique<Socket>(Socket::Router);
 		rrConnection = sock->readyRead.connect(boost::bind(&Private::sock_readyRead, this));
 		mWConnection = sock->messagesWritten.connect(boost::bind(&Private::sock_messagesWritten, this,  boost::placeholders::_1));
 	}
@@ -58,16 +55,12 @@ public:
 	}
 };
 
-RepRouter::RepRouter(QObject *parent) :
-	QObject(parent)
+RepRouter::RepRouter()
 {
-	d = new Private(this);
+	d = std::make_unique<Private>(this);
 }
 
-RepRouter::~RepRouter()
-{
-	delete d;
-}
+RepRouter::~RepRouter() = default;
 
 void RepRouter::setShutdownWaitTime(int msecs)
 {
@@ -101,4 +94,3 @@ void RepRouter::write(const ReqMessage &message)
 
 }
 
-#include "qzmqreprouter.moc"
