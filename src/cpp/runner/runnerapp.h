@@ -31,12 +31,10 @@ using std::map;
 using SignalInt = boost::signals2::signal<void(int)>;
 using Connection = boost::signals2::scoped_connection;
 
-class RunnerApp : public QObject
+class RunnerApp
 {
-	Q_OBJECT
-
 public:
-	RunnerApp(QObject *parent = 0);
+	RunnerApp();
 	~RunnerApp();
 
 	void start();
@@ -46,7 +44,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 };
 
 #endif
