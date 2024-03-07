@@ -1464,6 +1464,7 @@ public:
 		if(!config.retryOutSpecs.isEmpty())
 		{
 			retrySock = new QZmq::Socket(QZmq::Socket::Router, this);
+			retrySock->setImmediateEnabled(true);
 			retrySock->setHwm(DEFAULT_HWM);
 			retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
 			retrySock->setRouterMandatoryEnabled(true);
@@ -1503,6 +1504,7 @@ public:
 
 			wsControlStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
 			wsControlStreamSock->setIdentity(config.instanceId);
+			wsControlStreamSock->setImmediateEnabled(true);
 			wsControlStreamSock->setHwm(DEFAULT_HWM);
 			wsControlStreamSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
 
