@@ -800,10 +800,8 @@ private:
 };
 
 RunnerApp::RunnerApp() {
-    d = std::make_unique<Private>(this);
+	d = std::make_unique<Private>(this);
 }
-
-RunnerApp::~RunnerApp() = default;
 
 void RunnerApp::start()
 {

@@ -34,7 +34,6 @@ class RunnerApp
 {
 public:
 	RunnerApp();
-	~RunnerApp();
 
 	void start();
 
