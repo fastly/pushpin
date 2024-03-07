@@ -23,7 +23,6 @@
 #ifndef RUNNERAPP_H
 #define RUNNERAPP_H
 
-#include <QObject>
 #include <boost/signals2.hpp>
 #include <map>
 

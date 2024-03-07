@@ -803,6 +803,8 @@ RunnerApp::RunnerApp() {
     d = std::make_unique<Private>(this);
 }
 
+RunnerApp::~RunnerApp() = default;
+
 void RunnerApp::start()
 {
 	d->start();
