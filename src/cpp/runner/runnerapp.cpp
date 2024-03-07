@@ -651,7 +651,7 @@ public:
 				s->error.connect(boost::bind(&Private::service_error, this, boost::placeholders::_1, s))
 			};
 
-			if(!args.mergeOutput)
+			if(!args.mergeOutput || s->alwaysLogStatus())
 				log_info("starting %s", qPrintable(s->name()));
 
 			s->start();
@@ -687,7 +687,7 @@ private:
 	{
 		foreach(Service *s, services)
 		{
-			if(!args.mergeOutput)
+			if(!args.mergeOutput || s->alwaysLogStatus())
 				log_info("stopping %s", qPrintable(s->name()));
 
 			s->stop();
@@ -802,8 +802,6 @@ private:
 RunnerApp::RunnerApp() {
     d = std::make_unique<Private>(this);
 }
-
-RunnerApp::~RunnerApp() = default;
 
 void RunnerApp::start()
 {
