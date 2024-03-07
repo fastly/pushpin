@@ -337,6 +337,8 @@ private slots:
 			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
 			QByteArray peer = r->s->peer();
+			if(peer.isEmpty())
+				continue;
 
 			if(!packets.contains(peer))
 			{
@@ -377,6 +379,8 @@ private slots:
 			sessionsByLastRefresh.insert(QPair<qint64, KeepAliveRegistration*>(r->lastRefresh, r), r);
 
 			QByteArray peer = r->s->peer();
+			if(peer.isEmpty())
+				continue;
 
 			if(!packets.contains(peer))
 			{
