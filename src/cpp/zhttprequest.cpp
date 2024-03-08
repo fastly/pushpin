@@ -161,7 +161,7 @@ public:
 
 		if(expireTimer)
 		{
-			expireTimer->disconnect(this);
+			expTimerConnection.disconnect();
 			expireTimer->setParent(0);
 			expireTimer->deleteLater();
 			expireTimer = 0;
@@ -169,7 +169,7 @@ public:
 
 		if(keepAliveTimer)
 		{
-			keepAliveTimer->disconnect(this);
+			keepAliveTimerConnection.disconnect();
 			keepAliveTimer->setParent(0);
 			keepAliveTimer->deleteLater();
 			keepAliveTimer = 0;
