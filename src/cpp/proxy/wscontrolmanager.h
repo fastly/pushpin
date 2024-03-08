@@ -26,6 +26,7 @@
 
 #include <QObject>
 #include "packet/wscontrolpacket.h"
+#include <memory>
 
 class WsControlSession;
 
