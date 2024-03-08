@@ -23,8 +23,8 @@
 #ifndef RATELIMITER_H
 #define RATELIMITER_H
 
-#include <QObject>
 #include <memory>
+#include <QObject>
 
 class RateLimiter : public QObject
 {
