@@ -2070,7 +2070,7 @@ private:
 		}
 		else if(req->method() == "refresh")
 		{
-			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
+			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
 			deferreds += w;
 		}
