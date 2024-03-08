@@ -213,10 +213,10 @@ public:
 		writeBytesChangedConnection = req->writeBytesChanged.connect(boost::bind(&Private::req_writeBytesChanged, this));
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
-		timer = new RTimer(this);
+		timer = new RTimer;
 		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
-		retryTimer = new RTimer(this);
+		retryTimer = new RTimer;
 		retryTimerConneciton = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 
