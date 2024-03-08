@@ -308,7 +308,7 @@ public:
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
 	LogUtil::Config logConfig;
 	Callback<std::tuple<WsProxySession *>> finishedByPassthroughCallback;
-	Connection keepAliveConneciton;
+	Connection keepAliveConnection;
 	Connection aboutToSendRequestConnection;
 	map<WsControlSession*, WSProxyConnections> wsProxyConnectionMap;
 	WSConnections outWSConnection;
@@ -384,7 +384,7 @@ public:
 	{
 		if(keepAliveTimer)
 		{
-			keepAliveConneciton.disconnect();
+			keepAliveConnection.disconnect();
 			keepAliveTimer->setParent(0);
 			keepAliveTimer->deleteLater();
 			keepAliveTimer = 0;
@@ -1110,7 +1110,7 @@ private:
 			if(!keepAliveTimer)
 			{
 				keepAliveTimer = new RTimer;
-				keepAliveConneciton = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
+				keepAliveConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 				keepAliveTimer->setSingleShot(true);
 			}
 
