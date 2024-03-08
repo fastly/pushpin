@@ -1303,8 +1303,8 @@ public:
 	{
 		qRegisterMetaType<DetectRuleList>();
 
-		publishLimiter = new RateLimiter();
-		updateLimiter = new RateLimiter();
+		publishLimiter = new RateLimiter;
+		updateLimiter = new RateLimiter;
 
 		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
 
