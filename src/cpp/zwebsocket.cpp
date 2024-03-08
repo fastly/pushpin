@@ -126,11 +126,11 @@ public:
 		outContentType((int)Frame::Text),
 		multi(false)
 	{
-		expireTimer = new RTimer(this);
+		expireTimer = new RTimer;
 		expireTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer(this);
+		keepAliveTimer = new RTimer;
 		keppAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
