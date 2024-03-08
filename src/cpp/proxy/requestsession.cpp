@@ -461,7 +461,7 @@ public:
 
 				if(inspectManager)
 				{
-					inspectRequest = new InspectRequest(inspectManager, this);
+					inspectRequest = new InspectRequest(inspectManager);
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
