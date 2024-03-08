@@ -1255,6 +1255,7 @@ public:
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
 	QSet<Deferred*> deferreds;
+	std::unordered_map<Deferred*, std::unique_ptr<Deferred>> deferredMap;
 	Deferred *report;
 	Connection inspectReqReadyConnection;
 	Connection acceptReqReadyConnection;
@@ -2046,9 +2047,9 @@ private:
 
 		if(req->method() == "conncheck")
 		{
-			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
-			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
-			deferreds += w;
+			auto w = std::make_unique<ConnCheckWorker>(req, proxyControlClient, stats);
+			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
+			deferredMap[w.get()] = std::move(w);
 		}
 		else if(req->method() == "get-zmq-uris")
 		{
@@ -2386,6 +2387,7 @@ private:
 
 		finishedConnection.erase(w);
 		deferreds.remove(w);
+		deferredMap.erase(w);
 	}
 	
 	void sub_subscribed(Subscription *sub)
