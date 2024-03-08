@@ -34,7 +34,7 @@ class WsControlManager : public QObject
 	Q_OBJECT
 
 public:
-	WsControlManager(QObject *parent = 0);
+	WsControlManager();
 	~WsControlManager();
 
 	void setIdentity(const QByteArray &id);
@@ -47,7 +47,7 @@ public:
 
 private:
 	class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 
 	friend class WsControlSession;
 	void link(WsControlSession *s, const QByteArray &cid);
