@@ -173,8 +173,7 @@ void TimerManager::updateTimeout(qint64 currentTime)
 
 static thread_local TimerManager *g_manager = 0;
 
-RTimer::RTimer(QObject *parent) :
-	QObject(parent),
+RTimer::RTimer() :
 	singleShot_(false),
 	interval_(0),
 	timerId_(-1)
