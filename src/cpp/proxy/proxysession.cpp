@@ -1346,7 +1346,7 @@ public:
 				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 			}
 
-			acceptRequest = new AcceptRequest(acceptManager, this);
+			acceptRequest = new AcceptRequest(acceptManager);
 			finishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}

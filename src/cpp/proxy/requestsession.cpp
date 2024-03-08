@@ -865,7 +865,7 @@ public:
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
 
-			acceptRequest = new AcceptRequest(acceptManager, this);
+			acceptRequest = new AcceptRequest(acceptManager);
 			acceptFinishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
