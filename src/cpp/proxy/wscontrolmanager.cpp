@@ -423,16 +423,12 @@ private slots:
 	}
 };
 
-WsControlManager::WsControlManager(QObject *parent) :
-	QObject(parent)
+WsControlManager::WsControlManager() 
 {
-	d = new Private(this);
+	d = std::make_unique<Private>(this);
 }
 
-WsControlManager::~WsControlManager()
-{
-	delete d;
-}
+WsControlManager::~WsControlManager() = default;
 
 void WsControlManager::setIdentity(const QByteArray &id)
 {

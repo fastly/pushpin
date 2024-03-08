@@ -296,7 +296,7 @@ public:
 
 		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
-			wsControl = new WsControlManager(this);
+			wsControl = new WsControlManager();
 
 			wsControl->setIdentity(config.clientId);
 			wsControl->setIpcFileMode(config.ipcFileMode);
