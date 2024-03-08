@@ -24,6 +24,7 @@
 #define RATELIMITER_H
 
 #include <QObject>
+#include <memory>
 
 class RateLimiter : public QObject
 {
