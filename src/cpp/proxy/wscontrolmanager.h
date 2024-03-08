@@ -24,9 +24,9 @@
 #ifndef WSCONTROLMANAGER_H
 #define WSCONTROLMANAGER_H
 
+#include <memory>
 #include <QObject>
 #include "packet/wscontrolpacket.h"
-#include <memory>
 
 class WsControlSession;
 
