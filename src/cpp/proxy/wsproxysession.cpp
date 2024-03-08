@@ -1109,7 +1109,7 @@ private:
 
 			if(!keepAliveTimer)
 			{
-				keepAliveTimer = new RTimer();
+				keepAliveTimer = new RTimer;
 				keepAliveConneciton = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 				keepAliveTimer->setSingleShot(true);
 			}

@@ -137,11 +137,11 @@ public:
 		multi(false),
 		quiet(false)
 	{
-		expireTimer = new RTimer();
+		expireTimer = new RTimer;
 		expTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer();
+		keepAliveTimer = new RTimer;
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
