@@ -131,7 +131,7 @@ public:
 		needPause(false),
 		readableChanged(false),
 		writableChanged(false),
-		errored(false),		
+		errored(false),
 		expireTimer(0),
 		keepAliveTimer(0),
 		multi(false),
