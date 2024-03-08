@@ -593,7 +593,7 @@ public:
 			else
 				s->ext->setupServer(q, s->sock, s->asUri, s->route);
 
-			reqConnectionMap.erase(s->req);
+			wsConnectionMap.erase(s->sock);
 			sessionsBySocket.remove(s->sock);
 			s->sock = 0;
 		}
