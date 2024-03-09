@@ -113,9 +113,7 @@ public:
 			bucket->key = key;
 			bucket->sessions += hs;
 			bucket->timer = new QTimer(this);
-			QObject::connect(bucket->timer, &QTimer::timeout, [this, timer=bucket->timer]() {
-				this->timer_timeout(timer);
-			});
+			connect(bucket->timer, &QTimer::timeout, this, &Private::timer_timeout);
 
 			buckets[key] = bucket;
 			bucketsByTimer[bucket->timer] = bucket;
@@ -139,9 +137,10 @@ public:
 			removeBucket(bucket);
 	}
 
-private:
-	void timer_timeout(QTimer *timer)
+private slots:
+	void timer_timeout()
 	{
+		QTimer *timer = (QTimer *)sender();
 		Bucket *bucket = bucketsByTimer.value(timer);
 		if(!bucket)
 			return;
