@@ -483,26 +483,34 @@ public:
 	{
 		if(activityTimer)
 		{
-			activityTimer->setParent(0);
 			activityTimer->disconnect(this);
+			activityTimer->setParent(0);
 			activityTimer->deleteLater();
 			activityTimer = 0;
 		}
 
 		if(reportTimer)
 		{
-			reportTimer->setParent(0);
 			reportTimer->disconnect(this);
+			reportTimer->setParent(0);
 			reportTimer->deleteLater();
 			reportTimer = 0;
 		}
 
 		if(refreshTimer)
 		{
-			refreshTimer->setParent(0);
 			refreshTimer->disconnect(this);
+			refreshTimer->setParent(0);
 			refreshTimer->deleteLater();
 			refreshTimer = 0;
+		}
+
+		if(externalConnectionsMaxTimer)
+		{
+			externalConnectionsMaxTimer->disconnect(this);
+			externalConnectionsMaxTimer->setParent(0);
+			externalConnectionsMaxTimer->deleteLater();
+			externalConnectionsMaxTimer = 0;
 		}
 
 		qDeleteAll(connectionInfoById);
@@ -634,8 +642,8 @@ public:
 		}
 		else if(reportInterval <= 0 && reportTimer)
 		{
-			reportTimer->setParent(0);
 			reportTimer->disconnect(this);
+			reportTimer->setParent(0);
 			reportTimer->deleteLater();
 			reportTimer = 0;
 		}

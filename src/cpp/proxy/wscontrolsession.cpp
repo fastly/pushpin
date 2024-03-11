@@ -306,16 +306,12 @@ private slots:
 	}
 };
 
-WsControlSession::WsControlSession(QObject *parent) :
-	QObject(parent)
+WsControlSession::WsControlSession()
 {
-	d = new Private(this);
+	d = std::make_unique<Private>(this);
 }
 
-WsControlSession::~WsControlSession()
-{
-	delete d;
-}
+WsControlSession::~WsControlSession() = default;
 
 QByteArray WsControlSession::peer() const
 {
