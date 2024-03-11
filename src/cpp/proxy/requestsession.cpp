@@ -174,7 +174,7 @@ public:
 	QString routeId;
 	bool debug;
 	bool autoCrossOrigin;
-	InspectRequest *inspectRequest;
+	std::unique_ptr<InspectRequest> inspectRequest;
 	InspectData idata;
 	AcceptRequest *acceptRequest;
 	BufferList in;
@@ -216,7 +216,6 @@ public:
 		trusted(false),
 		debug(false),
 		autoCrossOrigin(false),
-		inspectRequest(0),
 		acceptRequest(0),
 		jsonpExtendedResponse(false),
 		responseBodySize(0),
@@ -251,7 +250,7 @@ public:
 		if(inspectRequest)
 		{
 			inspectFinishedConnection.disconnect();
-			inspectChecker->give(inspectRequest);
+			inspectChecker->give(inspectRequest.get());
 			inspectRequest = 0;
 		}
 
@@ -461,18 +460,18 @@ public:
 
 				if(inspectManager)
 				{
-					inspectRequest = new InspectRequest(inspectManager);
+					inspectRequest = std::make_unique<InspectRequest>(inspectManager);
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
-						inspectFinishedConnection = inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
-						inspectChecker->watch(inspectRequest);
+						inspectFinishedConnection = inspectRequest.get()->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
+						inspectChecker->watch(inspectRequest.get());
 						inspectRequest->start(requestData, truncated, route.session, autoShare);
 					}
 					else
 					{
-						inspectChecker->watch(inspectRequest);
-						inspectChecker->give(inspectRequest);
+						inspectChecker->watch(inspectRequest.get());
+						inspectChecker->give(inspectRequest.get());
 						inspectRequest->start(requestData, truncated, route.session, autoShare);
 						inspectRequest = 0;
 					}
@@ -887,7 +886,7 @@ public:
 		if(!inspectRequest->success())
 		{
 			inspectFinishedConnection.disconnect();
-			inspectChecker->give(inspectRequest);
+			inspectChecker->give(inspectRequest.get());
 			inspectRequest = 0;
 
 			doInspectError();
@@ -897,7 +896,7 @@ public:
 		idata = inspectRequest->result();
 
 		inspectFinishedConnection.disconnect();
-		inspectChecker->give(inspectRequest);
+		inspectChecker->give(inspectRequest.get());
 		inspectRequest = 0;
 
 		if(!idata.doProxy)
