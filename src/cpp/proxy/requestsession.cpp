@@ -176,7 +176,7 @@ public:
 	bool autoCrossOrigin;
 	InspectRequest *inspectRequest;
 	InspectData idata;
-	AcceptRequest *acceptRequest;
+	std::unique_ptr<AcceptRequest> acceptRequest;
 	BufferList in;
 	QByteArray jsonpCallback;
 	bool jsonpExtendedResponse;
@@ -217,7 +217,6 @@ public:
 		debug(false),
 		autoCrossOrigin(false),
 		inspectRequest(0),
-		acceptRequest(0),
 		jsonpExtendedResponse(false),
 		responseBodySize(0),
 		responseBodyFinished(false),
@@ -865,8 +864,8 @@ public:
 			adata.route = route.id;
 			adata.channelPrefix = route.prefix;
 
-			acceptRequest = new AcceptRequest(acceptManager);
-			acceptFinishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
+			acceptRequest = std::make_unique<AcceptRequest>(acceptManager);
+			acceptFinishedConnection = acceptRequest.get()->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 		else
@@ -936,7 +935,7 @@ public:
 			AcceptRequest::ResponseData rdata = acceptRequest->result();
 
 			acceptFinishedConnection.disconnect();
-			delete acceptRequest;
+			acceptRequest.reset();
 			acceptRequest = 0;
 
 			if(rdata.accepted)
@@ -968,7 +967,7 @@ public:
 		else
 		{
 			acceptFinishedConnection.disconnect();
-			delete acceptRequest;
+			acceptRequest.reset();
 			acceptRequest = 0;
 
 			zhttpRequest->resume();
