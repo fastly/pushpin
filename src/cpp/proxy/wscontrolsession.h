@@ -64,10 +64,10 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 
 	friend class WsControlManager;
-	WsControlSession(QObject *parent = 0);
+	WsControlSession();
 	void setup(WsControlManager *manager, const QByteArray &cid);
 	void handle(const QByteArray &from, const WsControlPacket::Item &item);
 };

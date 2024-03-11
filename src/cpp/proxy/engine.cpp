@@ -110,7 +110,7 @@ public:
 	ZhttpManager *intZhttpIn;
 	ZRoutes *zroutes;
 	ZrpcManager *inspect;
-	WsControlManager *wsControl;
+	std::unique_ptr<WsControlManager> wsControl;
 	ZrpcChecker *inspectChecker;
 	StatsManager *stats;
 	ZrpcManager *command;
@@ -144,7 +144,6 @@ public:
 		intZhttpIn(0),
 		zroutes(0),
 		inspect(0),
-		wsControl(0),
 		inspectChecker(0),
 		stats(0),
 		command(0),
@@ -160,7 +159,8 @@ public:
 	{
 		destroying = true;
 
-		// need to delete all objects that may have outgoing connections before zroutes
+		// need to delete all objects that may have connections before
+		// deleting zhttpmanagers/zroutes
 
 		delete updater;
 
@@ -190,6 +190,10 @@ public:
 			delete rs;
 		}
 		requestSessions.clear();
+
+		// may have background connections
+		delete sockJsManager;
+		sockJsManager = 0;
 
 		WebSocketOverHttp::clearDisconnectManager();
 
@@ -296,7 +300,7 @@ public:
 
 		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
-			wsControl = new WsControlManager(this);
+			wsControl = std::make_unique<WsControlManager>();
 
 			wsControl->setIdentity(config.clientId);
 			wsControl->setIpcFileMode(config.ipcFileMode);
@@ -449,7 +453,7 @@ public:
 	{
 		QByteArray cid = connectionManager.addConnection(sock);
 
-		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl);
+		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl.get());
 		ps->finishedByPassthroughCallback().add(Private::wsps_finishedByPassthrough_cb, this);
 
 		connectionManager.setProxyForConnection(sock, ps);
