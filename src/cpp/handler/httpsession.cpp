@@ -185,7 +185,7 @@ public:
 	Connection readyReadOutConnection;
 	Connection errorOutConnection;
 	Connection timerConnection;
-	Connection retryTimerConneciton;
+	Connection retryTimerConnection;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -213,11 +213,11 @@ public:
 		writeBytesChangedConnection = req->writeBytesChanged.connect(boost::bind(&Private::req_writeBytesChanged, this));
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
-		timer = new RTimer(this);
+		timer = new RTimer;
 		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
-		retryTimer = new RTimer(this);
-		retryTimerConneciton = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
+		retryTimer = new RTimer;
+		retryTimerConnection = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 
 		adata = _adata;
@@ -247,7 +247,7 @@ public:
 		timer->setParent(0);
 		timer->deleteLater();
 
-		retryTimerConneciton.disconnect();
+		retryTimerConnection.disconnect();
 		retryTimer->setParent(0);
 		retryTimer->deleteLater();
 	}

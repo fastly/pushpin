@@ -309,7 +309,7 @@ public:
 				isSockJs = true;
 				sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
 				zhttpRequest = 0;
-				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
+				QMetaObject::invokeMethod(this, "doFinished", Qt::QueuedConnection);
 				return;
 			}
 		}
@@ -1182,6 +1182,11 @@ public slots:
 	{
 		state = WaitingForResponse;
 		q->inspectError();
+	}
+
+	void doFinished()
+	{
+		q->finished();
 	}
 };
 

@@ -137,11 +137,11 @@ public:
 		multi(false),
 		quiet(false)
 	{
-		expireTimer = new RTimer(this);
+		expireTimer = new RTimer;
 		expTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer(this);
+		keepAliveTimer = new RTimer;
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
@@ -161,7 +161,7 @@ public:
 
 		if(expireTimer)
 		{
-			expireTimer->disconnect(this);
+			expTimerConnection.disconnect();
 			expireTimer->setParent(0);
 			expireTimer->deleteLater();
 			expireTimer = 0;
@@ -169,7 +169,7 @@ public:
 
 		if(keepAliveTimer)
 		{
-			keepAliveTimer->disconnect(this);
+			keepAliveTimerConnection.disconnect();
 			keepAliveTimer->setParent(0);
 			keepAliveTimer->deleteLater();
 			keepAliveTimer = 0;
