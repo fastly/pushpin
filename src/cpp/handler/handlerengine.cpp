@@ -88,6 +88,7 @@
 #define ACCEPT_WORKERS_MAX 10
 
 using namespace VariantUtil;
+using std::map;
 
 static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
 {
@@ -1255,7 +1256,7 @@ public:
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
 	QSet<Deferred*> deferreds;
-	std::unordered_map<Deferred*, std::unique_ptr<Deferred>> deferredMap;
+	std::map<Deferred*, std::unique_ptr<Deferred>> deferredMap;
 	Deferred *report;
 	Connection inspectReqReadyConnection;
 	Connection acceptReqReadyConnection;
