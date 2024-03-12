@@ -2337,6 +2337,7 @@ private:
 
 		finishedConnection.erase(report);
 		deferreds.remove(report);
+		deferredMap.erase(report);
 		report = 0;
 	}
 
@@ -2344,6 +2345,7 @@ private:
 	{
 		finishedConnection.erase(d);
 		deferreds.remove(d);
+		deferredMap.erase(d);
 
 		if(!result.success)
 			log_error("couldn't update session: condition=%d", result.value.toInt());
@@ -2353,6 +2355,7 @@ private:
 	{
 		finishedConnection.erase(d);
 		deferreds.remove(d);
+		deferredMap.erase(d);
 
 		if(!result.success)
 			log_error("couldn't create/update session: condition=%d", result.value.toInt());
