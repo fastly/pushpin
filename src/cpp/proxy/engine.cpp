@@ -553,7 +553,8 @@ public:
 				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
 		}
 
-		RequestSession *rs;
+		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+
 		if(passthroughData.isValid() && !preferInternal)
 		{
 			// passthrough request with preferInternal=false. in this case,
@@ -585,7 +586,6 @@ public:
 
 			route.targets += target;
 
-			rs = new RequestSession(config.id, stats);
 			rs->setRoute(route);
 		}
 		else
@@ -594,13 +594,18 @@ public:
 			// request with preferInternal=true. in that case, use domainmap
 			// for lookup, with route ID if available
 
-			rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+			rs->setRouteId(routeId);
+		}
+
+		if(!passthroughData.isValid())
+		{
+			// these only make sense on regular requests
+
 			rs->setDebugEnabled(config.debug);
 			rs->setAutoCrossOrigin(config.autoCrossOrigin);
 			rs->setPrefetchSize(config.inspectPrefetch);
 			rs->setDefaultUpstreamKey(config.upstreamKey);
 			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
-			rs->setRouteId(routeId);
 		}
 
 		rs->setAutoShare(autoShare);

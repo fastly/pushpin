@@ -1190,12 +1190,6 @@ public slots:
 	}
 };
 
-RequestSession::RequestSession(int workerId, StatsManager *stats, QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this, workerId, 0, 0, 0, 0, 0, stats);
-}
-
 RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats, QObject *parent) :
 	QObject(parent)
 {
