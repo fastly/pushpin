@@ -12,6 +12,7 @@ final def BUILD_TIMEOUT = 120
 final def NODELABEL = 'docker-build'
 final def RELEASE_BRANCH = 'main'
 
+def buildResources = [resourceRequestMemory: '92Gi', resourceLimitMemory: '92Gi', resourceRequestCpu: '25000m', resourceLimitCpu: '25000m']
 def releaseBranches = [RELEASE_BRANCH, 'origin/' + RELEASE_BRANCH]
 def cache = true
 def cleanMergedRefs = false
@@ -67,7 +68,7 @@ if (ref in releaseBranches) {
 }
 
 fastlyPipeline(script: this, buildTimeout: BUILD_TIMEOUT, ignoreTags: true, slackChannel: slackChannel) {
-  getNode(label: NODELABEL) {
+  getNode(label: NODELABEL, resources: buildResources) {
       checkoutWithSubmodules scm
       def v = readFile file: './fastly-build/VERSION'
       def package_version = "${v.trim()}.${env.BUILD_NUMBER}"
