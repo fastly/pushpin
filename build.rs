@@ -9,7 +9,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output, Stdio};
 use std::str::FromStr;
-use std::thread;
 use time::macros::format_description;
 use time::OffsetDateTime;
 
@@ -508,19 +507,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             .current_dir("postbuild"),
     )?;
 
-    let proc_count = thread::available_parallelism().map_or(1, |x| x.get());
-
     check_command(
         Command::new("make")
+            .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS")?)
             .args(["-f", "Makefile"])
-            .args(["-j", &proc_count.to_string()])
             .current_dir(&out_dir),
     )?;
 
     check_command(
         Command::new("make")
+            .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS")?)
             .args(["-f", "Makefile.test"])
-            .args(["-j", &proc_count.to_string()])
             .current_dir(&out_dir),
     )?;
 
