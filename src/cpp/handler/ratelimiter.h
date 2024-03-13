@@ -23,6 +23,7 @@
 #ifndef RATELIMITER_H
 #define RATELIMITER_H
 
+#include <memory>
 #include <QObject>
 
 class RateLimiter : public QObject
@@ -38,7 +39,7 @@ public:
 		virtual bool execute() = 0;
 	};
 
-	RateLimiter(QObject *parent = 0);
+	RateLimiter();
 	~RateLimiter();
 
 	void setRate(int actionsPerSecond);
@@ -50,7 +51,7 @@ public:
 
 private:
 	class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 };
 
 #endif

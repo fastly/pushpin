@@ -110,7 +110,7 @@ public:
 	ZhttpManager *intZhttpIn;
 	ZRoutes *zroutes;
 	ZrpcManager *inspect;
-	WsControlManager *wsControl;
+	std::unique_ptr<WsControlManager> wsControl;
 	ZrpcChecker *inspectChecker;
 	StatsManager *stats;
 	ZrpcManager *command;
@@ -144,7 +144,6 @@ public:
 		intZhttpIn(0),
 		zroutes(0),
 		inspect(0),
-		wsControl(0),
 		inspectChecker(0),
 		stats(0),
 		command(0),
@@ -160,7 +159,8 @@ public:
 	{
 		destroying = true;
 
-		// need to delete all objects that may have outgoing connections before zroutes
+		// need to delete all objects that may have connections before
+		// deleting zhttpmanagers/zroutes
 
 		delete updater;
 
@@ -191,13 +191,15 @@ public:
 		}
 		requestSessions.clear();
 
+		// may have background connections
+		delete sockJsManager;
+		sockJsManager = 0;
+
 		WebSocketOverHttp::clearDisconnectManager();
 
 		// need to make sure this is deleted before inspect manager
 		delete inspectChecker;
 		inspectChecker = 0;
-
-		RTimer::deinit();
 	}
 
 	bool start(const Configuration &_config)
@@ -298,7 +300,7 @@ public:
 
 		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
-			wsControl = new WsControlManager(this);
+			wsControl = std::make_unique<WsControlManager>();
 
 			wsControl->setIdentity(config.clientId);
 			wsControl->setIpcFileMode(config.ipcFileMode);
@@ -451,7 +453,7 @@ public:
 	{
 		QByteArray cid = connectionManager.addConnection(sock);
 
-		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl);
+		WsProxySession *ps = new WsProxySession(zroutes, &connectionManager, logConfig, stats, wsControl.get());
 		ps->finishedByPassthroughCallback().add(Private::wsps_finishedByPassthrough_cb, this);
 
 		connectionManager.setProxyForConnection(sock, ps);
@@ -551,7 +553,8 @@ public:
 				routeId = QString::fromUtf8(req->requestHeaders().get("Pushpin-Route"));
 		}
 
-		RequestSession *rs;
+		RequestSession *rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+
 		if(passthroughData.isValid() && !preferInternal)
 		{
 			// passthrough request with preferInternal=false. in this case,
@@ -583,7 +586,6 @@ public:
 
 			route.targets += target;
 
-			rs = new RequestSession(config.id, stats);
 			rs->setRoute(route);
 		}
 		else
@@ -592,13 +594,18 @@ public:
 			// request with preferInternal=true. in that case, use domainmap
 			// for lookup, with route ID if available
 
-			rs = new RequestSession(config.id, domainMap, sockJsManager, inspect, inspectChecker, accept, stats);
+			rs->setRouteId(routeId);
+		}
+
+		if(!passthroughData.isValid())
+		{
+			// these only make sense on regular requests
+
 			rs->setDebugEnabled(config.debug);
 			rs->setAutoCrossOrigin(config.autoCrossOrigin);
 			rs->setPrefetchSize(config.inspectPrefetch);
 			rs->setDefaultUpstreamKey(config.upstreamKey);
 			rs->setXffRules(config.xffUntrustedRule, config.xffTrustedRule);
-			rs->setRouteId(routeId);
 		}
 
 		rs->setAutoShare(autoShare);

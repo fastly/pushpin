@@ -253,10 +253,8 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
-class RunnerApp::Private : public QObject
+class RunnerApp::Private
 {
-	Q_OBJECT
-
 public:
 	RunnerApp *q;
 	ArgsData args;
@@ -268,7 +266,6 @@ public:
 	map<Service*, ServiceConnections> serviceConnectionMap;
 
 	Private(RunnerApp *_q) :
-		QObject(_q),
 		q(_q),
 		stopping(false),
 		errored(false)
@@ -592,7 +589,7 @@ public:
 			if(!serviceNames.contains("zurl") && CondureService::hasClientMode(condureBin))
 				useClient = true;
 
-			services += new CondureService("condure", condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, useClient, this);
+			services += new CondureService("condure", condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, useClient);
 		}
 
 		if(serviceNames.contains("mongrel2"))
@@ -613,7 +610,7 @@ public:
 			}
 
 			foreach(const ListenPort &p, ports)
-				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(p.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, p.port, p.ssl, logLevels.value("mongrel2", defaultLevel), this);
+				services += new Mongrel2Service(m2Bin, QDir(runDir).filePath(QString("%1mongrel2.sqlite").arg(filePrefix)), "default_" + QString::number(p.port), runDir, !args.mergeOutput ? logDir : QString(), filePrefix, p.port, p.ssl, logLevels.value("mongrel2", defaultLevel));
 		}
 
 		if(serviceNames.contains("m2adapter"))
@@ -622,7 +619,7 @@ public:
 			foreach(const ListenPort &p, ports)
 				portsOnly += p.port;
 
-			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("m2adapter", defaultLevel), portsOnly, this);
+			services += new M2AdapterService(m2aBin, QDir(libDir).filePath("m2adapter.conf.template"), runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("m2adapter", defaultLevel), portsOnly);
 		}
 
 		bool quietCheck = false;
@@ -640,7 +637,7 @@ public:
 		}
 
 		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("pushpin-proxy", defaultLevel), args.routeLines, quietCheck, this);
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("pushpin-proxy", defaultLevel), args.routeLines, quietCheck);
 
 		if(serviceNames.contains("pushpin-handler"))
 			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("pushpin-handler", defaultLevel));
@@ -654,7 +651,7 @@ public:
 				s->error.connect(boost::bind(&Private::service_error, this, boost::placeholders::_1, s))
 			};
 
-			if(!args.mergeOutput || qobject_cast<Mongrel2Service*>(s))
+			if(!args.mergeOutput || s->alwaysLogStatus())
 				log_info("starting %s", qPrintable(s->name()));
 
 			s->start();
@@ -690,7 +687,7 @@ private:
 	{
 		foreach(Service *s, services)
 		{
-			if(!args.mergeOutput || qobject_cast<Mongrel2Service*>(s))
+			if(!args.mergeOutput || s->alwaysLogStatus())
 				log_info("stopping %s", qPrintable(s->name()));
 
 			s->stop();
@@ -802,20 +799,14 @@ private:
 	}
 };
 
-RunnerApp::RunnerApp(QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this);
+RunnerApp::RunnerApp() {
+	d = std::make_unique<Private>(this);
 }
 
-RunnerApp::~RunnerApp()
-{
-	delete d;
-}
+RunnerApp::~RunnerApp() = default;
 
 void RunnerApp::start()
 {
 	d->start();
 }
 
-#include "runnerapp.moc"

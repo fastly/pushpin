@@ -637,6 +637,7 @@ private slots:
 		delete domainMap;
 		delete wrapper;
 
+		QCoreApplication::instance()->sendPostedEvents();
 		RTimer::deinit();
 	}
 

@@ -28,8 +28,6 @@
 
 class CondureService : public Service
 {
-	Q_OBJECT
-
 public:
 	CondureService(
 		const QString &name,
@@ -44,8 +42,7 @@ public:
 		int maxconn,
 		bool allowCompression,
 		const QList<ListenPort> &ports,
-		bool enableClient,
-		QObject *parent = 0);
+		bool enableClient);
 
 	static bool hasClientMode(const QString &binFile);
 

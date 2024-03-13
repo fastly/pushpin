@@ -163,7 +163,7 @@ public:
 	int peerCloseCode;
 	QString peerCloseReason;
 	bool updating;
-	ReqConnections reqConnections;
+	map<ZhttpRequest*, ReqConnections> reqConnectionMap;
 	WSConnections wsConnection;
 
 	Private(SockJsSession *_q) :
@@ -201,7 +201,7 @@ public:
 
 	void removeRequestItem(RequestItem *ri)
 	{
-		reqConnections = ReqConnections();
+		reqConnectionMap.erase(ri->req);
 		requests.remove(ri->req);
 		delete ri;
 	}
@@ -229,9 +229,10 @@ public:
 		{
 			RequestItem *ri = requests.value(req);
 			assert(ri);
-			reqConnections = ReqConnections();
+
 			// detach req from RequestItem
-			requests.remove(req);
+			reqConnectionMap.erase(ri->req);
+			requests.remove(ri->req);
 			ri->req = 0;
 			delete ri;
 
@@ -275,7 +276,7 @@ public:
 
 			requests.insert(req, new RequestItem(req, jsonpCallback, RequestItem::Connect));
 
-			reqConnections = {
+			reqConnectionMap[req] = {
 				req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
 				req->error.connect(boost::bind(&Private::req_error, this, req))
 			};
@@ -320,10 +321,11 @@ public:
 
 	void handleRequest(ZhttpRequest *_req, const QByteArray &jsonpCallback, const QByteArray &lastPart, const QByteArray &body)
 	{
-		reqConnections = {
-			req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, req)),
-			req->error.connect(boost::bind(&Private::req_error, this, req))
+		reqConnectionMap[_req] = {
+			_req->bytesWritten.connect(boost::bind(&Private::req_bytesWritten, this, boost::placeholders::_1, _req)),
+			_req->error.connect(boost::bind(&Private::req_error, this, _req))
 		};
+
 		if(lastPart == "xhr" || lastPart == "jsonp")
 		{
 			if(req)
@@ -381,6 +383,7 @@ public:
 						int at = kv.indexOf('=');
 						if(at == -1)
 							continue;
+
 						if(QUrl::fromPercentEncoding(kv.mid(0, at)) == "d")
 						{
 							param = QUrl::fromPercentEncoding(kv.mid(at + 1)).toUtf8();
@@ -442,6 +445,11 @@ public:
 			ri->sendBytes = bytes;
 
 			tryRead();
+		}
+		else
+		{
+			requests.insert(_req, new RequestItem(_req, jsonpCallback, RequestItem::Background, true));
+			respondError(_req, 404, "Not Found", "Not Found");
 		}
 	}
 
@@ -1039,6 +1047,7 @@ public:
 		q->error();
 	}
 
+private slots:
 	void doUpdate()
 	{
 		updating = false;
@@ -1068,7 +1077,6 @@ public:
 		}
 	}
 
-private slots:
 	void doClosed()
 	{
 		q->closed();

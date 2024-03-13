@@ -502,7 +502,8 @@ public:
 			// no need to track the primary request anymore
 			if(inRequest)
 			{
-				inRequest->request()->disconnect(this);
+				inReqReadyReadConnection.disconnect();
+				inReqErrorConnection.disconnect();
 				inRequest = 0;
 			}
 
@@ -554,7 +555,8 @@ public:
 		if(!requestBodySent && inRequest->request()->isInputFinished() && inRequest->request()->bytesAvailable() == 0)
 		{
 			// no need to track the primary request anymore
-			inRequest->request()->disconnect(this);
+			inReqReadyReadConnection.disconnect();
+			inReqErrorConnection.disconnect();
 			inRequest = 0;
 
 			requestBodySent = true;
