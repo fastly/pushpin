@@ -40,9 +40,7 @@ Mongrel2Service::Mongrel2Service(
 	const QString &filePrefix,
 	int port,
 	bool ssl,
-	int logLevel,
-	QObject *parent) :
-	Service(parent),
+	int logLevel) :
 	logLevel_(logLevel)
 {
 	args_ += binFile;
@@ -124,6 +122,10 @@ bool Mongrel2Service::acceptSighup() const
 	return true;
 }
 
+bool Mongrel2Service::alwaysLogStatus() const
+{
+	return true;
+}
 
 QString Mongrel2Service::filterLogLine(const int level, const QString &line) const
 {

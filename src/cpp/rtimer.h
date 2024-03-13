@@ -36,7 +36,7 @@ class RTimer : public QObject
 	Q_OBJECT
 
 public:
-	RTimer(QObject *parent = 0);
+	RTimer();
 	~RTimer();
 
 	bool isActive() const;

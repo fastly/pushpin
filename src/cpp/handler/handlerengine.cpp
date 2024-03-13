@@ -1294,8 +1294,8 @@ public:
 	QZmq::Valve *proxyStatsValve;
 	SimpleHttpServer *controlHttpServer;
 	StatsManager *stats;
-	RateLimiter *publishLimiter;
-	RateLimiter *updateLimiter;
+	std::unique_ptr<RateLimiter> publishLimiter;
+	std::unique_ptr<RateLimiter> updateLimiter;
 	HttpSessionUpdateManager *httpSessionUpdateManager;
 	Sequencer *sequencer;
 	CommonState cs;
@@ -1350,8 +1350,8 @@ public:
 	{
 		qRegisterMetaType<DetectRuleList>();
 
-		publishLimiter = new RateLimiter(this);
-		updateLimiter = new RateLimiter(this);
+		publishLimiter = std::make_unique<RateLimiter>();
+		updateLimiter = std::make_unique<RateLimiter>();
 
 		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
 
@@ -1511,6 +1511,7 @@ public:
 		if(!config.retryOutSpecs.isEmpty())
 		{
 			retrySock = new QZmq::Socket(QZmq::Socket::Router, this);
+			retrySock->setImmediateEnabled(true);
 			retrySock->setHwm(DEFAULT_HWM);
 			retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
 			retrySock->setRouterMandatoryEnabled(true);
@@ -1550,6 +1551,7 @@ public:
 
 			wsControlStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
 			wsControlStreamSock->setIdentity(config.instanceId);
+			wsControlStreamSock->setImmediateEnabled(true);
 			wsControlStreamSock->setHwm(DEFAULT_HWM);
 			wsControlStreamSock->setShutdownWaitTime(WSCONTROL_WAIT_TIME);
 
@@ -2049,7 +2051,7 @@ private:
 			// accept request immediately before returning to the event loop.
 			// the start() call will do this
 
-			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
+			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter.get(), httpSessionUpdateManager, config.connectionSubscriptionMax, this);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
 			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
 			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));

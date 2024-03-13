@@ -43,6 +43,7 @@ public:
 
 	virtual QStringList arguments() const = 0;
 	virtual bool acceptSighup() const;
+	virtual bool alwaysLogStatus() const;
 	virtual bool isStarted() const;
 
 	virtual bool preStart();

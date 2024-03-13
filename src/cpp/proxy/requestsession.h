@@ -54,7 +54,6 @@ class RequestSession : public QObject
 	Q_OBJECT
 
 public:
-	RequestSession(int workerId, StatsManager *stats, QObject *parent = 0);
 	RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *accept, StatsManager *stats, QObject *parent = 0);
 	~RequestSession();
 

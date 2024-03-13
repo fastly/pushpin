@@ -42,9 +42,7 @@ CondureService::CondureService(
 	int maxconn,
 	bool allowCompression,
 	const QList<ListenPort> &ports,
-	bool enableClient,
-	QObject *parent) :
-	Service(parent)
+	bool enableClient)
 {
 	args_ += binFile;
 

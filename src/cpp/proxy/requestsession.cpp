@@ -250,7 +250,7 @@ public:
 
 		if(inspectRequest)
 		{
-			inspectRequest->disconnect(this);
+			inspectFinishedConnection.disconnect();
 			inspectChecker->give(inspectRequest);
 			inspectRequest = 0;
 		}
@@ -309,7 +309,7 @@ public:
 				isSockJs = true;
 				sockJsManager->giveRequest(zhttpRequest, route.sockJsPath.length(), route.sockJsAsPath, route);
 				zhttpRequest = 0;
-				QMetaObject::invokeMethod(q, "finished", Qt::QueuedConnection);
+				QMetaObject::invokeMethod(this, "doFinished", Qt::QueuedConnection);
 				return;
 			}
 		}
@@ -886,7 +886,7 @@ public:
 	{
 		if(!inspectRequest->success())
 		{
-			inspectRequest->disconnect(this);
+			inspectFinishedConnection.disconnect();
 			inspectChecker->give(inspectRequest);
 			inspectRequest = 0;
 
@@ -896,7 +896,7 @@ public:
 
 		idata = inspectRequest->result();
 
-		inspectRequest->disconnect(this);
+		inspectFinishedConnection.disconnect();
 		inspectChecker->give(inspectRequest);
 		inspectRequest = 0;
 
@@ -1183,13 +1183,12 @@ public slots:
 		state = WaitingForResponse;
 		q->inspectError();
 	}
-};
 
-RequestSession::RequestSession(int workerId, StatsManager *stats, QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this, workerId, 0, 0, 0, 0, 0, stats);
-}
+	void doFinished()
+	{
+		q->finished();
+	}
+};
 
 RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats, QObject *parent) :
 	QObject(parent)

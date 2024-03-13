@@ -29,12 +29,12 @@
 
 #define CHECK_TIMEOUT 8
 
+using std::map;
+
 class ZrpcChecker::Private : public QObject
 {
 	Q_OBJECT
 
-	Connection finishedConnection;
-	
 public:
 	class Item
 	{
@@ -55,10 +55,16 @@ public:
 		}
 	};
 
+	struct ZrpcReqConnections{
+		Connection finishedConnection;
+		Connection destroyedConnection;
+	};
+
 	ZrpcChecker *q;
 	bool avail;
 	QTimer *timer;
 	QHash<ZrpcRequest*, Item*> requestsByReq;
+	map<ZrpcRequest*, ZrpcReqConnections> reqConnectionMap;
 
 	Private(ZrpcChecker *_q) :
 		QObject(_q),
@@ -90,7 +96,7 @@ public:
 		{
 			it.next();
 			Item *i = it.value();
-			i->req->disconnect(this);
+			reqConnectionMap.erase(i->req);
 			delete i;
 		}
 
@@ -108,8 +114,10 @@ public:
 		if(i)
 			return; // already watching
 
-		finishedConnection = req->finished.connect(boost::bind(&Private::req_finished, this, req));
-		connect(req, &ZrpcRequest::destroyed, this, &Private::req_destroyed);
+		reqConnectionMap[req] = {
+			req->finished.connect(boost::bind(&Private::req_finished, this, req)),
+			req->destroyed.connect(boost::bind(&Private::req_destroyed, this, req))
+		};
 
 		i = new Item;
 		i->req = req;
@@ -135,7 +143,7 @@ public:
 			// if we aren't watching (or were watching, but no
 			//   longer watching), then just delete what we were
 			//   given
-			finishedConnection.disconnect();
+			reqConnectionMap.erase(req);
 			delete req;
 		}
 	}
@@ -173,7 +181,7 @@ public:
 		bool success = req->success();
 		ZrpcRequest::ErrorCondition e = req->errorCondition();
 
-		req->disconnect(this);
+		reqConnectionMap.erase(req);
 		requestsByReq.remove(req);
 		delete i;
 
@@ -195,16 +203,17 @@ public:
 		}
 	}
 
-public slots:
-	void req_destroyed(QObject *obj)
+	void req_destroyed(ZrpcRequest *req)
 	{
-		Item *i = requestsByReq.value((ZrpcRequest *)obj);
+		Item *i = requestsByReq.value(req);
 		assert(i);
 
-		requestsByReq.remove((ZrpcRequest *)obj);
+		reqConnectionMap.erase(req);
+		requestsByReq.remove(req);
 		delete i;
 	}
 
+public slots:
 	void timer_timeout()
 	{
 		avail = false;

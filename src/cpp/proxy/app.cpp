@@ -32,6 +32,7 @@
 #include "rust/log.h"
 #include "rust/security.h"
 #include "processquit.h"
+#include "rtimer.h"
 #include "log.h"
 #include "settings.h"
 #include "xffrule.h"
@@ -196,6 +197,7 @@ public:
 	}
 
 	Signal started;
+	Signal stopped;
 	Signal error;
 
 public slots:
@@ -203,6 +205,9 @@ public slots:
 	{
 		if(!engine_->start(config_))
 		{
+			delete engine_;
+			engine_ = 0;
+
 			error();
 			return;
 		}
@@ -210,9 +215,18 @@ public slots:
 		started();
 	}
 
+	void stop()
+	{
+		delete engine_;
+		engine_ = 0;
+
+		stopped();
+	}
+
 	void routesChanged()
 	{
-		engine_->routesChanged();
+		if(engine_)
+			engine_->routesChanged();
 	}
 
 private:
@@ -256,7 +270,10 @@ public:
 
 	void stop()
 	{
-		quit();
+		QMutexLocker locker(&m);
+
+		if(worker)
+			QMetaObject::invokeMethod(worker, "stop", Qt::QueuedConnection);
 	}
 
 	void routesChanged()
@@ -272,39 +289,48 @@ public:
 		// will unlock during exec
 		m.lock();
 
-		EngineWorker *e = new EngineWorker(config, domainMap);
-		Connection startedConnection = e->started.connect(boost::bind(&EngineThread::worker_started, this, e));
-		Connection errorConnection = e->error.connect(boost::bind(&EngineThread::worker_error, this));
-		QMetaObject::invokeMethod(e, "start", Qt::QueuedConnection);
+		worker = new EngineWorker(config, domainMap);
+		Connection startedConnection = worker->started.connect(boost::bind(&EngineThread::worker_started, this));
+		Connection stoppedConnection = worker->stopped.connect(boost::bind(&EngineThread::worker_stopped, this));
+		Connection errorConnection = worker->error.connect(boost::bind(&EngineThread::worker_error, this));
+		QMetaObject::invokeMethod(worker, "start", Qt::QueuedConnection);
 		exec();
 
-		QMutexLocker locker(&m);
+		// ensure deferred deletes are processed
+		QCoreApplication::instance()->sendPostedEvents();
 
-		if(worker)
-		{
-			worker = 0;
-			log_debug("worker %d: stopped", config.id);
-		}
-
-		startedConnection.disconnect();
-		errorConnection.disconnect();
-		delete e;
+		// deinit here, after all event loop activity has completed
+		RTimer::deinit();
 	}
 
 private:
-	void worker_started(EngineWorker *e)
+	void worker_started()
 	{
 		log_debug("worker %d: started", config.id);
 
-		// set worker field and unblock start()
-		worker = e;
+		// unblock start()
 		w.wakeOne();
 		m.unlock();
 	}
 
+	void worker_stopped()
+	{
+		delete worker;
+		worker = 0;
+
+		log_debug("worker %d: stopped", config.id);
+
+		quit();
+	}
+
 	void worker_error()
 	{
-		// unblock start() without setting worker field
+		delete worker;
+		worker = 0;
+
+		quit();
+
+		// unblock start()
 		w.wakeOne();
 		m.unlock();
 	}

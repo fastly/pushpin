@@ -36,9 +36,7 @@ M2AdapterService::M2AdapterService(
 	const QString &ipcPrefix,
 	const QString &filePrefix,
 	int logLevel,
-	const QList<int> &ports,
-	QObject *parent) :
-	Service(parent)
+	const QList<int> &ports)
 {
 	args_ += binFile;
 	args_ += "--config=" + QDir(runDir).filePath(filePrefix + "m2adapter.conf");

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -44,6 +44,7 @@
 #define ACTIVITY_TIMEOUT 100
 #define REFRESH_INTERVAL 1000
 #define EXTERNAL_CONNECTIONS_MAX_INTERVAL 10000
+#define EXPIRE_MAX 10000
 
 #define SHOULD_PROCESS_TIME(x) (x * 3 / 4)
 
@@ -482,26 +483,34 @@ public:
 	{
 		if(activityTimer)
 		{
-			activityTimer->setParent(0);
 			activityTimer->disconnect(this);
+			activityTimer->setParent(0);
 			activityTimer->deleteLater();
 			activityTimer = 0;
 		}
 
 		if(reportTimer)
 		{
-			reportTimer->setParent(0);
 			reportTimer->disconnect(this);
+			reportTimer->setParent(0);
 			reportTimer->deleteLater();
 			reportTimer = 0;
 		}
 
 		if(refreshTimer)
 		{
-			refreshTimer->setParent(0);
 			refreshTimer->disconnect(this);
+			refreshTimer->setParent(0);
 			refreshTimer->deleteLater();
 			refreshTimer = 0;
+		}
+
+		if(externalConnectionsMaxTimer)
+		{
+			externalConnectionsMaxTimer->disconnect(this);
+			externalConnectionsMaxTimer->setParent(0);
+			externalConnectionsMaxTimer->deleteLater();
+			externalConnectionsMaxTimer = 0;
 		}
 
 		qDeleteAll(connectionInfoById);
@@ -633,8 +642,8 @@ public:
 		}
 		else if(reportInterval <= 0 && reportTimer)
 		{
-			reportTimer->setParent(0);
 			reportTimer->disconnect(this);
+			reportTimer->setParent(0);
 			reportTimer->deleteLater();
 			reportTimer = 0;
 		}
@@ -1099,7 +1108,7 @@ public:
 		QList<QByteArray> refreshedConnIds;
 		QSet<QByteArray> routesUpdated;
 
-		while(true)
+		for(int i = 0; i < EXPIRE_MAX; ++i)
 		{
 			TimerWheel::Expired expired = wheel.takeExpired();
 

@@ -299,16 +299,12 @@ private slots:
 	}
 };
 
-RateLimiter::RateLimiter(QObject *parent) :
-	QObject(parent)
+RateLimiter::RateLimiter()
 {
-	d = new Private(this);
+	d = std::make_unique<Private>(this);
 }
 
-RateLimiter::~RateLimiter()
-{
-	delete d;
-}
+RateLimiter::~RateLimiter() = default;
 
 void RateLimiter::setRate(int actionsPerSecond)
 {
