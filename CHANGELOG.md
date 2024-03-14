@@ -1,6 +1,12 @@
 Pushpin Changelog
 =================
 
+v. 1.39.0 (2024-03-14)
+
+  * Introduced multithreading support in the proxy, enhancing performance and scalability.
+  * Boostified signals, slots and connections as a first step to remove Qt lib.
+  * Refined build process by adopting CARGO_MAKEFLAGS for increased compilation efficiency.
+
 v. 1.38.0 (2024-01-08)
 
   * Publish refresh action for triggering WebSocket-over-HTTP requests.
