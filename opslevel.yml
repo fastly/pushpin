@@ -11,8 +11,6 @@ service:
   framework:
   description: Manages HTTP/WebSocket client connections for pub/sub message delivery
     or passthrough to origin
-  aliases:
-  - websockets
   tags:
   - key: automated-integration-tests
     value: 'No'
@@ -67,15 +65,19 @@ service:
   dependencies:
   alert_sources:
   properties:
-    customer_facing_if_compromised:
-    customer_traffic:
-    end_user_traffic:
+    customer_facing_if_compromised: 'yes'
+    customer_traffic: 'yes'
+    end_user_traffic: 'yes'
     has_sensitive_data:
-    in_scope_for_audit:
-    internet_accessible:
-    is_authoritative_source:
-    propagates_to_edge:
-    requires_access_to_platform_specific_apis_for_config:
-    test_-_do_not_use_-_gmitchell_fastly_com:
-    where_data_is_stored:
+    - customer secrets
+    - Fastly secrets
+    - personal data
+    - subscriber data
+    in_scope_for_audit: 'yes'
+    internet_accessible: 'yes'
+    is_authoritative_source: 'no'
+    propagates_to_edge: 'yes'
+    requires_access_to_platform_specific_apis_for_config: 'yes'
+    where_data_is_stored: not applicable
     where_service_is_running:
+    - fleet
