@@ -1,0 +1,81 @@
+---
+version: 1
+service:
+  name: Pushpin
+  lifecycle: generally_available
+  tier: tier_1
+  product: Fanout, WebSockets
+  owner: fanout
+  system:
+  language: C++, Rust
+  framework:
+  description: Manages HTTP/WebSocket client connections for pub/sub message delivery
+    or passthrough to origin
+  aliases:
+  - websockets
+  tags:
+  - key: automated-integration-tests
+    value: 'No'
+  - key: automated-performance-tests
+    value: 'No'
+  - key: automated-unit-tested
+    value: 'Yes'
+  - key: internet-accessible
+    value: 'yes'
+  - key: is-client-side-tooling
+    value: 'No'
+  - key: is-server-or-service
+    value: 'Yes'
+  - key: is-third-party-vendor
+    value: 'No'
+  - key: processes-customer-traffic
+    value: 'yes'
+  - key: processes-end-user-traffic
+    value: 'yes'
+  - key: propagates-to-edge
+    value: 'Yes'
+  - key: requires-code-review-before-deploying-change
+    value: 'Yes'
+  repositories:
+  - name: fastly/fst-pushpin
+    path: "/"
+    provider: github
+  - name: fastly-def/fst_app_h2o_pushpin
+    path: "/"
+    provider: github
+  tools:
+  - name: Pushpin Runbook
+    category: runbooks
+    url: https://github.com/fastly/fst-pushpin/blob/main/RUNBOOK.md
+    environment:
+  - name: Jenkins CI
+    category: continuous_integration
+    url: https://ci.secretcdn.net/job/teamc/job/fst-pushpin/
+    environment:
+  - name: Pushpin Dashboard
+    category: metrics
+    url: https://observability.secretcdn.net/grafana-playground/d/tPAuy_o4z/pushpin-global?orgId=1&from=now-6h&to=now&refresh=5m
+    environment:
+  - name: JIRA
+    category: issue_tracking
+    url: https://fastly.atlassian.net/jira/software/c/projects/EDATA/issues/?jql=project%20%3D%20%22EDATA%22%20AND%20labels%20%3D%20fanout%20ORDER%20BY%20created%20DESC
+    environment:
+  - name: PagerDuty
+    category: incidents
+    url: https://fastly.pagerduty.com/schedules#PPWSU0O
+    environment:
+  dependencies:
+  alert_sources:
+  properties:
+    customer_facing_if_compromised:
+    customer_traffic:
+    end_user_traffic:
+    has_sensitive_data:
+    in_scope_for_audit:
+    internet_accessible:
+    is_authoritative_source:
+    propagates_to_edge:
+    requires_access_to_platform_specific_apis_for_config:
+    test_-_do_not_use_-_gmitchell_fastly_com:
+    where_data_is_stored:
+    where_service_is_running:
