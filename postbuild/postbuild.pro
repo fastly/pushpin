@@ -59,7 +59,7 @@ PRE_TARGETDEPS += \
 
 pushpin_conf_inst.target = pushpin.conf.inst
 pushpin_conf_inst.commands = sed -e \"s,configdir=.*,configdir=$$CONFIGDIR/runner,g\" -e \"s,rundir=.*,rundir=$$RUNDIR,g\" -e \"s,logdir=.*,logdir=$$LOGDIR,g\" ../examples/config/pushpin.conf > pushpin.conf.inst
-pushpin_conf_inst.depends = ../examples/config/pushpin.conf
+pushpin_conf_inst.depends = ../examples/config/pushpin.conf conf.pri
 
 QMAKE_EXTRA_TARGETS += pushpin_conf_inst
 PRE_TARGETDEPS += pushpin.conf.inst
