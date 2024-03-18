@@ -878,6 +878,7 @@ private slots:
 
 	void in_closed()
 	{
+		log_debug("wsproxysession: %p in_closed", q);
 		int code = inSock->peerCloseCode();
 		QString reason = inSock->peerCloseReason();
 		cleanupInSock();
@@ -890,6 +891,7 @@ private slots:
 
 	void in_error()
 	{
+		log_debug("wsproxysession: %p in_error", q);
 		cleanupInSock();
 
 		if(!detached)
@@ -1124,6 +1126,7 @@ private:
 
 	void wsControl_refreshEventReceived()
 	{
+		log_debug("wsproxysession: wsControl_refreshEventReceived");
 		WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(outSock);
 		if(woh)
 			woh->refresh();
@@ -1131,6 +1134,7 @@ private:
 
 	void wsControl_closeEventReceived(int code, const QByteArray &reason)
 	{
+		log_debug("wsproxysession: wsControl_closeEventReceived");
 		if(!detached && outSock && outSock->state() != WebSocket::Closing)
 			outSock->close();
 
@@ -1140,6 +1144,7 @@ private:
 
 	void wsControl_detachEventReceived()
 	{
+		log_debug("wsproxysession: wsControl_detachEventReceived");
 		// if already detached, do nothing
 		if(detached)
 			return;
@@ -1152,6 +1157,7 @@ private:
 
 	void wsControl_cancelEventReceived()
 	{
+		log_debug("wsproxysession: wsControl_cancelEventReceived");
 		if(outSock)
 		{
 			outWSConnection = WSConnections();
