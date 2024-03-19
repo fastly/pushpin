@@ -198,8 +198,11 @@ void logRequest(int level, const RequestData &data, const Config &config)
 void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...)
 {
 	va_list ap;
-	va_start(ap, fmt);
-	logPacket(routeInfo.logLevel, routeInfo.id, fmt, ap);
+	QString msg = QString::vasprintf(fmt, ap);
+	if(!routeInfo.id.isEmpty())
+		msg += QString(" route=%1").arg(routeInfo.id);
+	logPacket(routeInfo.logLevel, msg);
 	va_end(ap);
 }
+
 }

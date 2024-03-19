@@ -80,7 +80,7 @@ public:
  	QString id;
  	int logLevel;
 
-	RouteInfo(const QString& initId = "", int initLogLevel = LOG_LEVEL_DEBUG) :
+	RouteInfo(const QString& initId = QString(), int initLogLevel = LOG_LEVEL_DEBUG) :
 		id(initId),
 		logLevel(initLogLevel)
 	{

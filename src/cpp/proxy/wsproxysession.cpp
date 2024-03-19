@@ -314,7 +314,6 @@ public:
 	map<WsControlSession*, WSProxyConnections> wsProxyConnectionMap;
 	WSConnections outWSConnection;
 	InWSConnections inWSConnection;
-	LogUtil::RouteInfo routeInfo;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -341,8 +340,7 @@ public:
 		keepAliveTimer(0),
 		keepAliveMode(WsControl::NoKeepAlive),
 		keepAliveTimeout(0),
-		logConfig(_logConfig),
-		routeInfo()
+		logConfig(_logConfig)
 	{
 	}
 
@@ -434,8 +432,6 @@ public:
 			reject(false, 502, "Bad Gateway", QString("No route for host: %1").arg(host));
 			return;
 		}
-
-		routeInfo = LogUtil::RouteInfo(route.id, route.level);
 
 		incCounter(Stats::ClientHeaderBytesReceived, ZhttpManager::estimateRequestHeaderBytes("GET", requestData.uri, requestData.headers));
 
@@ -885,6 +881,10 @@ private slots:
 	{
 		int code = inSock->peerCloseCode();
 		QString reason = inSock->peerCloseReason();
+
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.level);
+		LogUtil::logForRoute(routeInfo, "inbound connection to %s closed: code=%d reason=[%s]", qPrintable(outSock->requestUri().path()), code, qPrintable(reason));
+
 		cleanupInSock();
 
 		if(!detached && outSock && outSock->state() != WebSocket::Closing)
@@ -895,6 +895,11 @@ private slots:
 
 	void in_error()
 	{
+		WebSocket::ErrorCondition e = inSock->errorCondition();
+	
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.level);
+		LogUtil::logForRoute(routeInfo, "inbound connection with %p target error state=%d, condition=%d", q, (int)state, (int)e);
+
 		cleanupInSock();
 
 		if(!detached)
@@ -994,9 +999,12 @@ private slots:
 
 	void out_closed()
 	{
-		LogUtil::logForRoute(routeInfo, "wsproxysession: out_closed");
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
+
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.level);
+		LogUtil::logForRoute(routeInfo, "outbound connection to %s closed: code=%d reason=[%s]", qPrintable(outSock->requestUri().path()), code, qPrintable(reason));
+
 		outWSConnection = WSConnections();
 		delete outSock;
 		outSock = 0;
@@ -1011,6 +1019,9 @@ private slots:
 	{
 		WebSocket::ErrorCondition e = outSock->errorCondition();
 		log_debug("wsproxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
+
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.level);
+		LogUtil::logForRoute(routeInfo, "outbound connection with %p target error state=%d, condition=%d", q, (int)state, (int)e);
 
 		if(detached)
 		{
