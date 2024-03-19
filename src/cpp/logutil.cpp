@@ -195,4 +195,11 @@ void logRequest(int level, const RequestData &data, const Config &config)
 	log(level, "%s", qPrintable(msg));
 }
 
+void logIfDebug(int level, bool doDebug, QString msg)
+{
+	if (doDebug)
+	{
+		log(level, "%s", qPrintable(msg));
+	}
+}
 }

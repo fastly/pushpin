@@ -32,6 +32,7 @@
 #include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
+#include "logutil.h"
 #include "rtimer.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
@@ -989,6 +990,7 @@ private slots:
 
 	void out_closed()
 	{
+		LogUtil::logIfDebug(LOG_LEVEL_WARNING, route.debug, "wsproxysession: out_closed");
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
 		outWSConnection = WSConnections();
