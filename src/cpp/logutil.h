@@ -77,8 +77,8 @@ public:
 class RouteInfo
 {
 public:
-    QString id;
-    int logLevel;
+ 	QString id;
+ 	int logLevel;
 
 	RouteInfo(const QString& initId = "", int initLogLevel = LOG_LEVEL_DEBUG) :
 		id(initId),
