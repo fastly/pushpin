@@ -195,11 +195,11 @@ void logRequest(int level, const RequestData &data, const Config &config)
 	log(level, "%s", qPrintable(msg));
 }
 
-void logIfDebug(int level, bool doDebug, QString msg)
+void logForRoute(const RouteInfo &routeInfo, const char *fmt, ...)
 {
-	if (doDebug)
-	{
-		log(level, "%s", qPrintable(msg));
-	}
+	va_list ap;
+	va_start(ap, fmt);
+	logPacket(routeInfo.logLevel, routeInfo.id, fmt, ap);
+	va_end(ap);
 }
 }

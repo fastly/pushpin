@@ -314,6 +314,7 @@ public:
 	map<WsControlSession*, WSProxyConnections> wsProxyConnectionMap;
 	WSConnections outWSConnection;
 	InWSConnections inWSConnection;
+	LogUtil::RouteInfo routeInfo;
 
 	Private(WsProxySession *_q, ZRoutes *_zroutes, ConnectionManager *_connectionManager, const LogUtil::Config &_logConfig, StatsManager *_statsManager, WsControlManager *_wsControlManager) :
 		QObject(_q),
@@ -340,7 +341,8 @@ public:
 		keepAliveTimer(0),
 		keepAliveMode(WsControl::NoKeepAlive),
 		keepAliveTimeout(0),
-		logConfig(_logConfig)
+		logConfig(_logConfig),
+		routeInfo()
 	{
 	}
 
@@ -432,6 +434,8 @@ public:
 			reject(false, 502, "Bad Gateway", QString("No route for host: %1").arg(host));
 			return;
 		}
+
+		routeInfo = LogUtil::RouteInfo(route.id, route.level);
 
 		incCounter(Stats::ClientHeaderBytesReceived, ZhttpManager::estimateRequestHeaderBytes("GET", requestData.uri, requestData.headers));
 
@@ -990,7 +994,7 @@ private slots:
 
 	void out_closed()
 	{
-		LogUtil::logIfDebug(LOG_LEVEL_WARNING, route.debug, "wsproxysession: out_closed");
+		LogUtil::logForRoute(routeInfo, "wsproxysession: out_closed");
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
 		outWSConnection = WSConnections();
