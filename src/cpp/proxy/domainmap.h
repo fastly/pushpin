@@ -153,7 +153,7 @@ public:
 		bool separateStats;
 		bool grip;
 		QList<Target> targets;
-		int level;
+		int logLevel;
 
 		bool isNull() const
 		{
@@ -176,7 +176,7 @@ public:
 			session(false),
 			separateStats(false),
 			grip(true),
-			level(LOG_LEVEL_DEBUG)
+			logLevel(LOG_LEVEL_DEBUG)
 		{
 		}
 	};

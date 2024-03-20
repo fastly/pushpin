@@ -882,8 +882,8 @@ private slots:
 		int code = inSock->peerCloseCode();
 		QString reason = inSock->peerCloseReason();
 
-		auto routeInfo = LogUtil::RouteInfo(route.id, route.level);
-		LogUtil::logForRoute(routeInfo, "inbound connection to %s closed: code=%d reason=[%s]", qPrintable(outSock->requestUri().path()), code, qPrintable(reason));
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
+		LogUtil::logForRoute(routeInfo, "inbound connection for %s closed: code=%d reason=[%s]", qPrintable(inSock->requestUri().path()), code, qPrintable(reason));
 
 		cleanupInSock();
 
@@ -897,8 +897,8 @@ private slots:
 	{
 		WebSocket::ErrorCondition e = inSock->errorCondition();
 	
-		auto routeInfo = LogUtil::RouteInfo(route.id, route.level);
-		LogUtil::logForRoute(routeInfo, "inbound connection with %p target error state=%d, condition=%d", q, (int)state, (int)e);
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
+		LogUtil::logForRoute(routeInfo, "inbound connection for %s error state=%d, condition=%d", qPrintable(inSock->requestUri().path()), (int)state, (int)e);
 
 		cleanupInSock();
 
@@ -1002,7 +1002,7 @@ private slots:
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
 
-		auto routeInfo = LogUtil::RouteInfo(route.id, route.level);
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
 		LogUtil::logForRoute(routeInfo, "outbound connection to %s closed: code=%d reason=[%s]", qPrintable(outSock->requestUri().path()), code, qPrintable(reason));
 
 		outWSConnection = WSConnections();
@@ -1020,8 +1020,8 @@ private slots:
 		WebSocket::ErrorCondition e = outSock->errorCondition();
 		log_debug("wsproxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
 
-		auto routeInfo = LogUtil::RouteInfo(route.id, route.level);
-		LogUtil::logForRoute(routeInfo, "outbound connection with %p target error state=%d, condition=%d", q, (int)state, (int)e);
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
+		LogUtil::logForRoute(routeInfo, "outbound connection to %s error state=%d, condition=%d", qPrintable(outSock->requestUri().path()), (int)state, (int)e);
 
 		if(detached)
 		{
