@@ -30,6 +30,11 @@ ACO_ENABLED_FLAG = 'loader-pushpin-aco-enabled'
 GRIP_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-grip-enabled:'
 WOH_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-woh-enabled:'
 
+elevate_logging = [
+    "G7htvenneoOiQoUJLklct0", # Simplist (darwin-prod)
+    "Mf1Ujwm1L1nCMBhAsn4gz5", # Simplist (darwin-uat)
+]
+
 alphanumerics = string.ascii_lowercase + string.ascii_uppercase + string.digits
 nonspaces = string.ascii_lowercase + string.ascii_uppercase + string.digits + string.punctuation
 Response = namedtuple('Response', 'status data etag')
@@ -441,16 +446,20 @@ def make_routes(service, backend, sig_keys_dir):
         if bool(realm_domain_config.get('debug', False)):
             cond_opts += ',debug'
 
-        # Simplist service Ids, SID: G7htvenneoOiQoUJLklct0 (darwin-prod) & SID: Mf1Ujwm1L1nCMBhAsn4gz5 (darwin-uat) 
-        if service_id == "Mf1Ujwm1L1nCMBhAsn4gz5" or service_id == "G7htvenneoOiQoUJLklct0":
+        if service_id in elevate_logging:
             cond_opts += ',log_level=1'
 
         routes.append('id="gr:ht:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
         routes.append('id="gr:ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
     else:
-        routes.append('id="ws:{}:{}",no_grip {}'.format(service_id, escape_route_param(backend_name), target))
-        routes.append('id=ws:{}:{}--{},no_grip {}'.format(service_id, service_id, vclify_backend(backend_name), target))
-        routes.append('id=ws:{}:{}--F_{},no_grip {}'.format(service_id, service_id, vclify_backend(backend_name), target))
+        cond_opts = 'no_grip'
+
+        if service_id in elevate_logging:
+            cond_opts += ',log_level=1'
+
+        routes.append('id="ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
+        routes.append('id=ws:{}:{}--{},{} {}'.format(service_id, service_id, vclify_backend(backend_name), cond_opts, target))
+        routes.append('id=ws:{}:{}--F_{},{} {}'.format(service_id, service_id, vclify_backend(backend_name), cond_opts, target))
 
     return routes
 
