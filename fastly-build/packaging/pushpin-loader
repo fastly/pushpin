@@ -441,6 +441,10 @@ def make_routes(service, backend, sig_keys_dir):
         if bool(realm_domain_config.get('debug', False)):
             cond_opts += ',debug'
 
+        # Simplist service Ids, SID: G7htvenneoOiQoUJLklct0 (darwin-prod) & SID: Mf1Ujwm1L1nCMBhAsn4gz5 (darwin-uat) 
+        if service_id == "Mf1Ujwm1L1nCMBhAsn4gz5" or service_id == "G7htvenneoOiQoUJLklct0":
+            cond_opts += ',log_level=1'
+
         routes.append('id="gr:ht:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
         routes.append('id="gr:ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
     else:

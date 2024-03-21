@@ -32,6 +32,7 @@
 #include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
+#include "logutil.h"
 #include "rtimer.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
@@ -880,6 +881,10 @@ private slots:
 	{
 		int code = inSock->peerCloseCode();
 		QString reason = inSock->peerCloseReason();
+
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
+		LogUtil::logForRoute(routeInfo, "inbound connection for %s closed: code=%d reason=[%s]", qPrintable(inSock->requestUri().path()), code, qPrintable(reason));
+
 		cleanupInSock();
 
 		if(!detached && outSock && outSock->state() != WebSocket::Closing)
@@ -890,6 +895,11 @@ private slots:
 
 	void in_error()
 	{
+		WebSocket::ErrorCondition e = inSock->errorCondition();
+	
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
+		LogUtil::logForRoute(routeInfo, "inbound connection for %s error state=%d, condition=%d", qPrintable(inSock->requestUri().path()), (int)state, (int)e);
+
 		cleanupInSock();
 
 		if(!detached)
@@ -991,6 +1001,10 @@ private slots:
 	{
 		int code = outSock->peerCloseCode();
 		QString reason = outSock->peerCloseReason();
+
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
+		LogUtil::logForRoute(routeInfo, "outbound connection to %s closed: code=%d reason=[%s]", qPrintable(outSock->requestUri().path()), code, qPrintable(reason));
+
 		outWSConnection = WSConnections();
 		delete outSock;
 		outSock = 0;
@@ -1005,6 +1019,9 @@ private slots:
 	{
 		WebSocket::ErrorCondition e = outSock->errorCondition();
 		log_debug("wsproxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
+
+		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
+		LogUtil::logForRoute(routeInfo, "outbound connection to %s error state=%d, condition=%d", qPrintable(outSock->requestUri().path()), (int)state, (int)e);
 
 		if(detached)
 		{

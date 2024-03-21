@@ -29,6 +29,7 @@
 #include <QStringList>
 #include "httpheaders.h"
 #include "jwt.h"
+#include "log.h"
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
@@ -152,6 +153,7 @@ public:
 		bool separateStats;
 		bool grip;
 		QList<Target> targets;
+		int logLevel;
 
 		bool isNull() const
 		{
@@ -173,7 +175,8 @@ public:
 			autoCrossOrigin(false),
 			session(false),
 			separateStats(false),
-			grip(true)
+			grip(true),
+			logLevel(LOG_LEVEL_DEBUG)
 		{
 		}
 	};

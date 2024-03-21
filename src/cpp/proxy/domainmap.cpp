@@ -76,6 +76,7 @@ public:
 		HttpHeaders headers;
 		bool grip;
 		QList<Target> targets;
+		int logLevel;
 
 		Rule() :
 			proto(-1),
@@ -86,7 +87,8 @@ public:
 			debug(false),
 			autoCrossOrigin(false),
 			session(false),
-			grip(true)
+			grip(true),
+			logLevel(LOG_LEVEL_DEBUG)
 		{
 		}
 
@@ -187,6 +189,7 @@ public:
 			e.separateStats = explicitId;
 			e.grip = grip;
 			e.targets = targets;
+			e.logLevel = logLevel;
 			return e;
 		}
 	};
@@ -544,6 +547,11 @@ private:
 
 		if(props.contains("no_grip"))
 			r.grip = false;
+
+		if(props.contains("log_level"))
+		{
+			r.logLevel = props.value("log_level").toInt();
+		}
 
 		ok = true;
 		for(int n = 1; n < sections.count(); ++n)
