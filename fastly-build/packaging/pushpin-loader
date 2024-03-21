@@ -31,6 +31,7 @@ GRIP_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-grip-enabled:'
 WOH_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-woh-enabled:'
 
 elevate_logging = [
+    "1J4Qpr8AWSLRiWctIjaznb", # jkarneges test
     "G7htvenneoOiQoUJLklct0", # Simplist (darwin-prod)
     "Mf1Ujwm1L1nCMBhAsn4gz5", # Simplist (darwin-uat)
 ]
