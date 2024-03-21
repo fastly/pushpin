@@ -6,11 +6,11 @@ PartOf=pushpin.service
 Type=simple
 Restart=always
 CPUQuota=100%
-MemoryLimit=15G
+MemoryLimit=17G
 LimitNOFILE=101000
 SyslogIdentifier=pushpin-condure-in
-# let 1% of the connections use up to 16 write blocks
-ExecStart=/opt/fst-pushpin/bin/pushpin-sandbox.sh /opt/fst-pushpin/bin/pushpin-condure --log-level=1 --listen=/var/run/pushpin/pushpin-server,local,stream,mode=777,user=pushpin,group=pushpin-listener --zclient-stream=ipc:///var/run/pushpin/pushpin-condure --buffer-size=8192 --stream-maxconn=100100 --blocks-max=215200 --connection-blocks-max=17 --compression
+# let 1% of the connections use up to 8 write blocks
+ExecStart=/opt/fst-pushpin/bin/pushpin-sandbox.sh /opt/fst-pushpin/bin/pushpin-condure --log-level=1 --listen=/var/run/pushpin/pushpin-server,local,stream,mode=777,user=pushpin,group=pushpin-listener --zclient-stream=ipc:///var/run/pushpin/pushpin-condure --buffer-size=16384 --stream-maxconn=100100 --blocks-max=207207 --connection-blocks-max=9 --compression
 
 [Install]
 WantedBy=multi-user.target
