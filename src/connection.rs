@@ -330,8 +330,11 @@ fn resize_write_buffer_if_full(
 #[derive(Debug)]
 enum Error {
     Io(io::Error),
+    #[allow(dead_code)]
     Utf8(str::Utf8Error),
+    #[allow(dead_code)]
     Http(http1::Error),
+    #[allow(dead_code)]
     WebSocket(websocket::Error),
     InvalidWebSocketRequest,
     InvalidWebSocketResponse,
@@ -1115,6 +1118,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
             // need to overflow into a separate buffer if there's not enough
             // room
 
+            // workaround for rust 1.77
+            #[allow(clippy::unused_io_amount)]
             let accepted = if early_body.overflow.is_none() {
                 wbuf.inner.write(body)?
             } else {
