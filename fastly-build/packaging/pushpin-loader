@@ -27,14 +27,9 @@ PUSHPIN_ENABLED_FLAG = 'loader-pushpin-enabled'
 GRIP_ENABLED_FLAG = 'loader-pushpin-grip-enabled'
 WOH_ENABLED_FLAG = 'loader-pushpin-woh-enabled'
 ACO_ENABLED_FLAG = 'loader-pushpin-aco-enabled'
+LOG_LEVEL = 'loader-pushpin-log-level'
 GRIP_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-grip-enabled:'
 WOH_ENABLED_FLAG_PREFIX = 'loader-pushpin-backend-woh-enabled:'
-
-elevate_logging = [
-    "1J4Qpr8AWSLRiWctIjaznb", # jkarneges test
-    "G7htvenneoOiQoUJLklct0", # Simplist (darwin-prod)
-    "Mf1Ujwm1L1nCMBhAsn4gz5", # Simplist (darwin-uat)
-]
 
 alphanumerics = string.ascii_lowercase + string.ascii_uppercase + string.digits
 nonspaces = string.ascii_lowercase + string.ascii_uppercase + string.digits + string.punctuation
@@ -42,12 +37,13 @@ Response = namedtuple('Response', 'status data etag')
 
 
 class Service:
-    def __init__(self, data, grip_enabled, woh_enabled, aco_enabled, backend_flags):
+    def __init__(self, data, grip_enabled, woh_enabled, aco_enabled, log_level, backend_flags):
         self.data = data
         self.id = data['service']
         self.grip_enabled = grip_enabled
         self.woh_enabled = woh_enabled
         self.aco_enabled = aco_enabled
+        self.log_level = log_level
         self.backend_flags = backend_flags
         self.realm = {}
 
@@ -299,6 +295,17 @@ def fetch_service_backends(api_key):
         woh_enabled = features.get(WOH_ENABLED_FLAG, '0') == '1'
         aco_enabled = features.get(ACO_ENABLED_FLAG, '0') == '1'
 
+        log_level = None
+        s = features.get(LOG_LEVEL)
+        if s is not None:
+            try:
+                x = int(s)
+                if x < 0 or x > 4:
+                    raise ValueError('value must be between 0 and 4, inclusive')
+                log_level = x
+            except Exception as e:
+                logging.warning(f"Error: service {service_id} has invalid log level {repr(s)}: {e}")
+
         backend_flags = {}
 
         for (k, v) in features.items():
@@ -319,7 +326,7 @@ def fetch_service_backends(api_key):
             backend_flags[backend_name][flag] = v
 
         if pushpin_enabled:
-            pushpin_services.append(Service(service, grip_enabled, woh_enabled, aco_enabled, backend_flags))
+            pushpin_services.append(Service(service, grip_enabled, woh_enabled, aco_enabled, log_level, backend_flags))
 
     logging.debug('found {} services with pushpin enabled'.format(len(pushpin_services)))
 
@@ -447,16 +454,16 @@ def make_routes(service, backend, sig_keys_dir):
         if bool(realm_domain_config.get('debug', False)):
             cond_opts += ',debug'
 
-        if service_id in elevate_logging:
-            cond_opts += ',log_level=1'
+        if service.log_level is not None:
+            cond_opts += f",log_level={service.log_level}"
 
         routes.append('id="gr:ht:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
         routes.append('id="gr:ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
     else:
         cond_opts = 'no_grip'
 
-        if service_id in elevate_logging:
-            cond_opts += ',log_level=1'
+        if service.log_level is not None:
+            cond_opts += f",log_level={service.log_level}"
 
         routes.append('id="ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
         routes.append('id=ws:{}:{}--{},{} {}'.format(service_id, service_id, vclify_backend(backend_name), cond_opts, target))
