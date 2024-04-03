@@ -800,7 +800,8 @@ public:
 
 		rd.fromAddress = logicalClientAddress;
 
-		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
+		int logLevel = route.logLevel < LOG_LEVEL_INFO ? route.logLevel : LOG_LEVEL_INFO;
+		LogUtil::logRequest(logLevel, rd, logConfig);
 	}
 
 	void setupKeepAlive()
