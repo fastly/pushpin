@@ -5,7 +5,7 @@ PartOf=pushpin.service
 [Service]
 Type=simple
 Restart=always
-CPUQuota=100%
+CPUQuota=200%
 MemoryLimit=17G
 LimitNOFILE=101000
 SyslogIdentifier=pushpin-condure-in
