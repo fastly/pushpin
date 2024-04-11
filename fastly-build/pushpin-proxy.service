@@ -5,7 +5,7 @@ PartOf=pushpin.service
 [Service]
 Type=simple
 Restart=always
-CPUQuota=100%
+CPUQuota=200%
 MemoryLimit=5G
 SyslogIdentifier=pushpin-proxy
 ExecStart=/opt/fst-pushpin/bin/pushpin-sandbox.sh /opt/fst-pushpin/bin/pushpin-proxy --config=/opt/fst-pushpin/etc/pushpin/pushpin.conf --ipc-prefix=pushpin- --loglevel=1
