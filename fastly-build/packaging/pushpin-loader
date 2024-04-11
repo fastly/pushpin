@@ -273,6 +273,9 @@ def fetch_service_backends(api_key):
     logging.info('fetching service manifest')
 
     resp = fetchly_client.request('/v1/config/service', 'application/json')
+    if resp.status != 200:
+        logging.warning(f"Error: unexpected resp err status {resp.status}, data {resp.data} from fetchly")
+
     services = json.loads(resp.data)['service']
 
     pushpin_services = []
