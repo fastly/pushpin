@@ -274,7 +274,7 @@ def fetch_service_backends(api_key):
 
     resp = fetchly_client.request('/v1/config/service', 'application/json')
     if resp.status != 200:
-        raise Exception(f"Error: fetchly request failed with status: {resp.status}, data: {resp.data}")
+        raise Exception(f"Error: fetchly manifest request failed with status: {resp.status}, data: {resp.data}")
 
     services = json.loads(resp.data)['service']
 
@@ -345,13 +345,13 @@ def fetch_service_backends(api_key):
         resp = fetchly_client.request(
             '/v1/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
         if resp.status != 200:
-            logging.debug(f"Error: fetchly request failed with status: {resp.status}, data: {resp.data}")
+            logging.debug(f"Error: fetchly backends request failed with status: {resp.status}, data: {resp.data}")
 
             # fall back to direct heavenly request
             resp = heavenly_client.request(
                 '/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
             if resp.status != 200:
-                raise Exception(f"Error: heavenly request failed with status: {resp.status}, data: {resp.data}")
+                raise Exception(f"Error: heavenly backends request failed with status: {resp.status}, data: {resp.data}")
 
         backends = json.loads(resp.data)['backends']
 
