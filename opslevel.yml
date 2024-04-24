@@ -52,7 +52,7 @@ service:
     environment:
   - name: Pushpin Dashboard
     category: metrics
-    url: https://observability.secretcdn.net/grafana-playground/d/tPAuy_o4z/pushpin-global?orgId=1&from=now-6h&to=now&refresh=5m
+    url: https://observability.secretcdn.net/grafana-playground/d/JJuqpU04k/pushpin?orgId=1&var-datasource=thanos&var-site=All&var-segment=&var-hostname=All&var-group_by=hostname&var-cdn=fastly&var-varsion=All
     environment:
   - name: JIRA
     category: issue_tracking
