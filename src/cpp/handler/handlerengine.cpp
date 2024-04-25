@@ -2965,6 +2965,10 @@ private:
 				// merge with our own stats
 				stats->addRequestsReceived(p.requestsReceived);
 			}
+			if(p.websocketDisconnected)
+			{
+				stats->addWebSocketDisconnected(p.websocketDisconnected);
+			}
 		}
 		else if(p.type == StatsPacket::Connected || p.type == StatsPacket::Disconnected)
 		{

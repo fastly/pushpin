@@ -91,6 +91,7 @@ public:
 
 	// for combined only
 	void addRequestsReceived(quint32 count);
+	void addWebSocketDisconnected(quint32 count);
 
 	bool checkConnection(const QByteArray &id) const;
 

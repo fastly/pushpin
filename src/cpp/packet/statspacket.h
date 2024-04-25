@@ -75,6 +75,7 @@ public:
 	int blocksSent; // report
 	int duration; // report
 	int requestsReceived; // counts
+	int websocketDisconnected; // counts
 	int clientHeaderBytesReceived; // report
 	int clientHeaderBytesSent; // report
 	int clientContentBytesReceived; // report
@@ -106,6 +107,7 @@ public:
 		blocksSent(-1),
 		duration(-1),
 		requestsReceived(-1),
+		websocketDisconnected(-1),
 		clientHeaderBytesReceived(-1),
 		clientHeaderBytesSent(-1),
 		clientContentBytesReceived(-1),

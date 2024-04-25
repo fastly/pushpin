@@ -161,6 +161,8 @@ QVariant StatsPacket::toVariant() const
 	{
 		if(requestsReceived > 0)
 			obj["requests-received"] = requestsReceived;
+		if(websocketDisconnected > 0)
+			obj["websocket_discconnected"] = websocketDisconnected;
 	}
 	else // ConnectionsMax
 	{
@@ -450,6 +452,17 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 				return false;
 
 			requestsReceived = x;
+		}
+		if(obj.contains("websocket_discconnected"))
+		{
+			if(!canConvert(obj["websocket_discconnected"], QMetaType::Int))
+				return false;
+
+			int x = obj["websocket_discconnected"].toInt();
+			if(x < 0)
+				return false;
+
+			websocketDisconnected = x;
 		}
 	}
 	else if(_type == "conn-max")

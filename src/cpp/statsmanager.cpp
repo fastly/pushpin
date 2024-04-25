@@ -233,6 +233,7 @@ public:
 		int blocksReceived;
 		int blocksSent;
 		quint32 requestsReceived;
+		quint32 websocketDisconnected;
 		Stats::Counters counters;
 		qint64 lastUpdate;
 		qint64 startTime;
@@ -248,6 +249,7 @@ public:
 			blocksReceived(-1),
 			blocksSent(-1),
 			requestsReceived(0),
+			websocketDisconnected(0),
 			lastUpdate(-1),
 			startTime(-1)
 		{
@@ -263,6 +265,7 @@ public:
 				blocksReceived <= 0 &&
 				blocksSent <= 0 &&
 				requestsReceived == 0 &&
+				websocketDisconnected == 0 &&
 				counters.isEmpty());
 		}
 
@@ -329,6 +332,13 @@ public:
 			lastUpdate = now;
 		}
 
+		void addWebSocketDisconnected(quint32 count, qint64 now)
+		{
+			websocketDisconnected += count;
+
+			lastUpdate = now;
+		}
+
 		void incCounter(Stats::Counter c, quint32 count, qint64 now)
 		{
 			counters.inc(c, count);
@@ -348,15 +358,18 @@ public:
 	{
 	public:
 		quint32 requestsReceived;
+		quint32 websocketDisconnected;
 
 		Counts() :
-			requestsReceived(0)
+			requestsReceived(0),
+			websocketDisconnected(0)
 		{
 		}
 
 		bool isEmpty()
 		{
-			return (requestsReceived == 0);
+			return (requestsReceived == 0 &&
+				websocketDisconnected == 0 );
 		}
 	};
 
@@ -369,7 +382,8 @@ public:
 			ConnectionConnected,
 			ConnectionMinute,
 			MessageReceived,
-			MessageSent
+			MessageSent,
+			WebSocketDisconnected
 		};
 
 		Type mtype;
@@ -473,6 +487,7 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::ConnectionMinute, "connection_minute", "counter", "Number of minutes clients have been connected");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageReceived, "message_received", "counter", "Number of messages received by the publish API");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::WebSocketDisconnected,"websocket_disconnected", "counter", "Number of websocket disconnections");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1021,6 +1036,7 @@ public:
 		p.type = StatsPacket::Counts;
 		p.from = instanceId;
 		p.requestsReceived = counts.requestsReceived;
+		p.websocketDisconnected = counts.websocketDisconnected;
 		write(p);
 	}
 
@@ -1580,6 +1596,7 @@ private:
 				case PrometheusMetric::ConnectionMinute: value = QVariant(combinedReport.connectionsMinutes); break;
 				case PrometheusMetric::MessageReceived: value = QVariant(combinedReport.messagesReceived); break;
 				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
+				case PrometheusMetric::WebSocketDisconnected: value = QVariant(combinedReport.websocketDisconnected); break;
 			}
 
 			if(value.isNull())
@@ -1969,6 +1986,14 @@ void StatsManager::addRequestsReceived(quint32 count)
 
 	if(!d->activityTimer->isActive())
 		d->activityTimer->start(ACTIVITY_TIMEOUT);
+}
+
+void StatsManager::addWebSocketDisconnected(quint32 count)
+{
+	qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+	d->combinedCounts.websocketDisconnected += count;
+	d->combinedReport.addWebSocketDisconnected(count, now);
 }
 
 bool StatsManager::checkConnection(const QByteArray &id) const
