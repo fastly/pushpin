@@ -3241,7 +3241,7 @@ mod tests {
         };
 
         let msg = msg.get();
-        assert_eq!(&**msg, b"hello a");
+        assert_eq!(msg.as_ref(), b"hello a");
 
         h1.send(header, zmq::Message::from("world a".as_bytes()))
             .unwrap();
@@ -3264,7 +3264,7 @@ mod tests {
         };
 
         let msg = msg.get();
-        assert_eq!(&**msg, b"hello b");
+        assert_eq!(msg.as_ref(), b"hello b");
 
         h2.send(header, zmq::Message::from("world b".as_bytes()))
             .unwrap();
