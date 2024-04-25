@@ -28,7 +28,7 @@ use std::task::{Context, Waker};
 use std::time::Duration;
 
 thread_local! {
-    static EXECUTOR: RefCell<Option<Weak<Tasks>>> = RefCell::new(None);
+    static EXECUTOR: RefCell<Option<Weak<Tasks>>> = const { RefCell::new(None) };
 }
 
 type BoxFuture = Pin<Box<dyn Future<Output = ()>>>;

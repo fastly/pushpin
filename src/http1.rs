@@ -1584,9 +1584,11 @@ impl ClientResponse {
         }
 
         state.ver_min = version;
+        state.chunked = false;
 
         if chunked {
             state.body_size = BodySize::Unknown;
+            state.chunked = true;
         } else if let Some(len) = content_len {
             state.body_size = BodySize::Known(len);
             state.chunk_left = Some(len);
@@ -4502,6 +4504,7 @@ mod tests {
             ver_min: u8,
             chunk_left: Option<usize>,
             persistent: bool,
+            chunked: bool,
             rbuf_position: u64,
         }
 
@@ -4513,6 +4516,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
+                chunked: false,
                 rbuf_position: 0,
             },
             Test {
@@ -4522,6 +4526,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
+                chunked: false,
                 rbuf_position: 0,
             },
             Test {
@@ -4531,6 +4536,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
+                chunked: false,
                 rbuf_position: 0,
             },
             Test {
@@ -4540,6 +4546,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
+                chunked: false,
                 rbuf_position: 0,
             },
             Test {
@@ -4557,6 +4564,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
+                chunked: false,
                 rbuf_position: 37,
             },
             Test {
@@ -4574,6 +4582,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: Some(42),
                 persistent: false,
+                chunked: false,
                 rbuf_position: 39,
             },
             Test {
@@ -4588,6 +4597,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
+                chunked: false,
                 rbuf_position: 19,
             },
             Test {
@@ -4605,6 +4615,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
+                chunked: true,
                 rbuf_position: 47,
             },
             Test {
@@ -4628,6 +4639,7 @@ mod tests {
                 ver_min: 0,
                 chunk_left: Some(5),
                 persistent: true,
+                chunked: false,
                 rbuf_position: 62,
             },
             Test {
@@ -4645,6 +4657,7 @@ mod tests {
                 ver_min: 1,
                 chunk_left: Some(5),
                 persistent: true,
+                chunked: false,
                 rbuf_position: 38,
             },
             Test {
@@ -4662,6 +4675,7 @@ mod tests {
                 ver_min: 1,
                 chunk_left: None,
                 persistent: false,
+                chunked: false,
                 rbuf_position: 38,
             },
         ];
@@ -4699,6 +4713,7 @@ mod tests {
                         "test={}",
                         test.name
                     );
+                    assert_eq!(resp_body.state.chunked, test.chunked, "test={}", test.name);
 
                     rbuf_position = (src.len() - resp.remaining_bytes().len()) as u64
                 }

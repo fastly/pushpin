@@ -31,7 +31,7 @@ const TICK_DURATION_MS: u64 = 10;
 const EXPIRE_MAX: usize = 100;
 
 thread_local! {
-    static REACTOR: RefCell<Option<Weak<ReactorData>>> = RefCell::new(None);
+    static REACTOR: RefCell<Option<Weak<ReactorData>>> = const { RefCell::new(None) };
 }
 
 fn duration_to_ticks_round_down(d: Duration) -> u64 {
