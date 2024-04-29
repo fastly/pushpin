@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -878,6 +879,13 @@ impl<'buf, 'headers> ServerProtocol {
         })
     }
 
+    pub fn skip_recv_request(&mut self) {
+        assert_eq!(self.state, ServerState::ReceivingRequest);
+
+        self.state = ServerState::AwaitingResponse;
+        self.persistent = false;
+    }
+
     pub fn recv_body(
         &mut self,
         rbuf: &mut io::Cursor<&'buf [u8]>,
@@ -1010,10 +1018,12 @@ impl<'buf, 'headers> ServerProtocol {
             self.state == ServerState::AwaitingResponse || self.state == ServerState::ReceivingBody
         );
 
-        if self.state == ServerState::ReceivingBody {
+        let persistent = if self.state == ServerState::ReceivingBody {
             // when responding early, input stream may be broken
-            self.persistent = false;
-        }
+            false
+        } else {
+            self.persistent
+        };
 
         let mut body_size = body_size;
 
@@ -1051,9 +1061,9 @@ impl<'buf, 'headers> ServerProtocol {
 
         // Connection header
 
-        if self.persistent && self.ver_min == 0 {
+        if persistent && self.ver_min == 0 {
             writer.write_all(b"Connection: keep-alive\r\n")?;
-        } else if !self.persistent && self.ver_min >= 1 {
+        } else if !persistent && self.ver_min >= 1 {
             writer.write_all(b"Connection: close\r\n")?;
         }
 
@@ -1077,6 +1087,7 @@ impl<'buf, 'headers> ServerProtocol {
 
         self.state = ServerState::SendingBody;
         self.body_size = body_size;
+        self.persistent = persistent;
         self.chunked = chunked;
 
         Ok(())
