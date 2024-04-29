@@ -885,6 +885,14 @@ private slots:
 		if(!detached && outSock && outSock->state() != WebSocket::Closing)
 			outSock->close(code, reason);
 
+		if(code == 1002 // protocol error
+			|| code == 1003 // unsupported data
+			|| code == 1006 // abnormal closure
+			|| code == 1011 // internal server error
+			){
+			statsManager->addWebSocketDisconnected(1);
+		}
+
 		tryFinish();
 	}
 
@@ -898,6 +906,8 @@ private slots:
 			delete outSock;
 			outSock = 0;
 		}
+
+		statsManager->addWebSocketDisconnected(1);
 
 		tryFinish();
 	}
@@ -998,6 +1008,14 @@ private slots:
 		if(!detached && inSock && inSock->state() != WebSocket::Closing)
 			inSock->close(code, reason);
 
+		if(code == 1002 // protocol error
+			|| code == 1003 // unsupported data
+			|| code == 1006 // abnormal closure
+			|| code == 1011 // internal server error
+			){
+			statsManager->addWebSocketDisconnected(1);
+		}
+
 		tryFinish();
 	}
 
@@ -1005,6 +1023,8 @@ private slots:
 	{
 		WebSocket::ErrorCondition e = outSock->errorCondition();
 		log_debug("wsproxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
+
+		statsManager->addWebSocketDisconnected(1);
 
 		if(detached)
 		{
