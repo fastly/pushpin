@@ -1255,6 +1255,7 @@ public:
 	QSet<InspectWorker*> inspectWorkers;
 	QSet<AcceptWorker*> acceptWorkers;
 	QSet<Deferred*> deferreds;
+	std::map<Deferred*, std::unique_ptr<Deferred>> deferredMap;
 	Deferred *report;
 	Connection inspectReqReadyConnection;
 	Connection acceptReqReadyConnection;
@@ -2046,9 +2047,9 @@ private:
 
 		if(req->method() == "conncheck")
 		{
-			ConnCheckWorker *w = new ConnCheckWorker(req, proxyControlClient, stats, this);
-			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
-			deferreds += w;
+			auto w = std::make_unique<ConnCheckWorker>(req, proxyControlClient, stats);
+			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
+			deferredMap[w.get()] = std::move(w);
 		}
 		else if(req->method() == "get-zmq-uris")
 		{
@@ -2335,6 +2336,7 @@ private:
 
 		finishedConnection.erase(report);
 		deferreds.remove(report);
+		deferredMap.erase(report);
 		report = 0;
 	}
 
@@ -2342,6 +2344,7 @@ private:
 	{
 		finishedConnection.erase(d);
 		deferreds.remove(d);
+		deferredMap.erase(d);
 
 		if(!result.success)
 			log_error("couldn't update session: condition=%d", result.value.toInt());
@@ -2351,6 +2354,7 @@ private:
 	{
 		finishedConnection.erase(d);
 		deferreds.remove(d);
+		deferredMap.erase(d);
 
 		if(!result.success)
 			log_error("couldn't create/update session: condition=%d", result.value.toInt());
@@ -2386,6 +2390,7 @@ private:
 
 		finishedConnection.erase(w);
 		deferreds.remove(w);
+		deferredMap.erase(w);
 	}
 	
 	void sub_subscribed(Subscription *sub)
