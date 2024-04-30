@@ -229,6 +229,7 @@ public:
 		quint32 connectionsMinutes;
 		quint32 messagesReceived;
 		quint32 messagesSent;
+		quint32 wsErrors;
 		quint32 httpResponseMessagesSent;
 		int blocksReceived;
 		int blocksSent;
@@ -244,6 +245,7 @@ public:
 			connectionsMinutes(0),
 			messagesReceived(0),
 			messagesSent(0),
+			wsErrors(0),
 			httpResponseMessagesSent(0),
 			blocksReceived(-1),
 			blocksSent(-1),
@@ -1584,6 +1586,7 @@ private:
 				case PrometheusMetric::ConnectionMinute: value = QVariant(combinedReport.connectionsMinutes); break;
 				case PrometheusMetric::MessageReceived: value = QVariant(combinedReport.messagesReceived); break;
 				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
+				case PrometheusMetric::WsErrors: value = QVariant(combinedReport.wsErrors); break;
 			}
 
 			if(value.isNull())
