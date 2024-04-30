@@ -28,6 +28,7 @@ pub mod client;
 pub mod condure;
 pub mod config;
 pub mod connection;
+pub mod core;
 pub mod counter;
 pub mod event;
 pub mod executor;
