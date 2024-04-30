@@ -17,146 +17,16 @@
 
 use crate::buffer::{Buffer, ContiguousBuffer, VecRingBuffer, VECTORED_MAX};
 use crate::core::http1::error::Error;
+use crate::core::http1::util::*;
 use crate::future::{
-    select_2, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, Select2,
-    StdWriteWrapper, WriteHalf,
+    select_2, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, Select2, StdWriteWrapper, WriteHalf,
 };
 use crate::http1;
 use crate::pin;
 use std::cell::{Cell, RefCell};
-use std::cmp;
-use std::future::Future;
 use std::io::{self, Write};
 use std::pin::Pin;
 use std::str;
-use std::task::{Context, Poll};
-
-const HEADERS_MAX: usize = 64;
-
-// return the capacity increase
-fn resize_write_buffer_if_full<F>(
-    buf: &mut VecRingBuffer,
-    block_size: usize,
-    blocks_max: usize,
-    reserve: F,
-) -> usize
-where
-    F: Fn() -> bool,
-{
-    assert!(blocks_max >= 2);
-
-    // all but one block can be used for writing
-    let allowed = blocks_max - 1;
-
-    if buf.remaining_capacity() == 0 && buf.capacity() < block_size * allowed && reserve() {
-        buf.resize(buf.capacity() + block_size);
-
-        block_size
-    } else {
-        0
-    }
-}
-
-async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut VecRingBuffer) -> Result<(), io::Error> {
-    if buf.remaining_capacity() == 0 {
-        return Err(io::Error::from(io::ErrorKind::WriteZero));
-    }
-
-    let size = match r.read(buf.write_buf()).await {
-        Ok(size) => size,
-        Err(e) => return Err(e),
-    };
-
-    buf.write_commit(size);
-
-    if size == 0 {
-        return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
-    }
-
-    Ok(())
-}
-
-struct LimitedRingBuffer<'a> {
-    inner: &'a mut VecRingBuffer,
-    limit: usize,
-}
-
-impl AsRef<[u8]> for LimitedRingBuffer<'_> {
-    fn as_ref(&self) -> &[u8] {
-        let buf = Buffer::read_buf(self.inner);
-        let limit = cmp::min(buf.len(), self.limit);
-
-        &buf[..limit]
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Self::Io(e)
-    }
-}
-
-impl From<http1::Error> for Error {
-    fn from(e: http1::Error) -> Self {
-        Self::Http(e)
-    }
-}
-
-struct AsyncOperation<O, C>
-where
-    C: FnMut(),
-{
-    op_fn: O,
-    cancel_fn: C,
-}
-
-impl<O, C, R> AsyncOperation<O, C>
-where
-    O: FnMut(&mut Context) -> Option<R>,
-    C: FnMut(),
-{
-    fn new(op_fn: O, cancel_fn: C) -> Self {
-        Self { op_fn, cancel_fn }
-    }
-}
-
-impl<O, C, R> Future for AsyncOperation<O, C>
-where
-    O: FnMut(&mut Context) -> Option<R> + Unpin,
-    C: FnMut() + Unpin,
-{
-    type Output = R;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let s = Pin::into_inner(self);
-
-        match (s.op_fn)(cx) {
-            Some(ret) => Poll::Ready(ret),
-            None => Poll::Pending,
-        }
-    }
-}
-
-impl<O, C> Drop for AsyncOperation<O, C>
-where
-    C: FnMut(),
-{
-    fn drop(&mut self) {
-        (self.cancel_fn)();
-    }
-}
-
-pub enum SendStatus<T, P, E> {
-    Complete(T),
-    EarlyResponse(T),
-    Partial(P, usize),
-    Error(P, E),
-}
-
-pub enum RecvStatus<T, C> {
-    Read(T, usize),
-    Complete(C, usize),
-}
 
 struct RequestInner<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
@@ -893,9 +763,11 @@ mod tests {
     use super::*;
     use crate::buffer::TmpBuffer;
     use crate::future::io_split;
+    use std::cmp;
+    use std::future::Future;
     use std::rc::Rc;
     use std::sync::Arc;
-    use std::task::{Context, Wake};
+    use std::task::{Context, Poll, Wake};
 
     struct FakeStream {
         in_data: Vec<u8>,

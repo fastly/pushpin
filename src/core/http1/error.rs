@@ -27,3 +27,15 @@ pub enum Error {
     BufferExceeded,
     Unusable,
 }
+
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+
+impl From<http1::Error> for Error {
+    fn from(e: http1::Error) -> Self {
+        Self::Http(e)
+    }
+}
