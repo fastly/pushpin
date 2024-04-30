@@ -2071,9 +2071,9 @@ private:
 		}
 		else if(req->method() == "refresh")
 		{
-			RefreshWorker *w = new RefreshWorker(req, proxyControlClient, &cs.wsSessionsByChannel, this);
-			finishedConnection[w] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w));
-			deferreds += w;
+			auto w = std::make_unique<RefreshWorker>(req, proxyControlClient, &cs.wsSessionsByChannel);
+			finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::deferred_finished, this, boost::placeholders::_1, w.get()));
+			deferredMap[w.get()] = std::move(w);
 		}
 		else if(req->method() == "publish")
 		{
