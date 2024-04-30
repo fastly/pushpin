@@ -22,11 +22,12 @@ use crate::future::{
     StdWriteWrapper, WriteHalf,
 };
 use crate::http1;
+use crate::pin;
 use std::cell::{Cell, RefCell};
 use std::cmp;
 use std::future::Future;
 use std::io::{self, Write};
-use std::pin::{pin, Pin};
+use std::pin::Pin;
 use std::str;
 use std::task::{Context, Poll};
 
@@ -964,7 +965,7 @@ mod tests {
 
     #[test]
     fn request_response() {
-        let fut = pin!(async {
+        let mut fut = pin!(async {
             let mut stream = FakeStream::new();
             stream
                 .in_data
@@ -1035,12 +1036,12 @@ mod tests {
 
         let waker = Arc::new(NoopWaker).into();
         let mut cx = Context::from_waker(&waker);
-        assert!(fut.poll(&mut cx).is_ready());
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
     }
 
     #[test]
     fn response_during_header() {
-        let fut = pin!(async {
+        let mut fut = pin!(async {
             let mut stream = FakeStream::new();
             stream
                 .in_data
@@ -1088,12 +1089,12 @@ mod tests {
 
         let waker = Arc::new(NoopWaker).into();
         let mut cx = Context::from_waker(&waker);
-        assert!(fut.poll(&mut cx).is_ready());
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
     }
 
     #[test]
     fn response_during_body() {
-        let fut = pin!(async {
+        let mut fut = pin!(async {
             let mut stream = FakeStream::new();
             stream
                 .in_data
@@ -1155,12 +1156,12 @@ mod tests {
 
         let waker = Arc::new(NoopWaker).into();
         let mut cx = Context::from_waker(&waker);
-        assert!(fut.poll(&mut cx).is_ready());
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
     }
 
     #[test]
     fn response_overflow() {
-        let fut = pin!(async {
+        let mut fut = pin!(async {
             let mut stream = FakeStream::new();
             stream
                 .in_data
@@ -1242,6 +1243,6 @@ mod tests {
 
         let waker = Arc::new(NoopWaker).into();
         let mut cx = Context::from_waker(&waker);
-        assert!(fut.poll(&mut cx).is_ready());
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
     }
 }
