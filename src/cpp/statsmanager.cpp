@@ -369,7 +369,8 @@ public:
 			ConnectionConnected,
 			ConnectionMinute,
 			MessageReceived,
-			MessageSent
+			MessageSent,
+			WsErrors,
 		};
 
 		Type mtype;
@@ -473,6 +474,7 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::ConnectionMinute, "connection_minute", "counter", "Number of minutes clients have been connected");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageReceived, "message_received", "counter", "Number of messages received by the publish API");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::WsErrors, "ws_errors", "counter", "Number of WebSocket errors");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1350,6 +1352,7 @@ public:
 		counters.inc(Stats::ServerContentBytesSent, qMax(packet.serverContentBytesSent, 0));
 		counters.inc(Stats::ServerMessagesReceived, qMax(packet.serverMessagesReceived, 0));
 		counters.inc(Stats::ServerMessagesSent, qMax(packet.serverMessagesSent, 0));
+		counters.inc(Stats::WsErrors, qMax(packet.wsErrors, 0));
 
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
 
@@ -1398,6 +1401,7 @@ public:
 		p.serverContentBytesSent = report->counters.get(Stats::ServerContentBytesSent);
 		p.serverMessagesReceived = report->counters.get(Stats::ServerMessagesReceived);
 		p.serverMessagesSent = report->counters.get(Stats::ServerMessagesSent);
+		p.wsErrors = report->counters.get(Stats::WsErrors);
 
 		report->startTime = now;
 		report->connectionsMaxStale = true;

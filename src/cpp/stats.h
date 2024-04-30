@@ -45,6 +45,7 @@ enum Counter {
     ServerContentBytesSent     =  9,
     ServerMessagesReceived     = 10,
     ServerMessagesSent         = 11,
+	WsErrors                   = 12,
 };
 
 class Counters

@@ -156,6 +156,8 @@ QVariant StatsPacket::toVariant() const
 			obj["server-messages-received"] = serverMessagesReceived;
 		if(serverMessagesSent >= 0)
 			obj["server-messages-sent"] = serverMessagesSent;
+		if(wsErrors >= 0)
+			obj["ws-errors"] = wsErrors;
 	}
 	else if(type == Counts)
 	{
@@ -434,6 +436,8 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 		if(!tryGetInt(obj, "server-messages-received", &serverMessagesReceived))
 			return false;
 		if(!tryGetInt(obj, "server-messages-sent", &serverMessagesSent))
+			return false;
+		if(!tryGetInt(obj, "ws-errors", &wsErrors))
 			return false;
 	}
 	else if(_type == "counts")
