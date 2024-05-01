@@ -315,31 +315,25 @@ static AcceptRequest::ResponseData convertResult(const QVariant &in, bool *ok)
 	return out;
 }
 
-class AcceptRequest::Private : public QObject
+class AcceptRequest::Private
 {
-	Q_OBJECT
-
 public:
 	AcceptRequest *q;
 	ResponseData result;
 
 	Private(AcceptRequest *_q) :
-		QObject(_q),
 		q(_q)
 	{
 	}
 };
 
-AcceptRequest::AcceptRequest(ZrpcManager *manager, QObject *parent) :
-	ZrpcRequest(manager, parent)
+AcceptRequest::AcceptRequest(ZrpcManager *manager) :
+	ZrpcRequest(manager)
 {
-	d = new Private(this);
+	d = std::make_unique<Private>(this);
 }
 
-AcceptRequest::~AcceptRequest()
-{
-	delete d;
-}
+AcceptRequest::~AcceptRequest() = default;
 
 AcceptRequest::ResponseData AcceptRequest::result() const
 {
@@ -362,4 +356,3 @@ void AcceptRequest::onSuccess()
 	}
 }
 
-#include "acceptrequest.moc"
