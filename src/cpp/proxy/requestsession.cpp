@@ -865,7 +865,7 @@ public:
 			adata.channelPrefix = route.prefix;
 
 			acceptRequest = std::make_unique<AcceptRequest>(acceptManager);
-			acceptFinishedConnection = acceptRequest.get()->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
+			acceptFinishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 		else
@@ -936,7 +936,6 @@ public:
 
 			acceptFinishedConnection.disconnect();
 			acceptRequest.reset();
-			acceptRequest = 0;
 
 			if(rdata.accepted)
 			{
@@ -968,7 +967,6 @@ public:
 		{
 			acceptFinishedConnection.disconnect();
 			acceptRequest.reset();
-			acceptRequest = 0;
 
 			zhttpRequest->resume();
 			respondCannotAccept();

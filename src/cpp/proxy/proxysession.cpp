@@ -1346,7 +1346,7 @@ public:
 			}
 
 			acceptRequest = std::make_unique<AcceptRequest>(acceptManager);
-			finishedConnection = acceptRequest.get()->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
+			finishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
 	}
@@ -1393,7 +1393,6 @@ public:
 
 			finishedConnection.disconnect();
 			acceptRequest.reset();
-			acceptRequest = 0;
 
 			if(rdata.accepted)
 			{
@@ -1482,7 +1481,6 @@ public:
 
 			finishedConnection.disconnect();
 			acceptRequest.reset();
-			acceptRequest = 0;
 		}
 	}
 };
