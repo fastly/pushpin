@@ -338,7 +338,7 @@ void Service::start()
 	if(!preStart())
 	{
 		QString str = "Failure preparing to start";
-		QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection, Q_ARG(QString, str));
+		QMetaObject::invokeMethod(d, "doError", Qt::QueuedConnection, Q_ARG(QString, str));
 		return;
 	}
 
