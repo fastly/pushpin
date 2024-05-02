@@ -22,6 +22,7 @@ use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+// some reasonable number
 pub const HEADERS_MAX: usize = 64;
 
 // return the capacity increase
@@ -39,7 +40,10 @@ where
     // all but one block can be used for writing
     let allowed = blocks_max - 1;
 
-    if buf.remaining_capacity() == 0 && buf.capacity() < block_size * allowed && reserve() {
+    if buf.remaining_capacity() == 0
+        && buf.capacity() < block_size.checked_mul(allowed).unwrap()
+        && reserve()
+    {
         buf.resize(buf.capacity() + block_size);
 
         block_size

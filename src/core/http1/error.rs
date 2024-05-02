@@ -24,6 +24,7 @@ pub enum Error {
     RequestTooLarge(usize),
     ResponseTooLarge(usize),
     ResponseDuringContinue,
+    FurtherInputNotAllowed,
     BufferExceeded,
     Unusable,
 }

@@ -501,7 +501,7 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'a, 'b, R, W> {
 
         // call not allowed if the end has already been indicated
         if state.end.get() {
-            return Err(Error::Io(io::Error::from(io::ErrorKind::InvalidInput)));
+            return Err(Error::FurtherInputNotAllowed);
         }
 
         let buf2 = &mut *state.buf2.borrow_mut();
@@ -598,7 +598,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
 
             // call not allowed if the end has already been indicated
             if w.end {
-                return Err(Error::Io(io::Error::from(io::ErrorKind::InvalidInput)));
+                return Err(Error::FurtherInputNotAllowed);
             }
 
             let size = w.buf.write(src)?;
@@ -705,6 +705,9 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
                         return Some(Ok(0));
                     }
 
+                    // protocol.send_body() expects the input to leave room
+                    // for at least two more buffers in case chunked encoding
+                    // is used (for chunked header and footer)
                     let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
                     let bufs = w.buf.read_bufs(&mut buf_arr);
 

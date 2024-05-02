@@ -63,10 +63,12 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
     ) -> Result<RequestHeader<'a, R, W>, Error> {
         let req = http1::ClientRequest::new();
 
+        let size_limit = self.buf1.capacity();
+
         let req_body = match req.send_header(self.buf1, method, uri, headers, body_size, websocket)
         {
             Ok(ret) => ret,
-            Err(_) => return Err(Error::BufferExceeded),
+            Err(_) => return Err(Error::RequestTooLarge(size_limit)),
         };
 
         if self.buf2.write_all(initial_body).is_err() {
@@ -149,7 +151,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
             // call not allowed if the end has already been indicated
             if w.end {
-                return Err(Error::Io(io::Error::from(io::ErrorKind::InvalidInput)));
+                return Err(Error::FurtherInputNotAllowed);
             }
 
             let size = w.buf.write(src)?;
@@ -289,6 +291,9 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
                     let req_body = w.req_body.take().unwrap();
 
+                    // req_body.send() expects the input to leave room for at
+                    // least two more buffers in case chunked encoding is
+                    // used (for chunked header and footer)
                     let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
                     let bufs = w.buf.read_bufs(&mut buf_arr);
 
