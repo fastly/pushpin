@@ -38,6 +38,9 @@ use crate::arena;
 use crate::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
+use crate::core::http1::client;
+use crate::core::http1::Error as CoreHttpError;
+use crate::core::http1::{RecvStatus, SendStatus};
 use crate::counter::Counter;
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
@@ -335,6 +338,8 @@ enum Error {
     #[allow(dead_code)]
     Http(http1::Error),
     #[allow(dead_code)]
+    CoreHttp(CoreHttpError),
+    #[allow(dead_code)]
     WebSocket(websocket::Error),
     InvalidWebSocketRequest,
     InvalidWebSocketResponse,
@@ -343,7 +348,6 @@ enum Error {
     Handler,
     HandlerCancel,
     BufferExceeded,
-    Unusable,
     BadFrame,
     BadRequest,
     Tls,
@@ -404,6 +408,12 @@ impl<T> From<mpsc::TrySendError<T>> for Error {
 impl From<http1::Error> for Error {
     fn from(e: http1::Error) -> Self {
         Self::Http(e)
+    }
+}
+
+impl From<CoreHttpError> for Error {
+    fn from(e: CoreHttpError) -> Self {
+        Self::CoreHttp(e)
     }
 }
 
@@ -2607,10 +2617,10 @@ where
 async fn server_stream_recv_body<'a, R1, R2, R>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
-    resp_body: ClientResponseBody<'a, R>,
+    resp_body: client::ResponseBody<'a, R>,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
-) -> Result<ClientFinished, Error>
+) -> Result<client::Finished, Error>
 where
     R1: Fn(),
     R2: Fn(),
@@ -2823,14 +2833,14 @@ struct Overflow {
 #[allow(clippy::too_many_arguments)]
 async fn server_stream_send_body<'a, R1, R2, R, W>(
     bytes_read: &R1,
-    req_body: ClientRequestBody<'a, R, W>,
+    req_body: client::RequestBody<'a, R, W>,
     mut overflow: Option<Overflow>,
     recv_buf_size: usize,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
     blocks_max: usize,
     blocks_avail: &Counter,
-) -> Result<ClientResponse<'a, R>, Error>
+) -> Result<client::Response<'a, R>, Error>
 where
     R1: Fn(),
     R2: Fn(),
@@ -2869,7 +2879,7 @@ where
                             }
                         }
                     }
-                    SendStatus::Error((), e) => return Err(e),
+                    SendStatus::Error((), e) => return Err(e.into()),
                 }
             }
             Select2::R2(ret) => {
@@ -2923,7 +2933,7 @@ where
                             bytes_read();
                         }
                     }
-                    SendStatus::Error(_, e) => return Err(e),
+                    SendStatus::Error(_, e) => return Err(e.into()),
                 }
             }
             Select3::R2(()) => {
@@ -2947,8 +2957,9 @@ where
                         }
 
                         if rdata.more {
-                            out_credits +=
-                                req_body.expand_write_buffer(blocks_max, blocks_avail)? as u32;
+                            out_credits += req_body
+                                .expand_write_buffer(blocks_max, || blocks_avail.dec(1).is_ok())?
+                                as u32;
                         } else {
                             prepare_done = true;
                         }
@@ -2982,7 +2993,7 @@ where
                                         bytes_read();
                                     }
                                 }
-                                SendStatus::Error((), e) => return Err(e),
+                                SendStatus::Error((), e) => return Err(e.into()),
                             }
 
                             if req_body.can_send() {
@@ -4430,638 +4441,6 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     }
 }
 
-struct AsyncOperation<O, C>
-where
-    C: FnMut(),
-{
-    op_fn: O,
-    cancel_fn: C,
-}
-
-impl<O, C, R> AsyncOperation<O, C>
-where
-    O: FnMut(&mut Context) -> Option<R>,
-    C: FnMut(),
-{
-    fn new(op_fn: O, cancel_fn: C) -> Self {
-        Self { op_fn, cancel_fn }
-    }
-}
-
-impl<O, C, R> Future for AsyncOperation<O, C>
-where
-    O: FnMut(&mut Context) -> Option<R> + Unpin,
-    C: FnMut() + Unpin,
-{
-    type Output = R;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let s = Pin::into_inner(self);
-
-        match (s.op_fn)(cx) {
-            Some(ret) => Poll::Ready(ret),
-            None => Poll::Pending,
-        }
-    }
-}
-
-impl<O, C> Drop for AsyncOperation<O, C>
-where
-    C: FnMut(),
-{
-    fn drop(&mut self) {
-        (self.cancel_fn)();
-    }
-}
-
-pub enum SendStatus<T, P, E> {
-    Complete(T),
-    EarlyResponse(T),
-    Partial(P, usize),
-    Error(P, E),
-}
-
-pub enum RecvStatus<T, C> {
-    Read(T, usize),
-    Complete(C, usize),
-}
-
-struct ClientRequest<'a, R: AsyncRead, W: AsyncWrite> {
-    r: ReadHalf<'a, R>,
-    w: WriteHalf<'a, W>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequest<'a, R, W> {
-    fn new(
-        stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut VecRingBuffer,
-        buf2: &'a mut VecRingBuffer,
-    ) -> Self {
-        Self {
-            r: stream.0,
-            w: stream.1,
-            buf1,
-            buf2,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn prepare_header(
-        self,
-        method: &str,
-        uri: &str,
-        headers: &[http1::Header<'_>],
-        body_size: http1::BodySize,
-        websocket: bool,
-        initial_body: &[u8],
-        end: bool,
-    ) -> Result<ClientRequestHeader<'a, R, W>, Error> {
-        let req = http1::ClientRequest::new();
-
-        let req_body = match req.send_header(self.buf1, method, uri, headers, body_size, websocket)
-        {
-            Ok(ret) => ret,
-            Err(_) => return Err(Error::BufferExceeded),
-        };
-
-        if self.buf2.write_all(initial_body).is_err() {
-            return Err(Error::BufferExceeded);
-        }
-
-        Ok(ClientRequestHeader {
-            r: self.r,
-            w: self.w,
-            buf1: self.buf1,
-            buf2: self.buf2,
-            req_body,
-            end,
-        })
-    }
-}
-
-struct ClientRequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
-    r: ReadHalf<'a, R>,
-    w: WriteHalf<'a, W>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
-    req_body: http1::ClientRequestBody,
-    end: bool,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
-    async fn send(mut self) -> Result<ClientRequestBody<'a, R, W>, Error> {
-        while self.buf1.len() > 0 {
-            let size = self.w.write(Buffer::read_buf(self.buf1)).await?;
-            self.buf1.read_commit(size);
-        }
-
-        let block_size = self.buf2.capacity();
-
-        Ok(ClientRequestBody {
-            inner: RefCell::new(Some(ClientRequestBodyInner {
-                r: RefCell::new(ClientRequestBodyRead {
-                    stream: self.r,
-                    buf: self.buf1,
-                }),
-                w: RefCell::new(ClientRequestBodyWrite {
-                    stream: self.w,
-                    buf: self.buf2,
-                    req_body: Some(self.req_body),
-                    end: self.end,
-                    block_size,
-                }),
-            })),
-        })
-    }
-}
-
-struct ClientRequestBodyRead<'a, R: AsyncRead> {
-    stream: ReadHalf<'a, R>,
-    buf: &'a mut VecRingBuffer,
-}
-
-struct ClientRequestBodyWrite<'a, W: AsyncWrite> {
-    stream: WriteHalf<'a, W>,
-    buf: &'a mut VecRingBuffer,
-    req_body: Option<http1::ClientRequestBody>,
-    end: bool,
-    block_size: usize,
-}
-
-struct ClientRequestBodyInner<'a, R: AsyncRead, W: AsyncWrite> {
-    r: RefCell<ClientRequestBodyRead<'a, R>>,
-    w: RefCell<ClientRequestBodyWrite<'a, W>>,
-}
-
-struct ClientRequestBody<'a, R: AsyncRead, W: AsyncWrite> {
-    inner: RefCell<Option<ClientRequestBodyInner<'a, R, W>>>,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
-    fn prepare(&self, src: &[u8], end: bool) -> Result<usize, Error> {
-        if let Some(inner) = &*self.inner.borrow() {
-            let w = &mut *inner.w.borrow_mut();
-
-            // call not allowed if the end has already been indicated
-            if w.end {
-                return Err(Error::Io(io::Error::from(io::ErrorKind::InvalidInput)));
-            }
-
-            let size = w.buf.write(src)?;
-
-            assert!(size <= src.len());
-
-            if size == src.len() && end {
-                w.end = true;
-            }
-
-            Ok(size)
-        } else {
-            Err(Error::Unusable)
-        }
-    }
-
-    fn expand_write_buffer(
-        &self,
-        blocks_max: usize,
-        blocks_avail: &Counter,
-    ) -> Result<usize, Error> {
-        if let Some(inner) = &*self.inner.borrow() {
-            let w = &mut *inner.w.borrow_mut();
-
-            Ok(resize_write_buffer_if_full(
-                w.buf,
-                w.block_size,
-                blocks_max,
-                blocks_avail,
-            ))
-        } else {
-            Err(Error::Unusable)
-        }
-    }
-
-    fn can_send(&self) -> bool {
-        if let Some(inner) = &*self.inner.borrow() {
-            let w = &*inner.w.borrow();
-
-            w.buf.len() > 0 || w.end
-        } else {
-            false
-        }
-    }
-
-    async fn send(&self) -> SendStatus<ClientResponse<'a, R>, (), Error> {
-        if self.inner.borrow().is_none() {
-            return SendStatus::Error((), Error::Unusable);
-        }
-
-        let status = loop {
-            if let Some(inner) = self.take_inner_if_early_response() {
-                let r = inner.r.into_inner();
-                let w = inner.w.into_inner();
-                let resp = w.req_body.unwrap().into_early_response();
-
-                w.buf.clear();
-
-                return SendStatus::EarlyResponse(ClientResponse {
-                    r: r.stream,
-                    buf1: r.buf,
-                    buf2: w.buf,
-                    inner: resp,
-                });
-            }
-
-            match self.process().await {
-                Some(Ok(status)) => break status,
-                Some(Err(e)) => return SendStatus::Error((), e),
-                None => {} // received data. loop and check for early response
-            }
-        };
-
-        let mut inner = self.inner.borrow_mut();
-        assert!(inner.is_some());
-
-        match status {
-            http1::SendStatus::Complete(resp, size) => {
-                let inner = inner.take().unwrap();
-
-                let r = inner.r.into_inner();
-                let w = inner.w.into_inner();
-
-                w.buf.read_commit(size);
-
-                assert_eq!(w.buf.len(), 0);
-
-                SendStatus::Complete(ClientResponse {
-                    r: r.stream,
-                    buf1: r.buf,
-                    buf2: w.buf,
-                    inner: resp,
-                })
-            }
-            http1::SendStatus::Partial(req_body, size) => {
-                let inner = inner.as_ref().unwrap();
-
-                let mut w = inner.w.borrow_mut();
-
-                w.req_body = Some(req_body);
-                w.buf.read_commit(size);
-
-                SendStatus::Partial((), size)
-            }
-            http1::SendStatus::Error(req_body, e) => {
-                let inner = inner.as_ref().unwrap();
-
-                inner.w.borrow_mut().req_body = Some(req_body);
-
-                SendStatus::Error((), e.into())
-            }
-        }
-    }
-
-    // assumes self.inner is Some
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn process(
-        &self,
-    ) -> Option<
-        Result<
-            http1::SendStatus<http1::ClientResponse, http1::ClientRequestBody, http1::Error>,
-            Error,
-        >,
-    > {
-        let inner = self.inner.borrow();
-        let inner = inner.as_ref().unwrap();
-
-        let mut r = inner.r.borrow_mut();
-
-        let result = select_2(
-            AsyncOperation::new(
-                |cx| {
-                    let w = &mut *inner.w.borrow_mut();
-
-                    if !w.stream.is_writable() {
-                        return None;
-                    }
-
-                    let req_body = w.req_body.take().unwrap();
-
-                    let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-                    let bufs = w.buf.read_bufs(&mut buf_arr);
-
-                    match req_body.send(
-                        &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
-                        bufs,
-                        w.end,
-                        None,
-                    ) {
-                        http1::SendStatus::Error(req_body, http1::Error::Io(e))
-                            if e.kind() == io::ErrorKind::WouldBlock =>
-                        {
-                            w.req_body = Some(req_body);
-
-                            None
-                        }
-                        ret => Some(ret),
-                    }
-                },
-                || inner.w.borrow_mut().stream.cancel(),
-            ),
-            pin!(async {
-                let r = &mut *r;
-
-                if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
-                    if e.kind() == io::ErrorKind::WriteZero {
-                        // if there's no more space, suspend forever
-                        std::future::pending::<()>().await;
-                    }
-
-                    return Err(Error::from(e));
-                }
-
-                Ok(())
-            }),
-        )
-        .await;
-
-        match result {
-            Select2::R1(ret) => match ret {
-                http1::SendStatus::Error(req_body, http1::Error::Io(e))
-                    if e.kind() == io::ErrorKind::BrokenPipe =>
-                {
-                    // if we get an error when trying to send, it could be
-                    // due to the server closing the connection after sending
-                    // an early response. here we'll check if the server left
-                    // us any data to read
-
-                    let w = &mut *inner.w.borrow_mut();
-
-                    w.req_body = Some(req_body);
-
-                    if r.buf.len() == 0 {
-                        let r = &mut *r;
-
-                        match recv_nonzero(&mut r.stream, r.buf).await {
-                            Ok(()) => None,                // received data
-                            Err(e) => Some(Err(e.into())), // error while receiving data
-                        }
-                    } else {
-                        None // we already received data
-                    }
-                }
-                ret => Some(Ok(ret)),
-            },
-            Select2::R2(ret) => match ret {
-                Ok(()) => None,         // received data
-                Err(e) => Some(Err(e)), // error while receiving data
-            },
-        }
-    }
-
-    // assumes self.inner is Some
-    fn take_inner_if_early_response(&self) -> Option<ClientRequestBodyInner<'a, R, W>> {
-        let mut inner = self.inner.borrow_mut();
-        let inner_mut = inner.as_mut().unwrap();
-
-        if inner_mut.r.borrow().buf.len() > 0 {
-            Some(inner.take().unwrap())
-        } else {
-            None
-        }
-    }
-}
-
-struct ClientResponse<'a, R: AsyncRead> {
-    r: ReadHalf<'a, R>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
-    inner: http1::ClientResponse,
-}
-
-impl<'a, R: AsyncRead> ClientResponse<'a, R> {
-    async fn recv_header<'b, const N: usize>(
-        mut self,
-        mut scratch: &'b mut http1::ParseScratch<N>,
-    ) -> Result<
-        (
-            http1::OwnedResponse<'b, N>,
-            ClientResponseBodyKeepHeader<'a, R>,
-        ),
-        Error,
-    > {
-        let mut resp = self.inner;
-
-        let (resp, resp_body) = loop {
-            {
-                let hbuf = self.buf1.take_inner();
-
-                resp = match resp.recv_header(hbuf, scratch) {
-                    http1::ParseStatus::Complete(ret) => break ret,
-                    http1::ParseStatus::Incomplete(resp, hbuf, ret_scratch) => {
-                        // NOTE: after polonius it may not be necessary for
-                        // scratch to be returned
-                        scratch = ret_scratch;
-
-                        self.buf1.set_inner(hbuf);
-
-                        resp
-                    }
-                    http1::ParseStatus::Error(e, hbuf, _) => {
-                        self.buf1.set_inner(hbuf);
-
-                        return Err(e.into());
-                    }
-                }
-            }
-
-            if !self.buf1.is_readable_contiguous() {
-                self.buf1.align();
-                continue;
-            }
-
-            if let Err(e) = recv_nonzero(&mut self.r, self.buf1).await {
-                if e.kind() == io::ErrorKind::WriteZero {
-                    return Err(Error::BufferExceeded);
-                }
-
-                return Err(e.into());
-            }
-        };
-
-        // at this point, resp has taken buf1's inner buffer, such that
-        // buf1 has no inner buffer
-
-        // put remaining readable bytes in buf2
-        self.buf2.write_all(resp.remaining_bytes())?;
-
-        // swap inner buffers, such that buf1 now contains the remaining
-        // readable bytes, and buf2 is now the one with no inner buffer
-        self.buf1.swap_inner(self.buf2);
-
-        Ok((
-            resp,
-            ClientResponseBodyKeepHeader {
-                inner: ClientResponseBody {
-                    inner: RefCell::new(Some(ClientResponseBodyInner {
-                        r: self.r,
-                        closed: false,
-                        buf1: self.buf1,
-                        resp_body,
-                    })),
-                },
-                buf2: RefCell::new(Some(self.buf2)),
-            },
-        ))
-    }
-}
-
-struct ClientResponseBodyInner<'a, R: AsyncRead> {
-    r: ReadHalf<'a, R>,
-    closed: bool,
-    buf1: &'a mut VecRingBuffer,
-    resp_body: http1::ClientResponseBody,
-}
-
-struct ClientResponseBody<'a, R: AsyncRead> {
-    inner: RefCell<Option<ClientResponseBodyInner<'a, R>>>,
-}
-
-impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
-    // on EOF and any subsequent calls, return success
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn add_to_buffer(&self) -> Result<(), Error> {
-        if let Some(inner) = &mut *self.inner.borrow_mut() {
-            if !inner.closed {
-                match recv_nonzero(&mut inner.r, inner.buf1).await {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == io::ErrorKind::WriteZero => {
-                        return Err(Error::BufferExceeded)
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => inner.closed = true,
-                    Err(e) => return Err(e.into()),
-                }
-            }
-
-            Ok(())
-        } else {
-            Err(Error::Unusable)
-        }
-    }
-
-    fn try_recv(&self, dest: &mut [u8]) -> Result<RecvStatus<(), ClientFinished>, Error> {
-        loop {
-            let mut b_inner = self.inner.borrow_mut();
-
-            if let Some(inner) = b_inner.take() {
-                let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
-
-                let src = Buffer::read_buf(inner.buf1);
-                let end = src.len() == inner.buf1.len() && inner.closed;
-
-                match inner.resp_body.recv(src, dest, end, &mut scratch)? {
-                    http1::RecvStatus::Complete(finished, read, written) => {
-                        inner.buf1.read_commit(read);
-
-                        *b_inner = None;
-
-                        break Ok(RecvStatus::Complete(
-                            ClientFinished { inner: finished },
-                            written,
-                        ));
-                    }
-                    http1::RecvStatus::Read(resp_body, read, written) => {
-                        *b_inner = Some(ClientResponseBodyInner {
-                            r: inner.r,
-                            closed: inner.closed,
-                            buf1: inner.buf1,
-                            resp_body,
-                        });
-
-                        let inner = b_inner.as_mut().unwrap();
-
-                        if read == 0 && written == 0 {
-                            if !inner.buf1.is_readable_contiguous() {
-                                inner.buf1.align();
-                                continue;
-                            }
-                        }
-
-                        inner.buf1.read_commit(read);
-
-                        return Ok(RecvStatus::Read((), written));
-                    }
-                }
-            } else {
-                return Err(Error::Unusable);
-            }
-        }
-    }
-}
-
-struct ClientResponseBodyKeepHeader<'a, R: AsyncRead> {
-    inner: ClientResponseBody<'a, R>,
-    buf2: RefCell<Option<&'a mut VecRingBuffer>>,
-}
-
-impl<'a, R: AsyncRead> ClientResponseBodyKeepHeader<'a, R> {
-    fn discard_header<const N: usize>(
-        self,
-        resp: http1::OwnedResponse<N>,
-    ) -> Result<ClientResponseBody<'a, R>, Error> {
-        if let Some(buf2) = self.buf2.borrow_mut().take() {
-            buf2.set_inner(resp.into_buf());
-            buf2.clear();
-
-            Ok(self.inner)
-        } else {
-            Err(Error::Unusable)
-        }
-    }
-
-    async fn add_to_buffer(&self) -> Result<(), Error> {
-        self.inner.add_to_buffer().await
-    }
-
-    fn try_recv(
-        &self,
-        dest: &mut [u8],
-    ) -> Result<RecvStatus<(), ClientFinishedKeepHeader<'a>>, Error> {
-        if !self.buf2.borrow().is_some() {
-            return Err(Error::Unusable);
-        }
-
-        match self.inner.try_recv(dest)? {
-            RecvStatus::Complete(finished, written) => Ok(RecvStatus::Complete(
-                ClientFinishedKeepHeader {
-                    inner: finished,
-                    buf2: self.buf2.borrow_mut().take().unwrap(),
-                },
-                written,
-            )),
-            RecvStatus::Read((), written) => Ok(RecvStatus::Read((), written)),
-        }
-    }
-}
-
-struct ClientFinished {
-    inner: http1::ClientFinished,
-}
-
-struct ClientFinishedKeepHeader<'a> {
-    inner: ClientFinished,
-    buf2: &'a mut VecRingBuffer,
-}
-
-impl<'a> ClientFinishedKeepHeader<'a> {
-    fn discard_header<const N: usize>(self, resp: http1::OwnedResponse<N>) -> ClientFinished {
-        self.buf2.set_inner(resp.into_buf());
-        self.buf2.clear();
-
-        self.inner
-    }
-}
-
 enum Stream {
     Plain(std::net::TcpStream),
     Tls(TlsStream<std::net::TcpStream>),
@@ -5395,7 +4774,7 @@ where
     S: AsyncRead + AsyncWrite,
 {
     let stream = RefCell::new(stream);
-    let req = ClientRequest::new(io_split(&stream), buf1, buf2);
+    let req = client::Request::new(io_split(&stream), buf1, buf2);
 
     let req_header = {
         let rdata = match &zreq.ptype {
@@ -5461,7 +4840,7 @@ where
                     break resp;
                 }
                 SendStatus::Partial((), _) => {}
-                SendStatus::Error((), e) => return Err(e),
+                SendStatus::Error((), e) => return Err(e.into()),
             }
         }
     };
@@ -5511,7 +4890,7 @@ where
                 debug!("client-conn {}: redirecting to {}", log_id, url);
 
                 return Ok(ClientHandlerDone::Redirect(
-                    finished.inner.persistent,
+                    finished.is_persistent(),
                     url,
                     use_get,
                 ));
@@ -5548,10 +4927,7 @@ where
 
     let finished = finished.discard_header(resp);
 
-    Ok(ClientHandlerDone::Complete(
-        zresp,
-        finished.inner.persistent,
-    ))
+    Ok(ClientHandlerDone::Complete(zresp, finished.is_persistent()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5839,7 +5215,7 @@ where
     let send_buf_size = buf1.capacity(); // for sending to handler
     let recv_buf_size = buf2.capacity(); // for receiving from handler
 
-    let req = ClientRequest::new(io_split(&stream), buf1, buf2);
+    let req = client::Request::new(io_split(&stream), buf1, buf2);
 
     let (req_header, ws_key, overflow) = {
         let rdata = match &zreq.ptype {
@@ -6130,7 +5506,7 @@ where
                     debug!("client-conn {}: redirecting to {}", log_id, url);
 
                     return Ok(ClientHandlerDone::Redirect(
-                        finished.inner.persistent,
+                        finished.is_persistent(),
                         url,
                         use_get,
                     ));
@@ -6263,7 +5639,7 @@ where
 
                     let finished = finished.discard_header(resp);
 
-                    return Ok(ClientHandlerDone::Complete((), finished.inner.persistent));
+                    return Ok(ClientHandlerDone::Complete((), finished.is_persistent()));
                 }
             }
 
@@ -6338,7 +5714,7 @@ where
         )
         .await?;
 
-        Ok(ClientHandlerDone::Complete((), finished.inner.persistent))
+        Ok(ClientHandlerDone::Complete((), finished.is_persistent()))
     }
 }
 

@@ -15,7 +15,10 @@
  */
 
 mod error;
+mod util;
 
+pub mod client;
 pub mod server;
 
 pub use error::*;
+pub use util::{RecvStatus, SendStatus};
