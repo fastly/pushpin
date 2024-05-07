@@ -890,6 +890,7 @@ private slots:
 
 	void in_error()
 	{
+		incCounter(Stats::WSError, 1);
 		cleanupInSock();
 
 		if(!detached)
@@ -1003,6 +1004,7 @@ private slots:
 
 	void out_error()
 	{
+		incCounter(Stats::WSError, 1);
 		WebSocket::ErrorCondition e = outSock->errorCondition();
 		log_debug("wsproxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
 

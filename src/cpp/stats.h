@@ -27,7 +27,7 @@
 #include <assert.h>
 #include <string.h>
 
-#define STATS_COUNTERS_MAX 12
+#define STATS_COUNTERS_MAX 13
 
 namespace Stats {
 
@@ -45,6 +45,7 @@ enum Counter {
     ServerContentBytesSent     =  9,
     ServerMessagesReceived     = 10,
     ServerMessagesSent         = 11,
+    WSError                    = 12,
 };
 
 class Counters
