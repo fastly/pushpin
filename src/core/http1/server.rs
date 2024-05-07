@@ -495,6 +495,7 @@ pub struct ResponsePrepareBody<'a, 'b, R: AsyncRead, W: AsyncWrite> {
 }
 
 impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'a, 'b, R, W> {
+    // only returns an error on invalid input
     pub fn prepare(&mut self, src: &[u8], end: bool) -> Result<(usize, usize), Error> {
         let state = self.state.borrow();
         let state = state.as_ref().unwrap();
@@ -510,7 +511,11 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'a, 'b, R, W> {
         // workaround for rust 1.77
         #[allow(clippy::unused_io_amount)]
         let accepted = if overflow.is_none() {
-            buf2.inner.write(src)?
+            match buf2.inner.write(src) {
+                Ok(size) => size,
+                Err(e) if e.kind() == io::ErrorKind::WriteZero => 0,
+                Err(e) => panic!("infallible buffer write failed: {}", e),
+            }
         } else {
             0
         };
@@ -520,7 +525,11 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'a, 'b, R, W> {
             let overflow = overflow.get_or_insert_with(|| ContiguousBuffer::new(buf2.limit));
 
             let remaining = &src[accepted..];
-            let overflowed = overflow.write(remaining)?;
+            let overflowed = match overflow.write(remaining) {
+                Ok(size) => size,
+                Err(e) if e.kind() == io::ErrorKind::WriteZero => 0,
+                Err(e) => panic!("infallible buffer write failed: {}", e),
+            };
 
             (accepted + overflowed, overflowed)
         } else {
@@ -601,7 +610,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
                 return Err(Error::FurtherInputNotAllowed);
             }
 
-            let size = w.buf.write(src)?;
+            let size = match w.buf.write(src) {
+                Ok(size) => size,
+                Err(e) if e.kind() == io::ErrorKind::WriteZero => 0,
+                Err(e) => panic!("infallible buffer write failed: {}", e),
+            };
 
             assert!(size <= src.len());
 

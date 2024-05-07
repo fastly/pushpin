@@ -154,7 +154,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
                 return Err(Error::FurtherInputNotAllowed);
             }
 
-            let size = w.buf.write(src)?;
+            let size = match w.buf.write(src) {
+                Ok(size) => size,
+                Err(e) if e.kind() == io::ErrorKind::WriteZero => 0,
+                Err(e) => panic!("infallible buffer write failed: {}", e),
+            };
 
             assert!(size <= src.len());
 
