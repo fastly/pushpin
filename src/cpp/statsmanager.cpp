@@ -1958,6 +1958,9 @@ void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint
 
 	report->incCounter(c, count, now);
 	d->combinedReport.incCounter(c, count, now);
+
+	if (domain.isEmpty()){
+	}
 }
 
 void StatsManager::addRequestsReceived(quint32 count)
