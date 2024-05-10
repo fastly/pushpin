@@ -45,7 +45,7 @@ class Service:
         self.aco_enabled = aco_enabled
         self.log_level = log_level
         self.backend_flags = backend_flags
-        self.realm = {}
+        self.extensions = {}
 
 
 class ValidationError(Exception):
@@ -373,13 +373,13 @@ def fetch_service_backends(api_key):
                 backend['loader-woh-enabled'] = '1'
 
         if service.grip_enabled:
-            logging.debug('fetching realm config for service {} ({}/{})'.format(service_id,
+            logging.debug('fetching extensions for service {} ({}/{})'.format(service_id,
                 i + 1, len(pushpin_services)))
 
             resp = internal_client.request(
-                '/realm-for-service/{}'.format(service_id), 'application/json')
+                '/service-extensions/{}'.format(service_id), 'application/json')
             if resp.status == 200:
-                service.realm = json.loads(resp.data)
+                service.extensions = json.loads(resp.data)
             elif resp.status == 404:
                 pass
             else:
@@ -399,14 +399,7 @@ def make_routes(service, backend, sig_keys_dir):
     backend_name = validate_backend(backend['name'])
     host = validate_host(backend['address'])
 
-    realm_domain_config = {}
-
-    realm_domains = service.realm.get('domains', {})
-    for prefix in ('http_backend_', 'https_backend_'):
-        if backend_name.startswith(prefix):
-            domain = backend_name[len(prefix):]
-            realm_domain_config = realm_domains.get(domain, {})
-            break
+    backend_extensions = service.extensions.get('backends', {}).get(backend_name, {})
 
     target = '{}:{}'.format(host, backend['port'])
 
@@ -424,10 +417,7 @@ def make_routes(service, backend, sig_keys_dir):
         override_host = validate_host(override_host)
         target += ',host={}'.format(override_host)
 
-    if 'id' in service.realm:
-        woh = backend_name.startswith('self_') or backend_name == 'bayeux-handler' or bool(realm_domain_config.get('woh', False))
-    else:
-        woh = int(backend.get('loader-woh-enabled', '0'))
+    woh = int(backend.get('loader-woh-enabled', '0')) and not backend_extensions.get('disable-woh', False)
 
     if woh:
         target += ',over_http'
@@ -439,31 +429,35 @@ def make_routes(service, backend, sig_keys_dir):
     if int(backend.get('loader-grip-enabled', '0')):
         cond_opts = 'prefix=g:ck:{}:'.format(service_id)
 
-        realm_id = service.realm.get('id', '')
+        sig_iss = service.extensions.get('sig-iss', 'fastly:{}'.format(service_id))
+        cond_opts += ',sig_iss={}'.format(sig_iss)
 
-        if realm_id:
-            cond_opts += ',sig_iss={}'.format(realm_id)
-        else:
-            cond_opts += ',sig_iss=fastly:{}'.format(service_id)
-
-        if service.realm.get('key', ''):
+        if service.extensions.get('sig-key', ''):
             cond_opts += ',sig_key=file:{}'.format(sig_key_filename(service_id, sig_keys_dir))
 
+        headers = backend_extensions.get('headers', {})
+
+        xfp = False
+        if headers.get('X-Forwarded-Proto', '') == 'https':
+            xfp = True
+
+            # don't count this header towards the limit
+            del headers['X-Forwarded-Proto']
+
         # up to 3 headers allowed
-        for k, v in islice(realm_domain_config.get('headers', {}).items(), 3):
+        for k, v in islice(headers.items(), 3):
             k = validate_header_name(k)
             v = validate_header_value(v)
 
             cond_opts += ',header=\"{}:{}\"'.format(escape_route_param(k), escape_route_param(v))
 
-        # we can assume https since fanout/grip is only allowed via xqd which requires https
-        if realm_id:
+        if xfp:
             cond_opts += ',header=X-Forwarded-Proto:https'
 
-        if service.aco_enabled or realm_id:
+        if service.aco_enabled or service.extensions.get('aco', False):
             cond_opts += ',aco'
 
-        if bool(realm_domain_config.get('debug', False)):
+        if bool(service.extensions.get('debug', False)) or bool(backend_extensions.get('debug', False)):
             cond_opts += ',debug'
 
         if service.log_level is not None:
@@ -609,7 +603,7 @@ def update_routes(api_key, routes_file, sig_keys_dir, sig_keys_user=None, sig_ke
 
     custom_sig_keys = {}
     for service, _ in services.values():
-        key = service.realm.get('key', '')
+        key = service.extensions.get('sig-key', '')
         if key:
             custom_sig_keys[service.id] = b64decode(key)
 
