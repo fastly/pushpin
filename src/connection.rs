@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,8 +38,8 @@ use crate::arena;
 use crate::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
-use crate::core::http1::client;
 use crate::core::http1::Error as CoreHttpError;
+use crate::core::http1::{client, server};
 use crate::core::http1::{RecvStatus, SendStatus};
 use crate::counter::Counter;
 use crate::future::{
@@ -341,6 +341,7 @@ enum Error {
     CoreHttp(CoreHttpError),
     #[allow(dead_code)]
     WebSocket(websocket::Error),
+    ReqModeWebSocket,
     InvalidWebSocketRequest,
     InvalidWebSocketResponse,
     Compression,
@@ -767,27 +768,6 @@ impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 
         Ok(self.into_recv_body().0)
     }
 
-    async fn start_recv_body_and_keep_header(
-        mut self,
-    ) -> Result<RequestRecvBodyKeepHeader<'a, 'b, 'c, R, W, N>, Error> {
-        self.handle_expect().await?;
-
-        // we're keeping the request, so put any remaining bytes into buf2
-        // and swap the inner buffers. those bytes will then become readable
-        // from buf1. we'll plan to give the request's inner buffer to buf2
-        // after the request is no longer needed
-        let req = self.req_mem.as_ref().unwrap();
-        self.r.buf2.write_all(req.remaining_bytes())?;
-        self.r.buf1.swap_inner(self.r.buf2);
-
-        let (recv_body, req_mem) = self.into_recv_body();
-
-        Ok(RequestRecvBodyKeepHeader {
-            inner: recv_body,
-            req_mem,
-        })
-    }
-
     fn recv_done(mut self) -> Result<RequestStartResponse<'a, R, W>, Error> {
         // restore the read ringbuffer
         self.discard_request();
@@ -937,16 +917,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
         Some(Ok(0))
     }
 
-    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, Error> {
-        loop {
-            if let Some(ret) = self.try_recv_body(dest) {
-                return ret;
-            }
-
-            self.add_to_recv_buffer().await?;
-        }
-    }
-
     fn recv_done(self) -> RequestStartResponse<'a, R, W> {
         let r = self.r.into_inner();
 
@@ -961,33 +931,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
             },
             self.protocol.into_inner(),
         )
-    }
-}
-
-struct RequestRecvBodyKeepHeader<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> {
-    inner: RequestRecvBody<'a, R, W>,
-    req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
-}
-
-impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize>
-    RequestRecvBodyKeepHeader<'a, 'b, 'c, R, W, N>
-{
-    fn request(&self) -> http1::Request {
-        self.req_mem.as_ref().unwrap().get()
-    }
-
-    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, Error> {
-        self.inner.recv_body(dest).await
-    }
-
-    fn recv_done(self) -> RequestStartResponse<'a, R, W> {
-        // the request is no longer needed, so give its inner buffer to buf2
-        // and clear it
-        let buf = self.req_mem.take().unwrap().into_buf();
-        self.inner.buf2.set_inner(buf);
-        self.inner.buf2.clear();
-
-        self.inner.recv_done()
     }
 }
 
@@ -1307,18 +1250,6 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
         assert_eq!(protocol.state(), http1::ServerState::Finished);
 
         Ok((size, true))
-    }
-
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn send_body(&self, body: &[u8], more: bool) -> Result<usize, Error> {
-        let w = &mut *self.w.borrow_mut();
-        let protocol = &mut *self.protocol.borrow_mut();
-
-        assert_eq!(protocol.state(), http1::ServerState::SendingBody);
-
-        Ok(protocol
-            .send_body_async(&mut w.stream, &[body], !more, None)
-            .await?)
     }
 
     #[allow(clippy::await_holding_refcell_ref)]
@@ -1952,15 +1883,16 @@ async fn send_msg(sender: &AsyncLocalSender<zmq::Message>, msg: zmq::Message) ->
     Ok(sender.send(msg).await?)
 }
 
-async fn discard_while<F, T>(
+async fn discard_while<F, T, E>(
     receiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     fut: F,
-) -> F::Output
+) -> Result<T, Error>
 where
-    F: Future<Output = Result<T, Error>> + Unpin,
+    F: Future<Output = Result<T, E>> + Unpin,
+    Error: From<E>,
 {
     match select_2(fut, pin!(receiver.recv())).await {
-        Select2::R1(v) => v,
+        Select2::R1(v) => Ok(v?),
         Select2::R2(ret) => {
             ret?;
 
@@ -1983,6 +1915,272 @@ where
     }
 }
 
+// read request body and prepare outgoing zmq message
+#[allow(clippy::too_many_arguments)]
+async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
+    id: &str,
+    req: &http1::Request<'_, '_>,
+    req_body: &mut server::RequestBodyKeepHeader<'_, '_, R, W>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    body_buf: &mut ContiguousBuffer,
+    packet_buf: &RefCell<Vec<u8>>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+) -> Result<zmq::Message, Error> {
+    // receive request body
+
+    loop {
+        match req_body.try_recv(body_buf.write_buf())? {
+            RecvStatus::Complete((), written) => {
+                body_buf.write_commit(written);
+                break;
+            }
+            RecvStatus::Read((), written) => {
+                body_buf.write_commit(written);
+
+                if written == 0 {
+                    // ABR: discard_while
+                    discard_while(zreceiver, pin!(req_body.add_to_buffer())).await?;
+                }
+            }
+        }
+    }
+
+    // determine how to respond
+
+    let mut websocket = false;
+
+    for h in req.headers.iter() {
+        if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
+            websocket = true;
+            break;
+        }
+    }
+
+    if websocket {
+        // websocket requests are not supported in req mode
+
+        // toss the request body
+        body_buf.clear();
+
+        return Err(Error::ReqModeWebSocket);
+    }
+
+    // regular http requests we can handle
+
+    // prepare zmq message
+
+    let ids = [zhttppacket::Id {
+        id: id.as_bytes(),
+        seq: None,
+    }];
+
+    let msg = make_zhttp_request(
+        "",
+        &ids,
+        req.method,
+        req.uri,
+        req.headers,
+        Buffer::read_buf(body_buf),
+        false,
+        Mode::HttpReq,
+        0,
+        peer_addr,
+        secure,
+        &mut packet_buf.borrow_mut(),
+    )?;
+
+    // body consumed
+    body_buf.clear();
+
+    Ok(msg)
+}
+
+// read full request and prepare outgoing zmq message.
+// return Ok(None) if client disconnects before providing a complete request header
+async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
+    id: &str,
+    req_header: server::RequestHeader<'_, '_, R, W>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    body_buf: &mut ContiguousBuffer,
+    packet_buf: &RefCell<Vec<u8>>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+) -> Result<Option<zmq::Message>, Error> {
+    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+
+    // receive request header
+
+    // WARNING: the returned req_header must not be dropped and instead must
+    // be consumed by discard_header(). be careful with early returns from
+    // this function and do not use the ?-operator
+    let (req_header, mut req_body) = {
+        // ABR: discard_while
+        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
+            Ok(ret) => ret,
+            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) => return Err(e),
+        }
+    };
+
+    let req_ref = req_header.get();
+
+    // log request
+
+    {
+        let host = get_host(req_ref.headers);
+        let scheme = if secure { "https" } else { "http" };
+
+        debug!(
+            "server-conn {}: request: {} {}://{}{}",
+            id, req_ref.method, scheme, host, req_ref.uri
+        );
+    }
+
+    let result = server_req_read_body(
+        id,
+        &req_ref,
+        &mut req_body,
+        peer_addr,
+        secure,
+        body_buf,
+        packet_buf,
+        zreceiver,
+    )
+    .await;
+
+    // whether success or fail, toss req_header so we are able to respond
+    req_body.discard_header(req_header);
+
+    // NOTE: req_header is now consumed and we don't need to worry about it from here
+
+    Ok(Some(result?))
+}
+
+struct ReqRespond<'buf, 'st, R: AsyncRead, W: AsyncWrite> {
+    header: server::ResponseHeader<'buf, 'st, R, W>,
+    prepare_body: server::ResponsePrepareBody<'buf, 'st, R, W>,
+}
+
+// consumes resp if successful
+#[allow(clippy::too_many_arguments)]
+async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
+    id: &str,
+    req: server::Request,
+    resp: &mut Option<server::Response<'buf, R, W>>,
+    resp_state: &'st mut server::ResponseState<'buf, R, W>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    body_buf: &mut ContiguousBuffer,
+    packet_buf: &RefCell<Vec<u8>>,
+    zsender: &AsyncLocalSender<zmq::Message>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+) -> Result<Option<ReqRespond<'buf, 'st, R, W>>, Error> {
+    let msg = {
+        let req_header = req.recv_header(resp.as_mut().unwrap());
+
+        match server_req_read_header_and_body(
+            id, req_header, peer_addr, secure, body_buf, packet_buf, zreceiver,
+        )
+        .await?
+        {
+            Some(msg) => msg,
+            None => return Ok(None),
+        }
+    };
+
+    // send message
+
+    // ABR: discard_while
+    discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
+
+    // receive message
+
+    let zresp = loop {
+        // ABR: direct read
+        let (zresp, id_index) = Track::map_first(zreceiver.recv().await?);
+
+        let zresp_ref = zresp.get().get();
+
+        if zresp_ref.ids[id_index].id != id.as_bytes() {
+            // skip messages addressed to old ids
+            continue;
+        }
+
+        if !zresp_ref.ptype_str.is_empty() {
+            debug!("server-conn {}: handle packet: {}", id, zresp_ref.ptype_str);
+        } else {
+            debug!("server-conn {}: handle packet: (data)", id);
+        }
+
+        // skip non-data messages
+
+        match &zresp_ref.ptype {
+            zhttppacket::ResponsePacket::Data(_) => break zresp,
+            _ => debug!(
+                "server-conn {}: unexpected packet in req mode: {}",
+                id, zresp_ref.ptype_str
+            ),
+        }
+    };
+
+    let (header, prepare_body) = {
+        let zresp = zresp.get().get();
+
+        let rdata = match &zresp.ptype {
+            zhttppacket::ResponsePacket::Data(rdata) => rdata,
+            _ => unreachable!(), // we confirmed the type above
+        };
+
+        if body_buf.write_all(rdata.body).is_err() {
+            return Err(Error::BufferExceeded);
+        }
+
+        // send response header
+
+        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
+        let mut headers_len = 0;
+
+        for h in rdata.headers.iter() {
+            if headers_len >= headers.len() {
+                return Err(Error::BadMessage);
+            }
+
+            headers[headers_len] = http1::Header {
+                name: h.name,
+                value: h.value,
+            };
+
+            headers_len += 1;
+        }
+
+        let headers = &headers[..headers_len];
+
+        let mut resp_take = resp.take().unwrap();
+
+        let (header, prepare_body) = match resp_take.prepare_header(
+            rdata.code,
+            rdata.reason,
+            headers,
+            http1::BodySize::Known(rdata.body.len()),
+            resp_state,
+        ) {
+            Ok(ret) => ret,
+            Err(e) => {
+                *resp = Some(resp_take);
+                return Err(e.into());
+            }
+        };
+
+        (header, prepare_body)
+    };
+
+    Ok(Some(ReqRespond {
+        header,
+        prepare_body,
+    }))
+}
+
 // return true if persistent
 #[allow(clippy::too_many_arguments)]
 async fn server_req_handler<S: AsyncRead + AsyncWrite>(
@@ -1999,243 +2197,67 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 ) -> Result<bool, Error> {
     let stream = RefCell::new(stream);
 
-    let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
-    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
-    let mut req_mem = None;
+    let mut resp_state = server::ResponseState::default();
 
-    // receive request header
+    let r = {
+        let (req, resp) = server::Request::new(io_split(&stream), buf1, buf2);
+        let mut resp = Some(resp);
 
-    // ABR: discard_while
-    let handler = match discard_while(
-        zreceiver,
-        pin!(handler.recv_request(&mut scratch, &mut req_mem)),
-    )
-    .await
-    {
-        Ok(handler) => handler,
-        Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
-        Err(e) => return Err(e),
-    };
-
-    // log request
-
-    {
-        let req = handler.request();
-        let host = get_host(req.headers);
-        let scheme = if secure { "https" } else { "http" };
-
-        debug!(
-            "server-conn {}: request: {} {}://{}{}",
-            id, req.method, scheme, host, req.uri
-        );
-    }
-
-    // receive request body
-
-    // ABR: discard_while
-    let handler = discard_while(zreceiver, pin!(handler.start_recv_body_and_keep_header())).await?;
-
-    loop {
-        // ABR: discard_while
-        let size = discard_while(zreceiver, pin!(handler.recv_body(body_buf.write_buf()))).await?;
-
-        if size == 0 {
-            break;
-        }
-
-        body_buf.write_commit(size);
-    }
-
-    // determine how to respond
-
-    let msg = {
-        let req = handler.request();
-
-        let mut websocket = false;
-
-        for h in req.headers.iter() {
-            if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
-                websocket = true;
-                break;
-            }
-        }
-
-        if websocket {
-            // websocket requests are not supported in req mode
-
-            // toss the request body
-            body_buf.clear();
-
-            None
-        } else {
-            // regular http requests we can handle
-
-            // prepare zmq message
-
-            let ids = [zhttppacket::Id {
-                id: id.as_bytes(),
-                seq: None,
-            }];
-
-            let msg = make_zhttp_request(
-                "",
-                &ids,
-                req.method,
-                req.uri,
-                req.headers,
-                Buffer::read_buf(body_buf),
-                false,
-                Mode::HttpReq,
-                0,
-                peer_addr,
-                secure,
-                &mut packet_buf.borrow_mut(),
-            )?;
-
-            // body consumed
-            body_buf.clear();
-
-            Some(msg)
-        }
-    };
-
-    let (handler, websocket) = if let Some(msg) = msg {
-        // handle as http
-
-        let handler = handler.recv_done();
-
-        // send message
-
-        // ABR: discard_while
-        discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
-
-        // receive message
-
-        let zresp = loop {
-            // ABR: direct read
-            let (zresp, id_index) = Track::map_first(zreceiver.recv().await?);
-
-            let zresp_ref = zresp.get().get();
-
-            if zresp_ref.ids[id_index].id != id.as_bytes() {
-                // skip messages addressed to old ids
-                continue;
-            }
-
-            if !zresp_ref.ptype_str.is_empty() {
-                debug!("server-conn {}: handle packet: {}", id, zresp_ref.ptype_str);
-            } else {
-                debug!("server-conn {}: handle packet: (data)", id);
-            }
-
-            // skip non-data messages
-
-            match &zresp_ref.ptype {
-                zhttppacket::ResponsePacket::Data(_) => break zresp,
-                _ => debug!(
-                    "server-conn {}: unexpected packet in req mode: {}",
-                    id, zresp_ref.ptype_str
-                ),
-            }
+        let ret = match server_req_respond(
+            id,
+            req,
+            &mut resp,
+            &mut resp_state,
+            peer_addr,
+            secure,
+            body_buf,
+            packet_buf,
+            zsender,
+            zreceiver,
+        )
+        .await
+        {
+            Ok(Some(ret)) => ret,
+            Ok(None) => return Ok(false), // no request
+            Err(e) => return Err(e),
         };
 
-        let handler = {
-            let zresp = zresp.get().get();
+        assert!(resp.is_none());
 
-            let rdata = match &zresp.ptype {
-                zhttppacket::ResponsePacket::Data(rdata) => rdata,
-                _ => unreachable!(), // we confirmed the type above
-            };
-
-            // send response header
-
-            let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-            let mut headers_len = 0;
-
-            for h in rdata.headers.iter() {
-                if headers_len >= headers.len() {
-                    return Err(Error::BadMessage);
-                }
-
-                headers[headers_len] = http1::Header {
-                    name: h.name,
-                    value: h.value,
-                };
-
-                headers_len += 1;
-            }
-
-            let headers = &headers[..headers_len];
-
-            let handler = handler.prepare_response(
-                rdata.code,
-                rdata.reason,
-                headers,
-                http1::BodySize::Known(rdata.body.len()),
-            )?;
-
-            body_buf.write_all(rdata.body)?;
-
-            handler
-        };
-
-        drop(zresp);
-
-        // ABR: discard_while
-        discard_while(zreceiver, pin!(handler.send_header())).await?;
-
-        (handler.send_header_done(), false)
-    } else {
-        // handle as websocket
-
-        // send response header
-
-        let headers = &[http1::Header {
-            name: "Content-Type",
-            value: b"text/plain",
-        }];
-
-        let body = "WebSockets not supported on req mode interface.\n";
-
-        let handler = handler.recv_done();
-
-        let handler = handler.prepare_response(
-            400,
-            "Bad Request",
-            headers,
-            http1::BodySize::Known(body.len()),
-        )?;
-
-        // ABR: discard_while
-        discard_while(zreceiver, pin!(handler.send_header())).await?;
-
-        let handler = handler.send_header_done();
-
-        body_buf.write_all(body.as_bytes())?;
-
-        (handler, true)
+        ret
     };
+
+    // ABR: discard_while
+    let header_sent = discard_while(zreceiver, pin!(r.header.send())).await?;
+
+    let resp_body = header_sent.start_body(r.prepare_body);
 
     // send response body
 
-    while body_buf.len() > 0 {
-        // ABR: discard_while
-        let size = discard_while(
-            zreceiver,
-            pin!(handler.send_body(Buffer::read_buf(body_buf), false)),
-        )
-        .await?;
-
+    let finished = loop {
+        // fill the buffer as much as possible
+        let size = resp_body.prepare(Buffer::read_buf(body_buf), true)?;
         body_buf.read_commit(size);
-    }
 
-    let persistent = handler.finish();
+        // send the buffer
+        let send = pin!(async {
+            match resp_body.send().await {
+                SendStatus::Complete(finished) => Ok(Some(finished)),
+                SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                SendStatus::Partial((), _) => Ok(None),
+                SendStatus::Error((), e) => Err(e),
+            }
+        });
 
-    if websocket {
-        return Ok(false);
-    }
+        // ABR: discard_while
+        if let Some(finished) = discard_while(zreceiver, send).await? {
+            break finished;
+        }
+    };
 
-    Ok(persistent)
+    assert_eq!(body_buf.len(), 0);
+
+    Ok(finished.is_persistent())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2303,7 +2325,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     }
 
     // ABR: discard_while
-    discard_while(zreceiver, pin!(async { Ok(stream.close().await?) })).await?;
+    discard_while(zreceiver, pin!(stream.close())).await?;
 
     Ok(())
 }
@@ -2373,7 +2395,7 @@ where
         zsess_in.receiver,
         pin!(async {
             zsess_out.check_send().await;
-            Ok(())
+            Ok::<(), Error>(())
         }),
     )
     .await?;
@@ -4370,7 +4392,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
     }
 
     // ABR: discard_while
-    discard_while(zreceiver, pin!(async { Ok(stream.close().await?) })).await?;
+    discard_while(zreceiver, pin!(stream.close())).await?;
 
     Ok(())
 }
