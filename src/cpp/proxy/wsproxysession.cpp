@@ -896,6 +896,8 @@ private slots:
 
 	void in_error()
 	{
+		incCounter(Stats::WSError, 1);
+
 		WebSocket::ErrorCondition e = inSock->errorCondition();
 	
 		auto routeInfo = LogUtil::RouteInfo(route.id, route.logLevel);
@@ -1018,6 +1020,8 @@ private slots:
 
 	void out_error()
 	{
+		incCounter(Stats::WSError, 1);
+
 		WebSocket::ErrorCondition e = outSock->errorCondition();
 		log_debug("wsproxysession: %p target error state=%d, condition=%d", q, (int)state, (int)e);
 
