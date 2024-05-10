@@ -1947,7 +1947,7 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 	d->combinedReport.addMessageSent(transport, blocks, now);
 }
 
-void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint32 count)
+void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint32 count, QString domain)
 {
 	if(d->reportInterval <= 0)
 		return;

@@ -87,7 +87,7 @@ public:
 	// for reporting and combined
 	void addMessageReceived(const QByteArray &routeId, int blocks = -1);
 	void addMessageSent(const QByteArray &routeId, const QString &transport, int blocks = -1);
-	void incCounter(const QByteArray &routeId, Stats::Counter c, quint32 count = 1);
+	void incCounter(const QByteArray &routeId, Stats::Counter c, quint32 count = 1,  QString domain = "");
 
 	// for combined only
 	void addRequestsReceived(quint32 count);

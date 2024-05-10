@@ -1386,9 +1386,16 @@ private:
 		LogUtil::logRequest(LOG_LEVEL_INFO, rd, logConfig);
 	}
 
-	void incCounter(Stats::Counter c, int count = 1)
-	{
-		stats->incCounter(adata.statsRoute.toUtf8(), c, count);
+	void incCounter(Stats::Counter c, int count = 1){
+		if (c == Stats::ClientHeaderBytesReceived || 
+			c == Stats::ClientHeaderBytesSent || 
+			c == Stats::ClientContentBytesReceived || 
+			c == Stats::ClientContentBytesSent ){
+			stats->incCounter(adata.statsRoute.toUtf8(), c, count, currentUri.host());
+		}
+		else{
+			stats->incCounter(adata.statsRoute.toUtf8(), c, count);
+		}
 	}
 
 	void writeBody(const QByteArray &body)

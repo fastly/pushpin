@@ -821,8 +821,17 @@ public:
 
 	void incCounter(Stats::Counter c, int count = 1)
 	{
-		if(statsManager)
-			statsManager->incCounter(route.statsRoute(), c, count);
+		if(statsManager){
+			if (c == Stats::ClientHeaderBytesReceived || 
+				c == Stats::ClientHeaderBytesSent || 
+				c == Stats::ClientContentBytesReceived || 
+				c == Stats::ClientContentBytesSent ){
+				statsManager->incCounter(route.statsRoute(), c, count, inSock->requestUri().host());
+			}
+			else{
+				statsManager->incCounter(route.statsRoute(), c, count);
+			}
+		}
 	}
 
 private slots:
