@@ -1057,7 +1057,7 @@ public:
 				c == Stats::ClientHeaderBytesSent || 
 				c == Stats::ClientContentBytesReceived || 
 				c == Stats::ClientContentBytesSent ){
-				statsManager->incCounter(route.statsRoute(), c, count, inRequest->request()->requestUri().host());
+				statsManager->incCounter(route.statsRoute(), c, count, (inRequest && inRequest->request() && inRequest->request()->requestUri().isValid() ? inRequest->request()->requestUri().host() : ""));
 			}
 			else{
 				statsManager->incCounter(route.statsRoute(), c, count);
