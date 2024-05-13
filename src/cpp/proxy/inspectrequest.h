@@ -32,10 +32,8 @@ class ZrpcManager;
 
 class InspectRequest : public ZrpcRequest
 {
-	Q_OBJECT
-
 public:
-	InspectRequest(ZrpcManager *manager, QObject *parent = 0);
+	InspectRequest(ZrpcManager *manager);
 	~InspectRequest();
 
 	InspectData result() const;
@@ -47,7 +45,7 @@ protected:
 
 private:
 	class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 };
 
 #endif

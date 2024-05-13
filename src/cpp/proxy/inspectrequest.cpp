@@ -103,31 +103,25 @@ static InspectData resultToData(const QVariant &in, bool *ok)
 	return out;
 }
 
-class InspectRequest::Private : public QObject
+class InspectRequest::Private
 {
-	Q_OBJECT
-
 public:
 	InspectRequest *q;
 	InspectData idata;
 
 	Private(InspectRequest *_q) :
-		QObject(_q),
 		q(_q)
 	{
 	}
 };
 
-InspectRequest::InspectRequest(ZrpcManager *manager, QObject *parent) :
-	ZrpcRequest(manager, parent)
+InspectRequest::InspectRequest(ZrpcManager *manager) :
+	ZrpcRequest(manager)
 {
-	d = new Private(this);
+	d = std::make_unique<Private>(this);
 }
 
-InspectRequest::~InspectRequest()
-{
-	delete d;
-}
+InspectRequest::~InspectRequest() = default;
 
 InspectData InspectRequest::result() const
 {
@@ -176,4 +170,3 @@ void InspectRequest::onSuccess()
 	}
 }
 
-#include "inspectrequest.moc"
