@@ -350,6 +350,8 @@ enum Error {
     PolicyViolation,
     TooManyRedirects,
     ValueActive,
+    #[allow(dead_code)]
+    Internal(String),
     StreamTimeout,
     SessionTimeout,
     Stopped,
@@ -359,7 +361,7 @@ impl Error {
     // returns true if the error represents a logic error (a bug in the code)
     // that could warrant a panic or high severity log level
     fn is_logical(&self) -> bool {
-        matches!(self, Error::ValueActive)
+        matches!(self, Self::ValueActive | Self::Internal(_))
     }
 
     fn log_level(&self) -> Level {
@@ -4984,6 +4986,17 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
                             if !inner.buf1.is_readable_contiguous() {
                                 inner.buf1.align();
                                 continue;
+                            }
+
+                            if inner.closed {
+                                let first_buf = Buffer::read_buf(inner.buf1);
+
+                                return Err(Error::Internal(format!(
+                                    "closed connection made no progress: buf1.len={} first_buf.len={} end={}",
+                                    inner.buf1.len(),
+                                    first_buf.len(),
+                                    end
+                                )));
                             }
                         }
 
