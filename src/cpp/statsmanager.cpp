@@ -1959,7 +1959,8 @@ void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint
 	report->incCounter(c, count, now);
 	d->combinedReport.incCounter(c, count, now);
 
-	if (domain.isEmpty()){
+	if (!domain.isEmpty()){
+		// TODO: call to xqd stats emitter crate to update domain report 
 	}
 }
 
