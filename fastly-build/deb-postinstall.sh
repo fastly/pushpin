@@ -10,6 +10,8 @@ useradd -r -g pushpin pushpin || true
 usermod -a -G pushpin-listener,pub-events,fetchly-sock pushpin || true
 mkdir -p /var/run/pushpin
 chown pushpin:pushpin /var/run/pushpin
+mkdir -p /var/lib/pushpin
+chown pushpin:pushpin /var/lib/pushpin
 chown pushpin:pushpin-listener /opt/fst-pushpin/bin/pushpin-healthcheck
 chmod g+s /opt/fst-pushpin/bin/pushpin-healthcheck
 

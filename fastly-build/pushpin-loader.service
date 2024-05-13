@@ -5,7 +5,7 @@ PartOf=pushpin.service
 [Service]
 Type=simple
 Restart=always
-ExecStart=/opt/fst-pushpin/bin/pushpin-loader --log-level 1 --key /etc/pushpin/private/internal-api-key --loop 60 --output /opt/fst-pushpin/etc/pushpin/routes --sig-keys-dir /etc/pushpin/private/sig-keys --sig-keys-user pushpin --sig-keys-group pushpin
+ExecStart=/opt/fst-pushpin/bin/pushpin-loader --log-level 1 --key /etc/pushpin/private/internal-api-key --loop 60 --output /opt/fst-pushpin/etc/pushpin/routes --cache-dir /var/lib/pushpin --sig-keys-dir /etc/pushpin/private/sig-keys --sig-keys-user pushpin --sig-keys-group pushpin
 
 [Install]
 WantedBy=multi-user.target

@@ -262,7 +262,49 @@ def clean_backends(backends):
     return out
 
 
-def fetch_service_backends(api_key):
+def get_backends(fetchly_client, heavenly_client, cache_dir, old_cache_files, service_id, version, index, total):
+    cache_file = os.path.abspath(os.path.join(os.path.join(cache_dir, "backends"), f"{service_id}.{version}.json"))
+
+    cached_backends = None
+
+    try:
+        # if the file exists with valid json data, use it
+        with open(cache_file, "r") as f:
+            cached_backends = json.loads(f.read())
+    except Exception:
+        # else, keep going
+        pass
+
+    if cached_backends is not None:
+        # ensure the file doesn't get cleaned up
+        old_cache_files.remove(cache_file)
+        return cached_backends
+
+    logging.debug('fetching backends for service {} ({}/{})'.format(service_id, index + 1, total))
+
+    resp = fetchly_client.request(
+        '/v1/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
+    if resp.status != 200:
+        logging.debug(f"Error: fetchly backends request failed with status: {resp.status}, data: {resp.data}")
+
+        # fall back to direct heavenly request
+        resp = heavenly_client.request(
+            '/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
+        if resp.status != 200:
+            raise Exception(f"Error: heavenly backends request failed with status: {resp.status}, data: {resp.data}")
+
+    backends = json.loads(resp.data)['backends']
+
+    try:
+        with open(cache_file, "w") as f:
+            f.write(json.dumps(backends))
+    except Exception:
+        logging.exception(f"failed to write {cache_file}")
+
+    return backends
+
+
+def fetch_service_backends(api_key, cache_dir, old_cache_files):
     """
     Returns {service_id: (service, [backend])}.
     """
@@ -339,21 +381,7 @@ def fetch_service_backends(api_key):
         service_id = service.id
         version = service.data['version']
 
-        logging.debug('fetching backends for service {} ({}/{})'.format(service_id,
-              i + 1, len(pushpin_services)))
-
-        resp = fetchly_client.request(
-            '/v1/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
-        if resp.status != 200:
-            logging.debug(f"Error: fetchly backends request failed with status: {resp.status}, data: {resp.data}")
-
-            # fall back to direct heavenly request
-            resp = heavenly_client.request(
-                '/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
-            if resp.status != 200:
-                raise Exception(f"Error: heavenly backends request failed with status: {resp.status}, data: {resp.data}")
-
-        backends = json.loads(resp.data)['backends']
+        backends = get_backends(fetchly_client, heavenly_client, cache_dir, old_cache_files, service_id, version, i, len(pushpin_services))
 
         backends = clean_backends(backends)
 
@@ -594,12 +622,33 @@ def write_sig_keys(keys, dir, user=None, group=None):
     return changed
 
 
-def update_routes(api_key, routes_file, sig_keys_dir, sig_keys_user=None, sig_keys_group=None):
+def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, sig_keys_user=None, sig_keys_group=None):
+    try:
+        os.mkdir(cache_dir)
+    except FileExistsError:
+        # already exists. that's fine
+        pass
+
+    backends_cache_dir = os.path.join(cache_dir, "backends")
+
+    try:
+        os.mkdir(backends_cache_dir)
+    except FileExistsError:
+        # already exists. that's fine
+        pass
+
+    old_cache_files = set()
+
+    # look up existing cache files
+    for fname in os.listdir(backends_cache_dir):
+        if fname.endswith('.json'):
+            old_cache_files.add(os.path.abspath(os.path.join(backends_cache_dir, fname)))
+
     routes = []
 
     routes.append('pushpin.healthcheck.test test')
 
-    services = fetch_service_backends(api_key)
+    services = fetch_service_backends(api_key, cache_dir, old_cache_files)
 
     custom_sig_keys = {}
     for service, _ in services.values():
@@ -624,6 +673,11 @@ def update_routes(api_key, routes_file, sig_keys_dir, sig_keys_user=None, sig_ke
     else:
         logging.debug('no changes')
 
+    # remove unneeded cache files
+    for fname in old_cache_files:
+        logging.debug(f"removing {fname}")
+        os.remove(fname)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -631,11 +685,13 @@ def main():
     parser.add_argument('--log-level', metavar='N', type=int,
                         dest='log_level', default=2, help='log level')
     parser.add_argument('--key', metavar='FILENAME', dest='key',
-                        default='./key', help='location of API key file (default: ./key)')
+                        default='key', help='location of API key file (default: ./key)')
     parser.add_argument('--output', metavar='FILENAME', dest='output',
                         default='routes', help='location of routes file (default: ./routes)')
+    parser.add_argument('--cache-dir', metavar='PATH', dest='cache_dir',
+                        default='cache', help='directory to keep cached data (default: ./cache)')
     parser.add_argument('--sig-keys-dir', metavar='PATH', dest='sig_keys_dir',
-                        default='./sig-keys', help='directory to write sig keys (default: ./sig-keys)')
+                        default='sig-keys', help='directory to write sig keys (default: ./sig-keys)')
     parser.add_argument('--sig-keys-user', metavar='USERNAME', dest='sig_keys_user',
                         help='owning user to set for sig keys')
     parser.add_argument('--sig-keys-group', metavar='GROUP', dest='sig_keys_group',
@@ -660,7 +716,7 @@ def main():
 
     while True:
         try:
-            update_routes(api_key, routes_file, args.sig_keys_dir, sig_keys_user=args.sig_keys_user, sig_keys_group=args.sig_keys_group)
+            update_routes(api_key, routes_file, args.cache_dir, args.sig_keys_dir, sig_keys_user=args.sig_keys_user, sig_keys_group=args.sig_keys_group)
         except Exception:
             logging.exception('update_routes failed')
 
