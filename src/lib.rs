@@ -25,7 +25,7 @@ pub mod arena;
 pub mod buffer;
 pub mod channel;
 pub mod client;
-pub mod condure;
+pub mod cm;
 pub mod config;
 pub mod connection;
 pub mod core;

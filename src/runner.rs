@@ -206,7 +206,7 @@ pub struct Settings {
     pub run_dir: PathBuf,
     pub log_file: Option<PathBuf>,
     pub certs_dir: PathBuf,
-    pub condure_bin: PathBuf,
+    pub cm_bin: PathBuf,
     pub proxy_bin: PathBuf,
     pub handler_bin: PathBuf,
     pub ipc_prefix: String,
@@ -391,11 +391,7 @@ impl Settings {
             config_file: config_file_path,
             run_dir,
             log_file: args_data.log_file,
-            condure_bin: get_service_dir(
-                exec_dir.into(),
-                "pushpin-condure",
-                "bin/pushpin-condure",
-            )?,
+            cm_bin: get_service_dir(exec_dir.into(), "pushpin-cm", "bin/pushpin-cm")?,
             proxy_bin: get_service_dir(exec_dir.into(), "pushpin-proxy", "bin/pushpin-proxy")?,
             handler_bin: get_service_dir(
                 exec_dir.into(),
@@ -631,7 +627,7 @@ mod tests {
                     id: Some(123),
                     config: Some(PathBuf::from("/cfg/path")),
                     logfile: Some(PathBuf::from("/log/path")),
-                    loglevel: Some(String::from("2,condure:3")),
+                    loglevel: Some(String::from("2,cm:3")),
                     verbose: false,
                     route: Some(vec![String::from("* test")]),
                     port: Some(String::from("1234")),
@@ -641,10 +637,7 @@ mod tests {
                     config_file: Some(PathBuf::from("/cfg/path")),
                     log_file: Some(PathBuf::from("/log/path")),
                     route_lines: vec![String::from("* test")],
-                    log_levels: HashMap::from([
-                        (String::new(), 2u8),
-                        (String::from("condure"), 3u8),
-                    ]),
+                    log_levels: HashMap::from([(String::new(), 2u8), (String::from("cm"), 3u8)]),
                     socket: Some("0.0.0.0:1234".parse::<SocketAddr>().unwrap()),
                 }),
             },
@@ -741,14 +734,12 @@ mod tests {
                     id: None,
                     config: None,
                     logfile: None,
-                    loglevel: Some(String::from("condure:-1")),
+                    loglevel: Some(String::from("cm:-1")),
                     verbose: false,
                     route: None,
                     port: None,
                 },
-                output: Err(
-                    "log level for service condure must be greater than or equal to 0".into(),
-                ),
+                output: Err("log level for service cm must be greater than or equal to 0".into()),
             },
             CliTestArgs {
                 name: "neg port",
@@ -822,7 +813,7 @@ mod tests {
             },
             output: Ok(Settings {
                 service_names: vec![
-                    "condure".to_string(),
+                    "cm".to_string(),
                     "pushpin-proxy".to_string(),
                     "pushpin-handler".to_string(),
                 ],
@@ -837,10 +828,10 @@ mod tests {
                     .join("config")
                     .join("runner")
                     .join("certs"),
-                condure_bin: if exec_dir.clone().join("bin/pushpin-condure").exists() {
-                    exec_dir.clone().join("bin/pushpin-condure")
+                cm_bin: if exec_dir.clone().join("bin/pushpin-cm").exists() {
+                    exec_dir.clone().join("bin/pushpin-cm")
                 } else {
-                    PathBuf::from("pushpin-condure")
+                    PathBuf::from("pushpin-cm")
                 },
                 proxy_bin: if exec_dir.clone().join("bin/pushpin-proxy").exists() {
                     exec_dir.clone().join("bin/pushpin-proxy")

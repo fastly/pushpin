@@ -63,7 +63,7 @@ name = "client"
 harness = false
 
 [[bin]]
-name = "pushpin-condure"
+name = "pushpin-cm"
 test = false
 bench = false
 
