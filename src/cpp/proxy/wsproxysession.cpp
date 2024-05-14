@@ -824,7 +824,7 @@ public:
 	void incCounter(Stats::Counter c, int count = 1)
 	{
 		if(statsManager)
-			statsManager->incCounter(route.statsRoute(), c, count);
+			statsManager->incCounter(route.statsRoute(), c, count, inSock->requestUri().host());
 	}
 
 private slots:

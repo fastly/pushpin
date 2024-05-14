@@ -1388,7 +1388,7 @@ private:
 
 	void incCounter(Stats::Counter c, int count = 1)
 	{
-		stats->incCounter(adata.statsRoute.toUtf8(), c, count);
+		stats->incCounter(adata.statsRoute.toUtf8(), c, count, adata.requestData.uri.host());
 	}
 
 	void writeBody(const QByteArray &body)

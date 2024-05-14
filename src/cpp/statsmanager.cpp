@@ -1951,7 +1951,7 @@ void StatsManager::addMessageSent(const QByteArray &routeId, const QString &tran
 	d->combinedReport.addMessageSent(transport, blocks, now);
 }
 
-void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint32 count)
+void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint32 count, const QString &domain)
 {
 	if(d->reportInterval <= 0)
 		return;
@@ -1962,6 +1962,14 @@ void StatsManager::incCounter(const QByteArray &routeId, Stats::Counter c, quint
 
 	report->incCounter(c, count, now);
 	d->combinedReport.incCounter(c, count, now);
+
+	if (!domain.isEmpty() && 
+		(c == Stats::ClientHeaderBytesReceived || 
+		c == Stats::ClientHeaderBytesSent || 
+		c == Stats::ClientContentBytesReceived || 
+		c == Stats::ClientContentBytesSent)){
+		// TODO: call to xqd stats emitter crate to create/update domain report 
+	}
 }
 
 void StatsManager::addRequestsReceived(quint32 count)
