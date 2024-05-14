@@ -350,12 +350,28 @@ enum Error {
     PolicyViolation,
     TooManyRedirects,
     ValueActive,
+    #[allow(dead_code)]
+    Internal(String),
     StreamTimeout,
     SessionTimeout,
     Stopped,
 }
 
 impl Error {
+    // returns true if the error represents a logic error (a bug in the code)
+    // that could warrant a panic or high severity log level
+    fn is_logical(&self) -> bool {
+        matches!(self, Self::ValueActive | Self::Internal(_))
+    }
+
+    fn log_level(&self) -> Level {
+        if self.is_logical() {
+            Level::Error
+        } else {
+            Level::Debug
+        }
+    }
+
     fn to_condition(&self) -> &'static str {
         match self {
             Error::Io(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
@@ -2339,14 +2355,7 @@ pub async fn server_req_connection<P: CidProvider, S: AsyncRead + AsyncWrite + I
     .await
     {
         Ok(()) => debug!("server-conn {}: finished", cid),
-        Err(e) => {
-            let level = match e {
-                Error::ValueActive => Level::Error,
-                _ => Level::Debug,
-            };
-
-            log!(level, "server-conn {}: process error: {:?}", cid, e);
-        }
+        Err(e) => log!(e.log_level(), "server-conn {}: process error: {:?}", cid, e),
     }
 }
 
@@ -4419,14 +4428,7 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     .await
     {
         Ok(()) => debug!("server-conn {}: finished", cid),
-        Err(e) => {
-            let level = match e {
-                Error::ValueActive => Level::Error,
-                _ => Level::Debug,
-            };
-
-            log!(level, "server-conn {}: process error: {:?}", cid, e);
-        }
+        Err(e) => log!(e.log_level(), "server-conn {}: process error: {:?}", cid, e),
     }
 }
 
@@ -4984,6 +4986,17 @@ impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
                             if !inner.buf1.is_readable_contiguous() {
                                 inner.buf1.align();
                                 continue;
+                            }
+
+                            if inner.closed {
+                                let first_buf = Buffer::read_buf(inner.buf1);
+
+                                return Err(Error::Internal(format!(
+                                    "closed connection made no progress: buf1.len={} first_buf.len={} end={}",
+                                    inner.buf1.len(),
+                                    first_buf.len(),
+                                    end
+                                )));
                             }
                         }
 
@@ -5796,14 +5809,12 @@ pub async fn client_req_connection(
     .await
     {
         Ok(()) => debug!("client-conn {}: finished", log_id),
-        Err(e) => {
-            let level = match e {
-                Error::ValueActive => Level::Error,
-                _ => Level::Debug,
-            };
-
-            log!(level, "client-conn {}: process error: {:?}", log_id, e);
-        }
+        Err(e) => log!(
+            e.log_level(),
+            "client-conn {}: process error: {:?}",
+            log_id,
+            e
+        ),
     }
 }
 
@@ -6787,14 +6798,12 @@ pub async fn client_stream_connection<E>(
     .await
     {
         Ok(()) => debug!("client-conn {}: finished", log_id),
-        Err(e) => {
-            let level = match e {
-                Error::ValueActive => Level::Error,
-                _ => Level::Debug,
-            };
-
-            log!(level, "client-conn {}: process error: {:?}", log_id, e);
-        }
+        Err(e) => log!(
+            e.log_level(),
+            "client-conn {}: process error: {:?}",
+            log_id,
+            e
+        ),
     }
 }
 
