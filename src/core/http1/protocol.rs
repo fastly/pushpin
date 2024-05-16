@@ -686,7 +686,7 @@ pub enum ServerState {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    ParseError(#[from] httparse::Error),
+    Parse(#[from] httparse::Error),
 
     #[error("invalid content length")]
     InvalidContentLength,
@@ -756,7 +756,7 @@ impl<'buf, 'headers> ServerProtocol {
         let size = match req.parse(buf) {
             Ok(httparse::Status::Complete(size)) => size,
             Ok(httparse::Status::Partial) => return None,
-            Err(e) => return Some(Err(Error::ParseError(e))),
+            Err(e) => return Some(Err(Error::Parse(e))),
         };
 
         let expect_100 = match self.process_request(&req) {
@@ -788,7 +788,7 @@ impl<'buf, 'headers> ServerProtocol {
                 return ParseStatus::Incomplete((), rbuf, scratch)
             }
             ParseStatus::Error(e, rbuf, scratch) => {
-                return ParseStatus::Error(Error::ParseError(e), rbuf, scratch)
+                return ParseStatus::Error(Error::Parse(e), rbuf, scratch)
             }
         };
 
@@ -901,7 +901,7 @@ impl<'buf, 'headers> ServerProtocol {
                                 return Ok((size, None));
                             }
                             Err(e) => {
-                                return Err(Error::ParseError(e));
+                                return Err(Error::Parse(e));
                             }
                         }
 
@@ -1390,7 +1390,7 @@ impl ClientResponse {
                 return ParseStatus::Incomplete(self, rbuf, scratch)
             }
             ParseStatus::Error(e, rbuf, scratch) => {
-                return ParseStatus::Error(Error::ParseError(e), rbuf, scratch)
+                return ParseStatus::Error(Error::Parse(e), rbuf, scratch)
             }
         };
 
@@ -1663,7 +1663,7 @@ impl ClientResponseBody {
                         return Ok(RecvStatus::Read(self, pos, size));
                     }
                     Err(e) => {
-                        return Err(Error::ParseError(e));
+                        return Err(Error::Parse(e));
                     }
                 }
             } else {
@@ -2272,7 +2272,7 @@ mod tests {
             Test {
                 name: "parse-error",
                 data: "G\n",
-                result: Some(Err(Error::ParseError(httparse::Error::Token))),
+                result: Some(Err(Error::Parse(httparse::Error::Token))),
                 state: ServerState::ReceivingRequest,
                 ver_min: 0,
                 chunk_left: None,
@@ -2757,7 +2757,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Err(Error::ParseError(httparse::Error::Token)),
+                result: Err(Error::Parse(httparse::Error::Token)),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
@@ -4388,7 +4388,7 @@ mod tests {
             Test {
                 name: "parse-error",
                 data: "H\n",
-                result: Some(Err(Error::ParseError(httparse::Error::Token))),
+                result: Some(Err(Error::Parse(httparse::Error::Token))),
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
@@ -4953,7 +4953,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Err(Error::ParseError(httparse::Error::Token)),
+                result: Err(Error::Parse(httparse::Error::Token)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
                 rbuf_position: 3,
