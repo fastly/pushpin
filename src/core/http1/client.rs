@@ -17,11 +17,11 @@
 
 use crate::buffer::{Buffer, VecRingBuffer, VECTORED_MAX};
 use crate::core::http1::error::Error;
+use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
 use crate::future::{
     select_2, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, Select2, StdWriteWrapper, WriteHalf,
 };
-use crate::http1;
 use crate::pin;
 use std::cell::RefCell;
 use std::io::{self, Write};
@@ -55,13 +55,13 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
         self,
         method: &str,
         uri: &str,
-        headers: &[http1::Header<'_>],
-        body_size: http1::BodySize,
+        headers: &[Header<'_>],
+        body_size: BodySize,
         websocket: bool,
         initial_body: &[u8],
         end: bool,
     ) -> Result<RequestHeader<'a, R, W>, Error> {
-        let req = http1::ClientRequest::new();
+        let req = protocol::ClientRequest::new();
 
         let size_limit = self.buf1.capacity();
 
@@ -91,7 +91,7 @@ pub struct RequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
     w: WriteHalf<'a, W>,
     buf1: &'a mut VecRingBuffer,
     buf2: &'a mut VecRingBuffer,
-    req_body: http1::ClientRequestBody,
+    req_body: protocol::ClientRequestBody,
     end: bool,
 }
 
@@ -130,7 +130,7 @@ struct RequestBodyRead<'a, R: AsyncRead> {
 struct RequestBodyWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
     buf: &'a mut VecRingBuffer,
-    req_body: Option<http1::ClientRequestBody>,
+    req_body: Option<protocol::ClientRequestBody>,
     end: bool,
     block_size: usize,
 }
@@ -232,7 +232,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
         assert!(inner.is_some());
 
         match status {
-            http1::SendStatus::Complete(resp, size) => {
+            protocol::SendStatus::Complete(resp, size) => {
                 let inner = inner.take().unwrap();
 
                 let r = inner.r.into_inner();
@@ -249,7 +249,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
                     inner: resp,
                 })
             }
-            http1::SendStatus::Partial(req_body, size) => {
+            protocol::SendStatus::Partial(req_body, size) => {
                 let inner = inner.as_ref().unwrap();
 
                 let mut w = inner.w.borrow_mut();
@@ -259,7 +259,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
                 SendStatus::Partial((), size)
             }
-            http1::SendStatus::Error(req_body, e) => {
+            protocol::SendStatus::Error(req_body, e) => {
                 let inner = inner.as_ref().unwrap();
 
                 inner.w.borrow_mut().req_body = Some(req_body);
@@ -275,7 +275,11 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
         &self,
     ) -> Option<
         Result<
-            http1::SendStatus<http1::ClientResponse, http1::ClientRequestBody, http1::Error>,
+            protocol::SendStatus<
+                protocol::ClientResponse,
+                protocol::ClientRequestBody,
+                protocol::Error,
+            >,
             Error,
         >,
     > {
@@ -307,7 +311,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
                         w.end,
                         None,
                     ) {
-                        http1::SendStatus::Error(req_body, http1::Error::Io(e))
+                        protocol::SendStatus::Error(req_body, protocol::Error::Io(e))
                             if e.kind() == io::ErrorKind::WouldBlock =>
                         {
                             w.req_body = Some(req_body);
@@ -338,7 +342,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
         match result {
             Select2::R1(ret) => match ret {
-                http1::SendStatus::Error(req_body, http1::Error::Io(e))
+                protocol::SendStatus::Error(req_body, protocol::Error::Io(e))
                     if e.kind() == io::ErrorKind::BrokenPipe =>
                 {
                     // if we get an error when trying to send, it could be
@@ -387,14 +391,20 @@ pub struct Response<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
     buf1: &'a mut VecRingBuffer,
     buf2: &'a mut VecRingBuffer,
-    inner: http1::ClientResponse,
+    inner: protocol::ClientResponse,
 }
 
 impl<'a, R: AsyncRead> Response<'a, R> {
     pub async fn recv_header<'b, const N: usize>(
         mut self,
-        mut scratch: &'b mut http1::ParseScratch<N>,
-    ) -> Result<(http1::OwnedResponse<'b, N>, ResponseBodyKeepHeader<'a, R>), Error> {
+        mut scratch: &'b mut ParseScratch<N>,
+    ) -> Result<
+        (
+            protocol::OwnedResponse<'b, N>,
+            ResponseBodyKeepHeader<'a, R>,
+        ),
+        Error,
+    > {
         let mut resp = self.inner;
 
         let (resp, resp_body) = loop {
@@ -402,8 +412,8 @@ impl<'a, R: AsyncRead> Response<'a, R> {
                 let hbuf = self.buf1.take_inner();
 
                 resp = match resp.recv_header(hbuf, scratch) {
-                    http1::ParseStatus::Complete(ret) => break ret,
-                    http1::ParseStatus::Incomplete(resp, hbuf, ret_scratch) => {
+                    ParseStatus::Complete(ret) => break ret,
+                    ParseStatus::Incomplete(resp, hbuf, ret_scratch) => {
                         // NOTE: after polonius it may not be necessary for
                         // scratch to be returned
                         scratch = ret_scratch;
@@ -412,7 +422,7 @@ impl<'a, R: AsyncRead> Response<'a, R> {
 
                         resp
                     }
-                    http1::ParseStatus::Error(e, hbuf, _) => {
+                    ParseStatus::Error(e, hbuf, _) => {
                         self.buf1.set_inner(hbuf);
 
                         return Err(e.into());
@@ -465,7 +475,7 @@ struct ResponseBodyInner<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
     closed: bool,
     buf1: &'a mut VecRingBuffer,
-    resp_body: http1::ClientResponseBody,
+    resp_body: protocol::ClientResponseBody,
 }
 
 pub struct ResponseBody<'a, R: AsyncRead> {
@@ -505,14 +515,14 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
                 let end = src.len() == inner.buf1.len() && inner.closed;
 
                 match inner.resp_body.recv(src, dest, end, &mut scratch)? {
-                    http1::RecvStatus::Complete(finished, read, written) => {
+                    protocol::RecvStatus::Complete(finished, read, written) => {
                         inner.buf1.read_commit(read);
 
                         *b_inner = None;
 
                         break Ok(RecvStatus::Complete(Finished { inner: finished }, written));
                     }
-                    http1::RecvStatus::Read(resp_body, read, written) => {
+                    protocol::RecvStatus::Read(resp_body, read, written) => {
                         *b_inner = Some(ResponseBodyInner {
                             r: inner.r,
                             closed: inner.closed,
@@ -547,7 +557,7 @@ pub struct ResponseBodyKeepHeader<'a, R: AsyncRead> {
 impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
     pub fn discard_header<const N: usize>(
         self,
-        resp: http1::OwnedResponse<N>,
+        resp: protocol::OwnedResponse<N>,
     ) -> Result<ResponseBody<'a, R>, Error> {
         if let Some(buf2) = self.buf2.borrow_mut().take() {
             buf2.set_inner(resp.into_buf());
@@ -585,7 +595,7 @@ impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
 }
 
 pub struct Finished {
-    inner: http1::ClientFinished,
+    inner: protocol::ClientFinished,
 }
 
 impl Finished {
@@ -600,7 +610,7 @@ pub struct FinishedKeepHeader<'a> {
 }
 
 impl<'a> FinishedKeepHeader<'a> {
-    pub fn discard_header<const N: usize>(self, resp: http1::OwnedResponse<N>) -> Finished {
+    pub fn discard_header<const N: usize>(self, resp: protocol::OwnedResponse<N>) -> Finished {
         self.buf2.set_inner(resp.into_buf());
         self.buf2.clear();
 
