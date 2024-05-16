@@ -18,10 +18,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
-use crate::buffer::{
-    write_vectored_offset, write_vectored_offset_async, FilledBuf, LimitBufs, VECTORED_MAX,
-};
-use crate::future::AsyncWrite;
+use crate::buffer::{write_vectored_offset, FilledBuf, LimitBufs, VECTORED_MAX};
 use arrayvec::ArrayVec;
 use std::cmp;
 use std::convert::TryFrom;
@@ -345,76 +342,6 @@ fn write_chunk<W: Write>(
         out.push(footer);
 
         write_vectored_offset(dest, out.as_slice(), chunkv.sent)?
-    };
-
-    chunkv.sent += size;
-
-    if chunkv.sent < total {
-        return Ok(0);
-    }
-
-    *chunk = None;
-
-    Ok(data_size)
-}
-
-// writes src to dest as chunks. current chunk state is passed in
-async fn write_chunk_async<W: AsyncWrite>(
-    content: &[&[u8]],
-    footer: &[u8],
-    dest: &mut W,
-    chunk: &mut Option<Chunk>,
-    max_size: usize,
-) -> Result<usize, io::Error> {
-    assert!(max_size <= CHUNK_SIZE_MAX);
-
-    let mut content_len = 0;
-    for buf in content.iter() {
-        content_len += buf.len();
-    }
-
-    if chunk.is_none() {
-        let size = cmp::min(content_len, max_size);
-
-        let mut h = [0; CHUNK_HEADER_SIZE_MAX];
-
-        let h_len = {
-            let mut c = io::Cursor::new(&mut h[..]);
-            write!(&mut c, "{:x}\r\n", size).unwrap();
-
-            c.position() as usize
-        };
-
-        *chunk = Some(Chunk {
-            header: h,
-            header_len: h_len,
-            size,
-            sent: 0,
-        });
-    }
-
-    let chunkv = chunk.as_mut().unwrap();
-
-    let cheader = &chunkv.header[..chunkv.header_len];
-    let data_size = chunkv.size;
-
-    let total = cheader.len() + data_size + footer.len();
-
-    let mut content = ArrayVec::<&[u8], { VECTORED_MAX - 2 }>::try_from(content).unwrap();
-    let content = content.as_mut_slice().limit(data_size);
-
-    let size = {
-        let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
-
-        out.push(cheader);
-
-        for buf in content.as_slice() {
-            out.push(buf);
-        }
-
-        out.push(footer);
-
-        write_vectored_offset_async(dest, out.as_slice(), chunkv.sent).await?
     };
 
     chunkv.sent += size;
@@ -814,6 +741,7 @@ impl<'buf, 'headers> ServerProtocol {
         self.persistent
     }
 
+    #[cfg(test)]
     pub fn recv_request(
         &mut self,
         rbuf: &mut io::Cursor<&'buf [u8]>,
@@ -1156,80 +1084,6 @@ impl<'buf, 'headers> ServerProtocol {
                 &mut self.sending_chunk,
                 CHUNK_SIZE_MAX,
             )?;
-
-            if self.sending_chunk.is_none() {
-                self.state = ServerState::Finished;
-            }
-        }
-
-        Ok(content_written)
-    }
-
-    pub async fn send_body_async<W: AsyncWrite>(
-        &mut self,
-        writer: &mut W,
-        src: &[&[u8]],
-        end: bool,
-        headers: Option<&[u8]>,
-    ) -> Result<usize, Error> {
-        assert_eq!(self.state, ServerState::SendingBody);
-
-        let mut src_len = 0;
-        for buf in src.iter() {
-            src_len += buf.len();
-        }
-
-        if let BodySize::NoBody = self.body_size {
-            // ignore the data
-
-            if end {
-                self.state = ServerState::Finished;
-            }
-
-            return Ok(src_len);
-        }
-
-        if !self.chunked {
-            let size = write_vectored_offset_async(writer, src, 0).await?;
-
-            if end && size >= src_len {
-                self.state = ServerState::Finished;
-            }
-
-            return Ok(size);
-        }
-
-        // chunked
-
-        let mut content_written = 0;
-
-        if src_len > 0 {
-            content_written = write_chunk_async(
-                src,
-                CHUNK_FOOTER,
-                writer,
-                &mut self.sending_chunk,
-                CHUNK_SIZE_MAX,
-            )
-            .await?;
-        }
-
-        // if all content is written then we can send the closing chunk
-        if end && content_written >= src_len {
-            let footer = if let Some(headers) = headers {
-                headers
-            } else {
-                CHUNK_FOOTER
-            };
-
-            write_chunk_async(
-                &[b""],
-                footer,
-                writer,
-                &mut self.sending_chunk,
-                CHUNK_SIZE_MAX,
-            )
-            .await?;
 
             if self.sending_chunk.is_none() {
                 self.state = ServerState::Finished;
@@ -1627,6 +1481,7 @@ pub struct ClientResponseBody {
 }
 
 impl ClientResponseBody {
+    #[cfg(test)]
     pub fn size(&self) -> BodySize {
         self.state.body_size
     }

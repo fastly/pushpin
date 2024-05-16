@@ -39,8 +39,7 @@ use crate::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
 use crate::core::http1::Error as CoreHttpError;
-use crate::core::http1::{client, server};
-use crate::core::http1::{RecvStatus, SendStatus};
+use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
 use crate::counter::Counter;
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
@@ -48,7 +47,6 @@ use crate::future::{
     AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf, Select2, Select3, Select4,
     StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
 };
-use crate::http1;
 use crate::net::SocketAddr;
 use crate::pool::Pool;
 use crate::reactor::Reactor;
@@ -336,8 +334,6 @@ enum Error {
     #[allow(dead_code)]
     Utf8(str::Utf8Error),
     #[allow(dead_code)]
-    Http(http1::Error),
-    #[allow(dead_code)]
     CoreHttp(CoreHttpError),
     #[allow(dead_code)]
     WebSocket(websocket::Error),
@@ -420,12 +416,6 @@ impl<T> From<mpsc::TrySendError<T>> for Error {
         };
 
         Self::Io(io::Error::from(kind))
-    }
-}
-
-impl From<http1::Error> for Error {
-    fn from(e: http1::Error) -> Self {
-        Self::Http(e)
     }
 }
 
@@ -1315,7 +1305,7 @@ async fn send_error_response<'a, R: AsyncRead, W: AsyncWrite>(
     let mut body: ArrayVec<u8, 512> = ArrayVec::new();
 
     let code = match e {
-        Error::CoreHttp(CoreHttpError::Http(e)) => {
+        Error::CoreHttp(CoreHttpError::Protocol(e)) => {
             writeln!(&mut body, "Failed to parse request: {}", e)?;
 
             400
