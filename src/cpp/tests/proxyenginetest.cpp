@@ -52,8 +52,6 @@ namespace {
 
 class Wrapper : public QObject
 {
-	Q_OBJECT
-
 public:
 	QZmq::Socket *zhttpClientOutSock;
 	QZmq::Socket *zhttpClientOutStreamSock;

@@ -26,8 +26,6 @@
 
 class PublishFormatTest : public QObject
 {
-	Q_OBJECT
-
 private slots:
 	void responseFormat()
 	{
@@ -143,4 +141,3 @@ int publishformat_test(int argc, char **argv)
 
 }
 
-#include "publishformattest.moc"
