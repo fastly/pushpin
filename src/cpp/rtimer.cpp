@@ -1,6 +1,6 @@
 /* 
-* Copyright (C) 2021 Fanout, Inc.
-* Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2021 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -168,7 +168,7 @@ void TimerManager::updateTimeout(qint64 currentTime)
 	}
 }
 
-static std::unique_ptr<TimerManager> g_manager = nullptr;
+static std::unique_ptr<TimerManager> g_manager;
 
 RTimer::RTimer() :
 	singleShot_(false),
@@ -251,5 +251,4 @@ void RTimer::init(int capacity)
 void RTimer::deinit()
 {
 	g_manager.reset();
-	g_manager = 0;
 }
