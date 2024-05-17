@@ -385,9 +385,7 @@ public:
 		if(keepAliveTimer)
 		{
 			keepAliveConnection.disconnect();
-			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
-			keepAliveTimer = 0;
+			keepAliveTimer->deinit();
 		}
 	}
 

@@ -244,12 +244,10 @@ public:
 		updateManager->unregisterSession(q);
 
 		timerConnection.disconnect();
-		timer->setParent(0);
-		timer->deleteLater();
+		timer->deinit();
 
 		retryTimerConnection.disconnect();
-		retryTimer->setParent(0);
-		retryTimer->deleteLater();
+		retryTimer->deinit();
 	}
 
 	void start()

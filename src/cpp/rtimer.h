@@ -24,17 +24,14 @@
 #ifndef RTIMER_H
 #define RTIMER_H
 
-#include <qobject.h>
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
 
 class TimerManager;
 
-class RTimer : public QObject
+class RTimer
 {
-	Q_OBJECT
-
 public:
 	RTimer();
 	~RTimer();
@@ -45,6 +42,7 @@ public:
 	void start(int msec);
 	void start();
 	void stop();
+	void disconnect();
 
 	// initialization is thread local
 	static void init(int capacity);

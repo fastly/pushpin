@@ -150,17 +150,13 @@ public:
 		if(expireTimer)
 		{
 			expireTimerConnection.disconnect();
-			expireTimer->setParent(0);
-			expireTimer->deleteLater();
-			expireTimer = 0;
+			expireTimer->deinit();
 		}
 
 		if(keepAliveTimer)
 		{
 			keppAliveTimerConnection.disconnect();
-			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
-			keepAliveTimer = 0;
+			keepAliveTimer->deinit();
 		}
 
 		if(manager)
