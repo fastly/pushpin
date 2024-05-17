@@ -17,11 +17,11 @@
 
 use crate::buffer::{Buffer, ContiguousBuffer, VecRingBuffer, VECTORED_MAX};
 use crate::core::http1::error::Error;
+use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
 use crate::future::{
     select_2, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, Select2, StdWriteWrapper, WriteHalf,
 };
-use crate::http1;
 use crate::pin;
 use std::cell::{Cell, RefCell};
 use std::io::{self, Write};
@@ -33,7 +33,7 @@ struct RequestInner<'a, R: AsyncRead, W: AsyncWrite> {
     w: WriteHalf<'a, W>,
     buf1: &'a mut VecRingBuffer,
     buf2: &'a mut VecRingBuffer,
-    protocol: http1::ServerProtocol,
+    protocol: protocol::ServerProtocol,
     send_is_dirty: bool,
 }
 
@@ -53,7 +53,7 @@ impl Request {
                     w: stream.1,
                     buf1,
                     buf2,
-                    protocol: http1::ServerProtocol::new(),
+                    protocol: protocol::ServerProtocol::new(),
                     send_is_dirty: false,
                 }),
             },
@@ -78,17 +78,17 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
     // read from stream into buf, and parse buf as a request header
     pub async fn recv<'c, const N: usize>(
         self,
-        mut scratch: &'c mut http1::ParseScratch<N>,
+        mut scratch: &'c mut ParseScratch<N>,
     ) -> Result<
         (
-            http1::OwnedRequest<'c, N>,
+            protocol::OwnedRequest<'c, N>,
             RequestBodyKeepHeader<'a, 'b, R, W>,
         ),
         Error,
     > {
         assert_eq!(
             self.inner.protocol.state(),
-            http1::ServerState::ReceivingRequest
+            protocol::ServerState::ReceivingRequest
         );
 
         let size_limit = self.inner.buf1.remaining_capacity();
@@ -98,14 +98,14 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
                 let hbuf = self.inner.buf1.take_inner();
 
                 match self.inner.protocol.recv_request_owned(hbuf, scratch) {
-                    http1::ParseStatus::Complete(req) => break req,
-                    http1::ParseStatus::Incomplete((), hbuf, ret_scratch) => {
+                    ParseStatus::Complete(req) => break req,
+                    ParseStatus::Incomplete((), hbuf, ret_scratch) => {
                         // NOTE: after polonius it may not be necessary for
                         // scratch to be returned
                         scratch = ret_scratch;
                         self.inner.buf1.set_inner(hbuf);
                     }
-                    http1::ParseStatus::Error(e, hbuf, _) => {
+                    ParseStatus::Error(e, hbuf, _) => {
                         self.inner.buf1.set_inner(hbuf);
 
                         return Err(e.into());
@@ -123,8 +123,8 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
         };
 
         assert!([
-            http1::ServerState::ReceivingBody,
-            http1::ServerState::AwaitingResponse
+            protocol::ServerState::ReceivingBody,
+            protocol::ServerState::AwaitingResponse
         ]
         .contains(&self.inner.protocol.state()));
 
@@ -165,7 +165,7 @@ struct RequestBodyInner<'a, 'b, R: AsyncRead, W: AsyncWrite> {
     r: &'b mut ReadHalf<'a, R>,
     w: &'b mut WriteHalf<'a, W>,
     buf1: &'b mut VecRingBuffer,
-    protocol: &'b mut http1::ServerProtocol,
+    protocol: &'b mut protocol::ServerProtocol,
     need_send_100: bool,
     send_is_dirty: &'b mut bool,
 }
@@ -205,7 +205,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
 
             if let Some(inner) = b_inner.take() {
                 let (read, written, done) =
-                    if inner.protocol.state() == http1::ServerState::ReceivingBody {
+                    if inner.protocol.state() == protocol::ServerState::ReceivingBody {
                         let mut buf = io::Cursor::new(Buffer::read_buf(inner.buf1));
 
                         let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
@@ -221,7 +221,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
                         (
                             read,
                             written,
-                            inner.protocol.state() == http1::ServerState::AwaitingResponse,
+                            inner.protocol.state() == protocol::ServerState::AwaitingResponse,
                         )
                     } else {
                         (0, 0, true)
@@ -229,7 +229,10 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
 
                 if done {
                     inner.buf1.read_commit(read);
-                    assert_eq!(inner.protocol.state(), http1::ServerState::AwaitingResponse);
+                    assert_eq!(
+                        inner.protocol.state(),
+                        protocol::ServerState::AwaitingResponse
+                    );
 
                     *b_inner = None;
 
@@ -312,7 +315,7 @@ pub struct RequestBodyKeepHeader<'a, 'b, R: AsyncRead, W: AsyncWrite> {
 impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBodyKeepHeader<'a, 'b, R, W> {
     pub fn discard_header<const N: usize>(
         mut self,
-        req: http1::OwnedRequest<N>,
+        req: protocol::OwnedRequest<N>,
     ) -> RequestBody<'a, 'b, R, W> {
         let inner = self.inner.take().unwrap();
 
@@ -373,8 +376,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Response<'a, R, W> {
         &mut self,
         code: u16,
         reason: &str,
-        headers: &[http1::Header<'_>],
-        body_size: http1::BodySize,
+        headers: &[Header<'_>],
+        body_size: BodySize,
         state: &'b mut ResponseState<'a, R, W>,
     ) -> Result<
         (
@@ -388,7 +391,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Response<'a, R, W> {
             None => return Err(Error::Unusable),
         };
 
-        if inner.protocol.state() == http1::ServerState::ReceivingRequest {
+        if inner.protocol.state() == protocol::ServerState::ReceivingRequest {
             inner.protocol.skip_recv_request();
         }
 
@@ -437,7 +440,7 @@ struct ResponseStateInner<'a, R: AsyncRead, W: AsyncWrite> {
     w: RefCell<WriteHalf<'a, W>>,
     buf1: &'a mut VecRingBuffer,
     buf2: RefCell<LimitedRingBuffer<'a>>,
-    protocol: http1::ServerProtocol,
+    protocol: protocol::ServerProtocol,
     overflow: RefCell<Option<ContiguousBuffer>>,
     end: Cell<bool>,
 }
@@ -586,7 +589,7 @@ struct ResponseBodyRead<'a, R: AsyncRead> {
 struct ResponseBodyWrite<'a, W: AsyncWrite> {
     stream: WriteHalf<'a, W>,
     buf: &'a mut VecRingBuffer,
-    protocol: http1::ServerProtocol,
+    protocol: protocol::ServerProtocol,
     end: bool,
     block_size: usize,
 }
@@ -678,7 +681,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
 
             w.buf.read_commit(size);
 
-            w.protocol.state() == http1::ServerState::Finished
+            w.protocol.state() == protocol::ServerState::Finished
         };
 
         if done {
@@ -712,7 +715,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
                         return None;
                     }
 
-                    assert_eq!(w.protocol.state(), http1::ServerState::SendingBody);
+                    assert_eq!(w.protocol.state(), protocol::ServerState::SendingBody);
 
                     if w.buf.len() == 0 && !w.end {
                         return Some(Ok(0));
@@ -731,7 +734,9 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
                         None,
                     ) {
                         Ok(size) => Some(Ok(size)),
-                        Err(http1::Error::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => None,
+                        Err(protocol::Error::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
+                            None
+                        }
                         Err(e) => Some(Err(e.into())),
                     }
                 },
@@ -765,7 +770,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
 }
 
 pub struct Finished {
-    protocol: http1::ServerProtocol,
+    protocol: protocol::ServerProtocol,
 }
 
 impl Finished {
@@ -871,13 +876,13 @@ mod tests {
 
                 let header = req.recv_header(&mut resp);
 
-                let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
                 let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
 
                 let req_ref = req_header.get();
                 assert_eq!(req_ref.method, "POST");
                 assert_eq!(req_ref.uri, "/path");
-                assert_eq!(req_ref.body_size, http1::BodySize::Known(6));
+                assert_eq!(req_ref.body_size, BodySize::Known(6));
 
                 let req_body = req_body.discard_header(req_header);
 
@@ -893,16 +898,11 @@ mod tests {
                 assert_eq!(str::from_utf8(buf).unwrap(), "hello\n");
 
                 let mut state = ResponseState::default();
-                let (header, prepare_body) = match resp.prepare_header(
-                    200,
-                    "OK",
-                    &[],
-                    http1::BodySize::Known(6),
-                    &mut state,
-                ) {
-                    Ok(ret) => ret,
-                    Err(_) => unreachable!(),
-                };
+                let (header, prepare_body) =
+                    match resp.prepare_header(200, "OK", &[], BodySize::Known(6), &mut state) {
+                        Ok(ret) => ret,
+                        Err(_) => unreachable!(),
+                    };
 
                 let sent = header.send().await.unwrap();
 
@@ -946,16 +946,11 @@ mod tests {
                 let (_req, mut resp) = Request::new(io_split(&stream), &mut buf1, &mut buf2);
 
                 let mut state = ResponseState::default();
-                let (header, prepare_body) = match resp.prepare_header(
-                    200,
-                    "OK",
-                    &[],
-                    http1::BodySize::Known(6),
-                    &mut state,
-                ) {
-                    Ok(ret) => ret,
-                    Err(_) => unreachable!(),
-                };
+                let (header, prepare_body) =
+                    match resp.prepare_header(200, "OK", &[], BodySize::Known(6), &mut state) {
+                        Ok(ret) => ret,
+                        Err(_) => unreachable!(),
+                    };
 
                 let sent = header.send().await.unwrap();
 
@@ -1000,28 +995,23 @@ mod tests {
 
                 let header = req.recv_header(&mut resp);
 
-                let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
                 let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
 
                 let req_ref = req_header.get();
                 assert_eq!(req_ref.method, "POST");
                 assert_eq!(req_ref.uri, "/path");
-                assert_eq!(req_ref.body_size, http1::BodySize::Known(6));
+                assert_eq!(req_ref.body_size, BodySize::Known(6));
 
                 let req_body = req_body.discard_header(req_header);
                 drop(req_body);
 
                 let mut state = ResponseState::default();
-                let (header, prepare_body) = match resp.prepare_header(
-                    200,
-                    "OK",
-                    &[],
-                    http1::BodySize::Known(6),
-                    &mut state,
-                ) {
-                    Ok(ret) => ret,
-                    Err(_) => unreachable!(),
-                };
+                let (header, prepare_body) =
+                    match resp.prepare_header(200, "OK", &[], BodySize::Known(6), &mut state) {
+                        Ok(ret) => ret,
+                        Err(_) => unreachable!(),
+                    };
 
                 let sent = header.send().await.unwrap();
 
@@ -1075,7 +1065,7 @@ mod tests {
 
                 let header = req.recv_header(&mut resp);
 
-                let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
                 let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
                 let req_body = req_body.discard_header(req_header);
                 drop(req_body);
@@ -1083,16 +1073,11 @@ mod tests {
                 let mut state = ResponseState::default();
 
                 // this will serialize to 39 bytes, leaving 25 bytes left
-                let (header, mut prepare_body) = match resp.prepare_header(
-                    200,
-                    "OK",
-                    &[],
-                    http1::BodySize::Known(64),
-                    &mut state,
-                ) {
-                    Ok(ret) => ret,
-                    Err(_) => unreachable!(),
-                };
+                let (header, mut prepare_body) =
+                    match resp.prepare_header(200, "OK", &[], BodySize::Known(64), &mut state) {
+                        Ok(ret) => ret,
+                        Err(_) => unreachable!(),
+                    };
 
                 // only the first 64 bytes will fit
                 assert_eq!(

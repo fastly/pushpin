@@ -18,10 +18,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
-use crate::buffer::{
-    write_vectored_offset, write_vectored_offset_async, FilledBuf, LimitBufs, VECTORED_MAX,
-};
-use crate::future::AsyncWrite;
+use crate::buffer::{write_vectored_offset, FilledBuf, LimitBufs, VECTORED_MAX};
 use arrayvec::ArrayVec;
 use std::cmp;
 use std::convert::TryFrom;
@@ -345,76 +342,6 @@ fn write_chunk<W: Write>(
         out.push(footer);
 
         write_vectored_offset(dest, out.as_slice(), chunkv.sent)?
-    };
-
-    chunkv.sent += size;
-
-    if chunkv.sent < total {
-        return Ok(0);
-    }
-
-    *chunk = None;
-
-    Ok(data_size)
-}
-
-// writes src to dest as chunks. current chunk state is passed in
-async fn write_chunk_async<W: AsyncWrite>(
-    content: &[&[u8]],
-    footer: &[u8],
-    dest: &mut W,
-    chunk: &mut Option<Chunk>,
-    max_size: usize,
-) -> Result<usize, io::Error> {
-    assert!(max_size <= CHUNK_SIZE_MAX);
-
-    let mut content_len = 0;
-    for buf in content.iter() {
-        content_len += buf.len();
-    }
-
-    if chunk.is_none() {
-        let size = cmp::min(content_len, max_size);
-
-        let mut h = [0; CHUNK_HEADER_SIZE_MAX];
-
-        let h_len = {
-            let mut c = io::Cursor::new(&mut h[..]);
-            write!(&mut c, "{:x}\r\n", size).unwrap();
-
-            c.position() as usize
-        };
-
-        *chunk = Some(Chunk {
-            header: h,
-            header_len: h_len,
-            size,
-            sent: 0,
-        });
-    }
-
-    let chunkv = chunk.as_mut().unwrap();
-
-    let cheader = &chunkv.header[..chunkv.header_len];
-    let data_size = chunkv.size;
-
-    let total = cheader.len() + data_size + footer.len();
-
-    let mut content = ArrayVec::<&[u8], { VECTORED_MAX - 2 }>::try_from(content).unwrap();
-    let content = content.as_mut_slice().limit(data_size);
-
-    let size = {
-        let mut out = ArrayVec::<&[u8], VECTORED_MAX>::new();
-
-        out.push(cheader);
-
-        for buf in content.as_slice() {
-            out.push(buf);
-        }
-
-        out.push(footer);
-
-        write_vectored_offset_async(dest, out.as_slice(), chunkv.sent).await?
     };
 
     chunkv.sent += size;
@@ -759,7 +686,7 @@ pub enum ServerState {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    ParseError(#[from] httparse::Error),
+    Parse(#[from] httparse::Error),
 
     #[error("invalid content length")]
     InvalidContentLength,
@@ -814,6 +741,7 @@ impl<'buf, 'headers> ServerProtocol {
         self.persistent
     }
 
+    #[cfg(test)]
     pub fn recv_request(
         &mut self,
         rbuf: &mut io::Cursor<&'buf [u8]>,
@@ -828,7 +756,7 @@ impl<'buf, 'headers> ServerProtocol {
         let size = match req.parse(buf) {
             Ok(httparse::Status::Complete(size)) => size,
             Ok(httparse::Status::Partial) => return None,
-            Err(e) => return Some(Err(Error::ParseError(e))),
+            Err(e) => return Some(Err(Error::Parse(e))),
         };
 
         let expect_100 = match self.process_request(&req) {
@@ -860,7 +788,7 @@ impl<'buf, 'headers> ServerProtocol {
                 return ParseStatus::Incomplete((), rbuf, scratch)
             }
             ParseStatus::Error(e, rbuf, scratch) => {
-                return ParseStatus::Error(Error::ParseError(e), rbuf, scratch)
+                return ParseStatus::Error(Error::Parse(e), rbuf, scratch)
             }
         };
 
@@ -973,7 +901,7 @@ impl<'buf, 'headers> ServerProtocol {
                                 return Ok((size, None));
                             }
                             Err(e) => {
-                                return Err(Error::ParseError(e));
+                                return Err(Error::Parse(e));
                             }
                         }
 
@@ -1156,80 +1084,6 @@ impl<'buf, 'headers> ServerProtocol {
                 &mut self.sending_chunk,
                 CHUNK_SIZE_MAX,
             )?;
-
-            if self.sending_chunk.is_none() {
-                self.state = ServerState::Finished;
-            }
-        }
-
-        Ok(content_written)
-    }
-
-    pub async fn send_body_async<W: AsyncWrite>(
-        &mut self,
-        writer: &mut W,
-        src: &[&[u8]],
-        end: bool,
-        headers: Option<&[u8]>,
-    ) -> Result<usize, Error> {
-        assert_eq!(self.state, ServerState::SendingBody);
-
-        let mut src_len = 0;
-        for buf in src.iter() {
-            src_len += buf.len();
-        }
-
-        if let BodySize::NoBody = self.body_size {
-            // ignore the data
-
-            if end {
-                self.state = ServerState::Finished;
-            }
-
-            return Ok(src_len);
-        }
-
-        if !self.chunked {
-            let size = write_vectored_offset_async(writer, src, 0).await?;
-
-            if end && size >= src_len {
-                self.state = ServerState::Finished;
-            }
-
-            return Ok(size);
-        }
-
-        // chunked
-
-        let mut content_written = 0;
-
-        if src_len > 0 {
-            content_written = write_chunk_async(
-                src,
-                CHUNK_FOOTER,
-                writer,
-                &mut self.sending_chunk,
-                CHUNK_SIZE_MAX,
-            )
-            .await?;
-        }
-
-        // if all content is written then we can send the closing chunk
-        if end && content_written >= src_len {
-            let footer = if let Some(headers) = headers {
-                headers
-            } else {
-                CHUNK_FOOTER
-            };
-
-            write_chunk_async(
-                &[b""],
-                footer,
-                writer,
-                &mut self.sending_chunk,
-                CHUNK_SIZE_MAX,
-            )
-            .await?;
 
             if self.sending_chunk.is_none() {
                 self.state = ServerState::Finished;
@@ -1536,7 +1390,7 @@ impl ClientResponse {
                 return ParseStatus::Incomplete(self, rbuf, scratch)
             }
             ParseStatus::Error(e, rbuf, scratch) => {
-                return ParseStatus::Error(Error::ParseError(e), rbuf, scratch)
+                return ParseStatus::Error(Error::Parse(e), rbuf, scratch)
             }
         };
 
@@ -1627,6 +1481,7 @@ pub struct ClientResponseBody {
 }
 
 impl ClientResponseBody {
+    #[cfg(test)]
     pub fn size(&self) -> BodySize {
         self.state.body_size
     }
@@ -1808,7 +1663,7 @@ impl ClientResponseBody {
                         return Ok(RecvStatus::Read(self, pos, size));
                     }
                     Err(e) => {
-                        return Err(Error::ParseError(e));
+                        return Err(Error::Parse(e));
                     }
                 }
             } else {
@@ -2417,7 +2272,7 @@ mod tests {
             Test {
                 name: "parse-error",
                 data: "G\n",
-                result: Some(Err(Error::ParseError(httparse::Error::Token))),
+                result: Some(Err(Error::Parse(httparse::Error::Token))),
                 state: ServerState::ReceivingRequest,
                 ver_min: 0,
                 chunk_left: None,
@@ -2902,7 +2757,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Err(Error::ParseError(httparse::Error::Token)),
+                result: Err(Error::Parse(httparse::Error::Token)),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
@@ -4533,7 +4388,7 @@ mod tests {
             Test {
                 name: "parse-error",
                 data: "H\n",
-                result: Some(Err(Error::ParseError(httparse::Error::Token))),
+                result: Some(Err(Error::Parse(httparse::Error::Token))),
                 ver_min: 0,
                 chunk_left: None,
                 persistent: false,
@@ -5098,7 +4953,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Err(Error::ParseError(httparse::Error::Token)),
+                result: Err(Error::Parse(httparse::Error::Token)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
                 rbuf_position: 3,

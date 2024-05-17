@@ -34,7 +34,6 @@ pub mod event;
 pub mod executor;
 pub mod ffi;
 pub mod future;
-pub mod http1;
 pub mod jwt;
 pub mod list;
 pub mod listener;

@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-use crate::http1;
+use crate::core::http1::protocol;
 use std::io;
 
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
-    Http(http1::Error),
+    Protocol(protocol::Error),
     RequestTooLarge(usize),
     ResponseTooLarge(usize),
     ResponseDuringContinue,
@@ -35,8 +35,8 @@ impl From<io::Error> for Error {
     }
 }
 
-impl From<http1::Error> for Error {
-    fn from(e: http1::Error) -> Self {
-        Self::Http(e)
+impl From<protocol::Error> for Error {
+    fn from(e: protocol::Error) -> Self {
+        Self::Protocol(e)
     }
 }
