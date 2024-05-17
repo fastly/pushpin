@@ -45,11 +45,9 @@ static void setupChild()
 
 class ServiceProcess : public QProcess
 {
-	Q_OBJECT
-
 public:
-	ServiceProcess(QObject *parent = 0) :
-		QProcess(parent)
+	ServiceProcess() :
+		QProcess()
 	{
 #if QT_VERSION >= 0x060000
 		setChildProcessModifier(setupChild);
@@ -84,7 +82,7 @@ public:
 	QString name;
 	QString outputFile;
 	QString pidFile;
-	QProcess *proc;
+	std::unique_ptr<QProcess> proc;
 	bool terminateAfterStarted;
 	bool sentKill;
 	QTimer *timer;
@@ -93,7 +91,6 @@ public:
 		QObject(_q),
 		q(_q),
 		state(NotStarted),
-		proc(0),
 		terminateAfterStarted(false),
 		sentKill(false)
 	{
@@ -147,12 +144,12 @@ public:
 
 	void start()
 	{
-		proc = new ServiceProcess(this);
+		proc = std::make_unique<ServiceProcess>();
 
-		connect(proc, &QProcess::started, this, &Private::proc_started);
-		connect(proc, &QProcess::readyReadStandardOutput, this, &Private::proc_readyRead);
-		connect(proc, static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), this, &Private::proc_finished);
-		connect(proc, static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::errorOccurred), this, &Private::proc_errorOccurred);
+		connect(proc.get(), &QProcess::started, this, &Private::proc_started);
+		connect(proc.get(), &QProcess::readyReadStandardOutput, this, &Private::proc_readyRead);
+		connect(proc.get(), static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished), this, &Private::proc_finished);
+		connect(proc.get(), static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::errorOccurred), this, &Private::proc_errorOccurred);
 
 		proc->setProcessChannelMode(QProcess::MergedChannels);
 		proc->setReadChannel(QProcess::StandardOutput);
