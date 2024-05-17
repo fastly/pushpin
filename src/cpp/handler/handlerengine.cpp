@@ -126,16 +126,13 @@ public:
 	LastIds lastIds;
 	map<Deferred*, Connection> finishedConnection;
 
-	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll, QObject *parent = 0) :
-		Deferred(parent),
+	InspectWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, bool _shareAll) :
 		req(_req),
 		stateClient(_stateClient),
 		shareAll(_shareAll),
 		truncated(false),
 		autoShare(false)
 	{
-		req->setParent(this);
-
 		if(req->method() == "inspect")
 		{
 			QVariantHash args = req->args();
@@ -1252,7 +1249,7 @@ public:
 	HttpSessionUpdateManager *httpSessionUpdateManager;
 	Sequencer *sequencer;
 	CommonState cs;
-	QSet<InspectWorker*> inspectWorkers;
+	std::map<InspectWorker*, std::unique_ptr<InspectWorker>> inspectWorkersMap;
 	QSet<AcceptWorker*> acceptWorkers;
 	QSet<Deferred*> deferreds;
 	std::map<Deferred*, std::unique_ptr<Deferred>> deferredMap;
@@ -1315,7 +1312,6 @@ public:
 
 	~Private()
 	{
-		qDeleteAll(inspectWorkers);
 		qDeleteAll(acceptWorkers);
 		qDeleteAll(deferreds);
 		qDeleteAll(cs.wsSessions);
@@ -1970,16 +1966,16 @@ private:
 
 	void inspectServer_requestReady()
 	{
-		if(inspectWorkers.count() >= INSPECT_WORKERS_MAX)
+		if(inspectWorkersMap.size() >= INSPECT_WORKERS_MAX)
 			return;
 
 		ZrpcRequest *req = inspectServer->takeNext();
 		if(!req)
 			return;
 
-		InspectWorker *w = new InspectWorker(req, stateClient, config.shareAll, this);
-		finishedConnection[w] = w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, boost::placeholders::_1, w));
-		inspectWorkers += w;
+		auto w = std::make_unique<InspectWorker>(req, stateClient, config.shareAll);
+		finishedConnection[w.get()] = w->finished.connect(boost::bind(&Private::inspectWorker_finished, this, boost::placeholders::_1, w.get()));
+		inspectWorkersMap[w.get()] = std::move(w);
 	}
 
 	void acceptServer_requestReady()
@@ -2365,7 +2361,7 @@ private:
 		Q_UNUSED(result);
 
 		finishedConnection.erase(w);
-		inspectWorkers.remove(w);
+		inspectWorkersMap.erase(w);
 
 		// try to read again
 		inspectServer_requestReady();
