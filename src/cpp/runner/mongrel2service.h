@@ -28,8 +28,6 @@
 
 class Mongrel2Service : public Service
 {
-	Q_OBJECT
-
 public:
 	Mongrel2Service(
 		const QString &binFile,
