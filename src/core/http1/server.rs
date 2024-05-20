@@ -31,8 +31,8 @@ use std::str;
 struct RequestInner<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
+    rbuf: &'a mut VecRingBuffer,
+    wbuf: &'a mut VecRingBuffer,
     protocol: protocol::ServerProtocol,
     send_is_dirty: bool,
 }
@@ -51,8 +51,8 @@ impl Request {
                 inner: Some(RequestInner {
                     r: stream.0,
                     w: stream.1,
-                    buf1,
-                    buf2,
+                    rbuf: buf1,
+                    wbuf: buf2,
                     protocol: protocol::ServerProtocol::new(),
                     send_is_dirty: false,
                 }),
@@ -91,29 +91,29 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
             protocol::ServerState::ReceivingRequest
         );
 
-        let size_limit = self.inner.buf1.remaining_capacity();
+        let size_limit = self.inner.rbuf.remaining_capacity();
 
         let req = loop {
             {
-                let hbuf = self.inner.buf1.take_inner();
+                let buf = self.inner.rbuf.take_inner();
 
-                match self.inner.protocol.recv_request_owned(hbuf, scratch) {
+                match self.inner.protocol.recv_request_owned(buf, scratch) {
                     ParseStatus::Complete(req) => break req,
-                    ParseStatus::Incomplete((), hbuf, ret_scratch) => {
+                    ParseStatus::Incomplete((), buf, ret_scratch) => {
                         // NOTE: after polonius it may not be necessary for
                         // scratch to be returned
                         scratch = ret_scratch;
-                        self.inner.buf1.set_inner(hbuf);
+                        self.inner.rbuf.set_inner(buf);
                     }
-                    ParseStatus::Error(e, hbuf, _) => {
-                        self.inner.buf1.set_inner(hbuf);
+                    ParseStatus::Error(e, buf, _) => {
+                        self.inner.rbuf.set_inner(buf);
 
                         return Err(e.into());
                     }
                 }
             }
 
-            if let Err(e) = recv_nonzero(&mut self.inner.r, self.inner.buf1).await {
+            if let Err(e) = recv_nonzero(&mut self.inner.r, self.inner.rbuf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
                     return Err(Error::RequestTooLarge(size_limit));
                 }
@@ -128,15 +128,15 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
         ]
         .contains(&self.inner.protocol.state()));
 
-        // at this point, req has taken buf1's inner buffer, such that
-        // buf1 has no inner buffer
+        // at this point, req has taken rbuf's inner buffer, such that
+        // rbuf has no inner buffer
 
-        // put remaining readable bytes in buf2
-        self.inner.buf2.write_all(req.remaining_bytes())?;
+        // put remaining readable bytes in wbuf
+        self.inner.wbuf.write_all(req.remaining_bytes())?;
 
-        // swap inner buffers, such that buf1 now contains the remaining
-        // readable bytes, and buf2 is now the one with no inner buffer
-        self.inner.buf1.swap_inner(self.inner.buf2);
+        // swap inner buffers, such that rbuf now contains the remaining
+        // readable bytes, and wbuf is now the one with no inner buffer
+        self.inner.rbuf.swap_inner(self.inner.wbuf);
 
         let need_send_100 = req.get().expect_100;
 
@@ -148,13 +148,13 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
                         inner: RefCell::new(Some(RequestBodyInner {
                             r: &mut self.inner.r,
                             w: &mut self.inner.w,
-                            buf1: self.inner.buf1,
+                            rbuf: self.inner.rbuf,
                             protocol: &mut self.inner.protocol,
                             need_send_100,
                             send_is_dirty: &mut self.inner.send_is_dirty,
                         })),
                     },
-                    buf2: self.inner.buf2,
+                    wbuf: self.inner.wbuf,
                 }),
             },
         ))
@@ -164,7 +164,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
 struct RequestBodyInner<'a, 'b, R: AsyncRead, W: AsyncWrite> {
     r: &'b mut ReadHalf<'a, R>,
     w: &'b mut WriteHalf<'a, W>,
-    buf1: &'b mut VecRingBuffer,
+    rbuf: &'b mut VecRingBuffer,
     protocol: &'b mut protocol::ServerProtocol,
     need_send_100: bool,
     send_is_dirty: &'b mut bool,
@@ -183,7 +183,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
         if let Some(mut inner) = b_inner.take() {
             Self::handle_expect(&mut inner).await?;
 
-            if let Err(e) = recv_nonzero(inner.r, inner.buf1).await {
+            if let Err(e) = recv_nonzero(inner.r, inner.rbuf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
                     return Err(Error::BufferExceeded);
                 }
@@ -206,7 +206,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
             if let Some(inner) = b_inner.take() {
                 let (read, written, done) =
                     if inner.protocol.state() == protocol::ServerState::ReceivingBody {
-                        let mut buf = io::Cursor::new(Buffer::read_buf(inner.buf1));
+                        let mut buf = io::Cursor::new(Buffer::read_buf(inner.rbuf));
 
                         let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
@@ -228,7 +228,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
                     };
 
                 if done {
-                    inner.buf1.read_commit(read);
+                    inner.rbuf.read_commit(read);
                     assert_eq!(
                         inner.protocol.state(),
                         protocol::ServerState::AwaitingResponse
@@ -241,7 +241,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
                     *b_inner = Some(RequestBodyInner {
                         r: inner.r,
                         w: inner.w,
-                        buf1: inner.buf1,
+                        rbuf: inner.rbuf,
                         protocol: inner.protocol,
                         need_send_100: inner.need_send_100,
                         send_is_dirty: inner.send_is_dirty,
@@ -249,12 +249,12 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
 
                     let inner = b_inner.as_mut().unwrap();
 
-                    if read == 0 && written == 0 && !inner.buf1.is_readable_contiguous() {
-                        inner.buf1.align();
+                    if read == 0 && written == 0 && !inner.rbuf.is_readable_contiguous() {
+                        inner.rbuf.align();
                         continue;
                     }
 
-                    inner.buf1.read_commit(read);
+                    inner.rbuf.read_commit(read);
 
                     break Ok(RecvStatus::Read((), written));
                 }
@@ -305,7 +305,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
 
 struct RequestBodyKeepHeaderInner<'a, 'b, R: AsyncRead, W: AsyncWrite> {
     inner: RequestBody<'a, 'b, R, W>,
-    buf2: &'b mut VecRingBuffer,
+    wbuf: &'b mut VecRingBuffer,
 }
 
 pub struct RequestBodyKeepHeader<'a, 'b, R: AsyncRead, W: AsyncWrite> {
@@ -319,8 +319,8 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBodyKeepHeader<'a, 'b, R, W
     ) -> RequestBody<'a, 'b, R, W> {
         let inner = self.inner.take().unwrap();
 
-        inner.buf2.set_inner(req.into_buf());
-        inner.buf2.clear();
+        inner.wbuf.set_inner(req.into_buf());
+        inner.wbuf.clear();
 
         inner.inner
     }
@@ -357,7 +357,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Response<'a, R, W> {
     pub async fn fill_recv_buffer(&mut self) -> Error {
         if let Some(inner) = &mut self.inner {
             loop {
-                if let Err(e) = recv_nonzero(&mut inner.r, inner.buf1).await {
+                if let Err(e) = recv_nonzero(&mut inner.r, inner.rbuf).await {
                     if e.kind() == io::ErrorKind::WriteZero {
                         // if there's no more space, suspend forever
                         std::future::pending::<()>().await;
@@ -395,33 +395,36 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Response<'a, R, W> {
             inner.protocol.skip_recv_request();
         }
 
-        inner.buf2.clear();
-        let size_limit = inner.buf2.capacity();
+        inner.wbuf.clear();
+        let size_limit = inner.wbuf.capacity();
 
-        let mut hbuf = io::Cursor::new(inner.buf2.write_buf());
+        let header_size = {
+            let mut buf = io::Cursor::new(inner.wbuf.write_buf());
 
-        if inner
-            .protocol
-            .send_response(&mut hbuf, code, reason, headers, body_size)
-            .is_err()
-        {
-            // enable prepare_header to be called again
-            inner.buf2.clear();
+            if inner
+                .protocol
+                .send_response(&mut buf, code, reason, headers, body_size)
+                .is_err()
+            {
+                // enable prepare_header to be called again
+                inner.wbuf.clear();
 
-            return Err(Error::ResponseTooLarge(size_limit));
-        }
+                return Err(Error::ResponseTooLarge(size_limit));
+            }
 
-        let header_size = hbuf.position() as usize;
-        inner.buf2.write_commit(header_size);
+            buf.position() as usize
+        };
+
+        inner.wbuf.write_commit(header_size);
 
         let inner = self.inner.take().unwrap();
 
         *state.inner.borrow_mut() = Some(ResponseStateInner {
             r: inner.r,
             w: RefCell::new(inner.w),
-            buf1: inner.buf1,
-            buf2: RefCell::new(LimitedRingBuffer {
-                inner: inner.buf2,
+            rbuf: inner.rbuf,
+            wbuf: RefCell::new(LimitedRingBuffer {
+                inner: inner.wbuf,
                 limit: header_size,
             }),
             protocol: inner.protocol,
@@ -438,8 +441,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Response<'a, R, W> {
 struct ResponseStateInner<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: RefCell<WriteHalf<'a, W>>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: RefCell<LimitedRingBuffer<'a>>,
+    rbuf: &'a mut VecRingBuffer,
+    wbuf: RefCell<LimitedRingBuffer<'a>>,
     protocol: protocol::ServerProtocol,
     overflow: RefCell<Option<ContiguousBuffer>>,
     end: Cell<bool>,
@@ -468,24 +471,24 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponseHeader<'a, 'b, R, W> {
         let state = self.state.borrow();
         let state = state.as_ref().unwrap();
 
-        while state.buf2.borrow().limit > 0 {
+        while state.wbuf.borrow().limit > 0 {
             // ok to hold across await as this is the only place state.w is borrowed
             let mut w = state.w.borrow_mut();
 
             // TODO: vectored write
-            let size = w.write_shared(&state.buf2).await?;
+            let size = w.write_shared(&state.wbuf).await?;
 
-            let mut buf2 = state.buf2.borrow_mut();
-            buf2.inner.read_commit(size);
-            buf2.limit -= size;
+            let mut wbuf = state.wbuf.borrow_mut();
+            wbuf.inner.read_commit(size);
+            wbuf.limit -= size;
         }
 
         let mut overflow = state.overflow.borrow_mut();
 
         if let Some(overflow_ref) = &mut *overflow {
             // overflow is guaranteed to fit
-            let mut buf2 = state.buf2.borrow_mut();
-            buf2.inner.write_all(overflow_ref.read_buf()).unwrap();
+            let mut wbuf = state.wbuf.borrow_mut();
+            wbuf.inner.write_all(overflow_ref.read_buf()).unwrap();
             *overflow = None;
         }
 
@@ -508,13 +511,13 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'a, 'b, R, W> {
             return Err(Error::FurtherInputNotAllowed);
         }
 
-        let buf2 = &mut *state.buf2.borrow_mut();
+        let wbuf = &mut *state.wbuf.borrow_mut();
         let overflow = &mut *state.overflow.borrow_mut();
 
         // workaround for rust 1.77
         #[allow(clippy::unused_io_amount)]
         let accepted = if overflow.is_none() {
-            match buf2.inner.write(src) {
+            match wbuf.inner.write(src) {
                 Ok(size) => size,
                 Err(e) if e.kind() == io::ErrorKind::WriteZero => 0,
                 Err(e) => panic!("infallible buffer write failed: {}", e),
@@ -525,7 +528,7 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'a, 'b, R, W> {
 
         let (size, overflowed) = if accepted < src.len() {
             // only allow overflowing as much as there are header bytes left
-            let overflow = overflow.get_or_insert_with(|| ContiguousBuffer::new(buf2.limit));
+            let overflow = overflow.get_or_insert_with(|| ContiguousBuffer::new(wbuf.limit));
 
             let remaining = &src[accepted..];
             let overflowed = match overflow.write(remaining) {
@@ -560,18 +563,18 @@ impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponseHeaderSent<'a, 'b, R, W> {
     ) -> ResponseBody<'a, R, W> {
         let state = self.state.take().unwrap();
 
-        let buf2 = state.buf2.into_inner();
-        let block_size = buf2.inner.capacity();
+        let wbuf = state.wbuf.into_inner();
+        let block_size = wbuf.inner.capacity();
 
         ResponseBody {
             inner: RefCell::new(Some(ResponseBodyInner {
                 r: RefCell::new(ResponseBodyRead {
                     stream: state.r,
-                    buf: state.buf1,
+                    buf: state.rbuf,
                 }),
                 w: RefCell::new(ResponseBodyWrite {
                     stream: state.w.into_inner(),
-                    buf: buf2.inner,
+                    buf: wbuf.inner,
                     protocol: state.protocol,
                     end: state.end.get(),
                     block_size,
