@@ -63,12 +63,12 @@ pub enum ZmqSocketError {
     SetMode(String, io::Error),
 }
 
-impl ToString for ZmqSocketError {
-    fn to_string(&self) -> String {
+impl fmt::Display for ZmqSocketError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZmqSocketError::Connect(spec, e) => format!("connect {}: {}", spec, e),
-            ZmqSocketError::Bind(spec, e) => format!("bind {}: {}", spec, e),
-            ZmqSocketError::SetMode(spec, e) => format!("set mode {}: {}", spec, e),
+            ZmqSocketError::Connect(spec, e) => write!(f, "connect {}: {}", spec, e),
+            ZmqSocketError::Bind(spec, e) => write!(f, "bind {}: {}", spec, e),
+            ZmqSocketError::SetMode(spec, e) => write!(f, "set mode {}: {}", spec, e),
         }
     }
 }
