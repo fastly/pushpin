@@ -32,8 +32,8 @@ use std::str;
 pub struct Request<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
+    hbuf: &'a mut VecRingBuffer,
+    bbuf: &'a mut VecRingBuffer,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
@@ -45,8 +45,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
         Self {
             r: stream.0,
             w: stream.1,
-            buf1,
-            buf2,
+            hbuf: buf1,
+            bbuf: buf2,
         }
     }
 
@@ -63,23 +63,23 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
     ) -> Result<RequestHeader<'a, R, W>, Error> {
         let req = protocol::ClientRequest::new();
 
-        let size_limit = self.buf1.capacity();
+        let size_limit = self.hbuf.capacity();
 
-        let req_body = match req.send_header(self.buf1, method, uri, headers, body_size, websocket)
+        let req_body = match req.send_header(self.hbuf, method, uri, headers, body_size, websocket)
         {
             Ok(ret) => ret,
             Err(_) => return Err(Error::RequestTooLarge(size_limit)),
         };
 
-        if self.buf2.write_all(initial_body).is_err() {
+        if self.bbuf.write_all(initial_body).is_err() {
             return Err(Error::BufferExceeded);
         }
 
         Ok(RequestHeader {
             r: self.r,
             w: self.w,
-            buf1: self.buf1,
-            buf2: self.buf2,
+            hbuf: self.hbuf,
+            bbuf: self.bbuf,
             req_body,
             end,
         })
@@ -89,30 +89,30 @@ impl<'a, R: AsyncRead, W: AsyncWrite> Request<'a, R, W> {
 pub struct RequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
     r: ReadHalf<'a, R>,
     w: WriteHalf<'a, W>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
+    hbuf: &'a mut VecRingBuffer,
+    bbuf: &'a mut VecRingBuffer,
     req_body: protocol::ClientRequestBody,
     end: bool,
 }
 
 impl<'a, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, R, W> {
     pub async fn send(mut self) -> Result<RequestBody<'a, R, W>, Error> {
-        while self.buf1.len() > 0 {
-            let size = self.w.write(Buffer::read_buf(self.buf1)).await?;
-            self.buf1.read_commit(size);
+        while self.hbuf.len() > 0 {
+            let size = self.w.write(Buffer::read_buf(self.hbuf)).await?;
+            self.hbuf.read_commit(size);
         }
 
-        let block_size = self.buf2.capacity();
+        let block_size = self.bbuf.capacity();
 
         Ok(RequestBody {
             inner: RefCell::new(Some(RequestBodyInner {
                 r: RefCell::new(RequestBodyRead {
                     stream: self.r,
-                    buf: self.buf1,
+                    buf: self.hbuf,
                 }),
                 w: RefCell::new(RequestBodyWrite {
                     stream: self.w,
-                    buf: self.buf2,
+                    buf: self.bbuf,
                     req_body: Some(self.req_body),
                     end: self.end,
                     block_size,
@@ -215,8 +215,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
                 return SendStatus::EarlyResponse(Response {
                     r: r.stream,
-                    buf1: r.buf,
-                    buf2: w.buf,
+                    rbuf: r.buf,
+                    wbuf: w.buf,
                     inner: resp,
                 });
             }
@@ -244,8 +244,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
                 SendStatus::Complete(Response {
                     r: r.stream,
-                    buf1: r.buf,
-                    buf2: w.buf,
+                    rbuf: r.buf,
+                    wbuf: w.buf,
                     inner: resp,
                 })
             }
@@ -389,8 +389,8 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
 
 pub struct Response<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
+    rbuf: &'a mut VecRingBuffer,
+    wbuf: &'a mut VecRingBuffer,
     inner: protocol::ClientResponse,
 }
 
@@ -409,33 +409,33 @@ impl<'a, R: AsyncRead> Response<'a, R> {
 
         let (resp, resp_body) = loop {
             {
-                let hbuf = self.buf1.take_inner();
+                let buf = self.rbuf.take_inner();
 
-                resp = match resp.recv_header(hbuf, scratch) {
+                resp = match resp.recv_header(buf, scratch) {
                     ParseStatus::Complete(ret) => break ret,
-                    ParseStatus::Incomplete(resp, hbuf, ret_scratch) => {
+                    ParseStatus::Incomplete(resp, buf, ret_scratch) => {
                         // NOTE: after polonius it may not be necessary for
                         // scratch to be returned
                         scratch = ret_scratch;
 
-                        self.buf1.set_inner(hbuf);
+                        self.rbuf.set_inner(buf);
 
                         resp
                     }
-                    ParseStatus::Error(e, hbuf, _) => {
-                        self.buf1.set_inner(hbuf);
+                    ParseStatus::Error(e, buf, _) => {
+                        self.rbuf.set_inner(buf);
 
                         return Err(e.into());
                     }
                 }
             }
 
-            if !self.buf1.is_readable_contiguous() {
-                self.buf1.align();
+            if !self.rbuf.is_readable_contiguous() {
+                self.rbuf.align();
                 continue;
             }
 
-            if let Err(e) = recv_nonzero(&mut self.r, self.buf1).await {
+            if let Err(e) = recv_nonzero(&mut self.r, self.rbuf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
                     return Err(Error::BufferExceeded);
                 }
@@ -444,15 +444,15 @@ impl<'a, R: AsyncRead> Response<'a, R> {
             }
         };
 
-        // at this point, resp has taken buf1's inner buffer, such that
-        // buf1 has no inner buffer
+        // at this point, resp has taken rbuf's inner buffer, such that
+        // rbuf has no inner buffer
 
-        // put remaining readable bytes in buf2
-        self.buf2.write_all(resp.remaining_bytes())?;
+        // put remaining readable bytes in wbuf
+        self.wbuf.write_all(resp.remaining_bytes())?;
 
-        // swap inner buffers, such that buf1 now contains the remaining
-        // readable bytes, and buf2 is now the one with no inner buffer
-        self.buf1.swap_inner(self.buf2);
+        // swap inner buffers, such that rbuf now contains the remaining
+        // readable bytes, and wbuf is now the one with no inner buffer
+        self.rbuf.swap_inner(self.wbuf);
 
         Ok((
             resp,
@@ -461,11 +461,11 @@ impl<'a, R: AsyncRead> Response<'a, R> {
                     inner: RefCell::new(Some(ResponseBodyInner {
                         r: self.r,
                         closed: false,
-                        buf1: self.buf1,
+                        rbuf: self.rbuf,
                         resp_body,
                     })),
                 },
-                buf2: RefCell::new(Some(self.buf2)),
+                wbuf: RefCell::new(Some(self.wbuf)),
             },
         ))
     }
@@ -474,7 +474,7 @@ impl<'a, R: AsyncRead> Response<'a, R> {
 struct ResponseBodyInner<'a, R: AsyncRead> {
     r: ReadHalf<'a, R>,
     closed: bool,
-    buf1: &'a mut VecRingBuffer,
+    rbuf: &'a mut VecRingBuffer,
     resp_body: protocol::ClientResponseBody,
 }
 
@@ -488,7 +488,7 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
     pub async fn add_to_buffer(&self) -> Result<(), Error> {
         if let Some(inner) = &mut *self.inner.borrow_mut() {
             if !inner.closed {
-                match recv_nonzero(&mut inner.r, inner.buf1).await {
+                match recv_nonzero(&mut inner.r, inner.rbuf).await {
                     Ok(()) => {}
                     Err(e) if e.kind() == io::ErrorKind::WriteZero => {
                         return Err(Error::BufferExceeded)
@@ -511,12 +511,12 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
             if let Some(inner) = b_inner.take() {
                 let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
 
-                let src = Buffer::read_buf(inner.buf1);
-                let end = src.len() == inner.buf1.len() && inner.closed;
+                let src = Buffer::read_buf(inner.rbuf);
+                let end = src.len() == inner.rbuf.len() && inner.closed;
 
                 match inner.resp_body.recv(src, dest, end, &mut scratch)? {
                     protocol::RecvStatus::Complete(finished, read, written) => {
-                        inner.buf1.read_commit(read);
+                        inner.rbuf.read_commit(read);
 
                         *b_inner = None;
 
@@ -526,18 +526,18 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
                         *b_inner = Some(ResponseBodyInner {
                             r: inner.r,
                             closed: inner.closed,
-                            buf1: inner.buf1,
+                            rbuf: inner.rbuf,
                             resp_body,
                         });
 
                         let inner = b_inner.as_mut().unwrap();
 
-                        if read == 0 && written == 0 && !inner.buf1.is_readable_contiguous() {
-                            inner.buf1.align();
+                        if read == 0 && written == 0 && !inner.rbuf.is_readable_contiguous() {
+                            inner.rbuf.align();
                             continue;
                         }
 
-                        inner.buf1.read_commit(read);
+                        inner.rbuf.read_commit(read);
 
                         return Ok(RecvStatus::Read((), written));
                     }
@@ -551,7 +551,7 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
 
 pub struct ResponseBodyKeepHeader<'a, R: AsyncRead> {
     inner: ResponseBody<'a, R>,
-    buf2: RefCell<Option<&'a mut VecRingBuffer>>,
+    wbuf: RefCell<Option<&'a mut VecRingBuffer>>,
 }
 
 impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
@@ -559,9 +559,9 @@ impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
         self,
         resp: protocol::OwnedResponse<N>,
     ) -> Result<ResponseBody<'a, R>, Error> {
-        if let Some(buf2) = self.buf2.borrow_mut().take() {
-            buf2.set_inner(resp.into_buf());
-            buf2.clear();
+        if let Some(wbuf) = self.wbuf.borrow_mut().take() {
+            wbuf.set_inner(resp.into_buf());
+            wbuf.clear();
 
             Ok(self.inner)
         } else {
@@ -577,7 +577,7 @@ impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
         &self,
         dest: &mut [u8],
     ) -> Result<RecvStatus<(), FinishedKeepHeader<'a>>, Error> {
-        if !self.buf2.borrow().is_some() {
+        if !self.wbuf.borrow().is_some() {
             return Err(Error::Unusable);
         }
 
@@ -585,7 +585,7 @@ impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
             RecvStatus::Complete(finished, written) => Ok(RecvStatus::Complete(
                 FinishedKeepHeader {
                     inner: finished,
-                    buf2: self.buf2.borrow_mut().take().unwrap(),
+                    wbuf: self.wbuf.borrow_mut().take().unwrap(),
                 },
                 written,
             )),
@@ -606,13 +606,13 @@ impl Finished {
 
 pub struct FinishedKeepHeader<'a> {
     inner: Finished,
-    buf2: &'a mut VecRingBuffer,
+    wbuf: &'a mut VecRingBuffer,
 }
 
 impl<'a> FinishedKeepHeader<'a> {
     pub fn discard_header<const N: usize>(self, resp: protocol::OwnedResponse<N>) -> Finished {
-        self.buf2.set_inner(resp.into_buf());
-        self.buf2.clear();
+        self.wbuf.set_inner(resp.into_buf());
+        self.wbuf.clear();
 
         self.inner
     }
