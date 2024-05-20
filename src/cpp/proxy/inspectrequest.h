@@ -32,8 +32,6 @@ class ZrpcManager;
 
 class InspectRequest : public ZrpcRequest
 {
-	Q_OBJECT
-
 public:
 	InspectRequest(ZrpcManager *manager, QObject *parent = 0);
 	~InspectRequest();
