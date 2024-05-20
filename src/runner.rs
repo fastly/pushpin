@@ -272,7 +272,7 @@ impl Settings {
         if let Some(x) = args_data.id {
             ipc_prefix = format!("{:?}-", x);
             port_offset = x * 10;
-            file_prefix.clone_from(&ipc_prefix.clone());
+            file_prefix.clone_from(&ipc_prefix);
         }
 
         let mut ports: Vec<ListenPort> = vec![];
