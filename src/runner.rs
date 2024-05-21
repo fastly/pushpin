@@ -247,7 +247,7 @@ impl Settings {
             }
         }
         if !args_data.log_levels.is_empty() {
-            log_levels = args_data.log_levels.clone();
+            log_levels.clone_from(&args_data.log_levels);
         }
         log_levels.insert(
             "default".to_string(),
@@ -272,7 +272,7 @@ impl Settings {
         if let Some(x) = args_data.id {
             ipc_prefix = format!("{:?}-", x);
             port_offset = x * 10;
-            file_prefix = ipc_prefix.clone();
+            file_prefix.clone_from(&ipc_prefix);
         }
 
         let mut ports: Vec<ListenPort> = vec![];

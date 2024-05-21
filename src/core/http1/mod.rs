@@ -15,10 +15,15 @@
  */
 
 mod error;
+mod protocol;
 mod util;
 
 pub mod client;
 pub mod server;
 
 pub use error::*;
+pub use protocol::{
+    parse_header_value, BodySize, Header, HeaderParamsIterator, ParseScratch, Request, Response,
+    EMPTY_HEADER,
+};
 pub use util::{RecvStatus, SendStatus};

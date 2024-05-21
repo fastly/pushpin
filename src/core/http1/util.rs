@@ -30,10 +30,10 @@ pub fn resize_write_buffer_if_full<F>(
     buf: &mut VecRingBuffer,
     block_size: usize,
     blocks_max: usize,
-    reserve: F,
+    mut reserve: F,
 ) -> usize
 where
-    F: Fn() -> bool,
+    F: FnMut() -> bool,
 {
     assert!(blocks_max >= 2);
 
