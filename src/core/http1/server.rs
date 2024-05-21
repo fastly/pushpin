@@ -113,6 +113,9 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestHeader<'a, 'b, R, W> {
                 }
             }
 
+            // take_inner aligns
+            assert!(self.inner.rbuf.is_readable_contiguous());
+
             if let Err(e) = recv_nonzero(&mut self.inner.r, self.inner.rbuf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
                     return Err(Error::RequestTooLarge(size_limit));
@@ -789,6 +792,8 @@ mod tests {
     use crate::future::io_split;
     use std::cmp;
     use std::future::Future;
+    use std::io::Read;
+    use std::panic;
     use std::rc::Rc;
     use std::sync::Arc;
     use std::task::{Context, Poll, Wake};
@@ -882,12 +887,17 @@ mod tests {
                 let mut scratch = ParseScratch::<HEADERS_MAX>::new();
                 let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
 
-                let req_ref = req_header.get();
-                assert_eq!(req_ref.method, "POST");
-                assert_eq!(req_ref.uri, "/path");
-                assert_eq!(req_ref.body_size, BodySize::Known(6));
+                // catch to avoid running req_body destructor
+                let result = panic::catch_unwind(|| {
+                    let req_ref = req_header.get();
+                    assert_eq!(req_ref.method, "POST");
+                    assert_eq!(req_ref.uri, "/path");
+                    assert_eq!(req_ref.body_size, BodySize::Known(6));
+                });
 
                 let req_body = req_body.discard_header(req_header);
+
+                assert!(result.is_ok());
 
                 let mut buf = [0; 64];
                 let size = match req_body.try_recv(&mut buf).unwrap() {
@@ -923,6 +933,54 @@ mod tests {
             let expected = "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nworld\n";
 
             assert_eq!(str::from_utf8(&stream.out_data).unwrap(), expected);
+        });
+
+        let waker = Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        assert!(fut.as_mut().poll(&mut cx).is_ready());
+    }
+
+    #[test]
+    fn request_noncontiguous() {
+        let mut fut = pin!(async {
+            let mut stream = FakeStream::new();
+
+            stream
+                .in_data
+                .write_all("OST /path HTTP/1.1\r\nContent-Length: 6\r\n\r\nhello\n".as_bytes())
+                .unwrap();
+
+            {
+                let stream = RefCell::new(&mut stream);
+
+                let tmp = Rc::new(TmpBuffer::new(64));
+                let mut buf1 = VecRingBuffer::new(64, &tmp);
+                let mut buf2 = VecRingBuffer::new(64, &tmp);
+
+                // shift the write cursor and leave a "P" towards the end
+                buf1.write_all(&[b'a'; 40]).unwrap();
+                buf1.write_all(b"P").unwrap();
+                assert_eq!(buf1.read(&mut [0; 40]).unwrap(), 40);
+
+                let (req, mut resp) = Request::new(io_split(&stream), &mut buf1, &mut buf2);
+
+                let header = req.recv_header(&mut resp);
+
+                let mut scratch = ParseScratch::<HEADERS_MAX>::new();
+                let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
+
+                // catch to avoid running req_body destructor
+                let result = panic::catch_unwind(|| {
+                    let req_ref = req_header.get();
+                    assert_eq!(req_ref.method, "POST");
+                    assert_eq!(req_ref.uri, "/path");
+                    assert_eq!(req_ref.body_size, BodySize::Known(6));
+                });
+
+                req_body.discard_header(req_header);
+
+                assert!(result.is_ok());
+            }
         });
 
         let waker = Arc::new(NoopWaker).into();
@@ -1001,13 +1059,18 @@ mod tests {
                 let mut scratch = ParseScratch::<HEADERS_MAX>::new();
                 let (req_header, req_body) = header.recv(&mut scratch).await.unwrap();
 
-                let req_ref = req_header.get();
-                assert_eq!(req_ref.method, "POST");
-                assert_eq!(req_ref.uri, "/path");
-                assert_eq!(req_ref.body_size, BodySize::Known(6));
+                // catch to avoid running req_body destructor
+                let result = panic::catch_unwind(|| {
+                    let req_ref = req_header.get();
+                    assert_eq!(req_ref.method, "POST");
+                    assert_eq!(req_ref.uri, "/path");
+                    assert_eq!(req_ref.body_size, BodySize::Known(6));
+                });
 
                 let req_body = req_body.discard_header(req_header);
                 drop(req_body);
+
+                assert!(result.is_ok());
 
                 let mut state = ResponseState::default();
                 let (header, prepare_body) =

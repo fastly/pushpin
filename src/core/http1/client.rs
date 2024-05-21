@@ -430,10 +430,8 @@ impl<'a, R: AsyncRead> Response<'a, R> {
                 }
             }
 
-            if !self.rbuf.is_readable_contiguous() {
-                self.rbuf.align();
-                continue;
-            }
+            // take_inner aligns
+            assert!(self.rbuf.is_readable_contiguous());
 
             if let Err(e) = recv_nonzero(&mut self.r, self.rbuf).await {
                 if e.kind() == io::ErrorKind::WriteZero {
