@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,14 +38,15 @@ use crate::arena;
 use crate::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
-use crate::counter::Counter;
+use crate::core::http1::Error as CoreHttpError;
+use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
+use crate::counter::{Counter, CounterDec};
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
     AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncResolver, AsyncTcpStream, AsyncTlsStream,
     AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf, Select2, Select3, Select4,
     StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
 };
-use crate::http1;
 use crate::net::SocketAddr;
 use crate::pool::Pool;
 use crate::reactor::Reactor;
@@ -308,7 +309,7 @@ fn resize_write_buffer_if_full(
     buf: &mut VecRingBuffer,
     block_size: usize,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec,
 ) -> usize {
     assert!(blocks_max >= 2);
 
@@ -333,17 +334,19 @@ enum Error {
     #[allow(dead_code)]
     Utf8(str::Utf8Error),
     #[allow(dead_code)]
-    Http(http1::Error),
+    CoreHttp(CoreHttpError),
     #[allow(dead_code)]
     WebSocket(websocket::Error),
+    ReqModeWebSocket,
     InvalidWebSocketRequest,
     InvalidWebSocketResponse,
+    #[allow(dead_code)]
+    WebSocketRejectionTooLarge(usize),
     Compression,
     BadMessage,
     Handler,
     HandlerCancel,
     BufferExceeded,
-    Unusable,
     BadFrame,
     BadRequest,
     Tls,
@@ -383,6 +386,7 @@ impl Error {
             Error::Tls => "tls-error",
             Error::PolicyViolation => "policy-violation",
             Error::TooManyRedirects => "too-many-redirects",
+            Error::WebSocketRejectionTooLarge(_) => "rejection-too-large",
             _ => "undefined-condition",
         }
     }
@@ -417,9 +421,9 @@ impl<T> From<mpsc::TrySendError<T>> for Error {
     }
 }
 
-impl From<http1::Error> for Error {
-    fn from(e: http1::Error) -> Self {
-        Self::Http(e)
+impl From<CoreHttpError> for Error {
+    fn from(e: CoreHttpError) -> Self {
+        Self::CoreHttp(e)
     }
 }
 
@@ -648,706 +652,6 @@ async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut VecRingBuffer) -> Resul
     Ok(())
 }
 
-struct LimitedRingBuffer<'a> {
-    inner: &'a mut VecRingBuffer,
-    limit: usize,
-}
-
-impl AsRef<[u8]> for LimitedRingBuffer<'_> {
-    fn as_ref(&self) -> &[u8] {
-        let buf = Buffer::read_buf(self.inner);
-        let limit = cmp::min(buf.len(), self.limit);
-
-        &buf[..limit]
-    }
-}
-
-struct HttpRead<'a, R: AsyncRead> {
-    stream: ReadHalf<'a, R>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
-}
-
-struct HttpWrite<'a, W: AsyncWrite> {
-    stream: WriteHalf<'a, W>,
-}
-
-struct RequestHandler<'a, R: AsyncRead, W: AsyncWrite> {
-    r: HttpRead<'a, R>,
-    w: HttpWrite<'a, W>,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> RequestHandler<'a, R, W> {
-    fn new(
-        stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut VecRingBuffer,
-        buf2: &'a mut VecRingBuffer,
-    ) -> Self {
-        buf1.align();
-        buf2.clear();
-
-        Self {
-            r: HttpRead {
-                stream: stream.0,
-                buf1,
-                buf2,
-            },
-            w: HttpWrite { stream: stream.1 },
-        }
-    }
-
-    // read from stream into buf, and parse buf as a request header
-    async fn recv_request<'b: 'c, 'c, const N: usize>(
-        mut self,
-        mut scratch: &'b mut http1::ParseScratch<N>,
-        req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
-    ) -> Result<RequestHeader<'a, 'b, 'c, R, W, N>, Error> {
-        let mut protocol = http1::ServerProtocol::new();
-
-        assert_eq!(protocol.state(), http1::ServerState::ReceivingRequest);
-
-        loop {
-            {
-                let hbuf = self.r.buf1.take_inner();
-
-                match protocol.recv_request_owned(hbuf, scratch) {
-                    http1::ParseStatus::Complete(req) => {
-                        assert!([
-                            http1::ServerState::ReceivingBody,
-                            http1::ServerState::AwaitingResponse
-                        ]
-                        .contains(&protocol.state()));
-
-                        *req_mem = Some(req);
-
-                        break Ok(RequestHeader {
-                            r: self.r,
-                            w: self.w,
-                            protocol,
-                            req_mem,
-                        });
-                    }
-                    http1::ParseStatus::Incomplete((), hbuf, ret_scratch) => {
-                        // NOTE: after polonius it may not be necessary for
-                        // scratch to be returned
-                        scratch = ret_scratch;
-                        self.r.buf1.set_inner(hbuf);
-                    }
-                    http1::ParseStatus::Error(e, hbuf, _) => {
-                        self.r.buf1.set_inner(hbuf);
-
-                        return Err(e.into());
-                    }
-                }
-            }
-
-            if let Err(e) = recv_nonzero(&mut self.r.stream, self.r.buf1).await {
-                if e.kind() == io::ErrorKind::WriteZero {
-                    return Err(Error::BufferExceeded);
-                }
-
-                return Err(e.into());
-            }
-        }
-    }
-}
-
-struct RequestHeader<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> {
-    r: HttpRead<'a, R>,
-    w: HttpWrite<'a, W>,
-    protocol: http1::ServerProtocol,
-    req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
-}
-
-impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> RequestHeader<'a, 'b, 'c, R, W, N> {
-    fn request(&self) -> http1::Request {
-        self.req_mem.as_ref().unwrap().get()
-    }
-
-    async fn start_recv_body(mut self) -> Result<RequestRecvBody<'a, R, W>, Error> {
-        self.handle_expect().await?;
-
-        // restore the read ringbuffer
-        self.discard_request();
-
-        Ok(self.into_recv_body().0)
-    }
-
-    async fn start_recv_body_and_keep_header(
-        mut self,
-    ) -> Result<RequestRecvBodyKeepHeader<'a, 'b, 'c, R, W, N>, Error> {
-        self.handle_expect().await?;
-
-        // we're keeping the request, so put any remaining bytes into buf2
-        // and swap the inner buffers. those bytes will then become readable
-        // from buf1. we'll plan to give the request's inner buffer to buf2
-        // after the request is no longer needed
-        let req = self.req_mem.as_ref().unwrap();
-        self.r.buf2.write_all(req.remaining_bytes())?;
-        self.r.buf1.swap_inner(self.r.buf2);
-
-        let (recv_body, req_mem) = self.into_recv_body();
-
-        Ok(RequestRecvBodyKeepHeader {
-            inner: recv_body,
-            req_mem,
-        })
-    }
-
-    fn recv_done(mut self) -> Result<RequestStartResponse<'a, R, W>, Error> {
-        // restore the read ringbuffer
-        self.discard_request();
-
-        Ok(RequestStartResponse::new(self.r, self.w, self.protocol))
-    }
-
-    // this method requires the request to exist
-    async fn handle_expect(&mut self) -> Result<(), Error> {
-        if !self.request().expect_100 {
-            return Ok(());
-        }
-
-        let mut cont = [0; 32];
-
-        let cont = {
-            let mut c = io::Cursor::new(&mut cont[..]);
-
-            if let Err(e) = self.protocol.send_100_continue(&mut c) {
-                return Err(e.into());
-            }
-
-            let size = c.position() as usize;
-
-            &cont[..size]
-        };
-
-        let mut left = cont.len();
-
-        while left > 0 {
-            let pos = cont.len() - left;
-
-            let size = match self.w.stream.write(&cont[pos..]).await {
-                Ok(size) => size,
-                Err(e) => return Err(e.into()),
-            };
-
-            left -= size;
-        }
-
-        Ok(())
-    }
-
-    // consumes request and gives the inner buffer back to buf1
-    fn discard_request(&mut self) {
-        let req = self.req_mem.take().unwrap();
-
-        let remaining_len = req.remaining_bytes().len();
-        let inner_buf = req.into_buf();
-        let hsize = inner_buf.filled_len() - remaining_len;
-
-        self.r.buf1.set_inner(inner_buf);
-        self.r.buf1.read_commit(hsize);
-    }
-
-    fn into_recv_body(
-        self,
-    ) -> (
-        RequestRecvBody<'a, R, W>,
-        &'c mut Option<http1::OwnedRequest<'b, N>>,
-    ) {
-        (
-            RequestRecvBody {
-                r: RefCell::new(RecvBodyRead {
-                    stream: self.r.stream,
-                    buf: self.r.buf1,
-                }),
-                wstream: self.w.stream,
-                buf2: self.r.buf2,
-                protocol: RefCell::new(self.protocol),
-            },
-            self.req_mem,
-        )
-    }
-}
-
-struct RecvBodyRead<'a, R: AsyncRead> {
-    stream: ReadHalf<'a, R>,
-    buf: &'a mut VecRingBuffer,
-}
-
-struct RequestRecvBody<'a, R: AsyncRead, W: AsyncWrite> {
-    r: RefCell<RecvBodyRead<'a, R>>,
-    wstream: WriteHalf<'a, W>,
-    buf2: &'a mut VecRingBuffer,
-    protocol: RefCell<http1::ServerProtocol>,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> RequestRecvBody<'a, R, W> {
-    fn more(&self) -> bool {
-        self.protocol.borrow().state() == http1::ServerState::ReceivingBody
-    }
-
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn add_to_recv_buffer(&self) -> Result<(), Error> {
-        let r = &mut *self.r.borrow_mut();
-
-        if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
-            if e.kind() == io::ErrorKind::WriteZero {
-                return Err(Error::BufferExceeded);
-            }
-
-            return Err(e.into());
-        }
-
-        Ok(())
-    }
-
-    fn try_recv_body(&self, dest: &mut [u8]) -> Option<Result<usize, Error>> {
-        let r = &mut *self.r.borrow_mut();
-        let protocol = &mut *self.protocol.borrow_mut();
-
-        if protocol.state() == http1::ServerState::ReceivingBody {
-            loop {
-                let (size, read_size) = {
-                    let mut buf = io::Cursor::new(Buffer::read_buf(r.buf));
-
-                    let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
-
-                    let (size, _) = match protocol.recv_body(&mut buf, dest, &mut headers) {
-                        Ok(ret) => ret,
-                        Err(e) => return Some(Err(e.into())),
-                    };
-
-                    let read_size = buf.position() as usize;
-
-                    (size, read_size)
-                };
-
-                if protocol.state() == http1::ServerState::ReceivingBody && read_size == 0 {
-                    if !r.buf.is_readable_contiguous() {
-                        r.buf.align();
-                        continue;
-                    }
-
-                    return None;
-                }
-
-                r.buf.read_commit(read_size);
-
-                return Some(Ok(size));
-            }
-        }
-
-        assert_eq!(protocol.state(), http1::ServerState::AwaitingResponse);
-
-        Some(Ok(0))
-    }
-
-    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, Error> {
-        loop {
-            if let Some(ret) = self.try_recv_body(dest) {
-                return ret;
-            }
-
-            self.add_to_recv_buffer().await?;
-        }
-    }
-
-    fn recv_done(self) -> RequestStartResponse<'a, R, W> {
-        let r = self.r.into_inner();
-
-        RequestStartResponse::new(
-            HttpRead {
-                stream: r.stream,
-                buf1: r.buf,
-                buf2: self.buf2,
-            },
-            HttpWrite {
-                stream: self.wstream,
-            },
-            self.protocol.into_inner(),
-        )
-    }
-}
-
-struct RequestRecvBodyKeepHeader<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize> {
-    inner: RequestRecvBody<'a, R, W>,
-    req_mem: &'c mut Option<http1::OwnedRequest<'b, N>>,
-}
-
-impl<'a, 'b, 'c, R: AsyncRead, W: AsyncWrite, const N: usize>
-    RequestRecvBodyKeepHeader<'a, 'b, 'c, R, W, N>
-{
-    fn request(&self) -> http1::Request {
-        self.req_mem.as_ref().unwrap().get()
-    }
-
-    async fn recv_body(&self, dest: &mut [u8]) -> Result<usize, Error> {
-        self.inner.recv_body(dest).await
-    }
-
-    fn recv_done(self) -> RequestStartResponse<'a, R, W> {
-        // the request is no longer needed, so give its inner buffer to buf2
-        // and clear it
-        let buf = self.req_mem.take().unwrap().into_buf();
-        self.inner.buf2.set_inner(buf);
-        self.inner.buf2.clear();
-
-        self.inner.recv_done()
-    }
-}
-
-struct RequestStartResponse<'a, R: AsyncRead, W: AsyncWrite> {
-    r: HttpRead<'a, R>,
-    w: HttpWrite<'a, W>,
-    protocol: http1::ServerProtocol,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> RequestStartResponse<'a, R, W> {
-    fn new(r: HttpRead<'a, R>, w: HttpWrite<'a, W>, protocol: http1::ServerProtocol) -> Self {
-        Self { r, w, protocol }
-    }
-
-    async fn fill_recv_buffer(&mut self) -> Error {
-        loop {
-            if let Err(e) = recv_nonzero(&mut self.r.stream, self.r.buf1).await {
-                if e.kind() == io::ErrorKind::WriteZero {
-                    // if there's no more space, suspend forever
-                    std::future::pending::<()>().await;
-                }
-
-                return e.into();
-            }
-        }
-    }
-
-    fn prepare_response(
-        mut self,
-        code: u16,
-        reason: &str,
-        headers: &[http1::Header<'_>],
-        body_size: http1::BodySize,
-    ) -> Result<RequestSendHeader<'a, R, W>, Error> {
-        self.r.buf2.clear();
-
-        let mut hbuf = io::Cursor::new(self.r.buf2.write_buf());
-
-        if let Err(e) = self
-            .protocol
-            .send_response(&mut hbuf, code, reason, headers, body_size)
-        {
-            return Err(e.into());
-        }
-
-        let size = hbuf.position() as usize;
-        self.r.buf2.write_commit(size);
-
-        let (stream, buf1, buf2) = ((self.r.stream, self.w.stream), self.r.buf1, self.r.buf2);
-
-        Ok(RequestSendHeader::new(
-            stream,
-            buf1,
-            buf2,
-            self.protocol,
-            size,
-        ))
-    }
-}
-
-struct SendHeaderRead<'a, R: AsyncRead> {
-    stream: ReadHalf<'a, R>,
-    buf: &'a mut VecRingBuffer,
-}
-
-struct EarlyBody {
-    overflow: Option<ContiguousBuffer>,
-    done: bool,
-}
-
-struct RequestSendHeader<'a, R: AsyncRead, W: AsyncWrite> {
-    r: RefCell<SendHeaderRead<'a, R>>,
-    wstream: RefCell<WriteHalf<'a, W>>,
-    wbuf: RefCell<LimitedRingBuffer<'a>>,
-    protocol: http1::ServerProtocol,
-    early_body: RefCell<EarlyBody>,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendHeader<'a, R, W> {
-    fn new(
-        stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut VecRingBuffer,
-        buf2: &'a mut VecRingBuffer,
-        protocol: http1::ServerProtocol,
-        header_size: usize,
-    ) -> Self {
-        Self {
-            r: RefCell::new(SendHeaderRead {
-                stream: stream.0,
-                buf: buf1,
-            }),
-            wstream: RefCell::new(stream.1),
-            wbuf: RefCell::new(LimitedRingBuffer {
-                inner: buf2,
-                limit: header_size,
-            }),
-            protocol,
-            early_body: RefCell::new(EarlyBody {
-                overflow: None,
-                done: false,
-            }),
-        }
-    }
-
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn send_header(&self) -> Result<(), Error> {
-        let mut stream = self.wstream.borrow_mut();
-
-        // limit = header bytes left
-        while self.wbuf.borrow().limit > 0 {
-            let size = stream.write_shared(&self.wbuf).await?;
-
-            let mut wbuf = self.wbuf.borrow_mut();
-
-            wbuf.inner.read_commit(size);
-            wbuf.limit -= size;
-        }
-
-        let mut wbuf = self.wbuf.borrow_mut();
-        let mut early_body = self.early_body.borrow_mut();
-
-        if let Some(overflow) = &mut early_body.overflow {
-            wbuf.inner.write_all(Buffer::read_buf(overflow))?;
-
-            early_body.overflow = None;
-        }
-
-        Ok(())
-    }
-
-    fn append_body(&self, body: &[u8], more: bool, id: &str) -> Result<(), Error> {
-        let mut wbuf = self.wbuf.borrow_mut();
-        let mut early_body = self.early_body.borrow_mut();
-
-        // limit = header bytes left
-        if wbuf.limit > 0 {
-            // if there are still header bytes in the buffer, then we may
-            // need to overflow into a separate buffer if there's not enough
-            // room
-
-            // workaround for rust 1.77
-            #[allow(clippy::unused_io_amount)]
-            let accepted = if early_body.overflow.is_none() {
-                wbuf.inner.write(body)?
-            } else {
-                0
-            };
-
-            if accepted < body.len() {
-                debug!(
-                    "server-conn {}: overflowing {} bytes",
-                    id,
-                    body.len() - accepted
-                );
-
-                if early_body.overflow.is_none() {
-                    // only allow overflowing as much as there are header
-                    // bytes left
-                    early_body.overflow = Some(ContiguousBuffer::new(wbuf.limit));
-                }
-
-                let overflow = early_body.overflow.as_mut().unwrap();
-
-                overflow.write_all(&body[accepted..])?;
-            }
-        } else {
-            // if the header has been fully cleared from the buffer, then
-            // always write directly to the buffer
-            wbuf.inner.write_all(body)?;
-        }
-
-        early_body.done = !more;
-
-        Ok(())
-    }
-
-    fn send_header_done(self) -> RequestSendBody<'a, R, W> {
-        let r = self.r.into_inner();
-        let wstream = self.wstream.into_inner();
-        let wbuf = self.wbuf.into_inner();
-        let early_body = self.early_body.borrow();
-
-        assert_eq!(wbuf.limit, 0);
-        assert!(early_body.overflow.is_none());
-
-        let (stream, buf1, buf2) = { ((r.stream, wstream), r.buf, wbuf.inner) };
-
-        let block_size = buf2.capacity();
-
-        RequestSendBody {
-            r: RefCell::new(HttpSendBodyRead {
-                stream: stream.0,
-                buf: buf1,
-            }),
-            w: RefCell::new(HttpSendBodyWrite {
-                stream: stream.1,
-                buf: buf2,
-                body_done: early_body.done,
-                block_size,
-            }),
-            protocol: RefCell::new(self.protocol),
-        }
-    }
-}
-
-struct HttpSendBodyRead<'a, R: AsyncRead> {
-    stream: ReadHalf<'a, R>,
-    buf: &'a mut VecRingBuffer,
-}
-
-struct HttpSendBodyWrite<'a, W: AsyncWrite> {
-    stream: WriteHalf<'a, W>,
-    buf: &'a mut VecRingBuffer,
-    body_done: bool,
-    block_size: usize,
-}
-
-struct SendBodyFuture<'a, 'b, W: AsyncWrite> {
-    w: &'a RefCell<HttpSendBodyWrite<'b, W>>,
-    protocol: &'a RefCell<http1::ServerProtocol>,
-}
-
-impl<'a, 'b, W: AsyncWrite> Future for SendBodyFuture<'a, 'b, W> {
-    type Output = Result<usize, Error>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let f = &*self;
-
-        let w = &mut *f.w.borrow_mut();
-
-        let stream = &mut w.stream;
-
-        if !stream.is_writable() {
-            return Poll::Pending;
-        }
-
-        let protocol = &mut *f.protocol.borrow_mut();
-
-        let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-        let bufs = w.buf.read_bufs(&mut buf_arr);
-
-        match protocol.send_body(
-            &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
-            bufs,
-            w.body_done,
-            None,
-        ) {
-            Ok(size) => Poll::Ready(Ok(size)),
-            Err(http1::Error::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => Poll::Pending,
-            Err(e) => Poll::Ready(Err(e.into())),
-        }
-    }
-}
-
-impl<W: AsyncWrite> Drop for SendBodyFuture<'_, '_, W> {
-    fn drop(&mut self) {
-        self.w.borrow_mut().stream.cancel();
-    }
-}
-
-struct RequestSendBody<'a, R: AsyncRead, W: AsyncWrite> {
-    r: RefCell<HttpSendBodyRead<'a, R>>,
-    w: RefCell<HttpSendBodyWrite<'a, W>>,
-    protocol: RefCell<http1::ServerProtocol>,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> RequestSendBody<'a, R, W> {
-    fn append_body(&self, body: &[u8], more: bool) -> Result<(), Error> {
-        let w = &mut *self.w.borrow_mut();
-
-        w.buf.write_all(body)?;
-        w.body_done = !more;
-
-        Ok(())
-    }
-
-    fn expand_write_buffer(&self, blocks_max: usize, blocks_avail: &Counter) -> usize {
-        let w = &mut *self.w.borrow_mut();
-
-        resize_write_buffer_if_full(w.buf, w.block_size, blocks_max, blocks_avail)
-    }
-
-    fn can_flush(&self) -> bool {
-        let w = &*self.w.borrow();
-
-        w.buf.len() > 0 || w.body_done
-    }
-
-    async fn flush_body(&self) -> Result<(usize, bool), Error> {
-        {
-            let protocol = &*self.protocol.borrow();
-
-            assert_eq!(protocol.state(), http1::ServerState::SendingBody);
-
-            let w = &*self.w.borrow();
-
-            if w.buf.len() == 0 && !w.body_done {
-                return Ok((0, false));
-            }
-        }
-
-        let size = SendBodyFuture {
-            w: &self.w,
-            protocol: &self.protocol,
-        }
-        .await?;
-
-        let w = &mut *self.w.borrow_mut();
-        let protocol = &*self.protocol.borrow();
-
-        w.buf.read_commit(size);
-
-        if w.buf.len() > 0 || !w.body_done || protocol.state() == http1::ServerState::SendingBody {
-            return Ok((size, false));
-        }
-
-        assert_eq!(protocol.state(), http1::ServerState::Finished);
-
-        Ok((size, true))
-    }
-
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn send_body(&self, body: &[u8], more: bool) -> Result<usize, Error> {
-        let w = &mut *self.w.borrow_mut();
-        let protocol = &mut *self.protocol.borrow_mut();
-
-        assert_eq!(protocol.state(), http1::ServerState::SendingBody);
-
-        Ok(protocol
-            .send_body_async(&mut w.stream, &[body], !more, None)
-            .await?)
-    }
-
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn fill_recv_buffer(&self) -> Error {
-        let r = &mut *self.r.borrow_mut();
-
-        loop {
-            if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
-                if e.kind() == io::ErrorKind::WriteZero {
-                    // if there's no more space, suspend forever
-                    std::future::pending::<()>().await;
-                }
-
-                return e.into();
-            }
-        }
-    }
-
-    fn finish(self) -> bool {
-        self.protocol.borrow().is_persistent()
-    }
-}
-
 struct WebSocketRead<'a, R: AsyncRead> {
     stream: ReadHalf<'a, R>,
     buf: &'a mut VecRingBuffer,
@@ -1488,7 +792,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         Ok(())
     }
 
-    fn expand_write_buffer(&self, blocks_max: usize, blocks_avail: &Counter) -> usize {
+    fn expand_write_buffer(&self, blocks_max: usize, blocks_avail: &mut CounterDec) -> usize {
         let w = &mut *self.w.borrow_mut();
 
         resize_write_buffer_if_full(w.buf, w.block_size, blocks_max, blocks_avail)
@@ -1958,15 +1262,16 @@ async fn send_msg(sender: &AsyncLocalSender<zmq::Message>, msg: zmq::Message) ->
     Ok(sender.send(msg).await?)
 }
 
-async fn discard_while<F, T>(
+async fn discard_while<F, T, E>(
     receiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     fut: F,
-) -> F::Output
+) -> Result<T, Error>
 where
-    F: Future<Output = Result<T, Error>> + Unpin,
+    F: Future<Output = Result<T, E>> + Unpin,
+    Error: From<E>,
 {
     match select_2(fut, pin!(receiver.recv())).await {
-        Select2::R1(v) => v,
+        Select2::R1(v) => Ok(v?),
         Select2::R2(ret) => {
             ret?;
 
@@ -1989,6 +1294,374 @@ where
     }
 }
 
+async fn send_error_response<'a, R: AsyncRead, W: AsyncWrite>(
+    mut resp: server::Response<'_, R, W>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    e: &Error,
+) -> Result<(), Error> {
+    let headers = &[http1::Header {
+        name: "Content-Type",
+        value: b"text/plain",
+    }];
+
+    let mut body: ArrayVec<u8, 512> = ArrayVec::new();
+
+    let code = match e {
+        Error::CoreHttp(CoreHttpError::Protocol(e)) => {
+            writeln!(&mut body, "Failed to parse request: {}", e)?;
+
+            400
+        }
+        Error::CoreHttp(CoreHttpError::RequestTooLarge(limit)) => {
+            writeln!(
+                &mut body,
+                "Request header size exceeded limit of {} bytes.",
+                limit
+            )?;
+
+            400
+        }
+        Error::CoreHttp(CoreHttpError::ResponseTooLarge(limit)) => {
+            writeln!(
+                &mut body,
+                "Response header size exceeded limit of {} bytes.",
+                limit
+            )?;
+
+            500
+        }
+        Error::ReqModeWebSocket => {
+            writeln!(&mut body, "WebSockets not supported on req mode interface.")?;
+
+            400
+        }
+        Error::InvalidWebSocketRequest => {
+            writeln!(&mut body, "Request contained an Upgrade header with value \"websocket\" but the request was not a valid WebSocket request.")?;
+
+            400
+        }
+        Error::WebSocketRejectionTooLarge(limit) => {
+            writeln!(
+                &mut body,
+                "Non-101 response body size exceeded limit of {} bytes.",
+                limit
+            )?;
+
+            500
+        }
+        _ => {
+            writeln!(&mut body, "Failed to process request.")?;
+
+            500
+        }
+    };
+
+    let reason = match code {
+        400 => "Bad Request",
+        _ => "Internal Server Error",
+    };
+
+    let mut state = server::ResponseState::default();
+    let (header, prepare_body) = resp.prepare_header(
+        code,
+        reason,
+        headers,
+        http1::BodySize::Known(body.len()),
+        &mut state,
+    )?;
+
+    // ABR: discard_while
+    let header_sent = discard_while(zreceiver, pin!(header.send())).await?;
+
+    let resp_body = header_sent.start_body(prepare_body);
+    resp_body.prepare(&body, true)?;
+
+    loop {
+        // send the buffer
+        let send = pin!(async {
+            match resp_body.send().await {
+                SendStatus::Complete(finished) => Ok(Some(finished)),
+                SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                SendStatus::Partial((), _) => Ok(None),
+                SendStatus::Error((), e) => Err(e),
+            }
+        });
+
+        // ABR: discard_while
+        if let Some(_finished) = discard_while(zreceiver, send).await? {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+// read request body and prepare outgoing zmq message
+#[allow(clippy::too_many_arguments)]
+async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
+    id: &str,
+    req: &http1::Request<'_, '_>,
+    req_body: &mut server::RequestBodyKeepHeader<'_, '_, R, W>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    body_buf: &mut ContiguousBuffer,
+    packet_buf: &RefCell<Vec<u8>>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+) -> Result<zmq::Message, Error> {
+    // receive request body
+
+    loop {
+        match req_body.try_recv(body_buf.write_buf())? {
+            RecvStatus::Complete((), written) => {
+                body_buf.write_commit(written);
+                break;
+            }
+            RecvStatus::Read((), written) => {
+                body_buf.write_commit(written);
+
+                if written == 0 {
+                    // ABR: discard_while
+                    discard_while(zreceiver, pin!(req_body.add_to_buffer())).await?;
+                }
+            }
+        }
+    }
+
+    // determine how to respond
+
+    let mut websocket = false;
+
+    for h in req.headers.iter() {
+        if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
+            websocket = true;
+            break;
+        }
+    }
+
+    if websocket {
+        // websocket requests are not supported in req mode
+
+        // toss the request body
+        body_buf.clear();
+
+        return Err(Error::ReqModeWebSocket);
+    }
+
+    // regular http requests we can handle
+
+    // prepare zmq message
+
+    let ids = [zhttppacket::Id {
+        id: id.as_bytes(),
+        seq: None,
+    }];
+
+    let msg = make_zhttp_request(
+        "",
+        &ids,
+        req.method,
+        req.uri,
+        req.headers,
+        Buffer::read_buf(body_buf),
+        false,
+        Mode::HttpReq,
+        0,
+        peer_addr,
+        secure,
+        &mut packet_buf.borrow_mut(),
+    )?;
+
+    // body consumed
+    body_buf.clear();
+
+    Ok(msg)
+}
+
+// read full request and prepare outgoing zmq message.
+// return Ok(None) if client disconnects before providing a complete request header
+async fn server_req_read_header_and_body<R: AsyncRead, W: AsyncWrite>(
+    id: &str,
+    req_header: server::RequestHeader<'_, '_, R, W>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    body_buf: &mut ContiguousBuffer,
+    packet_buf: &RefCell<Vec<u8>>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+) -> Result<Option<zmq::Message>, Error> {
+    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+
+    // receive request header
+
+    // WARNING: the returned req_header must not be dropped and instead must
+    // be consumed by discard_header(). be careful with early returns from
+    // this function and do not use the ?-operator
+    let (req_header, mut req_body) = {
+        // ABR: discard_while
+        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
+            Ok(ret) => ret,
+            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) => return Err(e),
+        }
+    };
+
+    let req_ref = req_header.get();
+
+    // log request
+
+    {
+        let host = get_host(req_ref.headers);
+        let scheme = if secure { "https" } else { "http" };
+
+        debug!(
+            "server-conn {}: request: {} {}://{}{}",
+            id, req_ref.method, scheme, host, req_ref.uri
+        );
+    }
+
+    let result = server_req_read_body(
+        id,
+        &req_ref,
+        &mut req_body,
+        peer_addr,
+        secure,
+        body_buf,
+        packet_buf,
+        zreceiver,
+    )
+    .await;
+
+    // whether success or fail, toss req_header so we are able to respond
+    req_body.discard_header(req_header);
+
+    // NOTE: req_header is now consumed and we don't need to worry about it from here
+
+    Ok(Some(result?))
+}
+
+struct ReqRespond<'buf, 'st, R: AsyncRead, W: AsyncWrite> {
+    header: server::ResponseHeader<'buf, 'st, R, W>,
+    prepare_body: server::ResponsePrepareBody<'buf, 'st, R, W>,
+}
+
+// consumes resp if successful
+#[allow(clippy::too_many_arguments)]
+async fn server_req_respond<'buf, 'st, R: AsyncRead, W: AsyncWrite>(
+    id: &str,
+    req: server::Request,
+    resp: &mut Option<server::Response<'buf, R, W>>,
+    resp_state: &'st mut server::ResponseState<'buf, R, W>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    body_buf: &mut ContiguousBuffer,
+    packet_buf: &RefCell<Vec<u8>>,
+    zsender: &AsyncLocalSender<zmq::Message>,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+) -> Result<Option<ReqRespond<'buf, 'st, R, W>>, Error> {
+    let msg = {
+        let req_header = req.recv_header(resp.as_mut().unwrap());
+
+        match server_req_read_header_and_body(
+            id, req_header, peer_addr, secure, body_buf, packet_buf, zreceiver,
+        )
+        .await?
+        {
+            Some(msg) => msg,
+            None => return Ok(None),
+        }
+    };
+
+    // send message
+
+    // ABR: discard_while
+    discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
+
+    // receive message
+
+    let zresp = loop {
+        // ABR: direct read
+        let (zresp, id_index) = Track::map_first(zreceiver.recv().await?);
+
+        let zresp_ref = zresp.get().get();
+
+        if zresp_ref.ids[id_index].id != id.as_bytes() {
+            // skip messages addressed to old ids
+            continue;
+        }
+
+        if !zresp_ref.ptype_str.is_empty() {
+            debug!("server-conn {}: handle packet: {}", id, zresp_ref.ptype_str);
+        } else {
+            debug!("server-conn {}: handle packet: (data)", id);
+        }
+
+        // skip non-data messages
+
+        match &zresp_ref.ptype {
+            zhttppacket::ResponsePacket::Data(_) => break zresp,
+            _ => debug!(
+                "server-conn {}: unexpected packet in req mode: {}",
+                id, zresp_ref.ptype_str
+            ),
+        }
+    };
+
+    let (header, prepare_body) = {
+        let zresp = zresp.get().get();
+
+        let rdata = match &zresp.ptype {
+            zhttppacket::ResponsePacket::Data(rdata) => rdata,
+            _ => unreachable!(), // we confirmed the type above
+        };
+
+        if body_buf.write_all(rdata.body).is_err() {
+            return Err(Error::BufferExceeded);
+        }
+
+        // send response header
+
+        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
+        let mut headers_len = 0;
+
+        for h in rdata.headers.iter() {
+            if headers_len >= headers.len() {
+                return Err(Error::BadMessage);
+            }
+
+            headers[headers_len] = http1::Header {
+                name: h.name,
+                value: h.value,
+            };
+
+            headers_len += 1;
+        }
+
+        let headers = &headers[..headers_len];
+
+        let mut resp_take = resp.take().unwrap();
+
+        let (header, prepare_body) = match resp_take.prepare_header(
+            rdata.code,
+            rdata.reason,
+            headers,
+            http1::BodySize::Known(rdata.body.len()),
+            resp_state,
+        ) {
+            Ok(ret) => ret,
+            Err(e) => {
+                *resp = Some(resp_take);
+                return Err(e.into());
+            }
+        };
+
+        (header, prepare_body)
+    };
+
+    Ok(Some(ReqRespond {
+        header,
+        prepare_body,
+    }))
+}
+
 // return true if persistent
 #[allow(clippy::too_many_arguments)]
 async fn server_req_handler<S: AsyncRead + AsyncWrite>(
@@ -2005,243 +1678,72 @@ async fn server_req_handler<S: AsyncRead + AsyncWrite>(
 ) -> Result<bool, Error> {
     let stream = RefCell::new(stream);
 
-    let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
-    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
-    let mut req_mem = None;
+    let mut resp_state = server::ResponseState::default();
 
-    // receive request header
+    let r = {
+        let (req, resp) = server::Request::new(io_split(&stream), buf1, buf2);
+        let mut resp = Some(resp);
 
-    // ABR: discard_while
-    let handler = match discard_while(
-        zreceiver,
-        pin!(handler.recv_request(&mut scratch, &mut req_mem)),
-    )
-    .await
-    {
-        Ok(handler) => handler,
-        Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
-        Err(e) => return Err(e),
-    };
+        let ret = match server_req_respond(
+            id,
+            req,
+            &mut resp,
+            &mut resp_state,
+            peer_addr,
+            secure,
+            body_buf,
+            packet_buf,
+            zsender,
+            zreceiver,
+        )
+        .await
+        {
+            Ok(Some(ret)) => ret,
+            Ok(None) => return Ok(false), // no request
+            Err(e) => {
+                // on error, resp is not consumed, so we can use it
+                send_error_response(resp.take().unwrap(), zreceiver, &e).await?;
 
-    // log request
-
-    {
-        let req = handler.request();
-        let host = get_host(req.headers);
-        let scheme = if secure { "https" } else { "http" };
-
-        debug!(
-            "server-conn {}: request: {} {}://{}{}",
-            id, req.method, scheme, host, req.uri
-        );
-    }
-
-    // receive request body
-
-    // ABR: discard_while
-    let handler = discard_while(zreceiver, pin!(handler.start_recv_body_and_keep_header())).await?;
-
-    loop {
-        // ABR: discard_while
-        let size = discard_while(zreceiver, pin!(handler.recv_body(body_buf.write_buf()))).await?;
-
-        if size == 0 {
-            break;
-        }
-
-        body_buf.write_commit(size);
-    }
-
-    // determine how to respond
-
-    let msg = {
-        let req = handler.request();
-
-        let mut websocket = false;
-
-        for h in req.headers.iter() {
-            if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
-                websocket = true;
-                break;
-            }
-        }
-
-        if websocket {
-            // websocket requests are not supported in req mode
-
-            // toss the request body
-            body_buf.clear();
-
-            None
-        } else {
-            // regular http requests we can handle
-
-            // prepare zmq message
-
-            let ids = [zhttppacket::Id {
-                id: id.as_bytes(),
-                seq: None,
-            }];
-
-            let msg = make_zhttp_request(
-                "",
-                &ids,
-                req.method,
-                req.uri,
-                req.headers,
-                Buffer::read_buf(body_buf),
-                false,
-                Mode::HttpReq,
-                0,
-                peer_addr,
-                secure,
-                &mut packet_buf.borrow_mut(),
-            )?;
-
-            // body consumed
-            body_buf.clear();
-
-            Some(msg)
-        }
-    };
-
-    let (handler, websocket) = if let Some(msg) = msg {
-        // handle as http
-
-        let handler = handler.recv_done();
-
-        // send message
-
-        // ABR: discard_while
-        discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
-
-        // receive message
-
-        let zresp = loop {
-            // ABR: direct read
-            let (zresp, id_index) = Track::map_first(zreceiver.recv().await?);
-
-            let zresp_ref = zresp.get().get();
-
-            if zresp_ref.ids[id_index].id != id.as_bytes() {
-                // skip messages addressed to old ids
-                continue;
-            }
-
-            if !zresp_ref.ptype_str.is_empty() {
-                debug!("server-conn {}: handle packet: {}", id, zresp_ref.ptype_str);
-            } else {
-                debug!("server-conn {}: handle packet: (data)", id);
-            }
-
-            // skip non-data messages
-
-            match &zresp_ref.ptype {
-                zhttppacket::ResponsePacket::Data(_) => break zresp,
-                _ => debug!(
-                    "server-conn {}: unexpected packet in req mode: {}",
-                    id, zresp_ref.ptype_str
-                ),
+                return Err(e);
             }
         };
 
-        let handler = {
-            let zresp = zresp.get().get();
+        assert!(resp.is_none());
 
-            let rdata = match &zresp.ptype {
-                zhttppacket::ResponsePacket::Data(rdata) => rdata,
-                _ => unreachable!(), // we confirmed the type above
-            };
-
-            // send response header
-
-            let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-            let mut headers_len = 0;
-
-            for h in rdata.headers.iter() {
-                if headers_len >= headers.len() {
-                    return Err(Error::BadMessage);
-                }
-
-                headers[headers_len] = http1::Header {
-                    name: h.name,
-                    value: h.value,
-                };
-
-                headers_len += 1;
-            }
-
-            let headers = &headers[..headers_len];
-
-            let handler = handler.prepare_response(
-                rdata.code,
-                rdata.reason,
-                headers,
-                http1::BodySize::Known(rdata.body.len()),
-            )?;
-
-            body_buf.write_all(rdata.body)?;
-
-            handler
-        };
-
-        drop(zresp);
-
-        // ABR: discard_while
-        discard_while(zreceiver, pin!(handler.send_header())).await?;
-
-        (handler.send_header_done(), false)
-    } else {
-        // handle as websocket
-
-        // send response header
-
-        let headers = &[http1::Header {
-            name: "Content-Type",
-            value: b"text/plain",
-        }];
-
-        let body = "WebSockets not supported on req mode interface.\n";
-
-        let handler = handler.recv_done();
-
-        let handler = handler.prepare_response(
-            400,
-            "Bad Request",
-            headers,
-            http1::BodySize::Known(body.len()),
-        )?;
-
-        // ABR: discard_while
-        discard_while(zreceiver, pin!(handler.send_header())).await?;
-
-        let handler = handler.send_header_done();
-
-        body_buf.write_all(body.as_bytes())?;
-
-        (handler, true)
+        ret
     };
+
+    // ABR: discard_while
+    let header_sent = discard_while(zreceiver, pin!(r.header.send())).await?;
+
+    let resp_body = header_sent.start_body(r.prepare_body);
 
     // send response body
 
-    while body_buf.len() > 0 {
-        // ABR: discard_while
-        let size = discard_while(
-            zreceiver,
-            pin!(handler.send_body(Buffer::read_buf(body_buf), false)),
-        )
-        .await?;
-
+    let finished = loop {
+        // fill the buffer as much as possible
+        let size = resp_body.prepare(Buffer::read_buf(body_buf), true)?;
         body_buf.read_commit(size);
-    }
 
-    let persistent = handler.finish();
+        // send the buffer
+        let send = pin!(async {
+            match resp_body.send().await {
+                SendStatus::Complete(finished) => Ok(Some(finished)),
+                SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                SendStatus::Partial((), _) => Ok(None),
+                SendStatus::Error((), e) => Err(e),
+            }
+        });
 
-    if websocket {
-        return Ok(false);
-    }
+        // ABR: discard_while
+        if let Some(finished) = discard_while(zreceiver, send).await? {
+            break finished;
+        }
+    };
 
-    Ok(persistent)
+    assert_eq!(body_buf.len(), 0);
+
+    Ok(finished.is_persistent())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2309,7 +1811,7 @@ async fn server_req_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrite +
     }
 
     // ABR: discard_while
-    discard_while(zreceiver, pin!(async { Ok(stream.close().await?) })).await?;
+    discard_while(zreceiver, pin!(stream.close())).await?;
 
     Ok(())
 }
@@ -2372,7 +1874,7 @@ where
         zsess_in.receiver,
         pin!(async {
             zsess_out.check_send().await;
-            Ok(())
+            Ok::<(), Error>(())
         }),
     )
     .await?;
@@ -2467,159 +1969,112 @@ where
     }
 }
 
-async fn stream_recv_body<'a, 'b, 'c, R1, R2, R, W, const N: usize>(
+async fn stream_recv_body<R1, R2, R, W>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
-    handler: RequestHeader<'a, 'b, 'c, R, W, N>,
+    req_body: server::RequestBody<'_, '_, R, W>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
-) -> Result<RequestStartResponse<'a, R, W>, Error>
+) -> Result<(), Error>
 where
     R1: Fn(),
     R2: Fn(),
     R: AsyncRead,
     W: AsyncWrite,
 {
-    let handler = {
-        let mut start_recv_body = pin!(handler.start_recv_body());
+    let mut check_send = pin!(None);
+    let mut add_to_buffer = pin!(None);
 
-        // ABR: poll_async doesn't block
-        match poll_async(start_recv_body.as_mut()).await {
-            Poll::Ready(ret) => ret?,
-            Poll::Pending => {
-                // if we get here, then the send buffer with the client is full
-
-                // keep trying to process while reading messages
-                loop {
-                    // ABR: select contains read
-                    let ret = select_2(start_recv_body.as_mut(), pin!(zsess_in.recv_msg())).await;
-
-                    match ret {
-                        Select2::R1(ret) => break ret?,
-                        Select2::R2(ret) => {
-                            let zresp = ret?;
-
-                            // note: if we get a data message, handle_other will
-                            // error out. technically a data message should be
-                            // allowed here, but we're not in a position to do
-                            // anything with it, so we error.
-                            //
-                            // fortunately, the conditions to hit this are unusual:
-                            //   * we need to receive a subsequent request over
-                            //     a persistent connection
-                            //   * that request needs to be one for which a body
-                            //     would be expected, and the request needs to
-                            //     include an expect header
-                            //   * the send buffer to that connection needs to be
-                            //     full
-                            //   * the handler needs to provide an early response
-                            //     before receiving the request body
-                            //
-                            // in other words, a client needs to send a large
-                            // pipelined POST over a reused connection, before it
-                            // has read the previous response, and the handler
-                            // needs to reject the request
-
-                            // ABR: handle_other
-                            handle_other(zresp, zsess_in, zsess_out).await?;
-                        }
-                    }
-                }
-            }
+    loop {
+        if zsess_in.credits() > 0 && add_to_buffer.is_none() && check_send.is_none() {
+            check_send.set(Some(zsess_out.check_send()));
         }
-    };
 
-    {
-        let mut check_send = pin!(None);
-        let mut add_to_recv_buffer = pin!(None);
+        // ABR: select contains read
+        let ret = select_3(
+            select_option(check_send.as_mut().as_pin_mut()),
+            select_option(add_to_buffer.as_mut().as_pin_mut()),
+            pin!(zsess_in.peek_msg()),
+        )
+        .await;
 
-        loop {
-            if zsess_in.credits() > 0 && add_to_recv_buffer.is_none() && check_send.is_none() {
-                check_send.set(Some(zsess_out.check_send()));
-            }
+        match ret {
+            Select3::R1(()) => {
+                check_send.set(None);
 
-            // ABR: select contains read
-            let ret = select_3(
-                select_option(check_send.as_mut().as_pin_mut()),
-                select_option(add_to_recv_buffer.as_mut().as_pin_mut()),
-                pin!(zsess_in.peek_msg()),
-            )
-            .await;
+                let _defer = Defer::new(|| zsess_out.cancel_send());
 
-            match ret {
-                Select3::R1(()) => {
-                    check_send.set(None);
+                assert!(zsess_in.credits() > 0);
+                assert!(add_to_buffer.is_none());
 
-                    let _defer = Defer::new(|| zsess_out.cancel_send());
+                let tmp_buf = &mut *tmp_buf.borrow_mut();
+                let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
 
-                    assert!(zsess_in.credits() > 0);
-                    assert!(add_to_recv_buffer.is_none());
-
-                    let tmp_buf = &mut *tmp_buf.borrow_mut();
-                    let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
-
-                    let size = match handler.try_recv_body(&mut tmp_buf[..max_read]) {
-                        Some(ret) => ret?,
-                        None => {
-                            add_to_recv_buffer.set(Some(handler.add_to_recv_buffer()));
+                let (size, done) = match req_body.try_recv(&mut tmp_buf[..max_read])? {
+                    RecvStatus::Complete((), written) => (written, true),
+                    RecvStatus::Read((), written) => {
+                        if written == 0 {
+                            add_to_buffer.set(Some(req_body.add_to_buffer()));
                             continue;
                         }
-                    };
 
-                    bytes_read();
-
-                    let body = &tmp_buf[..size];
-
-                    zsess_in.subtract_credits(size as u32);
-
-                    let mut rdata = zhttppacket::RequestData::new();
-                    rdata.body = body;
-                    rdata.more = handler.more();
-
-                    let zreq = zhttppacket::Request::new_data(b"", &[], rdata);
-
-                    // check_send just finished, so this should succeed
-                    zsess_out.try_send_msg(zreq)?;
-
-                    if !handler.more() {
-                        break;
+                        (written, false)
                     }
+                };
+
+                bytes_read();
+
+                let body = &tmp_buf[..size];
+
+                zsess_in.subtract_credits(size as u32);
+
+                let mut rdata = zhttppacket::RequestData::new();
+                rdata.body = body;
+                rdata.more = !done;
+
+                let zresp = zhttppacket::Request::new_data(b"", &[], rdata);
+
+                // check_send just finished, so this should succeed
+                zsess_out.try_send_msg(zresp)?;
+
+                if done {
+                    break;
                 }
-                Select3::R2(ret) => {
-                    ret?;
+            }
+            Select3::R2(ret) => {
+                ret?;
 
-                    add_to_recv_buffer.set(None);
-                }
-                Select3::R3(ret) => {
-                    let r = ret?;
+                add_to_buffer.set(None);
+            }
+            Select3::R3(ret) => {
+                let r = ret?;
 
-                    let zresp_ref = r.get().get();
+                let zresp_ref = r.get().get();
 
-                    match &zresp_ref.ptype {
-                        zhttppacket::ResponsePacket::Data(_) => break,
-                        _ => {
-                            // ABR: direct read
-                            let zresp = zsess_in.recv_msg().await?;
+                match &zresp_ref.ptype {
+                    zhttppacket::ResponsePacket::Data(_) => break,
+                    _ => {
+                        // ABR: direct read
+                        let zresp = zsess_in.recv_msg().await?;
 
-                            // ABR: handle_other
-                            handle_other(zresp, zsess_in, zsess_out).await?;
-                        }
+                        // ABR: handle_other
+                        handle_other(zresp, zsess_in, zsess_out).await?;
                     }
                 }
             }
         }
     }
 
-    Ok(handler.recv_done())
+    Ok(())
 }
 
-async fn server_stream_recv_body<'a, R1, R2, R>(
+async fn server_stream_recv_body<R1, R2, R>(
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
-    resp_body: ClientResponseBody<'a, R>,
+    resp_body: client::ResponseBody<'_, R>,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
-) -> Result<ClientFinished, Error>
+) -> Result<client::Finished, Error>
 where
     R1: Fn(),
     R2: Fn(),
@@ -2699,14 +2154,14 @@ where
     }
 }
 
-async fn stream_send_body<'a, R1, R2, R, W>(
+async fn stream_send_body<R1, R2, R, W>(
     bytes_read: &R1,
-    handler: &RequestSendBody<'a, R, W>,
+    resp_body: server::ResponseBody<'_, R, W>,
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
     blocks_max: usize,
-    blocks_avail: &Counter,
-) -> Result<(), Error>
+    blocks_avail: &mut CounterDec<'_>,
+) -> Result<server::Finished, Error>
 where
     R1: Fn(),
     R2: Fn(),
@@ -2715,46 +2170,48 @@ where
 {
     let mut out_credits = 0;
 
-    let mut flush_body = pin!(None);
+    let mut send = pin!(None);
     let mut check_send = pin!(None);
 
-    'main: loop {
+    let mut prepare_done = false;
+
+    let finished = 'main: loop {
         let ret = {
-            if flush_body.is_none() && handler.can_flush() {
-                flush_body.set(Some(handler.flush_body()));
+            if send.is_none() && resp_body.can_send() {
+                send.set(Some(resp_body.send()));
             }
 
-            if out_credits > 0 && check_send.is_none() {
+            if !prepare_done && out_credits > 0 && check_send.is_none() {
                 check_send.set(Some(zsess_out.check_send()));
             }
 
             // ABR: select contains read
-            select_4(
-                select_option(flush_body.as_mut().as_pin_mut()),
+            select_3(
+                select_option(send.as_mut().as_pin_mut()),
                 select_option(check_send.as_mut().as_pin_mut()),
                 pin!(zsess_in.recv_msg()),
-                pin!(handler.fill_recv_buffer()),
             )
             .await
         };
 
         match ret {
-            Select4::R1(ret) => {
-                flush_body.set(None);
+            Select3::R1(ret) => {
+                send.set(None);
 
-                let (size, done) = ret?;
+                match ret {
+                    SendStatus::Complete(finished) => break finished,
+                    SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                    SendStatus::Partial((), size) => {
+                        out_credits += size as u32;
 
-                if done {
-                    break;
-                }
-
-                out_credits += size as u32;
-
-                if size > 0 {
-                    bytes_read();
+                        if size > 0 {
+                            bytes_read();
+                        }
+                    }
+                    SendStatus::Error(_, e) => return Err(e.into()),
                 }
             }
-            Select4::R2(()) => {
+            Select3::R2(()) => {
                 check_send.set(None);
 
                 let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits);
@@ -2763,14 +2220,24 @@ where
                 // check_send just finished, so this should succeed
                 zsess_out.try_send_msg(zreq)?;
             }
-            Select4::R3(ret) => {
+            Select3::R3(ret) => {
                 let zresp = ret?;
 
                 match &zresp.get().get().ptype {
                     zhttppacket::ResponsePacket::Data(rdata) => {
-                        handler.append_body(rdata.body, rdata.more)?;
+                        let size = resp_body.prepare(rdata.body, !rdata.more)?;
 
-                        out_credits += handler.expand_write_buffer(blocks_max, blocks_avail) as u32;
+                        if size < rdata.body.len() {
+                            return Err(Error::BufferExceeded);
+                        }
+
+                        if rdata.more {
+                            out_credits += resp_body
+                                .expand_write_buffer(blocks_max, || blocks_avail.dec(1).is_ok())?
+                                as u32;
+                        } else {
+                            prepare_done = true;
+                        }
                     }
                     zhttppacket::ResponsePacket::HandoffStart => {
                         drop(zresp);
@@ -2778,33 +2245,34 @@ where
                         // if handoff requested, flush what we can before accepting
                         // so that the data is not delayed while we wait
 
-                        if flush_body.is_none() && handler.can_flush() {
-                            flush_body.set(Some(handler.flush_body()));
+                        if send.is_none() && resp_body.can_send() {
+                            send.set(Some(resp_body.send()));
                         }
 
-                        while let Some(fut) = flush_body.as_mut().as_pin_mut() {
+                        while let Some(fut) = send.as_mut().as_pin_mut() {
                             // ABR: poll_async doesn't block
                             let ret = match poll_async(fut).await {
                                 Poll::Ready(ret) => ret,
                                 Poll::Pending => break,
                             };
 
-                            flush_body.set(None);
+                            send.set(None);
 
-                            let (size, done) = ret?;
+                            match ret {
+                                SendStatus::Complete(resp) => break 'main resp,
+                                SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                                SendStatus::Partial((), size) => {
+                                    out_credits += size as u32;
 
-                            if done {
-                                break 'main;
+                                    if size > 0 {
+                                        bytes_read();
+                                    }
+                                }
+                                SendStatus::Error((), e) => return Err(e.into()),
                             }
 
-                            out_credits += size as u32;
-
-                            if size > 0 {
-                                bytes_read();
-                            }
-
-                            if handler.can_flush() {
-                                flush_body.set(Some(handler.flush_body()));
+                            if resp_body.can_send() {
+                                send.set(Some(resp_body.send()));
                             }
                         }
 
@@ -2817,11 +2285,10 @@ where
                     }
                 }
             }
-            Select4::R4(e) => return Err(e),
         }
-    }
+    };
 
-    Ok(())
+    Ok(finished)
 }
 
 struct Overflow {
@@ -2832,14 +2299,14 @@ struct Overflow {
 #[allow(clippy::too_many_arguments)]
 async fn server_stream_send_body<'a, R1, R2, R, W>(
     bytes_read: &R1,
-    req_body: ClientRequestBody<'a, R, W>,
+    req_body: client::RequestBody<'a, R, W>,
     mut overflow: Option<Overflow>,
     recv_buf_size: usize,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
     blocks_max: usize,
-    blocks_avail: &Counter,
-) -> Result<ClientResponse<'a, R>, Error>
+    blocks_avail: &mut CounterDec<'_>,
+) -> Result<client::Response<'a, R>, Error>
 where
     R1: Fn(),
     R2: Fn(),
@@ -2878,7 +2345,7 @@ where
                             }
                         }
                     }
-                    SendStatus::Error((), e) => return Err(e),
+                    SendStatus::Error((), e) => return Err(e.into()),
                 }
             }
             Select2::R2(ret) => {
@@ -2932,7 +2399,7 @@ where
                             bytes_read();
                         }
                     }
-                    SendStatus::Error(_, e) => return Err(e),
+                    SendStatus::Error(_, e) => return Err(e.into()),
                 }
             }
             Select3::R2(()) => {
@@ -2956,8 +2423,9 @@ where
                         }
 
                         if rdata.more {
-                            out_credits +=
-                                req_body.expand_write_buffer(blocks_max, blocks_avail)? as u32;
+                            out_credits += req_body
+                                .expand_write_buffer(blocks_max, || blocks_avail.dec(1).is_ok())?
+                                as u32;
                         } else {
                             prepare_done = true;
                         }
@@ -2991,7 +2459,7 @@ where
                                         bytes_read();
                                     }
                                 }
-                                SendStatus::Error((), e) => return Err(e),
+                                SendStatus::Error((), e) => return Err(e.into()),
                             }
 
                             if req_body.can_send() {
@@ -3021,7 +2489,7 @@ async fn stream_websocket<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -3367,7 +2835,7 @@ async fn server_stream_websocket<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -3706,6 +3174,565 @@ where
     Ok(())
 }
 
+struct WsReqData {
+    accept: ArrayString<WS_ACCEPT_MAX>,
+    deflate_config: Option<(websocket::PerMessageDeflateConfig, usize)>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn server_stream_process_req_header(
+    id: &str,
+    req: &http1::Request<'_, '_>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    allow_compression: bool,
+    packet_buf: &RefCell<Vec<u8>>,
+    instance_id: &str,
+    shared: &StreamSharedData,
+    recv_buf_size: usize,
+) -> Result<(zmq::Message, Option<WsReqData>), Error> {
+    let mut websocket = false;
+    let mut ws_version = None;
+    let mut ws_key = None;
+    let mut ws_deflate_config = None;
+
+    for h in req.headers.iter() {
+        if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
+            websocket = true;
+        }
+
+        if h.name.eq_ignore_ascii_case("Sec-WebSocket-Version") {
+            ws_version = Some(h.value);
+        }
+
+        if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
+            ws_key = Some(h.value);
+        }
+
+        if h.name.eq_ignore_ascii_case("Sec-WebSocket-Extensions") {
+            for value in http1::parse_header_value(h.value) {
+                let (name, params) = match value {
+                    Ok(v) => v,
+                    Err(_) => return Err(Error::InvalidWebSocketRequest),
+                };
+
+                match name {
+                    "permessage-deflate" => {
+                        // the client can present multiple offers. take
+                        // the first that works. if none work, it's not
+                        // an error. we'll just not use compression
+                        if allow_compression && ws_deflate_config.is_none() {
+                            if let Ok(config) =
+                                websocket::PerMessageDeflateConfig::from_params(params)
+                            {
+                                if let Ok(resp_config) = config.create_response() {
+                                    // set the encoded buffer to be 25% the size of the
+                                    // recv buffer
+                                    let enc_buf_size = recv_buf_size / 4;
+
+                                    ws_deflate_config = Some((resp_config, enc_buf_size));
+                                }
+                            }
+                        }
+                    }
+                    name => {
+                        debug!("ignoring unsupported websocket extension: {}", name);
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+
+    // log request
+
+    let host = get_host(req.headers);
+
+    let scheme = if websocket {
+        if secure {
+            "wss"
+        } else {
+            "ws"
+        }
+    } else {
+        if secure {
+            "https"
+        } else {
+            "http"
+        }
+    };
+
+    debug!(
+        "server-conn {}: request: {} {}://{}{}",
+        id, req.method, scheme, host, req.uri
+    );
+
+    let ws_req_data: Option<WsReqData> = if websocket {
+        let accept = match validate_ws_request(req, ws_version, ws_key) {
+            Ok(s) => s,
+            Err(_) => return Err(Error::InvalidWebSocketRequest),
+        };
+
+        Some(WsReqData {
+            accept,
+            deflate_config: ws_deflate_config,
+        })
+    } else {
+        None
+    };
+
+    let ids = [zhttppacket::Id {
+        id: id.as_bytes(),
+        seq: Some(shared.out_seq()),
+    }];
+
+    let (mode, more) = if websocket {
+        (Mode::WebSocket, false)
+    } else {
+        let more = match req.body_size {
+            http1::BodySize::NoBody => false,
+            http1::BodySize::Known(x) => x > 0,
+            http1::BodySize::Unknown => true,
+        };
+
+        (Mode::HttpStream, more)
+    };
+
+    let msg = make_zhttp_request(
+        instance_id,
+        &ids,
+        req.method,
+        req.uri,
+        req.headers,
+        b"",
+        more,
+        mode,
+        recv_buf_size as u32,
+        peer_addr,
+        secure,
+        &mut packet_buf.borrow_mut(),
+    )?;
+
+    shared.inc_out_seq();
+
+    Ok((msg, ws_req_data))
+}
+
+// read request header and prepare outgoing zmq message.
+// return Ok(None) if client disconnects before providing a complete request header
+#[allow(clippy::too_many_arguments)]
+async fn server_stream_read_header<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite>(
+    id: &str,
+    req_header: server::RequestHeader<'a, 'b, R, W>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    allow_compression: bool,
+    packet_buf: &RefCell<Vec<u8>>,
+    instance_id: &str,
+    zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    shared: &StreamSharedData,
+    recv_buf_size: usize,
+) -> Result<
+    Option<(
+        zmq::Message,
+        http1::BodySize,
+        Option<WsReqData>,
+        server::RequestBody<'a, 'b, R, W>,
+    )>,
+    Error,
+> {
+    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
+
+    // receive request header
+
+    // WARNING: the returned req_header must not be dropped and instead must
+    // be consumed by discard_header(). be careful with early returns from
+    // this function and do not use the ?-operator
+    let (req_header, req_body) = {
+        // ABR: discard_while
+        match discard_while(zreceiver, pin!(req_header.recv(&mut scratch))).await {
+            Ok(ret) => ret,
+            Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) => return Err(e),
+        }
+    };
+
+    let req_ref = req_header.get();
+
+    let result = server_stream_process_req_header(
+        id,
+        &req_ref,
+        peer_addr,
+        secure,
+        allow_compression,
+        packet_buf,
+        instance_id,
+        shared,
+        recv_buf_size,
+    );
+
+    let body_size = req_ref.body_size;
+
+    // whether success or fail, toss req_header so we are able to respond
+    let req_body = req_body.discard_header(req_header);
+
+    // NOTE: req_header is now consumed and we don't need to worry about it from here
+
+    let (msg, ws_req_data) = result?;
+
+    Ok(Some((msg, body_size, ws_req_data, req_body)))
+}
+
+struct StreamRespondProceed<'buf, 'st, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
+    header: server::ResponseHeader<'buf, 'st, R, W>,
+    prepare_body: server::ResponsePrepareBody<'buf, 'st, R, W>,
+    zsess_in: ZhttpStreamSessionIn<'zs, 'tr, R2>,
+    ws_config: Option<Option<(websocket::PerMessageDeflateConfig, usize)>>,
+}
+
+struct StreamRespondWebSocketRejected<'buf, 'st, R: AsyncRead, W: AsyncWrite> {
+    header: server::ResponseHeader<'buf, 'st, R, W>,
+    prepare_body: server::ResponsePrepareBody<'buf, 'st, R, W>,
+}
+
+enum StreamRespond<'buf, 'st, 'zs, 'tr, R: AsyncRead, W: AsyncWrite, R2> {
+    Proceed(StreamRespondProceed<'buf, 'st, 'zs, 'tr, R, W, R2>),
+    WebSocketRejected(StreamRespondWebSocketRejected<'buf, 'st, R, W>),
+}
+
+// consumes resp if successful
+#[allow(clippy::too_many_arguments)]
+async fn server_stream_respond<'buf, 'st, 'zs, 'tr, R, W, R1, R2>(
+    id: &'zs str,
+    req: server::Request,
+    resp: &mut Option<server::Response<'buf, R, W>>,
+    resp_state: &'st mut server::ResponseState<'buf, R, W>,
+    peer_addr: Option<&SocketAddr>,
+    secure: bool,
+    send_buf_size: usize,
+    recv_buf_size: usize,
+    allow_compression: bool,
+    packet_buf: &RefCell<Vec<u8>>,
+    tmp_buf: &RefCell<Vec<u8>>,
+    instance_id: &str,
+    zsender: &AsyncLocalSender<zmq::Message>,
+    zsess_out: &ZhttpStreamSessionOut<'_>,
+    zreceiver: &'zs TrackedAsyncLocalReceiver<'tr, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
+    shared: &'zs StreamSharedData,
+    refresh_stream_timeout: &R1,
+    refresh_session_timeout: &'zs R2,
+) -> Result<Option<StreamRespond<'buf, 'st, 'zs, 'tr, R, W, R2>>, Error>
+where
+    R: AsyncRead,
+    W: AsyncWrite,
+    R1: Fn(),
+    R2: Fn(),
+{
+    let req_header = req.recv_header(resp.as_mut().unwrap());
+
+    // receive request header
+
+    let result = server_stream_read_header(
+        id,
+        req_header,
+        peer_addr,
+        secure,
+        allow_compression,
+        packet_buf,
+        instance_id,
+        zreceiver,
+        shared,
+        recv_buf_size,
+    )
+    .await?;
+
+    let (msg, body_size, ws_req_data, req_body) = match result {
+        Some(ret) => ret,
+        None => return Ok(None),
+    };
+
+    refresh_stream_timeout();
+
+    // send request message
+
+    // ABR: discard_while
+    discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
+
+    let mut zsess_in = ZhttpStreamSessionIn::new(
+        id,
+        send_buf_size,
+        ws_req_data.is_some(),
+        zreceiver,
+        shared,
+        refresh_session_timeout,
+    );
+
+    // receive any message, in order to get a handler address
+    // ABR: direct read
+    zsess_in.peek_msg().await?;
+
+    if body_size != http1::BodySize::NoBody {
+        // receive request body and send to handler
+
+        // ABR: function contains read
+        stream_recv_body(
+            tmp_buf,
+            refresh_stream_timeout,
+            req_body,
+            &mut zsess_in,
+            zsess_out,
+        )
+        .await?;
+    }
+
+    // receive response message
+
+    let zresp = loop {
+        let mut resp_take = resp.take().unwrap();
+
+        // ABR: select contains read
+        let ret = select_2(
+            pin!(zsess_in.recv_msg()),
+            pin!(resp_take.fill_recv_buffer()),
+        )
+        .await;
+
+        *resp = Some(resp_take);
+
+        match ret {
+            Select2::R1(ret) => {
+                let zresp = ret?;
+
+                match zresp.get().get().ptype {
+                    zhttppacket::ResponsePacket::Data(_)
+                    | zhttppacket::ResponsePacket::Error(_) => break zresp,
+                    _ => {
+                        // ABR: handle_other
+                        handle_other(zresp, &mut zsess_in, zsess_out).await?;
+                    }
+                }
+            }
+            Select2::R2(e) => return Err(e.into()),
+        }
+    };
+
+    // determine how to respond
+
+    let rdata = match &zresp.get().get().ptype {
+        zhttppacket::ResponsePacket::Data(rdata) => rdata,
+        zhttppacket::ResponsePacket::Error(edata) => {
+            if ws_req_data.is_some() && edata.condition == "rejected" {
+                // send websocket rejection
+
+                let rdata = edata.rejected_info.as_ref().unwrap();
+
+                if rdata.body.len() > recv_buf_size {
+                    return Err(Error::WebSocketRejectionTooLarge(recv_buf_size));
+                }
+
+                let (header, mut prepare_body) = {
+                    let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
+                    let mut headers_len = 0;
+
+                    for h in rdata.headers.iter() {
+                        // don't send these headers
+                        if h.name.eq_ignore_ascii_case("Upgrade")
+                            || h.name.eq_ignore_ascii_case("Connection")
+                            || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
+                            || h.name.eq_ignore_ascii_case("Sec-WebSocket-Extensions")
+                        {
+                            continue;
+                        }
+
+                        if headers_len >= headers.len() {
+                            return Err(Error::BadMessage);
+                        }
+
+                        headers[headers_len] = http1::Header {
+                            name: h.name,
+                            value: h.value,
+                        };
+
+                        headers_len += 1;
+                    }
+
+                    let headers = &headers[..headers_len];
+
+                    let mut resp_take = resp.take().unwrap();
+
+                    match resp_take.prepare_header(
+                        rdata.code,
+                        rdata.reason,
+                        headers,
+                        http1::BodySize::Known(rdata.body.len()),
+                        resp_state,
+                    ) {
+                        Ok(ret) => ret,
+                        Err(e) => {
+                            *resp = Some(resp_take);
+                            return Err(e.into());
+                        }
+                    }
+                };
+
+                // first call can't fail
+                let (size, overflowed) = prepare_body
+                    .prepare(rdata.body, true)
+                    .expect("infallible prepare call failed");
+
+                if overflowed > 0 {
+                    debug!("server-conn {}: overflowing {} bytes", id, overflowed);
+                }
+
+                // we confirmed above that the data will fit in the buffer
+                assert!(size == rdata.body.len());
+
+                return Ok(Some(StreamRespond::WebSocketRejected(
+                    StreamRespondWebSocketRejected {
+                        header,
+                        prepare_body,
+                    },
+                )));
+            } else {
+                // ABR: handle_other
+                return Err(handle_other(zresp, &mut zsess_in, zsess_out)
+                    .await
+                    .unwrap_err());
+            }
+        }
+        _ => unreachable!(), // we confirmed the type above
+    };
+
+    if rdata.body.len() > recv_buf_size {
+        return Err(Error::BufferExceeded);
+    }
+
+    // send response header
+
+    let (header, mut prepare_body) = {
+        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
+        let mut headers_len = 0;
+
+        let mut body_size = http1::BodySize::Unknown;
+
+        for h in rdata.headers.iter() {
+            if ws_req_data.is_some() {
+                // don't send these headers
+                if h.name.eq_ignore_ascii_case("Upgrade")
+                    || h.name.eq_ignore_ascii_case("Connection")
+                    || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
+                    || h.name.eq_ignore_ascii_case("Sec-WebSocket-Extensions")
+                {
+                    continue;
+                }
+            } else {
+                if h.name.eq_ignore_ascii_case("Content-Length") {
+                    let s = str::from_utf8(h.value)?;
+
+                    let clen: usize = match s.parse() {
+                        Ok(clen) => clen,
+                        Err(_) => return Err(io::Error::from(io::ErrorKind::InvalidInput).into()),
+                    };
+
+                    body_size = http1::BodySize::Known(clen);
+                }
+            }
+
+            if headers_len >= headers.len() {
+                return Err(Error::BadMessage);
+            }
+
+            headers[headers_len] = http1::Header {
+                name: h.name,
+                value: h.value,
+            };
+
+            headers_len += 1;
+        }
+
+        if body_size == http1::BodySize::Unknown && !rdata.more {
+            body_size = http1::BodySize::Known(rdata.body.len());
+        }
+
+        let mut ws_ext = ArrayVec::<u8, 512>::new();
+
+        if let Some(ws_req_data) = &ws_req_data {
+            let accept_data = &ws_req_data.accept;
+
+            if headers_len + 4 > headers.len() {
+                return Err(Error::BadMessage);
+            }
+
+            headers[headers_len] = http1::Header {
+                name: "Upgrade",
+                value: b"websocket",
+            };
+            headers_len += 1;
+
+            headers[headers_len] = http1::Header {
+                name: "Connection",
+                value: b"Upgrade",
+            };
+            headers_len += 1;
+
+            headers[headers_len] = http1::Header {
+                name: "Sec-WebSocket-Accept",
+                value: accept_data.as_bytes(),
+            };
+            headers_len += 1;
+
+            if let Some((config, _)) = &ws_req_data.deflate_config {
+                if write_ws_ext_header_value(config, &mut ws_ext).is_err() {
+                    return Err(Error::Compression);
+                }
+
+                headers[headers_len] = http1::Header {
+                    name: "Sec-WebSocket-Extensions",
+                    value: ws_ext.as_ref(),
+                };
+                headers_len += 1;
+            }
+        }
+
+        let headers = &headers[..headers_len];
+
+        let mut resp_take = resp.take().unwrap();
+
+        match resp_take.prepare_header(rdata.code, rdata.reason, headers, body_size, resp_state) {
+            Ok(ret) => ret,
+            Err(e) => {
+                *resp = Some(resp_take);
+                return Err(e.into());
+            }
+        }
+    };
+
+    // first call can't fail
+    let (size, overflowed) = prepare_body
+        .prepare(rdata.body, !rdata.more)
+        .expect("infallible prepare call failed");
+
+    if overflowed > 0 {
+        debug!("server-conn {}: overflowing {} bytes", id, overflowed);
+    }
+
+    // we confirmed above that the data will fit in the buffer
+    assert!(size == rdata.body.len());
+
+    let ws_config = if let Some(ws_req_data) = ws_req_data {
+        Some(ws_req_data.deflate_config)
+    } else {
+        None
+    };
+
+    Ok(Some(StreamRespond::Proceed(StreamRespondProceed {
+        header,
+        prepare_body,
+        ws_config,
+        zsess_in,
+    })))
+}
+
 // return true if persistent
 #[allow(clippy::too_many_arguments)]
 async fn server_stream_handler<S, R1, R2>(
@@ -3716,7 +3743,7 @@ async fn server_stream_handler<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -3739,437 +3766,123 @@ where
     let send_buf_size = buf1.capacity(); // for sending to handler
     let recv_buf_size = buf2.capacity(); // for receiving from handler
 
-    let handler = RequestHandler::new(io_split(&stream), buf1, buf2);
-    let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
-    let mut req_mem = None;
-
     let zsess_out = ZhttpStreamSessionOut::new(instance_id, id, packet_buf, zsender_stream, shared);
 
-    // receive request header
+    let mut resp_state = server::ResponseState::default();
 
-    // ABR: discard_while
-    let handler = match discard_while(
-        zreceiver,
-        pin!(handler.recv_request(&mut scratch, &mut req_mem)),
-    )
-    .await
-    {
-        Ok(handler) => handler,
-        Err(Error::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
-        Err(e) => return Err(e),
-    };
+    let respond = {
+        let (req, resp) = server::Request::new(io_split(&stream), buf1, buf2);
+        let mut resp = Some(resp);
 
-    refresh_stream_timeout();
-
-    let (body_size, ws_config, msg) = {
-        let req = handler.request();
-
-        let mut websocket = false;
-        let mut ws_version = None;
-        let mut ws_key = None;
-        let mut ws_deflate_config = None;
-
-        for h in req.headers.iter() {
-            if h.name.eq_ignore_ascii_case("Upgrade") && h.value == b"websocket" {
-                websocket = true;
-            }
-
-            if h.name.eq_ignore_ascii_case("Sec-WebSocket-Version") {
-                ws_version = Some(h.value);
-            }
-
-            if h.name.eq_ignore_ascii_case("Sec-WebSocket-Key") {
-                ws_key = Some(h.value);
-            }
-
-            if h.name.eq_ignore_ascii_case("Sec-WebSocket-Extensions") {
-                for value in http1::parse_header_value(h.value) {
-                    let (name, params) = match value {
-                        Ok(v) => v,
-                        Err(_) => return Err(Error::InvalidWebSocketRequest),
-                    };
-
-                    match name {
-                        "permessage-deflate" => {
-                            // the client can present multiple offers. take
-                            // the first that works. if none work, it's not
-                            // an error. we'll just not use compression
-                            if allow_compression && ws_deflate_config.is_none() {
-                                if let Ok(config) =
-                                    websocket::PerMessageDeflateConfig::from_params(params)
-                                {
-                                    if let Ok(resp_config) = config.create_response() {
-                                        // set the encoded buffer to be 25% the size of the
-                                        // recv buffer
-                                        let enc_buf_size = recv_buf_size / 4;
-
-                                        ws_deflate_config = Some((resp_config, enc_buf_size));
-                                    }
-                                }
-                            }
-                        }
-                        name => {
-                            debug!("ignoring unsupported websocket extension: {}", name);
-                            continue;
-                        }
-                    }
-                }
-            }
-        }
-
-        // log request
-
-        let host = get_host(req.headers);
-
-        let scheme = if websocket {
-            if secure {
-                "wss"
-            } else {
-                "ws"
-            }
-        } else {
-            if secure {
-                "https"
-            } else {
-                "http"
-            }
-        };
-
-        debug!(
-            "server-conn {}: request: {} {}://{}{}",
-            id, req.method, scheme, host, req.uri
-        );
-
-        let ws_config: Option<(
-            ArrayString<WS_ACCEPT_MAX>,
-            Option<(websocket::PerMessageDeflateConfig, usize)>,
-        )> = if websocket {
-            let accept = match validate_ws_request(&req, ws_version, ws_key) {
-                Ok(s) => s,
-                Err(_) => return Err(Error::InvalidWebSocketRequest),
-            };
-
-            Some((accept, ws_deflate_config))
-        } else {
-            None
-        };
-
-        let ids = [zhttppacket::Id {
-            id: id.as_bytes(),
-            seq: Some(shared.out_seq()),
-        }];
-
-        let (mode, more) = if websocket {
-            (Mode::WebSocket, false)
-        } else {
-            let more = match req.body_size {
-                http1::BodySize::NoBody => false,
-                http1::BodySize::Known(x) => x > 0,
-                http1::BodySize::Unknown => true,
-            };
-
-            (Mode::HttpStream, more)
-        };
-
-        let msg = make_zhttp_request(
-            instance_id,
-            &ids,
-            req.method,
-            req.uri,
-            req.headers,
-            b"",
-            more,
-            mode,
-            recv_buf_size as u32,
+        let ret = match server_stream_respond(
+            id,
+            req,
+            &mut resp,
+            &mut resp_state,
             peer_addr,
             secure,
-            &mut packet_buf.borrow_mut(),
-        )?;
-
-        shared.inc_out_seq();
-
-        (req.body_size, ws_config, msg)
-    };
-
-    // send request message
-
-    // ABR: discard_while
-    discard_while(zreceiver, pin!(send_msg(zsender, msg))).await?;
-
-    let mut zsess_in = ZhttpStreamSessionIn::new(
-        id,
-        send_buf_size,
-        ws_config.is_some(),
-        zreceiver,
-        shared,
-        refresh_session_timeout,
-    );
-
-    // receive any message, in order to get a handler address
-    // ABR: direct read
-    zsess_in.peek_msg().await?;
-
-    let mut handler = if body_size != http1::BodySize::NoBody {
-        // receive request body and send to handler
-
-        // ABR: function contains read
-        stream_recv_body(
+            send_buf_size,
+            recv_buf_size,
+            allow_compression,
+            packet_buf,
             tmp_buf,
-            refresh_stream_timeout,
-            handler,
-            &mut zsess_in,
+            instance_id,
+            zsender,
             &zsess_out,
+            zreceiver,
+            shared,
+            refresh_stream_timeout,
+            refresh_session_timeout,
         )
-        .await?
-    } else {
-        handler.recv_done()?
-    };
-
-    // receive response message
-
-    let zresp = loop {
-        // ABR: select contains read
-        let ret = select_2(pin!(zsess_in.recv_msg()), pin!(handler.fill_recv_buffer())).await;
-
-        match ret {
-            Select2::R1(ret) => {
-                let zresp = ret?;
-
-                match zresp.get().get().ptype {
-                    zhttppacket::ResponsePacket::Data(_)
-                    | zhttppacket::ResponsePacket::Error(_) => break zresp,
-                    _ => {
-                        // ABR: handle_other
-                        handle_other(zresp, &mut zsess_in, &zsess_out).await?;
-                    }
-                }
-            }
-            Select2::R2(e) => return Err(e),
-        }
-    };
-
-    // determine how to respond
-
-    let (handler, ws_config) = {
-        let rdata = match &zresp.get().get().ptype {
-            zhttppacket::ResponsePacket::Data(rdata) => rdata,
-            zhttppacket::ResponsePacket::Error(edata) => {
-                if ws_config.is_some() && edata.condition == "rejected" {
-                    // send websocket rejection
-
-                    let rdata = edata.rejected_info.as_ref().unwrap();
-
-                    let handler = {
-                        let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-                        let mut headers_len = 0;
-
-                        for h in rdata.headers.iter() {
-                            // don't send these headers
-                            if h.name.eq_ignore_ascii_case("Upgrade")
-                                || h.name.eq_ignore_ascii_case("Connection")
-                                || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
-                                || h.name.eq_ignore_ascii_case("Sec-WebSocket-Extensions")
-                            {
-                                continue;
-                            }
-
-                            if headers_len >= headers.len() {
-                                return Err(Error::BadMessage);
-                            }
-
-                            headers[headers_len] = http1::Header {
-                                name: h.name,
-                                value: h.value,
-                            };
-
-                            headers_len += 1;
-                        }
-
-                        let headers = &headers[..headers_len];
-
-                        handler.prepare_response(
-                            rdata.code,
-                            rdata.reason,
-                            headers,
-                            http1::BodySize::Known(rdata.body.len()),
-                        )?
-                    };
-
-                    handler.append_body(rdata.body, false, id)?;
-
-                    drop(zresp);
-
-                    // ABR: discard_while
-                    discard_while(zreceiver, pin!(handler.send_header())).await?;
-
-                    let handler = handler.send_header_done();
-
-                    loop {
-                        // ABR: discard_while
-                        let (_, done) =
-                            discard_while(zreceiver, pin!(handler.flush_body())).await?;
-
-                        if done {
-                            break;
-                        }
-                    }
-
-                    return Ok(false);
-                } else {
-                    // ABR: handle_other
-                    return Err(handle_other(zresp, &mut zsess_in, &zsess_out)
-                        .await
-                        .unwrap_err());
-                }
-            }
-            _ => unreachable!(), // we confirmed the type above
-        };
-
-        // send response header
-
-        let handler = {
-            let mut headers = [http1::EMPTY_HEADER; HEADERS_MAX];
-            let mut headers_len = 0;
-
-            let mut body_size = http1::BodySize::Unknown;
-
-            for h in rdata.headers.iter() {
-                if ws_config.is_some() {
-                    // don't send these headers
-                    if h.name.eq_ignore_ascii_case("Upgrade")
-                        || h.name.eq_ignore_ascii_case("Connection")
-                        || h.name.eq_ignore_ascii_case("Sec-WebSocket-Accept")
-                        || h.name.eq_ignore_ascii_case("Sec-WebSocket-Extensions")
-                    {
-                        continue;
-                    }
-                } else {
-                    if h.name.eq_ignore_ascii_case("Content-Length") {
-                        let s = str::from_utf8(h.value)?;
-
-                        let clen: usize = match s.parse() {
-                            Ok(clen) => clen,
-                            Err(_) => {
-                                return Err(io::Error::from(io::ErrorKind::InvalidInput).into())
-                            }
-                        };
-
-                        body_size = http1::BodySize::Known(clen);
-                    }
-                }
-
-                if headers_len >= headers.len() {
-                    return Err(Error::BadMessage);
-                }
-
-                headers[headers_len] = http1::Header {
-                    name: h.name,
-                    value: h.value,
-                };
-
-                headers_len += 1;
-            }
-
-            if body_size == http1::BodySize::Unknown && !rdata.more {
-                body_size = http1::BodySize::Known(rdata.body.len());
-            }
-
-            let mut ws_ext = ArrayVec::<u8, 512>::new();
-
-            if let Some(ws_config) = &ws_config {
-                let accept_data = &ws_config.0;
-
-                if headers_len + 4 > headers.len() {
-                    return Err(Error::BadMessage);
-                }
-
-                headers[headers_len] = http1::Header {
-                    name: "Upgrade",
-                    value: b"websocket",
-                };
-                headers_len += 1;
-
-                headers[headers_len] = http1::Header {
-                    name: "Connection",
-                    value: b"Upgrade",
-                };
-                headers_len += 1;
-
-                headers[headers_len] = http1::Header {
-                    name: "Sec-WebSocket-Accept",
-                    value: accept_data.as_bytes(),
-                };
-                headers_len += 1;
-
-                if let Some((config, _)) = &ws_config.1 {
-                    if write_ws_ext_header_value(config, &mut ws_ext).is_err() {
-                        return Err(Error::Compression);
-                    }
-
-                    headers[headers_len] = http1::Header {
-                        name: "Sec-WebSocket-Extensions",
-                        value: ws_ext.as_ref(),
-                    };
-                    headers_len += 1;
-                }
-            }
-
-            let headers = &headers[..headers_len];
-
-            handler.prepare_response(rdata.code, rdata.reason, headers, body_size)?
-        };
-
-        handler.append_body(rdata.body, rdata.more, id)?;
-
-        drop(zresp);
-
+        .await
         {
-            let mut send_header = pin!(handler.send_header());
+            Ok(Some(ret)) => ret,
+            Ok(None) => return Ok(false), // no request
+            Err(e) => {
+                // on error, resp is not consumed, so we can use it
+                send_error_response(resp.take().unwrap(), zreceiver, &e).await?;
+
+                return Err(e);
+            }
+        };
+
+        assert!(resp.is_none());
+
+        ret
+    };
+
+    let (header, mut prepare_body, ws_config, mut zsess_in) = match respond {
+        StreamRespond::Proceed(p) => (p.header, p.prepare_body, p.ws_config, p.zsess_in),
+        StreamRespond::WebSocketRejected(r) => {
+            // ABR: discard_while
+            let header_sent = discard_while(zreceiver, pin!(r.header.send())).await?;
+
+            let resp_body = header_sent.start_body(r.prepare_body);
 
             loop {
-                // ABR: select contains read
-                let ret = select_2(send_header.as_mut(), pin!(zsess_in.recv_msg())).await;
-
-                match ret {
-                    Select2::R1(ret) => {
-                        ret?;
-
-                        break;
+                // send the buffer
+                let send = async {
+                    match resp_body.send().await {
+                        SendStatus::Complete(finished) => Ok(Some(finished)),
+                        SendStatus::EarlyResponse(_) => unreachable!(), // for requests only
+                        SendStatus::Partial((), _) => Ok(None),
+                        SendStatus::Error((), e) => Err(e),
                     }
-                    Select2::R2(ret) => {
-                        let zresp = ret?;
+                };
 
-                        match &zresp.get().get().ptype {
-                            zhttppacket::ResponsePacket::Data(rdata) => {
-                                handler.append_body(rdata.body, rdata.more, id)?;
+                // ABR: discard_while
+                if let Some(_finished) = discard_while(zreceiver, pin!(send)).await? {
+                    break;
+                }
+            }
+
+            return Ok(false);
+        }
+    };
+
+    let header_sent = {
+        let mut send = pin!(header.send());
+
+        loop {
+            // ABR: select contains read
+            let ret = select_2(send.as_mut(), pin!(zsess_in.recv_msg())).await;
+
+            match ret {
+                Select2::R1(ret) => break ret?,
+                Select2::R2(ret) => {
+                    let zresp = ret?;
+
+                    match &zresp.get().get().ptype {
+                        zhttppacket::ResponsePacket::Data(rdata) => {
+                            let (size, overflowed) =
+                                prepare_body.prepare(rdata.body, !rdata.more)?;
+
+                            if overflowed > 0 {
+                                debug!("server-conn {}: overflowing {} bytes", id, overflowed);
                             }
-                            _ => {
-                                // ABR: handle_other
-                                handle_other(zresp, &mut zsess_in, &zsess_out).await?;
+
+                            if size < rdata.body.len() {
+                                return Err(Error::BufferExceeded);
                             }
+                        }
+                        _ => {
+                            // ABR: handle_other
+                            handle_other(zresp, &mut zsess_in, &zsess_out).await?;
                         }
                     }
                 }
             }
         }
-
-        let handler = handler.send_header_done();
-
-        refresh_stream_timeout();
-
-        let ws_config = if let Some((_, ws_deflate_config)) = ws_config {
-            Some(ws_deflate_config)
-        } else {
-            None
-        };
-
-        (handler, ws_config)
     };
+
+    let resp_body = header_sent.start_body(prepare_body);
+
+    refresh_stream_timeout();
 
     if let Some(deflate_config) = ws_config {
         // reduce size of future
         #[allow(clippy::drop_non_drop)]
-        drop(handler);
+        drop(resp_body);
 
         // handle as websocket connection
 
@@ -4195,9 +3908,9 @@ where
         // send response body
 
         // ABR: function contains read
-        stream_send_body(
+        let finished = stream_send_body(
             refresh_stream_timeout,
-            &handler,
+            resp_body,
             &mut zsess_in,
             &zsess_out,
             blocks_max,
@@ -4205,9 +3918,7 @@ where
         )
         .await?;
 
-        let persistent = handler.finish();
-
-        Ok(persistent)
+        Ok(finished.is_persistent())
     }
 }
 
@@ -4258,6 +3969,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 session_timeout.set_deadline(reactor.now() + ZHTTP_SESSION_TIMEOUT);
             };
 
+            let mut blocks_avail = CounterDec::new(blocks_avail);
+
             let handler = pin!(server_stream_handler(
                 cid.as_ref(),
                 &mut stream,
@@ -4266,7 +3979,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 &mut buf1,
                 &mut buf2,
                 blocks_max,
-                blocks_avail,
+                &mut blocks_avail,
                 messages_max,
                 allow_compression,
                 &packet_buf,
@@ -4356,19 +4069,15 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 
         // note: buf1 is not cleared as there may be data to read
 
-        let additional_blocks = (buf2.capacity() / buffer_size) - 1;
-
         buf2.clear();
         buf2.resize(buffer_size);
         shared.get().reset();
-
-        blocks_avail.inc(additional_blocks).unwrap();
 
         *cid = cid_provider.get_new_assigned_cid();
     }
 
     // ABR: discard_while
-    discard_while(zreceiver, pin!(async { Ok(stream.close().await?) })).await?;
+    discard_while(zreceiver, pin!(stream.close())).await?;
 
     Ok(())
 }
@@ -4429,649 +4138,6 @@ pub async fn server_stream_connection<P: CidProvider, S: AsyncRead + AsyncWrite 
     {
         Ok(()) => debug!("server-conn {}: finished", cid),
         Err(e) => log!(e.log_level(), "server-conn {}: process error: {:?}", cid, e),
-    }
-}
-
-struct AsyncOperation<O, C>
-where
-    C: FnMut(),
-{
-    op_fn: O,
-    cancel_fn: C,
-}
-
-impl<O, C, R> AsyncOperation<O, C>
-where
-    O: FnMut(&mut Context) -> Option<R>,
-    C: FnMut(),
-{
-    fn new(op_fn: O, cancel_fn: C) -> Self {
-        Self { op_fn, cancel_fn }
-    }
-}
-
-impl<O, C, R> Future for AsyncOperation<O, C>
-where
-    O: FnMut(&mut Context) -> Option<R> + Unpin,
-    C: FnMut() + Unpin,
-{
-    type Output = R;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let s = Pin::into_inner(self);
-
-        match (s.op_fn)(cx) {
-            Some(ret) => Poll::Ready(ret),
-            None => Poll::Pending,
-        }
-    }
-}
-
-impl<O, C> Drop for AsyncOperation<O, C>
-where
-    C: FnMut(),
-{
-    fn drop(&mut self) {
-        (self.cancel_fn)();
-    }
-}
-
-pub enum SendStatus<T, P, E> {
-    Complete(T),
-    EarlyResponse(T),
-    Partial(P, usize),
-    Error(P, E),
-}
-
-pub enum RecvStatus<T, C> {
-    Read(T, usize),
-    Complete(C, usize),
-}
-
-struct ClientRequest<'a, R: AsyncRead, W: AsyncWrite> {
-    r: ReadHalf<'a, R>,
-    w: WriteHalf<'a, W>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequest<'a, R, W> {
-    fn new(
-        stream: (ReadHalf<'a, R>, WriteHalf<'a, W>),
-        buf1: &'a mut VecRingBuffer,
-        buf2: &'a mut VecRingBuffer,
-    ) -> Self {
-        Self {
-            r: stream.0,
-            w: stream.1,
-            buf1,
-            buf2,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn prepare_header(
-        self,
-        method: &str,
-        uri: &str,
-        headers: &[http1::Header<'_>],
-        body_size: http1::BodySize,
-        websocket: bool,
-        initial_body: &[u8],
-        end: bool,
-    ) -> Result<ClientRequestHeader<'a, R, W>, Error> {
-        let req = http1::ClientRequest::new();
-
-        let req_body = match req.send_header(self.buf1, method, uri, headers, body_size, websocket)
-        {
-            Ok(ret) => ret,
-            Err(_) => return Err(Error::BufferExceeded),
-        };
-
-        if self.buf2.write_all(initial_body).is_err() {
-            return Err(Error::BufferExceeded);
-        }
-
-        Ok(ClientRequestHeader {
-            r: self.r,
-            w: self.w,
-            buf1: self.buf1,
-            buf2: self.buf2,
-            req_body,
-            end,
-        })
-    }
-}
-
-struct ClientRequestHeader<'a, R: AsyncRead, W: AsyncWrite> {
-    r: ReadHalf<'a, R>,
-    w: WriteHalf<'a, W>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
-    req_body: http1::ClientRequestBody,
-    end: bool,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestHeader<'a, R, W> {
-    async fn send(mut self) -> Result<ClientRequestBody<'a, R, W>, Error> {
-        while self.buf1.len() > 0 {
-            let size = self.w.write(Buffer::read_buf(self.buf1)).await?;
-            self.buf1.read_commit(size);
-        }
-
-        let block_size = self.buf2.capacity();
-
-        Ok(ClientRequestBody {
-            inner: RefCell::new(Some(ClientRequestBodyInner {
-                r: RefCell::new(ClientRequestBodyRead {
-                    stream: self.r,
-                    buf: self.buf1,
-                }),
-                w: RefCell::new(ClientRequestBodyWrite {
-                    stream: self.w,
-                    buf: self.buf2,
-                    req_body: Some(self.req_body),
-                    end: self.end,
-                    block_size,
-                }),
-            })),
-        })
-    }
-}
-
-struct ClientRequestBodyRead<'a, R: AsyncRead> {
-    stream: ReadHalf<'a, R>,
-    buf: &'a mut VecRingBuffer,
-}
-
-struct ClientRequestBodyWrite<'a, W: AsyncWrite> {
-    stream: WriteHalf<'a, W>,
-    buf: &'a mut VecRingBuffer,
-    req_body: Option<http1::ClientRequestBody>,
-    end: bool,
-    block_size: usize,
-}
-
-struct ClientRequestBodyInner<'a, R: AsyncRead, W: AsyncWrite> {
-    r: RefCell<ClientRequestBodyRead<'a, R>>,
-    w: RefCell<ClientRequestBodyWrite<'a, W>>,
-}
-
-struct ClientRequestBody<'a, R: AsyncRead, W: AsyncWrite> {
-    inner: RefCell<Option<ClientRequestBodyInner<'a, R, W>>>,
-}
-
-impl<'a, R: AsyncRead, W: AsyncWrite> ClientRequestBody<'a, R, W> {
-    fn prepare(&self, src: &[u8], end: bool) -> Result<usize, Error> {
-        if let Some(inner) = &*self.inner.borrow() {
-            let w = &mut *inner.w.borrow_mut();
-
-            // call not allowed if the end has already been indicated
-            if w.end {
-                return Err(Error::Io(io::Error::from(io::ErrorKind::InvalidInput)));
-            }
-
-            let size = w.buf.write(src)?;
-
-            assert!(size <= src.len());
-
-            if size == src.len() && end {
-                w.end = true;
-            }
-
-            Ok(size)
-        } else {
-            Err(Error::Unusable)
-        }
-    }
-
-    fn expand_write_buffer(
-        &self,
-        blocks_max: usize,
-        blocks_avail: &Counter,
-    ) -> Result<usize, Error> {
-        if let Some(inner) = &*self.inner.borrow() {
-            let w = &mut *inner.w.borrow_mut();
-
-            Ok(resize_write_buffer_if_full(
-                w.buf,
-                w.block_size,
-                blocks_max,
-                blocks_avail,
-            ))
-        } else {
-            Err(Error::Unusable)
-        }
-    }
-
-    fn can_send(&self) -> bool {
-        if let Some(inner) = &*self.inner.borrow() {
-            let w = &*inner.w.borrow();
-
-            w.buf.len() > 0 || w.end
-        } else {
-            false
-        }
-    }
-
-    async fn send(&self) -> SendStatus<ClientResponse<'a, R>, (), Error> {
-        if self.inner.borrow().is_none() {
-            return SendStatus::Error((), Error::Unusable);
-        }
-
-        let status = loop {
-            if let Some(inner) = self.take_inner_if_early_response() {
-                let r = inner.r.into_inner();
-                let w = inner.w.into_inner();
-                let resp = w.req_body.unwrap().into_early_response();
-
-                w.buf.clear();
-
-                return SendStatus::EarlyResponse(ClientResponse {
-                    r: r.stream,
-                    buf1: r.buf,
-                    buf2: w.buf,
-                    inner: resp,
-                });
-            }
-
-            match self.process().await {
-                Some(Ok(status)) => break status,
-                Some(Err(e)) => return SendStatus::Error((), e),
-                None => {} // received data. loop and check for early response
-            }
-        };
-
-        let mut inner = self.inner.borrow_mut();
-        assert!(inner.is_some());
-
-        match status {
-            http1::SendStatus::Complete(resp, size) => {
-                let inner = inner.take().unwrap();
-
-                let r = inner.r.into_inner();
-                let w = inner.w.into_inner();
-
-                w.buf.read_commit(size);
-
-                assert_eq!(w.buf.len(), 0);
-
-                SendStatus::Complete(ClientResponse {
-                    r: r.stream,
-                    buf1: r.buf,
-                    buf2: w.buf,
-                    inner: resp,
-                })
-            }
-            http1::SendStatus::Partial(req_body, size) => {
-                let inner = inner.as_ref().unwrap();
-
-                let mut w = inner.w.borrow_mut();
-
-                w.req_body = Some(req_body);
-                w.buf.read_commit(size);
-
-                SendStatus::Partial((), size)
-            }
-            http1::SendStatus::Error(req_body, e) => {
-                let inner = inner.as_ref().unwrap();
-
-                inner.w.borrow_mut().req_body = Some(req_body);
-
-                SendStatus::Error((), e.into())
-            }
-        }
-    }
-
-    // assumes self.inner is Some
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn process(
-        &self,
-    ) -> Option<
-        Result<
-            http1::SendStatus<http1::ClientResponse, http1::ClientRequestBody, http1::Error>,
-            Error,
-        >,
-    > {
-        let inner = self.inner.borrow();
-        let inner = inner.as_ref().unwrap();
-
-        let mut r = inner.r.borrow_mut();
-
-        let result = select_2(
-            AsyncOperation::new(
-                |cx| {
-                    let w = &mut *inner.w.borrow_mut();
-
-                    if !w.stream.is_writable() {
-                        return None;
-                    }
-
-                    let req_body = w.req_body.take().unwrap();
-
-                    let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-                    let bufs = w.buf.read_bufs(&mut buf_arr);
-
-                    match req_body.send(
-                        &mut StdWriteWrapper::new(Pin::new(&mut w.stream), cx),
-                        bufs,
-                        w.end,
-                        None,
-                    ) {
-                        http1::SendStatus::Error(req_body, http1::Error::Io(e))
-                            if e.kind() == io::ErrorKind::WouldBlock =>
-                        {
-                            w.req_body = Some(req_body);
-
-                            None
-                        }
-                        ret => Some(ret),
-                    }
-                },
-                || inner.w.borrow_mut().stream.cancel(),
-            ),
-            pin!(async {
-                let r = &mut *r;
-
-                if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
-                    if e.kind() == io::ErrorKind::WriteZero {
-                        // if there's no more space, suspend forever
-                        std::future::pending::<()>().await;
-                    }
-
-                    return Err(Error::from(e));
-                }
-
-                Ok(())
-            }),
-        )
-        .await;
-
-        match result {
-            Select2::R1(ret) => match ret {
-                http1::SendStatus::Error(req_body, http1::Error::Io(e))
-                    if e.kind() == io::ErrorKind::BrokenPipe =>
-                {
-                    // if we get an error when trying to send, it could be
-                    // due to the server closing the connection after sending
-                    // an early response. here we'll check if the server left
-                    // us any data to read
-
-                    let w = &mut *inner.w.borrow_mut();
-
-                    w.req_body = Some(req_body);
-
-                    if r.buf.len() == 0 {
-                        let r = &mut *r;
-
-                        match recv_nonzero(&mut r.stream, r.buf).await {
-                            Ok(()) => None,                // received data
-                            Err(e) => Some(Err(e.into())), // error while receiving data
-                        }
-                    } else {
-                        None // we already received data
-                    }
-                }
-                ret => Some(Ok(ret)),
-            },
-            Select2::R2(ret) => match ret {
-                Ok(()) => None,         // received data
-                Err(e) => Some(Err(e)), // error while receiving data
-            },
-        }
-    }
-
-    // assumes self.inner is Some
-    fn take_inner_if_early_response(&self) -> Option<ClientRequestBodyInner<'a, R, W>> {
-        let mut inner = self.inner.borrow_mut();
-        let inner_mut = inner.as_mut().unwrap();
-
-        if inner_mut.r.borrow().buf.len() > 0 {
-            Some(inner.take().unwrap())
-        } else {
-            None
-        }
-    }
-}
-
-struct ClientResponse<'a, R: AsyncRead> {
-    r: ReadHalf<'a, R>,
-    buf1: &'a mut VecRingBuffer,
-    buf2: &'a mut VecRingBuffer,
-    inner: http1::ClientResponse,
-}
-
-impl<'a, R: AsyncRead> ClientResponse<'a, R> {
-    async fn recv_header<'b, const N: usize>(
-        mut self,
-        mut scratch: &'b mut http1::ParseScratch<N>,
-    ) -> Result<
-        (
-            http1::OwnedResponse<'b, N>,
-            ClientResponseBodyKeepHeader<'a, R>,
-        ),
-        Error,
-    > {
-        let mut resp = self.inner;
-
-        let (resp, resp_body) = loop {
-            {
-                let hbuf = self.buf1.take_inner();
-
-                resp = match resp.recv_header(hbuf, scratch) {
-                    http1::ParseStatus::Complete(ret) => break ret,
-                    http1::ParseStatus::Incomplete(resp, hbuf, ret_scratch) => {
-                        // NOTE: after polonius it may not be necessary for
-                        // scratch to be returned
-                        scratch = ret_scratch;
-
-                        self.buf1.set_inner(hbuf);
-
-                        resp
-                    }
-                    http1::ParseStatus::Error(e, hbuf, _) => {
-                        self.buf1.set_inner(hbuf);
-
-                        return Err(e.into());
-                    }
-                }
-            }
-
-            if !self.buf1.is_readable_contiguous() {
-                self.buf1.align();
-                continue;
-            }
-
-            if let Err(e) = recv_nonzero(&mut self.r, self.buf1).await {
-                if e.kind() == io::ErrorKind::WriteZero {
-                    return Err(Error::BufferExceeded);
-                }
-
-                return Err(e.into());
-            }
-        };
-
-        // at this point, resp has taken buf1's inner buffer, such that
-        // buf1 has no inner buffer
-
-        // put remaining readable bytes in buf2
-        self.buf2.write_all(resp.remaining_bytes())?;
-
-        // swap inner buffers, such that buf1 now contains the remaining
-        // readable bytes, and buf2 is now the one with no inner buffer
-        self.buf1.swap_inner(self.buf2);
-
-        Ok((
-            resp,
-            ClientResponseBodyKeepHeader {
-                inner: ClientResponseBody {
-                    inner: RefCell::new(Some(ClientResponseBodyInner {
-                        r: self.r,
-                        closed: false,
-                        buf1: self.buf1,
-                        resp_body,
-                    })),
-                },
-                buf2: RefCell::new(Some(self.buf2)),
-            },
-        ))
-    }
-}
-
-struct ClientResponseBodyInner<'a, R: AsyncRead> {
-    r: ReadHalf<'a, R>,
-    closed: bool,
-    buf1: &'a mut VecRingBuffer,
-    resp_body: http1::ClientResponseBody,
-}
-
-struct ClientResponseBody<'a, R: AsyncRead> {
-    inner: RefCell<Option<ClientResponseBodyInner<'a, R>>>,
-}
-
-impl<'a, R: AsyncRead> ClientResponseBody<'a, R> {
-    // on EOF and any subsequent calls, return success
-    #[allow(clippy::await_holding_refcell_ref)]
-    async fn add_to_buffer(&self) -> Result<(), Error> {
-        if let Some(inner) = &mut *self.inner.borrow_mut() {
-            if !inner.closed {
-                match recv_nonzero(&mut inner.r, inner.buf1).await {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == io::ErrorKind::WriteZero => {
-                        return Err(Error::BufferExceeded)
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => inner.closed = true,
-                    Err(e) => return Err(e.into()),
-                }
-            }
-
-            Ok(())
-        } else {
-            Err(Error::Unusable)
-        }
-    }
-
-    fn try_recv(&self, dest: &mut [u8]) -> Result<RecvStatus<(), ClientFinished>, Error> {
-        loop {
-            let mut b_inner = self.inner.borrow_mut();
-
-            if let Some(inner) = b_inner.take() {
-                let mut scratch = mem::MaybeUninit::<[httparse::Header; HEADERS_MAX]>::uninit();
-
-                let src = Buffer::read_buf(inner.buf1);
-                let end = src.len() == inner.buf1.len() && inner.closed;
-
-                match inner.resp_body.recv(src, dest, end, &mut scratch)? {
-                    http1::RecvStatus::Complete(finished, read, written) => {
-                        inner.buf1.read_commit(read);
-
-                        *b_inner = None;
-
-                        break Ok(RecvStatus::Complete(
-                            ClientFinished { inner: finished },
-                            written,
-                        ));
-                    }
-                    http1::RecvStatus::Read(resp_body, read, written) => {
-                        *b_inner = Some(ClientResponseBodyInner {
-                            r: inner.r,
-                            closed: inner.closed,
-                            buf1: inner.buf1,
-                            resp_body,
-                        });
-
-                        let inner = b_inner.as_mut().unwrap();
-
-                        if read == 0 && written == 0 {
-                            if !inner.buf1.is_readable_contiguous() {
-                                inner.buf1.align();
-                                continue;
-                            }
-
-                            if inner.closed {
-                                let first_buf = Buffer::read_buf(inner.buf1);
-
-                                return Err(Error::Internal(format!(
-                                    "closed connection made no progress: buf1.len={} first_buf.len={} end={}",
-                                    inner.buf1.len(),
-                                    first_buf.len(),
-                                    end
-                                )));
-                            }
-                        }
-
-                        inner.buf1.read_commit(read);
-
-                        return Ok(RecvStatus::Read((), written));
-                    }
-                }
-            } else {
-                return Err(Error::Unusable);
-            }
-        }
-    }
-}
-
-struct ClientResponseBodyKeepHeader<'a, R: AsyncRead> {
-    inner: ClientResponseBody<'a, R>,
-    buf2: RefCell<Option<&'a mut VecRingBuffer>>,
-}
-
-impl<'a, R: AsyncRead> ClientResponseBodyKeepHeader<'a, R> {
-    fn discard_header<const N: usize>(
-        self,
-        resp: http1::OwnedResponse<N>,
-    ) -> Result<ClientResponseBody<'a, R>, Error> {
-        if let Some(buf2) = self.buf2.borrow_mut().take() {
-            buf2.set_inner(resp.into_buf());
-            buf2.clear();
-
-            Ok(self.inner)
-        } else {
-            Err(Error::Unusable)
-        }
-    }
-
-    async fn add_to_buffer(&self) -> Result<(), Error> {
-        self.inner.add_to_buffer().await
-    }
-
-    fn try_recv(
-        &self,
-        dest: &mut [u8],
-    ) -> Result<RecvStatus<(), ClientFinishedKeepHeader<'a>>, Error> {
-        if !self.buf2.borrow().is_some() {
-            return Err(Error::Unusable);
-        }
-
-        match self.inner.try_recv(dest)? {
-            RecvStatus::Complete(finished, written) => Ok(RecvStatus::Complete(
-                ClientFinishedKeepHeader {
-                    inner: finished,
-                    buf2: self.buf2.borrow_mut().take().unwrap(),
-                },
-                written,
-            )),
-            RecvStatus::Read((), written) => Ok(RecvStatus::Read((), written)),
-        }
-    }
-}
-
-struct ClientFinished {
-    inner: http1::ClientFinished,
-}
-
-struct ClientFinishedKeepHeader<'a> {
-    inner: ClientFinished,
-    buf2: &'a mut VecRingBuffer,
-}
-
-impl<'a> ClientFinishedKeepHeader<'a> {
-    fn discard_header<const N: usize>(self, resp: http1::OwnedResponse<N>) -> ClientFinished {
-        self.buf2.set_inner(resp.into_buf());
-        self.buf2.clear();
-
-        self.inner
     }
 }
 
@@ -5408,7 +4474,7 @@ where
     S: AsyncRead + AsyncWrite,
 {
     let stream = RefCell::new(stream);
-    let req = ClientRequest::new(io_split(&stream), buf1, buf2);
+    let req = client::Request::new(io_split(&stream), buf1, buf2);
 
     let req_header = {
         let rdata = match &zreq.ptype {
@@ -5474,7 +4540,7 @@ where
                     break resp;
                 }
                 SendStatus::Partial((), _) => {}
-                SendStatus::Error((), e) => return Err(e),
+                SendStatus::Error((), e) => return Err(e.into()),
             }
         }
     };
@@ -5524,7 +4590,7 @@ where
                 debug!("client-conn {}: redirecting to {}", log_id, url);
 
                 return Ok(ClientHandlerDone::Redirect(
-                    finished.inner.persistent,
+                    finished.is_persistent(),
                     url,
                     use_get,
                 ));
@@ -5561,10 +4627,7 @@ where
 
     let finished = finished.discard_header(resp);
 
-    Ok(ClientHandlerDone::Complete(
-        zresp,
-        finished.inner.persistent,
-    ))
+    Ok(ClientHandlerDone::Complete(zresp, finished.is_persistent()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5831,7 +4894,7 @@ async fn client_stream_handler<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
     messages_max: usize,
     allow_compression: bool,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -5850,7 +4913,7 @@ where
     let send_buf_size = buf1.capacity(); // for sending to handler
     let recv_buf_size = buf2.capacity(); // for receiving from handler
 
-    let req = ClientRequest::new(io_split(&stream), buf1, buf2);
+    let req = client::Request::new(io_split(&stream), buf1, buf2);
 
     let (req_header, ws_key, overflow) = {
         let rdata = match &zreq.ptype {
@@ -6141,7 +5204,7 @@ where
                     debug!("client-conn {}: redirecting to {}", log_id, url);
 
                     return Ok(ClientHandlerDone::Redirect(
-                        finished.inner.persistent,
+                        finished.is_persistent(),
                         url,
                         use_get,
                     ));
@@ -6237,10 +5300,15 @@ where
                                         .await;
 
                                         match result {
-                                            Select2::R1(ret) => {
-                                                ret?;
-                                                break;
-                                            }
+                                            Select2::R1(ret) => match ret {
+                                                Ok(()) => break,
+                                                Err(CoreHttpError::BufferExceeded) => {
+                                                    return Err(Error::WebSocketRejectionTooLarge(
+                                                        send_buf_size,
+                                                    ));
+                                                }
+                                                Err(e) => return Err(e.into()),
+                                            },
                                             Select2::R2(ret) => {
                                                 let zreq = ret?;
 
@@ -6274,7 +5342,7 @@ where
 
                     let finished = finished.discard_header(resp);
 
-                    return Ok(ClientHandlerDone::Complete((), finished.inner.persistent));
+                    return Ok(ClientHandlerDone::Complete((), finished.is_persistent()));
                 }
             }
 
@@ -6349,7 +5417,7 @@ where
         )
         .await?;
 
-        Ok(ClientHandlerDone::Complete((), finished.inner.persistent))
+        Ok(ClientHandlerDone::Complete((), finished.is_persistent()))
     }
 }
 
@@ -6503,6 +5571,8 @@ where
             }
         };
 
+        let mut blocks_avail = CounterDec::new(blocks_avail);
+
         let done = match &mut stream {
             AsyncStream::Plain(stream) => {
                 client_stream_handler(
@@ -6516,7 +5586,7 @@ where
                     buf1,
                     buf2,
                     blocks_max,
-                    blocks_avail,
+                    &mut blocks_avail,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -6539,7 +5609,7 @@ where
                     buf1,
                     buf2,
                     blocks_max,
-                    blocks_avail,
+                    &mut blocks_avail,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -6553,11 +5623,7 @@ where
         };
 
         if done.is_persistent() {
-            let additional_blocks = (buf2.capacity() / buffer_size) - 1;
-
             buf2.resize(buffer_size);
-
-            blocks_avail.inc(additional_blocks).unwrap();
 
             if pool
                 .push(
@@ -7399,7 +6465,7 @@ pub mod testutil {
             buf1,
             buf2,
             2,
-            &Counter::new(0),
+            &mut CounterDec::new(&Counter::new(0)),
             10,
             false,
             &packet_buf,
@@ -7790,59 +6856,6 @@ mod tests {
         }
         let r = t.start(websocket::OPCODE_TEXT);
         assert!(r.is_err());
-    }
-
-    #[test]
-    fn early_body() {
-        let reactor = Reactor::new(100);
-
-        let sock = Rc::new(RefCell::new(FakeSock::new()));
-        sock.borrow_mut().allow_write(1024);
-
-        let sock = RefCell::new(AsyncFakeSock::new(sock));
-
-        let rb_tmp = Rc::new(TmpBuffer::new(12));
-
-        let mut buf1 = VecRingBuffer::new(12, &rb_tmp);
-        let mut buf2 = VecRingBuffer::new(12, &rb_tmp);
-
-        buf2.write(b"foo").unwrap();
-
-        let handler = RequestSendHeader::new(
-            io_split(&sock),
-            &mut buf1,
-            &mut buf2,
-            http1::ServerProtocol::new(),
-            3,
-        );
-        assert_eq!(handler.early_body.borrow().overflow.is_none(), true);
-
-        handler.append_body(b"hello", false, "").unwrap();
-        assert_eq!(handler.early_body.borrow().overflow.is_none(), true);
-
-        handler.append_body(b" world", false, "").unwrap();
-        assert_eq!(handler.early_body.borrow().overflow.is_some(), true);
-
-        handler.append_body(b"!", false, "").unwrap();
-
-        handler.append_body(b"!", false, "").unwrap_err();
-
-        {
-            let mut executor = StepExecutor::new(&reactor, handler.send_header());
-            assert_eq!(check_poll(executor.step()), Some(()));
-        }
-
-        assert_eq!(handler.early_body.borrow().overflow.is_none(), true);
-
-        let handler = handler.send_header_done();
-        let header = sock.borrow_mut().inner.borrow_mut().take_writable();
-        assert_eq!(header, b"foo");
-
-        let w = handler.w.borrow();
-        let mut buf_arr = [&b""[..]; VECTORED_MAX - 2];
-        let bufs = w.buf.read_bufs(&mut buf_arr);
-        assert_eq!(bufs[0], b"hello wor");
-        assert_eq!(bufs[1], b"ld!");
     }
 
     async fn server_req_fut(
@@ -10042,7 +9055,7 @@ mod tests {
             &mut buf1,
             &mut buf2,
             3,
-            &Counter::new(1),
+            &mut CounterDec::new(&Counter::new(1)),
             10,
             allow_compression,
             &tmp_buf,

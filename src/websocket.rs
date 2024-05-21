@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 use crate::buffer::{
     trim_for_display, write_vectored_offset, Buffer, LimitBufsMut, RingBuffer, VECTORED_MAX,
 };
-use crate::http1::HeaderParamsIterator;
+use crate::core::http1::HeaderParamsIterator;
 use arrayvec::ArrayVec;
 use log::{log_enabled, trace};
 use miniz_oxide::deflate;
