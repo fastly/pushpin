@@ -463,15 +463,15 @@ public:
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
-						inspectFinishedConnection = inspectRequest.get()->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
+						inspectFinishedConnection = inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished));
 						inspectChecker->watch(inspectRequest.get());
-						inspectRequest.get()->start(requestData, truncated, route.session, autoShare);
+						inspectRequest->start(requestData, truncated, route.session, autoShare);
 					}
 					else
 					{
 						inspectChecker->watch(inspectRequest.get());
 						inspectChecker->give(inspectRequest.get());
-						inspectRequest.get()->start(requestData, truncated, route.session, autoShare);
+						inspectRequest->start(requestData, truncated, route.session, autoShare);
 						inspectRequest.reset();
 					}
 				}
