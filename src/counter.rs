@@ -121,4 +121,18 @@ mod tests {
         assert!(c.inc(usize::MAX).is_ok());
         assert!(c.inc(1).is_err());
     }
+
+    #[test]
+    fn counter_dec() {
+        let c = Counter::new(2);
+
+        {
+            let mut c = CounterDec::new(&c);
+            assert!(c.dec(1).is_ok());
+            assert!(c.dec(1).is_ok());
+            assert!(c.dec(1).is_err());
+        }
+
+        assert!(c.dec(1).is_ok());
+    }
 }
