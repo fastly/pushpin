@@ -133,6 +133,7 @@ mod tests {
             assert!(c.dec(1).is_err());
         }
 
-        assert!(c.dec(1).is_ok());
+        assert!(c.dec(2).is_ok());
+        assert!(c.dec(1).is_err());
     }
 }
