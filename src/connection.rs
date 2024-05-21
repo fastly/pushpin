@@ -40,7 +40,7 @@ use crate::buffer::{
 };
 use crate::core::http1::Error as CoreHttpError;
 use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
-use crate::counter::Counter;
+use crate::counter::{Counter, CounterDec};
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
     AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncResolver, AsyncTcpStream, AsyncTlsStream,
@@ -309,7 +309,7 @@ fn resize_write_buffer_if_full(
     buf: &mut VecRingBuffer,
     block_size: usize,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec,
 ) -> usize {
     assert!(blocks_max >= 2);
 
@@ -790,7 +790,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> WebSocketHandler<'a, R, W> {
         Ok(())
     }
 
-    fn expand_write_buffer(&self, blocks_max: usize, blocks_avail: &Counter) -> usize {
+    fn expand_write_buffer(&self, blocks_max: usize, blocks_avail: &mut CounterDec) -> usize {
         let w = &mut *self.w.borrow_mut();
 
         resize_write_buffer_if_full(w.buf, w.block_size, blocks_max, blocks_avail)
@@ -2158,7 +2158,7 @@ async fn stream_send_body<R1, R2, R, W>(
     zsess_in: &mut ZhttpStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpStreamSessionOut<'_>,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
 ) -> Result<server::Finished, Error>
 where
     R1: Fn(),
@@ -2303,7 +2303,7 @@ async fn server_stream_send_body<'a, R1, R2, R, W>(
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
 ) -> Result<client::Response<'a, R>, Error>
 where
     R1: Fn(),
@@ -2487,7 +2487,7 @@ async fn stream_websocket<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -2833,7 +2833,7 @@ async fn server_stream_websocket<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
     messages_max: usize,
     tmp_buf: &RefCell<Vec<u8>>,
     bytes_read: &R1,
@@ -3741,7 +3741,7 @@ async fn server_stream_handler<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
     messages_max: usize,
     allow_compression: bool,
     packet_buf: &RefCell<Vec<u8>>,
@@ -3967,6 +3967,8 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 session_timeout.set_deadline(reactor.now() + ZHTTP_SESSION_TIMEOUT);
             };
 
+            let mut blocks_avail = CounterDec::new(blocks_avail);
+
             let handler = pin!(server_stream_handler(
                 cid.as_ref(),
                 &mut stream,
@@ -3975,7 +3977,7 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
                 &mut buf1,
                 &mut buf2,
                 blocks_max,
-                blocks_avail,
+                &mut blocks_avail,
                 messages_max,
                 allow_compression,
                 &packet_buf,
@@ -4065,13 +4067,9 @@ async fn server_stream_connection_inner<P: CidProvider, S: AsyncRead + AsyncWrit
 
         // note: buf1 is not cleared as there may be data to read
 
-        let additional_blocks = (buf2.capacity() / buffer_size) - 1;
-
         buf2.clear();
         buf2.resize(buffer_size);
         shared.get().reset();
-
-        blocks_avail.inc(additional_blocks).unwrap();
 
         *cid = cid_provider.get_new_assigned_cid();
     }
@@ -4894,7 +4892,7 @@ async fn client_stream_handler<S, R1, R2>(
     buf1: &mut VecRingBuffer,
     buf2: &mut VecRingBuffer,
     blocks_max: usize,
-    blocks_avail: &Counter,
+    blocks_avail: &mut CounterDec<'_>,
     messages_max: usize,
     allow_compression: bool,
     tmp_buf: &RefCell<Vec<u8>>,
@@ -5571,6 +5569,8 @@ where
             }
         };
 
+        let mut blocks_avail = CounterDec::new(blocks_avail);
+
         let done = match &mut stream {
             AsyncStream::Plain(stream) => {
                 client_stream_handler(
@@ -5584,7 +5584,7 @@ where
                     buf1,
                     buf2,
                     blocks_max,
-                    blocks_avail,
+                    &mut blocks_avail,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -5607,7 +5607,7 @@ where
                     buf1,
                     buf2,
                     blocks_max,
-                    blocks_avail,
+                    &mut blocks_avail,
                     messages_max,
                     allow_compression,
                     tmp_buf,
@@ -5621,11 +5621,7 @@ where
         };
 
         if done.is_persistent() {
-            let additional_blocks = (buf2.capacity() / buffer_size) - 1;
-
             buf2.resize(buffer_size);
-
-            blocks_avail.inc(additional_blocks).unwrap();
 
             if pool
                 .push(
@@ -6467,7 +6463,7 @@ pub mod testutil {
             buf1,
             buf2,
             2,
-            &Counter::new(0),
+            &mut CounterDec::new(&Counter::new(0)),
             10,
             false,
             &packet_buf,
@@ -9057,7 +9053,7 @@ mod tests {
             &mut buf1,
             &mut buf2,
             3,
-            &Counter::new(1),
+            &mut CounterDec::new(&Counter::new(1)),
             10,
             allow_compression,
             &tmp_buf,

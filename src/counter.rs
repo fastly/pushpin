@@ -78,6 +78,30 @@ impl Counter {
     }
 }
 
+pub struct CounterDec<'a> {
+    counter: &'a Counter,
+    amount: usize,
+}
+
+impl<'a> CounterDec<'a> {
+    pub fn new(counter: &'a Counter) -> Self {
+        Self { counter, amount: 0 }
+    }
+
+    pub fn dec(&mut self, amount: usize) -> Result<(), CounterError> {
+        self.counter.dec(amount)?;
+        self.amount += amount;
+
+        Ok(())
+    }
+}
+
+impl Drop for CounterDec<'_> {
+    fn drop(&mut self) {
+        assert!(self.counter.inc(self.amount).is_ok());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -639,7 +639,7 @@ impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
 
     pub fn expand_write_buffer<F>(&self, blocks_max: usize, reserve: F) -> Result<usize, Error>
     where
-        F: Fn() -> bool,
+        F: FnMut() -> bool,
     {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &mut *inner.w.borrow_mut();
