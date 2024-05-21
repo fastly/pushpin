@@ -463,7 +463,7 @@ public:
 
 					if(inspectChecker->isInterfaceAvailable())
 					{
-						inspectFinishedConnection = inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished));
+						inspectFinishedConnection = inspectRequest->finished.connect(boost::bind(&Private::inspectRequest_finished, this));
 						inspectChecker->watch(inspectRequest.get());
 						inspectRequest->start(requestData, truncated, route.session, autoShare);
 					}
