@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-use crate::future::{AsyncWrite, AsyncWriteExt};
 use std::cell::RefCell;
 use std::cmp;
 use std::io;
@@ -188,46 +187,6 @@ pub fn write_vectored_offset<W: Write>(
     }
 
     writer.write_vectored(&arr[..arr_len])
-}
-
-pub async fn write_vectored_offset_async<W: AsyncWrite>(
-    writer: &mut W,
-    bufs: &[&[u8]],
-    offset: usize,
-) -> Result<usize, io::Error> {
-    if bufs.is_empty() {
-        return Ok(0);
-    }
-
-    let mut offset = offset;
-    let mut start = 0;
-
-    while offset >= bufs[start].len() {
-        // on the last buf?
-        if start + 1 >= bufs.len() {
-            // exceeding the last buf is an error
-            if offset > bufs[start].len() {
-                return Err(io::Error::from(io::ErrorKind::InvalidInput));
-            }
-
-            return Ok(0);
-        }
-
-        offset -= bufs[start].len();
-        start += 1;
-    }
-
-    let mut arr = [io::IoSlice::new(&b""[..]); VECTORED_MAX];
-    let mut arr_len = 0;
-
-    for (index, &buf) in bufs.iter().enumerate().skip(start) {
-        let buf = if index == start { &buf[offset..] } else { buf };
-
-        arr[arr_len] = io::IoSlice::new(buf);
-        arr_len += 1;
-    }
-
-    writer.write_vectored(&arr[..arr_len]).await
 }
 
 struct LimitBufsRestore<T> {

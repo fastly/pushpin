@@ -32,8 +32,6 @@ class ZrpcManager;
 
 class AcceptRequest : public ZrpcRequest
 {
-	Q_OBJECT
-
 public:
 	class ResponseData
 	{
@@ -47,7 +45,7 @@ public:
 		}
 	};
 
-	AcceptRequest(ZrpcManager *manager, QObject *parent = 0);
+	AcceptRequest(ZrpcManager *manager);
 	~AcceptRequest();
 
 	ResponseData result() const;
@@ -59,7 +57,7 @@ protected:
 
 private:
 	class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 };
 
 #endif

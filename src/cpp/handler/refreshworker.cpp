@@ -29,8 +29,7 @@
 #include "statsmanager.h"
 #include "wssession.h"
 
-RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel, QObject *parent) :
-	Deferred(parent),
+RefreshWorker::RefreshWorker(ZrpcRequest *req, ZrpcManager *proxyControlClient, QHash<QString, QSet<WsSession*> > *wsSessionsByChannel) :
 	ignoreErrors_(false),
 	proxyControlClient_(proxyControlClient),
 	req_(req)
