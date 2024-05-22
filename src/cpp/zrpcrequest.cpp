@@ -177,21 +177,17 @@ private slots:
 ZrpcRequest::ZrpcRequest(QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = std::make_unique<Private>(this);
 }
 
 ZrpcRequest::ZrpcRequest(ZrpcManager *manager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = std::make_unique<Private>(this);
 	setupClient(manager);
 }
 
-ZrpcRequest::~ZrpcRequest()
-{
-	destroyed();
-	delete d;
-}
+ZrpcRequest::~ZrpcRequest() = default;
 
 QByteArray ZrpcRequest::from() const
 {

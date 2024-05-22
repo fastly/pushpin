@@ -74,7 +74,7 @@ protected:
 
 private:
 	class Private;
-	Private *d;
+	std::unique_ptr<Private> d;
 
 	friend class ZrpcManager;
 	ZrpcRequest(QObject *parent = 0);
