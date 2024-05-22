@@ -233,7 +233,7 @@ void ZrpcRequest::start(const QString &method, const QVariantHash &args)
 {
 	d->method = method;
 	d->args = args;
-	QMetaObject::invokeMethod(d, "doStart", Qt::QueuedConnection);
+	QMetaObject::invokeMethod(d.get(), "doStart", Qt::QueuedConnection);
 }
 
 void ZrpcRequest::respond(const QVariant &result)
