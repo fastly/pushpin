@@ -646,7 +646,7 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, sig_keys_user=N
 
     routes = []
 
-    routes.append('pushpin.healthcheck.test test')
+    routes.append('pushpin.healthcheck.test 127.0.0.1:9092')
 
     services = fetch_service_backends(api_key, cache_dir, old_cache_files)
 
