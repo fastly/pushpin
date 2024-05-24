@@ -18,6 +18,7 @@ setup() {
         iptables -I PUSHPINOUT -p udp --dport 53 -s 127.0.0.1 -d 127.0.0.1  -j ACCEPT
         iptables -I PUSHPINOUT -p tcp --sport 1030 -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT
         iptables -I PUSHPINOUT -p tcp --sport 1031 -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT
+        iptables -I PUSHPINOUT -p tcp --dport 9092 -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT
 
         ip6tables -N PUSHPIN6OUT
         ip6tables -I OUTPUT -m owner --uid-owner pushpin -g PUSHPIN6OUT
