@@ -15,9 +15,9 @@ RELEASE = $$(RELEASE)
 
 # copy bin files
 
-cm_bin.target = $$bin_dir/pushpin-cm
-cm_bin.depends = $$target_dir/pushpin-cm
-cm_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-cm $$bin_dir/pushpin-cm
+connmgr_bin.target = $$bin_dir/pushpin-connmgr
+connmgr_bin.depends = $$target_dir/pushpin-connmgr
+connmgr_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-connmgr $$bin_dir/pushpin-connmgr
 
 m2adapter_bin.target = $$bin_dir/m2adapter
 m2adapter_bin.depends = $$target_dir/m2adapter
@@ -44,7 +44,7 @@ publish_bin.depends = $$target_dir/pushpin-publish
 publish_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-publish $$bin_dir/pushpin-publish
 
 QMAKE_EXTRA_TARGETS += \
-	cm_bin \
+	connmgr_bin \
 	m2adapter_bin \
 	proxy_bin \
 	handler_bin \
@@ -53,7 +53,7 @@ QMAKE_EXTRA_TARGETS += \
 	publish_bin
 
 PRE_TARGETDEPS += \
-	$$bin_dir/pushpin-cm \
+	$$bin_dir/pushpin-connmgr \
 	$$bin_dir/m2adapter \
 	$$bin_dir/pushpin-proxy \
 	$$bin_dir/pushpin-handler \
@@ -75,7 +75,7 @@ PRE_TARGETDEPS += pushpin.conf.inst
 unix:!isEmpty(BINDIR) {
 	binfiles.path = $$BINDIR
 	binfiles.files = \
-		$$bin_dir/pushpin-cm \
+		$$bin_dir/pushpin-connmgr \
 		$$bin_dir/m2adapter \
 		$$bin_dir/pushpin-proxy \
 		$$bin_dir/pushpin-handler \

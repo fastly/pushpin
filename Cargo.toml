@@ -63,7 +63,7 @@ name = "client"
 harness = false
 
 [[bin]]
-name = "pushpin-cm"
+name = "pushpin-connmgr"
 test = false
 bench = false
 

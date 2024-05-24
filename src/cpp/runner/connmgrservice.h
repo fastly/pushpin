@@ -20,16 +20,16 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef CMSERVICE_H
-#define CMSERVICE_H
+#ifndef CONNMGRSERVICE_H
+#define CONNMGRSERVICE_H
 
 #include "service.h"
 #include "listenport.h"
 
-class CmService : public Service
+class ConnmgrService : public Service
 {
 public:
-	CmService(
+	ConnmgrService(
 		const QString &name,
 		const QString &binFile,
 		const QString &runDir,

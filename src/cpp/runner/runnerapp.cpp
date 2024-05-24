@@ -33,7 +33,7 @@
 #include "log.h"
 #include "settings.h"
 #include "listenport.h"
-#include "cmservice.h"
+#include "connmgrservice.h"
 #include "mongrel2service.h"
 #include "m2adapterservice.h"
 #include "zurlservice.h"
@@ -459,10 +459,10 @@ public:
 		if(fi.isFile())
 			m2aBin = fi.canonicalFilePath();
 
-		QString cmBin = "pushpin-cm";
-		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-cm"));
+		QString connmgrBin = "pushpin-connmgr";
+		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-connmgr"));
 		if(fi.isFile())
-			cmBin = fi.canonicalFilePath();
+			connmgrBin = fi.canonicalFilePath();
 
 		QString proxyBin = "pushpin-proxy";
 		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-proxy"));
@@ -576,26 +576,26 @@ public:
 		if(serviceNames.contains("condure"))
 		{
 			serviceNames.removeAll("condure");
-			serviceNames += "cm";
+			serviceNames += "connmgr";
 		}
 
-		if(serviceNames.contains("cm") && (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter")))
+		if(serviceNames.contains("connmgr") && (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter")))
 		{
-			log_error("cannot enable the cm service at the same time as mongrel2 or m2adapter");
+			log_error("cannot enable the connmgr service at the same time as mongrel2 or m2adapter");
 			q->quit(1);
 			return;
 		}
 
-		if(serviceNames.contains("cm"))
+		if(serviceNames.contains("connmgr"))
 		{
 			QString certsDir = QDir(configDir).filePath("certs");
 
 			bool useClient = false;
 
-			if(!serviceNames.contains("zurl") && CmService::hasClientMode(cmBin))
+			if(!serviceNames.contains("zurl") && ConnmgrService::hasClientMode(connmgrBin))
 				useClient = true;
 
-			services += new CmService("cm", cmBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("cm", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, useClient);
+			services += new ConnmgrService("connmgr", connmgrBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("connmgr", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, useClient);
 		}
 
 		if(serviceNames.contains("mongrel2"))

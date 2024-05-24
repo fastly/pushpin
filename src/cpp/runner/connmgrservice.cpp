@@ -20,7 +20,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "cmservice.h"
+#include "connmgrservice.h"
 
 #include <QDir>
 #include <QVariantList>
@@ -29,7 +29,7 @@
 #include "log.h"
 #include "template.h"
 
-CmService::CmService(
+ConnmgrService::ConnmgrService(
 	const QString &name,
 	const QString &binFile,
 	const QString &runDir,
@@ -103,7 +103,7 @@ CmService::CmService(
 			}
 		}
 
-		args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "cm";
+		args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr";
 
 		if(usingSsl)
 			args_ += "--tls-identities-dir=" + certsDir;
@@ -113,7 +113,7 @@ CmService::CmService(
 	{
 		// client mode
 
-		args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "cm-client";
+		args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr-client";
 
 		args_ += "--deny-out-internal";
 	}
@@ -122,12 +122,12 @@ CmService::CmService(
 	setPidFile(QDir(runDir).filePath(filePrefix + name + ".pid"));
 }
 
-QStringList CmService::arguments() const
+QStringList ConnmgrService::arguments() const
 {
 	return args_;
 }
 
-bool CmService::hasClientMode(const QString &binFile)
+bool ConnmgrService::hasClientMode(const QString &binFile)
 {
 	QProcess proc;
 
@@ -135,20 +135,20 @@ bool CmService::hasClientMode(const QString &binFile)
 
 	if(!proc.waitForFinished(-1))
 	{
-		log_error("Failed to run cm: process error: %d", proc.error());
+		log_error("Failed to run connmgr: process error: %d", proc.error());
 		return false;
 	}
 
 	if(proc.exitStatus() != QProcess::NormalExit)
 	{
-		log_error("Failed to run cm: process did not exit normally");
+		log_error("Failed to run connmgr: process did not exit normally");
 		return false;
 	}
 
 	int code = proc.exitCode();
 	if(proc.exitCode() != 0)
 	{
-		log_error("cm returned non-zero status: %d", code);
+		log_error("connmgr returned non-zero status: %d", code);
 		return false;
 	}
 
