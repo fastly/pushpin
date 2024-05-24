@@ -573,10 +573,34 @@ public:
 			filePrefix = ipcPrefix;
 		}
 
+		if(logLevels.contains("pushpin-proxy"))
+		{
+			logLevels["proxy"] = logLevels["pushpin-proxy"];
+			logLevels.remove("pushpin-proxy");
+		}
+
+		if(logLevels.contains("pushpin-handler"))
+		{
+			logLevels["handler"] = logLevels["pushpin-handler"];
+			logLevels.remove("pushpin-handler");
+		}
+
 		if(serviceNames.contains("condure"))
 		{
 			serviceNames.removeAll("condure");
 			serviceNames += "connmgr";
+		}
+
+		if(serviceNames.contains("pushpin-proxy"))
+		{
+			serviceNames.removeAll("pushpin-proxy");
+			serviceNames += "proxy";
+		}
+
+		if(serviceNames.contains("pushpin-handler"))
+		{
+			serviceNames.removeAll("pushpin-handler");
+			serviceNames += "handler";
 		}
 
 		if(serviceNames.contains("connmgr") && (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter")))
@@ -642,11 +666,11 @@ public:
 			quietCheck = true;
 		}
 
-		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("pushpin-proxy", defaultLevel), args.routeLines, quietCheck);
+		if(serviceNames.contains("proxy"))
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("proxy", defaultLevel), args.routeLines, quietCheck);
 
-		if(serviceNames.contains("pushpin-handler"))
-			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("pushpin-handler", defaultLevel));
+		if(serviceNames.contains("handler"))
+			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("handler", defaultLevel));
 
 		foreach(Service *s, services)
 		{

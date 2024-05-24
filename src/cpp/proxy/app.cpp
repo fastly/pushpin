@@ -559,7 +559,7 @@ public:
 
 		Engine::Configuration config;
 		config.appVersion = Config::get().version;
-		config.clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
+		config.clientId = "proxy_" + QByteArray::number(QCoreApplication::applicationPid());
 		if(!services.contains("mongrel2") && (!connmgr_in_specs.isEmpty() || !connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty()))
 		{
 			config.serverInSpecs = connmgr_in_specs;
