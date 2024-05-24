@@ -227,7 +227,7 @@ HEADERS += \
 	$$RSRC_DIR/template.h \
 	$$RSRC_DIR/service.h \
 	$$RSRC_DIR/listenport.h \
-	$$RSRC_DIR/condureservice.h \
+	$$RSRC_DIR/connmgrservice.h \
 	$$RSRC_DIR/mongrel2service.h \
 	$$RSRC_DIR/m2adapterservice.h \
 	$$RSRC_DIR/zurlservice.h \
@@ -239,7 +239,7 @@ HEADERS += \
 SOURCES += \
 	$$RSRC_DIR/template.cpp \
 	$$RSRC_DIR/service.cpp \
-	$$RSRC_DIR/condureservice.cpp \
+	$$RSRC_DIR/connmgrservice.cpp \
 	$$RSRC_DIR/mongrel2service.cpp \
 	$$RSRC_DIR/m2adapterservice.cpp \
 	$$RSRC_DIR/zurlservice.cpp \

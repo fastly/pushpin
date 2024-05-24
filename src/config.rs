@@ -74,7 +74,6 @@ pub struct Runner {
     pub client_buffer_size: i32,
     pub client_maxconn: i32,
     pub allow_compression: bool,
-    pub condure_bin: String,
 }
 
 impl From<Runner> for config::ValueKind {
@@ -104,10 +103,6 @@ impl From<Runner> for config::ValueKind {
         properties.insert(
             "allow_compression".to_string(),
             config::Value::from(runner.allow_compression),
-        );
-        properties.insert(
-            "condure_bin".to_string(),
-            config::Value::from(runner.condure_bin),
         );
 
         Self::Table(properties)
@@ -364,7 +359,7 @@ impl CustomConfig {
                 "runner",
                 Runner {
                     rundir: String::new(),
-                    services: String::from("condure,pushpin-proxy,pushpin-handler"),
+                    services: String::from("connmgr,pushpin-proxy,pushpin-handler"),
                     http_port: String::from("7999"),
                     https_ports: String::from("443"),
                     local_ports: String::from("{rundir}/{ipc_prefix}server"),
@@ -373,7 +368,6 @@ impl CustomConfig {
                     client_buffer_size: 8192,
                     client_maxconn: 50000,
                     allow_compression: false,
-                    condure_bin: String::from("condure"),
                 },
             )?
             .set_default(

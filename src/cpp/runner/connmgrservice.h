@@ -20,16 +20,16 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef CONDURESERVICE_H
-#define CONDURESERVICE_H
+#ifndef CONNMGRSERVICE_H
+#define CONNMGRSERVICE_H
 
 #include "service.h"
 #include "listenport.h"
 
-class CondureService : public Service
+class ConnmgrService : public Service
 {
 public:
-	CondureService(
+	ConnmgrService(
 		const QString &name,
 		const QString &binFile,
 		const QString &runDir,

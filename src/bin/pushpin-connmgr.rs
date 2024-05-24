@@ -17,7 +17,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
-use pushpin::condure::{run, App, Config};
+use pushpin::connmgr::{run, App, Config};
 use pushpin::log::{get_simple_logger, local_offset_check};
 use pushpin::version;
 use pushpin::{ListenConfig, ListenSpec};
@@ -199,7 +199,7 @@ fn process_args_and_run(args: Args) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
-    let matches = Command::new("pushpin-condure")
+    let matches = Command::new("pushpin-connmgr")
         .version(version())
         .about("HTTP/WebSocket connection manager")
         .arg(
@@ -216,7 +216,7 @@ fn main() {
                 .num_args(1)
                 .value_name("ID")
                 .help("Instance ID")
-                .default_value("condure"),
+                .default_value("connmgr"),
         )
         .arg(
             Arg::new("workers")

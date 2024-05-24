@@ -258,10 +258,16 @@ public:
 
 		QStringList services = settings.value("runner/services").toStringList();
 
+		QStringList connmgr_in_stream_specs = settings.value("proxy/connmgr_in_stream_specs").toStringList();
+		trimlist(&connmgr_in_stream_specs);
+		QStringList connmgr_out_specs = settings.value("proxy/connmgr_out_specs").toStringList();
+		trimlist(&connmgr_out_specs);
 		QStringList condure_in_stream_specs = settings.value("proxy/condure_in_stream_specs").toStringList();
 		trimlist(&condure_in_stream_specs);
+		connmgr_in_stream_specs += condure_in_stream_specs;
 		QStringList condure_out_specs = settings.value("proxy/condure_out_specs").toStringList();
 		trimlist(&condure_out_specs);
+		connmgr_out_specs += condure_out_specs;
 		int proxyWorkerCount = settings.value("proxy/workers", 1).toInt();
 		QStringList m2a_in_stream_specs = settings.value("handler/m2a_in_stream_specs").toStringList();
 		trimlist(&m2a_in_stream_specs);
@@ -348,10 +354,10 @@ public:
 		HandlerEngine::Configuration config;
 		config.appVersion = Config::get().version;
 		config.instanceId = "pushpin-handler_" + QByteArray::number(QCoreApplication::applicationPid());
-		if(!services.contains("mongrel2") && (!condure_in_stream_specs.isEmpty() || !condure_out_specs.isEmpty()))
+		if(!services.contains("mongrel2") && (!connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty()))
 		{
-			config.serverInStreamSpecs = condure_in_stream_specs;
-			config.serverOutSpecs = condure_out_specs;
+			config.serverInStreamSpecs = connmgr_in_stream_specs;
+			config.serverOutSpecs = connmgr_out_specs;
 		}
 		else
 		{

@@ -425,24 +425,42 @@ public:
 		QStringList services = settings.value("runner/services").toStringList();
 
 		int workerCount = settings.value("proxy/workers", 1).toInt();
+		QStringList connmgr_in_specs = settings.value("proxy/connmgr_in_specs").toStringList();
+		trimlist(&connmgr_in_specs);
+		QStringList connmgr_in_stream_specs = settings.value("proxy/connmgr_in_stream_specs").toStringList();
+		trimlist(&connmgr_in_stream_specs);
+		QStringList connmgr_out_specs = settings.value("proxy/connmgr_out_specs").toStringList();
+		trimlist(&connmgr_out_specs);
 		QStringList condure_in_specs = settings.value("proxy/condure_in_specs").toStringList();
 		trimlist(&condure_in_specs);
+		connmgr_in_specs += condure_in_specs;
 		QStringList condure_in_stream_specs = settings.value("proxy/condure_in_stream_specs").toStringList();
 		trimlist(&condure_in_stream_specs);
+		connmgr_in_stream_specs += condure_in_stream_specs;
 		QStringList condure_out_specs = settings.value("proxy/condure_out_specs").toStringList();
 		trimlist(&condure_out_specs);
+		connmgr_out_specs += condure_out_specs;
 		QStringList m2a_in_specs = settings.value("proxy/m2a_in_specs").toStringList();
 		trimlist(&m2a_in_specs);
 		QStringList m2a_in_stream_specs = settings.value("proxy/m2a_in_stream_specs").toStringList();
 		trimlist(&m2a_in_stream_specs);
 		QStringList m2a_out_specs = settings.value("proxy/m2a_out_specs").toStringList();
 		trimlist(&m2a_out_specs);
+		QStringList connmgr_client_out_specs = settings.value("proxy/connmgr_client_out_specs").toStringList();
+		trimlist(&connmgr_client_out_specs);
+		QStringList connmgr_client_out_stream_specs = settings.value("proxy/connmgr_client_out_stream_specs").toStringList();
+		trimlist(&connmgr_client_out_stream_specs);
+		QStringList connmgr_client_in_specs = settings.value("proxy/connmgr_client_in_specs").toStringList();
+		trimlist(&connmgr_client_in_specs);
 		QStringList condure_client_out_specs = settings.value("proxy/condure_client_out_specs").toStringList();
 		trimlist(&condure_client_out_specs);
+		connmgr_client_out_specs += condure_client_out_specs;
 		QStringList condure_client_out_stream_specs = settings.value("proxy/condure_client_out_stream_specs").toStringList();
 		trimlist(&condure_client_out_stream_specs);
+		connmgr_client_out_stream_specs += condure_client_out_stream_specs;
 		QStringList condure_client_in_specs = settings.value("proxy/condure_client_in_specs").toStringList();
 		trimlist(&condure_client_in_specs);
+		connmgr_client_in_specs += condure_client_in_specs;
 		QStringList zurl_out_specs = settings.value("proxy/zurl_out_specs").toStringList();
 		trimlist(&zurl_out_specs);
 		QStringList zurl_out_stream_specs = settings.value("proxy/zurl_out_stream_specs").toStringList();
@@ -505,16 +523,16 @@ public:
 		if(fi.isRelative())
 			routesFile = QFileInfo(configDir, routesFile).filePath();
 
-		if(!(!condure_in_specs.isEmpty() && !condure_in_stream_specs.isEmpty() && !condure_out_specs.isEmpty()) && !(!m2a_in_specs.isEmpty() && !m2a_in_stream_specs.isEmpty() && !m2a_out_specs.isEmpty()))
+		if(!(!connmgr_in_specs.isEmpty() && !connmgr_in_stream_specs.isEmpty() && !connmgr_out_specs.isEmpty()) && !(!m2a_in_specs.isEmpty() && !m2a_in_stream_specs.isEmpty() && !m2a_out_specs.isEmpty()))
 		{
-			log_error("must set condure_in_specs, condure_in_stream_specs, and condure_out_specs, or m2a_in_specs, m2a_in_stream_specs, and m2a_out_specs");
+			log_error("must set connmgr_in_specs, connmgr_in_stream_specs, and connmgr_out_specs, or m2a_in_specs, m2a_in_stream_specs, and m2a_out_specs");
 			q->quit(0);
 			return;
 		}
 
-		if(!(!condure_client_out_specs.isEmpty() && !condure_client_out_stream_specs.isEmpty() && !condure_client_in_specs.isEmpty()) && !(!zurl_out_specs.isEmpty() && !zurl_out_stream_specs.isEmpty() && !zurl_in_specs.isEmpty()))
+		if(!(!connmgr_client_out_specs.isEmpty() && !connmgr_client_out_stream_specs.isEmpty() && !connmgr_client_in_specs.isEmpty()) && !(!zurl_out_specs.isEmpty() && !zurl_out_stream_specs.isEmpty() && !zurl_in_specs.isEmpty()))
 		{
-			log_error("must set condure_client_out_specs, condure_client_out_stream_specs, and condure_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
+			log_error("must set connmgr_client_out_specs, connmgr_client_out_stream_specs, and connmgr_client_in_specs, or zurl_out_specs, zurl_out_stream_specs, and zurl_in_specs");
 			q->quit(0);
 			return;
 		}
@@ -542,11 +560,11 @@ public:
 		Engine::Configuration config;
 		config.appVersion = Config::get().version;
 		config.clientId = "pushpin-proxy_" + QByteArray::number(QCoreApplication::applicationPid());
-		if(!services.contains("mongrel2") && (!condure_in_specs.isEmpty() || !condure_in_stream_specs.isEmpty() || !condure_out_specs.isEmpty()))
+		if(!services.contains("mongrel2") && (!connmgr_in_specs.isEmpty() || !connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty()))
 		{
-			config.serverInSpecs = condure_in_specs;
-			config.serverInStreamSpecs = condure_in_stream_specs;
-			config.serverOutSpecs = condure_out_specs;
+			config.serverInSpecs = connmgr_in_specs;
+			config.serverInStreamSpecs = connmgr_in_stream_specs;
+			config.serverOutSpecs = connmgr_out_specs;
 		}
 		else
 		{
@@ -554,11 +572,11 @@ public:
 			config.serverInStreamSpecs = m2a_in_stream_specs;
 			config.serverOutSpecs = m2a_out_specs;
 		}
-		if(!services.contains("zurl") && (!condure_client_out_specs.isEmpty() || !condure_client_out_stream_specs.isEmpty() || !condure_client_in_specs.isEmpty()))
+		if(!services.contains("zurl") && (!connmgr_client_out_specs.isEmpty() || !connmgr_client_out_stream_specs.isEmpty() || !connmgr_client_in_specs.isEmpty()))
 		{
-			config.clientOutSpecs = condure_client_out_specs;
-			config.clientOutStreamSpecs = condure_client_out_stream_specs;
-			config.clientInSpecs = condure_client_in_specs;
+			config.clientOutSpecs = connmgr_client_out_specs;
+			config.clientOutStreamSpecs = connmgr_client_out_stream_specs;
+			config.clientInSpecs = connmgr_client_in_specs;
 		}
 		else
 		{
