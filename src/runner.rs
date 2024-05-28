@@ -823,8 +823,8 @@ mod tests {
             output: Ok(Settings {
                 service_names: vec![
                     "connmgr".to_string(),
-                    "pushpin-proxy".to_string(),
-                    "pushpin-handler".to_string(),
+                    "proxy".to_string(),
+                    "handler".to_string(),
                 ],
                 config_file: test_dir
                     .join("examples")

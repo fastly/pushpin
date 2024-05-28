@@ -353,7 +353,7 @@ public:
 
 		HandlerEngine::Configuration config;
 		config.appVersion = Config::get().version;
-		config.instanceId = "pushpin-handler_" + QByteArray::number(QCoreApplication::applicationPid());
+		config.instanceId = "handler_" + QByteArray::number(QCoreApplication::applicationPid());
 		if(!services.contains("mongrel2") && (!connmgr_in_stream_specs.isEmpty() || !connmgr_out_specs.isEmpty()))
 		{
 			config.serverInStreamSpecs = connmgr_in_stream_specs;
