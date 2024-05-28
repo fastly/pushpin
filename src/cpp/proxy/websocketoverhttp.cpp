@@ -201,6 +201,7 @@ public:
 
 	WebSocketOverHttp *q;
 	ZhttpManager *zhttpManager;
+	StatsManager *statsManager;
 	QString connectHost;
 	int connectPort;
 	bool ignorePolicies;
@@ -1013,11 +1014,12 @@ private slots:
 	}
 };
 
-WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent) :
+WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager, StatsManager *statsManager, QObject *parent) :
 	WebSocket(parent)
 {
 	d = new Private(this);
 	d->zhttpManager = zhttpManager;
+	d->statsManager = statsManager;
 }
 
 WebSocketOverHttp::WebSocketOverHttp(QObject *parent) :

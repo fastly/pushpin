@@ -561,7 +561,7 @@ public:
 
 			if(target.overHttp)
 			{
-				WebSocketOverHttp *woh = new WebSocketOverHttp(zhttpManager, this);
+				WebSocketOverHttp *woh = new WebSocketOverHttp(zhttpManager, statsManager, this);
 
 				woh->setConnectionId(publicCid);
 

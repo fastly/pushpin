@@ -24,6 +24,7 @@
 #ifndef WEBSOCKETOVERHTTP_H
 #define WEBSOCKETOVERHTTP_H
 
+#include "statsmanager.h"
 #include "websocket.h"
 #include <boost/signals2.hpp>
 #include <map>
@@ -39,7 +40,7 @@ class WebSocketOverHttp : public WebSocket
 	Q_OBJECT
 
 public:
-	WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent = 0);
+	WebSocketOverHttp(ZhttpManager *zhttpManager, StatsManager *statsManager, QObject *parent = 0);
 	~WebSocketOverHttp();
 
 	void setConnectionId(const QByteArray &id);

@@ -53,6 +53,7 @@ public:
 
 	ZWebSocket *q;
 	ZhttpManager *manager;
+	StatsManager *statsManager;
 	bool server;
 	InternalState state;
 	ZWebSocket::Rid rid;
@@ -96,10 +97,11 @@ public:
 	Connection expireTimerConnection;
 	Connection keppAliveTimerConnection;
 
-	Private(ZWebSocket *_q) :
+	Private(ZWebSocket *_q, StatsManager *_statsManager) :
 		QObject(_q),
 		q(_q),
 		manager(0),
+		statsManager(_statsManager),
 		server(false),
 		state(Idle),
 		connectPort(-1),
@@ -1091,10 +1093,10 @@ public:
 	}
 };
 
-ZWebSocket::ZWebSocket(QObject *parent) :
+ZWebSocket::ZWebSocket(StatsManager *statsManager, QObject *parent) :
 	WebSocket(parent)
 {
-	d = new Private(this);
+	d = new Private(this, statsManager);
 }
 
 ZWebSocket::~ZWebSocket()

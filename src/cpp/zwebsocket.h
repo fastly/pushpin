@@ -23,6 +23,7 @@
 #ifndef ZWEBSOCKET_H
 #define ZWEBSOCKET_H
 
+#include "statsmanager.h"
 #include "websocket.h"
 #include <boost/signals2.hpp>
 
@@ -83,7 +84,7 @@ private:
 	Private *d;
 
 	friend class ZhttpManager;
-	ZWebSocket(QObject *parent = 0);
+	ZWebSocket(StatsManager *stats = 0, QObject *parent = 0);
 	void setupClient(ZhttpManager *manager);
 	bool setupServer(ZhttpManager *manager, const QByteArray &id, int seq, const ZhttpRequestPacket &packet);
 	void startServer();
