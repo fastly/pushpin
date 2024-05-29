@@ -9,7 +9,12 @@ COPY . .
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RUST_BACKTRACE=1
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake fst-rustc-1.71.0=1.71.0-149 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
+
+# set up debug packages repo
+RUN apt-get update && apt-get -y install ubuntu-dbgsym-keyring
+RUN printf "deb http://ddebs.ubuntu.com focal main restricted universe multiverse\ndeb http://ddebs.ubuntu.com focal-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com focal-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list
+
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake libqt5core5a-dbgsym libqt5network5-dbgsym libglib2.0-0-dbgsym fst-rustc-1.71.0=1.71.0-149 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
 RUN ls -alhrt
 ENV CFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
@@ -33,6 +38,7 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stag
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-stats-emitter
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-condure
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-healthcheck
+RUN cp -a /usr/lib/debug /opt/fst-pushpin/lib
 RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
 RUN cp ./fastly-build/pushpin.conf /opt/fst-pushpin/etc/pushpin/pushpin.conf
 RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
