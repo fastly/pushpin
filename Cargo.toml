@@ -14,6 +14,7 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+strip = "none"
 
 [lib]
 crate-type = ["rlib", "staticlib"]

@@ -130,7 +130,7 @@ fn write_cpp_conf_pri(
     writeln!(&mut out, "CONFIG -= debug_and_release")?;
 
     if release {
-        writeln!(&mut out, "CONFIG += release")?;
+        writeln!(&mut out, "CONFIG += release force_debug_info")?;
     } else {
         writeln!(&mut out, "CONFIG += debug")?;
     }
