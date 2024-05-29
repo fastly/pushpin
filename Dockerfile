@@ -8,6 +8,7 @@ WORKDIR /build
 COPY . .
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV RUST_BACKTRACE=1
 RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake fst-rustc-1.71.0=1.71.0-149 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
 RUN ls -alhrt

@@ -8,6 +8,7 @@ Restart=always
 CPUQuota=400%
 MemoryLimit=5G
 SyslogIdentifier=pushpin-proxy
+Environment="RUST_BACKTRACE=1"
 ExecStart=/opt/fst-pushpin/bin/pushpin-sandbox.sh /opt/fst-pushpin/bin/pushpin-proxy --config=/opt/fst-pushpin/etc/pushpin/pushpin.conf --ipc-prefix=pushpin- --loglevel=1
 
 [Install]
