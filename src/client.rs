@@ -174,6 +174,17 @@ impl Batch {
     }
 
     fn add(&mut self, to_addr: &[u8], ckey: usize) -> Result<BatchKey, ()> {
+        if self.nodes.len() == self.nodes.capacity() {
+            return Err(());
+        }
+
+        // if all existing nodes have been removed via remove() or take_group(),
+        // such that is_empty() returns true, start clean
+        if self.nodes.is_empty() {
+            self.addrs.clear();
+            self.addr_index = 0;
+        }
+
         let mut pos = self.addrs.len();
 
         for (i, a) in self.addrs.iter().enumerate() {
@@ -183,14 +194,19 @@ impl Batch {
         }
 
         if pos == self.addrs.len() {
+            if self.addrs.len() == self.addrs.capacity() {
+                return Err(());
+            }
+
             // connection limits to_addr to FROM_MAX so this is guaranteed to succeed
             let a = ArrayVec::try_from(to_addr).unwrap();
 
             self.addrs.push((a, list::List::default()));
-        }
-
-        if self.nodes.len() == self.nodes.capacity() {
-            return Err(());
+        } else {
+            // adding not allowed if take_group() has already moved past the index
+            if pos < self.addr_index {
+                return Err(());
+            }
         }
 
         let nkey = self.nodes.insert(list::Node::new(ckey));
@@ -220,6 +236,7 @@ impl Batch {
 
         // if all are empty, we're done
         if self.addr_index == self.addrs.len() {
+            assert!(self.nodes.is_empty());
             return None;
         }
 
@@ -928,8 +945,6 @@ impl Worker {
                     Select2::R2(_) => break 'outer,
                 }
             }
-
-            stream_conns.batch_clear();
         }
     }
 
@@ -1681,14 +1696,12 @@ impl Worker {
                     }
                 }
                 None => {
-                    // this could happen if message construction failed
+                    // this could happen if items removed or message construction failed
                     sender.cancel();
                 }
             }
 
             if conns.batch_is_empty() {
-                conns.batch_clear();
-
                 let now = reactor.now();
 
                 if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
@@ -2658,6 +2671,37 @@ pub mod tests {
             .take_group(|ckey| { (ids[ckey - 1].as_bytes(), 0) })
             .is_none());
         assert_eq!(batch.last_group_ckeys(), &[3]);
+
+        let mut batch = Batch::new(3);
+
+        let bkey = batch.add(b"addr-a", 1).unwrap();
+        assert!(batch.add(b"addr-b", 2).is_ok());
+        assert_eq!(batch.len(), 2);
+        batch.remove(bkey);
+        assert_eq!(batch.len(), 1);
+
+        let group = batch
+            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .unwrap();
+        assert_eq!(group.ids().len(), 1);
+        assert_eq!(group.ids()[0].id, b"id-2");
+        assert_eq!(group.ids()[0].seq, Some(0));
+        assert_eq!(group.addr(), b"addr-b");
+        drop(group);
+        assert_eq!(batch.is_empty(), true);
+
+        assert!(batch.add(b"addr-a", 3).is_ok());
+        assert_eq!(batch.len(), 1);
+        assert!(!batch.is_empty());
+        let group = batch
+            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .unwrap();
+        assert_eq!(group.ids().len(), 1);
+        assert_eq!(group.ids()[0].id, b"id-3");
+        assert_eq!(group.ids()[0].seq, Some(0));
+        assert_eq!(group.addr(), b"addr-a");
+        drop(group);
+        assert_eq!(batch.is_empty(), true);
     }
 
     #[test]
