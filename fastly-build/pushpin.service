@@ -1,8 +1,8 @@
 [Unit]
 Description=pushpin
 After=network.target
-Before=pushpin-condure-in.service pushpin-condure-out.service pushpin-proxy.service pushpin-handler.service pushpin-stats-emitter.service pushpin-loader.service
-Wants=pushpin-condure-in.service pushpin-condure-out.service pushpin-proxy.service pushpin-handler.service pushpin-stats-emitter.service pushpin-loader.service
+Before=pushpin-connmgr-in.service pushpin-connmgr-out.service pushpin-proxy.service pushpin-handler.service pushpin-stats-emitter.service pushpin-loader.service
+Wants=pushpin-connmgr-in.service pushpin-connmgr-out.service pushpin-proxy.service pushpin-handler.service pushpin-stats-emitter.service pushpin-loader.service
 
 [Service]
 Type=simple

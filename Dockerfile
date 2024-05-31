@@ -42,8 +42,8 @@ RUN cp -a /usr/lib/debug /opt/fst-pushpin/lib
 RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin
 RUN cp ./fastly-build/pushpin.conf /opt/fst-pushpin/etc/pushpin/pushpin.conf
 RUN cp ./fastly-build/pushpin.service /opt/fst-pushpin/etc
-RUN cp ./fastly-build/pushpin-condure-in.service /opt/fst-pushpin/etc
-RUN cp ./fastly-build/pushpin-condure-out.service /opt/fst-pushpin/etc
+RUN cp ./fastly-build/pushpin-connmgr-in.service /opt/fst-pushpin/etc
+RUN cp ./fastly-build/pushpin-connmgr-out.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-proxy.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-handler.service /opt/fst-pushpin/etc
 RUN cp ./fastly-build/pushpin-loader.service /opt/fst-pushpin/etc
