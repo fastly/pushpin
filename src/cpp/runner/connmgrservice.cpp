@@ -20,7 +20,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "condureservice.h"
+#include "connmgrservice.h"
 
 #include <QDir>
 #include <QVariantList>
@@ -29,7 +29,7 @@
 #include "log.h"
 #include "template.h"
 
-CondureService::CondureService(
+ConnmgrService::ConnmgrService(
 	const QString &name,
 	const QString &binFile,
 	const QString &runDir,
@@ -103,7 +103,7 @@ CondureService::CondureService(
 			}
 		}
 
-		args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "condure";
+		args_ += "--zclient-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr";
 
 		if(usingSsl)
 			args_ += "--tls-identities-dir=" + certsDir;
@@ -113,7 +113,7 @@ CondureService::CondureService(
 	{
 		// client mode
 
-		args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "condure-client";
+		args_ += "--zserver-stream=ipc://" + runDir + "/" + ipcPrefix + "connmgr-client";
 
 		args_ += "--deny-out-internal";
 	}
@@ -122,12 +122,12 @@ CondureService::CondureService(
 	setPidFile(QDir(runDir).filePath(filePrefix + name + ".pid"));
 }
 
-QStringList CondureService::arguments() const
+QStringList ConnmgrService::arguments() const
 {
 	return args_;
 }
 
-bool CondureService::hasClientMode(const QString &binFile)
+bool ConnmgrService::hasClientMode(const QString &binFile)
 {
 	QProcess proc;
 
@@ -135,20 +135,20 @@ bool CondureService::hasClientMode(const QString &binFile)
 
 	if(!proc.waitForFinished(-1))
 	{
-		log_error("Failed to run condure: process error: %d", proc.error());
+		log_error("Failed to run connmgr: process error: %d", proc.error());
 		return false;
 	}
 
 	if(proc.exitStatus() != QProcess::NormalExit)
 	{
-		log_error("Failed to run condure: process did not exit normally");
+		log_error("Failed to run connmgr: process did not exit normally");
 		return false;
 	}
 
 	int code = proc.exitCode();
 	if(proc.exitCode() != 0)
 	{
-		log_error("Condure returned non-zero status: %d", code);
+		log_error("connmgr returned non-zero status: %d", code);
 		return false;
 	}
 
