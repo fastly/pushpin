@@ -33,7 +33,7 @@
 #include "log.h"
 #include "settings.h"
 #include "listenport.h"
-#include "condureservice.h"
+#include "connmgrservice.h"
 #include "mongrel2service.h"
 #include "m2adapterservice.h"
 #include "zurlservice.h"
@@ -459,10 +459,10 @@ public:
 		if(fi.isFile())
 			m2aBin = fi.canonicalFilePath();
 
-		QString condureBin = "pushpin-condure";
-		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-condure"));
+		QString connmgrBin = "pushpin-connmgr";
+		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-connmgr"));
 		if(fi.isFile())
-			condureBin = fi.canonicalFilePath();
+			connmgrBin = fi.canonicalFilePath();
 
 		QString proxyBin = "pushpin-proxy";
 		fi = QFileInfo(QDir(exeDir).filePath("bin/pushpin-proxy"));
@@ -573,23 +573,53 @@ public:
 			filePrefix = ipcPrefix;
 		}
 
-		if(serviceNames.contains("condure") && (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter")))
+		if(logLevels.contains("pushpin-proxy"))
 		{
-			log_error("cannot enable the condure service at the same time as mongrel2 or m2adapter");
+			logLevels["proxy"] = logLevels["pushpin-proxy"];
+			logLevels.remove("pushpin-proxy");
+		}
+
+		if(logLevels.contains("pushpin-handler"))
+		{
+			logLevels["handler"] = logLevels["pushpin-handler"];
+			logLevels.remove("pushpin-handler");
+		}
+
+		if(serviceNames.contains("condure"))
+		{
+			serviceNames.removeAll("condure");
+			serviceNames += "connmgr";
+		}
+
+		if(serviceNames.contains("pushpin-proxy"))
+		{
+			serviceNames.removeAll("pushpin-proxy");
+			serviceNames += "proxy";
+		}
+
+		if(serviceNames.contains("pushpin-handler"))
+		{
+			serviceNames.removeAll("pushpin-handler");
+			serviceNames += "handler";
+		}
+
+		if(serviceNames.contains("connmgr") && (serviceNames.contains("mongrel2") || serviceNames.contains("m2adapter")))
+		{
+			log_error("cannot enable the connmgr service at the same time as mongrel2 or m2adapter");
 			q->quit(1);
 			return;
 		}
 
-		if(serviceNames.contains("condure"))
+		if(serviceNames.contains("connmgr"))
 		{
 			QString certsDir = QDir(configDir).filePath("certs");
 
 			bool useClient = false;
 
-			if(!serviceNames.contains("zurl") && CondureService::hasClientMode(condureBin))
+			if(!serviceNames.contains("zurl") && ConnmgrService::hasClientMode(connmgrBin))
 				useClient = true;
 
-			services += new CondureService("condure", condureBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("condure", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, useClient);
+			services += new ConnmgrService("connmgr", connmgrBin, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("connmgr", defaultLevel), certsDir, clientBufferSize, clientMaxConnections, allowCompression, ports, useClient);
 		}
 
 		if(serviceNames.contains("mongrel2"))
@@ -636,11 +666,11 @@ public:
 			quietCheck = true;
 		}
 
-		if(serviceNames.contains("pushpin-proxy"))
-			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("pushpin-proxy", defaultLevel), args.routeLines, quietCheck);
+		if(serviceNames.contains("proxy"))
+			services += new PushpinProxyService(proxyBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, logLevels.value("proxy", defaultLevel), args.routeLines, quietCheck);
 
-		if(serviceNames.contains("pushpin-handler"))
-			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("pushpin-handler", defaultLevel));
+		if(serviceNames.contains("handler"))
+			services += new PushpinHandlerService(handlerBin, configFile, runDir, !args.mergeOutput ? logDir : QString(), ipcPrefix, filePrefix, portOffset, logLevels.value("handler", defaultLevel));
 
 		foreach(Service *s, services)
 		{

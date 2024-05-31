@@ -36,21 +36,43 @@ pub struct Service {
     pub log_level: u8,
 }
 
-pub fn start_services(settings: Settings) {
-    let mut services: Vec<Box<dyn RunnerService>> = vec![];
+pub fn start_services(mut settings: Settings) {
+    if let Some(value) = settings.log_levels.get("pushpin-proxy") {
+        settings.log_levels.insert(String::from("proxy"), *value);
+        settings.log_levels.remove("pushpin-proxy");
+    }
+    if let Some(value) = settings.log_levels.get("pushpin-handler") {
+        settings.log_levels.insert(String::from("handler"), *value);
+        settings.log_levels.remove("pushpin-handler");
+    }
+
     if settings.service_names.contains(&String::from("condure")) {
-        services.push(Box::new(CondureService::new(&settings)));
+        settings.service_names.retain(|s| s != "condure");
+        settings.service_names.push(String::from("connmgr"));
     }
     if settings
         .service_names
         .contains(&String::from("pushpin-proxy"))
     {
-        services.push(Box::new(PushpinProxyService::new(&settings)));
+        settings.service_names.retain(|s| s != "pushpin-proxy");
+        settings.service_names.push(String::from("proxy"));
     }
     if settings
         .service_names
         .contains(&String::from("pushpin-handler"))
     {
+        settings.service_names.retain(|s| s != "pushpin-handler");
+        settings.service_names.push(String::from("handler"));
+    }
+
+    let mut services: Vec<Box<dyn RunnerService>> = vec![];
+    if settings.service_names.contains(&String::from("connmgr")) {
+        services.push(Box::new(ConnmgrService::new(&settings)));
+    }
+    if settings.service_names.contains(&String::from("proxy")) {
+        services.push(Box::new(PushpinProxyService::new(&settings)));
+    }
+    if settings.service_names.contains(&String::from("handler")) {
         services.push(Box::new(PushpinHandlerService::new(&settings)));
     }
 
@@ -196,17 +218,17 @@ pub trait RunnerService {
     fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Vec<Option<JoinHandle<()>>>;
 }
 
-pub struct CondureService {
+pub struct ConnmgrService {
     args: Vec<String>,
     pub service: Service,
 }
 
-impl CondureService {
+impl ConnmgrService {
     pub fn new(settings: &Settings) -> Self {
         let mut args: Vec<String> = vec![];
-        let service_name = "condure";
+        let service_name = "connmgr";
 
-        args.push(settings.condure_bin.display().to_string());
+        args.push(settings.connmgr_bin.display().to_string());
 
         let log_level = match settings.log_levels.get(service_name) {
             Some(&x) => x,
@@ -223,7 +245,7 @@ impl CondureService {
             args.push("--compression".to_string());
         }
         args.push(format!(
-            "--zserver-stream=ipc://{}/{}condure-client",
+            "--zserver-stream=ipc://{}/{}connmgr-client",
             settings.run_dir.display(),
             settings.ipc_prefix
         ));
@@ -248,7 +270,7 @@ impl CondureService {
                     args.push(arg);
                 } else {
                     let url_string = format!("http://{}:{}", port.ip, port.port);
-                    let url = Url::parse(&url_string).expect("Failed to parse Condure URL");
+                    let url = Url::parse(&url_string).expect("Failed to parse connmgr URL");
 
                     let mut arg = format!("--listen={},stream", url.authority());
 
@@ -261,7 +283,7 @@ impl CondureService {
             }
 
             args.push(format!(
-                "--zclient-stream=ipc://{}/{}condure",
+                "--zclient-stream=ipc://{}/{}connmgr",
                 settings.run_dir.display(),
                 settings.ipc_prefix
             ));
@@ -281,7 +303,7 @@ impl CondureService {
     }
 }
 
-impl RunnerService for CondureService {
+impl RunnerService for ConnmgrService {
     fn start(&mut self, sender: Sender<Result<(), ServiceError>>) -> Vec<Option<JoinHandle<()>>> {
         self.service.start(self.args.clone(), sender)
     }
@@ -303,7 +325,7 @@ impl PushpinProxyService {
         if !settings.ipc_prefix.is_empty() {
             args.push(format!("--ipc-prefix={}", settings.ipc_prefix));
         }
-        let log_level = match settings.log_levels.get("pushpin-proxy") {
+        let log_level = match settings.log_levels.get("proxy") {
             Some(&x) => x,
             None => settings.log_levels.get("default").unwrap().to_owned(),
         };
@@ -345,7 +367,7 @@ impl PushpinHandlerService {
         if !settings.ipc_prefix.is_empty() {
             args.push(format!("--ipc-prefix={}", settings.ipc_prefix));
         }
-        let log_level = match settings.log_levels.get("pushpin-handler") {
+        let log_level = match settings.log_levels.get("handler") {
             Some(&x) => x,
             None => settings.log_levels.get("default").unwrap().to_owned(),
         };

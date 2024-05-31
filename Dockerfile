@@ -36,7 +36,7 @@ RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stag
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-proxy
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-publish
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-stats-emitter
-RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-condure
+RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-connmgr
 RUN env LD_LIBRARY_PATH=/usr/local/lib ./fastly-build/bundle_runtime_deps --stage=/ --libdir=/opt/fst-pushpin/lib /opt/fst-pushpin/bin/pushpin-healthcheck
 RUN cp -a /usr/lib/debug /opt/fst-pushpin/lib
 RUN cp ./fastly-build/packaging/pushpin-loader /opt/fst-pushpin/bin

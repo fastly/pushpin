@@ -15,9 +15,9 @@ RELEASE = $$(RELEASE)
 
 # copy bin files
 
-condure_bin.target = $$bin_dir/pushpin-condure
-condure_bin.depends = $$target_dir/pushpin-condure
-condure_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-condure $$bin_dir/pushpin-condure
+connmgr_bin.target = $$bin_dir/pushpin-connmgr
+connmgr_bin.depends = $$target_dir/pushpin-connmgr
+connmgr_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-connmgr $$bin_dir/pushpin-connmgr
 
 m2adapter_bin.target = $$bin_dir/m2adapter
 m2adapter_bin.depends = $$target_dir/m2adapter
@@ -48,7 +48,7 @@ stats_emitter_bin.depends = $$target_dir/pushpin-stats-emitter
 stats_emitter_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-stats-emitter $$bin_dir/pushpin-stats-emitter
 
 QMAKE_EXTRA_TARGETS += \
-	condure_bin \
+	connmgr_bin \
 	m2adapter_bin \
 	proxy_bin \
 	handler_bin \
@@ -58,7 +58,7 @@ QMAKE_EXTRA_TARGETS += \
 	stats_emitter_bin
 
 PRE_TARGETDEPS += \
-	$$bin_dir/pushpin-condure \
+	$$bin_dir/pushpin-connmgr \
 	$$bin_dir/m2adapter \
 	$$bin_dir/pushpin-proxy \
 	$$bin_dir/pushpin-handler \
@@ -81,7 +81,7 @@ PRE_TARGETDEPS += pushpin.conf.inst
 unix:!isEmpty(BINDIR) {
 	binfiles.path = $$BINDIR
 	binfiles.files = \
-		$$bin_dir/pushpin-condure \
+		$$bin_dir/pushpin-connmgr \
 		$$bin_dir/m2adapter \
 		$$bin_dir/pushpin-proxy \
 		$$bin_dir/pushpin-handler \
