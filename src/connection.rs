@@ -353,8 +353,6 @@ enum Error {
     PolicyViolation,
     TooManyRedirects,
     ValueActive,
-    #[allow(dead_code)]
-    Internal(String),
     StreamTimeout,
     SessionTimeout,
     Stopped,
@@ -364,7 +362,10 @@ impl Error {
     // returns true if the error represents a logic error (a bug in the code)
     // that could warrant a panic or high severity log level
     fn is_logical(&self) -> bool {
-        matches!(self, Self::ValueActive | Self::Internal(_))
+        matches!(
+            self,
+            Self::ValueActive | Self::CoreHttp(CoreHttpError::Internal(_))
+        )
     }
 
     fn log_level(&self) -> Level {

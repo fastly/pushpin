@@ -27,6 +27,7 @@ pub enum Error {
     FurtherInputNotAllowed,
     BufferExceeded,
     Unusable,
+    Internal(String),
 }
 
 impl From<io::Error> for Error {
