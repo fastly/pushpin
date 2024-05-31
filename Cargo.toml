@@ -22,6 +22,7 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 aegis = "^0.4.2"
 arrayvec = "0.7"
+backtrace = { version = "0.3", features = ["cpp_demangle"] }
 base64 = "0.13"
 clap = { version = "=4.2.1", features = ["cargo", "string", "wrap_help", "derive"] }
 config = "0.13.3"

@@ -31,6 +31,7 @@
 #include <QFileInfo>
 #include "rust/log.h"
 #include "rust/security.h"
+#include "rust/backtrace.h"
 #include "processquit.h"
 #include "rtimer.h"
 #include "log.h"
@@ -354,6 +355,8 @@ public:
 		q(_q),
 		domainMap(0)
 	{
+		backtrace_setup_signal_handlers();
+
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
 	}

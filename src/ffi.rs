@@ -1205,6 +1205,11 @@ pub extern "C" fn security_limit_permissions() {
     crate::seccomp::install_seccomp_connect_filter()
 }
 
+#[no_mangle]
+pub extern "C" fn backtrace_setup_signal_handlers() {
+    crate::backtrace::setup_signal_handlers()
+}
+
 #[cfg(test)]
 import_cpptest! {
     pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
