@@ -530,9 +530,22 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
 
                         let inner = b_inner.as_mut().unwrap();
 
-                        if read == 0 && written == 0 && !inner.rbuf.is_readable_contiguous() {
-                            inner.rbuf.align();
-                            continue;
+                        if read == 0 && written == 0 {
+                            if !inner.rbuf.is_readable_contiguous() {
+                                inner.rbuf.align();
+                                continue;
+                            }
+
+                            if inner.closed {
+                                let first_buf = Buffer::read_buf(inner.rbuf);
+
+                                return Err(Error::Internal(format!(
+                                    "closed connection made no progress: rbuf.len={} first_buf.len={} end={}",
+                                    inner.rbuf.len(),
+                                    first_buf.len(),
+                                    end
+                                )));
+                            }
                         }
 
                         inner.rbuf.read_commit(read);
