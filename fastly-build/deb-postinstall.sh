@@ -41,8 +41,8 @@ install -T -o pushpin -g pushpin -m 0400 "${secrets_src_dir}"/fanout-staging-mes
 rm -rf "${secrets_tmp_dir}"
 
 cp /opt/fst-pushpin/etc/pushpin.service /etc/systemd/system
-cp /opt/fst-pushpin/etc/pushpin-condure-in.service /etc/systemd/system
-cp /opt/fst-pushpin/etc/pushpin-condure-out.service /etc/systemd/system
+cp /opt/fst-pushpin/etc/pushpin-connmgr-in.service /etc/systemd/system
+cp /opt/fst-pushpin/etc/pushpin-connmgr-out.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-proxy.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-handler.service /etc/systemd/system
 cp /opt/fst-pushpin/etc/pushpin-loader.service /etc/systemd/system
@@ -60,6 +60,8 @@ if [ "X$status" = Xrunning -o "X$status" = Xdegraded ]; then
   #    node is enabled
   systemctl restart pushpin || true
 
-  # stop old socat service if present
+  # stop old services if present
   systemctl stop pushpin-socat || true
+  systemctl stop pushpin-condure-in || true
+  systemctl stop pushpin-condure-out || true
 fi

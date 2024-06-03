@@ -1,5 +1,5 @@
 [Unit]
-Description=pushpin-condure-in
+Description=pushpin-connmgr-in
 PartOf=pushpin.service
 
 [Service]
@@ -8,7 +8,7 @@ Restart=always
 CPUQuota=200%
 MemoryLimit=17G
 LimitNOFILE=101000
-SyslogIdentifier=pushpin-condure-in
+SyslogIdentifier=pushpin-connmgr-in
 Environment="RUST_BACKTRACE=1"
 # let 1% of the connections use up to 8 write blocks
 ExecStart=/opt/fst-pushpin/bin/pushpin-sandbox.sh /opt/fst-pushpin/bin/pushpin-connmgr --log-level=1 --listen=/var/run/pushpin/pushpin-server,local,stream,mode=777,user=pushpin,group=pushpin-listener --zclient-stream=ipc:///var/run/pushpin/pushpin-connmgr --buffer-size=16384 --stream-maxconn=100100 --blocks-max=207207 --connection-blocks-max=9 --compression
