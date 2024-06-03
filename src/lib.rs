@@ -22,6 +22,7 @@
  */
 
 pub mod arena;
+pub mod backtrace;
 pub mod buffer;
 pub mod channel;
 pub mod client;
