@@ -23,7 +23,7 @@
 
 use crate::encrypt;
 use crate::jwt;
-use crate::log::{ensure_init_simple_logger, get_simple_logger};
+use crate::log::ensure_init_simple_logger;
 use crate::timer::TimerWheel;
 use crate::version;
 use libc;
@@ -1182,8 +1182,6 @@ pub unsafe extern "C" fn encrypt_buffer_deinit(buf: *mut EncryptBuffer) {
 #[no_mangle]
 pub extern "C" fn log_init() {
     ensure_init_simple_logger(None, false);
-
-    log::set_logger(get_simple_logger()).unwrap();
 }
 
 #[no_mangle]
