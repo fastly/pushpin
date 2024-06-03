@@ -274,8 +274,6 @@ private:
 private slots:
 	void initTestCase()
 	{
-		log_init();
-
 		log_setOutputLevel(LOG_LEVEL_WARNING);
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 

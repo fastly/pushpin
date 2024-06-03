@@ -59,8 +59,13 @@ extern "C" fn on_sigfatal(signal: libc::c_int) {
 }
 
 fn try_set_signal_handler(signal: libc::c_int, handler: extern "C" fn(libc::c_int)) {
+    let name = match signal_name(signal) {
+        Some(s) => s.to_owned(),
+        None => signal.to_string(),
+    };
+
     if let Err(e) = set_signal_handler(signal, handler) {
-        error!("failed to set signal {} handler: {}", signal, e);
+        error!("failed to set signal {} handler: {}", name, e);
     }
 }
 

@@ -586,8 +586,6 @@ private:
 private slots:
 	void initTestCase()
 	{
-		log_init();
-
 		qRegisterMetaType<QList<StatsPacket>>();
 
 		log_setOutputLevel(LOG_LEVEL_WARNING);
