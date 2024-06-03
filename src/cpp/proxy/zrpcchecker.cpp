@@ -105,7 +105,7 @@ public:
 
 	void restartCountdown()
 	{
-		timer->start(CHECK_TIMEOUT * 1000);
+		timer->start(CHECK_TIMEOUT * 1000 + 4);
 	}
 
 	void watch(ZrpcRequest *req)

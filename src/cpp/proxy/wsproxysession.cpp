@@ -808,7 +808,7 @@ public:
 	{
 		if(keepAliveTimeout >= 0)
 		{
-			int timeout = keepAliveTimeout * 1000;
+			int timeout = keepAliveTimeout * 1000 + 3;
 			timeout = qMax(timeout - (int)(QRandomGenerator::global()->generate() % KEEPALIVE_RAND_MAX), 0);
 			keepAliveTimer->start(timeout);
 		}

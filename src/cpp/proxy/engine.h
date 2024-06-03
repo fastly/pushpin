@@ -99,7 +99,7 @@ public:
 			id(0),
 			ipcFileMode(-1),
 			sessionsMax(-1),
-			inspectTimeout(8000),
+			inspectTimeout(8001),
 			inspectPrefetch(10000),
 			debug(false),
 			autoCrossOrigin(false),

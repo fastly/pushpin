@@ -30,7 +30,7 @@
 #include "wscontrolmanager.h"
 
 #define SESSION_TTL 60
-#define REQUEST_TIMEOUT 8000
+#define REQUEST_TIMEOUT 8002
 
 class WsControlSession::Private : public QObject
 {
