@@ -355,8 +355,6 @@ public:
 		q(_q),
 		domainMap(0)
 	{
-		backtrace_setup_signal_handlers();
-
 		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
 		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&App::Private::reload, this));
 	}
@@ -403,7 +401,14 @@ public:
 			}
 		}
 
+		// NOTE: this enables the rust logger which always logs to stdout,
+		// which is fine because we don't log to a file in production and
+		// we also plan to remove file logging capability
+		log_set_level(log_outputLevel());
+
 		log_info("starting...");
+
+		backtrace_setup_signal_handlers();
 
 		QString configFile = args.configFile;
 		if(configFile.isEmpty())
@@ -665,11 +670,6 @@ public:
 
 			threads.push_back(t);
 		}
-
-		// NOTE: this enables the rust logger which always logs to stdout,
-		// which is fine because we don't log to a file in production and
-		// we also plan to remove file logging capability
-		log_set_level(log_outputLevel());
 
 		security_limit_permissions();
 
