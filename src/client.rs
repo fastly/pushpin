@@ -89,7 +89,7 @@ const KEEP_ALIVE_BATCHES: usize = KEEP_ALIVE_TIMEOUT_MS / KEEP_ALIVE_BATCH_MS;
 const BULK_PACKET_SIZE_MAX: usize = 65_000;
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(10_000);
 
-const RESOLVER_THREADS: usize = 10;
+const RESOLVER_THREADS: usize = 32;
 
 fn local_channel<T>(
     bound: usize,
