@@ -164,7 +164,7 @@ public:
 	QByteArray cdnLoop;
 	bool proxyInitialResponse;
 	bool acceptAfterResponding;
-	std::unique_ptr<AcceptRequest> acceptRequest;
+	AcceptRequest *acceptRequest;
 	LogUtil::Config logConfig;
 	StatsManager *statsManager;
 	Connection inReqReadyReadConnection;
@@ -197,6 +197,7 @@ public:
 		acceptPushpinRoute(false),
 		proxyInitialResponse(false),
 		acceptAfterResponding(false),
+		acceptRequest(0),
 		logConfig(_logConfig),
 		statsManager(_statsManager)
 	{
@@ -1345,7 +1346,7 @@ public:
 				adata.connMaxPackets += statsManager->getConnMaxPacket(route.statsRoute()).toVariant();
 			}
 
-			acceptRequest = std::make_unique<AcceptRequest>(acceptManager);
+			acceptRequest = new AcceptRequest(acceptManager, this);
 			finishedConnection = acceptRequest->finished.connect(boost::bind(&Private::acceptRequest_finished, this));
 			acceptRequest->start(adata);
 		}
@@ -1392,7 +1393,8 @@ public:
 			AcceptRequest::ResponseData rdata = acceptRequest->result();
 
 			finishedConnection.disconnect();
-			acceptRequest.reset();
+			delete acceptRequest;
+			acceptRequest = 0;
 
 			if(rdata.accepted)
 			{
@@ -1466,9 +1468,9 @@ public:
 		{
 			// wake up receivers and reject
 
-			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest.get())->result()) == QMetaType::QByteArray)
+			if(acceptRequest->errorCondition() == ZrpcRequest::ErrorFormat && typeId(((ZrpcRequest *)acceptRequest)->result()) == QMetaType::QByteArray)
 			{
-				QString errorString = QString::fromUtf8(((ZrpcRequest *)acceptRequest.get())->result().toByteArray());
+				QString errorString = QString::fromUtf8(((ZrpcRequest *)acceptRequest)->result().toByteArray());
 				QString msg = "Error while proxying to origin.";
 				QString dmsg = QString("Failed to parse accept instructions: %1").arg(errorString);
 
@@ -1480,7 +1482,8 @@ public:
 			}
 
 			finishedConnection.disconnect();
-			acceptRequest.reset();
+			delete acceptRequest;
+			acceptRequest = 0;
 		}
 	}
 };
