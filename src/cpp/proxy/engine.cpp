@@ -256,7 +256,7 @@ public:
 				return false;
 			}
 
-			inspect->setTimeout(config.inspectTimeout);
+			inspect->setTimeout(config.inspectTimeout + 1);
 
 			inspectChecker = new ZrpcChecker(this);
 		}
@@ -274,7 +274,7 @@ public:
 			}
 
 			// there's no acceptTimeout config option so we'll reuse inspectTimeout
-			accept->setTimeout(config.inspectTimeout);
+			accept->setTimeout(config.inspectTimeout + 5);
 		}
 
 		if(!config.retryInSpec.isEmpty())
