@@ -52,4 +52,4 @@ RUN cp ./scripts/pushpin-sandbox.sh /opt/fst-pushpin/bin
 RUN cp ./scripts/pushpin-starter.sh /opt/fst-pushpin/bin
 RUN cp ./scripts/pushpin-iptables.sh /opt/fst-pushpin/bin
 RUN cp ./scripts/get-from-chef-vault /opt/fst-pushpin/bin
-RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin --post-install ./fastly-build/deb-postinstall.sh --post-uninstall ./fastly-build/deb-postuninstall.sh -v $PKG_VERSION-$(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}') -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C / opt/fst-pushpin
+RUN /opt/fst-ffpm/bin/ffpm -s dir -t deb -n fst-pushpin --config-files /opt/fst-pushpin/etc/pushpin/routes --post-install ./fastly-build/deb-postinstall.sh --post-uninstall ./fastly-build/deb-postuninstall.sh -v $PKG_VERSION-$(/opt/fst-pushpin/bin/pushpin --version | awk '{printf "%s",$2;}') -p ${DESTDIR}/fst-pushpin-VERSION_ARCH.deb -C / opt/fst-pushpin
