@@ -370,7 +370,8 @@ public:
 			ConnectionMinute,
 			MessageReceived,
 			MessageSent,
-			WSError
+			WSError,
+			TLSError
 		};
 
 		Type mtype;
@@ -474,7 +475,8 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::ConnectionMinute, "connection_minute", "counter", "Number of minutes clients have been connected");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageReceived, "message_received", "counter", "Number of messages received by the publish API");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
-		prometheusMetrics += PrometheusMetric(PrometheusMetric::WSError,"ws_errors", "counter", "Number of ws errors");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::WSError,"ws_error", "counter", "Number of ws errors");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::TLSError,"tls_error", "counter", "Number of tls errors");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -1353,6 +1355,7 @@ public:
 		counters.inc(Stats::ServerMessagesReceived, qMax(packet.serverMessagesReceived, 0));
 		counters.inc(Stats::ServerMessagesSent, qMax(packet.serverMessagesSent, 0));
 		counters.inc(Stats::WSError, qMax(packet.wsError, 0));
+		counters.inc(Stats::TLSError, qMax(packet.tlsError, 0));
 
 		qint64 now = QDateTime::currentMSecsSinceEpoch();
 
@@ -1584,6 +1587,7 @@ private:
 				case PrometheusMetric::MessageReceived: value = QVariant(combinedReport.messagesReceived); break;
 				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
 				case PrometheusMetric::WSError: value = QVariant(combinedReport.counters.get(Stats::WSError)); break;
+				case PrometheusMetric::TLSError: value = QVariant(combinedReport.counters.get(Stats::TLSError)); break;
 			}
 
 			if(value.isNull())

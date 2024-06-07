@@ -158,6 +158,8 @@ QVariant StatsPacket::toVariant() const
 			obj["server-messages-sent"] = serverMessagesSent;
 		if(wsError >= 0)
 			obj["ws-error"] = wsError;
+		if(tlsError >= 0)
+			obj["tls-error"] = tlsError;
 	}
 	else if(type == Counts)
 	{
@@ -438,6 +440,8 @@ bool StatsPacket::fromVariant(const QByteArray &_type, const QVariant &in)
 		if(!tryGetInt(obj, "server-messages-sent", &serverMessagesSent))
 			return false;
 		if(!tryGetInt(obj, "ws-error", &wsError))
+			return false;
+		if(!tryGetInt(obj, "tls-error", &tlsError))
 			return false;
 	}
 	else if(_type == "counts")

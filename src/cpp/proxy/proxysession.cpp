@@ -1170,6 +1170,7 @@ public:
 				case ZhttpRequest::ErrorConnect:
 				case ZhttpRequest::ErrorConnectTimeout:
 				case ZhttpRequest::ErrorTls:
+					incCounter(Stats::TLSError, 1);
 					// it should not be possible to get one of these errors while accepting
 					assert(state == Requesting);
 					tryAgain = true;

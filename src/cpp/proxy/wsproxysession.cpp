@@ -1047,6 +1047,7 @@ private slots:
 				case WebSocket::ErrorConnect:
 				case WebSocket::ErrorConnectTimeout:
 				case WebSocket::ErrorTls:
+					incCounter(Stats::TLSError, 1);
 					tryAgain = true;
 					break;
 				case WebSocket::ErrorRejected:

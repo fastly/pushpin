@@ -88,6 +88,7 @@ public:
 	int serverMessagesReceived; // report
 	int serverMessagesSent; // report
 	int wsError; // report
+	int tlsError; // report
 
 	StatsPacket() :
 		type((Type)-1),
@@ -119,7 +120,8 @@ public:
 		serverContentBytesSent(-1),
 		serverMessagesReceived(-1),
 		serverMessagesSent(-1),
-		wsError(-1)
+		wsError(-1),
+		tlsError(-1)
 	{
 	}
 
