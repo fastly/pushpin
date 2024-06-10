@@ -172,10 +172,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::channel;
-    use crate::executor::Executor;
+    use crate::core::channel;
+    use crate::core::executor::Executor;
+    use crate::core::reactor::Reactor;
     use crate::future::yield_task;
-    use crate::reactor::Reactor;
 
     #[test]
     fn track_value() {

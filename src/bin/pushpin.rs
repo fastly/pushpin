@@ -16,7 +16,7 @@
 
 use clap::Parser;
 use log::{error, info, LevelFilter};
-use pushpin::log::{ensure_init_simple_logger, get_simple_logger, local_offset_check};
+use pushpin::core::log::{ensure_init_simple_logger, get_simple_logger, local_offset_check};
 use pushpin::runner::{open_log_file, ArgsData, CliArgs, Settings};
 use pushpin::service::start_services;
 use std::env;

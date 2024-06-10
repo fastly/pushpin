@@ -34,12 +34,17 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
-use crate::arena;
-use crate::buffer::{
+use crate::core::arena;
+use crate::core::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
 use crate::core::http1::Error as CoreHttpError;
 use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
+use crate::core::net::SocketAddr;
+use crate::core::reactor::Reactor;
+use crate::core::shuffle::random;
+use crate::core::waker::RefWakerData;
+use crate::core::zmq::MultipartHeader;
 use crate::counter::{Counter, CounterDec};
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
@@ -47,20 +52,15 @@ use crate::future::{
     AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf, Select2, Select3, Select4,
     StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
 };
-use crate::net::SocketAddr;
 use crate::pool::Pool;
-use crate::reactor::Reactor;
 use crate::resolver;
-use crate::shuffle::random;
 use crate::tls::{TlsStream, VerifyMode};
 use crate::track::{
     self, track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError,
 };
-use crate::waker::RefWakerData;
 use crate::websocket;
 use crate::zhttppacket;
-use crate::zmq::MultipartHeader;
-use crate::{pin, Defer};
+use crate::Defer;
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
 use log::{debug, log, warn, Level};
@@ -73,6 +73,7 @@ use std::future::Future;
 use std::io::{self, Read, Write};
 use std::mem;
 use std::net::IpAddr;
+use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
@@ -5873,9 +5874,9 @@ pub async fn client_stream_connection<E>(
 
 pub mod testutil {
     use super::*;
-    use crate::buffer::TmpBuffer;
-    use crate::channel;
-    use crate::waker;
+    use crate::core::buffer::TmpBuffer;
+    use crate::core::channel;
+    use crate::core::waker;
     use std::fmt;
     use std::future::Future;
     use std::io::Read;
@@ -6784,8 +6785,8 @@ pub mod testutil {
 mod tests {
     use super::testutil::*;
     use super::*;
-    use crate::buffer::TmpBuffer;
-    use crate::channel;
+    use crate::core::buffer::TmpBuffer;
+    use crate::core::channel;
     use crate::websocket::Decoder;
     use std::rc::Rc;
     use std::sync::Arc;

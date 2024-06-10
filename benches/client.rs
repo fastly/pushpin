@@ -16,11 +16,11 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use mio::net::TcpListener;
-use pushpin::channel;
 use pushpin::client::TestClient;
-use pushpin::executor::Executor;
+use pushpin::core::channel;
+use pushpin::core::executor::Executor;
+use pushpin::core::reactor::Reactor;
 use pushpin::future::{AsyncReadExt, AsyncSender, AsyncTcpListener, AsyncTcpStream, AsyncWriteExt};
-use pushpin::reactor::Reactor;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str;

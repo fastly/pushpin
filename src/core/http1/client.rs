@@ -15,17 +15,17 @@
  * limitations under the License.
  */
 
-use crate::buffer::{Buffer, VecRingBuffer, VECTORED_MAX};
+use crate::core::buffer::{Buffer, VecRingBuffer, VECTORED_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
 use crate::future::{
     select_2, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, Select2, StdWriteWrapper, WriteHalf,
 };
-use crate::pin;
 use std::cell::RefCell;
 use std::io::{self, Write};
 use std::mem;
+use std::pin::pin;
 use std::pin::Pin;
 use std::str;
 

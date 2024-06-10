@@ -16,10 +16,10 @@
  */
 
 use crate::client::Client;
+use crate::core::zmq::SpecInfo;
 use crate::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WORKER_MAX};
 use crate::websocket;
 use crate::zhttpsocket;
-use crate::zmq::SpecInfo;
 use crate::ListenConfig;
 use ipnet::IpNet;
 use log::info;

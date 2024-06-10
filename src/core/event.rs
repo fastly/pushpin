@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::arena;
-use crate::list;
+use crate::core::arena;
+use crate::core::list;
 use mio::event::Source;
 use mio::{Events, Interest, Poll, Token, Waker};
 use slab::Slab;

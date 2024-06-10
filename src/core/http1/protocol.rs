@@ -18,7 +18,7 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
-use crate::buffer::{write_vectored_offset, FilledBuf, LimitBufs, VECTORED_MAX};
+use crate::core::buffer::{write_vectored_offset, FilledBuf, LimitBufs, VECTORED_MAX};
 use arrayvec::ArrayVec;
 use std::cmp;
 use std::convert::TryFrom;

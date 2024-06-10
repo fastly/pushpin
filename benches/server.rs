@@ -19,9 +19,9 @@ use pushpin::connection::testutil::{
     BenchServerReqConnection, BenchServerReqHandler, BenchServerStreamConnection,
     BenchServerStreamHandler,
 };
-use pushpin::executor::Executor;
+use pushpin::core::executor::Executor;
+use pushpin::core::reactor::Reactor;
 use pushpin::future::{AsyncReadExt, AsyncTcpStream, AsyncWriteExt};
-use pushpin::reactor::Reactor;
 use pushpin::server::TestServer;
 use pushpin::websocket::testutil::{BenchRecvMessage, BenchSendMessage};
 use std::io::{self, Write};

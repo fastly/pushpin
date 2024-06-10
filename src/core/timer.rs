@@ -16,7 +16,7 @@
 
 // adapted from http://25thandclement.com/~william/projects/timeout.c.html (MIT licensed)
 
-use crate::list;
+use crate::core::list;
 use slab::Slab;
 use std::cmp;
 
