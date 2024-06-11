@@ -21,8 +21,8 @@
  * $FANOUT_END_LICENSE$
  */
 
+use crate::core::jwt;
 use crate::core::timer::TimerWheel;
-use crate::jwt;
 use crate::version;
 use libc;
 use std::collections::HashSet;

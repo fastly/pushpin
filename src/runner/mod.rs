@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+pub mod service;
+
 use clap::{ArgAction, Parser};
 use log::{error, warn};
 use serde::Deserialize;

@@ -21,26 +21,12 @@
  * $FANOUT_END_LICENSE$
  */
 
-pub mod client;
-pub mod connection;
 pub mod connmgr;
 pub mod core;
-pub mod counter;
 pub mod ffi;
 pub mod future;
-pub mod jwt;
-pub mod listener;
-pub mod pool;
-pub mod publish_cli;
-pub mod resolver;
+pub mod publish;
 pub mod runner;
-pub mod server;
-pub mod service;
-pub mod tls;
-pub mod track;
-pub mod websocket;
-pub mod zhttppacket;
-pub mod zhttpsocket;
 
 pub use std::pin::pin;
 

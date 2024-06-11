@@ -34,6 +34,15 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 
+use crate::connmgr::counter::{Counter, CounterDec};
+use crate::connmgr::pool::Pool;
+use crate::connmgr::resolver;
+use crate::connmgr::tls::{TlsStream, VerifyMode};
+use crate::connmgr::track::{
+    self, track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError,
+};
+use crate::connmgr::websocket;
+use crate::connmgr::zhttppacket;
 use crate::core::arena;
 use crate::core::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
@@ -45,21 +54,12 @@ use crate::core::reactor::Reactor;
 use crate::core::shuffle::random;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
-use crate::counter::{Counter, CounterDec};
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
     AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncResolver, AsyncTcpStream, AsyncTlsStream,
     AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf, Select2, Select3, Select4,
     StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
 };
-use crate::pool::Pool;
-use crate::resolver;
-use crate::tls::{TlsStream, VerifyMode};
-use crate::track::{
-    self, track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError,
-};
-use crate::websocket;
-use crate::zhttppacket;
 use crate::Defer;
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
@@ -6785,9 +6785,9 @@ pub mod testutil {
 mod tests {
     use super::testutil::*;
     use super::*;
+    use crate::connmgr::websocket::Decoder;
     use crate::core::buffer::TmpBuffer;
     use crate::core::channel;
-    use crate::websocket::Decoder;
     use std::rc::Rc;
     use std::sync::Arc;
     use std::task::Poll;

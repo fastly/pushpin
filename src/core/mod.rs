@@ -21,6 +21,7 @@ pub mod config;
 pub mod event;
 pub mod executor;
 pub mod http1;
+pub mod jwt;
 pub mod list;
 pub mod log;
 pub mod net;
