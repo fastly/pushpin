@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::list;
-use crate::waker;
+use crate::core::list;
+use crate::core::waker;
 use log::debug;
 use slab::Slab;
 use std::cell::RefCell;

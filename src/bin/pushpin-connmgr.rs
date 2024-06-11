@@ -18,7 +18,7 @@
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
 use pushpin::connmgr::{run, App, Config};
-use pushpin::log::{get_simple_logger, local_offset_check};
+use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::version;
 use pushpin::{ListenConfig, ListenSpec};
 use std::error::Error;

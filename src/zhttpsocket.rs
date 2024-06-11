@@ -14,22 +14,21 @@
  * limitations under the License.
  */
 
-use crate::arena;
-use crate::buffer::trim_for_display;
-use crate::channel;
-use crate::event;
-use crate::executor::Executor;
+use crate::core::arena;
+use crate::core::buffer::trim_for_display;
+use crate::core::channel;
+use crate::core::event;
+use crate::core::executor::Executor;
+use crate::core::list;
+use crate::core::reactor::Reactor;
+use crate::core::tnetstring;
+use crate::core::zmq::{MultipartHeader, SpecInfo, ZmqSocket};
 use crate::future::{
     select_10, select_9, select_option, select_slice, AsyncReceiver, AsyncSender, AsyncZmqSocket,
     RecvFuture, Select10, Select9, WaitWritableFuture, ZmqSendFuture, ZmqSendToFuture,
     REGISTRATIONS_PER_CHANNEL, REGISTRATIONS_PER_ZMQSOCKET,
 };
-use crate::list;
-use crate::pin;
-use crate::reactor::Reactor;
-use crate::tnetstring;
 use crate::zhttppacket::{parse_ids, Id, ParseScratch};
-use crate::zmq::{MultipartHeader, SpecInfo, ZmqSocket};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, log_enabled, trace, warn};
 use slab::Slab;
@@ -40,6 +39,7 @@ use std::fmt;
 use std::future::Future;
 use std::io;
 use std::marker;
+use std::pin::pin;
 use std::pin::Pin;
 use std::str;
 use std::str::FromStr;
@@ -2736,7 +2736,7 @@ impl AsyncServerStreamHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event;
+    use crate::core::event;
     use crate::zhttppacket::{
         PacketParse, Request, RequestData, RequestPacket, Response, ResponsePacket,
     };

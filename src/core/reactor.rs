@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-use crate::arena;
-use crate::event;
-use crate::event::ReadinessExt;
-use crate::timer::TimerWheel;
+use crate::core::arena;
+use crate::core::event;
+use crate::core::event::ReadinessExt;
+use crate::core::timer::TimerWheel;
 use slab::Slab;
 use std::cell::{Cell, RefCell};
 use std::cmp;
@@ -1012,7 +1012,7 @@ impl TimerEvented {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::waker;
+    use crate::core::waker;
     use std::cell::Cell;
     use std::mem;
     use std::os::unix::io::AsRawFd;

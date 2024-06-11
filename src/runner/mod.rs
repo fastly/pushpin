@@ -26,7 +26,7 @@ use std::str;
 use std::string::String;
 use url::Url;
 
-use crate::config::{get_config_file, CustomConfig};
+use crate::core::config::{get_config_file, CustomConfig};
 use crate::version;
 
 #[derive(Parser, Clone)]

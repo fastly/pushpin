@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-use crate::arena;
-use crate::event;
-use crate::list;
+use crate::core::arena;
+use crate::core::event;
+use crate::core::list;
 use slab::Slab;
 use std::cell::RefCell;
 use std::collections::VecDeque;

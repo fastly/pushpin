@@ -14,16 +14,18 @@
  * limitations under the License.
  */
 
-use crate::arena;
-use crate::channel;
-use crate::event::{self, ReadinessExt};
-use crate::net::{NetListener, NetStream, SocketAddr};
-use crate::reactor::{CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented};
+use crate::core::arena;
+use crate::core::channel;
+use crate::core::event::{self, ReadinessExt};
+use crate::core::net::{NetListener, NetStream, SocketAddr};
+use crate::core::reactor::{
+    CustomEvented, FdEvented, IoEvented, Reactor, Registration, TimerEvented,
+};
+use crate::core::shuffle::shuffle;
+use crate::core::waker::{RefWake, RefWaker, RefWakerData};
+use crate::core::zmq::{MultipartHeader, ZmqSocket};
 use crate::resolver;
-use crate::shuffle::shuffle;
 use crate::tls::{TlsStream, TlsStreamError, VerifyMode};
-use crate::waker::{RefWake, RefWaker, RefWakerData};
-use crate::zmq::{MultipartHeader, ZmqSocket};
 use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use openssl::ssl;
 use paste::paste;
@@ -2804,9 +2806,9 @@ pub fn yield_to_local_events() -> YieldToLocalEvents {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::Executor;
+    use crate::core::executor::Executor;
+    use crate::core::zmq::SpecInfo;
     use crate::tls::TlsAcceptor;
-    use crate::zmq::SpecInfo;
     use std::cmp;
     use std::fs;
     use std::mem;
