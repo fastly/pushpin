@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use crate::connmgr::resolver;
+use crate::connmgr::tls::{TlsStream, TlsStreamError, VerifyMode};
 use crate::core::arena;
 use crate::core::channel;
 use crate::core::event::{self, ReadinessExt};
@@ -24,8 +26,6 @@ use crate::core::reactor::{
 use crate::core::shuffle::shuffle;
 use crate::core::waker::{RefWake, RefWaker, RefWakerData};
 use crate::core::zmq::{MultipartHeader, ZmqSocket};
-use crate::resolver;
-use crate::tls::{TlsStream, TlsStreamError, VerifyMode};
 use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use openssl::ssl;
 use paste::paste;
@@ -2806,9 +2806,9 @@ pub fn yield_to_local_events() -> YieldToLocalEvents {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connmgr::tls::TlsAcceptor;
     use crate::core::executor::Executor;
     use crate::core::zmq::SpecInfo;
-    use crate::tls::TlsAcceptor;
     use std::cmp;
     use std::fs;
     use std::mem;

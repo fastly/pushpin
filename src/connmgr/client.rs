@@ -16,9 +16,13 @@
  */
 
 use crate::can_move_mio_sockets_between_threads;
-use crate::connection::{
+use crate::connmgr::connection::{
     client_req_connection, client_stream_connection, ConnectionPool, StreamSharedData,
 };
+use crate::connmgr::counter::Counter;
+use crate::connmgr::resolver::Resolver;
+use crate::connmgr::zhttppacket;
+use crate::connmgr::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
 use crate::core::arena;
 use crate::core::buffer::TmpBuffer;
 use crate::core::channel;
@@ -28,15 +32,11 @@ use crate::core::list;
 use crate::core::reactor::Reactor;
 use crate::core::tnetstring;
 use crate::core::zmq::{MultipartHeader, SpecInfo};
-use crate::counter::Counter;
 use crate::future::{
     event_wait, select_2, select_5, select_6, select_option, yield_to_local_events,
     AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver, CancellationSender, CancellationToken,
     Select2, Select5, Select6, Timeout,
 };
-use crate::resolver::Resolver;
-use crate::zhttppacket;
-use crate::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
 use log::{debug, error, info, warn};
@@ -2574,8 +2574,8 @@ impl Drop for TestClient {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::connection::calculate_ws_accept;
-    use crate::websocket;
+    use crate::connmgr::connection::calculate_ws_accept;
+    use crate::connmgr::websocket;
     use std::io::Read;
     use test_log::test;
 

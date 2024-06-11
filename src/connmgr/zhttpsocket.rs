@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::connmgr::zhttppacket::{parse_ids, Id, ParseScratch};
 use crate::core::arena;
 use crate::core::buffer::trim_for_display;
 use crate::core::channel;
@@ -28,7 +29,6 @@ use crate::future::{
     RecvFuture, Select10, Select9, WaitWritableFuture, ZmqSendFuture, ZmqSendToFuture,
     REGISTRATIONS_PER_CHANNEL, REGISTRATIONS_PER_ZMQSOCKET,
 };
-use crate::zhttppacket::{parse_ids, Id, ParseScratch};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, log_enabled, trace, warn};
 use slab::Slab;
@@ -2736,10 +2736,10 @@ impl AsyncServerStreamHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::event;
-    use crate::zhttppacket::{
+    use crate::connmgr::zhttppacket::{
         PacketParse, Request, RequestData, RequestPacket, Response, ResponsePacket,
     };
+    use crate::core::event;
     use test_log::test;
 
     fn wait_readable(poller: &mut event::Poller, token: mio::Token) {

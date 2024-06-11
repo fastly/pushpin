@@ -21,7 +21,7 @@
  */
 
 use clap::{Arg, ArgAction, Command};
-use pushpin::publish_cli::{run, Action, Config, Content, Message};
+use pushpin::publish::{run, Action, Config, Content, Message};
 use pushpin::version;
 use std::env;
 use std::error::Error;

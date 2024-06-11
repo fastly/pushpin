@@ -16,7 +16,7 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use mio::net::TcpListener;
-use pushpin::client::TestClient;
+use pushpin::connmgr::client::TestClient;
 use pushpin::core::channel;
 use pushpin::core::executor::Executor;
 use pushpin::core::reactor::Reactor;

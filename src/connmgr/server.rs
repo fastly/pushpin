@@ -15,9 +15,14 @@
  * limitations under the License.
  */
 
-use crate::connection::{
+use crate::connmgr::connection::{
     server_req_connection, server_stream_connection, CidProvider, Identify, StreamSharedData,
 };
+use crate::connmgr::counter::Counter;
+use crate::connmgr::listener::Listener;
+use crate::connmgr::tls::{IdentityCache, TlsAcceptor, TlsStream};
+use crate::connmgr::zhttppacket;
+use crate::connmgr::zhttpsocket;
 use crate::core::arena;
 use crate::core::buffer::TmpBuffer;
 use crate::core::channel;
@@ -29,17 +34,12 @@ use crate::core::reactor::Reactor;
 use crate::core::tnetstring;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::SpecInfo;
-use crate::counter::Counter;
 use crate::future::{
     event_wait, select_2, select_3, select_6, select_8, select_option, yield_to_local_events,
     AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver, AsyncTcpStream, AsyncTlsStream,
     AsyncUnixStream, CancellationSender, CancellationToken, Select2, Select3, Select6, Select8,
     Timeout, TlsWaker,
 };
-use crate::listener::Listener;
-use crate::tls::{IdentityCache, TlsAcceptor, TlsStream};
-use crate::zhttppacket;
-use crate::zhttpsocket;
 use crate::{set_group, set_user};
 use crate::{ListenConfig, ListenSpec};
 use arrayvec::{ArrayString, ArrayVec};
@@ -2941,7 +2941,7 @@ impl Drop for TestServer {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::websocket;
+    use crate::connmgr::websocket;
     use std::io::Read;
     use test_log::test;
 
