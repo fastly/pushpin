@@ -44,6 +44,7 @@ public:
 	QString method;
 	QVariantHash args;
 	bool success;
+	int startCounter;
 	QVariant result;
 	ErrorCondition condition;
 	QByteArray conditionString;
@@ -54,6 +55,7 @@ public:
 		q(_q),
 		manager(0),
 		success(false),
+		startCounter(0),
 		condition(ErrorGeneric),
 		timer(0)
 	{
@@ -138,6 +140,9 @@ public:
 private slots:
 	void doStart()
 	{
+		if (startCounter++ >= 1)
+			log_error("zrpcrequest already started: attempt number=%d", startCounter);
+
 		if(!manager->canWriteImmediately())
 		{
 			success = false;
