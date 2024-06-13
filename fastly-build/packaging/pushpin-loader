@@ -220,11 +220,6 @@ class FetchlyClient(BaseClient):
         return ('/run/fetchly/fetchly.sock', 'unix', '', {'Fetchly-Consumer': consumer_name})
 
 
-class HeavenlyClient(BaseClient):
-    def get_request_details(self):
-        return ('localhost:8001', 'non_tls', 'fastly-config-loader-2', {'Fastly-CDN': 'fastly', 'Fastly-Debug': '1', 'Heavenly-Canary': '0'})
-
-
 class FanoutInternalClient(BaseClient):
     def __init__(self, key):
         super().__init__()
@@ -262,7 +257,7 @@ def clean_backends(backends):
     return out
 
 
-def get_backends(fetchly_client, heavenly_client, cache_dir, old_cache_files, service_id, version, index, total):
+def get_backends(fetchly_client, cache_dir, old_cache_files, service_id, version, index, total):
     cache_file = os.path.abspath(os.path.join(os.path.join(cache_dir, "backends"), f"{service_id}.{version}.json"))
 
     cached_backends = None
@@ -285,13 +280,7 @@ def get_backends(fetchly_client, heavenly_client, cache_dir, old_cache_files, se
     resp = fetchly_client.request(
         '/v1/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
     if resp.status != 200:
-        logging.debug(f"Error: fetchly backends request failed with status: {resp.status}, data: {resp.data}")
-
-        # fall back to direct heavenly request
-        resp = heavenly_client.request(
-            '/config/service/{}/version/{}/backends'.format(service_id, version), 'application/json')
-        if resp.status != 200:
-            raise Exception(f"Error: heavenly backends request failed with status: {resp.status}, data: {resp.data}")
+        raise Exception(f"Error: fetchly backends request failed with status: {resp.status}, data: {resp.data}")
 
     backends = json.loads(resp.data)['backends']
 
@@ -308,7 +297,6 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
     """
     Returns {service_id: (service, [backend])}.
     """
-    heavenly_client = HeavenlyClient()
     fetchly_client = FetchlyClient()
     internal_client = FanoutInternalClient(api_key)
 
@@ -381,7 +369,7 @@ def fetch_service_backends(api_key, cache_dir, old_cache_files):
         service_id = service.id
         version = service.data['version']
 
-        backends = get_backends(fetchly_client, heavenly_client, cache_dir, old_cache_files, service_id, version, i, len(pushpin_services))
+        backends = get_backends(fetchly_client, cache_dir, old_cache_files, service_id, version, i, len(pushpin_services))
 
         backends = clean_backends(backends)
 
