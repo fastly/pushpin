@@ -417,16 +417,15 @@ fn contains_subslice<T: PartialEq>(haystack: &[T], needle: &[T]) -> bool {
 fn main() -> Result<(), Box<dyn Error>> {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
-    cbindgen::generate(crate_dir)
-        .map_or_else(
-            |error| match error {
-                cbindgen::Error::ParseSyntaxError { .. } => {}
-                e => panic!("{:?}", e),
-            },
-            |bindings| {
-                bindings.write_to_file("target/include/rust/bindings.h");
-            },
-        );
+    cbindgen::generate(crate_dir).map_or_else(
+        |error| match error {
+            cbindgen::Error::ParseSyntaxError { .. } => {}
+            e => panic!("{:?}", e),
+        },
+        |bindings| {
+            bindings.write_to_file("target/include/rust/bindings.h");
+        },
+    );
 
     let (qmake_path, qt_version) = get_qmake()?;
 
