@@ -1504,7 +1504,7 @@ impl ClientResponseBody {
             }
             BodySize::NoBody => Ok(RecvStatus::Complete(
                 ClientFinished {
-                    headers_range: None,
+                    _headers_range: None,
                     persistent: self.state.persistent,
                 },
                 0,
@@ -1535,7 +1535,7 @@ impl ClientResponseBody {
 
             Ok(RecvStatus::Complete(
                 ClientFinished {
-                    headers_range: None,
+                    _headers_range: None,
                     persistent: state.persistent,
                 },
                 size,
@@ -1567,7 +1567,7 @@ impl ClientResponseBody {
         if src.len() - size == 0 && end {
             Ok(RecvStatus::Complete(
                 ClientFinished {
-                    headers_range: None,
+                    _headers_range: None,
                     persistent: self.state.persistent,
                 },
                 size,
@@ -1648,7 +1648,7 @@ impl ClientResponseBody {
 
                         return Ok(RecvStatus::Complete(
                             ClientFinished {
-                                headers_range: Some((headers_start, headers_end)),
+                                _headers_range: Some((headers_start, headers_end)),
                                 persistent: state.persistent,
                             },
                             headers_end,
@@ -1697,7 +1697,7 @@ impl ClientResponseBody {
 }
 
 pub struct ClientFinished {
-    pub headers_range: Option<(usize, usize)>,
+    _headers_range: Option<(usize, usize)>,
     pub persistent: bool,
 }
 
@@ -5002,7 +5002,7 @@ mod tests {
 
             let (r, headers) = match r {
                 Ok(RecvStatus::Complete(finished, read, written)) => {
-                    if let Some((start, end)) = finished.headers_range {
+                    if let Some((start, end)) = finished._headers_range {
                         let headers_data = &test.data.as_bytes()[start..end];
                         let scratch = unsafe { scratch.assume_init_mut() };
 
@@ -5168,7 +5168,7 @@ mod tests {
             _ => panic!("unexpected status"),
         };
 
-        assert_eq!(finished.headers_range, None);
+        assert_eq!(finished._headers_range, None);
         assert_eq!(finished.persistent, true);
     }
 
