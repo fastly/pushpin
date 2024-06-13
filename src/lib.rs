@@ -21,11 +21,15 @@
  * $FANOUT_END_LICENSE$
  */
 
+/// cbindgen:ignore
 pub mod connmgr;
 pub mod core;
 pub mod ffi;
+/// cbindgen:ignore
 pub mod future;
+/// cbindgen:ignore
 pub mod publish;
+/// cbindgen:ignore
 pub mod runner;
 
 pub use std::pin::pin;

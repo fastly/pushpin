@@ -53,6 +53,7 @@ test-log = "0.2"
 [build-dependencies]
 pkg-config = "0.3"
 time = { version = "=0.3.18", features = ["formatting", "local-offset", "macros"] }
+cbindgen = "0.26"
 
 [[bench]]
 name = "server"

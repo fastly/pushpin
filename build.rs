@@ -415,6 +415,18 @@ fn contains_subslice<T: PartialEq>(haystack: &[T], needle: &[T]) -> bool {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    cbindgen::generate(crate_dir).map_or_else(
+        |error| match error {
+            cbindgen::Error::ParseSyntaxError { .. } => {}
+            e => panic!("{:?}", e),
+        },
+        |bindings| {
+            bindings.write_to_file("target/include/rust/bindings.h");
+        },
+    );
+
     let (qmake_path, qt_version) = get_qmake()?;
 
     let qt_install_libs = {
@@ -560,6 +572,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-env-changed=LOGDIR");
     println!("cargo:rerun-if-env-changed=RUNDIR");
     println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=cbindgen.toml");
 
     Ok(())
 }
