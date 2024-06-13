@@ -2,6 +2,8 @@ QMAKE_CXXFLAGS += $$(CXXFLAGS)
 QMAKE_CFLAGS += $$(CFLAGS)
 QMAKE_LFLAGS += $$(LDFLAGS)
 
+INCLUDEPATH += $$PWD/../../target/include
+
 SRC_DIR = $$PWD
 QZMQ_DIR = $$SRC_DIR/qzmq
 RUST_DIR = $$SRC_DIR/..

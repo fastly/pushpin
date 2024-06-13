@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::buffer::{
+use crate::core::buffer::{
     trim_for_display, write_vectored_offset, Buffer, LimitBufsMut, RingBuffer, VECTORED_MAX,
 };
 use crate::core::http1::HeaderParamsIterator;
@@ -1462,7 +1462,7 @@ impl<T: AsRef<[u8]> + AsMut<[u8]>> Protocol<T> {
 
 pub mod testutil {
     use super::*;
-    use crate::buffer::{TmpBuffer, VecRingBuffer};
+    use crate::core::buffer::{TmpBuffer, VecRingBuffer};
     use std::rc::Rc;
 
     pub struct BenchSendMessageArgs {
@@ -1631,7 +1631,7 @@ pub mod testutil {
 mod tests {
     use super::testutil::*;
     use super::*;
-    use crate::buffer::{TmpBuffer, VecRingBuffer};
+    use crate::core::buffer::{TmpBuffer, VecRingBuffer};
     use std::collections::VecDeque;
     use std::rc::Rc;
 

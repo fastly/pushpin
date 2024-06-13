@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-use crate::arena::recycle_vec;
-use crate::channel;
-use crate::executor::Executor;
+use crate::core::arena::recycle_vec;
+use crate::core::channel;
+use crate::core::executor::Executor;
+use crate::core::net::{NetListener, NetStream, SocketAddr};
+use crate::core::reactor::Reactor;
 use crate::future::{
     select_2, select_slice, AsyncNetListener, AsyncReceiver, AsyncSender, NetAcceptFuture, Select2,
     WaitWritableFuture,
 };
-use crate::net::{NetListener, NetStream, SocketAddr};
-use crate::reactor::Reactor;
 use log::{debug, error};
 use std::cmp;
 use std::sync::mpsc;
@@ -189,7 +189,7 @@ impl Drop for Listener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event;
+    use crate::core::event;
     use mio::net::TcpListener;
     use std::io::{Read, Write};
     use std::mem;

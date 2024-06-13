@@ -22,7 +22,7 @@
 
 #include "timerwheel.h"
 
-#include "rust/timer.h"
+#include "rust/bindings.h"
 
 TimerWheel::TimerWheel(int capacity)
 {

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::event;
-use crate::list;
+use crate::core::event;
+use crate::core::list;
 use arrayvec::{ArrayString, ArrayVec};
 use mio::Interest;
 use slab::Slab;

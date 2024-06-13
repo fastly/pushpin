@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::buffer::{Buffer, VecRingBuffer};
+use crate::core::buffer::{Buffer, VecRingBuffer};
 use crate::future::{AsyncRead, AsyncReadExt};
 use std::cmp;
 use std::future::Future;

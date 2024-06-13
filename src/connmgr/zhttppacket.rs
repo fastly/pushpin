@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::arena;
-use crate::tnetstring;
+use crate::core::arena;
+use crate::core::tnetstring;
 use arrayvec::ArrayVec;
 use std::cell::RefCell;
 use std::io;

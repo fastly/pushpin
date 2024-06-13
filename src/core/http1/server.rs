@@ -15,16 +15,16 @@
  * limitations under the License.
  */
 
-use crate::buffer::{Buffer, ContiguousBuffer, VecRingBuffer, VECTORED_MAX};
+use crate::core::buffer::{Buffer, ContiguousBuffer, VecRingBuffer, VECTORED_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
 use crate::future::{
     select_2, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, Select2, StdWriteWrapper, WriteHalf,
 };
-use crate::pin;
 use std::cell::{Cell, RefCell};
 use std::io::{self, Write};
+use std::pin::pin;
 use std::pin::Pin;
 use std::str;
 
@@ -788,7 +788,7 @@ impl Finished {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer::TmpBuffer;
+    use crate::core::buffer::TmpBuffer;
     use crate::future::io_split;
     use std::cmp;
     use std::future::Future;

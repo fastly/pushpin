@@ -20,7 +20,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-use crate::tnetstring;
+use crate::core::tnetstring;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
