@@ -25,6 +25,8 @@
 
 #include <QPair>
 
+struct CTimerWheel;
+
 class TimerWheel
 {
 public:
@@ -51,7 +53,7 @@ public:
 	Expired takeExpired();
 
 private:
-	void *raw_;
+	CTimerWheel *raw_;
 };
 
 #endif

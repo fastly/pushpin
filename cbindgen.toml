@@ -1,0 +1,8 @@
+include_guard = "RUST_BINDINGS_H"
+
+[parse]
+parse_deps = true
+include = ["jsonwebtoken", "zmq"]
+
+[export.rename]
+"TimerWheel" = "CTimerWheel"
