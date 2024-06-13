@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::list;
-use crate::timer::TimerWheel;
+use crate::core::list;
+use crate::core::timer::TimerWheel;
 use slab::Slab;
 use std::borrow::Borrow;
 use std::collections::HashMap;

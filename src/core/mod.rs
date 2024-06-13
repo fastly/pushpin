@@ -14,4 +14,20 @@
  * limitations under the License.
  */
 
+pub mod arena;
+pub mod buffer;
+pub mod channel;
+pub mod config;
+pub mod event;
+pub mod executor;
 pub mod http1;
+pub mod jwt;
+pub mod list;
+pub mod log;
+pub mod net;
+pub mod reactor;
+pub mod shuffle;
+pub mod timer;
+pub mod tnetstring;
+pub mod waker;
+pub mod zmq;

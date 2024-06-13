@@ -18,7 +18,7 @@
 use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
 use pushpin::connmgr::{run, App, Config};
-use pushpin::log::{get_simple_logger, local_offset_check};
+use pushpin::core::log::{get_simple_logger, local_offset_check};
 use pushpin::version;
 use pushpin::{ListenConfig, ListenSpec};
 use std::error::Error;
@@ -405,7 +405,7 @@ fn main() {
         1 => LevelFilter::Warn,
         2 => LevelFilter::Info,
         3 => LevelFilter::Debug,
-        4..=core::usize::MAX => LevelFilter::Trace,
+        4..=usize::MAX => LevelFilter::Trace,
         _ => unreachable!(),
     };
 

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+pub mod service;
+
 use clap::{ArgAction, Parser};
 use log::{error, warn};
 use serde::Deserialize;
@@ -26,7 +28,7 @@ use std::str;
 use std::string::String;
 use url::Url;
 
-use crate::config::{get_config_file, CustomConfig};
+use crate::core::config::{get_config_file, CustomConfig};
 use crate::version;
 
 #[derive(Parser, Clone)]
