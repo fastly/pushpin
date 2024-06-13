@@ -405,7 +405,7 @@ fn main() {
         1 => LevelFilter::Warn,
         2 => LevelFilter::Info,
         3 => LevelFilter::Debug,
-        4..=core::usize::MAX => LevelFilter::Trace,
+        4..=usize::MAX => LevelFilter::Trace,
         _ => unreachable!(),
     };
 
