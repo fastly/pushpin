@@ -1026,8 +1026,8 @@ public slots:
 			{
 				state = Idle;
 				errorCondition = ErrorUnavailable;
-				q->error();
 				cleanup();
+				q->error();
 				return;
 			}
 
