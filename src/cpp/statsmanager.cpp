@@ -1404,6 +1404,8 @@ public:
 		p.serverContentBytesSent = report->counters.get(Stats::ServerContentBytesSent);
 		p.serverMessagesReceived = report->counters.get(Stats::ServerMessagesReceived);
 		p.serverMessagesSent = report->counters.get(Stats::ServerMessagesSent);
+		p.wsError = report->counters.get(Stats::WSError);
+		p.tlsError = report->counters.get(Stats::TLSError);
 
 		report->startTime = now;
 		report->connectionsMaxStale = true;
