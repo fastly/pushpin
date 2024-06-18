@@ -37,7 +37,7 @@ EncodingKey::Private::Private() :
 {
 }
 
-EncodingKey::Private::Private(JwtEncodingKey key) :
+EncodingKey::Private::Private(ffi::JwtEncodingKey key) :
 	type((KeyType)key.type),
 	raw(key.key)
 {
@@ -45,20 +45,20 @@ EncodingKey::Private::Private(JwtEncodingKey key) :
 
 EncodingKey::Private::~Private()
 {
-	jwt_encoding_key_destroy(raw);
+	ffi::jwt_encoding_key_destroy(raw);
 }
 
 EncodingKey EncodingKey::fromSecret(const QByteArray &key)
 {
 	EncodingKey k;
-	k.d = new Private(jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size()));
+	k.d = new Private(ffi::jwt_encoding_key_from_secret((const quint8 *)key.data(), key.size()));
 	return k;
 }
 
 EncodingKey EncodingKey::fromPem(const QByteArray &key)
 {
 	EncodingKey k;
-	k.d = new Private(jwt_encoding_key_from_pem((const quint8 *)key.data(), key.size()));
+	k.d = new Private(ffi::jwt_encoding_key_from_pem((const quint8 *)key.data(), key.size()));
 	return k;
 }
 
@@ -108,7 +108,7 @@ DecodingKey::Private::Private() :
 {
 }
 
-DecodingKey::Private::Private(JwtDecodingKey key) :
+DecodingKey::Private::Private(ffi::JwtDecodingKey key) :
 	type((KeyType)key.type),
 	raw(key.key)
 {
@@ -116,20 +116,20 @@ DecodingKey::Private::Private(JwtDecodingKey key) :
 
 DecodingKey::Private::~Private()
 {
-	jwt_decoding_key_destroy(raw);
+	ffi::jwt_decoding_key_destroy(raw);
 }
 
 DecodingKey DecodingKey::fromSecret(const QByteArray &key)
 {
 	DecodingKey k;
-	k.d = new Private(jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size()));
+	k.d = new Private(ffi::jwt_decoding_key_from_secret((const quint8 *)key.data(), key.size()));
 	return k;
 }
 
 DecodingKey DecodingKey::fromPem(const QByteArray &key)
 {
 	DecodingKey k;
-	k.d = new Private(jwt_decoding_key_from_pem((const quint8 *)key.data(), key.size()));
+	k.d = new Private(ffi::jwt_decoding_key_from_pem((const quint8 *)key.data(), key.size()));
 	return k;
 }
 
@@ -177,14 +177,14 @@ QByteArray encodeWithAlgorithm(Algorithm alg, const QByteArray &claim, const Enc
 {
 	char *token;
 
-	if(jwt_encode((int)alg, (const char *)claim.data(), key.raw(), &token) != 0)
+	if(ffi::jwt_encode((int)alg, (const char *)claim.data(), key.raw(), &token) != 0)
 	{
 		// error
 		return QByteArray();
 	}
 
 	QByteArray out = QByteArray(token);
-	jwt_str_destroy(token);
+	ffi::jwt_str_destroy(token);
 
 	return out;
 }
@@ -193,14 +193,14 @@ QByteArray decodeWithAlgorithm(Algorithm alg, const QByteArray &token, const Dec
 {
 	char *claim;
 
-	if(jwt_decode((int)alg, (const char *)token.data(), key.raw(), &claim) != 0)
+	if(ffi::jwt_decode((int)alg, (const char *)token.data(), key.raw(), &claim) != 0)
 	{
 		// error
 		return QByteArray();
 	}
 
 	QByteArray out = QByteArray(claim);
-	jwt_str_destroy(claim);
+	ffi::jwt_str_destroy(claim);
 
 	return out;
 }

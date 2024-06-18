@@ -105,12 +105,12 @@ pub unsafe extern "C" fn timer_wheel_take_expired(wheel: *mut TimerWheel) -> Exp
     }
 }
 
-const JWT_KEYTYPE_SECRET: libc::c_int = 0;
-const JWT_KEYTYPE_EC: libc::c_int = 1;
-const JWT_KEYTYPE_RSA: libc::c_int = 2;
-const JWT_ALGORITHM_HS256: libc::c_int = 0;
-const JWT_ALGORITHM_ES256: libc::c_int = 1;
-const JWT_ALGORITHM_RS256: libc::c_int = 2;
+pub const JWT_KEYTYPE_SECRET: libc::c_int = 0;
+pub const JWT_KEYTYPE_EC: libc::c_int = 1;
+pub const JWT_KEYTYPE_RSA: libc::c_int = 2;
+pub const JWT_ALGORITHM_HS256: libc::c_int = 0;
+pub const JWT_ALGORITHM_ES256: libc::c_int = 1;
+pub const JWT_ALGORITHM_RS256: libc::c_int = 2;
 
 #[repr(C)]
 pub struct JwtEncodingKey {
@@ -269,7 +269,7 @@ pub unsafe extern "C" fn jwt_encode(
     alg: libc::c_int,
     claim: *const c_char,
     key: *const jsonwebtoken::EncodingKey,
-    out_token: *mut *const c_char,
+    out_token: *mut *mut c_char,
 ) -> libc::c_int {
     if claim.is_null() || out_token.is_null() {
         return 1; // null pointers
@@ -313,7 +313,7 @@ pub unsafe extern "C" fn jwt_decode(
     alg: libc::c_int,
     token: *const c_char,
     key: *const jsonwebtoken::DecodingKey,
-    out_claim: *mut *const c_char,
+    out_claim: *mut *mut c_char,
 ) -> libc::c_int {
     if token.is_null() || out_claim.is_null() {
         return 1; // null pointers
@@ -1084,7 +1084,7 @@ pub struct BuildConfig {
 }
 
 #[no_mangle]
-pub fn build_config_new() -> *mut BuildConfig {
+pub extern "C" fn build_config_new() -> *mut BuildConfig {
     let lib_dir = env!("LIB_DIR");
     let config_dir = env!("CONFIG_DIR");
 
@@ -1099,7 +1099,7 @@ pub fn build_config_new() -> *mut BuildConfig {
 
 #[allow(clippy::missing_safety_doc)]
 #[no_mangle]
-pub unsafe fn build_config_destroy(c: *mut BuildConfig) {
+pub unsafe extern "C" fn build_config_destroy(c: *mut BuildConfig) {
     let c = match c.as_mut() {
         Some(c) => Box::from_raw(c),
         None => return,
