@@ -47,6 +47,7 @@ use crate::core::arena;
 use crate::core::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
+use crate::core::defer::Defer;
 use crate::core::http1::Error as CoreHttpError;
 use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
 use crate::core::net::SocketAddr;
@@ -60,7 +61,6 @@ use crate::future::{
     AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf, Select2, Select3, Select4,
     StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
 };
-use crate::Defer;
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
 use log::{debug, log, warn, Level};
