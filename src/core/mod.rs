@@ -20,6 +20,7 @@ pub mod channel;
 pub mod config;
 pub mod event;
 pub mod executor;
+pub mod ffi;
 pub mod http1;
 pub mod jwt;
 pub mod list;

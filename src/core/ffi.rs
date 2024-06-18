@@ -32,9 +32,6 @@ use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
 
-#[cfg(test)]
-use crate::import_cpptest;
-
 #[repr(C)]
 pub struct ExpiredTimer {
     key: libc::c_int,
@@ -1098,19 +1095,4 @@ pub unsafe extern "C" fn build_config_destroy(c: *mut BuildConfig) {
     drop(CString::from_raw(c.version));
     drop(CString::from_raw(c.config_dir));
     drop(CString::from_raw(c.lib_dir));
-}
-
-#[cfg(test)]
-import_cpptest! {
-    pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
-    pub fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
 }
