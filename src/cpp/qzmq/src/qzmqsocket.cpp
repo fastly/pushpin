@@ -31,8 +31,10 @@
 #include <QTimer>
 #include <QSocketNotifier>
 #include <QMutex>
-#include "rust/wzmq.h"
+#include "rust/bindings.h"
 #include "qzmqcontext.h"
+
+using namespace ffi;
 
 namespace QZmq {
 

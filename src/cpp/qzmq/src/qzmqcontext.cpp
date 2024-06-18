@@ -24,7 +24,9 @@
 #include "qzmqcontext.h"
 
 #include <assert.h>
-#include "rust/wzmq.h"
+#include "rust/bindings.h"
+
+using namespace ffi;
 
 namespace QZmq {
 
