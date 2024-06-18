@@ -24,7 +24,6 @@
 /// cbindgen:ignore
 pub mod connmgr;
 pub mod core;
-pub mod ffi;
 /// cbindgen:ignore
 pub mod future;
 /// cbindgen:ignore
@@ -321,6 +320,23 @@ pub fn ensure_example_config(dest: &Path) {
         fs::copy(src_dir.join("pushpin.conf"), dest_dir.join("pushpin.conf")).unwrap();
         fs::copy(src_dir.join("routes"), dest_dir.join("routes")).unwrap();
     });
+}
+
+mod ffi {
+    #[cfg(test)]
+    import_cpptest! {
+        pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn publishformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn publishitem_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn handlerengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn template_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+    }
 }
 
 #[cfg(test)]
