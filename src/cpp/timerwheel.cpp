@@ -26,37 +26,37 @@
 
 TimerWheel::TimerWheel(int capacity)
 {
-	raw_ = timer_wheel_create(capacity);
+	raw_ = ffi::timer_wheel_create(capacity);
 }
 
 TimerWheel::~TimerWheel()
 {
-	timer_wheel_destroy(raw_);
+	ffi::timer_wheel_destroy(raw_);
 }
 
 int TimerWheel::add(quint64 expires, size_t userData)
 {
-	return timer_add(raw_, expires, userData);
+	return ffi::timer_add(raw_, expires, userData);
 }
 
 void TimerWheel::remove(int key)
 {
-	timer_remove(raw_, key);
+	ffi::timer_remove(raw_, key);
 }
 
 qint64 TimerWheel::timeout() const
 {
-	return timer_wheel_timeout(raw_);
+	return ffi::timer_wheel_timeout(raw_);
 }
 
 void TimerWheel::update(quint64 curtime)
 {
-	timer_wheel_update(raw_, curtime);
+	ffi::timer_wheel_update(raw_, curtime);
 }
 
 TimerWheel::Expired TimerWheel::takeExpired()
 {
-	ExpiredTimer ret = timer_wheel_take_expired(raw_);
+	ffi::ExpiredTimer ret = ffi::timer_wheel_take_expired(raw_);
 
 	Expired expired;
 	expired.key = ret.key;

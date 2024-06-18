@@ -28,23 +28,23 @@
 #include <QVariant>
 #include <QSharedData>
 #include <QDir>
-#include "rust/jwt.h"
+#include "rust/bindings.h"
 
 class QString;
 
 namespace Jwt {
 
 enum KeyType {
-	Secret = JWT_KEYTYPE_SECRET,
-	Ec = JWT_KEYTYPE_EC,
-	Rsa = JWT_KEYTYPE_RSA,
+	Secret = ffi::JWT_KEYTYPE_SECRET,
+	Ec = ffi::JWT_KEYTYPE_EC,
+	Rsa = ffi::JWT_KEYTYPE_RSA,
 };
 
 enum Algorithm
 {
-	HS256 = JWT_ALGORITHM_HS256,
-	ES256 = JWT_ALGORITHM_ES256,
-	RS256 = JWT_ALGORITHM_RS256,
+	HS256 = ffi::JWT_ALGORITHM_HS256,
+	ES256 = ffi::JWT_ALGORITHM_ES256,
+	RS256 = ffi::JWT_ALGORITHM_RS256,
 };
 
 class EncodingKey
@@ -53,7 +53,7 @@ public:
 	bool isNull() const { return !d; }
 	KeyType type() const { if(d) { return d->type; } else { return (KeyType)-1; } }
 
-	const void *raw() const { if(d) { return d->raw; } else { return 0; } }
+	const ffi::EncodingKey *raw() const { if(d) { return d->raw; } else { return 0; } }
 
 	static EncodingKey fromSecret(const QByteArray &key);
 	static EncodingKey fromPem(const QByteArray &key);
@@ -65,10 +65,10 @@ private:
 	{
 	public:
 		KeyType type;
-		void *raw;
+		ffi::EncodingKey *raw;
 
 		Private();
-		Private(JwtEncodingKey key);
+		Private(ffi::JwtEncodingKey key);
 		~Private();
 	};
 
@@ -81,7 +81,7 @@ public:
 	bool isNull() const { return !d; }
 	KeyType type() const { if(d) { return d->type; } else { return (KeyType)-1; } }
 
-	const void *raw() const { if(d) { return d->raw; } else { return 0; } }
+	const ffi::DecodingKey *raw() const { if(d) { return d->raw; } else { return 0; } }
 
 	static DecodingKey fromSecret(const QByteArray &key);
 	static DecodingKey fromPem(const QByteArray &key);
@@ -93,10 +93,10 @@ private:
 	{
 	public:
 		KeyType type;
-		void *raw;
+		ffi::DecodingKey *raw;
 
 		Private();
-		Private(JwtDecodingKey key);
+		Private(ffi::JwtDecodingKey key);
 		~Private();
 	};
 

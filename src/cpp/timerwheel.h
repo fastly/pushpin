@@ -25,7 +25,9 @@
 
 #include <QPair>
 
-struct CTimerWheel;
+namespace ffi {
+	struct TimerWheel;
+}
 
 class TimerWheel
 {
@@ -53,7 +55,7 @@ public:
 	Expired takeExpired();
 
 private:
-	CTimerWheel *raw_;
+	ffi::TimerWheel *raw_;
 };
 
 #endif

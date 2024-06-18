@@ -20,6 +20,8 @@ INCLUDEPATH += $$SRC_DIR
 INCLUDEPATH += $$SRC_DIR/proxy
 INCLUDEPATH += $$SRC_DIR/handler
 INCLUDEPATH += $$SRC_DIR/runner
+
+INCLUDEPATH += $$PWD/../../../target/include
 INCLUDEPATH += $$QZMQ_DIR/src
 
 DEFINES += NO_IRISNET

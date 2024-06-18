@@ -22,7 +22,7 @@
 
 #include "config.h"
 
-#include "rust/build_config.h"
+#include "rust/bindings.h"
 
 namespace Config {
 
@@ -34,11 +34,11 @@ Config & get()
 	{
 		Config *c = new Config;
 
-		BuildConfig *bc = build_config_new();
+		ffi::BuildConfig *bc = ffi::build_config_new();
 		c->version = QString(bc->version);
 		c->configDir = QString(bc->config_dir);
 		c->libDir = QString(bc->lib_dir);
-		build_config_destroy(bc);
+		ffi::build_config_destroy(bc);
 
 		g_config = c;
 	}
