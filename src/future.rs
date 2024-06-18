@@ -704,7 +704,7 @@ impl AsyncUnixListener {
         Ok(Self::new(listener))
     }
 
-    pub fn local_addr(&self) -> Result<mio::net::SocketAddr, io::Error> {
+    pub fn local_addr(&self) -> Result<std::os::unix::net::SocketAddr, io::Error> {
         self.evented.io().local_addr()
     }
 
@@ -1623,7 +1623,7 @@ pub struct UnixAcceptFuture<'a> {
 }
 
 impl Future for UnixAcceptFuture<'_> {
-    type Output = Result<(UnixStream, mio::net::SocketAddr), io::Error>;
+    type Output = Result<(UnixStream, std::os::unix::net::SocketAddr), io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
