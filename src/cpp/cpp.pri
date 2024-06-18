@@ -6,7 +6,6 @@ INCLUDEPATH += $$PWD/../../target/include
 
 SRC_DIR = $$PWD
 QZMQ_DIR = $$SRC_DIR/qzmq
-RUST_DIR = $$SRC_DIR/..
 
 INCLUDEPATH += $$SRC_DIR
 INCLUDEPATH += $$QZMQ_DIR/src
@@ -15,8 +14,6 @@ include($$QZMQ_DIR/src/src.pri)
 DEFINES += NO_IRISNET
 HEADERS += $$SRC_DIR/processquit.h
 SOURCES += $$SRC_DIR/processquit.cpp
-
-INCLUDEPATH += $$RUST_DIR
 
 HEADERS += \
 	$$SRC_DIR/tnetstring.h \
