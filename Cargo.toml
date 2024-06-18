@@ -29,7 +29,7 @@ jsonwebtoken = "8"
 libc = "0.2"
 log = "0.4"
 miniz_oxide = "0.6"
-mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
+mio = { version = "1", features = ["os-poll", "os-ext", "net"] }
 openssl = "0.10"
 paste = "1.0"
 rustls = "0.21"

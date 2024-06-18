@@ -44,7 +44,7 @@ pub fn set_socket_opts(stream: &mut TcpStream) {
 #[derive(Debug)]
 pub enum SocketAddr {
     Ip(std::net::SocketAddr),
-    Unix(mio::net::SocketAddr),
+    Unix(std::os::unix::net::SocketAddr),
 }
 
 impl fmt::Display for SocketAddr {
