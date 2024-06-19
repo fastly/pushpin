@@ -472,8 +472,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let profile = env::var("PROFILE")?;
 
-    let cpp_src_dir = root_dir.join("src/cpp");
-    let cpp_tests_src_dir = root_dir.join("src/cpp/tests");
+    let cpp_pro = root_dir.join("src/cpp.pro");
+    let cpp_tests_pro = root_dir.join("src/cpptests.pro");
 
     for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
         fs::create_dir_all(out_dir.join(dir))?;
@@ -518,13 +518,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     check_command(Command::new(&qmake_path).args([
         OsStr::new("-o"),
         out_dir.join("Makefile").as_os_str(),
-        cpp_src_dir.join("cpp.pro").as_os_str(),
+        cpp_pro.as_os_str(),
     ]))?;
 
     check_command(Command::new(&qmake_path).args([
         OsStr::new("-o"),
         out_dir.join("Makefile.test").as_os_str(),
-        cpp_tests_src_dir.join("tests.pro").as_os_str(),
+        cpp_tests_pro.as_os_str(),
     ]))?;
 
     check_command(
