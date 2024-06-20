@@ -320,7 +320,7 @@ public:
 
 		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
-			stats = new StatsManager(config.sessionsMax, 0, this);
+			stats = new StatsManager(config.sessionsMax, 0, config.id, this);
 
 			connMaxConnection = stats->connMax.connect(boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
 
