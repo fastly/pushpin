@@ -17,14 +17,19 @@
 use crate::core::arena;
 use crate::core::event;
 use crate::core::list;
+use crate::core::reactor::CustomEvented;
+use crate::future::get_reactor;
 use slab::Slab;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::mem;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 pub struct Sender<T> {
     sender: Option<mpsc::SyncSender<T>>,
@@ -482,9 +487,441 @@ pub fn local_channel<T>(
     (sender, receiver)
 }
 
+pub struct AsyncSender<T> {
+    evented: CustomEvented,
+    inner: Sender<T>,
+}
+
+impl<T> AsyncSender<T> {
+    pub fn new(s: Sender<T>) -> Self {
+        let evented = CustomEvented::new(
+            s.get_write_registration(),
+            mio::Interest::WRITABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        // assume we can write, unless can_send() returns false. note that
+        // if can_send() returns true, it doesn't mean we can actually write
+        evented.registration().set_ready(s.can_send());
+
+        Self { evented, inner: s }
+    }
+
+    pub fn is_writable(&self) -> bool {
+        self.evented.registration().is_ready()
+    }
+
+    pub fn wait_writable(&self) -> WaitWritableFuture<'_, T> {
+        WaitWritableFuture { s: self }
+    }
+
+    pub fn try_send(&self, t: T) -> Result<(), mpsc::TrySendError<T>> {
+        match self.inner.try_send(t) {
+            Ok(_) => {
+                // if can_send() returns false, then we know we can't write
+                if !self.inner.can_send() {
+                    self.evented.registration().set_ready(false);
+                }
+
+                Ok(())
+            }
+            Err(mpsc::TrySendError::Full(t)) => {
+                self.evented.registration().set_ready(false);
+
+                Err(mpsc::TrySendError::Full(t))
+            }
+            Err(mpsc::TrySendError::Disconnected(t)) => Err(mpsc::TrySendError::Disconnected(t)),
+        }
+    }
+
+    pub fn send(&self, t: T) -> SendFuture<'_, T> {
+        SendFuture {
+            s: self,
+            t: Some(t),
+        }
+    }
+}
+
+pub struct AsyncReceiver<T> {
+    evented: CustomEvented,
+    inner: Receiver<T>,
+}
+
+impl<T> AsyncReceiver<T> {
+    pub fn new(r: Receiver<T>) -> Self {
+        let evented = CustomEvented::new(
+            r.get_read_registration(),
+            mio::Interest::READABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self { evented, inner: r }
+    }
+
+    pub fn recv(&self) -> RecvFuture<'_, T> {
+        RecvFuture { r: self }
+    }
+}
+
+pub struct AsyncLocalSender<T> {
+    evented: CustomEvented,
+    inner: LocalSender<T>,
+}
+
+impl<T> AsyncLocalSender<T> {
+    pub fn new(s: LocalSender<T>) -> Self {
+        let evented = CustomEvented::new_local(
+            s.get_write_registration(),
+            mio::Interest::WRITABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self { evented, inner: s }
+    }
+
+    pub fn into_inner(self) -> LocalSender<T> {
+        // normally, the poll registration would be deregistered when the
+        // sender drops, but here we are keeping the sender alive, so we need
+        // to explicitly deregister
+        self.evented
+            .registration()
+            .deregister_custom_local(self.inner.get_write_registration())
+            .unwrap();
+
+        self.inner
+    }
+
+    pub fn send(&self, t: T) -> LocalSendFuture<'_, T> {
+        LocalSendFuture {
+            s: self,
+            t: Some(t),
+        }
+    }
+
+    // it's okay to run multiple instances of this future within the same
+    // task. see the comment on the CheckSendFuture struct
+    pub fn check_send(&self) -> CheckSendFuture<'_, T> {
+        CheckSendFuture { s: self }
+    }
+
+    pub fn try_send(&self, t: T) -> Result<(), mpsc::TrySendError<T>> {
+        self.inner.try_send(t)
+    }
+
+    pub fn cancel(&self) {
+        self.inner.cancel();
+    }
+}
+
+pub struct AsyncLocalReceiver<T> {
+    evented: CustomEvented,
+    inner: LocalReceiver<T>,
+}
+
+impl<T> AsyncLocalReceiver<T> {
+    pub fn new(r: LocalReceiver<T>) -> Self {
+        let evented = CustomEvented::new_local(
+            r.get_read_registration(),
+            mio::Interest::READABLE,
+            &get_reactor(),
+        )
+        .unwrap();
+
+        evented.registration().set_ready(true);
+
+        Self { evented, inner: r }
+    }
+
+    pub fn into_inner(self) -> LocalReceiver<T> {
+        // normally, the poll registration would be deregistered when the
+        // receiver drops, but here we are keeping the receiver alive, so we
+        // need to explicitly deregister
+        self.evented
+            .registration()
+            .deregister_custom_local(self.inner.get_read_registration())
+            .unwrap();
+
+        self.inner
+    }
+
+    pub fn recv(&self) -> LocalRecvFuture<'_, T> {
+        LocalRecvFuture { r: self }
+    }
+}
+
+pub struct WaitWritableFuture<'a, T> {
+    s: &'a AsyncSender<T>,
+}
+
+impl<T> Future for WaitWritableFuture<'_, T> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
+
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        // if can_send() returns false, then we know we can't write. this
+        // check prevents spurious wakups of a rendezvous channel from
+        // indicating writability when the channel is not actually writable
+        if !f.s.inner.can_send() {
+            f.s.evented.registration().set_ready(false);
+        }
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        Poll::Ready(())
+    }
+}
+
+impl<T> Drop for WaitWritableFuture<'_, T> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+pub struct SendFuture<'a, T> {
+    s: &'a AsyncSender<T>,
+    t: Option<T>,
+}
+
+impl<T> Future for SendFuture<'_, T>
+where
+    T: Unpin,
+{
+    type Output = Result<(), mpsc::SendError<T>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        if !f.s.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        let t = f.t.take().unwrap();
+
+        // try_send will update the registration readiness, so we don't need
+        // to do that here
+        match f.s.try_send(t) {
+            Ok(()) => Poll::Ready(Ok(())),
+            Err(mpsc::TrySendError::Full(t)) => {
+                f.t = Some(t);
+
+                Poll::Pending
+            }
+            Err(mpsc::TrySendError::Disconnected(t)) => Poll::Ready(Err(mpsc::SendError(t))),
+        }
+    }
+}
+
+impl<T> Drop for SendFuture<'_, T> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+pub struct RecvFuture<'a, T> {
+    r: &'a AsyncReceiver<T>,
+}
+
+impl<T> Future for RecvFuture<'_, T> {
+    type Output = Result<T, mpsc::RecvError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
+
+        f.r.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::READABLE);
+
+        if !f.r.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        if !f.r.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.r.inner.try_recv() {
+            Ok(v) => Poll::Ready(Ok(v)),
+            Err(mpsc::TryRecvError::Empty) => {
+                f.r.evented.registration().set_ready(false);
+
+                Poll::Pending
+            }
+            Err(mpsc::TryRecvError::Disconnected) => Poll::Ready(Err(mpsc::RecvError)),
+        }
+    }
+}
+
+impl<T> Drop for RecvFuture<'_, T> {
+    fn drop(&mut self) {
+        self.r.evented.registration().clear_waker();
+    }
+}
+
+pub struct LocalSendFuture<'a, T> {
+    s: &'a AsyncLocalSender<T>,
+    t: Option<T>,
+}
+
+impl<T> Future for LocalSendFuture<'_, T>
+where
+    T: Unpin,
+{
+    type Output = Result<(), mpsc::SendError<T>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        if !f.s.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        if !f.s.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        let t = f.t.take().unwrap();
+
+        match f.s.inner.try_send(t) {
+            Ok(()) => Poll::Ready(Ok(())),
+            Err(mpsc::TrySendError::Full(t)) => {
+                f.s.evented.registration().set_ready(false);
+                f.t = Some(t);
+
+                Poll::Pending
+            }
+            Err(mpsc::TrySendError::Disconnected(t)) => Poll::Ready(Err(mpsc::SendError(t))),
+        }
+    }
+}
+
+impl<T> Drop for LocalSendFuture<'_, T> {
+    fn drop(&mut self) {
+        self.s.inner.cancel();
+
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+// it's okay to maintain multiple instances of this future at the same time
+// within the same task. calling poll() won't negatively affect other
+// instances. the drop() method clears the waker on the shared registration,
+// which may look problematic. however, whenever any instance is (re-)polled,
+// the waker will be reinstated.
+//
+// notably, these scenarios work:
+//
+// * creating two instances and awaiting them sequentially
+// * creating two instances and selecting on them in a loop. both will
+//   eventually complete
+// * creating one instance, polling it to pending, then creating a second
+//   instance and polling it to completion, then polling on the first
+//   instance again
+pub struct CheckSendFuture<'a, T> {
+    s: &'a AsyncLocalSender<T>,
+}
+
+impl<T> Future for CheckSendFuture<'_, T>
+where
+    T: Unpin,
+{
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        f.s.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::WRITABLE);
+
+        if !f.s.inner.check_send() {
+            f.s.evented.registration().set_ready(false);
+
+            return Poll::Pending;
+        }
+
+        Poll::Ready(())
+    }
+}
+
+impl<T> Drop for CheckSendFuture<'_, T> {
+    fn drop(&mut self) {
+        self.s.evented.registration().clear_waker();
+    }
+}
+
+pub struct LocalRecvFuture<'a, T> {
+    r: &'a AsyncLocalReceiver<T>,
+}
+
+impl<T> Future for LocalRecvFuture<'_, T> {
+    type Output = Result<T, mpsc::RecvError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &*self;
+
+        f.r.evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::READABLE);
+
+        if !f.r.evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        if !f.r.evented.registration().pull_from_budget() {
+            return Poll::Pending;
+        }
+
+        match f.r.inner.try_recv() {
+            Ok(v) => Poll::Ready(Ok(v)),
+            Err(mpsc::TryRecvError::Empty) => {
+                f.r.evented.registration().set_ready(false);
+
+                Poll::Pending
+            }
+            Err(mpsc::TryRecvError::Disconnected) => Poll::Ready(Err(mpsc::RecvError)),
+        }
+    }
+}
+
+impl<T> Drop for LocalRecvFuture<'_, T> {
+    fn drop(&mut self) {
+        self.r.evented.registration().clear_waker();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::executor::Executor;
+    use crate::core::reactor::Reactor;
+    use crate::future::poll_async;
+    use std::cell::Cell;
     use std::time;
 
     #[test]
@@ -858,5 +1295,357 @@ mod tests {
         );
 
         assert_eq!(receiver.try_recv(), Ok(2));
+    }
+
+    #[test]
+    fn test_async_send_bound0() {
+        let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
+
+        let (s, r) = channel::<u32>(0);
+
+        let s = AsyncSender::new(s);
+        let r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+
+                assert_eq!(s.is_writable(), false);
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_async_send_bound1() {
+        let reactor = Reactor::new(2);
+        let executor = Executor::new(1);
+
+        let (s, r) = channel::<u32>(1);
+
+        let s = AsyncSender::new(s);
+        let r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+
+                assert_eq!(s.is_writable(), true);
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), false);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_async_recv() {
+        let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
+
+        let (s, r) = channel::<u32>(0);
+
+        let s = AsyncSender::new(s);
+        let r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_async_writable() {
+        let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
+
+        let (s, r) = channel::<u32>(0);
+
+        let s = AsyncSender::new(s);
+
+        executor
+            .spawn(async move {
+                assert_eq!(s.is_writable(), false);
+
+                s.wait_writable().await;
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        // attempting to receive on a rendezvous channel will make the
+        // sender writable
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_async_local_channel() {
+        let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
+
+        let (s, r) = local_channel::<u32>(1, 1, &reactor.local_registration_memory());
+
+        let s = AsyncLocalSender::new(s);
+        let r = AsyncLocalReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        executor.run_until_stalled();
+
+        assert_eq!(executor.have_tasks(), true);
+
+        executor
+            .spawn(async move {
+                s.send(1).await.unwrap();
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_async_check_send_sequential() {
+        // create two instances and await them sequentially
+
+        let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
+
+        let (s, r) = local_channel::<u32>(1, 1, &reactor.local_registration_memory());
+
+        let state = Rc::new(Cell::new(0));
+
+        {
+            let state = state.clone();
+
+            executor
+                .spawn(async move {
+                    let s = AsyncLocalSender::new(s);
+
+                    // fill the queue
+                    s.send(1).await.unwrap();
+                    state.set(1);
+
+                    // create two instances and await them sequentially
+
+                    let fut1 = s.check_send();
+                    let fut2 = s.check_send();
+
+                    fut1.await;
+
+                    s.send(2).await.unwrap();
+                    state.set(2);
+
+                    fut2.await;
+
+                    state.set(3);
+                })
+                .unwrap();
+        }
+
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 1);
+
+        assert_eq!(r.try_recv(), Ok(1));
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 2);
+
+        assert_eq!(r.try_recv(), Ok(2));
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 3);
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_async_check_send_alternating() {
+        // create one instance, poll it to pending, then create a second
+        // instance and poll it to completion, then poll the first again
+
+        let reactor = Reactor::new(2);
+        let executor = Executor::new(2);
+
+        let (s, r) = local_channel::<u32>(1, 1, &reactor.local_registration_memory());
+
+        let state = Rc::new(Cell::new(0));
+
+        {
+            let state = state.clone();
+
+            executor
+                .spawn(async move {
+                    let s = AsyncLocalSender::new(s);
+
+                    // fill the queue
+                    s.send(1).await.unwrap();
+
+                    // create one instance
+                    let mut fut1 = s.check_send();
+
+                    // poll it to pending
+                    assert_eq!(poll_async(&mut fut1).await, Poll::Pending);
+                    state.set(1);
+
+                    // create a second instance and poll it to completion
+                    s.check_send().await;
+
+                    s.send(2).await.unwrap();
+                    state.set(2);
+
+                    // poll the first again
+                    fut1.await;
+
+                    state.set(3);
+                })
+                .unwrap();
+        }
+
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 1);
+
+        assert_eq!(r.try_recv(), Ok(1));
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 2);
+
+        assert_eq!(r.try_recv(), Ok(2));
+        assert_eq!(r.try_recv(), Err(mpsc::TryRecvError::Empty));
+        reactor.poll_nonblocking(reactor.now()).unwrap();
+        executor.run_until_stalled();
+        assert_eq!(state.get(), 3);
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
+    }
+
+    #[test]
+    fn test_budget_unlimited() {
+        let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
+
+        let (s, r) = channel::<u32>(3);
+
+        s.send(1).unwrap();
+        s.send(2).unwrap();
+        s.send(3).unwrap();
+        mem::drop(s);
+
+        let r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Ok(2));
+                assert_eq!(r.recv().await, Ok(3));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        let mut park_count = 0;
+
+        executor
+            .run(|timeout| {
+                park_count += 1;
+
+                reactor.poll(timeout)
+            })
+            .unwrap();
+
+        assert_eq!(park_count, 0);
+    }
+
+    #[test]
+    fn test_budget_1() {
+        let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
+
+        {
+            let reactor = reactor.clone();
+
+            executor.set_pre_poll(move || {
+                reactor.set_budget(Some(1));
+            });
+        }
+
+        let (s, r) = channel::<u32>(3);
+
+        s.send(1).unwrap();
+        s.send(2).unwrap();
+        s.send(3).unwrap();
+        mem::drop(s);
+
+        let r = AsyncReceiver::new(r);
+
+        executor
+            .spawn(async move {
+                assert_eq!(r.recv().await, Ok(1));
+                assert_eq!(r.recv().await, Ok(2));
+                assert_eq!(r.recv().await, Ok(3));
+                assert_eq!(r.recv().await, Err(mpsc::RecvError));
+            })
+            .unwrap();
+
+        let mut park_count = 0;
+
+        executor
+            .run(|timeout| {
+                park_count += 1;
+
+                reactor.poll(timeout)
+            })
+            .unwrap();
+
+        assert_eq!(park_count, 3);
     }
 }

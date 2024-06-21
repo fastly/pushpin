@@ -47,6 +47,7 @@ use crate::core::arena;
 use crate::core::buffer::{
     Buffer, ContiguousBuffer, LimitBufsMut, TmpBuffer, VecRingBuffer, VECTORED_MAX,
 };
+use crate::core::channel::{AsyncLocalReceiver, AsyncLocalSender};
 use crate::core::defer::Defer;
 use crate::core::http1::Error as CoreHttpError;
 use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
@@ -56,10 +57,9 @@ use crate::core::shuffle::random;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
 use crate::future::{
-    io_split, poll_async, select_2, select_3, select_4, select_option, AsyncLocalReceiver,
-    AsyncLocalSender, AsyncRead, AsyncReadExt, AsyncResolver, AsyncTcpStream, AsyncTlsStream,
-    AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf, Select2, Select3, Select4,
-    StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
+    io_split, poll_async, select_2, select_3, select_4, select_option, AsyncRead, AsyncReadExt,
+    AsyncResolver, AsyncTcpStream, AsyncTlsStream, AsyncWrite, AsyncWriteExt, CancellationToken,
+    ReadHalf, Select2, Select3, Select4, StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
 };
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
