@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-use crate::can_move_mio_sockets_between_threads;
 use crate::connmgr::connection::{
     client_req_connection, client_stream_connection, ConnectionPool, StreamSharedData,
 };
@@ -1755,7 +1754,7 @@ impl Client {
 
         let resolver = Arc::new(Resolver::new(RESOLVER_THREADS, queries_max));
 
-        let pool_max = if can_move_mio_sockets_between_threads() {
+        let pool_max = if event::can_move_mio_sockets_between_threads() {
             (req_maxconn + stream_maxconn) / 10
         } else {
             // disable persistent connections
