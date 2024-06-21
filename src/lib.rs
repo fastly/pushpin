@@ -31,156 +31,12 @@ pub mod publish;
 /// cbindgen:ignore
 pub mod runner;
 
-pub use std::pin::pin;
-
 use std::env;
 use std::ffi::{CString, OsStr};
-use std::io;
-use std::mem;
 use std::os::unix::ffi::OsStrExt;
+
+#[cfg(test)]
 use std::path::{Path, PathBuf};
-use std::ptr;
-
-pub struct Defer<T: FnOnce()> {
-    f: Option<T>,
-}
-
-impl<T: FnOnce()> Defer<T> {
-    pub fn new(f: T) -> Self {
-        Self { f: Some(f) }
-    }
-}
-
-impl<T: FnOnce()> Drop for Defer<T> {
-    fn drop(&mut self) {
-        let f = self.f.take().unwrap();
-
-        f();
-    }
-}
-
-fn try_with_increasing_buffer<T, U>(starting_size: usize, f: T) -> Result<U, io::Error>
-where
-    T: Fn(&mut [u8]) -> Result<U, io::Error>,
-{
-    let mut buf = vec![0; starting_size];
-
-    loop {
-        match f(&mut buf) {
-            Ok(v) => return Ok(v),
-            Err(e) if e.raw_os_error() == Some(libc::ERANGE) => buf.resize(buf.len() * 2, 0),
-            Err(e) => return Err(e),
-        }
-    }
-}
-
-fn get_user_uid(name: &str) -> Result<libc::gid_t, io::Error> {
-    let name = CString::new(name).unwrap();
-
-    try_with_increasing_buffer(1024, |buf| unsafe {
-        let mut pwd = mem::MaybeUninit::uninit();
-        let mut passwd = ptr::null_mut();
-
-        if libc::getpwnam_r(
-            name.as_ptr(),
-            pwd.as_mut_ptr(),
-            buf.as_mut_ptr() as *mut libc::c_char,
-            buf.len(),
-            &mut passwd,
-        ) != 0
-        {
-            return Err(io::Error::last_os_error());
-        }
-
-        let passwd = match passwd.as_ref() {
-            Some(r) => r,
-            None => return Err(io::Error::from(io::ErrorKind::NotFound)),
-        };
-
-        Ok(passwd.pw_uid)
-    })
-}
-
-fn get_group_gid(name: &str) -> Result<libc::gid_t, io::Error> {
-    let name = CString::new(name).unwrap();
-
-    try_with_increasing_buffer(1024, |buf| unsafe {
-        let mut grp = mem::MaybeUninit::uninit();
-        let mut group = ptr::null_mut();
-
-        if libc::getgrnam_r(
-            name.as_ptr(),
-            grp.as_mut_ptr(),
-            buf.as_mut_ptr() as *mut libc::c_char,
-            buf.len(),
-            &mut group,
-        ) != 0
-        {
-            return Err(io::Error::last_os_error());
-        }
-
-        let group = match group.as_ref() {
-            Some(r) => r,
-            None => return Err(io::Error::from(io::ErrorKind::NotFound)),
-        };
-
-        Ok(group.gr_gid)
-    })
-}
-
-pub fn set_user(path: &Path, user: &str) -> Result<(), io::Error> {
-    let uid = get_user_uid(user)?;
-
-    unsafe {
-        let path = CString::new(path.as_os_str().as_bytes()).unwrap();
-
-        if libc::chown(path.as_ptr(), uid, u32::MAX) != 0 {
-            return Err(io::Error::last_os_error());
-        }
-    }
-
-    Ok(())
-}
-
-pub fn set_group(path: &Path, group: &str) -> Result<(), io::Error> {
-    let gid = get_group_gid(group)?;
-
-    unsafe {
-        let path = CString::new(path.as_os_str().as_bytes()).unwrap();
-
-        if libc::chown(path.as_ptr(), u32::MAX, gid) != 0 {
-            return Err(io::Error::last_os_error());
-        }
-    }
-
-    Ok(())
-}
-
-pub fn can_move_mio_sockets_between_threads() -> bool {
-    // on unix platforms, mio always uses epoll or kqueue, which support
-    // this. mio makes no guarantee about supporting this on non-unix
-    // platforms
-    cfg!(unix)
-}
-
-pub enum ListenSpec {
-    Tcp {
-        addr: std::net::SocketAddr,
-        tls: bool,
-        default_cert: Option<String>,
-    },
-    Local {
-        path: PathBuf,
-        mode: Option<u32>,
-        user: Option<String>,
-        group: Option<String>,
-    },
-}
-
-pub struct ListenConfig {
-    pub spec: ListenSpec,
-    pub stream: bool,
-}
 
 pub fn version() -> &'static str {
     env!("APP_VERSION")
@@ -344,7 +200,7 @@ mod tests {
     use super::*;
     use std::ffi::OsString;
     use std::fs::File;
-    use std::io::{BufRead, BufReader, Read};
+    use std::io::{self, BufRead, BufReader, Read};
     use std::thread;
 
     fn httpheaders_test(args: &[&OsStr]) -> u8 {

@@ -28,6 +28,13 @@ use std::time::Duration;
 const EVENTS_MAX: usize = 1024;
 const LOCAL_BUDGET: u32 = 10;
 
+pub fn can_move_mio_sockets_between_threads() -> bool {
+    // on unix platforms, mio always uses epoll or kqueue, which support
+    // this. mio makes no guarantee about supporting this on non-unix
+    // platforms
+    cfg!(unix)
+}
+
 pub type Readiness = Option<Interest>;
 
 pub trait ReadinessExt {

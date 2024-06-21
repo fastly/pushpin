@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2023 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,23 +14,20 @@
  * limitations under the License.
  */
 
-pub mod arena;
-pub mod buffer;
-pub mod channel;
-pub mod config;
-pub mod defer;
-pub mod event;
-pub mod executor;
-pub mod ffi;
-pub mod fs;
-pub mod http1;
-pub mod jwt;
-pub mod list;
-pub mod log;
-pub mod net;
-pub mod reactor;
-pub mod shuffle;
-pub mod timer;
-pub mod tnetstring;
-pub mod waker;
-pub mod zmq;
+pub struct Defer<T: FnOnce()> {
+    f: Option<T>,
+}
+
+impl<T: FnOnce()> Defer<T> {
+    pub fn new(f: T) -> Self {
+        Self { f: Some(f) }
+    }
+}
+
+impl<T: FnOnce()> Drop for Defer<T> {
+    fn drop(&mut self) {
+        let f = self.f.take().unwrap();
+
+        f();
+    }
+}
