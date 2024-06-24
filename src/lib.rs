@@ -366,13 +366,13 @@ mod tests {
     }
 
     struct RunQTest {
-        f: Box<dyn FnOnce(&[&OsStr]) -> u8 + Send>,
+        f: Box<dyn FnOnce(&[&OsStr]) -> u8 + Send + Sync>,
         ret: mpsc::SyncSender<u8>,
     }
 
     fn run_qtest<F>(test_fn: F) -> bool
     where
-        F: FnOnce(&[&OsStr]) -> u8 + Send + 'static,
+        F: FnOnce(&[&OsStr]) -> u8 + Send + Sync + 'static,
     {
         // qt tests cannot be run concurrently within the same process, and
         // qt also doesn't like it when QCoreApplication is recreated in
