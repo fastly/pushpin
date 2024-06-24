@@ -489,7 +489,7 @@ pub fn get_config_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ensure_example_config, test_dir};
+    use crate::core::{ensure_example_config, test_dir};
     use std::error::Error;
     use std::path::PathBuf;
 
