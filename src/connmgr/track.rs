@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::future::AsyncLocalReceiver;
+use crate::core::channel::AsyncLocalReceiver;
 use std::cell::Cell;
 use std::future::Future;
 use std::ops::Deref;
