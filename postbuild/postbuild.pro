@@ -17,7 +17,7 @@ RELEASE = $$(RELEASE)
 
 connmgr_bin.target = $$bin_dir/pushpin-connmgr
 connmgr_bin.depends = $$target_dir/pushpin-connmgr
-connmgr_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-connmgr $$bin_dir/pushpin-connmgr
+connmgr_bin.commands = mkdir -p $$bin_dir && cp -a $$target_dir/pushpin-connmgr $$bin_dir/pushpin-connmgr && ln -sf pushpin-connmgr $$bin_dir/pushpin-condure
 
 m2adapter_bin.target = $$bin_dir/m2adapter
 m2adapter_bin.depends = $$target_dir/m2adapter
@@ -84,7 +84,10 @@ unix:!isEmpty(BINDIR) {
 		$$bin_dir/pushpin-publish
 	binfiles.CONFIG += no_check_exist executable
 
-	INSTALLS += binfiles
+	symlinks.path = $$BINDIR
+	symlinks.extra = ln -sf pushpin-connmgr $(INSTALL_ROOT)$$symlinks.path/pushpin-condure
+
+	INSTALLS += binfiles symlinks
 }
 
 # install lib files
