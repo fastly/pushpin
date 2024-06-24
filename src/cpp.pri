@@ -2,96 +2,98 @@ QMAKE_CXXFLAGS += $$(CXXFLAGS)
 QMAKE_CFLAGS += $$(CFLAGS)
 QMAKE_LFLAGS += $$(LDFLAGS)
 
-INCLUDEPATH += $$PWD/../../target/include
+INCLUDEPATH += $$PWD/../target/include
 
 SRC_DIR = $$PWD
-QZMQ_DIR = $$SRC_DIR/qzmq
+QZMQ_DIR = $$SRC_DIR/core/qzmq
 
-INCLUDEPATH += $$SRC_DIR
+INCLUDEPATH += $$SRC_DIR/core
 INCLUDEPATH += $$QZMQ_DIR/src
 include($$QZMQ_DIR/src/src.pri)
 
+CSRC_DIR = $$SRC_DIR/core
+
 DEFINES += NO_IRISNET
-HEADERS += $$SRC_DIR/processquit.h
-SOURCES += $$SRC_DIR/processquit.cpp
+HEADERS += $$CSRC_DIR/processquit.h
+SOURCES += $$CSRC_DIR/processquit.cpp
 
 HEADERS += \
-	$$SRC_DIR/tnetstring.h \
-	$$SRC_DIR/httpheaders.h \
-	$$SRC_DIR/zhttprequestpacket.h \
-	$$SRC_DIR/zhttpresponsepacket.h \
-	$$SRC_DIR/log.h \
-	$$SRC_DIR/bufferlist.h \
-	$$SRC_DIR/layertracker.h
+	$$CSRC_DIR/tnetstring.h \
+	$$CSRC_DIR/httpheaders.h \
+	$$CSRC_DIR/zhttprequestpacket.h \
+	$$CSRC_DIR/zhttpresponsepacket.h \
+	$$CSRC_DIR/log.h \
+	$$CSRC_DIR/bufferlist.h \
+	$$CSRC_DIR/layertracker.h
 
 SOURCES += \
-	$$SRC_DIR/tnetstring.cpp \
-	$$SRC_DIR/httpheaders.cpp \
-	$$SRC_DIR/zhttprequestpacket.cpp \
-	$$SRC_DIR/zhttpresponsepacket.cpp \
-	$$SRC_DIR/log.cpp \
-	$$SRC_DIR/bufferlist.cpp \
-	$$SRC_DIR/layertracker.cpp
+	$$CSRC_DIR/tnetstring.cpp \
+	$$CSRC_DIR/httpheaders.cpp \
+	$$CSRC_DIR/zhttprequestpacket.cpp \
+	$$CSRC_DIR/zhttpresponsepacket.cpp \
+	$$CSRC_DIR/log.cpp \
+	$$CSRC_DIR/bufferlist.cpp \
+	$$CSRC_DIR/layertracker.cpp
 
 HEADERS += \
-	$$SRC_DIR/packet/httprequestdata.h \
-	$$SRC_DIR/packet/httpresponsedata.h \
-	$$SRC_DIR/packet/retryrequestpacket.h \
-	$$SRC_DIR/packet/wscontrolpacket.h \
-	$$SRC_DIR/packet/statspacket.h \
-	$$SRC_DIR/packet/zrpcrequestpacket.h \
-	$$SRC_DIR/packet/zrpcresponsepacket.h
+	$$CSRC_DIR/packet/httprequestdata.h \
+	$$CSRC_DIR/packet/httpresponsedata.h \
+	$$CSRC_DIR/packet/retryrequestpacket.h \
+	$$CSRC_DIR/packet/wscontrolpacket.h \
+	$$CSRC_DIR/packet/statspacket.h \
+	$$CSRC_DIR/packet/zrpcrequestpacket.h \
+	$$CSRC_DIR/packet/zrpcresponsepacket.h
 
 SOURCES += \
-	$$SRC_DIR/packet/retryrequestpacket.cpp \
-	$$SRC_DIR/packet/wscontrolpacket.cpp \
-	$$SRC_DIR/packet/statspacket.cpp \
-	$$SRC_DIR/packet/zrpcrequestpacket.cpp \
-	$$SRC_DIR/packet/zrpcresponsepacket.cpp
+	$$CSRC_DIR/packet/retryrequestpacket.cpp \
+	$$CSRC_DIR/packet/wscontrolpacket.cpp \
+	$$CSRC_DIR/packet/statspacket.cpp \
+	$$CSRC_DIR/packet/zrpcrequestpacket.cpp \
+	$$CSRC_DIR/packet/zrpcresponsepacket.cpp
 
 HEADERS += \
-	$$SRC_DIR/callback.h \
-	$$SRC_DIR/config.h \
-	$$SRC_DIR/timerwheel.h \
-	$$SRC_DIR/jwt.h \
-	$$SRC_DIR/rtimer.h \
-	$$SRC_DIR/logutil.h \
-	$$SRC_DIR/uuidutil.h \
-	$$SRC_DIR/zutil.h \
-	$$SRC_DIR/httprequest.h \
-	$$SRC_DIR/websocket.h \
-	$$SRC_DIR/zhttpmanager.h \
-	$$SRC_DIR/zhttprequest.h \
-	$$SRC_DIR/zwebsocket.h \
-	$$SRC_DIR/zrpcmanager.h \
-	$$SRC_DIR/zrpcrequest.h \
-	$$SRC_DIR/statusreasons.h \
-	$$SRC_DIR/inspectdata.h \
-	$$SRC_DIR/cors.h \
-	$$SRC_DIR/simplehttpserver.h \
-	$$SRC_DIR/stats.h \
-	$$SRC_DIR/statsmanager.h \
-	$$SRC_DIR/settings.h
+	$$CSRC_DIR/callback.h \
+	$$CSRC_DIR/config.h \
+	$$CSRC_DIR/timerwheel.h \
+	$$CSRC_DIR/jwt.h \
+	$$CSRC_DIR/rtimer.h \
+	$$CSRC_DIR/logutil.h \
+	$$CSRC_DIR/uuidutil.h \
+	$$CSRC_DIR/zutil.h \
+	$$CSRC_DIR/httprequest.h \
+	$$CSRC_DIR/websocket.h \
+	$$CSRC_DIR/zhttpmanager.h \
+	$$CSRC_DIR/zhttprequest.h \
+	$$CSRC_DIR/zwebsocket.h \
+	$$CSRC_DIR/zrpcmanager.h \
+	$$CSRC_DIR/zrpcrequest.h \
+	$$CSRC_DIR/statusreasons.h \
+	$$CSRC_DIR/inspectdata.h \
+	$$CSRC_DIR/cors.h \
+	$$CSRC_DIR/simplehttpserver.h \
+	$$CSRC_DIR/stats.h \
+	$$CSRC_DIR/statsmanager.h \
+	$$CSRC_DIR/settings.h
 
 SOURCES += \
-	$$SRC_DIR/config.cpp \
-	$$SRC_DIR/timerwheel.cpp \
-	$$SRC_DIR/jwt.cpp \
-	$$SRC_DIR/rtimer.cpp \
-	$$SRC_DIR/logutil.cpp \
-	$$SRC_DIR/uuidutil.cpp \
-	$$SRC_DIR/zutil.cpp \
-	$$SRC_DIR/zhttpmanager.cpp \
-	$$SRC_DIR/zhttprequest.cpp \
-	$$SRC_DIR/zwebsocket.cpp \
-	$$SRC_DIR/zrpcmanager.cpp \
-	$$SRC_DIR/zrpcrequest.cpp \
-	$$SRC_DIR/statusreasons.cpp \
-	$$SRC_DIR/cors.cpp \
-	$$SRC_DIR/simplehttpserver.cpp \
-	$$SRC_DIR/stats.cpp \
-	$$SRC_DIR/statsmanager.cpp \
-	$$SRC_DIR/settings.cpp
+	$$CSRC_DIR/config.cpp \
+	$$CSRC_DIR/timerwheel.cpp \
+	$$CSRC_DIR/jwt.cpp \
+	$$CSRC_DIR/rtimer.cpp \
+	$$CSRC_DIR/logutil.cpp \
+	$$CSRC_DIR/uuidutil.cpp \
+	$$CSRC_DIR/zutil.cpp \
+	$$CSRC_DIR/zhttpmanager.cpp \
+	$$CSRC_DIR/zhttprequest.cpp \
+	$$CSRC_DIR/zwebsocket.cpp \
+	$$CSRC_DIR/zrpcmanager.cpp \
+	$$CSRC_DIR/zrpcrequest.cpp \
+	$$CSRC_DIR/statusreasons.cpp \
+	$$CSRC_DIR/cors.cpp \
+	$$CSRC_DIR/simplehttpserver.cpp \
+	$$CSRC_DIR/stats.cpp \
+	$$CSRC_DIR/statsmanager.cpp \
+	$$CSRC_DIR/settings.cpp
 
 PSRC_DIR = $$SRC_DIR/proxy
 

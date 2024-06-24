@@ -591,14 +591,14 @@ private slots:
 		//log_setOutputLevel(LOG_LEVEL_DEBUG);
 
 		QDir rootDir(qgetenv("CARGO_MANIFEST_DIR"));
-		QDir configDir(rootDir.filePath("src/cpp/tests"));
+		QDir configDir(rootDir.filePath("src/proxy"));
 		QDir outDir(qgetenv("OUT_DIR"));
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
 
-		domainMap = new DomainMap(configDir.filePath("routes"), this);
+		domainMap = new DomainMap(configDir.filePath("routes.test"), this);
 
 		engine = new Engine(domainMap, this);
 
