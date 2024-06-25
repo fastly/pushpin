@@ -201,7 +201,7 @@ mod tests {
     use std::ffi::OsString;
     use std::fs::File;
     use std::io::{self, BufRead, BufReader, Read};
-    use std::sync::{mpsc, OnceLock};
+    use std::sync::{mpsc, Mutex, OnceLock};
     use std::thread;
 
     fn httpheaders_test(args: &[&OsStr]) -> u8 {
@@ -366,20 +366,20 @@ mod tests {
     }
 
     struct RunQTest {
-        f: Box<dyn FnOnce(&[&OsStr]) -> u8 + Send + Sync>,
+        f: Box<dyn FnOnce(&[&OsStr]) -> u8 + Send>,
         ret: mpsc::SyncSender<u8>,
     }
 
     fn run_qtest<F>(test_fn: F) -> bool
     where
-        F: FnOnce(&[&OsStr]) -> u8 + Send + Sync + 'static,
+        F: FnOnce(&[&OsStr]) -> u8 + Send + 'static,
     {
         // qt tests cannot be run concurrently within the same process, and
         // qt also doesn't like it when QCoreApplication is recreated in
         // different threads, so this function sets up a background thread
         // to enable running tests serially and all from the same thread
 
-        static SENDER: OnceLock<mpsc::Sender<RunQTest>> = OnceLock::new();
+        static SENDER: OnceLock<Mutex<mpsc::Sender<RunQTest>>> = OnceLock::new();
 
         let s_run = SENDER.get_or_init(|| {
             let output_file = setup_output_file();
@@ -397,12 +397,14 @@ mod tests {
                 unreachable!();
             });
 
-            s
+            Mutex::new(s)
         });
 
         let (s_ret, r_ret) = mpsc::sync_channel(1);
 
         s_run
+            .lock()
+            .unwrap()
             .send(RunQTest {
                 f: Box::new(test_fn),
                 ret: s_ret,
