@@ -1327,8 +1327,8 @@ public:
 	{
 		config = _config;
 
-		// up to 10 timers per connection
-		RTimer::init(config.connectionsMax * 10);
+		// up to 10 timers per connection, plus an extra 100 for misc
+		RTimer::init((config.connectionsMax * 10) + 100);
 
 		publishLimiter->setRate(config.messageRate);
 		publishLimiter->setHwm(config.messageHwm);
