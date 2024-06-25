@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2021-2022 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -201,6 +201,7 @@ mod tests {
     use std::ffi::OsString;
     use std::fs::File;
     use std::io::{self, BufRead, BufReader, Read};
+    use std::sync::{mpsc, Mutex, OnceLock};
     use std::thread;
 
     fn httpheaders_test(args: &[&OsStr]) -> u8 {
@@ -258,6 +259,18 @@ mod tests {
         unsafe { call_c_main(ffi::template_test, args) as u8 }
     }
 
+    fn mkfifo<P: AsRef<Path>>(path: P) -> Result<(), io::Error> {
+        let path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+
+        unsafe {
+            if libc::mkfifo(path.as_ptr(), 0o600) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+
+        Ok(())
+    }
+
     fn read_and_print_all<R: Read>(r: R) -> Result<(), io::Error> {
         let r = BufReader::new(r);
 
@@ -270,9 +283,9 @@ mod tests {
         Ok(())
     }
 
-    fn run_qtest<F>(test_fn: F, output_file: Option<&Path>) -> bool
+    fn call_qtest<F>(test_fn: F, output_file: Option<&Path>) -> u8
     where
-        F: Fn(&[&OsStr]) -> u8,
+        F: FnOnce(&[&OsStr]) -> u8,
     {
         let thread = if let Some(f) = output_file {
             let f = f.to_owned();
@@ -314,23 +327,11 @@ mod tests {
             thread.join().unwrap();
         }
 
-        ret == 0
+        ret
     }
 
-    fn mkfifo<P: AsRef<Path>>(path: P) -> Result<(), io::Error> {
-        let path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
-
-        unsafe {
-            if libc::mkfifo(path.as_ptr(), 0o600) != 0 {
-                return Err(io::Error::last_os_error());
-            }
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn cpp() {
+    // return fifo path, if applicable
+    fn setup_output_file() -> Option<PathBuf> {
         // when cargo runs tests, it normally captures their output. however,
         // it does not do this by capturing the actual stdout of the process.
         // instead, it tracks calls made to the print family of functions in
@@ -353,9 +354,7 @@ mod tests {
             Some(test_dir().join("output"))
         };
 
-        let output_file = output_file.as_deref();
-
-        if let Some(f) = output_file {
+        if let Some(f) = &output_file {
             match mkfifo(f) {
                 Ok(()) => {}
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {} // ok
@@ -363,18 +362,112 @@ mod tests {
             }
         }
 
-        // NOTE: qt tests cannot be run concurrently within the same process,
-        // so we run them serially in a single rust test
-        assert!(run_qtest(httpheaders_test, output_file));
-        assert!(run_qtest(jwt_test, output_file));
-        assert!(run_qtest(routesfile_test, output_file));
-        assert!(run_qtest(jsonpatch_test, output_file));
-        assert!(run_qtest(instruct_test, output_file));
-        assert!(run_qtest(idformat_test, output_file));
-        assert!(run_qtest(publishformat_test, output_file));
-        assert!(run_qtest(publishitem_test, output_file));
-        assert!(run_qtest(template_test, output_file));
-        assert!(run_qtest(proxyengine_test, output_file));
-        assert!(run_qtest(handlerengine_test, output_file));
+        output_file
+    }
+
+    struct RunQTest {
+        f: Box<dyn FnOnce(&[&OsStr]) -> u8 + Send>,
+        ret: mpsc::SyncSender<u8>,
+    }
+
+    fn run_qtest<F>(test_fn: F) -> bool
+    where
+        F: FnOnce(&[&OsStr]) -> u8 + Send + 'static,
+    {
+        // qt tests cannot be run concurrently within the same process, and
+        // qt also doesn't like it when QCoreApplication is recreated in
+        // different threads, so this function sets up a background thread
+        // to enable running tests serially and all from the same thread
+
+        static SENDER: OnceLock<Mutex<mpsc::Sender<RunQTest>>> = OnceLock::new();
+
+        let s_run = SENDER.get_or_init(|| {
+            let output_file = setup_output_file();
+
+            let (s, r) = mpsc::channel::<RunQTest>();
+
+            // run in the background forever
+            thread::spawn(move || {
+                for t in r {
+                    let ret = call_qtest(t.f, output_file.as_deref());
+
+                    // if receiver is gone, keep going
+                    let _ = t.ret.send(ret);
+                }
+                unreachable!();
+            });
+
+            Mutex::new(s)
+        });
+
+        let (s_ret, r_ret) = mpsc::sync_channel(1);
+
+        s_run
+            .lock()
+            .unwrap()
+            .send(RunQTest {
+                f: Box::new(test_fn),
+                ret: s_ret,
+            })
+            .unwrap();
+
+        let ret = r_ret.recv().unwrap();
+
+        ret == 0
+    }
+
+    #[test]
+    fn httpheaders() {
+        assert!(run_qtest(httpheaders_test));
+    }
+
+    #[test]
+    fn jwt() {
+        assert!(run_qtest(jwt_test));
+    }
+
+    #[test]
+    fn routesfile() {
+        assert!(run_qtest(routesfile_test));
+    }
+
+    #[test]
+    fn jsonpatch() {
+        assert!(run_qtest(jsonpatch_test));
+    }
+
+    #[test]
+    fn instruct() {
+        assert!(run_qtest(instruct_test));
+    }
+
+    #[test]
+    fn idformat() {
+        assert!(run_qtest(idformat_test));
+    }
+
+    #[test]
+    fn publishformat() {
+        assert!(run_qtest(publishformat_test));
+    }
+
+    #[test]
+    fn publishitem() {
+        assert!(run_qtest(publishitem_test));
+    }
+
+    #[test]
+    fn template() {
+        assert!(run_qtest(template_test));
+    }
+
+    #[test]
+    fn proxyengine() {
+        assert!(run_qtest(proxyengine_test));
+    }
+
+    #[test]
+    fn handlerengine() {
+        assert!(run_qtest(handlerengine_test));
     }
 }
