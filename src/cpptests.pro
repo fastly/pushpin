@@ -10,36 +10,17 @@ cpp_build_dir = $$OUT_PWD
 MOC_DIR = $$cpp_build_dir/test-moc
 OBJECTS_DIR = $$cpp_build_dir/test-obj
 
-SRC_DIR = $$PWD
-QZMQ_DIR = $$SRC_DIR/core/qzmq
-
 include($$cpp_build_dir/conf.pri)
 
-INCLUDEPATH += $$SRC_DIR/core
-INCLUDEPATH += $$SRC_DIR/proxy
-INCLUDEPATH += $$SRC_DIR/handler
-INCLUDEPATH += $$SRC_DIR/runner
-
-INCLUDEPATH += $$PWD/../target/include
-INCLUDEPATH += $$QZMQ_DIR/src
+SRC_DIR = $$PWD
 
 DEFINES += NO_IRISNET
 
-INCLUDES += \
-	$$PWD/core/coretests.h \
-	$$PWD/proxy/proxytests.h \
-	$$PWD/handler/handlertests.h \
-	$$PWD/runner/runnertests.h
+INCLUDEPATH += $$SRC_DIR/../target/include
+INCLUDEPATH += $$SRC_DIR/core
+INCLUDEPATH += $$SRC_DIR/core/qzmq/src
 
-SOURCES += \
-	$$PWD/core/httpheaderstest.cpp \
-	$$PWD/core/jwttest.cpp \
-	$$PWD/proxy/routesfiletest.cpp \
-	$$PWD/proxy/proxyenginetest.cpp \
-	$$PWD/handler/jsonpatchtest.cpp \
-	$$PWD/handler/instructtest.cpp \
-	$$PWD/handler/idformattest.cpp \
-	$$PWD/handler/publishformattest.cpp \
-	$$PWD/handler/publishitemtest.cpp \
-	$$PWD/handler/handlerenginetest.cpp \
-	$$PWD/runner/templatetest.cpp
+include(core/tests.pri)
+include(proxy/tests.pri)
+include(handler/tests.pri)
+include(runner/tests.pri)
