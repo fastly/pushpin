@@ -25,7 +25,6 @@
 
 #include <QSysInfo>
 #include <QDateTime>
-#include <QTimer>
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -33,6 +32,7 @@
 #include <QHostInfo>
 #include "qtcompat.h"
 #include "log.h"
+#include "rtimer.h"
 #include "httpheaders.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
@@ -83,11 +83,12 @@ public:
 	QString currentVersion;
 	QString org;
 	ZhttpManager *zhttpManager;
-	QTimer *timer;
+	std::unique_ptr<RTimer> timer;
 	ZhttpRequest *req;
 	Report report;
 	QDateTime lastLogTime;
 	ReqConnections reqConnections;
+	Connection timerConnection;
 
 	Private(Updater *_q, Mode _mode, bool _quiet, const QString &_currentVersion, const QString &_org, ZhttpManager *zhttp) :
 		QObject(_q),
@@ -99,19 +100,12 @@ public:
 		zhttpManager(zhttp),
 		req(0)
 	{
-		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
+		timer = std::make_unique<RTimer>();
+		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 		timer->setInterval(mode == ReportMode ? REPORT_INTERVAL : CHECK_INTERVAL);
 		timer->start();
 
 		report.connectionsMax = -1; // stale
-	}
-
-	~Private()
-	{
-		timer->disconnect(this);
-		timer->setParent(0);
-		timer->deleteLater();
 	}
 
 	void cleanupRequest()

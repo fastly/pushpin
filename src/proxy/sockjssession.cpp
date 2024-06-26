@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include <QPointer>
-#include <QTimer>
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -34,6 +33,7 @@
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
+#include "rtimer.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjsmanager.h"
@@ -155,7 +155,7 @@ public:
 	int pendingWrittenBytes;
 	QList<WriteItem> pendingWrites;
 	QHash<ZhttpRequest*, RequestItem*> requests;
-	QTimer *keepAliveTimer;
+	std::unique_ptr<RTimer> keepAliveTimer;
 	int closeCode;
 	QString closeReason;
 	bool closeSent;
@@ -165,6 +165,7 @@ public:
 	bool updating;
 	map<ZhttpRequest*, ReqConnections> reqConnectionMap;
 	WSConnections wsConnection;
+	Connection keepAliveTimerConnection;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -186,16 +187,12 @@ public:
 		peerCloseCode(-1),
 		updating(false)
 	{
-		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
+		keepAliveTimer = std::make_unique<RTimer>();
+		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 	}
 
 	~Private()
 	{
-		keepAliveTimer->disconnect(this);
-		keepAliveTimer->setParent(0);
-		keepAliveTimer->deleteLater();
-
 		cleanup();
 	}
 

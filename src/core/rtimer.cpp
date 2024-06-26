@@ -195,10 +195,14 @@ void RTimer::setSingleShot(bool singleShot)
 	singleShot_ = singleShot;
 }
 
-void RTimer::start(int msec)
+void RTimer::setInterval(int msec)
 {
 	interval_ = msec;
+}
 
+void RTimer::start(int msec)
+{
+	setInterval(msec);
 	start();
 }
 

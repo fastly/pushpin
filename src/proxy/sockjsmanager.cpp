@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include <QtGlobal>
-#include <QTimer>
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -35,6 +34,7 @@
 #include "qtcompat.h"
 #include "log.h"
 #include "bufferlist.h"
+#include "rtimer.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjssession.h"
@@ -99,16 +99,16 @@ public:
 		QByteArray lastPart;
 		bool pending;
 		SockJsSession *ext;
-		QTimer *timer;
+		std::unique_ptr<RTimer> timer;
 		QVariant closeValue;
+		Connection timerConnection;
 
 		Session(Private *_owner) :
 			owner(_owner),
 			req(0),
 			sock(0),
 			pending(false),
-			ext(0),
-			timer(0)
+			ext(0)
 		{
 		}
 
@@ -121,13 +121,6 @@ public:
 			}
 			owner->wsConnectionMap.erase(sock);
 			delete sock;
-
-			if(timer)
-			{
-				timer->disconnect(owner);
-				timer->setParent(0);
-				timer->deleteLater();
-			}
 		}
 	};
 
@@ -148,7 +141,7 @@ public:
 	QHash<ZWebSocket*, Session*> sessionsBySocket;
 	QHash<QByteArray, Session*> sessionsById;
 	QHash<SockJsSession*, Session*> sessionsByExt;
-	QHash<QTimer*, Session*> sessionsByTimer;
+	QHash<RTimer*, Session*> sessionsByTimer;
 	QList<Session*> pendingSessions;
 	QByteArray iframeHtml;
 	QByteArray iframeHtmlEtag;
@@ -190,7 +183,7 @@ public:
 		if(s->ext)
 			sessionsByExt.remove(s->ext);
 		if(s->timer)
-			sessionsByTimer.remove(s->timer);
+			sessionsByTimer.remove(s->timer.get());
 		sessions.remove(s);
 		delete s;
 	}
@@ -206,13 +199,10 @@ public:
 		if(s->closeValue.isValid())
 		{
 			// if there's a close value, hang around for a little bit
-			s->timer = new QTimer(this);
-			QObject::connect(s->timer, &QTimer::timeout, [this, timer=s->timer]() {
-				this->timer_timeout(timer);
-			});
-
+			s->timer = std::make_unique<RTimer>();
+			s->timerConnection = s->timer->timeout.connect(boost::bind(&Private::timer_timeout, this, s->timer.get()));
 			s->timer->setSingleShot(true);
-			sessionsByTimer.insert(s->timer, s);
+			sessionsByTimer.insert(s->timer.get(), s);
 			s->timer->start(5000);
 		}
 		else
@@ -684,7 +674,7 @@ private:
 	}
 
 private:
-	void timer_timeout(QTimer *timer)
+	void timer_timeout(RTimer *timer)
 	{
 		Session *s = sessionsByTimer.value(timer);
 		assert(s);

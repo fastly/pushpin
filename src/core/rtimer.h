@@ -42,6 +42,7 @@ public:
 	bool isActive() const;
 
 	void setSingleShot(bool singleShot);
+	void setInterval(int msec);
 	void start(int msec);
 	void start();
 	void stop();

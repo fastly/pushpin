@@ -21,14 +21,16 @@
  */
 
 #include <QCoreApplication>
-#include <QTimer>
 #include "app.h"
 
-class AppMain
+class AppMain : public QObject
 {
+	Q_OBJECT
+
 public:
 	App *app;
 
+public slots:
 	void start()
 	{
 		app = new App;
@@ -36,6 +38,7 @@ public:
 		app->start();
 	}
 
+private:
 	void app_quit(int returnCode)
 	{
 		delete app;
@@ -50,8 +53,10 @@ int proxy_main(int argc, char **argv)
 	QCoreApplication qapp(argc, argv);
 
 	AppMain appMain;
-	QTimer::singleShot(0, [&appMain]() {appMain.start();});
+	QMetaObject::invokeMethod(&appMain, "start", Qt::QueuedConnection);
 	return qapp.exec();
 }
 
 }
+
+#include "main.moc"

@@ -24,13 +24,16 @@
 #include "wscontrolsession.h"
 
 #include <assert.h>
-#include <QTimer>
 #include <QDateTime>
 #include <QUrl>
+#include <boost/signals2.hpp>
+#include "rtimer.h"
 #include "wscontrolmanager.h"
 
 #define SESSION_TTL 60
 #define REQUEST_TIMEOUT 8000
+
+using Connection = boost::signals2::scoped_connection;
 
 class WsControlSession::Private : public QObject
 {
@@ -43,13 +46,14 @@ public:
 	QList<WsControlPacket::Item> pendingItems;
 	QHash<int, qint64> pendingRequests;
 	QList<QByteArray> pendingSendEventWrites;
-	QTimer *requestTimer;
+	std::unique_ptr<RTimer> requestTimer;
 	QByteArray peer;
 	QByteArray cid;
 	QByteArray route;
 	bool separateStats;
 	QByteArray channelPrefix;
 	QUrl uri;
+	Connection requestTimerConnection;
 
 	Private(WsControlSession *_q) :
 		QObject(_q),
@@ -58,18 +62,14 @@ public:
 		nextReqId(0),
 		separateStats(false)
 	{
-		requestTimer = new QTimer(this);
+		requestTimer = std::make_unique<RTimer>();
+		requestTimerConnection = requestTimer->timeout.connect(boost::bind(&Private::requestTimer_timeout, this));
 		requestTimer->setSingleShot(true);
-		connect(requestTimer, &QTimer::timeout, this, &Private::requestTimer_timeout);
 	}
 
 	~Private()
 	{
 		cleanup();
-
-		requestTimer->setParent(0);
-		requestTimer->disconnect(this);
-		requestTimer->deleteLater();
 	}
 
 	void cleanup()
