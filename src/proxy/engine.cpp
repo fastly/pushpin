@@ -58,6 +58,7 @@
 #include "logutil.h"
 
 #define DEFAULT_HWM 1000
+#define ZROUTES_MAX 100
 
 class Engine::Private : public QObject
 {
@@ -206,8 +207,8 @@ public:
 	{
 		config = _config;
 
-		// up to 10 timers per session
-		RTimer::init(config.sessionsMax * 10);
+		// up to 10 timers per session, up to 10 per zroute, plus an extra 100 for misc
+		RTimer::init((config.sessionsMax * 10) + (ZROUTES_MAX * 10) + 100);
 
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
@@ -380,8 +381,16 @@ public:
 
 	void routesChanged()
 	{
+		auto zhttpRoutes = domainMap->zhttpRoutes();
+
+		if(zhttpRoutes.count() > ZROUTES_MAX)
+		{
+			log_warning("too many unique zhttp route targets, limiting to %d", ZROUTES_MAX);
+			zhttpRoutes = zhttpRoutes.mid(0, ZROUTES_MAX);
+		}
+
 		// connect to new zhttp targets, disconnect from old
-		zroutes->setup(domainMap->zhttpRoutes());
+		zroutes->setup(zhttpRoutes);
 	}
 
 	void doProxy(RequestSession *rs, const InspectData *idata = 0)

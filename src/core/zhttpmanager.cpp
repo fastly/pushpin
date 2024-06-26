@@ -26,7 +26,6 @@
 #include <QStringList>
 #include <QHash>
 #include <QPointer>
-#include <QTimer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -35,6 +34,7 @@
 #include "log.h"
 #include "zutil.h"
 #include "logutil.h"
+#include "rtimer.h"
 
 #define OUT_HWM 100
 #define IN_HWM 100
@@ -101,7 +101,7 @@ public:
 	QHash<ZWebSocket::Rid, ZWebSocket*> clientSocksByRid;
 	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
 	QList<ZWebSocket*> serverPendingSocks;
-	QTimer *refreshTimer;
+	std::unique_ptr<RTimer> refreshTimer;
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
@@ -112,6 +112,7 @@ public:
 	Connection clientConnection;
 	Connection serverConnection;
 	Connection serverStreamConnection;
+	Connection refreshTimerConnection;
 
 	Private(ZhttpManager *_q) :
 		QObject(_q),
@@ -130,8 +131,8 @@ public:
 		doBind(false),
 		currentSessionRefreshBucket(0)
 	{
-		refreshTimer = new QTimer(this);
-		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
+		refreshTimer = std::make_unique<RTimer>();
+		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 	}
 
 	~Private()
@@ -155,10 +156,6 @@ public:
 		assert(clientSocksByRid.isEmpty());
 		assert(serverSocksByRid.isEmpty());
 		assert(keepAliveRegistrations.isEmpty());
-
-		refreshTimer->disconnect(this);
-		refreshTimer->setParent(0);
-		refreshTimer->deleteLater();
 	}
 
 	bool setupClientOut()
@@ -804,7 +801,6 @@ public:
 		}
 	}
 
-public slots:
 	void refresh_timeout()
 	{
 		QHash<QByteArray, QList<KeepAliveRegistration*> > clientSessionsBySender[2]; // index corresponds to type

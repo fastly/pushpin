@@ -24,12 +24,15 @@
 #include "zrpcrequest.h"
 
 #include <assert.h>
-#include <QTimer>
+#include <boost/signals2.hpp>
 #include "packet/zrpcrequestpacket.h"
 #include "packet/zrpcresponsepacket.h"
 #include "zrpcmanager.h"
 #include "uuidutil.h"
 #include "log.h"
+#include "rtimer.h"
+
+using Connection = boost::signals2::scoped_connection;
 
 class ZrpcRequest::Private : public QObject
 {
@@ -47,15 +50,15 @@ public:
 	QVariant result;
 	ErrorCondition condition;
 	QByteArray conditionString;
-	QTimer *timer;
+	std::unique_ptr<RTimer> timer;
+	Connection timerConnection;
 
 	Private(ZrpcRequest *_q) :
 		QObject(_q),
 		q(_q),
 		manager(0),
 		success(false),
-		condition(ErrorGeneric),
-		timer(0)
+		condition(ErrorGeneric)
 	{
 	}
 
@@ -68,10 +71,8 @@ public:
 	{
 		if(timer)
 		{
-			timer->disconnect(this);
-			timer->setParent(0);
-			timer->deleteLater();
-			timer = 0;
+			timerConnection.disconnect();
+			timer.reset();
 		}
 
 		if(manager)
@@ -155,8 +156,8 @@ private slots:
 
 		if(manager->timeout() >= 0)
 		{
-			timer = new QTimer(this);
-			connect(timer, &QTimer::timeout, this, &Private::timer_timeout);
+			timer = std::make_unique<RTimer>();
+			timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 			timer->setSingleShot(true);
 			timer->start(manager->timeout());
 		}

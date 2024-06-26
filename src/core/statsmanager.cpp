@@ -27,7 +27,6 @@
 #include <QVector>
 #include <QDateTime>
 #include <QPointer>
-#include <QTimer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qzmqsocket.h"
@@ -37,6 +36,7 @@
 #include "httpheaders.h"
 #include "simplehttpserver.h"
 #include "zutil.h"
+#include "rtimer.h"
 
 // make this somewhat big since PUB is lossy
 #define OUT_HWM 200000
@@ -425,10 +425,14 @@ public:
 	QHash<QByteArray, Report*> reports;
 	Counts combinedCounts;
 	Report combinedReport;
-	QTimer *activityTimer;
-	QTimer *reportTimer;
-	QTimer *refreshTimer;
-	QTimer *externalConnectionsMaxTimer;
+	std::unique_ptr<RTimer> activityTimer;
+	std::unique_ptr<RTimer> reportTimer;
+	std::unique_ptr<RTimer> refreshTimer;
+	std::unique_ptr<RTimer> externalConnectionsMaxTimer;
+	Connection activityTimerConnection;
+	Connection reportTimerConnection;
+	Connection refreshTimerConnection;
+	Connection externalConnectionsMaxTimerConnection;
 	Connection promServerConnection;
 
 	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
@@ -450,19 +454,18 @@ public:
 		prometheusServer(0),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
-		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)),
-		reportTimer(0)
+		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax))
 	{
-		activityTimer = new QTimer(this);
-		connect(activityTimer, &QTimer::timeout, this, &Private::activity_timeout);
+		activityTimer = std::make_unique<RTimer>();
+		activityTimerConnection = activityTimer->timeout.connect(boost::bind(&Private::activity_timeout, this));
 		activityTimer->setSingleShot(true);
 
-		refreshTimer = new QTimer(this);
-		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
+		refreshTimer = std::make_unique<RTimer>();
+		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 		refreshTimer->start(REFRESH_INTERVAL);
 
-		externalConnectionsMaxTimer = new QTimer(this);
-		connect(externalConnectionsMaxTimer, &QTimer::timeout, this, &Private::externalConnectionsMax_timeout);
+		externalConnectionsMaxTimer = std::make_unique<RTimer>();
+		externalConnectionsMaxTimerConnection = externalConnectionsMaxTimer->timeout.connect(boost::bind(&Private::externalConnectionsMax_timeout, this));
 		externalConnectionsMaxTimer->start(EXTERNAL_CONNECTIONS_MAX_INTERVAL);
 
 		setupConnectionBuckets();
@@ -481,38 +484,6 @@ public:
 
 	~Private()
 	{
-		if(activityTimer)
-		{
-			activityTimer->disconnect(this);
-			activityTimer->setParent(0);
-			activityTimer->deleteLater();
-			activityTimer = 0;
-		}
-
-		if(reportTimer)
-		{
-			reportTimer->disconnect(this);
-			reportTimer->setParent(0);
-			reportTimer->deleteLater();
-			reportTimer = 0;
-		}
-
-		if(refreshTimer)
-		{
-			refreshTimer->disconnect(this);
-			refreshTimer->setParent(0);
-			refreshTimer->deleteLater();
-			refreshTimer = 0;
-		}
-
-		if(externalConnectionsMaxTimer)
-		{
-			externalConnectionsMaxTimer->disconnect(this);
-			externalConnectionsMaxTimer->setParent(0);
-			externalConnectionsMaxTimer->deleteLater();
-			externalConnectionsMaxTimer = 0;
-		}
-
 		qDeleteAll(connectionInfoById);
 
 		QMutableHashIterator<QByteArray, QHash<QByteArray, ConnectionInfo*> > it(externalConnectionInfoByFrom);
@@ -636,16 +607,14 @@ public:
 	{
 		if(reportInterval > 0 && !reportTimer)
 		{
-			reportTimer = new QTimer(this);
-			connect(reportTimer, &QTimer::timeout, this, &Private::report_timeout);
+			reportTimer = std::make_unique<RTimer>();
+			reportTimerConnection = reportTimer->timeout.connect(boost::bind(&Private::report_timeout, this));
 			reportTimer->start(reportInterval);
 		}
 		else if(reportInterval <= 0 && reportTimer)
 		{
-			reportTimer->disconnect(this);
-			reportTimer->setParent(0);
-			reportTimer->deleteLater();
-			reportTimer = 0;
+			reportTimerConnection.disconnect();
+			reportTimer.reset();
 		}
 	}
 
@@ -1452,7 +1421,7 @@ public:
 		return p;
 	}
 
-private slots:
+private:
 	void activity_timeout()
 	{
 		QHashIterator<QByteArray, quint32> it(routeActivity);
@@ -1562,7 +1531,6 @@ private slots:
 		expireExternalConnectionsMaxes(currentTime);
 	}
 
-private:
 	void prometheus_requestReady()
 	{
 		SimpleHttpRequest *req = prometheusServer->takeNext();

@@ -28,11 +28,14 @@
 #include <assert.h>
 #include <QStringList>
 #include <QPointer>
-#include <QTimer>
 #include <QSocketNotifier>
 #include <QMutex>
+#include <boost/signals2.hpp>
 #include "rust/bindings.h"
 #include "qzmqcontext.h"
+#include "rtimer.h"
+
+using Connection = boost::signals2::scoped_connection;
 
 using namespace ffi;
 
@@ -372,7 +375,8 @@ public:
 	bool canWrite, canRead;
 	QList< QList<QByteArray> > pendingWrites;
 	int pendingWritten;
-	QTimer *updateTimer;
+	std::unique_ptr<RTimer> updateTimer;
+	Connection updateTimerConnection;
 	bool pendingUpdate;
 	int shutdownWaitTime;
 	bool writeQueueEnabled;
@@ -421,17 +425,13 @@ public:
 		connect(sn_read, &QSocketNotifier::activated, this, &Private::sn_read_activated);
 		sn_read->setEnabled(true);
 
-		updateTimer = new QTimer(this);
-		connect(updateTimer, SIGNAL(timeout()), SLOT(update_timeout()));
+		updateTimer = std::make_unique<RTimer>();
+		updateTimerConnection = updateTimer->timeout.connect(boost::bind(&Private::update_timeout, this));
 		updateTimer->setSingleShot(true);
 	}
 
 	~Private()
 	{
-		updateTimer->disconnect(this);
-		updateTimer->setParent(0);
-		updateTimer->deleteLater();
-
 		set_linger(sock, shutdownWaitTime);
 		wzmq_close(sock);
 
@@ -612,6 +612,13 @@ public:
 		}
 	}
 
+	void update_timeout()
+	{
+		pendingUpdate = false;
+
+		doUpdate();
+	}
+
 public slots:
 	void sn_read_activated()
 	{
@@ -623,13 +630,6 @@ public slots:
 			pendingUpdate = false;
 			updateTimer->stop();
 		}
-
-		doUpdate();
-	}
-
-	void update_timeout()
-	{
-		pendingUpdate = false;
 
 		doUpdate();
 	}
