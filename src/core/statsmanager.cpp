@@ -425,10 +425,10 @@ public:
 	QHash<QByteArray, Report*> reports;
 	Counts combinedCounts;
 	Report combinedReport;
-	RTimer *activityTimer;
-	RTimer *reportTimer;
-	RTimer *refreshTimer;
-	RTimer *externalConnectionsMaxTimer;
+	std::unique_ptr<RTimer> activityTimer;
+	std::unique_ptr<RTimer> reportTimer;
+	std::unique_ptr<RTimer> refreshTimer;
+	std::unique_ptr<RTimer> externalConnectionsMaxTimer;
 	Connection activityTimerConnection;
 	Connection reportTimerConnection;
 	Connection refreshTimerConnection;
@@ -454,18 +454,17 @@ public:
 		prometheusServer(0),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
-		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax)),
-		reportTimer(0)
+		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax))
 	{
-		activityTimer = new RTimer;
+		activityTimer = std::make_unique<RTimer>();
 		activityTimerConnection = activityTimer->timeout.connect(boost::bind(&Private::activity_timeout, this));
 		activityTimer->setSingleShot(true);
 
-		refreshTimer = new RTimer;
+		refreshTimer = std::make_unique<RTimer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 		refreshTimer->start(REFRESH_INTERVAL);
 
-		externalConnectionsMaxTimer = new RTimer;
+		externalConnectionsMaxTimer = std::make_unique<RTimer>();
 		externalConnectionsMaxTimerConnection = externalConnectionsMaxTimer->timeout.connect(boost::bind(&Private::externalConnectionsMax_timeout, this));
 		externalConnectionsMaxTimer->start(EXTERNAL_CONNECTIONS_MAX_INTERVAL);
 
@@ -485,34 +484,6 @@ public:
 
 	~Private()
 	{
-		if(activityTimer)
-		{
-			activityTimerConnection.disconnect();
-			activityTimer->deleteLater();
-			activityTimer = 0;
-		}
-
-		if(reportTimer)
-		{
-			reportTimerConnection.disconnect();
-			reportTimer->deleteLater();
-			reportTimer = 0;
-		}
-
-		if(refreshTimer)
-		{
-			refreshTimerConnection.disconnect();
-			refreshTimer->deleteLater();
-			refreshTimer = 0;
-		}
-
-		if(externalConnectionsMaxTimer)
-		{
-			externalConnectionsMaxTimerConnection.disconnect();
-			externalConnectionsMaxTimer->deleteLater();
-			externalConnectionsMaxTimer = 0;
-		}
-
 		qDeleteAll(connectionInfoById);
 
 		QMutableHashIterator<QByteArray, QHash<QByteArray, ConnectionInfo*> > it(externalConnectionInfoByFrom);
@@ -636,15 +607,14 @@ public:
 	{
 		if(reportInterval > 0 && !reportTimer)
 		{
-			reportTimer = new RTimer;
+			reportTimer = std::make_unique<RTimer>();
 			reportTimerConnection = reportTimer->timeout.connect(boost::bind(&Private::report_timeout, this));
 			reportTimer->start(reportInterval);
 		}
 		else if(reportInterval <= 0 && reportTimer)
 		{
 			reportTimerConnection.disconnect();
-			reportTimer->deleteLater();
-			reportTimer = 0;
+			reportTimer.reset();
 		}
 	}
 

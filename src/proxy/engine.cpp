@@ -381,7 +381,7 @@ public:
 
 	void routesChanged()
 	{
-		QList<DomainMap::ZhttpRoute> zhttpRoutes = domainMap->zhttpRoutes();
+		auto zhttpRoutes = domainMap->zhttpRoutes();
 
 		if(zhttpRoutes.count() > ZROUTES_MAX)
 		{

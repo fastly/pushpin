@@ -50,7 +50,7 @@ public:
 	QVariant result;
 	ErrorCondition condition;
 	QByteArray conditionString;
-	RTimer *timer;
+	std::unique_ptr<RTimer> timer;
 	Connection timerConnection;
 
 	Private(ZrpcRequest *_q) :
@@ -58,8 +58,7 @@ public:
 		q(_q),
 		manager(0),
 		success(false),
-		condition(ErrorGeneric),
-		timer(0)
+		condition(ErrorGeneric)
 	{
 	}
 
@@ -73,8 +72,7 @@ public:
 		if(timer)
 		{
 			timerConnection.disconnect();
-			timer->deleteLater();
-			timer = 0;
+			timer.reset();
 		}
 
 		if(manager)
@@ -158,7 +156,7 @@ private slots:
 
 		if(manager->timeout() >= 0)
 		{
-			timer = new RTimer;
+			timer = std::make_unique<RTimer>();
 			timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 			timer->setSingleShot(true);
 			timer->start(manager->timeout());

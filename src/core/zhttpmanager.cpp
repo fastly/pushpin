@@ -101,7 +101,7 @@ public:
 	QHash<ZWebSocket::Rid, ZWebSocket*> clientSocksByRid;
 	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
 	QList<ZWebSocket*> serverPendingSocks;
-	RTimer *refreshTimer;
+	std::unique_ptr<RTimer> refreshTimer;
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
@@ -131,7 +131,7 @@ public:
 		doBind(false),
 		currentSessionRefreshBucket(0)
 	{
-		refreshTimer = new RTimer;
+		refreshTimer = std::make_unique<RTimer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 	}
 
@@ -156,9 +156,6 @@ public:
 		assert(clientSocksByRid.isEmpty());
 		assert(serverSocksByRid.isEmpty());
 		assert(keepAliveRegistrations.isEmpty());
-
-		refreshTimerConnection.disconnect();
-		refreshTimer->deleteLater();
 	}
 
 	bool setupClientOut()

@@ -375,7 +375,7 @@ public:
 	bool canWrite, canRead;
 	QList< QList<QByteArray> > pendingWrites;
 	int pendingWritten;
-	RTimer *updateTimer;
+	std::unique_ptr<RTimer> updateTimer;
 	Connection updateTimerConnection;
 	bool pendingUpdate;
 	int shutdownWaitTime;
@@ -425,16 +425,13 @@ public:
 		connect(sn_read, &QSocketNotifier::activated, this, &Private::sn_read_activated);
 		sn_read->setEnabled(true);
 
-		updateTimer = new RTimer;
+		updateTimer = std::make_unique<RTimer>();
 		updateTimerConnection = updateTimer->timeout.connect(boost::bind(&Private::update_timeout, this));
 		updateTimer->setSingleShot(true);
 	}
 
 	~Private()
 	{
-		updateTimerConnection.disconnect();
-		updateTimer->deleteLater();
-
 		set_linger(sock, shutdownWaitTime);
 		wzmq_close(sock);
 
