@@ -25,8 +25,11 @@
 #include <assert.h>
 #include <QHash>
 #include <QStringList>
-#include <QTimer>
+#include <boost/signals2.hpp>
 #include "log.h"
+#include "rtimer.h"
+
+using Connection = boost::signals2::scoped_connection;
 
 static QStringList baseSpecToSpecs(const QString &baseSpec)
 {
@@ -93,15 +96,16 @@ public:
 	Item *defaultItem;
 	QHash<QString, Item*> itemsBySpec;
 	QHash<ZhttpManager*, Item*> itemsByManager;
-	QTimer *cleanupTimer;
+	std::unique_ptr<RTimer> cleanupTimer;
+	Connection cleanupTimerConnection;
 
 	Private(ZRoutes *_q) :
 		QObject(_q),
 		q(_q),
 		defaultItem(0)
 	{
-		cleanupTimer = new QTimer(this);
-		connect(cleanupTimer, &QTimer::timeout, this, &Private::removeUnused);
+		cleanupTimer = std::make_unique<RTimer>();
+		cleanupTimerConnection = cleanupTimer->timeout.connect(boost::bind(&Private::removeUnused, this));
 		cleanupTimer->setInterval(10000);
 		cleanupTimer->start();
 	}
@@ -110,10 +114,6 @@ public:
 	{
 		qDeleteAll(itemsBySpec);
 		delete defaultItem;
-
-		cleanupTimer->disconnect(this);
-		cleanupTimer->setParent(0);
-		cleanupTimer->deleteLater();
 	}
 
 	Item *ensureDefaultItem()

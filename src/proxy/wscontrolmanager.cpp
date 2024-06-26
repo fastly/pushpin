@@ -26,11 +26,12 @@
 #include <assert.h>
 #include <QPointer>
 #include <QDateTime>
-#include <QTimer>
+#include <boost/signals2.hpp>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
 #include "log.h"
+#include "rtimer.h"
 #include "tnetstring.h"
 #include "zutil.h"
 #include "logutil.h"
@@ -46,6 +47,8 @@
 #define SESSION_REFRESH_BUCKETS (SESSION_SHOULD_PROCESS / REFRESH_INTERVAL)
 
 #define PACKET_ITEMS_MAX 128
+
+using Connection = boost::signals2::scoped_connection;
 
 class WsControlManager::Private : public QObject
 {
@@ -69,12 +72,13 @@ public:
 	QZmq::Socket *streamSock;
 	QZmq::Valve *streamValve;
 	QHash<QByteArray, WsControlSession*> sessionsByCid;
-	QTimer *refreshTimer;
+	std::unique_ptr<RTimer> refreshTimer;
 	QHash<WsControlSession*, KeepAliveRegistration*> keepAliveRegistrations;
 	QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
 	Connection streamValveConnection;
+	Connection refreshTimerConnection;
 
 	Private(WsControlManager *_q) :
 		QObject(_q),
@@ -85,18 +89,14 @@ public:
 		streamValve(0),
 		currentSessionRefreshBucket(0)
 	{
-		refreshTimer = new QTimer(this);
-		connect(refreshTimer, &QTimer::timeout, this, &Private::refresh_timeout);
+		refreshTimer = std::make_unique<RTimer>();
+		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 	}
 
 	~Private()
 	{
 		assert(sessionsByCid.isEmpty());
 		assert(keepAliveRegistrations.isEmpty());
-
-		refreshTimer->disconnect(this);
-		refreshTimer->setParent(0);
-		refreshTimer->deleteLater();
 	}
 
 	bool setupInit()

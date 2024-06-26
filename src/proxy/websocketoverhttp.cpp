@@ -24,7 +24,6 @@
 #include "websocketoverhttp.h"
 
 #include <assert.h>
-#include <QTimer>
 #include <QPointer>
 #include <QRandomGenerator>
 #include "log.h"
@@ -34,6 +33,7 @@
 #include "zhttprequest.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
+#include "rtimer.h"
 
 #define BUFFER_SIZE 200000
 #define FRAME_SIZE_MAX 16384
@@ -233,11 +233,13 @@ public:
 	bool disconnecting;
 	bool disconnectSent;
 	bool updateQueued;
-	QTimer *keepAliveTimer;
-	QTimer *retryTimer;
+	std::unique_ptr<RTimer> keepAliveTimer;
+	std::unique_ptr<RTimer> retryTimer;
 	int retries;
 	int maxEvents;
 	ReqConnections reqConnections;
+	Connection keepAliveTimerConnection;
+	Connection retryTimerConnection;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -269,24 +271,13 @@ public:
 		if(!g_disconnectManager)
 			g_disconnectManager = new DisconnectManager;
 
-		keepAliveTimer = new QTimer(this);
-		connect(keepAliveTimer, &QTimer::timeout, this, &Private::keepAliveTimer_timeout);
+		keepAliveTimer = std::make_unique<RTimer>();
+		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 		keepAliveTimer->setSingleShot(true);
 
-		retryTimer = new QTimer(this);
-		connect(retryTimer, &QTimer::timeout, this, &Private::retryTimer_timeout);
+		retryTimer = std::make_unique<RTimer>();
+		retryTimerConnection = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
-	}
-
-	~Private()
-	{
-		keepAliveTimer->disconnect(this);
-		keepAliveTimer->setParent(0);
-		keepAliveTimer->deleteLater();
-
-		retryTimer->disconnect(this);
-		retryTimer->setParent(0);
-		retryTimer->deleteLater();
 	}
 
 	void cleanup()

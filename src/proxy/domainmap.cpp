@@ -26,7 +26,6 @@
 #include <assert.h>
 #include <QStringList>
 #include <QHash>
-#include <QTimer>
 #include <QThread>
 #include <QMutex>
 #include <QWaitCondition>
@@ -35,6 +34,7 @@
 #include <QTextStream>
 #include <QFileSystemWatcher>
 #include "log.h"
+#include "rtimer.h"
 #include "routesfile.h"
 
 class DomainMap::Worker : public QObject
@@ -196,14 +196,14 @@ public:
 	QList<Rule> allRules;
 	QHash< QString, QList<Rule> > rulesByDomain;
 	QHash<QString, Rule> rulesById;
-	QTimer t;
+	RTimer t;
+	Connection tConnection;
 	QFileSystemWatcher watcher;
 
 	Worker() :
-		t(this),
 		watcher(this)
 	{
-		connect(&t, &QTimer::timeout, this, &Worker::doReload);
+		tConnection = t.timeout.connect(boost::bind(&Worker::doReload, this));
 		t.setSingleShot(true);
 	}
 
