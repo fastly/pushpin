@@ -19,7 +19,7 @@ use clap::{Arg, ArgAction, Command};
 use log::{error, LevelFilter};
 use pushpin::connmgr::{run, App, Config, ListenConfig, ListenSpec};
 use pushpin::core::log::{get_simple_logger, local_offset_check};
-use pushpin::version;
+use pushpin::core::version;
 use std::error::Error;
 use std::path::PathBuf;
 use std::process;
