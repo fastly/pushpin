@@ -94,7 +94,7 @@ public:
 	int outContentType;
 	bool multi;
 	Connection expireTimerConnection;
-	Connection keppAliveTimerConnection;
+	Connection keepAliveTimerConnection;
 
 	Private(ZWebSocket *_q) :
 		QObject(_q),
@@ -131,7 +131,7 @@ public:
 		expireTimer->setSingleShot(true);
 
 		keepAliveTimer = new RTimer;
-		keppAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
+		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
 	~Private()
@@ -157,7 +157,7 @@ public:
 
 		if(keepAliveTimer)
 		{
-			keppAliveTimerConnection.disconnect();
+			keepAliveTimerConnection.disconnect();
 			keepAliveTimer->setParent(0);
 			keepAliveTimer->deleteLater();
 			keepAliveTimer = 0;

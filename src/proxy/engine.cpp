@@ -60,6 +60,17 @@
 #define DEFAULT_HWM 1000
 #define ZROUTES_MAX 100
 
+// each session can have a bunch of timers:
+// 2 per incoming zhttprequest/zwebsocket
+// 2 per outgoing zhttprequest/zwebsocket
+// 1 per wsproxysession
+// 2 per websocketoverhttp
+// 1 per inspect/accept request
+#define TIMERS_PER_SESSION 10
+
+// each zroute has a zhttpmanager, which has up to 8 timers
+#define TIMERS_PER_ZROUTE 10
+
 class Engine::Private : public QObject
 {
 	Q_OBJECT
@@ -207,8 +218,8 @@ public:
 	{
 		config = _config;
 
-		// up to 10 timers per session, up to 10 per zroute, plus an extra 100 for misc
-		RTimer::init((config.sessionsMax * 10) + (ZROUTES_MAX * 10) + 100);
+		// enough timers for sessions and zroutes, plus an extra 100 for misc
+		RTimer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
 
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
