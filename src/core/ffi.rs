@@ -1191,10 +1191,10 @@ pub extern "C" fn security_limit_permissions() {
     // for now all we do is set up seccomp if running on linux
 
     #[cfg(all(target_os = "linux", not(test)))]
-    crate::seccomp::install_seccomp_connect_filter()
+    crate::core::seccomp::install_seccomp_connect_filter()
 }
 
 #[no_mangle]
 pub extern "C" fn backtrace_setup_signal_handlers() {
-    crate::backtrace::setup_signal_handlers()
+    crate::core::backtrace::setup_signal_handlers()
 }

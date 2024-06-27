@@ -22,12 +22,8 @@
  */
 
 /// cbindgen:ignore
-pub mod backtrace;
-/// cbindgen:ignore
 pub mod connmgr;
 pub mod core;
-/// cbindgen:ignore
-pub mod encrypt;
 /// cbindgen:ignore
 pub mod future;
 /// cbindgen:ignore
@@ -40,10 +36,6 @@ pub mod publish;
 pub mod runner;
 /// cbindgen:ignore
 pub mod stats_emitter;
-
-#[cfg(target_os = "linux")]
-/// cbindgen:ignore
-pub mod seccomp;
 
 #[macro_export]
 macro_rules! import_cpp {

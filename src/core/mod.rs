@@ -15,10 +15,12 @@
  */
 
 pub mod arena;
+pub mod backtrace;
 pub mod buffer;
 pub mod channel;
 pub mod config;
 pub mod defer;
+pub mod encrypt;
 pub mod event;
 pub mod executor;
 pub mod ffi;
@@ -34,6 +36,9 @@ pub mod timer;
 pub mod tnetstring;
 pub mod waker;
 pub mod zmq;
+
+#[cfg(target_os = "linux")]
+pub mod seccomp;
 
 #[cfg(test)]
 pub mod qtest;
