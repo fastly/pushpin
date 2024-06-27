@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 
-use crate::can_move_mio_sockets_between_threads;
 use crate::connmgr::connection::{
     client_req_connection, client_stream_connection, ConnectionPool, StreamSharedData,
 };
@@ -25,7 +24,7 @@ use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
 use crate::core::arena;
 use crate::core::buffer::TmpBuffer;
-use crate::core::channel;
+use crate::core::channel::{self, AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver};
 use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::list;
@@ -34,8 +33,7 @@ use crate::core::tnetstring;
 use crate::core::zmq::{MultipartHeader, SpecInfo};
 use crate::future::{
     event_wait, select_2, select_5, select_6, select_option, yield_to_local_events,
-    AsyncLocalReceiver, AsyncLocalSender, AsyncReceiver, CancellationSender, CancellationToken,
-    Select2, Select5, Select6, Timeout,
+    CancellationSender, CancellationToken, Select2, Select5, Select6, Timeout,
 };
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
@@ -1755,7 +1753,7 @@ impl Client {
 
         let resolver = Arc::new(Resolver::new(RESOLVER_THREADS, queries_max));
 
-        let pool_max = if can_move_mio_sockets_between_threads() {
+        let pool_max = if event::can_move_mio_sockets_between_threads() {
             (req_maxconn + stream_maxconn) / 10
         } else {
             // disable persistent connections

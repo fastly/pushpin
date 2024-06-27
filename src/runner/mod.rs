@@ -29,7 +29,7 @@ use std::string::String;
 use url::Url;
 
 use crate::core::config::{get_config_file, CustomConfig};
-use crate::version;
+use crate::core::version;
 
 #[derive(Parser, Clone)]
 #[command(
@@ -545,9 +545,11 @@ fn parse_log_levels(log_levels: Vec<String>) -> Result<HashMap<String, u8>, Box<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ensure_example_config, test_dir};
+    use crate::core::{call_c_main, ensure_example_config, qtest, test_dir};
+    use crate::ffi;
     use std::collections::HashMap;
     use std::error::Error;
+    use std::ffi::OsStr;
     use std::net::SocketAddr;
     use std::net::{IpAddr, Ipv4Addr};
     use std::path::PathBuf;
@@ -902,6 +904,16 @@ mod tests {
                 test_arg.name
             );
         }
+    }
+
+    fn template_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::template_test, args) as u8 }
+    }
+
+    #[test]
+    fn template() {
+        assert!(qtest::run(template_test));
     }
 }
 

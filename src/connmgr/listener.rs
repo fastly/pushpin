@@ -19,10 +19,7 @@ use crate::core::channel;
 use crate::core::executor::Executor;
 use crate::core::net::{NetListener, NetStream, SocketAddr};
 use crate::core::reactor::Reactor;
-use crate::future::{
-    select_2, select_slice, AsyncNetListener, AsyncReceiver, AsyncSender, NetAcceptFuture, Select2,
-    WaitWritableFuture,
-};
+use crate::future::{select_2, select_slice, AsyncNetListener, NetAcceptFuture, Select2};
 use log::{debug, error};
 use std::cmp;
 use std::sync::mpsc;
@@ -67,18 +64,18 @@ impl Listener {
         listeners: Vec<NetListener>,
         senders: Vec<channel::Sender<(usize, NetStream, SocketAddr)>>,
     ) {
-        let stop = AsyncReceiver::new(stop);
+        let stop = channel::AsyncReceiver::new(stop);
 
         let mut listeners: Vec<AsyncNetListener> =
             listeners.into_iter().map(AsyncNetListener::new).collect();
 
-        let mut senders: Vec<AsyncSender<(usize, NetStream, SocketAddr)>> =
-            senders.into_iter().map(AsyncSender::new).collect();
+        let mut senders: Vec<channel::AsyncSender<(usize, NetStream, SocketAddr)>> =
+            senders.into_iter().map(channel::AsyncSender::new).collect();
 
         let mut listeners_pos = 0;
         let mut senders_pos = 0;
 
-        let mut sender_tasks_mem: Vec<WaitWritableFuture<(usize, NetStream, SocketAddr)>> =
+        let mut sender_tasks_mem: Vec<channel::WaitWritableFuture<(usize, NetStream, SocketAddr)>> =
             Vec::with_capacity(senders.len());
 
         let mut listener_tasks_mem: Vec<NetAcceptFuture> = Vec::with_capacity(listeners.len());

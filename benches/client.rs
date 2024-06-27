@@ -20,7 +20,7 @@ use pushpin::connmgr::client::TestClient;
 use pushpin::core::channel;
 use pushpin::core::executor::Executor;
 use pushpin::core::reactor::Reactor;
-use pushpin::future::{AsyncReadExt, AsyncSender, AsyncTcpListener, AsyncTcpStream, AsyncWriteExt};
+use pushpin::future::{AsyncReadExt, AsyncTcpListener, AsyncTcpStream, AsyncWriteExt};
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str;
@@ -46,7 +46,7 @@ where
 
     executor
         .spawn(async move {
-            let s = AsyncSender::new(s);
+            let s = channel::AsyncSender::new(s);
             let listener = AsyncTcpListener::new(listener);
 
             for _ in 0..REQS_PER_ITER {
