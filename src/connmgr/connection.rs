@@ -2184,17 +2184,24 @@ where
                 check_send.set(Some(zsess_out.check_send()));
             }
 
+            let fill_recv_buffer = if send.is_none() {
+                Some(resp_body.fill_recv_buffer())
+            } else {
+                None
+            };
+
             // ABR: select contains read
-            select_3(
+            select_4(
                 select_option(send.as_mut().as_pin_mut()),
                 select_option(check_send.as_mut().as_pin_mut()),
                 pin!(zsess_in.recv_msg()),
+                select_option(pin!(fill_recv_buffer).as_pin_mut()),
             )
             .await
         };
 
         match ret {
-            Select3::R1(ret) => {
+            Select4::R1(ret) => {
                 send.set(None);
 
                 match ret {
@@ -2210,7 +2217,7 @@ where
                     SendStatus::Error(_, e) => return Err(e.into()),
                 }
             }
-            Select3::R2(()) => {
+            Select4::R2(()) => {
                 check_send.set(None);
 
                 let zreq = zhttppacket::Request::new_credit(b"", &[], out_credits);
@@ -2219,7 +2226,7 @@ where
                 // check_send just finished, so this should succeed
                 zsess_out.try_send_msg(zreq)?;
             }
-            Select3::R3(ret) => {
+            Select4::R3(ret) => {
                 let zresp = ret?;
 
                 match &zresp.get().get().ptype {
@@ -2284,6 +2291,7 @@ where
                     }
                 }
             }
+            Select4::R4(e) => return Err(e.into()),
         }
     };
 
@@ -2375,17 +2383,24 @@ where
                 check_send.set(Some(zsess_out.check_send()));
             }
 
+            let fill_recv_buffer = if send.is_none() {
+                Some(req_body.fill_recv_buffer())
+            } else {
+                None
+            };
+
             // ABR: select contains read
-            select_3(
+            select_4(
                 select_option(send.as_mut().as_pin_mut()),
                 select_option(check_send.as_mut().as_pin_mut()),
                 pin!(zsess_in.recv_msg()),
+                select_option(pin!(fill_recv_buffer).as_pin_mut()),
             )
             .await
         };
 
         match ret {
-            Select3::R1(ret) => {
+            Select4::R1(ret) => {
                 send.set(None);
 
                 match ret {
@@ -2401,7 +2416,7 @@ where
                     SendStatus::Error(_, e) => return Err(e.into()),
                 }
             }
-            Select3::R2(()) => {
+            Select4::R2(()) => {
                 check_send.set(None);
 
                 let zresp = zhttppacket::Response::new_credit(b"", &[], out_credits);
@@ -2410,7 +2425,7 @@ where
                 // check_send just finished, so this should succeed
                 zsess_out.try_send_msg(zresp)?;
             }
-            Select3::R3(ret) => {
+            Select4::R3(ret) => {
                 let zreq = ret?;
 
                 match &zreq.get().get().ptype {
@@ -2475,6 +2490,7 @@ where
                     }
                 }
             }
+            Select4::R4(e) => return Err(e.into()),
         }
     };
 
@@ -5946,10 +5962,25 @@ pub mod testutil {
         }
     }
 
+    #[track_caller]
+    pub fn check_poll_err<T, E>(p: Poll<Result<T, E>>) -> Option<E>
+    where
+        T: fmt::Debug,
+    {
+        match p {
+            Poll::Ready(v) => match v {
+                Ok(t) => panic!("check_poll_err ok: {:?}", t),
+                Err(e) => Some(e),
+            },
+            Poll::Pending => None,
+        }
+    }
+
     pub struct FakeSock {
         inbuf: Vec<u8>,
         outbuf: Vec<u8>,
         out_allow: usize,
+        closed: bool,
     }
 
     #[allow(clippy::new_without_default)]
@@ -5959,6 +5990,7 @@ pub mod testutil {
                 inbuf: Vec::with_capacity(16384),
                 outbuf: Vec::with_capacity(16384),
                 out_allow: 0,
+                closed: false,
             }
         }
 
@@ -5977,10 +6009,18 @@ pub mod testutil {
         pub fn clear_write_allowed(&mut self) {
             self.out_allow = 0;
         }
+
+        pub fn close(&mut self) {
+            self.closed = true;
+        }
     }
 
     impl Read for FakeSock {
         fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+            if self.closed {
+                return Ok(0);
+            }
+
             if self.inbuf.is_empty() {
                 return Err(io::Error::from(io::ErrorKind::WouldBlock));
             }
@@ -5998,6 +6038,10 @@ pub mod testutil {
 
     impl Write for FakeSock {
         fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+            if self.closed {
+                return Err(io::Error::from(io::ErrorKind::BrokenPipe));
+            }
+
             if !buf.is_empty() && self.out_allow == 0 {
                 return Err(io::Error::from(io::ErrorKind::WouldBlock));
             }
@@ -6012,6 +6056,10 @@ pub mod testutil {
         }
 
         fn write_vectored(&mut self, bufs: &[io::IoSlice]) -> Result<usize, io::Error> {
+            if self.closed {
+                return Err(io::Error::from(io::ErrorKind::BrokenPipe));
+            }
+
             let mut total = 0;
 
             for buf in bufs {
@@ -8194,6 +8242,139 @@ mod tests {
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
+    #[test]
+    fn server_stream_disconnect() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(1));
+        let scratch_mem = Rc::new(arena::RcMemory::new(1));
+        let resp_mem = Rc::new(arena::RcMemory::new(1));
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (s_stream_from_conn, _r_stream_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+        let (_cancel, token) = CancellationToken::new(&reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            server_stream_fut(
+                token,
+                sock,
+                false,
+                false,
+                s_from_conn,
+                s_stream_from_conn,
+                r_to_conn,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // no messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // fill the connection's outbound message queue
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
+        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        drop(s_from_conn);
+
+        let req_data =
+            concat!("GET /path HTTP/1.1\r\n", "Host: example.com\r\n", "\r\n").as_bytes();
+
+        sock.borrow_mut().add_readable(req_data);
+
+        // connection won't be able to send a message yet
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read bogus message
+        let msg = r_from_conn.try_recv().unwrap();
+        assert_eq!(msg.is_empty(), true);
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // now connection will be able to send a message
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read real message
+        let msg = r_from_conn.try_recv().unwrap();
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T179:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:t",
+            "rue!}6:method,3:GET,3:uri,23:http://example.com/path,7:hea",
+            "ders,26:22:4:Host,11:example.com,]]7:credits,4:1024#6:stre",
+            "am,4:true!}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        let msg = concat!(
+            "T125:2:id,1:1,6:reason,2:OK,7:headers,34:30:12:Content-Typ",
+            "e,10:text/plain,]]3:seq,1:0#4:from,7:handler,4:code,3:200#",
+            "4:more,4:true!}",
+        );
+
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let resp = zhttppacket::OwnedResponse::parse(msg, 0, scratch).unwrap();
+        let resp = arena::Rc::new(resp, &resp_mem).unwrap();
+
+        assert_eq!(s_to_conn.try_send((resp, 0)).is_ok(), true);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let data = sock.borrow_mut().take_writable();
+        assert_eq!(data.is_empty(), true);
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let data = sock.borrow_mut().take_writable();
+
+        // data received so far
+        let expected = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Connection: Transfer-Encoding\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+        );
+
+        assert_eq!(str::from_utf8(&data).unwrap(), expected);
+
+        sock.borrow_mut().close();
+
+        // closed, task should error out
+        let e = check_poll_err(executor.step()).unwrap();
+        assert!(matches!(e,
+            Error::CoreHttp(CoreHttpError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof
+        ));
+
+        let data = sock.borrow_mut().take_writable();
+        assert!(data.is_empty());
     }
 
     #[test]
