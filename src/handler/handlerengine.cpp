@@ -87,6 +87,12 @@
 #define INSPECT_WORKERS_MAX 10
 #define ACCEPT_WORKERS_MAX 10
 
+// each session can have a bunch of timers:
+// 2 per incoming zhttprequest
+// 2 per outgoing zhttprequest
+// 2 per httpsession
+#define TIMERS_PER_SESSION 10
+
 using namespace VariantUtil;
 
 static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
@@ -1327,8 +1333,8 @@ public:
 	{
 		config = _config;
 
-		// up to 10 timers per connection, plus an extra 100 for misc
-		RTimer::init((config.connectionsMax * 10) + 100);
+		// enough timers for sessions, plus an extra 100 for misc
+		RTimer::init((config.connectionsMax * TIMERS_PER_SESSION) + 100);
 
 		publishLimiter->setRate(config.messageRate);
 		publishLimiter->setHwm(config.messageHwm);

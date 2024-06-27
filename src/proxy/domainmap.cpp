@@ -37,6 +37,8 @@
 #include "rtimer.h"
 #include "routesfile.h"
 
+#define WORKER_THREAD_TIMERS 1
+
 class DomainMap::Worker : public QObject
 {
 	Q_OBJECT
@@ -735,6 +737,8 @@ public:
 
 	virtual void run()
 	{
+		RTimer::init(WORKER_THREAD_TIMERS);
+
 		worker = new Worker;
 		worker->fileName = fileName;
 		Connection startedConnection = worker->started.connect(boost::bind(&Thread::worker_started, this));
@@ -742,6 +746,8 @@ public:
 		exec();
 		startedConnection.disconnect();
 		delete worker;
+
+		RTimer::deinit();
 	}
 
 public:
