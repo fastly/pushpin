@@ -12,6 +12,10 @@ OBJECTS_DIR = $$cpp_build_dir/obj
 
 include($$cpp_build_dir/conf.pri)
 
+QMAKE_CXXFLAGS += $$(CXXFLAGS)
+QMAKE_CFLAGS += $$(CFLAGS)
+QMAKE_LFLAGS += $$(LDFLAGS)
+
 SRC_DIR = $$PWD
 
 DEFINES += NO_IRISNET
