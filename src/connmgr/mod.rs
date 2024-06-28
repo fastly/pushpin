@@ -32,7 +32,6 @@ pub mod websocket;
 use self::client::Client;
 use self::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WORKER_MAX};
 use crate::core::zmq::SpecInfo;
-use crate::ListenConfig;
 use ipnet::IpNet;
 use log::info;
 use signal_hook;
@@ -77,6 +76,25 @@ fn make_specs(base: &str, is_server: bool) -> Result<(String, String, String), S
     } else {
         Err("base spec must be ipc or tcp".into())
     }
+}
+
+pub enum ListenSpec {
+    Tcp {
+        addr: std::net::SocketAddr,
+        tls: bool,
+        default_cert: Option<String>,
+    },
+    Local {
+        path: PathBuf,
+        mode: Option<u32>,
+        user: Option<String>,
+        group: Option<String>,
+    },
+}
+
+pub struct ListenConfig {
+    pub spec: ListenSpec,
+    pub stream: bool,
 }
 
 pub struct Config {

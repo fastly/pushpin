@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-use pushpin::{call_c_main, import_cpp};
+use pushpin::core::call_c_main;
+use pushpin::import_cpp;
 use std::env;
 use std::process::ExitCode;
 

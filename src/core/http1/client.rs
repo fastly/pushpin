@@ -269,6 +269,26 @@ impl<'a, R: AsyncRead, W: AsyncWrite> RequestBody<'a, R, W> {
         }
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
+    pub async fn fill_recv_buffer(&self) -> Error {
+        if let Some(inner) = &*self.inner.borrow() {
+            let r = &mut *inner.r.borrow_mut();
+
+            loop {
+                if let Err(e) = recv_nonzero(&mut r.stream, r.buf).await {
+                    if e.kind() == io::ErrorKind::WriteZero {
+                        // if there's no more space, suspend forever
+                        std::future::pending::<()>().await;
+                    }
+
+                    return e.into();
+                }
+            }
+        } else {
+            Error::Unusable
+        }
+    }
+
     // assumes self.inner is Some
     #[allow(clippy::await_holding_refcell_ref)]
     async fn process(
