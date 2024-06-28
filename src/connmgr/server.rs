@@ -2185,7 +2185,7 @@ impl Server {
         }
 
         #[cfg(all(target_os = "linux", not(test)))]
-        crate::seccomp::install_seccomp_connect_filter();
+        crate::core::seccomp::install_seccomp_connect_filter();
 
         let blocks_avail = Arc::new(Counter::new(blocks_max - (stream_maxconn * 2)));
 
