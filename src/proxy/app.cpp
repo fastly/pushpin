@@ -398,7 +398,7 @@ public:
 			}
 		}
 
-		log_info("starting...");
+		log_debug("starting...");
 
 		QString configFile = args.configFile;
 		if(configFile.isEmpty())
@@ -694,7 +694,7 @@ private slots:
 
 		threads.clear();
 
-		log_info("stopped");
+		log_debug("stopped");
 		q->quit(0);
 	}
 };

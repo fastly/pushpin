@@ -110,6 +110,9 @@ pub fn start_services(mut settings: Settings) {
                 break;
             }
             Ok(Err(ServiceError::TermSignal(error_message))) => {
+                // let a potential "^C" get overwritten
+                print!("\r");
+
                 error!("signal received: {}", error_message);
                 break;
             }
