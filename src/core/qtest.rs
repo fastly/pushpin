@@ -135,6 +135,13 @@ struct RunQTest {
     ret: mpsc::SyncSender<u8>,
 }
 
+struct Worker {
+    thread: thread::JoinHandle<()>,
+    sender: mpsc::Sender<RunQTest>,
+}
+
+static WORKER: OnceLock<Mutex<Option<Worker>>> = OnceLock::new();
+
 pub fn run<F>(test_fn: F) -> bool
 where
     F: FnOnce(&[&OsStr]) -> u8 + Send + 'static,
@@ -144,32 +151,42 @@ where
     // different threads, so this function sets up a background thread
     // to enable running tests serially and all from the same thread
 
-    static SENDER: OnceLock<Mutex<mpsc::Sender<RunQTest>>> = OnceLock::new();
-
-    let s_run = SENDER.get_or_init(|| {
+    let worker = WORKER.get_or_init(|| {
         let output_file = setup_output_file();
 
         let (s, r) = mpsc::channel::<RunQTest>();
 
         // run in the background forever
-        thread::spawn(move || {
+        let thread = thread::spawn(move || {
             for t in r {
                 let ret = call_qtest(t.f, output_file.as_deref());
 
                 // if receiver is gone, keep going
                 let _ = t.ret.send(ret);
             }
-            unreachable!();
         });
 
-        Mutex::new(s)
+        extern "C" fn exit_handler() {
+            let mut worker = WORKER.get().unwrap().lock().unwrap();
+            let Worker { thread, sender } = worker.take().unwrap();
+
+            drop(sender);
+            thread.join().unwrap();
+        }
+
+        let ret = unsafe { libc::atexit(exit_handler) };
+        assert_eq!(ret, 0);
+
+        Mutex::new(Some(Worker { thread, sender: s }))
     });
 
     let (s_ret, r_ret) = mpsc::sync_channel(1);
 
-    s_run
-        .lock()
-        .unwrap()
+    let worker = worker.lock().unwrap();
+    let worker = worker.as_ref().unwrap();
+
+    worker
+        .sender
         .send(RunQTest {
             f: Box::new(test_fn),
             ret: s_ret,
