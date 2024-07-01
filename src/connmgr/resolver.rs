@@ -16,14 +16,19 @@
 
 use crate::core::event;
 use crate::core::list;
+use crate::core::reactor::CustomEvented;
+use crate::future::get_reactor;
 use arrayvec::{ArrayString, ArrayVec};
 use mio::Interest;
 use slab::Slab;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::io;
 use std::net::{IpAddr, ToSocketAddrs};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
+use std::task::{Context, Poll};
 use std::thread;
 
 pub const REGISTRATIONS_PER_QUERY: usize = 1;
@@ -317,9 +322,102 @@ impl Drop for Query {
     }
 }
 
+pub struct AsyncResolver<'a> {
+    resolver: &'a Resolver,
+}
+
+impl<'a> AsyncResolver<'a> {
+    pub fn new(resolver: &'a Resolver) -> Self {
+        Self { resolver }
+    }
+
+    pub fn resolve(&self, host: &str) -> QueryFuture {
+        let query = match self.resolver.resolve(host) {
+            Ok(q) => Some(q),
+            Err(()) => None,
+        };
+
+        QueryFuture {
+            evented: None,
+            query,
+        }
+    }
+}
+
+pub struct QueryFuture {
+    evented: Option<CustomEvented>,
+    query: Option<Query>,
+}
+
+impl Future for QueryFuture {
+    type Output = Result<Addrs, io::Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let f = &mut *self;
+
+        let query = match &f.query {
+            Some(query) => query,
+            None => return Poll::Ready(Err(io::Error::from(io::ErrorKind::OutOfMemory))),
+        };
+
+        let evented = match &f.evented {
+            Some(evented) => evented,
+            None => {
+                let evented = CustomEvented::new(
+                    query.get_read_registration(),
+                    mio::Interest::READABLE,
+                    &get_reactor(),
+                )
+                .unwrap();
+
+                evented.registration().set_ready(true);
+
+                f.evented = Some(evented);
+
+                f.evented.as_ref().unwrap()
+            }
+        };
+
+        evented
+            .registration()
+            .set_waker(cx.waker(), mio::Interest::READABLE);
+
+        if !evented.registration().is_ready() {
+            return Poll::Pending;
+        }
+
+        match query.process() {
+            Some(ret) => Poll::Ready(ret),
+            None => {
+                evented.registration().set_ready(false);
+
+                Poll::Pending
+            }
+        }
+    }
+}
+
+impl Drop for QueryFuture {
+    fn drop(&mut self) {
+        if let Some(evented) = &self.evented {
+            let query = self.query.as_ref().unwrap();
+
+            // normally, a registration will deregister itself when dropped.
+            // however, the query's registration is not dropped when the
+            // query is dropped, so we need to explicitly deregister
+            evented
+                .registration()
+                .deregister_custom(query.get_read_registration())
+                .unwrap();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::executor::Executor;
+    use crate::core::reactor::Reactor;
 
     #[test]
     fn resolve() {
@@ -404,5 +502,29 @@ mod tests {
         inner.stop();
 
         assert_eq!(inner.queries.invalidated_count(), 1);
+    }
+
+    #[test]
+    fn async_resolve() {
+        let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
+
+        executor
+            .spawn(async {
+                let resolver = Resolver::new(1, 1);
+                let resolver = AsyncResolver::new(&resolver);
+
+                let f1 = resolver.resolve("127.0.0.1");
+                let f2 = resolver.resolve("127.0.0.1"); // will error, since queries_max=1
+
+                let addrs = f1.await.unwrap();
+                let e = f2.await.unwrap_err();
+
+                assert_eq!(addrs.as_slice(), &[IpAddr::from([127, 0, 0, 1])]);
+                assert_eq!(e.kind(), io::ErrorKind::OutOfMemory);
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
 }
