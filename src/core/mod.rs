@@ -29,6 +29,7 @@ pub mod list;
 pub mod log;
 pub mod net;
 pub mod reactor;
+pub mod select;
 pub mod shuffle;
 pub mod timer;
 pub mod tnetstring;
