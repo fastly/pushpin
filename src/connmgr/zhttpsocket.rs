@@ -17,17 +17,19 @@
 use crate::connmgr::zhttppacket::{parse_ids, Id, ParseScratch};
 use crate::core::arena;
 use crate::core::buffer::trim_for_display;
-use crate::core::channel::{self, AsyncReceiver, AsyncSender, RecvFuture, WaitWritableFuture};
+use crate::core::channel::{
+    self, AsyncReceiver, AsyncSender, RecvFuture, WaitWritableFuture, REGISTRATIONS_PER_CHANNEL,
+};
 use crate::core::event;
 use crate::core::executor::Executor;
 use crate::core::list;
 use crate::core::reactor::Reactor;
 use crate::core::tnetstring;
-use crate::core::zmq::{MultipartHeader, SpecInfo, ZmqSocket};
-use crate::future::{
-    select_10, select_9, select_option, select_slice, AsyncZmqSocket, Select10, Select9,
-    ZmqSendFuture, ZmqSendToFuture, REGISTRATIONS_PER_CHANNEL, REGISTRATIONS_PER_ZMQSOCKET,
+use crate::core::zmq::{
+    AsyncZmqSocket, MultipartHeader, SpecInfo, ZmqSendFuture, ZmqSendToFuture, ZmqSocket,
+    REGISTRATIONS_PER_ZMQSOCKET,
 };
+use crate::future::{select_10, select_9, select_option, select_slice, Select10, Select9};
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, log_enabled, trace, warn};
 use slab::Slab;
