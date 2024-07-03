@@ -21,10 +21,10 @@
  * $FANOUT_END_LICENSE$
  */
 
+use crate::core::encrypt;
 use crate::core::jwt;
 use crate::core::log::{ensure_init_simple_logger, get_simple_logger};
 use crate::core::timer::TimerWheel;
-use crate::core::encrypt;
 use crate::core::version;
 use libc;
 use std::collections::HashSet;

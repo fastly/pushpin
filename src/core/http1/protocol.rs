@@ -20,6 +20,7 @@
 
 use crate::core::buffer::{write_vectored_offset, FilledBuf, LimitBufs, VECTORED_MAX};
 use arrayvec::ArrayVec;
+use log::error;
 use std::cmp;
 use std::convert::TryFrom;
 use std::io;
@@ -1494,12 +1495,44 @@ impl ClientResponseBody {
         scratch: &mut mem::MaybeUninit<[httparse::Header<'buf>; N]>,
     ) -> Result<RecvStatus<ClientResponseBody, ClientFinished>, Error> {
         match self.state.body_size {
-            BodySize::Known(_) => self.process_known_size(src, dest, end),
+            BodySize::Known(_) => {
+                let result = self.process_known_size(src, dest, end);
+
+                if matches!((end, &result), (true, Ok(RecvStatus::Read(_, 0, 0)))) {
+                    error!(
+                        "closed connection made no progress: known src.len={} dest.len={}",
+                        src.len(),
+                        dest.len()
+                    );
+                }
+
+                result
+            }
             BodySize::Unknown => {
                 if self.state.chunked {
-                    self.process_unknown_size_chunked(src, dest, end, scratch)
+                    let result = self.process_unknown_size_chunked(src, dest, end, scratch);
+
+                    if matches!((end, &result), (true, Ok(RecvStatus::Read(_, 0, 0)))) {
+                        error!(
+                            "closed connection made no progress: unknown-chunked src.len={} dest.len={}",
+                            src.len(),
+                            dest.len()
+                        );
+                    }
+
+                    result
                 } else {
-                    self.process_unknown_size(src, dest, end)
+                    let result = self.process_unknown_size(src, dest, end);
+
+                    if matches!((end, &result), (true, Ok(RecvStatus::Read(_, 0, 0)))) {
+                        error!(
+                            "closed connection made no progress: unknown src.len={} dest.len={}",
+                            src.len(),
+                            dest.len()
+                        );
+                    }
+
+                    result
                 }
             }
             BodySize::NoBody => Ok(RecvStatus::Complete(
