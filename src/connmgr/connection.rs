@@ -58,8 +58,8 @@ use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
 use crate::future::{
     io_split, poll_async, select_2, select_3, select_4, select_option, AsyncRead, AsyncReadExt,
-    AsyncResolver, AsyncTcpStream, AsyncTlsStream, AsyncWrite, AsyncWriteExt, CancellationToken,
-    ReadHalf, Select2, Select3, Select4, StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
+    AsyncTcpStream, AsyncTlsStream, AsyncWrite, AsyncWriteExt, CancellationToken, ReadHalf,
+    Select2, Select3, Select4, StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
 };
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
@@ -4315,7 +4315,7 @@ async fn client_connect<'a>(
         (uri_host, uri.port().unwrap_or(default_port))
     };
 
-    let resolver = AsyncResolver::new(resolver);
+    let resolver = resolver::AsyncResolver::new(resolver);
 
     debug!("client-conn {}: resolving: [{}]", log_id, connect_host);
 
