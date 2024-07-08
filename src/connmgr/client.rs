@@ -37,7 +37,7 @@ use crate::future::{
 };
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use mio::unix::SourceFd;
 use slab::Slab;
 use std::cell::Cell;
@@ -1763,7 +1763,7 @@ impl Client {
         let pool = Arc::new(ConnectionPool::new(pool_max));
 
         if !deny.is_empty() {
-            info!("default policy: block outgoing connections to {:?}", deny);
+            debug!("default policy: block outgoing connections to {:?}", deny);
         }
 
         let blocks_avail = Arc::new(Counter::new(blocks_max - (stream_maxconn * 2)));

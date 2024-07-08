@@ -1356,8 +1356,8 @@ public:
 		zhttpOut->setClientOutStreamSpecs(config.clientOutStreamSpecs);
 		zhttpOut->setClientInSpecs(config.clientInSpecs);
 
-		log_info("zhttp in stream: %s", qPrintable(config.serverInStreamSpecs.join(", ")));
-		log_info("zhttp out: %s", qPrintable(config.serverOutSpecs.join(", ")));
+		log_debug("zhttp in stream: %s", qPrintable(config.serverInStreamSpecs.join(", ")));
+		log_debug("zhttp out: %s", qPrintable(config.serverOutSpecs.join(", ")));
 
 		if(!config.inspectSpecs.isEmpty())
 		{
@@ -1372,7 +1372,7 @@ public:
 				return false;
 			}
 
-			log_info("inspect server: %s", qPrintable(config.inspectSpecs.join(", ")));
+			log_debug("inspect server: %s", qPrintable(config.inspectSpecs.join(", ")));
 		}
 
 		if(!config.acceptSpecs.isEmpty())
@@ -1388,7 +1388,7 @@ public:
 				return false;
 			}
 
-			log_info("accept server: %s", qPrintable(config.acceptSpecs.join(", ")));
+			log_debug("accept server: %s", qPrintable(config.acceptSpecs.join(", ")));
 		}
 
 		if(!config.stateSpec.isEmpty())
@@ -1404,7 +1404,7 @@ public:
 				return false;
 			}
 
-			log_info("state client: %s", qPrintable(config.stateSpec));
+			log_debug("state client: %s", qPrintable(config.stateSpec));
 		}
 
 		if(!config.commandSpec.isEmpty())
@@ -1420,7 +1420,7 @@ public:
 				return false;
 			}
 
-			log_info("control server: %s", qPrintable(config.commandSpec));
+			log_debug("control server: %s", qPrintable(config.commandSpec));
 		}
 
 		if(!config.pushInSpec.isEmpty())
@@ -1438,7 +1438,7 @@ public:
 			inPullValve = new QZmq::Valve(inPullSock, this);
 			pullConnection = inPullValve->readyRead.connect(boost::bind(&Private::inPull_readyRead, this, boost::placeholders::_1));
 
-			log_info("in pull: %s", qPrintable(config.pushInSpec));
+			log_debug("in pull: %s", qPrintable(config.pushInSpec));
 		}
 
 		if(!config.pushInSubSpecs.isEmpty())
@@ -1465,7 +1465,7 @@ public:
 			inSubValve = new QZmq::Valve(inSubSock, this);
 			inSubValveConnection = inSubValve->readyRead.connect(boost::bind(&Private::inSub_readyRead, this, boost::placeholders::_1));
 
-			log_info("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
+			log_debug("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
 		}
 
 		if(!config.retryOutSpecs.isEmpty())
@@ -1486,7 +1486,7 @@ public:
 				}
 			}
 
-			log_info("retry: %s", qPrintable(config.retryOutSpecs.join(", ")));
+			log_debug("retry: %s", qPrintable(config.retryOutSpecs.join(", ")));
 		}
 
 		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
@@ -1507,7 +1507,7 @@ public:
 			wsControlInitValve = new QZmq::Valve(wsControlInitSock, this);
 			controlInitValveConnection = wsControlInitValve->readyRead.connect(boost::bind(&Private::wsControlInit_readyRead, this, boost::placeholders::_1));
 
-			log_info("ws control init: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
+			log_debug("ws control init: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 
 			wsControlStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
 			wsControlStreamSock->setIdentity(config.instanceId);
@@ -1528,7 +1528,7 @@ public:
 			wsControlStreamValve = new QZmq::Valve(wsControlStreamSock, this);
 			controlStreamValveConnection = wsControlStreamValve->readyRead.connect(boost::bind(&Private::wsControlStream_readyRead, this, boost::placeholders::_1));
 
-			log_info("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
+			log_debug("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 		}
 
 		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, this);
@@ -1562,7 +1562,7 @@ public:
 				return false;
 			}
 
-			log_info("stats: %s", qPrintable(config.statsSpec));
+			log_debug("stats: %s", qPrintable(config.statsSpec));
 		}
 
 		if(!config.prometheusPort.isEmpty())
@@ -1596,7 +1596,7 @@ public:
 			proxyStatsValve = new QZmq::Valve(proxyStatsSock, this);
 			proxyStatConnection = proxyStatsValve->readyRead.connect(boost::bind(&Private::proxyStats_readyRead, this, boost::placeholders::_1));
 
-			log_info("proxy stats: %s", qPrintable(config.proxyStatsSpecs.join(", ")));
+			log_debug("proxy stats: %s", qPrintable(config.proxyStatsSpecs.join(", ")));
 		}
 
 		if(!config.proxyCommandSpec.isEmpty())
@@ -1611,7 +1611,7 @@ public:
 				return false;
 			}
 
-			log_info("proxy control client: %s", qPrintable(config.proxyCommandSpec));
+			log_debug("proxy control client: %s", qPrintable(config.proxyCommandSpec));
 		}
 
 		if(config.pushInHttpPort != -1)
@@ -1761,7 +1761,7 @@ private:
 		if(items > -1)
 			msg += QString(" items=%1").arg(items);
 
-		log_info("%s", qPrintable(msg));
+		log_debug("%s", qPrintable(msg));
 	}
 
 	void publishSend(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
