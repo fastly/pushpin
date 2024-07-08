@@ -15,8 +15,9 @@
  */
 
 use crate::core::event::ReadinessExt;
+use crate::core::io::{AsyncRead, AsyncWrite};
 use crate::core::reactor::IoEvented;
-use crate::future::{get_reactor, AsyncRead, AsyncWrite};
+use crate::future::get_reactor;
 use log::error;
 use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use socket2::Socket;
@@ -753,8 +754,8 @@ impl AsyncWrite for AsyncUnixStream {
 mod tests {
     use super::*;
     use crate::core::executor::Executor;
+    use crate::core::io::{AsyncReadExt, AsyncWriteExt};
     use crate::core::reactor::Reactor;
-    use crate::future::{AsyncReadExt, AsyncWriteExt};
     use std::fs;
     use std::str;
 

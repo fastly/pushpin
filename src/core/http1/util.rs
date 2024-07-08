@@ -15,7 +15,7 @@
  */
 
 use crate::core::buffer::{Buffer, VecRingBuffer};
-use crate::future::{AsyncRead, AsyncReadExt};
+use crate::core::io::{AsyncRead, AsyncReadExt};
 use std::cmp;
 use std::future::Future;
 use std::io;
