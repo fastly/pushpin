@@ -22,8 +22,9 @@ use pushpin::connmgr::connection::testutil::{
 use pushpin::connmgr::server::TestServer;
 use pushpin::connmgr::websocket::testutil::{BenchRecvMessage, BenchSendMessage};
 use pushpin::core::executor::Executor;
+use pushpin::core::net::AsyncTcpStream;
 use pushpin::core::reactor::Reactor;
-use pushpin::future::{AsyncReadExt, AsyncTcpStream, AsyncWriteExt};
+use pushpin::future::{AsyncReadExt, AsyncWriteExt};
 use std::io::{self, Write};
 use std::net::SocketAddr;
 use std::str;
