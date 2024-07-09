@@ -393,7 +393,6 @@ public:
 	StatsManager *q;
 	int connectionsMax;
 	int subscriptionsMax;
-	int workerIndex;
 	QByteArray instanceId;
 	int ipcFileMode;
 	QString spec;
@@ -438,12 +437,11 @@ public:
 	Connection externalConnectionsMaxTimerConnection;
 	Connection promServerConnection;
 
-	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax, int _workerIndex) :
+	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
 		QObject(_q),
 		q(_q),
 		connectionsMax(_connectionsMax),
 		subscriptionsMax(_subscriptionsMax),
-		workerIndex(_workerIndex),
 		ipcFileMode(-1),
 		outputFormat(TnetStringFormat),
 		connectionSend(false),
@@ -1580,10 +1578,10 @@ private:
 	}
 };
 
-StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, int workerIndex, QObject *parent) :
+StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, connectionsMax, subscriptionsMax, workerIndex);
+	d = new Private(this, connectionsMax, subscriptionsMax);
 }
 
 StatsManager::~StatsManager()

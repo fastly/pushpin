@@ -1578,7 +1578,7 @@ public:
 			log_info("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 		}
 
-		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, 0, this);
+		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, this);
 		connectionsRefreshedConnection = stats->connectionsRefreshed.connect(boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
 		unsubscribedConnection = stats->unsubscribed.connect(boost::bind(&Private::stats_unsubscribed, this, boost::placeholders::_1, boost::placeholders::_2));
 		reportedConnection = stats->reported.connect(boost::bind(&Private::stats_reported, this, boost::placeholders::_1));
