@@ -29,11 +29,11 @@ use crate::core::event;
 use crate::core::executor::{Executor, Spawner};
 use crate::core::list;
 use crate::core::reactor::Reactor;
+use crate::core::select::{select_2, select_5, select_6, select_option, Select2, Select5, Select6};
 use crate::core::tnetstring;
 use crate::core::zmq::{MultipartHeader, SpecInfo};
 use crate::future::{
-    event_wait, select_2, select_5, select_6, select_option, yield_to_local_events,
-    CancellationSender, CancellationToken, Select2, Select5, Select6, Timeout,
+    event_wait, yield_to_local_events, CancellationSender, CancellationToken, Timeout,
 };
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
