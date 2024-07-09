@@ -31,6 +31,8 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+pub const REGISTRATIONS_PER_CHANNEL: usize = 1;
+
 pub struct Sender<T> {
     sender: Option<mpsc::SyncSender<T>>,
     read_set_readiness: event::SetReadiness,
