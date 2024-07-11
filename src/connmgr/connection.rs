@@ -37,7 +37,7 @@
 use crate::connmgr::counter::{Counter, CounterDec};
 use crate::connmgr::pool::Pool;
 use crate::connmgr::resolver;
-use crate::connmgr::tls::{TlsStream, VerifyMode};
+use crate::connmgr::tls::{AsyncTlsStream, TlsStream, TlsWaker, VerifyMode};
 use crate::connmgr::track::{
     self, track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError,
 };
@@ -58,8 +58,8 @@ use crate::core::shuffle::random;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
 use crate::future::{
-    io_split, poll_async, AsyncRead, AsyncReadExt, AsyncTlsStream, AsyncWrite, AsyncWriteExt,
-    CancellationToken, ReadHalf, StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
+    io_split, poll_async, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, CancellationToken,
+    ReadHalf, StdWriteWrapper, Timeout, WriteHalf,
 };
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;

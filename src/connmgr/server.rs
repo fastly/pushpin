@@ -20,7 +20,7 @@ use crate::connmgr::connection::{
 };
 use crate::connmgr::counter::Counter;
 use crate::connmgr::listener::Listener;
-use crate::connmgr::tls::{IdentityCache, TlsAcceptor, TlsStream};
+use crate::connmgr::tls::{AsyncTlsStream, IdentityCache, TlsAcceptor, TlsStream, TlsWaker};
 use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket;
 use crate::connmgr::{ListenConfig, ListenSpec};
@@ -42,8 +42,7 @@ use crate::core::tnetstring;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::SpecInfo;
 use crate::future::{
-    event_wait, yield_to_local_events, AsyncTlsStream, CancellationSender, CancellationToken,
-    Timeout, TlsWaker,
+    event_wait, yield_to_local_events, CancellationSender, CancellationToken, Timeout,
 };
 use arrayvec::{ArrayString, ArrayVec};
 use log::{debug, error, info, warn};
