@@ -21,7 +21,6 @@ pub mod config;
 pub mod defer;
 pub mod event;
 pub mod executor;
-pub mod ffi;
 pub mod fs;
 pub mod http1;
 pub mod jwt;

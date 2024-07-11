@@ -486,6 +486,46 @@ pub fn get_config_file(
     Ok(config_file.into())
 }
 
+mod ffi {
+    use crate::core::version;
+    use std::env;
+    use std::ffi::CString;
+
+    #[repr(C)]
+    pub struct BuildConfig {
+        version: *mut libc::c_char,
+        config_dir: *mut libc::c_char,
+        lib_dir: *mut libc::c_char,
+    }
+
+    #[no_mangle]
+    pub extern "C" fn build_config_new() -> *mut BuildConfig {
+        let lib_dir = env!("LIB_DIR");
+        let config_dir = env!("CONFIG_DIR");
+
+        let c = BuildConfig {
+            version: CString::new(version()).unwrap().into_raw(),
+            config_dir: CString::new(config_dir).unwrap().into_raw(),
+            lib_dir: CString::new(lib_dir).unwrap().into_raw(),
+        };
+
+        Box::into_raw(Box::new(c))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn build_config_destroy(c: *mut BuildConfig) {
+        let c = match c.as_mut() {
+            Some(c) => Box::from_raw(c),
+            None => return,
+        };
+
+        drop(CString::from_raw(c.version));
+        drop(CString::from_raw(c.config_dir));
+        drop(CString::from_raw(c.lib_dir));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
