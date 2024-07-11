@@ -15,10 +15,11 @@
  */
 
 use crate::core::event::{self, ReadinessExt};
+use crate::core::io::{AsyncRead, AsyncWrite};
 use crate::core::net::AsyncTcpStream;
 use crate::core::reactor::Registration;
 use crate::core::waker::{RefWake, RefWaker, RefWakerData};
-use crate::future::{get_reactor, AsyncRead, AsyncWrite};
+use crate::future::get_reactor;
 use arrayvec::ArrayString;
 use log::debug;
 use mio::net::TcpStream;
@@ -1222,9 +1223,9 @@ impl Drop for EnsureHandshakeFuture<'_, '_> {
 mod tests {
     use super::*;
     use crate::core::executor::Executor;
+    use crate::core::io::{AsyncReadExt, AsyncWriteExt};
     use crate::core::net::AsyncTcpListener;
     use crate::core::reactor::Reactor;
-    use crate::future::{AsyncReadExt, AsyncWriteExt};
     use std::str;
 
     #[derive(Debug)]

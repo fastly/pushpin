@@ -51,16 +51,17 @@ use crate::core::channel::{AsyncLocalReceiver, AsyncLocalSender};
 use crate::core::defer::Defer;
 use crate::core::http1::Error as CoreHttpError;
 use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
+use crate::core::io::{
+    io_split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, StdWriteWrapper,
+    WriteHalf,
+};
 use crate::core::net::{AsyncTcpStream, SocketAddr};
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_3, select_4, select_option, Select2, Select3, Select4};
 use crate::core::shuffle::random;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
-use crate::future::{
-    io_split, poll_async, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, CancellationToken,
-    ReadHalf, StdWriteWrapper, Timeout, WriteHalf,
-};
+use crate::future::{poll_async, CancellationToken, Timeout};
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
 use log::{debug, log, warn, Level};

@@ -23,6 +23,7 @@ pub mod event;
 pub mod executor;
 pub mod fs;
 pub mod http1;
+pub mod io;
 pub mod jwt;
 pub mod list;
 pub mod log;
