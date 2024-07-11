@@ -16,7 +16,7 @@
  */
 
 use crate::core::reactor::{FdEvented, TimerEvented};
-use crate::future::get_reactor;
+use crate::core::task::get_reactor;
 use arrayvec::ArrayVec;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -1439,7 +1439,7 @@ mod tests {
     use super::*;
     use crate::core::executor::Executor;
     use crate::core::reactor::Reactor;
-    use crate::future::poll_async;
+    use crate::core::task::poll_async;
     use std::rc::Rc;
     use std::thread;
 

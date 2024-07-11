@@ -30,11 +30,10 @@ use crate::core::executor::{Executor, Spawner};
 use crate::core::list;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_5, select_6, select_option, Select2, Select5, Select6};
+use crate::core::task::{event_wait, yield_to_local_events, CancellationSender, CancellationToken};
+use crate::core::time::Timeout;
 use crate::core::tnetstring;
 use crate::core::zmq::{MultipartHeader, SpecInfo};
-use crate::future::{
-    event_wait, yield_to_local_events, CancellationSender, CancellationToken, Timeout,
-};
 use arrayvec::ArrayVec;
 use ipnet::IpNet;
 use log::{debug, error, warn};
