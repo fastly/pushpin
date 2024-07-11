@@ -713,6 +713,727 @@ impl Drop for ZmqRecvRoutedFuture<'_> {
     }
 }
 
+mod ffi {
+    use std::ffi::CStr;
+    use std::ptr;
+    use std::slice;
+
+    pub const WZMQ_PAIR: libc::c_int = 0;
+    pub const WZMQ_PUB: libc::c_int = 1;
+    pub const WZMQ_SUB: libc::c_int = 2;
+    pub const WZMQ_REQ: libc::c_int = 3;
+    pub const WZMQ_REP: libc::c_int = 4;
+    pub const WZMQ_DEALER: libc::c_int = 5;
+    pub const WZMQ_ROUTER: libc::c_int = 6;
+    pub const WZMQ_PULL: libc::c_int = 7;
+    pub const WZMQ_PUSH: libc::c_int = 8;
+    pub const WZMQ_XPUB: libc::c_int = 9;
+    pub const WZMQ_XSUB: libc::c_int = 10;
+    pub const WZMQ_STREAM: libc::c_int = 11;
+
+    pub const WZMQ_FD: libc::c_int = 0;
+    pub const WZMQ_SUBSCRIBE: libc::c_int = 1;
+    pub const WZMQ_UNSUBSCRIBE: libc::c_int = 2;
+    pub const WZMQ_LINGER: libc::c_int = 3;
+    pub const WZMQ_IDENTITY: libc::c_int = 4;
+    pub const WZMQ_IMMEDIATE: libc::c_int = 5;
+    pub const WZMQ_RCVMORE: libc::c_int = 6;
+    pub const WZMQ_EVENTS: libc::c_int = 7;
+    pub const WZMQ_SNDHWM: libc::c_int = 8;
+    pub const WZMQ_RCVHWM: libc::c_int = 9;
+    pub const WZMQ_TCP_KEEPALIVE: libc::c_int = 10;
+    pub const WZMQ_TCP_KEEPALIVE_IDLE: libc::c_int = 11;
+    pub const WZMQ_TCP_KEEPALIVE_CNT: libc::c_int = 12;
+    pub const WZMQ_TCP_KEEPALIVE_INTVL: libc::c_int = 13;
+    pub const WZMQ_ROUTER_MANDATORY: libc::c_int = 14;
+
+    pub const WZMQ_DONTWAIT: libc::c_int = 0x01;
+    pub const WZMQ_SNDMORE: libc::c_int = 0x02;
+
+    pub const WZMQ_POLLIN: libc::c_int = 0x01;
+    pub const WZMQ_POLLOUT: libc::c_int = 0x02;
+
+    #[repr(C)]
+    pub struct wzmq_msg_t {
+        data: *mut zmq::Message,
+    }
+
+    fn convert_io_flags(flags: libc::c_int) -> i32 {
+        let mut out = 0;
+
+        if flags & WZMQ_DONTWAIT != 0 {
+            out |= zmq::DONTWAIT;
+        }
+
+        if flags & WZMQ_SNDMORE != 0 {
+            out |= zmq::SNDMORE;
+        }
+
+        out
+    }
+
+    fn convert_events(events: zmq::PollEvents) -> libc::c_int {
+        let mut out = 0;
+
+        if events.contains(zmq::POLLIN) {
+            out |= WZMQ_POLLIN;
+        }
+
+        if events.contains(zmq::POLLOUT) {
+            out |= WZMQ_POLLOUT;
+        }
+
+        out
+    }
+
+    #[cfg(target_os = "macos")]
+    fn set_errno(value: libc::c_int) {
+        unsafe {
+            *libc::__error() = value;
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn set_errno(value: libc::c_int) {
+        unsafe {
+            *libc::__errno_location() = value;
+        }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn wzmq_init(_io_threads: libc::c_int) -> *mut () {
+        let ctx = zmq::Context::new();
+
+        // NOTE: io_threads is ignored since zmq 0.9 doesn't provide a way to specify it
+
+        Box::into_raw(Box::new(ctx)) as *mut ()
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_term(context: *mut ()) -> libc::c_int {
+        if !context.is_null() {
+            drop(Box::from_raw(context as *mut zmq::Context));
+        }
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_socket(context: *mut (), stype: libc::c_int) -> *mut zmq::Socket {
+        let ctx = match (context as *mut zmq::Context).as_ref() {
+            Some(ctx) => ctx,
+            None => return ptr::null_mut(),
+        };
+
+        let stype = match stype {
+            WZMQ_PAIR => zmq::PAIR,
+            WZMQ_PUB => zmq::PUB,
+            WZMQ_SUB => zmq::SUB,
+            WZMQ_REQ => zmq::REQ,
+            WZMQ_REP => zmq::REP,
+            WZMQ_DEALER => zmq::DEALER,
+            WZMQ_ROUTER => zmq::ROUTER,
+            WZMQ_PULL => zmq::PULL,
+            WZMQ_PUSH => zmq::PUSH,
+            WZMQ_XPUB => zmq::XPUB,
+            WZMQ_XSUB => zmq::XSUB,
+            WZMQ_STREAM => zmq::STREAM,
+            _ => return ptr::null_mut(),
+        };
+
+        let sock = match ctx.socket(stype) {
+            Ok(sock) => sock,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        Box::into_raw(Box::new(sock))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_close(socket: *mut ()) -> libc::c_int {
+        if socket.is_null() {
+            return -1;
+        }
+
+        drop(Box::from_raw(socket as *mut zmq::Socket));
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_getsockopt(
+        socket: *mut (),
+        option_name: libc::c_int,
+        option_value: *mut libc::c_void,
+        option_len: *mut libc::size_t,
+    ) -> libc::c_int {
+        let sock = match (socket as *mut zmq::Socket).as_ref() {
+            Some(sock) => sock,
+            None => return -1,
+        };
+
+        if option_value.is_null() {
+            return -1;
+        }
+
+        let option_len = match option_len.as_mut() {
+            Some(x) => x,
+            None => return -1,
+        };
+
+        match option_name {
+            WZMQ_FD => {
+                if *option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *mut libc::c_int).as_mut() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                let v = match sock.get_fd() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        println!("get_fd failed: {:?}", e);
+                        set_errno(e.to_raw());
+                        return -1;
+                    }
+                };
+
+                *x = v;
+            }
+            WZMQ_IDENTITY => {
+                let identity = match sock.get_identity() {
+                    Ok(v) => v,
+                    Err(_) => return -1,
+                };
+
+                let s = slice::from_raw_parts_mut(option_value as *mut u8, *option_len);
+
+                if s.len() < identity.len() {
+                    return -1;
+                }
+
+                s[..identity.len()].copy_from_slice(&identity);
+            }
+            WZMQ_RCVMORE => {
+                if *option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *mut libc::c_int).as_mut() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                let v = match sock.get_rcvmore() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        set_errno(e.to_raw());
+                        return -1;
+                    }
+                };
+
+                if v {
+                    *x = 1;
+                } else {
+                    *x = 0;
+                }
+            }
+            WZMQ_EVENTS => {
+                if *option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *mut libc::c_int).as_mut() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                let v = match sock.get_events() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        set_errno(e.to_raw());
+                        return -1;
+                    }
+                };
+
+                *x = convert_events(v);
+            }
+            WZMQ_SNDHWM => {
+                if *option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *mut libc::c_int).as_mut() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                let v = match sock.get_sndhwm() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        set_errno(e.to_raw());
+                        return -1;
+                    }
+                };
+
+                *x = v;
+            }
+            WZMQ_RCVHWM => {
+                if *option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *mut libc::c_int).as_mut() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                let v = match sock.get_rcvhwm() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        set_errno(e.to_raw());
+                        return -1;
+                    }
+                };
+
+                *x = v;
+            }
+            _ => return -1,
+        }
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_setsockopt(
+        socket: *mut (),
+        option_name: libc::c_int,
+        option_value: *const libc::c_void,
+        option_len: libc::size_t,
+    ) -> libc::c_int {
+        let sock = match (socket as *mut zmq::Socket).as_ref() {
+            Some(sock) => sock,
+            None => return -1,
+        };
+
+        if option_value.is_null() {
+            return -1;
+        }
+
+        match option_name {
+            WZMQ_SUBSCRIBE => {
+                let s = slice::from_raw_parts(option_value as *const u8, option_len);
+
+                if let Err(e) = sock.set_subscribe(s) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_UNSUBSCRIBE => {
+                let s = slice::from_raw_parts(option_value as *const u8, option_len);
+
+                if let Err(e) = sock.set_unsubscribe(s) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_LINGER => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_linger(*x) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_IDENTITY => {
+                let s = slice::from_raw_parts(option_value as *const u8, option_len);
+
+                if let Err(e) = sock.set_identity(s) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_IMMEDIATE => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_immediate(*x != 0) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_ROUTER_MANDATORY => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_router_mandatory(*x != 0) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_SNDHWM => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_sndhwm(*x) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_RCVHWM => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_rcvhwm(*x) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_TCP_KEEPALIVE => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_tcp_keepalive(*x) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_TCP_KEEPALIVE_IDLE => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_tcp_keepalive_idle(*x) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_TCP_KEEPALIVE_CNT => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_tcp_keepalive_cnt(*x) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            WZMQ_TCP_KEEPALIVE_INTVL => {
+                if option_len as u32 != libc::c_int::BITS / 8 {
+                    return -1;
+                }
+
+                let x = match (option_value as *const libc::c_int).as_ref() {
+                    Some(x) => x,
+                    None => return -1,
+                };
+
+                if let Err(e) = sock.set_tcp_keepalive_intvl(*x) {
+                    set_errno(e.to_raw());
+                    return -1;
+                }
+            }
+            _ => return -1,
+        }
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_connect(
+        socket: *mut (),
+        endpoint: *const libc::c_char,
+    ) -> libc::c_int {
+        let sock = match (socket as *mut zmq::Socket).as_ref() {
+            Some(sock) => sock,
+            None => return -1,
+        };
+
+        if endpoint.is_null() {
+            return -1;
+        }
+
+        let endpoint = match CStr::from_ptr(endpoint).to_str() {
+            Ok(s) => s,
+            Err(_) => return -1,
+        };
+
+        if let Err(e) = sock.connect(endpoint) {
+            set_errno(e.to_raw());
+            return -1;
+        }
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_bind(
+        socket: *mut (),
+        endpoint: *const libc::c_char,
+    ) -> libc::c_int {
+        let sock = match (socket as *mut zmq::Socket).as_ref() {
+            Some(sock) => sock,
+            None => return -1,
+        };
+
+        if endpoint.is_null() {
+            return -1;
+        }
+
+        let endpoint = match CStr::from_ptr(endpoint).to_str() {
+            Ok(s) => s,
+            Err(_) => return -1,
+        };
+
+        if let Err(e) = sock.bind(endpoint) {
+            set_errno(e.to_raw());
+            return -1;
+        }
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_send(
+        socket: *mut (),
+        buf: *const (),
+        len: libc::size_t,
+        flags: libc::c_int,
+    ) -> libc::c_int {
+        let sock = match (socket as *mut zmq::Socket).as_ref() {
+            Some(sock) => sock,
+            None => return -1,
+        };
+
+        if buf.is_null() {
+            return -1;
+        }
+
+        let buf = slice::from_raw_parts(buf as *const u8, len);
+
+        if let Err(e) = sock.send(buf, convert_io_flags(flags)) {
+            set_errno(e.to_raw());
+            return -1;
+        }
+
+        buf.len() as libc::c_int
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_recv(
+        socket: *mut (),
+        buf: *mut (),
+        len: libc::size_t,
+        flags: libc::c_int,
+    ) -> libc::c_int {
+        let sock = match (socket as *mut zmq::Socket).as_ref() {
+            Some(sock) => sock,
+            None => return -1,
+        };
+
+        if buf.is_null() {
+            return -1;
+        }
+
+        let buf = slice::from_raw_parts_mut(buf as *mut u8, len);
+
+        let size = match sock.recv_into(buf, convert_io_flags(flags)) {
+            Ok(size) => size,
+            Err(e) => {
+                set_errno(e.to_raw());
+                return -1;
+            }
+        };
+
+        size as libc::c_int
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_msg_init(msg: *mut wzmq_msg_t) -> libc::c_int {
+        let msg = msg.as_mut().unwrap();
+        msg.data = Box::into_raw(Box::new(zmq::Message::new()));
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_msg_init_size(
+        msg: *mut wzmq_msg_t,
+        size: libc::size_t,
+    ) -> libc::c_int {
+        let msg = msg.as_mut().unwrap();
+        msg.data = Box::into_raw(Box::new(zmq::Message::with_size(size)));
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_msg_data(msg: *mut wzmq_msg_t) -> *mut libc::c_void {
+        let msg = msg.as_mut().unwrap();
+        let data = msg.data.as_mut().unwrap();
+
+        data.as_mut_ptr() as *mut libc::c_void
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_msg_size(msg: *mut wzmq_msg_t) -> libc::size_t {
+        let msg = msg.as_ref().unwrap();
+        let data = msg.data.as_ref().unwrap();
+
+        data.len()
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_msg_close(msg: *mut wzmq_msg_t) -> libc::c_int {
+        let msg = match msg.as_mut() {
+            Some(msg) => msg,
+            None => return -1,
+        };
+
+        if !msg.data.is_null() {
+            drop(Box::from_raw(msg.data));
+            msg.data = ptr::null_mut();
+        }
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_msg_send(
+        msg: *mut wzmq_msg_t,
+        socket: *mut (),
+        flags: libc::c_int,
+    ) -> libc::c_int {
+        let msg = match msg.as_mut() {
+            Some(msg) => msg,
+            None => return -1,
+        };
+
+        if msg.data.is_null() {
+            return -1;
+        }
+
+        let sock = match (socket as *mut zmq::Socket).as_ref() {
+            Some(sock) => sock,
+            None => return -1,
+        };
+
+        let data = Box::from_raw(msg.data);
+        msg.data = ptr::null_mut();
+
+        let size = data.len();
+
+        if let Err(e) = sock.send(*data, convert_io_flags(flags)) {
+            set_errno(e.to_raw());
+            return -1;
+        }
+
+        size as libc::c_int
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn wzmq_msg_recv(
+        msg: *mut wzmq_msg_t,
+        socket: *mut (),
+        flags: libc::c_int,
+    ) -> libc::c_int {
+        let msg = match msg.as_mut() {
+            Some(msg) => msg,
+            None => return -1,
+        };
+
+        let sock = match (socket as *mut zmq::Socket).as_ref() {
+            Some(sock) => sock,
+            None => return -1,
+        };
+
+        if !msg.data.is_null() {
+            drop(Box::from_raw(msg.data));
+            msg.data = ptr::null_mut();
+        }
+
+        let data = match sock.recv_msg(convert_io_flags(flags)) {
+            Ok(msg) => msg,
+            Err(e) => {
+                set_errno(e.to_raw());
+                return -1;
+            }
+        };
+
+        let size = data.len();
+
+        msg.data = Box::into_raw(Box::new(data));
+
+        size as libc::c_int
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
