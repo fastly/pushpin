@@ -17,7 +17,7 @@
 use crate::core::event;
 use crate::core::list;
 use crate::core::reactor::CustomEvented;
-use crate::future::get_reactor;
+use crate::core::task::get_reactor;
 use arrayvec::{ArrayString, ArrayVec};
 use mio::Interest;
 use slab::Slab;

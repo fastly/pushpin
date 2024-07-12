@@ -16,12 +16,11 @@
 
 use crate::core::arena;
 use crate::core::event::{self, ReadinessExt};
-use crate::core::reactor::{CustomEvented, Reactor, Registration, TimerEvented};
+use crate::core::reactor::{CustomEvented, Reactor, Registration};
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
-use std::time::Instant;
 
 pub struct PollFuture<F> {
     fut: F,
@@ -50,30 +49,6 @@ where
 #[track_caller]
 pub fn get_reactor() -> Reactor {
     Reactor::current().expect("no reactor in thread")
-}
-
-pub struct Timeout {
-    evented: TimerEvented,
-}
-
-impl Timeout {
-    pub fn new(deadline: Instant) -> Self {
-        let evented = TimerEvented::new(deadline, &get_reactor()).unwrap();
-
-        evented.registration().set_ready(true);
-
-        Self { evented }
-    }
-
-    pub fn set_deadline(&self, deadline: Instant) {
-        self.evented.set_expires(deadline).unwrap();
-
-        self.evented.registration().set_ready(true);
-    }
-
-    pub fn elapsed(&self) -> TimeoutFuture<'_> {
-        TimeoutFuture { t: self }
-    }
 }
 
 pub struct CancellationSender {
@@ -138,42 +113,6 @@ impl<'a> EventWaiter<'a> {
 
     pub fn wait(&'a self, interest: mio::Interest) -> WaitFuture<'a> {
         WaitFuture { w: self, interest }
-    }
-}
-
-pub struct TimeoutFuture<'a> {
-    t: &'a Timeout,
-}
-
-impl Future for TimeoutFuture<'_> {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let evented = &self.t.evented;
-
-        evented
-            .registration()
-            .set_waker(cx.waker(), mio::Interest::READABLE);
-
-        if !evented.registration().is_ready() {
-            return Poll::Pending;
-        }
-
-        let now = get_reactor().now();
-
-        if now >= evented.expires() {
-            Poll::Ready(())
-        } else {
-            evented.registration().set_ready(false);
-
-            Poll::Pending
-        }
-    }
-}
-
-impl Drop for TimeoutFuture<'_> {
-    fn drop(&mut self) {
-        self.t.evented.registration().clear_waker();
     }
 }
 
@@ -339,69 +278,6 @@ mod tests {
     use std::cell::Cell;
     use std::rc::Rc;
     use std::task::Context;
-    use std::time::Duration;
-
-    #[test]
-    fn test_timeout() {
-        let now = Instant::now();
-
-        let executor = Executor::new(1);
-        let reactor = Reactor::new_with_time(1, now);
-
-        executor
-            .spawn(async {
-                let timeout = Timeout::new(get_reactor().now() + Duration::from_millis(100));
-                timeout.elapsed().await;
-            })
-            .unwrap();
-
-        executor.run_until_stalled();
-
-        reactor
-            .poll_nonblocking(now + Duration::from_millis(200))
-            .unwrap();
-
-        executor.run(|_| Ok(())).unwrap();
-    }
-
-    #[test]
-    fn test_timeout_ready() {
-        let now = Instant::now();
-
-        let executor = Executor::new(1);
-        let _reactor = Reactor::new_with_time(1, now);
-
-        executor
-            .spawn(async {
-                let timeout = Timeout::new(get_reactor().now());
-                timeout.elapsed().await;
-            })
-            .unwrap();
-
-        executor.run(|_| Ok(())).unwrap();
-    }
-
-    #[test]
-    fn test_timeout_change_ready() {
-        let now = Instant::now();
-
-        let _reactor = Reactor::new_with_time(1, now);
-        let executor = Executor::new(1);
-
-        executor
-            .spawn(async {
-                let timeout = Timeout::new(get_reactor().now() + Duration::from_millis(100));
-
-                let mut fut = timeout.elapsed();
-                assert_eq!(poll_async(&mut fut).await, Poll::Pending);
-
-                timeout.set_deadline(get_reactor().now());
-                assert_eq!(poll_async(&mut fut).await, Poll::Ready(()));
-            })
-            .unwrap();
-
-        executor.run(|_| Ok(())).unwrap();
-    }
 
     #[test]
     fn test_cancellation_token() {

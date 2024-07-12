@@ -17,7 +17,7 @@
 use crate::core::event::ReadinessExt;
 use crate::core::io::{AsyncRead, AsyncWrite};
 use crate::core::reactor::IoEvented;
-use crate::future::get_reactor;
+use crate::core::task::get_reactor;
 use log::error;
 use mio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use socket2::Socket;

@@ -31,6 +31,8 @@ pub mod net;
 pub mod reactor;
 pub mod select;
 pub mod shuffle;
+pub mod task;
+pub mod time;
 pub mod timer;
 pub mod tnetstring;
 pub mod waker;
