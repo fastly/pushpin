@@ -1273,6 +1273,7 @@ pub enum SendStatus<T, P, E> {
 }
 
 pub enum RecvStatus<T, C> {
+    NeedBytes(T),
     Read(T, usize, usize),
     Complete(C, usize, usize),
 }
@@ -1522,36 +1523,48 @@ impl ClientResponseBody {
         let state = &mut self.state;
 
         let mut chunk_left = state.chunk_left.unwrap();
-        let read_size = cmp::min(chunk_left, dest.len());
+        let max_read = cmp::min(chunk_left, src.len());
+        let src = &src[..max_read];
 
         // src holds body as-is
         let mut rbuf = io::Cursor::new(src);
-        let size = rbuf.read(&mut dest[..read_size])?;
+        let size = rbuf.read(dest)?;
 
         chunk_left -= size;
 
         if chunk_left == 0 {
             state.chunk_left = None;
 
-            Ok(RecvStatus::Complete(
+            return Ok(RecvStatus::Complete(
                 ClientFinished {
                     _headers_range: None,
                     persistent: state.persistent,
                 },
                 size,
                 size,
-            ))
-        } else {
-            // if the input has ended, and we expected to read more,
-            // and we had room to read more, return error
-            if end && chunk_left > 0 && dest.len() - size > 0 {
+            ));
+        }
+
+        // we are expecting more bytes
+
+        state.chunk_left = Some(chunk_left);
+
+        // nothing to read?
+        if src.is_empty() {
+            assert_eq!(size, 0);
+
+            // if the input has ended, return error
+            if end {
                 return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
             }
 
-            state.chunk_left = Some(chunk_left);
-
-            Ok(RecvStatus::Read(self, size, size))
+            return Ok(RecvStatus::NeedBytes(self));
         }
+
+        // there was something to read. however, whether anything actually
+        // got read depends on the length of dest
+
+        Ok(RecvStatus::Read(self, size, size))
     }
 
     fn process_unknown_size(
@@ -1564,18 +1577,29 @@ impl ClientResponseBody {
         let mut rbuf = io::Cursor::new(src);
         let size = rbuf.read(dest)?;
 
-        if src.len() - size == 0 && end {
-            Ok(RecvStatus::Complete(
+        // we're done when we've consumed the entire input
+        if size == src.len() && end {
+            return Ok(RecvStatus::Complete(
                 ClientFinished {
                     _headers_range: None,
                     persistent: self.state.persistent,
                 },
                 size,
                 size,
-            ))
-        } else {
-            Ok(RecvStatus::Read(self, size, size))
+            ));
         }
+
+        // nothing to read?
+        if src.is_empty() {
+            assert_eq!(size, 0);
+
+            return Ok(RecvStatus::NeedBytes(self));
+        }
+
+        // there was something to read. however, whether anything actually
+        // got read depends on the length of dest
+
+        Ok(RecvStatus::Read(self, size, size))
     }
 
     fn process_unknown_size_chunked<'buf, const N: usize>(
@@ -1607,7 +1631,7 @@ impl ClientResponseBody {
                         return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
                     }
 
-                    return Ok(RecvStatus::Read(self, 0, 0));
+                    return Ok(RecvStatus::NeedBytes(self));
                 }
                 Err(_) => {
                     return Err(Error::InvalidChunkSize);
@@ -1619,80 +1643,98 @@ impl ClientResponseBody {
 
         let mut chunk_left = state.chunk_left.unwrap();
 
-        let size = if chunk_left > 0 {
-            let read_size = cmp::min(chunk_left, dest.len());
+        if chunk_left > 0 {
+            let max_read = cmp::min(chunk_left, src.len() - pos);
+            let src = &src[pos..(pos + max_read)];
 
-            let mut rbuf = io::Cursor::new(&src[pos..]);
-            let size = rbuf.read(&mut dest[..read_size])?;
+            let mut rbuf = io::Cursor::new(src);
+            let size = rbuf.read(dest)?;
 
             pos += size;
             chunk_left -= size;
 
             state.chunk_left = Some(chunk_left);
 
-            size
-        } else {
-            0
-        };
+            // nothing to read?
+            if src.is_empty() {
+                assert_eq!(size, 0);
 
-        if chunk_left == 0 {
-            let buf = &src[pos..];
-
-            if state.chunk_size == 0 {
-                // trailing headers
-                let scratch = unsafe { scratch.assume_init_mut() };
-                match httparse::parse_headers(buf, scratch) {
-                    Ok(httparse::Status::Complete((x, _))) => {
-                        let headers_start = pos;
-                        let headers_end = pos + x;
-
-                        return Ok(RecvStatus::Complete(
-                            ClientFinished {
-                                _headers_range: Some((headers_start, headers_end)),
-                                persistent: state.persistent,
-                            },
-                            headers_end,
-                            size,
-                        ));
-                    }
-                    Ok(httparse::Status::Partial) => {
-                        if end {
-                            return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
-                        }
-
-                        return Ok(RecvStatus::Read(self, pos, size));
-                    }
-                    Err(e) => {
-                        return Err(Error::Parse(e));
-                    }
+                if end {
+                    return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
                 }
-            } else {
-                if buf.len() < 2 {
+
+                // if pos advanced we need to return it
+                if pos > 0 {
+                    return Ok(RecvStatus::Read(self, pos, 0));
+                }
+
+                return Ok(RecvStatus::NeedBytes(self));
+            }
+
+            // there was something to read. however, whether anything actually
+            // got read depends on the length of dest
+
+            return Ok(RecvStatus::Read(self, pos, size));
+        }
+
+        // done with content bytes. now to read the footer
+
+        // final chunk?
+        if state.chunk_size == 0 {
+            let src = &src[pos..];
+
+            // trailing headers
+            let scratch = unsafe { scratch.assume_init_mut() };
+            match httparse::parse_headers(src, scratch) {
+                Ok(httparse::Status::Complete((x, _))) => {
+                    let headers_start = pos;
+                    let headers_end = pos + x;
+
+                    return Ok(RecvStatus::Complete(
+                        ClientFinished {
+                            _headers_range: Some((headers_start, headers_end)),
+                            persistent: state.persistent,
+                        },
+                        headers_end,
+                        0,
+                    ));
+                }
+                Ok(httparse::Status::Partial) => {
                     if end {
                         return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
                     }
 
-                    return Ok(RecvStatus::Read(self, pos, size));
+                    // if pos advanced we need to return it
+                    if pos > 0 {
+                        return Ok(RecvStatus::Read(self, pos, 0));
+                    }
+
+                    return Ok(RecvStatus::NeedBytes(self));
                 }
-
-                if &buf[..2] != b"\r\n" {
-                    return Err(Error::InvalidChunkSuffix);
-                }
-
-                pos += 2;
-
-                state.chunk_left = None;
-                state.chunk_size = 0;
+                Err(e) => return Err(Error::Parse(e)),
             }
         }
 
-        // if the input has ended, and we expected to read more, and
-        // we had room to read more, return error
-        if end && chunk_left > 0 && dest.len() - size > 0 {
-            return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
+        // for chunks of non-zero size, pos for header/content will have
+        // already been returned by previous calls
+        assert_eq!(pos, 0);
+
+        if src.len() < 2 {
+            if end {
+                return Err(Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)));
+            }
+
+            return Ok(RecvStatus::NeedBytes(self));
         }
 
-        Ok(RecvStatus::Read(self, pos, size))
+        if &src[..2] != b"\r\n" {
+            return Err(Error::InvalidChunkSuffix);
+        }
+
+        state.chunk_left = None;
+        state.chunk_size = 0;
+
+        Ok(RecvStatus::Read(self, 2, 0))
     }
 }
 
@@ -4607,6 +4649,12 @@ mod tests {
 
     #[test]
     fn test_recv_response_body() {
+        enum Status {
+            NeedBytes,
+            Read,
+            Complete,
+        }
+
         struct Test<'buf, 'headers> {
             name: &'static str,
             data: &'buf str,
@@ -4615,7 +4663,7 @@ mod tests {
             chunk_left: Option<usize>,
             chunk_size: usize,
             chunked: bool,
-            result: Result<(bool, usize, Option<&'headers [httparse::Header<'buf>]>), Error>,
+            result: Result<(Status, usize, Option<&'headers [httparse::Header<'buf>]>), Error>,
             chunk_left_after: Option<usize>,
             chunk_size_after: usize,
             rbuf_position: u64,
@@ -4631,15 +4679,43 @@ mod tests {
                 chunk_left: Some(5),
                 chunk_size: 0,
                 chunked: false,
-                result: Ok((false, 3, None)),
+                result: Ok((Status::Read, 3, None)),
                 chunk_left_after: Some(2),
                 chunk_size_after: 0,
                 rbuf_position: 3,
                 dest_data: "hel",
             },
             Test {
+                name: "known-partial-no-data",
+                data: "",
+                end: false,
+                body_size: BodySize::Known(5),
+                chunk_left: Some(5),
+                chunk_size: 0,
+                chunked: false,
+                result: Ok((Status::NeedBytes, 0, None)),
+                chunk_left_after: Some(5),
+                chunk_size_after: 0,
+                rbuf_position: 0,
+                dest_data: "",
+            },
+            Test {
                 name: "known-partial-end",
                 data: "hel",
+                end: true,
+                body_size: BodySize::Known(5),
+                chunk_left: Some(5),
+                chunk_size: 0,
+                chunked: false,
+                result: Ok((Status::Read, 3, None)),
+                chunk_left_after: Some(2),
+                chunk_size_after: 0,
+                rbuf_position: 3,
+                dest_data: "hel",
+            },
+            Test {
+                name: "known-partial-end-no-data",
+                data: "",
                 end: true,
                 body_size: BodySize::Known(5),
                 chunk_left: Some(5),
@@ -4659,7 +4735,7 @@ mod tests {
                 chunk_left: Some(5),
                 chunk_size: 0,
                 chunked: false,
-                result: Ok((true, 5, None)),
+                result: Ok((Status::Complete, 5, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
                 rbuf_position: 5,
@@ -4673,11 +4749,25 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: false,
-                result: Ok((false, 3, None)),
+                result: Ok((Status::Read, 3, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
                 rbuf_position: 3,
                 dest_data: "hel",
+            },
+            Test {
+                name: "unknown-partial-no-data",
+                data: "",
+                end: false,
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                chunked: false,
+                result: Ok((Status::NeedBytes, 0, None)),
+                chunk_left_after: None,
+                chunk_size_after: 0,
+                rbuf_position: 0,
+                dest_data: "",
             },
             Test {
                 name: "unknown-complete",
@@ -4687,7 +4777,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: false,
-                result: Ok((true, 5, None)),
+                result: Ok((Status::Complete, 5, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
                 rbuf_position: 5,
@@ -4701,7 +4791,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Ok((false, 0, None)),
+                result: Ok((Status::NeedBytes, 0, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
                 rbuf_position: 0,
@@ -4757,7 +4847,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Ok((false, 0, None)),
+                result: Ok((Status::Read, 0, None)),
                 chunk_left_after: Some(5),
                 chunk_size_after: 5,
                 rbuf_position: 3,
@@ -4771,11 +4861,25 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Ok((false, 3, None)),
+                result: Ok((Status::Read, 3, None)),
                 chunk_left_after: Some(2),
                 chunk_size_after: 5,
                 rbuf_position: 6,
                 dest_data: "hel",
+            },
+            Test {
+                name: "chunked-content-partial-no-data",
+                data: "5\r\n",
+                end: false,
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                chunked: true,
+                result: Ok((Status::Read, 0, None)),
+                chunk_left_after: Some(5),
+                chunk_size_after: 5,
+                rbuf_position: 3,
+                dest_data: "",
             },
             Test {
                 name: "chunked-content-partial-end",
@@ -4785,11 +4889,39 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Err(io::Error::from(io::ErrorKind::UnexpectedEof).into()),
+                result: Ok((Status::Read, 3, None)),
                 chunk_left_after: Some(2),
                 chunk_size_after: 5,
                 rbuf_position: 6,
                 dest_data: "hel",
+            },
+            Test {
+                name: "chunked-content-partial-end-no-data",
+                data: "5\r\n",
+                end: true,
+                body_size: BodySize::Unknown,
+                chunk_left: None,
+                chunk_size: 0,
+                chunked: true,
+                result: Err(io::Error::from(io::ErrorKind::UnexpectedEof).into()),
+                chunk_left_after: Some(5),
+                chunk_size_after: 5,
+                rbuf_position: 3,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-content-mid-no-data",
+                data: "",
+                end: false,
+                body_size: BodySize::Unknown,
+                chunk_left: Some(5),
+                chunk_size: 5,
+                chunked: true,
+                result: Ok((Status::NeedBytes, 0, None)),
+                chunk_left_after: Some(5),
+                chunk_size_after: 5,
+                rbuf_position: 0,
+                dest_data: "",
             },
             Test {
                 name: "chunked-footer-partial-full-none",
@@ -4799,7 +4931,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Ok((false, 5, None)),
+                result: Ok((Status::Read, 5, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
                 rbuf_position: 8,
@@ -4813,7 +4945,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Err(io::Error::from(io::ErrorKind::UnexpectedEof).into()),
+                result: Ok((Status::Read, 5, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
                 rbuf_position: 8,
@@ -4827,7 +4959,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Ok((false, 5, None)),
+                result: Ok((Status::Read, 5, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
                 rbuf_position: 8,
@@ -4841,24 +4973,38 @@ mod tests {
                 chunk_left: Some(0),
                 chunk_size: 5,
                 chunked: true,
-                result: Ok((false, 0, None)),
+                result: Ok((Status::NeedBytes, 0, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
                 rbuf_position: 0,
                 dest_data: "",
             },
             Test {
-                name: "chunked-footer-parse-error",
-                data: "5\r\nhelloXX",
+                name: "chunked-footer-partial-mid-r-last",
+                data: "\r",
                 end: false,
                 body_size: BodySize::Unknown,
-                chunk_left: None,
+                chunk_left: Some(0),
                 chunk_size: 0,
+                chunked: true,
+                result: Ok((Status::NeedBytes, 0, None)),
+                chunk_left_after: Some(0),
+                chunk_size_after: 0,
+                rbuf_position: 0,
+                dest_data: "",
+            },
+            Test {
+                name: "chunked-footer-parse-error",
+                data: "XX",
+                end: false,
+                body_size: BodySize::Unknown,
+                chunk_left: Some(0),
+                chunk_size: 5,
                 chunked: true,
                 result: Err(Error::InvalidChunkSuffix),
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
-                rbuf_position: 8,
+                rbuf_position: 0,
                 dest_data: "",
             },
             Test {
@@ -4869,10 +5015,10 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Ok((false, 5, None)),
-                chunk_left_after: None,
-                chunk_size_after: 0,
-                rbuf_position: 10,
+                result: Ok((Status::Read, 5, None)),
+                chunk_left_after: Some(0),
+                chunk_size_after: 5,
+                rbuf_position: 8,
                 dest_data: "hello",
             },
             Test {
@@ -4883,10 +5029,10 @@ mod tests {
                 chunk_left: Some(2),
                 chunk_size: 5,
                 chunked: true,
-                result: Ok((false, 2, None)),
-                chunk_left_after: None,
-                chunk_size_after: 0,
-                rbuf_position: 4,
+                result: Ok((Status::Read, 2, None)),
+                chunk_left_after: Some(0),
+                chunk_size_after: 5,
+                rbuf_position: 2,
                 dest_data: "lo",
             },
             Test {
@@ -4897,7 +5043,7 @@ mod tests {
                 chunk_left: Some(0),
                 chunk_size: 5,
                 chunked: true,
-                result: Ok((false, 0, None)),
+                result: Ok((Status::Read, 0, None)),
                 chunk_left_after: None,
                 chunk_size_after: 0,
                 rbuf_position: 2,
@@ -4911,7 +5057,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Ok((true, 0, Some(&[]))),
+                result: Ok((Status::Complete, 0, Some(&[]))),
                 chunk_left_after: None,
                 chunk_size_after: 0,
                 rbuf_position: 5,
@@ -4925,7 +5071,7 @@ mod tests {
                 chunk_left: None,
                 chunk_size: 0,
                 chunked: true,
-                result: Ok((false, 0, None)),
+                result: Ok((Status::Read, 0, None)),
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
                 rbuf_position: 3,
@@ -4968,7 +5114,7 @@ mod tests {
                 chunk_size: 0,
                 chunked: true,
                 result: Ok((
-                    true,
+                    Status::Complete,
                     0,
                     Some(&[httparse::Header {
                         name: "Foo",
@@ -5026,9 +5172,28 @@ mod tests {
             };
 
             match r {
+                Ok(RecvStatus::NeedBytes(resp_body)) => {
+                    match &test.result {
+                        Ok((Status::NeedBytes, _, _)) => {}
+                        _ => panic!("result mismatch: test={}", test.name),
+                    }
+
+                    let state = resp_body.state;
+
+                    assert_eq!(
+                        state.chunk_left, test.chunk_left_after,
+                        "test={}",
+                        test.name
+                    );
+                    assert_eq!(
+                        state.chunk_size, test.chunk_size_after,
+                        "test={}",
+                        test.name
+                    );
+                }
                 Ok(RecvStatus::Complete(_, read, written)) => {
                     let (expected_size, expected_headers) = match &test.result {
-                        Ok((true, size, headers)) => (size, headers),
+                        Ok((Status::Complete, size, headers)) => (size, headers),
                         _ => panic!("result mismatch: test={}", test.name),
                     };
 
@@ -5038,7 +5203,7 @@ mod tests {
                 }
                 Ok(RecvStatus::Read(resp_body, read, written)) => {
                     let expected_size = match &test.result {
-                        Ok((false, size, _)) => size,
+                        Ok((Status::Read, size, _)) => size,
                         _ => panic!("result mismatch: test={}", test.name),
                     };
 

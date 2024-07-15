@@ -532,12 +532,29 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
                 let end = src.len() == inner.rbuf.len() && inner.closed;
 
                 match inner.resp_body.recv(src, dest, end, &mut scratch)? {
+                    protocol::RecvStatus::NeedBytes(resp_body) => {
+                        *b_inner = Some(ResponseBodyInner {
+                            r: inner.r,
+                            closed: inner.closed,
+                            rbuf: inner.rbuf,
+                            resp_body,
+                        });
+
+                        let inner = b_inner.as_mut().unwrap();
+
+                        if !inner.rbuf.is_readable_contiguous() {
+                            inner.rbuf.align();
+                            continue;
+                        }
+
+                        return Ok(RecvStatus::Read((), 0));
+                    }
                     protocol::RecvStatus::Complete(finished, read, written) => {
                         inner.rbuf.read_commit(read);
 
                         *b_inner = None;
 
-                        break Ok(RecvStatus::Complete(Finished { inner: finished }, written));
+                        return Ok(RecvStatus::Complete(Finished { inner: finished }, written));
                     }
                     protocol::RecvStatus::Read(resp_body, read, written) => {
                         *b_inner = Some(ResponseBodyInner {
@@ -548,11 +565,6 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
                         });
 
                         let inner = b_inner.as_mut().unwrap();
-
-                        if read == 0 && written == 0 && !inner.rbuf.is_readable_contiguous() {
-                            inner.rbuf.align();
-                            continue;
-                        }
 
                         inner.rbuf.read_commit(read);
 
