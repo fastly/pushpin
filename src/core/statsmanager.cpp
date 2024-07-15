@@ -206,6 +206,30 @@ public:
 
 			return count;
 		}
+
+		QHash<int, quint32> totalByWorker() const {
+			QHash<int, quint32> workerTotals;
+
+			QHashIterator<QByteArray, ExternalConnectionsMax> it(maxes);
+			while (it.hasNext()) {
+				it.next();
+				const QByteArray &key = it.key();
+				const ExternalConnectionsMax &cm = it.value();
+
+				// Extract the worker ID from the key
+				int lastDashIndex = key.lastIndexOf('-');
+				if (lastDashIndex != -1) {
+					QByteArray workerId = key.mid(lastDashIndex + 1);
+					bool ok;
+					int workerIdInt = workerId.toInt(&ok);
+					if (ok && workerIdInt >= 0) {
+						workerTotals[workerIdInt] += cm.value;
+					}
+				}
+			}
+
+			return workerTotals;
+		}	
 	};
 
 	class RetryInfo
@@ -225,6 +249,7 @@ public:
 	public:
 		QByteArray routeId;
 		quint32 connectionsMax;
+		std::vector<quint32> connectionsMaxByWorker;
 		bool connectionsMaxStale;
 		quint32 connectionsMinutes;
 		quint32 messagesReceived;
@@ -251,6 +276,7 @@ public:
 			lastUpdate(-1),
 			startTime(-1)
 		{
+			connectionsMaxByWorker = std::vector<quint32>(1, 0);
 		}
 
 		bool isEmpty() const
@@ -371,7 +397,8 @@ public:
 			MessageReceived,
 			MessageSent,
 			WSError,
-			TLSError
+			TLSError,
+			ProxyWorkerConns
 		};
 
 		Type mtype;
@@ -480,6 +507,7 @@ public:
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::MessageSent,"message_sent", "counter", "Number of messages sent to clients");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::WSError,"ws_error", "counter", "Number of ws errors");
 		prometheusMetrics += PrometheusMetric(PrometheusMetric::TLSError,"tls_error", "counter", "Number of tls errors");
+		prometheusMetrics += PrometheusMetric(PrometheusMetric::ProxyWorkerConns,"proxy_connection_connected", "gauge", "Number of proxy worker connections");
 
 		startTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -842,6 +870,11 @@ public:
 		// subtract the current total from the combined report
 		combinedReport.connectionsMax -= report->connectionsMax;
 
+		if (combinedReport.connectionsMaxByWorker.size() < report->connectionsMaxByWorker.size())
+			combinedReport.connectionsMaxByWorker.resize(report->connectionsMaxByWorker.size(), 0);
+		for (size_t i = 0; i < report->connectionsMaxByWorker.size(); i++)
+			combinedReport.connectionsMaxByWorker[i] -= report->connectionsMaxByWorker[i];
+
 		reports.remove(report->routeId);
 	}
 
@@ -1006,12 +1039,39 @@ public:
 	{
 		quint32 localConns = connectionInfoByRoute.value(routeId).count();
 		quint32 extConns = externalConnectionInfoByRoute.value(routeId).count();
+		QHash<int, quint32> extConnsByWorker;
+
+		// Note: This loop is slow as it iterates over every connection for the route.
+		// Fortunately, this logic is not used in production, so it doesn't impact performance.
+		// Adding this comment to highlight the inefficiency for future reference and potential optimization.
+		for (auto connection : externalConnectionInfoByRoute.value(routeId)) {
+			int lastDashIndex = connection->from.lastIndexOf('-');
+			if (lastDashIndex != -1) {
+				bool ok;
+				int workerIndex = connection->from.mid(lastDashIndex + 1).toInt(&ok);
+				if (ok && workerIndex >= 0)
+					extConnsByWorker[workerIndex]++;
+			}
+		}
 
 		quint32 extConnsMax = 0;
-		if(externalConnectionsMaxes.contains(routeId))
+		QHash<int, quint32> extConnsMaxByWorker;
+		if(externalConnectionsMaxes.contains(routeId)){
 			extConnsMax = externalConnectionsMaxes[routeId].total();
+			extConnsMaxByWorker = externalConnectionsMaxes[routeId].totalByWorker();
+		}
 
 		quint32 conns = localConns + extConns + extConnsMax;
+
+		int maxKey = std::max(
+			extConnsByWorker.isEmpty() ? 0 : *std::max_element(extConnsByWorker.keyBegin(), extConnsByWorker.keyEnd()),
+			extConnsMaxByWorker.isEmpty() ? 0 : *std::max_element(extConnsMaxByWorker.keyBegin(), extConnsMaxByWorker.keyEnd())
+		);
+		std::vector<quint32> connsByWorker(maxKey+1, 0);
+		for (auto it = extConnsByWorker.begin(); it != extConnsByWorker.end(); ++it)
+			connsByWorker[it.key()] += it.value();
+		for (auto it = extConnsMaxByWorker.begin(); it != extConnsMaxByWorker.end(); ++it)
+			connsByWorker[it.key()] += it.value();
 
 		if(connectionsMaxSend)
 		{
@@ -1040,19 +1100,33 @@ public:
 			// subtract the current total from the combined report
 			combinedReport.connectionsMax -= report->connectionsMax;
 
+			if (combinedReport.connectionsMaxByWorker.size() < report->connectionsMaxByWorker.size())
+				combinedReport.connectionsMaxByWorker.resize(report->connectionsMaxByWorker.size(), 0);
+			for (size_t i = 0; i < report->connectionsMaxByWorker.size(); i++)
+				combinedReport.connectionsMaxByWorker[i] -= report->connectionsMaxByWorker[i];
+
 			// update the individual report
 			if(report->connectionsMaxStale)
 			{
 				report->connectionsMax = conns;
+				report->connectionsMaxByWorker = connsByWorker;
 				report->connectionsMaxStale = false;
 			}
-			else
+			else{
 				report->connectionsMax = qMax(report->connectionsMax, conns);
-
+				if (report->connectionsMaxByWorker.size() < connsByWorker.size())
+					report->connectionsMaxByWorker.resize(connsByWorker.size(), 0);
+				for (size_t i = 0; i < connsByWorker.size(); i++)
+					report->connectionsMaxByWorker[i] = qMax(report->connectionsMaxByWorker[i], connsByWorker[i]);
+			}
 			report->lastUpdate = now;
 
 			// add the new total to the combined report
 			combinedReport.connectionsMax += report->connectionsMax;
+			if (combinedReport.connectionsMaxByWorker.size() < report->connectionsMaxByWorker.size())
+				combinedReport.connectionsMaxByWorker.resize(report->connectionsMaxByWorker.size(), 0);
+			for (size_t i = 0; i < report->connectionsMaxByWorker.size(); i++)
+				combinedReport.connectionsMaxByWorker[i] += report->connectionsMaxByWorker[i];
 			combinedReport.lastUpdate = now;
 		}
 	}
@@ -1558,6 +1632,23 @@ private:
 				case PrometheusMetric::MessageSent: value = QVariant(combinedReport.messagesSent); break;
 				case PrometheusMetric::WSError: value = QVariant(combinedReport.counters.get(Stats::WSError)); break;
 				case PrometheusMetric::TLSError: value = QVariant(combinedReport.counters.get(Stats::TLSError)); break;
+				case PrometheusMetric::ProxyWorkerConns:
+					for (size_t i = 0; i < combinedReport.connectionsMaxByWorker.size(); ++i)
+					{
+						auto metricName = QString("%1%2").arg(prometheusPrefix, m.name);
+						auto workerLabel = QString("{worker=\"%1\"}").arg(i);
+						value = QVariant(combinedReport.connectionsMaxByWorker[i]);
+
+						if (i == 0)
+							data += QString(
+								"# HELP %1 %2\n"
+								"# TYPE %3 %4\n"
+								).arg(metricName, m.help, metricName, m.type);
+						data += QString(
+						"%1%2 %3\n"
+						).arg(metricName, workerLabel, value.toString());
+					}
+					continue;
 			}
 
 			if(value.isNull())

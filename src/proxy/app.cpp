@@ -637,11 +637,10 @@ public:
 			Engine::Configuration wconfig = config;
 
 			wconfig.id = n;
+			wconfig.clientId += '-' + QByteArray::number(n);
 
 			if(workerCount > 1)
 			{
-				wconfig.clientId += '-' + QByteArray::number(n);
-
 				wconfig.inspectSpec = suffixSpec(wconfig.inspectSpec, n);
 				wconfig.acceptSpec = suffixSpec(wconfig.acceptSpec, n);
 				wconfig.retryInSpec = suffixSpec(wconfig.retryInSpec, n);
