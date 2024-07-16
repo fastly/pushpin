@@ -814,18 +814,23 @@ impl<'buf, 'headers> ServerProtocol {
         self.persistent = false;
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn recv_body(
         &mut self,
         rbuf: &mut io::Cursor<&'buf [u8]>,
         dest: &mut [u8],
         headers: &'headers mut [httparse::Header<'buf>],
-    ) -> Result<(usize, Option<&'headers [httparse::Header<'buf>]>), Error> {
+    ) -> Result<Option<(usize, Option<&'headers [httparse::Header<'buf>]>)>, Error> {
         assert_eq!(self.state, ServerState::ReceivingBody);
 
         match self.body_size {
             BodySize::Known(_) => {
                 let mut chunk_left = self.chunk_left.unwrap();
-                let read_size = cmp::min(chunk_left, dest.len());
+                let src_avail = cmp::min(
+                    chunk_left,
+                    rbuf.get_ref()[(rbuf.position() as usize)..].len(),
+                );
+                let read_size = cmp::min(src_avail, dest.len());
 
                 // rbuf holds body as-is
                 let size = rbuf.read(&mut dest[..read_size])?;
@@ -837,9 +842,15 @@ impl<'buf, 'headers> ServerProtocol {
                     self.state = ServerState::AwaitingResponse;
                 } else {
                     self.chunk_left = Some(chunk_left);
+
+                    // nothing to read?
+                    if src_avail == 0 {
+                        assert_eq!(size, 0);
+                        return Ok(None);
+                    }
                 }
 
-                Ok((size, None))
+                Ok(Some((size, None)))
             }
             BodySize::Unknown => {
                 if self.chunk_left.is_none() {
@@ -859,30 +870,36 @@ impl<'buf, 'headers> ServerProtocol {
                             self.chunk_left = Some(size);
                             self.chunk_size = size;
                         }
-                        Ok(httparse::Status::Partial) => {
-                            return Ok((0, None));
-                        }
-                        Err(_) => {
-                            return Err(Error::InvalidChunkSize);
-                        }
+                        Ok(httparse::Status::Partial) => return Ok(None),
+                        Err(_) => return Err(Error::InvalidChunkSize),
                     }
                 }
 
                 let mut chunk_left = self.chunk_left.unwrap();
 
-                let size;
-
                 if chunk_left > 0 {
-                    let read_size = cmp::min(chunk_left, dest.len());
+                    let src_avail = cmp::min(
+                        chunk_left,
+                        rbuf.get_ref()[(rbuf.position() as usize)..].len(),
+                    );
+                    let read_size = cmp::min(src_avail, dest.len());
 
-                    size = rbuf.read(&mut dest[..read_size])?;
+                    let size = rbuf.read(&mut dest[..read_size])?;
 
                     chunk_left -= size;
 
                     self.chunk_left = Some(chunk_left);
-                } else {
-                    size = 0;
+
+                    // nothing to read?
+                    if src_avail == 0 {
+                        assert_eq!(size, 0);
+                        return Ok(None);
+                    }
+
+                    return Ok(Some((size, None)));
                 }
+
+                // done with content bytes. now to read the footer
 
                 let mut trailing_headers = None;
 
@@ -897,18 +914,14 @@ impl<'buf, 'headers> ServerProtocol {
 
                                 trailing_headers = Some(headers);
                             }
-                            Ok(httparse::Status::Partial) => {
-                                return Ok((size, None));
-                            }
-                            Err(e) => {
-                                return Err(Error::Parse(e));
-                            }
+                            Ok(httparse::Status::Partial) => return Ok(None),
+                            Err(e) => return Err(Error::Parse(e)),
                         }
 
                         self.state = ServerState::AwaitingResponse;
                     } else {
                         if buf.len() < 2 {
-                            return Ok((size, None));
+                            return Ok(None);
                         }
 
                         if &buf[..2] != b"\r\n" {
@@ -922,7 +935,7 @@ impl<'buf, 'headers> ServerProtocol {
                     self.chunk_size = 0;
                 }
 
-                Ok((size, trailing_headers))
+                Ok(Some((0, trailing_headers)))
             }
             BodySize::NoBody => unreachable!(),
         }
@@ -1895,6 +1908,7 @@ mod tests {
 
             let (size, trailing_headers) = p
                 .recv_body(&mut rbuf, &mut buf[..read_size], &mut headers)
+                .unwrap()
                 .unwrap();
 
             result.body.extend_from_slice(&buf[..size]);
@@ -2576,7 +2590,7 @@ mod tests {
             body_size: BodySize,
             chunk_left: Option<usize>,
             chunk_size: usize,
-            result: Result<(usize, Option<&'headers [httparse::Header<'buf>]>), Error>,
+            result: Result<Option<(usize, Option<&'headers [httparse::Header<'buf>]>)>, Error>,
             state: ServerState,
             chunk_left_after: Option<usize>,
             chunk_size_after: usize,
@@ -2591,7 +2605,7 @@ mod tests {
                 body_size: BodySize::Known(5),
                 chunk_left: Some(5),
                 chunk_size: 0,
-                result: Ok((3, None)),
+                result: Ok(Some((3, None))),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(2),
                 chunk_size_after: 0,
@@ -2604,7 +2618,7 @@ mod tests {
                 body_size: BodySize::Known(5),
                 chunk_left: Some(5),
                 chunk_size: 0,
-                result: Ok((5, None)),
+                result: Ok(Some((5, None))),
                 state: ServerState::AwaitingResponse,
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -2617,7 +2631,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((0, None)),
+                result: Ok(None),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -2656,7 +2670,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((0, None)),
+                result: Ok(None),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(5),
                 chunk_size_after: 5,
@@ -2669,7 +2683,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((3, None)),
+                result: Ok(Some((3, None))),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(2),
                 chunk_size_after: 5,
@@ -2682,7 +2696,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((5, None)),
+                result: Ok(Some((5, None))),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
@@ -2695,7 +2709,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((5, None)),
+                result: Ok(Some((5, None))),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
@@ -2708,7 +2722,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: Some(0),
                 chunk_size: 5,
-                result: Ok((0, None)),
+                result: Ok(None),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
@@ -2717,15 +2731,15 @@ mod tests {
             },
             Test {
                 name: "chunked-footer-parse-error",
-                data: "5\r\nhelloXX",
+                data: "XX",
                 body_size: BodySize::Unknown,
-                chunk_left: None,
-                chunk_size: 0,
+                chunk_left: Some(0),
+                chunk_size: 5,
                 result: Err(Error::InvalidChunkSuffix),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 5,
-                rbuf_position: 8,
+                rbuf_position: 0,
                 dest_data: "",
             },
             Test {
@@ -2734,11 +2748,11 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((5, None)),
+                result: Ok(Some((5, None))),
                 state: ServerState::ReceivingBody,
-                chunk_left_after: None,
-                chunk_size_after: 0,
-                rbuf_position: 10,
+                chunk_left_after: Some(0),
+                chunk_size_after: 5,
+                rbuf_position: 8,
                 dest_data: "hello",
             },
             Test {
@@ -2747,11 +2761,11 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: Some(2),
                 chunk_size: 5,
-                result: Ok((2, None)),
+                result: Ok(Some((2, None))),
                 state: ServerState::ReceivingBody,
-                chunk_left_after: None,
-                chunk_size_after: 0,
-                rbuf_position: 4,
+                chunk_left_after: Some(0),
+                chunk_size_after: 5,
+                rbuf_position: 2,
                 dest_data: "lo",
             },
             Test {
@@ -2760,7 +2774,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: Some(0),
                 chunk_size: 5,
-                result: Ok((0, None)),
+                result: Ok(Some((0, None))),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -2773,7 +2787,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((0, Some(&[]))),
+                result: Ok(Some((0, Some(&[])))),
                 state: ServerState::AwaitingResponse,
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -2786,7 +2800,7 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((0, None)),
+                result: Ok(None),
                 state: ServerState::ReceivingBody,
                 chunk_left_after: Some(0),
                 chunk_size_after: 0,
@@ -2812,13 +2826,13 @@ mod tests {
                 body_size: BodySize::Unknown,
                 chunk_left: None,
                 chunk_size: 0,
-                result: Ok((
+                result: Ok(Some((
                     0,
                     Some(&[httparse::Header {
                         name: "Foo",
                         value: b"Bar",
                     }]),
-                )),
+                ))),
                 state: ServerState::AwaitingResponse,
                 chunk_left_after: None,
                 chunk_size_after: 0,
@@ -2847,9 +2861,9 @@ mod tests {
             let r = p.recv_body(&mut c, &mut dest, &mut headers);
 
             match r {
-                Ok((size, headers)) => {
+                Ok(Some((size, headers))) => {
                     let (expected_size, expected_headers) = match &test.result {
-                        Ok((size, headers)) => (size, headers),
+                        Ok(Some((size, headers))) => (size, headers),
                         _ => panic!("result mismatch: test={}", test.name),
                     };
 
@@ -2858,6 +2872,10 @@ mod tests {
 
                     dest_size = size;
                 }
+                Ok(None) => match &test.result {
+                    Ok(None) => {}
+                    _ => panic!("result mismatch: test={}", test.name),
+                },
                 Err(e) => {
                     let expected = match &test.result {
                         Err(e) => e,
