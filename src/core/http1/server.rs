@@ -253,12 +253,24 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
 
                     let inner = b_inner.as_mut().unwrap();
 
-                    if need_bytes && read == 0 && !inner.rbuf.is_readable_contiguous() {
-                        inner.rbuf.align();
-                        continue;
+                    if need_bytes {
+                        if read == 0 && !inner.rbuf.is_readable_contiguous() {
+                            inner.rbuf.align();
+                            continue;
+                        }
+
+                        return Ok(RecvStatus::NeedBytes(()));
                     }
 
                     inner.rbuf.read_commit(read);
+
+                    if read > 0 && written == 0 {
+                        // input consumed but no output produced, retry
+                        continue;
+                    }
+
+                    // written is only zero here if read is also zero
+                    assert!(written > 0 || read == 0);
 
                     return Ok(RecvStatus::Read((), written));
                 }
@@ -341,6 +353,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBodyKeepHeader<'a, 'b, R, W
         match inner.inner.try_recv(dest)? {
             RecvStatus::Complete((), written) => Ok(RecvStatus::Complete((), written)),
             RecvStatus::Read((), written) => Ok(RecvStatus::Read((), written)),
+            RecvStatus::NeedBytes(()) => Ok(RecvStatus::NeedBytes(())),
         }
     }
 }

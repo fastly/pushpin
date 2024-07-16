@@ -547,7 +547,7 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
                             continue;
                         }
 
-                        return Ok(RecvStatus::Read((), 0));
+                        return Ok(RecvStatus::NeedBytes(()));
                     }
                     protocol::RecvStatus::Complete(finished, read, written) => {
                         inner.rbuf.read_commit(read);
@@ -567,6 +567,14 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
                         let inner = b_inner.as_mut().unwrap();
 
                         inner.rbuf.read_commit(read);
+
+                        if read > 0 && written == 0 {
+                            // input consumed but no output produced, retry
+                            continue;
+                        }
+
+                        // written is only zero here if read is also zero
+                        assert!(written > 0 || read == 0);
 
                         return Ok(RecvStatus::Read((), written));
                     }
@@ -619,6 +627,7 @@ impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
                 written,
             )),
             RecvStatus::Read((), written) => Ok(RecvStatus::Read((), written)),
+            RecvStatus::NeedBytes(()) => Ok(RecvStatus::NeedBytes(())),
         }
     }
 }
