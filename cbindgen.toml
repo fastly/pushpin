@@ -1,0 +1,12 @@
+include_guard = "RUST_BINDINGS_H"
+namespace = "ffi"
+
+after_includes = """
+// zmq crate version 0.10 bundles zeromq 4.3
+#define WZMQ_VERSION_MAJOR 4
+#define WZMQ_VERSION_MINOR 3
+"""
+
+[parse]
+parse_deps = true
+include = ["jsonwebtoken", "zmq"]

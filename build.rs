@@ -105,35 +105,49 @@ fn env_or_default(name: &str, defaults: &HashMap<String, String>) -> String {
     }
 }
 
+fn write_if_different(dest: &Path, content: &[u8]) -> Result<(), Box<dyn Error>> {
+    let do_write = match fs::read(dest) {
+        Ok(v) => v != content,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => true,
+        Err(e) => return Err(e.into()),
+    };
+
+    if do_write {
+        fs::write(dest, content)?;
+    }
+
+    Ok(())
+}
+
 fn write_cpp_conf_pri(
     dest: &Path,
     release: bool,
     include_paths: &[&Path],
     deny_warnings: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let mut f = fs::File::create(dest)?;
+    let mut out = Vec::new();
 
-    writeln!(&mut f, "CONFIG -= debug_and_release")?;
+    writeln!(&mut out, "CONFIG -= debug_and_release")?;
 
     if release {
-        writeln!(&mut f, "CONFIG += release")?;
+        writeln!(&mut out, "CONFIG += release")?;
     } else {
-        writeln!(&mut f, "CONFIG += debug")?;
+        writeln!(&mut out, "CONFIG += debug")?;
     }
 
-    writeln!(&mut f)?;
+    writeln!(&mut out)?;
 
     for path in include_paths {
-        writeln!(&mut f, "INCLUDEPATH += {}", path.display())?;
+        writeln!(&mut out, "INCLUDEPATH += {}", path.display())?;
     }
 
-    writeln!(&mut f)?;
+    writeln!(&mut out)?;
 
     if deny_warnings {
-        writeln!(&mut f, "QMAKE_CXXFLAGS += \"-Werror\"")?;
+        writeln!(&mut out, "QMAKE_CXXFLAGS += \"-Werror\"")?;
     }
 
-    Ok(())
+    write_if_different(dest, &out)
 }
 
 fn write_postbuild_conf_pri(
@@ -144,15 +158,15 @@ fn write_postbuild_conf_pri(
     run_dir: &str,
     log_dir: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let mut f = fs::File::create(dest)?;
+    let mut out = Vec::new();
 
-    writeln!(&mut f, "BINDIR = {}", bin_dir)?;
-    writeln!(&mut f, "LIBDIR = {}/pushpin", lib_dir)?;
-    writeln!(&mut f, "CONFIGDIR = {}/pushpin", config_dir)?;
-    writeln!(&mut f, "RUNDIR = {}/pushpin", run_dir)?;
-    writeln!(&mut f, "LOGDIR = {}/pushpin", log_dir)?;
+    writeln!(&mut out, "BINDIR = {}", bin_dir)?;
+    writeln!(&mut out, "LIBDIR = {}/pushpin", lib_dir)?;
+    writeln!(&mut out, "CONFIGDIR = {}/pushpin", config_dir)?;
+    writeln!(&mut out, "RUNDIR = {}/pushpin", run_dir)?;
+    writeln!(&mut out, "LOGDIR = {}/pushpin", log_dir)?;
 
-    Ok(())
+    write_if_different(dest, &out)
 }
 
 // returned vec size guaranteed >= 1
@@ -401,6 +415,18 @@ fn contains_subslice<T: PartialEq>(haystack: &[T], needle: &[T]) -> bool {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    cbindgen::generate(crate_dir).map_or_else(
+        |error| match error {
+            cbindgen::Error::ParseSyntaxError { .. } => {}
+            e => panic!("{:?}", e),
+        },
+        |bindings| {
+            bindings.write_to_file("target/include/rust/bindings.h");
+        },
+    );
+
     let (qmake_path, qt_version) = get_qmake()?;
 
     let qt_install_libs = {
@@ -446,8 +472,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let profile = env::var("PROFILE")?;
 
-    let cpp_src_dir = root_dir.join("src/cpp");
-    let cpp_tests_src_dir = root_dir.join("src/cpp/tests");
+    let cpp_pro = root_dir.join("src/cpp.pro");
+    let cpp_tests_pro = root_dir.join("src/cpptests.pro");
 
     for dir in ["moc", "obj", "test-moc", "test-obj", "test-work"] {
         fs::create_dir_all(out_dir.join(dir))?;
@@ -492,13 +518,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     check_command(Command::new(&qmake_path).args([
         OsStr::new("-o"),
         out_dir.join("Makefile").as_os_str(),
-        cpp_src_dir.join("cpp.pro").as_os_str(),
+        cpp_pro.as_os_str(),
     ]))?;
 
     check_command(Command::new(&qmake_path).args([
         OsStr::new("-o"),
         out_dir.join("Makefile.test").as_os_str(),
-        cpp_tests_src_dir.join("tests.pro").as_os_str(),
+        cpp_tests_pro.as_os_str(),
     ]))?;
 
     check_command(
@@ -546,6 +572,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-env-changed=LOGDIR");
     println!("cargo:rerun-if-env-changed=RUNDIR");
     println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-changed=cbindgen.toml");
 
     Ok(())
 }
