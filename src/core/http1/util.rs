@@ -140,6 +140,7 @@ pub enum SendStatus<T, P, E> {
 }
 
 pub enum RecvStatus<T, C> {
+    NeedBytes(T),
     Read(T, usize),
     Complete(C, usize),
 }
