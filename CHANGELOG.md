@@ -4,7 +4,7 @@ Pushpin Changelog
 v. 1.39.1 (2024-03-18)
 
   * Regenerate pushpin.conf.inst post-build to ensure up-to-date configuration.
-  * Update legacy runner use revised Qt linking logic, aligning with main branch improvements.  
+  * Update legacy runner use revised Qt linking logic, aligning with main branch improvements.
 
 v. 1.39.0 (2024-03-14)
 

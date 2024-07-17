@@ -1,6 +1,6 @@
 [package]
 name = "pushpin"
-version = "1.39.0-dev"
+version = "1.40.0-dev"
 authors = ["Justin Karneges <jkarneges@fastly.com>"]
 description = "Reverse proxy for realtime web services"
 repository = "https://github.com/fastly/pushpin"
@@ -29,7 +29,7 @@ jsonwebtoken = "8"
 libc = "0.2"
 log = "0.4"
 miniz_oxide = "0.6"
-mio = { version = "0.8", features = ["os-poll", "os-ext", "net"] }
+mio = { version = "1", features = ["os-poll", "os-ext", "net"] }
 openssl = "0.10"
 paste = "1.0"
 rustls = "0.21"
@@ -53,6 +53,7 @@ test-log = "0.2"
 [build-dependencies]
 pkg-config = "0.3"
 time = { version = "=0.3.18", features = ["formatting", "local-offset", "macros"] }
+cbindgen = "0.26"
 
 [[bench]]
 name = "server"
@@ -63,7 +64,7 @@ name = "client"
 harness = false
 
 [[bin]]
-name = "pushpin-condure"
+name = "pushpin-connmgr"
 test = false
 bench = false
 

@@ -15,15 +15,16 @@
  */
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use pushpin::connection::testutil::{
+use pushpin::connmgr::connection::testutil::{
     BenchServerReqConnection, BenchServerReqHandler, BenchServerStreamConnection,
     BenchServerStreamHandler,
 };
-use pushpin::executor::Executor;
-use pushpin::future::{AsyncReadExt, AsyncTcpStream, AsyncWriteExt};
-use pushpin::reactor::Reactor;
-use pushpin::server::TestServer;
-use pushpin::websocket::testutil::{BenchRecvMessage, BenchSendMessage};
+use pushpin::connmgr::server::TestServer;
+use pushpin::connmgr::websocket::testutil::{BenchRecvMessage, BenchSendMessage};
+use pushpin::core::executor::Executor;
+use pushpin::core::io::{AsyncReadExt, AsyncWriteExt};
+use pushpin::core::net::AsyncTcpStream;
+use pushpin::core::reactor::Reactor;
 use std::io::{self, Write};
 use std::net::SocketAddr;
 use std::str;
