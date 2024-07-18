@@ -175,7 +175,7 @@ mod tests {
     use crate::core::channel;
     use crate::core::executor::Executor;
     use crate::core::reactor::Reactor;
-    use crate::future::yield_task;
+    use crate::core::task::yield_task;
 
     #[test]
     fn track_value() {

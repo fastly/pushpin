@@ -18,7 +18,7 @@ use crate::core::arena;
 use crate::core::event;
 use crate::core::list;
 use crate::core::reactor::CustomEvented;
-use crate::future::get_reactor;
+use crate::core::task::get_reactor;
 use slab::Slab;
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -30,6 +30,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+
+pub const REGISTRATIONS_PER_CHANNEL: usize = 1;
 
 pub struct Sender<T> {
     sender: Option<mpsc::SyncSender<T>>,
@@ -920,7 +922,7 @@ mod tests {
     use super::*;
     use crate::core::executor::Executor;
     use crate::core::reactor::Reactor;
-    use crate::future::poll_async;
+    use crate::core::task::poll_async;
     use std::cell::Cell;
     use std::time;
 

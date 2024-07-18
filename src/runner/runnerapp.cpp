@@ -311,8 +311,6 @@ public:
 			}
 		}
 
-		log_info("starting...");
-
 		QStringList configFileList;
 
 		if(!args.configFile.isEmpty())
@@ -363,6 +361,11 @@ public:
 				return;
 			}
 		}
+
+		int defaultArgsLevel = args.logLevels.value("", LOG_LEVEL_INFO);
+		log_setOutputLevel(args.logLevels.value("runner", defaultArgsLevel));
+
+		log_debug("starting...");
 
 		if(args.configFile.isEmpty())
 			log_info("using config: %s", qPrintable(configFile));
@@ -728,7 +731,7 @@ private:
 	{
 		if(services.isEmpty())
 		{
-			log_info("stopped");
+			log_debug("stopped");
 			doQuit();
 		}
 	}
@@ -751,7 +754,7 @@ private:
 		}
 
 		if(allStarted)
-			log_info("started");
+			log_debug("started");
 	}
 
 	void service_stopped(Service *s)
@@ -811,6 +814,9 @@ private:
 	{
 		if(!stopping)
 		{
+			// let a potential "^C" get overwritten
+			printf("\r");
+
 			stopping = true;
 			ProcessQuit::reset(); // allow user to quit again
 

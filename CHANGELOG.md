@@ -1,6 +1,14 @@
 Pushpin Changelog
 =================
 
+v. 1.40.0 (2024-07-17)
+
+  * Restore support for receiving chunked responses from backends.
+  * For early errors such as malformed requests, respond instead of disconnecting.
+  * Rename Condure to connmgr.
+  * Fix crash under high load.
+  * Fix hang when receiving large WebSocket rejections from the backend.
+
 v. 1.39.1 (2024-03-18)
 
   * Regenerate pushpin.conf.inst post-build to ensure up-to-date configuration.

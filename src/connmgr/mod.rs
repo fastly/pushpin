@@ -33,7 +33,7 @@ use self::client::Client;
 use self::server::{Server, MSG_RETAINED_PER_CONNECTION_MAX, MSG_RETAINED_PER_WORKER_MAX};
 use crate::core::zmq::SpecInfo;
 use ipnet::IpNet;
-use log::info;
+use log::{debug, info};
 use signal_hook;
 use signal_hook::consts::TERM_SIGNALS;
 use signal_hook::iterator::Signals;
@@ -173,9 +173,9 @@ impl App {
 
                 for spec in config.zclient_req.iter() {
                     if config.zclient_connect {
-                        info!("zhttp client connect {}", spec);
+                        debug!("zhttp client connect {}", spec);
                     } else {
-                        info!("zhttp client bind {}", spec);
+                        debug!("zhttp client bind {}", spec);
                     }
 
                     specs.push(SpecInfo {
@@ -199,12 +199,12 @@ impl App {
                     let (out_spec, out_stream_spec, in_spec) = make_specs(spec, false)?;
 
                     if config.zclient_connect {
-                        info!(
+                        debug!(
                             "zhttp client connect {} {} {}",
                             out_spec, out_stream_spec, in_spec
                         );
                     } else {
-                        info!(
+                        debug!(
                             "zhttp client bind {} {} {}",
                             out_spec, out_stream_spec, in_spec
                         );
@@ -275,9 +275,9 @@ impl App {
 
                 for spec in config.zserver_req.iter() {
                     if config.zserver_connect {
-                        info!("zhttp server connect {}", spec);
+                        debug!("zhttp server connect {}", spec);
                     } else {
-                        info!("zhttp server bind {}", spec);
+                        debug!("zhttp server bind {}", spec);
                     }
 
                     specs.push(SpecInfo {
@@ -322,12 +322,12 @@ impl App {
                     let (in_spec, in_stream_spec, out_spec) = make_specs(spec, true)?;
 
                     if config.zserver_connect {
-                        info!(
+                        debug!(
                             "zhttp server connect {} {} {}",
                             in_spec, in_stream_spec, out_spec
                         );
                     } else {
-                        info!(
+                        debug!(
                             "zhttp server bind {} {} {}",
                             in_spec, in_stream_spec, out_spec
                         );
@@ -407,7 +407,7 @@ impl App {
 }
 
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
-    info!("starting...");
+    debug!("starting...");
 
     {
         let a = match App::new(config) {
@@ -424,7 +424,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
         info!("stopping...");
     }
 
-    info!("stopped");
+    debug!("stopped");
 
     Ok(())
 }

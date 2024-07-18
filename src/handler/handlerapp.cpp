@@ -232,7 +232,7 @@ public:
 			}
 		}
 
-		log_info("starting...");
+		log_debug("starting...");
 
 		QString configFile = args.configFile;
 		if(configFile.isEmpty())
@@ -463,7 +463,7 @@ private:
 		delete engine;
 		engine = 0;
 
-		log_info("stopped");
+		log_debug("stopped");
 		q->quit(0);
 	}
 };

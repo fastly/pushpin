@@ -406,7 +406,7 @@ public:
 		// we also plan to remove file logging capability
 		log_set_level(log_outputLevel());
 
-		log_info("starting...");
+		log_debug("starting...");
 
 		backtrace_setup_signal_handlers();
 
@@ -705,7 +705,7 @@ private slots:
 
 		threads.clear();
 
-		log_info("stopped");
+		log_debug("stopped");
 		q->quit(0);
 	}
 };

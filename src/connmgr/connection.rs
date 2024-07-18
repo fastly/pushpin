@@ -37,7 +37,7 @@
 use crate::connmgr::counter::{Counter, CounterDec};
 use crate::connmgr::pool::Pool;
 use crate::connmgr::resolver;
-use crate::connmgr::tls::{TlsStream, VerifyMode};
+use crate::connmgr::tls::{AsyncTlsStream, TlsStream, TlsWaker, VerifyMode};
 use crate::connmgr::track::{
     self, track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError,
 };
@@ -51,16 +51,18 @@ use crate::core::channel::{AsyncLocalReceiver, AsyncLocalSender};
 use crate::core::defer::Defer;
 use crate::core::http1::Error as CoreHttpError;
 use crate::core::http1::{self, client, server, RecvStatus, SendStatus};
-use crate::core::net::SocketAddr;
+use crate::core::io::{
+    io_split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadHalf, StdWriteWrapper,
+    WriteHalf,
+};
+use crate::core::net::{AsyncTcpStream, SocketAddr};
 use crate::core::reactor::Reactor;
+use crate::core::select::{select_2, select_3, select_4, select_option, Select2, Select3, Select4};
 use crate::core::shuffle::random;
+use crate::core::task::{poll_async, CancellationToken};
+use crate::core::time::Timeout;
 use crate::core::waker::RefWakerData;
 use crate::core::zmq::MultipartHeader;
-use crate::future::{
-    io_split, poll_async, select_2, select_3, select_4, select_option, AsyncRead, AsyncReadExt,
-    AsyncResolver, AsyncTcpStream, AsyncTlsStream, AsyncWrite, AsyncWriteExt, CancellationToken,
-    ReadHalf, Select2, Select3, Select4, StdWriteWrapper, Timeout, TlsWaker, WriteHalf,
-};
 use arrayvec::{ArrayString, ArrayVec};
 use ipnet::IpNet;
 use log::{debug, log, warn, Level};
@@ -1414,17 +1416,20 @@ async fn server_req_read_body<R: AsyncRead, W: AsyncWrite>(
 
     loop {
         match req_body.try_recv(body_buf.write_buf())? {
-            RecvStatus::Complete((), written) => {
-                body_buf.write_commit(written);
+            RecvStatus::Complete((), size) => {
+                body_buf.write_commit(size);
                 break;
             }
-            RecvStatus::Read((), written) => {
-                body_buf.write_commit(written);
+            RecvStatus::Read((), size) => {
+                body_buf.write_commit(size);
 
-                if written == 0 {
-                    // ABR: discard_while
-                    discard_while(zreceiver, pin!(req_body.add_to_buffer())).await?;
+                if size == 0 {
+                    return Err(Error::BufferExceeded);
                 }
+            }
+            RecvStatus::NeedBytes(()) => {
+                // ABR: discard_while
+                discard_while(zreceiver, pin!(req_body.add_to_buffer())).await?;
             }
         }
     }
@@ -2013,14 +2018,11 @@ where
                 let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
 
                 let (size, done) = match req_body.try_recv(&mut tmp_buf[..max_read])? {
-                    RecvStatus::Complete((), written) => (written, true),
-                    RecvStatus::Read((), written) => {
-                        if written == 0 {
-                            add_to_buffer.set(Some(req_body.add_to_buffer()));
-                            continue;
-                        }
-
-                        (written, false)
+                    RecvStatus::Complete((), size) => (size, true),
+                    RecvStatus::Read((), size) => (size, false),
+                    RecvStatus::NeedBytes(()) => {
+                        add_to_buffer.set(Some(req_body.add_to_buffer()));
+                        continue;
                     }
                 };
 
@@ -2111,14 +2113,11 @@ where
                 let max_read = cmp::min(tmp_buf.len(), zsess_in.credits() as usize);
 
                 let (size, mut finished) = match resp_body.try_recv(&mut tmp_buf[..max_read])? {
-                    RecvStatus::Complete(finished, written) => (written, Some(finished)),
-                    RecvStatus::Read((), written) => {
-                        if written == 0 {
-                            add_to_buffer.set(Some(resp_body.add_to_buffer()));
-                            continue;
-                        }
-
-                        (written, None)
+                    RecvStatus::Complete(finished, size) => (size, Some(finished)),
+                    RecvStatus::Read((), size) => (size, None),
+                    RecvStatus::NeedBytes(()) => {
+                        add_to_buffer.set(Some(resp_body.add_to_buffer()));
+                        continue;
                     }
                 };
 
@@ -4318,7 +4317,7 @@ async fn client_connect<'a>(
         (uri_host, uri.port().unwrap_or(default_port))
     };
 
-    let resolver = AsyncResolver::new(resolver);
+    let resolver = resolver::AsyncResolver::new(resolver);
 
     debug!("client-conn {}: resolving: [{}]", log_id, connect_host);
 
@@ -4584,18 +4583,19 @@ where
         let finished = {
             loop {
                 match resp_body.try_recv(body_buf.write_buf())? {
-                    RecvStatus::Complete(finished, written) => {
-                        body_buf.write_commit(written);
+                    RecvStatus::Complete(finished, size) => {
+                        body_buf.write_commit(size);
 
                         break finished;
                     }
-                    RecvStatus::Read((), written) => {
-                        body_buf.write_commit(written);
+                    RecvStatus::Read((), size) => {
+                        body_buf.write_commit(size);
 
-                        if written == 0 {
-                            resp_body.add_to_buffer().await?;
+                        if size == 0 {
+                            return Err(Error::BufferExceeded);
                         }
                     }
+                    RecvStatus::NeedBytes(()) => resp_body.add_to_buffer().await?,
                 }
             }
         };
@@ -5186,30 +5186,29 @@ where
 
                         match ret {
                             RecvStatus::Complete(finished, _) => break finished,
-                            RecvStatus::Read((), written) => {
-                                if written == 0 {
-                                    let mut add_to_buffer = pin!(resp_body.add_to_buffer());
+                            RecvStatus::Read((), size) => {
+                                // buf is non-empty so this can never be zero
+                                assert!(size > 0);
+                            }
+                            RecvStatus::NeedBytes(()) => {
+                                let mut add_to_buffer = pin!(resp_body.add_to_buffer());
 
-                                    loop {
-                                        // ABR: select contains read
-                                        let result = select_2(
-                                            add_to_buffer.as_mut(),
-                                            pin!(zsess_in.recv_msg()),
-                                        )
-                                        .await;
+                                loop {
+                                    // ABR: select contains read
+                                    let result =
+                                        select_2(add_to_buffer.as_mut(), pin!(zsess_in.recv_msg()))
+                                            .await;
 
-                                        match result {
-                                            Select2::R1(ret) => {
-                                                ret?;
-                                                break;
-                                            }
-                                            Select2::R2(ret) => {
-                                                let zreq = ret?;
+                                    match result {
+                                        Select2::R1(ret) => {
+                                            ret?;
+                                            break;
+                                        }
+                                        Select2::R2(ret) => {
+                                            let zreq = ret?;
 
-                                                // ABR: handle_other
-                                                server_handle_other(zreq, zsess_in, zsess_out)
-                                                    .await?;
-                                            }
+                                            // ABR: handle_other
+                                            server_handle_other(zreq, zsess_in, zsess_out).await?;
                                         }
                                     }
                                 }
@@ -5299,41 +5298,36 @@ where
 
                     let finished = loop {
                         match resp_body.try_recv(body_buf.write_buf())? {
-                            RecvStatus::Complete(finished, written) => {
-                                body_buf.write_commit(written);
+                            RecvStatus::Complete(finished, size) => {
+                                body_buf.write_commit(size);
                                 break finished;
                             }
-                            RecvStatus::Read((), written) => {
-                                body_buf.write_commit(written);
+                            RecvStatus::Read((), size) => {
+                                body_buf.write_commit(size);
 
-                                if written == 0 {
-                                    let mut add_to_buffer = pin!(resp_body.add_to_buffer());
+                                if size == 0 {
+                                    return Err(Error::WebSocketRejectionTooLarge(send_buf_size));
+                                }
+                            }
+                            RecvStatus::NeedBytes(()) => {
+                                let mut add_to_buffer = pin!(resp_body.add_to_buffer());
 
-                                    loop {
-                                        // ABR: select contains read
-                                        let result = select_2(
-                                            add_to_buffer.as_mut(),
-                                            pin!(zsess_in.recv_msg()),
-                                        )
-                                        .await;
+                                loop {
+                                    // ABR: select contains read
+                                    let result =
+                                        select_2(add_to_buffer.as_mut(), pin!(zsess_in.recv_msg()))
+                                            .await;
 
-                                        match result {
-                                            Select2::R1(ret) => match ret {
-                                                Ok(()) => break,
-                                                Err(CoreHttpError::BufferExceeded) => {
-                                                    return Err(Error::WebSocketRejectionTooLarge(
-                                                        send_buf_size,
-                                                    ));
-                                                }
-                                                Err(e) => return Err(e.into()),
-                                            },
-                                            Select2::R2(ret) => {
-                                                let zreq = ret?;
+                                    match result {
+                                        Select2::R1(ret) => {
+                                            ret?;
+                                            break;
+                                        }
+                                        Select2::R2(ret) => {
+                                            let zreq = ret?;
 
-                                                // ABR: handle_other
-                                                server_handle_other(zreq, zsess_in, zsess_out)
-                                                    .await?;
-                                            }
+                                            // ABR: handle_other
+                                            server_handle_other(zreq, zsess_in, zsess_out).await?;
                                         }
                                     }
                                 }
