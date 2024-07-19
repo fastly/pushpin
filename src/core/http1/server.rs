@@ -19,9 +19,8 @@ use crate::core::buffer::{Buffer, ContiguousBuffer, VecRingBuffer, VECTORED_MAX}
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
-use crate::future::{
-    select_2, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, Select2, StdWriteWrapper, WriteHalf,
-};
+use crate::core::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, StdWriteWrapper, WriteHalf};
+use crate::core::select::{select_2, Select2};
 use std::cell::{Cell, RefCell};
 use std::io::{self, Write};
 use std::pin::pin;
@@ -207,15 +206,16 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
             let mut b_inner = self.inner.borrow_mut();
 
             if let Some(inner) = b_inner.take() {
-                let (read, written, done) =
+                let (read, written, done, need_bytes) =
                     if inner.protocol.state() == protocol::ServerState::ReceivingBody {
                         let mut buf = io::Cursor::new(Buffer::read_buf(inner.rbuf));
 
                         let mut headers = [httparse::EMPTY_HEADER; HEADERS_MAX];
 
-                        let (written, _) =
+                        let (written, need_bytes) =
                             match inner.protocol.recv_body(&mut buf, dest, &mut headers) {
-                                Ok(ret) => ret,
+                                Ok(Some((written, _))) => (written, false),
+                                Ok(None) => (0, true),
                                 Err(e) => return Err(e.into()),
                             };
 
@@ -225,9 +225,10 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
                             read,
                             written,
                             inner.protocol.state() == protocol::ServerState::AwaitingResponse,
+                            need_bytes,
                         )
                     } else {
-                        (0, 0, true)
+                        (0, 0, true, false)
                     };
 
                 if done {
@@ -239,7 +240,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
 
                     *b_inner = None;
 
-                    break Ok(RecvStatus::Complete((), written));
+                    return Ok(RecvStatus::Complete((), written));
                 } else {
                     *b_inner = Some(RequestBodyInner {
                         r: inner.r,
@@ -252,14 +253,26 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBody<'a, 'b, R, W> {
 
                     let inner = b_inner.as_mut().unwrap();
 
-                    if read == 0 && written == 0 && !inner.rbuf.is_readable_contiguous() {
-                        inner.rbuf.align();
-                        continue;
+                    if need_bytes {
+                        if read == 0 && !inner.rbuf.is_readable_contiguous() {
+                            inner.rbuf.align();
+                            continue;
+                        }
+
+                        return Ok(RecvStatus::NeedBytes(()));
                     }
 
                     inner.rbuf.read_commit(read);
 
-                    break Ok(RecvStatus::Read((), written));
+                    if read > 0 && written == 0 {
+                        // input consumed but no output produced, retry
+                        continue;
+                    }
+
+                    // written is only zero here if read is also zero
+                    assert!(written > 0 || read == 0);
+
+                    return Ok(RecvStatus::Read((), written));
                 }
             } else {
                 return Err(Error::Unusable);
@@ -340,6 +353,7 @@ impl<'a: 'b, 'b, R: AsyncRead, W: AsyncWrite> RequestBodyKeepHeader<'a, 'b, R, W
         match inner.inner.try_recv(dest)? {
             RecvStatus::Complete((), written) => Ok(RecvStatus::Complete((), written)),
             RecvStatus::Read((), written) => Ok(RecvStatus::Read((), written)),
+            RecvStatus::NeedBytes(()) => Ok(RecvStatus::NeedBytes(())),
         }
     }
 }
@@ -809,7 +823,7 @@ impl Finished {
 mod tests {
     use super::*;
     use crate::core::buffer::TmpBuffer;
-    use crate::future::io_split;
+    use crate::core::io::io_split;
     use std::cmp;
     use std::future::Future;
     use std::io::Read;

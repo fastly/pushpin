@@ -98,15 +98,20 @@ impl Log for SimpleLogger {
             log::Level::Trace => "TRACE",
         };
 
-        writeln!(
-            &mut output,
-            "[{}] {} [{}] {}",
-            lname,
-            ts,
-            record.target(),
-            record.args()
-        )
-        .expect("failed to write log output");
+        if record.level() <= log::Level::Info {
+            writeln!(&mut output, "[{}] {} {}", lname, ts, record.args())
+                .expect("failed to write log output");
+        } else {
+            writeln!(
+                &mut output,
+                "[{}] {} [{}] {}",
+                lname,
+                ts,
+                record.target(),
+                record.args()
+            )
+            .expect("failed to write log output");
+        }
     }
 
     fn flush(&self) {}

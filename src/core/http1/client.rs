@@ -19,9 +19,8 @@ use crate::core::buffer::{Buffer, VecRingBuffer, VECTORED_MAX};
 use crate::core::http1::error::Error;
 use crate::core::http1::protocol::{self, BodySize, Header, ParseScratch, ParseStatus};
 use crate::core::http1::util::*;
-use crate::future::{
-    select_2, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, Select2, StdWriteWrapper, WriteHalf,
-};
+use crate::core::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, StdWriteWrapper, WriteHalf};
+use crate::core::select::{select_2, Select2};
 use std::cell::RefCell;
 use std::io::{self, Write};
 use std::mem;
@@ -533,12 +532,40 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
                 let end = src.len() == inner.rbuf.len() && inner.closed;
 
                 match inner.resp_body.recv(src, dest, end, &mut scratch)? {
+                    protocol::RecvStatus::NeedBytes(resp_body) => {
+                        *b_inner = Some(ResponseBodyInner {
+                            r: inner.r,
+                            closed: inner.closed,
+                            rbuf: inner.rbuf,
+                            resp_body,
+                        });
+
+                        let inner = b_inner.as_mut().unwrap();
+
+                        if !inner.rbuf.is_readable_contiguous() {
+                            inner.rbuf.align();
+                            continue;
+                        }
+
+                        if inner.closed {
+                            let first_buf = Buffer::read_buf(inner.rbuf);
+
+                            return Err(Error::Internal(format!(
+                                "closed connection made no progress: rbuf.len={} first_buf.len={} end={}",
+                                inner.rbuf.len(),
+                                first_buf.len(),
+                                end
+                            )));
+                        }
+
+                        return Ok(RecvStatus::NeedBytes(()));
+                    }
                     protocol::RecvStatus::Complete(finished, read, written) => {
                         inner.rbuf.read_commit(read);
 
                         *b_inner = None;
 
-                        break Ok(RecvStatus::Complete(Finished { inner: finished }, written));
+                        return Ok(RecvStatus::Complete(Finished { inner: finished }, written));
                     }
                     protocol::RecvStatus::Read(resp_body, read, written) => {
                         *b_inner = Some(ResponseBodyInner {
@@ -550,25 +577,15 @@ impl<'a, R: AsyncRead> ResponseBody<'a, R> {
 
                         let inner = b_inner.as_mut().unwrap();
 
-                        if read == 0 && written == 0 {
-                            if !inner.rbuf.is_readable_contiguous() {
-                                inner.rbuf.align();
-                                continue;
-                            }
+                        inner.rbuf.read_commit(read);
 
-                            if inner.closed {
-                                let first_buf = Buffer::read_buf(inner.rbuf);
-
-                                return Err(Error::Internal(format!(
-                                    "closed connection made no progress: rbuf.len={} first_buf.len={} end={}",
-                                    inner.rbuf.len(),
-                                    first_buf.len(),
-                                    end
-                                )));
-                            }
+                        if read > 0 && written == 0 {
+                            // input consumed but no output produced, retry
+                            continue;
                         }
 
-                        inner.rbuf.read_commit(read);
+                        // written is only zero here if read is also zero
+                        assert!(written > 0 || read == 0);
 
                         return Ok(RecvStatus::Read((), written));
                     }
@@ -621,6 +638,7 @@ impl<'a, R: AsyncRead> ResponseBodyKeepHeader<'a, R> {
                 written,
             )),
             RecvStatus::Read((), written) => Ok(RecvStatus::Read((), written)),
+            RecvStatus::NeedBytes(()) => Ok(RecvStatus::NeedBytes(())),
         }
     }
 }

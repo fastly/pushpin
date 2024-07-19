@@ -15,7 +15,7 @@
  */
 
 use crate::core::buffer::{Buffer, VecRingBuffer};
-use crate::future::{AsyncRead, AsyncReadExt};
+use crate::core::io::{AsyncRead, AsyncReadExt};
 use std::cmp;
 use std::future::Future;
 use std::io;
@@ -140,6 +140,7 @@ pub enum SendStatus<T, P, E> {
 }
 
 pub enum RecvStatus<T, C> {
+    NeedBytes(T),
     Read(T, usize),
     Complete(C, usize),
 }

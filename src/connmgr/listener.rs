@@ -17,9 +17,9 @@
 use crate::core::arena::recycle_vec;
 use crate::core::channel;
 use crate::core::executor::Executor;
-use crate::core::net::{NetListener, NetStream, SocketAddr};
+use crate::core::net::{AsyncNetListener, NetAcceptFuture, NetListener, NetStream, SocketAddr};
 use crate::core::reactor::Reactor;
-use crate::future::{select_2, select_slice, AsyncNetListener, NetAcceptFuture, Select2};
+use crate::core::select::{select_2, select_slice, Select2};
 use log::{debug, error};
 use std::cmp;
 use std::sync::mpsc;
