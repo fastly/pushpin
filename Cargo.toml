@@ -43,6 +43,7 @@ sha1 = "0.10"
 signal-hook = "0.3"
 slab = "0.4"
 socket2 = "0.4"
+stats-emitter = { git = "ssh://git@github.com/fastly/stats-emitter-rs" }
 thiserror = "1.0"
 time = { version = "=0.3.18", features = ["formatting", "local-offset", "macros"] }
 url = "2.3"

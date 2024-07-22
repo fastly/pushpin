@@ -1,8 +1,8 @@
 FROM container-registry.secretcdn.net/fastly/base-focal:latest
 
 ARG DESTDIR=/build
+ARG SSH_AUTH_SOCK
 ARG PKG_VERSION=unknown
-
 
 WORKDIR /build
 COPY . .
@@ -16,6 +16,9 @@ RUN printf "deb http://ddebs.ubuntu.com focal main restricted universe multivers
 
 RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake libqt5core5a-dbgsym libqt5network5-dbgsym libglib2.0-0-dbgsym fst-rustc-1.71.0=1.71.0-149 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
+RUN mkdir ~/.ssh && \
+  ssh-keyscan github.com >> ~/.ssh/known_hosts
+
 RUN ls -alhrt
 ENV CFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
 ENV CXXFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
@@ -25,7 +28,8 @@ ENV CXX=/opt/fst-gcc/9.1.0/bin/g++
 ENV RUST_TOOLCHAIN=/opt/fst-rust/1.71.0
 ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
-RUN git clone https://github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make DESTDIR=/ install
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+RUN git clone ssh://git@github.com/zeromq/libzmq.git && cd libzmq && git checkout v4.3.4 && mkdir build && cd build && /opt/fst-cmake/bin/cmake .. && make -j $(nproc) && make DESTDIR=/ install
 RUN cargo fetch && make RELEASE=1 PREFIX=/opt/fst-pushpin -j $(nproc)
 RUN env LD_LIBRARY_PATH=/usr/local/lib make RELEASE=1 PREFIX=/opt/fst-pushpin check
 RUN make RELEASE=1 PREFIX=/opt/fst-pushpin install
