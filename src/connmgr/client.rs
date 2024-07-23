@@ -441,6 +441,15 @@ impl Connections {
         items.nodes_by_id.get(id).copied()
     }
 
+    fn state(&self, ckey: usize) -> Option<&'static str> {
+        let nkey = ckey;
+
+        let items = &*self.items.borrow();
+        let ci = &items.nodes[nkey].value;
+
+        ci.shared.as_ref().map(|s| s.get().state())
+    }
+
     fn try_send(
         &self,
         ckey: usize,
@@ -1434,13 +1443,15 @@ impl Worker {
                                     None => continue,
                                 };
 
+                                let state = conns.state(key);
+
                                 // this should always succeed, since afterwards we yield
                                 // to let the connection receive the message
                                 match conns.try_send(key, (arena::Rc::clone(&zreq), i)) {
                                     Ok(()) => count += 1,
                                     Err(mpsc::TrySendError::Full(_)) => error!(
-                                        "client-worker {}: connection-{} cannot receive message",
-                                        id, key
+                                        "client-worker {}: connection-{} state={:?} cannot receive message seq={:?}",
+                                        id, key, state, rid.seq,
                                     ),
                                     Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
                                 }

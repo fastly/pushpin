@@ -542,6 +542,7 @@ impl<'a> AddrRef<'a> {
 struct StreamSharedDataInner {
     to_addr: Option<ArrayVec<u8, 64>>,
     out_seq: u32,
+    state: &'static str,
 }
 
 pub struct StreamSharedData {
@@ -555,6 +556,7 @@ impl StreamSharedData {
             inner: RefCell::new(StreamSharedDataInner {
                 to_addr: None,
                 out_seq: 0,
+                state: "init",
             }),
         }
     }
@@ -564,6 +566,7 @@ impl StreamSharedData {
 
         s.to_addr = None;
         s.out_seq = 0;
+        s.state = "init";
     }
 
     fn set_to_addr(&self, addr: Option<ArrayVec<u8, 64>>) {
@@ -586,6 +589,16 @@ impl StreamSharedData {
         let s = &mut *self.inner.borrow_mut();
 
         s.out_seq += 1;
+    }
+
+    pub fn state(&self) -> &'static str {
+        self.inner.borrow().state
+    }
+
+    pub fn set_state(&self, state: &'static str) {
+        let s = &mut *self.inner.borrow_mut();
+
+        s.state = state;
     }
 }
 
@@ -4918,6 +4931,7 @@ async fn client_stream_handler<S, R1, R2>(
     tmp_buf: &RefCell<Vec<u8>>,
     zsess_in: &mut ZhttpServerStreamSessionIn<'_, '_, R2>,
     zsess_out: &ZhttpServerStreamSessionOut<'_>,
+    shared: &StreamSharedData,
     response_received: &mut bool,
     refresh_stream_timeout: &R1,
 ) -> Result<ClientHandlerDone<()>, Error>
@@ -4926,6 +4940,8 @@ where
     R1: Fn(),
     R2: Fn(),
 {
+    shared.set_state("handler start");
+
     let stream = RefCell::new(stream);
 
     let send_buf_size = buf1.capacity(); // for sending to handler
@@ -5088,6 +5104,8 @@ where
 
     // send request header
 
+    shared.set_state("sending request header");
+
     let req_body = {
         let mut send_header = pin!(req_header.send());
 
@@ -5109,6 +5127,8 @@ where
 
     refresh_stream_timeout();
 
+    shared.set_state("sending request body");
+
     // send request body
 
     // ABR: function contains read
@@ -5127,6 +5147,8 @@ where
     // receive response header
 
     let (resp_body, ws_config) = {
+        shared.set_state("receiving response header");
+
         let mut scratch = http1::ParseScratch::<HEADERS_MAX>::new();
         let mut recv_header = pin!(resp.recv_header(&mut scratch));
 
@@ -5153,6 +5175,8 @@ where
                 log_id, resp_ref.code, resp_ref.reason
             );
 
+            shared.set_state("waiting to send response msg");
+
             loop {
                 // ABR: select contains read
                 let result =
@@ -5177,6 +5201,8 @@ where
                 };
 
                 if let Some((url, use_get)) = check_redirect(method, url, &resp_ref, &schemes) {
+                    shared.set_state("eating redirect body");
+
                     // eat response body
                     let finished = loop {
                         let ret = {
@@ -5296,6 +5322,8 @@ where
 
                     // receive response body
 
+                    shared.set_state("receiving websocket rejection body");
+
                     let finished = loop {
                         match resp_body.try_recv(body_buf.write_buf())? {
                             RecvStatus::Complete(finished, size) => {
@@ -5398,6 +5426,8 @@ where
     if let Some(deflate_config) = ws_config {
         // handle as websocket connection
 
+        shared.set_state("websocket");
+
         // ABR: function contains read
         server_stream_websocket(
             log_id,
@@ -5418,6 +5448,8 @@ where
         Ok(ClientHandlerDone::Complete((), false))
     } else {
         // receive response body
+
+        shared.set_state("receiving response body");
 
         // ABR: function contains read
         let finished = server_stream_recv_body(
@@ -5506,6 +5538,8 @@ where
 
     // ack request
 
+    shared.set_state("sending initial ack");
+
     // ABR: discard_while
     server_discard_while(
         zreceiver,
@@ -5557,6 +5591,8 @@ where
         let tls_waker_data = RefWakerData::new(TlsWaker::new());
 
         let (peer_addr, using_tls, mut stream) = {
+            shared.set_state("connecting");
+
             let mut client_connect = pin!(client_connect(
                 log_id,
                 rdata,
@@ -5604,6 +5640,7 @@ where
                     tmp_buf,
                     &mut zsess_in,
                     &zsess_out,
+                    shared,
                     response_received,
                     refresh_stream_timeout,
                 )
@@ -5627,6 +5664,7 @@ where
                     tmp_buf,
                     &mut zsess_in,
                     &zsess_out,
+                    shared,
                     response_received,
                     refresh_stream_timeout,
                 )
@@ -5744,14 +5782,17 @@ where
             &refresh_session_timeout,
         ));
 
-        match select_4(
+        let ret = select_4(
             handler,
             stream_timeout.elapsed(),
             session_timeout.elapsed(),
             token.cancelled(),
         )
-        .await
-        {
+        .await;
+
+        shared.get().set_state("done");
+
+        match ret {
             Select4::R1(ret) => ret,
             Select4::R2(_) => Err(Error::StreamTimeout),
             Select4::R3(_) => return Err(Error::SessionTimeout),
@@ -9238,6 +9279,7 @@ mod tests {
             &tmp_buf,
             &mut zsess_in,
             &zsess_out,
+            shared.get(),
             &mut response_received,
             &refresh_stream_timeout,
         )
