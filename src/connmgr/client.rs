@@ -41,7 +41,7 @@ use mio::unix::SourceFd;
 use slab::Slab;
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
 use std::io::{self, Write};
 use std::mem;
@@ -448,6 +448,20 @@ impl Connections {
         let ci = &items.nodes[nkey].value;
 
         ci.shared.as_ref().map(|s| s.get().state())
+    }
+
+    fn can_send_or_disconnected(&self, ckey: usize) -> bool {
+        let nkey = ckey;
+
+        let items = &*self.items.borrow();
+        let ci = &items.nodes[nkey].value;
+
+        let sender = match &ci.zreceiver_sender {
+            Some(s) => s,
+            None => return false,
+        };
+
+        sender.can_send_or_disconnected()
     }
 
     fn try_send(
@@ -1203,6 +1217,9 @@ impl Worker {
 
         let r_cdone = AsyncLocalReceiver::new(r_cdone);
 
+        let mut ckeys_found = HashSet::with_capacity(zhttppacket::IDS_MAX);
+        let mut ckeys_sent_to = HashSet::with_capacity(zhttppacket::IDS_MAX);
+
         debug!("client-worker {}: task started: stream_handle", id);
 
         {
@@ -1421,7 +1438,8 @@ impl Worker {
                                     }
                                 };
 
-                            let mut count = 0;
+                            ckeys_found.clear();
+                            ckeys_sent_to.clear();
 
                             for (i, rid) in ids.iter().enumerate() {
                                 let cid: ArrayVec<u8, REQ_ID_MAX> = match ArrayVec::try_from(rid.id)
@@ -1443,12 +1461,24 @@ impl Worker {
                                     None => continue,
                                 };
 
+                                if ckeys_found.contains(&key) {
+                                    warn!(
+                                        "client-worker {}: duplicate request id in packet, skipping",
+                                        id
+                                    );
+                                    continue;
+                                }
+
+                                ckeys_found.insert(key);
+
                                 let state = conns.state(key);
 
                                 // this should always succeed, since afterwards we yield
                                 // to let the connection receive the message
                                 match conns.try_send(key, (arena::Rc::clone(&zreq), i)) {
-                                    Ok(()) => count += 1,
+                                    Ok(()) => {
+                                        ckeys_sent_to.insert(key);
+                                    }
                                     Err(mpsc::TrySendError::Full(_)) => error!(
                                         "client-worker {}: connection-{} state={:?} cannot receive message seq={:?}",
                                         id, key, state, rid.seq,
@@ -1459,11 +1489,20 @@ impl Worker {
 
                             debug!(
                                 "client-worker {}: queued zmq message for {} conns",
-                                id, count
+                                id,
+                                ckeys_sent_to.len()
                             );
 
-                            if count > 0 {
+                            if !ckeys_sent_to.is_empty() {
                                 yield_to_local_events().await;
+
+                                for &key in ckeys_sent_to.iter() {
+                                    if !conns.can_send_or_disconnected(key) {
+                                        let state = conns.state(key);
+
+                                        error!("client-worker {}: connection-{} state={:?} can_send_or_disconnected=false after yield", id, key, state);
+                                    }
+                                }
                             }
                         }
                         Err(e) => panic!("client-worker {}: handle read error {}", id, e),

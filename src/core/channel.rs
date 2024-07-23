@@ -308,6 +308,14 @@ impl<T> LocalSender<T> {
         &self.write_registration
     }
 
+    // returns true if there's room in the queue or if the receiver is gone
+    pub fn can_send_or_disconnected(&self) -> bool {
+        let queue = self.channel.queue.borrow();
+        let read_sr = self.channel.read_set_readiness.borrow();
+
+        queue.len() < queue.capacity() || read_sr.is_none()
+    }
+
     // if this returns true, then the next call to try_send() by any sender
     // is guaranteed to not return TrySendError::Full.
     // if this returns false, the sender is added to the wait list
