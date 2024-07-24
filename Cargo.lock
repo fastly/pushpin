@@ -1031,6 +1031,7 @@ dependencies = [
  "log",
  "miniz_oxide",
  "mio",
+ "once_cell",
  "openssl",
  "paste",
  "pkg-config",

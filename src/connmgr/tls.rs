@@ -23,6 +23,7 @@ use crate::core::waker::{RefWake, RefWaker, RefWakerData};
 use arrayvec::ArrayString;
 use log::debug;
 use mio::net::TcpStream;
+use once_cell::sync::Lazy;
 use openssl::error::ErrorStack;
 use openssl::pkey::PKey;
 use openssl::ssl::{
@@ -49,7 +50,7 @@ use std::ptr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 const DOMAIN_LEN_MAX: usize = 253;
 
@@ -475,6 +476,39 @@ fn apply_wants(e: &ssl::Error, interests: &mut Option<mio::Interest>) {
     }
 }
 
+struct CachedConnector {
+    connector: SslConnector,
+    created_at: Instant,
+}
+
+static CONNECTOR_CACHE: Lazy<Mutex<HashMap<String, CachedConnector>>> = Lazy::new(|| {
+    Mutex::new(HashMap::new())
+});
+
+fn get_or_create_connector(domain: &str, verify_mode: VerifyMode) -> Result<SslConnector, openssl::error::ErrorStack> {
+    let mut cache = CONNECTOR_CACHE.lock().unwrap();
+
+    if let Some(cached) = cache.get(domain) {
+        if cached.created_at.elapsed() < Duration::from_secs(60) {
+            return Ok(cached.connector.clone());
+        }
+    }
+
+    let mut builder = SslConnector::builder(SslMethod::tls())?;
+    match verify_mode {
+        VerifyMode::Full => builder.set_verify(SslVerifyMode::PEER),
+        VerifyMode::None => builder.set_verify(SslVerifyMode::NONE),
+    }
+    let connector = builder.build();
+
+    cache.insert(domain.to_string(), CachedConnector {
+        connector: connector.clone(),
+        created_at: Instant::now(),
+    });
+
+    Ok(connector)
+}
+
 pub struct TlsStream<T> {
     stream: Stream<&'static mut Box<dyn ReadWrite>>,
     plain_stream: Box<Box<dyn ReadWrite>>,
@@ -497,13 +531,7 @@ where
         verify_mode: VerifyMode,
     ) -> Result<Self, (T, ssl::Error)> {
         Self::new(true, stream, |stream| {
-            let mut connector = SslConnector::builder(SslMethod::tls())?;
-
-            if let VerifyMode::None = verify_mode {
-                connector.set_verify(SslVerifyMode::NONE);
-            }
-
-            let connector = connector.build();
+            let connector = get_or_create_connector(domain, verify_mode)?;
 
             let stream = match connector.connect(domain, stream) {
                 Ok(stream) => Stream::Ssl(stream),
