@@ -43,12 +43,14 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
+use std::future::Future;
 use std::io::{self, Write};
 use std::mem;
-use std::pin::pin;
+use std::pin::{pin, Pin};
 use std::rc::Rc;
 use std::str;
 use std::sync::{mpsc, Arc};
+use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
 
@@ -296,6 +298,92 @@ impl<T> ChannelPool<T> {
     }
 }
 
+// sharable boolean with optional error message, used by FlagWheneverPolled
+struct PolledFlag {
+    value: Cell<bool>,
+    err_msg_on_poll: Cell<Option<String>>,
+}
+
+impl PolledFlag {
+    fn new(value: bool) -> Self {
+        Self {
+            value: Cell::new(value),
+            err_msg_on_poll: Cell::new(None),
+        }
+    }
+
+    fn get(&self) -> bool {
+        self.value.get()
+    }
+
+    fn set(&self, value: bool) {
+        self.value.set(value);
+    }
+
+    fn set_err_msg_on_poll(&self, msg: String) {
+        self.err_msg_on_poll.set(Some(msg));
+    }
+}
+
+// wraps another future and holds a PolledFlag. when polled, it sets the flag
+// to true and logs an error message if one was set on the flag
+struct FlagWheneverPolled<F> {
+    fut: F,
+    flag: arena::Rc<PolledFlag>,
+}
+
+impl<F> Future for FlagWheneverPolled<F>
+where
+    F: Future,
+{
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        // SAFETY: pin projection
+        let (fut, flag) = unsafe {
+            let s = self.get_unchecked_mut();
+            let fut = Pin::new_unchecked(&mut s.fut);
+
+            (fut, &s.flag)
+        };
+
+        let flag = flag.get();
+
+        flag.value.set(true);
+
+        if let Some(msg) = flag.err_msg_on_poll.take().take() {
+            error!("{}", msg);
+        }
+
+        fut.poll(cx)
+    }
+}
+
+// Used to track when a future gets polled.
+//
+// Example:
+//
+// let arena_mem = Rc::new(arena::RcMemory::new(1));
+// let polled = arena::Rc::new(PolledFlag::new(false), &arena_mem).unwrap();
+// assert!(polled.get().get(), false);
+//
+// let mut x = 0;
+// let fut = flag_whenever_polled(async {
+//     x += 1;
+// }, &polled);
+//
+// let fut = pin!(fut);
+// fut.as_mut().poll(cx);
+//
+// assert_eq!(x, 1);
+// assert!(polled.get().get(), true);
+fn flag_whenever_polled<F: Future>(fut: F, flag: &arena::Rc<PolledFlag>) -> FlagWheneverPolled<F> {
+    FlagWheneverPolled {
+        fut,
+        flag: arena::Rc::clone(flag),
+    }
+}
+
 struct ConnectionDone {
     ckey: usize,
 }
@@ -306,6 +394,7 @@ struct ConnectionItem {
     zreceiver_sender: Option<channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>>,
     shared: Option<arena::Rc<StreamSharedData>>,
     batch_key: Option<BatchKey>,
+    polled: Option<arena::Rc<PolledFlag>>,
 }
 
 struct ConnectionItems {
@@ -362,6 +451,7 @@ impl Connections {
             channel::LocalSender<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
         >,
         shared: Option<arena::Rc<StreamSharedData>>,
+        polled: Option<arena::Rc<PolledFlag>>,
     ) -> Result<usize, ()> {
         let items = &mut *self.items.borrow_mut();
         let c = &mut *self.inner.borrow_mut();
@@ -376,6 +466,7 @@ impl Connections {
             zreceiver_sender,
             shared,
             batch_key: None,
+            polled,
         }));
 
         c.active.push_back(&mut items.nodes, nkey);
@@ -448,6 +539,40 @@ impl Connections {
         let ci = &items.nodes[nkey].value;
 
         ci.shared.as_ref().map(|s| s.get().state())
+    }
+
+    fn clear_polled(&self, ckey: usize) {
+        let nkey = ckey;
+
+        let items = &*self.items.borrow();
+        let ci = &items.nodes[nkey].value;
+
+        if let Some(polled) = &ci.polled {
+            polled.get().set(false);
+        }
+    }
+
+    fn polled(&self, ckey: usize) -> bool {
+        let nkey = ckey;
+
+        let items = &*self.items.borrow();
+        let ci = &items.nodes[nkey].value;
+
+        match &ci.polled {
+            Some(polled) => polled.get().get(),
+            None => false,
+        }
+    }
+
+    fn set_err_msg_on_poll(&self, ckey: usize, msg: String) {
+        let nkey = ckey;
+
+        let items = &*self.items.borrow();
+        let ci = &items.nodes[nkey].value;
+
+        if let Some(polled) = &ci.polled {
+            polled.get().set_err_msg_on_poll(msg);
+        }
     }
 
     fn can_send_or_disconnected(&self, ckey: usize) -> bool {
@@ -1120,7 +1245,7 @@ impl Worker {
                             .try_clone(&reactor.local_registration_memory())
                             .unwrap();
 
-                        let ckey = conns.add(cstop, None, None).unwrap();
+                        let ckey = conns.add(cstop, None, None, None).unwrap();
 
                         if let Some(cid) = &cid {
                             let cid = (from, cid.clone());
@@ -1206,6 +1331,7 @@ impl Worker {
 
         let stream_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
         let stream_req_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
+        let stream_polled_mem = Rc::new(arena::RcMemory::new(conns.max()));
 
         // bound is 1 per connection, so all connections can indicate done at once
         // max_senders is 1 per connection + 1 for this task
@@ -1349,11 +1475,15 @@ impl Worker {
                                 arena::Rc::new(StreamSharedData::new(), &stream_shared_mem)
                                     .unwrap();
 
+                            let polled =
+                                arena::Rc::new(PolledFlag::new(false), &stream_polled_mem).unwrap();
+
                             let ckey = conns
                                 .add(
                                     cstop,
                                     Some(zstream_receiver_sender),
                                     Some(arena::Rc::clone(&shared)),
+                                    Some(arena::Rc::clone(&polled)),
                                 )
                                 .unwrap();
 
@@ -1366,28 +1496,31 @@ impl Worker {
                             );
 
                             if spawner
-                                .spawn(Self::stream_connection_task(
-                                    r_cstop,
-                                    s_cdone,
-                                    id,
-                                    ckey,
-                                    cid,
-                                    arena::Rc::clone(&zreq),
-                                    Arc::clone(&resolver),
-                                    Arc::clone(&conn_pool),
-                                    zstream_receiver,
-                                    Rc::clone(&deny),
-                                    Rc::clone(&conns),
-                                    opts.clone(),
-                                    ConnectionStreamOpts {
-                                        blocks_max: connection_blocks_max,
-                                        blocks_avail: Arc::clone(&blocks_avail),
-                                        messages_max,
-                                        allow_compression,
-                                        sender: zstream_out_sender,
-                                    },
-                                    shared,
-                                    Some(session),
+                                .spawn(flag_whenever_polled(
+                                    Self::stream_connection_task(
+                                        r_cstop,
+                                        s_cdone,
+                                        id,
+                                        ckey,
+                                        cid,
+                                        arena::Rc::clone(&zreq),
+                                        Arc::clone(&resolver),
+                                        Arc::clone(&conn_pool),
+                                        zstream_receiver,
+                                        Rc::clone(&deny),
+                                        Rc::clone(&conns),
+                                        opts.clone(),
+                                        ConnectionStreamOpts {
+                                            blocks_max: connection_blocks_max,
+                                            blocks_avail: Arc::clone(&blocks_avail),
+                                            messages_max,
+                                            allow_compression,
+                                            sender: zstream_out_sender,
+                                        },
+                                        shared,
+                                        Some(session),
+                                    ),
+                                    &polled,
                                 ))
                                 .is_err()
                             {
@@ -1478,6 +1611,7 @@ impl Worker {
                                 match conns.try_send(key, (arena::Rc::clone(&zreq), i)) {
                                     Ok(()) => {
                                         ckeys_sent_to.insert(key);
+                                        conns.clear_polled(key);
                                     }
                                     Err(mpsc::TrySendError::Full(_)) => error!(
                                         "client-worker {}: connection-{} state={:?} cannot receive message seq={:?}",
@@ -1497,10 +1631,19 @@ impl Worker {
                                 yield_to_local_events().await;
 
                                 for &key in ckeys_sent_to.iter() {
-                                    if !conns.can_send_or_disconnected(key) {
+                                    let polled = conns.polled(key);
+                                    let can_send_or_disconnected =
+                                        conns.can_send_or_disconnected(key);
+
+                                    if !polled || !can_send_or_disconnected {
                                         let state = conns.state(key);
 
-                                        error!("client-worker {}: connection-{} state={:?} can_send_or_disconnected=false after yield", id, key, state);
+                                        error!("client-worker {}: connection-{} state={:?} unexpected status after yield polled={} can_send_or_disconnected={}", id, key, state, polled, can_send_or_disconnected);
+
+                                        if !polled {
+                                            // this allocs but it happens rarely, so fine for debugging
+                                            conns.set_err_msg_on_poll(key, format!("client-worker {}: connection-{} resuming late after yield", id, key));
+                                        }
                                     }
                                 }
                             }
