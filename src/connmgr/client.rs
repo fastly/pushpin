@@ -30,7 +30,9 @@ use crate::core::executor::{Executor, Spawner};
 use crate::core::list;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_5, select_6, select_option, Select2, Select5, Select6};
-use crate::core::task::{event_wait, yield_to_local_events, CancellationSender, CancellationToken};
+use crate::core::task::{
+    self, event_wait, yield_to_local_events, CancellationSender, CancellationToken,
+};
 use crate::core::time::Timeout;
 use crate::core::tnetstring;
 use crate::core::zmq::{MultipartHeader, SpecInfo};
@@ -1346,6 +1348,8 @@ impl Worker {
         let mut ckeys_found = HashSet::with_capacity(zhttppacket::IDS_MAX);
         let mut ckeys_sent_to = HashSet::with_capacity(zhttppacket::IDS_MAX);
 
+        let resume_waker = task::create_resume_waker();
+
         debug!("client-worker {}: task started: stream_handle", id);
 
         {
@@ -1628,7 +1632,7 @@ impl Worker {
                             );
 
                             if !ckeys_sent_to.is_empty() {
-                                yield_to_local_events().await;
+                                yield_to_local_events(&resume_waker).await;
 
                                 for &key in ckeys_sent_to.iter() {
                                     let polled = conns.polled(key);

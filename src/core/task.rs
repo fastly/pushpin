@@ -16,11 +16,12 @@
 
 use crate::core::arena;
 use crate::core::event::{self, ReadinessExt};
+use crate::core::executor::Executor;
 use crate::core::reactor::{CustomEvented, Reactor, Registration};
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 pub struct PollFuture<F> {
     fut: F,
@@ -44,6 +45,11 @@ where
     F: Future + Unpin,
 {
     PollFuture { fut }
+}
+
+#[track_caller]
+pub fn get_executor() -> Executor {
+    Executor::current().expect("no executor in thread")
 }
 
 #[track_caller]
@@ -213,15 +219,24 @@ pub fn yield_task() -> YieldFuture {
     YieldFuture { done: false }
 }
 
+// panics if called outside of a task
+pub fn create_resume_waker() -> Waker {
+    get_executor()
+        .create_resume_waker_for_current_task()
+        .expect("create_resume_waker called outside of task")
+}
+
 pub struct YieldToLocalEvents {
     started: bool,
     evented: CustomEvented,
     _registration: event::LocalRegistration,
     set_readiness: event::LocalSetReadiness,
+    resume_waker: Waker,
+    executor: Executor,
 }
 
 impl YieldToLocalEvents {
-    fn new() -> Self {
+    fn new(resume_waker: &Waker) -> Self {
         let reactor = get_reactor();
 
         let (reg, sr) = event::LocalRegistration::new(&reactor.local_registration_memory());
@@ -235,6 +250,8 @@ impl YieldToLocalEvents {
             evented,
             _registration: reg,
             set_readiness: sr,
+            resume_waker: resume_waker.clone(),
+            executor: get_executor(),
         }
     }
 }
@@ -242,19 +259,31 @@ impl YieldToLocalEvents {
 impl Future for YieldToLocalEvents {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Self::Output> {
         let f = &mut *self;
 
         if f.evented.registration().is_ready() {
             return Poll::Ready(());
         }
 
-        f.evented
-            .registration()
-            .set_waker(cx.waker(), mio::Interest::READABLE);
-
         if !f.started {
             f.started = true;
+
+            // we want to be polled again only after all previously queued
+            // events have been processed and after any associated tasks have
+            // been polled. in order to acheive this, we configure the
+            // current task to ignore wakes and set a special waker on our
+            // registration that resumes wakes. this way, if there are any
+            // previously queued events associated with the current task that
+            // are earlier in the queue than the events we want to yield to,
+            // processing them won't wake the current task
+            f.executor
+                .ignore_wakes_for_current_task()
+                .expect("yielded outside of task");
+
+            f.evented
+                .registration()
+                .set_waker(&f.resume_waker, mio::Interest::READABLE);
 
             // this will wake us up after all local events before it have been processed
             f.set_readiness
@@ -266,8 +295,10 @@ impl Future for YieldToLocalEvents {
     }
 }
 
-pub fn yield_to_local_events() -> YieldToLocalEvents {
-    YieldToLocalEvents::new()
+// the returned future ensures all local events have been processed,
+// and any associated tasks polled, before completing
+pub fn yield_to_local_events(resume_waker: &Waker) -> YieldToLocalEvents {
+    YieldToLocalEvents::new(resume_waker)
 }
 
 #[cfg(test)]
@@ -408,7 +439,8 @@ mod tests {
         executor
             .spawn(async move {
                 s.try_send(1).unwrap();
-                yield_to_local_events().await;
+                let resume_waker = create_resume_waker();
+                yield_to_local_events(&resume_waker).await;
                 assert_eq!(state.get(), 1);
             })
             .unwrap();

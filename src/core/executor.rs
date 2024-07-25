@@ -41,7 +41,20 @@ struct TaskWaker {
 impl waker::RcWake for TaskWaker {
     fn wake(self: Rc<Self>) {
         if let Some(tasks) = self.tasks.upgrade() {
-            tasks.wake(self.task_id);
+            tasks.wake(self.task_id, false);
+        }
+    }
+}
+
+struct TaskResumeWaker {
+    tasks: Weak<Tasks>,
+    task_id: usize,
+}
+
+impl waker::RcWake for TaskResumeWaker {
+    fn wake(self: Rc<Self>) {
+        if let Some(tasks) = self.tasks.upgrade() {
+            tasks.wake(self.task_id, true);
         }
     }
 }
@@ -64,6 +77,7 @@ struct TasksData {
     nodes: Slab<list::Node<Task>>,
     next: list::List,
     wakers: Vec<Rc<TaskWaker>>,
+    current_task: Option<usize>,
 }
 
 struct Tasks {
@@ -77,6 +91,7 @@ impl Tasks {
             nodes: Slab::with_capacity(max),
             next: list::List::default(),
             wakers: Vec::with_capacity(max),
+            current_task: None,
         };
 
         let tasks = Rc::new(Self {
@@ -148,6 +163,14 @@ impl Tasks {
         data.nodes.remove(nkey);
     }
 
+    fn current_task(&self) -> Option<usize> {
+        self.data.borrow().current_task
+    }
+
+    fn set_current_task(&self, task_id: Option<usize>) {
+        self.data.borrow_mut().current_task = task_id;
+    }
+
     fn take_next_list(&self) -> list::List {
         let data = &mut *self.data.borrow_mut();
 
@@ -188,9 +211,13 @@ impl Tasks {
         let mut l = self.take_next_list();
 
         while let Some((task_id, mut fut, waker)) = self.take_task(&mut l) {
+            self.set_current_task(Some(task_id));
+
             self.pre_poll();
 
             let done = poll_fut(&mut fut, waker);
+
+            self.set_current_task(None);
 
             // take_task() took the future out of the task, so we
             // could poll it without having to maintain a borrow of
@@ -213,20 +240,32 @@ impl Tasks {
         task.fut = Some(fut);
     }
 
-    fn wake(&self, task_id: usize) {
+    fn wake(&self, task_id: usize, resume: bool) {
         let nkey = task_id;
 
         let data = &mut *self.data.borrow_mut();
 
         let node = &mut data.nodes[nkey];
 
-        if !node.value.wakeable {
+        if !node.value.wakeable && !resume {
             return;
         }
 
         node.value.wakeable = false;
 
         data.next.push_back(&mut data.nodes, nkey);
+    }
+
+    fn ignore_wakes(&self, task_id: usize) {
+        let nkey = task_id;
+
+        let data = &mut *self.data.borrow_mut();
+
+        let node = &mut data.nodes[nkey];
+
+        node.value.wakeable = false;
+
+        data.next.remove(&mut data.nodes, nkey);
     }
 
     fn set_pre_poll<F>(&self, pre_poll_fn: F)
@@ -244,6 +283,9 @@ impl Tasks {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct CurrentTaskError;
 
 pub struct Executor {
     tasks: Rc<Tasks>,
@@ -339,6 +381,27 @@ impl Executor {
     pub fn spawner(&self) -> Spawner {
         Spawner {
             tasks: Rc::downgrade(&self.tasks),
+        }
+    }
+
+    pub fn create_resume_waker_for_current_task(&self) -> Result<Waker, CurrentTaskError> {
+        match self.tasks.current_task() {
+            Some(task_id) => {
+                let waker = Rc::new(TaskResumeWaker {
+                    tasks: Rc::downgrade(&self.tasks),
+                    task_id,
+                });
+
+                Ok(waker::into_std(waker))
+            }
+            None => Err(CurrentTaskError),
+        }
+    }
+
+    pub fn ignore_wakes_for_current_task(&self) -> Result<(), CurrentTaskError> {
+        match self.tasks.current_task() {
+            Some(task_id) => Ok(self.tasks.ignore_wakes(task_id)),
+            None => Err(CurrentTaskError),
         }
     }
 }
@@ -678,5 +741,46 @@ mod tests {
         executor.run(|_| Ok(())).unwrap();
 
         assert_eq!(flag.get(), true);
+    }
+
+    #[test]
+    fn test_executor_ignore_resume_wakes() {
+        let executor = Executor::new(1);
+
+        // can't create a resume waker or ignore wakes outside of task
+        assert!(executor.create_resume_waker_for_current_task().is_err());
+        assert!(executor.ignore_wakes_for_current_task().is_err());
+
+        let resume_waker: Rc<Cell<Option<Waker>>> = Rc::new(Cell::new(None));
+
+        let fut = TestFuture::new();
+        let handle = fut.handle();
+
+        {
+            let resume_waker = Rc::clone(&resume_waker);
+
+            executor
+                .spawn(async move {
+                    let executor = Executor::current().unwrap();
+                    resume_waker.set(Some(
+                        executor.create_resume_waker_for_current_task().unwrap(),
+                    ));
+                    executor.ignore_wakes_for_current_task().unwrap();
+                    fut.await;
+                })
+                .unwrap();
+        }
+
+        executor.run_until_stalled();
+        assert_eq!(executor.have_tasks(), true);
+
+        handle.set_ready();
+        executor.run_until_stalled();
+        assert_eq!(executor.have_tasks(), true);
+
+        resume_waker.take().take().unwrap().wake();
+
+        executor.run_until_stalled();
+        assert_eq!(executor.have_tasks(), false);
     }
 }
