@@ -1618,7 +1618,7 @@ impl Worker {
                                         conns.clear_polled(key);
                                     }
                                     Err(mpsc::TrySendError::Full(_)) => error!(
-                                        "client-worker {}: connection-{} state={:?} cannot receive message seq={:?}",
+                                        "client-worker {}: connection-{} state={:?} cannot receive message despite fix seq={:?}",
                                         id, key, state, rid.seq,
                                     ),
                                     Err(mpsc::TrySendError::Disconnected(_)) => {} // conn task ended
@@ -1642,7 +1642,7 @@ impl Worker {
                                     if !polled || !can_send_or_disconnected {
                                         let state = conns.state(key);
 
-                                        error!("client-worker {}: connection-{} state={:?} unexpected status after yield polled={} can_send_or_disconnected={}", id, key, state, polled, can_send_or_disconnected);
+                                        error!("client-worker {}: connection-{} state={:?} unexpected status after yield despite fix polled={} can_send_or_disconnected={}", id, key, state, polled, can_send_or_disconnected);
 
                                         if !polled {
                                             // this allocs but it happens rarely, so fine for debugging
