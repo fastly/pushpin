@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_yield_to_local_events() {
-        let reactor = Reactor::new(3);
+        let reactor = Reactor::new(5);
         let executor = Executor::new(2);
 
         let (s, r) = channel::local_channel(1, 1, &reactor.local_registration_memory());
@@ -424,9 +424,13 @@ mod tests {
 
         {
             let state = Rc::clone(&state);
+            let reactor = reactor.clone();
 
             executor
                 .spawn(async move {
+                    // this will cause r.recv() to yield
+                    reactor.set_budget(Some(0));
+
                     let r = channel::AsyncLocalReceiver::new(r);
                     r.recv().await.unwrap();
                     state.set(1);
@@ -434,16 +438,46 @@ mod tests {
                 .unwrap();
         }
 
-        executor.run_until_stalled();
+        {
+            let reactor = reactor.clone();
 
-        executor
-            .spawn(async move {
-                s.try_send(1).unwrap();
-                let resume_waker = create_resume_waker();
-                yield_to_local_events(&resume_waker).await;
-                assert_eq!(state.get(), 1);
-            })
-            .unwrap();
+            executor
+                .spawn(async move {
+                    reactor.set_budget(Some(100));
+
+                    // create registration with current task waker, and queue event for it
+                    let (s2, r2) = channel::local_channel(
+                        1,
+                        1,
+                        &Reactor::current().unwrap().local_registration_memory(),
+                    );
+                    let r2 = channel::AsyncLocalReceiver::new(r2);
+                    let mut recv = r2.recv();
+                    assert_eq!(poll_async(&mut recv).await, Poll::Pending);
+                    s2.try_send(1).unwrap();
+
+                    assert_eq!(state.get(), 0);
+
+                    // queue event for registration on the first task
+                    s.try_send(1).unwrap();
+
+                    let resume_waker = create_resume_waker();
+
+                    // at this point, the first task has yielded and is in
+                    // the low priority queue, and the events queue consists
+                    // of 2 events, in order: a recv event for the current
+                    // task and a recv event for the first task. the
+                    // following call will then add a 3rd event: a recv
+                    // event for the current task. despite the first task
+                    // being in the low priority queue and despite the
+                    // first event being for the current task, the first
+                    // task will run before the following call returns
+                    yield_to_local_events(&resume_waker).await;
+
+                    assert_eq!(state.get(), 1);
+                })
+                .unwrap();
+        }
 
         executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }

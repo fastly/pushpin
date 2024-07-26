@@ -71,11 +71,13 @@ fn poll_fut(fut: &mut BoxFuture, waker: Waker) -> bool {
 struct Task {
     fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
     wakeable: bool,
+    low: bool,
 }
 
 struct TasksData {
     nodes: Slab<list::Node<Task>>,
     next: list::List,
+    next_low: list::List,
     wakers: Vec<Rc<TaskWaker>>,
     current_task: Option<usize>,
 }
@@ -90,6 +92,7 @@ impl Tasks {
         let data = TasksData {
             nodes: Slab::with_capacity(max),
             next: list::List::default(),
+            next_low: list::List::default(),
             wakers: Vec::with_capacity(max),
             current_task: None,
         };
@@ -118,7 +121,7 @@ impl Tasks {
     }
 
     fn have_next(&self) -> bool {
-        !self.data.borrow().next.is_empty()
+        !self.data.borrow().next.is_empty() || !self.data.borrow().next_low.is_empty()
     }
 
     fn add<F>(&self, fut: F) -> Result<(), ()>
@@ -137,6 +140,7 @@ impl Tasks {
         let task = Task {
             fut: Some(Box::pin(fut)),
             wakeable: false,
+            low: false,
         };
 
         entry.insert(list::Node::new(task));
@@ -159,7 +163,12 @@ impl Tasks {
         // at this point, we should be the only remaining owner
         assert_eq!(Rc::strong_count(&data.wakers[nkey]), 1);
 
-        data.next.remove(&mut data.nodes, nkey);
+        if task.low {
+            data.next_low.remove(&mut data.nodes, nkey);
+        } else {
+            data.next.remove(&mut data.nodes, nkey);
+        }
+
         data.nodes.remove(nkey);
     }
 
@@ -171,19 +180,18 @@ impl Tasks {
         self.data.borrow_mut().current_task = task_id;
     }
 
-    fn take_next_list(&self) -> list::List {
+    fn take_next_list(&self, low: bool) -> list::List {
         let data = &mut *self.data.borrow_mut();
 
         let mut l = list::List::default();
-        l.concat(&mut data.nodes, &mut data.next);
+
+        if low {
+            l.concat(&mut data.nodes, &mut data.next_low);
+        } else {
+            l.concat(&mut data.nodes, &mut data.next);
+        }
 
         l
-    }
-
-    fn append_to_next_list(&self, mut l: list::List) {
-        let data = &mut *self.data.borrow_mut();
-
-        data.next.concat(&mut data.nodes, &mut l);
     }
 
     fn take_task(&self, l: &mut list::List) -> Option<(usize, BoxFuture, Waker)> {
@@ -207,8 +215,8 @@ impl Tasks {
         Some((nkey, fut, waker))
     }
 
-    fn process_next(&self) {
-        let mut l = self.take_next_list();
+    fn process_next(&self, low: bool) {
+        let mut l = self.take_next_list(low);
 
         while let Some((task_id, mut fut, waker)) = self.take_task(&mut l) {
             self.set_current_task(Some(task_id));
@@ -245,15 +253,26 @@ impl Tasks {
 
         let data = &mut *self.data.borrow_mut();
 
-        let node = &mut data.nodes[nkey];
+        let task = &mut data.nodes[nkey].value;
 
-        if !node.value.wakeable && !resume {
+        if !task.wakeable && !resume {
             return;
         }
 
-        node.value.wakeable = false;
+        task.wakeable = false;
 
-        data.next.push_back(&mut data.nodes, nkey);
+        if data.current_task == Some(task_id) || resume {
+            // if a task triggers its own waker, queue with low priority in
+            // order to achieve a yielding effect. do the same when waking
+            // with resume mode, to achieve a yielding effect even when the
+            // wake occurs during events processing
+
+            task.low = true;
+            data.next_low.push_back(&mut data.nodes, nkey);
+        } else {
+            task.low = false;
+            data.next.push_back(&mut data.nodes, nkey);
+        }
     }
 
     fn ignore_wakes(&self, task_id: usize) {
@@ -261,11 +280,24 @@ impl Tasks {
 
         let data = &mut *self.data.borrow_mut();
 
-        let node = &mut data.nodes[nkey];
+        // tasks other than the current task may be in a temporary list
+        // during task processing, in which case removal to prevent wakes is
+        // not possible
+        assert_eq!(
+            data.current_task,
+            Some(task_id),
+            "ignore_wakes can only be self-applied"
+        );
 
-        node.value.wakeable = false;
+        let task = &mut data.nodes[nkey].value;
 
-        data.next.remove(&mut data.nodes, nkey);
+        task.wakeable = false;
+
+        if task.low {
+            data.next_low.remove(&mut data.nodes, nkey);
+        } else {
+            data.next.remove(&mut data.nodes, nkey);
+        }
     }
 
     fn set_pre_poll<F>(&self, pre_poll_fn: F)
@@ -329,7 +361,8 @@ impl Executor {
 
     pub fn run_until_stalled(&self) {
         while self.tasks.have_next() {
-            self.tasks.process_next()
+            self.tasks.process_next(false);
+            self.tasks.process_next(true);
         }
     }
 
@@ -338,33 +371,33 @@ impl Executor {
         F: FnMut(Option<Duration>) -> Result<(), io::Error>,
     {
         loop {
-            self.tasks.process_next();
+            // run normal priority only
+            self.tasks.process_next(false);
 
             if !self.have_tasks() {
                 break;
             }
 
-            let (timeout, low_priority_tasks) = if self.tasks.have_next() {
+            let timeout = if self.tasks.have_next() {
                 // some tasks trigger their own waker and return Pending in
                 // order to achieve a yielding effect. in that case they will
-                // already be queued up for processing again. move these
-                // tasks aside so that they can be deprioritized, and use a
-                // timeout of 0 when parking so we can quickly resume them
+                // already be queued up for processing again. use a timeout
+                // of 0 when parking so we can quickly resume them
 
                 let timeout = Duration::from_millis(0);
-                let l = self.tasks.take_next_list();
 
-                (Some(timeout), Some(l))
+                Some(timeout)
             } else {
-                (None, None)
+                None
             };
 
             park(timeout)?;
 
-            // requeue any tasks that had yielded
-            if let Some(l) = low_priority_tasks {
-                self.tasks.append_to_next_list(l);
-            }
+            // run normal priority again, in case the park triggered wakers
+            self.tasks.process_next(false);
+
+            // finally, run low priority (mainly yielding tasks)
+            self.tasks.process_next(true);
         }
 
         Ok(())
