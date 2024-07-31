@@ -20,6 +20,7 @@ use crate::connmgr::connection::{
 };
 use crate::connmgr::counter::Counter;
 use crate::connmgr::resolver::Resolver;
+use crate::connmgr::tls::CertCache;
 use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
 use crate::core::arena;
@@ -669,6 +670,7 @@ impl Worker {
         resolver: &Arc<Resolver>,
         pool: &Arc<ConnectionPool>,
         zsockman: &Arc<zhttpsocket::ServerSocketManager>,
+		cert_cache: &Arc<CertCache>,
         handle_bound: usize,
     ) -> Self {
         debug!("client worker {}: starting", id);
@@ -682,6 +684,7 @@ impl Worker {
         let resolver = Arc::clone(resolver);
         let pool = Arc::clone(pool);
         let zsockman = Arc::clone(zsockman);
+		let cert_cache = Arc::clone(cert_cache);
 
         let thread = thread::Builder::new()
             .name(format!("client-worker-{}", id))
@@ -725,6 +728,7 @@ impl Worker {
                         resolver,
                         pool,
                         zsockman,
+						cert_cache,
                         handle_bound,
                     ))
                     .unwrap();
@@ -767,6 +771,7 @@ impl Worker {
         resolver: Arc<Resolver>,
         pool: Arc<ConnectionPool>,
         zsockman: Arc<zhttpsocket::ServerSocketManager>,
+		cert_cache: Arc<CertCache>,
         handle_bound: usize,
     ) {
         let executor = Executor::current().unwrap();
@@ -830,6 +835,7 @@ impl Worker {
                 req_conns,
                 body_buffer_size,
                 Rc::clone(&deny),
+				Arc::clone(&cert_cache),
                 handle_bound,
                 ConnectionOpts {
                     instance_id: instance_id.clone(),
@@ -856,6 +862,7 @@ impl Worker {
                     zstream_out_sender,
                     executor.spawner(),
                     Arc::clone(&resolver),
+					Arc::clone(&cert_cache),
                     Arc::clone(&pool),
                     stream_handle,
                     stream_maxconn,
@@ -958,6 +965,7 @@ impl Worker {
         conns: Rc<Connections>,
         body_buffer_size: usize,
         deny: Rc<Vec<IpNet>>,
+		cert_cache: Arc<CertCache>,
         handle_bound: usize,
         opts: ConnectionOpts,
     ) {
@@ -1123,6 +1131,7 @@ impl Worker {
                                 Arc::clone(&resolver),
                                 Arc::clone(&conn_pool),
                                 Rc::clone(&deny),
+								Arc::clone(&cert_cache),
                                 opts.clone(),
                                 ConnectionReqOpts {
                                     body_buffer_size,
@@ -1159,6 +1168,7 @@ impl Worker {
         zstream_out_sender: channel::LocalSender<zmq::Message>,
         spawner: Spawner,
         resolver: Arc<Resolver>,
+		cert_cache: Arc<CertCache>,
         conn_pool: Arc<ConnectionPool>,
         stream_handle: zhttpsocket::AsyncServerStreamHandle,
         stream_maxconn: usize,
@@ -1348,6 +1358,7 @@ impl Worker {
                                     cid,
                                     arena::Rc::clone(&zreq),
                                     Arc::clone(&resolver),
+									Arc::clone(&cert_cache),
                                     Arc::clone(&conn_pool),
                                     zstream_receiver,
                                     Rc::clone(&deny),
@@ -1484,6 +1495,7 @@ impl Worker {
         resolver: Arc<Resolver>,
         pool: Arc<ConnectionPool>,
         deny: Rc<Vec<IpNet>>,
+		cert_cache: Arc<CertCache>,
         opts: ConnectionOpts,
         req_opts: ConnectionReqOpts,
     ) {
@@ -1516,6 +1528,7 @@ impl Worker {
             opts.timeout,
             &deny,
             &resolver,
+			&cert_cache,
             &pool,
             AsyncLocalSender::new(req_opts.sender),
         )
@@ -1538,6 +1551,7 @@ impl Worker {
         cid: ArrayVec<u8, REQ_ID_MAX>,
         zreq: arena::Rc<zhttppacket::OwnedRequest>,
         resolver: Arc<Resolver>,
+		cert_cache: Arc<CertCache>,
         pool: Arc<ConnectionPool>,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
         deny: Rc<Vec<IpNet>>,
@@ -1580,6 +1594,7 @@ impl Worker {
             &deny,
             &opts.instance_id,
             &resolver,
+			&cert_cache,
             &pool,
             zreceiver,
             AsyncLocalSender::new(stream_opts.sender),
@@ -1747,6 +1762,8 @@ impl Client {
     ) -> Result<Self, String> {
         assert!(blocks_max >= stream_maxconn * 2);
 
+		let cert_cache = Arc::new(CertCache::new());
+
         // 1 active query per connection
         let queries_max = req_maxconn + stream_maxconn;
 
@@ -1787,6 +1804,7 @@ impl Client {
                 &resolver,
                 &pool,
                 &zsockman,
+				&cert_cache,
                 handle_bound,
             );
             workers.push(w);
@@ -1826,6 +1844,7 @@ impl Client {
 
             let resolver = Arc::new(Resolver::new(1, 1));
             let pool = Arc::new(ConnectionPool::new(0));
+			let cert_cache = Arc::new(CertCache::new());
 
             let fut = Worker::req_connection_task(
                 stop,
@@ -1837,6 +1856,7 @@ impl Client {
                 resolver,
                 pool,
                 Rc::new(Vec::new()),
+				cert_cache,
                 ConnectionOpts {
                     instance_id: Rc::new("".to_string()),
                     buffer_size: 0,
@@ -1889,6 +1909,7 @@ impl Client {
 
             let resolver = Arc::new(Resolver::new(1, 1));
             let pool = Arc::new(ConnectionPool::new(0));
+			let cert_cache = Arc::new(CertCache::new());
 
             let stream_shared_mem = Rc::new(arena::RcMemory::new(1));
 
@@ -1902,6 +1923,7 @@ impl Client {
                 ArrayVec::new(),
                 zreq,
                 resolver,
+				cert_cache,
                 pool,
                 zreceiver,
                 Rc::new(Vec::new()),
