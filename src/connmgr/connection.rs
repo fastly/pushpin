@@ -4290,6 +4290,7 @@ fn is_allowed(addr: &IpAddr, deny: &[IpNet]) -> bool {
     true
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn client_connect<'a>(
     log_id: &str,
     rdata: &zhttppacket::RequestData<'_, '_>,

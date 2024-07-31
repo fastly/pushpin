@@ -486,6 +486,12 @@ pub struct CertCache {
     cache: Arc<Mutex<HashMap<String, CachedConnector>>>,
 }
 
+impl Default for CertCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CertCache {
     pub fn new() -> Self {
         Self {
