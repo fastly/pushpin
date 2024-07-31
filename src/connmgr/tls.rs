@@ -545,7 +545,7 @@ where
         domain: &str,
         stream: T,
         verify_mode: VerifyMode,
-		cert_cache: &CertCache,
+        cert_cache: &CertCache,
     ) -> Result<Self, (T, ssl::Error)> {
         Self::new(true, stream, |stream| {
             let connector = cert_cache.get_or_create_connector(domain, verify_mode)?;
@@ -983,7 +983,7 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
         stream: AsyncTcpStream,
         verify_mode: VerifyMode,
         waker_data: &'a RefWakerData<TlsWaker>,
-		cert_cache: &CertCache,
+        cert_cache: &CertCache,
     ) -> Result<Self, ssl::Error> {
         let (registration, stream) = stream.into_evented().into_parts();
 
@@ -1340,7 +1340,7 @@ mod tests {
     #[test]
     fn test_get_change_inner() {
         let a = ReadWriteA { a: 1 };
-		let cc = CertCache::new();
+        let cc = CertCache::new();
         let mut stream = TlsStream::connect("localhost", a, VerifyMode::Full, &cc).unwrap();
         assert_eq!(stream.get_inner().a, 1);
         let mut stream = stream.change_inner(|_| ReadWriteB { b: 2 });
@@ -1350,7 +1350,7 @@ mod tests {
     #[test]
     fn test_connect_error() {
         let c = ReadWriteC { c: 1 };
-		let cc = CertCache::new();
+        let cc = CertCache::new();
         let (stream, e) = match TlsStream::connect("localhost", c, VerifyMode::Full, &cc) {
             Ok(_) => panic!("unexpected success"),
             Err(ret) => ret,
@@ -1382,7 +1382,7 @@ mod tests {
                             stream,
                             VerifyMode::None,
                             &tls_waker_data,
-							&CertCache::new(),
+                            &CertCache::new(),
                         )
                         .unwrap();
 

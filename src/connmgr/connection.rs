@@ -37,7 +37,7 @@
 use crate::connmgr::counter::{Counter, CounterDec};
 use crate::connmgr::pool::Pool;
 use crate::connmgr::resolver;
-use crate::connmgr::tls::{AsyncTlsStream, TlsStream, TlsWaker, VerifyMode, CertCache};
+use crate::connmgr::tls::{AsyncTlsStream, CertCache, TlsStream, TlsWaker, VerifyMode};
 use crate::connmgr::track::{
     self, track_future, Track, TrackFlag, TrackedAsyncLocalReceiver, ValueActiveError,
 };
@@ -4298,7 +4298,7 @@ async fn client_connect<'a>(
     deny: &[IpNet],
     pool: &ConnectionPool,
     tls_waker_data: &'a RefWakerData<TlsWaker>,
-	cert_cache: &CertCache,
+    cert_cache: &CertCache,
 ) -> Result<(std::net::SocketAddr, bool, AsyncStream<'a>), Error> {
     let use_tls = ["https", "wss"].contains(&uri.scheme());
 
@@ -4381,7 +4381,13 @@ async fn client_connect<'a>(
                 VerifyMode::Full
             };
 
-            let stream = match AsyncTlsStream::connect(host, stream, verify_mode, tls_waker_data, cert_cache) {
+            let stream = match AsyncTlsStream::connect(
+                host,
+                stream,
+                verify_mode,
+                tls_waker_data,
+                cert_cache,
+            ) {
                 Ok(stream) => stream,
                 Err(e) => {
                     debug!("client-conn {}: tls connect error: {}", log_id, e);
@@ -4657,7 +4663,7 @@ async fn client_req_connect(
     packet_buf: &RefCell<Vec<u8>>,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
-	cert_cache: &CertCache,
+    cert_cache: &CertCache,
     pool: &ConnectionPool,
 ) -> Result<zmq::Message, Error> {
     let zreq = zreq.get().get();
@@ -4713,8 +4719,17 @@ async fn client_req_connect(
 
         let tls_waker_data = RefWakerData::new(TlsWaker::new());
 
-        let (peer_addr, using_tls, mut stream) =
-            client_connect(log_id, rdata, url, resolver, deny, pool, &tls_waker_data, cert_cache).await?;
+        let (peer_addr, using_tls, mut stream) = client_connect(
+            log_id,
+            rdata,
+            url,
+            resolver,
+            deny,
+            pool,
+            &tls_waker_data,
+            cert_cache,
+        )
+        .await?;
 
         let done = match &mut stream {
             AsyncStream::Plain(stream) => {
@@ -4802,7 +4817,7 @@ async fn client_req_connection_inner(
     timeout: Duration,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
-	cert_cache: &CertCache,
+    cert_cache: &CertCache,
     pool: &ConnectionPool,
     zsender: AsyncLocalSender<(MultipartHeader, zmq::Message)>,
 ) -> Result<(), Error> {
@@ -4824,7 +4839,7 @@ async fn client_req_connection_inner(
         &packet_buf,
         deny,
         resolver,
-		cert_cache,
+        cert_cache,
         pool,
     );
 
@@ -4870,7 +4885,7 @@ pub async fn client_req_connection(
     timeout: Duration,
     deny: &[IpNet],
     resolver: &resolver::Resolver,
-	cert_cache: &CertCache,
+    cert_cache: &CertCache,
     pool: &ConnectionPool,
     zsender: AsyncLocalSender<(MultipartHeader, zmq::Message)>,
 ) {
@@ -4886,7 +4901,7 @@ pub async fn client_req_connection(
         timeout,
         deny,
         resolver,
-		cert_cache,
+        cert_cache,
         pool,
         zsender,
     )
@@ -5453,7 +5468,7 @@ async fn client_stream_connect<E, R1, R2>(
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
-	cert_cache: &CertCache,
+    cert_cache: &CertCache,
     pool: &ConnectionPool,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: &AsyncLocalSender<zmq::Message>,
@@ -5569,7 +5584,7 @@ where
                 deny,
                 pool,
                 &tls_waker_data,
-				cert_cache
+                cert_cache
             ));
 
             loop {
@@ -5695,7 +5710,7 @@ async fn client_stream_connection_inner<E>(
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
-	cert_cache: &CertCache,
+    cert_cache: &CertCache,
     pool: &ConnectionPool,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<zmq::Message>,
@@ -5740,7 +5755,7 @@ where
             deny,
             instance_id,
             resolver,
-			cert_cache,
+            cert_cache,
             pool,
             zreceiver,
             &zsender,
@@ -5842,7 +5857,7 @@ pub async fn client_stream_connection<E>(
     deny: &[IpNet],
     instance_id: &str,
     resolver: &resolver::Resolver,
-	cert_cache: &CertCache,
+    cert_cache: &CertCache,
     pool: &ConnectionPool,
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
     zsender: AsyncLocalSender<zmq::Message>,
@@ -5873,7 +5888,7 @@ pub async fn client_stream_connection<E>(
             deny,
             instance_id,
             resolver,
-			cert_cache,
+            cert_cache,
             pool,
             &zreceiver,
             zsender,
