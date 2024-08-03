@@ -41,7 +41,7 @@ signal-hook = "0.3"
 slab = "0.4"
 socket2 = "0.4"
 thiserror = "1.0"
-time = { version = "=0.3.18", features = ["formatting", "local-offset", "macros"] }
+time = { version = "0.3.36", features = ["formatting", "local-offset", "macros"] }
 url = "2.3"
 zmq = "0.9"
 
@@ -52,7 +52,7 @@ test-log = "0.2"
 
 [build-dependencies]
 pkg-config = "0.3"
-time = { version = "=0.3.18", features = ["formatting", "local-offset", "macros"] }
+time = { version = "0.3.36", features = ["formatting", "local-offset", "macros"] }
 cbindgen = "0.26"
 
 [[bench]]
