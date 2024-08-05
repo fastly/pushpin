@@ -477,7 +477,7 @@ fn apply_wants(e: &ssl::Error, interests: &mut Option<mio::Interest>) {
 
 #[derive(Clone)]
 struct CachedConnector {
-    connector: SslConnector,
+    connector: Arc<SslConnector>,
     created_at: Instant,
 }
 
@@ -503,12 +503,15 @@ impl CertCache {
         &self,
         domain: &str,
         verify_mode: VerifyMode,
-    ) -> Result<SslConnector, ErrorStack> {
-        let mut cache = self.cache.lock().unwrap();
+    ) -> Result<Arc<SslConnector>, ErrorStack> {
+        let mut cache = self
+            .cache
+            .lock()
+            .expect("Failed to obtain the lock on the connector cache");
 
         if let Some(cached) = cache.get(domain) {
             if cached.created_at.elapsed() < Duration::from_secs(60) {
-                return Ok(cached.connector.clone());
+                return Ok(Arc::clone(&cached.connector));
             }
         }
 
@@ -517,12 +520,12 @@ impl CertCache {
             VerifyMode::Full => builder.set_verify(SslVerifyMode::PEER),
             VerifyMode::None => builder.set_verify(SslVerifyMode::NONE),
         }
-        let connector = builder.build();
+        let connector = Arc::new(builder.build());
 
         cache.insert(
             domain.to_string(),
             CachedConnector {
-                connector: connector.clone(),
+                connector: Arc::clone(&connector),
                 created_at: Instant::now(),
             },
         );
@@ -554,7 +557,8 @@ where
         cert_cache: &CertCache,
     ) -> Result<Self, (T, ssl::Error)> {
         Self::new(true, stream, |stream| {
-            let connector = cert_cache.get_or_create_connector(domain, verify_mode)?;
+            let connector =
+                cert_cache.get_or_create_connector(&domain.to_lowercase(), verify_mode)?;
 
             let stream = match connector.connect(domain, stream) {
                 Ok(stream) => Stream::Ssl(stream),
