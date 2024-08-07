@@ -1,0 +1,224 @@
+name: CI
+on:
+  pull_request:
+    branches: 
+      - main
+defaults:
+  run:
+     shell: bash -leo pipefail {0}
+jobs:
+  check:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          target/
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+    - name: check
+      run: cargo +${{ matrix.rust-version }} c
+  clippy:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: check
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          target/
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+    - name: clippy
+      run: cargo +${{ matrix.rust-version }} clippy -- -D warnings
+  lint:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: check
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          target/
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+    - name: fmt
+      run: cargo +${{ matrix.rust-version }} fmt --check
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: check
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          target/
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+    - name: build
+      run: RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} b
+  audit:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: build
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          target/
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+    - name: audit
+      run: cargo +${{ matrix.rust-version }} audit
+  test:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: build
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          target/
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+    - name: test
+      run: cargo +${{ matrix.rust-version }} test --all --all-features 
+  benchmark:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: build
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          target/
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+    - name: bench
+      run: RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} bench --no-run
+  build-full:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: [audit, test]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          target/
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+    - name: build
+      run: TOOLCHAIN=${{ matrix.rust-version }} RELEASE=1 RUSTFLAGS="-D warnings" make build
