@@ -1,5 +1,5 @@
 on: pull_request
-name: Test
+name: Audit
 jobs:
   test:
     strategy:
@@ -23,6 +23,6 @@ jobs:
       with:
         path: ~/.cargo/git
         key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-    - name: test
-      run: cargo test --all --all-features 
+    - name: audit
+      run: cargo audit
       shell: bash

@@ -1,5 +1,5 @@
 on: pull_request
-name: Test
+name: Clippy
 jobs:
   test:
     strategy:
@@ -23,6 +23,7 @@ jobs:
       with:
         path: ~/.cargo/git
         key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-    - name: test
-      run: cargo test --all --all-features 
+    - name: clippy
+      run: cargo clippy -- -D warnings
       shell: bash
+

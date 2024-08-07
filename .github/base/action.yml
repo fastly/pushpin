@@ -1,0 +1,20 @@
+name: "Environment Setup"
+description: "Composite action to set up our environments in a standard way"
+runs:
+  using: "composite"
+  steps:
+    - name: "Code Checkout"
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        submodules: recursive
+    - name: "Rust Toolchain Setup"
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: [stable, nightly]
+        targets: x86_64-unknown-linux-gnu
+        components: rustfmt, clippy
+    - name: Install audit
+      run: cargo install --version 0.17.6 --locked cargo-audit
+    - name: Install deps
+      run: sudo apt-get update && sudo apt-get install -y make g++ libssl-dev libzmq3-dev qtbase5-dev libboost-dev
