@@ -97,3 +97,7 @@ bench = false
 name = "pushpin-publish"
 test = false
 bench = false
+
+[lints.rust]
+
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(qt_lib_prefix, values("Qt", "Qt6", "Qt5"))'] }
