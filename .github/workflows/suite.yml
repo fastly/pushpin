@@ -32,7 +32,7 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
     - name: check
-      run: cargo +${{ matrix.rust-version }} c
+      run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} c
   clippy:
     strategy:
       fail-fast: true
@@ -59,7 +59,7 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
     - name: clippy
-      run: cargo +${{ matrix.rust-version }} clippy -- -D warnings
+      run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} clippy -- -D warnings
   lint:
     strategy:
       fail-fast: true
@@ -86,7 +86,7 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
     - name: fmt
-      run: cargo +${{ matrix.rust-version }} fmt --check
+      run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} fmt --check
   build:
     strategy:
       fail-fast: true
@@ -113,7 +113,7 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
     - name: build
-      run: RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} b
+      run: RUSTFLAGS="-D warnings" TOOLCHAIN=${{ matrix.rust-version }} make build
   audit:
     strategy:
       fail-fast: true
@@ -140,7 +140,7 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
     - name: audit
-      run: cargo +${{ matrix.rust-version }} audit
+      run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} audit
   test:
     strategy:
       fail-fast: true
@@ -167,7 +167,7 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
     - name: test
-      run: cargo +${{ matrix.rust-version }} test --all --all-features 
+      run: TOOLCHAIN=${{ matrix.rust-version }} make test
   benchmark:
     strategy:
       fail-fast: true
@@ -220,5 +220,5 @@ jobs:
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
-    - name: build
+    - name: build release
       run: TOOLCHAIN=${{ matrix.rust-version }} RELEASE=1 RUSTFLAGS="-D warnings" make build
