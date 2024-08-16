@@ -26,6 +26,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
+        rust-toolchain: [1.70.0, stable]
         include:
         - language: c-cpp
           build-mode: manual
@@ -33,22 +34,11 @@ jobs:
           build-mode: none
         - language: python
           build-mode: none
-        rust-toolchain: [1.70.0, stable]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3

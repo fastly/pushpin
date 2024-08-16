@@ -19,18 +19,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     - name: check
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} c
   clippy:
@@ -46,18 +36,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     - name: clippy
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} clippy -- -D warnings
   lint:
@@ -73,18 +53,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     - name: fmt
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} fmt --check
   build:
@@ -100,18 +70,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     - name: build
       run: RUSTFLAGS="-D warnings" TOOLCHAIN=${{ matrix.rust-version }} make build
   audit:
@@ -127,18 +87,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     - name: audit
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} audit
   test:
@@ -154,18 +104,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     - name: test
       run: TOOLCHAIN=${{ matrix.rust-version }} make cargo-test
   benchmark:
@@ -181,18 +121,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     - name: bench
       run: RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} bench --no-run
   build-full:
@@ -208,17 +138,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          /root/.cargo/bin/
-          /root/.cargo/registry/index/
-          /root/.cargo/registry/cache/
-          /root/.cargo/git/db/
-          **/target
-        save-always: true
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
     - name: build release
       run: TOOLCHAIN=${{ matrix.rust-version }} RELEASE=1 RUSTFLAGS="-D warnings" make build
