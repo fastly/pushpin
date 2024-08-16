@@ -16,7 +16,7 @@ build: FORCE
 	cargo $(CARGO_TOOLCHAIN) build $(cargo_flags)
 
 cargo-test: FORCE
-	cargo $(CARGO_TOOLCHAIN) test $(cargo_flags)
+	cargo $(CARGO_TOOLCHAIN) test $(cargo_flags) --all-features
 
 cargo-clean: FORCE
 	cargo clean
