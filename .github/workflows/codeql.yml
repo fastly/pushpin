@@ -24,7 +24,7 @@ jobs:
       contents: read
 
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
         - language: c-cpp
@@ -33,12 +33,22 @@ jobs:
           build-mode: none
         - language: python
           build-mode: none
+        rust-toolchain: [1.70.0, stable]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    - name: rustup select
-      run: rustup default stable
-      shell: bash
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          /root/.cargo/bin/
+          /root/.cargo/registry/index/
+          /root/.cargo/registry/cache/
+          /root/.cargo/git/db/
+          **/target
+        save-always: true
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
@@ -47,7 +57,7 @@ jobs:
         build-mode: ${{ matrix.build-mode }}
     - if: matrix.build-mode == 'manual'
       shell: bash
-      run: make
+      run: TOOLCHAIN=${{ matrix.rust-toolchain }} make build
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:

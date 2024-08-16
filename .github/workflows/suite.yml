@@ -27,7 +27,7 @@ jobs:
           /root/.cargo/registry/index/
           /root/.cargo/registry/cache/
           /root/.cargo/git/db/
-          target/
+          **/target
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
@@ -54,7 +54,7 @@ jobs:
           /root/.cargo/registry/index/
           /root/.cargo/registry/cache/
           /root/.cargo/git/db/
-          target/
+          **/target
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
@@ -81,7 +81,7 @@ jobs:
           /root/.cargo/registry/index/
           /root/.cargo/registry/cache/
           /root/.cargo/git/db/
-          target/
+          **/target
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
@@ -108,7 +108,7 @@ jobs:
           /root/.cargo/registry/index/
           /root/.cargo/registry/cache/
           /root/.cargo/git/db/
-          target/
+          **/target
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
@@ -135,7 +135,7 @@ jobs:
           /root/.cargo/registry/index/
           /root/.cargo/registry/cache/
           /root/.cargo/git/db/
-          target/
+          **/target
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
@@ -162,12 +162,12 @@ jobs:
           /root/.cargo/registry/index/
           /root/.cargo/registry/cache/
           /root/.cargo/git/db/
-          target/
+          **/target
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
     - name: test
-      run: TOOLCHAIN=${{ matrix.rust-version }} make test
+      run: TOOLCHAIN=${{ matrix.rust-version }} make cargo-test
   benchmark:
     strategy:
       fail-fast: true
@@ -189,7 +189,7 @@ jobs:
           /root/.cargo/registry/index/
           /root/.cargo/registry/cache/
           /root/.cargo/git/db/
-          target/
+          **/target
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
@@ -216,7 +216,7 @@ jobs:
           /root/.cargo/registry/index/
           /root/.cargo/registry/cache/
           /root/.cargo/git/db/
-          target/
+          **/target
         save-always: true
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
