@@ -21,6 +21,8 @@ jobs:
         submodules: recursive
     - name: Cache
       uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
     - name: check
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} c
   clippy:
@@ -38,6 +40,8 @@ jobs:
         submodules: recursive
     - name: Cache
       uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
     - name: clippy
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} clippy -- -D warnings
   lint:
@@ -55,6 +59,8 @@ jobs:
         submodules: recursive
     - name: Cache
       uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
     - name: fmt
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} fmt --check
   build:
@@ -72,6 +78,8 @@ jobs:
         submodules: recursive
     - name: Cache
       uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
     - name: build
       run: RUSTFLAGS="-D warnings" TOOLCHAIN=${{ matrix.rust-version }} make build
   audit:
@@ -89,6 +97,8 @@ jobs:
         submodules: recursive
     - name: Cache
       uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
     - name: audit
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} audit
   test:
@@ -106,6 +116,8 @@ jobs:
         submodules: recursive
     - name: Cache
       uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
     - name: test
       run: TOOLCHAIN=${{ matrix.rust-version }} make cargo-test
   benchmark:
@@ -123,6 +135,8 @@ jobs:
         submodules: recursive
     - name: Cache
       uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"      
     - name: bench
       run: RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} bench --no-run
   build-full:
@@ -140,5 +154,7 @@ jobs:
         submodules: recursive
     - name: Cache
       uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
     - name: build release
       run: TOOLCHAIN=${{ matrix.rust-version }} RELEASE=1 RUSTFLAGS="-D warnings" make build
