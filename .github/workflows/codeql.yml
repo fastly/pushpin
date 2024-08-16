@@ -26,7 +26,6 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rust-toolchain: [1.70.0, stable]
         include:
         - language: c-cpp
           build-mode: manual
@@ -49,7 +48,7 @@ jobs:
         build-mode: ${{ matrix.build-mode }}
     - if: matrix.build-mode == 'manual'
       shell: bash
-      run: TOOLCHAIN=${{ matrix.rust-toolchain }} make build
+      run: make build
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
