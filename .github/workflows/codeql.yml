@@ -12,7 +12,7 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: 'ubuntu-latest'
-    container: deg4uss3r42/fanout-base:latest
+    container: fanout/build-base:latest
     timeout-minutes: 15
     permissions:
       # required for all workflows
