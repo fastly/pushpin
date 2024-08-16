@@ -5,17 +5,18 @@ cargo_flags =
 endif
 
 ifdef TOOLCHAIN
+CARGO_TOOLCHAIN=+$(TOOLCHAIN)
 else 
-TOOLCHAIN=stable
+CARGO_TOOLCHAIN = 
 endif
 
 all: postbuild
 
 build: FORCE
-	cargo +$(TOOLCHAIN) build $(cargo_flags)
+	cargo $(CARGO_TOOLCHAIN) build $(cargo_flags)
 
 cargo-test: FORCE
-	cargo test $(cargo_flags)
+	cargo $(CARGO_TOOLCHAIN) test $(cargo_flags)
 
 cargo-clean: FORCE
 	cargo clean
