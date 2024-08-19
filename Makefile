@@ -1,16 +1,22 @@
 ifdef RELEASE
-cargo_flags = --offline --release
+cargo_flags = --offline --locked --release
 else
 cargo_flags =
+endif
+
+ifdef TOOLCHAIN
+CARGO_TOOLCHAIN=+$(TOOLCHAIN)
+else 
+CARGO_TOOLCHAIN = 
 endif
 
 all: postbuild
 
 build: FORCE
-	cargo build $(cargo_flags)
+	cargo $(CARGO_TOOLCHAIN) build $(cargo_flags)
 
 cargo-test: FORCE
-	cargo test $(cargo_flags)
+	cargo $(CARGO_TOOLCHAIN) test $(cargo_flags) --all-features
 
 cargo-clean: FORCE
 	cargo clean
