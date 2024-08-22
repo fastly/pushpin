@@ -1,0 +1,160 @@
+name: CI
+on:
+  pull_request:
+    branches: 
+      - main
+defaults:
+  run:
+     shell: bash -leo pipefail {0}
+jobs:
+  check:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
+    - name: check
+      run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} c
+  clippy:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: check
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
+    - name: clippy
+      run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} clippy -- -D warnings
+  lint:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: check
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
+    - name: fmt
+      run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} fmt --check
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: check
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
+    - name: build
+      run: RUSTFLAGS="-D warnings" TOOLCHAIN=${{ matrix.rust-version }} make build
+  audit:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: build
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
+    - name: audit
+      run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} audit
+  test:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: build
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
+    - name: test
+      run: TOOLCHAIN=${{ matrix.rust-version }} make cargo-test
+  benchmark:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: build
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"      
+    - name: bench
+      run: RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} bench --no-run
+  build-full:
+    strategy:
+      fail-fast: true
+      matrix:
+        rust-version: [stable, 1.70.0]
+    runs-on: ubuntu-20.04
+    container: fanout/build-base:latest
+    needs: [audit, test]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "CI-Suite"
+    - name: build release
+      run: TOOLCHAIN=${{ matrix.rust-version }} RELEASE=1 RUSTFLAGS="-D warnings" make build
