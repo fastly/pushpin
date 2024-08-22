@@ -38,7 +38,9 @@ use crate::core::reactor::Reactor;
 use crate::core::select::{
     select_2, select_3, select_6, select_8, select_option, Select2, Select3, Select6, Select8,
 };
-use crate::core::task::{event_wait, yield_to_local_events, CancellationSender, CancellationToken};
+use crate::core::task::{
+    self, event_wait, yield_to_local_events, CancellationSender, CancellationToken,
+};
 use crate::core::time::Timeout;
 use crate::core::tnetstring;
 use crate::core::waker::RefWakerData;
@@ -1435,6 +1437,8 @@ impl Worker {
         let req_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
         let req_resp_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
 
+        let resume_waker = task::create_resume_waker();
+
         debug!("server-worker {}: task started: req_handle", id);
 
         let mut handle_send = pin!(None);
@@ -1540,7 +1544,9 @@ impl Worker {
                             id, count
                         );
 
-                        yield_to_local_events().await;
+                        if count > 0 {
+                            yield_to_local_events(&resume_waker).await;
+                        }
                     }
                     Err(e) => panic!("server-worker {}: handle read error {}", id, e),
                 },
@@ -1568,6 +1574,8 @@ impl Worker {
 
         let stream_scratch_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
         let stream_resp_mem = Rc::new(arena::RcMemory::new(msg_retained_max));
+
+        let resume_waker = task::create_resume_waker();
 
         debug!("server-worker {}: task started: stream_handle", id);
 
@@ -1716,7 +1724,7 @@ impl Worker {
                             );
 
                             if count > 0 {
-                                yield_to_local_events().await;
+                                yield_to_local_events(&resume_waker).await;
                             }
                         }
                         Err(e) => panic!("server-worker {}: handle read error {}", id, e),

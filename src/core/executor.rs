@@ -41,7 +41,20 @@ struct TaskWaker {
 impl waker::RcWake for TaskWaker {
     fn wake(self: Rc<Self>) {
         if let Some(tasks) = self.tasks.upgrade() {
-            tasks.wake(self.task_id);
+            tasks.wake(self.task_id, false);
+        }
+    }
+}
+
+struct TaskResumeWaker {
+    tasks: Weak<Tasks>,
+    task_id: usize,
+}
+
+impl waker::RcWake for TaskResumeWaker {
+    fn wake(self: Rc<Self>) {
+        if let Some(tasks) = self.tasks.upgrade() {
+            tasks.wake(self.task_id, true);
         }
     }
 }
@@ -58,12 +71,15 @@ fn poll_fut(fut: &mut BoxFuture, waker: Waker) -> bool {
 struct Task {
     fut: Option<Pin<Box<dyn Future<Output = ()>>>>,
     wakeable: bool,
+    low: bool,
 }
 
 struct TasksData {
     nodes: Slab<list::Node<Task>>,
     next: list::List,
+    next_low: list::List,
     wakers: Vec<Rc<TaskWaker>>,
+    current_task: Option<usize>,
 }
 
 struct Tasks {
@@ -76,7 +92,9 @@ impl Tasks {
         let data = TasksData {
             nodes: Slab::with_capacity(max),
             next: list::List::default(),
+            next_low: list::List::default(),
             wakers: Vec::with_capacity(max),
+            current_task: None,
         };
 
         let tasks = Rc::new(Self {
@@ -103,7 +121,7 @@ impl Tasks {
     }
 
     fn have_next(&self) -> bool {
-        !self.data.borrow().next.is_empty()
+        !self.data.borrow().next.is_empty() || !self.data.borrow().next_low.is_empty()
     }
 
     fn add<F>(&self, fut: F) -> Result<(), ()>
@@ -122,6 +140,7 @@ impl Tasks {
         let task = Task {
             fut: Some(Box::pin(fut)),
             wakeable: false,
+            low: false,
         };
 
         entry.insert(list::Node::new(task));
@@ -144,23 +163,35 @@ impl Tasks {
         // at this point, we should be the only remaining owner
         assert_eq!(Rc::strong_count(&data.wakers[nkey]), 1);
 
-        data.next.remove(&mut data.nodes, nkey);
+        if task.low {
+            data.next_low.remove(&mut data.nodes, nkey);
+        } else {
+            data.next.remove(&mut data.nodes, nkey);
+        }
+
         data.nodes.remove(nkey);
     }
 
-    fn take_next_list(&self) -> list::List {
+    fn current_task(&self) -> Option<usize> {
+        self.data.borrow().current_task
+    }
+
+    fn set_current_task(&self, task_id: Option<usize>) {
+        self.data.borrow_mut().current_task = task_id;
+    }
+
+    fn take_next_list(&self, low: bool) -> list::List {
         let data = &mut *self.data.borrow_mut();
 
         let mut l = list::List::default();
-        l.concat(&mut data.nodes, &mut data.next);
+
+        if low {
+            l.concat(&mut data.nodes, &mut data.next_low);
+        } else {
+            l.concat(&mut data.nodes, &mut data.next);
+        }
 
         l
-    }
-
-    fn append_to_next_list(&self, mut l: list::List) {
-        let data = &mut *self.data.borrow_mut();
-
-        data.next.concat(&mut data.nodes, &mut l);
     }
 
     fn take_task(&self, l: &mut list::List) -> Option<(usize, BoxFuture, Waker)> {
@@ -184,13 +215,17 @@ impl Tasks {
         Some((nkey, fut, waker))
     }
 
-    fn process_next(&self) {
-        let mut l = self.take_next_list();
+    fn process_next(&self, low: bool) {
+        let mut l = self.take_next_list(low);
 
         while let Some((task_id, mut fut, waker)) = self.take_task(&mut l) {
+            self.set_current_task(Some(task_id));
+
             self.pre_poll();
 
             let done = poll_fut(&mut fut, waker);
+
+            self.set_current_task(None);
 
             // take_task() took the future out of the task, so we
             // could poll it without having to maintain a borrow of
@@ -213,20 +248,56 @@ impl Tasks {
         task.fut = Some(fut);
     }
 
-    fn wake(&self, task_id: usize) {
+    fn wake(&self, task_id: usize, resume: bool) {
         let nkey = task_id;
 
         let data = &mut *self.data.borrow_mut();
 
-        let node = &mut data.nodes[nkey];
+        let task = &mut data.nodes[nkey].value;
 
-        if !node.value.wakeable {
+        if !task.wakeable && !resume {
             return;
         }
 
-        node.value.wakeable = false;
+        task.wakeable = false;
 
-        data.next.push_back(&mut data.nodes, nkey);
+        if data.current_task == Some(task_id) || resume {
+            // if a task triggers its own waker, queue with low priority in
+            // order to achieve a yielding effect. do the same when waking
+            // with resume mode, to achieve a yielding effect even when the
+            // wake occurs during events processing
+
+            task.low = true;
+            data.next_low.push_back(&mut data.nodes, nkey);
+        } else {
+            task.low = false;
+            data.next.push_back(&mut data.nodes, nkey);
+        }
+    }
+
+    fn ignore_wakes(&self, task_id: usize) {
+        let nkey = task_id;
+
+        let data = &mut *self.data.borrow_mut();
+
+        // tasks other than the current task may be in a temporary list
+        // during task processing, in which case removal to prevent wakes is
+        // not possible
+        assert_eq!(
+            data.current_task,
+            Some(task_id),
+            "ignore_wakes can only be self-applied"
+        );
+
+        let task = &mut data.nodes[nkey].value;
+
+        task.wakeable = false;
+
+        if task.low {
+            data.next_low.remove(&mut data.nodes, nkey);
+        } else {
+            data.next.remove(&mut data.nodes, nkey);
+        }
     }
 
     fn set_pre_poll<F>(&self, pre_poll_fn: F)
@@ -244,6 +315,9 @@ impl Tasks {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct CurrentTaskError;
 
 pub struct Executor {
     tasks: Rc<Tasks>,
@@ -287,7 +361,8 @@ impl Executor {
 
     pub fn run_until_stalled(&self) {
         while self.tasks.have_next() {
-            self.tasks.process_next()
+            self.tasks.process_next(false);
+            self.tasks.process_next(true);
         }
     }
 
@@ -296,33 +371,33 @@ impl Executor {
         F: FnMut(Option<Duration>) -> Result<(), io::Error>,
     {
         loop {
-            self.tasks.process_next();
+            // run normal priority only
+            self.tasks.process_next(false);
 
             if !self.have_tasks() {
                 break;
             }
 
-            let (timeout, low_priority_tasks) = if self.tasks.have_next() {
+            let timeout = if self.tasks.have_next() {
                 // some tasks trigger their own waker and return Pending in
                 // order to achieve a yielding effect. in that case they will
-                // already be queued up for processing again. move these
-                // tasks aside so that they can be deprioritized, and use a
-                // timeout of 0 when parking so we can quickly resume them
+                // already be queued up for processing again. use a timeout
+                // of 0 when parking so we can quickly resume them
 
                 let timeout = Duration::from_millis(0);
-                let l = self.tasks.take_next_list();
 
-                (Some(timeout), Some(l))
+                Some(timeout)
             } else {
-                (None, None)
+                None
             };
 
             park(timeout)?;
 
-            // requeue any tasks that had yielded
-            if let Some(l) = low_priority_tasks {
-                self.tasks.append_to_next_list(l);
-            }
+            // run normal priority again, in case the park triggered wakers
+            self.tasks.process_next(false);
+
+            // finally, run low priority (mainly yielding tasks)
+            self.tasks.process_next(true);
         }
 
         Ok(())
@@ -339,6 +414,31 @@ impl Executor {
     pub fn spawner(&self) -> Spawner {
         Spawner {
             tasks: Rc::downgrade(&self.tasks),
+        }
+    }
+
+    pub fn create_resume_waker_for_current_task(&self) -> Result<Waker, CurrentTaskError> {
+        match self.tasks.current_task() {
+            Some(task_id) => {
+                let waker = Rc::new(TaskResumeWaker {
+                    tasks: Rc::downgrade(&self.tasks),
+                    task_id,
+                });
+
+                Ok(waker::into_std(waker))
+            }
+            None => Err(CurrentTaskError),
+        }
+    }
+
+    pub fn ignore_wakes_for_current_task(&self) -> Result<(), CurrentTaskError> {
+        match self.tasks.current_task() {
+            Some(task_id) => {
+                self.tasks.ignore_wakes(task_id);
+
+                Ok(())
+            }
+            None => Err(CurrentTaskError),
         }
     }
 }
@@ -678,5 +778,46 @@ mod tests {
         executor.run(|_| Ok(())).unwrap();
 
         assert_eq!(flag.get(), true);
+    }
+
+    #[test]
+    fn test_executor_ignore_resume_wakes() {
+        let executor = Executor::new(1);
+
+        // can't create a resume waker or ignore wakes outside of task
+        assert!(executor.create_resume_waker_for_current_task().is_err());
+        assert!(executor.ignore_wakes_for_current_task().is_err());
+
+        let resume_waker: Rc<Cell<Option<Waker>>> = Rc::new(Cell::new(None));
+
+        let fut = TestFuture::new();
+        let handle = fut.handle();
+
+        {
+            let resume_waker = Rc::clone(&resume_waker);
+
+            executor
+                .spawn(async move {
+                    let executor = Executor::current().unwrap();
+                    resume_waker.set(Some(
+                        executor.create_resume_waker_for_current_task().unwrap(),
+                    ));
+                    executor.ignore_wakes_for_current_task().unwrap();
+                    fut.await;
+                })
+                .unwrap();
+        }
+
+        executor.run_until_stalled();
+        assert_eq!(executor.have_tasks(), true);
+
+        handle.set_ready();
+        executor.run_until_stalled();
+        assert_eq!(executor.have_tasks(), true);
+
+        resume_waker.take().take().unwrap().wake();
+
+        executor.run_until_stalled();
+        assert_eq!(executor.have_tasks(), false);
     }
 }
