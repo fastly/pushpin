@@ -1,6 +1,10 @@
 Pushpin Changelog
 =================
 
+v. 1.40.1 (2024-08-13)
+
+  * Fix build with recent rustc.
+
 v. 1.40.0 (2024-07-17)
 
   * Restore support for receiving chunked responses from backends.

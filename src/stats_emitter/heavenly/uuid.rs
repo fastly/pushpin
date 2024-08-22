@@ -9,7 +9,7 @@ mod macros;
 mod error;
 
 /// Unit tests for Heavenly identifiers.
-#[cfg(tests)]
+#[cfg(test)]
 mod tests;
 
 pub use self::error::ParseError;
