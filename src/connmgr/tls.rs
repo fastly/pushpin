@@ -52,6 +52,7 @@ use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant, SystemTime};
 
 const DOMAIN_LEN_MAX: usize = 253;
+const CONFIG_CACHE_TTL: Duration = Duration::from_secs(60);
 
 enum IdentityError {
     InvalidName,
@@ -475,62 +476,71 @@ fn apply_wants(e: &ssl::Error, interests: &mut Option<mio::Interest>) {
     }
 }
 
-#[derive(Clone)]
-struct CachedConnector {
-    connector: Arc<SslConnector>,
-    created_at: Instant,
+struct Connector {
+    inner: Arc<SslConnector>,
+    created: Instant,
 }
 
-#[derive(Clone)]
-pub struct CertCache {
-    cache: Arc<Mutex<HashMap<String, CachedConnector>>>,
+struct Connectors {
+    verify_full: Option<Connector>,
+    verify_none: Option<Connector>,
 }
 
-impl Default for CertCache {
+// represents a cache of reusable data among sessions. internally, this data
+// consists of SslConnectors for the purpose of caching root certs read from
+// disk. the type is given a vague name in order to avoid committing to what
+// exactly is cached.
+pub struct TlsConfigCache {
+    connectors: Mutex<Connectors>,
+}
+
+impl Default for TlsConfigCache {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl CertCache {
+impl TlsConfigCache {
     pub fn new() -> Self {
         Self {
-            cache: Arc::new(Mutex::new(HashMap::new())),
+            connectors: Mutex::new(Connectors {
+                verify_full: None,
+                verify_none: None,
+            }),
         }
     }
 
-    pub fn get_or_create_connector(
-        &self,
-        domain: &str,
-        verify_mode: VerifyMode,
-    ) -> Result<Arc<SslConnector>, ErrorStack> {
-        let mut cache = self
-            .cache
+    fn get_connector(&self, verify_mode: VerifyMode) -> Result<Arc<SslConnector>, ErrorStack> {
+        let mut connectors = self
+            .connectors
             .lock()
-            .expect("Failed to obtain the lock on the connector cache");
+            .expect("failed to obtain lock on tls config cache");
 
-        if let Some(cached) = cache.get(domain) {
-            if cached.created_at.elapsed() < Duration::from_secs(60) {
-                return Ok(Arc::clone(&cached.connector));
+        let slot = match verify_mode {
+            VerifyMode::Full => &mut connectors.verify_full,
+            VerifyMode::None => &mut connectors.verify_none,
+        };
+
+        let connector = match slot {
+            Some(c) if c.created.elapsed() < CONFIG_CACHE_TTL => &c.inner,
+            _ => {
+                let mut builder = SslConnector::builder(SslMethod::tls())?;
+
+                match verify_mode {
+                    VerifyMode::Full => builder.set_verify(SslVerifyMode::PEER),
+                    VerifyMode::None => builder.set_verify(SslVerifyMode::NONE),
+                }
+
+                let c = slot.insert(Connector {
+                    inner: Arc::new(builder.build()),
+                    created: Instant::now(),
+                });
+
+                &c.inner
             }
-        }
+        };
 
-        let mut builder = SslConnector::builder(SslMethod::tls())?;
-        match verify_mode {
-            VerifyMode::Full => builder.set_verify(SslVerifyMode::PEER),
-            VerifyMode::None => builder.set_verify(SslVerifyMode::NONE),
-        }
-        let connector = Arc::new(builder.build());
-
-        cache.insert(
-            domain.to_string(),
-            CachedConnector {
-                connector: Arc::clone(&connector),
-                created_at: Instant::now(),
-            },
-        );
-
-        Ok(connector)
+        Ok(Arc::clone(connector))
     }
 }
 
@@ -554,11 +564,10 @@ where
         domain: &str,
         stream: T,
         verify_mode: VerifyMode,
-        cert_cache: &CertCache,
+        config_cache: &TlsConfigCache,
     ) -> Result<Self, (T, ssl::Error)> {
         Self::new(true, stream, |stream| {
-            let connector =
-                cert_cache.get_or_create_connector(&domain.to_lowercase(), verify_mode)?;
+            let connector = config_cache.get_connector(verify_mode)?;
 
             let stream = match connector.connect(domain, stream) {
                 Ok(stream) => Stream::Ssl(stream),
@@ -993,11 +1002,11 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
         stream: AsyncTcpStream,
         verify_mode: VerifyMode,
         waker_data: &'a RefWakerData<TlsWaker>,
-        cert_cache: &CertCache,
+        config_cache: &TlsConfigCache,
     ) -> Result<Self, ssl::Error> {
         let (registration, stream) = stream.into_evented().into_parts();
 
-        let stream = match TlsStream::connect(domain, stream, verify_mode, cert_cache) {
+        let stream = match TlsStream::connect(domain, stream, verify_mode, config_cache) {
             Ok(stream) => stream,
             Err((mut stream, e)) => {
                 registration.deregister_io(&mut stream).unwrap();
@@ -1350,8 +1359,8 @@ mod tests {
     #[test]
     fn test_get_change_inner() {
         let a = ReadWriteA { a: 1 };
-        let cc = CertCache::new();
-        let mut stream = TlsStream::connect("localhost", a, VerifyMode::Full, &cc).unwrap();
+        let mut stream =
+            TlsStream::connect("localhost", a, VerifyMode::Full, &TlsConfigCache::new()).unwrap();
         assert_eq!(stream.get_inner().a, 1);
         let mut stream = stream.change_inner(|_| ReadWriteB { b: 2 });
         assert_eq!(stream.get_inner().b, 2);
@@ -1360,11 +1369,11 @@ mod tests {
     #[test]
     fn test_connect_error() {
         let c = ReadWriteC { c: 1 };
-        let cc = CertCache::new();
-        let (stream, e) = match TlsStream::connect("localhost", c, VerifyMode::Full, &cc) {
-            Ok(_) => panic!("unexpected success"),
-            Err(ret) => ret,
-        };
+        let (stream, e) =
+            match TlsStream::connect("localhost", c, VerifyMode::Full, &TlsConfigCache::new()) {
+                Ok(_) => panic!("unexpected success"),
+                Err(ret) => ret,
+            };
         assert_eq!(stream.c, 1);
         assert_eq!(e.into_io_error().unwrap().kind(), io::ErrorKind::Other);
     }
@@ -1392,7 +1401,7 @@ mod tests {
                             stream,
                             VerifyMode::None,
                             &tls_waker_data,
-                            &CertCache::new(),
+                            &TlsConfigCache::new(),
                         )
                         .unwrap();
 
