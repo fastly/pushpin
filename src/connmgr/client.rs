@@ -670,9 +670,9 @@ impl Worker {
         allow_compression: bool,
         deny: &[IpNet],
         resolver: &Arc<Resolver>,
+        tls_config_cache: &Arc<TlsConfigCache>,
         pool: &Arc<ConnectionPool>,
         zsockman: &Arc<zhttpsocket::ServerSocketManager>,
-        tls_config_cache: &Arc<TlsConfigCache>,
         handle_bound: usize,
     ) -> Self {
         debug!("client worker {}: starting", id);
@@ -684,9 +684,9 @@ impl Worker {
         let blocks_avail = Arc::clone(blocks_avail);
         let deny = deny.to_vec();
         let resolver = Arc::clone(resolver);
+        let tls_config_cache = Arc::clone(tls_config_cache);
         let pool = Arc::clone(pool);
         let zsockman = Arc::clone(zsockman);
-        let tls_config_cache = Arc::clone(tls_config_cache);
 
         let thread = thread::Builder::new()
             .name(format!("client-worker-{}", id))
@@ -728,9 +728,9 @@ impl Worker {
                         allow_compression,
                         deny,
                         resolver,
+                        tls_config_cache,
                         pool,
                         zsockman,
-                        tls_config_cache,
                         handle_bound,
                     ))
                     .unwrap();
@@ -771,9 +771,9 @@ impl Worker {
         allow_compression: bool,
         deny: Vec<IpNet>,
         resolver: Arc<Resolver>,
+        tls_config_cache: Arc<TlsConfigCache>,
         pool: Arc<ConnectionPool>,
         zsockman: Arc<zhttpsocket::ServerSocketManager>,
-        tls_config_cache: Arc<TlsConfigCache>,
         handle_bound: usize,
     ) {
         let executor = Executor::current().unwrap();
@@ -831,13 +831,13 @@ impl Worker {
                 s_req_handle_done,
                 executor.spawner(),
                 Arc::clone(&resolver),
+                Arc::clone(&tls_config_cache),
                 Arc::clone(&pool),
                 req_handle,
                 req_maxconn,
                 req_conns,
                 body_buffer_size,
                 Rc::clone(&deny),
-                Arc::clone(&tls_config_cache),
                 handle_bound,
                 ConnectionOpts {
                     instance_id: instance_id.clone(),
@@ -961,13 +961,13 @@ impl Worker {
         _done: AsyncLocalSender<()>,
         spawner: Spawner,
         resolver: Arc<Resolver>,
+        tls_config_cache: Arc<TlsConfigCache>,
         conn_pool: Arc<ConnectionPool>,
         req_handle: zhttpsocket::AsyncServerReqHandle,
         req_maxconn: usize,
         conns: Rc<Connections>,
         body_buffer_size: usize,
         deny: Rc<Vec<IpNet>>,
-        tls_config_cache: Arc<TlsConfigCache>,
         handle_bound: usize,
         opts: ConnectionOpts,
     ) {
@@ -1131,9 +1131,9 @@ impl Worker {
                                 cid,
                                 (header, zreq),
                                 Arc::clone(&resolver),
+                                Arc::clone(&tls_config_cache),
                                 Arc::clone(&conn_pool),
                                 Rc::clone(&deny),
-                                Arc::clone(&tls_config_cache),
                                 opts.clone(),
                                 ConnectionReqOpts {
                                     body_buffer_size,
@@ -1497,9 +1497,9 @@ impl Worker {
         cid: Option<ArrayVec<u8, REQ_ID_MAX>>,
         zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
         resolver: Arc<Resolver>,
+        tls_config_cache: Arc<TlsConfigCache>,
         pool: Arc<ConnectionPool>,
         deny: Rc<Vec<IpNet>>,
-        tls_config_cache: Arc<TlsConfigCache>,
         opts: ConnectionOpts,
         req_opts: ConnectionReqOpts,
     ) {
@@ -1766,12 +1766,12 @@ impl Client {
     ) -> Result<Self, String> {
         assert!(blocks_max >= stream_maxconn * 2);
 
-        let tls_config_cache = Arc::new(TlsConfigCache::new());
-
         // 1 active query per connection
         let queries_max = req_maxconn + stream_maxconn;
 
         let resolver = Arc::new(Resolver::new(RESOLVER_THREADS, queries_max));
+
+        let tls_config_cache = Arc::new(TlsConfigCache::new());
 
         let pool_max = if event::can_move_mio_sockets_between_threads() {
             (req_maxconn + stream_maxconn) / 10
@@ -1806,9 +1806,9 @@ impl Client {
                 allow_compression,
                 deny,
                 &resolver,
+                &tls_config_cache,
                 &pool,
                 &zsockman,
-                &tls_config_cache,
                 handle_bound,
             );
             workers.push(w);
@@ -1847,8 +1847,8 @@ impl Client {
             let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
-            let pool = Arc::new(ConnectionPool::new(0));
             let tls_config_cache = Arc::new(TlsConfigCache::new());
+            let pool = Arc::new(ConnectionPool::new(0));
 
             let fut = Worker::req_connection_task(
                 stop,
@@ -1858,9 +1858,9 @@ impl Client {
                 None,
                 (MultipartHeader::new(), zreq),
                 resolver,
+                tls_config_cache,
                 pool,
                 Rc::new(Vec::new()),
-                tls_config_cache,
                 ConnectionOpts {
                     instance_id: Rc::new("".to_string()),
                     buffer_size: 0,
@@ -1912,8 +1912,8 @@ impl Client {
             let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
-            let pool = Arc::new(ConnectionPool::new(0));
             let tls_config_cache = Arc::new(TlsConfigCache::new());
+            let pool = Arc::new(ConnectionPool::new(0));
 
             let stream_shared_mem = Rc::new(arena::RcMemory::new(1));
 

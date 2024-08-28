@@ -4296,10 +4296,10 @@ async fn client_connect<'a>(
     rdata: &zhttppacket::RequestData<'_, '_>,
     uri: &url::Url,
     resolver: &resolver::Resolver,
+    tls_config_cache: &TlsConfigCache,
     deny: &[IpNet],
     pool: &ConnectionPool,
     tls_waker_data: &'a RefWakerData<TlsWaker>,
-    tls_config_cache: &TlsConfigCache,
 ) -> Result<(std::net::SocketAddr, bool, AsyncStream<'a>), Error> {
     let use_tls = ["https", "wss"].contains(&uri.scheme());
 
@@ -4725,10 +4725,10 @@ async fn client_req_connect(
             rdata,
             url,
             resolver,
+            tls_config_cache,
             deny,
             pool,
             &tls_waker_data,
-            tls_config_cache,
         )
         .await?;
 
@@ -5582,10 +5582,10 @@ where
                 rdata,
                 url,
                 resolver,
+                tls_config_cache,
                 deny,
                 pool,
                 &tls_waker_data,
-                tls_config_cache
             ));
 
             loop {
