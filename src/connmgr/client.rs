@@ -20,6 +20,7 @@ use crate::connmgr::connection::{
 };
 use crate::connmgr::counter::Counter;
 use crate::connmgr::resolver::Resolver;
+use crate::connmgr::tls::TlsConfigCache;
 use crate::connmgr::zhttppacket;
 use crate::connmgr::zhttpsocket::{self, SessionKey, FROM_MAX, REQ_ID_MAX};
 use crate::core::arena;
@@ -669,6 +670,7 @@ impl Worker {
         allow_compression: bool,
         deny: &[IpNet],
         resolver: &Arc<Resolver>,
+        tls_config_cache: &Arc<TlsConfigCache>,
         pool: &Arc<ConnectionPool>,
         zsockman: &Arc<zhttpsocket::ServerSocketManager>,
         handle_bound: usize,
@@ -682,6 +684,7 @@ impl Worker {
         let blocks_avail = Arc::clone(blocks_avail);
         let deny = deny.to_vec();
         let resolver = Arc::clone(resolver);
+        let tls_config_cache = Arc::clone(tls_config_cache);
         let pool = Arc::clone(pool);
         let zsockman = Arc::clone(zsockman);
 
@@ -725,6 +728,7 @@ impl Worker {
                         allow_compression,
                         deny,
                         resolver,
+                        tls_config_cache,
                         pool,
                         zsockman,
                         handle_bound,
@@ -767,6 +771,7 @@ impl Worker {
         allow_compression: bool,
         deny: Vec<IpNet>,
         resolver: Arc<Resolver>,
+        tls_config_cache: Arc<TlsConfigCache>,
         pool: Arc<ConnectionPool>,
         zsockman: Arc<zhttpsocket::ServerSocketManager>,
         handle_bound: usize,
@@ -826,6 +831,7 @@ impl Worker {
                 s_req_handle_done,
                 executor.spawner(),
                 Arc::clone(&resolver),
+                Arc::clone(&tls_config_cache),
                 Arc::clone(&pool),
                 req_handle,
                 req_maxconn,
@@ -858,6 +864,7 @@ impl Worker {
                     zstream_out_sender,
                     executor.spawner(),
                     Arc::clone(&resolver),
+                    Arc::clone(&tls_config_cache),
                     Arc::clone(&pool),
                     stream_handle,
                     stream_maxconn,
@@ -954,6 +961,7 @@ impl Worker {
         _done: AsyncLocalSender<()>,
         spawner: Spawner,
         resolver: Arc<Resolver>,
+        tls_config_cache: Arc<TlsConfigCache>,
         conn_pool: Arc<ConnectionPool>,
         req_handle: zhttpsocket::AsyncServerReqHandle,
         req_maxconn: usize,
@@ -1123,6 +1131,7 @@ impl Worker {
                                 cid,
                                 (header, zreq),
                                 Arc::clone(&resolver),
+                                Arc::clone(&tls_config_cache),
                                 Arc::clone(&conn_pool),
                                 Rc::clone(&deny),
                                 opts.clone(),
@@ -1161,6 +1170,7 @@ impl Worker {
         zstream_out_sender: channel::LocalSender<zmq::Message>,
         spawner: Spawner,
         resolver: Arc<Resolver>,
+        tls_config_cache: Arc<TlsConfigCache>,
         conn_pool: Arc<ConnectionPool>,
         stream_handle: zhttpsocket::AsyncServerStreamHandle,
         stream_maxconn: usize,
@@ -1352,6 +1362,7 @@ impl Worker {
                                     cid,
                                     arena::Rc::clone(&zreq),
                                     Arc::clone(&resolver),
+                                    Arc::clone(&tls_config_cache),
                                     Arc::clone(&conn_pool),
                                     zstream_receiver,
                                     Rc::clone(&deny),
@@ -1486,6 +1497,7 @@ impl Worker {
         cid: Option<ArrayVec<u8, REQ_ID_MAX>>,
         zreq: (MultipartHeader, arena::Rc<zhttppacket::OwnedRequest>),
         resolver: Arc<Resolver>,
+        tls_config_cache: Arc<TlsConfigCache>,
         pool: Arc<ConnectionPool>,
         deny: Rc<Vec<IpNet>>,
         opts: ConnectionOpts,
@@ -1520,6 +1532,7 @@ impl Worker {
             opts.timeout,
             &deny,
             &resolver,
+            &tls_config_cache,
             &pool,
             AsyncLocalSender::new(req_opts.sender),
         )
@@ -1542,6 +1555,7 @@ impl Worker {
         cid: ArrayVec<u8, REQ_ID_MAX>,
         zreq: arena::Rc<zhttppacket::OwnedRequest>,
         resolver: Arc<Resolver>,
+        tls_config_cache: Arc<TlsConfigCache>,
         pool: Arc<ConnectionPool>,
         zreceiver: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
         deny: Rc<Vec<IpNet>>,
@@ -1584,6 +1598,7 @@ impl Worker {
             &deny,
             &opts.instance_id,
             &resolver,
+            &tls_config_cache,
             &pool,
             zreceiver,
             AsyncLocalSender::new(stream_opts.sender),
@@ -1756,6 +1771,8 @@ impl Client {
 
         let resolver = Arc::new(Resolver::new(RESOLVER_THREADS, queries_max));
 
+        let tls_config_cache = Arc::new(TlsConfigCache::new());
+
         let pool_max = if event::can_move_mio_sockets_between_threads() {
             (req_maxconn + stream_maxconn) / 10
         } else {
@@ -1789,6 +1806,7 @@ impl Client {
                 allow_compression,
                 deny,
                 &resolver,
+                &tls_config_cache,
                 &pool,
                 &zsockman,
                 handle_bound,
@@ -1829,6 +1847,7 @@ impl Client {
             let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
+            let tls_config_cache = Arc::new(TlsConfigCache::new());
             let pool = Arc::new(ConnectionPool::new(0));
 
             let fut = Worker::req_connection_task(
@@ -1839,6 +1858,7 @@ impl Client {
                 None,
                 (MultipartHeader::new(), zreq),
                 resolver,
+                tls_config_cache,
                 pool,
                 Rc::new(Vec::new()),
                 ConnectionOpts {
@@ -1892,6 +1912,7 @@ impl Client {
             let zreq = arena::Rc::new(zreq, &req_req_mem).unwrap();
 
             let resolver = Arc::new(Resolver::new(1, 1));
+            let tls_config_cache = Arc::new(TlsConfigCache::new());
             let pool = Arc::new(ConnectionPool::new(0));
 
             let stream_shared_mem = Rc::new(arena::RcMemory::new(1));
@@ -1906,6 +1927,7 @@ impl Client {
                 ArrayVec::new(),
                 zreq,
                 resolver,
+                tls_config_cache,
                 pool,
                 zreceiver,
                 Rc::new(Vec::new()),
