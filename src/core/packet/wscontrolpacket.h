@@ -64,6 +64,7 @@ public:
 		QByteArray route;
 		bool separateStats;
 		QByteArray channelPrefix;
+		int logLevel;
 		QByteArray channel;
 		int ttl;
 		int timeout;
@@ -74,6 +75,7 @@ public:
 			queue(false),
 			code(-1),
 			separateStats(false),
+			logLevel(-1),
 			ttl(-1),
 			timeout(-1)
 		{

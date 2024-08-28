@@ -1330,6 +1330,7 @@ public:
 			adata.route = route.id;
 			adata.separateStats = route.separateStats;
 			adata.channelPrefix = route.prefix;
+			adata.logLevel = route.logLevel;
 			foreach(const QString &s, target.subscriptions)
 				adata.channels += s.toUtf8();
 			adata.trusted = target.trusted;
