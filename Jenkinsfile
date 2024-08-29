@@ -21,8 +21,9 @@ def namedBuild = ''
 def tagName = null
 def slackChannel = null
 def emailToSlack = [
-  'fdeweerdt@fastly.com': '@fdeweerdt',
   'jkarneges@fastly.com': '@jkarneges',
+  'madeline.pratt@fastly.com': '@maddie',
+  'ricky.hosfelt@fastly.com': '@Ricky',
 ]
 
 def configureGitCreds() {
@@ -66,7 +67,7 @@ if (ref in releaseBranches) {
   cache = false
   cleanMergedRefs = true
   tagName = 'jenkins/release'
-  slackChannel = '#fanout'
+  slackChannel = '#fanout-eng'
 } else if (ref =~ /^.*\/jenkins$/) {
   pushDeb = true
   cache = false
