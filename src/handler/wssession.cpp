@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2020 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,7 +31,8 @@
 
 WsSession::WsSession(QObject *parent) :
 	QObject(parent),
-	nextReqId(0)
+	nextReqId(0),
+	logLevel(LOG_LEVEL_DEBUG)
 {
 	expireTimer = new QTimer(this);
 	expireTimer->setSingleShot(true);

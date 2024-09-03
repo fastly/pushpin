@@ -38,6 +38,7 @@
 #include "tnetstring.h"
 #include "rtimer.h"
 #include "log.h"
+#include "logutil.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "packet/retryrequestpacket.h"
@@ -428,6 +429,7 @@ public:
 	QString route;
 	QString statsRoute;
 	QString channelPrefix;
+	int logLevel;
 	QStringList implicitChannels;
 	bool trusted;
 	QHash<ZhttpRequest::Rid, RequestState> requestStates;
@@ -454,6 +456,7 @@ public:
 		stats(_stats),
 		updateLimiter(_updateLimiter),
 		httpSessionUpdateManager(_httpSessionUpdateManager),
+		logLevel(-1),
 		trusted(false),
 		haveInspectInfo(false),
 		responseSent(false),
@@ -534,6 +537,17 @@ public:
 			}
 
 			channelPrefix = QString::fromUtf8(args["channel-prefix"].toByteArray());
+		}
+
+		if(args.contains("log-level"))
+		{
+			if(!canConvert(args["log-level"], QMetaType::Int))
+			{
+				respondError("bad-request");
+				return;
+			}
+
+			logLevel = args["log-level"].toInt();
 		}
 
 		if(args.contains("channels"))
@@ -1107,6 +1121,7 @@ private:
 			adata.route = route;
 			adata.statsRoute = statsRoute;
 			adata.channelPrefix = channelPrefix;
+			adata.logLevel = logLevel;
 			adata.implicitChannels = implicitChannelsSet;
 			adata.sid = sid;
 			adata.responseSent = responseSent;
@@ -2687,6 +2702,8 @@ private:
 				s->route = item.route;
 				s->statsRoute = item.separateStats ? item.route : QString();
 				s->channelPrefix = QString::fromUtf8(item.channelPrefix);
+				if(item.logLevel >= 0)
+					s->logLevel = item.logLevel;
 
 				if(!s->sid.isEmpty())
 					updateSids[s->sid] = LastIds();
@@ -2761,7 +2778,8 @@ private:
 					}
 					else
 					{
-						log_warning("ws session %s: too many subscriptions", qPrintable(s->cid));
+						auto routeInfo = LogUtil::RouteInfo(s->route, s->logLevel);
+						LogUtil::logForRoute(routeInfo, "wssession: too many subscriptions");
 					}
 				}
 				else if(cm.type == WsControlMessage::Unsubscribe)

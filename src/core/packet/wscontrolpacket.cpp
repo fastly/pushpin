@@ -215,6 +215,9 @@ QVariant WsControlPacket::toVariant() const
 		if(!item.channelPrefix.isEmpty())
 			vitem["channel-prefix"] = item.channelPrefix;
 
+		if(item.logLevel >= 0)
+			vitem["log-level"] = item.logLevel;
+
 		if(!item.channel.isEmpty())
 			vitem["channel"] = item.channel;
 
@@ -382,6 +385,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 			QByteArray channelPrefix = vitem["channel-prefix"].toByteArray();
 			if(!channelPrefix.isEmpty())
 				item.channelPrefix = channelPrefix;
+		}
+
+		if(vitem.contains("log-level"))
+		{
+			if(!canConvert(vitem["log-level"], QMetaType::Int))
+				return false;
+
+			item.logLevel = vitem["log-level"].toInt();
 		}
 
 		if(vitem.contains("channel"))
