@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -27,6 +28,7 @@
 #include <QPair>
 #include <QString>
 #include <QStringList>
+#include "log.h"
 #include "httpheaders.h"
 #include "jwt.h"
 #include "log.h"

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -83,6 +83,7 @@ public:
 	QByteArray route;
 	bool separateStats;
 	QByteArray channelPrefix;
+	int logLevel;
 	QList<QByteArray> channels;
 	bool trusted; // whether a trusted target was used
 	bool useSession;
@@ -93,6 +94,8 @@ public:
 		haveInspectData(false),
 		haveResponse(false),
 		separateStats(false),
+		logLevel(-1),
+		trusted(false),
 		useSession(false),
 		responseSent(false)
 	{

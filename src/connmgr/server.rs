@@ -1544,7 +1544,9 @@ impl Worker {
                             id, count
                         );
 
-                        yield_to_local_events(&resume_waker).await;
+                        if count > 0 {
+                            yield_to_local_events(&resume_waker).await;
+                        }
                     }
                     Err(e) => panic!("server-worker {}: handle read error {}", id, e),
                 },

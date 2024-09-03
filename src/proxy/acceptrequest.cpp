@@ -194,6 +194,9 @@ static QVariant acceptDataToVariant(const AcceptData &adata)
 	if(!adata.channelPrefix.isEmpty())
 		obj["channel-prefix"] = adata.channelPrefix;
 
+	if(adata.logLevel >= 0)
+		obj["log-level"] = adata.logLevel;
+
 	if(!adata.channels.isEmpty())
 	{
 		QVariantList vchannels;

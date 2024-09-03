@@ -66,6 +66,7 @@ public:
 		QString route;
 		QString statsRoute;
 		QString channelPrefix;
+		int logLevel;
 		QSet<QString> implicitChannels;
 		bool trusted;
 		bool responseSent;
@@ -79,6 +80,7 @@ public:
 			autoCrossOrigin(false),
 			jsonpExtendedResponse(false),
 			unreportedTime(-1),
+			logLevel(-1),
 			trusted(false),
 			responseSent(false),
 			haveInspectInfo(false)

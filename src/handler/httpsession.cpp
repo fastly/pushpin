@@ -148,6 +148,7 @@ public:
 	ZhttpRequest *req;
 	AcceptData adata;
 	Instruct instruct;
+	int logLevel;
 	QHash<QString, Instruct::Channel> channels;
 	RTimer *timer;
 	RTimer *retryTimer;
@@ -191,6 +192,7 @@ public:
 		QObject(_q),
 		q(_q),
 		req(_req),
+		logLevel(LOG_LEVEL_DEBUG),
 		stats(_stats),
 		outZhttp(_outZhttp),
 		outReq(0),
@@ -222,6 +224,9 @@ public:
 
 		adata = _adata;
 		instruct = _instruct;
+
+		if(adata.logLevel >= 0)
+			logLevel = adata.logLevel;
 
 		currentUri = req->requestUri();
 
@@ -276,7 +281,9 @@ public:
 		if(instruct.channels.count() > connectionSubscriptionMax)
 		{
 			instruct.channels = instruct.channels.mid(0, connectionSubscriptionMax);
-			log_warning("httpsession: too many subscriptions");
+
+			auto routeInfo = LogUtil::RouteInfo(adata.route, logLevel);
+			LogUtil::logForRoute(routeInfo, "httpsession: too many subscriptions");
 		}
 
 		// need to send initial content?
@@ -1320,7 +1327,9 @@ private:
 				if(instruct.channels.count() > connectionSubscriptionMax)
 				{
 					instruct.channels = instruct.channels.mid(0, connectionSubscriptionMax);
-					log_warning("httpsession: too many subscriptions");
+
+					auto routeInfo = LogUtil::RouteInfo(adata.route, logLevel);
+					LogUtil::logForRoute(routeInfo, "httpsession: too many subscriptions");
 				}
 
 				if(instruct.holdMode == Instruct::StreamHold)

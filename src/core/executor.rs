@@ -433,7 +433,11 @@ impl Executor {
 
     pub fn ignore_wakes_for_current_task(&self) -> Result<(), CurrentTaskError> {
         match self.tasks.current_task() {
-            Some(task_id) => Ok(self.tasks.ignore_wakes(task_id)),
+            Some(task_id) => {
+                self.tasks.ignore_wakes(task_id);
+
+                Ok(())
+            }
             None => Err(CurrentTaskError),
         }
     }
