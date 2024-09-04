@@ -49,9 +49,10 @@ use std::ptr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 const DOMAIN_LEN_MAX: usize = 253;
+const CONFIG_CACHE_TTL: Duration = Duration::from_secs(60);
 
 enum IdentityError {
     InvalidName,
@@ -475,6 +476,74 @@ fn apply_wants(e: &ssl::Error, interests: &mut Option<mio::Interest>) {
     }
 }
 
+struct Connector {
+    inner: Arc<SslConnector>,
+    created: Instant,
+}
+
+struct Connectors {
+    verify_full: Option<Connector>,
+    verify_none: Option<Connector>,
+}
+
+// represents a cache of reusable data among sessions. internally, this data
+// consists of SslConnectors for the purpose of caching root certs read from
+// disk. the type is given a vague name in order to avoid committing to what
+// exactly is cached.
+pub struct TlsConfigCache {
+    connectors: Mutex<Connectors>,
+}
+
+impl Default for TlsConfigCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TlsConfigCache {
+    pub fn new() -> Self {
+        Self {
+            connectors: Mutex::new(Connectors {
+                verify_full: None,
+                verify_none: None,
+            }),
+        }
+    }
+
+    fn get_connector(&self, verify_mode: VerifyMode) -> Result<Arc<SslConnector>, ErrorStack> {
+        let mut connectors = self
+            .connectors
+            .lock()
+            .expect("failed to obtain lock on tls config cache");
+
+        let slot = match verify_mode {
+            VerifyMode::Full => &mut connectors.verify_full,
+            VerifyMode::None => &mut connectors.verify_none,
+        };
+
+        let connector = match slot {
+            Some(c) if c.created.elapsed() < CONFIG_CACHE_TTL => &c.inner,
+            _ => {
+                let mut builder = SslConnector::builder(SslMethod::tls())?;
+
+                match verify_mode {
+                    VerifyMode::Full => builder.set_verify(SslVerifyMode::PEER),
+                    VerifyMode::None => builder.set_verify(SslVerifyMode::NONE),
+                }
+
+                let c = slot.insert(Connector {
+                    inner: Arc::new(builder.build()),
+                    created: Instant::now(),
+                });
+
+                &c.inner
+            }
+        };
+
+        Ok(Arc::clone(connector))
+    }
+}
+
 pub struct TlsStream<T> {
     stream: Stream<&'static mut Box<dyn ReadWrite>>,
     plain_stream: Box<Box<dyn ReadWrite>>,
@@ -495,15 +564,10 @@ where
         domain: &str,
         stream: T,
         verify_mode: VerifyMode,
+        config_cache: &TlsConfigCache,
     ) -> Result<Self, (T, ssl::Error)> {
         Self::new(true, stream, |stream| {
-            let mut connector = SslConnector::builder(SslMethod::tls())?;
-
-            if let VerifyMode::None = verify_mode {
-                connector.set_verify(SslVerifyMode::NONE);
-            }
-
-            let connector = connector.build();
+            let connector = config_cache.get_connector(verify_mode)?;
 
             let stream = match connector.connect(domain, stream) {
                 Ok(stream) => Stream::Ssl(stream),
@@ -938,10 +1002,11 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
         stream: AsyncTcpStream,
         verify_mode: VerifyMode,
         waker_data: &'a RefWakerData<TlsWaker>,
+        config_cache: &TlsConfigCache,
     ) -> Result<Self, ssl::Error> {
         let (registration, stream) = stream.into_evented().into_parts();
 
-        let stream = match TlsStream::connect(domain, stream, verify_mode) {
+        let stream = match TlsStream::connect(domain, stream, verify_mode, config_cache) {
             Ok(stream) => stream,
             Err((mut stream, e)) => {
                 registration.deregister_io(&mut stream).unwrap();
@@ -1294,7 +1359,8 @@ mod tests {
     #[test]
     fn test_get_change_inner() {
         let a = ReadWriteA { a: 1 };
-        let mut stream = TlsStream::connect("localhost", a, VerifyMode::Full).unwrap();
+        let mut stream =
+            TlsStream::connect("localhost", a, VerifyMode::Full, &TlsConfigCache::new()).unwrap();
         assert_eq!(stream.get_inner().a, 1);
         let mut stream = stream.change_inner(|_| ReadWriteB { b: 2 });
         assert_eq!(stream.get_inner().b, 2);
@@ -1303,10 +1369,11 @@ mod tests {
     #[test]
     fn test_connect_error() {
         let c = ReadWriteC { c: 1 };
-        let (stream, e) = match TlsStream::connect("localhost", c, VerifyMode::Full) {
-            Ok(_) => panic!("unexpected success"),
-            Err(ret) => ret,
-        };
+        let (stream, e) =
+            match TlsStream::connect("localhost", c, VerifyMode::Full, &TlsConfigCache::new()) {
+                Ok(_) => panic!("unexpected success"),
+                Err(ret) => ret,
+            };
         assert_eq!(stream.c, 1);
         assert_eq!(e.into_io_error().unwrap().kind(), io::ErrorKind::Other);
     }
@@ -1334,6 +1401,7 @@ mod tests {
                             stream,
                             VerifyMode::None,
                             &tls_waker_data,
+                            &TlsConfigCache::new(),
                         )
                         .unwrap();
 

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -77,10 +78,10 @@ public:
 class RouteInfo
 {
 public:
- 	QString id;
- 	int logLevel;
+	QString id;
+	int logLevel;
 
-	RouteInfo(const QString& initId = QString(), int initLogLevel = LOG_LEVEL_DEBUG) :
+	RouteInfo(const QString &initId = QString(), int initLogLevel = LOG_LEVEL_DEBUG) :
 		id(initId),
 		logLevel(initLogLevel)
 	{

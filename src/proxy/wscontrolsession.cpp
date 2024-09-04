@@ -52,6 +52,7 @@ public:
 	QByteArray route;
 	bool separateStats;
 	QByteArray channelPrefix;
+	int logLevel;
 	QUrl uri;
 	Connection requestTimerConnection;
 
@@ -60,7 +61,8 @@ public:
 		q(_q),
 		manager(0),
 		nextReqId(0),
-		separateStats(false)
+		separateStats(false),
+		logLevel(-1)
 	{
 		requestTimer = std::make_unique<RTimer>();
 		requestTimerConnection = requestTimer->timeout.connect(boost::bind(&Private::requestTimer_timeout, this));
@@ -99,6 +101,7 @@ public:
 		i.route = route;
 		i.separateStats = separateStats;
 		i.channelPrefix = channelPrefix;
+		i.logLevel = logLevel;
 		i.uri = uri;
 		i.ttl = SESSION_TTL;
 		write(i, true);
@@ -323,11 +326,12 @@ QByteArray WsControlSession::cid() const
 	return d->cid;
 }
 
-void WsControlSession::start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, const QUrl &uri)
+void WsControlSession::start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const QUrl &uri)
 {
 	d->route = routeId;
 	d->separateStats = separateStats;
 	d->channelPrefix = channelPrefix;
+	d->logLevel = logLevel;
 	d->uri = uri;
 	d->start();
 }

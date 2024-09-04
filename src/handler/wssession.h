@@ -44,6 +44,7 @@ public:
 	QString cid;
 	int nextReqId;
 	QString channelPrefix;
+	int logLevel;
 	HttpRequestData requestData;
 	QString route;
 	QString statsRoute;
