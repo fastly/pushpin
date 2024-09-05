@@ -289,21 +289,27 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	int nextLinkTimeout = -1;
 	foreach(const HttpHeaderParameters &params, response.headers.getAllAsParameters("Grip-Link"))
 	{
-		if(params.count() >= 2 && params.get("rel") == "next")
-		{
-			QByteArray linkParam = params[0].first;
-			if(linkParam.length() <= 2 || linkParam[0] != '<' || linkParam[linkParam.length() - 1] != '>')
-			{
-				setError(ok, errorMessage, "failed to parse Grip-Link value");
-				return Instruct();
-			}
+		if(params.count() < 2)
+			continue;
 
-			nextLink = QUrl::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
-			if(!nextLink.isValid())
-			{
-				setError(ok, errorMessage, "Grip-Link contains invalid link");
-				return Instruct();
-			}
+		QByteArray linkParam = params[0].first;
+		if(linkParam.length() <= 2 || linkParam[0] != '<' || linkParam[linkParam.length() - 1] != '>')
+		{
+			setError(ok, errorMessage, "failed to parse Grip-Link value");
+			return Instruct();
+		}
+
+		QUrl link = QUrl::fromEncoded(linkParam.mid(1, linkParam.length() - 2));
+		if(!link.isValid())
+		{
+			setError(ok, errorMessage, "Grip-Link contains invalid link");
+			return Instruct();
+		}
+
+		QByteArray rel = params.get("rel");
+		if(rel == "next")
+		{
+			nextLink = link;
 
 			if(params.contains("timeout"))
 			{
