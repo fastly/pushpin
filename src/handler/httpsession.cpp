@@ -115,7 +115,8 @@ public:
 		Proxying,
 		SendingQueue,
 		Holding,
-		Closing
+		Closing,
+		SendingGone,
 	};
 
 	enum Priority
@@ -165,6 +166,7 @@ public:
 	QString errorMessage;
 	QUrl currentUri;
 	QUrl nextUri;
+	QUrl goneUri;
 	bool needUpdate;
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
@@ -231,6 +233,12 @@ public:
 
 		if(!instruct.nextLink.isEmpty())
 			nextUri = currentUri.resolved(instruct.nextLink);
+
+		// only work with a gone link provided at initialization time. this
+		// way each request can have a unique gone link, and still share
+		// instructions from next link fetches
+		if(!instruct.goneLink.isEmpty())
+			goneUri = currentUri.resolved(instruct.goneLink);
 	}
 
 	~Private()
@@ -1168,6 +1176,23 @@ private:
 			stats->removeConnection(cid, false);
 		}
 
+		if(!goneUri.isEmpty())
+		{
+			state = SendingGone;
+			prepareOutReq(goneUri);
+			outReq->start("POST", goneUri, HttpHeaders());
+			outReq->endBody();
+			return;
+		}
+
+		finished();
+	}
+
+	void finished()
+	{
+		ZhttpRequest::Rid rid = req->rid();
+		QByteArray cid = rid.first + ':' + rid.second;
+
 		log_debug("httpsession: cleaning up %s", cid.data());
 		cleanup();
 
@@ -1359,6 +1384,25 @@ private:
 
 						prepareToSendQueueOrHold();
 					}
+				}
+			}
+			else if(state == SendingGone)
+			{
+				// response should be empty
+				if(outReq->bytesAvailable() > 0)
+				{
+					outReq_error();
+					return;
+				}
+
+				if(outReq->isFinished())
+				{
+					logRequest(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders(), outReq->responseCode(), 0);
+
+					cleanupOutReq();
+
+					finished();
+					return;
 				}
 			}
 			else
@@ -1557,6 +1601,11 @@ private slots:
 				errorMessage = "Failed to retrieve next link.";
 				doError();
 			}
+		}
+		else if(state == SendingGone)
+		{
+			log_debug("httpsession: failed to request gone link");
+			finished();
 		}
 		else
 		{
