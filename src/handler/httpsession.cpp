@@ -571,6 +571,9 @@ private:
 
 	void prepareToClose()
 	{
+		cleanupOutReq();
+		cleanupAction();
+
 		state = Closing;
 
 		publishQueue.clear();
