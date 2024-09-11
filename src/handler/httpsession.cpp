@@ -175,7 +175,7 @@ public:
 	FilterStack *responseFilters;
 	QSet<QString> activeChannels;
 	int connectionSubscriptionMax;
-	bool needRemoveFromStats;
+	bool connectionStatsActive;
 	Callback<std::tuple<HttpSession *, const QString &>> subscribeCallback;
 	Callback<std::tuple<HttpSession *, const QString &>> unsubscribeCallback;
 	Callback<std::tuple<HttpSession *>> finishedCallback;
@@ -205,7 +205,7 @@ public:
 		pendingAction(0),
 		responseFilters(0),
 		connectionSubscriptionMax(_connectionSubscriptionMax),
-		needRemoveFromStats(true)
+		connectionStatsActive(true)
 	{
 		state = NotStarted;
 
@@ -236,16 +236,6 @@ public:
 	~Private()
 	{
 		cleanup();
-
-		if(needRemoveFromStats)
-		{
-			ZhttpRequest::Rid rid = req->rid();
-			QByteArray cid = rid.first + ':' + rid.second;
-
-			stats->removeConnection(cid, false);
-		}
-
-		updateManager->unregisterSession(q);
 
 		timerConnection.disconnect();
 		timer->setParent(0);
@@ -361,7 +351,7 @@ public:
 			if(priority == HighPriority)
 			{
 				// switching to high priority
-				cleanupAction();
+				cancelAction();
 				state = Holding;
 			}
 			else
@@ -528,8 +518,17 @@ public:
 private:
 	void cleanup()
 	{
-		cleanupOutReq();
-		cleanupAction();
+		cancelActivities();
+
+		if(connectionStatsActive)
+		{
+			connectionStatsActive = false;
+
+			ZhttpRequest::Rid rid = req->rid();
+			QByteArray cid = rid.first + ':' + rid.second;
+
+			stats->removeConnection(cid, false);
+		}
 	}
 
 	void cleanupOutReq()
@@ -542,13 +541,26 @@ private:
 		responseFilters = 0;
 	}
 
-	void cleanupAction()
+	void cancelAction()
 	{
 		if(pendingAction)
 		{
 			pendingAction->sessions.remove(q);
 			pendingAction = 0;
 		}
+	}
+
+	void cancelActivities()
+	{
+		cleanupOutReq();
+		cancelAction();
+
+		publishQueue.clear();
+
+		timer->stop();
+		retryTimer->stop();
+
+		updateManager->unregisterSession(q);
 	}
 
 	void setupKeepAlive()
@@ -573,9 +585,7 @@ private:
 	{
 		state = Closing;
 
-		publishQueue.clear();
-		timer->stop();
-		updateManager->unregisterSession(q);
+		cancelActivities();
 	}
 
 	void tryWriteFirstInstructResponse()
@@ -1065,11 +1075,10 @@ private:
 
 	void doFinish(bool retry = false)
 	{
+		cancelActivities();
+
 		ZhttpRequest::Rid rid = req->rid();
 		QByteArray cid = rid.first + ':' + rid.second;
-
-		cleanupOutReq();
-		cleanupAction();
 
 		QPointer<QObject> self = this;
 
@@ -1089,7 +1098,7 @@ private:
 			// refresh before remove, to ensure transition
 			stats->refreshConnection(cid);
 
-			needRemoveFromStats = false;
+			connectionStatsActive = false;
 
 			int unreportedTime = stats->removeConnection(cid, true, adata.from);
 
@@ -1154,7 +1163,7 @@ private:
 		}
 		else
 		{
-			needRemoveFromStats = false;
+			connectionStatsActive = false;
 
 			stats->removeConnection(cid, false);
 		}
@@ -1308,7 +1317,7 @@ private:
 
 					retries = 0;
 
-					outReq.reset();
+					cleanupOutReq();
 
 					bool ok;
 					Instruct i = Instruct::fromResponse(responseData, &ok, &errorMessage);
