@@ -287,6 +287,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 
 	QUrl nextLink;
 	int nextLinkTimeout = -1;
+	QUrl goneLink;
 	foreach(const HttpHeaderParameters &params, response.headers.getAllAsParameters("Grip-Link"))
 	{
 		if(params.count() < 2)
@@ -331,6 +332,10 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			{
 				nextLinkTimeout = DEFAULT_NEXTLINK_TIMEOUT;
 			}
+		}
+		else if(rel == "gone")
+		{
+			goneLink = link;
 		}
 	}
 
@@ -806,6 +811,7 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 	i.response = newResponse;
 	i.nextLink = nextLink;
 	i.nextLinkTimeout = nextLinkTimeout;
+	i.goneLink = goneLink;
 
 	if(ok)
 		*ok = true;
