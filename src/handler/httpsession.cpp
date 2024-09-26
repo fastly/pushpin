@@ -1241,7 +1241,7 @@ private:
 
 	void requestNextLink()
 	{
-		log_debug("httpsession: next: %s", qPrintable(instruct.nextLink.toString()));
+		log_debug("httpsession: next: %s", qPrintable(nextUri.toString()));
 
 		if(!outZhttp)
 		{
@@ -1343,24 +1343,6 @@ private:
 					retries = 0;
 
 					cleanupOutReq();
-
-					bool ok;
-					Instruct i = Instruct::fromResponse(responseData, &ok, &errorMessage);
-					if(!ok)
-					{
-						doError();
-						return;
-					}
-
-					// subsequent response must be non-hold or stream hold
-					if(i.holdMode != Instruct::NoHold && i.holdMode != Instruct::StreamHold)
-					{
-						errorMessage = "Next link returned non-stream hold.";
-						doError();
-						return;
-					}
-
-					instruct = i;
 
 					currentUri = nextUri;
 
@@ -1549,6 +1531,33 @@ private slots:
 
 			if(state == Proxying)
 			{
+				HttpResponseData responseData;
+				responseData.code = outReq->responseCode();
+				responseData.reason = outReq->responseReason();
+				responseData.headers = outReq->responseHeaders();
+
+				bool ok;
+				Instruct i = Instruct::fromResponse(responseData, &ok, &errorMessage);
+				if(!ok)
+				{
+					doError();
+					return;
+				}
+
+				// subsequent response must be non-hold or stream hold
+				if(i.holdMode != Instruct::NoHold && i.holdMode != Instruct::StreamHold)
+				{
+					errorMessage = "Next link returned non-stream hold.";
+					doError();
+					return;
+				}
+
+				// accept the instruct as soon as it's available, so we can
+				// use its filters. if response processing ends up failing
+				// later on, the session will error out and the instruct
+				// won't be used for anything else
+				instruct = i;
+
 				// apply ProxyContent filters of all channels
 				QStringList allFilters;
 				foreach(const Instruct::Channel &c, instruct.channels)
