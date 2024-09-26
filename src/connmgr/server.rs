@@ -38,9 +38,7 @@ use crate::core::reactor::Reactor;
 use crate::core::select::{
     select_2, select_3, select_6, select_8, select_option, Select2, Select3, Select6, Select8,
 };
-use crate::core::task::{
-    self, event_wait, yield_to_local_events, CancellationSender, CancellationToken,
-};
+use crate::core::task::{self, yield_to_local_events, CancellationSender, CancellationToken};
 use crate::core::time::Timeout;
 use crate::core::tnetstring;
 use crate::core::waker::RefWakerData;
@@ -1964,11 +1962,7 @@ impl Worker {
         let next_keep_alive_timeout = Timeout::new(next_keep_alive_time);
         let mut next_keep_alive_index = 0;
 
-        let sender_registration = reactor
-            .register_custom_local(sender.get_write_registration(), mio::Interest::WRITABLE)
-            .unwrap();
-
-        sender_registration.set_readiness(Some(mio::Interest::WRITABLE));
+        let sender = AsyncLocalSender::new(sender);
 
         'main: loop {
             while conns.batch_is_empty() {
@@ -2005,38 +1999,22 @@ impl Worker {
                 next_keep_alive_timeout.set_deadline(next_keep_alive_time);
             }
 
-            match select_2(
-                stop.recv(),
-                pin!(event_wait(&sender_registration, mio::Interest::WRITABLE)),
-            )
-            .await
-            {
+            let send = match select_2(stop.recv(), sender.wait_sendable()).await {
                 Select2::R1(_) => break,
-                Select2::R2(_) => {}
-            }
+                Select2::R2(send) => send,
+            };
 
-            if !sender.check_send() {
-                // if check_send returns false, we'll be on the waitlist for a notification
-                sender_registration.clear_readiness(mio::Interest::WRITABLE);
-                continue;
-            }
+            // there could be no message if items removed or message construction failed
+            if let Some((count, addr, msg)) =
+                conns.next_batch_message(&instance_id, BatchType::KeepAlive)
+            {
+                debug!(
+                    "server-worker {}: sending keep alives for {} sessions",
+                    id, count
+                );
 
-            // if check_send returns true, we are guaranteed to be able to send
-
-            match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
-                Some((count, addr, msg)) => {
-                    debug!(
-                        "server-worker {}: sending keep alives for {} sessions",
-                        id, count
-                    );
-
-                    if let Err(e) = sender.try_send((addr, msg)) {
-                        error!("zhttp write error: {}", e);
-                    }
-                }
-                None => {
-                    // this could happen if items removed or message construction failed
-                    sender.cancel();
+                if let Err(e) = send.try_send((addr, msg)) {
+                    error!("zhttp write error: {}", e);
                 }
             }
 
