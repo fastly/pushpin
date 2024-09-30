@@ -67,6 +67,7 @@ public:
 	HttpResponseData response;
 	QUrl nextLink;
 	int nextLinkTimeout;
+	QUrl goneLink;
 
 	Instruct() :
 		holdMode(NoHold),

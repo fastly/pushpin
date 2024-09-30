@@ -1904,6 +1904,9 @@ where
     // check_send just finished, so this should succeed
     zsess_out.try_send_msg(zreq)?;
 
+    // unset to_addr so we don't send keep-alives
+    zsess_in.shared.set_to_addr(None);
+
     // pause until we get a msg
     zsess_in.peek_msg().await?;
 
@@ -1932,6 +1935,9 @@ where
 
     // check_send just finished, so this should succeed
     zsess_out.try_send_msg(zresp)?;
+
+    // unset to_addr so we don't send keep-alives
+    zsess_in.shared.set_to_addr(None);
 
     // pause until we get a msg
     zsess_in.peek_msg().await?;
