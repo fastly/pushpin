@@ -31,9 +31,7 @@ use crate::core::executor::{Executor, Spawner};
 use crate::core::list;
 use crate::core::reactor::Reactor;
 use crate::core::select::{select_2, select_5, select_6, select_option, Select2, Select5, Select6};
-use crate::core::task::{
-    self, event_wait, yield_to_local_events, CancellationSender, CancellationToken,
-};
+use crate::core::task::{self, yield_to_local_events, CancellationSender, CancellationToken};
 use crate::core::time::Timeout;
 use crate::core::tnetstring;
 use crate::core::zmq::{MultipartHeader, SpecInfo};
@@ -227,42 +225,48 @@ impl Batch {
         self.nodes.remove(key.nkey);
     }
 
-    fn take_group<'a, 'b: 'a, F>(&'a mut self, get_ids: F) -> Option<BatchGroup>
+    fn take_group<'a, 'b: 'a, F>(&'a mut self, get_id: F) -> Option<BatchGroup>
     where
-        F: Fn(usize) -> (&'b [u8], u32),
+        F: Fn(usize) -> Option<(&'b [u8], u32)>,
     {
-        // find the next addr with items
-        while self.addr_index < self.addrs.len() && self.addrs[self.addr_index].1.is_empty() {
-            self.addr_index += 1;
-        }
-
-        // if all are empty, we're done
-        if self.addr_index == self.addrs.len() {
-            assert!(self.nodes.is_empty());
-            return None;
-        }
-
-        let (addr, keys) = &mut self.addrs[self.addr_index];
-
-        self.last_group_ckeys.clear();
-
+        let addrs = &mut self.addrs;
         let mut ids = self.group_ids.get_as_new();
 
-        // get ids/seqs
-        while ids.len() < zhttppacket::IDS_MAX {
-            let nkey = match keys.pop_front(&mut self.nodes) {
-                Some(nkey) => nkey,
-                None => break,
-            };
+        while ids.is_empty() {
+            // find the next addr with items
+            while self.addr_index < addrs.len() && addrs[self.addr_index].1.is_empty() {
+                self.addr_index += 1;
+            }
 
-            let ckey = self.nodes[nkey].value;
-            self.nodes.remove(nkey);
+            // if all are empty, we're done
+            if self.addr_index == addrs.len() {
+                assert!(self.nodes.is_empty());
+                return None;
+            }
 
-            let (id, seq) = get_ids(ckey);
+            let keys = &mut addrs[self.addr_index].1;
 
-            self.last_group_ckeys.push(ckey);
-            ids.push(zhttppacket::Id { id, seq: Some(seq) });
+            self.last_group_ckeys.clear();
+            ids.clear();
+
+            // get ids/seqs
+            while ids.len() < zhttppacket::IDS_MAX {
+                let nkey = match keys.pop_front(&mut self.nodes) {
+                    Some(nkey) => nkey,
+                    None => break,
+                };
+
+                let ckey = self.nodes[nkey].value;
+                self.nodes.remove(nkey);
+
+                if let Some((id, seq)) = get_id(ckey) {
+                    self.last_group_ckeys.push(ckey);
+                    ids.push(zhttppacket::Id { id, seq: Some(seq) });
+                }
+            }
         }
+
+        let addr = &addrs[self.addr_index].0;
 
         Some(BatchGroup { addr, ids })
     }
@@ -697,19 +701,27 @@ impl Connections {
         let batch = &mut items.batch;
 
         while !batch.is_empty() {
-            let group = batch
-                .take_group(|ckey| {
+            let group = {
+                let group = batch.take_group(|ckey| {
                     let ci = &nodes[ckey].value;
                     let cshared = ci.shared.as_ref().unwrap().get();
+
+                    // addr could have been removed after adding to the batch
+                    cshared.to_addr().get()?;
 
                     // item is guaranteed to have an id. only items with an
                     // id are added to a batch, and if an item's id is
                     // removed then the item is removed from the batch
                     let id = ci.id.as_ref().unwrap();
 
-                    (&id.1, cshared.out_seq())
-                })
-                .unwrap();
+                    Some((&id.1, cshared.out_seq()))
+                });
+
+                match group {
+                    Some(group) => group,
+                    None => continue,
+                }
+            };
 
             let count = group.ids().len();
 
@@ -1094,7 +1106,12 @@ impl Worker {
                     id, count
                 );
 
-                match select_2(pin!(stream_handle.send(msg)), shutdown_timeout.elapsed()).await {
+                match select_2(
+                    pin!(stream_handle.send(None, msg)),
+                    shutdown_timeout.elapsed(),
+                )
+                .await
+                {
                     Select2::R1(r) => r.unwrap(),
                     Select2::R2(_) => break 'outer,
                 }
@@ -1392,7 +1409,7 @@ impl Worker {
                     Select6::R1(_) => break,
                     // receiver_recv
                     Select6::R2(result) => match result {
-                        Ok(msg) => handle_send.set(Some(stream_handle.send(msg))),
+                        Ok(msg) => handle_send.set(Some(stream_handle.send(None, msg))),
                         Err(e) => panic!("zstream_out_receiver channel error: {}", e),
                     },
                     // handle_send
@@ -1834,90 +1851,70 @@ impl Worker {
         let next_keep_alive_timeout = Timeout::new(next_keep_alive_time);
         let mut next_keep_alive_index = 0;
 
-        let sender_registration = reactor
-            .register_custom_local(sender.get_write_registration(), mio::Interest::WRITABLE)
-            .unwrap();
-
-        sender_registration.set_readiness(Some(mio::Interest::WRITABLE));
+        let sender = AsyncLocalSender::new(sender);
 
         'main: loop {
-            while conns.batch_is_empty() {
-                // wait for next keep alive time
-                match select_2(stop.recv(), next_keep_alive_timeout.elapsed()).await {
-                    Select2::R1(_) => break 'main,
-                    Select2::R2(_) => {}
-                }
-
-                for _ in 0..conns.batch_capacity() {
-                    if next_keep_alive_index >= conns.items_capacity() {
-                        break;
-                    }
-
-                    let key = next_keep_alive_index;
-
-                    next_keep_alive_index += 1;
-
-                    if conns.can_stream(key) {
-                        // ignore errors
-                        let _ = conns.batch_add(key);
-                    }
-                }
-
-                keep_alive_count += 1;
-
-                if keep_alive_count >= KEEP_ALIVE_BATCHES {
-                    keep_alive_count = 0;
-                    next_keep_alive_index = 0;
-                }
-
-                // keep steady pace
-                next_keep_alive_time += KEEP_ALIVE_INTERVAL;
-                next_keep_alive_timeout.set_deadline(next_keep_alive_time);
-            }
-
-            match select_2(
-                stop.recv(),
-                pin!(event_wait(&sender_registration, mio::Interest::WRITABLE)),
-            )
-            .await
-            {
+            // wait for next keep alive time
+            match select_2(stop.recv(), next_keep_alive_timeout.elapsed()).await {
                 Select2::R1(_) => break,
                 Select2::R2(_) => {}
             }
 
-            if !sender.check_send() {
-                // if check_send returns false, we'll be on the waitlist for a notification
-                sender_registration.clear_readiness(mio::Interest::WRITABLE);
-                continue;
-            }
-
-            // if check_send returns true, we are guaranteed to be able to send
-
-            match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
-                Some((count, msg)) => {
-                    debug!(
-                        "client-worker {}: sending keep alives for {} sessions",
-                        id, count
-                    );
-
-                    if let Err(e) = sender.try_send(msg) {
-                        error!("zhttp write error: {}", e);
-                    }
+            for _ in 0..conns.batch_capacity() {
+                if next_keep_alive_index >= conns.items_capacity() {
+                    break;
                 }
-                None => {
-                    // this could happen if items removed or message construction failed
-                    sender.cancel();
+
+                let key = next_keep_alive_index;
+
+                next_keep_alive_index += 1;
+
+                if conns.can_stream(key) {
+                    // ignore errors
+                    let _ = conns.batch_add(key);
                 }
             }
 
-            if conns.batch_is_empty() {
-                let now = reactor.now();
+            keep_alive_count += 1;
 
-                if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
-                    // got really behind somehow. just skip ahead
-                    next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
-                    next_keep_alive_timeout.set_deadline(next_keep_alive_time);
+            if keep_alive_count >= KEEP_ALIVE_BATCHES {
+                keep_alive_count = 0;
+                next_keep_alive_index = 0;
+            }
+
+            // keep steady pace
+            next_keep_alive_time += KEEP_ALIVE_INTERVAL;
+            next_keep_alive_timeout.set_deadline(next_keep_alive_time);
+
+            while !conns.batch_is_empty() {
+                let send = match select_2(stop.recv(), sender.wait_sendable()).await {
+                    Select2::R1(_) => break 'main,
+                    Select2::R2(send) => send,
+                };
+
+                // there could be no message if items removed or message construction failed
+                let (count, msg) =
+                    match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
+                        Some(ret) => ret,
+                        None => continue,
+                    };
+
+                debug!(
+                    "client-worker {}: sending keep alives for {} sessions",
+                    id, count
+                );
+
+                if let Err(e) = send.try_send(msg) {
+                    error!("zhttp write error: {}", e);
                 }
+            }
+
+            let now = reactor.now();
+
+            if now >= next_keep_alive_time + KEEP_ALIVE_INTERVAL {
+                // got really behind somehow. just skip ahead
+                next_keep_alive_time = now + KEEP_ALIVE_INTERVAL;
+                next_keep_alive_timeout.set_deadline(next_keep_alive_time);
             }
         }
 
@@ -2860,7 +2857,7 @@ pub mod tests {
         let ids = ["id-1", "id-2", "id-3"];
 
         let group = batch
-            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
             .unwrap();
         assert_eq!(group.ids().len(), 2);
         assert_eq!(group.ids()[0].id, b"id-1");
@@ -2873,7 +2870,7 @@ pub mod tests {
         assert_eq!(batch.last_group_ckeys(), &[1, 2]);
 
         let group = batch
-            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
             .unwrap();
         assert_eq!(group.ids().len(), 1);
         assert_eq!(group.ids()[0].id, b"id-3");
@@ -2884,7 +2881,7 @@ pub mod tests {
         assert_eq!(batch.last_group_ckeys(), &[3]);
 
         assert!(batch
-            .take_group(|ckey| { (ids[ckey - 1].as_bytes(), 0) })
+            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
             .is_none());
         assert_eq!(batch.last_group_ckeys(), &[3]);
 
@@ -2897,7 +2894,7 @@ pub mod tests {
         assert_eq!(batch.len(), 1);
 
         let group = batch
-            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
             .unwrap();
         assert_eq!(group.ids().len(), 1);
         assert_eq!(group.ids()[0].id, b"id-2");
@@ -2910,12 +2907,31 @@ pub mod tests {
         assert_eq!(batch.len(), 1);
         assert!(!batch.is_empty());
         let group = batch
-            .take_group(|ckey| (ids[ckey - 1].as_bytes(), 0))
+            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
             .unwrap();
         assert_eq!(group.ids().len(), 1);
         assert_eq!(group.ids()[0].id, b"id-3");
         assert_eq!(group.ids()[0].seq, Some(0));
         assert_eq!(group.addr(), b"addr-a");
+        drop(group);
+        assert_eq!(batch.is_empty(), true);
+
+        assert!(batch.add(b"addr-a", 1).is_ok());
+        assert!(batch.add(b"addr-b", 2).is_ok());
+        assert!(batch.add(b"addr-b", 3).is_ok());
+        let group = batch
+            .take_group(|ckey| {
+                if ckey < 3 {
+                    None
+                } else {
+                    Some((ids[ckey - 1].as_bytes(), 0))
+                }
+            })
+            .unwrap();
+        assert_eq!(group.ids().len(), 1);
+        assert_eq!(group.ids()[0].id, b"id-3");
+        assert_eq!(group.ids()[0].seq, Some(0));
+        assert_eq!(group.addr(), b"addr-b");
         drop(group);
         assert_eq!(batch.is_empty(), true);
     }

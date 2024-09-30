@@ -115,7 +115,8 @@ public:
 		Proxying,
 		SendingQueue,
 		Holding,
-		Closing
+		Closing,
+		SendingGone,
 	};
 
 	enum Priority
@@ -154,7 +155,7 @@ public:
 	RTimer *retryTimer;
 	StatsManager *stats;
 	ZhttpManager *outZhttp;
-	ZhttpRequest *outReq; // for fetching next links
+	std::unique_ptr<ZhttpRequest> outReq; // for fetching links
 	RateLimiter *updateLimiter;
 	PublishLastIds *publishLastIds;
 	HttpSessionUpdateManager *updateManager;
@@ -165,6 +166,7 @@ public:
 	QString errorMessage;
 	QUrl currentUri;
 	QUrl nextUri;
+	QUrl goneUri;
 	bool needUpdate;
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
@@ -175,7 +177,7 @@ public:
 	FilterStack *responseFilters;
 	QSet<QString> activeChannels;
 	int connectionSubscriptionMax;
-	bool needRemoveFromStats;
+	bool connectionStatsActive;
 	Callback<std::tuple<HttpSession *, const QString &>> subscribeCallback;
 	Callback<std::tuple<HttpSession *, const QString &>> unsubscribeCallback;
 	Callback<std::tuple<HttpSession *>> finishedCallback;
@@ -195,7 +197,6 @@ public:
 		logLevel(LOG_LEVEL_DEBUG),
 		stats(_stats),
 		outZhttp(_outZhttp),
-		outReq(0),
 		updateLimiter(_updateLimiter),
 		publishLastIds(_publishLastIds),
 		updateManager(_updateManager),
@@ -206,7 +207,7 @@ public:
 		pendingAction(0),
 		responseFilters(0),
 		connectionSubscriptionMax(_connectionSubscriptionMax),
-		needRemoveFromStats(true)
+		connectionStatsActive(true)
 	{
 		state = NotStarted;
 
@@ -232,21 +233,17 @@ public:
 
 		if(!instruct.nextLink.isEmpty())
 			nextUri = currentUri.resolved(instruct.nextLink);
+
+		// only work with a gone link provided at initialization time. this
+		// way each request can have a unique gone link, and still share
+		// instructions from next link fetches
+		if(!instruct.goneLink.isEmpty())
+			goneUri = currentUri.resolved(instruct.goneLink);
 	}
 
 	~Private()
 	{
 		cleanup();
-
-		if(needRemoveFromStats)
-		{
-			ZhttpRequest::Rid rid = req->rid();
-			QByteArray cid = rid.first + ':' + rid.second;
-
-			stats->removeConnection(cid, false);
-		}
-
-		updateManager->unregisterSession(q);
 
 		timerConnection.disconnect();
 		timer->setParent(0);
@@ -362,7 +359,7 @@ public:
 			if(priority == HighPriority)
 			{
 				// switching to high priority
-				cleanupAction();
+				cancelAction();
 				state = Holding;
 			}
 			else
@@ -529,22 +526,49 @@ public:
 private:
 	void cleanup()
 	{
-		cleanupAction();
+		cancelActivities();
 
-		delete outReq;
-		outReq = 0;
+		if(connectionStatsActive)
+		{
+			connectionStatsActive = false;
+
+			ZhttpRequest::Rid rid = req->rid();
+			QByteArray cid = rid.first + ':' + rid.second;
+
+			stats->removeConnection(cid, false);
+		}
+	}
+
+	void cleanupOutReq()
+	{
+		readyReadOutConnection.disconnect();
+		errorOutConnection.disconnect();
+		outReq.reset();
 
 		delete responseFilters;
 		responseFilters = 0;
 	}
 
-	void cleanupAction()
+	void cancelAction()
 	{
 		if(pendingAction)
 		{
 			pendingAction->sessions.remove(q);
 			pendingAction = 0;
 		}
+	}
+
+	void cancelActivities()
+	{
+		cleanupOutReq();
+		cancelAction();
+
+		publishQueue.clear();
+
+		timer->stop();
+		retryTimer->stop();
+
+		updateManager->unregisterSession(q);
 	}
 
 	void setupKeepAlive()
@@ -569,9 +593,7 @@ private:
 	{
 		state = Closing;
 
-		publishQueue.clear();
-		timer->stop();
-		updateManager->unregisterSession(q);
+		cancelActivities();
 	}
 
 	void tryWriteFirstInstructResponse()
@@ -1061,13 +1083,10 @@ private:
 
 	void doFinish(bool retry = false)
 	{
+		cancelActivities();
+
 		ZhttpRequest::Rid rid = req->rid();
-
 		QByteArray cid = rid.first + ':' + rid.second;
-
-		log_debug("httpsession: cleaning up %s", cid.data());
-
-		cleanup();
 
 		QPointer<QObject> self = this;
 
@@ -1087,7 +1106,7 @@ private:
 			// refresh before remove, to ensure transition
 			stats->refreshConnection(cid);
 
-			needRemoveFromStats = false;
+			connectionStatsActive = false;
 
 			int unreportedTime = stats->removeConnection(cid, true, adata.from);
 
@@ -1152,35 +1171,46 @@ private:
 		}
 		else
 		{
-			needRemoveFromStats = false;
+			connectionStatsActive = false;
 
 			stats->removeConnection(cid, false);
 		}
 
-		finishedCallback.call({q});
-	}
-
-	void requestNextLink()
-	{
-		log_debug("httpsession: next: %s", qPrintable(instruct.nextLink.toString()));
-
-		if(!outZhttp)
+		if(!goneUri.isEmpty())
 		{
-			errorMessage = "Instruct contained link, but handler not configured for outbound requests.";
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
+			state = SendingGone;
+			prepareOutReq(goneUri);
+			outReq->start("POST", goneUri, HttpHeaders());
+			outReq->endBody();
 			return;
 		}
 
+		finished();
+	}
+
+	void finished()
+	{
+		ZhttpRequest::Rid rid = req->rid();
+		QByteArray cid = rid.first + ':' + rid.second;
+
+		log_debug("httpsession: cleaning up %s", cid.data());
+		cleanup();
+
+		finishedCallback.call({q});
+	}
+
+	void prepareOutReq(const QUrl &destUri, bool autoShare = false)
+	{
 		haveOutReqHeaders = false;
 		sentOutReqData = 0;
 
-		outReq = outZhttp->createRequest();
+		outReq.reset(outZhttp->createRequest());
 		outReq->setParent(this);
 		readyReadOutConnection = outReq->readyRead.connect(boost::bind(&Private::outReq_readyRead, this));
 		errorOutConnection = outReq->error.connect(boost::bind(&Private::outReq_error, this));
 
 		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
-		int nextPort = nextUri.port(currentUri.scheme() == "https" ? 443 : 80);
+		int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
 
 		QVariantHash passthroughData;
 
@@ -1192,7 +1222,7 @@ private:
 		//   different service, then we can't make this assumption and need
 		//   to make the request over the network. note that such a request
 		//   could still end up looping back to us
-		if(nextUri.scheme() == currentUri.scheme() && nextUri.host() == currentUri.host() && nextPort == currentPort)
+		if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
 		{
 			// tell the proxy that we prefer the request to be handled
 			//   internally, using the same route
@@ -1204,9 +1234,23 @@ private:
 			passthroughData["trusted"] = true;
 
 		// share requests to the same URI
-		passthroughData["auto-share"] = true;
+		passthroughData["auto-share"] = autoShare;
 
 		outReq->setPassthroughData(passthroughData);
+	}
+
+	void requestNextLink()
+	{
+		log_debug("httpsession: next: %s", qPrintable(nextUri.toString()));
+
+		if(!outZhttp)
+		{
+			errorMessage = "Instruct contained link, but handler not configured for outbound requests.";
+			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
+			return;
+		}
+
+		prepareOutReq(nextUri, true);
 
 		HttpHeaders headers;
 		foreach(const Instruct::Channel &c, channels.values())
@@ -1232,113 +1276,121 @@ private:
 				return;
 			}
 
-			if(outReq->bytesAvailable() > 0)
+			if(state == Proxying)
 			{
-				// stop keep alive timer only if we have to send data. if the
-				//   response body is empty, then the timer is left alone
-				timer->stop();
-
-				int avail = req->writeBytesAvailable();
-				if(avail <= 0)
-					return;
-
-				QByteArray buf = outReq->readBody(avail);
-
-				if(responseFilters)
+				if(outReq->bytesAvailable() > 0)
 				{
-					buf = responseFilters->update(buf);
-					if(buf.isNull())
-					{
-						logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
+					// stop keep alive timer only if we have to send data. if the
+					//   response body is empty, then the timer is left alone
+					timer->stop();
 
-						errorMessage = QString("filter error: %1").arg(responseFilters->errorMessage());
-						doError();
+					int avail = req->writeBytesAvailable();
+					if(avail <= 0)
 						return;
+
+					QByteArray buf = outReq->readBody(avail);
+
+					if(responseFilters)
+					{
+						buf = responseFilters->update(buf);
+						if(buf.isNull())
+						{
+							logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
+
+							errorMessage = QString("filter error: %1").arg(responseFilters->errorMessage());
+							doError();
+							return;
+						}
 					}
+
+					writeBody(buf);
+
+					sentOutReqData += buf.size();
 				}
 
-				writeBody(buf);
+				if(outReq->bytesAvailable() == 0 && outReq->isFinished())
+				{
+					if(responseFilters)
+					{
+						QByteArray buf = responseFilters->finalize();
+						if(buf.isNull())
+						{
+							logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
 
-				sentOutReqData += buf.size();
+							errorMessage = QString("filter error: %1").arg(responseFilters->errorMessage());
+							doError();
+							return;
+						}
+
+						delete responseFilters;
+						responseFilters = 0;
+
+						if(!buf.isEmpty())
+						{
+							writeBody(buf);
+
+							sentOutReqData += buf.size();
+						}
+					}
+
+					HttpResponseData responseData;
+					responseData.code = outReq->responseCode();
+					responseData.reason = outReq->responseReason();
+					responseData.headers = outReq->responseHeaders();
+
+					logRequest(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders(), responseData.code, sentOutReqData);
+
+					retries = 0;
+
+					cleanupOutReq();
+
+					currentUri = nextUri;
+
+					if(!instruct.nextLink.isEmpty())
+						nextUri = currentUri.resolved(instruct.nextLink);
+					else
+						nextUri.clear();
+
+					if(instruct.channels.count() > connectionSubscriptionMax)
+					{
+						instruct.channels = instruct.channels.mid(0, connectionSubscriptionMax);
+
+						auto routeInfo = LogUtil::RouteInfo(adata.route, logLevel);
+						LogUtil::logForRoute(routeInfo, "httpsession: too many subscriptions");
+					}
+
+					if(instruct.holdMode == Instruct::StreamHold)
+					{
+						if(instruct.keepAliveTimeout < 0)
+							timer->stop();
+
+						prepareToSendQueueOrHold();
+					}
+				}
 			}
-
-			if(outReq->bytesAvailable() == 0 && outReq->isFinished())
+			else if(state == SendingGone)
 			{
-				if(responseFilters)
+				// response should be empty
+				if(outReq->bytesAvailable() > 0)
 				{
-					QByteArray buf = responseFilters->finalize();
-					if(buf.isNull())
-					{
-						logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
-
-						errorMessage = QString("filter error: %1").arg(responseFilters->errorMessage());
-						doError();
-						return;
-					}
-
-					delete responseFilters;
-					responseFilters = 0;
-
-					if(!buf.isEmpty())
-					{
-						writeBody(buf);
-
-						sentOutReqData += buf.size();
-					}
-				}
-
-				HttpResponseData responseData;
-				responseData.code = outReq->responseCode();
-				responseData.reason = outReq->responseReason();
-				responseData.headers = outReq->responseHeaders();
-
-				logRequest(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders(), responseData.code, sentOutReqData);
-
-				retries = 0;
-
-				delete outReq;
-				outReq = 0;
-
-				bool ok;
-				Instruct i = Instruct::fromResponse(responseData, &ok, &errorMessage);
-				if(!ok)
-				{
-					doError();
+					outReq_error();
 					return;
 				}
 
-				// subsequent response must be non-hold or stream hold
-				if(i.holdMode != Instruct::NoHold && i.holdMode != Instruct::StreamHold)
+				if(outReq->isFinished())
 				{
-					errorMessage = "Next link returned non-stream hold.";
-					doError();
+					logRequest(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders(), outReq->responseCode(), 0);
+
+					cleanupOutReq();
+
+					finished();
 					return;
 				}
-
-				instruct = i;
-
-				currentUri = nextUri;
-
-				if(!instruct.nextLink.isEmpty())
-					nextUri = currentUri.resolved(instruct.nextLink);
-				else
-					nextUri.clear();
-
-				if(instruct.channels.count() > connectionSubscriptionMax)
-				{
-					instruct.channels = instruct.channels.mid(0, connectionSubscriptionMax);
-
-					auto routeInfo = LogUtil::RouteInfo(adata.route, logLevel);
-					LogUtil::logForRoute(routeInfo, "httpsession: too many subscriptions");
-				}
-
-				if(instruct.holdMode == Instruct::StreamHold)
-				{
-					if(instruct.keepAliveTimeout < 0)
-						timer->stop();
-
-					prepareToSendQueueOrHold();
-				}
+			}
+			else
+			{
+				// unexpected state
+				assert(0);
 			}
 		}
 
@@ -1477,21 +1529,51 @@ private slots:
 		{
 			haveOutReqHeaders = true;
 
-			// apply ProxyContent filters of all channels
-			QStringList allFilters;
-			foreach(const Instruct::Channel &c, instruct.channels)
+			if(state == Proxying)
 			{
-				foreach(const QString &filter, c.filters)
+				HttpResponseData responseData;
+				responseData.code = outReq->responseCode();
+				responseData.reason = outReq->responseReason();
+				responseData.headers = outReq->responseHeaders();
+
+				bool ok;
+				Instruct i = Instruct::fromResponse(responseData, &ok, &errorMessage);
+				if(!ok)
 				{
-					if((Filter::targets(filter) & Filter::ProxyContent) && !allFilters.contains(filter))
-						allFilters += filter;
+					doError();
+					return;
 				}
+
+				// subsequent response must be non-hold or stream hold
+				if(i.holdMode != Instruct::NoHold && i.holdMode != Instruct::StreamHold)
+				{
+					errorMessage = "Next link returned non-stream hold.";
+					doError();
+					return;
+				}
+
+				// accept the instruct as soon as it's available, so we can
+				// use its filters. if response processing ends up failing
+				// later on, the session will error out and the instruct
+				// won't be used for anything else
+				instruct = i;
+
+				// apply ProxyContent filters of all channels
+				QStringList allFilters;
+				foreach(const Instruct::Channel &c, instruct.channels)
+				{
+					foreach(const QString &filter, c.filters)
+					{
+						if((Filter::targets(filter) & Filter::ProxyContent) && !allFilters.contains(filter))
+							allFilters += filter;
+					}
+				}
+
+				Filter::Context fc;
+				fc.subscriptionMeta = instruct.meta;
+
+				responseFilters = new FilterStack(fc, allFilters);
 			}
-
-			Filter::Context fc;
-			fc.subscriptionMeta = instruct.meta;
-
-			responseFilters = new FilterStack(fc, allFilters);
 		}
 
 		tryProcessOutReq();
@@ -1501,34 +1583,43 @@ private slots:
 	{
 		logRequestError(outReq->requestMethod(), outReq->requestUri(), outReq->requestHeaders());
 
-		delete responseFilters;
-		responseFilters = 0;
+		cleanupOutReq();
 
-		delete outReq;
-		outReq = 0;
-
-		log_debug("httpsession: failed to retrieve next link");
-
-		// can't retry if we started sending data
-
-		if(sentOutReqData <= 0 && retries < RETRY_MAX)
+		if(state == Proxying)
 		{
-			int delay = RETRY_TIMEOUT;
-			for(int n = 0; n < retries; ++n)
-				delay *= 2;
-			delay += QRandomGenerator::global()->generate() % RETRY_RAND_MAX;
+			log_debug("httpsession: failed to retrieve next link");
 
-			log_debug("httpsession: trying again in %dms", delay);
+			// can't retry if we started sending data
 
-			++retries;
+			if(sentOutReqData <= 0 && retries < RETRY_MAX)
+			{
+				int delay = RETRY_TIMEOUT;
+				for(int n = 0; n < retries; ++n)
+					delay *= 2;
+				delay += QRandomGenerator::global()->generate() % RETRY_RAND_MAX;
 
-			retryTimer->start(delay);
-			return;
+				log_debug("httpsession: trying again in %dms", delay);
+
+				++retries;
+
+				retryTimer->start(delay);
+				return;
+			}
+			else
+			{
+				errorMessage = "Failed to retrieve next link.";
+				doError();
+			}
+		}
+		else if(state == SendingGone)
+		{
+			log_debug("httpsession: failed to request gone link");
+			finished();
 		}
 		else
 		{
-			errorMessage = "Failed to retrieve next link.";
-			doError();
+			// unexpected state
+			assert(0);
 		}
 	}
 
