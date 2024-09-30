@@ -958,7 +958,12 @@ impl Worker {
                     id, count
                 );
 
-                match select_2(pin!(stream_handle.send(msg)), shutdown_timeout.elapsed()).await {
+                match select_2(
+                    pin!(stream_handle.send(None, msg)),
+                    shutdown_timeout.elapsed(),
+                )
+                .await
+                {
                     Select2::R1(r) => r.unwrap(),
                     Select2::R2(_) => break 'outer,
                 }
@@ -1252,7 +1257,7 @@ impl Worker {
                     Select6::R1(_) => break,
                     // receiver_recv
                     Select6::R2(result) => match result {
-                        Ok(msg) => handle_send.set(Some(stream_handle.send(msg))),
+                        Ok(msg) => handle_send.set(Some(stream_handle.send(None, msg))),
                         Err(e) => panic!("zstream_out_receiver channel error: {}", e),
                     },
                     // handle_send
