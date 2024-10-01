@@ -381,7 +381,7 @@ impl Connections {
             None => return Err(()),
         };
 
-        let bkey = items.batch.add(addr, ckey)?;
+        let bkey = items.batch.add(addr, false, ckey)?;
 
         ci.batch_key = Some(bkey);
 
