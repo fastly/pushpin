@@ -498,7 +498,7 @@ struct ConnectionStreamOpts {
     blocks_avail: Arc<Counter>,
     messages_max: usize,
     allow_compression: bool,
-    sender: channel::LocalSender<zmq::Message>,
+    sender: channel::LocalSender<(Option<ArrayVec<u8, FROM_MAX>>, zmq::Message)>,
 }
 
 struct Worker {
@@ -1024,8 +1024,8 @@ impl Worker {
         id: usize,
         stop: AsyncLocalReceiver<()>,
         done: AsyncLocalSender<zhttpsocket::AsyncServerStreamHandle>,
-        zstream_out_receiver: AsyncLocalReceiver<zmq::Message>,
-        zstream_out_sender: channel::LocalSender<zmq::Message>,
+        zstream_out_receiver: AsyncLocalReceiver<(Option<ArrayVec<u8, FROM_MAX>>, zmq::Message)>,
+        zstream_out_sender: channel::LocalSender<(Option<ArrayVec<u8, FROM_MAX>>, zmq::Message)>,
         spawner: Spawner,
         resolver: Arc<Resolver>,
         tls_config_cache: Arc<TlsConfigCache>,
@@ -1098,7 +1098,7 @@ impl Worker {
                     Select6::R1(_) => break,
                     // receiver_recv
                     Select6::R2(result) => match result {
-                        Ok(msg) => handle_send.set(Some(stream_handle.send(None, msg))),
+                        Ok((addr, msg)) => handle_send.set(Some(stream_handle.send(addr, msg))),
                         Err(e) => panic!("zstream_out_receiver channel error: {}", e),
                     },
                     // handle_send
@@ -1487,7 +1487,7 @@ impl Worker {
         stop: AsyncLocalReceiver<()>,
         _done: AsyncLocalSender<()>,
         instance_id: Rc<String>,
-        sender: channel::LocalSender<zmq::Message>,
+        sender: channel::LocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
         conns: Rc<Connections>,
     ) {
         debug!("client-worker {}: task started: keep_alives", id);
@@ -1552,7 +1552,7 @@ impl Worker {
                     id, count
                 );
 
-                if let Err(e) = send.try_send(msg) {
+                if let Err(e) = send.try_send((None, msg)) {
                     error!("zhttp write error: {}", e);
                 }
             }

@@ -917,7 +917,7 @@ struct ZhttpServerStreamSessionOut<'a> {
     instance_id: &'a str,
     id: &'a [u8],
     packet_buf: &'a RefCell<Vec<u8>>,
-    sender: &'a AsyncLocalSender<zmq::Message>,
+    sender: &'a AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: &'a StreamSharedData,
 }
 
@@ -926,7 +926,7 @@ impl<'a> ZhttpServerStreamSessionOut<'a> {
         instance_id: &'a str,
         id: &'a [u8],
         packet_buf: &'a RefCell<Vec<u8>>,
-        sender: &'a AsyncLocalSender<zmq::Message>,
+        sender: &'a AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
         shared: &'a StreamSharedData,
     ) -> Self {
         Self {
@@ -971,7 +971,7 @@ impl<'a> ZhttpServerStreamSessionOut<'a> {
             make_zhttp_response(addr, zresp, packet_buf)?
         };
 
-        self.sender.try_send(msg)?;
+        self.sender.try_send((None, msg))?;
 
         self.shared.inc_out_seq();
 
@@ -5478,7 +5478,7 @@ async fn client_stream_connect<E, R1, R2>(
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-    zsender: &AsyncLocalSender<zmq::Message>,
+    zsender: &AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: &StreamSharedData,
     enable_routing: &E,
     response_received: &mut bool,
@@ -5720,7 +5720,7 @@ async fn client_stream_connection_inner<E>(
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-    zsender: AsyncLocalSender<zmq::Message>,
+    zsender: AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: arena::Rc<StreamSharedData>,
     enable_routing: &E,
 ) -> Result<(), Error>
@@ -5833,7 +5833,7 @@ where
 
                 if let Some(msg) = msg {
                     // best effort
-                    let _ = zsender.try_send(msg);
+                    let _ = zsender.try_send((None, msg));
 
                     shared.inc_out_seq();
                 }
@@ -5867,7 +5867,7 @@ pub async fn client_stream_connection<E>(
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-    zsender: AsyncLocalSender<zmq::Message>,
+    zsender: AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: arena::Rc<StreamSharedData>,
     enable_routing: &E,
 ) where
@@ -9196,7 +9196,7 @@ mod tests {
         sock: Rc<RefCell<FakeSock>>,
         allow_compression: bool,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-        s_from_conn: channel::LocalSender<zmq::Message>,
+        s_from_conn: channel::LocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
         shared: arena::Rc<StreamSharedData>,
     ) -> Result<(), Error> {
         let mut sock = AsyncFakeSock::new(sock);
@@ -9333,15 +9333,22 @@ mod tests {
         let mut executor = StepExecutor::new(&reactor, fut);
 
         // fill the handler's outbound message queue
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
+            true
+        );
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_err(),
+            true
+        );
         drop(s_from_conn);
 
         // handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
         // read bogus message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
         // no other messages
@@ -9351,7 +9358,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read real message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9386,7 +9394,8 @@ mod tests {
         assert_eq!(str::from_utf8(&buf).unwrap(), expected);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9440,7 +9449,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9459,7 +9469,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), Some(()));
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9532,7 +9543,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert!(r_from_conn.try_recv().is_err());
@@ -9569,7 +9581,8 @@ mod tests {
         sock.borrow_mut().clear_write_allowed();
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert!(r_from_conn.try_recv().is_err());
@@ -9615,7 +9628,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert!(r_from_conn.try_recv().is_err());
@@ -9685,15 +9699,22 @@ mod tests {
         let mut executor = StepExecutor::new(&reactor, fut);
 
         // fill the handler's outbound message queue
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
+            true
+        );
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_err(),
+            true
+        );
         drop(s_from_conn);
 
         // handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
         // read bogus message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
         // no other messages
@@ -9703,7 +9724,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read real message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9785,7 +9807,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9826,7 +9849,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         let buf = &msg[..];
 
@@ -9924,15 +9948,22 @@ mod tests {
         let mut executor = StepExecutor::new(&reactor, fut);
 
         // fill the handler's outbound message queue
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
+            true
+        );
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_err(),
+            true
+        );
         drop(s_from_conn);
 
         // handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
         // read bogus message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
         // no other messages
@@ -9942,7 +9973,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read real message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -10026,7 +10058,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -10078,7 +10111,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         let buf = &msg[..];
 
