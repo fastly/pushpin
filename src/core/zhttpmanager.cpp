@@ -90,6 +90,7 @@ public:
 	QZmq::Socket *server_in_stream_sock;
 	QZmq::Socket *server_out_sock;
 	QZmq::Valve *client_in_valve;
+	QZmq::Valve *client_out_stream_valve;
 	QZmq::Valve *server_in_valve;
 	QZmq::Valve *server_in_stream_valve;
 	QByteArray instanceId;
@@ -110,6 +111,7 @@ public:
 	Connection sosConnection;
 	Connection rrConnection;
 	Connection clientConnection;
+	Connection clientOutStreamConnection;
 	Connection serverConnection;
 	Connection serverStreamConnection;
 	Connection refreshTimerConnection;
@@ -125,6 +127,7 @@ public:
 		server_in_stream_sock(0),
 		server_out_sock(0),
 		client_in_valve(0),
+		client_out_stream_valve(0),
 		server_in_valve(0),
 		server_in_stream_valve(0),
 		ipcFileMode(-1),
@@ -186,11 +189,13 @@ public:
 		rrConnection.disconnect();
 		cossConnection.disconnect();
 		delete client_req_sock;
+		delete client_out_stream_valve;
 		delete client_out_stream_sock;
 
 		client_out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
 		cossConnection = client_out_stream_sock->messagesWritten.connect(boost::bind(&Private::client_out_stream_messagesWritten, this, boost::placeholders::_1));
 
+		client_out_stream_sock->setIdentity(instanceId);
 		client_out_stream_sock->setWriteQueueEnabled(false);
 		client_out_stream_sock->setHwm(DEFAULT_HWM);
 		client_out_stream_sock->setShutdownWaitTime(CLIENT_STREAM_WAIT_TIME);
@@ -203,6 +208,11 @@ public:
 			return false;
 		}
 
+		client_out_stream_valve = new QZmq::Valve(client_out_stream_sock, this);
+		clientOutStreamConnection = client_out_stream_valve->readyRead.connect(boost::bind(&Private::client_out_stream_readyRead, this, boost::placeholders::_1));
+
+		client_out_stream_valve->open();
+
 		return true;
 	}
 
@@ -210,6 +220,7 @@ public:
 	{
 		rrConnection.disconnect();
 		delete client_req_sock;
+		delete client_in_valve;
 		delete client_in_sock;
 
 		client_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
@@ -259,6 +270,7 @@ public:
 
 	bool setupServerIn()
 	{
+		delete server_in_valve;
 		delete server_in_sock;
 
 		server_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
@@ -563,30 +575,15 @@ public:
 		}
 	}
 
-	void client_in_readyRead(const QList<QByteArray> &msg)
+	void processClientIn(const QByteArray &receiver, const QByteArray &msg)
 	{
-		if(msg.count() != 1)
-		{
-			log_warning("zhttp/zws client: received message with parts != 1, skipping");
-			return;
-		}
-
-		int at = msg[0].indexOf(' ');
-		if(at == -1)
-		{
-			log_warning("zhttp/zws client: received message with invalid format, skipping");
-			return;
-		}
-
-		QByteArray receiver = msg[0].mid(0, at);
-		QByteArray dataRaw = msg[0].mid(at + 1);
-		if(dataRaw.length() < 1 || dataRaw[0] != 'T')
+		if(msg.length() < 1 || msg[0] != 'T')
 		{
 			log_warning("zhttp/zws client: received message with invalid format (missing type), skipping");
 			return;
 		}
 
-		QVariant data = TnetString::toVariant(dataRaw.mid(1));
+		QVariant data = TnetString::toVariant(msg.mid(1));
 		if(data.isNull())
 		{
 			log_warning("zhttp/zws client: received message with invalid format (tnetstring parse failed), skipping");
@@ -594,7 +591,12 @@ public:
 		}
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client: IN %s", receiver.data());
+		{
+			if(!receiver.isEmpty())
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client: IN %s", receiver.data());
+			else
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, data, "body", "zhttp/zws client: IN");
+		}
 
 		ZhttpResponsePacket p;
 		if(!p.fromVariant(data))
@@ -631,6 +633,38 @@ public:
 
 			log_debug("zhttp/zws client: received message for unknown request id, skipping");
 		}
+	}
+
+	void client_out_stream_readyRead(const QList<QByteArray> &msg)
+	{
+		if(msg.count() != 3)
+		{
+			log_warning("zhttp/zws client: received router message with parts != 3, skipping");
+			return;
+		}
+
+		processClientIn(QByteArray(), msg[2]);
+	}
+
+	void client_in_readyRead(const QList<QByteArray> &msg)
+	{
+		if(msg.count() != 1)
+		{
+			log_warning("zhttp/zws client: received pub message with parts != 1, skipping");
+			return;
+		}
+
+		int at = msg[0].indexOf(' ');
+		if(at == -1)
+		{
+			log_warning("zhttp/zws client: received pub message with invalid format, skipping");
+			return;
+		}
+
+		QByteArray receiver = msg[0].mid(0, at);
+		QByteArray dataRaw = msg[0].mid(at + 1);
+
+		processClientIn(receiver, dataRaw);
 	}
 
 	void server_in_readyRead(const QList<QByteArray> &msg)
