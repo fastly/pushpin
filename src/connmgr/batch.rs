@@ -39,7 +39,6 @@ impl<'a> BatchGroup<'a, '_> {
         self.addr
     }
 
-    #[allow(dead_code)]
     pub fn use_router(&self) -> bool {
         self.use_router
     }
