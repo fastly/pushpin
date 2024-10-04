@@ -1037,6 +1037,7 @@ public slots:
 			p.type = ZhttpRequestPacket::Data;
 			p.uri = requestUri;
 			p.headers = requestHeaders;
+			p.routerResp = true;
 			p.connectHost = connectHost;
 			p.connectPort = connectPort;
 			if(ignorePolicies)

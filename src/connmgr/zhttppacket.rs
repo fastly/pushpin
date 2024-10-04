@@ -325,6 +325,7 @@ pub struct RequestData<'buf, 'headers> {
     pub credits: u32,
     pub more: bool,
     pub stream: bool,
+    pub router_resp: bool,
     pub max_size: u32,
     pub timeout: u32,
     pub method: &'buf str,
@@ -349,6 +350,7 @@ impl RequestData<'_, '_> {
             credits: 0,
             more: false,
             stream: false,
+            router_resp: false,
             max_size: 0,
             timeout: 0,
             method: "",
@@ -425,6 +427,11 @@ impl<'a> Serialize<'a> for RequestData<'a, 'a> {
             w.write_bool(true)?;
         }
 
+        if self.router_resp {
+            w.write_string(b"router-resp")?;
+            w.write_bool(true)?;
+        }
+
         if self.max_size > 0 {
             w.write_string(b"max-size")?;
             w.write_int(self.max_size as isize)?;
@@ -457,6 +464,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
         let mut credits = 0;
         let mut more = false;
         let mut stream = false;
+        let mut router_resp = false;
         let mut max_size = 0;
         let mut timeout = 0;
         let mut method = "";
@@ -494,6 +502,11 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
                     let b = tnetstring::parse_bool(e.data).field("stream")?;
 
                     stream = b;
+                }
+                "router-resp" => {
+                    let b = tnetstring::parse_bool(e.data).field("router-resp")?;
+
+                    router_resp = b;
                 }
                 "max-size" => {
                     let x = tnetstring::parse_int(e.data).field("max-size")?;
@@ -641,6 +654,7 @@ impl<'buf: 'scratch, 'scratch> Parse<'buf, 'scratch> for RequestData<'buf, 'scra
             credits,
             more,
             stream,
+            router_resp,
             max_size,
             timeout,
             method,
@@ -1783,6 +1797,7 @@ mod tests {
                         credits: 0,
                         more: true,
                         stream: false,
+                        router_resp: false,
                         max_size: 0,
                         timeout: 0,
                         method: "POST",
