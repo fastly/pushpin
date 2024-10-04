@@ -1088,7 +1088,7 @@ where
 
             if let Some(seq) = zresp.ids[id_index].seq {
                 if seq != self.seq {
-                    debug!(
+                    warn!(
                         "server-conn {}: bad seq (expected {}, got {}), skipping",
                         self.id, self.seq, seq
                     );
@@ -1235,7 +1235,7 @@ where
 
             if let Some(seq) = zreq.ids[id_index].seq {
                 if seq != self.seq {
-                    debug!(
+                    warn!(
                         "client-conn {}: bad seq (expected {}, got {}), skipping",
                         self.log_id, self.seq, seq
                     );
