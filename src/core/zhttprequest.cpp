@@ -1014,6 +1014,7 @@ public slots:
 				if(!requestBodyBuf.isEmpty() || !bodyFinished)
 					p.more = true;
 				p.stream = true;
+				p.routerResp = true;
 				p.connectHost = connectHost;
 				p.connectPort = connectPort;
 				if(ignorePolicies)

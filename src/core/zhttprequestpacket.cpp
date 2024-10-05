@@ -88,6 +88,9 @@ QVariant ZhttpRequestPacket::toVariant() const
 	if(stream)
 		obj["stream"] = true;
 
+	if(routerResp)
+		obj["router-resp"] = true;
+
 	if(maxSize != -1)
 		obj["max-size"] = maxSize;
 
@@ -307,6 +310,15 @@ bool ZhttpRequestPacket::fromVariant(const QVariant &in)
 			return false;
 
 		stream = obj["stream"].toBool();
+	}
+
+	routerResp = false;
+	if(obj.contains("router-resp"))
+	{
+		if(typeId(obj["router-resp"]) != QMetaType::Bool)
+			return false;
+
+		routerResp = obj["router-resp"].toBool();
 	}
 
 	maxSize = -1;

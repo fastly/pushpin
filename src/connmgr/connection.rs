@@ -542,6 +542,7 @@ impl<'a> AddrRef<'a> {
 struct StreamSharedDataInner {
     to_addr: Option<ArrayVec<u8, 64>>,
     out_seq: u32,
+    router_resp: bool,
     state: &'static str,
 }
 
@@ -556,6 +557,7 @@ impl StreamSharedData {
             inner: RefCell::new(StreamSharedDataInner {
                 to_addr: None,
                 out_seq: 0,
+                router_resp: false,
                 state: "init",
             }),
         }
@@ -566,6 +568,7 @@ impl StreamSharedData {
 
         s.to_addr = None;
         s.out_seq = 0;
+        s.router_resp = false;
         s.state = "init";
     }
 
@@ -589,6 +592,16 @@ impl StreamSharedData {
         let s = &mut *self.inner.borrow_mut();
 
         s.out_seq += 1;
+    }
+
+    pub fn router_resp(&self) -> bool {
+        self.inner.borrow().router_resp
+    }
+
+    pub fn set_router_resp(&self, b: bool) {
+        let s = &mut *self.inner.borrow_mut();
+
+        s.router_resp = b;
     }
 
     pub fn state(&self) -> &'static str {
@@ -631,23 +644,40 @@ fn make_zhttp_req_response(
     Ok(zmq::Message::from(payload))
 }
 
-fn make_zhttp_response(
+pub fn make_zhttp_response(
     addr: &[u8],
+    use_router: bool,
     zresp: zhttppacket::Response,
     scratch: &mut [u8],
-) -> Result<zmq::Message, io::Error> {
+) -> Result<(Option<ArrayVec<u8, 64>>, zmq::Message), io::Error> {
     let size = zresp.serialize(scratch)?;
     let payload = &scratch[..size];
 
-    let mut v = vec![0; addr.len() + 1 + payload.len()];
+    let (addr, v) = if use_router {
+        // for router, use message as-is and return addr separately
 
-    v[..addr.len()].copy_from_slice(addr);
-    v[addr.len()] = b' ';
-    let pos = addr.len() + 1;
-    v[pos..(pos + payload.len())].copy_from_slice(payload);
+        let v = Vec::from(payload);
+
+        let addr = ArrayVec::try_from(addr).expect("addr has unexpected size");
+
+        (Some(addr), v)
+    } else {
+        // for pub, embed addr in message
+
+        let mut v = vec![0; addr.len() + 1 + payload.len()];
+
+        v[..addr.len()].copy_from_slice(addr);
+        v[addr.len()] = b' ';
+        let pos = addr.len() + 1;
+        v[pos..(pos + payload.len())].copy_from_slice(payload);
+
+        (None, v)
+    };
 
     // this takes over the vec's memory without copying
-    Ok(zmq::Message::from(v))
+    let msg = zmq::Message::from(v);
+
+    Ok((addr, msg))
 }
 
 async fn recv_nonzero<R: AsyncRead>(r: &mut R, buf: &mut VecRingBuffer) -> Result<(), io::Error> {
@@ -933,7 +963,7 @@ struct ZhttpServerStreamSessionOut<'a> {
     instance_id: &'a str,
     id: &'a [u8],
     packet_buf: &'a RefCell<Vec<u8>>,
-    sender: &'a AsyncLocalSender<zmq::Message>,
+    sender: &'a AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: &'a StreamSharedData,
 }
 
@@ -942,7 +972,7 @@ impl<'a> ZhttpServerStreamSessionOut<'a> {
         instance_id: &'a str,
         id: &'a [u8],
         packet_buf: &'a RefCell<Vec<u8>>,
-        sender: &'a AsyncLocalSender<zmq::Message>,
+        sender: &'a AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
         shared: &'a StreamSharedData,
     ) -> Self {
         Self {
@@ -967,7 +997,7 @@ impl<'a> ZhttpServerStreamSessionOut<'a> {
     // interfering with the sequencing. to send asynchronously, first await
     // on check_send and then call this method
     fn try_send_msg(&self, zresp: zhttppacket::Response) -> Result<(), Error> {
-        let msg = {
+        let (addr, msg) = {
             let mut zresp = zresp;
 
             let ids = [zhttppacket::Id {
@@ -984,10 +1014,10 @@ impl<'a> ZhttpServerStreamSessionOut<'a> {
 
             let packet_buf = &mut *self.packet_buf.borrow_mut();
 
-            make_zhttp_response(addr, zresp, packet_buf)?
+            make_zhttp_response(addr, self.shared.router_resp(), zresp, packet_buf)?
         };
 
-        self.sender.try_send(msg)?;
+        self.sender.try_send((addr, msg))?;
 
         self.shared.inc_out_seq();
 
@@ -1074,7 +1104,7 @@ where
 
             if let Some(seq) = zresp.ids[id_index].seq {
                 if seq != self.seq {
-                    debug!(
+                    warn!(
                         "server-conn {}: bad seq (expected {}, got {}), skipping",
                         self.id, self.seq, seq
                     );
@@ -1221,7 +1251,7 @@ where
 
             if let Some(seq) = zreq.ids[id_index].seq {
                 if seq != self.seq {
-                    debug!(
+                    warn!(
                         "client-conn {}: bad seq (expected {}, got {}), skipping",
                         self.log_id, self.seq, seq
                     );
@@ -5513,7 +5543,7 @@ async fn client_stream_connect<E, R1, R2>(
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-    zsender: &AsyncLocalSender<zmq::Message>,
+    zsender: &AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: &StreamSharedData,
     enable_routing: &E,
     response_received: &mut bool,
@@ -5560,6 +5590,8 @@ where
     } else {
         "_"
     };
+
+    shared.set_router_resp(rdata.router_resp);
 
     debug!("client-conn {}: request: {} {}", log_id, method, rdata.uri);
 
@@ -5761,7 +5793,7 @@ async fn client_stream_connection_inner<E>(
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-    zsender: AsyncLocalSender<zmq::Message>,
+    zsender: AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: arena::Rc<StreamSharedData>,
     enable_routing: &E,
 ) -> Result<(), Error>
@@ -5843,7 +5875,7 @@ where
             if !handler_caused {
                 let shared = shared.get();
 
-                let msg = if let Some(addr) = shared.to_addr().get() {
+                let resp = if let Some(addr) = shared.to_addr().get() {
                     let mut zresp = if response_received {
                         zhttppacket::Response::new_cancel(b"", &[])
                     } else {
@@ -5868,16 +5900,19 @@ where
 
                     let packet_buf = &mut *packet_buf.borrow_mut();
 
-                    let msg = make_zhttp_response(addr, zresp, packet_buf)?;
-
-                    Some(msg)
+                    Some(make_zhttp_response(
+                        addr,
+                        shared.router_resp(),
+                        zresp,
+                        packet_buf,
+                    )?)
                 } else {
                     None
                 };
 
-                if let Some(msg) = msg {
+                if let Some((addr, msg)) = resp {
                     // best effort
-                    let _ = zsender.try_send(msg);
+                    let _ = zsender.try_send((addr, msg));
 
                     shared.inc_out_seq();
                 }
@@ -5911,7 +5946,7 @@ pub async fn client_stream_connection<E>(
     tls_config_cache: &TlsConfigCache,
     pool: &ConnectionPool,
     zreceiver: AsyncLocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-    zsender: AsyncLocalSender<zmq::Message>,
+    zsender: AsyncLocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
     shared: arena::Rc<StreamSharedData>,
     enable_routing: &E,
 ) where
@@ -9240,7 +9275,7 @@ mod tests {
         sock: Rc<RefCell<FakeSock>>,
         allow_compression: bool,
         r_to_conn: channel::LocalReceiver<(arena::Rc<zhttppacket::OwnedRequest>, usize)>,
-        s_from_conn: channel::LocalSender<zmq::Message>,
+        s_from_conn: channel::LocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
         shared: arena::Rc<StreamSharedData>,
     ) -> Result<(), Error> {
         let mut sock = AsyncFakeSock::new(sock);
@@ -9378,15 +9413,22 @@ mod tests {
         let mut executor = StepExecutor::new(&reactor, fut);
 
         // fill the handler's outbound message queue
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
+            true
+        );
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_err(),
+            true
+        );
         drop(s_from_conn);
 
         // handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
         // read bogus message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
         // no other messages
@@ -9396,7 +9438,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read real message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9431,7 +9474,8 @@ mod tests {
         assert_eq!(str::from_utf8(&buf).unwrap(), expected);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9485,7 +9529,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9504,7 +9549,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), Some(()));
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9514,6 +9560,218 @@ mod tests {
         let expected = concat!(
             "handler T74:4:from,4:test,2:id,1:1,3:seq,1:3#3:ext,15:5:mu",
             "lti,4:true!}4:body,6:hello\n,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+    }
+
+    #[test]
+    fn client_stream_router_resp() {
+        let reactor = Reactor::new(100);
+
+        let msg_mem = Arc::new(arena::ArcMemory::new(2));
+        let scratch_mem = Rc::new(arena::RcMemory::new(2));
+        let req_mem = Rc::new(arena::RcMemory::new(2));
+
+        let data = concat!(
+            "T187:7:credits,4:1024#4:more,4:true!7:headers,34:30:12:Conten",
+            "t-Type,10:text/plain,]]3:uri,24:https://example.com/path,6:me",
+            "thod,4:POST,3:seq,1:0#2:id,1:1,4:from,7:handler,11:router-res",
+            "p,4:true!}",
+        )
+        .as_bytes();
+
+        let msg = zmq::Message::from(data);
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let zreq = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let zreq = arena::Rc::new(zreq, &req_mem).unwrap();
+
+        let sock = Rc::new(RefCell::new(FakeSock::new()));
+
+        let (s_to_conn, r_to_conn) =
+            channel::local_channel(1, 1, &reactor.local_registration_memory());
+        let (s_from_conn, r_from_conn) =
+            channel::local_channel(1, 2, &reactor.local_registration_memory());
+
+        let fut = {
+            let sock = sock.clone();
+            let s_from_conn = s_from_conn
+                .try_clone(&reactor.local_registration_memory())
+                .unwrap();
+
+            let shared_mem = Rc::new(arena::RcMemory::new(1));
+            let shared = arena::Rc::new(StreamSharedData::new(), &shared_mem).unwrap();
+            let addr = ArrayVec::try_from(b"handler".as_slice()).unwrap();
+            shared.get().set_to_addr(Some(addr));
+            shared.get().set_router_resp(true);
+
+            client_stream_fut(
+                b"1".to_vec(),
+                zreq,
+                sock,
+                false,
+                r_to_conn,
+                s_from_conn,
+                shared,
+            )
+        };
+
+        let mut executor = StepExecutor::new(&reactor, fut);
+
+        // fill the handler's outbound message queue
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
+            true
+        );
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_err(),
+            true
+        );
+        drop(s_from_conn);
+
+        // handler won't be able to send a message yet
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read bogus message
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
+        assert_eq!(msg.is_empty(), true);
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        // now handler will be able to send a message
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected_addr = b"handler".as_slice();
+
+        // read real message
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert_eq!(addr.as_deref(), Some(expected_addr));
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T79:4:from,4:test,2:id,1:1,3:seq,1:0#3:ext,15:5:multi,4:tr",
+            "ue!}4:type,10:keep-alive,}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        // no data yet
+        assert_eq!(sock.borrow_mut().take_writable().is_empty(), true);
+
+        sock.borrow_mut().allow_write(1024);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected = concat!(
+            "POST /path HTTP/1.1\r\n",
+            "Host: example.com\r\n",
+            "Content-Type: text/plain\r\n",
+            "Connection: Transfer-Encoding\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+        );
+
+        let buf = sock.borrow_mut().take_writable();
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        // read message
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert_eq!(addr.as_deref(), Some(expected_addr));
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T91:4:from,4:test,2:id,1:1,3:seq,1:1#3:ext,15:5:multi,4:tr",
+            "ue!}4:type,6:credit,7:credits,4:1024#}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        let msg = concat!("T52:3:seq,1:1#2:id,1:1,4:from,7:handler,4:body,6:hello\n,}");
+
+        let msg = zmq::Message::from(msg.as_bytes());
+        let msg = arena::Arc::new(msg, &msg_mem).unwrap();
+
+        let scratch =
+            arena::Rc::new(RefCell::new(zhttppacket::ParseScratch::new()), &scratch_mem).unwrap();
+
+        let req = zhttppacket::OwnedRequest::parse(msg, 0, scratch).unwrap();
+        let req = arena::Rc::new(req, &req_mem).unwrap();
+
+        assert_eq!(s_to_conn.try_send((req, 0)).is_ok(), true);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        let expected = concat!("6\r\nhello\n\r\n0\r\n\r\n",);
+
+        let buf = sock.borrow_mut().take_writable();
+
+        assert_eq!(str::from_utf8(&buf).unwrap(), expected);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // no more messages yet
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let resp_data = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Content-Type: text/plain\r\n",
+            "Content-Length: 6\r\n",
+            "\r\n",
+            "hello\n",
+        )
+        .as_bytes();
+
+        sock.borrow_mut().add_readable(resp_data);
+
+        assert_eq!(check_poll(executor.step()), None);
+
+        // read message
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert_eq!(addr.as_deref(), Some(expected_addr));
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T173:4:from,4:test,2:id,1:1,3:seq,1:2#3:ext,15:5:multi,4:t",
+            "rue!}4:code,3:200#6:reason,2:OK,7:headers,60:30:12:Content",
+            "-Type,10:text/plain,]22:14:Content-Length,1:6,]]4:more,4:t",
+            "rue!}",
+        );
+
+        assert_eq!(str::from_utf8(buf).unwrap(), expected);
+
+        assert_eq!(check_poll(executor.step()), Some(()));
+
+        // read message
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert_eq!(addr.as_deref(), Some(expected_addr));
+
+        // no other messages
+        assert_eq!(r_from_conn.try_recv().is_err(), true);
+
+        let buf = &msg[..];
+
+        let expected = concat!(
+            "T74:4:from,4:test,2:id,1:1,3:seq,1:3#3:ext,15:5:multi,4:tr",
+            "ue!}4:body,6:hello\n,}",
         );
 
         assert_eq!(str::from_utf8(buf).unwrap(), expected);
@@ -9577,7 +9835,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert!(r_from_conn.try_recv().is_err());
@@ -9614,7 +9873,8 @@ mod tests {
         sock.borrow_mut().clear_write_allowed();
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert!(r_from_conn.try_recv().is_err());
@@ -9660,7 +9920,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert!(r_from_conn.try_recv().is_err());
@@ -9730,15 +9991,22 @@ mod tests {
         let mut executor = StepExecutor::new(&reactor, fut);
 
         // fill the handler's outbound message queue
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
+            true
+        );
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_err(),
+            true
+        );
         drop(s_from_conn);
 
         // handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
         // read bogus message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
         // no other messages
@@ -9748,7 +10016,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read real message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9830,7 +10099,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -9871,7 +10141,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         let buf = &msg[..];
 
@@ -9969,15 +10240,22 @@ mod tests {
         let mut executor = StepExecutor::new(&reactor, fut);
 
         // fill the handler's outbound message queue
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_ok(), true);
-        assert_eq!(s_from_conn.try_send(zmq::Message::new()).is_err(), true);
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_ok(),
+            true
+        );
+        assert_eq!(
+            s_from_conn.try_send((None, zmq::Message::new())).is_err(),
+            true
+        );
         drop(s_from_conn);
 
         // handler won't be able to send a message yet
         assert_eq!(check_poll(executor.step()), None);
 
         // read bogus message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
         assert_eq!(msg.is_empty(), true);
 
         // no other messages
@@ -9987,7 +10265,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read real message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -10071,7 +10350,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         // no other messages
         assert_eq!(r_from_conn.try_recv().is_err(), true);
@@ -10123,7 +10403,8 @@ mod tests {
         assert_eq!(check_poll(executor.step()), None);
 
         // read message
-        let msg = r_from_conn.try_recv().unwrap();
+        let (addr, msg) = r_from_conn.try_recv().unwrap();
+        assert!(addr.is_none());
 
         let buf = &msg[..];
 

@@ -15,8 +15,10 @@
  * limitations under the License.
  */
 
+use crate::connmgr::batch::{Batch, BatchKey};
 use crate::connmgr::connection::{
-    client_req_connection, client_stream_connection, ConnectionPool, StreamSharedData,
+    client_req_connection, client_stream_connection, make_zhttp_response, ConnectionPool,
+    StreamSharedData,
 };
 use crate::connmgr::counter::Counter;
 use crate::connmgr::resolver::Resolver;
@@ -114,166 +116,6 @@ fn async_local_channel<T>(
     let r = AsyncLocalReceiver::new(r);
 
     (s, r)
-}
-
-struct BatchKey {
-    addr_index: usize,
-    nkey: usize,
-}
-
-struct BatchGroup<'a, 'b> {
-    addr: &'b [u8],
-    ids: arena::ReusableVecHandle<'b, zhttppacket::Id<'a>>,
-}
-
-impl<'a> BatchGroup<'a, '_> {
-    fn addr(&self) -> &[u8] {
-        self.addr
-    }
-
-    fn ids(&self) -> &[zhttppacket::Id<'a>] {
-        &self.ids
-    }
-}
-
-struct Batch {
-    nodes: Slab<list::Node<usize>>,
-    addrs: Vec<(ArrayVec<u8, FROM_MAX>, list::List)>,
-    addr_index: usize,
-    group_ids: arena::ReusableVec,
-    last_group_ckeys: Vec<usize>,
-}
-
-impl Batch {
-    fn new(capacity: usize) -> Self {
-        Self {
-            nodes: Slab::with_capacity(capacity),
-            addrs: Vec::with_capacity(capacity),
-            addr_index: 0,
-            group_ids: arena::ReusableVec::new::<zhttppacket::Id>(capacity),
-            last_group_ckeys: Vec::with_capacity(capacity),
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.nodes.len()
-    }
-
-    fn capacity(&self) -> usize {
-        self.nodes.capacity()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
-    }
-
-    fn clear(&mut self) {
-        self.addrs.clear();
-        self.nodes.clear();
-        self.addr_index = 0;
-    }
-
-    fn add(&mut self, to_addr: &[u8], ckey: usize) -> Result<BatchKey, ()> {
-        if self.nodes.len() == self.nodes.capacity() {
-            return Err(());
-        }
-
-        // if all existing nodes have been removed via remove() or take_group(),
-        // such that is_empty() returns true, start clean
-        if self.nodes.is_empty() {
-            self.addrs.clear();
-            self.addr_index = 0;
-        }
-
-        let mut pos = self.addrs.len();
-
-        for (i, a) in self.addrs.iter().enumerate() {
-            if a.0.as_ref() == to_addr {
-                pos = i;
-            }
-        }
-
-        if pos == self.addrs.len() {
-            if self.addrs.len() == self.addrs.capacity() {
-                return Err(());
-            }
-
-            // connection limits to_addr to FROM_MAX so this is guaranteed to succeed
-            let a = ArrayVec::try_from(to_addr).unwrap();
-
-            self.addrs.push((a, list::List::default()));
-        } else {
-            // adding not allowed if take_group() has already moved past the index
-            if pos < self.addr_index {
-                return Err(());
-            }
-        }
-
-        let nkey = self.nodes.insert(list::Node::new(ckey));
-        self.addrs[pos].1.push_back(&mut self.nodes, nkey);
-
-        Ok(BatchKey {
-            addr_index: pos,
-            nkey,
-        })
-    }
-
-    fn remove(&mut self, key: BatchKey) {
-        self.addrs[key.addr_index]
-            .1
-            .remove(&mut self.nodes, key.nkey);
-        self.nodes.remove(key.nkey);
-    }
-
-    fn take_group<'a, 'b: 'a, F>(&'a mut self, get_id: F) -> Option<BatchGroup>
-    where
-        F: Fn(usize) -> Option<(&'b [u8], u32)>,
-    {
-        let addrs = &mut self.addrs;
-        let mut ids = self.group_ids.get_as_new();
-
-        while ids.is_empty() {
-            // find the next addr with items
-            while self.addr_index < addrs.len() && addrs[self.addr_index].1.is_empty() {
-                self.addr_index += 1;
-            }
-
-            // if all are empty, we're done
-            if self.addr_index == addrs.len() {
-                assert!(self.nodes.is_empty());
-                return None;
-            }
-
-            let keys = &mut addrs[self.addr_index].1;
-
-            self.last_group_ckeys.clear();
-            ids.clear();
-
-            // get ids/seqs
-            while ids.len() < zhttppacket::IDS_MAX {
-                let nkey = match keys.pop_front(&mut self.nodes) {
-                    Some(nkey) => nkey,
-                    None => break,
-                };
-
-                let ckey = self.nodes[nkey].value;
-                self.nodes.remove(nkey);
-
-                if let Some((id, seq)) = get_id(ckey) {
-                    self.last_group_ckeys.push(ckey);
-                    ids.push(zhttppacket::Id { id, seq: Some(seq) });
-                }
-            }
-        }
-
-        let addr = &addrs[self.addr_index].0;
-
-        Some(BatchGroup { addr, ids })
-    }
-
-    fn last_group_ckeys(&self) -> &[usize] {
-        &self.last_group_ckeys
-    }
 }
 
 enum BatchType {
@@ -688,14 +530,18 @@ impl Connections {
             None => return Err(()),
         };
 
-        let bkey = items.batch.add(addr, ckey)?;
+        let bkey = items.batch.add(addr, cshared.router_resp(), ckey)?;
 
         ci.batch_key = Some(bkey);
 
         Ok(())
     }
 
-    fn next_batch_message(&self, from: &str, btype: BatchType) -> Option<(usize, zmq::Message)> {
+    fn next_batch_message(
+        &self,
+        from: &str,
+        btype: BatchType,
+    ) -> Option<(usize, Option<ArrayVec<u8, 64>>, zmq::Message)> {
         let items = &mut *self.items.borrow_mut();
         let nodes = &mut items.nodes;
         let batch = &mut items.batch;
@@ -727,46 +573,30 @@ impl Connections {
 
             assert!(count <= zhttppacket::IDS_MAX);
 
-            let zreq = zhttppacket::Request {
+            let zresp = zhttppacket::Response {
                 from: from.as_bytes(),
                 ids: group.ids(),
                 multi: true,
                 ptype: match btype {
-                    BatchType::KeepAlive => zhttppacket::RequestPacket::KeepAlive,
-                    BatchType::Cancel => zhttppacket::RequestPacket::Cancel,
+                    BatchType::KeepAlive => zhttppacket::ResponsePacket::KeepAlive,
+                    BatchType::Cancel => zhttppacket::ResponsePacket::Cancel,
                 },
                 ptype_str: "",
             };
 
-            let mut data = [0; BULK_PACKET_SIZE_MAX];
+            let mut scratch = [0; BULK_PACKET_SIZE_MAX];
 
-            let size = match zreq.serialize(&mut data) {
-                Ok(size) => size,
-                Err(e) => {
-                    error!(
-                        "failed to serialize keep-alive packet with {} ids: {}",
-                        zreq.ids.len(),
-                        e
-                    );
-                    continue;
-                }
-            };
-
-            let data = &data[..size];
-
-            let addr = group.addr();
-
-            let msg = {
-                let mut v = vec![0; addr.len() + 1 + data.len()];
-
-                v[..addr.len()].copy_from_slice(addr);
-                v[addr.len()] = b' ';
-                let pos = addr.len() + 1;
-                v[pos..(pos + data.len())].copy_from_slice(data);
-
-                // this takes over the vec's memory without copying
-                zmq::Message::from(v)
-            };
+            let (addr, msg) =
+                match make_zhttp_response(group.addr(), group.use_router(), zresp, &mut scratch) {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        error!(
+                            "failed to serialize keep-alive packet with {} ids: {}",
+                            count, e
+                        );
+                        continue;
+                    }
+                };
 
             drop(group);
 
@@ -778,7 +608,7 @@ impl Connections {
                 ci.batch_key = None;
             }
 
-            return Some((count, msg));
+            return Some((count, addr, msg));
         }
 
         None
@@ -805,7 +635,7 @@ struct ConnectionStreamOpts {
     blocks_avail: Arc<Counter>,
     messages_max: usize,
     allow_compression: bool,
-    sender: channel::LocalSender<zmq::Message>,
+    sender: channel::LocalSender<(Option<ArrayVec<u8, FROM_MAX>>, zmq::Message)>,
 }
 
 struct Worker {
@@ -1098,7 +928,7 @@ impl Worker {
                 }
             }
 
-            while let Some((count, msg)) =
+            while let Some((count, addr, msg)) =
                 stream_conns.next_batch_message(&instance_id, BatchType::Cancel)
             {
                 debug!(
@@ -1107,7 +937,7 @@ impl Worker {
                 );
 
                 match select_2(
-                    pin!(stream_handle.send(None, msg)),
+                    pin!(stream_handle.send(addr, msg)),
                     shutdown_timeout.elapsed(),
                 )
                 .await
@@ -1331,8 +1161,8 @@ impl Worker {
         id: usize,
         stop: AsyncLocalReceiver<()>,
         done: AsyncLocalSender<zhttpsocket::AsyncServerStreamHandle>,
-        zstream_out_receiver: AsyncLocalReceiver<zmq::Message>,
-        zstream_out_sender: channel::LocalSender<zmq::Message>,
+        zstream_out_receiver: AsyncLocalReceiver<(Option<ArrayVec<u8, FROM_MAX>>, zmq::Message)>,
+        zstream_out_sender: channel::LocalSender<(Option<ArrayVec<u8, FROM_MAX>>, zmq::Message)>,
         spawner: Spawner,
         resolver: Arc<Resolver>,
         tls_config_cache: Arc<TlsConfigCache>,
@@ -1409,7 +1239,7 @@ impl Worker {
                     Select6::R1(_) => break,
                     // receiver_recv
                     Select6::R2(result) => match result {
-                        Ok(msg) => handle_send.set(Some(stream_handle.send(None, msg))),
+                        Ok((addr, msg)) => handle_send.set(Some(stream_handle.send(addr, msg))),
                         Err(e) => panic!("zstream_out_receiver channel error: {}", e),
                     },
                     // handle_send
@@ -1839,7 +1669,7 @@ impl Worker {
         stop: AsyncLocalReceiver<()>,
         _done: AsyncLocalSender<()>,
         instance_id: Rc<String>,
-        sender: channel::LocalSender<zmq::Message>,
+        sender: channel::LocalSender<(Option<ArrayVec<u8, 64>>, zmq::Message)>,
         conns: Rc<Connections>,
     ) {
         debug!("client-worker {}: task started: keep_alives", id);
@@ -1893,7 +1723,7 @@ impl Worker {
                 };
 
                 // there could be no message if items removed or message construction failed
-                let (count, msg) =
+                let (count, addr, msg) =
                     match conns.next_batch_message(&instance_id, BatchType::KeepAlive) {
                         Some(ret) => ret,
                         None => continue,
@@ -1904,7 +1734,7 @@ impl Worker {
                     id, count
                 );
 
-                if let Err(e) = send.try_send(msg) {
+                if let Err(e) = send.try_send((addr, msg)) {
                     error!("zhttp write error: {}", e);
                 }
             }
@@ -2277,13 +2107,19 @@ impl TestClient {
     }
 
     pub fn do_stream_http(&self, addr: std::net::SocketAddr) {
-        let msg = self.make_stream_message(addr, false).unwrap();
+        let msg = self.make_stream_message(addr, false, false).unwrap();
+
+        self.control.send(ControlMessage::Stream(msg)).unwrap();
+    }
+
+    pub fn do_stream_http_router_resp(&self, addr: std::net::SocketAddr) {
+        let msg = self.make_stream_message(addr, true, false).unwrap();
 
         self.control.send(ControlMessage::Stream(msg)).unwrap();
     }
 
     pub fn do_stream_ws(&self, addr: std::net::SocketAddr) {
-        let msg = self.make_stream_message(addr, true).unwrap();
+        let msg = self.make_stream_message(addr, false, true).unwrap();
 
         self.control.send(ControlMessage::Stream(msg)).unwrap();
     }
@@ -2351,6 +2187,7 @@ impl TestClient {
     fn make_stream_message(
         &self,
         addr: std::net::SocketAddr,
+        router_resp: bool,
         ws: bool,
     ) -> Result<zmq::Message, io::Error> {
         let mut dest = [0; 1024];
@@ -2409,6 +2246,11 @@ impl TestClient {
 
         w.write_string(b"credits")?;
         w.write_int(1024)?;
+
+        if router_resp {
+            w.write_string(b"router-resp")?;
+            w.write_bool(true)?;
+        }
 
         w.end_map()?;
 
@@ -2483,6 +2325,7 @@ impl TestClient {
         out_sock.connect("inproc://client-test-out").unwrap();
 
         let out_stream_sock = zmq_context.socket(zmq::ROUTER).unwrap();
+        out_stream_sock.set_identity(b"handler").unwrap();
         out_stream_sock
             .connect("inproc://client-test-out-stream")
             .unwrap();
@@ -2516,14 +2359,22 @@ impl TestClient {
 
         poller
             .register(
-                &mut SourceFd(&in_sock.get_fd().unwrap()),
+                &mut SourceFd(&out_stream_sock.get_fd().unwrap()),
                 mio::Token(3),
                 mio::Interest::READABLE,
             )
             .unwrap();
 
-        let mut req_events = req_sock.get_events().unwrap();
+        poller
+            .register(
+                &mut SourceFd(&in_sock.get_fd().unwrap()),
+                mio::Token(4),
+                mio::Interest::READABLE,
+            )
+            .unwrap();
 
+        let mut req_events = req_sock.get_events().unwrap();
+        let mut out_stream_events = out_stream_sock.get_events().unwrap();
         let mut in_events = in_sock.get_events().unwrap();
 
         'main: loop {
@@ -2573,6 +2424,8 @@ impl TestClient {
                     }
                 }
 
+                debug!("received req message");
+
                 assert_eq!(ptype, "");
                 assert_eq!(code, 200);
                 assert_eq!(reason, "OK");
@@ -2581,32 +2434,55 @@ impl TestClient {
                 status.send(StatusMessage::ReqFinished).unwrap();
             }
 
-            while in_events.contains(zmq::POLLIN) {
-                let parts = match in_sock.recv_multipart(zmq::DONTWAIT) {
-                    Ok(parts) => parts,
-                    Err(zmq::Error::EAGAIN) => {
-                        in_events = in_sock.get_events().unwrap();
-                        break;
-                    }
-                    Err(e) => panic!("recv error: {:?}", e),
-                };
+            while out_stream_events.contains(zmq::POLLIN) || in_events.contains(zmq::POLLIN) {
+                let mut msg_and_pos = None;
 
-                in_events = in_sock.get_events().unwrap();
+                if out_stream_events.contains(zmq::POLLIN) {
+                    match out_stream_sock.recv_multipart(zmq::DONTWAIT) {
+                        Ok(mut parts) => {
+                            out_stream_events = out_stream_sock.get_events().unwrap();
 
-                assert_eq!(parts.len(), 1);
+                            assert_eq!(parts.len(), 3);
 
-                let buf = &parts[0];
-
-                let mut pos = None;
-                for (i, b) in buf.iter().enumerate() {
-                    if *b == b' ' {
-                        pos = Some(i);
-                        break;
+                            msg_and_pos = Some((parts.remove(2), 0));
+                        }
+                        Err(zmq::Error::EAGAIN) => {
+                            out_stream_events = out_stream_sock.get_events().unwrap();
+                        }
+                        Err(e) => panic!("recv error: {:?}", e),
                     }
                 }
 
-                let pos = pos.unwrap();
-                let msg = &buf[(pos + 1)..];
+                if msg_and_pos.is_none() && in_events.contains(zmq::POLLIN) {
+                    match in_sock.recv_multipart(zmq::DONTWAIT) {
+                        Ok(mut parts) => {
+                            in_events = in_sock.get_events().unwrap();
+
+                            assert_eq!(parts.len(), 1);
+
+                            let buf = &parts[0];
+
+                            let mut pos = None;
+                            for (i, b) in buf.iter().enumerate() {
+                                if *b == b' ' {
+                                    pos = Some(i);
+                                    break;
+                                }
+                            }
+
+                            msg_and_pos = Some((parts.remove(0), pos.unwrap() + 1));
+                        }
+                        Err(zmq::Error::EAGAIN) => {
+                            in_events = in_sock.get_events().unwrap();
+                        }
+                        Err(e) => panic!("recv error: {:?}", e),
+                    };
+                }
+
+                let (msg, from_router) = match &msg_and_pos {
+                    Some((msg, pos)) => (&msg[*pos..], *pos == 0),
+                    None => break,
+                };
 
                 assert_eq!(msg[0], b'T');
 
@@ -2660,6 +2536,11 @@ impl TestClient {
                 }
 
                 let seq = seq.unwrap() + 1;
+
+                debug!(
+                    "received stream message from_router={} id={} seq={}",
+                    from_router, id, seq
+                );
 
                 // as a hack to make the test server stateless, respond to every message
                 // using the received sequence number. for messages we don't care about,
@@ -2767,7 +2648,8 @@ impl TestClient {
                         }
                     }
                     mio::Token(2) => req_events = req_sock.get_events().unwrap(),
-                    mio::Token(3) => in_events = in_sock.get_events().unwrap(),
+                    mio::Token(3) => out_stream_events = out_stream_sock.get_events().unwrap(),
+                    mio::Token(4) => in_events = in_sock.get_events().unwrap(),
                     _ => unreachable!(),
                 }
             }
@@ -2838,105 +2720,6 @@ pub mod tests {
     }
 
     #[test]
-    fn test_batch() {
-        let mut batch = Batch::new(3);
-
-        assert_eq!(batch.capacity(), 3);
-        assert_eq!(batch.len(), 0);
-        assert!(batch.last_group_ckeys().is_empty());
-
-        assert!(batch.add(b"addr-a", 1).is_ok());
-        assert!(batch.add(b"addr-a", 2).is_ok());
-        assert!(batch.add(b"addr-b", 3).is_ok());
-        assert_eq!(batch.len(), 3);
-
-        assert!(batch.add(b"addr-c", 4).is_err());
-        assert_eq!(batch.len(), 3);
-        assert_eq!(batch.is_empty(), false);
-
-        let ids = ["id-1", "id-2", "id-3"];
-
-        let group = batch
-            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
-            .unwrap();
-        assert_eq!(group.ids().len(), 2);
-        assert_eq!(group.ids()[0].id, b"id-1");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.ids()[1].id, b"id-2");
-        assert_eq!(group.ids()[1].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-a");
-        drop(group);
-        assert_eq!(batch.is_empty(), false);
-        assert_eq!(batch.last_group_ckeys(), &[1, 2]);
-
-        let group = batch
-            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
-            .unwrap();
-        assert_eq!(group.ids().len(), 1);
-        assert_eq!(group.ids()[0].id, b"id-3");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-b");
-        drop(group);
-        assert_eq!(batch.is_empty(), true);
-        assert_eq!(batch.last_group_ckeys(), &[3]);
-
-        assert!(batch
-            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
-            .is_none());
-        assert_eq!(batch.last_group_ckeys(), &[3]);
-
-        let mut batch = Batch::new(3);
-
-        let bkey = batch.add(b"addr-a", 1).unwrap();
-        assert!(batch.add(b"addr-b", 2).is_ok());
-        assert_eq!(batch.len(), 2);
-        batch.remove(bkey);
-        assert_eq!(batch.len(), 1);
-
-        let group = batch
-            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
-            .unwrap();
-        assert_eq!(group.ids().len(), 1);
-        assert_eq!(group.ids()[0].id, b"id-2");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-b");
-        drop(group);
-        assert_eq!(batch.is_empty(), true);
-
-        assert!(batch.add(b"addr-a", 3).is_ok());
-        assert_eq!(batch.len(), 1);
-        assert!(!batch.is_empty());
-        let group = batch
-            .take_group(|ckey| Some((ids[ckey - 1].as_bytes(), 0)))
-            .unwrap();
-        assert_eq!(group.ids().len(), 1);
-        assert_eq!(group.ids()[0].id, b"id-3");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-a");
-        drop(group);
-        assert_eq!(batch.is_empty(), true);
-
-        assert!(batch.add(b"addr-a", 1).is_ok());
-        assert!(batch.add(b"addr-b", 2).is_ok());
-        assert!(batch.add(b"addr-b", 3).is_ok());
-        let group = batch
-            .take_group(|ckey| {
-                if ckey < 3 {
-                    None
-                } else {
-                    Some((ids[ckey - 1].as_bytes(), 0))
-                }
-            })
-            .unwrap();
-        assert_eq!(group.ids().len(), 1);
-        assert_eq!(group.ids()[0].id, b"id-3");
-        assert_eq!(group.ids()[0].seq, Some(0));
-        assert_eq!(group.addr(), b"addr-b");
-        drop(group);
-        assert_eq!(batch.is_empty(), true);
-    }
-
-    #[test]
     fn test_client() {
         let client = TestClient::new(1);
 
@@ -2983,6 +2766,43 @@ pub mod tests {
         // stream (http)
 
         client.do_stream_http(addr);
+        let (mut stream, _) = listener.accept().unwrap();
+
+        let mut buf = Vec::new();
+        let mut req_end = 0;
+
+        while req_end == 0 {
+            let mut chunk = [0; 1024];
+            let size = stream.read(&mut chunk).unwrap();
+            buf.extend_from_slice(&chunk[..size]);
+
+            for i in 0..(buf.len() - 3) {
+                if &buf[i..(i + 4)] == b"\r\n\r\n" {
+                    req_end = i + 4;
+                    break;
+                }
+            }
+        }
+
+        let expected = format!(
+            concat!("GET /path HTTP/1.1\r\n", "Host: {}\r\n", "\r\n"),
+            addr
+        );
+
+        assert_eq!(str::from_utf8(&buf[..req_end]).unwrap(), expected);
+
+        stream
+            .write(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nhello\n",
+            )
+            .unwrap();
+        drop(stream);
+
+        client.wait_stream();
+
+        // stream (http) with responses via router
+
+        client.do_stream_http_router_resp(addr);
         let (mut stream, _) = listener.accept().unwrap();
 
         let mut buf = Vec::new();
