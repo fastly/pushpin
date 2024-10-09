@@ -2350,8 +2350,13 @@ impl ServerSocketManager {
                 }
                 // stream_out_send
                 Select10::R9(result) => {
-                    if let Err(e) = result {
-                        error!("server stream zmq send: {}", e);
+                    match result {
+                        Ok(()) => {}
+                        Err(zmq::Error::EHOSTUNREACH) => {
+                            // this can happen if a known peer goes away
+                            debug!("server stream zmq send to host unreachable");
+                        }
+                        Err(e) => error!("server stream zmq send: {}", e),
                     }
 
                     stream_out_send = None;
