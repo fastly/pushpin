@@ -1,30 +1,38 @@
-mod data_types;
-mod errors;
-mod heavenly;
-mod message_aggregator;
-mod message_sender;
-mod options;
-#[cfg(test)]
-mod tests;
-pub mod xqd_backoff;
-mod xqd_config;
-
-use data_types::ChannelMessage;
-use heavenly::uuid::ServiceID;
-use hyper::client::HttpConnector;
-use message_aggregator::{MessageAggregator, MessageAggregatorSender};
 use serde::Deserialize;
+use stats_emitter::aggregator::AggregatorConfig;
+use stats_emitter::aggregator::BillingMessageAggregator;
+use stats_emitter::aggregator::OriginMessageAggregator;
+use stats_emitter::data_types::DataCenter;
+use stats_emitter::data_types::Emitter;
+use stats_emitter::data_types::SchemaName;
+use stats_emitter::data_types::Server;
+use stats_emitter::heavenly::region::ComplianceRegion;
+use stats_emitter::heavenly::uuid::ServiceID;
+use stats_emitter::metrics::PrefixedMetrics;
+use stats_emitter::transport::HttpJson;
+use stats_emitter::transport::MutualTlsConfig;
+use stats_emitter::BillingMetric;
+use std::borrow::Cow;
+use std::convert::TryInto;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 use std::str;
-use tokio::runtime::Runtime;
-use tokio::sync::mpsc::error::SendError;
+use tokio;
 use tracing::{debug, error, info, warn};
 
-const SCHEMA_NAME: &'static str = "billing";
+const BILLING_ENDPOINT_SUFFIX: &'static str = "fst-stats-json";
+const BILLING_SCHEMA_NAME: &'static str = "billing";
+const ORIGIN_ENDPOINT_SUFFIX: &'static str = "ori-stats-json";
+const ORIGIN_SCHEMA_NAME: &'static str = "origin";
 const EMITTER_NAME: &'static str = "pushpin";
 const EDGE_CONFIGLY_PATH: &'static str = "/etc/fastly/edge-configly.json";
+
+const QUEUE_SIZE: usize = 120;
+
+lazy_static::lazy_static! {
+    static ref PROM_METRICS: PrefixedMetrics = PrefixedMetrics::new(EMITTER_NAME);
+}
 
 pub struct Config {
     pub spec: String,
@@ -36,6 +44,35 @@ pub struct Config {
     pub key: String,
     pub ca: String,
     pub verify: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct EdgeConfigly {
+    cluster: String,
+    hostname: String,
+}
+
+#[derive(Default)]
+pub struct HostInfo {
+    pub pop: String,
+    pub hostname: String,
+}
+
+pub fn get_host_info() -> Result<HostInfo, Box<dyn Error>> {
+    let data = match fs::read_to_string(EDGE_CONFIGLY_PATH) {
+        Ok(data) => data,
+        Err(e) => return Err(format!("{}: {}", e, EDGE_CONFIGLY_PATH).into()),
+    };
+
+    let data: EdgeConfigly = match serde_json::from_str(&data) {
+        Ok(data) => data,
+        Err(e) => return Err(format!("{}: {}", e, EDGE_CONFIGLY_PATH).into()),
+    };
+
+    Ok(HostInfo {
+        pop: data.cluster,
+        hostname: data.hostname,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,139 +127,158 @@ struct Report {
     pub server_content_bytes_sent: u64,
 }
 
-#[derive(serde::Deserialize)]
-struct EdgeConfigly {
-    cluster: String,
-    hostname: String,
-}
-
-#[derive(Default)]
-pub struct HostInfo {
-    pub pop: String,
-    pub hostname: String,
-}
-
-pub fn get_host_info() -> Result<HostInfo, Box<dyn Error>> {
-    let data = match fs::read_to_string(EDGE_CONFIGLY_PATH) {
-        Ok(data) => data,
-        Err(e) => return Err(format!("{}: {}", e, EDGE_CONFIGLY_PATH).into()),
-    };
-
-    let data: EdgeConfigly = match serde_json::from_str(&data) {
-        Ok(data) => data,
-        Err(e) => return Err(format!("{}: {}", e, EDGE_CONFIGLY_PATH).into()),
-    };
-
-    Ok(HostInfo {
-        pop: data.cluster,
-        hostname: data.hostname,
-    })
-}
-
-struct Sender<'a> {
-    inner: &'a MessageAggregatorSender,
-    service_id: &'a ServiceID,
-}
-
-impl Sender<'_> {
-    fn send_count(&self, metric: &'static str, count: u64) -> Result<(), Box<dyn Error>> {
-        if count == 0 {
-            return Ok(());
-        }
-
-        let msg = ChannelMessage {
-            id: self.service_id.clone(),
-            metric: metric.into(),
-            count,
-        };
-
-        match self.inner.blocking_send(msg) {
-            Ok(()) => {}
-            Err(SendError(msg)) => {
-                return Err(format!("failed to send to aggregator: {:?}", msg).into())
-            }
-        }
-
-        Ok(())
-    }
-}
-
 struct Metric<'a> {
     ws: Option<&'a str>,
     fo: Option<&'a str>,
     value: u64,
 }
 
-fn process_report(r: &Report, s: Sender, grip_enabled: bool) -> Result<(), Box<dyn Error>> {
-    debug!("report: {:?}", r);
-
-    let table = [
-        Metric {
-            ws: Some("websocket_req_header_bytes"),
-            fo: Some("fanout_req_header_bytes"),
-            value: r.client_header_bytes_received,
-        },
-        Metric {
-            ws: Some("websocket_req_body_bytes"),
-            fo: Some("fanout_req_body_bytes"),
-            value: r.client_content_bytes_received,
-        },
-        Metric {
-            ws: Some("websocket_resp_header_bytes"),
-            fo: Some("fanout_resp_header_bytes"),
-            value: r.client_header_bytes_sent,
-        },
-        Metric {
-            ws: Some("websocket_resp_body_bytes"),
-            fo: Some("fanout_resp_body_bytes"),
-            value: r.client_content_bytes_sent,
-        },
-        Metric {
-            ws: Some("websocket_bereq_header_bytes"),
-            fo: Some("fanout_bereq_header_bytes"),
-            value: r.server_header_bytes_sent,
-        },
-        Metric {
-            ws: Some("websocket_bereq_body_bytes"),
-            fo: Some("fanout_bereq_body_bytes"),
-            value: r.server_content_bytes_sent,
-        },
-        Metric {
-            ws: Some("websocket_beresp_header_bytes"),
-            fo: Some("fanout_beresp_header_bytes"),
-            value: r.server_header_bytes_received,
-        },
-        Metric {
-            ws: Some("websocket_beresp_body_bytes"),
-            fo: Some("fanout_beresp_body_bytes"),
-            value: r.server_content_bytes_received,
-        },
-        Metric {
-            ws: Some("websocket_conn_time_ms"),
-            fo: Some("fanout_conn_time_ms"),
-            value: r.minutes * 60_000,
-        },
-        Metric {
-            ws: None,
-            fo: Some("fanout_send_publishes"),
-            value: r.sent,
-        },
-    ];
-
-    for metric in table {
-        let name = if grip_enabled { metric.fo } else { metric.ws };
-
-        if let Some(name) = name {
-            s.send_count(name, metric.value)?;
-        }
-    }
-
-    Ok(())
+#[allow(dead_code)]
+struct Aggregators {
+    billing_aggregator: BillingMessageAggregator,
+    origin_aggregator: OriginMessageAggregator,
 }
 
-fn process_stats(spec: &str, sender: MessageAggregatorSender) -> Result<(), Box<dyn Error>> {
-    let context = zmq::Context::new();
+impl Aggregators {
+    fn send_report(
+        &self,
+        report: &Report,
+        service_id: &ServiceID,
+        grip_enabled: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        debug!("report: {:?}", report);
 
+        let table = [
+            Metric {
+                ws: Some("websocket_req_header_bytes"),
+                fo: Some("fanout_req_header_bytes"),
+                value: report.client_header_bytes_received,
+            },
+            Metric {
+                ws: Some("websocket_req_body_bytes"),
+                fo: Some("fanout_req_body_bytes"),
+                value: report.client_content_bytes_received,
+            },
+            Metric {
+                ws: Some("websocket_resp_header_bytes"),
+                fo: Some("fanout_resp_header_bytes"),
+                value: report.client_header_bytes_sent,
+            },
+            Metric {
+                ws: Some("websocket_resp_body_bytes"),
+                fo: Some("fanout_resp_body_bytes"),
+                value: report.client_content_bytes_sent,
+            },
+            Metric {
+                ws: Some("websocket_bereq_header_bytes"),
+                fo: Some("fanout_bereq_header_bytes"),
+                value: report.server_header_bytes_sent,
+            },
+            Metric {
+                ws: Some("websocket_bereq_body_bytes"),
+                fo: Some("fanout_bereq_body_bytes"),
+                value: report.server_content_bytes_sent,
+            },
+            Metric {
+                ws: Some("websocket_beresp_header_bytes"),
+                fo: Some("fanout_beresp_header_bytes"),
+                value: report.server_header_bytes_received,
+            },
+            Metric {
+                ws: Some("websocket_beresp_body_bytes"),
+                fo: Some("fanout_beresp_body_bytes"),
+                value: report.server_content_bytes_received,
+            },
+            Metric {
+                ws: Some("websocket_conn_time_ms"),
+                fo: Some("fanout_conn_time_ms"),
+                value: report.minutes * 60_000,
+            },
+            Metric {
+                ws: None,
+                fo: Some("fanout_send_publishes"),
+                value: report.sent,
+            },
+        ];
+
+        for metric in table {
+            let name = if grip_enabled { metric.fo } else { metric.ws };
+
+            if let Some(name) = name {
+                self.send_metric(service_id, name, metric.value)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn send_metric(
+        &self,
+        service_id: &ServiceID,
+        metric: &'static str,
+        count: u64,
+    ) -> Result<(), Box<dyn Error>> {
+        if let Some(m) = BillingMetric::new(
+            *service_id,
+            ComplianceRegion::None,
+            Cow::Borrowed(metric),
+            count,
+        ) {
+            self.billing_aggregator.increment_metric(&None, m);
+        }
+        Ok(())
+    }
+}
+
+fn spawn_aggregators(config: &Config) -> Result<Aggregators, Box<dyn Error>> {
+    let billing_config = AggregatorConfig {
+        schema_name: SchemaName::new(BILLING_SCHEMA_NAME),
+        emitter: Emitter::new(EMITTER_NAME),
+        datacenter: DataCenter::new(config.datacenter.clone()),
+        server: Server::new(config.server.clone()),
+        queue_size: QUEUE_SIZE,
+    };
+    let endpoint = config.endpoint.clone();
+    let billing_endpoint = format!("{endpoint}{BILLING_ENDPOINT_SUFFIX}");
+    let billing_uri = billing_endpoint.try_into().unwrap();
+    let billing_mtls = MutualTlsConfig {
+        cert_path: PathBuf::from(&config.cert),
+        key_path: PathBuf::from(&config.key),
+        ca_path: PathBuf::from(&config.ca),
+        dangerous_no_peer_verification: !config.verify,
+    };
+    let billing_transport = HttpJson::new(billing_uri, Some(billing_mtls)).unwrap();
+    let billing_aggregator =
+        BillingMessageAggregator::spawn(billing_config, billing_transport, &*PROM_METRICS);
+
+    let origin_config = AggregatorConfig {
+        schema_name: SchemaName::new(ORIGIN_SCHEMA_NAME),
+        emitter: Emitter::new(EMITTER_NAME),
+        datacenter: DataCenter::new(config.datacenter.clone()),
+        server: Server::new(config.server.clone()),
+        queue_size: QUEUE_SIZE,
+    };
+    let endpoint = config.endpoint.clone();
+    let origin_endpoint = format!("{endpoint}{ORIGIN_ENDPOINT_SUFFIX}");
+    let origin_uri = origin_endpoint.try_into().unwrap();
+    let origin_mtls = MutualTlsConfig {
+        cert_path: PathBuf::from(&config.cert),
+        key_path: PathBuf::from(&config.key),
+        ca_path: PathBuf::from(&config.ca),
+        dangerous_no_peer_verification: !config.verify,
+    };
+    let origin_transport = HttpJson::new(origin_uri, Some(origin_mtls)).unwrap();
+    let origin_aggregator =
+        OriginMessageAggregator::spawn(origin_config, origin_transport, &*PROM_METRICS);
+
+    Ok(Aggregators {
+        billing_aggregator,
+        origin_aggregator,
+    })
+}
+
+fn process_stats(spec: &str, aggregators: Aggregators) -> Result<(), Box<dyn Error>> {
+    let context = zmq::Context::new();
     let sock = context.socket(zmq::SUB)?;
     sock.set_subscribe(b"report ")?;
     sock.connect(spec)?;
@@ -232,13 +288,13 @@ fn process_stats(spec: &str, sender: MessageAggregatorSender) -> Result<(), Box<
             Ok(parts) => parts,
             Err(zmq::Error::EINTR) => continue,
             Err(e) => {
-                error!("zmq recv error: {}", e);
+                error!("zmq recv_multipart error {}", e);
                 continue;
             }
         };
 
         if parts.len() != 1 {
-            warn!("received message with parts != 1, skipping");
+            warn!("process_stats received message with parts > 1, skipping");
             continue;
         }
 
@@ -308,80 +364,29 @@ fn process_stats(spec: &str, sender: MessageAggregatorSender) -> Result<(), Box<
             }
         };
 
-        let sender = Sender {
-            inner: &sender,
-            service_id: &service_id,
-        };
-
-        if let Err(e) = process_report(&report, sender, grip_enabled) {
-            error!("failed to process report: {}", e);
-        }
+        aggregators.send_report(&report, &service_id, grip_enabled)?
     }
 }
 
-pub fn start_aggregator(config: &Config) -> Result<MessageAggregatorSender, Box<dyn Error>> {
-    let mtls = if !config.cert.is_empty() {
-        Some(xqd_config::MutualTlsConfig {
-            cert_path: PathBuf::from(&config.cert),
-            key_path: PathBuf::from(&config.key),
-            ca_path: PathBuf::from(&config.ca),
-            dangerous_no_peer_verification: !config.verify,
-        })
-    } else {
-        None
-    };
-
-    let opts = xqd_config::RawAggregatorConfig {
-        schema_name: SCHEMA_NAME.to_string(),
-        emitter: Some(EMITTER_NAME.to_string()),
-        datacenter: Some(config.datacenter.clone()),
-        server: Some(config.server.clone()),
-        queue_size: config.queue_size as usize,
-        mode: xqd_config::RawMessageSenderMode::Json {
-            url: config.endpoint.clone(),
-            mtls,
-        },
-    };
-
-    let mut connector = HttpConnector::new();
-    connector.enforce_http(false);
-
-    Ok(MessageAggregator::spawn(opts, connector)?)
-}
-
-// this function never exits cleanly, due to xqd-stats-emitter behavior.
-//
-// the process_stats_task may complete if it encounters an unrecoverable
-// error. however, the aggregator tasks never complete normally and panic if
-// they encounter an unrecoverable error. when the process_stats_task
-// completes, its sender will be dropped, causing the aggregator tasks to
-// panic. the app is configured with panic = "abort", so the app will exit
-// in that case.
 pub fn run(config: &Config) -> Result<(), Box<dyn Error>> {
-    info!("starting...");
-
-    let rt = Runtime::new()?;
-
+    let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        // start the aggregator in the background
-        let sender = start_aggregator(&config).unwrap();
+        let aggregators = spawn_aggregators(&config).unwrap();
 
         let process_stats_task = {
             let spec = config.spec.clone();
 
             tokio::task::spawn_blocking(move || {
-                if let Err(e) = process_stats(&spec, sender) {
-                    error!("process_stats failed: {}", e);
+                if let Err(e) = process_stats(&spec, aggregators) {
+                    error!("process_stats failed {}", e);
                 }
             })
         };
 
-        info!("started");
-
+        info!("Stats emitter started");
         process_stats_task
             .await
-            .expect("process_stats_task exited uncleanly");
+            .expect("process_stats exited uncleanly");
     });
-
     Ok(())
 }
