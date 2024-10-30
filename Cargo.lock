@@ -983,7 +983,7 @@ checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 [[package]]
 name = "heavenly"
 version = "0.2.0"
-source = "git+ssh://git@github.com/fastly/heavenly-rs.git?rev=cf0b69d#cf0b69da5eeb2429ea611926ff6fc89e9447797f"
+source = "git+ssh://git@github.com/fastly/heavenly-rs.git?rev=ae624f1ae5e42806a92a63cd0fb224ff85811552#ae624f1ae5e42806a92a63cd0fb224ff85811552"
 dependencies = [
  "proptest",
  "serde",
@@ -1117,7 +1117,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.5.7",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -1126,9 +1126,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.3.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe575dd17d0862a9a33781c8c4696a55c320909004a67a00fb286ba8b1bc496d"
+checksum = "bbbff0a806a4728c99295b254c8838933b5b082d75e3cb70c8dab21fdfbcfa9a"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -1170,7 +1170,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "527d4d619ca2c2aafa31ec139a3d1d60bf557bf7578a1f20f743637eccd9ca19"
 dependencies = [
  "http 1.1.0",
- "hyper 1.3.1",
+ "hyper 1.5.0",
  "hyper-util",
  "linked_hash_set",
  "once_cell",
@@ -1193,7 +1193,7 @@ dependencies = [
  "futures-util",
  "http 1.1.0",
  "http-body 1.0.1",
- "hyper 1.3.1",
+ "hyper 1.5.0",
  "pin-project-lite",
  "socket2 0.5.7",
  "tokio",
@@ -2607,7 +2607,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "stats-emitter"
 version = "0.1.0"
-source = "git+ssh://git@github.com/fastly/stats-emitter-rs#937a921b108ee41cde027a28d3b95478542f5522"
+source = "git+ssh://git@github.com/fastly/stats-emitter-rs#b414bb7a45f49f9128121a29a4106a2b59a3c0ea"
 dependencies = [
  "async-trait",
  "backoff",
@@ -2615,7 +2615,7 @@ dependencies = [
  "heavenly",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.3.1",
+ "hyper 1.5.0",
  "hyper-openssl 0.10.2",
  "hyper-util",
  "openssl",

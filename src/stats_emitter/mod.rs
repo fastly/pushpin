@@ -4,6 +4,7 @@ use stats_emitter::aggregator::BillingMessageAggregator;
 use stats_emitter::aggregator::OriginMessageAggregator;
 use stats_emitter::data_types::DataCenter;
 use stats_emitter::data_types::Emitter;
+use stats_emitter::data_types::Metric;
 use stats_emitter::data_types::SchemaName;
 use stats_emitter::data_types::Server;
 use stats_emitter::heavenly::region::ComplianceRegion;
@@ -11,13 +12,13 @@ use stats_emitter::heavenly::uuid::ServiceID;
 use stats_emitter::metrics::PrefixedMetrics;
 use stats_emitter::transport::HttpJson;
 use stats_emitter::transport::MutualTlsConfig;
-use stats_emitter::BillingMetric;
-use std::borrow::Cow;
+use stats_emitter::BillingKey;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 use std::str;
+use std::time::Duration;
 use tokio;
 use tracing::{debug, error, info, warn};
 
@@ -127,7 +128,7 @@ struct Report {
     pub server_content_bytes_sent: u64,
 }
 
-struct Metric<'a> {
+struct FanoutMetric<'a> {
     ws: Option<&'a str>,
     fo: Option<&'a str>,
     value: u64,
@@ -149,52 +150,52 @@ impl Aggregators {
         debug!("report: {:?}", report);
 
         let table = [
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_req_header_bytes"),
                 fo: Some("fanout_req_header_bytes"),
                 value: report.client_header_bytes_received,
             },
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_req_body_bytes"),
                 fo: Some("fanout_req_body_bytes"),
                 value: report.client_content_bytes_received,
             },
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_resp_header_bytes"),
                 fo: Some("fanout_resp_header_bytes"),
                 value: report.client_header_bytes_sent,
             },
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_resp_body_bytes"),
                 fo: Some("fanout_resp_body_bytes"),
                 value: report.client_content_bytes_sent,
             },
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_bereq_header_bytes"),
                 fo: Some("fanout_bereq_header_bytes"),
                 value: report.server_header_bytes_sent,
             },
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_bereq_body_bytes"),
                 fo: Some("fanout_bereq_body_bytes"),
                 value: report.server_content_bytes_sent,
             },
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_beresp_header_bytes"),
                 fo: Some("fanout_beresp_header_bytes"),
                 value: report.server_header_bytes_received,
             },
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_beresp_body_bytes"),
                 fo: Some("fanout_beresp_body_bytes"),
                 value: report.server_content_bytes_received,
             },
-            Metric {
+            FanoutMetric {
                 ws: Some("websocket_conn_time_ms"),
                 fo: Some("fanout_conn_time_ms"),
                 value: report.minutes * 60_000,
             },
-            Metric {
+            FanoutMetric {
                 ws: None,
                 fo: Some("fanout_send_publishes"),
                 value: report.sent,
@@ -215,16 +216,12 @@ impl Aggregators {
     fn send_metric(
         &self,
         service_id: &ServiceID,
-        metric: &'static str,
+        metric_name: &'static str,
         count: u64,
     ) -> Result<(), Box<dyn Error>> {
-        if let Some(m) = BillingMetric::new(
-            *service_id,
-            ComplianceRegion::None,
-            Cow::Borrowed(metric),
-            count,
-        ) {
-            self.billing_aggregator.increment_metric(&None, m);
+        let key = BillingKey::new(service_id.clone(), ComplianceRegion::None);
+        if let Some(metric) = Metric::new(&key, metric_name.into(), count) {
+            self.billing_aggregator.increment_metric(&None, metric)
         }
         Ok(())
     }
@@ -237,6 +234,7 @@ fn spawn_aggregators(config: &Config) -> Result<Aggregators, Box<dyn Error>> {
         datacenter: DataCenter::new(config.datacenter.clone()),
         server: Server::new(config.server.clone()),
         queue_size: QUEUE_SIZE,
+        frequency: Duration::from_secs(1),
     };
     let endpoint = config.endpoint.clone();
     let billing_endpoint = format!("{endpoint}{BILLING_ENDPOINT_SUFFIX}");
@@ -257,6 +255,7 @@ fn spawn_aggregators(config: &Config) -> Result<Aggregators, Box<dyn Error>> {
         datacenter: DataCenter::new(config.datacenter.clone()),
         server: Server::new(config.server.clone()),
         queue_size: QUEUE_SIZE,
+        frequency: Duration::from_secs(1),
     };
     let endpoint = config.endpoint.clone();
     let origin_endpoint = format!("{endpoint}{ORIGIN_ENDPOINT_SUFFIX}");
