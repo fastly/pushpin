@@ -21,8 +21,8 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 arrayvec = "0.7"
 base64 = "0.13"
-clap = { version = "=4.2.1", features = ["cargo", "string", "wrap_help", "derive"] }
-config = "0.13.3"
+clap = { version = "=4.3.24", features = ["cargo", "string", "wrap_help", "derive"] }
+config = "0.14"
 httparse = "1.7"
 ipnet = "2"
 jsonwebtoken = "8"
@@ -53,7 +53,7 @@ test-log = "0.2"
 [build-dependencies]
 pkg-config = "0.3"
 time = { version = "0.3.36", features = ["formatting", "local-offset", "macros"] }
-cbindgen = "0.26"
+cbindgen = "0.27"
 
 [[bench]]
 name = "server"
