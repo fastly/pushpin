@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rust-version: [stable, 1.74.0]
+        rust-version: [stable, 1.75.0]
     runs-on: ubuntu-20.04
     container: fanout/build-base:latest
     steps:
@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rust-version: [stable, 1.74.0]
+        rust-version: [stable, 1.75.0]
     runs-on: ubuntu-20.04
     container: fanout/build-base:latest
     needs: check
@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rust-version: [stable, 1.74.0]
+        rust-version: [stable, 1.75.0]
     runs-on: ubuntu-20.04
     container: fanout/build-base:latest
     needs: check
@@ -67,7 +67,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rust-version: [stable, 1.74.0]
+        rust-version: [stable, 1.75.0]
     runs-on: ubuntu-20.04
     container: fanout/build-base:latest
     needs: check
@@ -105,7 +105,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rust-version: [stable, 1.74.0]
+        rust-version: [stable, 1.75.0]
     runs-on: ubuntu-20.04
     container: fanout/build-base:latest
     needs: build
@@ -124,7 +124,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rust-version: [stable, 1.74.0]
+        rust-version: [stable, 1.75.0]
     runs-on: ubuntu-20.04
     container: fanout/build-base:latest
     needs: build
@@ -143,7 +143,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        rust-version: [stable, 1.74.0]
+        rust-version: [stable, 1.75.0]
     runs-on: ubuntu-20.04
     container: fanout/build-base:latest
     needs: [audit, test]
