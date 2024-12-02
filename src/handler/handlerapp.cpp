@@ -316,8 +316,8 @@ public:
 		bool push_in_sub_connect = settings.value("handler/push_in_sub_connect").toBool();
 		QString push_in_http_addr = settings.value("handler/push_in_http_addr").toString();
 		int push_in_http_port = settings.adjustedPort("handler/push_in_http_port");
-		int push_in_http_max_headers_size = settings.value("handler/push_in_max_headers_size", DEFAULT_HTTP_MAX_HEADERS_SIZE).toInt();
-		int push_in_http_max_body_size = settings.value("handler/push_in_max_body_size", DEFAULT_HTTP_MAX_BODY_SIZE).toInt();
+		int push_in_http_max_headers_size = settings.value("handler/push_in_http_max_headers_size", DEFAULT_HTTP_MAX_HEADERS_SIZE).toInt();
+		int push_in_http_max_body_size = settings.value("handler/push_in_http_max_body_size", DEFAULT_HTTP_MAX_BODY_SIZE).toInt();
 		bool ok;
 		int ipcFileMode = settings.value("handler/ipc_file_mode", -1).toString().toInt(&ok, 8);
 		bool shareAll = settings.value("handler/share_all").toBool();
