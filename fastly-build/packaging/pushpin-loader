@@ -422,6 +422,9 @@ def make_routes(service, backend, sig_keys_dir):
     if int(backend.get('use_ssl', '0')):
         target += ',ssl'
 
+    if not int(backend.get('ssl_check_cert', '1')):
+        target += ',insecure'
+
     cert_hostname = backend.get('ssl_cert_hostname', '')
     sni_hostname = backend.get('ssl_sni_hostname', '')
     override_host = backend.get('override_host', '')
