@@ -422,7 +422,10 @@ def make_routes(service, backend, sig_keys_dir):
     if int(backend.get('use_ssl', '0')):
         target += ',ssl'
 
-    if not int(backend.get('ssl_check_cert', '1')):
+    # field may be a string or null. we'll disable cert checks if the field
+    # is present and set to "0". if it has any other value (including null)
+    # or if it is not present, then we'll leave cert checks enabled
+    if backend.get('ssl_check_cert') == '0':
         target += ',insecure'
 
     cert_hostname = backend.get('ssl_cert_hostname', '')
