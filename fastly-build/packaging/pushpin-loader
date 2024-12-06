@@ -673,6 +673,28 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, sig_keys_user=N
         os.remove(fname)
 
 
+class LogFormatter(logging.Formatter):
+    def __init__(self):
+        super().__init__(fmt="[{levelname}] {asctime}.{msecs:03.0f} {message}", datefmt="%Y-%m-%d %H:%M:%S", style="{")
+
+    def format(self, record):
+        if record.levelname == "ERROR":
+            record.levelname = "ERR"
+        elif record.levelname == "WARNING":
+            record.levelname = "WARN"
+
+        return super().format(record)
+
+
+def configure_logging(stream, level):
+    handler = logging.StreamHandler(stream=stream)
+    handler.setFormatter(LogFormatter())
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.addHandler(handler)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Fetch backends from Fetchly/Heavenly and write Pushpin routes file.')
@@ -697,7 +719,7 @@ def main():
 
     log_level = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG][args.log_level]
 
-    logging.basicConfig(stream=sys.stdout, level=log_level)
+    configure_logging(sys.stdout, log_level)
 
     with open(args.key, 'r') as f:
         api_key = f.read().strip()
