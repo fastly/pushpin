@@ -659,7 +659,7 @@ def update_routes(api_key, routes_file, cache_dir, sig_keys_dir, sig_keys_user=N
             try:
                 routes.extend(make_routes(service, backend, sig_keys_dir))
             except Exception as e:
-                logging.warning(
+                logging.error(
                     'failed to make route for service {} backend {}: {}'.format(service.id, repr(backend['name']), e))
 
     if write_routes(routes_file, routes, force=keys_changed):
