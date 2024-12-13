@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -28,12 +29,22 @@
 
 namespace {
 
-class SkipSelfFilter : public Filter
+class SkipSelfFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	SkipSelfFilter() :
 		Filter("skip-self")
 	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = content;
+		finished(r);
 	}
 
 	virtual SendAction sendAction() const
@@ -47,12 +58,22 @@ public:
 	}
 };
 
-class SkipUsersFilter : public Filter
+class SkipUsersFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	SkipUsersFilter() :
 		Filter("skip-users")
 	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = content;
+		finished(r);
 	}
 
 	virtual SendAction sendAction() const
@@ -74,12 +95,22 @@ public:
 	}
 };
 
-class RequireSubFilter : public Filter
+class RequireSubFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	RequireSubFilter() :
 		Filter("require-sub")
 	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = content;
+		finished(r);
 	}
 
 	virtual SendAction sendAction() const
@@ -92,7 +123,7 @@ public:
 	}
 };
 
-class BuildIdFilter : public Filter
+class BuildIdFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	IdFormat::ContentRenderer *idContentRenderer;
@@ -162,6 +193,16 @@ public:
 		return true;
 	}
 
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = process(content);
+		finished(r);
+	}
+
 	virtual QByteArray update(const QByteArray &data)
 	{
 		if(!ensureInit())
@@ -223,12 +264,22 @@ public:
 	}
 };
 
-class VarSubstFilter : public Filter
+class VarSubstFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	VarSubstFilter() :
 		Filter("var-subst")
 	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = process(content);
+		finished(r);
 	}
 
 	virtual QByteArray update(const QByteArray &data)
@@ -253,6 +304,10 @@ public:
 	}
 };
 
+}
+
+Filter::MessageFilter::~MessageFilter()
+{
 }
 
 Filter::Filter(const QString &name) :
@@ -308,6 +363,22 @@ Filter *Filter::create(const QString &name)
 		return 0;
 }
 
+Filter::MessageFilter *Filter::createMessageFilter(const QString &name)
+{
+	if(name == "skip-self")
+		return new SkipSelfFilter;
+	else if(name == "skip-users")
+		return new SkipUsersFilter;
+	else if(name == "require-sub")
+		return new RequireSubFilter;
+	else if(name == "build-id")
+		return new BuildIdFilter;
+	else if(name == "var-subst")
+		return new VarSubstFilter;
+	else
+		return 0;
+}
+
 QStringList Filter::names()
 {
 	return (QStringList()
@@ -327,9 +398,75 @@ Filter::Targets Filter::targets(const QString &name)
 	else if(name == "require-sub")
 		return Filter::MessageDelivery;
 	else if(name == "build-id")
-		return Filter::Targets(Filter::MessageContent | Filter::ProxyContent);
+		return Filter::Targets(Filter::MessageContent | Filter::ResponseContent);
 	else if(name == "var-subst")
 		return Filter::MessageContent;
 	else
 		return Filter::Targets(0);
+}
+
+Filter::MessageFilterStack::MessageFilterStack(const QStringList &filterNames)
+{
+	foreach(const QString &name, filterNames)
+	{
+		MessageFilter *f = createMessageFilter(name);
+		if(f)
+			filters_.emplace_back(std::unique_ptr<MessageFilter>(f));
+	}
+}
+
+void Filter::MessageFilterStack::start(const Filter::Context &context, const QByteArray &content)
+{
+	context_ = context;
+	content_ = content;
+	lastSendAction_ = Send;
+
+	nextFilter();
+}
+
+void Filter::MessageFilterStack::nextFilter()
+{
+	if(filters_.empty())
+	{
+		Result r;
+		r.sendAction = lastSendAction_;
+		r.content = content_;
+		finished(r);
+		return;
+	}
+
+	finishedConnection_ = filters_.front()->finished.connect(boost::bind(&MessageFilterStack::filterFinished, this, boost::placeholders::_1)),
+
+	// may call filterFinished immediately
+	filters_.front()->start(context_, content_);
+}
+
+void Filter::MessageFilterStack::filterFinished(const Result &result)
+{
+	if(!result.errorMessage.isNull())
+	{
+		filters_.clear();
+
+		Result r;
+		r.errorMessage = result.errorMessage;
+		finished(r);
+		return;
+	}
+
+	lastSendAction_ = result.sendAction;
+	content_ = result.content;
+
+	switch(lastSendAction_)
+	{
+		case Send:
+			// remove the finished filter
+			filters_.erase(filters_.begin());
+			break;
+		case Drop:
+			filters_.clear();
+			break;
+	}
+
+	// will emit finished if there are no remaining filters
+	nextFilter();
 }
