@@ -28,7 +28,10 @@
 #include <QStringList>
 #include <QHash>
 #include <QMetaType>
+#include <QUrl>
 #include <boost/signals2.hpp>
+
+class ZhttpManager;
 
 class Filter
 {
@@ -52,6 +55,18 @@ public:
 		QHash<QString, QString> prevIds;
 		QHash<QString, QString> subscriptionMeta;
 		QHash<QString, QString> publishMeta;
+
+		// for network access
+		ZhttpManager *zhttpOut;
+		QUrl currentUri;
+		QString route;
+		bool trusted;
+
+		Context() :
+			zhttpOut(0),
+			trusted(false)
+		{
+		}
 	};
 
 	class MessageFilter

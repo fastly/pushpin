@@ -1813,6 +1813,10 @@ private:
 			Filter::Context fc;
 			fc.subscriptionMeta = s->meta;
 			fc.publishMeta = item.meta;
+			fc.zhttpOut = zhttpOut;
+			fc.currentUri = s->requestData.uri;
+			fc.route = s->route;
+			fc.trusted = s->targetTrusted;
 
 			FilterStack filters(fc, s->channelFilters[item.channel]);
 
@@ -2701,6 +2705,7 @@ private:
 
 				s->route = item.route;
 				s->statsRoute = item.separateStats ? item.route : QString();
+				s->targetTrusted = item.trusted;
 				s->channelPrefix = QString::fromUtf8(item.channelPrefix);
 				if(item.logLevel >= 0)
 					s->logLevel = item.logLevel;

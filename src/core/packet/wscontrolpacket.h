@@ -65,6 +65,7 @@ public:
 		bool separateStats;
 		QByteArray channelPrefix;
 		int logLevel;
+		bool trusted;
 		QByteArray channel;
 		int ttl;
 		int timeout;
@@ -76,6 +77,7 @@ public:
 			code(-1),
 			separateStats(false),
 			logLevel(-1),
+			trusted(false),
 			ttl(-1),
 			timeout(-1)
 		{

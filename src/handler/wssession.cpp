@@ -32,7 +32,9 @@
 WsSession::WsSession(QObject *parent) :
 	QObject(parent),
 	nextReqId(0),
-	logLevel(LOG_LEVEL_DEBUG)
+	logLevel(LOG_LEVEL_DEBUG),
+	targetTrusted(false),
+	ttl(0)
 {
 	expireTimer = new QTimer(this);
 	expireTimer->setSingleShot(true);

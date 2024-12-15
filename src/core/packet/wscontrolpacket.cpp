@@ -218,6 +218,9 @@ QVariant WsControlPacket::toVariant() const
 		if(item.logLevel >= 0)
 			vitem["log-level"] = item.logLevel;
 
+		if(item.trusted)
+			vitem["trusted"] = true;
+
 		if(!item.channel.isEmpty())
 			vitem["channel"] = item.channel;
 
@@ -393,6 +396,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 				return false;
 
 			item.logLevel = vitem["log-level"].toInt();
+		}
+
+		if(vitem.contains("trusted"))
+		{
+			if(typeId(vitem["trusted"]) != QMetaType::Bool)
+				return false;
+
+			item.trusted = vitem["trusted"].toBool();
 		}
 
 		if(vitem.contains("channel"))
