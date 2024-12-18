@@ -48,6 +48,7 @@ public:
 	HttpRequestData requestData;
 	QString route;
 	QString statsRoute;
+	bool targetTrusted;
 	QString sid;
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
