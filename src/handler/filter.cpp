@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2024 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,18 +23,32 @@
 
 #include "filter.h"
 
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "log.h"
 #include "format.h"
 #include "idformat.h"
+#include "zhttpmanager.h"
+#include "zhttprequest.h"
 
 namespace {
 
-class SkipSelfFilter : public Filter
+class SkipSelfFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	SkipSelfFilter() :
 		Filter("skip-self")
 	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = content;
+		finished(r);
 	}
 
 	virtual SendAction sendAction() const
@@ -47,12 +62,22 @@ public:
 	}
 };
 
-class SkipUsersFilter : public Filter
+class SkipUsersFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	SkipUsersFilter() :
 		Filter("skip-users")
 	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = content;
+		finished(r);
 	}
 
 	virtual SendAction sendAction() const
@@ -74,12 +99,22 @@ public:
 	}
 };
 
-class RequireSubFilter : public Filter
+class RequireSubFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	RequireSubFilter() :
 		Filter("require-sub")
 	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = content;
+		finished(r);
 	}
 
 	virtual SendAction sendAction() const
@@ -92,7 +127,7 @@ public:
 	}
 };
 
-class BuildIdFilter : public Filter
+class BuildIdFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	IdFormat::ContentRenderer *idContentRenderer;
@@ -162,6 +197,16 @@ public:
 		return true;
 	}
 
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = process(content);
+		finished(r);
+	}
+
 	virtual QByteArray update(const QByteArray &data)
 	{
 		if(!ensureInit())
@@ -223,12 +268,22 @@ public:
 	}
 };
 
-class VarSubstFilter : public Filter
+class VarSubstFilter : public Filter, public Filter::MessageFilter
 {
 public:
 	VarSubstFilter() :
 		Filter("var-subst")
 	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		setContext(context);
+
+		Result r;
+		r.sendAction = sendAction();
+		r.content = process(content);
+		finished(r);
 	}
 
 	virtual QByteArray update(const QByteArray &data)
@@ -253,6 +308,196 @@ public:
 	}
 };
 
+class HttpFilter : public Filter::MessageFilter
+{
+public:
+	enum Mode
+	{
+		Check,
+		Modify
+	};
+
+	Mode mode;
+	std::unique_ptr<ZhttpRequest> req;
+	boost::signals2::scoped_connection readyReadConnection;
+	boost::signals2::scoped_connection errorConnection;
+	QByteArray origContent;
+	bool haveResponseHeader;
+	QByteArray responseBody;
+
+	HttpFilter(Mode _mode) :
+		mode(_mode),
+		haveResponseHeader(false)
+	{
+	}
+
+	virtual void start(const Filter::Context &context, const QByteArray &content)
+	{
+		QUrl url = QUrl(context.subscriptionMeta.value("url"), QUrl::StrictMode);
+		if(!url.isValid())
+		{
+			Result r;
+			r.errorMessage = "invalid or missing url value";
+			finished(r);
+			return;
+		}
+
+		QUrl currentUri = context.currentUri;
+		if(currentUri.scheme() == "wss")
+			currentUri.setScheme("https");
+		else if(currentUri.scheme() == "ws")
+			currentUri.setScheme("http");
+
+		QUrl destUri = currentUri.resolved(url);
+
+		origContent = content;
+
+		req.reset(context.zhttpOut->createRequest());
+		readyReadConnection = req->readyRead.connect(boost::bind(&HttpFilter::req_readyRead, this));
+		errorConnection = req->error.connect(boost::bind(&HttpFilter::req_error, this));
+
+		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
+		int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
+
+		QVariantHash passthroughData;
+
+		passthroughData["route"] = context.route.toUtf8();
+
+		// if dest link points to the same service as the current request,
+		//   then we can assume the network would send the request back to
+		//   us, so we can handle it internally. if the link points to a
+		//   different service, then we can't make this assumption and need
+		//   to make the request over the network. note that such a request
+		//   could still end up looping back to us
+		if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
+		{
+			// tell the proxy that we prefer the request to be handled
+			//   internally, using the same route
+			passthroughData["prefer-internal"] = true;
+		}
+
+		// needed in case internal routing is not used
+		if(context.trusted)
+			passthroughData["trusted"] = true;
+
+		req->setPassthroughData(passthroughData);
+
+		HttpHeaders headers;
+
+		{
+			QVariantMap vmap;
+			QHashIterator<QString, QString> it(context.subscriptionMeta);
+			while(it.hasNext())
+			{
+				it.next();
+				vmap[it.key()] = it.value();
+			}
+
+			QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
+			headers += HttpHeader("Sub-Meta", doc.toJson(QJsonDocument::Compact));
+		}
+
+		{
+			QVariantMap vmap;
+			QHashIterator<QString, QString> it(context.publishMeta);
+			while(it.hasNext())
+			{
+				it.next();
+				vmap[it.key()] = it.value();
+			}
+
+			QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
+			headers += HttpHeader("Pub-Meta", doc.toJson(QJsonDocument::Compact));
+		}
+
+		{
+			QHashIterator<QString, QString> it(context.prevIds);
+			while(it.hasNext())
+			{
+				it.next();
+				const QString &name = it.key();
+				const QString &prevId = it.value();
+
+				if(!prevId.isNull())
+					headers += HttpHeader("Grip-Last", name.toUtf8() + "; last-id=" + prevId.toUtf8());
+			}
+		}
+
+		req->start("POST", destUri, headers);
+
+		if(mode == Modify)
+			req->writeBody(content);
+
+		req->endBody();
+	}
+
+	void req_readyRead()
+	{
+		if(!haveResponseHeader)
+		{
+			haveResponseHeader = true;
+
+			switch(req->responseCode())
+			{
+				case 200:
+				case 204:
+					break;
+				default:
+					Result r;
+					r.errorMessage = "unexpected network request status";
+					finished(r);
+					return;
+			}
+		}
+
+		QByteArray body = req->readBody();
+
+		if(mode == Modify)
+			responseBody += body;
+
+		if(!req->isFinished())
+			return;
+
+		Result r;
+
+		if(req->responseHeaders().get("Action") == "drop")
+		{
+			// drop
+			r.sendAction = Filter::Drop;
+		}
+		else
+		{
+			// accept
+			r.sendAction = Filter::Send;
+
+			switch(req->responseCode())
+			{
+				case 204:
+					// as-is
+					r.content = origContent;
+					break;
+				default:
+					// replace content
+					r.content = responseBody;
+					break;
+			}
+		}
+
+		finished(r);
+	}
+
+	void req_error()
+	{
+		Result r;
+		r.errorMessage = "network request failed";
+		finished(r);
+	}
+};
+
+}
+
+Filter::MessageFilter::~MessageFilter()
+{
 }
 
 Filter::Filter(const QString &name) :
@@ -308,6 +553,26 @@ Filter *Filter::create(const QString &name)
 		return 0;
 }
 
+Filter::MessageFilter *Filter::createMessageFilter(const QString &name)
+{
+	if(name == "skip-self")
+		return new SkipSelfFilter;
+	else if(name == "skip-users")
+		return new SkipUsersFilter;
+	else if(name == "require-sub")
+		return new RequireSubFilter;
+	else if(name == "build-id")
+		return new BuildIdFilter;
+	else if(name == "var-subst")
+		return new VarSubstFilter;
+	else if(name == "http-check")
+		return new HttpFilter(HttpFilter::Check);
+	else if(name == "http-modify")
+		return new HttpFilter(HttpFilter::Modify);
+	else
+		return 0;
+}
+
 QStringList Filter::names()
 {
 	return (QStringList()
@@ -315,7 +580,9 @@ QStringList Filter::names()
 		<< "skip-users"
 		<< "require-sub"
 		<< "build-id"
-		<< "var-subst");
+		<< "var-subst"
+		<< "http-check"
+		<< "http-modify");
 }
 
 Filter::Targets Filter::targets(const QString &name)
@@ -327,9 +594,79 @@ Filter::Targets Filter::targets(const QString &name)
 	else if(name == "require-sub")
 		return Filter::MessageDelivery;
 	else if(name == "build-id")
-		return Filter::Targets(Filter::MessageContent | Filter::ProxyContent);
+		return Filter::Targets(Filter::MessageContent | Filter::ResponseContent);
 	else if(name == "var-subst")
 		return Filter::MessageContent;
+	else if(name == "http-check")
+		return Filter::MessageDelivery;
+	else if(name == "http-modify")
+		return Filter::Targets(Filter::MessageDelivery | Filter::MessageContent);
 	else
 		return Filter::Targets(0);
+}
+
+Filter::MessageFilterStack::MessageFilterStack(const QStringList &filterNames)
+{
+	foreach(const QString &name, filterNames)
+	{
+		MessageFilter *f = createMessageFilter(name);
+		if(f)
+			filters_.emplace_back(std::unique_ptr<MessageFilter>(f));
+	}
+}
+
+void Filter::MessageFilterStack::start(const Filter::Context &context, const QByteArray &content)
+{
+	context_ = context;
+	content_ = content;
+	lastSendAction_ = Send;
+
+	nextFilter();
+}
+
+void Filter::MessageFilterStack::nextFilter()
+{
+	if(filters_.empty())
+	{
+		Result r;
+		r.sendAction = lastSendAction_;
+		r.content = content_;
+		finished(r);
+		return;
+	}
+
+	finishedConnection_ = filters_.front()->finished.connect(boost::bind(&MessageFilterStack::filterFinished, this, boost::placeholders::_1)),
+
+	// may call filterFinished immediately
+	filters_.front()->start(context_, content_);
+}
+
+void Filter::MessageFilterStack::filterFinished(const Result &result)
+{
+	if(!result.errorMessage.isNull())
+	{
+		filters_.clear();
+
+		Result r;
+		r.errorMessage = result.errorMessage;
+		finished(r);
+		return;
+	}
+
+	lastSendAction_ = result.sendAction;
+	content_ = result.content;
+
+	switch(lastSendAction_)
+	{
+		case Send:
+			// remove the finished filter
+			filters_.erase(filters_.begin());
+			break;
+		case Drop:
+			filters_.clear();
+			break;
+	}
+
+	// will emit finished if there are no remaining filters
+	nextFilter();
 }

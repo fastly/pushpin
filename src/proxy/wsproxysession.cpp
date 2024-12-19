@@ -949,7 +949,7 @@ private slots:
 					wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this)),
 					wsControl->error.connect(boost::bind(&Private::wsControl_error, this))
 				};
-				wsControl->start(route.id, route.separateStats, channelPrefix, route.logLevel, inSock->requestUri());
+				wsControl->start(route.id, route.separateStats, channelPrefix, route.logLevel, inSock->requestUri(), target.trusted);
 
 				foreach(const QString &subChannel, target.subscriptions)
 				{

@@ -28,12 +28,17 @@
 #include <QHash>
 #include <QSet>
 #include "packet/httprequestdata.h"
+#include "packet/wscontrolpacket.h"
+#include "filter.h"
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
 class QTimer;
+
+class ZhttpManager;
+class PublishItem;
 
 class WsSession : public QObject
 {
@@ -48,6 +53,7 @@ public:
 	HttpRequestData requestData;
 	QString route;
 	QString statsRoute;
+	bool targetTrusted;
 	QString sid;
 	QHash<QString, QString> meta;
 	QHash<QString, QStringList> channelFilters; // k=channel, v=list(filters)
@@ -62,6 +68,11 @@ public:
 	QTimer *expireTimer;
 	QTimer *delayedTimer;
 	QTimer *requestTimer;
+	QList<PublishItem> publishQueue;
+	ZhttpManager *zhttpOut;
+	std::unique_ptr<Filter::MessageFilter> filters;
+	Connection filtersFinishedConnection;
+	bool processingSendQueue;
 
 	WsSession(QObject *parent = 0);
 	~WsSession();
@@ -70,13 +81,17 @@ public:
 	void flushDelayed();
 	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
 	void ack(int reqId);
+	void publish(const PublishItem &item);
 
-	boost::signals2::signal<void(int, const QByteArray&, const QByteArray&)> send;
+	boost::signals2::signal<void(const WsControlPacket::Item&)> send;
 	Signal expired;
 	Signal error;
 
 private:
+	void trySendQueue();
 	void setupRequestTimer();
+	void filtersFinished(const Filter::MessageFilter::Result &result);
+	void afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content);
 
 private slots:
 	void expireTimer_timeout();
