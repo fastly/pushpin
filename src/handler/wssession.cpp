@@ -38,7 +38,8 @@ WsSession::WsSession(QObject *parent) :
 	nextReqId(0),
 	logLevel(LOG_LEVEL_DEBUG),
 	targetTrusted(false),
-	ttl(0)
+	ttl(0),
+	processingSendQueue(false)
 {
 	expireTimer = new QTimer(this);
 	expireTimer->setSingleShot(true);
@@ -102,53 +103,58 @@ void WsSession::ack(int reqId)
 
 void WsSession::publish(const PublishItem &item)
 {
-	pendingItems += item;
+	publishQueue += item;
 
-	if(!filters)
-		processNextItem();
+	if(!processingSendQueue)
+		trySendQueue();
 }
 
-void WsSession::processNextItem()
+void WsSession::trySendQueue()
 {
-	if(pendingItems.isEmpty())
-		return;
+	processingSendQueue = true;
 
-	const PublishItem &item = pendingItems.first();
-	const PublishFormat &f = item.format;
-
-	if(f.haveContentFilters)
+	while(!publishQueue.isEmpty() && !filters)
 	{
-		// ensure content filters match
-		QStringList contentFilters;
-		foreach(const QString &f, channelFilters[item.channel])
-		{
-			if(Filter::targets(f) & Filter::MessageContent)
-				contentFilters += f;
-		}
-		if(contentFilters != f.contentFilters)
-		{
-			QString errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
-			log_debug("%s", qPrintable(errorMessage));
+		const PublishItem &item = publishQueue.first();
+		const PublishFormat &f = item.format;
 
-			pendingItems.removeFirst();
-			processNextItem();
-			return;
+		if(f.haveContentFilters)
+		{
+			// ensure content filters match
+			QStringList contentFilters;
+			foreach(const QString &f, channelFilters[item.channel])
+			{
+				if(Filter::targets(f) & Filter::MessageContent)
+					contentFilters += f;
+			}
+			if(contentFilters != f.contentFilters)
+			{
+				QString errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+				log_debug("%s", qPrintable(errorMessage));
+
+				publishQueue.removeFirst();
+				continue;
+			}
 		}
+
+		filters = std::make_unique<Filter::MessageFilterStack>(channelFilters[item.channel]);
+		filtersFinishedConnection = filters->finished.connect(boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
+
+		Filter::Context fc;
+		fc.subscriptionMeta = meta;
+		fc.publishMeta = item.meta;
+		fc.zhttpOut = zhttpOut;
+		fc.currentUri = requestData.uri;
+		fc.route = route;
+		fc.trusted = targetTrusted;
+
+		// may call filtersFinished immediately. if it does, queue processing
+		// will continue. else, the loop will end and queue processing will
+		// resume after the filters finish
+		filters->start(fc, f.body);
 	}
 
-	filters = std::make_unique<Filter::MessageFilterStack>(channelFilters[item.channel]);
-	filtersFinishedConnection = filters->finished.connect(boost::bind(&WsSession::filtersFinished, this, boost::placeholders::_1));
-
-	Filter::Context fc;
-	fc.subscriptionMeta = meta;
-	fc.publishMeta = item.meta;
-	fc.zhttpOut = zhttpOut;
-	fc.currentUri = requestData.uri;
-	fc.route = route;
-	fc.trusted = targetTrusted;
-
-	// may call filtersFinished immediately
-	filters->start(fc, f.body);
+	processingSendQueue = false;
 }
 
 void WsSession::setupRequestTimer()
@@ -179,21 +185,19 @@ void WsSession::setupRequestTimer()
 
 void WsSession::filtersFinished(const Filter::MessageFilter::Result &result)
 {
-	PublishItem item = pendingItems.takeFirst();
+	PublishItem item = publishQueue.takeFirst();
 
 	filtersFinishedConnection.disconnect();
 	filters.reset();
 
 	if(!result.errorMessage.isNull())
-	{
 		log_debug("filter error: %s", qPrintable(result.errorMessage));
-		processNextItem();
-		return;
-	}
+	else
+		afterFilters(item, result.sendAction, result.content);
 
-	afterFilters(item, result.sendAction, result.content);
-
-	processNextItem();
+	// if filters finished asynchronously then we need to resume processing
+	if(!processingSendQueue)
+		trySendQueue();
 }
 
 void WsSession::afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content)
