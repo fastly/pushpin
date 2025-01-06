@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2019 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *

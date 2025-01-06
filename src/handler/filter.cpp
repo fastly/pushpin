@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2019 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -306,18 +306,14 @@ public:
 
 }
 
-Filter::MessageFilter::~MessageFilter()
-{
-}
+Filter::MessageFilter::~MessageFilter() = default;
 
 Filter::Filter(const QString &name) :
 	name_(name)
 {
 }
 
-Filter::~Filter()
-{
-}
+Filter::~Filter() = default;
 
 Filter::SendAction Filter::sendAction() const
 {
@@ -463,6 +459,7 @@ void Filter::MessageFilterStack::filterFinished(const Result &result)
 			filters_.erase(filters_.begin());
 			break;
 		case Drop:
+			// stop filtering. remove the finished filter and any remaining
 			filters_.clear();
 			break;
 	}
