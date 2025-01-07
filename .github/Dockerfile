@@ -3,7 +3,7 @@ FROM --platform=linux/amd64 ubuntu:20.04
 ENV TZ=US \
     DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get -qq update && apt-get install -y zstd git pkg-config curl make g++ libssl-dev libzmq3-dev qtbase5-dev libboost-dev
+RUN apt-get -qq update && apt-get install -y zstd git pkg-config curl make g++ libssl-dev libzmq3-dev qtbase5-dev libboost-dev black
 
 # install toolchain
 RUN curl https://sh.rustup.rs -sSf | \

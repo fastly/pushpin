@@ -63,6 +63,8 @@ jobs:
         shared-key: "CI-Suite"
     - name: fmt
       run:  RUSTFLAGS="-D warnings" cargo +${{ matrix.rust-version }} fmt --check
+    - name: format python
+      run:  black --check .
   build:
     strategy:
       fail-fast: true
