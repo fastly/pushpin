@@ -6,7 +6,7 @@ import tnetstring
 import zmq
 
 if len(sys.argv) < 3:
-    print('usage: {} [channel] [content]'.format(sys.argv[0]))
+    print("usage: {} [channel] [content]".format(sys.argv[0]))
     sys.exit(1)
 
 channel = sys.argv[1]
@@ -29,7 +29,7 @@ ctx = zmq.Context()
 # a PULL socket for input.
 
 sock = ctx.socket(zmq.XPUB)
-sock.connect('tcp://localhost:5562')
+sock.connect("tcp://localhost:5562")
 
 poller = zmq.Poller()
 poller.register(sock, zmq.POLLIN)
@@ -42,22 +42,18 @@ while True:
     socks = dict(poller.poll(500 - elapsed))
     if socks.get(sock) == zmq.POLLIN:
         m = sock.recv()
-        if m[0] == 1 and m[1:].decode('utf-8') == channel:
+        if m[0] == 1 and m[1:].decode("utf-8") == channel:
             # subscription ready
             break
 
-content = content.encode('utf-8')
+content = content.encode("utf-8")
 
-hr = {b'body': content + b'\n'}
-hs = {b'content': content + b'\n'}
-ws = {b'content': content}
-formats = {
-    b'http-response': hr,
-    b'http-stream': hs,
-    b'ws-message': ws
-}
-item = {b'formats': formats}
+hr = {b"body": content + b"\n"}
+hs = {b"content": content + b"\n"}
+ws = {b"content": content}
+formats = {b"http-response": hr, b"http-stream": hs, b"ws-message": ws}
+item = {b"formats": formats}
 
-sock.send_multipart([channel.encode('utf-8'), tnetstring.dumps(item)])
+sock.send_multipart([channel.encode("utf-8"), tnetstring.dumps(item)])
 
-print('Published')
+print("Published")
