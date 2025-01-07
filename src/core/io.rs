@@ -155,7 +155,7 @@ impl<'a, 'b, W: AsyncWrite> StdWriteWrapper<'a, 'b, W> {
     }
 }
 
-impl<'a, 'b, W: AsyncWrite> Write for StdWriteWrapper<'a, 'b, W> {
+impl<W: AsyncWrite> Write for StdWriteWrapper<'_, '_, W> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
         match self.w.as_mut().poll_write(self.cx, buf) {
             Poll::Ready(ret) => ret,
@@ -244,7 +244,7 @@ pub struct ReadFuture<'a, R: AsyncRead + ?Sized> {
     buf: &'a mut [u8],
 }
 
-impl<'a, R: AsyncRead + ?Sized> Future for ReadFuture<'a, R> {
+impl<R: AsyncRead + ?Sized> Future for ReadFuture<'_, R> {
     type Output = Result<usize, io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -256,7 +256,7 @@ impl<'a, R: AsyncRead + ?Sized> Future for ReadFuture<'a, R> {
     }
 }
 
-impl<'a, R: AsyncRead + ?Sized> Drop for ReadFuture<'a, R> {
+impl<R: AsyncRead + ?Sized> Drop for ReadFuture<'_, R> {
     fn drop(&mut self) {
         self.r.cancel();
     }
@@ -268,7 +268,7 @@ pub struct WriteFuture<'a, W: AsyncWrite + ?Sized + Unpin> {
     pos: usize,
 }
 
-impl<'a, W: AsyncWrite + ?Sized> Future for WriteFuture<'a, W> {
+impl<W: AsyncWrite + ?Sized> Future for WriteFuture<'_, W> {
     type Output = Result<usize, io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -291,7 +291,7 @@ impl<'a, W: AsyncWrite + ?Sized> Future for WriteFuture<'a, W> {
     }
 }
 
-impl<'a, W: AsyncWrite + ?Sized> Drop for WriteFuture<'a, W> {
+impl<W: AsyncWrite + ?Sized> Drop for WriteFuture<'_, W> {
     fn drop(&mut self) {
         self.w.cancel();
     }
@@ -301,7 +301,7 @@ pub struct CloseFuture<'a, W: AsyncWrite + ?Sized> {
     w: &'a mut W,
 }
 
-impl<'a, W: AsyncWrite + ?Sized> Future for CloseFuture<'a, W> {
+impl<W: AsyncWrite + ?Sized> Future for CloseFuture<'_, W> {
     type Output = Result<(), io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -313,7 +313,7 @@ impl<'a, W: AsyncWrite + ?Sized> Future for CloseFuture<'a, W> {
     }
 }
 
-impl<'a, W: AsyncWrite + ?Sized> Drop for CloseFuture<'a, W> {
+impl<W: AsyncWrite + ?Sized> Drop for CloseFuture<'_, W> {
     fn drop(&mut self) {
         self.w.cancel();
     }
@@ -341,7 +341,7 @@ pub struct WriteVectoredFuture<'a, W: AsyncWrite + ?Sized + Unpin> {
     pos: usize,
 }
 
-impl<'a, W: AsyncWrite + ?Sized> Future for WriteVectoredFuture<'a, W> {
+impl<W: AsyncWrite + ?Sized> Future for WriteVectoredFuture<'_, W> {
     type Output = Result<usize, io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -380,7 +380,7 @@ impl<'a, W: AsyncWrite + ?Sized> Future for WriteVectoredFuture<'a, W> {
     }
 }
 
-impl<'a, W: AsyncWrite + ?Sized> Drop for WriteVectoredFuture<'a, W> {
+impl<W: AsyncWrite + ?Sized> Drop for WriteVectoredFuture<'_, W> {
     fn drop(&mut self) {
         self.w.cancel();
     }
@@ -391,7 +391,7 @@ pub struct WriteSharedFuture<'a, W: AsyncWrite + ?Sized + Unpin, B: AsRef<[u8]>>
     buf: &'a RefCell<B>,
 }
 
-impl<'a, W: AsyncWrite + ?Sized, B: AsRef<[u8]>> Future for WriteSharedFuture<'a, W, B> {
+impl<W: AsyncWrite + ?Sized, B: AsRef<[u8]>> Future for WriteSharedFuture<'_, W, B> {
     type Output = Result<usize, io::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
@@ -403,7 +403,7 @@ impl<'a, W: AsyncWrite + ?Sized, B: AsRef<[u8]>> Future for WriteSharedFuture<'a
     }
 }
 
-impl<'a, W: AsyncWrite + ?Sized, B: AsRef<[u8]>> Drop for WriteSharedFuture<'a, W, B> {
+impl<W: AsyncWrite + ?Sized, B: AsRef<[u8]>> Drop for WriteSharedFuture<'_, W, B> {
     fn drop(&mut self) {
         self.w.cancel();
     }

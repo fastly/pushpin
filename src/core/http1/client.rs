@@ -647,7 +647,7 @@ pub struct FinishedKeepHeader<'a> {
     wbuf: &'a mut VecRingBuffer,
 }
 
-impl<'a> FinishedKeepHeader<'a> {
+impl FinishedKeepHeader<'_> {
     pub fn discard_header<const N: usize>(self, resp: protocol::OwnedResponse<N>) -> Finished {
         self.wbuf.set_inner(resp.into_buf());
         self.wbuf.clear();
