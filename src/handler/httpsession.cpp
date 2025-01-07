@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -298,13 +298,13 @@ public:
 
 			if(!instruct.response.body.isEmpty())
 			{
-				// apply ProxyContent filters of all channels
+				// apply ResponseContent filters of all channels
 				QStringList allFilters;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					foreach(const QString &filter, c.filters)
 					{
-						if((Filter::targets(filter) & Filter::ProxyContent) && !allFilters.contains(filter))
+						if((Filter::targets(filter) & Filter::ResponseContent) && !allFilters.contains(filter))
 							allFilters += filter;
 					}
 				}
@@ -1558,13 +1558,13 @@ private slots:
 				// won't be used for anything else
 				instruct = i;
 
-				// apply ProxyContent filters of all channels
+				// apply ResponseContent filters of all channels
 				QStringList allFilters;
 				foreach(const Instruct::Channel &c, instruct.channels)
 				{
 					foreach(const QString &filter, c.filters)
 					{
-						if((Filter::targets(filter) & Filter::ProxyContent) && !allFilters.contains(filter))
+						if((Filter::targets(filter) & Filter::ResponseContent) && !allFilters.contains(filter))
 							allFilters += filter;
 					}
 				}

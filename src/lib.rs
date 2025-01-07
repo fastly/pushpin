@@ -131,6 +131,7 @@ pub mod ffi {
         pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn filter_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn jsonpatch_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn instruct_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn idformat_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
