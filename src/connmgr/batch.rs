@@ -147,7 +147,7 @@ impl Batch {
         self.nodes.remove(key.nkey);
     }
 
-    pub fn take_group<'a, 'b: 'a, F>(&'a mut self, get_id: F) -> Option<BatchGroup>
+    pub fn take_group<'a, 'b: 'a, F>(&'a mut self, get_id: F) -> Option<BatchGroup<'a, 'b>>
     where
         F: Fn(usize) -> Option<(&'b [u8], u32)>,
     {

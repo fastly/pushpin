@@ -777,7 +777,7 @@ impl Worker {
 
         let instance_id = Rc::new(instance_id);
 
-        let ka_batch = (stream_maxconn + (KEEP_ALIVE_BATCHES - 1)) / KEEP_ALIVE_BATCHES;
+        let ka_batch = stream_maxconn.div_ceil(KEEP_ALIVE_BATCHES);
 
         let batch = Batch::new(ka_batch);
 
