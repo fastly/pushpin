@@ -201,10 +201,7 @@ impl IdentityCache {
             return Some(identity);
         }
 
-        let pos = match name.find('.') {
-            Some(pos) => pos,
-            None => return None,
-        };
+        let pos = name.find('.')?;
 
         let name = format!("_{}", &name[pos..]);
 
