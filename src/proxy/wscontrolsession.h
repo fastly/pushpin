@@ -45,7 +45,7 @@ public:
 	QByteArray peer() const;
 	QByteArray cid() const;
 
-	void start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const QUrl &uri);
+	void start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const QUrl &uri, bool targetTrusted);
 	void sendGripMessage(const QByteArray &message);
 	void sendNeedKeepAlive();
 	void sendSubscribe(const QByteArray &channel);
