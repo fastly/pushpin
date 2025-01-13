@@ -1325,7 +1325,7 @@ where
     }
 }
 
-async fn send_error_response<'a, R: AsyncRead, W: AsyncWrite>(
+async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
     mut resp: server::Response<'_, R, W>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     e: &Error,

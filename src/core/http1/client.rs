@@ -499,7 +499,7 @@ pub struct ResponseBody<'a, R: AsyncRead> {
     inner: RefCell<Option<ResponseBodyInner<'a, R>>>,
 }
 
-impl<'a, R: AsyncRead> ResponseBody<'a, R> {
+impl<R: AsyncRead> ResponseBody<'_, R> {
     // on EOF and any subsequent calls, return success
     #[allow(clippy::await_holding_refcell_ref)]
     pub async fn add_to_buffer(&self) -> Result<(), Error> {

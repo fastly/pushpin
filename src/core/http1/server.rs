@@ -623,7 +623,7 @@ pub struct ResponseBody<'a, R: AsyncRead, W: AsyncWrite> {
     inner: RefCell<Option<ResponseBodyInner<'a, R, W>>>,
 }
 
-impl<'a, R: AsyncRead, W: AsyncWrite> ResponseBody<'a, R, W> {
+impl<R: AsyncRead, W: AsyncWrite> ResponseBody<'_, R, W> {
     pub fn prepare(&self, src: &[u8], end: bool) -> Result<usize, Error> {
         if let Some(inner) = &*self.inner.borrow() {
             let w = &mut *inner.w.borrow_mut();
