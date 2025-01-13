@@ -70,7 +70,7 @@ impl<'a, A, B> Track<'a, (A, B)> {
     }
 }
 
-impl<'a, T> Drop for Track<'a, T> {
+impl<T> Drop for Track<'_, T> {
     fn drop(&mut self) {
         if let Some(inner) = &self.inner {
             inner.active.set(false);
@@ -78,7 +78,7 @@ impl<'a, T> Drop for Track<'a, T> {
     }
 }
 
-impl<'a, T> Deref for Track<'a, T> {
+impl<T> Deref for Track<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -134,7 +134,7 @@ pub struct TrackFuture<'a, F> {
     value_active: &'a TrackFlag,
 }
 
-impl<'a, F, T, E> Future for TrackFuture<'a, F>
+impl<F, T, E> Future for TrackFuture<'_, F>
 where
     F: Future<Output = Result<T, E>>,
     E: From<ValueActiveError>,

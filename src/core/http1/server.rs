@@ -469,7 +469,7 @@ pub struct ResponseState<'a, R: AsyncRead, W: AsyncWrite> {
     inner: RefCell<Option<ResponseStateInner<'a, R, W>>>,
 }
 
-impl<'a, R: AsyncRead, W: AsyncWrite> Default for ResponseState<'a, R, W> {
+impl<R: AsyncRead, W: AsyncWrite> Default for ResponseState<'_, R, W> {
     fn default() -> Self {
         Self {
             inner: RefCell::new(None),
@@ -517,7 +517,7 @@ pub struct ResponsePrepareBody<'a, 'b, R: AsyncRead, W: AsyncWrite> {
     state: &'b RefCell<Option<ResponseStateInner<'a, R, W>>>,
 }
 
-impl<'a, 'b, R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'a, 'b, R, W> {
+impl<R: AsyncRead, W: AsyncWrite> ResponsePrepareBody<'_, '_, R, W> {
     // only returns an error on invalid input
     pub fn prepare(&mut self, src: &[u8], end: bool) -> Result<(usize, usize), Error> {
         let state = self.state.borrow();

@@ -606,7 +606,7 @@ pub struct OwnedRequest<'s, const N: usize> {
     expect_100: bool,
 }
 
-impl<'s, const N: usize> OwnedRequest<'s, N> {
+impl<const N: usize> OwnedRequest<'_, N> {
     pub fn get(&self) -> Request {
         let req = self.req.get();
 
@@ -641,7 +641,7 @@ pub struct OwnedResponse<'s, const N: usize> {
     body_size: BodySize,
 }
 
-impl<'s, const N: usize> OwnedResponse<'s, N> {
+impl<const N: usize> OwnedResponse<'_, N> {
     pub fn get(&self) -> Response {
         let resp = self.resp.get();
 

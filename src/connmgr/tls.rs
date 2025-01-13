@@ -1085,7 +1085,7 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
     }
 }
 
-impl<'a> Drop for AsyncTlsStream<'a> {
+impl Drop for AsyncTlsStream<'_> {
     fn drop(&mut self) {
         let registration = self.waker.take_registration();
 

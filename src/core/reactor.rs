@@ -39,7 +39,7 @@ fn duration_to_ticks_round_down(d: Duration) -> u64 {
 }
 
 fn duration_to_ticks_round_up(d: Duration) -> u64 {
-    ((d.as_millis() + (TICK_DURATION_MS as u128) - 1) / (TICK_DURATION_MS as u128)) as u64
+    d.as_millis().div_ceil(TICK_DURATION_MS as u128) as u64
 }
 
 fn ticks_to_duration(t: u64) -> Duration {
