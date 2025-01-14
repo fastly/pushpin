@@ -20,6 +20,11 @@ mod tests {
     use crate::ffi;
     use std::ffi::OsStr;
 
+    fn filter_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::filter_test, args) as u8 }
+    }
+
     fn jsonpatch_test(args: &[&OsStr]) -> u8 {
         // SAFETY: safe to call
         unsafe { call_c_main(ffi::jsonpatch_test, args) as u8 }
@@ -48,6 +53,11 @@ mod tests {
     fn handlerengine_test(args: &[&OsStr]) -> u8 {
         // SAFETY: safe to call
         unsafe { call_c_main(ffi::handlerengine_test, args) as u8 }
+    }
+
+    #[test]
+    fn filter() {
+        assert!(qtest::run(filter_test));
     }
 
     #[test]

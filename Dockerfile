@@ -14,7 +14,7 @@ ENV RUST_BACKTRACE=1
 RUN apt-get update && apt-get -y install ubuntu-dbgsym-keyring
 RUN printf "deb http://ddebs.ubuntu.com focal main restricted universe multiverse\ndeb http://ddebs.ubuntu.com focal-updates main restricted universe multiverse\ndeb http://ddebs.ubuntu.com focal-proposed main restricted universe multiverse" >/etc/apt/sources.list.d/ddebs.list
 
-RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake libqt5core5a-dbgsym libqt5network5-dbgsym libglib2.0-0-dbgsym fst-rustc-1.71.0=1.71.0-149 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
+RUN apt-get update && apt-get -y install fst-ffpm=1.1-5 fst-stats=2.10.24-4010 build-essential coreutils libssl-dev python2.7 python3 patchelf gawk fst-gcc-9.1.0 qt5-default qt5-qmake libqt5core5a-dbgsym libqt5network5-dbgsym libglib2.0-0-dbgsym fst-rustc-1.75.0=1.75.0-206 fst-clang-8.0.1=1-43 strace pkg-config git fst-cmake libboost-dev
 
 RUN mkdir ~/.ssh && \
   ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -25,7 +25,7 @@ ENV CXXFLAGS="-fstack-protector-all -D_FORTIFY_SOURCE=2"
 ENV LDFLAGS="-Wl,-z,now -Wl,-z,relro"
 ENV CC=/opt/fst-gcc/9.1.0/bin/gcc
 ENV CXX=/opt/fst-gcc/9.1.0/bin/g++
-ENV RUST_TOOLCHAIN=/opt/fst-rust/1.71.0
+ENV RUST_TOOLCHAIN=/opt/fst-rust/1.75.0
 ENV CLANG_TOOLCHAIN=/opt/fst-clang/8.0.1
 ENV PATH="$PATH:$RUST_TOOLCHAIN/bin:$CLANG_TOOLCHAIN/bin"
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true

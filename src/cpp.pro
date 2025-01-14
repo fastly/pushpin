@@ -1,6 +1,6 @@
 TEMPLATE = lib
 CONFIG -= app_bundle
-CONFIG += staticlib c++14
+CONFIG += staticlib c++17
 QT -= gui
 QT += network
 TARGET = pushpin-cpp

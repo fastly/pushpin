@@ -201,10 +201,7 @@ impl IdentityCache {
             return Some(identity);
         }
 
-        let pos = match name.find('.') {
-            Some(pos) => pos,
-            None => return None,
-        };
+        let pos = name.find('.')?;
 
         let name = format!("_{}", &name[pos..]);
 
@@ -1085,7 +1082,7 @@ impl<'a: 'b, 'b> AsyncTlsStream<'a> {
     }
 }
 
-impl<'a> Drop for AsyncTlsStream<'a> {
+impl Drop for AsyncTlsStream<'_> {
     fn drop(&mut self) {
         let registration = self.waker.take_registration();
 
