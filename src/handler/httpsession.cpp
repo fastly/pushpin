@@ -1229,7 +1229,7 @@ private:
 			passthroughData["prefer-internal"] = true;
 		}
 
-		// these fields are needed in case proxy routing is not used
+		// needed in case internal routing is not used
 		if(adata.trusted)
 			passthroughData["trusted"] = true;
 
