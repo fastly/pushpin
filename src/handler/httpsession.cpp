@@ -468,6 +468,10 @@ public:
 			fc.prevIds = prevIds;
 			fc.subscriptionMeta = instruct.meta;
 			fc.publishMeta = item.meta;
+			fc.zhttpOut = outZhttp;
+			fc.currentUri = currentUri;
+			fc.route = adata.route;
+			fc.trusted = adata.trusted;
 
 			FilterStack fs(fc, channels[item.channel].filters);
 
@@ -875,6 +879,10 @@ private:
 			fc.prevIds = prevIds;
 			fc.subscriptionMeta = instruct.meta;
 			fc.publishMeta = item.meta;
+			fc.zhttpOut = outZhttp;
+			fc.currentUri = currentUri;
+			fc.route = adata.route;
+			fc.trusted = adata.trusted;
 
 			FilterStack fs(fc, channels[item.channel].filters);
 
