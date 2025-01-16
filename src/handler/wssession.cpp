@@ -26,6 +26,10 @@
 #include <QTimer>
 #include <QDateTime>
 #include "log.h"
+#include "filter.h"
+#include "filterstack.h"
+#include "publishitem.h"
+#include "publishformat.h"
 
 #define WSCONTROL_REQUEST_TIMEOUT 8000
 
@@ -94,6 +98,83 @@ void WsSession::ack(int reqId)
 		pendingRequests.remove(reqId);
 		setupRequestTimer();
 	}
+}
+
+void WsSession::publish(const PublishItem &item)
+{
+	const PublishFormat &f = item.format;
+
+	if(f.haveContentFilters)
+	{
+		// ensure content filters match
+		QStringList contentFilters;
+		foreach(const QString &f, channelFilters[item.channel])
+		{
+			if(Filter::targets(f) & Filter::MessageContent)
+				contentFilters += f;
+		}
+		if(contentFilters != f.contentFilters)
+		{
+			QString errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+			log_debug("%s", qPrintable(errorMessage));
+			return;
+		}
+	}
+
+	Filter::Context fc;
+	fc.subscriptionMeta = meta;
+	fc.publishMeta = item.meta;
+	fc.zhttpOut = zhttpOut;
+	fc.currentUri = requestData.uri;
+	fc.route = route;
+	fc.trusted = targetTrusted;
+
+	FilterStack filters(fc, channelFilters[item.channel]);
+
+	if(filters.sendAction() == Filter::Drop)
+		return;
+
+	// TODO: hint support for websockets?
+	if(f.action != PublishFormat::Send && f.action != PublishFormat::Close && f.action != PublishFormat::Refresh)
+		return;
+
+	WsControlPacket::Item i;
+	i.cid = cid.toUtf8();
+
+	if(f.action == PublishFormat::Send)
+	{
+		QByteArray body = filters.process(f.body);
+		if(body.isNull())
+		{
+			log_debug("filter error: %s", qPrintable(filters.errorMessage()));
+			return;
+		}
+
+		i.type = WsControlPacket::Item::Send;
+
+		switch(f.messageType)
+		{
+			case PublishFormat::Text:   i.contentType = "text"; break;
+			case PublishFormat::Binary: i.contentType = "binary"; break;
+			case PublishFormat::Ping:   i.contentType = "ping"; break;
+			case PublishFormat::Pong:   i.contentType = "pong"; break;
+			default: return; // unrecognized type, skip
+		}
+
+		i.message = body;
+	}
+	else if(f.action == PublishFormat::Close)
+	{
+		i.type = WsControlPacket::Item::Close;
+		i.code = f.code;
+		i.reason = f.reason;
+	}
+	else if(f.action == PublishFormat::Refresh)
+	{
+		i.type = WsControlPacket::Item::Refresh;
+	}
+
+	send(i);
 }
 
 void WsSession::setupRequestTimer()

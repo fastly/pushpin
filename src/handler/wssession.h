@@ -36,6 +36,9 @@ using Connection = boost::signals2::scoped_connection;
 
 class QTimer;
 
+class ZhttpManager;
+class PublishItem;
+
 class WsSession : public QObject
 {
 	Q_OBJECT
@@ -64,6 +67,7 @@ public:
 	QTimer *expireTimer;
 	QTimer *delayedTimer;
 	QTimer *requestTimer;
+	ZhttpManager *zhttpOut;
 
 	WsSession(QObject *parent = 0);
 	~WsSession();
@@ -72,6 +76,7 @@ public:
 	void flushDelayed();
 	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
 	void ack(int reqId);
+	void publish(const PublishItem &item);
 
 	boost::signals2::signal<void(const WsControlPacket::Item&)> send;
 	Signal expired;
