@@ -28,6 +28,7 @@
 #include <QHash>
 #include <QSet>
 #include "packet/httprequestdata.h"
+#include "packet/wscontrolpacket.h"
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
@@ -72,7 +73,7 @@ public:
 	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
 	void ack(int reqId);
 
-	boost::signals2::signal<void(int, const QByteArray&, const QByteArray&)> send;
+	boost::signals2::signal<void(const WsControlPacket::Item&)> send;
 	Signal expired;
 	Signal error;
 
