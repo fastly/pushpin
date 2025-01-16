@@ -139,7 +139,15 @@ void WsSession::delayedTimer_timeout()
 	pendingRequests[reqId] = QDateTime::currentMSecsSinceEpoch() + WSCONTROL_REQUEST_TIMEOUT;
 	setupRequestTimer();
 
-	send(reqId, delayedType, message);
+	WsControlPacket::Item i;
+	i.cid = cid.toUtf8();
+	i.requestId = QByteArray::number(reqId);
+	i.type = WsControlPacket::Item::Send;
+	i.contentType = delayedType;
+	i.message = message;
+	i.queue = true;
+
+	send(i);
 }
 
 void WsSession::requestTimer_timeout()

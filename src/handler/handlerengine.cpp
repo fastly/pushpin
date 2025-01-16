@@ -2690,7 +2690,7 @@ private:
 				{
 					s = new WsSession(this);
 					wsSessionConnectionMap[s] = {
-						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, s)),
+						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, s)),
 						s->expired.connect(boost::bind(&Private::wssession_expired, this, s)),
 						s->error.connect(boost::bind(&Private::wssession_error, this, s))
 					};
@@ -3229,16 +3229,8 @@ private slots:
 			writeRetryPacket(addr, rp);
 	}
 
-	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message, WsSession *s)
+	void wssession_send(const WsControlPacket::Item &i, WsSession *s)
 	{
-		WsControlPacket::Item i;
-		i.cid = s->cid.toUtf8();
-		i.requestId = QByteArray::number(reqId);
-		i.type = WsControlPacket::Item::Send;
-		i.contentType = type;
-		i.message = message;
-		i.queue = true;
-
 		writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
 	}
 
