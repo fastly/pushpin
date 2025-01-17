@@ -184,9 +184,11 @@ public:
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
 	QList<QueuedItem> publishQueue;
+	bool processingSendQueue;
 	QByteArray retryToAddress;
 	RetryRequestPacket retryPacket;
 	LogUtil::Config logConfig;
+	std::unique_ptr<Filter::MessageFilterStack> messageFilters;
 	FilterStack *responseFilters;
 	QSet<QString> activeChannels;
 	int connectionSubscriptionMax;
@@ -202,6 +204,7 @@ public:
 	Connection errorOutConnection;
 	Connection timerConnection;
 	Connection retryTimerConnection;
+	Connection messageFiltersFinishedConnection;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -218,6 +221,7 @@ public:
 		retries(0),
 		needUpdate(false),
 		pendingAction(0),
+		processingSendQueue(false),
 		responseFilters(0),
 		connectionSubscriptionMax(_connectionSubscriptionMax),
 		connectionStatsActive(true)
@@ -744,14 +748,17 @@ private:
 
 	void trySendQueue()
 	{
-		while(!publishQueue.isEmpty() && req->writeBytesAvailable() > 0)
+		processingSendQueue = true;
+
+		while(!publishQueue.isEmpty() && req->writeBytesAvailable() > 0 && !messageFilters)
 		{
-			const QueuedItem &qi = publishQueue.takeFirst();
+			const QueuedItem &qi = publishQueue.first();
 			const PublishItem &item = qi.item;
 
 			if(!channels.contains(item.channel))
 			{
 				log_debug("httpsession: received publish for channel with no subscription, dropping");
+				publishQueue.removeFirst();
 				continue;
 			}
 
@@ -786,11 +793,21 @@ private:
 				}
 				if(contentFilters != f.contentFilters)
 				{
+					publishQueue.removeFirst();
 					errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
 					doError();
 					break;
 				}
 			}
+
+			QByteArray body;
+			if(f.type == PublishFormat::HttpResponse && f.haveBodyPatch)
+				body = applyBodyPatch(instruct.response.body, f.bodyPatch);
+			else
+				body = f.body;
+
+			messageFilters = std::make_unique<Filter::MessageFilterStack>(channels[item.channel].filters);
+			messageFiltersFinishedConnection = messageFilters->finished.connect(boost::bind(&Private::messageFiltersFinished, this, boost::placeholders::_1));
 
 			QHash<QString, QString> prevIds;
 			QHashIterator<QString, Instruct::Channel> it(channels);
@@ -810,30 +827,13 @@ private:
 			fc.route = adata.route;
 			fc.trusted = adata.trusted;
 
-			FilterStack fs(fc, channels[item.channel].filters);
-
-			QByteArray body;
-
-			if(f.action == PublishFormat::Send && fs.sendAction() == Filter::Send)
-			{
-				if(f.type == PublishFormat::HttpResponse && f.haveBodyPatch)
-					body = applyBodyPatch(instruct.response.body, f.bodyPatch);
-				else
-					body = f.body;
-
-				body = fs.process(body);
-				if(body.isNull())
-				{
-					errorMessage = QString("filter error: %1").arg(fs.errorMessage());
-					doError();
-					return;
-				}
-			}
-
-			processItem(item, fs.sendAction(), body, qi.exposeHeaders);
+			// may call messageFiltersFinished immediately. if it does, queue
+			// processing will continue. else, the loop will end and queue
+			// processing will resume after the filters finish
+			messageFilters->start(fc, body);
 		}
 
-		if(instruct.holdMode == Instruct::StreamHold)
+		if(!messageFilters && instruct.holdMode == Instruct::StreamHold)
 		{
 			// the queue is empty or client buffer is full
 
@@ -852,6 +852,8 @@ private:
 				}
 			}
 		}
+
+		processingSendQueue = false;
 	}
 
 	void sendQueueDone()
@@ -1372,6 +1374,27 @@ private:
 		incCounter(Stats::ClientContentBytesSent, body.size());
 
 		req->writeBody(body);
+	}
+
+	void messageFiltersFinished(const Filter::MessageFilter::Result &result)
+	{
+		QueuedItem qi = publishQueue.takeFirst();
+
+		messageFiltersFinishedConnection.disconnect();
+		messageFilters.reset();
+
+		if(!result.errorMessage.isNull())
+		{
+			errorMessage = QString("filter error: %1").arg(result.errorMessage);
+			doError();
+			return;
+		}
+
+		processItem(qi.item, result.sendAction, result.content, qi.exposeHeaders);
+
+		// if filters finished asynchronously then we need to resume processing
+		if(!processingSendQueue)
+			trySendQueue();
 	}
 
 	void processItem(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content, const QList<QByteArray> &exposeHeaders)
