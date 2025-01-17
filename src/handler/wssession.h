@@ -29,6 +29,7 @@
 #include <QSet>
 #include "packet/httprequestdata.h"
 #include "packet/wscontrolpacket.h"
+#include "filter.h"
 #include <boost/signals2.hpp>
 
 using Signal = boost::signals2::signal<void()>;
@@ -67,7 +68,11 @@ public:
 	QTimer *expireTimer;
 	QTimer *delayedTimer;
 	QTimer *requestTimer;
+	QList<PublishItem> publishQueue;
 	ZhttpManager *zhttpOut;
+	std::unique_ptr<Filter::MessageFilter> filters;
+	Connection filtersFinishedConnection;
+	bool processingSendQueue;
 
 	WsSession(QObject *parent = 0);
 	~WsSession();
@@ -83,6 +88,9 @@ public:
 	Signal error;
 
 private:
+	void trySendQueue();
+	void filtersFinished(const Filter::MessageFilter::Result &result);
+	void afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content);
 	void setupRequestTimer();
 
 private slots:
