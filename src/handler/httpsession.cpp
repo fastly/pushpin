@@ -142,6 +142,19 @@ public:
 		}
 	};
 
+	class QueuedItem
+	{
+	public:
+		PublishItem item;
+		QList<QByteArray> exposeHeaders;
+
+		QueuedItem(const PublishItem &_item, const QList<QByteArray> &_exposeHeaders = QList<QByteArray>()) :
+			item(_item),
+			exposeHeaders(_exposeHeaders)
+		{
+		}
+	};
+
 	friend class UpdateAction;
 
 	HttpSession *q;
@@ -170,7 +183,7 @@ public:
 	bool needUpdate;
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
-	QList<PublishItem> publishQueue;
+	QList<QueuedItem> publishQueue;
 	QByteArray retryToAddress;
 	RetryRequestPacket retryPacket;
 	LogUtil::Config logConfig;
@@ -416,97 +429,10 @@ public:
 
 			assert(instruct.holdMode == Instruct::ResponseHold);
 
-			if(!channels.contains(item.channel))
-			{
-				log_debug("httpsession: received publish for channel with no subscription, dropping");
-				return;
-			}
+			publishQueue += QueuedItem(item, exposeHeaders);
 
-			Instruct::Channel &channel = channels[item.channel];
-
-			if(!channel.prevId.isNull())
-			{
-				if(channel.prevId != item.prevId)
-				{
-					log_debug("last ID inconsistency (got=%s, expected=%s), retrying", qPrintable(item.prevId), qPrintable(channel.prevId));
-					publishLastIds->remove(item.channel);
-
-					update(LowPriority);
-					return;
-				}
-
-				channel.prevId = item.id;
-			}
-
-			if(f.haveContentFilters)
-			{
-				// ensure content filters match
-				QStringList contentFilters;
-				foreach(const QString &f, channels[item.channel].filters)
-				{
-					if(Filter::targets(f) & Filter::MessageContent)
-						contentFilters += f;
-				}
-				if(contentFilters != f.contentFilters)
-				{
-					errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
-					doError();
-					return;
-				}
-			}
-
-			QHash<QString, QString> prevIds;
-			QHashIterator<QString, Instruct::Channel> it(channels);
-			while(it.hasNext())
-			{
-				it.next();
-				const Instruct::Channel &c = it.value();
-				prevIds[c.name] = c.prevId;
-			}
-
-			Filter::Context fc;
-			fc.prevIds = prevIds;
-			fc.subscriptionMeta = instruct.meta;
-			fc.publishMeta = item.meta;
-			fc.zhttpOut = outZhttp;
-			fc.currentUri = currentUri;
-			fc.route = adata.route;
-			fc.trusted = adata.trusted;
-
-			FilterStack fs(fc, channels[item.channel].filters);
-
-			if(fs.sendAction() == Filter::Drop)
-				return;
-
-			// NOTE: http-response mode doesn't support a close
-			//   action since it's better to send a real response
-
-			if(f.action == PublishFormat::Send)
-			{
-				QByteArray body;
-				if(f.haveBodyPatch)
-				{
-					body = applyBodyPatch(instruct.response.body, f.bodyPatch);
-				}
-				else
-				{
-					body = f.body;
-				}
-
-				body = fs.process(body);
-				if(body.isNull())
-				{
-					errorMessage = QString("filter error: %1").arg(fs.errorMessage());
-					doError();
-					return;
-				}
-
-				respond(f.code, f.reason, f.headers, body, exposeHeaders);
-			}
-			else if(f.action == PublishFormat::Hint)
-			{
-				update(HighPriority);
-			}
+			state = SendingQueue;
+			trySendQueue();
 		}
 		else if(f.type == PublishFormat::HttpStream)
 		{
@@ -514,7 +440,7 @@ public:
 			{
 				if(publishQueue.count() < PUBLISH_QUEUE_MAX)
 				{
-					publishQueue += item;
+					publishQueue += QueuedItem(item);
 
 					if(state == Holding)
 						trySendQueue();
@@ -782,7 +708,8 @@ private:
 			// drop any non-matching queued items
 			while(!publishQueue.isEmpty())
 			{
-				PublishItem &item = publishQueue.first();
+				const QueuedItem &qi = publishQueue.first();
+				const PublishItem &item = qi.item;
 
 				if(!channels.contains(item.channel))
 				{
@@ -817,11 +744,10 @@ private:
 
 	void trySendQueue()
 	{
-		assert(instruct.holdMode == Instruct::StreamHold);
-
 		while(!publishQueue.isEmpty() && req->writeBytesAvailable() > 0)
 		{
-			PublishItem item = publishQueue.takeFirst();
+			const QueuedItem &qi = publishQueue.takeFirst();
+			const PublishItem &item = qi.item;
 
 			if(!channels.contains(item.channel))
 			{
@@ -847,7 +773,7 @@ private:
 				channel.prevId = item.id;
 			}
 
-			PublishFormat &f = item.format;
+			const PublishFormat &f = item.format;
 
 			if(f.haveContentFilters)
 			{
@@ -886,63 +812,44 @@ private:
 
 			FilterStack fs(fc, channels[item.channel].filters);
 
-			if(fs.sendAction() == Filter::Drop)
-				continue;
+			QByteArray body;
 
-			if(f.action == PublishFormat::Send)
+			if(f.action == PublishFormat::Send && fs.sendAction() == Filter::Send)
 			{
-				QByteArray body = fs.process(f.body);
+				if(f.type == PublishFormat::HttpResponse && f.haveBodyPatch)
+					body = applyBodyPatch(instruct.response.body, f.bodyPatch);
+				else
+					body = f.body;
+
+				body = fs.process(body);
 				if(body.isNull())
 				{
 					errorMessage = QString("filter error: %1").arg(fs.errorMessage());
 					doError();
-					break;
+					return;
 				}
+			}
 
-				writeBody(body);
+			processItem(item, fs.sendAction(), body, qi.exposeHeaders);
+		}
 
-				// restart keep alive timer
-				adjustKeepAlive();
+		if(instruct.holdMode == Instruct::StreamHold)
+		{
+			// the queue is empty or client buffer is full
 
-				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
+			if(state == SendingQueue)
+			{
+				if(publishQueue.isEmpty())
+					sendQueueDone();
+			}
+			else if(state == Holding)
+			{
+				if(!publishQueue.isEmpty())
 				{
-					activeChannels += item.channel;
-					if(activeChannels.count() == channels.count())
-					{
-						activeChannels.clear();
-
-						updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
-					}
+					// if backlogged, turn off timers until we're able to send again
+					timer->stop();
+					updateManager->unregisterSession(q);
 				}
-			}
-			else if(f.action == PublishFormat::Hint)
-			{
-				// clear queue since any items will be redundant
-				publishQueue.clear();
-
-				update(HighPriority);
-				break;
-			}
-			else if(f.action == PublishFormat::Close)
-			{
-				prepareToClose();
-				req->endBody();
-				break;
-			}
-		}
-
-		if(state == SendingQueue)
-		{
-			if(publishQueue.isEmpty())
-				sendQueueDone();
-		}
-		else if(state == Holding)
-		{
-			if(!publishQueue.isEmpty())
-			{
-				// if backlogged, turn off timers until we're able to send again
-				timer->stop();
-				updateManager->unregisterSession(q);
 			}
 		}
 	}
@@ -1465,6 +1372,65 @@ private:
 		incCounter(Stats::ClientContentBytesSent, body.size());
 
 		req->writeBody(body);
+	}
+
+	void processItem(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content, const QList<QByteArray> &exposeHeaders)
+	{
+		const PublishFormat &f = item.format;
+
+		if(instruct.holdMode == Instruct::ResponseHold)
+		{
+			if(sendAction == Filter::Drop)
+				return;
+
+			// NOTE: http-response mode doesn't support a close
+			//   action since it's better to send a real response
+
+			if(f.action == PublishFormat::Send)
+			{
+				respond(f.code, f.reason, f.headers, content, exposeHeaders);
+			}
+			else if(f.action == PublishFormat::Hint)
+			{
+				update(HighPriority);
+			}
+		}
+		else if(instruct.holdMode == Instruct::StreamHold)
+		{
+			if(sendAction == Filter::Drop)
+				return;
+
+			if(f.action == PublishFormat::Send)
+			{
+				writeBody(content);
+
+				// restart keep alive timer
+				adjustKeepAlive();
+
+				if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
+				{
+					activeChannels += item.channel;
+					if(activeChannels.count() == channels.count())
+					{
+						activeChannels.clear();
+
+						updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+					}
+				}
+			}
+			else if(f.action == PublishFormat::Hint)
+			{
+				// clear queue since any items will be redundant
+				publishQueue.clear();
+
+				update(HighPriority);
+			}
+			else if(f.action == PublishFormat::Close)
+			{
+				prepareToClose();
+				req->endBody();
+			}
+		}
 	}
 
 private slots:
