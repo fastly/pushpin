@@ -20,20 +20,14 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include <assert.h>
 #include <unordered_map>
 #include <QtTest/QtTest>
 #include <QDir>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <boost/signals2.hpp>
-#include "qzmqsocket.h"
-#include "qzmqvalve.h"
 #include "log.h"
-#include "tnetstring.h"
 #include "rtimer.h"
-#include "zhttprequestpacket.h"
-#include "zhttpresponsepacket.h"
 #include "zhttpmanager.h"
 #include "filter.h"
 
