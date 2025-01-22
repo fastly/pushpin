@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2021 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,6 +30,7 @@
 #include "bufferlist.h"
 #include "log.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 
@@ -105,6 +106,7 @@ public:
 	bool quiet;
 	Connection expTimerConnection;
 	Connection keepAliveTimerConnection;
+	DeferCall deferCall;
 
 	Private(ZhttpRequest *_q) :
 		QObject(_q),
@@ -163,7 +165,7 @@ public:
 		{
 			expTimerConnection.disconnect();
 			expireTimer->setParent(0);
-			expireTimer->deleteLater();
+			DeferCall::global()->defer([=]() { delete expireTimer; });
 			expireTimer = 0;
 		}
 
@@ -171,7 +173,7 @@ public:
 		{
 			keepAliveTimerConnection.disconnect();
 			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
+			DeferCall::global()->defer([=]() { delete keepAliveTimer; });
 			keepAliveTimer = 0;
 		}
 
@@ -367,7 +369,7 @@ public:
 		if(!pendingUpdate)
 		{
 			pendingUpdate = true;
-			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+			deferCall.defer([&]() { doUpdate(); });
 		}
 	}
 
@@ -935,7 +937,6 @@ public:
 			return ErrorGeneric;
 	}
 
-public slots:
 	void doUpdate()
 	{
 		pendingUpdate = false;
@@ -1157,7 +1158,6 @@ public slots:
 		}
 	}
 
-public:
 	void expire_timeout()
 	{
 		state = Stopped;

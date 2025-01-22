@@ -38,6 +38,7 @@
 #include "packet/httpresponsedata.h"
 #include "packet/statspacket.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "zhttpmanager.h"
 #include "statsmanager.h"
 #include "domainmap.h"
@@ -636,6 +637,7 @@ private slots:
 
 		QCoreApplication::instance()->sendPostedEvents();
 		RTimer::deinit();
+		DeferCall::cleanup();
 	}
 
 	void passthrough()

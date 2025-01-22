@@ -33,6 +33,7 @@
 #include "zhttpresponsepacket.h"
 #include "packet/httpresponsedata.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "handlerengine.h"
 
 namespace {
@@ -309,6 +310,7 @@ private slots:
 		delete wrapper;
 
 		RTimer::deinit();
+		DeferCall::cleanup();
 	}
 
 	void acceptNoHold()
