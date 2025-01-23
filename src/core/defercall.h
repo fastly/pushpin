@@ -45,6 +45,12 @@ public:
 	static DeferCall *global();
 	static void cleanup();
 
+	template <typename T>
+	static void deleteLater(T *p)
+	{
+		DeferCall::global()->defer([=]() { delete p; });
+	}
+
 private slots:
 	void callNext();
 

@@ -165,7 +165,7 @@ public:
 		{
 			expTimerConnection.disconnect();
 			expireTimer->setParent(0);
-			DeferCall::global()->defer([=]() { delete expireTimer; });
+			DeferCall::deleteLater(expireTimer);
 			expireTimer = 0;
 		}
 
@@ -173,7 +173,7 @@ public:
 		{
 			keepAliveTimerConnection.disconnect();
 			keepAliveTimer->setParent(0);
-			DeferCall::global()->defer([=]() { delete keepAliveTimer; });
+			DeferCall::deleteLater(keepAliveTimer);
 			keepAliveTimer = 0;
 		}
 
