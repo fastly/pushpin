@@ -24,6 +24,7 @@
 #include <QCoreApplication>
 #include <QTimer>
 #include "rtimer.h"
+#include "defercall.h"
 #include "handlerapp.h"
 
 class HandlerAppMain
@@ -60,6 +61,7 @@ int handler_main(int argc, char **argv)
 
 	// deinit here, after all event loop activity has completed
 	RTimer::deinit();
+	DeferCall::cleanup();
 
 	return ret;
 }

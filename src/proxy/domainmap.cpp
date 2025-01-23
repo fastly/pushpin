@@ -35,6 +35,7 @@
 #include <QFileSystemWatcher>
 #include "log.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "routesfile.h"
 
 #define WORKER_THREAD_TIMERS 1
@@ -756,6 +757,7 @@ public:
 		delete worker;
 
 		RTimer::deinit();
+		DeferCall::cleanup();
 	}
 
 public:
