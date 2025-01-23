@@ -23,7 +23,7 @@
 #ifndef DEFERCALL_H
 #define DEFERCALL_H
 
-#include <QVariant>
+#include <QObject>
 
 // queues calls to be run after returning to the event loop
 class DeferCall : public QObject
