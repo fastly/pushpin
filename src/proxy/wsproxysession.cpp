@@ -33,6 +33,7 @@
 #include "packet/httprequestdata.h"
 #include "log.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
 #include "zwebsocket.h"
@@ -386,7 +387,7 @@ public:
 		{
 			keepAliveConnection.disconnect();
 			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
+			DeferCall::deleteLater(keepAliveTimer);
 			keepAliveTimer = 0;
 		}
 	}

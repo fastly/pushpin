@@ -25,6 +25,7 @@
 #include <QDateTime>
 #include <QTimer>
 #include "log.h"
+#include "defercall.h"
 #include "publishitem.h"
 #include "publishlastids.h"
 
@@ -88,7 +89,7 @@ public:
 	{
 		expireTimer->disconnect(this);
 		expireTimer->setParent(0);
-		expireTimer->deleteLater();
+		DeferCall::deleteLater(expireTimer);
 
 		qDeleteAll(idCacheById);
 	}

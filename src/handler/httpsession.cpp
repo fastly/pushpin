@@ -31,6 +31,7 @@
 #include <QRandomGenerator>
 #include "qtcompat.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/retryrequestpacket.h"
@@ -264,11 +265,11 @@ public:
 
 		timerConnection.disconnect();
 		timer->setParent(0);
-		timer->deleteLater();
+		DeferCall::deleteLater(timer);
 
 		retryTimerConnection.disconnect();
 		retryTimer->setParent(0);
-		retryTimer->deleteLater();
+		DeferCall::deleteLater(retryTimer);
 	}
 
 	void start()

@@ -48,7 +48,7 @@ public:
 	template <typename T>
 	static void deleteLater(T *p)
 	{
-		global()->defer([=]() { delete p; });
+		global()->defer([=] { delete p; });
 	}
 
 private slots:

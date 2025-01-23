@@ -37,6 +37,7 @@
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "log.h"
 #include "logutil.h"
 #include "packet/httprequestdata.h"
@@ -1178,7 +1179,7 @@ public:
 			timer_->stop();
 			timer_->disconnect(this);
 			timer_->setParent(0);
-			timer_->deleteLater();
+			DeferCall::deleteLater(timer_);
 		}
 	}
 
@@ -1770,7 +1771,7 @@ private:
 			outHeaders += HttpHeader("Content-Type", "text/plain");
 
 		req->respond(code, reason, outHeaders, body.toUtf8());
-		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
+		req->finished.connect([=] { DeferCall::deleteLater(req); });
 
 		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod(), QString::fromUtf8(req->requestUri()), QString::number(code), QString::number(body.size()));
 		if(items > -1)
@@ -3154,7 +3155,7 @@ private slots:
 		hs->subscribeCallback().remove(this);
 		hs->unsubscribeCallback().remove(this);
 		hs->finishedCallback().remove(this);
-		hs->deleteLater();
+		DeferCall::deleteLater(hs);
 
 		if(!rp.requests.isEmpty())
 			writeRetryPacket(addr, rp);
