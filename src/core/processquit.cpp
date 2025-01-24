@@ -38,6 +38,8 @@
 # include <unistd.h>
 #endif
 
+#include "defercall.h"
+
 namespace {
 
 // safeobj stuff, from qca
@@ -46,7 +48,7 @@ void releaseAndDeleteLater(QObject *owner, QObject *obj)
 {
 	obj->disconnect(owner);
 	obj->setParent(0);
-	obj->deleteLater();
+	DeferCall::deleteLater(obj);
 }
 
 class SafeSocketNotifier : public QObject

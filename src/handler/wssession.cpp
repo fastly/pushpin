@@ -26,6 +26,7 @@
 #include <QTimer>
 #include <QDateTime>
 #include "log.h"
+#include "defercall.h"
 #include "filter.h"
 #include "publishitem.h"
 #include "publishformat.h"
@@ -57,15 +58,15 @@ WsSession::~WsSession()
 {
 	expireTimer->disconnect(this);
 	expireTimer->setParent(0);
-	expireTimer->deleteLater();
+	DeferCall::deleteLater(expireTimer);
 
 	delayedTimer->disconnect(this);
 	delayedTimer->setParent(0);
-	delayedTimer->deleteLater();
+	DeferCall::deleteLater(delayedTimer);
 
 	requestTimer->disconnect(this);
 	requestTimer->setParent(0);
-	requestTimer->deleteLater();
+	DeferCall::deleteLater(requestTimer);
 }
 
 void WsSession::refreshExpiration()

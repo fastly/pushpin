@@ -24,6 +24,7 @@
 
 #include <QTimer>
 #include <QUrl>
+#include "defercall.h"
 #include "httpsession.h"
 
 class HttpSessionUpdateManager::Private : public QObject
@@ -61,7 +62,7 @@ public:
 
 			bucket->timer->disconnect(this);
 			bucket->timer->setParent(0);
-			bucket->timer->deleteLater();
+			DeferCall::deleteLater(bucket->timer);
 			delete bucket;
 		}
 	}
@@ -76,7 +77,7 @@ public:
 
 		bucket->timer->disconnect(this);
 		bucket->timer->setParent(0);
-		bucket->timer->deleteLater();
+		DeferCall::deleteLater(bucket->timer);
 		delete bucket;
 	}
 

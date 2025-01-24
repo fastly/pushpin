@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,6 +29,7 @@
 #include "zhttpresponsepacket.h"
 #include "log.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 
@@ -151,7 +152,7 @@ public:
 		{
 			expireTimerConnection.disconnect();
 			expireTimer->setParent(0);
-			expireTimer->deleteLater();
+			DeferCall::deleteLater(expireTimer);
 			expireTimer = 0;
 		}
 
@@ -159,7 +160,7 @@ public:
 		{
 			keepAliveTimerConnection.disconnect();
 			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
+			DeferCall::deleteLater(keepAliveTimer);
 			keepAliveTimer = 0;
 		}
 

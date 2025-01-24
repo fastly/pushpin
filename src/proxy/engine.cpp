@@ -34,6 +34,7 @@
 #include "packet/zrpcrequestpacket.h"
 #include "qtcompat.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "zhttpmanager.h"
@@ -861,7 +862,7 @@ private:
 		delete i;
 
 		ps->finishedByPassthroughCallback().remove(this);
-		ps->deleteLater();
+		DeferCall::deleteLater(ps);
 
 		tryTakeNext();
 	}

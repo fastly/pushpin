@@ -26,6 +26,7 @@
 #include <QMap>
 #include <QPointer>
 #include <QTimer>
+#include "defercall.h"
 
 #define MIN_BATCH_INTERVAL 25
 
@@ -95,7 +96,7 @@ public:
 	{
 		timer->disconnect(this);
 		timer->setParent(0);
-		timer->deleteLater();
+		DeferCall::deleteLater(timer);
 	}
 
 	void setRate(int actionsPerSecond)

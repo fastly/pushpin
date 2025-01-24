@@ -32,6 +32,7 @@
 #include "qzmqsocket.h"
 #include "timerwheel.h"
 #include "log.h"
+#include "defercall.h"
 #include "tnetstring.h"
 #include "httpheaders.h"
 #include "simplehttpserver.h"
@@ -1560,7 +1561,7 @@ private:
 			).arg(prometheusPrefix, m.name, m.help, prometheusPrefix, m.name, m.type, prometheusPrefix, m.name, value.toString());
 		}
 
-		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
+		req->finished.connect([=] { DeferCall::deleteLater(req); });
 
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");
