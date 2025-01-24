@@ -66,7 +66,6 @@ public:
 	{
 	}
 
-public slots:
 	void doBytesWritten(int cnt){
 		q->bytesWritten(cnt);
 	}

@@ -975,7 +975,6 @@ public:
 		}
 	}
 
-public slots:
 	void doResponseUpdate()
 	{
 		pendingResponseUpdate = false;

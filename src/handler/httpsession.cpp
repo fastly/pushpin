@@ -1458,7 +1458,6 @@ private:
 		}
 	}
 
-private slots:
 	void doError()
 	{
 		if(instruct.holdMode == Instruct::ResponseHold)
@@ -1622,7 +1621,6 @@ private slots:
 		}
 	}
 
-private:
 	void timer_timeout()
 	{
 		if(instruct.holdMode == Instruct::ResponseHold)

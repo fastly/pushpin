@@ -1046,7 +1046,6 @@ public:
 		q->error();
 	}
 
-private slots:
 	void doUpdate()
 	{
 		updating = false;

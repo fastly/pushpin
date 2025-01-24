@@ -986,7 +986,6 @@ private:
 		q->error();
 	}
 
-private slots:
 	void keepAliveTimer_timeout()
 	{
 		update();

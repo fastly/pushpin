@@ -65,12 +65,11 @@ protected:
 
 	void setFinished(bool ok, const QVariant &value = QVariant());
 
-private slots:
-	void doFinish();
-
 private:
 	DeferredResult result_;
 	DeferCall deferCall_;
+
+	void doFinish();
 };
 
 #endif
