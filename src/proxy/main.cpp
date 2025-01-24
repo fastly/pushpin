@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,15 +23,13 @@
 
 #include <QCoreApplication>
 #include "app.h"
+#include "defercall.h"
 
-class AppMain : public QObject
+class AppMain
 {
-	Q_OBJECT
-
 public:
 	App *app;
 
-public slots:
 	void start()
 	{
 		app = new App;
@@ -53,10 +52,17 @@ int proxy_main(int argc, char **argv)
 	QCoreApplication qapp(argc, argv);
 
 	AppMain appMain;
-	QMetaObject::invokeMethod(&appMain, "start", Qt::QueuedConnection);
-	return qapp.exec();
+	DeferCall deferCall;
+	deferCall.defer([&] { appMain.start(); });
+	int ret = qapp.exec();
+
+	// ensure deferred deletes are processed
+	QCoreApplication::instance()->sendPostedEvents();
+
+	// deinit here, after all event loop activity has completed
+	DeferCall::cleanup();
+
+	return ret;
 }
 
 }
-
-#include "main.moc"

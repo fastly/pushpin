@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,6 +27,7 @@
 #include <QVariant>
 #include <QObject>
 #include <boost/signals2.hpp>
+#include "defercall.h"
 
 class DeferredResult
 {
@@ -68,6 +70,7 @@ private slots:
 
 private:
 	DeferredResult result_;
+	DeferCall deferCall_;
 };
 
 #endif

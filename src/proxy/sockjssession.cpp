@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2021 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,6 +34,7 @@
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjsmanager.h"
@@ -166,6 +167,7 @@ public:
 	map<ZhttpRequest*, ReqConnections> reqConnectionMap;
 	WSConnections wsConnection;
 	Connection keepAliveTimerConnection;
+	DeferCall deferCall;
 
 	Private(SockJsSession *_q) :
 		QObject(_q),
@@ -589,7 +591,7 @@ public:
 				state = Idle;
 				applyLinger();
 				cleanup();
-				QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+				deferCall.defer([=] { doClosed(); });
 			}
 			else
 				tryWrite();
@@ -850,7 +852,7 @@ public:
 		if(!updating)
 		{
 			updating = true;
-			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+			deferCall.defer([=] { doUpdate(); });
 		}
 	}
 

@@ -206,6 +206,7 @@ public:
 	Connection timerConnection;
 	Connection retryTimerConnection;
 	Connection messageFiltersFinishedConnection;
+	DeferCall deferCall;
 
 	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
@@ -1164,7 +1165,7 @@ private:
 		if(!outZhttp)
 		{
 			errorMessage = "Instruct contained link, but handler not configured for outbound requests.";
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
+			deferCall.defer([=] { doError(); });
 			return;
 		}
 

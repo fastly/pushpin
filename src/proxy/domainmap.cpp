@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -205,6 +205,7 @@ public:
 	RTimer t;
 	Connection tConnection;
 	QFileSystemWatcher watcher;
+	DeferCall deferCall;
 
 	Worker() :
 		watcher(this)
@@ -292,7 +293,7 @@ public:
 
 		log_info("routes loaded with %d entries", allRules.count());
 
-		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
+		deferCall.defer([=] { doChanged(); });
 	}
 
 	// mutex must be locked when calling this method
@@ -312,11 +313,6 @@ public:
 	Signal changed;
 
 public slots:
-	void doChanged()
-	{
-		changed();
-	}
-
 	void start()
 	{
 		if(!fileName.isEmpty())
@@ -718,6 +714,11 @@ private:
 		}
 
 		return AddRuleOk;
+	}
+
+	void doChanged()
+	{
+		changed();
 	}
 };
 

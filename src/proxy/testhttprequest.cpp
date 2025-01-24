@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,6 +26,7 @@
 #include <assert.h>
 #include <QUrlQuery>
 #include "log.h"
+#include "defercall.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
@@ -53,6 +55,7 @@ public:
 	bool requestBodyFinished;
 	BufferList responseBody;
 	ErrorCondition errorCondition;
+	DeferCall deferCall;
 
 	Private(TestHttpRequest *_q) :
 		QObject(_q),
@@ -209,7 +212,7 @@ void TestHttpRequest::writeBody(const QByteArray &body)
 		if(d->requestBody.size() + body.size() > MAX_REQUEST_SIZE)
 		{
 			d->state = Private::Responding;
-			QMetaObject::invokeMethod(d, "processRequest", Qt::QueuedConnection);
+			d->deferCall.defer([=] { d->processRequest(); });
 			return;
 		}
 
@@ -219,7 +222,8 @@ void TestHttpRequest::writeBody(const QByteArray &body)
 		{
 			d->requestBody += buf;
 
-			QMetaObject::invokeMethod(this, "doBytesWritten", Qt::QueuedConnection, Q_ARG(int, buf.size()));
+			int written = buf.size();
+			d->deferCall.defer([=] { d->doBytesWritten(written); });
 		}
 	}
 }
@@ -231,7 +235,7 @@ void TestHttpRequest::endBody()
 		d->requestBodyFinished = true;
 
 		d->state = Private::Responding;
-		QMetaObject::invokeMethod(d, "processRequest", Qt::QueuedConnection);
+		d->deferCall.defer([=] { d->processRequest(); });
 	}
 }
 
