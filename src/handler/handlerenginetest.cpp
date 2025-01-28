@@ -309,6 +309,9 @@ private slots:
 		delete engine;
 		delete wrapper;
 
+		// ensure deferred deletes are processed
+		QCoreApplication::instance()->sendPostedEvents();
+
 		RTimer::deinit();
 		DeferCall::cleanup();
 	}
