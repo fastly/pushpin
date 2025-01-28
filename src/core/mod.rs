@@ -115,6 +115,11 @@ mod tests {
         unsafe { call_c_main(ffi::jwt_test, args) as u8 }
     }
 
+    fn eventloop_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::eventloop_test, args) as u8 }
+    }
+
     #[test]
     fn httpheaders() {
         assert!(qtest::run(httpheaders_test));
@@ -123,5 +128,10 @@ mod tests {
     #[test]
     fn jwt() {
         assert!(qtest::run(jwt_test));
+    }
+
+    #[test]
+    fn eventloop() {
+        assert!(qtest::run(eventloop_test));
     }
 }

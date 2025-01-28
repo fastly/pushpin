@@ -129,6 +129,7 @@ pub mod ffi {
     import_cpptest! {
         pub fn httpheaders_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn jwt_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
+        pub fn eventloop_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn routesfile_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn proxyengine_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
         pub fn filter_test(argc: libc::c_int, argv: *const *const libc::c_char) -> libc::c_int;
