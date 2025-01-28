@@ -20,6 +20,7 @@ pub mod channel;
 pub mod config;
 pub mod defer;
 pub mod event;
+pub mod eventloop;
 pub mod executor;
 pub mod fs;
 pub mod http1;
