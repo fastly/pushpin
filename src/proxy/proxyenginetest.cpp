@@ -635,7 +635,9 @@ private slots:
 		delete domainMap;
 		delete wrapper;
 
+		// ensure deferred deletes are processed
 		QCoreApplication::instance()->sendPostedEvents();
+
 		RTimer::deinit();
 		DeferCall::cleanup();
 	}
