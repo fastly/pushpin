@@ -239,9 +239,6 @@ impl<C: Callback> EventLoop<C> {
         self.exit_code.set(Some(code));
     }
 
-    // SAFETY: `cb` must be safe to call with the provided `ctx` until the
-    // registration is removed with `deregister` or the `EventLoop` is
-    // dropped.
     pub fn register_fd(
         &self,
         fd: RawFd,
@@ -278,9 +275,6 @@ impl<C: Callback> EventLoop<C> {
             .expect("slab should have capacity"))
     }
 
-    // SAFETY: `cb` must be safe to call with the provided `ctx` until the
-    // registration is removed with `deregister` or the `EventLoop` is
-    // dropped.
     pub fn register_timer(&self, timeout: Duration, callback: C) -> Result<usize, EventLoopError> {
         let expires = self.reactor.now() + timeout;
 
