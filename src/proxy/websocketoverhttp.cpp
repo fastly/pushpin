@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,6 +34,7 @@
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 #include "rtimer.h"
+#include "defercall.h"
 
 #define BUFFER_SIZE 200000
 #define FRAME_SIZE_MAX 16384
@@ -240,6 +241,7 @@ public:
 	ReqConnections reqConnections;
 	Connection keepAliveTimerConnection;
 	Connection retryTimerConnection;
+	DeferCall deferCall;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -475,7 +477,7 @@ private:
 		if((int)pendingErrorCondition == -1)
 		{
 			pendingErrorCondition = e;
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
+			deferCall.defer([=] { doError(); });
 		}
 	}
 
@@ -984,7 +986,6 @@ private:
 		q->error();
 	}
 
-private slots:
 	void keepAliveTimer_timeout()
 	{
 		update();
