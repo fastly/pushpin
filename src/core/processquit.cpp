@@ -38,59 +38,7 @@
 # include <unistd.h>
 #endif
 
-#include "defercall.h"
-
-namespace {
-
-// safeobj stuff, from qca
-
-void releaseAndDeleteLater(QObject *owner, QObject *obj)
-{
-	obj->disconnect(owner);
-	obj->setParent(0);
-	DeferCall::deleteLater(obj);
-}
-
-class SafeSocketNotifier : public QObject
-{
-	Q_OBJECT
-public:
-	Connection activatedConnection;
-
-	SafeSocketNotifier(int socket, QSocketNotifier::Type type,
-		QObject *parent = 0) :
-		QObject(parent)
-	{
-		sn = new QSocketNotifier(socket, type, this);
-		connect(sn, &QSocketNotifier::activated, this, &SafeSocketNotifier::doActivated);
-	}
-
-	~SafeSocketNotifier()
-	{
-		sn->setEnabled(false);
-		releaseAndDeleteLater(this, sn);
-	}
-
-	bool isEnabled() const             { return sn->isEnabled(); }
-	int socket() const                 { return sn->socket(); }
-	QSocketNotifier::Type type() const { return sn->type(); }
-
-public slots:
-	void setEnabled(bool enable)       { sn->setEnabled(enable); }
-
-public:
-	SignalInt activated;
-
-private:
-	QSocketNotifier *sn;
-
-	void doActivated(int sock)
-	{
-		activated(sock);
-	}
-};
-
-}
+#include "socketnotifier.h"
 
 #ifndef NO_IRISNET
 namespace XMPP {
@@ -122,7 +70,7 @@ public:
 #endif
 #ifdef Q_OS_UNIX
 	int sig_pipe[2];
-	SafeSocketNotifier *sig_notifier;
+	std::unique_ptr<SocketNotifier> sig_notifier;
 #endif
 
 	Private(ProcessQuit *_q) : QObject(_q), q(_q)
@@ -140,7 +88,7 @@ public:
 			return;
 		}
 
-		sig_notifier = new SafeSocketNotifier(sig_pipe[0], QSocketNotifier::Read, this);
+		sig_notifier = std::make_unique<SocketNotifier>(sig_pipe[0], SocketNotifier::Read);
 		activatedConnection = sig_notifier->activated.connect(boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
 		unixWatchAdd(SIGINT);
 		unixWatchAdd(SIGHUP);
@@ -159,7 +107,7 @@ public:
 		unixWatchRemove(SIGHUP);
 		unixWatchRemove(SIGTERM);
 		activatedConnection.disconnect();
-		delete sig_notifier;
+		sig_notifier.reset();
 		close(sig_pipe[0]);
 		close(sig_pipe[1]);
 #endif

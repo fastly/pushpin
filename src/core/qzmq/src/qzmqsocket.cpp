@@ -28,12 +28,12 @@
 #include <assert.h>
 #include <QStringList>
 #include <QPointer>
-#include <QSocketNotifier>
 #include <QMutex>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
 #include "qzmqcontext.h"
 #include "rtimer.h"
+#include "socketnotifier.h"
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -371,7 +371,7 @@ public:
 	bool usingGlobalContext;
 	Context *context;
 	void *sock;
-	QSocketNotifier *sn_read;
+	std::unique_ptr<SocketNotifier> sn_read;
 	bool canWrite, canRead;
 	QList< QList<QByteArray> > pendingWrites;
 	int pendingWritten;
@@ -421,8 +421,8 @@ public:
 		sock = wzmq_socket(context->context(), ztype);
 		assert(sock != NULL);
 
-		sn_read = new QSocketNotifier(get_fd(sock), QSocketNotifier::Read, this);
-		connect(sn_read, &QSocketNotifier::activated, this, &Private::sn_read_activated);
+		sn_read = std::make_unique<SocketNotifier>(get_fd(sock), SocketNotifier::Read);
+		sn_read->activated.connect(boost::bind(&Private::sn_read_activated, this));
 		sn_read->setEnabled(true);
 
 		updateTimer = std::make_unique<RTimer>();
@@ -432,6 +432,8 @@ public:
 
 	~Private()
 	{
+		sn_read.reset();
+
 		set_linger(sock, shutdownWaitTime);
 		wzmq_close(sock);
 
@@ -619,7 +621,6 @@ public:
 		doUpdate();
 	}
 
-public slots:
 	void sn_read_activated()
 	{
 		if(!processEvents())
