@@ -96,6 +96,7 @@ public:
 	bool multi;
 	Connection expireTimerConnection;
 	Connection keepAliveTimerConnection;
+	DeferCall deferCall;
 
 	Private(ZWebSocket *_q) :
 		QObject(_q),
@@ -266,7 +267,7 @@ public:
 		if(!pendingUpdate)
 		{
 			pendingUpdate = true;
-			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+			deferCall.defer([=] { doUpdate(); });
 		}
 	}
 
@@ -298,7 +299,7 @@ public:
 
 		state = Idle;
 		cleanup();
-		QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+		deferCall.defer([=] { doClosed(); });
 	}
 
 	Frame readFrame()
@@ -338,7 +339,7 @@ public:
 				// if peer was already closed, then we're done!
 				state = Idle;
 				cleanup();
-				QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+				deferCall.defer([=] { doClosed(); });
 			}
 			else
 			{
@@ -977,7 +978,6 @@ public:
 			return ErrorGeneric;
 	}
 
-public slots:
 	void doClosed()
 	{
 		q->closed();
@@ -1067,7 +1067,6 @@ public slots:
 		}
 	}
 
-public:
 	void expire_timeout()
 	{
 		state = Idle;

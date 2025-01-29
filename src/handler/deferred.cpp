@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -42,7 +43,7 @@ void Deferred::setFinished(bool ok, const QVariant &value)
 	result_.success = ok;
 	result_.value = value;
 
-	QMetaObject::invokeMethod(this, "doFinish", Qt::QueuedConnection);
+	deferCall_.defer([=] { doFinish(); });
 }
 
 void Deferred::doFinish()

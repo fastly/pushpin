@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2020 Justin Karneges
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -25,6 +26,7 @@
 
 #include <QPointer>
 #include "qzmqsocket.h"
+#include "defercall.h"
 
 namespace QZmq {
 
@@ -39,6 +41,7 @@ public:
 	bool pendingRead;
 	int maxReadsPerEvent;
 	boost::signals2::scoped_connection rrConnection;
+	DeferCall deferCall;
 
 	Private(Valve *_q) :
 		QObject(_q),
@@ -62,7 +65,7 @@ public:
 			return;
 
 		pendingRead = true;
-		QMetaObject::invokeMethod(this, "queuedRead", Qt::QueuedConnection);
+		deferCall.defer([=] { queuedRead(); });
 	}
 
 	void tryRead()
@@ -99,7 +102,6 @@ public:
 		tryRead();
 	}
 
-private slots:
 	void queuedRead()
 	{
 		pendingRead = false;
