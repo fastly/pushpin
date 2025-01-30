@@ -21,57 +21,57 @@
 thread_local EventLoop *g_instance = nullptr;
 
 EventLoop::EventLoop(int capacity) :
-    inner_(ffi::event_loop_create(capacity))
+	inner_(ffi::event_loop_create(capacity))
 {
-    // only one per thread allowed
-    assert(!g_instance);
+	// only one per thread allowed
+	assert(!g_instance);
 
-    g_instance = this;
+	g_instance = this;
 }
 
 EventLoop::~EventLoop()
 {
-    ffi::event_loop_destroy(inner_);
+	ffi::event_loop_destroy(inner_);
 
-    g_instance = nullptr;
+	g_instance = nullptr;
 }
 
 int EventLoop::exec()
 {
-    return ffi::event_loop_exec(inner_);
+	return ffi::event_loop_exec(inner_);
 }
 
 void EventLoop::exit(int code)
 {
-    ffi::event_loop_exit(inner_, code);
+	ffi::event_loop_exit(inner_, code);
 }
 
 int EventLoop::registerFd(int fd, unsigned char interest, void (*cb)(void *), void *ctx)
 {
-    size_t id;
+	size_t id;
 
-    if(ffi::event_loop_register_fd(inner_, fd, interest, cb, ctx, &id) != 0)
-        return -1;
+	if(ffi::event_loop_register_fd(inner_, fd, interest, cb, ctx, &id) != 0)
+		return -1;
 
-    return (int)id;
+	return (int)id;
 }
 
 int EventLoop::registerTimer(int timeout, void (*cb)(void *), void *ctx)
 {
-    size_t id;
+	size_t id;
 
-    if(ffi::event_loop_register_timer(inner_, timeout, cb, ctx, &id) != 0)
-        return -1;
+	if(ffi::event_loop_register_timer(inner_, timeout, cb, ctx, &id) != 0)
+		return -1;
 
-    return (int)id;
+	return (int)id;
 }
 
 void EventLoop::deregister(int id)
 {
-    ffi::event_loop_deregister(inner_, id);
+	ffi::event_loop_deregister(inner_, id);
 }
 
 EventLoop *EventLoop::instance()
 {
-    return g_instance;
+	return g_instance;
 }

@@ -22,26 +22,26 @@
 class EventLoop
 {
 public:
-    enum Interest
-    {
-        Readable = ffi::READABLE,
-        Writable = ffi::WRITABLE,
-    };
+	enum Interest
+	{
+		Readable = ffi::READABLE,
+		Writable = ffi::WRITABLE,
+	};
 
-    EventLoop(int capacity);
-    ~EventLoop();
+	EventLoop(int capacity);
+	~EventLoop();
 
-    int exec();
-    void exit(int code);
+	int exec();
+	void exit(int code);
 
-    int registerFd(int fd, unsigned char interest, void (*cb)(void *), void *ctx);
-    int registerTimer(int timeout, void (*cb)(void *), void *ctx);
-    void deregister(int id);
+	int registerFd(int fd, unsigned char interest, void (*cb)(void *), void *ctx);
+	int registerTimer(int timeout, void (*cb)(void *), void *ctx);
+	void deregister(int id);
 
-    static EventLoop *instance();
+	static EventLoop *instance();
 
 private:
-    ffi::EventLoopRaw *inner_;
+	ffi::EventLoopRaw *inner_;
 };
 
 #endif
