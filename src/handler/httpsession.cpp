@@ -185,7 +185,7 @@ public:
 	Priority needUpdatePriority;
 	UpdateAction *pendingAction;
 	QList<QueuedItem> publishQueue;
-	bool processingSendQueue;
+	bool inProcessPublishQueue;
 	QByteArray retryToAddress;
 	RetryRequestPacket retryPacket;
 	LogUtil::Config logConfig;
@@ -223,7 +223,7 @@ public:
 		retries(0),
 		needUpdate(false),
 		pendingAction(0),
-		processingSendQueue(false),
+		inProcessPublishQueue(false),
 		responseFilters(0),
 		connectionSubscriptionMax(_connectionSubscriptionMax),
 		connectionStatsActive(true)
@@ -430,15 +430,22 @@ public:
 
 		if(f.type == PublishFormat::HttpResponse)
 		{
-			if(state != Holding)
-				return;
-
 			assert(instruct.holdMode == Instruct::ResponseHold);
 
-			publishQueue += QueuedItem(item, exposeHeaders);
+			if(state == SendingQueue || state == Holding)
+			{
+				if(publishQueue.count() < PUBLISH_QUEUE_MAX)
+				{
+					publishQueue += QueuedItem(item, exposeHeaders);
 
-			state = SendingQueue;
-			trySendQueue();
+					if(state == Holding)
+						sendQueue();
+				}
+				else
+				{
+					log_debug("httpsession: publish queue at max, dropping");
+				}
+			}
 		}
 		else if(f.type == PublishFormat::HttpStream)
 		{
@@ -449,7 +456,7 @@ public:
 					publishQueue += QueuedItem(item);
 
 					if(state == Holding)
-						trySendQueue();
+						sendQueue();
 				}
 				else
 				{
@@ -736,23 +743,25 @@ private:
 				break;
 			}
 
-			if(!publishQueue.isEmpty())
-			{
-				state = SendingQueue;
-				trySendQueue();
-			}
-			else
-			{
-				sendQueueDone();
-			}
+			// if there are items to send, this will send them. if there are
+			// no items to send, this will end up changing state to Holding
+			sendQueue();
 		}
 	}
 
-	void trySendQueue()
+	void sendQueue()
 	{
-		processingSendQueue = true;
+		state = SendingQueue;
 
-		while(!publishQueue.isEmpty() && req->writeBytesAvailable() > 0 && !messageFilters)
+		processPublishQueue();
+	}
+
+	void processPublishQueue()
+	{
+		assert(!inProcessPublishQueue);
+		inProcessPublishQueue = true;
+
+		while(state == SendingQueue && !publishQueue.isEmpty() && req->writeBytesAvailable() > 0 && !messageFilters)
 		{
 			const QueuedItem &qi = publishQueue.first();
 			const PublishItem &item = qi.item;
@@ -835,41 +844,54 @@ private:
 			messageFilters->start(fc, body);
 		}
 
-		if(!messageFilters && instruct.holdMode == Instruct::StreamHold)
+		if(!messageFilters)
 		{
-			// the queue is empty or client buffer is full
+			// the state changed, the queue is empty, or the client buffer is full
 
-			if(state == SendingQueue)
+			if(state != SendingQueue || publishQueue.isEmpty())
 			{
-				if(publishQueue.isEmpty())
-					sendQueueDone();
+				// if the state changed or the queue is empty then we're done
+				sendQueueDone();
 			}
-			else if(state == Holding)
+			else
 			{
-				if(!publishQueue.isEmpty())
-				{
-					// if backlogged, turn off timers until we're able to send again
-					timer->stop();
-					updateManager->unregisterSession(q);
-				}
+				// client buffer can only be full in stream mode
+				assert(instruct.holdMode == Instruct::StreamHold);
+
+				// NOTE: we can end up here multiple times in a single pass
+				// of the queue if the client buffer becomes full multiple
+				// times. so, whatever happens here should be idempotent and
+				// cheap.
+
+				// turn off timers until we're able to send again
+				timer->stop();
+				updateManager->unregisterSession(q);
 			}
 		}
 
-		processingSendQueue = false;
+		inProcessPublishQueue = false;
 	}
 
 	void sendQueueDone()
 	{
+		// if the state changed during queue processing (e.g. to Closing),
+		// then we want to leave the state alone and do nothing else
+		if(state != SendingQueue)
+			return;
+
 		state = Holding;
 
-		activeChannels.clear();
+		if(instruct.holdMode == Instruct::StreamHold)
+		{
+			activeChannels.clear();
 
-		// start keep alive timer, if it wasn't started already
-		if(!timer->isActive())
-			setupKeepAlive();
+			// start keep alive timer, if it wasn't started already
+			if(!timer->isActive())
+				setupKeepAlive();
 
-		if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
-			updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+			if(!nextUri.isEmpty() && instruct.nextLinkTimeout >= 0)
+				updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+		}
 
 		if(needUpdate)
 			update(needUpdatePriority);
@@ -1395,8 +1417,8 @@ private:
 		processItem(qi.item, result.sendAction, result.content, qi.exposeHeaders);
 
 		// if filters finished asynchronously then we need to resume processing
-		if(!processingSendQueue)
-			trySendQueue();
+		if(!inProcessPublishQueue)
+			processPublishQueue();
 	}
 
 	void processItem(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content, const QList<QByteArray> &exposeHeaders)
@@ -1439,7 +1461,8 @@ private:
 					{
 						activeChannels.clear();
 
-						updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri);
+						// all channels had activity. reset the timeout
+						updateManager->registerSession(q, instruct.nextLinkTimeout, nextUri, true);
 					}
 				}
 			}
@@ -1505,9 +1528,13 @@ private:
 		{
 			tryProcessOutReq();
 		}
-		else if(state == SendingQueue || state == Holding)
+		else if(state == SendingQueue)
 		{
-			trySendQueue();
+			// in this state, the writeBytesChanged signal is only
+			// interesting if it indicates write bytes are available
+
+			if(req->writeBytesAvailable() > 0)
+				processPublishQueue();
 		}
 	}
 
