@@ -28,6 +28,7 @@
 #include <boost/signals2.hpp>
 #include "log.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "zhttpmanager.h"
 #include "filter.h"
 
@@ -202,7 +203,11 @@ private slots:
 		zhttpOut.reset();
 		filterServer.reset();
 
+		// ensure deferred deletes are processed
+		QCoreApplication::instance()->sendPostedEvents();
+
 		RTimer::deinit();
+		DeferCall::cleanup();
 	}
 
 	void messageFilters()
