@@ -321,6 +321,138 @@ impl<C: Callback> EventLoop<C> {
     }
 }
 
+mod ffi {
+    use super::*;
+    use std::ops::Deref;
+
+    pub struct RawCallback {
+        // SAFETY: must be called with the associated ctx value
+        f: unsafe extern "C" fn(*mut libc::c_void),
+
+        ctx: *mut libc::c_void,
+    }
+
+    impl RawCallback {
+        // SAFETY: caller must ensure f is safe to call for the lifetime
+        // of the registration
+        pub unsafe fn new(
+            f: unsafe extern "C" fn(*mut libc::c_void),
+            ctx: *mut libc::c_void,
+        ) -> Self {
+            Self { f, ctx }
+        }
+    }
+
+    impl Callback for RawCallback {
+        fn call(&mut self) {
+            // SAFETY: we are passing the ctx value that was provided
+            unsafe {
+                (self.f)(self.ctx);
+            }
+        }
+    }
+
+    pub struct EventLoopRaw(EventLoop<RawCallback>);
+
+    impl Deref for EventLoopRaw {
+        type Target = EventLoop<RawCallback>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn event_loop_create(capacity: libc::c_uint) -> *mut EventLoopRaw {
+        let l = EventLoopRaw(EventLoop::new(capacity as usize));
+
+        Box::into_raw(Box::new(l))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn event_loop_destroy(l: *mut EventLoopRaw) {
+        if !l.is_null() {
+            drop(Box::from_raw(l));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn event_loop_exec(l: *mut EventLoopRaw) -> libc::c_int {
+        let l = l.as_mut().unwrap();
+
+        l.exec() as libc::c_int
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn event_loop_exit(l: *mut EventLoopRaw, code: libc::c_int) {
+        let l = l.as_mut().unwrap();
+
+        l.exit(code);
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn event_loop_register_fd(
+        l: *mut EventLoopRaw,
+        fd: std::os::raw::c_int,
+        interest: libc::c_uchar,
+        cb: unsafe extern "C" fn(*mut libc::c_void),
+        ctx: *mut libc::c_void,
+        out_id: *mut libc::size_t,
+    ) -> libc::c_int {
+        let l = l.as_mut().unwrap();
+
+        // SAFETY: we assume caller guarantees that the callback is safe to
+        // call for the lifetime of the registration
+        let cb = unsafe { RawCallback::new(cb, ctx) };
+
+        let id = match l.register_fd(fd, interest, cb) {
+            Ok(id) => id,
+            Err(_) => return -1,
+        };
+
+        out_id.write(id);
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn event_loop_register_timer(
+        l: *mut EventLoopRaw,
+        timeout: u64,
+        cb: unsafe extern "C" fn(*mut libc::c_void),
+        ctx: *mut libc::c_void,
+        out_id: *mut libc::size_t,
+    ) -> libc::c_int {
+        let l = l.as_mut().unwrap();
+
+        // SAFETY: we assume caller guarantees that the callback is safe to
+        // call for the lifetime of the registration
+        let cb = unsafe { RawCallback::new(cb, ctx) };
+
+        let id = match l.register_timer(Duration::from_millis(timeout), cb) {
+            Ok(id) => id,
+            Err(_) => return -1,
+        };
+
+        out_id.write(id);
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn event_loop_deregister(l: *mut EventLoopRaw, id: libc::size_t) {
+        let l = l.as_mut().unwrap();
+
+        l.deregister(id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
