@@ -390,7 +390,7 @@ mod ffi {
     pub unsafe extern "C" fn event_loop_exit(l: *mut EventLoopRaw, code: libc::c_int) {
         let l = l.as_mut().unwrap();
 
-        l.exit(code as i32);
+        l.exit(code);
     }
 
     #[allow(clippy::missing_safety_doc)]
