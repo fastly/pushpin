@@ -18,13 +18,14 @@
 
 #include <assert.h>
 
-thread_local EventLoop *g_instance = nullptr;
+static thread_local EventLoop *g_instance = nullptr;
 
-EventLoop::EventLoop(int capacity) :
-	inner_(ffi::event_loop_create(capacity))
+EventLoop::EventLoop(int capacity)
 {
 	// only one per thread allowed
 	assert(!g_instance);
+
+	inner_ = ffi::event_loop_create(capacity);
 
 	g_instance = this;
 }
