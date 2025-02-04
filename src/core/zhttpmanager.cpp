@@ -82,17 +82,17 @@ public:
 	QStringList server_in_specs;
 	QStringList server_in_stream_specs;
 	QStringList server_out_specs;
-	QZmq::Socket *client_out_sock;
-	QZmq::Socket *client_out_stream_sock;
-	QZmq::Socket *client_in_sock;
-	QZmq::Socket *client_req_sock;
-	QZmq::Socket *server_in_sock;
-	QZmq::Socket *server_in_stream_sock;
-	QZmq::Socket *server_out_sock;
-	QZmq::Valve *client_in_valve;
-	QZmq::Valve *client_out_stream_valve;
-	QZmq::Valve *server_in_valve;
-	QZmq::Valve *server_in_stream_valve;
+	std::unique_ptr<QZmq::Socket> client_out_sock;
+	std::unique_ptr<QZmq::Socket> client_out_stream_sock;
+	std::unique_ptr<QZmq::Socket> client_in_sock;
+	std::unique_ptr<QZmq::Socket> client_req_sock;
+	std::unique_ptr<QZmq::Socket> server_in_sock;
+	std::unique_ptr<QZmq::Socket> server_in_stream_sock;
+	std::unique_ptr<QZmq::Socket> server_out_sock;
+	std::unique_ptr<QZmq::Valve> client_in_valve;
+	std::unique_ptr<QZmq::Valve> client_out_stream_valve;
+	std::unique_ptr<QZmq::Valve> server_in_valve;
+	std::unique_ptr<QZmq::Valve> server_in_stream_valve;
 	QByteArray instanceId;
 	int ipcFileMode;
 	bool doBind;
@@ -119,17 +119,6 @@ public:
 	Private(ZhttpManager *_q) :
 		QObject(_q),
 		q(_q),
-		client_out_sock(0),
-		client_out_stream_sock(0),
-		client_in_sock(0),
-		client_req_sock(0),
-		server_in_sock(0),
-		server_in_stream_sock(0),
-		server_out_sock(0),
-		client_in_valve(0),
-		client_out_stream_valve(0),
-		server_in_valve(0),
-		server_in_stream_valve(0),
 		ipcFileMode(-1),
 		doBind(false),
 		currentSessionRefreshBucket(0)
@@ -165,17 +154,17 @@ public:
 	{
 		cosConnection.disconnect();
 		rrConnection.disconnect();
-		delete client_req_sock;
-		delete client_out_sock;
+		client_req_sock.reset();
+		client_out_sock.reset();
 
-		client_out_sock = new QZmq::Socket(QZmq::Socket::Push, this);
+		client_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
 		cosConnection = client_out_sock->messagesWritten.connect(boost::bind(&Private::client_out_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_sock->setHwm(OUT_HWM);
 		client_out_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(client_out_sock, client_out_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(client_out_sock.get(), client_out_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
@@ -188,11 +177,11 @@ public:
 	{
 		rrConnection.disconnect();
 		cossConnection.disconnect();
-		delete client_req_sock;
-		delete client_out_stream_valve;
-		delete client_out_stream_sock;
+		client_req_sock.reset();
+		client_out_stream_valve.reset();
+		client_out_stream_sock.reset();
 
-		client_out_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+		client_out_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 		cossConnection = client_out_stream_sock->messagesWritten.connect(boost::bind(&Private::client_out_stream_messagesWritten, this, boost::placeholders::_1));
 
 		client_out_stream_sock->setIdentity(instanceId);
@@ -202,13 +191,13 @@ public:
 		client_out_stream_sock->setImmediateEnabled(true);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(client_out_stream_sock, client_out_stream_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(client_out_stream_sock.get(), client_out_stream_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		client_out_stream_valve = new QZmq::Valve(client_out_stream_sock, this);
+		client_out_stream_valve = std::make_unique<QZmq::Valve>(client_out_stream_sock.get());
 		clientOutStreamConnection = client_out_stream_valve->readyRead.connect(boost::bind(&Private::client_out_stream_readyRead, this, boost::placeholders::_1));
 
 		client_out_stream_valve->open();
@@ -219,24 +208,24 @@ public:
 	bool setupClientIn()
 	{
 		rrConnection.disconnect();
-		delete client_req_sock;
-		delete client_in_valve;
-		delete client_in_sock;
+		client_req_sock.reset();
+		client_in_valve.reset();
+		client_in_sock.reset();
 
-		client_in_sock = new QZmq::Socket(QZmq::Socket::Sub, this);
+		client_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
 
 		client_in_sock->setHwm(DEFAULT_HWM);
 		client_in_sock->setShutdownWaitTime(0);
 		client_in_sock->subscribe(instanceId + ' ');
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(client_in_sock, client_in_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(client_in_sock.get(), client_in_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		client_in_valve = new QZmq::Valve(client_in_sock, this);
+		client_in_valve = std::make_unique<QZmq::Valve>(client_in_sock.get());
 		clientConnection = client_in_valve->readyRead.connect(boost::bind(&Private::client_in_readyRead, this, boost::placeholders::_1));
 
 		client_in_valve->open();
@@ -248,18 +237,18 @@ public:
 	{
 		cosConnection.disconnect();
 		cossConnection.disconnect();
-		delete client_out_sock;
-		delete client_out_stream_sock;
-		delete client_in_sock;
+		client_out_sock.reset();
+		client_out_stream_sock.reset();
+		client_in_sock.reset();
 
-		client_req_sock = new QZmq::Socket(QZmq::Socket::Dealer, this);
+		client_req_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Dealer);
 		rrConnection = client_req_sock->readyRead.connect(boost::bind(&Private::client_req_readyRead, this));
 
 		client_req_sock->setHwm(OUT_HWM);
 		client_req_sock->setShutdownWaitTime(CLIENT_WAIT_TIME);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(client_req_sock, client_req_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(client_req_sock.get(), client_req_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
@@ -270,21 +259,21 @@ public:
 
 	bool setupServerIn()
 	{
-		delete server_in_valve;
-		delete server_in_sock;
+		server_in_valve.reset();
+		server_in_sock.reset();
 
-		server_in_sock = new QZmq::Socket(QZmq::Socket::Pull, this);
+		server_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
 
 		server_in_sock->setHwm(IN_HWM);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(server_in_sock, server_in_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(server_in_sock.get(), server_in_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		server_in_valve = new QZmq::Valve(server_in_sock, this);
+		server_in_valve = std::make_unique<QZmq::Valve>(server_in_sock.get());
 		serverConnection = server_in_valve->readyRead.connect(boost::bind(&Private::server_in_readyRead, this, boost::placeholders::_1));
 
 		server_in_valve->open();
@@ -295,21 +284,21 @@ public:
 	bool setupServerInStream()
 	{
 		serverStreamConnection.disconnect();
-		delete server_in_stream_sock;
+		server_in_stream_sock.reset();
 
-		server_in_stream_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+		server_in_stream_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 
 		server_in_stream_sock->setIdentity(instanceId);
 		server_in_stream_sock->setHwm(DEFAULT_HWM);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(server_in_stream_sock, server_in_stream_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(server_in_stream_sock.get(), server_in_stream_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		server_in_stream_valve = new QZmq::Valve(server_in_stream_sock, this);
+		server_in_stream_valve = std::make_unique<QZmq::Valve>(server_in_stream_sock.get());
 		serverStreamConnection = server_in_stream_valve->readyRead.connect(boost::bind(&Private::server_in_stream_readyRead, this, boost::placeholders::_1));
 
 		server_in_stream_valve->open();
@@ -320,9 +309,9 @@ public:
 	bool setupServerOut()
 	{
 		sosConnection.disconnect();
-		delete server_out_sock;
+		server_out_sock.reset();
 
-		server_out_sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+		server_out_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
 		sosConnection = server_out_sock->messagesWritten.connect(boost::bind(&Private::server_out_messagesWritten, this, boost::placeholders::_1));
 
 		server_out_sock->setWriteQueueEnabled(false);
@@ -330,7 +319,7 @@ public:
 		server_out_sock->setShutdownWaitTime(SERVER_WAIT_TIME);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(server_out_sock, server_out_specs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(server_out_sock.get(), server_out_specs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;

@@ -105,8 +105,7 @@ public:
 	}
 };
 
-Valve::Valve(QZmq::Socket *sock, QObject *parent) :
-	QObject(parent)
+Valve::Valve(QZmq::Socket *sock)
 {
 	d = std::make_shared<Private>(this);
 	d->setup(sock);

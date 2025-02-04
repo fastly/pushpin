@@ -632,14 +632,12 @@ public:
 	}
 };
 
-Socket::Socket(Type type, QObject *parent) :
-	QObject(parent)
+Socket::Socket(Type type)
 {
 	d = std::make_shared<Private>(this, type, nullptr);
 }
 
-Socket::Socket(Type type, Context *context, QObject *parent) :
-	QObject(parent)
+Socket::Socket(Type type, Context *context)
 {
 	d = std::make_shared<Private>(this, type, context);
 }
