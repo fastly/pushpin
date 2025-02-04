@@ -34,7 +34,9 @@ public:
 	HttpSessionUpdateManager(QObject *parent = 0);
 	~HttpSessionUpdateManager();
 
-	void registerSession(HttpSession *hs, int timeout, const QUrl &uri);
+	// no-op if session already registered and resetTimeout=false
+	void registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout = false);
+
 	void unregisterSession(HttpSession *hs);
 
 private:
