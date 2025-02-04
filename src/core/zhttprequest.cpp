@@ -24,7 +24,6 @@
 #include "zhttprequest.h"
 
 #include <assert.h>
-#include <QPointer>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "bufferlist.h"
@@ -411,7 +410,7 @@ public:
 
 	void tryWrite()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(state == ClientRequesting)
 		{
@@ -494,7 +493,7 @@ public:
 			}
 		}
 
-		if(!self)
+		if(self.expired())
 			return;
 
 		trySendPause();
@@ -1045,9 +1044,9 @@ public:
 		}
 		else if(state == ClientRequesting)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1131,23 +1130,23 @@ public:
 				cleanup();
 			}
 
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 
 			if(!packet.body.isEmpty())
 				q->bytesWritten(packet.body.size());
 			else if(!packet.more)
 				q->bytesWritten(0);
 
-			if(!self)
+			if(self.expired())
 				return;
 
 			trySendPause();
 		}
 		else if(state == ServerResponding)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1187,13 +1186,10 @@ public:
 ZhttpRequest::ZhttpRequest(QObject *parent) :
 	HttpRequest(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-ZhttpRequest::~ZhttpRequest()
-{
-	delete d;
-}
+ZhttpRequest::~ZhttpRequest() = default;
 
 ZhttpRequest::Rid ZhttpRequest::rid() const
 {

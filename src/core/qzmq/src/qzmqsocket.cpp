@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2020 Justin Karneges
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -27,7 +27,6 @@
 #include <stdio.h>
 #include <assert.h>
 #include <QStringList>
-#include <QPointer>
 #include <QMutex>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
@@ -362,10 +361,8 @@ static void removeGlobalContextRef()
 	}
 }
 
-class Socket::Private : public QObject
+class Socket::Private
 {
-	Q_OBJECT
-
 public:
 	Socket *q;
 	bool usingGlobalContext;
@@ -382,7 +379,6 @@ public:
 	bool writeQueueEnabled;
 
 	Private(Socket *_q, Socket::Type type, Context *_context) :
-		QObject(_q),
 		q(_q),
 		canWrite(false),
 		canRead(false),
@@ -599,9 +595,9 @@ public:
 
 		if(canRead)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			q->readyRead();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
@@ -639,19 +635,16 @@ public:
 Socket::Socket(Type type, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, type, 0);
+	d = std::make_shared<Private>(this, type, nullptr);
 }
 
 Socket::Socket(Type type, Context *context, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, type, context);
+	d = std::make_shared<Private>(this, type, context);
 }
 
-Socket::~Socket()
-{
-	delete d;
-}
+Socket::~Socket() = default;
 
 void Socket::setShutdownWaitTime(int msecs)
 {
@@ -773,5 +766,3 @@ void Socket::write(const QList<QByteArray> &message)
 }
 
 }
-
-#include "qzmqsocket.moc"
