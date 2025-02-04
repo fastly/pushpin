@@ -24,16 +24,13 @@
 
 #include "qzmqvalve.h"
 
-#include <QPointer>
 #include "qzmqsocket.h"
 #include "defercall.h"
 
 namespace QZmq {
 
-class Valve::Private : public QObject
+class Valve::Private
 {
-	Q_OBJECT
-
 public:
 	Valve *q;
 	QZmq::Socket *sock;
@@ -44,7 +41,6 @@ public:
 	DeferCall deferCall;
 
 	Private(Valve *_q) :
-		QObject(_q),
 		q(_q),
 		sock(0),
 		isOpen(false),
@@ -70,7 +66,7 @@ public:
 
 	void tryRead()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		int count = 0;
 		while(isOpen && sock->canRead())
@@ -86,7 +82,7 @@ public:
 			if(!msg.isEmpty())
 			{
 				q->readyRead(msg);
-				if(!self)
+				if(self.expired())
 					return;
 			}
 
@@ -112,14 +108,11 @@ public:
 Valve::Valve(QZmq::Socket *sock, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 	d->setup(sock);
 }
 
-Valve::~Valve()
-{
-	delete d;
-}
+Valve::~Valve() = default;
 
 bool Valve::isOpen() const
 {
@@ -147,5 +140,3 @@ void Valve::close()
 }
 
 }
-
-#include "qzmqvalve.moc"

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2021 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,7 +26,6 @@
 #include <assert.h>
 #include <QStringList>
 #include <QHash>
-#include <QPointer>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -516,7 +516,7 @@ public:
 
 	void client_req_readyRead()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		while(client_req_sock->canRead())
 		{
@@ -563,7 +563,7 @@ public:
 			if(req)
 			{
 				req->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -605,7 +605,7 @@ public:
 			return;
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		foreach(const ZhttpResponsePacket::Id &id, p.ids)
 		{
@@ -614,7 +614,7 @@ public:
 			if(sock)
 			{
 				sock->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -625,7 +625,7 @@ public:
 			if(req)
 			{
 				req->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -805,7 +805,7 @@ public:
 			return;
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
@@ -814,7 +814,7 @@ public:
 			if(sock)
 			{
 				sock->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -825,7 +825,7 @@ public:
 			if(req)
 			{
 				req->handle(id.id, id.seq, p);
-				if(!self)
+				if(self.expired())
 					return;
 
 				continue;
@@ -982,13 +982,10 @@ public:
 ZhttpManager::ZhttpManager(QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-ZhttpManager::~ZhttpManager()
-{
-	delete d;
-}
+ZhttpManager::~ZhttpManager() = default;
 
 int ZhttpManager::connectionCount() const
 {

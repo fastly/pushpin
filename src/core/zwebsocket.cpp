@@ -24,7 +24,6 @@
 #include "zwebsocket.h"
 
 #include <assert.h>
-#include <QPointer>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "log.h"
@@ -351,7 +350,7 @@ public:
 
 	void tryWrite()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(state == Connected || state == ConnectedPeerClosed)
 		{
@@ -417,7 +416,7 @@ public:
 			if(written > 0 || contentBytesWritten > 0)
 			{
 				q->framesWritten(written, contentBytesWritten);
-				if(!self)
+				if(self.expired())
 					return;
 			}
 
@@ -1000,10 +999,10 @@ public:
 				}
 				else
 				{
-					QPointer<QObject> self = this;
+					std::weak_ptr<Private> self = q->d;
 					state = ConnectedPeerClosed;
 					q->peerClosed();
-					if(!self)
+					if(self.expired())
 						return;
 				}
 			}
@@ -1013,9 +1012,9 @@ public:
 				{
 					readableChanged = false;
 
-					QPointer<QObject> self = this;
+					std::weak_ptr<Private> self = q->d;
 					q->readyRead();
-					if(!self)
+					if(self.expired())
 						return;
 				}
 			}
@@ -1053,9 +1052,9 @@ public:
 		}
 		else if(state == Connected || state == ConnectedPeerClosed)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1095,13 +1094,10 @@ public:
 ZWebSocket::ZWebSocket(QObject *parent) :
 	WebSocket(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-ZWebSocket::~ZWebSocket()
-{
-	delete d;
-}
+ZWebSocket::~ZWebSocket() = default;
 
 ZWebSocket::Rid ZWebSocket::rid() const
 {

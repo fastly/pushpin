@@ -26,7 +26,6 @@
 #include <assert.h>
 #include <QVector>
 #include <QDateTime>
-#include <QPointer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qzmqsocket.h"

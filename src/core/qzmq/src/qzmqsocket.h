@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2015 Justin Karneges
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -113,7 +113,7 @@ private:
 
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 };
 
 }
