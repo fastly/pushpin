@@ -25,8 +25,11 @@
 #ifndef QZMQSOCKET_H
 #define QZMQSOCKET_H
 
-#include <QObject>
+#include <QByteArray>
+#include <QList>
 #include <boost/signals2.hpp>
+
+class QString;
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
@@ -36,10 +39,8 @@ namespace QZmq {
 
 class Context;
 
-class Socket : public QObject
+class Socket
 {
-	Q_OBJECT
-
 public:
 	enum Type
 	{
@@ -54,8 +55,8 @@ public:
 		Sub
 	};
 
-	Socket(Type type, QObject *parent = 0);
-	Socket(Type type, Context *context, QObject *parent = 0);
+	Socket(Type type);
+	Socket(Type type, Context *context);
 	~Socket();
 
 	// 0 means drop queue and don't block, -1 means infinite (default = -1)
@@ -109,7 +110,8 @@ public:
 	SignalInt messagesWritten;
 
 private:
-	Q_DISABLE_COPY(Socket)
+	Socket(const Socket &) = delete;
+	Socket &operator=(const Socket &) = delete;
 
 	class Private;
 	friend class Private;

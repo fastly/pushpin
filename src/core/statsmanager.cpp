@@ -403,7 +403,7 @@ public:
 	int subscriptionTtl;
 	int subscriptionLinger;
 	int reportInterval;
-	QZmq::Socket *sock;
+	std::unique_ptr<QZmq::Socket> sock;
 	SimpleHttpServer *prometheusServer;
 	QString prometheusPrefix;
 	QList<PrometheusMetric> prometheusMetrics;
@@ -450,7 +450,6 @@ public:
 		subscriptionTtl(60 * 1000),
 		subscriptionLinger(60 * 1000),
 		reportInterval(10 * 1000),
-		sock(0),
 		prometheusServer(0),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
@@ -500,16 +499,16 @@ public:
 
 	bool setupSock()
 	{
-		delete sock;
+		sock.reset();
 
-		sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+		sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
 
 		sock->setHwm(OUT_HWM);
 		sock->setWriteQueueEnabled(false);
 		sock->setShutdownWaitTime(0);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(sock, spec, true, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(sock.get(), spec, true, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;

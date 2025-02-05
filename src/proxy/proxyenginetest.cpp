@@ -56,21 +56,21 @@ class Wrapper : public QObject
 	Q_OBJECT
 
 public:
-	QZmq::Socket *zhttpClientOutSock;
-	QZmq::Socket *zhttpClientOutStreamSock;
-	QZmq::Socket *zhttpClientInSock;
-	QZmq::Valve *zhttpClientInValve;
-	QZmq::Socket *zhttpServerInSock;
-	QZmq::Valve *zhttpServerInValve;
-	QZmq::Socket *zhttpServerInStreamSock;
-	QZmq::Valve *zhttpServerInStreamValve;
-	QZmq::Socket *zhttpServerOutSock;
+	std::unique_ptr<QZmq::Socket> zhttpClientOutSock;
+	std::unique_ptr<QZmq::Socket> zhttpClientOutStreamSock;
+	std::unique_ptr<QZmq::Socket> zhttpClientInSock;
+	std::unique_ptr<QZmq::Valve> zhttpClientInValve;
+	std::unique_ptr<QZmq::Socket> zhttpServerInSock;
+	std::unique_ptr<QZmq::Valve> zhttpServerInValve;
+	std::unique_ptr<QZmq::Socket> zhttpServerInStreamSock;
+	std::unique_ptr<QZmq::Valve> zhttpServerInStreamValve;
+	std::unique_ptr<QZmq::Socket> zhttpServerOutSock;
 
-	QZmq::Socket *handlerInspectSock;
-	QZmq::Valve *handlerInspectValve;
-	QZmq::Socket *handlerAcceptSock;
-	QZmq::Valve *handlerAcceptValve;
-	QZmq::Socket *handlerRetryOutSock;
+	std::unique_ptr<QZmq::Socket> handlerInspectSock;
+	std::unique_ptr<QZmq::Valve> handlerInspectValve;
+	std::unique_ptr<QZmq::Socket> handlerAcceptSock;
+	std::unique_ptr<QZmq::Valve> handlerAcceptValve;
+	std::unique_ptr<QZmq::Socket> handlerRetryOutSock;
 
 	QDir workDir;
 	QHash<QByteArray, HttpRequestData> serverReqs;
@@ -108,37 +108,37 @@ public:
 	{
 		// http sockets
 
-		zhttpClientOutSock = new QZmq::Socket(QZmq::Socket::Push, this);
+		zhttpClientOutSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
 
-		zhttpClientOutStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
+		zhttpClientOutStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 
-		zhttpClientInSock = new QZmq::Socket(QZmq::Socket::Sub, this);
-		zhttpClientInValve = new QZmq::Valve(zhttpClientInSock, this);
+		zhttpClientInSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
+		zhttpClientInValve = std::make_unique<QZmq::Valve>(zhttpClientInSock.get());
 		zhttpClientInValveConnection = zhttpClientInValve->readyRead.connect(boost::bind(&Wrapper::zhttpClientIn_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerInSock = new QZmq::Socket(QZmq::Socket::Pull, this);
-		zhttpServerInValve = new QZmq::Valve(zhttpServerInSock, this);
+		zhttpServerInSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
+		zhttpServerInValve = std::make_unique<QZmq::Valve>(zhttpServerInSock.get());
 		zhttpServerInValveConnection = zhttpServerInValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerIn_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerInStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
+		zhttpServerInStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 		zhttpServerInStreamSock->setIdentity("test-server");
-		zhttpServerInStreamValve = new QZmq::Valve(zhttpServerInStreamSock, this);
+		zhttpServerInStreamValve = std::make_unique<QZmq::Valve>(zhttpServerInStreamSock.get());
 		zhttpServerInStreamValveConnection = zhttpServerInStreamValve->readyRead.connect(boost::bind(&Wrapper::zhttpServerInStream_readyRead, this, boost::placeholders::_1));
 
-		zhttpServerOutSock = new QZmq::Socket(QZmq::Socket::Pub, this);
+		zhttpServerOutSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
 
 		// handler sockets
 
-		handlerInspectSock = new QZmq::Socket(QZmq::Socket::Router, this);
+		handlerInspectSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 
-		handlerAcceptSock = new QZmq::Socket(QZmq::Socket::Router, this);
-		handlerAcceptValve = new QZmq::Valve(handlerAcceptSock, this);
+		handlerAcceptSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
+		handlerAcceptValve = std::make_unique<QZmq::Valve>(handlerAcceptSock.get());
 		handlerAcceptValveConnection = handlerAcceptValve->readyRead.connect(boost::bind(&Wrapper::handlerAccept_readyRead, this, boost::placeholders::_1));
 
-		handlerInspectValve = new QZmq::Valve(handlerInspectSock, this);
+		handlerInspectValve = std::make_unique<QZmq::Valve>(handlerInspectSock.get());
 		handlerInspectValveConnection = handlerInspectValve->readyRead.connect(boost::bind(&Wrapper::handlerInspect_readyRead, this, boost::placeholders::_1));
 
-		handlerRetryOutSock = new QZmq::Socket(QZmq::Socket::Router, this);
+		handlerRetryOutSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 	}
 
 	void startHttp()

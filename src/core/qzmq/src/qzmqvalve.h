@@ -25,7 +25,8 @@
 #ifndef QZMQVALVE_H
 #define QZMQVALVE_H
 
-#include <QObject>
+#include <QByteArray>
+#include <QList>
 #include <boost/signals2.hpp>
 
 using SignalList = boost::signals2::signal<void(const QList<QByteArray>&)>;
@@ -35,12 +36,10 @@ namespace QZmq {
 
 class Socket;
 
-class Valve : public QObject
+class Valve
 {
-	Q_OBJECT
-
 public:
-	Valve(QZmq::Socket *sock, QObject *parent = 0);
+	Valve(QZmq::Socket *sock);
 	~Valve();
 
 	bool isOpen() const;
