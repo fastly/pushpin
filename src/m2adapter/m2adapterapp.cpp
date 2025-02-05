@@ -259,6 +259,7 @@ public:
 		int reqStartTime;
 
 		ControlPort() :
+			sock(0),
 			state(Disabled),
 			works(false),
 			reqStartTime(-1)
