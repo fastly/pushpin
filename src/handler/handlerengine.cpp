@@ -2623,6 +2623,7 @@ private:
 					log_debug("added ws session: %s", qPrintable(s->cid));
 				}
 
+				s->debug = item.debug;
 				s->route = item.route;
 				s->statsRoute = item.separateStats ? item.route : QString();
 				s->targetTrusted = item.trusted;

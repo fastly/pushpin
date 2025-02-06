@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -206,6 +206,9 @@ QVariant WsControlPacket::toVariant() const
 		if(!item.reason.isEmpty())
 			vitem["reason"] = item.reason;
 
+		if(item.debug)
+			vitem["debug"] = true;
+
 		if(!item.route.isEmpty())
 			vitem["route"] = item.route;
 
@@ -360,6 +363,14 @@ bool WsControlPacket::fromVariant(const QVariant &in)
 				return false;
 
 			item.reason = vitem["reason"].toByteArray();
+		}
+
+		if(vitem.contains("debug"))
+		{
+			if(typeId(vitem["debug"]) != QMetaType::Bool)
+				return false;
+
+			item.debug = vitem["debug"].toBool();
 		}
 
 		if(vitem.contains("route"))

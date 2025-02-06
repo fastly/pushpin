@@ -48,6 +48,7 @@ public:
 	QByteArray peer;
 	QString cid;
 	int nextReqId;
+	bool debug;
 	QString channelPrefix;
 	int logLevel;
 	HttpRequestData requestData;
@@ -72,7 +73,8 @@ public:
 	ZhttpManager *zhttpOut;
 	std::unique_ptr<Filter::MessageFilter> filters;
 	Connection filtersFinishedConnection;
-	bool processingSendQueue;
+	bool inProcessPublishQueue;
+	bool closed;
 
 	WsSession(QObject *parent = 0);
 	~WsSession();
@@ -88,9 +90,10 @@ public:
 	Signal error;
 
 private:
-	void trySendQueue();
+	void processPublishQueue();
 	void filtersFinished(const Filter::MessageFilter::Result &result);
 	void afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content);
+	void sendCloseError(const QString &message);
 	void setupRequestTimer();
 
 private slots:
