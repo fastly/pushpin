@@ -30,12 +30,12 @@
 #include <QMetaType>
 #include <QUrl>
 #include <boost/signals2.hpp>
+#include "zhttprequest.h"
 #include "ratelimiter.h"
 
 #define MESSAGEFILTERSTACK_SIZE_MAX 5
 
-// 2 timers per zhttprequest
-#define TIMERS_PER_MESSAGEFILTERSTACK (2 * MESSAGEFILTERSTACK_SIZE_MAX)
+#define TIMERS_PER_MESSAGEFILTERSTACK (TIMERS_PER_ZHTTPREQUEST * MESSAGEFILTERSTACK_SIZE_MAX)
 
 class ZhttpManager;
 

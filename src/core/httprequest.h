@@ -61,6 +61,7 @@ public:
 	virtual void setIgnorePolicies(bool on) = 0;
 	virtual void setTrustConnectHost(bool on) = 0;
 	virtual void setIgnoreTlsErrors(bool on) = 0;
+	virtual void setTimeout(int msecs) = 0;
 
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers) = 0;
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers) = 0;

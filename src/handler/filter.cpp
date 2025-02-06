@@ -31,6 +31,8 @@
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
 
+#define REQUEST_TIMEOUT_SECS 10
+
 namespace {
 
 class SkipSelfFilter : public Filter, public Filter::MessageFilter
@@ -378,6 +380,9 @@ public:
 
 	void startRequest()
 	{
+		// set timeout since filters should be fast
+		req->setTimeout(REQUEST_TIMEOUT_SECS * 1000);
+
 		req->start("POST", uri, headers);
 
 		if(mode == HttpFilter::Modify)
@@ -453,8 +458,32 @@ public:
 
 	void req_error()
 	{
+		const char *s;
+
+		switch(req->errorCondition())
+		{
+			case HttpRequest::ErrorConnect:
+				s = "connection refused";
+				break;
+			case HttpRequest::ErrorConnectTimeout:
+				s = "connection timed out";
+				break;
+			case HttpRequest::ErrorTls:
+				s = "tls error";
+				break;
+			case HttpRequest::ErrorDisconnected:
+				s = "disconnected";
+				break;
+			case HttpRequest::ErrorTimeout:
+				s = "request timed out";
+				break;
+			default:
+				s = "general error";
+				break;
+		}
+
 		Filter::MessageFilter::Result r;
-		r.errorMessage = "network request failed";
+		r.errorMessage = QString("network request failed: %1").arg(s);
 		finished(r);
 	}
 };
