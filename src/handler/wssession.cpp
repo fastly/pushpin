@@ -36,10 +36,12 @@
 WsSession::WsSession(QObject *parent) :
 	QObject(parent),
 	nextReqId(0),
+	debug(false),
 	logLevel(LOG_LEVEL_DEBUG),
 	targetTrusted(false),
 	ttl(0),
-	processingSendQueue(false)
+	inProcessPublishQueue(false),
+	closed(false)
 {
 	expireTimer = new QTimer(this);
 	expireTimer->setSingleShot(true);
@@ -105,15 +107,16 @@ void WsSession::publish(const PublishItem &item)
 {
 	publishQueue += item;
 
-	if(!processingSendQueue)
-		trySendQueue();
+	if(!inProcessPublishQueue)
+		processPublishQueue();
 }
 
-void WsSession::trySendQueue()
+void WsSession::processPublishQueue()
 {
-	processingSendQueue = true;
+	assert(!inProcessPublishQueue);
+	inProcessPublishQueue = true;
 
-	while(!publishQueue.isEmpty() && !filters)
+	while(!closed && !publishQueue.isEmpty() && !filters)
 	{
 		const PublishItem &item = publishQueue.first();
 		const PublishFormat &f = item.format;
@@ -129,10 +132,15 @@ void WsSession::trySendQueue()
 			}
 			if(contentFilters != f.contentFilters)
 			{
-				QString errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
-				log_debug("%s", qPrintable(errorMessage));
-
 				publishQueue.removeFirst();
+
+				if(debug)
+				{
+					QString errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+					sendCloseError(errorMessage);
+					break;
+				}
+
 				continue;
 			}
 		}
@@ -154,7 +162,7 @@ void WsSession::trySendQueue()
 		filters->start(fc, f.body);
 	}
 
-	processingSendQueue = false;
+	inProcessPublishQueue = false;
 }
 
 void WsSession::filtersFinished(const Filter::MessageFilter::Result &result)
@@ -165,13 +173,22 @@ void WsSession::filtersFinished(const Filter::MessageFilter::Result &result)
 	filters.reset();
 
 	if(!result.errorMessage.isNull())
-		log_debug("filter error: %s", qPrintable(result.errorMessage));
+	{
+		if(debug)
+		{
+			QString errorMessage = QString("filter error: %1").arg(result.errorMessage);
+			sendCloseError(errorMessage);
+			return;
+		}
+	}
 	else
+	{
 		afterFilters(item, result.sendAction, result.content);
+	}
 
 	// if filters finished asynchronously then we need to resume processing
-	if(!processingSendQueue)
-		trySendQueue();
+	if(!inProcessPublishQueue)
+		processPublishQueue();
 }
 
 void WsSession::afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content)
@@ -205,6 +222,8 @@ void WsSession::afterFilters(const PublishItem &item, Filter::SendAction sendAct
 	}
 	else if(f.action == PublishFormat::Close)
 	{
+		closed = true;
+
 		i.type = WsControlPacket::Item::Close;
 		i.code = f.code;
 		i.reason = f.reason;
@@ -213,6 +232,19 @@ void WsSession::afterFilters(const PublishItem &item, Filter::SendAction sendAct
 	{
 		i.type = WsControlPacket::Item::Refresh;
 	}
+
+	send(i);
+}
+
+void WsSession::sendCloseError(const QString &message)
+{
+	closed = true;
+
+	WsControlPacket::Item i;
+	i.cid = cid.toUtf8();
+	i.type = WsControlPacket::Item::Close;
+	i.code = 1011;
+	i.reason = message.toUtf8();
 
 	send(i);
 }

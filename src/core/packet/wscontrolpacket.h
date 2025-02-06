@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -61,6 +61,7 @@ public:
 		bool queue;
 		int code;
 		QByteArray reason;
+		bool debug;
 		QByteArray route;
 		bool separateStats;
 		QByteArray channelPrefix;
@@ -75,6 +76,7 @@ public:
 			type((Type)-1),
 			queue(false),
 			code(-1),
+			debug(false),
 			separateStats(false),
 			logLevel(-1),
 			trusted(false),

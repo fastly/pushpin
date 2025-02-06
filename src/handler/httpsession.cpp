@@ -805,9 +805,15 @@ private:
 				if(contentFilters != f.contentFilters)
 				{
 					publishQueue.removeFirst();
-					errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
-					doError();
-					break;
+
+					if(adata.debug)
+					{
+						errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
+						doError();
+						break;
+					}
+
+					continue;
 				}
 			}
 
@@ -1409,12 +1415,17 @@ private:
 
 		if(!result.errorMessage.isNull())
 		{
-			errorMessage = QString("filter error: %1").arg(result.errorMessage);
-			doError();
-			return;
+			if(adata.debug)
+			{
+				errorMessage = QString("filter error: %1").arg(result.errorMessage);
+				doError();
+				return;
+			}
 		}
-
-		processItem(qi.item, result.sendAction, result.content, qi.exposeHeaders);
+		else
+		{
+			processItem(qi.item, result.sendAction, result.content, qi.exposeHeaders);
+		}
 
 		// if filters finished asynchronously then we need to resume processing
 		if(!inProcessPublishQueue)
