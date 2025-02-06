@@ -31,6 +31,11 @@
 #include <QUrl>
 #include <boost/signals2.hpp>
 
+#define MESSAGEFILTERSTACK_SIZE_MAX 5
+
+// 2 timers per zhttprequest
+#define TIMERS_PER_MESSAGEFILTERSTACK (2 * MESSAGEFILTERSTACK_SIZE_MAX)
+
 class ZhttpManager;
 
 class Filter

@@ -31,7 +31,15 @@
 #include "inspectdata.h"
 #include "zhttprequest.h"
 #include "instruct.h"
+#include "filter.h"
 #include <boost/signals2.hpp>
+
+// each session can have a bunch of timers:
+// 2 per incoming zhttprequest
+// 2 per outgoing zhttprequest
+// 2 additional timers
+// filter timers
+#define TIMERS_PER_HTTPSESSION (10 + TIMERS_PER_MESSAGEFILTERSTACK)
 
 using Connection = boost::signals2::scoped_connection;
 
