@@ -49,6 +49,7 @@ public:
 	std::unique_ptr<RTimer> requestTimer;
 	QByteArray peer;
 	QByteArray cid;
+	bool debug;
 	QByteArray route;
 	bool separateStats;
 	QByteArray channelPrefix;
@@ -62,6 +63,7 @@ public:
 		q(_q),
 		manager(0),
 		nextReqId(0),
+		debug(false),
 		separateStats(false),
 		logLevel(-1),
 		targetTrusted(false)
@@ -100,6 +102,7 @@ public:
 		WsControlPacket::Item i;
 		i.type = WsControlPacket::Item::Here;
 		i.requestId = QByteArray::number(reqId);
+		i.debug = debug;
 		i.route = route;
 		i.separateStats = separateStats;
 		i.channelPrefix = channelPrefix;
@@ -329,8 +332,9 @@ QByteArray WsControlSession::cid() const
 	return d->cid;
 }
 
-void WsControlSession::start(const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const QUrl &uri, bool targetTrusted)
+void WsControlSession::start(bool debug, const QByteArray &routeId, bool separateStats, const QByteArray &channelPrefix, int logLevel, const QUrl &uri, bool targetTrusted)
 {
+	d->debug = debug;
 	d->route = routeId;
 	d->separateStats = separateStats;
 	d->channelPrefix = channelPrefix;

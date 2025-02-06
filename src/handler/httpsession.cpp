@@ -787,8 +787,6 @@ private:
 					update(LowPriority);
 					break;
 				}
-
-				channel.prevId = item.id;
 			}
 
 			const PublishFormat &f = item.format;
@@ -1435,6 +1433,11 @@ private:
 	void processItem(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content, const QList<QByteArray> &exposeHeaders)
 	{
 		const PublishFormat &f = item.format;
+
+		Instruct::Channel &channel = channels[item.channel];
+
+		if(!channel.prevId.isNull())
+			channel.prevId = item.id;
 
 		if(instruct.holdMode == Instruct::ResponseHold)
 		{
