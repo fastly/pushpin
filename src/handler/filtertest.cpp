@@ -30,6 +30,7 @@
 #include "rtimer.h"
 #include "defercall.h"
 #include "zhttpmanager.h"
+#include "ratelimiter.h"
 #include "filter.h"
 
 class HttpFilterServer
@@ -156,6 +157,7 @@ class FilterTest : public QObject
 private:
 	std::unique_ptr<HttpFilterServer> filterServer;
 	std::unique_ptr<ZhttpManager> zhttpOut;
+	std::shared_ptr<RateLimiter> limiter;
 
 	Filter::MessageFilter::Result runMessageFilters(const QStringList &filterNames, const Filter::Context &context, const QByteArray &content)
 	{
@@ -194,6 +196,8 @@ private slots:
 		zhttpOut->setClientOutSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
 		zhttpOut->setClientOutStreamSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
 		zhttpOut->setClientInSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
+
+		limiter = std::make_shared<RateLimiter>();
 
 		QTest::qWait(500);
 	}
@@ -242,6 +246,7 @@ private slots:
 		context.subscriptionMeta["url"] = "/filter/accept";
 		context.zhttpOut = zhttpOut.get();
 		context.currentUri = "http://localhost/";
+		context.limiter = limiter;
 
 		QByteArray content = "hello world";
 
@@ -277,6 +282,7 @@ private slots:
 		context.subscriptionMeta["url"] = "/filter/modify";
 		context.zhttpOut = zhttpOut.get();
 		context.currentUri = "http://localhost/";
+		context.limiter = limiter;
 
 		QByteArray content = "hello world";
 

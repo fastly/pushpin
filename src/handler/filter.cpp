@@ -308,27 +308,161 @@ public:
 	}
 };
 
-class HttpFilter : public Filter::MessageFilter
+enum HttpFilterMode
+{
+	Check,
+	Modify
+};
+
+class HttpFilterInner
 {
 public:
-	enum Mode
-	{
-		Check,
-		Modify
-	};
-
-	Mode mode;
+	HttpFilterMode mode;
 	std::unique_ptr<ZhttpRequest> req;
-	boost::signals2::scoped_connection readyReadConnection;
-	boost::signals2::scoped_connection errorConnection;
+	QUrl uri;
+	HttpHeaders headers;
 	QByteArray origContent;
 	bool haveResponseHeader;
 	QByteArray responseBody;
 
-	HttpFilter(Mode _mode) :
+	boost::signals2::signal<void(const Filter::MessageFilter::Result&)> finished;
+
+	HttpFilterInner(HttpFilterMode _mode) :
 		mode(_mode),
 		haveResponseHeader(false)
 	{
+	}
+
+	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const QVariant &passthroughData, const QByteArray &content)
+	{
+		uri = _uri;
+		headers = _headers;
+		origContent = content;
+
+		req.reset(zhttpOut->createRequest());
+
+		// safe to not track, since req can't outlive this
+		req->readyRead.connect(boost::bind(&HttpFilterInner::req_readyRead, this));
+		req->error.connect(boost::bind(&HttpFilterInner::req_error, this));
+
+		req->setPassthroughData(passthroughData);
+	}
+
+	void startRequest()
+	{
+		req->start("POST", uri, headers);
+
+		if(mode == Modify)
+			req->writeBody(origContent);
+
+		req->endBody();
+	}
+
+	void req_readyRead()
+	{
+		if(!haveResponseHeader)
+		{
+			haveResponseHeader = true;
+
+			int code = req->responseCode();
+			switch(code)
+			{
+				case 200:
+				case 204:
+					break;
+				default:
+					Filter::MessageFilter::Result r;
+					r.errorMessage = QString("unexpected network request status: code=%1").arg(code);
+					finished(r);
+					return;
+			}
+		}
+
+		QByteArray body = req->readBody();
+
+		if(mode == Modify)
+			responseBody += body;
+
+		if(!req->isFinished())
+			return;
+
+		Filter::MessageFilter::Result r;
+
+		if(req->responseHeaders().get("Action") == "drop")
+		{
+			// drop
+			r.sendAction = Filter::Drop;
+		}
+		else
+		{
+			// accept
+			r.sendAction = Filter::Send;
+
+			switch(mode)
+			{
+				case Check:
+					// as-is
+					r.content = origContent;
+					break;
+				case Modify:
+					switch(req->responseCode())
+					{
+						case 204:
+							// as-is
+							r.content = origContent;
+							break;
+						default:
+							// replace content
+							r.content = responseBody;
+							break;
+					}
+					break;
+			}
+		}
+
+		finished(r);
+	}
+
+	void req_error()
+	{
+		Filter::MessageFilter::Result r;
+		r.errorMessage = "network request failed";
+		finished(r);
+	}
+};
+
+class HttpFilter : public Filter::MessageFilter
+{
+public:
+	std::shared_ptr<HttpFilterInner> inner;
+	boost::signals2::scoped_connection finishedConnection;
+
+	class RequestAction : public RateLimiter::Action
+	{
+	public:
+		std::weak_ptr<HttpFilterInner> inner;
+
+		RequestAction(const std::shared_ptr<HttpFilterInner> &_inner) :
+			inner(_inner)
+		{
+		}
+
+		virtual bool execute()
+		{
+			auto target = inner.lock();
+			if(!target)
+				return false;
+
+			target->startRequest();
+			return true;
+		}
+	};
+
+	HttpFilter(HttpFilterMode mode)
+	{
+		inner = std::make_shared<HttpFilterInner>(mode);
+
+		finishedConnection = inner->finished.connect(boost::bind(&HttpFilter::inner_finished, this, boost::placeholders::_1));
 	}
 
 	virtual void start(const Filter::Context &context, const QByteArray &content)
@@ -349,12 +483,6 @@ public:
 			currentUri.setScheme("http");
 
 		QUrl destUri = currentUri.resolved(url);
-
-		origContent = content;
-
-		req.reset(context.zhttpOut->createRequest());
-		readyReadConnection = req->readyRead.connect(boost::bind(&HttpFilter::req_readyRead, this));
-		errorConnection = req->error.connect(boost::bind(&HttpFilter::req_error, this));
 
 		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
 		int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
@@ -379,8 +507,6 @@ public:
 		// needed in case internal routing is not used
 		if(context.trusted)
 			passthroughData["trusted"] = true;
-
-		req->setPassthroughData(passthroughData);
 
 		HttpHeaders headers;
 
@@ -423,83 +549,26 @@ public:
 			}
 		}
 
-		req->start("POST", destUri, headers);
+		inner->setup(context.zhttpOut, destUri, headers, passthroughData, content);
 
-		if(mode == Modify)
-			req->writeBody(content);
+		QString key = QString::fromUtf8(destUri.toEncoded());
 
-		req->endBody();
-	}
+		assert(context.limiter);
 
-	void req_readyRead()
-	{
-		if(!haveResponseHeader)
+		if(!context.limiter->addAction(key, new RequestAction(inner)))
 		{
-			haveResponseHeader = true;
+			// the limiter shouldn't have an hwm, but let's handle the error
+			// here in case one is ever added
 
-			int code = req->responseCode();
-			switch(code)
-			{
-				case 200:
-				case 204:
-					break;
-				default:
-					Result r;
-					r.errorMessage = QString("unexpected network request status: code=%1").arg(code);
-					finished(r);
-					return;
-			}
-		}
-
-		QByteArray body = req->readBody();
-
-		if(mode == Modify)
-			responseBody += body;
-
-		if(!req->isFinished())
+			Result r;
+			r.errorMessage = "network request limit reached";
+			finished(r);
 			return;
-
-		Result r;
-
-		if(req->responseHeaders().get("Action") == "drop")
-		{
-			// drop
-			r.sendAction = Filter::Drop;
 		}
-		else
-		{
-			// accept
-			r.sendAction = Filter::Send;
-
-			switch(mode)
-			{
-				case Check:
-					// as-is
-					r.content = origContent;
-					break;
-				case Modify:
-					switch(req->responseCode())
-					{
-						case 204:
-							// as-is
-							r.content = origContent;
-							break;
-						default:
-							// replace content
-							r.content = responseBody;
-							break;
-					}
-					break;
-			}
-		}
-
-		finished(r);
 	}
 
-	void req_error()
+	void inner_finished(const Result &r)
 	{
-		Result r;
-		r.errorMessage = "network request failed";
 		finished(r);
 	}
 };
@@ -572,9 +641,9 @@ Filter::MessageFilter *Filter::createMessageFilter(const QString &name)
 	else if(name == "var-subst")
 		return new VarSubstFilter;
 	else if(name == "http-check")
-		return new HttpFilter(HttpFilter::Check);
+		return new HttpFilter(Check);
 	else if(name == "http-modify")
-		return new HttpFilter(HttpFilter::Modify);
+		return new HttpFilter(Modify);
 	else
 		return 0;
 }

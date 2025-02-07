@@ -426,6 +426,7 @@ public:
 	ZhttpManager *zhttpOut;
 	StatsManager *stats;
 	RateLimiter *updateLimiter;
+	std::shared_ptr<RateLimiter> filterLimiter;
 	HttpSessionUpdateManager *httpSessionUpdateManager;
 	QString route;
 	QString statsRoute;
@@ -447,7 +448,7 @@ public:
 	QSet<QByteArray> needRemoveFromStats;
 	map<Deferred*, Connection> finishedConnection;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> &_filterLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req),
 		stateClient(_stateClient),
@@ -456,6 +457,7 @@ public:
 		zhttpOut(_zhttpOut),
 		stats(_stats),
 		updateLimiter(_updateLimiter),
+		filterLimiter(_filterLimiter),
 		httpSessionUpdateManager(_httpSessionUpdateManager),
 		logLevel(-1),
 		trusted(false),
@@ -1133,7 +1135,7 @@ private:
 			QByteArray cid = rid.first + ':' + rid.second;
 			needRemoveFromStats.remove(cid);
 
-			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
+			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -1271,6 +1273,7 @@ public:
 	StatsManager *stats;
 	std::unique_ptr<RateLimiter> publishLimiter;
 	std::unique_ptr<RateLimiter> updateLimiter;
+	std::shared_ptr<RateLimiter> filterLimiter;
 	HttpSessionUpdateManager *httpSessionUpdateManager;
 	Sequencer *sequencer;
 	CommonState cs;
@@ -1316,6 +1319,7 @@ public:
 
 		publishLimiter = std::make_unique<RateLimiter>();
 		updateLimiter = std::make_unique<RateLimiter>();
+		filterLimiter = std::make_shared<RateLimiter>();
 
 		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
 
@@ -1345,6 +1349,8 @@ public:
 
 		updateLimiter->setRate(10);
 		updateLimiter->setBatchWaitEnabled(true);
+
+		filterLimiter->setRate(100);
 
 		sequencer->setWaitMax(config.messageWait);
 		sequencer->setIdCacheTtl(config.idCacheTtl);
@@ -1942,7 +1948,7 @@ private:
 			// accept request immediately before returning to the event loop.
 			// the start() call will do this
 
-			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter.get(), httpSessionUpdateManager, config.connectionSubscriptionMax, this);
+			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter.get(), filterLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
 			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
 			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
@@ -2618,6 +2624,7 @@ private:
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
 					s->zhttpOut = zhttpOut;
+					s->filterLimiter = filterLimiter;
 					s->refreshExpiration();
 					cs.wsSessions.insert(s->cid, s);
 					log_debug("added ws session: %s", qPrintable(s->cid));
