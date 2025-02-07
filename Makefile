@@ -1,11 +1,13 @@
-cargo_flags =
+# controlled leading whitespace, per the GNU make manual
+nullstring :=
+space := $(nullstring) # end of the line
+
 ifdef RELEASE
-cargo_flags += --offline --locked --release
+cargo_flags = $(space)--offline --locked --release
 endif
 
-cargo_toolchain =
 ifdef TOOLCHAIN
-cargo_toolchain += +$(TOOLCHAIN)
+cargo_toolchain = $(space)+$(TOOLCHAIN)
 endif
 
 all: postbuild
