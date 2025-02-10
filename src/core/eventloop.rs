@@ -19,9 +19,11 @@ use crate::core::reactor;
 use crate::core::waker;
 use slab::Slab;
 use std::cell::{Cell, RefCell};
+use std::future::Future;
 use std::os::fd::RawFd;
+use std::pin::Pin;
 use std::rc::{Rc, Weak};
-use std::task::Waker;
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
 pub const READABLE: u8 = 0x01;
@@ -68,6 +70,7 @@ struct Registration<C> {
 struct RegistrationsData<C> {
     nodes: Slab<list::Node<Registration<C>>>,
     activated: list::List,
+    waker: Option<Waker>,
 }
 
 #[derive(Debug)]
@@ -83,6 +86,7 @@ impl<C: Callback> Registrations<C> {
             data: RefCell::new(RegistrationsData {
                 nodes: Slab::with_capacity(capacity),
                 activated: list::List::default(),
+                waker: None,
             }),
         }
     }
@@ -143,6 +147,10 @@ impl<C: Callback> Registrations<C> {
         reg.activated = true;
 
         data.activated.push_back(&mut data.nodes, nkey);
+
+        if let Some(waker) = data.waker.take() {
+            waker.wake();
+        }
     }
 
     fn dispatch_activated(&self) {
@@ -190,6 +198,20 @@ impl<C: Callback> Registrations<C> {
             reg.callback = Some(callback);
         }
     }
+
+    fn set_waker(&self, waker: &Waker) {
+        let data = &mut *self.data.borrow_mut();
+
+        if let Some(current_waker) = &data.waker {
+            if !waker.will_wake(current_waker) {
+                // replace
+                data.waker = Some(waker.clone());
+            }
+        } else {
+            // set
+            data.waker = Some(waker.clone());
+        }
+    }
 }
 
 struct Activator<C> {
@@ -215,9 +237,19 @@ pub struct EventLoop<C> {
 }
 
 impl<C: Callback> EventLoop<C> {
+    // will create a reactor if one does not exist in the current thread. if
+    // one already exists, registrations_max should be <= the max configured
+    // in the reactor.
     pub fn new(registrations_max: usize) -> Self {
+        let reactor = if let Some(reactor) = reactor::Reactor::current() {
+            // use existing reactor if available
+            reactor
+        } else {
+            reactor::Reactor::new(registrations_max)
+        };
+
         Self {
-            reactor: reactor::Reactor::new(registrations_max),
+            reactor,
             exit_code: Cell::new(None),
             regs: Rc::new(Registrations::new(registrations_max)),
         }
@@ -233,6 +265,10 @@ impl<C: Callback> EventLoop<C> {
                 break code;
             }
         }
+    }
+
+    pub fn exec_async(&self) -> Exec<C> {
+        Exec { l: self }
     }
 
     pub fn exit(&self, code: i32) {
@@ -318,6 +354,28 @@ impl<C: Callback> EventLoop<C> {
         self.regs.dispatch_activated();
 
         self.exit_code.get()
+    }
+}
+
+pub struct Exec<'a, C> {
+    l: &'a EventLoop<C>,
+}
+
+impl<C: Callback> Future for Exec<'_, C> {
+    type Output = i32;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let l = self.l;
+
+        l.regs.dispatch_activated();
+
+        if let Some(code) = l.exit_code.get() {
+            return Poll::Ready(code);
+        }
+
+        l.regs.set_waker(cx.waker());
+
+        Poll::Pending
     }
 }
 
@@ -456,6 +514,8 @@ mod ffi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::executor::Executor;
+    use crate::core::reactor::Reactor;
     use std::os::fd::AsRawFd;
     use std::rc::Rc;
 
@@ -536,5 +596,44 @@ mod tests {
         assert!(l
             .register_timer(Duration::from_millis(0), Box::new(NoopCallback))
             .is_ok());
+    }
+
+    #[test]
+    fn exec_async() {
+        let reactor = Reactor::new(1);
+        let executor = Executor::new(1);
+
+        executor
+            .spawn(async {
+                let l = Rc::new(EventLoop::<Box<dyn Callback>>::new(1));
+
+                let listener = Rc::new(std::net::TcpListener::bind("127.0.0.1:0").unwrap());
+                listener.set_nonblocking(true).unwrap();
+
+                let addr = listener.local_addr().unwrap();
+                let fd = listener.as_raw_fd();
+
+                let cb = {
+                    let l = Rc::clone(&l);
+                    let listener = Rc::clone(&listener);
+
+                    Box::new(FnCallback(move || {
+                        let _stream = listener.accept().unwrap();
+                        l.exit(0);
+                    }))
+                };
+
+                let id = l.register_fd(fd, READABLE, cb).unwrap();
+
+                // non-blocking connect attempt to trigger listener
+                let _stream = mio::net::TcpStream::connect(addr);
+
+                assert_eq!(l.exec_async().await, 0);
+
+                l.deregister(id);
+            })
+            .unwrap();
+
+        executor.run(|timeout| reactor.poll(timeout)).unwrap();
     }
 }
