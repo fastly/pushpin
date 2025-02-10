@@ -171,6 +171,7 @@ public:
 	ZhttpManager *outZhttp;
 	std::unique_ptr<ZhttpRequest> outReq; // for fetching links
 	RateLimiter *updateLimiter;
+	std::shared_ptr<RateLimiter> filterLimiter;
 	PublishLastIds *publishLastIds;
 	HttpSessionUpdateManager *updateManager;
 	BufferList firstInstructResponse;
@@ -208,7 +209,7 @@ public:
 	Connection messageFiltersFinishedConnection;
 	DeferCall deferCall;
 
-	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
+	Private(HttpSession *_q, ZhttpRequest *_req, const HttpSession::AcceptData &_adata, const Instruct &_instruct, ZhttpManager *_outZhttp, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> _filterLimiter, PublishLastIds *_publishLastIds, HttpSessionUpdateManager *_updateManager, int _connectionSubscriptionMax) :
 		QObject(_q),
 		q(_q),
 		req(_req),
@@ -216,6 +217,7 @@ public:
 		stats(_stats),
 		outZhttp(_outZhttp),
 		updateLimiter(_updateLimiter),
+		filterLimiter(_filterLimiter),
 		publishLastIds(_publishLastIds),
 		updateManager(_updateManager),
 		haveOutReqHeaders(false),
@@ -841,6 +843,7 @@ private:
 			fc.currentUri = currentUri;
 			fc.route = adata.route;
 			fc.trusted = adata.trusted;
+			fc.limiter = filterLimiter;
 
 			// may call messageFiltersFinished immediately. if it does, queue
 			// processing will continue. else, the loop will end and queue
@@ -1685,10 +1688,10 @@ private:
 	}
 };
 
-HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent) :
+HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, req, adata, instruct, zhttpOut, stats, updateLimiter, publishLastIds, updateManager, connectionSubscriptionMax);
+	d = new Private(this, req, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, publishLastIds, updateManager, connectionSubscriptionMax);
 }
 
 HttpSession::~HttpSession()

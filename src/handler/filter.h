@@ -30,6 +30,7 @@
 #include <QMetaType>
 #include <QUrl>
 #include <boost/signals2.hpp>
+#include "ratelimiter.h"
 
 #define MESSAGEFILTERSTACK_SIZE_MAX 5
 
@@ -66,6 +67,7 @@ public:
 		QUrl currentUri;
 		QString route;
 		bool trusted;
+		std::shared_ptr<RateLimiter> limiter;
 
 		Context() :
 			zhttpOut(0),
