@@ -30,6 +30,7 @@
 #include <QMetaType>
 #include <QUrl>
 #include <boost/signals2.hpp>
+#include "ratelimiter.h"
 
 class ZhttpManager;
 
@@ -61,6 +62,7 @@ public:
 		QUrl currentUri;
 		QString route;
 		bool trusted;
+		std::shared_ptr<RateLimiter> limiter;
 
 		Context() :
 			zhttpOut(0),

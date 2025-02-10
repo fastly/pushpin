@@ -29,6 +29,7 @@
 #include <QSet>
 #include "packet/httprequestdata.h"
 #include "packet/wscontrolpacket.h"
+#include "ratelimiter.h"
 #include "filter.h"
 #include <boost/signals2.hpp>
 
@@ -71,6 +72,7 @@ public:
 	QTimer *requestTimer;
 	QList<PublishItem> publishQueue;
 	ZhttpManager *zhttpOut;
+	std::shared_ptr<RateLimiter> filterLimiter;
 	std::unique_ptr<Filter::MessageFilter> filters;
 	Connection filtersFinishedConnection;
 	bool inProcessPublishQueue;

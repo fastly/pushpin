@@ -155,6 +155,7 @@ void WsSession::processPublishQueue()
 		fc.currentUri = requestData.uri;
 		fc.route = route;
 		fc.trusted = targetTrusted;
+		fc.limiter = filterLimiter;
 
 		// may call filtersFinished immediately. if it does, queue processing
 		// will continue. else, the loop will end and queue processing will

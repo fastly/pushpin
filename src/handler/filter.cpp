@@ -308,6 +308,8 @@ public:
 	}
 };
 
+class HttpFilterInner;
+
 class HttpFilter : public Filter::MessageFilter
 {
 public:
@@ -317,116 +319,69 @@ public:
 		Modify
 	};
 
-	Mode mode;
+	std::shared_ptr<HttpFilterInner> inner;
+	boost::signals2::scoped_connection finishedConnection;
+
+	class RequestAction : public RateLimiter::Action
+	{
+	public:
+		std::weak_ptr<HttpFilterInner> inner;
+
+		RequestAction(const std::shared_ptr<HttpFilterInner> &_inner) :
+			inner(_inner)
+		{
+		}
+
+		virtual bool execute();
+	};
+
+	HttpFilter(Mode mode);
+
+	virtual void start(const Filter::Context &context, const QByteArray &content);
+
+	void inner_finished(const Result &r);
+};
+
+class HttpFilterInner
+{
+public:
+	HttpFilter::Mode mode;
 	std::unique_ptr<ZhttpRequest> req;
-	boost::signals2::scoped_connection readyReadConnection;
-	boost::signals2::scoped_connection errorConnection;
+	QUrl uri;
+	HttpHeaders headers;
 	QByteArray origContent;
 	bool haveResponseHeader;
 	QByteArray responseBody;
 
-	HttpFilter(Mode _mode) :
+	boost::signals2::signal<void(const Filter::MessageFilter::Result&)> finished;
+
+	HttpFilterInner(HttpFilter::Mode _mode) :
 		mode(_mode),
 		haveResponseHeader(false)
 	{
 	}
 
-	virtual void start(const Filter::Context &context, const QByteArray &content)
+	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const QVariant &passthroughData, const QByteArray &content)
 	{
-		QUrl url = QUrl(context.subscriptionMeta.value("url"), QUrl::StrictMode);
-		if(!url.isValid())
-		{
-			Result r;
-			r.errorMessage = "invalid or missing url value";
-			finished(r);
-			return;
-		}
-
-		QUrl currentUri = context.currentUri;
-		if(currentUri.scheme() == "wss")
-			currentUri.setScheme("https");
-		else if(currentUri.scheme() == "ws")
-			currentUri.setScheme("http");
-
-		QUrl destUri = currentUri.resolved(url);
-
+		uri = _uri;
+		headers = _headers;
 		origContent = content;
 
-		req.reset(context.zhttpOut->createRequest());
-		readyReadConnection = req->readyRead.connect(boost::bind(&HttpFilter::req_readyRead, this));
-		errorConnection = req->error.connect(boost::bind(&HttpFilter::req_error, this));
+		req.reset(zhttpOut->createRequest());
 
-		int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
-		int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
-
-		QVariantHash passthroughData;
-
-		passthroughData["route"] = context.route.toUtf8();
-
-		// if dest link points to the same service as the current request,
-		//   then we can assume the network would send the request back to
-		//   us, so we can handle it internally. if the link points to a
-		//   different service, then we can't make this assumption and need
-		//   to make the request over the network. note that such a request
-		//   could still end up looping back to us
-		if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
-		{
-			// tell the proxy that we prefer the request to be handled
-			//   internally, using the same route
-			passthroughData["prefer-internal"] = true;
-		}
-
-		// needed in case internal routing is not used
-		if(context.trusted)
-			passthroughData["trusted"] = true;
+		// safe to not track, since req can't outlive this
+		req->readyRead.connect(boost::bind(&HttpFilterInner::req_readyRead, this));
+		req->error.connect(boost::bind(&HttpFilterInner::req_error, this));
 
 		req->setPassthroughData(passthroughData);
+	}
 
-		HttpHeaders headers;
+	void startRequest()
+	{
+		req->start("POST", uri, headers);
 
-		{
-			QVariantMap vmap;
-			QHashIterator<QString, QString> it(context.subscriptionMeta);
-			while(it.hasNext())
-			{
-				it.next();
-				vmap[it.key()] = it.value();
-			}
-
-			QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
-			headers += HttpHeader("Sub-Meta", doc.toJson(QJsonDocument::Compact));
-		}
-
-		{
-			QVariantMap vmap;
-			QHashIterator<QString, QString> it(context.publishMeta);
-			while(it.hasNext())
-			{
-				it.next();
-				vmap[it.key()] = it.value();
-			}
-
-			QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
-			headers += HttpHeader("Pub-Meta", doc.toJson(QJsonDocument::Compact));
-		}
-
-		{
-			QHashIterator<QString, QString> it(context.prevIds);
-			while(it.hasNext())
-			{
-				it.next();
-				const QString &name = it.key();
-				const QString &prevId = it.value();
-
-				if(!prevId.isNull())
-					headers += HttpHeader("Grip-Last", name.toUtf8() + "; last-id=" + prevId.toUtf8());
-			}
-		}
-
-		req->start("POST", destUri, headers);
-
-		if(mode == Modify)
-			req->writeBody(content);
+		if(mode == HttpFilter::Modify)
+			req->writeBody(origContent);
 
 		req->endBody();
 	}
@@ -444,7 +399,7 @@ public:
 				case 204:
 					break;
 				default:
-					Result r;
+					Filter::MessageFilter::Result r;
 					r.errorMessage = QString("unexpected network request status: code=%1").arg(code);
 					finished(r);
 					return;
@@ -453,13 +408,13 @@ public:
 
 		QByteArray body = req->readBody();
 
-		if(mode == Modify)
+		if(mode == HttpFilter::Modify)
 			responseBody += body;
 
 		if(!req->isFinished())
 			return;
 
-		Result r;
+		Filter::MessageFilter::Result r;
 
 		if(req->responseHeaders().get("Action") == "drop")
 		{
@@ -473,11 +428,11 @@ public:
 
 			switch(mode)
 			{
-				case Check:
+				case HttpFilter::Check:
 					// as-is
 					r.content = origContent;
 					break;
-				case Modify:
+				case HttpFilter::Modify:
 					switch(req->responseCode())
 					{
 						case 204:
@@ -498,11 +453,135 @@ public:
 
 	void req_error()
 	{
-		Result r;
+		Filter::MessageFilter::Result r;
 		r.errorMessage = "network request failed";
 		finished(r);
 	}
 };
+
+bool HttpFilter::RequestAction::execute()
+{
+	auto target = inner.lock();
+	if(!target)
+		return false;
+
+	target->startRequest();
+	return true;
+}
+
+HttpFilter::HttpFilter(Mode mode)
+{
+	inner = std::make_shared<HttpFilterInner>(mode);
+
+	finishedConnection = inner->finished.connect(boost::bind(&HttpFilter::inner_finished, this, boost::placeholders::_1));
+}
+
+void HttpFilter::start(const Filter::Context &context, const QByteArray &content)
+{
+	QUrl url = QUrl(context.subscriptionMeta.value("url"), QUrl::StrictMode);
+	if(!url.isValid())
+	{
+		Result r;
+		r.errorMessage = "invalid or missing url value";
+		finished(r);
+		return;
+	}
+
+	QUrl currentUri = context.currentUri;
+	if(currentUri.scheme() == "wss")
+		currentUri.setScheme("https");
+	else if(currentUri.scheme() == "ws")
+		currentUri.setScheme("http");
+
+	QUrl destUri = currentUri.resolved(url);
+
+	int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
+	int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
+
+	QVariantHash passthroughData;
+
+	passthroughData["route"] = context.route.toUtf8();
+
+	// if dest link points to the same service as the current request,
+	//   then we can assume the network would send the request back to
+	//   us, so we can handle it internally. if the link points to a
+	//   different service, then we can't make this assumption and need
+	//   to make the request over the network. note that such a request
+	//   could still end up looping back to us
+	if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
+	{
+		// tell the proxy that we prefer the request to be handled
+		//   internally, using the same route
+		passthroughData["prefer-internal"] = true;
+	}
+
+	// needed in case internal routing is not used
+	if(context.trusted)
+		passthroughData["trusted"] = true;
+
+	HttpHeaders headers;
+
+	{
+		QVariantMap vmap;
+		QHashIterator<QString, QString> it(context.subscriptionMeta);
+		while(it.hasNext())
+		{
+			it.next();
+			vmap[it.key()] = it.value();
+		}
+
+		QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
+		headers += HttpHeader("Sub-Meta", doc.toJson(QJsonDocument::Compact));
+	}
+
+	{
+		QVariantMap vmap;
+		QHashIterator<QString, QString> it(context.publishMeta);
+		while(it.hasNext())
+		{
+			it.next();
+			vmap[it.key()] = it.value();
+		}
+
+		QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
+		headers += HttpHeader("Pub-Meta", doc.toJson(QJsonDocument::Compact));
+	}
+
+	{
+		QHashIterator<QString, QString> it(context.prevIds);
+		while(it.hasNext())
+		{
+			it.next();
+			const QString &name = it.key();
+			const QString &prevId = it.value();
+
+			if(!prevId.isNull())
+				headers += HttpHeader("Grip-Last", name.toUtf8() + "; last-id=" + prevId.toUtf8());
+		}
+	}
+
+	inner->setup(context.zhttpOut, destUri, headers, passthroughData, content);
+
+	QString key = QString::fromUtf8(destUri.toEncoded());
+
+	assert(context.limiter);
+
+	if(!context.limiter->addAction(key, new RequestAction(inner)))
+	{
+		// the limiter shouldn't have an hwm, but let's handle the error
+		// here in case one is ever added
+
+		Result r;
+		r.errorMessage = "network request limit reached";
+		finished(r);
+		return;
+	}
+}
+
+void HttpFilter::inner_finished(const Result &r)
+{
+	finished(r);
+}
 
 }
 
