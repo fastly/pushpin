@@ -33,6 +33,10 @@
 #include "filter.h"
 #include <boost/signals2.hpp>
 
+// each session can have a bunch of timers:
+// filter timers
+#define TIMERS_PER_WSSESSION (0 + TIMERS_PER_MESSAGEFILTERSTACK)
+
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
@@ -86,6 +90,7 @@ public:
 	void sendDelayed(const QByteArray &type, const QByteArray &message, int timeout);
 	void ack(int reqId);
 	void publish(const PublishItem &item);
+	void sendCloseError(const QString &message);
 
 	boost::signals2::signal<void(const WsControlPacket::Item&)> send;
 	Signal expired;
@@ -95,7 +100,6 @@ private:
 	void processPublishQueue();
 	void filtersFinished(const Filter::MessageFilter::Result &result);
 	void afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content);
-	void sendCloseError(const QString &message);
 	void setupRequestTimer();
 
 private slots:

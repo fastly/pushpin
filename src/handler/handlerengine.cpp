@@ -89,12 +89,6 @@
 #define INSPECT_WORKERS_MAX 10
 #define ACCEPT_WORKERS_MAX 10
 
-// each session can have a bunch of timers:
-// 2 per incoming zhttprequest
-// 2 per outgoing zhttprequest
-// 2 per httpsession
-#define TIMERS_PER_SESSION 10
-
 using namespace VariantUtil;
 
 static QList<PublishItem> parseItems(const QVariantList &vitems, bool *ok = 0, QString *errorMessage = 0)
@@ -1341,8 +1335,10 @@ public:
 	{
 		config = _config;
 
+		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION);
+
 		// enough timers for sessions, plus an extra 100 for misc
-		RTimer::init((config.connectionsMax * TIMERS_PER_SESSION) + 100);
+		RTimer::init((config.connectionsMax * timersPerSession) + 100);
 
 		publishLimiter->setRate(config.messageRate);
 		publishLimiter->setHwm(config.messageHwm);
@@ -2673,7 +2669,7 @@ private:
 				if(e.error != QJsonParseError::NoError || (!doc.isObject() && !doc.isArray()))
 				{
 					log_debug("grip control message is not valid json");
-					return;
+					continue;
 				}
 
 				if(doc.isObject())
@@ -2686,13 +2682,19 @@ private:
 				if(!ok)
 				{
 					log_debug("failed to parse grip control message: %s", qPrintable(errorMessage));
-					return;
+					continue;
 				}
 
 				if(cm.type == WsControlMessage::Subscribe)
 				{
 					if(s->channels.count() < config.connectionSubscriptionMax)
 					{
+						if(cm.filters.count() > MESSAGEFILTERSTACK_SIZE_MAX)
+						{
+							s->sendCloseError(QString("too many filters for channel '%1'").arg(cm.channel));
+							continue;
+						}
+
 						QString channel = s->channelPrefix + cm.channel;
 						s->channels += channel;
 						s->channelFilters[channel] = cm.filters;

@@ -245,7 +245,9 @@ void WsSession::sendCloseError(const QString &message)
 	i.cid = cid.toUtf8();
 	i.type = WsControlPacket::Item::Close;
 	i.code = 1011;
-	i.reason = message.toUtf8();
+
+	if(debug)
+		i.reason = message.toUtf8();
 
 	send(i);
 }

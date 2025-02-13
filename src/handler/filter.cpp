@@ -692,6 +692,8 @@ Filter::Targets Filter::targets(const QString &name)
 
 Filter::MessageFilterStack::MessageFilterStack(const QStringList &filterNames)
 {
+	assert(filterNames.count() <= MESSAGEFILTERSTACK_SIZE_MAX);
+
 	foreach(const QString &name, filterNames)
 	{
 		MessageFilter *f = createMessageFilter(name);
