@@ -22,6 +22,7 @@
  */
 
 #include <QCoreApplication>
+#include "rust/log.h"
 #include "rtimer.h"
 #include "defercall.h"
 #include "handlerapp.h"
