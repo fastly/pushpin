@@ -73,6 +73,7 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	int timeout;
 	bool sendBodyAfterAck;
 	QVariant passthrough;
 	QString requestMethod;
@@ -101,10 +102,12 @@ public:
 	ErrorCondition errorCondition;
 	RTimer *expireTimer;
 	RTimer *keepAliveTimer;
+	RTimer *finishTimer;
 	bool multi;
 	bool quiet;
 	Connection expTimerConnection;
 	Connection keepAliveTimerConnection;
+	Connection finishTimerConnection;
 	DeferCall deferCall;
 
 	Private(ZhttpRequest *_q) :
@@ -118,6 +121,7 @@ public:
 		ignorePolicies(false),
 		trustConnectHost(false),
 		ignoreTlsErrors(false),
+		timeout(0),
 		sendBodyAfterAck(false),
 		inSeq(0),
 		outSeq(0),
@@ -135,6 +139,7 @@ public:
 		errored(false),
 		expireTimer(0),
 		keepAliveTimer(0),
+		finishTimer(0),
 		multi(false),
 		quiet(false)
 	{
@@ -174,6 +179,14 @@ public:
 			keepAliveTimer->setParent(0);
 			DeferCall::deleteLater(keepAliveTimer);
 			keepAliveTimer = 0;
+		}
+
+		if(finishTimer)
+		{
+			finishTimerConnection.disconnect();
+			finishTimer->setParent(0);
+			DeferCall::deleteLater(finishTimer);
+			finishTimer = 0;
 		}
 
 		if(manager)
@@ -280,6 +293,14 @@ public:
 	void startClient()
 	{
 		state = ClientStarting;
+
+		if(timeout > 0)
+		{
+			finishTimer = new RTimer;
+			finishTimerConnection = finishTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
+			finishTimer->setSingleShot(true);
+			finishTimer->start(timeout);
+		}
 
 		refreshTimeout();
 		update();
@@ -1229,6 +1250,11 @@ void ZhttpRequest::setTrustConnectHost(bool on)
 void ZhttpRequest::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
+}
+
+void ZhttpRequest::setTimeout(int msecs)
+{
+	d->timeout = msecs;
 }
 
 void ZhttpRequest::setIsTls(bool on)

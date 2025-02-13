@@ -183,6 +183,11 @@ void TestHttpRequest::setIgnoreTlsErrors(bool on)
 	Q_UNUSED(on);
 }
 
+void TestHttpRequest::setTimeout(int msecs)
+{
+	Q_UNUSED(msecs);
+}
+
 void TestHttpRequest::start(const QString &method, const QUrl &uri, const HttpHeaders &headers)
 {
 	assert(d->state == Private::Idle);

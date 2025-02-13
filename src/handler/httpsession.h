@@ -35,11 +35,12 @@
 #include <boost/signals2.hpp>
 
 // each session can have a bunch of timers:
-// 2 per incoming zhttprequest
-// 2 per outgoing zhttprequest
+// incoming request
+// outgoing request
 // 2 additional timers
 // filter timers
-#define TIMERS_PER_HTTPSESSION (10 + TIMERS_PER_MESSAGEFILTERSTACK)
+// a few more just in case
+#define TIMERS_PER_HTTPSESSION ((TIMERS_PER_ZHTTPREQUEST * 2) + 2 + TIMERS_PER_MESSAGEFILTERSTACK + 4)
 
 using Connection = boost::signals2::scoped_connection;
 
