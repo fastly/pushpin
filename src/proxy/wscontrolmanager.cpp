@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2020 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -68,9 +68,9 @@ public:
 	int ipcFileMode;
 	QStringList initSpecs;
 	QStringList streamSpecs;
-	QZmq::Socket *initSock;
-	QZmq::Socket *streamSock;
-	QZmq::Valve *streamValve;
+	std::unique_ptr<QZmq::Socket> initSock;
+	std::unique_ptr<QZmq::Socket> streamSock;
+	std::unique_ptr<QZmq::Valve> streamValve;
 	QHash<QByteArray, WsControlSession*> sessionsByCid;
 	std::unique_ptr<RTimer> refreshTimer;
 	QHash<WsControlSession*, KeepAliveRegistration*> keepAliveRegistrations;
@@ -84,9 +84,6 @@ public:
 		QObject(_q),
 		q(_q),
 		ipcFileMode(-1),
-		initSock(0),
-		streamSock(0),
-		streamValve(0),
 		currentSessionRefreshBucket(0)
 	{
 		refreshTimer = std::make_unique<RTimer>();
@@ -101,9 +98,9 @@ public:
 
 	bool setupInit()
 	{
-		delete initSock;
+		initSock.reset();
 
-		initSock = new QZmq::Socket(QZmq::Socket::Push, this);
+		initSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Push);
 
 		initSock->setHwm(DEFAULT_HWM);
 		initSock->setShutdownWaitTime(0);
@@ -111,7 +108,7 @@ public:
 		foreach(const QString &spec, initSpecs)
 		{
 			QString errorMessage;
-			if(!ZUtil::setupSocket(initSock, spec, true, ipcFileMode, &errorMessage))
+			if(!ZUtil::setupSocket(initSock.get(), spec, true, ipcFileMode, &errorMessage))
 			{
 				log_error("%s", qPrintable(errorMessage));
 				return false;
@@ -123,9 +120,10 @@ public:
 
 	bool setupStream()
 	{
-		delete streamSock;
+		streamValve.reset();
+		streamSock.reset();
 
-		streamSock = new QZmq::Socket(QZmq::Socket::Router, this);
+		streamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 
 		streamSock->setIdentity(identity);
 		streamSock->setHwm(DEFAULT_HWM);
@@ -134,14 +132,14 @@ public:
 		foreach(const QString &spec, streamSpecs)
 		{
 			QString errorMessage;
-			if(!ZUtil::setupSocket(streamSock, spec, true, ipcFileMode, &errorMessage))
+			if(!ZUtil::setupSocket(streamSock.get(), spec, true, ipcFileMode, &errorMessage))
 			{
 				log_error("%s", qPrintable(errorMessage));
 				return false;
 			}
 		}
 
-		streamValve = new QZmq::Valve(streamSock, this);
+		streamValve = std::make_unique<QZmq::Valve>(streamSock.get());
 		streamValveConnection = streamValve->readyRead.connect(boost::bind(&Private::stream_readyRead, this, boost::placeholders::_1));
 
 		streamValve->open();

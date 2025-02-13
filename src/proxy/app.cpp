@@ -34,6 +34,7 @@
 #include "rust/backtrace.h"
 #include "processquit.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "log.h"
 #include "settings.h"
 #include "xffrule.h"
@@ -302,6 +303,7 @@ public:
 
 		// deinit here, after all event loop activity has completed
 		RTimer::deinit();
+		DeferCall::cleanup();
 	}
 
 private:

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,9 +22,8 @@
  */
 
 #include <QCoreApplication>
-#include <QTimer>
-#include "rust/log.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "handlerapp.h"
 
 class HandlerAppMain
@@ -56,7 +55,8 @@ int handler_main(int argc, char **argv)
 	QCoreApplication qapp(argc, argv);
 
 	HandlerAppMain appMain;
-	QTimer::singleShot(0, [&appMain]() {appMain.start();});
+	DeferCall deferCall;
+	deferCall.defer([&] { appMain.start(); });
 	int ret = qapp.exec();
 
 	// ensure deferred deletes are processed
@@ -64,6 +64,7 @@ int handler_main(int argc, char **argv)
 
 	// deinit here, after all event loop activity has completed
 	RTimer::deinit();
+	DeferCall::cleanup();
 
 	return ret;
 }

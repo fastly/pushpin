@@ -18,7 +18,6 @@ DEFINES += NO_IRISNET
 
 INCLUDEPATH += $$SRC_DIR/../target/include
 INCLUDEPATH += $$SRC_DIR/core
-INCLUDEPATH += $$SRC_DIR/core/qzmq/src
 
 include(core/tests.pri)
 include(proxy/tests.pri)

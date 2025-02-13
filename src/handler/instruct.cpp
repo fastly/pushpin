@@ -29,6 +29,7 @@
 #include "qtcompat.h"
 #include "variantutil.h"
 #include "statusreasons.h"
+#include "filter.h"
 
 #define DEFAULT_RESPONSE_TIMEOUT 55
 #define MINIMUM_RESPONSE_TIMEOUT 5
@@ -145,6 +146,12 @@ Instruct Instruct::fromResponse(const HttpResponseData &response, bool *ok, QStr
 			const HttpHeaderParameter &param = gripChannel[n];
 			if(param.first == "filter")
 				c.filters += QString::fromUtf8(param.second);
+		}
+
+		if(c.filters.count() > MESSAGEFILTERSTACK_SIZE_MAX)
+		{
+			setError(ok, errorMessage, QString("too many filters for channel '%1'").arg(c.name));
+			return Instruct();
 		}
 
 		channels += c;

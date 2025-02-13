@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -27,6 +27,7 @@
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "defercall.h"
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "statusreasons.h"
@@ -55,6 +56,7 @@ public:
 	int peerCloseCode;
 	QString peerCloseReason;
 	ErrorCondition errorCondition;
+	DeferCall deferCall;
 
 	Private(TestWebSocket *_q) :
 		QObject(_q),
@@ -66,7 +68,6 @@ public:
 	{
 	}
 
-public slots:
 	void handleConnect()
 	{
 		QString path = request.uri.path();
@@ -118,7 +119,7 @@ public slots:
 			q->connected();
 
 			if(gripEnabled && !channels.isEmpty())
-				QMetaObject::invokeMethod(this, "doReadyRead", Qt::QueuedConnection);
+				deferCall.defer([=] { doReadyRead(); });
 		}
 		else
 		{
@@ -203,7 +204,7 @@ void TestWebSocket::start(const QUrl &uri, const HttpHeaders &headers)
 
 	d->state = Private::Connecting;
 
-	QMetaObject::invokeMethod(d, "handleConnect", Qt::QueuedConnection);
+	d->deferCall.defer([=] { d->handleConnect(); });
 }
 
 void TestWebSocket::respondSuccess(const QByteArray &reason, const HttpHeaders &headers)
@@ -311,13 +312,14 @@ void TestWebSocket::writeFrame(const Frame &frame)
 
 	d->inFrames += tmp;
 
-	QMetaObject::invokeMethod(d, "doFramesWritten", Qt::QueuedConnection, Q_ARG(int, 1), Q_ARG(int, tmp.data.size()));
-	QMetaObject::invokeMethod(d, "doReadyRead", Qt::QueuedConnection);
+	int contentBytesWritten = tmp.data.size();
+	d->deferCall.defer([=] { d->doFramesWritten(1, contentBytesWritten); });
+	d->deferCall.defer([=] { d->doReadyRead(); });
 }
 
 WebSocket::Frame TestWebSocket::readFrame()
 {
-	QMetaObject::invokeMethod(d, "doWriteBytesChanged", Qt::QueuedConnection);
+	d->deferCall.defer([=] { d->doWriteBytesChanged(); });
 
 	return d->inFrames.takeFirst();
 }
@@ -328,7 +330,7 @@ void TestWebSocket::close(int code, const QString &reason)
 	d->peerCloseCode = code;
 	d->peerCloseReason = reason;
 
-	QMetaObject::invokeMethod(d, "handleClose", Qt::QueuedConnection);
+	d->deferCall.defer([=] { d->handleClose(); });
 }
 
 #include "testwebsocket.moc"

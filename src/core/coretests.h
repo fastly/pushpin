@@ -3,5 +3,6 @@
 
 int httpheaders_test(int argc, char **argv);
 int jwt_test(int argc, char **argv);
+int eventloop_test(int argc, char **argv);
 
 #endif

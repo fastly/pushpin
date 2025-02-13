@@ -39,6 +39,7 @@
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "encrypt.h"
 #include "log.h"
 #include "logutil.h"
@@ -90,12 +91,6 @@
 
 #define INSPECT_WORKERS_MAX 10
 #define ACCEPT_WORKERS_MAX 10
-
-// each session can have a bunch of timers:
-// 2 per incoming zhttprequest
-// 2 per outgoing zhttprequest
-// 2 per httpsession
-#define TIMERS_PER_SESSION 10
 
 using namespace VariantUtil;
 
@@ -472,6 +467,7 @@ public:
 	ZhttpManager *zhttpOut;
 	StatsManager *stats;
 	RateLimiter *updateLimiter;
+	std::shared_ptr<RateLimiter> filterLimiter;
 	HttpSessionUpdateManager *httpSessionUpdateManager;
 	QString route;
 	QString statsRoute;
@@ -493,7 +489,7 @@ public:
 	QSet<QByteArray> needRemoveFromStats;
 	map<Deferred*, Connection> finishedConnection;
 
-	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
+	AcceptWorker(ZrpcRequest *_req, ZrpcManager *_stateClient, CommonState *_cs, ZhttpManager *_zhttpIn, ZhttpManager *_zhttpOut, StatsManager *_stats, RateLimiter *_updateLimiter, const std::shared_ptr<RateLimiter> &_filterLimiter, HttpSessionUpdateManager *_httpSessionUpdateManager, int _connectionSubscriptionMax, QObject *parent = 0) :
 		Deferred(parent),
 		req(_req),
 		stateClient(_stateClient),
@@ -502,6 +498,7 @@ public:
 		zhttpOut(_zhttpOut),
 		stats(_stats),
 		updateLimiter(_updateLimiter),
+		filterLimiter(_filterLimiter),
 		httpSessionUpdateManager(_httpSessionUpdateManager),
 		logLevel(-1),
 		trusted(false),
@@ -1179,7 +1176,7 @@ private:
 			QByteArray cid = rid.first + ':' + rid.second;
 			needRemoveFromStats.remove(cid);
 
-			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
+			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -1225,7 +1222,7 @@ public:
 			timer_->stop();
 			timer_->disconnect(this);
 			timer_->setParent(0);
-			timer_->deleteLater();
+			DeferCall::deleteLater(timer_);
 		}
 	}
 
@@ -1301,22 +1298,23 @@ public:
 	ZrpcManager *stateClient;
 	ZrpcManager *controlServer;
 	ZrpcManager *proxyControlClient;
-	QZmq::Socket *inPullSock;
-	QZmq::Valve *inPullValve;
-	QZmq::Socket *inSubSock;
-	QZmq::Valve *inSubValve;
-	QZmq::Socket *retrySock;
-	QZmq::Socket *wsControlInitSock;
-	QZmq::Valve *wsControlInitValve;
-	QZmq::Socket *wsControlStreamSock;
-	QZmq::Valve *wsControlStreamValve;
-	QZmq::Socket *statsSock;
-	QZmq::Socket *proxyStatsSock;
-	QZmq::Valve *proxyStatsValve;
+	std::unique_ptr<QZmq::Socket> inPullSock;
+	std::unique_ptr<QZmq::Valve> inPullValve;
+	std::unique_ptr<QZmq::Socket> inSubSock;
+	std::unique_ptr<QZmq::Valve> inSubValve;
+	std::unique_ptr<QZmq::Socket> retrySock;
+	std::unique_ptr<QZmq::Socket> wsControlInitSock;
+	std::unique_ptr<QZmq::Valve> wsControlInitValve;
+	std::unique_ptr<QZmq::Socket> wsControlStreamSock;
+	std::unique_ptr<QZmq::Valve> wsControlStreamValve;
+	std::unique_ptr<QZmq::Socket> statsSock;
+	std::unique_ptr<QZmq::Socket> proxyStatsSock;
+	std::unique_ptr<QZmq::Valve> proxyStatsValve;
 	SimpleHttpServer *controlHttpServer;
 	StatsManager *stats;
 	std::unique_ptr<RateLimiter> publishLimiter;
 	std::unique_ptr<RateLimiter> updateLimiter;
+	std::shared_ptr<RateLimiter> filterLimiter;
 	HttpSessionUpdateManager *httpSessionUpdateManager;
 	Sequencer *sequencer;
 	CommonState cs;
@@ -1354,18 +1352,6 @@ public:
 		stateClient(0),
 		controlServer(0),
 		proxyControlClient(0),
-		inPullSock(0),
-		inPullValve(0),
-		inSubSock(0),
-		inSubValve(0),
-		retrySock(0),
-		wsControlInitSock(0),
-		wsControlInitValve(0),
-		wsControlStreamSock(0),
-		wsControlStreamValve(0),
-		statsSock(0),
-		proxyStatsSock(0),
-		proxyStatsValve(0),
 		controlHttpServer(0),
 		stats(0),
 		report(0)
@@ -1374,6 +1360,7 @@ public:
 
 		publishLimiter = std::make_unique<RateLimiter>();
 		updateLimiter = std::make_unique<RateLimiter>();
+		filterLimiter = std::make_shared<RateLimiter>();
 
 		httpSessionUpdateManager = new HttpSessionUpdateManager(this);
 
@@ -1395,14 +1382,18 @@ public:
 	{
 		config = _config;
 
+		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION);
+
 		// enough timers for sessions, plus an extra 100 for misc
-		RTimer::init((config.connectionsMax * TIMERS_PER_SESSION) + 100);
+		RTimer::init((config.connectionsMax * timersPerSession) + 100);
 
 		publishLimiter->setRate(config.messageRate);
 		publishLimiter->setHwm(config.messageHwm);
 
 		updateLimiter->setRate(10);
 		updateLimiter->setBatchWaitEnabled(true);
+
+		filterLimiter->setRate(100);
 
 		sequencer->setWaitMax(config.messageWait);
 		sequencer->setIdCacheTtl(config.idCacheTtl);
@@ -1487,17 +1478,17 @@ public:
 
 		if(!config.pushInSpec.isEmpty())
 		{
-			inPullSock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			inPullSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
 			inPullSock->setHwm(DEFAULT_HWM);
 
 			QString errorMessage;
-			if(!ZUtil::setupSocket(inPullSock, config.pushInSpec, true, config.ipcFileMode, &errorMessage))
+			if(!ZUtil::setupSocket(inPullSock.get(), config.pushInSpec, true, config.ipcFileMode, &errorMessage))
 			{
 				log_error("%s", qPrintable(errorMessage));
 				return false;
 			}
 
-			inPullValve = new QZmq::Valve(inPullSock, this);
+			inPullValve = std::make_unique<QZmq::Valve>(inPullSock.get());
 			pullConnection = inPullValve->readyRead.connect(boost::bind(&Private::inPull_readyRead, this, boost::placeholders::_1));
 
 			log_debug("in pull: %s", qPrintable(config.pushInSpec));
@@ -1505,12 +1496,12 @@ public:
 
 		if(!config.pushInSubSpecs.isEmpty())
 		{
-			inSubSock = new QZmq::Socket(QZmq::Socket::Sub, this);
+			inSubSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
 			inSubSock->setSendHwm(SUB_SNDHWM);
 			inSubSock->setShutdownWaitTime(0);
 
 			QString errorMessage;
-			if(!ZUtil::setupSocket(inSubSock, config.pushInSubSpecs, !config.pushInSubConnect, config.ipcFileMode, &errorMessage))
+			if(!ZUtil::setupSocket(inSubSock.get(), config.pushInSubSpecs, !config.pushInSubConnect, config.ipcFileMode, &errorMessage))
 			{
 				log_error("%s", qPrintable(errorMessage));
 				return false;
@@ -1524,7 +1515,7 @@ public:
 				inSubSock->setTcpKeepAliveParameters(30, 6, 5);
 			}
 
-			inSubValve = new QZmq::Valve(inSubSock, this);
+			inSubValve = std::make_unique<QZmq::Valve>(inSubSock.get());
 			inSubValveConnection = inSubValve->readyRead.connect(boost::bind(&Private::inSub_readyRead, this, boost::placeholders::_1));
 
 			log_debug("in sub: %s", qPrintable(config.pushInSubSpecs.join(", ")));
@@ -1532,7 +1523,7 @@ public:
 
 		if(!config.retryOutSpecs.isEmpty())
 		{
-			retrySock = new QZmq::Socket(QZmq::Socket::Router, this);
+			retrySock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 			retrySock->setImmediateEnabled(true);
 			retrySock->setHwm(DEFAULT_HWM);
 			retrySock->setShutdownWaitTime(RETRY_WAIT_TIME);
@@ -1541,7 +1532,7 @@ public:
 			foreach(const QString &spec, config.retryOutSpecs)
 			{
 				QString errorMessage;
-				if(!ZUtil::setupSocket(retrySock, spec, false, config.ipcFileMode, &errorMessage))
+				if(!ZUtil::setupSocket(retrySock.get(), spec, false, config.ipcFileMode, &errorMessage))
 				{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
@@ -1553,25 +1544,25 @@ public:
 
 		if(!config.wsControlInitSpecs.isEmpty() && !config.wsControlStreamSpecs.isEmpty())
 		{
-			wsControlInitSock = new QZmq::Socket(QZmq::Socket::Pull, this);
+			wsControlInitSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pull);
 			wsControlInitSock->setHwm(DEFAULT_HWM);
 
 			foreach(const QString &spec, config.wsControlInitSpecs)
 			{
 				QString errorMessage;
-				if(!ZUtil::setupSocket(wsControlInitSock, spec, false, config.ipcFileMode, &errorMessage))
+				if(!ZUtil::setupSocket(wsControlInitSock.get(), spec, false, config.ipcFileMode, &errorMessage))
 				{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
 				}
 			}
 
-			wsControlInitValve = new QZmq::Valve(wsControlInitSock, this);
+			wsControlInitValve = std::make_unique<QZmq::Valve>(wsControlInitSock.get());
 			controlInitValveConnection = wsControlInitValve->readyRead.connect(boost::bind(&Private::wsControlInit_readyRead, this, boost::placeholders::_1));
 
 			log_debug("ws control init: %s", qPrintable(config.wsControlInitSpecs.join(", ")));
 
-			wsControlStreamSock = new QZmq::Socket(QZmq::Socket::Router, this);
+			wsControlStreamSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 			wsControlStreamSock->setIdentity(config.instanceId);
 			wsControlStreamSock->setImmediateEnabled(true);
 			wsControlStreamSock->setHwm(DEFAULT_HWM);
@@ -1580,14 +1571,14 @@ public:
 			foreach(const QString &spec, config.wsControlStreamSpecs)
 			{
 				QString errorMessage;
-				if(!ZUtil::setupSocket(wsControlStreamSock, spec, false, config.ipcFileMode, &errorMessage))
+				if(!ZUtil::setupSocket(wsControlStreamSock.get(), spec, false, config.ipcFileMode, &errorMessage))
 				{
 					log_error("%s", qPrintable(errorMessage));
 					return false;
 				}
 			}
 
-			wsControlStreamValve = new QZmq::Valve(wsControlStreamSock, this);
+			wsControlStreamValve = std::make_unique<QZmq::Valve>(wsControlStreamSock.get());
 			controlStreamValveConnection = wsControlStreamValve->readyRead.connect(boost::bind(&Private::wsControlStream_readyRead, this, boost::placeholders::_1));
 
 			log_debug("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
@@ -1640,7 +1631,7 @@ public:
 
 		if(!config.proxyStatsSpecs.isEmpty())
 		{
-			proxyStatsSock = new QZmq::Socket(QZmq::Socket::Sub, this);
+			proxyStatsSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Sub);
 			proxyStatsSock->setHwm(DEFAULT_HWM);
 			proxyStatsSock->setShutdownWaitTime(0);
 			proxyStatsSock->subscribe("");
@@ -1648,14 +1639,14 @@ public:
 			foreach(const QString &spec, config.proxyStatsSpecs)
 			{
 				QString errorMessage;
-				if(!ZUtil::setupSocket(proxyStatsSock, spec, false, config.ipcFileMode, &errorMessage))
+				if(!ZUtil::setupSocket(proxyStatsSock.get(), spec, false, config.ipcFileMode, &errorMessage))
 				{
 						log_error("%s", qPrintable(errorMessage));
 						return false;
 				}
 			}
 
-			proxyStatsValve = new QZmq::Valve(proxyStatsSock, this);
+			proxyStatsValve = std::make_unique<QZmq::Valve>(proxyStatsSock.get());
 			proxyStatConnection = proxyStatsValve->readyRead.connect(boost::bind(&Private::proxyStats_readyRead, this, boost::placeholders::_1));
 
 			log_debug("proxy stats: %s", qPrintable(config.proxyStatsSpecs.join(", ")));
@@ -1824,7 +1815,7 @@ private:
 			outHeaders += HttpHeader("Content-Type", "text/plain");
 
 		req->respond(code, reason, outHeaders, body.toUtf8());
-		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
+		req->finished.connect([=] { DeferCall::deleteLater(req); });
 
 		QString msg = QString("control: %1 %2 code=%3 %4").arg(req->requestMethod(), QString::fromUtf8(req->requestUri()), QString::number(code), QString::number(body.size()));
 		if(items > -1)
@@ -1847,73 +1838,7 @@ private:
 		{
 			WsSession *s = qobject_cast<WsSession*>(target);
 
-			if(f.haveContentFilters)
-			{
-				// ensure content filters match
-				QStringList contentFilters;
-				foreach(const QString &f, s->channelFilters[item.channel])
-				{
-					if(Filter::targets(f) & Filter::MessageContent)
-						contentFilters += f;
-				}
-				if(contentFilters != f.contentFilters)
-				{
-					QString errorMessage = QString("content filter mismatch: subscription=%1 message=%2").arg(contentFilters.join(","), f.contentFilters.join(","));
-					log_debug("%s", qPrintable(errorMessage));
-					return;
-				}
-			}
-
-			Filter::Context fc;
-			fc.subscriptionMeta = s->meta;
-			fc.publishMeta = item.meta;
-
-			FilterStack filters(fc, s->channelFilters[item.channel]);
-
-			if(filters.sendAction() == Filter::Drop)
-				return;
-
-			// TODO: hint support for websockets?
-			if(f.action != PublishFormat::Send && f.action != PublishFormat::Close && f.action != PublishFormat::Refresh)
-				return;
-
-			WsControlPacket::Item i;
-			i.cid = s->cid.toUtf8();
-
-			if(f.action == PublishFormat::Send)
-			{
-				QByteArray body = filters.process(f.body);
-				if(body.isNull())
-				{
-					log_debug("filter error: %s", qPrintable(filters.errorMessage()));
-					return;
-				}
-
-				i.type = WsControlPacket::Item::Send;
-
-				switch(f.messageType)
-				{
-					case PublishFormat::Text:   i.contentType = "text"; break;
-					case PublishFormat::Binary: i.contentType = "binary"; break;
-					case PublishFormat::Ping:   i.contentType = "ping"; break;
-					case PublishFormat::Pong:   i.contentType = "pong"; break;
-					default: return; // unrecognized type, skip
-				}
-
-				i.message = body;
-			}
-			else if(f.action == PublishFormat::Close)
-			{
-				i.type = WsControlPacket::Item::Close;
-				i.code = f.code;
-				i.reason = f.reason;
-			}
-			else if(f.action == PublishFormat::Refresh)
-			{
-				i.type = WsControlPacket::Item::Refresh;
-			}
-
-			writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
+			s->publish(item);
 		}
 	}
 
@@ -2073,7 +1998,7 @@ private:
 			// accept request immediately before returning to the event loop.
 			// the start() call will do this
 
-			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter.get(), httpSessionUpdateManager, config.connectionSubscriptionMax, this);
+			AcceptWorker *w = new AcceptWorker(req, stateClient, &cs, zhttpIn, zhttpOut, stats, updateLimiter.get(), filterLimiter, httpSessionUpdateManager, config.connectionSubscriptionMax, this);
 			finishedConnection[w] = w->finished.connect(boost::bind(&Private::acceptWorker_finished, this, boost::placeholders::_1, w));
 			sessionsReadyConnection[w] = w->sessionsReady.connect(boost::bind(&Private::acceptWorker_sessionsReady, this, w));
 			retryPacketReadyConnection[w] =  w->retryPacketReady.connect(boost::bind(&Private::acceptWorker_retryPacketReady, this, boost::placeholders::_1, boost::placeholders::_2));
@@ -2753,7 +2678,7 @@ private:
 				{
 					s = new WsSession(this);
 					wsSessionConnectionMap[s] = {
-						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, boost::placeholders::_2, boost::placeholders::_3, s)),
+						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, s)),
 						s->expired.connect(boost::bind(&Private::wssession_expired, this, s)),
 						s->error.connect(boost::bind(&Private::wssession_error, this, s))
 					};
@@ -2761,13 +2686,17 @@ private:
 					s->cid = QString::fromUtf8(item.cid);
 					s->ttl = item.ttl;
 					s->requestData.uri = item.uri;
+					s->zhttpOut = zhttpOut;
+					s->filterLimiter = filterLimiter;
 					s->refreshExpiration();
 					cs.wsSessions.insert(s->cid, s);
 					log_debug("added ws session: %s", qPrintable(s->cid));
 				}
 
+				s->debug = item.debug;
 				s->route = item.route;
 				s->statsRoute = item.separateStats ? item.route : QString();
+				s->targetTrusted = item.trusted;
 				s->channelPrefix = QString::fromUtf8(item.channelPrefix);
 				if(item.logLevel >= 0)
 					s->logLevel = item.logLevel;
@@ -2807,7 +2736,7 @@ private:
 				if(e.error != QJsonParseError::NoError || (!doc.isObject() && !doc.isArray()))
 				{
 					log_debug("grip control message is not valid json");
-					return;
+					continue;
 				}
 
 				if(doc.isObject())
@@ -2820,13 +2749,19 @@ private:
 				if(!ok)
 				{
 					log_debug("failed to parse grip control message: %s", qPrintable(errorMessage));
-					return;
+					continue;
 				}
 
 				if(cm.type == WsControlMessage::Subscribe)
 				{
 					if(s->channels.count() < config.connectionSubscriptionMax)
 					{
+						if(cm.filters.count() > MESSAGEFILTERSTACK_SIZE_MAX)
+						{
+							s->sendCloseError(QString("too many filters for channel '%1'").arg(cm.channel));
+							continue;
+						}
+
 						QString channel = s->channelPrefix + cm.channel;
 						s->channels += channel;
 						s->channelFilters[channel] = cm.filters;
@@ -3285,22 +3220,14 @@ private slots:
 		hs->subscribeCallback().remove(this);
 		hs->unsubscribeCallback().remove(this);
 		hs->finishedCallback().remove(this);
-		hs->deleteLater();
+		DeferCall::deleteLater(hs);
 
 		if(!rp.requests.isEmpty())
 			writeRetryPacket(addr, rp);
 	}
 
-	void wssession_send(int reqId, const QByteArray &type, const QByteArray &message, WsSession *s)
+	void wssession_send(const WsControlPacket::Item &i, WsSession *s)
 	{
-		WsControlPacket::Item i;
-		i.cid = s->cid.toUtf8();
-		i.requestId = QByteArray::number(reqId);
-		i.type = WsControlPacket::Item::Send;
-		i.contentType = type;
-		i.message = message;
-		i.queue = true;
-
 		writeWsControlItems(s->peer, QList<WsControlPacket::Item>() << i);
 	}
 

@@ -23,9 +23,15 @@
 
 #include "filter.h"
 
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "log.h"
 #include "format.h"
 #include "idformat.h"
+#include "zhttpmanager.h"
+#include "zhttprequest.h"
+
+#define REQUEST_TIMEOUT_SECS 10
 
 namespace {
 
@@ -304,6 +310,308 @@ public:
 	}
 };
 
+class HttpFilterInner;
+
+class HttpFilter : public Filter::MessageFilter
+{
+public:
+	enum Mode
+	{
+		Check,
+		Modify
+	};
+
+	std::shared_ptr<HttpFilterInner> inner;
+	boost::signals2::scoped_connection finishedConnection;
+
+	class RequestAction : public RateLimiter::Action
+	{
+	public:
+		std::weak_ptr<HttpFilterInner> inner;
+
+		RequestAction(const std::shared_ptr<HttpFilterInner> &_inner) :
+			inner(_inner)
+		{
+		}
+
+		virtual bool execute();
+	};
+
+	HttpFilter(Mode mode);
+
+	virtual void start(const Filter::Context &context, const QByteArray &content);
+
+	void inner_finished(const Result &r);
+};
+
+class HttpFilterInner
+{
+public:
+	HttpFilter::Mode mode;
+	std::unique_ptr<ZhttpRequest> req;
+	QUrl uri;
+	HttpHeaders headers;
+	QByteArray origContent;
+	bool haveResponseHeader;
+	QByteArray responseBody;
+
+	boost::signals2::signal<void(const Filter::MessageFilter::Result&)> finished;
+
+	HttpFilterInner(HttpFilter::Mode _mode) :
+		mode(_mode),
+		haveResponseHeader(false)
+	{
+	}
+
+	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const QVariant &passthroughData, const QByteArray &content)
+	{
+		uri = _uri;
+		headers = _headers;
+		origContent = content;
+
+		req.reset(zhttpOut->createRequest());
+
+		// safe to not track, since req can't outlive this
+		req->readyRead.connect(boost::bind(&HttpFilterInner::req_readyRead, this));
+		req->error.connect(boost::bind(&HttpFilterInner::req_error, this));
+
+		req->setPassthroughData(passthroughData);
+	}
+
+	void startRequest()
+	{
+		// set timeout since filters should be fast
+		req->setTimeout(REQUEST_TIMEOUT_SECS * 1000);
+
+		req->start("POST", uri, headers);
+
+		if(mode == HttpFilter::Modify)
+			req->writeBody(origContent);
+
+		req->endBody();
+	}
+
+	void req_readyRead()
+	{
+		if(!haveResponseHeader)
+		{
+			haveResponseHeader = true;
+
+			int code = req->responseCode();
+			switch(code)
+			{
+				case 200:
+				case 204:
+					break;
+				default:
+					Filter::MessageFilter::Result r;
+					r.errorMessage = QString("unexpected network request status: code=%1").arg(code);
+					finished(r);
+					return;
+			}
+		}
+
+		QByteArray body = req->readBody();
+
+		if(mode == HttpFilter::Modify)
+			responseBody += body;
+
+		if(!req->isFinished())
+			return;
+
+		Filter::MessageFilter::Result r;
+
+		if(req->responseHeaders().get("Action") == "drop")
+		{
+			// drop
+			r.sendAction = Filter::Drop;
+		}
+		else
+		{
+			// accept
+			r.sendAction = Filter::Send;
+
+			switch(mode)
+			{
+				case HttpFilter::Check:
+					// as-is
+					r.content = origContent;
+					break;
+				case HttpFilter::Modify:
+					switch(req->responseCode())
+					{
+						case 204:
+							// as-is
+							r.content = origContent;
+							break;
+						default:
+							// replace content
+							r.content = responseBody;
+							break;
+					}
+					break;
+			}
+		}
+
+		finished(r);
+	}
+
+	void req_error()
+	{
+		const char *s;
+
+		switch(req->errorCondition())
+		{
+			case HttpRequest::ErrorConnect:
+				s = "connection refused";
+				break;
+			case HttpRequest::ErrorConnectTimeout:
+				s = "connection timed out";
+				break;
+			case HttpRequest::ErrorTls:
+				s = "tls error";
+				break;
+			case HttpRequest::ErrorDisconnected:
+				s = "disconnected";
+				break;
+			case HttpRequest::ErrorTimeout:
+				s = "request timed out";
+				break;
+			default:
+				s = "general error";
+				break;
+		}
+
+		Filter::MessageFilter::Result r;
+		r.errorMessage = QString("network request failed: %1").arg(s);
+		finished(r);
+	}
+};
+
+bool HttpFilter::RequestAction::execute()
+{
+	auto target = inner.lock();
+	if(!target)
+		return false;
+
+	target->startRequest();
+	return true;
+}
+
+HttpFilter::HttpFilter(Mode mode)
+{
+	inner = std::make_shared<HttpFilterInner>(mode);
+
+	finishedConnection = inner->finished.connect(boost::bind(&HttpFilter::inner_finished, this, boost::placeholders::_1));
+}
+
+void HttpFilter::start(const Filter::Context &context, const QByteArray &content)
+{
+	QUrl url = QUrl(context.subscriptionMeta.value("url"), QUrl::StrictMode);
+	if(!url.isValid())
+	{
+		Result r;
+		r.errorMessage = "invalid or missing url value";
+		finished(r);
+		return;
+	}
+
+	QUrl currentUri = context.currentUri;
+	if(currentUri.scheme() == "wss")
+		currentUri.setScheme("https");
+	else if(currentUri.scheme() == "ws")
+		currentUri.setScheme("http");
+
+	QUrl destUri = currentUri.resolved(url);
+
+	int currentPort = currentUri.port(currentUri.scheme() == "https" ? 443 : 80);
+	int destPort = destUri.port(destUri.scheme() == "https" ? 443 : 80);
+
+	QVariantHash passthroughData;
+
+	passthroughData["route"] = context.route.toUtf8();
+
+	// if dest link points to the same service as the current request,
+	//   then we can assume the network would send the request back to
+	//   us, so we can handle it internally. if the link points to a
+	//   different service, then we can't make this assumption and need
+	//   to make the request over the network. note that such a request
+	//   could still end up looping back to us
+	if(destUri.scheme() == currentUri.scheme() && destUri.host() == currentUri.host() && destPort == currentPort)
+	{
+		// tell the proxy that we prefer the request to be handled
+		//   internally, using the same route
+		passthroughData["prefer-internal"] = true;
+	}
+
+	// needed in case internal routing is not used
+	if(context.trusted)
+		passthroughData["trusted"] = true;
+
+	HttpHeaders headers;
+
+	{
+		QVariantMap vmap;
+		QHashIterator<QString, QString> it(context.subscriptionMeta);
+		while(it.hasNext())
+		{
+			it.next();
+			vmap[it.key()] = it.value();
+		}
+
+		QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
+		headers += HttpHeader("Sub-Meta", doc.toJson(QJsonDocument::Compact));
+	}
+
+	{
+		QVariantMap vmap;
+		QHashIterator<QString, QString> it(context.publishMeta);
+		while(it.hasNext())
+		{
+			it.next();
+			vmap[it.key()] = it.value();
+		}
+
+		QJsonDocument doc = QJsonDocument(QJsonObject::fromVariantMap(vmap));
+		headers += HttpHeader("Pub-Meta", doc.toJson(QJsonDocument::Compact));
+	}
+
+	{
+		QHashIterator<QString, QString> it(context.prevIds);
+		while(it.hasNext())
+		{
+			it.next();
+			const QString &name = it.key();
+			const QString &prevId = it.value();
+
+			if(!prevId.isNull())
+				headers += HttpHeader("Grip-Last", name.toUtf8() + "; last-id=" + prevId.toUtf8());
+		}
+	}
+
+	inner->setup(context.zhttpOut, destUri, headers, passthroughData, content);
+
+	QString key = QString::fromUtf8(destUri.toEncoded());
+
+	assert(context.limiter);
+
+	if(!context.limiter->addAction(key, new RequestAction(inner)))
+	{
+		// the limiter shouldn't have an hwm, but let's handle the error
+		// here in case one is ever added
+
+		Result r;
+		r.errorMessage = "network request limit reached";
+		finished(r);
+		return;
+	}
+}
+
+void HttpFilter::inner_finished(const Result &r)
+{
+	finished(r);
+}
+
 }
 
 Filter::MessageFilter::~MessageFilter() = default;
@@ -371,6 +679,10 @@ Filter::MessageFilter *Filter::createMessageFilter(const QString &name)
 		return new BuildIdFilter;
 	else if(name == "var-subst")
 		return new VarSubstFilter;
+	else if(name == "http-check")
+		return new HttpFilter(HttpFilter::Check);
+	else if(name == "http-modify")
+		return new HttpFilter(HttpFilter::Modify);
 	else
 		return 0;
 }
@@ -382,7 +694,9 @@ QStringList Filter::names()
 		<< "skip-users"
 		<< "require-sub"
 		<< "build-id"
-		<< "var-subst");
+		<< "var-subst"
+		<< "http-check"
+		<< "http-modify");
 }
 
 Filter::Targets Filter::targets(const QString &name)
@@ -397,12 +711,18 @@ Filter::Targets Filter::targets(const QString &name)
 		return Filter::Targets(Filter::MessageContent | Filter::ResponseContent);
 	else if(name == "var-subst")
 		return Filter::MessageContent;
+	else if(name == "http-check")
+		return Filter::MessageDelivery;
+	else if(name == "http-modify")
+		return Filter::Targets(Filter::MessageDelivery | Filter::MessageContent);
 	else
 		return Filter::Targets(0);
 }
 
 Filter::MessageFilterStack::MessageFilterStack(const QStringList &filterNames)
 {
+	assert(filterNames.count() <= MESSAGEFILTERSTACK_SIZE_MAX);
+
 	foreach(const QString &name, filterNames)
 	{
 		MessageFilter *f = createMessageFilter(name);
