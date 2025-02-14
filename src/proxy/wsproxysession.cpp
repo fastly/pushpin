@@ -1125,7 +1125,7 @@ private:
 
 	void wsControl_refreshEventReceived()
 	{
-		WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(outSock);
+		WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(outSock);
 		if(woh)
 			woh->refresh();
 	}

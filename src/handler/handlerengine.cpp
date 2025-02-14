@@ -1776,13 +1776,13 @@ private:
 
 		if(f.type == PublishFormat::HttpResponse || f.type == PublishFormat::HttpStream)
 		{
-			HttpSession *hs = qobject_cast<HttpSession*>(target);
+			HttpSession *hs = dynamic_cast<HttpSession*>(target);
 
 			hs->publish(item, exposeHeaders);
 		}
 		else if(f.type == PublishFormat::WebSocketMessage)
 		{
-			WsSession *s = qobject_cast<WsSession*>(target);
+			WsSession *s = dynamic_cast<WsSession*>(target);
 
 			s->publish(item);
 		}
