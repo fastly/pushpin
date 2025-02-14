@@ -28,7 +28,16 @@
 #include <QStringList>
 #include <QHash>
 #include <QMetaType>
+#include <QUrl>
 #include <boost/signals2.hpp>
+#include "zhttprequest.h"
+#include "ratelimiter.h"
+
+#define MESSAGEFILTERSTACK_SIZE_MAX 5
+
+#define TIMERS_PER_MESSAGEFILTERSTACK (TIMERS_PER_ZHTTPREQUEST * MESSAGEFILTERSTACK_SIZE_MAX)
+
+class ZhttpManager;
 
 class Filter
 {
@@ -52,6 +61,19 @@ public:
 		QHash<QString, QString> prevIds;
 		QHash<QString, QString> subscriptionMeta;
 		QHash<QString, QString> publishMeta;
+
+		// for network access
+		ZhttpManager *zhttpOut;
+		QUrl currentUri;
+		QString route;
+		bool trusted;
+		std::shared_ptr<RateLimiter> limiter;
+
+		Context() :
+			zhttpOut(0),
+			trusted(false)
+		{
+		}
 	};
 
 	class MessageFilter

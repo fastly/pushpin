@@ -34,6 +34,7 @@
 #include "log.h"
 #include "logutil.h"
 #include "rtimer.h"
+#include "defercall.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
 #include "zwebsocket.h"
@@ -387,7 +388,7 @@ public:
 		{
 			keepAliveConnection.disconnect();
 			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
+			DeferCall::deleteLater(keepAliveTimer);
 			keepAliveTimer = 0;
 		}
 	}
@@ -962,7 +963,7 @@ private slots:
 					wsControl->cancelEventReceived.connect(boost::bind(&Private::wsControl_cancelEventReceived, this)),
 					wsControl->error.connect(boost::bind(&Private::wsControl_error, this))
 				};
-				wsControl->start(route.id, route.separateStats, channelPrefix, route.logLevel, inSock->requestUri());
+				wsControl->start(route.debug, route.id, route.separateStats, channelPrefix, route.logLevel, inSock->requestUri(), target.trusted);
 
 				foreach(const QString &subChannel, target.subscriptions)
 				{

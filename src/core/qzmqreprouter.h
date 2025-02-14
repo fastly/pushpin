@@ -24,8 +24,9 @@
 #ifndef QZMQREPROUTER_H
 #define QZMQREPROUTER_H
 
-#include <QObject>
 #include <boost/signals2.hpp>
+
+class QString;
 
 using Signal = boost::signals2::signal<void()>;
 using SignalInt = boost::signals2::signal<void(int)>;
@@ -55,7 +56,8 @@ public:
 	SignalInt messagesWritten;
 
 private:
-	Q_DISABLE_COPY(RepRouter)
+	RepRouter(const RepRouter &) = delete;
+	RepRouter &operator=(const RepRouter &) = delete;
 
 	class Private;
 	friend class Private;

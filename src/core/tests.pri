@@ -3,4 +3,5 @@ INCLUDES += \
 
 SOURCES += \
 	$$PWD/httpheaderstest.cpp \
-	$$PWD/jwttest.cpp
+	$$PWD/jwttest.cpp \
+	$$PWD/eventlooptest.cpp

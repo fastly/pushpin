@@ -1,10 +1,5 @@
 /*
- * Copyright (C) 2015 Fanout, Inc.
  * Copyright (C) 2025 Fastly, Inc.
- *
- * This file is part of Pushpin.
- *
- * $FANOUT_BEGIN_LICENSE:APACHE2$
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,37 +12,36 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * $FANOUT_END_LICENSE$
  */
 
-#include "deferred.h"
+#ifndef EVENTLOOP_H
+#define EVENTLOOP_H
 
-Deferred::Deferred(QObject *parent) :
-	QObject(parent)
+#include "rust/bindings.h"
+
+class EventLoop
 {
-	qRegisterMetaType<DeferredResult>();
-}
+public:
+	enum Interest
+	{
+		Readable = ffi::READABLE,
+		Writable = ffi::WRITABLE,
+	};
 
-Deferred::~Deferred()
-{
-}
+	EventLoop(int capacity);
+	~EventLoop();
 
-void Deferred::cancel()
-{
-	delete this;
-}
+	int exec();
+	void exit(int code);
 
-void Deferred::setFinished(bool ok, const QVariant &value)
-{
-	result_.success = ok;
-	result_.value = value;
+	int registerFd(int fd, unsigned char interest, void (*cb)(void *), void *ctx);
+	int registerTimer(int timeout, void (*cb)(void *), void *ctx);
+	void deregister(int id);
 
-	deferCall_.defer([=] { doFinish(); });
-}
+	static EventLoop *instance();
 
-void Deferred::doFinish()
-{
-	finished(result_);
-	delete this;
-}
+private:
+	ffi::EventLoopRaw *inner_;
+};
+
+#endif

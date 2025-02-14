@@ -31,7 +31,16 @@
 #include "inspectdata.h"
 #include "zhttprequest.h"
 #include "instruct.h"
+#include "filter.h"
 #include <boost/signals2.hpp>
+
+// each session can have a bunch of timers:
+// incoming request
+// outgoing request
+// 2 additional timers
+// filter timers
+// a few more just in case
+#define TIMERS_PER_HTTPSESSION ((TIMERS_PER_ZHTTPREQUEST * 2) + 2 + TIMERS_PER_MESSAGEFILTERSTACK + 4)
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -88,7 +97,7 @@ public:
 		}
 	};
 
-	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent = 0);
+	HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *outZhttp, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent = 0);
 	~HttpSession();
 
 	Instruct::HoldMode holdMode() const;

@@ -24,6 +24,7 @@
 
 #include <QTimer>
 #include <QUrl>
+#include "defercall.h"
 #include "httpsession.h"
 
 class HttpSessionUpdateManager::Private : public QObject
@@ -61,7 +62,7 @@ public:
 
 			bucket->timer->disconnect(this);
 			bucket->timer->setParent(0);
-			bucket->timer->deleteLater();
+			DeferCall::deleteLater(bucket->timer);
 			delete bucket;
 		}
 	}
@@ -76,11 +77,11 @@ public:
 
 		bucket->timer->disconnect(this);
 		bucket->timer->setParent(0);
-		bucket->timer->deleteLater();
+		DeferCall::deleteLater(bucket->timer);
 		delete bucket;
 	}
 
-	void registerSession(HttpSession *hs, int timeout, const QUrl &uri)
+	void registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout)
 	{
 		QUrl tmp = uri;
 		tmp.setQuery(QString()); // remove the query part
@@ -91,9 +92,11 @@ public:
 		{
 			if(bucket->sessions.contains(hs))
 			{
-				// if the session is already in this bucket, flag it
-				//   for later processing
-				bucket->deferredSessions += hs;
+				if(resetTimeout)
+				{
+					// flag for later processing
+					bucket->deferredSessions += hs;
+				}
 			}
 			else
 			{
@@ -185,9 +188,9 @@ HttpSessionUpdateManager::~HttpSessionUpdateManager()
 	delete d;
 }
 
-void HttpSessionUpdateManager::registerSession(HttpSession *hs, int timeout, const QUrl &uri)
+void HttpSessionUpdateManager::registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout)
 {
-	d->registerSession(hs, timeout, uri);
+	d->registerSession(hs, timeout, uri, resetTimeout);
 }
 
 void HttpSessionUpdateManager::unregisterSession(HttpSession *hs)
