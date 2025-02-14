@@ -16,7 +16,7 @@ build: FORCE
 	cargo$(cargo_toolchain) build$(cargo_flags)
 
 cargo-test: FORCE
-	cargo$(cargo_toolchain) test$(cargo_flags) --all-features
+	cargo$(cargo_toolchain) test$(cargo_flags) --all-features -- --test-threads=1
 
 cargo-clean: FORCE
 	cargo clean
