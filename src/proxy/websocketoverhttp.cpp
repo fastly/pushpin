@@ -24,7 +24,6 @@
 #include "websocketoverhttp.h"
 
 #include <assert.h>
-#include <QPointer>
 #include <QRandomGenerator>
 #include "log.h"
 #include "bufferlist.h"
@@ -779,7 +778,7 @@ private:
 			return;
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		bool emitConnected = false;
 		bool emitReadyRead = false;
@@ -843,21 +842,21 @@ private:
 		if(emitConnected)
 		{
 			q->connected();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
 		if(emitReadyRead)
 		{
 			q->readyRead();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
 		if(reqFrames > 0)
 		{
 			q->framesWritten(reqFrames, reqContentSize);
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
@@ -869,7 +868,7 @@ private:
 		if(hadContent)
 		{
 			q->writeBytesChanged();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
@@ -1008,13 +1007,12 @@ private:
 WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent) :
 	WebSocket(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 	d->zhttpManager = zhttpManager;
 }
 
 WebSocketOverHttp::WebSocketOverHttp(QObject *parent) :
-	WebSocket(parent),
-	d(0)
+	WebSocket(parent)
 {
 }
 
@@ -1027,11 +1025,9 @@ WebSocketOverHttp::~WebSocketOverHttp()
 		sock->d = d;
 		d->setParent(sock);
 		d->q = sock;
-		d = 0;
+		d.reset();
 		g_disconnectManager->addSocket(sock);
 	}
-
-	delete d;
 }
 
 void WebSocketOverHttp::setConnectionId(const QByteArray &id)

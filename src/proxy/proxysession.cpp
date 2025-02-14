@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include <QSet>
-#include <QPointer>
 #include <QUrl>
 #include <QHostAddress>
 #include "packet/statspacket.h"
@@ -745,7 +744,7 @@ public:
 		if(!buffering && pendingWrites())
 			return;
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		bool wasAllowed = addAllowed;
 
@@ -914,7 +913,7 @@ public:
 			if(wasAllowed && !addAllowed)
 			{
 				q->addNotAllowed();
-				if(!self)
+				if(self.expired())
 					return;
 			}
 		}
@@ -925,7 +924,7 @@ public:
 	// this method emits signals
 	void checkIncomingResponseFinished()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(zhttpRequest->isFinished() && zhttpRequest->bytesAvailable() == 0)
 		{
@@ -946,7 +945,7 @@ public:
 			{
 				addAllowed = false;
 				q->addNotAllowed();
-				if(!self)
+				if(self.expired())
 					return;
 			}
 
@@ -1218,9 +1217,9 @@ public:
 		if(!intReq)
 			logFinished(si);
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 		q->requestSessionDestroyed(si->rs, false);
-		if(!self)
+		if(self.expired())
 			return;
 
 		ZhttpRequest *req = rs->request();
@@ -1412,13 +1411,13 @@ public:
 				sessionItems.clear();
 				sessionItemsBySession.clear();
 
-				QPointer<QObject> self = this;
+				std::weak_ptr<Private> self = q->d;
 				foreach(RequestSession *rs, toDestroy)
 				{
 					q->requestSessionDestroyed(rs, true);
 					reqSessionConnectionMap.erase(rs);
 					delete rs;
-					if(!self)
+					if(self.expired())
 						return;
 				}
 
@@ -1489,13 +1488,10 @@ public:
 ProxySession::ProxySession(ZRoutes *zroutes, ZrpcManager *acceptManager, const LogUtil::Config &logConfig, StatsManager *statsManager, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, zroutes, acceptManager, logConfig, statsManager);
+	d = std::make_shared<Private>(this, zroutes, acceptManager, logConfig, statsManager);
 }
 
-ProxySession::~ProxySession()
-{
-	delete d;
-}
+ProxySession::~ProxySession() = default;
 
 void ProxySession::setRoute(const DomainMap::Entry &route)
 {

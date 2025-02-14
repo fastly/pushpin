@@ -24,7 +24,6 @@
 #include "sockjssession.h"
 
 #include <assert.h>
-#include <QPointer>
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -652,9 +651,9 @@ public:
 
 		if(bytes > 0)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			q->writeBytesChanged();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
@@ -680,7 +679,7 @@ public:
 
 	bool tryRead()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(mode == Http)
 		{
@@ -724,7 +723,7 @@ public:
 			if(emitReadyRead)
 			{
 				q->readyRead();
-				if(!self)
+				if(self.expired())
 					return false;
 			}
 		}
@@ -839,7 +838,7 @@ public:
 			if(emitReadyRead)
 			{
 				q->readyRead();
-				if(!self)
+				if(self.expired())
 					return false;
 			}
 		}
@@ -1116,13 +1115,10 @@ public:
 SockJsSession::SockJsSession(QObject *parent) :
 	WebSocket(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-SockJsSession::~SockJsSession()
-{
-	delete d;
-}
+SockJsSession::~SockJsSession() = default;
 
 QByteArray SockJsSession::sid() const
 {

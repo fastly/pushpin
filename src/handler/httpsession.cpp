@@ -24,7 +24,6 @@
 #include "httpsession.h"
 
 #include <assert.h>
-#include <QPointer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -280,7 +279,7 @@ public:
 		assert(state == NotStarted);
 
 		// set up implicit channels
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 		foreach(const QString &name, adata.implicitChannels)
 		{
 			if(!channels.contains(name))
@@ -292,7 +291,7 @@ public:
 
 				subscribeCallback.call({q, name});
 
-				assert(self); // deleting here would leak subscriptions/connections
+				assert(!self.expired()); // deleting here would leak subscriptions/connections
 			}
 		}
 
@@ -655,20 +654,20 @@ private:
 			}
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		foreach(const QString &channel, channelsRemoved)
 		{
 			unsubscribeCallback.call({q, channel});
 
-			assert(self); // deleting here would leak subscriptions/connections
+			assert(!self.expired()); // deleting here would leak subscriptions/connections
 		}
 
 		foreach(const QString &channel, channelsAdded)
 		{
 			subscribeCallback.call({q, channel});
 
-			assert(self); // deleting here would leak subscriptions/connections
+			assert(!self.expired()); // deleting here would leak subscriptions/connections
 		}
 
 		if(instruct.holdMode == Instruct::ResponseHold)
@@ -1036,7 +1035,7 @@ private:
 		ZhttpRequest::Rid rid = req->rid();
 		QByteArray cid = rid.first + ':' + rid.second;
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		QHashIterator<QString, Instruct::Channel> it(channels);
 		while(it.hasNext())
@@ -1046,7 +1045,7 @@ private:
 
 			unsubscribeCallback.call({q, channel});
 
-			assert(self); // deleting here would leak subscriptions/connections
+			assert(!self.expired()); // deleting here would leak subscriptions/connections
 		}
 
 		if(retry)
@@ -1691,13 +1690,10 @@ private:
 HttpSession::HttpSession(ZhttpRequest *req, const HttpSession::AcceptData &adata, const Instruct &instruct, ZhttpManager *zhttpOut, StatsManager *stats, RateLimiter *updateLimiter, const std::shared_ptr<RateLimiter> &filterLimiter, PublishLastIds *publishLastIds, HttpSessionUpdateManager *updateManager, int connectionSubscriptionMax, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, req, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, publishLastIds, updateManager, connectionSubscriptionMax);
+	d = std::make_shared<Private>(this, req, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, publishLastIds, updateManager, connectionSubscriptionMax);
 }
 
-HttpSession::~HttpSession()
-{
-	delete d;
-}
+HttpSession::~HttpSession() = default;
 
 Instruct::HoldMode HttpSession::holdMode() const
 {

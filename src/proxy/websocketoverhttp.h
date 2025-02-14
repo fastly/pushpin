@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2020 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -96,7 +96,7 @@ private:
 
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	static thread_local DisconnectManager *g_disconnectManager;
 	static thread_local int g_maxManagedDisconnects;

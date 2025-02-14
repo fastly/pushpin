@@ -115,7 +115,7 @@ public:
 
 private:
 	class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 };
 
 #endif
