@@ -1128,7 +1128,7 @@ private:
 			QByteArray cid = rid.first + ':' + rid.second;
 			needRemoveFromStats.remove(cid);
 
-			sessions += std::make_shared<HttpSession>(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
+			sessions += std::make_shared<HttpSession>(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -2618,7 +2618,7 @@ private:
 				std::shared_ptr<WsSession> s = cs.wsSessions.value(item.cid);
 				if(!s)
 				{
-					s = std::make_shared<WsSession>(this);
+					s = std::make_shared<WsSession>();
 					wsSessionConnectionMap[s.get()] = {
 						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, s.get())),
 						s->expired.connect(boost::bind(&Private::wssession_expired, this, s.get())),
