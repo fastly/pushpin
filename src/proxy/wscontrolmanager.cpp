@@ -24,7 +24,6 @@
 #include "wscontrolmanager.h"
 
 #include <assert.h>
-#include <QPointer>
 #include <QDateTime>
 #include <boost/signals2.hpp>
 #include "qzmqsocket.h"
@@ -289,7 +288,7 @@ private:
 			return;
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		foreach(const WsControlPacket::Item &i, p.items)
 		{
@@ -312,7 +311,7 @@ private:
 
 			s->handle(p.from, i);
 
-			if(!self)
+			if(self.expired())
 				return;
 		}
 	}
@@ -423,7 +422,7 @@ private slots:
 
 WsControlManager::WsControlManager() 
 {
-	d = std::make_unique<Private>(this);
+	d = std::make_shared<Private>(this);
 }
 
 WsControlManager::~WsControlManager() = default;
