@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,9 +23,9 @@
 
 #include "wssession.h"
 
-#include <QTimer>
 #include <QDateTime>
 #include "log.h"
+#include "rtimer.h"
 #include "defercall.h"
 #include "filter.h"
 #include "publishitem.h"
@@ -43,17 +43,17 @@ WsSession::WsSession(QObject *parent) :
 	inProcessPublishQueue(false),
 	closed(false)
 {
-	expireTimer = new QTimer(this);
+	expireTimer = new RTimer;
 	expireTimer->setSingleShot(true);
-	connect(expireTimer, &QTimer::timeout, this, &WsSession::expireTimer_timeout);
+	expireTimer->timeout.connect(boost::bind(&WsSession::expireTimer_timeout, this));
 
-	delayedTimer = new QTimer(this);
+	delayedTimer = new RTimer;
 	delayedTimer->setSingleShot(true);
-	connect(delayedTimer, &QTimer::timeout, this, &WsSession::delayedTimer_timeout);
+	delayedTimer->timeout.connect(boost::bind(&WsSession::delayedTimer_timeout, this));
 
-	requestTimer = new QTimer(this);
+	requestTimer = new RTimer;
 	requestTimer->setSingleShot(true);
-	connect(requestTimer, &QTimer::timeout, this, &WsSession::requestTimer_timeout);
+	requestTimer->timeout.connect(boost::bind(&WsSession::requestTimer_timeout, this));
 }
 
 WsSession::~WsSession()
