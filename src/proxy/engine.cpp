@@ -1026,7 +1026,7 @@ private:
 				return;
 			}
 
-			WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(ps->outSocket());
+			WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(ps->outSocket());
 			if(woh)
 				woh->refresh();
 

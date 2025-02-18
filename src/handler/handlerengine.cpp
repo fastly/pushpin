@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include <algorithm>
-#include <QPointer>
 #include <QTimer>
 #include <QUrlQuery>
 #include <QJsonDocument>
@@ -441,8 +440,8 @@ class Subscription;
 class CommonState
 {
 public:
-	QHash<ZhttpRequest::Rid, HttpSession*> httpSessions;
-	QHash<QString, WsSession*> wsSessions;
+	QHash<ZhttpRequest::Rid, std::shared_ptr<HttpSession>> httpSessions;
+	QHash<QString, std::shared_ptr<WsSession>> wsSessions;
 	QHash<QString, QSet<HttpSession*> > responseSessionsByChannel;
 	QHash<QString, QSet<HttpSession*> > streamSessionsByChannel;
 	QHash<QString, QSet<WsSession*> > wsSessionsByChannel;
@@ -484,7 +483,7 @@ public:
 	bool responseSent;
 	QString sid;
 	LastIds lastIds;
-	QList<HttpSession*> sessions;
+	QList<std::shared_ptr<HttpSession>> sessions;
 	int connectionSubscriptionMax;
 	QSet<QByteArray> needRemoveFromStats;
 	map<Deferred*, Connection> finishedConnection;
@@ -873,12 +872,12 @@ public:
 		afterSessionCalls();
 	}
 
-	QList<HttpSession*> takeSessions()
+	QList<std::shared_ptr<HttpSession>> takeSessions()
 	{
-		QList<HttpSession*> out = sessions;
+		QList<std::shared_ptr<HttpSession>> out = sessions;
 		sessions.clear();
 
-		foreach(HttpSession *hs, out)
+		foreach(const std::shared_ptr<HttpSession> &hs, out)
 			hs->setParent(0);
 
 		return out;
@@ -1176,7 +1175,7 @@ private:
 			QByteArray cid = rid.first + ':' + rid.second;
 			needRemoveFromStats.remove(cid);
 
-			sessions += new HttpSession(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax, this);
+			sessions += std::make_shared<HttpSession>(httpReq, adata, instruct, zhttpOut, stats, updateLimiter, filterLimiter, &cs->publishLastIds, httpSessionUpdateManager, connectionSubscriptionMax);
 		}
 
 		// engine should directly connect to this and register the holds
@@ -1260,12 +1259,12 @@ public:
 	class PublishAction : public RateLimiter::Action
 	{
 	public:
-		HandlerEngine::Private *ep;
-		QPointer<QObject> target;
+		std::weak_ptr<HandlerEngine::Private> ep;
+		std::weak_ptr<QObject> target;
 		PublishItem item;
 		QList<QByteArray> exposeHeaders;
 
-		PublishAction(HandlerEngine::Private *_ep, QObject *_target, const PublishItem &_item, const QList<QByteArray> &_exposeHeaders = QList<QByteArray>()) :
+		PublishAction(const std::weak_ptr<HandlerEngine::Private> _ep, const std::weak_ptr<QObject> _target, const PublishItem &_item, const QList<QByteArray> &_exposeHeaders = QList<QByteArray>()) :
 			ep(_ep),
 			target(_target),
 			item(_item),
@@ -1275,10 +1274,15 @@ public:
 
 		virtual bool execute()
 		{
-			if(!target)
+			auto epl = ep.lock();
+			if(!epl)
 				return false;
 
-			ep->publishSend(target, item, exposeHeaders);
+			auto targetl = target.lock();
+			if(!targetl)
+				return false;
+
+			epl->publishSend(targetl, item, exposeHeaders);
 			return true;
 		}
 	};
@@ -1373,8 +1377,8 @@ public:
 		qDeleteAll(inspectWorkers);
 		qDeleteAll(acceptWorkers);
 		qDeleteAll(deferreds);
-		qDeleteAll(cs.wsSessions);
-		qDeleteAll(cs.httpSessions);
+		cs.wsSessions.clear();
+		cs.httpSessions.clear();
 		qDeleteAll(cs.subs);
 	}
 
@@ -1801,9 +1805,8 @@ private:
 
 		log_debug("removed ws session: %s", qPrintable(s->cid));
 
-		cs.wsSessions.remove(s->cid);
 		wsSessionConnectionMap.erase(s);
-		delete s;
+		cs.wsSessions.remove(s->cid);
 	}
 
 	void httpControlRespond(SimpleHttpRequest *req, int code, const QByteArray &reason, const QString &body, const QByteArray &contentType = QByteArray(), const HttpHeaders &headers = HttpHeaders(), int items = -1)
@@ -1824,22 +1827,12 @@ private:
 		log_debug("%s", qPrintable(msg));
 	}
 
-	void publishSend(QObject *target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
+	void publishSend(const std::shared_ptr<QObject> &target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 	{
-		const PublishFormat &f = item.format;
-
-		if(f.type == PublishFormat::HttpResponse || f.type == PublishFormat::HttpStream)
-		{
-			HttpSession *hs = qobject_cast<HttpSession*>(target);
-
+		if(auto hs = std::dynamic_pointer_cast<HttpSession>(target))
 			hs->publish(item, exposeHeaders);
-		}
-		else if(f.type == PublishFormat::WebSocketMessage)
-		{
-			WsSession *s = qobject_cast<WsSession*>(target);
-
+		else if(auto s = std::dynamic_pointer_cast<WsSession>(target))
 			s->publish(item);
-		}
 	}
 
 	int blocksForData(int size) const
@@ -1864,7 +1857,7 @@ private:
 		}
 		else
 		{
-			foreach(HttpSession *hs, cs.httpSessions)
+			foreach(const std::shared_ptr<HttpSession> &hs, cs.httpSessions)
 				hs->update();
 		}
 	}
@@ -2223,11 +2216,13 @@ private:
 			else
 				blocks = blocksForData(f.body.size());
 
-			foreach(HttpSession *hs, responseSessions)
+			foreach(HttpSession *hsp, responseSessions)
 			{
+				std::shared_ptr<HttpSession> &hs = cs.httpSessions[hsp->rid()];
+
 				QString statsRoute = hs->statsRoute();
 
-				if(!publishLimiter->addAction(statsRoute, new PublishAction(this, hs, i, exposeHeaders), blocks != -1 ? blocks : 1))
+				if(!publishLimiter->addAction(statsRoute, new PublishAction(q->d, hs, i, exposeHeaders), blocks != -1 ? blocks : 1))
 				{
 					if(!statsRoute.isEmpty())
 						log_warning("exceeded publish hwm (%d) for route %s, dropping message", config.messageHwm, qPrintable(statsRoute));
@@ -2257,11 +2252,13 @@ private:
 			else
 				blocks = blocksForData(f.body.size());
 
-			foreach(HttpSession *hs, streamSessions)
+			foreach(HttpSession *hsp, streamSessions)
 			{
+				std::shared_ptr<HttpSession> &hs = cs.httpSessions[hsp->rid()];
+
 				QString statsRoute = hs->statsRoute();
 
-				if(!publishLimiter->addAction(statsRoute, new PublishAction(this, hs, i), blocks != -1 ? blocks : 1))
+				if(!publishLimiter->addAction(statsRoute, new PublishAction(q->d, hs, i), blocks != -1 ? blocks : 1))
 				{
 					if(!statsRoute.isEmpty())
 						log_warning("exceeded publish hwm (%d) for route %s, dropping message", config.messageHwm, qPrintable(statsRoute));
@@ -2291,11 +2288,13 @@ private:
 			else
 				blocks = blocksForData(f.body.size());
 
-			foreach(WsSession *s, wsSessions)
+			foreach(WsSession *sp, wsSessions)
 			{
+				std::shared_ptr<WsSession> &s = cs.wsSessions[sp->cid];
+
 				QString statsRoute = s->statsRoute;
 
-				if(!publishLimiter->addAction(statsRoute, new PublishAction(this, s, i), blocks != -1 ? blocks : 1))
+				if(!publishLimiter->addAction(statsRoute, new PublishAction(q->d, s, i), blocks != -1 ? blocks : 1))
 				{
 					if(!statsRoute.isEmpty())
 						log_warning("exceeded publish hwm (%d) for route %s, dropping message", config.messageHwm, qPrintable(statsRoute));
@@ -2400,8 +2399,8 @@ private:
 
 	void acceptWorker_sessionsReady(AcceptWorker *w)
 	{
-		QList<HttpSession*> sessions = w->takeSessions();
-		foreach(HttpSession *hs, sessions)
+		QList<std::shared_ptr<HttpSession>> sessions = w->takeSessions();
+		foreach(const std::shared_ptr<HttpSession> &hs, sessions)
 		{
 			// NOTE: for performance reasons we do not call hs->setParent and
 			// instead leave the object unparented
@@ -2433,7 +2432,7 @@ private:
 				assert(at != -1);
 				ZhttpRequest::Rid rid(id.mid(0, at), id.mid(at + 1));
 
-				HttpSession *hs = cs.httpSessions.value(rid);
+				HttpSession *hs = cs.httpSessions.value(rid).get();
 				if(hs && !hs->sid().isEmpty())
 					sidLastIds[hs->sid()] = LastIds();
 			}
@@ -2673,14 +2672,14 @@ private:
 
 			if(item.type == WsControlPacket::Item::Here)
 			{
-				WsSession *s = cs.wsSessions.value(item.cid);
+				std::shared_ptr<WsSession> s = cs.wsSessions.value(item.cid);
 				if(!s)
 				{
-					s = new WsSession(this);
-					wsSessionConnectionMap[s] = {
-						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, s)),
-						s->expired.connect(boost::bind(&Private::wssession_expired, this, s)),
-						s->error.connect(boost::bind(&Private::wssession_error, this, s))
+					s = std::make_shared<WsSession>();
+					wsSessionConnectionMap[s.get()] = {
+						s->send.connect(boost::bind(&Private::wssession_send, this, boost::placeholders::_1, s.get())),
+						s->expired.connect(boost::bind(&Private::wssession_expired, this, s.get())),
+						s->error.connect(boost::bind(&Private::wssession_error, this, s.get()))
 					};
 					s->peer = packet.from;
 					s->cid = QString::fromUtf8(item.cid);
@@ -2708,7 +2707,7 @@ private:
 			}
 
 			// any other type must be for a known cid
-			WsSession *s = cs.wsSessions.value(QString::fromUtf8(item.cid));
+			WsSession *s = cs.wsSessions.value(QString::fromUtf8(item.cid)).get();
 			if(!s)
 			{
 				// send cancel, causing the proxy to close the connection. client
@@ -3210,17 +3209,17 @@ private slots:
 		removeSessionChannel(hs, channel);
 	}
 
-	void hs_finished(HttpSession *hs)
+	void hs_finished(HttpSession *hsp)
 	{
-		QByteArray addr = hs->retryToAddress();
-		RetryRequestPacket rp = hs->retryPacket();
+		QByteArray addr = hsp->retryToAddress();
+		RetryRequestPacket rp = hsp->retryPacket();
 
-		cs.httpSessions.remove(hs->rid());
+		std::shared_ptr<HttpSession> hs = cs.httpSessions.take(hsp->rid());
 
 		hs->subscribeCallback().remove(this);
 		hs->unsubscribeCallback().remove(this);
 		hs->finishedCallback().remove(this);
-		DeferCall::deleteLater(hs);
+		DeferCall::deleteLater(new std::shared_ptr<HttpSession>(hs));
 
 		if(!rp.requests.isEmpty())
 			writeRetryPacket(addr, rp);
@@ -3253,13 +3252,10 @@ private slots:
 HandlerEngine::HandlerEngine(QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-HandlerEngine::~HandlerEngine()
-{
-	delete d;
-}
+HandlerEngine::~HandlerEngine() = default;
 
 bool HandlerEngine::start(const Configuration &config)
 {
