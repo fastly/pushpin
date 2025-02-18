@@ -37,6 +37,8 @@
 
 #define TIMERS_PER_MESSAGEFILTERSTACK (TIMERS_PER_ZHTTPREQUEST * MESSAGEFILTERSTACK_SIZE_MAX)
 
+#define DEFAULT_FILTER_RESPONSE_SIZE_MAX 100000
+
 class ZhttpManager;
 
 class Filter
@@ -68,10 +70,12 @@ public:
 		QString route;
 		bool trusted;
 		std::shared_ptr<RateLimiter> limiter;
+		int responseSizeMax;
 
 		Context() :
 			zhttpOut(0),
-			trusted(false)
+			trusted(false),
+			responseSizeMax(DEFAULT_FILTER_RESPONSE_SIZE_MAX)
 		{
 		}
 	};
