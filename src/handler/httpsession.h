@@ -44,7 +44,6 @@
 
 using Connection = boost::signals2::scoped_connection;
 
-class QTimer;
 class ZhttpManager;
 class StatsManager;
 class PublishItem;
