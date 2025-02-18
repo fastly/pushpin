@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,14 +34,14 @@
 #include <boost/signals2.hpp>
 
 // each session can have a bunch of timers:
+// 3 misc timers
 // filter timers
-#define TIMERS_PER_WSSESSION (0 + TIMERS_PER_MESSAGEFILTERSTACK)
+#define TIMERS_PER_WSSESSION (3 + TIMERS_PER_MESSAGEFILTERSTACK)
 
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
-class QTimer;
-
+class RTimer;
 class ZhttpManager;
 class PublishItem;
 
@@ -71,9 +71,9 @@ public:
 	QByteArray delayedType;
 	QByteArray delayedMessage;
 	QHash<int, qint64> pendingRequests;
-	QTimer *expireTimer;
-	QTimer *delayedTimer;
-	QTimer *requestTimer;
+	RTimer *expireTimer;
+	RTimer *delayedTimer;
+	RTimer *requestTimer;
 	QList<PublishItem> publishQueue;
 	ZhttpManager *zhttpOut;
 	std::shared_ptr<RateLimiter> filterLimiter;
@@ -101,8 +101,6 @@ private:
 	void filtersFinished(const Filter::MessageFilter::Result &result);
 	void afterFilters(const PublishItem &item, Filter::SendAction sendAction, const QByteArray &content);
 	void setupRequestTimer();
-
-private slots:
 	void expireTimer_timeout();
 	void delayedTimer_timeout();
 	void requestTimer_timeout();
