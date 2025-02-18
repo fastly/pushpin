@@ -1775,9 +1775,9 @@ private:
 
 	void publishSend(const std::shared_ptr<QObject> &target, const PublishItem &item, const QList<QByteArray> &exposeHeaders)
 	{
-		if(HttpSession *hs = dynamic_cast<HttpSession*>(target.get()))
+		if(auto hs = std::dynamic_pointer_cast<HttpSession>(target))
 			hs->publish(item, exposeHeaders);
-		else if(WsSession *s = dynamic_cast<WsSession*>(target.get()))
+		else if(auto s = std::dynamic_pointer_cast<WsSession>(target))
 			s->publish(item);
 	}
 
