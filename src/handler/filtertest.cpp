@@ -143,6 +143,10 @@ public:
 			else
 				respondOk(req, 204, true, "");
 		}
+		else if(uri.path() == "/filter/large")
+		{
+			respondOk(req, 200, true, QByteArray(1001, 'a'));
+		}
 		else
 		{
 			respondError(req, 400, "Bad Request", "Bad Request\n");
@@ -301,6 +305,16 @@ private slots:
 			QVERIFY(r.errorMessage.isNull());
 			QCOMPARE(r.sendAction, Filter::Send);
 			QCOMPARE(r.content, "<<<hello world>>>");
+		}
+
+		context.subscriptionMeta.clear();
+		context.publishMeta.clear();
+		context.subscriptionMeta["url"] = "/filter/large";
+		context.responseSizeMax = 1000;
+
+		{
+			auto r = runMessageFilters(filterNames, context, content);
+			QCOMPARE(r.errorMessage, "network response exceeded 1000 bytes");
 		}
 	}
 };

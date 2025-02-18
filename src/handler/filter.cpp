@@ -354,20 +354,23 @@ public:
 	QByteArray origContent;
 	bool haveResponseHeader;
 	QByteArray responseBody;
+	int responseSizeMax;
 
 	boost::signals2::signal<void(const Filter::MessageFilter::Result&)> finished;
 
 	HttpFilterInner(HttpFilter::Mode _mode) :
 		mode(_mode),
-		haveResponseHeader(false)
+		haveResponseHeader(false),
+		responseSizeMax(-1)
 	{
 	}
 
-	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const QVariant &passthroughData, const QByteArray &content)
+	void setup(ZhttpManager *zhttpOut, const QUrl &_uri, const HttpHeaders &_headers, const QVariant &passthroughData, const QByteArray &content, int _responseSizeMax)
 	{
 		uri = _uri;
 		headers = _headers;
 		origContent = content;
+		responseSizeMax = _responseSizeMax;
 
 		req.reset(zhttpOut->createRequest());
 
@@ -406,7 +409,7 @@ public:
 				default:
 					Filter::MessageFilter::Result r;
 					r.errorMessage = QString("unexpected network request status: code=%1").arg(code);
-					finished(r);
+					doFinished(r);
 					return;
 			}
 		}
@@ -414,7 +417,17 @@ public:
 		QByteArray body = req->readBody();
 
 		if(mode == HttpFilter::Modify)
+		{
+			if(responseSizeMax >= 0 && responseBody.size() + body.size() > responseSizeMax)
+			{
+				Filter::MessageFilter::Result r;
+				r.errorMessage = QString("network response exceeded %1 bytes").arg(responseSizeMax);
+				doFinished(r);
+				return;
+			}
+
 			responseBody += body;
+		}
 
 		if(!req->isFinished())
 			return;
@@ -453,7 +466,7 @@ public:
 			}
 		}
 
-		finished(r);
+		doFinished(r);
 	}
 
 	void req_error()
@@ -484,6 +497,13 @@ public:
 
 		Filter::MessageFilter::Result r;
 		r.errorMessage = QString("network request failed: %1").arg(s);
+		doFinished(r);
+	}
+
+	void doFinished(const Filter::MessageFilter::Result &r)
+	{
+		req.reset();
+
 		finished(r);
 	}
 };
@@ -589,7 +609,7 @@ void HttpFilter::start(const Filter::Context &context, const QByteArray &content
 		}
 	}
 
-	inner->setup(context.zhttpOut, destUri, headers, passthroughData, content);
+	inner->setup(context.zhttpOut, destUri, headers, passthroughData, content, context.responseSizeMax);
 
 	QString key = QString::fromUtf8(destUri.toEncoded());
 

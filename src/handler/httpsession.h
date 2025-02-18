@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016-2023 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -123,7 +123,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 };
 
 #endif

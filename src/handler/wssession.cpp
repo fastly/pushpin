@@ -105,6 +105,11 @@ void WsSession::ack(int reqId)
 
 void WsSession::publish(const PublishItem &item)
 {
+	const PublishFormat &f = item.format;
+
+	if(f.type != PublishFormat::WebSocketMessage)
+		return;
+
 	publishQueue += item;
 
 	if(!inProcessPublishQueue)
