@@ -24,7 +24,6 @@
 #include "requestsession.h"
 
 #include <assert.h>
-#include <QPointer>
 #include <QUrl>
 #include <QHostAddress>
 #include <QUrlQuery>
@@ -813,7 +812,7 @@ public:
 
 	void zhttpRequest_bytesWritten(int count)
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(!jsonpCallback.isEmpty())
 		{
@@ -824,7 +823,7 @@ public:
 		else
 			q->bytesWritten(count);
 
-		if(!self)
+		if(self.expired())
 			return;
 
 		if(zhttpRequest->isFinished())
@@ -1191,13 +1190,10 @@ public:
 RequestSession::RequestSession(int workerId, DomainMap *domainMap, SockJsManager *sockJsManager, ZrpcManager *inspectManager, ZrpcChecker *inspectChecker, ZrpcManager *acceptManager, StatsManager *stats, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, workerId, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager, stats);
+	d = std::make_shared<Private>(this, workerId, domainMap, sockJsManager, inspectManager, inspectChecker, acceptManager, stats);
 }
 
-RequestSession::~RequestSession()
-{
-	delete d;
-}
+RequestSession::~RequestSession() = default;
 
 bool RequestSession::isRetry() const
 {
