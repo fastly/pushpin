@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include <algorithm>
-#include <QTimer>
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -1156,6 +1155,8 @@ private:
 	}
 };
 
+#define TIMERS_PER_SUBSCRIPTION 1
+
 class Subscription : public QObject
 {
 	Q_OBJECT
@@ -1185,8 +1186,8 @@ public:
 
 	void start()
 	{
-		timer_ = new QTimer(this);
-		connect(timer_, &QTimer::timeout, this, &Subscription::timer_timeout);
+		timer_ = new RTimer;
+		timer_->timeout.connect(boost::bind(&Subscription::timer_timeout, this));
 		timer_->setSingleShot(true);
 		timer_->start(SUBSCRIBED_DELAY);
 	}
@@ -1195,9 +1196,8 @@ public:
 
 private:
 	QString channel_;
-	QTimer *timer_;
+	RTimer *timer_;
 
-private slots:
 	void timer_timeout()
 	{
 		subscribed();
@@ -1339,7 +1339,10 @@ public:
 	{
 		config = _config;
 
-		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION);
+		// includes worst-case subscriptions and update registrations
+		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
+			(config.connectionSubscriptionMax * TIMERS_PER_SUBSCRIPTION) +
+			TIMERS_PER_UNIQUE_UPDATE_REGISTRATION;
 
 		// enough timers for sessions, plus an extra 100 for misc
 		RTimer::init((config.connectionsMax * timersPerSession) + 100);

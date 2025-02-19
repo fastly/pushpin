@@ -25,7 +25,7 @@
 
 #include <QList>
 #include <QMap>
-#include <QTimer>
+#include "rtimer.h"
 #include "defercall.h"
 
 #define MIN_BATCH_INTERVAL 25
@@ -74,7 +74,7 @@ public:
 	bool batchWaitEnabled;
 	QMap<QString, Bucket> buckets;
 	QString lastKey;
-	QTimer *timer;
+	RTimer *timer;
 	bool firstPass;
 	int batchInterval;
 	int batchSize;
@@ -90,8 +90,8 @@ public:
 		batchSize(-1),
 		lastBatchEmpty(false)
 	{
-		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &Private::timeout);
+		timer = new RTimer;
+		timer->timeout.connect(boost::bind(&Private::timeout, this));
 	}
 
 	~Private()
@@ -290,7 +290,6 @@ private:
 		return true;
 	}
 
-private slots:
 	void timeout()
 	{
 		if(!processBatch())
