@@ -316,7 +316,6 @@ private:
 		}
 	}
 
-private slots:
 	void refresh_timeout()
 	{
 		qint64 now = QDateTime::currentMSecsSinceEpoch();

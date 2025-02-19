@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2017-2020 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -50,8 +51,6 @@ private:
 
 	void refreshNextCid();
 	void respondError(const QByteArray &condition);
-
-private slots:
 	void proxyRefresh_finished(const DeferredResult &result);
 };
 

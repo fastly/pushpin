@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -304,7 +304,6 @@ public:
 		}
 	}
 
-private slots:
 	void requestTimer_timeout()
 	{
 		// on error, destroy any other pending requests
