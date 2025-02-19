@@ -24,7 +24,7 @@
 
 #include <assert.h>
 #include <QHash>
-#include "rtimer.h"
+#include "timer.h"
 #include "zrpcrequest.h"
 
 #define CHECK_TIMEOUT 8
@@ -62,7 +62,7 @@ public:
 
 	ZrpcChecker *q;
 	bool avail;
-	std::unique_ptr<RTimer> timer;
+	std::unique_ptr<Timer> timer;
 	QHash<ZrpcRequest*, Item*> requestsByReq;
 	map<ZrpcRequest*, ZrpcReqConnections> reqConnectionMap;
 	Connection timerConnection;
@@ -72,7 +72,7 @@ public:
 		q(_q),
 		avail(true)
 	{
-		timer = std::make_unique<RTimer>();
+		timer = std::make_unique<Timer>();
 		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 		timer->setSingleShot(true);
 	}

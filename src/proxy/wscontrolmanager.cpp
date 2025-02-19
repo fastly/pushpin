@@ -30,7 +30,7 @@
 #include "qzmqvalve.h"
 #include "qzmqreqmessage.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "tnetstring.h"
 #include "zutil.h"
 #include "logutil.h"
@@ -71,7 +71,7 @@ public:
 	std::unique_ptr<QZmq::Socket> streamSock;
 	std::unique_ptr<QZmq::Valve> streamValve;
 	QHash<QByteArray, WsControlSession*> sessionsByCid;
-	std::unique_ptr<RTimer> refreshTimer;
+	std::unique_ptr<Timer> refreshTimer;
 	QHash<WsControlSession*, KeepAliveRegistration*> keepAliveRegistrations;
 	QMap<QPair<qint64, KeepAliveRegistration*>, KeepAliveRegistration*> sessionsByLastRefresh;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[SESSION_REFRESH_BUCKETS];
@@ -85,7 +85,7 @@ public:
 		ipcFileMode(-1),
 		currentSessionRefreshBucket(0)
 	{
-		refreshTimer = std::make_unique<RTimer>();
+		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 	}
 

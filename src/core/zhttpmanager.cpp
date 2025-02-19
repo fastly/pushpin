@@ -34,7 +34,7 @@
 #include "log.h"
 #include "zutil.h"
 #include "logutil.h"
-#include "rtimer.h"
+#include "timer.h"
 
 #define OUT_HWM 100
 #define IN_HWM 100
@@ -102,7 +102,7 @@ public:
 	QHash<ZWebSocket::Rid, ZWebSocket*> clientSocksByRid;
 	QHash<ZWebSocket::Rid, ZWebSocket*> serverSocksByRid;
 	QList<ZWebSocket*> serverPendingSocks;
-	std::unique_ptr<RTimer> refreshTimer;
+	std::unique_ptr<Timer> refreshTimer;
 	QHash<void*, KeepAliveRegistration*> keepAliveRegistrations;
 	QSet<KeepAliveRegistration*> sessionRefreshBuckets[ZHTTP_REFRESH_BUCKETS];
 	int currentSessionRefreshBucket;
@@ -123,7 +123,7 @@ public:
 		doBind(false),
 		currentSessionRefreshBucket(0)
 	{
-		refreshTimer = std::make_unique<RTimer>();
+		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 	}
 

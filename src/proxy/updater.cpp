@@ -32,7 +32,7 @@
 #include <QHostInfo>
 #include "qtcompat.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "httpheaders.h"
 #include "zhttpmanager.h"
 #include "zhttprequest.h"
@@ -83,7 +83,7 @@ public:
 	QString currentVersion;
 	QString org;
 	ZhttpManager *zhttpManager;
-	std::unique_ptr<RTimer> timer;
+	std::unique_ptr<Timer> timer;
 	ZhttpRequest *req;
 	Report report;
 	QDateTime lastLogTime;
@@ -100,7 +100,7 @@ public:
 		zhttpManager(zhttp),
 		req(0)
 	{
-		timer = std::make_unique<RTimer>();
+		timer = std::make_unique<Timer>();
 		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 		timer->setInterval(mode == ReportMode ? REPORT_INTERVAL : CHECK_INTERVAL);
 		timer->start();

@@ -34,7 +34,7 @@
 #include <QTextStream>
 #include <QFileSystemWatcher>
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "routesfile.h"
 
@@ -202,7 +202,7 @@ public:
 	QList<Rule> allRules;
 	QHash< QString, QList<Rule> > rulesByDomain;
 	QHash<QString, Rule> rulesById;
-	RTimer t;
+	Timer t;
 	Connection tConnection;
 	QFileSystemWatcher watcher;
 	DeferCall deferCall;
@@ -747,7 +747,7 @@ public:
 
 	virtual void run()
 	{
-		RTimer::init(WORKER_THREAD_TIMERS);
+		Timer::init(WORKER_THREAD_TIMERS);
 
 		worker = new Worker;
 		worker->fileName = fileName;
@@ -757,7 +757,7 @@ public:
 		startedConnection.disconnect();
 		delete worker;
 
-		RTimer::deinit();
+		Timer::deinit();
 		DeferCall::cleanup();
 	}
 

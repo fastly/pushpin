@@ -30,7 +30,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include "processquit.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "log.h"
 #include "settings.h"
@@ -299,7 +299,7 @@ public:
 		QCoreApplication::instance()->sendPostedEvents();
 
 		// deinit here, after all event loop activity has completed
-		RTimer::deinit();
+		Timer::deinit();
 		DeferCall::cleanup();
 	}
 

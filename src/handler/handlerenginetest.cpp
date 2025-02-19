@@ -32,7 +32,7 @@
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "packet/httpresponsedata.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "handlerengine.h"
 
@@ -312,7 +312,7 @@ private slots:
 		// ensure deferred deletes are processed
 		QCoreApplication::instance()->sendPostedEvents();
 
-		RTimer::deinit();
+		Timer::deinit();
 		DeferCall::cleanup();
 	}
 

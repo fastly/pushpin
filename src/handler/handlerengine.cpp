@@ -34,7 +34,7 @@
 #include "qzmqreqmessage.h"
 #include "qtcompat.h"
 #include "tnetstring.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "log.h"
 #include "logutil.h"
@@ -1186,7 +1186,7 @@ public:
 
 	void start()
 	{
-		timer_ = new RTimer;
+		timer_ = new Timer;
 		timer_->timeout.connect(boost::bind(&Subscription::timer_timeout, this));
 		timer_->setSingleShot(true);
 		timer_->start(SUBSCRIBED_DELAY);
@@ -1196,7 +1196,7 @@ public:
 
 private:
 	QString channel_;
-	RTimer *timer_;
+	Timer *timer_;
 
 	void timer_timeout()
 	{
@@ -1345,7 +1345,7 @@ public:
 			TIMERS_PER_UNIQUE_UPDATE_REGISTRATION;
 
 		// enough timers for sessions, plus an extra 100 for misc
-		RTimer::init((config.connectionsMax * timersPerSession) + 100);
+		Timer::init((config.connectionsMax * timersPerSession) + 100);
 
 		publishLimiter->setRate(config.messageRate);
 		publishLimiter->setHwm(config.messageHwm);

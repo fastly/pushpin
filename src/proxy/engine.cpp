@@ -33,7 +33,7 @@
 #include "packet/statspacket.h"
 #include "packet/zrpcrequestpacket.h"
 #include "qtcompat.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "log.h"
 #include "inspectdata.h"
@@ -218,7 +218,7 @@ public:
 		config = _config;
 
 		// enough timers for sessions and zroutes, plus an extra 100 for misc
-		RTimer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
+		Timer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
 
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;

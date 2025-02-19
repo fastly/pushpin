@@ -28,7 +28,7 @@
 #include "zhttpresponsepacket.h"
 #include "bufferlist.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
@@ -100,9 +100,9 @@ public:
 	bool writableChanged;
 	bool errored;
 	ErrorCondition errorCondition;
-	RTimer *expireTimer;
-	RTimer *keepAliveTimer;
-	RTimer *finishTimer;
+	Timer *expireTimer;
+	Timer *keepAliveTimer;
+	Timer *finishTimer;
 	bool multi;
 	bool quiet;
 	Connection expTimerConnection;
@@ -143,11 +143,11 @@ public:
 		multi(false),
 		quiet(false)
 	{
-		expireTimer = new RTimer;
+		expireTimer = new Timer;
 		expTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer;
+		keepAliveTimer = new Timer;
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
@@ -296,7 +296,7 @@ public:
 
 		if(timeout > 0)
 		{
-			finishTimer = new RTimer;
+			finishTimer = new Timer;
 			finishTimerConnection = finishTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 			finishTimer->setSingleShot(true);
 			finishTimer->start(timeout);

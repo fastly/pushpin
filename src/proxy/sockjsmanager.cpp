@@ -34,7 +34,7 @@
 #include "qtcompat.h"
 #include "log.h"
 #include "bufferlist.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
 #include "sockjssession.h"
@@ -99,7 +99,7 @@ public:
 		QByteArray lastPart;
 		bool pending;
 		SockJsSession *ext;
-		std::unique_ptr<RTimer> timer;
+		std::unique_ptr<Timer> timer;
 		QVariant closeValue;
 		Connection timerConnection;
 
@@ -141,7 +141,7 @@ public:
 	QHash<ZWebSocket*, Session*> sessionsBySocket;
 	QHash<QByteArray, Session*> sessionsById;
 	QHash<SockJsSession*, Session*> sessionsByExt;
-	QHash<RTimer*, Session*> sessionsByTimer;
+	QHash<Timer*, Session*> sessionsByTimer;
 	QList<Session*> pendingSessions;
 	QByteArray iframeHtml;
 	QByteArray iframeHtmlEtag;
@@ -199,7 +199,7 @@ public:
 		if(s->closeValue.isValid())
 		{
 			// if there's a close value, hang around for a little bit
-			s->timer = std::make_unique<RTimer>();
+			s->timer = std::make_unique<Timer>();
 			s->timerConnection = s->timer->timeout.connect(boost::bind(&Private::timer_timeout, this, s->timer.get()));
 			s->timer->setSingleShot(true);
 			sessionsByTimer.insert(s->timer.get(), s);
@@ -674,7 +674,7 @@ private:
 	}
 
 private:
-	void timer_timeout(RTimer *timer)
+	void timer_timeout(Timer *timer)
 	{
 		Session *s = sessionsByTimer.value(timer);
 		assert(s);

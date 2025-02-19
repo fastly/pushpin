@@ -53,7 +53,7 @@ HEADERS += \
 	$$PWD/config.h \
 	$$PWD/timerwheel.h \
 	$$PWD/jwt.h \
-	$$PWD/rtimer.h \
+	$$PWD/timer.h \
 	$$PWD/defercall.h \
 	$$PWD/socketnotifier.h \
 	$$PWD/eventloop.h \
@@ -79,7 +79,7 @@ SOURCES += \
 	$$PWD/config.cpp \
 	$$PWD/timerwheel.cpp \
 	$$PWD/jwt.cpp \
-	$$PWD/rtimer.cpp \
+	$$PWD/timer.cpp \
 	$$PWD/defercall.cpp \
 	$$PWD/socketnotifier.cpp \
 	$$PWD/eventloop.cpp \

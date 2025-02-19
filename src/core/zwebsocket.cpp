@@ -27,7 +27,7 @@
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
@@ -84,8 +84,8 @@ public:
 	bool readableChanged;
 	bool writableChanged;
 	ErrorCondition errorCondition;
-	RTimer *expireTimer;
-	RTimer *keepAliveTimer;
+	Timer *expireTimer;
+	Timer *keepAliveTimer;
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int inSize;
@@ -127,11 +127,11 @@ public:
 		outContentType((int)Frame::Text),
 		multi(false)
 	{
-		expireTimer = new RTimer;
+		expireTimer = new Timer;
 		expireTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer;
+		keepAliveTimer = new Timer;
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 

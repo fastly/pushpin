@@ -27,7 +27,7 @@
 #include <QJsonObject>
 #include <boost/signals2.hpp>
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "zhttpmanager.h"
 #include "ratelimiter.h"
@@ -191,7 +191,7 @@ private slots:
 		QDir outDir(qgetenv("OUT_DIR"));
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
-		RTimer::init(100);
+		Timer::init(100);
 
 		filterServer = std::make_unique<HttpFilterServer>(workDir);
 
@@ -214,7 +214,7 @@ private slots:
 		// ensure deferred deletes are processed
 		QCoreApplication::instance()->sendPostedEvents();
 
-		RTimer::deinit();
+		Timer::deinit();
 		DeferCall::cleanup();
 	}
 
