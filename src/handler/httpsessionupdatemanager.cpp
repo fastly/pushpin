@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -22,8 +23,8 @@
 
 #include "httpsessionupdatemanager.h"
 
-#include <QTimer>
 #include <QUrl>
+#include "rtimer.h"
 #include "defercall.h"
 #include "httpsession.h"
 
@@ -38,12 +39,12 @@ public:
 		QPair<int, QUrl> key;
 		QSet<HttpSession*> sessions;
 		QSet<HttpSession*> deferredSessions;
-		QTimer *timer;
+		RTimer *timer;
 	};
 
 	HttpSessionUpdateManager *q;
 	QHash<QPair<int, QUrl>, Bucket*> buckets;
-	QHash<QTimer*, Bucket*> bucketsByTimer;
+	QHash<RTimer*, Bucket*> bucketsByTimer;
 	QHash<HttpSession*, Bucket*> bucketsBySession;
 
 	Private(HttpSessionUpdateManager *_q) :
@@ -115,10 +116,8 @@ public:
 			bucket = new Bucket;
 			bucket->key = key;
 			bucket->sessions += hs;
-			bucket->timer = new QTimer(this);
-			QObject::connect(bucket->timer, &QTimer::timeout, [this, timer=bucket->timer]() {
-				this->timer_timeout(timer);
-			});
+			bucket->timer = new RTimer;
+			bucket->timer->timeout.connect(boost::bind(&Private::timer_timeout, this, bucket->timer));
 
 			buckets[key] = bucket;
 			bucketsByTimer[bucket->timer] = bucket;
@@ -143,7 +142,7 @@ public:
 	}
 
 private:
-	void timer_timeout(QTimer *timer)
+	void timer_timeout(RTimer *timer)
 	{
 		Bucket *bucket = bucketsByTimer.value(timer);
 		if(!bucket)
