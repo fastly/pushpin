@@ -25,7 +25,7 @@
 
 #include <QDateTime>
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "publishitem.h"
 #include "publishlastids.h"
@@ -69,7 +69,7 @@ public:
 	PublishLastIds *lastIds;
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
 	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
-	RTimer *expireTimer;
+	Timer *expireTimer;
 	int pendingExpireMSecs;
 	int idCacheTtl;
 	QHash<QPair<QString, QString>, CachedId*> idCacheById;
@@ -82,7 +82,7 @@ public:
 		pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
 		idCacheTtl(-1)
 	{
-		expireTimer = new RTimer;
+		expireTimer = new Timer;
 		expireTimer->timeout.connect(boost::bind(&Private::expireTimer_timeout, this));
 	}
 

@@ -25,7 +25,7 @@
 
 #include <QDateTime>
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "filter.h"
 #include "publishitem.h"
@@ -43,15 +43,15 @@ WsSession::WsSession(QObject *parent) :
 	inProcessPublishQueue(false),
 	closed(false)
 {
-	expireTimer = new RTimer;
+	expireTimer = new Timer;
 	expireTimer->setSingleShot(true);
 	expireTimer->timeout.connect(boost::bind(&WsSession::expireTimer_timeout, this));
 
-	delayedTimer = new RTimer;
+	delayedTimer = new Timer;
 	delayedTimer->setSingleShot(true);
 	delayedTimer->timeout.connect(boost::bind(&WsSession::delayedTimer_timeout, this));
 
-	requestTimer = new RTimer;
+	requestTimer = new Timer;
 	requestTimer->setSingleShot(true);
 	requestTimer->timeout.connect(boost::bind(&WsSession::requestTimer_timeout, this));
 }

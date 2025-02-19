@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2021 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,7 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "rtimer.h"
+#include "timer.h"
 
 #include <assert.h>
 #include <QDateTime>
@@ -54,7 +54,7 @@ class TimerManager : public QObject
 public:
 	TimerManager(int capacity, QObject *parent = 0);
 
-	int add(int msec, RTimer *r);
+	int add(int msec, Timer *r);
 	void remove(int key);
 
 private slots:
@@ -81,7 +81,7 @@ TimerManager::TimerManager(int capacity, QObject *parent) :
 	t_->setSingleShot(true);
 }
 
-int TimerManager::add(int msec, RTimer *r)
+int TimerManager::add(int msec, Timer *r)
 {
 	qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -130,7 +130,7 @@ void TimerManager::t_timeout()
 			break;
 		}
 
-		RTimer *r = (RTimer *)expired.userData;
+		Timer *r = (Timer *)expired.userData;
 
 		r->timerReady();
 	}
@@ -173,42 +173,42 @@ void TimerManager::updateTimeout(qint64 currentTime)
 
 static thread_local TimerManager *g_manager = 0;
 
-RTimer::RTimer() :
+Timer::Timer() :
 	singleShot_(false),
 	interval_(0),
 	timerId_(-1)
 {
 }
 
-RTimer::~RTimer()
+Timer::~Timer()
 {
 	stop();
 }
 
-bool RTimer::isActive() const
+bool Timer::isActive() const
 {
 	return (timerId_ >= 0);
 }
 
-void RTimer::setSingleShot(bool singleShot)
+void Timer::setSingleShot(bool singleShot)
 {
 	singleShot_ = singleShot;
 }
 
-void RTimer::setInterval(int msec)
+void Timer::setInterval(int msec)
 {
 	interval_ = msec;
 }
 
-void RTimer::start(int msec)
+void Timer::start(int msec)
 {
 	setInterval(msec);
 	start();
 }
 
-void RTimer::start()
+void Timer::start()
 {
-	// must call RTimer::init first
+	// must call Timer::init first
 	assert(g_manager);
 
 	stop();
@@ -219,7 +219,7 @@ void RTimer::start()
 	timerId_ = id;
 }
 
-void RTimer::stop()
+void Timer::stop()
 {
 	if(timerId_ >= 0)
 	{
@@ -231,7 +231,7 @@ void RTimer::stop()
 	}
 }
 
-void RTimer::timerReady()
+void Timer::timerReady()
 {
 	timerId_ = -1;
 
@@ -243,17 +243,17 @@ void RTimer::timerReady()
 	timeout();
 }
 
-void RTimer::init(int capacity)
+void Timer::init(int capacity)
 {
 	assert(!g_manager);
 
 	g_manager = new TimerManager(capacity);
 }
 
-void RTimer::deinit()
+void Timer::deinit()
 {
 	delete g_manager;
 	g_manager = 0;
 }
 
-#include "rtimer.moc"
+#include "timer.moc"

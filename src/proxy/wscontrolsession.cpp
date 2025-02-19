@@ -27,7 +27,7 @@
 #include <QDateTime>
 #include <QUrl>
 #include <boost/signals2.hpp>
-#include "rtimer.h"
+#include "timer.h"
 #include "wscontrolmanager.h"
 
 #define SESSION_TTL 60
@@ -46,7 +46,7 @@ public:
 	QList<WsControlPacket::Item> pendingItems;
 	QHash<int, qint64> pendingRequests;
 	QList<QByteArray> pendingSendEventWrites;
-	std::unique_ptr<RTimer> requestTimer;
+	std::unique_ptr<Timer> requestTimer;
 	QByteArray peer;
 	QByteArray cid;
 	bool debug;
@@ -68,7 +68,7 @@ public:
 		logLevel(-1),
 		targetTrusted(false)
 	{
-		requestTimer = std::make_unique<RTimer>();
+		requestTimer = std::make_unique<Timer>();
 		requestTimerConnection = requestTimer->timeout.connect(boost::bind(&Private::requestTimer_timeout, this));
 		requestTimer->setSingleShot(true);
 	}

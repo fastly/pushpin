@@ -27,7 +27,7 @@
 #include <QStringList>
 #include <boost/signals2.hpp>
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -96,7 +96,7 @@ public:
 	Item *defaultItem;
 	QHash<QString, Item*> itemsBySpec;
 	QHash<ZhttpManager*, Item*> itemsByManager;
-	std::unique_ptr<RTimer> cleanupTimer;
+	std::unique_ptr<Timer> cleanupTimer;
 	Connection cleanupTimerConnection;
 
 	Private(ZRoutes *_q) :
@@ -104,7 +104,7 @@ public:
 		q(_q),
 		defaultItem(0)
 	{
-		cleanupTimer = std::make_unique<RTimer>();
+		cleanupTimer = std::make_unique<Timer>();
 		cleanupTimerConnection = cleanupTimer->timeout.connect(boost::bind(&Private::removeUnused, this));
 		cleanupTimer->setInterval(10000);
 		cleanupTimer->start();

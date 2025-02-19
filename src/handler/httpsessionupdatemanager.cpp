@@ -24,7 +24,7 @@
 #include "httpsessionupdatemanager.h"
 
 #include <QUrl>
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "httpsession.h"
 
@@ -39,12 +39,12 @@ public:
 		QPair<int, QUrl> key;
 		QSet<HttpSession*> sessions;
 		QSet<HttpSession*> deferredSessions;
-		RTimer *timer;
+		Timer *timer;
 	};
 
 	HttpSessionUpdateManager *q;
 	QHash<QPair<int, QUrl>, Bucket*> buckets;
-	QHash<RTimer*, Bucket*> bucketsByTimer;
+	QHash<Timer*, Bucket*> bucketsByTimer;
 	QHash<HttpSession*, Bucket*> bucketsBySession;
 
 	Private(HttpSessionUpdateManager *_q) :
@@ -116,7 +116,7 @@ public:
 			bucket = new Bucket;
 			bucket->key = key;
 			bucket->sessions += hs;
-			bucket->timer = new RTimer;
+			bucket->timer = new Timer;
 			bucket->timer->timeout.connect(boost::bind(&Private::timer_timeout, this, bucket->timer));
 
 			buckets[key] = bucket;
@@ -142,7 +142,7 @@ public:
 	}
 
 private:
-	void timer_timeout(RTimer *timer)
+	void timer_timeout(Timer *timer)
 	{
 		Bucket *bucket = bucketsByTimer.value(timer);
 		if(!bucket)

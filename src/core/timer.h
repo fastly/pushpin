@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2021 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,8 +21,8 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef RTIMER_H
-#define RTIMER_H
+#ifndef TIMER_H
+#define TIMER_H
 
 #include <qobject.h>
 #include <boost/signals2.hpp>
@@ -31,13 +31,13 @@ using Signal = boost::signals2::signal<void()>;
 
 class TimerManager;
 
-class RTimer : public QObject
+class Timer : public QObject
 {
 	Q_OBJECT
 
 public:
-	RTimer();
-	~RTimer();
+	Timer();
+	~Timer();
 
 	bool isActive() const;
 
@@ -50,7 +50,7 @@ public:
 	// initialization is thread local
 	static void init(int capacity);
 
-	// only call if there are no active RTimers
+	// only call if there are no active timers
 	static void deinit();
 
 	Signal timeout;

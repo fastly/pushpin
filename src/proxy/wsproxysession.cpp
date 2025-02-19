@@ -32,7 +32,7 @@
 #include <QRandomGenerator>
 #include "packet/httprequestdata.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
@@ -303,7 +303,7 @@ public:
 	bool detached;
 	QDateTime activityTime;
 	QByteArray publicCid;
-	RTimer *keepAliveTimer;
+	Timer *keepAliveTimer;
 	WsControl::KeepAliveMode keepAliveMode;
 	int keepAliveTimeout;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
@@ -1110,7 +1110,7 @@ private:
 
 			if(!keepAliveTimer)
 			{
-				keepAliveTimer = new RTimer;
+				keepAliveTimer = new Timer;
 				keepAliveConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 				keepAliveTimer->setSingleShot(true);
 			}

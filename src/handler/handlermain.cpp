@@ -22,7 +22,7 @@
  */
 
 #include <QCoreApplication>
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "handlerapp.h"
 
@@ -60,7 +60,7 @@ int handler_main(int argc, char **argv)
 	QCoreApplication::instance()->sendPostedEvents();
 
 	// deinit here, after all event loop activity has completed
-	RTimer::deinit();
+	Timer::deinit();
 	DeferCall::cleanup();
 
 	return ret;
