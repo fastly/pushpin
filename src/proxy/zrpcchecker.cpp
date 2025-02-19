@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -212,7 +213,6 @@ public:
 		delete i;
 	}
 
-public slots:
 	void timer_timeout()
 	{
 		avail = false;

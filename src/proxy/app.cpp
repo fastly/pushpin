@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -666,6 +666,13 @@ public:
 		log_info("started");
 	}
 
+private:
+	void domainMap_changed()
+	{
+		for(EngineThread *t : threads)
+			t->routesChanged();
+	}
+
 private slots:
 	void reload()
 	{
@@ -673,12 +680,6 @@ private slots:
 		log_rotate();
 
 		domainMap->reload();
-	}
-
-	void domainMap_changed()
-	{
-		for(EngineThread *t : threads)
-			t->routesChanged();
 	}
 
 	void doQuit()

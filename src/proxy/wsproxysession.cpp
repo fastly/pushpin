@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -826,7 +826,6 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count);
 	}
 
-private slots:
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)

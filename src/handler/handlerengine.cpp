@@ -3101,7 +3101,6 @@ private:
 		}
 	}
 
-private slots:
 	void hs_subscribe(HttpSession *hs, const QString &channel)
 	{
 		Instruct::HoldMode mode = hs->holdMode();
