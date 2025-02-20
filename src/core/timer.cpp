@@ -27,6 +27,7 @@
 #include <QDateTime>
 #include <QTimer>
 #include "timerwheel.h"
+#include "eventloop.h"
 
 #define TICK_DURATION_MS 10
 #define UPDATE_TICKS_MAX 1000
@@ -174,6 +175,7 @@ void TimerManager::updateTimeout(qint64 currentTime)
 static thread_local TimerManager *g_manager = 0;
 
 Timer::Timer() :
+	loop_(EventLoop::instance()),
 	singleShot_(false),
 	interval_(0),
 	timerId_(-1)
@@ -208,27 +210,55 @@ void Timer::start(int msec)
 
 void Timer::start()
 {
-	// must call Timer::init first
-	assert(g_manager);
-
 	stop();
 
-	int id = g_manager->add(interval_, this);
-	assert(id >= 0);
+	if(loop_)
+	{
+		// if the rust-based eventloop is available, use it
 
-	timerId_ = id;
+		int id = loop_->registerTimer(interval_, Timer::cb_timer_activated, this);
+		assert(id >= 0);
+
+		timerId_ = id;
+	}
+	else
+	{
+		// else fall back to qt eventloop
+
+		// must call Timer::init first
+		assert(g_manager);
+
+		int id = g_manager->add(interval_, this);
+		assert(id >= 0);
+
+		timerId_ = id;
+	}
 }
 
 void Timer::stop()
 {
 	if(timerId_ >= 0)
 	{
-		assert(g_manager);
+		if(loop_)
+		{
+			loop_->deregister(timerId_);
+		}
+		else
+		{
+			assert(g_manager);
 
-		g_manager->remove(timerId_);
+			g_manager->remove(timerId_);
+		}
 
 		timerId_ = -1;
 	}
+}
+
+void Timer::cb_timer_activated(void *ctx)
+{
+	Timer *self = (Timer *)ctx;
+
+	self->timerReady();
 }
 
 void Timer::timerReady()

@@ -29,6 +29,7 @@
 
 using Signal = boost::signals2::signal<void()>;
 
+class EventLoop;
 class TimerManager;
 
 class Timer : public QObject
@@ -58,10 +59,12 @@ public:
 private:
 	friend class TimerManager;
 
+	EventLoop *loop_;
 	bool singleShot_;
 	int interval_;
 	int timerId_;
 
+	static void cb_timer_activated(void *ctx);
 	void timerReady();
 };
 
