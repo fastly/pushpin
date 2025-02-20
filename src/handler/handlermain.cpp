@@ -60,8 +60,8 @@ int handler_main(int argc, char **argv)
 	QCoreApplication::instance()->sendPostedEvents();
 
 	// deinit here, after all event loop activity has completed
-	Timer::deinit();
 	DeferCall::cleanup();
+	Timer::deinit();
 
 	return ret;
 }

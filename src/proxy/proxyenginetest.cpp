@@ -638,8 +638,8 @@ private slots:
 		// ensure deferred deletes are processed
 		QCoreApplication::instance()->sendPostedEvents();
 
-		Timer::deinit();
 		DeferCall::cleanup();
+		Timer::deinit();
 	}
 
 	void passthrough()

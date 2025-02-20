@@ -299,8 +299,8 @@ public:
 		QCoreApplication::instance()->sendPostedEvents();
 
 		// deinit here, after all event loop activity has completed
-		Timer::deinit();
 		DeferCall::cleanup();
+		Timer::deinit();
 	}
 
 private:
