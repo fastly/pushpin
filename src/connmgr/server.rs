@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2020-2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2305,9 +2305,12 @@ impl TestServer {
         let (started_s, started_r) = channel::channel(1);
         let (stop_s, stop_r) = channel::channel(1);
 
-        let thread = thread::spawn(move || {
-            Self::run(started_s, stop_r, zmq_context);
-        });
+        let thread = thread::Builder::new()
+            .name("test-server".to_string())
+            .spawn(move || {
+                Self::run(started_s, stop_r, zmq_context);
+            })
+            .unwrap();
 
         // wait for handler thread to start
         started_r.recv().unwrap();

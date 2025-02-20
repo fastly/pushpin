@@ -740,6 +740,8 @@ public:
 
 	void start()
 	{
+		setObjectName("domainmap");
+
 		QMutexLocker locker(&m);
 		QThread::start();
 		w.wait(&m);
