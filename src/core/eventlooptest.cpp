@@ -33,11 +33,6 @@ class EventLoopTest : public QObject
 	Q_OBJECT
 
 private slots:
-	void cleanupTestCase()
-	{
-		DeferCall::cleanup();
-	}
-
 	void socketNotifier()
 	{
 		EventLoop loop(1);
