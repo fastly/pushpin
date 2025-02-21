@@ -63,6 +63,22 @@ private slots:
 		QVERIFY(second);
 	}
 
+	void retract()
+	{
+		bool called = false;
+
+		{
+			DeferCall deferCall;
+
+			deferCall.defer([&] {
+				called = true;
+			});
+		}
+
+		DeferCall::cleanup();
+		QVERIFY(!called);
+	}
+
 	void managerCleanup()
 	{
 		bool first = false;
