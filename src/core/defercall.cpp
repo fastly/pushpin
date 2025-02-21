@@ -21,9 +21,58 @@
 */
 
 #include "defercall.h"
-#include <assert.h>
 
-static thread_local DeferCall *g_instance = nullptr;
+#include "timer.h"
+
+class DeferCall::Manager
+{
+public:
+	Manager()
+	{
+		timer_.setSingleShot(true);
+		timer_.timeout.connect(boost::bind(&Manager::timer_timeout, this));
+	}
+
+	void add(const std::weak_ptr<Call> &c)
+	{
+		calls_.push_back(c);
+
+		if(!timer_.isActive())
+			timer_.start(0);
+	}
+
+	void flush()
+	{
+		while(!calls_.empty())
+			process();
+	}
+
+private:
+	Timer timer_;
+	std::list<std::weak_ptr<Call>> calls_;
+
+	void process()
+	{
+		// process all calls queued so far, but not any that may get queued
+		// during processing
+		std::list<std::weak_ptr<Call>> ready;
+		ready.swap(calls_);
+
+		for(auto c : ready)
+		{
+			if(auto p = c.lock())
+				p->handler();
+		}
+	}
+
+	void timer_timeout()
+	{
+		process();
+
+		// no need to re-arm the timer. if new calls were queued during
+		// processing, add() will have taken care of that
+	}
+};
 
 DeferCall::DeferCall() = default;
 
@@ -31,35 +80,38 @@ DeferCall::~DeferCall() = default;
 
 void DeferCall::defer(std::function<void ()> handler)
 {
-	Call c;
-	c.handler = handler;
+	std::shared_ptr<Call> c = std::make_shared<Call>();
+	c->handler = handler;
 
 	deferredCalls_.push_back(c);
 
-	QMetaObject::invokeMethod(this, "callNext", Qt::QueuedConnection);
+	if(!manager)
+		manager = new Manager;
+
+	// manager keeps a weak pointer, so we can invalidate pending calls by
+	// simply deleting them
+	manager->add(c);
 }
 
 DeferCall *DeferCall::global()
 {
-	if(!g_instance)
-		g_instance = new DeferCall;
+	if(!instance)
+		instance = new DeferCall;
 
-	return g_instance;
+	return instance;
 }
 
 void DeferCall::cleanup()
 {
-	delete g_instance;
-	g_instance = nullptr;
+	if(manager)
+		manager->flush();
+
+	delete instance;
+	instance = nullptr;
+
+	delete manager;
+	manager = nullptr;
 }
 
-void DeferCall::callNext()
-{
-	// there can't be more invokeMethod resolutions than queued calls
-	assert(!deferredCalls_.empty());
-
-	Call c = deferredCalls_.front();
-	deferredCalls_.pop_front();
-
-	c.handler();
-}
+thread_local DeferCall::Manager *DeferCall::manager = nullptr;
+thread_local DeferCall *DeferCall::instance = nullptr;

@@ -120,6 +120,11 @@ mod tests {
         unsafe { call_c_main(ffi::eventloop_test, args) as u8 }
     }
 
+    fn defercall_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::defercall_test, args) as u8 }
+    }
+
     #[test]
     fn httpheaders() {
         assert!(qtest::run(httpheaders_test));
@@ -133,5 +138,10 @@ mod tests {
     #[test]
     fn eventloop() {
         assert!(qtest::run(eventloop_test));
+    }
+
+    #[test]
+    fn defercall() {
+        assert!(qtest::run(defercall_test));
     }
 }
