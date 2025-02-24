@@ -826,8 +826,9 @@ public:
 
 	QList<std::shared_ptr<HttpSession>> takeSessions()
 	{
-		QList<std::shared_ptr<HttpSession>> out = sessions;
-		sessions.clear();
+		// swap instead of std::move since sessions is a member and should have a known state
+		QList<std::shared_ptr<HttpSession>> out;
+		out.swap(sessions);
 
 		foreach(const std::shared_ptr<HttpSession> &hs, out)
 			hs->setParent(0);
