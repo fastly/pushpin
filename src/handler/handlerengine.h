@@ -30,6 +30,8 @@
 #include <boost/signals2.hpp>
 #include <map>
 
+#define TIMERS_PER_SUBSCRIPTION 1
+
 using std::map;
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
