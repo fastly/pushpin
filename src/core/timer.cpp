@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2021 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -21,12 +21,13 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "rtimer.h"
+#include "timer.h"
 
 #include <assert.h>
 #include <QDateTime>
 #include <QTimer>
 #include "timerwheel.h"
+#include "eventloop.h"
 
 #define TICK_DURATION_MS 10
 #define UPDATE_TICKS_MAX 1000
@@ -54,7 +55,7 @@ class TimerManager : public QObject
 public:
 	TimerManager(int capacity, QObject *parent = 0);
 
-	int add(int msec, RTimer *r);
+	int add(int msec, Timer *r);
 	void remove(int key);
 
 private slots:
@@ -81,7 +82,7 @@ TimerManager::TimerManager(int capacity, QObject *parent) :
 	t_->setSingleShot(true);
 }
 
-int TimerManager::add(int msec, RTimer *r)
+int TimerManager::add(int msec, Timer *r)
 {
 	qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
 
@@ -130,7 +131,7 @@ void TimerManager::t_timeout()
 			break;
 		}
 
-		RTimer *r = (RTimer *)expired.userData;
+		Timer *r = (Timer *)expired.userData;
 
 		r->timerReady();
 	}
@@ -173,65 +174,94 @@ void TimerManager::updateTimeout(qint64 currentTime)
 
 static thread_local TimerManager *g_manager = 0;
 
-RTimer::RTimer() :
+Timer::Timer() :
+	loop_(EventLoop::instance()),
 	singleShot_(false),
 	interval_(0),
 	timerId_(-1)
 {
 }
 
-RTimer::~RTimer()
+Timer::~Timer()
 {
 	stop();
 }
 
-bool RTimer::isActive() const
+bool Timer::isActive() const
 {
 	return (timerId_ >= 0);
 }
 
-void RTimer::setSingleShot(bool singleShot)
+void Timer::setSingleShot(bool singleShot)
 {
 	singleShot_ = singleShot;
 }
 
-void RTimer::setInterval(int msec)
+void Timer::setInterval(int msec)
 {
 	interval_ = msec;
 }
 
-void RTimer::start(int msec)
+void Timer::start(int msec)
 {
 	setInterval(msec);
 	start();
 }
 
-void RTimer::start()
+void Timer::start()
 {
-	// must call RTimer::init first
-	assert(g_manager);
-
 	stop();
 
-	int id = g_manager->add(interval_, this);
-	assert(id >= 0);
+	if(loop_)
+	{
+		// if the rust-based eventloop is available, use it
 
-	timerId_ = id;
+		int id = loop_->registerTimer(interval_, Timer::cb_timer_activated, this);
+		assert(id >= 0);
+
+		timerId_ = id;
+	}
+	else
+	{
+		// else fall back to qt eventloop
+
+		// must call Timer::init first
+		assert(g_manager);
+
+		int id = g_manager->add(interval_, this);
+		assert(id >= 0);
+
+		timerId_ = id;
+	}
 }
 
-void RTimer::stop()
+void Timer::stop()
 {
 	if(timerId_ >= 0)
 	{
-		assert(g_manager);
+		if(loop_)
+		{
+			loop_->deregister(timerId_);
+		}
+		else
+		{
+			assert(g_manager);
 
-		g_manager->remove(timerId_);
+			g_manager->remove(timerId_);
+		}
 
 		timerId_ = -1;
 	}
 }
 
-void RTimer::timerReady()
+void Timer::cb_timer_activated(void *ctx)
+{
+	Timer *self = (Timer *)ctx;
+
+	self->timerReady();
+}
+
+void Timer::timerReady()
 {
 	timerId_ = -1;
 
@@ -243,17 +273,17 @@ void RTimer::timerReady()
 	timeout();
 }
 
-void RTimer::init(int capacity)
+void Timer::init(int capacity)
 {
 	assert(!g_manager);
 
 	g_manager = new TimerManager(capacity);
 }
 
-void RTimer::deinit()
+void Timer::deinit()
 {
 	delete g_manager;
 	g_manager = 0;
 }
 
-#include "rtimer.moc"
+#include "timer.moc"

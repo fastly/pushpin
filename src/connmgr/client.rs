@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -634,7 +634,7 @@ impl Worker {
 
         let instance_id = Rc::new(instance_id);
 
-        let ka_batch = (stream_maxconn + (KEEP_ALIVE_BATCHES - 1)) / KEEP_ALIVE_BATCHES;
+        let ka_batch = stream_maxconn.div_ceil(KEEP_ALIVE_BATCHES);
 
         let batch = Batch::new(ka_batch);
 
@@ -1891,9 +1891,12 @@ impl TestClient {
         let (status_s, status_r) = channel::channel(1000);
         let (control_s, control_r) = channel::channel(1000);
 
-        let thread = thread::spawn(move || {
-            Self::run(status_s, control_r, zmq_context);
-        });
+        let thread = thread::Builder::new()
+            .name("test-client".to_string())
+            .spawn(move || {
+                Self::run(status_s, control_r, zmq_context);
+            })
+            .unwrap();
 
         // wait for handler thread to start
         assert_eq!(status_r.recv().unwrap(), StatusMessage::Started);

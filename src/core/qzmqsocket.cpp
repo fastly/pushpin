@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2020 Justin Karneges
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -27,13 +27,12 @@
 #include <stdio.h>
 #include <assert.h>
 #include <QStringList>
-#include <QPointer>
-#include <QSocketNotifier>
 #include <QMutex>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
 #include "qzmqcontext.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "socketnotifier.h"
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -362,27 +361,24 @@ static void removeGlobalContextRef()
 	}
 }
 
-class Socket::Private : public QObject
+class Socket::Private
 {
-	Q_OBJECT
-
 public:
 	Socket *q;
 	bool usingGlobalContext;
 	Context *context;
 	void *sock;
-	QSocketNotifier *sn_read;
+	std::unique_ptr<SocketNotifier> sn_read;
 	bool canWrite, canRead;
 	QList< QList<QByteArray> > pendingWrites;
 	int pendingWritten;
-	std::unique_ptr<RTimer> updateTimer;
+	std::unique_ptr<Timer> updateTimer;
 	Connection updateTimerConnection;
 	bool pendingUpdate;
 	int shutdownWaitTime;
 	bool writeQueueEnabled;
 
 	Private(Socket *_q, Socket::Type type, Context *_context) :
-		QObject(_q),
 		q(_q),
 		canWrite(false),
 		canRead(false),
@@ -421,17 +417,19 @@ public:
 		sock = wzmq_socket(context->context(), ztype);
 		assert(sock != NULL);
 
-		sn_read = new QSocketNotifier(get_fd(sock), QSocketNotifier::Read, this);
-		connect(sn_read, &QSocketNotifier::activated, this, &Private::sn_read_activated);
+		sn_read = std::make_unique<SocketNotifier>(get_fd(sock), SocketNotifier::Read);
+		sn_read->activated.connect(boost::bind(&Private::sn_read_activated, this));
 		sn_read->setEnabled(true);
 
-		updateTimer = std::make_unique<RTimer>();
+		updateTimer = std::make_unique<Timer>();
 		updateTimerConnection = updateTimer->timeout.connect(boost::bind(&Private::update_timeout, this));
 		updateTimer->setSingleShot(true);
 	}
 
 	~Private()
 	{
+		sn_read.reset();
+
 		set_linger(sock, shutdownWaitTime);
 		wzmq_close(sock);
 
@@ -597,9 +595,9 @@ public:
 
 		if(canRead)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			q->readyRead();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
@@ -619,7 +617,6 @@ public:
 		doUpdate();
 	}
 
-public slots:
 	void sn_read_activated()
 	{
 		if(!processEvents())
@@ -635,22 +632,17 @@ public slots:
 	}
 };
 
-Socket::Socket(Type type, QObject *parent) :
-	QObject(parent)
+Socket::Socket(Type type)
 {
-	d = new Private(this, type, 0);
+	d = std::make_shared<Private>(this, type, nullptr);
 }
 
-Socket::Socket(Type type, Context *context, QObject *parent) :
-	QObject(parent)
+Socket::Socket(Type type, Context *context)
 {
-	d = new Private(this, type, context);
+	d = std::make_shared<Private>(this, type, context);
 }
 
-Socket::~Socket()
-{
-	delete d;
-}
+Socket::~Socket() = default;
 
 void Socket::setShutdownWaitTime(int msecs)
 {
@@ -772,5 +764,3 @@ void Socket::write(const QList<QByteArray> &message)
 }
 
 }
-
-#include "qzmqsocket.moc"

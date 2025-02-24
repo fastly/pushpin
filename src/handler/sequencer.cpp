@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2021 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -23,8 +24,9 @@
 #include "sequencer.h"
 
 #include <QDateTime>
-#include <QTimer>
 #include "log.h"
+#include "timer.h"
+#include "defercall.h"
 #include "publishitem.h"
 #include "publishlastids.h"
 
@@ -67,7 +69,7 @@ public:
 	PublishLastIds *lastIds;
 	QHash<QString, ChannelPendingItems> pendingItemsByChannel;
 	QMap<QPair<qint64, PendingItem*>, PendingItem*> pendingItemsByTime;
-	QTimer *expireTimer;
+	Timer *expireTimer;
 	int pendingExpireMSecs;
 	int idCacheTtl;
 	QHash<QPair<QString, QString>, CachedId*> idCacheById;
@@ -80,15 +82,15 @@ public:
 		pendingExpireMSecs(DEFAULT_PENDING_EXPIRE),
 		idCacheTtl(-1)
 	{
-		expireTimer = new QTimer(this);
-		connect(expireTimer, &QTimer::timeout, this, &Private::expireTimer_timeout);
+		expireTimer = new Timer;
+		expireTimer->timeout.connect(boost::bind(&Private::expireTimer_timeout, this));
 	}
 
 	~Private()
 	{
 		expireTimer->disconnect(this);
 		expireTimer->setParent(0);
-		expireTimer->deleteLater();
+		DeferCall::deleteLater(expireTimer);
 
 		qDeleteAll(idCacheById);
 	}
@@ -229,7 +231,6 @@ public:
 		}
 	}
 
-private slots:
 	void expireTimer_timeout()
 	{
 		qint64 now = QDateTime::currentMSecsSinceEpoch();

@@ -1,6 +1,6 @@
 TEMPLATE = lib
 CONFIG -= app_bundle
-CONFIG += staticlib c++14
+CONFIG += staticlib c++17
 QT -= gui
 QT *= network testlib
 TARGET = pushpin-cpptest
@@ -18,7 +18,6 @@ DEFINES += NO_IRISNET
 
 INCLUDEPATH += $$SRC_DIR/../target/include
 INCLUDEPATH += $$SRC_DIR/core
-INCLUDEPATH += $$SRC_DIR/core/qzmq/src
 
 include(core/tests.pri)
 include(proxy/tests.pri)

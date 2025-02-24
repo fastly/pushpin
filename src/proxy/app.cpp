@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,7 +30,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include "processquit.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "log.h"
 #include "settings.h"
 #include "xffrule.h"
@@ -298,7 +299,8 @@ public:
 		QCoreApplication::instance()->sendPostedEvents();
 
 		// deinit here, after all event loop activity has completed
-		RTimer::deinit();
+		Timer::deinit();
+		DeferCall::cleanup();
 	}
 
 private:
@@ -664,6 +666,13 @@ public:
 		log_info("started");
 	}
 
+private:
+	void domainMap_changed()
+	{
+		for(EngineThread *t : threads)
+			t->routesChanged();
+	}
+
 private slots:
 	void reload()
 	{
@@ -671,12 +680,6 @@ private slots:
 		log_rotate();
 
 		domainMap->reload();
-	}
-
-	void domainMap_changed()
-	{
-		for(EngineThread *t : threads)
-			t->routesChanged();
 	}
 
 	void doQuit()

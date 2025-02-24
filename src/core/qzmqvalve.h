@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012 Justin Karneges
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -24,7 +25,8 @@
 #ifndef QZMQVALVE_H
 #define QZMQVALVE_H
 
-#include <QObject>
+#include <QByteArray>
+#include <QList>
 #include <boost/signals2.hpp>
 
 using SignalList = boost::signals2::signal<void(const QList<QByteArray>&)>;
@@ -34,12 +36,10 @@ namespace QZmq {
 
 class Socket;
 
-class Valve : public QObject
+class Valve
 {
-	Q_OBJECT
-
 public:
-	Valve(QZmq::Socket *sock, QObject *parent = 0);
+	Valve(QZmq::Socket *sock);
 	~Valve();
 
 	bool isOpen() const;
@@ -54,7 +54,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 };
 
 }

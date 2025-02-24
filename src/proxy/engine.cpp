@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,7 +33,8 @@
 #include "packet/statspacket.h"
 #include "packet/zrpcrequestpacket.h"
 #include "qtcompat.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "log.h"
 #include "inspectdata.h"
 #include "zhttpmanager.h"
@@ -127,8 +128,8 @@ public:
 	StatsManager *stats;
 	ZrpcManager *command;
 	ZrpcManager *accept;
-	QZmq::Socket *handler_retry_in_sock;
-	QZmq::Valve *handler_retry_in_valve;
+	std::unique_ptr<QZmq::Socket> handler_retry_in_sock;
+	std::unique_ptr<QZmq::Valve> handler_retry_in_valve;
 	QSet<RequestSession*> requestSessions;
 	QHash<QByteArray, ProxyItem*> proxyItemsByKey;
 	QHash<ProxySession*, ProxyItem*> proxyItemsBySession;
@@ -160,8 +161,6 @@ public:
 		stats(0),
 		command(0),
 		accept(0),
-		handler_retry_in_sock(0),
-		handler_retry_in_valve(0),
 		sockJsManager(0),
 		updater(0)
 	{
@@ -219,7 +218,7 @@ public:
 		config = _config;
 
 		// enough timers for sessions and zroutes, plus an extra 100 for misc
-		RTimer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
+		Timer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
 
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
@@ -291,19 +290,19 @@ public:
 
 		if(!config.retryInSpec.isEmpty())
 		{
-			handler_retry_in_sock = new QZmq::Socket(QZmq::Socket::Router, this);
+			handler_retry_in_sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 
 			handler_retry_in_sock->setIdentity(config.clientId);
 			handler_retry_in_sock->setHwm(DEFAULT_HWM);
 
 			QString errorMessage;
-			if(!ZUtil::setupSocket(handler_retry_in_sock, config.retryInSpec, true, config.ipcFileMode, &errorMessage))
+			if(!ZUtil::setupSocket(handler_retry_in_sock.get(), config.retryInSpec, true, config.ipcFileMode, &errorMessage))
 			{
 				log_error("%s", qPrintable(errorMessage));
 				return false;
 			}
 
-			handler_retry_in_valve = new QZmq::Valve(handler_retry_in_sock, this);
+			handler_retry_in_valve = std::make_unique<QZmq::Valve>(handler_retry_in_sock.get());
 			rrConnection = handler_retry_in_valve->readyRead.connect(boost::bind(&Private::handler_retry_in_readyRead, this, boost::placeholders::_1));
 		}
 
@@ -861,7 +860,7 @@ private:
 		delete i;
 
 		ps->finishedByPassthroughCallback().remove(this);
-		ps->deleteLater();
+		DeferCall::deleteLater(ps);
 
 		tryTakeNext();
 	}
@@ -1026,7 +1025,7 @@ private:
 				return;
 			}
 
-			WebSocketOverHttp *woh = qobject_cast<WebSocketOverHttp*>(ps->outSocket());
+			WebSocketOverHttp *woh = dynamic_cast<WebSocketOverHttp*>(ps->outSocket());
 			if(woh)
 				woh->refresh();
 

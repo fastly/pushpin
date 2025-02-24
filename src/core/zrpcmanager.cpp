@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2016 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -63,10 +63,10 @@ public:
 	int timeout;
 	QStringList clientSpecs;
 	QStringList serverSpecs;
-	QZmq::Socket *clientSock;
-	QZmq::Socket *serverSock;
-	QZmq::Valve *clientValve;
-	QZmq::Valve *serverValve;
+	std::unique_ptr<QZmq::Socket> clientSock;
+	std::unique_ptr<QZmq::Socket> serverSock;
+	std::unique_ptr<QZmq::Valve> clientValve;
+	std::unique_ptr<QZmq::Valve> serverValve;
 	QHash<QByteArray, ZrpcRequest*> clientReqsById;
 	QList<PendingItem> pending;
 	Connection clientValveConnection;
@@ -77,11 +77,7 @@ public:
 		q(_q),
 		ipcFileMode(-1),
 		doBind(false),
-		timeout(-1),
-		clientSock(0),
-		serverSock(0),
-		clientValve(0),
-		serverValve(0)
+		timeout(-1)
 	{
 	}
 
@@ -93,22 +89,22 @@ public:
 	bool setupClient()
 	{
 		clientValveConnection.disconnect();
-		delete clientValve;
-		delete clientSock;
+		clientValve.reset();
+		clientSock.reset();
 
-		clientSock = new QZmq::Socket(QZmq::Socket::Dealer, this);
+		clientSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Dealer);
 
 		clientSock->setSendHwm(OUT_HWM);
 		clientSock->setShutdownWaitTime(REQ_WAIT_TIME);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(clientSock, clientSpecs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(clientSock.get(), clientSpecs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		clientValve = new QZmq::Valve(clientSock, this);
+		clientValve = std::make_unique<QZmq::Valve>(clientSock.get());
 		clientValveConnection = clientValve->readyRead.connect(boost::bind(&Private::client_readyRead, this, boost::placeholders::_1));
 
 		clientValve->open();
@@ -119,22 +115,22 @@ public:
 	bool setupServer()
 	{
 		serverValveConnection.disconnect();
-		delete serverValve;
-		delete serverSock;
+		serverValve.reset();
+		serverSock.reset();
 
-		serverSock = new QZmq::Socket(QZmq::Socket::Router, this);
+		serverSock = std::make_unique<QZmq::Socket>(QZmq::Socket::Router);
 
 		serverSock->setReceiveHwm(IN_HWM);
 		serverSock->setShutdownWaitTime(REP_WAIT_TIME);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(serverSock, serverSpecs, doBind, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(serverSock.get(), serverSpecs, doBind, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
 		}
 
-		serverValve = new QZmq::Valve(serverSock, this);
+		serverValve = std::make_unique<QZmq::Valve>(serverSock.get());
 		serverValveConnection = serverValve->readyRead.connect(boost::bind(&Private::server_readyRead, this, boost::placeholders::_1));
 
 		serverValve->open();

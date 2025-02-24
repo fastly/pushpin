@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2020 Justin Karneges
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -23,15 +24,13 @@
 
 #include "qzmqvalve.h"
 
-#include <QPointer>
 #include "qzmqsocket.h"
+#include "defercall.h"
 
 namespace QZmq {
 
-class Valve::Private : public QObject
+class Valve::Private
 {
-	Q_OBJECT
-
 public:
 	Valve *q;
 	QZmq::Socket *sock;
@@ -39,9 +38,9 @@ public:
 	bool pendingRead;
 	int maxReadsPerEvent;
 	boost::signals2::scoped_connection rrConnection;
+	DeferCall deferCall;
 
 	Private(Valve *_q) :
-		QObject(_q),
 		q(_q),
 		sock(0),
 		isOpen(false),
@@ -62,12 +61,12 @@ public:
 			return;
 
 		pendingRead = true;
-		QMetaObject::invokeMethod(this, "queuedRead", Qt::QueuedConnection);
+		deferCall.defer([=] { queuedRead(); });
 	}
 
 	void tryRead()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		int count = 0;
 		while(isOpen && sock->canRead())
@@ -83,7 +82,7 @@ public:
 			if(!msg.isEmpty())
 			{
 				q->readyRead(msg);
-				if(!self)
+				if(self.expired())
 					return;
 			}
 
@@ -99,7 +98,6 @@ public:
 		tryRead();
 	}
 
-private slots:
 	void queuedRead()
 	{
 		pendingRead = false;
@@ -107,17 +105,13 @@ private slots:
 	}
 };
 
-Valve::Valve(QZmq::Socket *sock, QObject *parent) :
-	QObject(parent)
+Valve::Valve(QZmq::Socket *sock)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 	d->setup(sock);
 }
 
-Valve::~Valve()
-{
-	delete d;
-}
+Valve::~Valve() = default;
 
 bool Valve::isOpen() const
 {
@@ -145,5 +139,3 @@ void Valve::close()
 }
 
 }
-
-#include "qzmqvalve.moc"

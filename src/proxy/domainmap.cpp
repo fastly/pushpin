@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -34,7 +34,8 @@
 #include <QTextStream>
 #include <QFileSystemWatcher>
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "routesfile.h"
 
 #define WORKER_THREAD_TIMERS 1
@@ -201,9 +202,10 @@ public:
 	QList<Rule> allRules;
 	QHash< QString, QList<Rule> > rulesByDomain;
 	QHash<QString, Rule> rulesById;
-	RTimer t;
+	Timer t;
 	Connection tConnection;
 	QFileSystemWatcher watcher;
+	DeferCall deferCall;
 
 	Worker() :
 		watcher(this)
@@ -291,7 +293,7 @@ public:
 
 		log_info("routes loaded with %d entries", allRules.count());
 
-		QMetaObject::invokeMethod(this, "doChanged", Qt::QueuedConnection);
+		deferCall.defer([=] { doChanged(); });
 	}
 
 	// mutex must be locked when calling this method
@@ -311,11 +313,6 @@ public:
 	Signal changed;
 
 public slots:
-	void doChanged()
-	{
-		changed();
-	}
-
 	void start()
 	{
 		if(!fileName.isEmpty())
@@ -718,6 +715,11 @@ private:
 
 		return AddRuleOk;
 	}
+
+	void doChanged()
+	{
+		changed();
+	}
 };
 
 class DomainMap::Thread : public QThread
@@ -738,6 +740,8 @@ public:
 
 	void start()
 	{
+		setObjectName("domainmap");
+
 		QMutexLocker locker(&m);
 		QThread::start();
 		w.wait(&m);
@@ -745,7 +749,7 @@ public:
 
 	virtual void run()
 	{
-		RTimer::init(WORKER_THREAD_TIMERS);
+		Timer::init(WORKER_THREAD_TIMERS);
 
 		worker = new Worker;
 		worker->fileName = fileName;
@@ -755,7 +759,8 @@ public:
 		startedConnection.disconnect();
 		delete worker;
 
-		RTimer::deinit();
+		Timer::deinit();
+		DeferCall::cleanup();
 	}
 
 public:

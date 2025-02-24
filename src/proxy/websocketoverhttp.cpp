@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,7 +24,6 @@
 #include "websocketoverhttp.h"
 
 #include <assert.h>
-#include <QPointer>
 #include <QRandomGenerator>
 #include "log.h"
 #include "bufferlist.h"
@@ -33,7 +32,8 @@
 #include "zhttprequest.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 
 #define BUFFER_SIZE 200000
 #define FRAME_SIZE_MAX 16384
@@ -233,13 +233,14 @@ public:
 	bool disconnecting;
 	bool disconnectSent;
 	bool updateQueued;
-	std::unique_ptr<RTimer> keepAliveTimer;
-	std::unique_ptr<RTimer> retryTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
+	std::unique_ptr<Timer> retryTimer;
 	int retries;
 	int maxEvents;
 	ReqConnections reqConnections;
 	Connection keepAliveTimerConnection;
 	Connection retryTimerConnection;
+	DeferCall deferCall;
 
 	Private(WebSocketOverHttp *_q) :
 		QObject(_q),
@@ -271,11 +272,11 @@ public:
 		if(!g_disconnectManager)
 			g_disconnectManager = new DisconnectManager;
 
-		keepAliveTimer = std::make_unique<RTimer>();
+		keepAliveTimer = std::make_unique<Timer>();
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 		keepAliveTimer->setSingleShot(true);
 
-		retryTimer = std::make_unique<RTimer>();
+		retryTimer = std::make_unique<Timer>();
 		retryTimerConnection = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 	}
@@ -475,7 +476,7 @@ private:
 		if((int)pendingErrorCondition == -1)
 		{
 			pendingErrorCondition = e;
-			QMetaObject::invokeMethod(this, "doError", Qt::QueuedConnection);
+			deferCall.defer([=] { doError(); });
 		}
 	}
 
@@ -777,7 +778,7 @@ private:
 			return;
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		bool emitConnected = false;
 		bool emitReadyRead = false;
@@ -841,21 +842,21 @@ private:
 		if(emitConnected)
 		{
 			q->connected();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
 		if(emitReadyRead)
 		{
 			q->readyRead();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
 		if(reqFrames > 0)
 		{
 			q->framesWritten(reqFrames, reqContentSize);
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
@@ -867,7 +868,7 @@ private:
 		if(hadContent)
 		{
 			q->writeBytesChanged();
-			if(!self)
+			if(self.expired())
 				return;
 		}
 
@@ -984,7 +985,6 @@ private:
 		q->error();
 	}
 
-private slots:
 	void keepAliveTimer_timeout()
 	{
 		update();
@@ -1007,13 +1007,12 @@ private slots:
 WebSocketOverHttp::WebSocketOverHttp(ZhttpManager *zhttpManager, QObject *parent) :
 	WebSocket(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 	d->zhttpManager = zhttpManager;
 }
 
 WebSocketOverHttp::WebSocketOverHttp(QObject *parent) :
-	WebSocket(parent),
-	d(0)
+	WebSocket(parent)
 {
 }
 
@@ -1026,11 +1025,9 @@ WebSocketOverHttp::~WebSocketOverHttp()
 		sock->d = d;
 		d->setParent(sock);
 		d->q = sock;
-		d = 0;
+		d.reset();
 		g_disconnectManager->addSocket(sock);
 	}
-
-	delete d;
 }
 
 void WebSocketOverHttp::setConnectionId(const QByteArray &id)

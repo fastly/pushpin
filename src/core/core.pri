@@ -1,4 +1,15 @@
-include(qzmq/src/src.pri)
+HEADERS += \
+	$$PWD/qzmqcontext.h \
+	$$PWD/qzmqsocket.h \
+	$$PWD/qzmqvalve.h \
+	$$PWD/qzmqreqmessage.h \
+	$$PWD/qzmqreprouter.h
+
+SOURCES += \
+	$$PWD/qzmqcontext.cpp \
+	$$PWD/qzmqsocket.cpp \
+	$$PWD/qzmqvalve.cpp \
+	$$PWD/qzmqreprouter.cpp
 
 HEADERS += $$PWD/processquit.h
 SOURCES += $$PWD/processquit.cpp
@@ -42,7 +53,10 @@ HEADERS += \
 	$$PWD/config.h \
 	$$PWD/timerwheel.h \
 	$$PWD/jwt.h \
-	$$PWD/rtimer.h \
+	$$PWD/timer.h \
+	$$PWD/defercall.h \
+	$$PWD/socketnotifier.h \
+	$$PWD/eventloop.h \
 	$$PWD/logutil.h \
 	$$PWD/uuidutil.h \
 	$$PWD/zutil.h \
@@ -65,7 +79,10 @@ SOURCES += \
 	$$PWD/config.cpp \
 	$$PWD/timerwheel.cpp \
 	$$PWD/jwt.cpp \
-	$$PWD/rtimer.cpp \
+	$$PWD/timer.cpp \
+	$$PWD/defercall.cpp \
+	$$PWD/socketnotifier.cpp \
+	$$PWD/eventloop.cpp \
 	$$PWD/logutil.cpp \
 	$$PWD/uuidutil.cpp \
 	$$PWD/zutil.cpp \

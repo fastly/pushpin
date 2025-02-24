@@ -26,17 +26,17 @@
 #include <assert.h>
 #include <QVector>
 #include <QDateTime>
-#include <QPointer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "qzmqsocket.h"
 #include "timerwheel.h"
 #include "log.h"
+#include "defercall.h"
 #include "tnetstring.h"
 #include "httpheaders.h"
 #include "simplehttpserver.h"
 #include "zutil.h"
-#include "rtimer.h"
+#include "timer.h"
 
 // make this somewhat big since PUB is lossy
 #define OUT_HWM 200000
@@ -403,7 +403,7 @@ public:
 	int subscriptionTtl;
 	int subscriptionLinger;
 	int reportInterval;
-	QZmq::Socket *sock;
+	std::unique_ptr<QZmq::Socket> sock;
 	SimpleHttpServer *prometheusServer;
 	QString prometheusPrefix;
 	QList<PrometheusMetric> prometheusMetrics;
@@ -425,10 +425,10 @@ public:
 	QHash<QByteArray, Report*> reports;
 	Counts combinedCounts;
 	Report combinedReport;
-	std::unique_ptr<RTimer> activityTimer;
-	std::unique_ptr<RTimer> reportTimer;
-	std::unique_ptr<RTimer> refreshTimer;
-	std::unique_ptr<RTimer> externalConnectionsMaxTimer;
+	std::unique_ptr<Timer> activityTimer;
+	std::unique_ptr<Timer> reportTimer;
+	std::unique_ptr<Timer> refreshTimer;
+	std::unique_ptr<Timer> externalConnectionsMaxTimer;
 	Connection activityTimerConnection;
 	Connection reportTimerConnection;
 	Connection refreshTimerConnection;
@@ -450,21 +450,20 @@ public:
 		subscriptionTtl(60 * 1000),
 		subscriptionLinger(60 * 1000),
 		reportInterval(10 * 1000),
-		sock(0),
 		prometheusServer(0),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
 		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax))
 	{
-		activityTimer = std::make_unique<RTimer>();
+		activityTimer = std::make_unique<Timer>();
 		activityTimerConnection = activityTimer->timeout.connect(boost::bind(&Private::activity_timeout, this));
 		activityTimer->setSingleShot(true);
 
-		refreshTimer = std::make_unique<RTimer>();
+		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 		refreshTimer->start(REFRESH_INTERVAL);
 
-		externalConnectionsMaxTimer = std::make_unique<RTimer>();
+		externalConnectionsMaxTimer = std::make_unique<Timer>();
 		externalConnectionsMaxTimerConnection = externalConnectionsMaxTimer->timeout.connect(boost::bind(&Private::externalConnectionsMax_timeout, this));
 		externalConnectionsMaxTimer->start(EXTERNAL_CONNECTIONS_MAX_INTERVAL);
 
@@ -500,16 +499,16 @@ public:
 
 	bool setupSock()
 	{
-		delete sock;
+		sock.reset();
 
-		sock = new QZmq::Socket(QZmq::Socket::Pub, this);
+		sock = std::make_unique<QZmq::Socket>(QZmq::Socket::Pub);
 
 		sock->setHwm(OUT_HWM);
 		sock->setWriteQueueEnabled(false);
 		sock->setShutdownWaitTime(0);
 
 		QString errorMessage;
-		if(!ZUtil::setupSocket(sock, spec, true, ipcFileMode, &errorMessage))
+		if(!ZUtil::setupSocket(sock.get(), spec, true, ipcFileMode, &errorMessage))
 		{
 			log_error("%s", qPrintable(errorMessage));
 			return false;
@@ -607,7 +606,7 @@ public:
 	{
 		if(reportInterval > 0 && !reportTimer)
 		{
-			reportTimer = std::make_unique<RTimer>();
+			reportTimer = std::make_unique<Timer>();
 			reportTimerConnection = reportTimer->timeout.connect(boost::bind(&Private::report_timeout, this));
 			reportTimer->start(reportInterval);
 		}
@@ -1560,7 +1559,7 @@ private:
 			).arg(prometheusPrefix, m.name, m.help, prometheusPrefix, m.name, m.type, prometheusPrefix, m.name, value.toString());
 		}
 
-		req->finished.connect(boost::bind(&SimpleHttpRequest::deleteLater, req));
+		req->finished.connect([=] { DeferCall::deleteLater(req); });
 
 		HttpHeaders headers;
 		headers += HttpHeader("Content-Type", "text/plain");

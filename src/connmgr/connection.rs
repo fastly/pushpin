@@ -527,7 +527,7 @@ pub struct AddrRef<'a> {
     s: Ref<'a, Option<ArrayVec<u8, 64>>>,
 }
 
-impl<'a> AddrRef<'a> {
+impl AddrRef<'_> {
     pub fn get(&self) -> Option<&[u8]> {
         match &*self.s {
             Some(s) => Some(s.as_slice()),
@@ -701,8 +701,8 @@ struct SendMessageContentFuture<'a, 'b, W: AsyncWrite, M> {
     done: bool,
 }
 
-impl<'a, 'b, W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
-    for SendMessageContentFuture<'a, 'b, W, M>
+impl<W: AsyncWrite, M: AsRef<[u8]> + AsMut<[u8]>> Future
+    for SendMessageContentFuture<'_, '_, W, M>
 {
     type Output = Result<(usize, bool), Error>;
 
@@ -1325,7 +1325,7 @@ where
     }
 }
 
-async fn send_error_response<'a, R: AsyncRead, W: AsyncWrite>(
+async fn send_error_response<R: AsyncRead, W: AsyncWrite>(
     mut resp: server::Response<'_, R, W>,
     zreceiver: &TrackedAsyncLocalReceiver<'_, (arena::Rc<zhttppacket::OwnedResponse>, usize)>,
     e: &Error,
@@ -4210,7 +4210,7 @@ enum AsyncStream<'a> {
     Tls(AsyncTlsStream<'a>),
 }
 
-impl<'a> AsyncStream<'a> {
+impl AsyncStream<'_> {
     fn into_inner(self) -> Stream {
         match self {
             Self::Plain(stream) => Stream::Plain(stream.into_std()),

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,15 +55,18 @@ where
     let thread = if let Some(f) = output_file {
         let f = f.to_owned();
 
-        let thread = thread::spawn(move || {
-            // this will block until the other side opens the file for writing
-            let f = File::open(&f).unwrap();
+        let thread = thread::Builder::new()
+            .name("qtest-log".to_string())
+            .spawn(move || {
+                // this will block until the other side opens the file for writing
+                let f = File::open(&f).unwrap();
 
-            // forward the output until EOF or error
-            if let Err(e) = read_and_print_all(f) {
-                eprintln!("failed to read log line: {}", e);
-            }
-        });
+                // forward the output until EOF or error
+                if let Err(e) = read_and_print_all(f) {
+                    eprintln!("failed to read log line: {}", e);
+                }
+            })
+            .unwrap();
 
         Some(thread)
     } else {
@@ -152,15 +155,18 @@ where
         let (s, r) = mpsc::channel::<RunQTest>();
 
         // run in the background forever
-        thread::spawn(move || {
-            for t in r {
-                let ret = call_qtest(t.f, output_file.as_deref());
+        thread::Builder::new()
+            .name("qtest-run".to_string())
+            .spawn(move || {
+                for t in r {
+                    let ret = call_qtest(t.f, output_file.as_deref());
 
-                // if receiver is gone, keep going
-                let _ = t.ret.send(ret);
-            }
-            unreachable!();
-        });
+                    // if receiver is gone, keep going
+                    let _ = t.ret.send(ret);
+                }
+                unreachable!();
+            })
+            .unwrap();
 
         Mutex::new(s)
     });

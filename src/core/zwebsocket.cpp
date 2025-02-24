@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,11 +24,11 @@
 #include "zwebsocket.h"
 
 #include <assert.h>
-#include <QPointer>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 
@@ -84,8 +84,8 @@ public:
 	bool readableChanged;
 	bool writableChanged;
 	ErrorCondition errorCondition;
-	RTimer *expireTimer;
-	RTimer *keepAliveTimer;
+	Timer *expireTimer;
+	Timer *keepAliveTimer;
 	QList<Frame> inFrames;
 	QList<Frame> outFrames;
 	int inSize;
@@ -95,6 +95,7 @@ public:
 	bool multi;
 	Connection expireTimerConnection;
 	Connection keepAliveTimerConnection;
+	DeferCall deferCall;
 
 	Private(ZWebSocket *_q) :
 		QObject(_q),
@@ -126,11 +127,11 @@ public:
 		outContentType((int)Frame::Text),
 		multi(false)
 	{
-		expireTimer = new RTimer;
+		expireTimer = new Timer;
 		expireTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer;
+		keepAliveTimer = new Timer;
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
@@ -151,7 +152,7 @@ public:
 		{
 			expireTimerConnection.disconnect();
 			expireTimer->setParent(0);
-			expireTimer->deleteLater();
+			DeferCall::deleteLater(expireTimer);
 			expireTimer = 0;
 		}
 
@@ -159,7 +160,7 @@ public:
 		{
 			keepAliveTimerConnection.disconnect();
 			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
+			DeferCall::deleteLater(keepAliveTimer);
 			keepAliveTimer = 0;
 		}
 
@@ -265,7 +266,7 @@ public:
 		if(!pendingUpdate)
 		{
 			pendingUpdate = true;
-			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+			deferCall.defer([=] { doUpdate(); });
 		}
 	}
 
@@ -297,7 +298,7 @@ public:
 
 		state = Idle;
 		cleanup();
-		QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+		deferCall.defer([=] { doClosed(); });
 	}
 
 	Frame readFrame()
@@ -337,7 +338,7 @@ public:
 				// if peer was already closed, then we're done!
 				state = Idle;
 				cleanup();
-				QMetaObject::invokeMethod(this, "doClosed", Qt::QueuedConnection);
+				deferCall.defer([=] { doClosed(); });
 			}
 			else
 			{
@@ -349,7 +350,7 @@ public:
 
 	void tryWrite()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(state == Connected || state == ConnectedPeerClosed)
 		{
@@ -415,7 +416,7 @@ public:
 			if(written > 0 || contentBytesWritten > 0)
 			{
 				q->framesWritten(written, contentBytesWritten);
-				if(!self)
+				if(self.expired())
 					return;
 			}
 
@@ -976,7 +977,6 @@ public:
 			return ErrorGeneric;
 	}
 
-public slots:
 	void doClosed()
 	{
 		q->closed();
@@ -999,10 +999,10 @@ public slots:
 				}
 				else
 				{
-					QPointer<QObject> self = this;
+					std::weak_ptr<Private> self = q->d;
 					state = ConnectedPeerClosed;
 					q->peerClosed();
-					if(!self)
+					if(self.expired())
 						return;
 				}
 			}
@@ -1012,9 +1012,9 @@ public slots:
 				{
 					readableChanged = false;
 
-					QPointer<QObject> self = this;
+					std::weak_ptr<Private> self = q->d;
 					q->readyRead();
-					if(!self)
+					if(self.expired())
 						return;
 				}
 			}
@@ -1052,9 +1052,9 @@ public slots:
 		}
 		else if(state == Connected || state == ConnectedPeerClosed)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1066,7 +1066,6 @@ public slots:
 		}
 	}
 
-public:
 	void expire_timeout()
 	{
 		state = Idle;
@@ -1095,13 +1094,10 @@ public:
 ZWebSocket::ZWebSocket(QObject *parent) :
 	WebSocket(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-ZWebSocket::~ZWebSocket()
-{
-	delete d;
-}
+ZWebSocket::~ZWebSocket() = default;
 
 ZWebSocket::Rid ZWebSocket::rid() const
 {

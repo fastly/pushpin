@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -83,7 +83,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	friend class SockJsManager;
 	SockJsSession(QObject *parent = 0);

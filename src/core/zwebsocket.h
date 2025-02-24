@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2014-2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -80,7 +81,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	friend class ZhttpManager;
 	ZWebSocket(QObject *parent = 0);

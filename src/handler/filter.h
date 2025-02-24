@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016-2019 Fanout, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,6 +27,19 @@
 #include <QString>
 #include <QStringList>
 #include <QHash>
+#include <QMetaType>
+#include <QUrl>
+#include <boost/signals2.hpp>
+#include "zhttprequest.h"
+#include "ratelimiter.h"
+
+#define MESSAGEFILTERSTACK_SIZE_MAX 5
+
+#define TIMERS_PER_MESSAGEFILTERSTACK (TIMERS_PER_ZHTTPREQUEST * MESSAGEFILTERSTACK_SIZE_MAX)
+
+#define DEFAULT_FILTER_RESPONSE_SIZE_MAX 100000
+
+class ZhttpManager;
 
 class Filter
 {
@@ -40,7 +54,7 @@ public:
 	{
 		MessageDelivery = 0x01,
 		MessageContent  = 0x02,
-		ProxyContent    = 0x04,
+		ResponseContent = 0x04,
 	};
 
 	class Context
@@ -49,9 +63,61 @@ public:
 		QHash<QString, QString> prevIds;
 		QHash<QString, QString> subscriptionMeta;
 		QHash<QString, QString> publishMeta;
+
+		// for network access
+		ZhttpManager *zhttpOut;
+		QUrl currentUri;
+		QString route;
+		bool trusted;
+		std::shared_ptr<RateLimiter> limiter;
+		int responseSizeMax;
+
+		Context() :
+			zhttpOut(0),
+			trusted(false),
+			responseSizeMax(DEFAULT_FILTER_RESPONSE_SIZE_MAX)
+		{
+		}
 	};
 
-	Filter(const QString &name = QString());
+	class MessageFilter
+	{
+	public:
+		class Result
+		{
+		public:
+			SendAction sendAction;
+			QByteArray content;
+			QString errorMessage; // non-null on error
+		};
+
+		virtual ~MessageFilter();
+
+		// may emit finished immediately
+		virtual void start(const Filter::Context &context, const QByteArray &content = QByteArray()) = 0;
+
+		boost::signals2::signal<void(const Result&)> finished;
+	};
+
+	class MessageFilterStack : public MessageFilter
+	{
+	public:
+		MessageFilterStack(const QStringList &filterNames);
+
+		// reimplemented
+		virtual void start(const Filter::Context &context, const QByteArray &content = QByteArray());
+
+	private:
+		std::vector<std::unique_ptr<MessageFilter>> filters_;
+		Filter::Context context_;
+		QByteArray content_;
+		SendAction lastSendAction_;
+		boost::signals2::scoped_connection finishedConnection_;
+
+		void nextFilter();
+		void filterFinished(const Result &result);
+	};
+
 	virtual ~Filter();
 
 	const QString & name() const { return name_; }
@@ -69,10 +135,13 @@ public:
 	QByteArray process(const QByteArray &data);
 
 	static Filter *create(const QString &name);
+	static MessageFilter *createMessageFilter(const QString &name);
 	static QStringList names();
 	static Targets targets(const QString &name);
 
 protected:
+	Filter(const QString &name = QString());
+
 	void setError(const QString &s) { errorMessage_ = s; }
 
 private:

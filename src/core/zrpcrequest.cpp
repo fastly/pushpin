@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2015 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -30,7 +30,8 @@
 #include "zrpcmanager.h"
 #include "uuidutil.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -50,8 +51,9 @@ public:
 	QVariant result;
 	ErrorCondition condition;
 	QByteArray conditionString;
-	std::unique_ptr<RTimer> timer;
+	std::unique_ptr<Timer> timer;
 	Connection timerConnection;
+	DeferCall deferCall;
 
 	Private(ZrpcRequest *_q) :
 		QObject(_q),
@@ -136,7 +138,6 @@ public:
 		q->finished();
 	}
 
-private slots:
 	void doStart()
 	{
 		if(!manager->canWriteImmediately())
@@ -156,7 +157,7 @@ private slots:
 
 		if(manager->timeout() >= 0)
 		{
-			timer = std::make_unique<RTimer>();
+			timer = std::make_unique<Timer>();
 			timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 			timer->setSingleShot(true);
 			timer->start(manager->timeout());
@@ -238,7 +239,7 @@ void ZrpcRequest::start(const QString &method, const QVariantHash &args)
 {
 	d->method = method;
 	d->args = args;
-	QMetaObject::invokeMethod(d, "doStart", Qt::QueuedConnection);
+	d->deferCall.defer([=] { d->doStart(); });
 }
 
 void ZrpcRequest::respond(const QVariant &result)

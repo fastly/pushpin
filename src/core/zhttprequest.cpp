@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2021 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,12 +24,12 @@
 #include "zhttprequest.h"
 
 #include <assert.h>
-#include <QPointer>
 #include "zhttprequestpacket.h"
 #include "zhttpresponsepacket.h"
 #include "bufferlist.h"
 #include "log.h"
-#include "rtimer.h"
+#include "timer.h"
+#include "defercall.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
 
@@ -73,6 +73,7 @@ public:
 	bool ignorePolicies;
 	bool trustConnectHost;
 	bool ignoreTlsErrors;
+	int timeout;
 	bool sendBodyAfterAck;
 	QVariant passthrough;
 	QString requestMethod;
@@ -99,12 +100,15 @@ public:
 	bool writableChanged;
 	bool errored;
 	ErrorCondition errorCondition;
-	RTimer *expireTimer;
-	RTimer *keepAliveTimer;
+	Timer *expireTimer;
+	Timer *keepAliveTimer;
+	Timer *finishTimer;
 	bool multi;
 	bool quiet;
 	Connection expTimerConnection;
 	Connection keepAliveTimerConnection;
+	Connection finishTimerConnection;
+	DeferCall deferCall;
 
 	Private(ZhttpRequest *_q) :
 		QObject(_q),
@@ -117,6 +121,7 @@ public:
 		ignorePolicies(false),
 		trustConnectHost(false),
 		ignoreTlsErrors(false),
+		timeout(0),
 		sendBodyAfterAck(false),
 		inSeq(0),
 		outSeq(0),
@@ -134,14 +139,15 @@ public:
 		errored(false),
 		expireTimer(0),
 		keepAliveTimer(0),
+		finishTimer(0),
 		multi(false),
 		quiet(false)
 	{
-		expireTimer = new RTimer;
+		expireTimer = new Timer;
 		expTimerConnection = expireTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
 		expireTimer->setSingleShot(true);
 
-		keepAliveTimer = new RTimer;
+		keepAliveTimer = new Timer;
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAlive_timeout, this));
 	}
 
@@ -163,7 +169,7 @@ public:
 		{
 			expTimerConnection.disconnect();
 			expireTimer->setParent(0);
-			expireTimer->deleteLater();
+			DeferCall::deleteLater(expireTimer);
 			expireTimer = 0;
 		}
 
@@ -171,8 +177,16 @@ public:
 		{
 			keepAliveTimerConnection.disconnect();
 			keepAliveTimer->setParent(0);
-			keepAliveTimer->deleteLater();
+			DeferCall::deleteLater(keepAliveTimer);
 			keepAliveTimer = 0;
+		}
+
+		if(finishTimer)
+		{
+			finishTimerConnection.disconnect();
+			finishTimer->setParent(0);
+			DeferCall::deleteLater(finishTimer);
+			finishTimer = 0;
 		}
 
 		if(manager)
@@ -280,6 +294,14 @@ public:
 	{
 		state = ClientStarting;
 
+		if(timeout > 0)
+		{
+			finishTimer = new Timer;
+			finishTimerConnection = finishTimer->timeout.connect(boost::bind(&Private::expire_timeout, this));
+			finishTimer->setSingleShot(true);
+			finishTimer->start(timeout);
+		}
+
 		refreshTimeout();
 		update();
 	}
@@ -367,7 +389,7 @@ public:
 		if(!pendingUpdate)
 		{
 			pendingUpdate = true;
-			QMetaObject::invokeMethod(this, "doUpdate", Qt::QueuedConnection);
+			deferCall.defer([&]() { doUpdate(); });
 		}
 	}
 
@@ -409,7 +431,7 @@ public:
 
 	void tryWrite()
 	{
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		if(state == ClientRequesting)
 		{
@@ -492,7 +514,7 @@ public:
 			}
 		}
 
-		if(!self)
+		if(self.expired())
 			return;
 
 		trySendPause();
@@ -935,7 +957,6 @@ public:
 			return ErrorGeneric;
 	}
 
-public slots:
 	void doUpdate()
 	{
 		pendingUpdate = false;
@@ -1044,9 +1065,9 @@ public slots:
 		}
 		else if(state == ClientRequesting)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1130,23 +1151,23 @@ public slots:
 				cleanup();
 			}
 
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 
 			if(!packet.body.isEmpty())
 				q->bytesWritten(packet.body.size());
 			else if(!packet.more)
 				q->bytesWritten(0);
 
-			if(!self)
+			if(self.expired())
 				return;
 
 			trySendPause();
 		}
 		else if(state == ServerResponding)
 		{
-			QPointer<QObject> self = this;
+			std::weak_ptr<Private> self = q->d;
 			tryWrite();
-			if(!self)
+			if(self.expired())
 				return;
 
 			if(writableChanged)
@@ -1157,7 +1178,6 @@ public slots:
 		}
 	}
 
-public:
 	void expire_timeout()
 	{
 		state = Stopped;
@@ -1187,13 +1207,10 @@ public:
 ZhttpRequest::ZhttpRequest(QObject *parent) :
 	HttpRequest(parent)
 {
-	d = new Private(this);
+	d = std::make_shared<Private>(this);
 }
 
-ZhttpRequest::~ZhttpRequest()
-{
-	delete d;
-}
+ZhttpRequest::~ZhttpRequest() = default;
 
 ZhttpRequest::Rid ZhttpRequest::rid() const
 {
@@ -1233,6 +1250,11 @@ void ZhttpRequest::setTrustConnectHost(bool on)
 void ZhttpRequest::setIgnoreTlsErrors(bool on)
 {
 	d->ignoreTlsErrors = on;
+}
+
+void ZhttpRequest::setTimeout(int msecs)
+{
+	d->timeout = msecs;
 }
 
 void ZhttpRequest::setIsTls(bool on)

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -25,6 +26,8 @@
 
 #include <QObject>
 
+#define TIMERS_PER_UNIQUE_UPDATE_REGISTRATION 1
+
 class QUrl;
 class HttpSession;
 
@@ -34,7 +37,9 @@ public:
 	HttpSessionUpdateManager(QObject *parent = 0);
 	~HttpSessionUpdateManager();
 
-	void registerSession(HttpSession *hs, int timeout, const QUrl &uri);
+	// no-op if session already registered and resetTimeout=false
+	void registerSession(HttpSession *hs, int timeout, const QUrl &uri, bool resetTimeout = false);
+
 	void unregisterSession(HttpSession *hs);
 
 private:

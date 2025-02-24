@@ -30,6 +30,7 @@
 #include <QLocalSocket>
 #include <QLocalServer>
 #include "log.h"
+#include "defercall.h"
 #include "httpheaders.h"
 
 class SimpleHttpRequest::Private : public QObject
@@ -84,7 +85,7 @@ public:
 		{
 			sock->disconnect(this);
 			sock->setParent(0);
-			sock->deleteLater();
+			DeferCall::deleteLater(sock);
 			sock = 0;
 		}
 	}

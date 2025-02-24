@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,8 +25,8 @@
 
 #include <QList>
 #include <QMap>
-#include <QPointer>
-#include <QTimer>
+#include "timer.h"
+#include "defercall.h"
 
 #define MIN_BATCH_INTERVAL 25
 
@@ -67,19 +68,21 @@ public:
 		}
 	};
 
+	RateLimiter *q;
 	int rate;
 	int hwm;
 	bool batchWaitEnabled;
 	QMap<QString, Bucket> buckets;
 	QString lastKey;
-	QTimer *timer;
+	Timer *timer;
 	bool firstPass;
 	int batchInterval;
 	int batchSize;
 	bool lastBatchEmpty;
 
-	Private(QObject *_q) :
+	Private(RateLimiter *_q) :
 		QObject(_q),
+		q(_q),
 		rate(-1),
 		hwm(-1),
 		batchWaitEnabled(false),
@@ -87,15 +90,15 @@ public:
 		batchSize(-1),
 		lastBatchEmpty(false)
 	{
-		timer = new QTimer(this);
-		connect(timer, &QTimer::timeout, this, &Private::timeout);
+		timer = new Timer;
+		timer->timeout.connect(boost::bind(&Private::timeout, this));
 	}
 
 	~Private()
 	{
 		timer->disconnect(this);
 		timer->setParent(0);
-		timer->deleteLater();
+		DeferCall::deleteLater(timer);
 	}
 
 	void setRate(int actionsPerSecond)
@@ -226,7 +229,7 @@ private:
 			it = buckets.begin();
 		}
 
-		QPointer<QObject> self = this;
+		std::weak_ptr<Private> self = q->d;
 
 		int processed = 0;
 		while((batchSize < 1 || processed < batchSize) && it != buckets.end())
@@ -246,7 +249,7 @@ private:
 				bool ret = action->execute();
 				delete action;
 
-				if(!self)
+				if(self.expired())
 					return false;
 
 				if(ret)
@@ -287,7 +290,6 @@ private:
 		return true;
 	}
 
-private slots:
 	void timeout()
 	{
 		if(!processBatch())
@@ -301,7 +303,7 @@ private slots:
 
 RateLimiter::RateLimiter()
 {
-	d = std::make_unique<Private>(this);
+	d = std::make_shared<Private>(this);
 }
 
 RateLimiter::~RateLimiter() = default;

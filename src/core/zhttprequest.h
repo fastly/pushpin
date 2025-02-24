@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2012-2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -26,6 +27,8 @@
 #include <QVariant>
 #include "httprequest.h"
 #include <boost/signals2.hpp>
+
+#define TIMERS_PER_ZHTTPREQUEST 3
 
 using Connection = boost::signals2::scoped_connection;
 
@@ -88,6 +91,7 @@ public:
 	virtual void setIgnorePolicies(bool on);
 	virtual void setTrustConnectHost(bool on);
 	virtual void setIgnoreTlsErrors(bool on);
+	virtual void setTimeout(int msecs);
 
 	virtual void start(const QString &method, const QUrl &uri, const HttpHeaders &headers);
 	virtual void beginResponse(int code, const QByteArray &reason, const HttpHeaders &headers);
@@ -117,7 +121,7 @@ public:
 private:
 	class Private;
 	friend class Private;
-	Private *d;
+	std::shared_ptr<Private> d;
 
 	friend class ZhttpManager;
 	ZhttpRequest(QObject *parent = 0);
