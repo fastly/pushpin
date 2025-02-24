@@ -17,6 +17,7 @@
 #ifndef EVENTLOOP_H
 #define EVENTLOOP_H
 
+#include <optional>
 #include "rust/bindings.h"
 
 class EventLoop
@@ -31,6 +32,7 @@ public:
 	EventLoop(int capacity);
 	~EventLoop();
 
+	std::optional<int> step();
 	int exec();
 	void exit(int code);
 
