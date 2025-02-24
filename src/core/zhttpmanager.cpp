@@ -795,6 +795,7 @@ public:
 		}
 
 		// parse json body
+		QVariantMap jsonMap;
 		if (parse_jsonMsg(data.toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[WS] failed to parse JSON msg");
@@ -1079,72 +1080,38 @@ public:
 
 	int parse_jsonMsg(QVariant jsonMsg, QVariantMap& jsonMap)
 	{
-		if (config.simdjsonUsing)
-		{
-			using namespace Json;
-			bool useSimdJson = true;
-			const ParserBackend parser = useSimdJson ? ParserBackend::SimdJson : ParserBackend::Default;
+		// parse body as JSON string
+		QJsonParseError error;
+		QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonMsg.toByteArray(), &error);
 
-			QVariant parsedRet = parseUtf8(jsonMsg.toByteArray(), ParseOption::AcceptAnyValue, parser);
-			if (parsedRet.isNull()) return -1;
-			if (QMetaType::Type(parsedRet.type()) == QMetaType::QVariantMap)
+		if(error.error != QJsonParseError::NoError)
+			return -1;
+		
+		if(jsonDoc.isObject())
+		{
+			QVariantMap jsonData = jsonDoc.object().toVariantMap();
+			parse_jsonMap(jsonData, NULL, jsonMap);
+		}
+		else if(jsonDoc.isArray())
+		{
+			QVariantList jsonData = jsonDoc.array().toVariantList();
+			for(const QVariant& item : jsonData) 
 			{
-				QVariantMap parsedMap = parsedRet.toMap();
-				parse_jsonMap(parsedMap, NULL, jsonMap);
-			}
-			else if (QMetaType::Type(parsedRet.type()) == QMetaType::QVariantList)
-			{
-				QList parsedList = parsedRet.toList();
-				for(const QVariant& item : parsedList) 
+				if (item.type() == QVariant::Map)
 				{
-					if (QMetaType::Type(item.type()) == QMetaType::QVariantMap)
-					{
-						QVariantMap parsedMap = item.toMap();
-						parse_jsonMap(parsedMap, NULL, jsonMap);
-						break;
-					}
+					QVariantMap mapData = item.toMap();
+					parse_jsonMap(mapData, NULL, jsonMap);
+					break;
 				}
-			}
-			else
-			{
-				return -1;
 			}
 		}
 		else
 		{
-			// parse body as JSON string
-			QJsonParseError error;
-			QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonMsg.toByteArray(), &error);
-
-			if(error.error != QJsonParseError::NoError)
-				return -1;
-			
-			if(jsonDoc.isObject())
-			{
-				QVariantMap jsonData = jsonDoc.object().toVariantMap();
-				parse_jsonMap(jsonData, NULL, jsonMap);
-			}
-			else if(jsonDoc.isArray())
-			{
-				QVariantList jsonData = jsonDoc.array().toVariantList();
-				for(const QVariant& item : jsonData) 
-				{
-					if (item.type() == QVariant::Map)
-					{
-						QVariantMap mapData = item.toMap();
-						parse_jsonMap(mapData, NULL, jsonMap);
-						break;
-					}
-				}
-			}
-			else
-			{
-				return -1;
-			}
+			return -1;
 		}
-
-		return 0;
 	}
+
+	return 0;
 };
 
 ZhttpManager::ZhttpManager(QObject *parent) :
