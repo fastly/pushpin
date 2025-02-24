@@ -69,7 +69,7 @@ int EventLoop::registerTimer(int timeout, void (*cb)(void *), void *ctx)
 
 void EventLoop::deregister(int id)
 {
-	ffi::event_loop_deregister(inner_, id);
+	assert(ffi::event_loop_deregister(inner_, id) == 0);
 }
 
 EventLoop *EventLoop::instance()
