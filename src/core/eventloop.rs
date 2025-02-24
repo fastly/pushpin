@@ -361,10 +361,7 @@ impl<C: Callback> EventLoop<C> {
     }
 
     pub fn deregister(&self, id: usize) -> Result<(), EventLoopError> {
-        match self.regs.remove(id) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(EventLoopError),
-        }
+        self.regs.remove(id).map_err(|_| EventLoopError)
     }
 
     fn poll_and_dispatch(&self, timeout: Option<Duration>) -> Option<i32> {
