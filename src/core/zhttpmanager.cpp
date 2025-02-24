@@ -26,6 +26,9 @@
 #include <assert.h>
 #include <QStringList>
 #include <QHash>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -800,7 +803,7 @@ public:
 		{
 			log_debug("[WS] failed to parse JSON msg");
 			// make invalid
-			return -1;
+			return;
 		}
 		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
 		{
