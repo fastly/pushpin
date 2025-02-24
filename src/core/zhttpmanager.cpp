@@ -794,6 +794,18 @@ public:
 			return;
 		}
 
+		// parse json body
+		if (parse_jsonMsg(data.toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[WS] failed to parse JSON msg");
+			// make invalid
+			return -1;
+		}
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
+
 		std::weak_ptr<Private> self = q->d;
 
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
@@ -965,6 +977,173 @@ public:
 		++currentSessionRefreshBucket;
 		if(currentSessionRefreshBucket >= ZHTTP_REFRESH_BUCKETS)
 			currentSessionRefreshBucket = 0;
+	}
+
+	void parse_jsonMap(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap)
+	{
+		for(QVariantMap::const_iterator item = jsonData.begin(); item != jsonData.end(); ++item) 
+		{
+			QString itemKey = item.key();
+			QVariant itemVal = item.value();
+			// if has the same key, skip
+			if (jsonMap.contains(itemKey))
+				continue;
+
+			itemKey = keyName.isNull() ? itemKey : keyName+">>"+itemKey;
+
+			// add exception for id field
+			if (itemKey == "id")
+			{
+				if (itemVal.type() == QVariant::String)
+				{
+					QString strVal = "\"";
+					strVal += itemVal.toString();
+					strVal += "\"";
+					jsonMap[itemKey] = strVal;
+				}
+				else if (itemVal.canConvert<QString>())
+				{
+					jsonMap[itemKey] = itemVal.toString();
+				}
+			}
+			else if (itemVal.canConvert<QString>())
+			{
+				jsonMap[itemKey] = itemVal.toString();
+			}
+			else if (itemVal.type() == QVariant::Map)
+			{
+				QVariantMap mapData = itemVal.toMap();
+				parse_jsonMap(mapData, itemKey, jsonMap);
+			}
+			else if (itemVal.type() == QVariant::List)
+			{
+				QString tmpStr = "";
+				int i = 0;
+				for (QVariant m : itemVal.toList())
+				{
+					if (m.canConvert<QString>())
+					{
+						tmpStr += m.toString() + "+";
+					}
+					else if (m.type() == QVariant::List)
+					{
+						for (QVariant n : m.toList())
+						{
+							if (n.canConvert<QString>())
+							{
+								QString s = n.toString();
+								if (s.length() == 0)
+								{
+									tmpStr += "null";
+									tmpStr += "+";
+								}
+								else
+								{
+									tmpStr += n.toString() + "+";
+								}
+							}
+							else
+							{
+								log_debug("[WS] invalid type=%s", n.typeName());
+							}
+						}
+						// remove '+', '/' at the end
+						while (tmpStr.endsWith("+") || tmpStr.endsWith("/"))
+						{
+							tmpStr.remove(tmpStr.length()-1, 1);
+						}
+						tmpStr += "/";
+					}
+					else if (m.type() == QVariant::Map)
+					{
+						QVariantMap mapData = m.toMap();
+						parse_jsonMap(mapData, itemKey+">>"+QString::number(i), jsonMap);
+					}
+					i++;
+				}
+
+				// remove '+', '/' at the end
+				while (tmpStr.endsWith("+") || tmpStr.endsWith("/"))
+				{
+					tmpStr.remove(tmpStr.length()-1, 1);
+				}
+				
+				jsonMap[itemKey] = (tmpStr.length() > 0) ? tmpStr : "[LIST]";
+			}
+			else
+			{
+				log_debug("[WS] unknown parse json type=%s", itemVal.typeName());
+			}
+		}
+	}
+
+	int parse_jsonMsg(QVariant jsonMsg, QVariantMap& jsonMap)
+	{
+		if (config.simdjsonUsing)
+		{
+			using namespace Json;
+			bool useSimdJson = true;
+			const ParserBackend parser = useSimdJson ? ParserBackend::SimdJson : ParserBackend::Default;
+
+			QVariant parsedRet = parseUtf8(jsonMsg.toByteArray(), ParseOption::AcceptAnyValue, parser);
+			if (parsedRet.isNull()) return -1;
+			if (QMetaType::Type(parsedRet.type()) == QMetaType::QVariantMap)
+			{
+				QVariantMap parsedMap = parsedRet.toMap();
+				parse_jsonMap(parsedMap, NULL, jsonMap);
+			}
+			else if (QMetaType::Type(parsedRet.type()) == QMetaType::QVariantList)
+			{
+				QList parsedList = parsedRet.toList();
+				for(const QVariant& item : parsedList) 
+				{
+					if (QMetaType::Type(item.type()) == QMetaType::QVariantMap)
+					{
+						QVariantMap parsedMap = item.toMap();
+						parse_jsonMap(parsedMap, NULL, jsonMap);
+						break;
+					}
+				}
+			}
+			else
+			{
+				return -1;
+			}
+		}
+		else
+		{
+			// parse body as JSON string
+			QJsonParseError error;
+			QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonMsg.toByteArray(), &error);
+
+			if(error.error != QJsonParseError::NoError)
+				return -1;
+			
+			if(jsonDoc.isObject())
+			{
+				QVariantMap jsonData = jsonDoc.object().toVariantMap();
+				parse_jsonMap(jsonData, NULL, jsonMap);
+			}
+			else if(jsonDoc.isArray())
+			{
+				QVariantList jsonData = jsonDoc.array().toVariantList();
+				for(const QVariant& item : jsonData) 
+				{
+					if (item.type() == QVariant::Map)
+					{
+						QVariantMap mapData = item.toMap();
+						parse_jsonMap(mapData, NULL, jsonMap);
+						break;
+					}
+				}
+			}
+			else
+			{
+				return -1;
+			}
+		}
+
+		return 0;
 	}
 };
 
