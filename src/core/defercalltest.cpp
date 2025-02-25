@@ -23,48 +23,72 @@
 #include <QtTest/QtTest>
 #include "timer.h"
 #include "defercall.h"
+#include "eventloop.h"
 
 class DeferCallTest : public QObject
 {
 	Q_OBJECT
 
-private slots:
-	void initTestCase()
+private:
+	// loop_advance should process enough events to cause the calls to run,
+	// without sleeping, in order to prove the calls are run immediately
+	int runDeferCall(std::function<void ()> loop_advance)
 	{
-		Timer::init(100);
+		int count = 0;
+
+		DeferCall::global()->defer([&] {
+			++count;
+
+			DeferCall::global()->defer([&] {
+				++count;
+			});
+		});
+
+		loop_advance();
+
+		return count;
 	}
 
-	void cleanupTestCase()
+private slots:
+	void deferCall()
 	{
+		EventLoop loop(1);
+
+		int count = runDeferCall([&] {
+			// run the first call and queue the second
+			loop.step();
+
+			// run the second
+			loop.step();
+		});
+
+		QCOMPARE(count, 2);
+
+		DeferCall::cleanup();
+	}
+
+	void deferCallQt()
+	{
+		Timer::init(1);
+
+		int count = runDeferCall([] {
+			// the underlying timer's qt-based implementation will process
+			// both timeouts during a single timer processing pass.
+			// therefore, both calls should run within a single event loop
+			// pass
+			QCoreApplication::processEvents(QEventLoop::AllEvents);
+		});
+
+		QCOMPARE(count, 2);
+
 		DeferCall::cleanup();
 		Timer::deinit();
 	}
 
-	void deferCall()
-	{
-		bool first = false;
-		bool second = false;
-
-		DeferCall::global()->defer([&] {
-			first = true;
-
-			DeferCall::global()->defer([&] {
-				second = true;
-			});
-		});
-
-		// the second deferred call should cause the underlying timer to
-		// re-arm. since we aren't contending with other timers within this
-		// test, both timeouts should get processed during a single timer
-		// processing pass. therefore, both calls should get processed within
-		// a single eventloop pass
-		QTest::qWait(10);
-		QVERIFY(first);
-		QVERIFY(second);
-	}
-
 	void retract()
 	{
+		Timer::init(1);
+
 		bool called = false;
 
 		{
@@ -77,26 +101,30 @@ private slots:
 
 		DeferCall::cleanup();
 		QVERIFY(!called);
+
+		Timer::deinit();
 	}
 
 	void managerCleanup()
 	{
-		bool first = false;
-		bool second = false;
+		Timer::init(1);
+
+		int count = 0;
 
 		DeferCall::global()->defer([&] {
-			first = true;
+			++count;
 
 			DeferCall::global()->defer([&] {
-				second = true;
+				++count;
 			});
 		});
 
 		// cleanup should process deferred calls queued so far as well as
 		// those queued during processing
 		DeferCall::cleanup();
-		QVERIFY(first);
-		QVERIFY(second);
+		QCOMPARE(count, 2);
+
+		Timer::deinit();
 	}
 };
 
