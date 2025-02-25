@@ -627,7 +627,7 @@ public:
 		// Cache config
 		bool cacheEnable = settings.value("cache/cache_enable").toBool();
 
-		config.cacheConfig.cacheEnable = cacheEnable;
+		config.cacheEnable = cacheEnable;
 
 		for(int n = 0; n < workerCount; ++n)
 		{
