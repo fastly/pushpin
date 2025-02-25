@@ -378,7 +378,7 @@ public:
 			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
 		}
 
-		const ZhttpRequestPacket::Id &id = p.ids.first();
+		const ZhttpRequestPacket::Id &id = packet.ids.first();
 		tryRespondCancel(type, id.id, packet);
 
 		return -1;
@@ -467,7 +467,7 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
 
-		processResponseForCache(packet);
+		processResponseForCache(type, packet);
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
