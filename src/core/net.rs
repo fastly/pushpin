@@ -807,6 +807,38 @@ mod ffi {
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_local_addr(
+        l: *const TcpListener,
+        out_ip: *mut c_char,
+        out_ip_size: *mut libc::size_t,
+        out_port: *mut u16,
+    ) -> c_int {
+        let l = l.as_ref().unwrap();
+        let out_ip_size = out_ip_size.as_mut().unwrap();
+
+        let addr = match l.0.local_addr() {
+            Ok(addr) => addr,
+            Err(_) => return -1,
+        };
+
+        let ip = addr.ip().to_string();
+
+        if ip.len() > *out_ip_size {
+            // if value doesn't fit, return success with empty value
+            *out_ip_size = 0;
+            return 0;
+        }
+
+        ptr::copy(ip.as_bytes().as_ptr() as *const c_char, out_ip, ip.len());
+        *out_ip_size = ip.len();
+
+        out_port.write(addr.port());
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
     pub unsafe extern "C" fn tcp_listener_as_raw_fd(l: *const TcpListener) -> c_int {
         let l = l.as_ref().unwrap();
 

@@ -125,6 +125,11 @@ mod tests {
         unsafe { call_c_main(ffi::defercall_test, args) as u8 }
     }
 
+    fn tcpstream_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::tcpstream_test, args) as u8 }
+    }
+
     fn eventloop_test(args: &[&OsStr]) -> u8 {
         // SAFETY: safe to call
         unsafe { call_c_main(ffi::eventloop_test, args) as u8 }
@@ -148,6 +153,11 @@ mod tests {
     #[test]
     fn defercall() {
         assert!(qtest::run(defercall_test));
+    }
+
+    #[test]
+    fn tcpstream() {
+        assert!(qtest::run(tcpstream_test));
     }
 
     #[test]
