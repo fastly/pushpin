@@ -363,7 +363,7 @@ public:
 		}
 	}
 
-	int processRequestsForCache(const ZhttpRequestPacket &packet)
+	int processRequestForCache(const ZhttpRequestPacket &packet)
 	{
 		// parse json body
 		QVariantMap jsonMap;
@@ -394,7 +394,7 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT1", logprefix);
 
-			processRequestsForCache(packet);
+			processRequestForCache(packet);
 
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
@@ -403,7 +403,7 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT2", logprefix);
 
-			processRequestsForCache(packet);
+			processRequestForCache(packet);
 
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
@@ -420,13 +420,31 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT3 %s", logprefix, instanceAddress.data());
 
-		processRequestsForCache(packet);
+		processRequestForCache(packet);
 
 		QList<QByteArray> msg;
 		msg += instanceAddress;
 		msg += QByteArray();
 		msg += buf;
 		client_out_stream_sock->write(msg);
+	}
+
+	int processResponseForCache(const ZhttpResponsePacket &packet)
+	{
+		// parse json body
+		QVariantMap jsonMap;
+		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[WS] failed to parse JSON msg");
+			// make invalid
+			return -1;
+		}
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
+
+		return 0;
 	}
 
 	void write(SessionType type, const ZhttpResponsePacket &packet, const QByteArray &instanceAddress)
@@ -439,6 +457,8 @@ public:
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
+
+		processResponseForCache(packet);
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
