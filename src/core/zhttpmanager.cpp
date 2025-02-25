@@ -371,7 +371,7 @@ public:
 		{
 			log_debug("[WS] failed to parse JSON msg");
 			// make invalid
-			return;
+			return -1;
 		}
 		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
 		{
