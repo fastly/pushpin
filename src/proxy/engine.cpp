@@ -233,7 +233,7 @@ public:
 		zhttpIn->setServerInSpecs(config.serverInSpecs);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
 		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
-		zhttpIn->setCacheEnable(config.cacheEnable);
+		zhttpIn->setCacheEnable(true);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
 		{
@@ -246,7 +246,7 @@ public:
 			intZhttpIn->setServerInSpecs(config.intServerInSpecs);
 			intZhttpIn->setServerInStreamSpecs(config.intServerInStreamSpecs);
 			intZhttpIn->setServerOutSpecs(config.intServerOutSpecs);
-			intZhttpIn->setCacheEnable(config.cacheEnable);
+			intZhttpIn->setCacheEnable(true);
 		}
 
 		zroutes = new ZRoutes(this);
