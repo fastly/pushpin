@@ -84,6 +84,8 @@ public:
 		QString prometheusPort;
 		QString prometheusPrefix;
 
+		bool cacheEnable;
+
 		Configuration() :
 			pushInSubConnect(false),
 			pushInHttpPort(-1),
@@ -102,7 +104,8 @@ public:
 			statsConnectionSend(false),
 			statsConnectionTtl(-1),
 			statsSubscriptionTtl(-1),
-			statsReportInterval(-1)
+			statsReportInterval(-1),
+			cacheEnable(false)
 		{
 		}
 	};

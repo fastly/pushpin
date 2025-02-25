@@ -402,6 +402,11 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
+		// Cache config
+		bool cacheEnable = settings.value("cache/cache_enable").toBool();
+
+		config.cacheEnable = cacheEnable;
+
 		engine = new HandlerEngine(this);
 		if(!engine->start(config))
 		{
