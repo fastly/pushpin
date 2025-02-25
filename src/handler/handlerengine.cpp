@@ -1369,7 +1369,7 @@ public:
 		zhttpOut->setClientOutSpecs(config.clientOutSpecs);
 		zhttpOut->setClientOutStreamSpecs(config.clientOutStreamSpecs);
 		zhttpOut->setClientInSpecs(config.clientInSpecs);
-		zhttpOut->setCacheEnable(config.cacheEnable);
+		zhttpOut->setCacheEnable(true);
 
 		log_debug("zhttp in stream: %s", qPrintable(config.serverInStreamSpecs.join(", ")));
 		log_debug("zhttp out: %s", qPrintable(config.serverOutSpecs.join(", ")));
