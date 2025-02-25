@@ -51,6 +51,9 @@ int handler_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
+	// plenty to kick things off. will reinit after loading config
+	Timer::init(100);
+
 	HandlerAppMain appMain;
 	DeferCall deferCall;
 	deferCall.defer([&] { appMain.start(); });

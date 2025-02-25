@@ -1340,6 +1340,10 @@ public:
 	{
 		config = _config;
 
+		// destroy known timers and deinit, so we can reinit below
+		DeferCall::cleanup();
+		Timer::deinit();
+
 		// includes worst-case subscriptions and update registrations
 		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
 			(config.connectionSubscriptionMax * TIMERS_PER_SUBSCRIPTION) +

@@ -52,6 +52,7 @@ int proxy_main(int argc, char **argv)
 {
 	QCoreApplication qapp(argc, argv);
 
+	// plenty for the main thread
 	Timer::init(100);
 
 	AppMain appMain;
