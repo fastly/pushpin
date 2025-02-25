@@ -750,6 +750,168 @@ impl AsyncWrite for AsyncUnixStream {
     }
 }
 
+mod ffi {
+    use std::convert::TryInto;
+    use std::ffi::CStr;
+    use std::io::{Read, Write};
+    use std::os::fd::AsRawFd;
+    use std::os::raw::{c_char, c_int};
+    use std::ptr;
+    use std::slice;
+
+    pub struct TcpListener(std::net::TcpListener);
+    pub struct TcpStream(std::net::TcpStream);
+
+    #[no_mangle]
+    pub extern "C" fn tcp_listener_bind(
+        addr: *const c_char,
+        out_errno: *mut c_int,
+    ) -> *mut TcpListener {
+        assert!(!out_errno.is_null());
+
+        let addr = unsafe { CStr::from_ptr(addr) };
+
+        let addr = match addr.to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                unsafe { out_errno.write(libc::EINVAL) };
+                return ptr::null_mut();
+            }
+        };
+
+        let l = match std::net::TcpListener::bind(addr) {
+            Ok(l) => l,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return ptr::null_mut();
+            }
+        };
+
+        if let Err(e) = l.set_nonblocking(true) {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return ptr::null_mut();
+        }
+
+        Box::into_raw(Box::new(TcpListener(l)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_destroy(l: *mut TcpListener) {
+        if !l.is_null() {
+            drop(Box::from_raw(l));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_as_raw_fd(l: *const TcpListener) -> c_int {
+        let l = l.as_ref().unwrap();
+
+        l.0.as_raw_fd()
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_accept(
+        l: *const TcpListener,
+        out_errno: *mut c_int,
+    ) -> *mut TcpStream {
+        let l = l.as_ref().unwrap();
+
+        assert!(!out_errno.is_null());
+
+        let s = match l.0.accept() {
+            Ok((s, _)) => s,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                out_errno.write(code);
+                return ptr::null_mut();
+            }
+        };
+
+        if let Err(e) = s.set_nonblocking(true) {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return ptr::null_mut();
+        }
+
+        Box::into_raw(Box::new(TcpStream(s)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_destroy(s: *mut TcpStream) {
+        if !s.is_null() {
+            drop(Box::from_raw(s));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_as_raw_fd(s: *const TcpStream) -> c_int {
+        let s = s.as_ref().unwrap();
+
+        s.0.as_raw_fd()
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_read(
+        s: *mut TcpStream,
+        buf: *mut u8,
+        size: libc::size_t,
+        out_errno: *mut c_int,
+    ) -> libc::ssize_t {
+        let s = s.as_mut().unwrap();
+
+        assert!(!buf.is_null());
+        let buf = slice::from_raw_parts_mut(buf, size);
+
+        assert!(!out_errno.is_null());
+
+        let size = match s.0.read(buf) {
+            Ok(size) => size,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return -1;
+            }
+        };
+
+        size.try_into().expect("read size should fit in a ssize_t")
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_write(
+        s: *mut TcpStream,
+        buf: *const u8,
+        size: libc::size_t,
+        out_errno: *mut c_int,
+    ) -> libc::ssize_t {
+        let s = s.as_mut().unwrap();
+
+        assert!(!buf.is_null());
+        let buf = slice::from_raw_parts(buf, size);
+
+        assert!(!out_errno.is_null());
+
+        let size = match s.0.write(buf) {
+            Ok(size) => size,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return -1;
+            }
+        };
+
+        size.try_into().expect("write size should fit in a ssize_t")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
