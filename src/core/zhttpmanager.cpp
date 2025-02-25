@@ -366,7 +366,7 @@ public:
 
 	int processRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
 	{
-		log_debug("[ZHTTPMANAGER] %s", d->cache_config.cacheEnable ? "TRUE" : "FALSE");
+		log_debug("[ZHTTPMANAGER] %s", cache_config.cacheEnable ? "TRUE" : "FALSE");
 		// parse json body
 		QVariantMap jsonMap;
 		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
