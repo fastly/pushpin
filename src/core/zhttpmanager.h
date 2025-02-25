@@ -113,7 +113,7 @@ public:
 			cacheEnable(false)
 		{
 		}
-	}
+	};
 };
 
 #endif

@@ -1250,7 +1250,7 @@ bool ZhttpManager::setServerOutSpecs(const QStringList &specs)
 void ZhttpManager::setCacheEnable(bool enable)
 {
 	d->cache_config.cacheEnable = enable;
-	log_debug("[ZHTTPMANAGER] %s", d->cache_config.cachenEnable ? "TRUE" : "FALSE");
+	log_debug("[ZHTTPMANAGER] %s", d->cache_config.cacheEnable ? "TRUE" : "FALSE");
 }
 
 ZhttpRequest *ZhttpManager::createRequest()
