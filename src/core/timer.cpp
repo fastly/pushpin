@@ -86,10 +86,19 @@ int TimerManager::add(int msec, Timer *r)
 {
 	qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
 
-	// expireTime must be >= startTime_
-	qint64 expireTime = qMax(currentTime + msec, startTime_);
+	qint64 expiresTicks;
+	if(msec <= 0)
+	{
+		// for timeouts of zero, set immediate expiration with no rounding up
+		expiresTicks = currentTicks_;
+	}
+	else
+	{
+		// expireTime must be >= startTime_
+		qint64 expireTime = qMax(currentTime + msec, startTime_);
 
-	qint64 expiresTicks = durationToTicksRoundUp(expireTime - startTime_);
+		expiresTicks = durationToTicksRoundUp(expireTime - startTime_);
+	}
 
 	int id = wheel_.add(expiresTicks, (size_t)r);
 

@@ -459,6 +459,24 @@ mod ffi {
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
+    pub unsafe extern "C" fn event_loop_step(
+        l: *mut EventLoopRaw,
+        out_code: *mut libc::c_int,
+    ) -> libc::c_int {
+        let l = l.as_mut().unwrap();
+
+        match l.step() {
+            Some(code) => {
+                unsafe { out_code.write(code) };
+
+                0
+            }
+            None => -1,
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
     pub unsafe extern "C" fn event_loop_exec(l: *mut EventLoopRaw) -> libc::c_int {
         let l = l.as_mut().unwrap();
 

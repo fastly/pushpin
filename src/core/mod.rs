@@ -115,6 +115,11 @@ mod tests {
         unsafe { call_c_main(ffi::jwt_test, args) as u8 }
     }
 
+    fn timer_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::timer_test, args) as u8 }
+    }
+
     fn eventloop_test(args: &[&OsStr]) -> u8 {
         // SAFETY: safe to call
         unsafe { call_c_main(ffi::eventloop_test, args) as u8 }
@@ -128,6 +133,11 @@ mod tests {
     #[test]
     fn jwt() {
         assert!(qtest::run(jwt_test));
+    }
+
+    #[test]
+    fn timer() {
+        assert!(qtest::run(timer_test));
     }
 
     #[test]

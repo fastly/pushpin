@@ -37,6 +37,17 @@ EventLoop::~EventLoop()
 	g_instance = nullptr;
 }
 
+std::optional<int> EventLoop::step()
+{
+	std::optional<int> code;
+
+	int x;
+	if(ffi::event_loop_step(inner_, &x) == 0)
+		code = x;
+
+	return code;
+}
+
 int EventLoop::exec()
 {
 	return ffi::event_loop_exec(inner_);
