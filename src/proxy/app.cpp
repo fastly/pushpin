@@ -624,6 +624,11 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
+		// Cache config
+		bool cacheEnable = settings.value("cache/cache_enable").toBool();
+
+		config.cacheConfig.cacheEnable = cacheEnable;
+
 		for(int n = 0; n < workerCount; ++n)
 		{
 			Engine::Configuration wconfig = config;

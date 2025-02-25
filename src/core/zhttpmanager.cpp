@@ -85,6 +85,7 @@ public:
 	QStringList server_in_specs;
 	QStringList server_in_stream_specs;
 	QStringList server_out_specs;
+	CacheConfig cache_config;
 	std::unique_ptr<QZmq::Socket> client_out_sock;
 	std::unique_ptr<QZmq::Socket> client_out_stream_sock;
 	std::unique_ptr<QZmq::Socket> client_in_sock;
@@ -379,9 +380,8 @@ public:
 		}
 
 		const ZhttpRequestPacket::Id &id = packet.ids.first();
-		tryRespondCancel(type, id.id, packet);
 
-		return -1;
+		return 0;
 	}
 
 	int processResponseForCache(SessionType type, const ZhttpResponsePacket &packet)
@@ -1245,6 +1245,12 @@ bool ZhttpManager::setServerOutSpecs(const QStringList &specs)
 {
 	d->server_out_specs = specs;
 	return d->setupServerOut();
+}
+
+void ZhttpManager::setCacheConfig(const CacheConfig &config)
+{
+	d->cache_config = config;
+	log_debug("[ZHTTPMANAGER] %s", d->cache_config.cachenEnable ? "TRUE" : "FALSE");
 }
 
 ZhttpRequest *ZhttpManager::createRequest()

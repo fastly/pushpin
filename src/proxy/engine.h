@@ -43,6 +43,17 @@ class Engine : public QObject
 	Q_OBJECT
 
 public:
+	class CacheConfig
+	{
+	public:
+		bool cacheEnable;
+
+		CacheConfig() :
+			cacheEnable(false)
+		{
+		}
+	}
+
 	class Configuration
 	{
 	public:
@@ -94,6 +105,7 @@ public:
 		int statsReportInterval;
 		QString prometheusPort;
 		QString prometheusPrefix;
+		CacheConfig cacheConfig;
 
 		Configuration() :
 			id(0),

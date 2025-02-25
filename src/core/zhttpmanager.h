@@ -62,6 +62,8 @@ public:
 	bool setServerInStreamSpecs(const QStringList &specs);
 	bool setServerOutSpecs(const QStringList &specs);
 
+	void setCacheConfig(const CacheConfig &config);
+
 	ZhttpRequest *createRequest();
 	ZhttpRequest *takeNextRequest();
 
