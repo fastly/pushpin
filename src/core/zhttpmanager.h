@@ -62,7 +62,7 @@ public:
 	bool setServerInStreamSpecs(const QStringList &specs);
 	bool setServerOutSpecs(const QStringList &specs);
 
-	void setCacheConfig(const CacheConfig &config);
+	void setCacheEnable(bool enable);
 
 	ZhttpRequest *createRequest();
 	ZhttpRequest *takeNextRequest();
@@ -102,6 +102,18 @@ private:
 	void unregisterKeepAlive(ZhttpRequest *req);
 	void registerKeepAlive(ZWebSocket *sock);
 	void unregisterKeepAlive(ZWebSocket *sock);
+
+public:
+	class CacheConfig
+	{
+	public:
+		bool cacheEnable;
+
+		CacheConfig() :
+			cacheEnable(false)
+		{
+		}
+	}
 };
 
 #endif

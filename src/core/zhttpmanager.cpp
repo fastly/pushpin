@@ -1247,9 +1247,9 @@ bool ZhttpManager::setServerOutSpecs(const QStringList &specs)
 	return d->setupServerOut();
 }
 
-void ZhttpManager::setCacheConfig(const CacheConfig &config)
+void ZhttpManager::setCacheEnable(bool enable)
 {
-	d->cache_config = config;
+	d->cache_config.cacheEnable = enable;
 	log_debug("[ZHTTPMANAGER] %s", d->cache_config.cachenEnable ? "TRUE" : "FALSE");
 }
 
