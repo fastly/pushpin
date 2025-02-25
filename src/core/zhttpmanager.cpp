@@ -363,6 +363,24 @@ public:
 		}
 	}
 
+	int processRequestsForCache(const ZhttpRequestPacket &packet)
+	{
+		// parse json body
+		QVariantMap jsonMap;
+		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[WS] failed to parse JSON msg");
+			// make invalid
+			return;
+		}
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
+
+		return 0;
+	}
+
 	void write(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		assert(client_out_sock || client_req_sock);
@@ -374,14 +392,18 @@ public:
 		if(client_out_sock)
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT", logprefix);
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT1", logprefix);
+
+			processRequestsForCache(packet);
 
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
 		else
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT", logprefix);
+				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT2", logprefix);
+
+			processRequestsForCache(packet);
 
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
@@ -396,7 +418,9 @@ public:
 		QByteArray buf = QByteArray("T") + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT %s", logprefix, instanceAddress.data());
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT3 %s", logprefix, instanceAddress.data());
+
+		processRequestsForCache(packet);
 
 		QList<QByteArray> msg;
 		msg += instanceAddress;
@@ -795,19 +819,6 @@ public:
 		{
 			log_warning("zhttp/zws server: received message with invalid format (parse failed), skipping");
 			return;
-		}
-
-		// parse json body
-		QVariantMap jsonMap;
-		if (parse_jsonMsg(data.toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[WS] failed to parse JSON msg");
-			// make invalid
-			return;
-		}
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
 		}
 
 		std::weak_ptr<Private> self = q->d;
