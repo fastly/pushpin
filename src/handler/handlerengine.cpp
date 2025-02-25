@@ -1362,6 +1362,7 @@ public:
 		zhttpIn->setInstanceId(config.instanceId);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
 		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
+		zhttpIn->setCacheEnable(config.cacheEnable);
 
 		zhttpOut = new ZhttpManager(this);
 		zhttpOut->setInstanceId(config.instanceId);
