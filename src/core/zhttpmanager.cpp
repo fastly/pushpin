@@ -366,6 +366,7 @@ public:
 
 	int processRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
 	{
+		log_debug("[ZHTTPMANAGER] %s", d->cache_config.cacheEnable ? "TRUE" : "FALSE");
 		// parse json body
 		QVariantMap jsonMap;
 		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
@@ -1250,7 +1251,6 @@ bool ZhttpManager::setServerOutSpecs(const QStringList &specs)
 void ZhttpManager::setCacheEnable(bool enable)
 {
 	d->cache_config.cacheEnable = enable;
-	log_debug("[ZHTTPMANAGER] %s", d->cache_config.cacheEnable ? "TRUE" : "FALSE");
 }
 
 ZhttpRequest *ZhttpManager::createRequest()
