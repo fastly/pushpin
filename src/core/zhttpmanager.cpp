@@ -57,6 +57,8 @@
 // needs to match the peer
 #define ZHTTP_IDS_MAX 128
 
+static QString tt = "XXXXX";
+
 class ZhttpManager::Private : public QObject
 {
 	Q_OBJECT
@@ -366,7 +368,7 @@ public:
 
 	int processRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
 	{
-		log_debug("[ZHTTPMANAGER] %s", cache_config.cacheEnable ? "TRUE" : "FALSE");
+		log_debug("[ZHTTPMANAGER] %s %s", cache_config.cacheEnable ? "TRUE" : "FALSE", qPrintable(tt));
 		// parse json body
 		QVariantMap jsonMap;
 		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
@@ -1251,6 +1253,7 @@ bool ZhttpManager::setServerOutSpecs(const QStringList &specs)
 void ZhttpManager::setCacheEnable(bool enable)
 {
 	d->cache_config.cacheEnable = enable;
+	tt = "ZZZZ";
 }
 
 ZhttpRequest *ZhttpManager::createRequest()
