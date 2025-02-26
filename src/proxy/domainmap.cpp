@@ -759,8 +759,8 @@ public:
 		startedConnection.disconnect();
 		delete worker;
 
-		Timer::deinit();
 		DeferCall::cleanup();
+		Timer::deinit();
 	}
 
 public:

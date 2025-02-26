@@ -208,14 +208,15 @@ private slots:
 
 	void cleanupTestCase()
 	{
+		limiter.reset();
 		zhttpOut.reset();
 		filterServer.reset();
 
 		// ensure deferred deletes are processed
 		QCoreApplication::instance()->sendPostedEvents();
 
-		Timer::deinit();
 		DeferCall::cleanup();
+		Timer::deinit();
 	}
 
 	void messageFilters()
