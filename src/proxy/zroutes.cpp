@@ -125,7 +125,6 @@ public:
 			manager->setClientOutSpecs(defaultOutSpecs);
 			manager->setClientOutStreamSpecs(defaultOutStreamSpecs);
 			manager->setClientInSpecs(defaultInSpecs);
-			//manager->setCacheEnable(true);
 
 			defaultItem = new Item(QString(), manager);
 		}
@@ -142,7 +141,6 @@ public:
 			manager->setInstanceId(instanceId);
 			manager->setIpcFileMode(route.ipcFileMode);
 			manager->setBind(true);
-			//manager->setCacheEnable(true);
 
 			if(route.req)
 			{

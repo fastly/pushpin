@@ -1362,14 +1362,12 @@ public:
 		zhttpIn->setInstanceId(config.instanceId);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
 		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
-		zhttpIn->setCacheEnable(true);
 
 		zhttpOut = new ZhttpManager(this);
 		zhttpOut->setInstanceId(config.instanceId);
 		zhttpOut->setClientOutSpecs(config.clientOutSpecs);
 		zhttpOut->setClientOutStreamSpecs(config.clientOutStreamSpecs);
 		zhttpOut->setClientInSpecs(config.clientInSpecs);
-		zhttpOut->setCacheEnable(true);
 
 		log_debug("zhttp in stream: %s", qPrintable(config.serverInStreamSpecs.join(", ")));
 		log_debug("zhttp out: %s", qPrintable(config.serverOutSpecs.join(", ")));

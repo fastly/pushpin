@@ -47,7 +47,6 @@ public:
 		zhttpIn->setServerInSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in")));
 		zhttpIn->setServerInStreamSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-in-stream")));
 		zhttpIn->setServerOutSpecs(QStringList() << QString("ipc://%1").arg(workDir.filePath("filter-test-out")));
-		zhttpIn->setCacheEnable(true);
 		zhttpIn->requestReady.connect(boost::bind(&HttpFilterServer::zhttpIn_requestReady, this));
 	}
 
