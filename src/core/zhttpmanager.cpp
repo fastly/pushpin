@@ -87,7 +87,6 @@ public:
 	QStringList server_in_specs;
 	QStringList server_in_stream_specs;
 	QStringList server_out_specs;
-	CacheConfig cache_config;
 	std::unique_ptr<QZmq::Socket> client_out_sock;
 	std::unique_ptr<QZmq::Socket> client_out_stream_sock;
 	std::unique_ptr<QZmq::Socket> client_in_sock;
