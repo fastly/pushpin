@@ -102,18 +102,6 @@ private:
 	void unregisterKeepAlive(ZhttpRequest *req);
 	void registerKeepAlive(ZWebSocket *sock);
 	void unregisterKeepAlive(ZWebSocket *sock);
-
-public:
-	class CacheConfig
-	{
-	public:
-		bool cacheEnable;
-
-		CacheConfig() :
-			cacheEnable(false)
-		{
-		}
-	};
 };
 
 #endif
