@@ -779,15 +779,16 @@ public:
 				return;
 			}
 
-			tryRespondCancel(WebSocketSession, id.id, p);
-			return;
-
 			sock = new ZWebSocket;
 			if(!sock->setupServer(q, id.id, id.seq, p))
 			{
 				delete sock;
 				return;
 			}
+
+			log_debug("WS");
+			tryRespondCancel(WebSocketSession, id.id, p);
+			return;
 
 			serverSocksByRid.insert(rid, sock);
 			serverPendingSocks += sock;
@@ -802,15 +803,12 @@ public:
 			ZhttpRequest::Rid rid(p.from, id.id);
 
 			ZhttpRequest *req = serverReqsByRid.value(rid);
-			if(!req)
+			if(req)
 			{
 				log_warning("zhttp server: received message for existing request id, canceling");
 				tryRespondCancel(HttpSession, id.id, p);
 				return;
 			}
-
-			tryRespondCancel(HttpSession, id.id, p);
-			return;
 
 			req = new ZhttpRequest;
 			if(!req->setupServer(q, id.id, id.seq, p))
@@ -818,6 +816,10 @@ public:
 				delete req;
 				return;
 			}
+
+			log_debug("HTTP");
+			tryRespondCancel(HttpSession, id.id, p);
+			return;
 
 			serverReqsByRid.insert(rid, req);
 			serverPendingReqs += req;
