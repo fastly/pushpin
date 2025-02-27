@@ -808,6 +808,8 @@ public:
 				return;
 			}
 
+			tryRespondCancel(HttpSession, id.id, p);
+
 			req = new ZhttpRequest;
 			if(!req->setupServer(q, id.id, id.seq, p))
 			{
