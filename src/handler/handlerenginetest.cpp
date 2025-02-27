@@ -280,6 +280,8 @@ private slots:
 		QDir outDir(qgetenv("OUT_DIR"));
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
+		Timer::init(100);
+
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
 		wrapper->startProxy();

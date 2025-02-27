@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -29,8 +29,13 @@
 #include <QStringList>
 #include <QFile>
 #include <QFileInfo>
+#include "timer.h"
+#include "defercall.h"
 #include "processquit.h"
 #include "log.h"
+#include "httpsession.h"
+#include "wssession.h"
+#include "httpsessionupdatemanager.h"
 #include "settings.h"
 #include "handlerengine.h"
 #include "config.h"
@@ -169,27 +174,10 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, ArgsD
 	return CommandLineOk;
 }
 
-class HandlerApp::Private : public QObject
+class HandlerApp::Private
 {
-	Q_OBJECT
-
 public:
-	HandlerApp *q;
-	ArgsData args;
-	HandlerEngine *engine;
-	Connection quitConnection;
-	Connection hupConnection;
-
-	Private(HandlerApp *_q) :
-		QObject(_q),
-		q(_q),
-		engine(0)
-	{
-		quitConnection = ProcessQuit::instance()->quit.connect(boost::bind(&Private::doQuit, this));
-		hupConnection = ProcessQuit::instance()->hup.connect(boost::bind(&Private::reload, this));
-	}
-
-	void start()
+	static int run()
 	{
 		QCoreApplication::setApplicationName("pushpin-handler");
 		QCoreApplication::setApplicationVersion(Config::get().version);
@@ -197,6 +185,7 @@ public:
 		QCommandLineParser parser;
 		parser.setApplicationDescription("Pushpin handler component.");
 
+		ArgsData args;
 		QString errorMessage;
 		switch(parseCommandLine(&parser, &args, &errorMessage))
 		{
@@ -204,13 +193,11 @@ public:
 				break;
 			case CommandLineError:
 				fprintf(stderr, "%s\n\n%s", qPrintable(errorMessage), qPrintable(parser.helpText()));
-				q->quit(1);
-				return;
+				return 1;
 			case CommandLineVersionRequested:
 				printf("%s %s\n", qPrintable(QCoreApplication::applicationName()),
 					qPrintable(QCoreApplication::applicationVersion()));
-				q->quit(0);
-				return;
+				return 0;
 			case CommandLineHelpRequested:
 				parser.showHelp();
 				Q_UNREACHABLE();
@@ -226,8 +213,7 @@ public:
 			if(!log_setFile(args.logFile))
 			{
 				log_error("failed to open log file: %s", qPrintable(args.logFile));
-				q->quit(1);
-				return;
+				return 1;
 			}
 		}
 
@@ -243,8 +229,7 @@ public:
 			if(!file.open(QIODevice::ReadOnly))
 			{
 				log_error("failed to open %s, and --config not passed", qPrintable(configFile));
-				q->quit(0);
-				return;
+				return 1;
 			}
 		}
 
@@ -340,15 +325,13 @@ public:
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
 			log_error("must set m2a_in_stream_specs and m2a_out_specs");
-			q->quit(0);
-			return;
+			return 1;
 		}
 
 		if(proxy_inspect_specs.isEmpty() || proxy_accept_specs.isEmpty() || proxy_retry_out_specs.isEmpty())
 		{
 			log_error("must set proxy_inspect_specs, proxy_accept_specs, and proxy_retry_out_specs");
-			q->quit(0);
-			return;
+			return 1;
 		}
 
 		HandlerEngine::Configuration config;
@@ -402,53 +385,73 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		engine = new HandlerEngine(this);
-		if(!engine->start(config))
-		{
-			q->quit(0);
-			return;
-		}
-
-		log_info("started");
+		return runLoop(config);
 	}
 
 private:
-	void reload()
+	static int runLoop(const HandlerEngine::Configuration &config)
 	{
-		log_info("reloading");
-		log_rotate();
-		engine->reload();
-	}
+		// includes worst-case subscriptions and update registrations
+		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
+			(config.connectionSubscriptionMax * TIMERS_PER_SUBSCRIPTION) +
+			TIMERS_PER_UNIQUE_UPDATE_REGISTRATION;
 
-	void doQuit()
-	{
-		log_info("stopping...");
+		// enough timers for sessions, plus an extra 100 for misc
+		Timer::init((config.connectionsMax * timersPerSession) + 100);
+
+		std::unique_ptr<HandlerEngine> engine;
+
+		DeferCall deferCall;
+		deferCall.defer([&] {
+			engine = std::make_unique<HandlerEngine>();
+
+			ProcessQuit::instance()->quit.connect([&] {
+				log_info("stopping...");
 		
-		// remove the handler, so if we get another signal then we crash out
-		ProcessQuit::cleanup();
+				// remove the handler, so if we get another signal then we crash out
+				ProcessQuit::cleanup();
 
-		delete engine;
-		engine = 0;
+				engine.reset();
 
-		log_debug("stopped");
-		q->quit(0);
+				log_debug("stopped");
+
+				QCoreApplication::exit(0);
+			});
+
+			ProcessQuit::instance()->hup.connect([&] {
+				log_info("reloading");
+				log_rotate();
+				engine->reload();
+			});
+
+			if(!engine->start(config))
+			{
+				engine.reset();
+				QCoreApplication::exit(1);
+				return;
+			}
+
+			log_info("started");
+		});
+
+		int ret = QCoreApplication::exec();
+
+		// ensure deferred deletes are processed
+		QCoreApplication::instance()->sendPostedEvents();
+
+		// deinit here, after all event loop activity has completed
+		Timer::deinit();
+		DeferCall::cleanup();
+
+		return ret;
 	}
 };
 
-HandlerApp::HandlerApp(QObject *parent) :
-	QObject(parent)
-{
-	d = new Private(this);
-}
+HandlerApp::HandlerApp() = default;
 
-HandlerApp::~HandlerApp()
-{
-	delete d;
-}
+HandlerApp::~HandlerApp() = default;
 
-void HandlerApp::start()
+int HandlerApp::run()
 {
-	d->start();
+	return Private::run();
 }
-
-#include "handlerapp.moc"

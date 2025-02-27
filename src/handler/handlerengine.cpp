@@ -1156,8 +1156,6 @@ private:
 	}
 };
 
-#define TIMERS_PER_SUBSCRIPTION 1
-
 class Subscription : public QObject
 {
 	Q_OBJECT
@@ -1339,18 +1337,6 @@ public:
 	bool start(const Configuration &_config)
 	{
 		config = _config;
-
-		// destroy known timers and deinit, so we can reinit below
-		DeferCall::cleanup();
-		Timer::deinit();
-
-		// includes worst-case subscriptions and update registrations
-		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
-			(config.connectionSubscriptionMax * TIMERS_PER_SUBSCRIPTION) +
-			TIMERS_PER_UNIQUE_UPDATE_REGISTRATION;
-
-		// enough timers for sessions, plus an extra 100 for misc
-		Timer::init((config.connectionsMax * timersPerSession) + 100);
 
 		publishLimiter->setRate(config.messageRate);
 		publishLimiter->setHwm(config.messageHwm);
