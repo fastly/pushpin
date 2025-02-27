@@ -31,6 +31,7 @@
 #include <QFileInfo>
 #include "timer.h"
 #include "defercall.h"
+#include "eventloop.h"
 #include "processquit.h"
 #include "log.h"
 #include "httpsession.h"
@@ -321,6 +322,7 @@ public:
 		QString statsFormat = settings.value("handler/stats_format").toString();
 		QString prometheusPort = settings.value("handler/prometheus_port").toString();
 		QString prometheusPrefix = settings.value("handler/prometheus_prefix").toString();
+		bool newEventLoop = settings.value("handler/new_event_loop", false).toBool();
 
 		if(m2a_in_stream_specs.isEmpty() || m2a_out_specs.isEmpty())
 		{
@@ -385,11 +387,11 @@ public:
 		config.prometheusPort = prometheusPort;
 		config.prometheusPrefix = prometheusPrefix;
 
-		return runLoop(config);
+		return runLoop(config, newEventLoop);
 	}
 
 private:
-	static int runLoop(const HandlerEngine::Configuration &config)
+	static int runLoop(const HandlerEngine::Configuration &config, bool newEventLoop)
 	{
 		// includes worst-case subscriptions and update registrations
 		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION) +
@@ -397,7 +399,27 @@ private:
 			TIMERS_PER_UNIQUE_UPDATE_REGISTRATION;
 
 		// enough timers for sessions, plus an extra 100 for misc
-		Timer::init((config.connectionsMax * timersPerSession) + 100);
+		int timersMax = (config.connectionsMax * timersPerSession) + 100;
+
+		std::unique_ptr<EventLoop> loop;
+
+		if(newEventLoop)
+		{
+			log_debug("using new event loop");
+
+			// enough for lots of internal http api requests, prometheus
+			// requests, and zmq route targets. client sessions don't use
+			// socket notifiers
+			int socketNotifiersMax = 1000;
+
+			int registrationsMax = timersMax + socketNotifiersMax;
+			loop = std::make_unique<EventLoop>(registrationsMax);
+		}
+		else
+		{
+			// for qt event loop, timer subsystem must be explicitly initialized
+			Timer::init(timersMax);
+		}
 
 		std::unique_ptr<HandlerEngine> engine;
 
@@ -415,7 +437,10 @@ private:
 
 				log_debug("stopped");
 
-				QCoreApplication::exit(0);
+				if(newEventLoop)
+					loop->exit(0);
+				else
+					QCoreApplication::exit(0);
 			});
 
 			ProcessQuit::instance()->hup.connect([&] {
@@ -427,21 +452,36 @@ private:
 			if(!engine->start(config))
 			{
 				engine.reset();
-				QCoreApplication::exit(1);
+
+				if(newEventLoop)
+					loop->exit(1);
+				else
+					QCoreApplication::exit(1);
+
 				return;
 			}
 
 			log_info("started");
 		});
 
-		int ret = QCoreApplication::exec();
+		int ret;
+		if(newEventLoop)
+			ret = loop->exec();
+		else
+			ret = QCoreApplication::exec();
 
-		// ensure deferred deletes are processed
-		QCoreApplication::instance()->sendPostedEvents();
+		if(!newEventLoop)
+		{
+			// ensure deferred deletes are processed
+			QCoreApplication::instance()->sendPostedEvents();
+		}
 
 		// deinit here, after all event loop activity has completed
-		Timer::deinit();
+
 		DeferCall::cleanup();
+
+		if(!newEventLoop)
+			Timer::deinit();
 
 		return ret;
 	}
