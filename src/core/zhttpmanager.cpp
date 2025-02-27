@@ -367,7 +367,12 @@ public:
 
 	int processRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
 	{
-		log_debug("[ZHTTPMANAGER] %s", gCacheEnable ? "TRUE" : "FALSE");
+		if (gCacheEnable == false)
+		{
+			log_debug("[cache] cache not enabled");
+			return 0;
+		}
+
 		// parse json body
 		QVariantMap jsonMap;
 		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
@@ -383,7 +388,9 @@ public:
 
 		const ZhttpRequestPacket::Id &id = packet.ids.first();
 
-		return 0;
+		tryRespondCancel(type, id.id, packet);
+
+		return -1;
 	}
 
 	int processResponseForCache(SessionType type, const ZhttpResponsePacket &packet)
