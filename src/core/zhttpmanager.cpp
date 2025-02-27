@@ -425,9 +425,9 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT1", logprefix);
 
-			int ret = processRequestForCache(type, packet);
-			if (ret != 0)
-				return;
+			//int ret = processRequestForCache(type, packet);
+			//if (ret != 0)
+			//	return;
 
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
@@ -436,9 +436,9 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT2", logprefix);
 
-			int ret = processRequestForCache(type, packet);
-			if (ret != 0)
-				return;
+			//int ret = processRequestForCache(type, packet);
+			//if (ret != 0)
+			//	return;
 
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
@@ -455,9 +455,9 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT3 %s", logprefix, instanceAddress.data());
 
-		int ret = processRequestForCache(type, packet);
-		if (ret != 0)
-			return;
+		//int ret = processRequestForCache(type, packet);
+		//if (ret != 0)
+		//	return;
 
 		QList<QByteArray> msg;
 		msg += instanceAddress;
@@ -792,10 +792,6 @@ public:
 			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
 				server_in_valve->close();
 
-			log_debug("WS");
-			tryRespondCancel(WebSocketSession, id.id, p);
-			return;
-
 			q->socketReady();
 		}
 		else if(p.uri.scheme() == "https" || p.uri.scheme() == "http")
@@ -822,10 +818,6 @@ public:
 
 			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
 				server_in_valve->close();
-
-			log_debug("HTTP");
-			tryRespondCancel(HttpSession, id.id, p);
-			return;
 
 			q->requestReady();
 		}
