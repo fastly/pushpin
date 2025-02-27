@@ -786,15 +786,15 @@ public:
 				return;
 			}
 
-			log_debug("WS");
-			tryRespondCancel(WebSocketSession, id.id, p);
-			return;
-
 			serverSocksByRid.insert(rid, sock);
 			serverPendingSocks += sock;
 
 			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
 				server_in_valve->close();
+
+			log_debug("WS");
+			tryRespondCancel(WebSocketSession, id.id, p);
+			return;
 
 			q->socketReady();
 		}
@@ -817,15 +817,15 @@ public:
 				return;
 			}
 
-			log_debug("HTTP");
-			tryRespondCancel(HttpSession, id.id, p);
-			return;
-
 			serverReqsByRid.insert(rid, req);
 			serverPendingReqs += req;
 
 			if(serverPendingReqs.count() + serverPendingSocks.count() >= PENDING_MAX)
 				server_in_valve->close();
+
+			log_debug("HTTP");
+			tryRespondCancel(HttpSession, id.id, p);
+			return;
 
 			q->requestReady();
 		}
