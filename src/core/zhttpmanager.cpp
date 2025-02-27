@@ -779,6 +779,9 @@ public:
 				return;
 			}
 
+			tryRespondCancel(WebSocketSession, id.id, p);
+			return;
+
 			sock = new ZWebSocket;
 			if(!sock->setupServer(q, id.id, id.seq, p))
 			{
