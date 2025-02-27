@@ -772,7 +772,7 @@ public:
 			ZWebSocket::Rid rid(p.from, id.id);
 
 			ZWebSocket *sock = serverSocksByRid.value(rid);
-			if(!sock)
+			if(sock)
 			{
 				log_warning("zws server: received message for existing request id, canceling");
 				tryRespondCancel(WebSocketSession, id.id, p);
@@ -780,6 +780,7 @@ public:
 			}
 
 			tryRespondCancel(WebSocketSession, id.id, p);
+			return;
 
 			sock = new ZWebSocket;
 			if(!sock->setupServer(q, id.id, id.seq, p))
@@ -807,6 +808,9 @@ public:
 				tryRespondCancel(HttpSession, id.id, p);
 				return;
 			}
+
+			tryRespondCancel(HttpSession, id.id, p);
+			return;
 
 			req = new ZhttpRequest;
 			if(!req->setupServer(q, id.id, id.seq, p))
