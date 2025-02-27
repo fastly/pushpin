@@ -373,11 +373,14 @@ public:
 			return 0;
 		}
 
+		const ZhttpRequestPacket::Id &id = packet.ids.first();
+
 		// parse json body
 		QVariantMap jsonMap;
 		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[WS] failed to parse JSON msg");
+			tryRespondCancel(type, id.id, packet);
 			// make invalid
 			return -1;
 		}
@@ -385,8 +388,6 @@ public:
 		{
 			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
 		}
-
-		const ZhttpRequestPacket::Id &id = packet.ids.first();
 
 		tryRespondCancel(type, id.id, packet);
 
