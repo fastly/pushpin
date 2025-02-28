@@ -425,9 +425,9 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT1", logprefix);
 
-			//int ret = processRequestForCache(type, packet);
-			//if (ret != 0)
-			//	return;
+			int ret = processRequestForCache(type, packet);
+			if (ret != 0)
+				return;
 
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
@@ -436,9 +436,9 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT2", logprefix);
 
-			//int ret = processRequestForCache(type, packet);
-			//if (ret != 0)
-			//	return;
+			int ret = processRequestForCache(type, packet);
+			if (ret != 0)
+				return;
 
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
@@ -455,9 +455,9 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT3 %s", logprefix, instanceAddress.data());
 
-		//int ret = processRequestForCache(type, packet);
-		//if (ret != 0)
-		//	return;
+		int ret = processRequestForCache(type, packet);
+		if (ret != 0)
+			return;
 
 		QList<QByteArray> msg;
 		msg += instanceAddress;
@@ -779,9 +779,6 @@ public:
 				return;
 			}
 
-			tryRespondCancel(WebSocketSession, id.id, p);
-			return;
-
 			sock = new ZWebSocket;
 			if(!sock->setupServer(q, id.id, id.seq, p))
 			{
@@ -808,9 +805,6 @@ public:
 				tryRespondCancel(HttpSession, id.id, p);
 				return;
 			}
-
-			tryRespondCancel(HttpSession, id.id, p);
-			return;
 
 			req = new ZhttpRequest;
 			if(!req->setupServer(q, id.id, id.seq, p))
