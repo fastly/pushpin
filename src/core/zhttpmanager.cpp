@@ -365,7 +365,7 @@ public:
 		}
 	}
 
-	int processRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
+	int processWsRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		if (gCacheEnable == false)
 		{
@@ -380,7 +380,7 @@ public:
 		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[WS] failed to parse JSON msg");
-			tryRespondCancel(type, id.id, packet);
+			//tryRespondCancel(type, id.id, packet);
 			// make invalid
 			return -1;
 		}
@@ -425,20 +425,12 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT1", logprefix);
 
-			int ret = processRequestForCache(type, packet);
-			if (ret != 0)
-				return;
-
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
 		else
 		{
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client req: OUT2", logprefix);
-
-			int ret = processRequestForCache(type, packet);
-			if (ret != 0)
-				return;
 
 			client_req_sock->write(QList<QByteArray>() << QByteArray() << buf);
 		}
@@ -454,10 +446,6 @@ public:
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT3 %s", logprefix, instanceAddress.data());
-
-		int ret = processRequestForCache(type, packet);
-		if (ret != 0)
-			return;
 
 		QList<QByteArray> msg;
 		msg += instanceAddress;
@@ -476,8 +464,6 @@ public:
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
-
-		//processResponseForCache(type, packet);
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -778,6 +764,8 @@ public:
 				tryRespondCancel(WebSocketSession, id.id, p);
 				return;
 			}
+
+			processWsRequestForCache(WebSocketSession, p);
 
 			sock = new ZWebSocket;
 			if(!sock->setupServer(q, id.id, id.seq, p))
