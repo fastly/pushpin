@@ -623,7 +623,7 @@ public:
 		// get method string
 		QString msgId = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
 		QString msgMethod = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-		if (msgId.isEmpty() || methodName.isEmpty())
+		if (msgId.isEmpty() || msgMethod.isEmpty())
 		{
 			log_debug("[HTTP-REQ] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return -1;
@@ -636,7 +636,7 @@ public:
 		// Params hash val
 		QByteArray paramsHash = buildHashKey(jsonMap, "HTTP+");
 
-		if (is_cacheMethod(msgMethod))
+		if (isCacheMethod(msgMethod))
 		{
 			if (gCacheItemMap.contains(paramsHash))
 			{
@@ -655,7 +655,7 @@ public:
 			}
 
 			// Register new cache item
-			registerHttpCacheItem(p, packetId, msgId, msgMethod, paramsHash, backendNo);
+			registerHttpCacheItem(packet, packetId, msgId, msgMethod, paramsHash, backendNo);
 			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(methodName), backendNo);
 		}
 
