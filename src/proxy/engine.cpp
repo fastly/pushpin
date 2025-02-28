@@ -243,8 +243,7 @@ public:
 			config.cacheKeyItemList,
 			config.msgIdFieldName,
 			config.msgMethodFieldName,
-			config.msgParamsFieldName
-		);
+			config.msgParamsFieldName);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
 		{
