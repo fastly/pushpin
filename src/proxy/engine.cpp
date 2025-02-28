@@ -237,6 +237,13 @@ public:
 			config.cacheEnable,
 			config.httpBackendUrlList,
 			config.wsBackendUrlList
+			config.cacheEnable,
+			config.httpBackendUrlList,
+			config.wsBackendUrlList,
+			config.cacheKeyItemList,
+			config.msgIdFieldName,
+			config.msgMethodFieldName,
+			config.msgParamsFieldName
 		);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())

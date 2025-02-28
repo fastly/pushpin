@@ -65,7 +65,11 @@ public:
 	void setCacheParameters(
 		bool enable,	
 		const QStringList &httpBackendUrlList,
-		const QStringList &wsBackendUrlList);
+		const QStringList &wsBackendUrlList,
+		const QStringList &cacheKeyItemList,
+		const QString &msgIdFieldName,
+		const QString &msgMethodFieldName,
+		const QString &msgParamsFieldName);
 
 	ZhttpRequest *createRequest();
 	ZhttpRequest *takeNextRequest();

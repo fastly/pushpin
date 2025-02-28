@@ -68,11 +68,25 @@ enum Scheme {
 static bool gCacheEnable = false;
 static QStringList gHttpBackendUrlList;
 static QStringList gWsBackendUrlList;
+
+// Cache key item
+enum ItemFlag {
+	JSON_VALUE,
+	JSON_PAIR,
+	RAW_VALUE
+};
+struct CacheKeyItem {
+	QString keyName;
+	ItemFlag flag;
+};
+QList<CacheKeyItem> gCacheKeyItemList;
 static QString gMsgIdAttrName = "id";
 static QString gMsgMethodAttrName = "method";
 static QString gMsgParamsAttrName = "";
-QStringList gCacheMethodList = {"*"};
-QMap<QString, QString> gSubscribeMethodMap;
+
+
+static QStringList gCacheMethodList = {"*"};
+static QMap<QString, QString> gSubscribeMethodMap;
 
 // cache client params
 struct CacheClientItem {
@@ -1684,12 +1698,48 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 void ZhttpManager::setCacheParameters(
 	bool enable,
 	const QStringList &httpBackendUrlList,
-	const QStringList &wsBackendUrlList
+	const QStringList &wsBackendUrlList,
+	const QStringList &cacheKeyItemList,
+	const QString &msgIdFieldName,
+	const QString &msgMethodFieldName,
+	const QString &msgParamsFieldName
 	)
 {
 	gCacheEnable = enable;
 	gHttpBackendUrlList = httpBackendUrlList;
 	gWsBackendUrlList = wsBackendUrlList;
+	for (int i = 0; i < cacheKeyItemList.size(); ++i) 
+	{
+		int lastDot = cacheKeyItemList[i].lastIndexOf('.');
+		if (lastDot != -1) {
+			CacheKeyItem keyItem;
+			keyItem.keyName = cacheKeyItemList[i].left(lastDot);
+			QString flagVal = cacheKeyItemList[i].mid(lastDot + 1);
+			switch (flagVal)
+			{
+			case "JSON_VALUE":
+				keyItem.flag = ItemFlag::JSON_VALUE;
+				break;
+			case "JSON_PAIR":
+				keyItem.flag = ItemFlag::JSON_PAIR;
+				break;
+			case "RAW_VALUE":
+				keyItem.flag = ItemFlag::RAW_VALUE;
+				break;
+			default:
+				keyItem.flag = ItemFlag::JSON_VALUE;
+				break;
+			}
+			gCacheKeyItemList.append(keyItem);
+		} 
+		else 
+		{
+			continue;
+		}
+	}
+	gMsgIdAttrName = msgIdFieldName;
+	gMsgMethodAttrName = msgMethodFieldName;
+	gMsgParamsAttrName = msgParamsFieldName;
 
 	for (int i = 0; i < gHttpBackendUrlList.size(); ++i) {
 		log_debug("%s", qPrintable(gHttpBackendUrlList[i]));
@@ -1698,6 +1748,14 @@ void ZhttpManager::setCacheParameters(
 	for (int i = 0; i < gWsBackendUrlList.size(); ++i) {
 		log_debug("%s", qPrintable(gWsBackendUrlList[i]));
 	}
+
+	for (int i = 0; i < gCacheKeyItemList.size(); ++i) {
+		log_debug("%s, %d", qPrintable(gCacheKeyItemList[i].keyName), gCacheKeyItemList[i].flag);
+	}
+
+	log_debug("%s", qPrintable(gMsgIdAttrName));
+	log_debug("%s", qPrintable(gMsgMethodAttrName));
+	log_debug("%s", qPrintable(gMsgParamsAttrName));
 }
 
 #include "zhttpmanager.moc"

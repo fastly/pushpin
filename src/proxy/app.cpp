@@ -628,10 +628,70 @@ public:
 		bool cacheEnable = settings.value("cache/cache_enable").toBool();
 		QStringList httpBackendUrlList = settings.value("cache/http_backend_urls").toStringList();
 		QStringList wsBackendUrlList = settings.value("cache/ws_backend_urls").toStringList();
+		QString cacheKeyConfig = settings.value("cache/ws_cache_key", "").toString().simplified().remove("'").remove("\"").toLower();
+		QStringList cacheKeyParts = cacheKeyConfig.split(u'+', QString::SkipEmptyParts);
+		QStringList cacheKeyItemList;
+		for (int i = 0; i < cacheKeyParts.count(); i++)
+		{
+			QString keyPart = cacheKeyParts[i].trimmed();
+			if (keyPart.startsWith("$request_json_value[") && keyPart.endsWith("]"))
+			{
+				QString jsonValue = keyPart.mid(20, keyPart.length()-20-1).trimmed();
+				jsonValue += ".JSON_VALUE";
+				cacheKeyItemList.append(jsonValue);
+			}
+			else if (keyPart.startsWith("$request_json_pair[") && keyPart.endsWith("]"))
+			{
+				QString jsonValue = keyPart.mid(19, keyPart.length()-19-1).trimmed();
+				jsonValue += ".JSON_PAIR";
+				cacheKeyItemList.append(jsonValue);
+			}
+			else if (keyPart.startsWith("$user_defined[") && keyPart.endsWith("]"))
+			{
+				QString jsonValue = keyPart.mid(14, keyPart.length()-14-1).trimmed();
+				QString userDefinedKeyConfig = settings.value("Cache/"+jsonValue, "").toString().simplified().remove("'").remove("\"").toLower();
+				QStringList userDefinedKeyParts = userDefinedKeyConfig.split(u'+', QString::SkipEmptyParts);
+				for (int j = 0; j < userDefinedKeyParts.count(); j++)
+				{
+					QString userDefinedKeyPart = userDefinedKeyParts[j].trimmed();
+					if (userDefinedKeyPart.startsWith("$request_json_value[") && userDefinedKeyPart.endsWith("]"))
+					{
+						jsonValue = userDefinedKeyPart.mid(20, userDefinedKeyPart.length()-20-1).trimmed();
+						jsonValue += ".JSON_VALUE";
+						cacheKeyItemList.append(jsonValue);
+					}
+					else if (userDefinedKeyPart.startsWith("$request_json_pair[") && userDefinedKeyPart.endsWith("]"))
+					{
+						jsonValue = userDefinedKeyPart.mid(19, userDefinedKeyPart.length()-19-1).trimmed();
+						jsonValue += ".JSON_PAIR";
+						cacheKeyItemList.append(jsonValue);
+					}
+					else
+					{
+						userDefinedKeyPart += ".RAW_VALUE";
+						cacheKeyItemList.append(userDefinedKeyPart);
+					}
+				}
+			}
+			else
+			{
+				keyPart += ".RAW_VALUE";
+				cacheKeyItemList.append(keyPart);
+			}
+		}
+
+		// message iden attribute and cache check attribute
+		QString msgIdFieldName = settings.value("cache/message_id_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
+		QString msgMethodFieldName = settings.value("cache/message_method_attribute", "").toString().simplified().remove("'").remove("\"").toLower();
+		QString msgParamsFieldName = settings.value("cache/message_params_attribute", "params").toString().simplified().remove("'").remove("\"").toLower();
 
 		config.cacheEnable = cacheEnable;
 		config.httpBackendUrlList = httpBackendUrlList;
 		config.wsBackendUrlList = wsBackendUrlList;
+		config.cacheKeyItemList = cacheKeyItemList;
+		config.msgIdFieldName = msgIdFieldName;
+		config.msgMethodFieldName = msgMethodFieldName;
+		config.msgParamsFieldName = msgParamsFieldName;
 
 		for(int n = 0; n < workerCount; ++n)
 		{
