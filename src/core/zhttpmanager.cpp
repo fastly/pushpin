@@ -1458,7 +1458,7 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 	return total;
 }
 
-void ZhttpManager::setCacheEnable(
+void ZhttpManager::setCacheParameters(
 	bool enable,
 	const QStringList &httpBackendUrlList,
 	const QStringList &wsBackendUrlList
