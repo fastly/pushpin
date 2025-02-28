@@ -548,7 +548,6 @@ public:
 		QString orgMsgId, 
 		QString methodName, 
 		const QByteArray &methodNameParamsHashVal, 
-		Scheme proto,
 		int backendNo)
 	{
 		// create new cache item
@@ -656,7 +655,7 @@ public:
 
 			// Register new cache item
 			registerHttpCacheItem(packet, packetId, msgId, msgMethod, paramsHash, backendNo);
-			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(methodName), backendNo);
+			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
 		}
 
 		return 0;
