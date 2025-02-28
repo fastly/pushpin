@@ -58,6 +58,8 @@
 #define ZHTTP_IDS_MAX 128
 
 static bool gCacheEnable = false;
+static QStringList gHttpBackendUrlList;
+static QStringList gWsBackendUrlList;
 
 // cache client params
 struct CacheClientItem {
