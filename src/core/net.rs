@@ -764,20 +764,31 @@ mod ffi {
 
     #[no_mangle]
     pub extern "C" fn tcp_listener_bind(
-        addr: *const c_char,
+        ip: *const c_char,
+        port: u16,
         out_errno: *mut c_int,
     ) -> *mut TcpListener {
         assert!(!out_errno.is_null());
 
-        let addr = unsafe { CStr::from_ptr(addr) };
+        let ip = unsafe { CStr::from_ptr(ip) };
 
-        let addr = match addr.to_str() {
+        let ip = match ip.to_str() {
             Ok(s) => s,
             Err(_) => {
                 unsafe { out_errno.write(libc::EINVAL) };
                 return ptr::null_mut();
             }
         };
+
+        let ip: std::net::IpAddr = match ip.parse() {
+            Ok(ip) => ip,
+            Err(_) => {
+                unsafe { out_errno.write(libc::EINVAL) };
+                return ptr::null_mut();
+            }
+        };
+
+        let addr = std::net::SocketAddr::new(ip, port);
 
         let l = match std::net::TcpListener::bind(addr) {
             Ok(l) => l,
@@ -803,6 +814,39 @@ mod ffi {
         if !l.is_null() {
             drop(Box::from_raw(l));
         }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_local_addr(
+        l: *const TcpListener,
+        out_ip: *mut c_char,
+        out_ip_size: *mut libc::size_t,
+        out_port: *mut u16,
+    ) -> c_int {
+        let l = l.as_ref().unwrap();
+        let out_ip_size = out_ip_size.as_mut().unwrap();
+        assert!(!out_port.is_null());
+
+        let addr = match l.0.local_addr() {
+            Ok(addr) => addr,
+            Err(_) => return -1,
+        };
+
+        let ip = addr.ip().to_string();
+
+        if ip.len() > *out_ip_size {
+            // if value doesn't fit, return success with empty value
+            *out_ip_size = 0;
+            return 0;
+        }
+
+        ptr::copy(ip.as_bytes().as_ptr() as *const c_char, out_ip, ip.len());
+        *out_ip_size = ip.len();
+
+        out_port.write(addr.port());
+
+        0
     }
 
     #[allow(clippy::missing_safety_doc)]
