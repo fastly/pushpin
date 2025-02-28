@@ -57,9 +57,22 @@
 // needs to match the peer
 #define ZHTTP_IDS_MAX 128
 
+///////////////////////////////////////////////
+// cache data structure
+enum Scheme {
+	none,
+	http,
+	websocket
+};
+
 static bool gCacheEnable = false;
 static QStringList gHttpBackendUrlList;
 static QStringList gWsBackendUrlList;
+static QString gMsgIdAttrName = "id";
+static QString gMsgMethodAttrName = "method";
+static QString gMsgParamsAttrName = "";
+QStringList gCacheMethodList = {"*"};
+QMap<QString, QString> gSubscribeMethodMap;
 
 // cache client params
 struct CacheClientItem {
@@ -75,6 +88,48 @@ struct CacheClientItem {
 	QByteArray clientId;
 };
 QList<CacheClientItem> gWsCacheClientList;
+
+// cache struct 
+struct ClientItem {
+	int msgId;
+	QString resultStr;
+	int requestSeq;
+	int responseSeq;	// -1: init value
+	bool healthClientFlag;
+	time_t lastRequestTime;
+	time_t lastPingResponseTime;
+};
+QMap<QByteArray, ClientItem> gWsClientMap;
+QMap<QByteArray, ClientItem> gHttpClientMap;
+
+// Cache Item
+struct CacheItem {
+	QString orgMsgId;
+	int msgId;
+	int newMsgId;
+	bool arNoDeleteFlag;
+	bool arShorterTimeoutFlag;
+	bool arLongerTimeoutFlag;
+	bool noRefreshFlag;
+	bool passThroughFlag;
+	qint64 lastRequestTime;
+	qint64 lastRefreshTime;
+	qint64 lastAccessTime;
+	int accessCount;
+	bool cachedFlag;
+	Scheme proto;
+	QByteArray receiver;
+	QByteArray from;
+	QByteArray pId;
+	int retryCount;
+	int httpBackendNo;
+	QByteArray cacheClientId;
+	ZhttpRequestPacket requestPacket;
+	ZhttpResponsePacket responsePacket;
+	QByteArray responseHashVal;
+	QMap<QByteArray, QString> clientMap;	// <ClienId, MsgId>
+};
+QMap<QByteArray, CacheItem> gCacheItemMap;
 
 class ZhttpManager::Private : public QObject
 {
@@ -382,6 +437,120 @@ public:
 		}
 	}
 
+	QByteArray buildHashKey(QVariantMap &jsonMap, QString startingStr)
+	{
+		QString hashKeyStr = startingStr;
+		for (int i = 0; i < gCacheKeyItemList.count(); i++)
+		{
+			CacheKeyItem keyItem = gCacheKeyItemList[i];
+			QString keyVal = "";
+			if (keyItem.flag == RAW_VALUE)
+			{
+				keyVal += keyItem.keyName;
+			}
+			else
+			{
+				if (keyItem.flag == JSON_PAIR)
+				{
+					keyVal += keyItem.keyName + ":";
+				}
+
+				for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item)
+				{
+					QString iKey = item.key();
+					QString iValue = item.value().toString();
+
+					if (!iKey.compare(keyItem.keyName, Qt::CaseInsensitive))
+					{
+						if (jsonMap[keyItem.keyName].toString().length() > 0)
+							keyVal += jsonMap[keyItem.keyName].toString();
+						else
+							keyVal += " ";
+					}
+					else if (iKey.indexOf(keyItem.keyName+">>", 0, Qt::CaseInsensitive) == 0)
+					{
+						keyVal += iKey.toLower() + "->" + iValue;
+					}
+				}
+			}
+			if (keyVal.length() > 0)
+			{
+				hashKeyStr += keyVal;
+				if ((i+1) < gCacheKeyItemList.count())
+				{
+					hashKeyStr += "+";
+				}
+			}
+		}
+		log_debug("[HASH] Hash-Key-Str = %s", qPrintable(hashKeyStr.mid(0,128)));
+
+		return QCryptographicHash::hash(hashKeyStr.toUtf8(),QCryptographicHash::Sha1);
+	}
+
+	void registerHttpClient(QByteArray pId)
+	{
+		struct ClientItem clientItem;
+		clientItem.requestSeq = 0;
+		clientItem.responseSeq = -1;
+		clientItem.lastRequestTime = time(NULL);
+		clientItem.lastPingResponseTime = time(NULL);
+		clientItem.healthClientFlag = gHealthClientList.contains(pId) ? true : false;
+		gHttpClientMap[pId] = clientItem;
+		log_debug("[HTTP] added http client id=%s", pId.data());
+	}
+
+	bool isCacheMethod(QString methodStr)
+	{
+		if (gCacheMethodList.contains(methodStr, Qt::CaseInsensitive))
+		{
+			return true;
+		}
+		else if (gCacheMethodList.contains("*") && 
+			!gSubscribeMethodMap.contains(methodStr))
+		{
+			foreach(QString subKey, gSubscribeMethodMap.keys())
+			{
+				if (gSubscribeMethodMap[subKey].toLower() == methodStr)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	void registerHttpCacheItem(
+		const ZhttpRequestPacket &clientPacket, 
+		QByteArray clientId, 
+		QString orgMsgId, 
+		QString methodName, 
+		const QByteArray &methodNameParamsHashVal, 
+		Scheme proto,
+		int backendNo)
+	{
+		// create new cache item
+		struct CacheItem cacheItem;
+		cacheItem.msgId = -1;
+		cacheItem.newMsgId = -1;
+		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+		cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+		cacheItem.accessCount = 2;
+		cacheItem.cachedFlag = false;
+
+		// save the request packet with new id
+		cacheItem.orgMsgId = orgMsgId;
+		cacheItem.requestPacket = clientPacket;
+		cacheItem.pId = clientPacket.ids[0].id;
+		cacheItem.clientMap[clientId] = orgMsgId;
+		cacheItem.proto = Scheme::http;
+		cacheItem.retryCount = 0;
+		cacheItem.httpBackendNo = backendNo;
+
+		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
+	}
+
 	int processWsRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		if (gCacheEnable == false)
@@ -409,6 +578,52 @@ public:
 		tryRespondCancel(type, id.id, packet);
 
 		return -1;
+	}
+
+	int processHttpInitRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
+	{
+		QByteArray packetId = p.ids.first().id;
+
+		// get method string
+		QString msgId = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
+		QString methodName = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		if (msgId.isEmpty() || methodName.isEmpty())
+		{
+			log_debug("[HTTP-REQ] failed to get gMsgIdAttrName and gMsgMethodAttrName");
+			return -1;
+		}
+		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\"", qPrintable(msgId), qPrintable(methodName));
+
+		// Add to http client map
+		registerHttpClient(packetId);
+
+		// Params hash val
+		QByteArray paramsHash = buildHashKey(jsonMap, "HTTP+");
+
+		if (is_cacheMethod(methodName))
+		{
+			if (gCacheItemMap.contains(paramsHash))
+			{
+
+			}
+
+			QString uriPath = packet.uri.toString();
+			int backendNo = -1;
+			for (int i = 0; i < gHttpBackendUrlList.count(); i++)
+			{
+				if (uriPath == gHttpBackendUrlList[i])
+				{
+					backendNo = i;
+					break;
+				}				
+			}
+
+			// Register new cache item
+			registerHttpCacheItem(p, pId, msgIdAttr, cacheMethodAttr, paramsHash, backendNo);
+			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(methodName), backendNo);
+		}
+
+		return 0;
 	}
 
 	int processResponseForCache(SessionType type, const ZhttpResponsePacket &packet)
@@ -809,6 +1024,12 @@ public:
 				log_warning("zhttp server: received message for existing request id, canceling");
 				tryRespondCancel(HttpSession, id.id, p);
 				return;
+			}
+
+			// cache process
+			if (gCacheEnable == true)
+			{
+				int ret = processHttpInitRequestForCache(HttpSession, p);
 			}
 
 			req = new ZhttpRequest;
