@@ -29,6 +29,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QCryptographicHash>
+#include <QDateTime>
 #include "qzmqsocket.h"
 #include "qzmqvalve.h"
 #include "tnetstring.h"
@@ -57,7 +59,7 @@
 // needs to match the peer
 #define ZHTTP_IDS_MAX 128
 
-///////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 enum Scheme {
 	none,
@@ -144,6 +146,12 @@ struct CacheItem {
 	QMap<QByteArray, QString> clientMap;	// <ClienId, MsgId>
 };
 QMap<QByteArray, CacheItem> gCacheItemMap;
+
+// health client list
+bool gHealthCheckExcludeFlag = true;
+QList<QByteArray> gHealthClientList;
+
+/////////////////////////////////////////////////////////////////////////////////////
 
 class ZhttpManager::Private : public QObject
 {
@@ -596,17 +604,31 @@ public:
 
 	int processHttpInitRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
 	{
-		QByteArray packetId = p.ids.first().id;
+		QByteArray packetId = packet.ids.first().id;
+
+		// parse json body
+		QVariantMap jsonMap;
+		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[WS] failed to parse JSON msg");
+			//tryRespondCancel(type, id.id, packet);
+			// make invalid
+			return -1;
+		}
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
 
 		// get method string
 		QString msgId = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
-		QString methodName = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		QString msgMethod = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
 		if (msgId.isEmpty() || methodName.isEmpty())
 		{
 			log_debug("[HTTP-REQ] failed to get gMsgIdAttrName and gMsgMethodAttrName");
 			return -1;
 		}
-		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\"", qPrintable(msgId), qPrintable(methodName));
+		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\"", qPrintable(msgId), qPrintable(msgMethod));
 
 		// Add to http client map
 		registerHttpClient(packetId);
@@ -614,7 +636,7 @@ public:
 		// Params hash val
 		QByteArray paramsHash = buildHashKey(jsonMap, "HTTP+");
 
-		if (is_cacheMethod(methodName))
+		if (is_cacheMethod(msgMethod))
 		{
 			if (gCacheItemMap.contains(paramsHash))
 			{
@@ -633,7 +655,7 @@ public:
 			}
 
 			// Register new cache item
-			registerHttpCacheItem(p, pId, msgIdAttr, cacheMethodAttr, paramsHash, backendNo);
+			registerHttpCacheItem(p, packetId, msgId, msgMethod, paramsHash, backendNo);
 			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(methodName), backendNo);
 		}
 
@@ -1715,21 +1737,15 @@ void ZhttpManager::setCacheParameters(
 			CacheKeyItem keyItem;
 			keyItem.keyName = cacheKeyItemList[i].left(lastDot);
 			QString flagVal = cacheKeyItemList[i].mid(lastDot + 1);
-			switch (flagVal)
-			{
-			case "JSON_VALUE":
+			if (flagVal == "JSON_VALUE")
 				keyItem.flag = ItemFlag::JSON_VALUE;
-				break;
-			case "JSON_PAIR":
+			else if (flagVal == "JSON_PAIR")
 				keyItem.flag = ItemFlag::JSON_PAIR;
-				break;
-			case "RAW_VALUE":
+			else if (flagVal == "RAW_VALUE")
 				keyItem.flag = ItemFlag::RAW_VALUE;
-				break;
-			default:
-				keyItem.flag = ItemFlag::JSON_VALUE;
-				break;
-			}
+			else
+				continue;
+
 			gCacheKeyItemList.append(keyItem);
 		} 
 		else 
