@@ -57,7 +57,7 @@ std::tuple<QHostAddress, quint16> TcpListener::localAddress() const
 		return {QHostAddress(), 0};
 
 	ip.resize(ip_size);
-	QHostAddress addr = QHostAddress(QString::fromUtf8(ip));
+	QHostAddress addr(QString::fromUtf8(ip));
 
 	return {addr, port};
 }
