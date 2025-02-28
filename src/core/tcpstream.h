@@ -17,19 +17,41 @@
 #ifndef TCPSTREAM_H
 #define TCPSTREAM_H
 
+#include <memory>
+#include <QByteArray>
+#include <boost/signals2.hpp>
 #include "rust/bindings.h"
+
+class SocketNotifier;
 
 class TcpStream
 {
 public:
 	~TcpStream();
 
+	// size < 0 means default read size
+	// returns buffer of bytes read. null buffer means error. empty means end
+	QByteArray read(int size = -1);
+
+	// returns amount accepted, or -1 for error
+	int write(const QByteArray &buf);
+
+	// returns errno of latest operation
+	int errorCondition() const { return errorCondition_; }
+
+	boost::signals2::signal<void()> readReady;
+	boost::signals2::signal<void()> writeReady;
+
 private:
 	friend class TcpListener;
 
 	ffi::TcpStream *inner_;
+	std::unique_ptr<SocketNotifier> snRead_, snWrite_;
+	int errorCondition_;
 
-	TcpStream();
+	TcpStream(ffi::TcpStream *inner);
+	void snRead_activated();
+	void snWrite_activated();
 };
 
 #endif

@@ -69,8 +69,7 @@ std::unique_ptr<TcpStream> TcpListener::accept()
 	if(!s_inner)
 		return std::unique_ptr<TcpStream>(); // null
 
-	TcpStream *s = new TcpStream;
-	s->inner_ = s_inner;
+	TcpStream *s = new TcpStream(s_inner);
 
 	return std::unique_ptr<TcpStream>(s);
 }
