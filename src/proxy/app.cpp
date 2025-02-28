@@ -649,7 +649,7 @@ public:
 			else if (keyPart.startsWith("$user_defined[") && keyPart.endsWith("]"))
 			{
 				QString jsonValue = keyPart.mid(14, keyPart.length()-14-1).trimmed();
-				QString userDefinedKeyConfig = settings.value("Cache/"+jsonValue, "").toString().simplified().remove("'").remove("\"").toLower();
+				QString userDefinedKeyConfig = settings.value("cache/"+jsonValue, "").toString().simplified().remove("'").remove("\"").toLower();
 				QStringList userDefinedKeyParts = userDefinedKeyConfig.split(u'+', QString::SkipEmptyParts);
 				for (int j = 0; j < userDefinedKeyParts.count(); j++)
 				{
