@@ -477,7 +477,7 @@ public:
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
 
-		processResponseForCache(type, packet);
+		//processResponseForCache(type, packet);
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
@@ -808,6 +808,9 @@ public:
 				tryRespondCancel(HttpSession, id.id, p);
 				return;
 			}
+
+			tryRespondCancel(HttpSession, id.id, p);
+			return;
 
 			req = new ZhttpRequest;
 			if(!req->setupServer(q, id.id, id.seq, p))
