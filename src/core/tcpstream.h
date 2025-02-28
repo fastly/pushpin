@@ -36,6 +36,7 @@ public:
 	// returns amount accepted, or -1 for error
 	int write(const QByteArray &buf);
 
+	// returns errno of latest operation
 	int errorCondition() const { return errorCondition_; }
 
 	boost::signals2::signal<void()> readReady;

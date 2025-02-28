@@ -127,8 +127,7 @@ private slots:
 				continue;
 			}
 
-			if(buf.isEmpty())
-				break;
+			QVERIFY(!buf.isEmpty());
 
 			received += buf;
 		}
