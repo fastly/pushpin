@@ -236,7 +236,7 @@ public:
 		zhttpIn->setCacheParameters(
 			config.cacheEnable,
 			config.httpBackendUrlList,
-			config.wsBackendUrlList
+			config.wsBackendUrlList,
 			config.cacheEnable,
 			config.httpBackendUrlList,
 			config.wsBackendUrlList,
