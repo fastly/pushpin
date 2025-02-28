@@ -62,7 +62,10 @@ public:
 	bool setServerInStreamSpecs(const QStringList &specs);
 	bool setServerOutSpecs(const QStringList &specs);
 
-	void setCacheEnable(bool enable);
+	void setCacheParameters(
+		bool enable,	
+		const QStringList &httpBackendUrlList,
+		const QStringList &wsBackendUrlList);
 
 	ZhttpRequest *createRequest();
 	ZhttpRequest *takeNextRequest();

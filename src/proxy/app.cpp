@@ -626,8 +626,12 @@ public:
 
 		// Cache config
 		bool cacheEnable = settings.value("cache/cache_enable").toBool();
+		QStringList httpBackendUrlList = settings.value("cache/http_backend_urls").toStringList();
+		QStringList wsBackendUrlList = settings.value("cache/ws_backend_urls").toStringList();
 
 		config.cacheEnable = cacheEnable;
+		config.httpBackendUrlList = httpBackendUrlList;
+		config.wsBackendUrlList = wsBackendUrlList;
 
 		for(int n = 0; n < workerCount; ++n)
 		{

@@ -96,6 +96,8 @@ public:
 		QString prometheusPrefix;
 
 		bool cacheEnable;
+		QStringList httpBackendUrlList;
+		QStringList wsBackendUrlList;
 
 		Configuration() :
 			id(0),

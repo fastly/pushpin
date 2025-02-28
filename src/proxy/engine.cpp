@@ -233,7 +233,11 @@ public:
 		zhttpIn->setServerInSpecs(config.serverInSpecs);
 		zhttpIn->setServerInStreamSpecs(config.serverInStreamSpecs);
 		zhttpIn->setServerOutSpecs(config.serverOutSpecs);
-		zhttpIn->setCacheEnable(config.cacheEnable);
+		zhttpIn->setCacheParameters(
+			config.cacheEnable,
+			config.httpBackendUrlList,
+			config.wsBackendUrlList,
+		);
 
 		if(!config.intServerInSpecs.isEmpty() && !config.intServerInStreamSpecs.isEmpty() && !config.intServerOutSpecs.isEmpty())
 		{

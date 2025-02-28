@@ -59,6 +59,21 @@
 
 static bool gCacheEnable = false;
 
+// cache client params
+struct CacheClientItem {
+	QString connectPath;
+	pid_t processId;
+	bool initFlag;
+	int msgIdCount;
+	int requestSeqCount;
+	int responseSeqCount;
+	time_t lastDataReceivedTime;
+	QByteArray receiver;
+	QByteArray from;
+	QByteArray clientId;
+};
+QList<CacheClientItem> gWsCacheClientList;
+
 class ZhttpManager::Private : public QObject
 {
 	Q_OBJECT
@@ -1245,11 +1260,6 @@ bool ZhttpManager::setServerOutSpecs(const QStringList &specs)
 	return d->setupServerOut();
 }
 
-void ZhttpManager::setCacheEnable(bool enable)
-{
-	gCacheEnable = enable;
-}
-
 ZhttpRequest *ZhttpManager::createRequest()
 {
 	ZhttpRequest *req = new ZhttpRequest;
@@ -1446,6 +1456,25 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 	}
 
 	return total;
+}
+
+void ZhttpManager::setCacheEnable(
+	bool enable,
+	const QStringList &httpBackendUrlList,
+	const QStringList &wsBackendUrlList
+	)
+{
+	gCacheEnable = enable;
+	gHttpBackendUrlList = httpBackendUrlList;
+	gWsBackendUrlList = wsBackendUrlList;
+
+	for (int i = 0; i < gHttpBackendUrlList.size(); ++i) {
+		log_debug("%s", qPrintable(gHttpBackendUrlList[i]));
+	}
+
+	for (int i = 0; i < gWsBackendUrlList.size(); ++i) {
+		log_debug("%s", qPrintable(gWsBackendUrlList[i]));
+	}
 }
 
 #include "zhttpmanager.moc"
