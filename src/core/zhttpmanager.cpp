@@ -581,6 +581,30 @@ public:
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
 	}
 
+	void reply_httpCachedContent(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &receiver, const QByteArray &from, int seqNum)
+	{
+		//// Send cached response
+		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
+
+		// replace id str
+		replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
+
+		// update "Content-Length" field
+		int newContentLength = static_cast<int>(responsePacket.body.size());
+		log_debug("[HTTP] body newlength=%d", newContentLength);
+		// replace messageid
+		QByteArray contentLengthHeader;
+		contentLengthHeader.setNum(newContentLength);
+		responsePacket.headers.removeAll("Content-Length");
+		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
+
+		responsePacket.ids[0].id = newPacketId.data();
+		responsePacket.ids[0].seq = seqNum;
+		responsePacket.from = from;
+		
+		worker_readyRead(receiver, responsePacket, responsePacket.ids[0].id);
+	}
+
 	int processWsRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		if (gCacheEnable == false)
@@ -644,7 +668,16 @@ public:
 		{
 			if (gCacheItemMap.contains(paramsHash))
 			{
-				log_debug("[HTTP-REQ] found in cache");
+				int seqNum = 0;
+				// update seq
+				if (gHttpClientMap.contains(pId))
+				{
+					seqNum = gHttpClientMap[pId].responseSeq + 1;
+					gHttpClientMap.remove(pId);
+				}
+				reply_httpCachedContent(paramsHash, msgIdAttr, packetId, gCacheItemMap[paramsHash].receiver, gCacheItemMap[paramsHash].from, seqNum);
+				log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
+				return 0;
 			}
 			else
 			{
