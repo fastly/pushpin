@@ -827,9 +827,7 @@ public:
 		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[HTTP] failed to parse JSON msg");
-
-			if (p.code == 200)
-				return 0;
+			return 0;
 		}
 		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
 		{
