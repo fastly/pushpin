@@ -581,7 +581,7 @@ public:
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
 	}
 
-	void reply_httpCachedContent(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &receiver, const QByteArray &from, int seqNum)
+	void reply_httpCachedContent(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &receiver, const QByteArray &from)
 	{
 		//// Send cached response
 		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
@@ -598,8 +598,14 @@ public:
 		responsePacket.headers.removeAll("Content-Length");
 		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
 
+		int seqNum = 0;
+		// update seq
+		if (gHttpClientMap.contains(packetId))
+		{
+			seqNum = gHttpClientMap[packetId].responseSeq + 1;
+		}
 		responsePacket.ids[0].id = newPacketId.data();
-		responsePacket.ids[0].seq = 1;
+		responsePacket.ids[0].seq = seqNum;
 		responsePacket.from = instanceId;
 		
 		write(HttpSession, responsePacket, from);
@@ -668,14 +674,8 @@ public:
 		{
 			if (gCacheItemMap.contains(paramsHash))
 			{
-				int seqNum = 0;
-				// update seq
-				if (gHttpClientMap.contains(packetId))
-				{
-					seqNum = gHttpClientMap[packetId].responseSeq + 1;
-					gHttpClientMap.remove(packetId);
-				}
-				reply_httpCachedContent(paramsHash, msgId, packetId, gCacheItemMap[paramsHash].receiver, packet.from, seqNum);
+				reply_httpCachedContent(paramsHash, msgId, packetId, gCacheItemMap[paramsHash].receiver, packet.from);
+				gHttpClientMap.remove(packetId);
 				log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
 				return 0;
 			}
@@ -967,6 +967,7 @@ public:
 			QByteArray packetId = packet.ids.first().id;
 			if (gHttpClientMap.contains(packetId))
 			{
+				gHttpClientMap[pId].responseSeq = packet.ids.first().seq;
 				process_http_response(instanceAddress, packet);
 			}
 		}
