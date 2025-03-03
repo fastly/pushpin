@@ -861,13 +861,7 @@ public:
 
 				// set random last refresh time
 				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
-				int nextTimeMSeconds = 0;
-				if (gCacheItemMap[itemId].arShorterTimeoutFlag == true)
-					nextTimeMSeconds = (clock() % config.cacheConfig.autoRefreshShorterTimeoutSeconds) * 1000;
-				else if (gCacheItemMap[itemId].arLongerTimeoutFlag == true)
-					nextTimeMSeconds = (clock() % config.cacheConfig.autoRefreshLongerTimeoutSeconds) * 1000;
-				else
-					nextTimeMSeconds = (clock() % config.cacheConfig.autoRefreshCacheTimeoutSeconds) * 1000;
+				int nextTimeMSeconds = (clock() % 10) * 1000;;
 				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
 				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
 
