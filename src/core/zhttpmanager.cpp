@@ -609,7 +609,7 @@ public:
 		return -1;
 	}
 
-	int processHttpInitRequestForCache(SessionType type, ByteArray id, const ZhttpRequestPacket &packet)
+	int processHttpInitRequestForCache(SessionType type, QByteArray id, const ZhttpRequestPacket &packet)
 	{
 		QByteArray packetId = id;
 
@@ -1147,7 +1147,7 @@ public:
 				// cache process
 				if (gCacheEnable == true)
 				{
- 					int ret = processHttpInitRequestForCache(HttpSession, id.id, p)
+ 					int ret = processHttpInitRequestForCache(HttpSession, id.id, p);
 				}
 
 				req->handle(id.id, id.seq, p);
