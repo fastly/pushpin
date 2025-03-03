@@ -692,6 +692,9 @@ public:
 			if(log_outputLevel() >= LOG_LEVEL_DEBUG)
 				LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s client: OUT1", logprefix);
 
+			tryRespondCancel(type, packet.ids.first().id, packet);
+			return;
+
 			client_out_sock->write(QList<QByteArray>() << buf);
 		}
 		else
