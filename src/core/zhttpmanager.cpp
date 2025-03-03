@@ -599,7 +599,7 @@ public:
 		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
 
 		responsePacket.ids[0].id = newPacketId.data();
-		//responsePacket.ids[0].seq = seqNum;
+		responsePacket.ids[0].seq = 1;
 		responsePacket.from = instanceId;
 		
 		write(HttpSession, responsePacket, from);
