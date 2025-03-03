@@ -643,7 +643,11 @@ public:
 		{
 			if (gCacheItemMap.contains(paramsHash))
 			{
-
+				log_debug("[HTTP-REQ] found in cache");
+			}
+			else
+			{
+				log_debug("[HTTP-REQ] not found in cache");
 			}
 
 			QString uriPath = packet.uri.toString();
@@ -662,7 +666,7 @@ public:
 			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
 		}
 
-		return 0;
+		return -1;
 	}
 
 	int processResponseForCache(SessionType type, const ZhttpResponsePacket &packet)
@@ -1148,6 +1152,8 @@ public:
 				if (gCacheEnable == true)
 				{
  					int ret = processHttpInitRequestForCache(HttpSession, id.id, p);
+					if (ret == 0)
+						continue;
 				}
 
 				req->handle(id.id, id.seq, p);
