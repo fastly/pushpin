@@ -602,7 +602,7 @@ public:
 		responsePacket.ids[0].seq = seqNum;
 		responsePacket.from = from;
 		
-		worker_readyRead(receiver, responsePacket, responsePacket.ids[0].id);
+		write(HttpSession, responsePacket, from);
 	}
 
 	int processWsRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
