@@ -600,9 +600,9 @@ public:
 
 		int seqNum = 0;
 		// update seq
-		if (gHttpClientMap.contains(packetId))
+		if (gHttpClientMap.contains(newPacketId))
 		{
-			seqNum = gHttpClientMap[packetId].responseSeq + 1;
+			seqNum = gHttpClientMap[newPacketId].responseSeq + 1;
 		}
 		responsePacket.ids[0].id = newPacketId.data();
 		responsePacket.ids[0].seq = seqNum;
@@ -967,7 +967,7 @@ public:
 			QByteArray packetId = packet.ids.first().id;
 			if (gHttpClientMap.contains(packetId))
 			{
-				gHttpClientMap[pId].responseSeq = packet.ids.first().seq;
+				gHttpClientMap[packetId].responseSeq = packet.ids.first().seq;
 				process_http_response(instanceAddress, packet);
 			}
 		}
