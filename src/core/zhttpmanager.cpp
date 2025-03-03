@@ -1121,9 +1121,6 @@ public:
 			return;
 		}
 
-		tryRespondCancel(HttpSession, p.ids.first().id, p);
-		return;
-
 		std::weak_ptr<Private> self = q->d;
 
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
