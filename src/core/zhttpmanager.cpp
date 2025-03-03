@@ -85,6 +85,7 @@ QList<CacheKeyItem> gCacheKeyItemList;
 static QString gMsgIdAttrName = "id";
 static QString gMsgMethodAttrName = "method";
 static QString gMsgParamsAttrName = "";
+static QString gResultAttrName = "result";
 
 
 static QStringList gCacheMethodList = {"*"};
@@ -685,6 +686,135 @@ public:
 		}
 
 		return 0;
+	}
+
+	static void replace_idField(QByteArray &body, QString oldId, int newId)
+	{
+		// new pattern
+		char newPattern[64];
+		qsnprintf(newPattern, 64, "\"id\":%d", newId);
+
+		// find pattern
+		for (int i = 0; i < 20; i++)
+		{
+			QString iSpace = "";
+			QString jSpace = "";
+			for (int k = 0; k < i; k++)
+			{
+				iSpace += " ";
+			}
+			for (int j = 0; j < 20; j++)
+			{
+				for (int k = 0; k < j; k++)
+				{
+					jSpace += " ";
+				}
+				QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + oldId;
+				int idx = body.indexOf(oldPattern);
+				if (idx >= 0)
+				{
+					body.replace(idx, oldPattern.length(), newPattern);
+					return;
+				}
+			}
+		}
+	}
+
+	static void replace_idField(QByteArray &body, int oldId, QString newId)
+	{
+		// new pattern
+		char newPattern[64];
+		qsnprintf(newPattern, 64, "\"id\":%s", qPrintable(newId));
+
+		// find pattern
+		for (int i = 0; i < 20; i++)
+		{
+			QString iSpace = "";
+			QString jSpace = "";
+			for (int k = 0; k < i; k++)
+			{
+				iSpace += " ";
+			}
+			for (int j = 0; j < 20; j++)
+			{
+				for (int k = 0; k < j; k++)
+				{
+					jSpace += " ";
+				}
+				QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + QString::number(oldId);
+				int idx = body.indexOf(oldPattern);
+				if (idx >= 0)
+				{
+					body.replace(idx, oldPattern.length(), newPattern);
+					return;
+				}
+			}
+		}
+	}
+
+	static void replace_resultField(QByteArray &body, QString oldResult, QString newResult)
+	{
+		if (oldResult == newResult)
+		{
+			return;
+		}
+
+		QString oldPattern0 = "\"result\":\"" + oldResult + "\"";
+		QString oldPattern1 = "\"result\": \"" + oldResult + "\"";
+
+		char newPattern0[64], newPattern1[64];
+		qsnprintf(newPattern0, 64, "\"result\":\"%s\"", qPrintable(newResult));
+		qsnprintf(newPattern1, 64, "\"result\": \"%s\"", qPrintable(newResult));
+
+		int idx = body.indexOf(oldPattern0);
+		if (idx >= 0)
+		{
+			body.replace(idx, oldPattern0.length(), newPattern0);
+			return;
+		}
+
+		idx = body.indexOf(oldPattern1);
+		if (idx >= 0)
+		{
+			body.replace(idx, oldPattern1.length(), newPattern1);
+		}
+	}
+
+	static void replace_subscriptionField(QByteArray &body, QString oldSubscription, QString newSubscription)
+	{
+		if (oldSubscription == newSubscription)
+		{
+			return;
+		}
+
+		QString oldPattern0 = "\"subscription\":\"" + oldSubscription + "\"";
+		QString oldPattern1 = "\"subscription\": \"" + oldSubscription + "\"";
+
+		char newPattern0[64], newPattern1[64];
+		qsnprintf(newPattern0, 64, "\"subscription\":\"%s\"", qPrintable(newSubscription));
+		qsnprintf(newPattern1, 64, "\"subscription\": \"%s\"", qPrintable(newSubscription));
+
+		int idx = body.indexOf(oldPattern0);
+		if (idx >= 0)
+		{
+			body.replace(idx, oldPattern0.length(), newPattern0);
+			return;
+		}
+
+		idx = body.indexOf(oldPattern1);
+		if (idx >= 0)
+		{
+			body.replace(idx, oldPattern1.length(), newPattern1);
+		}
+	}
+
+	QByteArray calculate_responseHashVal(QByteArray &responseBody, int idVal)
+	{
+		QByteArray out = responseBody;
+		// replace id str in response
+		replace_idField(out, idVal, 0);
+
+		return QCryptographicHash::hash(out,QCryptographicHash::Sha1);
 	}
 
 	int process_http_response(const QByteArray &receiver, const ZhttpResponsePacket &response)
