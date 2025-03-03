@@ -675,7 +675,7 @@ public:
 					seqNum = gHttpClientMap[packetId].responseSeq + 1;
 					gHttpClientMap.remove(packetId);
 				}
-				reply_httpCachedContent(paramsHash, msgIdAttr, packetId, gCacheItemMap[paramsHash].receiver, gCacheItemMap[paramsHash].from, seqNum);
+				reply_httpCachedContent(paramsHash, msgId, packetId, gCacheItemMap[paramsHash].receiver, gCacheItemMap[paramsHash].from, seqNum);
 				log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
 				return 0;
 			}
