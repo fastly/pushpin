@@ -831,6 +831,10 @@ public:
 			if (p.code == 200)
 				return 0;
 		}
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
 
 		// read msgIdAttr (id)
 		int msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
@@ -845,6 +849,7 @@ public:
 
 		foreach(QByteArray itemId, gCacheItemMap.keys())
 		{
+			log_debug("[HTTP] %d, %s, %d", gCacheItemMap[itemId].proto, gCacheItemMap[itemId].requestPacket.ids[0].id.data(), gCacheItemMap[itemId].newMsgId);
 			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == pId) && 
 				(msgIdAttr == 0 || gCacheItemMap[itemId].newMsgId == -1))
 			{
