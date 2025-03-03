@@ -687,6 +687,67 @@ public:
 		return 0;
 	}
 
+	int process_http_response(const QByteArray &receiver, const ZhttpResponsePacket &response)
+	{
+		ZhttpResponsePacket p = response;
+		QVariantMap jsonMap;
+		QByteArray pId = p.ids[0].id;
+
+		// parse json body
+		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[HTTP] failed to parse JSON msg");
+
+			if (p.code == 200)
+				return 0;
+		}
+
+		// read msgIdAttr (id)
+		int msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
+		if(msgIdAttr < 0)
+		{
+			log_debug("[HTTP] invalid id in response, skipping");
+			return 0;
+		}
+
+		// result
+		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
+
+		foreach(QByteArray itemId, gCacheItemMap.keys())
+		{
+			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == pId) && 
+				(msgIdAttr == 0 || gCacheItemMap[itemId].newMsgId == -1))
+			{
+				gCacheItemMap[itemId].responsePacket = p;
+				gCacheItemMap[itemId].responseHashVal = calculate_responseHashVal(p.body, msgIdAttr);
+				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
+				gCacheItemMap[itemId].msgId = msgIdAttr;
+				gCacheItemMap[itemId].newMsgId = msgIdAttr;
+				gCacheItemMap[itemId].receiver = receiver;
+				gCacheItemMap[itemId].from = p.from;
+
+				gCacheItemMap[itemId].cachedFlag = true;
+				log_debug("[HTTP] Added Cache content for method id=%d", msgIdAttr);
+
+				// set random last refresh time
+				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+				int nextTimeMSeconds = 0;
+				if (gCacheItemMap[itemId].arShorterTimeoutFlag == true)
+					nextTimeMSeconds = (clock() % config.cacheConfig.autoRefreshShorterTimeoutSeconds) * 1000;
+				else if (gCacheItemMap[itemId].arLongerTimeoutFlag == true)
+					nextTimeMSeconds = (clock() % config.cacheConfig.autoRefreshLongerTimeoutSeconds) * 1000;
+				else
+					nextTimeMSeconds = (clock() % config.cacheConfig.autoRefreshCacheTimeoutSeconds) * 1000;
+				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
+				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
+
+				return -1;
+			}
+		}
+
+		return 0;
+	}
+
 	void write(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		assert(client_out_sock || client_req_sock);
@@ -738,7 +799,17 @@ public:
 		QByteArray buf = instanceAddress + " T" + TnetString::fromVariant(vpacket);
 
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
-			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data());
+			LogUtil::logVariantWithContent(LOG_LEVEL_DEBUG, vpacket, "body", "%s server: OUT %s", logprefix, instanceAddress.data()); 
+
+		// cache process
+		if (gCacheEnable == true)
+		{
+			QByteArray packetId = packet.ids.first().id;
+			if (gHttpClientMap.contains(packetId))
+			{
+
+			}
+		}
 
 		server_out_sock->write(QList<QByteArray>() << buf);
 	}
