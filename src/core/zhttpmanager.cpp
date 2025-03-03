@@ -609,16 +609,15 @@ public:
 		return -1;
 	}
 
-	int processHttpInitRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
+	int processHttpInitRequestForCache(SessionType type, ByteArray id, const ZhttpRequestPacket &packet)
 	{
-		QByteArray packetId = packet.ids.first().id;
+		QByteArray packetId = id;
 
 		// parse json body
 		QVariantMap jsonMap;
 		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[WS] failed to parse JSON msg");
-			//tryRespondCancel(type, id.id, packet);
 			// make invalid
 			return -1;
 		}
@@ -636,9 +635,6 @@ public:
 			return -1;
 		}
 		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\"", qPrintable(msgId), qPrintable(msgMethod));
-
-		// Add to http client map
-		registerHttpClient(packetId);
 
 		// Params hash val
 		QByteArray paramsHash = buildHashKey(jsonMap, "HTTP+");
@@ -1072,7 +1068,7 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
-				registerHttpClient(QByteArray packetId);
+				registerHttpClient(id.id);
 			}
 
 			req = new ZhttpRequest;
@@ -1148,6 +1144,12 @@ public:
 			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
 			if(req)
 			{
+				// cache process
+				if (gCacheEnable == true)
+				{
+ 					int ret = processHttpInitRequestForCache(HttpSession, id.id, p)
+				}
+
 				req->handle(id.id, id.seq, p);
 				if(self.expired())
 					return;
