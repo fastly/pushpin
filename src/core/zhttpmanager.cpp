@@ -670,10 +670,10 @@ public:
 			{
 				int seqNum = 0;
 				// update seq
-				if (gHttpClientMap.contains(pId))
+				if (gHttpClientMap.contains(packetId))
 				{
-					seqNum = gHttpClientMap[pId].responseSeq + 1;
-					gHttpClientMap.remove(pId);
+					seqNum = gHttpClientMap[packetId].responseSeq + 1;
+					gHttpClientMap.remove(packetId);
 				}
 				reply_httpCachedContent(paramsHash, msgIdAttr, packetId, gCacheItemMap[paramsHash].receiver, gCacheItemMap[paramsHash].from, seqNum);
 				log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
