@@ -509,16 +509,24 @@ public:
 		return QCryptographicHash::hash(hashKeyStr.toUtf8(),QCryptographicHash::Sha1);
 	}
 
-	void registerHttpClient(QByteArray pId)
+	void registerHttpClient(QByteArray packetId)
 	{
+		if (gHttpClientMap.contains(packetId))
+		{
+			log_debug("[HTTP] already exists http client id=%s", packetId.data());
+			return;
+		}
+
 		struct ClientItem clientItem;
 		clientItem.requestSeq = 0;
 		clientItem.responseSeq = -1;
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastPingResponseTime = time(NULL);
-		clientItem.healthClientFlag = gHealthClientList.contains(pId) ? true : false;
-		gHttpClientMap[pId] = clientItem;
-		log_debug("[HTTP] added http client id=%s", pId.data());
+		clientItem.healthClientFlag = gHealthClientList.contains(packetId) ? true : false;
+		gHttpClientMap[packetId] = clientItem;
+		log_debug("[HTTP] added http client id=%s", packetId.data());
+
+		return;
 	}
 
 	bool isCacheMethod(QString methodStr)
@@ -1064,7 +1072,7 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
-				int ret = processHttpInitRequestForCache(HttpSession, p);
+				registerHttpClient(QByteArray packetId);
 			}
 
 			req = new ZhttpRequest;
