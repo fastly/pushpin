@@ -419,7 +419,7 @@ public:
 
 		sn_read = std::make_unique<SocketNotifier>(get_fd(sock), SocketNotifier::Read);
 		sn_read->activated.connect(boost::bind(&Private::sn_read_activated, this));
-		sn_read->setEnabled(true);
+		sn_read->setReadEnabled(true);
 
 		updateTimer = std::make_unique<Timer>();
 		updateTimerConnection = updateTimer->timeout.connect(boost::bind(&Private::update_timeout, this));

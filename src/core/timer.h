@@ -64,7 +64,7 @@ private:
 	int interval_;
 	int timerId_;
 
-	static void cb_timer_activated(void *ctx);
+	static void cb_timer_activated(void *ctx, uint8_t readiness);
 	void timerReady();
 };
 
