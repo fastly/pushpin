@@ -1335,7 +1335,7 @@ public:
 		cacheItem.orgMsgId = orgMsgId;
 		cacheItem.requestPacket = clientPacket;
 		cacheItem.pId = clientPacket.ids[0].id;
-		cacheItem.clientMap[clientId] = orgMsgId;
+		//cacheItem.clientMap[clientId] = orgMsgId;
 		cacheItem.proto = Scheme::http;
 		cacheItem.retryCount = 0;
 		cacheItem.httpBackendNo = backendNo;
@@ -1375,7 +1375,7 @@ public:
 		write(HttpSession, responsePacket, from);
 	}
 
-	void send_http_response_to_client(ZhttpResponsePacket &p, const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
+	void send_http_response_to_client(ZhttpResponsePacket &p, const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum, const QByteArray &from)
 	{
 		ZhttpResponsePacket responsePacket = p;
 
@@ -1403,7 +1403,7 @@ public:
 		responsePacket.ids[0].id = newCliId;
 		responsePacket.ids[0].seq = seqNum;
 
-		write(HttpSession, responsePacket, p.from);
+		write(HttpSession, responsePacket, from);
 	}
 
 	int processHttpInitRequestForCache(QByteArray id, const ZhttpRequestPacket &packet)
@@ -1675,7 +1675,7 @@ public:
 						gHttpClientMap.remove(cliId);
 					}
 
-					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum);
+					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum, gCacheItemMap[itemId].requestPacket.from);
 					log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
 				}
 				gCacheItemMap[itemId].clientMap.clear();
