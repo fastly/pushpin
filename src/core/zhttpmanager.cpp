@@ -1337,10 +1337,8 @@ public:
 		cacheItem.orgMsgId = orgMsgId;
 		cacheItem.requestPacket = clientPacket;
 		cacheItem.pId = clientPacket.ids[0].id;
-		struct ClientInCacheItem client;
-		client.msgId = orgMsgId;
-		client.from = clientPacket.from;
-		cacheItem.clientMap[clientId] = client;
+		cacheItem.clientMap[clientId].msgId = orgMsgId;
+		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.proto = Scheme::http;
 		cacheItem.retryCount = 0;
 		cacheItem.httpBackendNo = backendNo;
@@ -1461,10 +1459,8 @@ public:
 				{
 					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(msgMethod));
 					// add client to list
-					struct ClientInCacheItem clientItem;
-					clientItem.msgId = msgId;
-					clientItem.from = packet.from;
-					gCacheItemMap[paramsHash].clientMap[packetId] = clientItem;
+					gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgId;
+					gCacheItemMap[paramsHash].clientMap[packetId].from = packet.from;
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(msgId), packetId.data());
 					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					return 0;
@@ -1662,8 +1658,6 @@ public:
 				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
 				gCacheItemMap[itemId].msgId = msgIdAttr;
 				gCacheItemMap[itemId].newMsgId = msgIdAttr;
-				gCacheItemMap[itemId].receiver = receiver;
-				gCacheItemMap[itemId].from = p.from;
 
 				gCacheItemMap[itemId].cachedFlag = true;
 				log_debug("[HTTP] Added Cache content for method id=%d", msgIdAttr);
