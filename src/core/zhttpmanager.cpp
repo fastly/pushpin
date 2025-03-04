@@ -1456,6 +1456,7 @@ public:
 					gCacheItemMap[paramsHash].clientMap[packetId] = msgId;
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(msgId), packetId.data());
 					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+					return 0;
 				}
 			}
 			else
