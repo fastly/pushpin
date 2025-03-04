@@ -931,7 +931,7 @@ public:
 				// cache process
 				if (gCacheEnable == true)
 				{
- 					int ret = processHttpInitRequestForCache(HttpSession, id.id, p);
+ 					int ret = processHttpInitRequestForCache(id.id, p);
 					if (ret == 0)
 						continue;
 				}
@@ -1341,9 +1341,11 @@ public:
 		cacheItem.httpBackendNo = backendNo;
 
 		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
+
+		log_debug("[HTTP-REQ] registered new http cache item for method=%s", qPrintable(methodName));
 	}
 
-	void reply_httpCachedContent(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &receiver, const QByteArray &from)
+	void reply_httpCachedContent(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &from)
 	{
 		//// Send cached response
 		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
@@ -1382,10 +1384,6 @@ public:
 		{
 			replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, gCacheItemMap[cacheItemId].clientMap[newCliId]);
 		}
-		else if (gNeverTimeoutCacheItemMap.contains(cacheItemId))
-		{
-			replace_idField(responsePacket.body, gNeverTimeoutCacheItemMap[cacheItemId].msgId, gNeverTimeoutCacheItemMap[cacheItemId].clientMap[newCliId]);
-		}
 		else
 		{
 			log_debug("[HTTP] Unknown error for cache item");
@@ -1408,7 +1406,7 @@ public:
 		write(HttpSession, responsePacket, p.from);
 	}
 
-	int processHttpInitRequestForCache(SessionType type, QByteArray id, const ZhttpRequestPacket &packet)
+	int processHttpInitRequestForCache(QByteArray id, const ZhttpRequestPacket &packet)
 	{
 		QByteArray packetId = id;
 
@@ -1446,7 +1444,7 @@ public:
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
-					reply_httpCachedContent(paramsHash, msgId, packetId, gCacheItemMap[paramsHash].receiver, packet.from);
+					reply_httpCachedContent(paramsHash, msgId, packetId, packet.from);
 					gHttpClientMap.remove(packetId);
 					log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
 					return 0;
