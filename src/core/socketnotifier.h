@@ -36,8 +36,8 @@ public:
 	SocketNotifier(int socket, uint8_t interest);
 	~SocketNotifier();
 
-	bool isReadEnabled() const { return writeEnabled_; }
-	bool isWriteEnabled() const { return readEnabled_; }
+	bool isReadEnabled() const { return readEnabled_; }
+	bool isWriteEnabled() const { return writeEnabled_; }
 	int socket() const { return socket_; }
 
 	void setReadEnabled(bool enable);
