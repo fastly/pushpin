@@ -37,7 +37,7 @@ public:
 	~SocketNotifier();
 
 	bool isReadEnabled() const { return writeEnabled_; }
-	bool isWrieEnabled() const { return readEnabled_; }
+	bool isWriteEnabled() const { return readEnabled_; }
 	int socket() const { return socket_; }
 
 	void setReadEnabled(bool enable);
