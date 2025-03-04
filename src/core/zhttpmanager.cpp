@@ -112,7 +112,6 @@ struct ClientItem {
 	QString resultStr;
 	int requestSeq;
 	int responseSeq;	// -1: init value
-	bool healthClientFlag;
 	time_t lastRequestTime;
 	time_t lastPingResponseTime;
 };
@@ -150,7 +149,6 @@ QMap<QByteArray, CacheItem> gCacheItemMap;
 
 // health client list
 bool gHealthCheckExcludeFlag = true;
-QList<QByteArray> gHealthClientList;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -523,7 +521,6 @@ public:
 		clientItem.responseSeq = -1;
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastPingResponseTime = time(NULL);
-		clientItem.healthClientFlag = gHealthClientList.contains(packetId) ? true : false;
 		gHttpClientMap[packetId] = clientItem;
 		log_debug("[HTTP] added http client id=%s", packetId.data());
 
@@ -674,10 +671,23 @@ public:
 		{
 			if (gCacheItemMap.contains(paramsHash))
 			{
-				reply_httpCachedContent(paramsHash, msgId, packetId, gCacheItemMap[paramsHash].receiver, packet.from);
-				gHttpClientMap.remove(packetId);
-				log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
-				return 0;
+				gCacheItemMap[paramsHash].accessCount = 2;
+
+				if (gCacheItemMap[paramsHash].cachedFlag == true)
+				{
+					reply_httpCachedContent(paramsHash, msgId, packetId, gCacheItemMap[paramsHash].receiver, packet.from);
+					gHttpClientMap.remove(packetId);
+					log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
+					return 0;
+				}
+				else
+				{
+					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(cacheMethodAttr));
+					// add client to list
+					gCacheItemMap[paramsHash].clientMap[packetId] = msgId;
+					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(msgId), pId.data());
+					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				}
 			}
 			else
 			{
