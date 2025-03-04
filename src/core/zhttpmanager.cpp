@@ -1983,6 +1983,57 @@ int ZhttpManager::estimateResponseHeaderBytes(int code, const QByteArray &reason
 	return total;
 }
 
+int ZhttpManager::create_wsCacheClientProcesses()
+{
+	for (int i = 0; i < gWsBackendUrlList.count(); i++)
+	{
+		char socketHeaderStr[64];
+		sprintf(socketHeaderStr, "Socket-Owner:Cache_Client%d", i);
+		// create new process
+		QString connectPath = gWsBackendUrlList[i];
+		pid_t processId = fork();
+		if (processId == -1)
+		{
+			// processId == -1 means error occurred
+			log_debug("can't fork to start wscat");
+			return -1;
+		}
+		else if (processId == 0) // child process
+		{
+			char *bin = (char*)"/usr/bin/wscat";
+			QString authHeaderStr = "Authorization: " + config.cacheConfig.jwtAuthKey;
+			// create wscat
+			char * argv_list[] = {
+				bin, 
+				(char*)"-H", socketHeaderStr, 
+				(char*)"-H", (char*)qPrintable(authHeaderStr), 
+				(char*)"-c", (char*)qPrintable(connectPath), 
+				NULL
+			};
+			execve(bin, argv_list, NULL);
+			
+			//set_debugLogLevel(true);
+			log_debug("failed to start wscat error=%d", errno);
+
+			exit(0);
+		}
+		else	// parent process
+		{
+			log_debug("[WS] created new cache client%d parent=%d processId=%d", i, getpid(), processId);
+
+			CacheClientItem cacheClientItem;
+			cacheClientItem.initFlag = false;
+			cacheClientItem.processId = processId;
+			cacheClientItem.connectPath = connectPath;
+			cacheClientItem.lastDataReceivedTime = time(NULL);
+
+			gWsCacheClientList.append(cacheClientItem);
+		}
+	}
+
+	return 0;
+}
+
 void ZhttpManager::setCacheParameters(
 	bool enable,
 	const QStringList &httpBackendUrlList,
@@ -2038,6 +2089,13 @@ void ZhttpManager::setCacheParameters(
 	log_debug("%s", qPrintable(gMsgIdAttrName));
 	log_debug("%s", qPrintable(gMsgMethodAttrName));
 	log_debug("%s", qPrintable(gMsgParamsAttrName));
+
+	int ret = create_wsCacheClientProcesses();
+	if (ret < 0)
+	{
+		log_error("[ERROR] failed to init ws cache clients");
+		exit(-1);
+	}
 }
 
 #include "zhttpmanager.moc"

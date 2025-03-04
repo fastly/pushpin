@@ -70,6 +70,8 @@ public:
 		const QString &msgIdFieldName,
 		const QString &msgMethodFieldName,
 		const QString &msgParamsFieldName);
+	
+	int create_wsCacheClientProcesses();
 
 	ZhttpRequest *createRequest();
 	ZhttpRequest *takeNextRequest();
