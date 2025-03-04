@@ -226,7 +226,7 @@ impl<C: Callback> Registrations<C> {
                 (nkey, callback, readiness)
             };
 
-            callback.call(readiness as u8);
+            callback.call(readiness);
 
             if let Some(nkey) = nkey {
                 let data = &mut *self.data.borrow_mut();
