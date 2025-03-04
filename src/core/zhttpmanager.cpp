@@ -519,8 +519,10 @@ public:
 			QByteArray packetId = packet.ids.first().id;
 			if (gHttpClientMap.contains(packetId))
 			{
+				int ret = process_http_response(instanceAddress, packet);
+				if (ret == 0)
+					return;
 				gHttpClientMap[packetId].responseSeq = packet.ids.first().seq;
-				process_http_response(instanceAddress, packet);
 			}
 		}
 
@@ -1629,7 +1631,7 @@ public:
 		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[HTTP] failed to parse JSON msg");
-			return 0;
+			return -1;
 		}
 		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
 		{
@@ -1641,7 +1643,7 @@ public:
 		if(msgIdAttr < 0)
 		{
 			log_debug("[HTTP] invalid id in response, skipping");
-			return 0;
+			return -1;
 		}
 
 		// result
@@ -1673,7 +1675,7 @@ public:
 				{
 					// update seq
 					int seqNum = 0;
-					if (itemId != cliId && gHttpClientMap.contains(cliId))
+					if (gHttpClientMap.contains(cliId))
 					{
 						seqNum = gHttpClientMap[cliId].responseSeq + 1;
 						// delete original item
@@ -1689,7 +1691,7 @@ public:
 			}
 		}
 
-		return 0;
+		return -1;
 	}
 };
 
