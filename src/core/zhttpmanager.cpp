@@ -519,7 +519,7 @@ public:
 			QByteArray packetId = packet.ids.first().id;
 			if (gHttpClientMap.contains(packetId))
 			{
-				int ret = process_http_response(instanceAddress, packet);
+				int ret = process_http_response(packet);
 				if (ret == 0)
 					return;
 				gHttpClientMap[packetId].responseSeq = packet.ids.first().seq;
@@ -1621,7 +1621,7 @@ public:
 		return QCryptographicHash::hash(out,QCryptographicHash::Sha1);
 	}
 
-	int process_http_response(const QByteArray &receiver, const ZhttpResponsePacket &response)
+	int process_http_response(const ZhttpResponsePacket &response)
 	{
 		ZhttpResponsePacket p = response;
 		QVariantMap jsonMap;
@@ -2001,12 +2001,11 @@ int ZhttpManager::create_wsCacheClientProcesses()
 		else if (processId == 0) // child process
 		{
 			char *bin = (char*)"/usr/bin/wscat";
-			QString authHeaderStr = "Authorization: " + config.cacheConfig.jwtAuthKey;
+			
 			// create wscat
 			char * argv_list[] = {
 				bin, 
 				(char*)"-H", socketHeaderStr, 
-				(char*)"-H", (char*)qPrintable(authHeaderStr), 
 				(char*)"-c", (char*)qPrintable(connectPath), 
 				NULL
 			};
