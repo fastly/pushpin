@@ -1673,7 +1673,7 @@ public:
 				{
 					// update seq
 					int seqNum = 0;
-					if (gHttpClientMap.contains(cliId))
+					if (itemId != cliId && gHttpClientMap.contains(cliId))
 					{
 						seqNum = gHttpClientMap[cliId].responseSeq + 1;
 						// delete original item
