@@ -134,8 +134,6 @@ struct CacheItem {
 	int accessCount;
 	bool cachedFlag;
 	Scheme proto;
-	QByteArray receiver;
-	QByteArray from;
 	QByteArray pId;
 	int retryCount;
 	int httpBackendNo;
@@ -143,7 +141,11 @@ struct CacheItem {
 	ZhttpRequestPacket requestPacket;
 	ZhttpResponsePacket responsePacket;
 	QByteArray responseHashVal;
-	QMap<QByteArray, QString> clientMap;	// <ClienId, MsgId>
+	struct ClientInCacheItem {
+		QString msgId;
+		QByteArray from;
+	};
+	QMap<QByteArray, ClientInCacheItem> clientMap;
 };
 QMap<QByteArray, CacheItem> gCacheItemMap;
 
@@ -1335,7 +1337,10 @@ public:
 		cacheItem.orgMsgId = orgMsgId;
 		cacheItem.requestPacket = clientPacket;
 		cacheItem.pId = clientPacket.ids[0].id;
-		//cacheItem.clientMap[clientId] = orgMsgId;
+		struct ClientInCacheItem client;
+		client.msgId = orgMsgId;
+		client.from = clientPacket.from;
+		cacheItem.clientMap[clientId] = client;
 		cacheItem.proto = Scheme::http;
 		cacheItem.retryCount = 0;
 		cacheItem.httpBackendNo = backendNo;
@@ -1375,14 +1380,17 @@ public:
 		write(HttpSession, responsePacket, from);
 	}
 
-	void send_http_response_to_client(ZhttpResponsePacket &p, const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum, const QByteArray &from)
+	void send_http_response_to_client(ZhttpResponsePacket &p, const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
 	{
 		ZhttpResponsePacket responsePacket = p;
+
+		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[newCliId].msgId;
+		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[newCliId].from;
 
 		// replace messageid
 		if (gCacheItemMap.contains(cacheItemId))
 		{
-			replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, gCacheItemMap[cacheItemId].clientMap[newCliId]);
+			replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
 		}
 		else
 		{
@@ -1403,7 +1411,7 @@ public:
 		responsePacket.ids[0].id = newCliId;
 		responsePacket.ids[0].seq = seqNum;
 
-		write(HttpSession, responsePacket, from);
+		write(HttpSession, responsePacket, orgFrom);
 	}
 
 	int processHttpInitRequestForCache(QByteArray id, const ZhttpRequestPacket &packet)
@@ -1453,7 +1461,10 @@ public:
 				{
 					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(msgMethod));
 					// add client to list
-					gCacheItemMap[paramsHash].clientMap[packetId] = msgId;
+					struct ClientInCacheItem clientItem;
+					clientItem.msgId = msgId;
+					clientItem.from = packet.from;
+					gCacheItemMap[paramsHash].clientMap[packetId] = clientItem;
 					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(msgId), packetId.data());
 					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 					return 0;
@@ -1675,12 +1686,12 @@ public:
 						gHttpClientMap.remove(cliId);
 					}
 
-					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum, gCacheItemMap[itemId].requestPacket.from);
+					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum);
 					log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
 				}
 				gCacheItemMap[itemId].clientMap.clear();
 
-				return -1;
+				return 0;
 			}
 		}
 
