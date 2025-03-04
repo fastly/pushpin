@@ -76,11 +76,12 @@ std::unique_ptr<TcpStream> TcpListener::accept()
 
 	errorCondition_ = 0;
 
-	int e;
-	ffi::TcpStream *s_inner = ffi::tcp_listener_accept(inner_, &e);
+	ffi::TcpStream *s_inner = ffi::tcp_listener_accept(inner_, &errorCondition_);
 	if(!s_inner)
 	{
-		errorCondition_ = e;
+		if(errorCondition_ == EAGAIN)
+			sn_->clearReadiness(SocketNotifier::Read);
+
 		return std::unique_ptr<TcpStream>(); // null
 	}
 
