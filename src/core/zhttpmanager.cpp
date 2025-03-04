@@ -458,466 +458,6 @@ public:
 		}
 	}
 
-	QByteArray buildHashKey(QVariantMap &jsonMap, QString startingStr)
-	{
-		QString hashKeyStr = startingStr;
-		for (int i = 0; i < gCacheKeyItemList.count(); i++)
-		{
-			CacheKeyItem keyItem = gCacheKeyItemList[i];
-			QString keyVal = "";
-			if (keyItem.flag == RAW_VALUE)
-			{
-				keyVal += keyItem.keyName;
-			}
-			else
-			{
-				if (keyItem.flag == JSON_PAIR)
-				{
-					keyVal += keyItem.keyName + ":";
-				}
-
-				for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item)
-				{
-					QString iKey = item.key();
-					QString iValue = item.value().toString();
-
-					if (!iKey.compare(keyItem.keyName, Qt::CaseInsensitive))
-					{
-						if (jsonMap[keyItem.keyName].toString().length() > 0)
-							keyVal += jsonMap[keyItem.keyName].toString();
-						else
-							keyVal += " ";
-					}
-					else if (iKey.indexOf(keyItem.keyName+">>", 0, Qt::CaseInsensitive) == 0)
-					{
-						keyVal += iKey.toLower() + "->" + iValue;
-					}
-				}
-			}
-			if (keyVal.length() > 0)
-			{
-				hashKeyStr += keyVal;
-				if ((i+1) < gCacheKeyItemList.count())
-				{
-					hashKeyStr += "+";
-				}
-			}
-		}
-		log_debug("[HASH] Hash-Key-Str = %s", qPrintable(hashKeyStr.mid(0,128)));
-
-		return QCryptographicHash::hash(hashKeyStr.toUtf8(),QCryptographicHash::Sha1);
-	}
-
-	void registerHttpClient(QByteArray packetId)
-	{
-		if (gHttpClientMap.contains(packetId))
-		{
-			log_debug("[HTTP] already exists http client id=%s", packetId.data());
-			return;
-		}
-
-		struct ClientItem clientItem;
-		clientItem.requestSeq = 0;
-		clientItem.responseSeq = -1;
-		clientItem.lastRequestTime = time(NULL);
-		clientItem.lastPingResponseTime = time(NULL);
-		gHttpClientMap[packetId] = clientItem;
-		log_debug("[HTTP] added http client id=%s", packetId.data());
-
-		return;
-	}
-
-	bool isCacheMethod(QString methodStr)
-	{
-		if (gCacheMethodList.contains(methodStr, Qt::CaseInsensitive))
-		{
-			return true;
-		}
-		else if (gCacheMethodList.contains("*") && 
-			!gSubscribeMethodMap.contains(methodStr))
-		{
-			foreach(QString subKey, gSubscribeMethodMap.keys())
-			{
-				if (gSubscribeMethodMap[subKey].toLower() == methodStr)
-				{
-					return false;
-				}
-			}
-			return true;
-		}
-		return false;
-	}
-
-	void registerHttpCacheItem(
-		const ZhttpRequestPacket &clientPacket, 
-		QByteArray clientId, 
-		QString orgMsgId, 
-		QString methodName, 
-		const QByteArray &methodNameParamsHashVal, 
-		int backendNo)
-	{
-		// create new cache item
-		struct CacheItem cacheItem;
-		cacheItem.msgId = -1;
-		cacheItem.newMsgId = -1;
-		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
-		cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
-		cacheItem.accessCount = 2;
-		cacheItem.cachedFlag = false;
-
-		// save the request packet with new id
-		cacheItem.orgMsgId = orgMsgId;
-		cacheItem.requestPacket = clientPacket;
-		cacheItem.pId = clientPacket.ids[0].id;
-		cacheItem.clientMap[clientId] = orgMsgId;
-		cacheItem.proto = Scheme::http;
-		cacheItem.retryCount = 0;
-		cacheItem.httpBackendNo = backendNo;
-
-		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
-	}
-
-	void reply_httpCachedContent(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &receiver, const QByteArray &from)
-	{
-		//// Send cached response
-		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
-
-		// replace id str
-		replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
-
-		// update "Content-Length" field
-		int newContentLength = static_cast<int>(responsePacket.body.size());
-		log_debug("[HTTP] body newlength=%d", newContentLength);
-		// replace messageid
-		QByteArray contentLengthHeader;
-		contentLengthHeader.setNum(newContentLength);
-		responsePacket.headers.removeAll("Content-Length");
-		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
-
-		int seqNum = 0;
-		// update seq
-		if (gHttpClientMap.contains(newPacketId))
-		{
-			seqNum = gHttpClientMap[newPacketId].responseSeq + 1;
-		}
-		responsePacket.ids[0].id = newPacketId.data();
-		responsePacket.ids[0].seq = seqNum;
-		responsePacket.from = instanceId;
-		
-		write(HttpSession, responsePacket, from);
-	}
-
-	int processWsRequestForCache(SessionType type, const ZhttpRequestPacket &packet)
-	{
-		if (gCacheEnable == false)
-		{
-			log_debug("[cache] cache not enabled");
-			return 0;
-		}
-
-		const ZhttpRequestPacket::Id &id = packet.ids.first();
-
-		// parse json body
-		QVariantMap jsonMap;
-		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[WS] failed to parse JSON msg");
-			//tryRespondCancel(type, id.id, packet);
-			// make invalid
-			return -1;
-		}
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
-		}
-
-		tryRespondCancel(type, id.id, packet);
-
-		return -1;
-	}
-
-	int processHttpInitRequestForCache(SessionType type, QByteArray id, const ZhttpRequestPacket &packet)
-	{
-		QByteArray packetId = id;
-
-		// parse json body
-		QVariantMap jsonMap;
-		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[WS] failed to parse JSON msg");
-			// make invalid
-			return -1;
-		}
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
-		}
-
-		// get method string
-		QString msgId = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
-		QString msgMethod = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
-		if (msgId.isEmpty() || msgMethod.isEmpty())
-		{
-			log_debug("[HTTP-REQ] failed to get gMsgIdAttrName and gMsgMethodAttrName");
-			return -1;
-		}
-		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\"", qPrintable(msgId), qPrintable(msgMethod));
-
-		// Params hash val
-		QByteArray paramsHash = buildHashKey(jsonMap, "HTTP+");
-
-		if (isCacheMethod(msgMethod))
-		{
-			if (gCacheItemMap.contains(paramsHash))
-			{
-				gCacheItemMap[paramsHash].accessCount = 2;
-
-				if (gCacheItemMap[paramsHash].cachedFlag == true)
-				{
-					reply_httpCachedContent(paramsHash, msgId, packetId, gCacheItemMap[paramsHash].receiver, packet.from);
-					gHttpClientMap.remove(packetId);
-					log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
-					return 0;
-				}
-				else
-				{
-					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(cacheMethodAttr));
-					// add client to list
-					gCacheItemMap[paramsHash].clientMap[packetId] = msgId;
-					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(msgId), pId.data());
-					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
-				}
-			}
-			else
-			{
-				log_debug("[HTTP-REQ] not found in cache");
-			}
-
-			QString uriPath = packet.uri.toString();
-			int backendNo = -1;
-			for (int i = 0; i < gHttpBackendUrlList.count(); i++)
-			{
-				if (uriPath == gHttpBackendUrlList[i])
-				{
-					backendNo = i;
-					break;
-				}				
-			}
-
-			// Register new cache item
-			registerHttpCacheItem(packet, packetId, msgId, msgMethod, paramsHash, backendNo);
-			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
-		}
-
-		return -1;
-	}
-
-	int processResponseForCache(SessionType type, const ZhttpResponsePacket &packet)
-	{
-		// parse json body
-		QVariantMap jsonMap;
-		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[WS] failed to parse JSON msg");
-			// make invalid
-			return -1;
-		}
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
-		}
-
-		return 0;
-	}
-
-	static void replace_idField(QByteArray &body, QString oldId, int newId)
-	{
-		// new pattern
-		char newPattern[64];
-		qsnprintf(newPattern, 64, "\"id\":%d", newId);
-
-		// find pattern
-		for (int i = 0; i < 20; i++)
-		{
-			QString iSpace = "";
-			QString jSpace = "";
-			for (int k = 0; k < i; k++)
-			{
-				iSpace += " ";
-			}
-			for (int j = 0; j < 20; j++)
-			{
-				for (int k = 0; k < j; k++)
-				{
-					jSpace += " ";
-				}
-				QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + oldId;
-				int idx = body.indexOf(oldPattern);
-				if (idx >= 0)
-				{
-					body.replace(idx, oldPattern.length(), newPattern);
-					return;
-				}
-			}
-		}
-	}
-
-	static void replace_idField(QByteArray &body, int oldId, QString newId)
-	{
-		// new pattern
-		char newPattern[64];
-		qsnprintf(newPattern, 64, "\"id\":%s", qPrintable(newId));
-
-		// find pattern
-		for (int i = 0; i < 20; i++)
-		{
-			QString iSpace = "";
-			QString jSpace = "";
-			for (int k = 0; k < i; k++)
-			{
-				iSpace += " ";
-			}
-			for (int j = 0; j < 20; j++)
-			{
-				for (int k = 0; k < j; k++)
-				{
-					jSpace += " ";
-				}
-				QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + QString::number(oldId);
-				int idx = body.indexOf(oldPattern);
-				if (idx >= 0)
-				{
-					body.replace(idx, oldPattern.length(), newPattern);
-					return;
-				}
-			}
-		}
-	}
-
-	static void replace_resultField(QByteArray &body, QString oldResult, QString newResult)
-	{
-		if (oldResult == newResult)
-		{
-			return;
-		}
-
-		QString oldPattern0 = "\"result\":\"" + oldResult + "\"";
-		QString oldPattern1 = "\"result\": \"" + oldResult + "\"";
-
-		char newPattern0[64], newPattern1[64];
-		qsnprintf(newPattern0, 64, "\"result\":\"%s\"", qPrintable(newResult));
-		qsnprintf(newPattern1, 64, "\"result\": \"%s\"", qPrintable(newResult));
-
-		int idx = body.indexOf(oldPattern0);
-		if (idx >= 0)
-		{
-			body.replace(idx, oldPattern0.length(), newPattern0);
-			return;
-		}
-
-		idx = body.indexOf(oldPattern1);
-		if (idx >= 0)
-		{
-			body.replace(idx, oldPattern1.length(), newPattern1);
-		}
-	}
-
-	static void replace_subscriptionField(QByteArray &body, QString oldSubscription, QString newSubscription)
-	{
-		if (oldSubscription == newSubscription)
-		{
-			return;
-		}
-
-		QString oldPattern0 = "\"subscription\":\"" + oldSubscription + "\"";
-		QString oldPattern1 = "\"subscription\": \"" + oldSubscription + "\"";
-
-		char newPattern0[64], newPattern1[64];
-		qsnprintf(newPattern0, 64, "\"subscription\":\"%s\"", qPrintable(newSubscription));
-		qsnprintf(newPattern1, 64, "\"subscription\": \"%s\"", qPrintable(newSubscription));
-
-		int idx = body.indexOf(oldPattern0);
-		if (idx >= 0)
-		{
-			body.replace(idx, oldPattern0.length(), newPattern0);
-			return;
-		}
-
-		idx = body.indexOf(oldPattern1);
-		if (idx >= 0)
-		{
-			body.replace(idx, oldPattern1.length(), newPattern1);
-		}
-	}
-
-	QByteArray calculate_responseHashVal(QByteArray &responseBody, int idVal)
-	{
-		QByteArray out = responseBody;
-		// replace id str in response
-		replace_idField(out, idVal, 0);
-
-		return QCryptographicHash::hash(out,QCryptographicHash::Sha1);
-	}
-
-	int process_http_response(const QByteArray &receiver, const ZhttpResponsePacket &response)
-	{
-		ZhttpResponsePacket p = response;
-		QVariantMap jsonMap;
-		QByteArray pId = p.ids[0].id;
-
-		// parse json body
-		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
-		{
-			log_debug("[HTTP] failed to parse JSON msg");
-			return 0;
-		}
-		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
-		{
-			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
-		}
-
-		// read msgIdAttr (id)
-		int msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
-		if(msgIdAttr < 0)
-		{
-			log_debug("[HTTP] invalid id in response, skipping");
-			return 0;
-		}
-
-		// result
-		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
-
-		foreach(QByteArray itemId, gCacheItemMap.keys())
-		{
-			log_debug("[HTTP] %d, %s, %d", gCacheItemMap[itemId].proto, gCacheItemMap[itemId].requestPacket.ids[0].id.data(), gCacheItemMap[itemId].newMsgId);
-			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == pId) && 
-				(msgIdAttr == 0 || gCacheItemMap[itemId].newMsgId == -1))
-			{
-				gCacheItemMap[itemId].responsePacket = p;
-				gCacheItemMap[itemId].responseHashVal = calculate_responseHashVal(p.body, msgIdAttr);
-				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
-				gCacheItemMap[itemId].msgId = msgIdAttr;
-				gCacheItemMap[itemId].newMsgId = msgIdAttr;
-				gCacheItemMap[itemId].receiver = receiver;
-				gCacheItemMap[itemId].from = p.from;
-
-				gCacheItemMap[itemId].cachedFlag = true;
-				log_debug("[HTTP] Added Cache content for method id=%d", msgIdAttr);
-
-				// set random last refresh time
-				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
-				int nextTimeMSeconds = (clock() % 10) * 1000;;
-				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
-				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
-
-				return -1;
-			}
-		}
-
-		return 0;
-	}
-
 	void write(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		assert(client_out_sock || client_req_sock);
@@ -1281,8 +821,6 @@ public:
 				tryRespondCancel(WebSocketSession, id.id, p);
 				return;
 			}
-
-			processWsRequestForCache(WebSocketSession, p);
 
 			sock = new ZWebSocket;
 			if(!sock->setupServer(q, id.id, id.seq, p))
@@ -1680,6 +1218,471 @@ public:
 		else
 		{
 			return -1;
+		}
+
+		return 0;
+	}
+
+	QByteArray buildHashKey(QVariantMap &jsonMap, QString startingStr)
+	{
+		QString hashKeyStr = startingStr;
+		for (int i = 0; i < gCacheKeyItemList.count(); i++)
+		{
+			CacheKeyItem keyItem = gCacheKeyItemList[i];
+			QString keyVal = "";
+			if (keyItem.flag == RAW_VALUE)
+			{
+				keyVal += keyItem.keyName;
+			}
+			else
+			{
+				if (keyItem.flag == JSON_PAIR)
+				{
+					keyVal += keyItem.keyName + ":";
+				}
+
+				for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item)
+				{
+					QString iKey = item.key();
+					QString iValue = item.value().toString();
+
+					if (!iKey.compare(keyItem.keyName, Qt::CaseInsensitive))
+					{
+						if (jsonMap[keyItem.keyName].toString().length() > 0)
+							keyVal += jsonMap[keyItem.keyName].toString();
+						else
+							keyVal += " ";
+					}
+					else if (iKey.indexOf(keyItem.keyName+">>", 0, Qt::CaseInsensitive) == 0)
+					{
+						keyVal += iKey.toLower() + "->" + iValue;
+					}
+				}
+			}
+			if (keyVal.length() > 0)
+			{
+				hashKeyStr += keyVal;
+				if ((i+1) < gCacheKeyItemList.count())
+				{
+					hashKeyStr += "+";
+				}
+			}
+		}
+		log_debug("[HASH] Hash-Key-Str = %s", qPrintable(hashKeyStr.mid(0,128)));
+
+		return QCryptographicHash::hash(hashKeyStr.toUtf8(),QCryptographicHash::Sha1);
+	}
+
+	void registerHttpClient(QByteArray packetId)
+	{
+		if (gHttpClientMap.contains(packetId))
+		{
+			log_debug("[HTTP] already exists http client id=%s", packetId.data());
+			return;
+		}
+
+		struct ClientItem clientItem;
+		clientItem.requestSeq = 0;
+		clientItem.responseSeq = -1;
+		clientItem.lastRequestTime = time(NULL);
+		clientItem.lastPingResponseTime = time(NULL);
+		gHttpClientMap[packetId] = clientItem;
+		log_debug("[HTTP] added http client id=%s", packetId.data());
+
+		return;
+	}
+
+	bool isCacheMethod(QString methodStr)
+	{
+		if (gCacheMethodList.contains(methodStr, Qt::CaseInsensitive))
+		{
+			return true;
+		}
+		else if (gCacheMethodList.contains("*") && 
+			!gSubscribeMethodMap.contains(methodStr))
+		{
+			foreach(QString subKey, gSubscribeMethodMap.keys())
+			{
+				if (gSubscribeMethodMap[subKey].toLower() == methodStr)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	void registerHttpCacheItem(
+		const ZhttpRequestPacket &clientPacket, 
+		QByteArray clientId, 
+		QString orgMsgId, 
+		QString methodName, 
+		const QByteArray &methodNameParamsHashVal, 
+		int backendNo)
+	{
+		// create new cache item
+		struct CacheItem cacheItem;
+		cacheItem.msgId = -1;
+		cacheItem.newMsgId = -1;
+		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+		cacheItem.lastAccessTime = QDateTime::currentMSecsSinceEpoch();
+		cacheItem.lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+		cacheItem.accessCount = 2;
+		cacheItem.cachedFlag = false;
+
+		// save the request packet with new id
+		cacheItem.orgMsgId = orgMsgId;
+		cacheItem.requestPacket = clientPacket;
+		cacheItem.pId = clientPacket.ids[0].id;
+		cacheItem.clientMap[clientId] = orgMsgId;
+		cacheItem.proto = Scheme::http;
+		cacheItem.retryCount = 0;
+		cacheItem.httpBackendNo = backendNo;
+
+		gCacheItemMap[methodNameParamsHashVal] = cacheItem;
+	}
+
+	void reply_httpCachedContent(const QByteArray &cacheItemId, QString orgMsgId, const QByteArray &newPacketId, const QByteArray &receiver, const QByteArray &from)
+	{
+		//// Send cached response
+		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
+
+		// replace id str
+		replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
+
+		// update "Content-Length" field
+		int newContentLength = static_cast<int>(responsePacket.body.size());
+		log_debug("[HTTP] body newlength=%d", newContentLength);
+		// replace messageid
+		QByteArray contentLengthHeader;
+		contentLengthHeader.setNum(newContentLength);
+		responsePacket.headers.removeAll("Content-Length");
+		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
+
+		int seqNum = 0;
+		// update seq
+		if (gHttpClientMap.contains(newPacketId))
+		{
+			seqNum = gHttpClientMap[newPacketId].responseSeq + 1;
+		}
+		responsePacket.ids[0].id = newPacketId.data();
+		responsePacket.ids[0].seq = seqNum;
+		responsePacket.from = instanceId;
+		
+		write(HttpSession, responsePacket, from);
+	}
+
+	void send_http_response_to_client(ZhttpResponsePacket &p, const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
+	{
+		ZhttpResponsePacket responsePacket = p;
+
+		// replace messageid
+		if (gCacheItemMap.contains(cacheItemId))
+		{
+			replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, gCacheItemMap[cacheItemId].clientMap[newCliId]);
+		}
+		else if (gNeverTimeoutCacheItemMap.contains(cacheItemId))
+		{
+			replace_idField(responsePacket.body, gNeverTimeoutCacheItemMap[cacheItemId].msgId, gNeverTimeoutCacheItemMap[cacheItemId].clientMap[newCliId]);
+		}
+		else
+		{
+			log_debug("[HTTP] Unknown error for cache item");
+			return;
+		}
+		
+
+		// update "Content-Length" field
+		int newContentLength = static_cast<int>(responsePacket.body.size());
+		log_debug("[HTTP] body newlength=%d", newContentLength);
+		// replace messageid
+		QByteArray contentLengthHeader;
+		contentLengthHeader.setNum(newContentLength);
+		responsePacket.headers.removeAll("Content-Length");
+		responsePacket.headers += HttpHeader("Content-Length", contentLengthHeader);
+
+		responsePacket.ids[0].id = newCliId;
+		responsePacket.ids[0].seq = seqNum;
+
+		write(HttpSession, responsePacket, p.from);
+	}
+
+	int processHttpInitRequestForCache(SessionType type, QByteArray id, const ZhttpRequestPacket &packet)
+	{
+		QByteArray packetId = id;
+
+		// parse json body
+		QVariantMap jsonMap;
+		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[WS] failed to parse JSON msg");
+			// make invalid
+			return -1;
+		}
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
+
+		// get method string
+		QString msgId = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
+		QString msgMethod = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		if (msgId.isEmpty() || msgMethod.isEmpty())
+		{
+			log_debug("[HTTP-REQ] failed to get gMsgIdAttrName and gMsgMethodAttrName");
+			return -1;
+		}
+		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\"", qPrintable(msgId), qPrintable(msgMethod));
+
+		// Params hash val
+		QByteArray paramsHash = buildHashKey(jsonMap, "HTTP+");
+
+		if (isCacheMethod(msgMethod))
+		{
+			if (gCacheItemMap.contains(paramsHash))
+			{
+				gCacheItemMap[paramsHash].accessCount = 2;
+
+				if (gCacheItemMap[paramsHash].cachedFlag == true)
+				{
+					reply_httpCachedContent(paramsHash, msgId, packetId, gCacheItemMap[paramsHash].receiver, packet.from);
+					gHttpClientMap.remove(packetId);
+					log_debug("[HTTP-REQ] Replied with Cache content for method \"%s\"", qPrintable(msgMethod));
+					return 0;
+				}
+				else
+				{
+					log_debug("[HTTP] Already cache registered, but not added content \"%s\"", qPrintable(msgMethod));
+					// add client to list
+					gCacheItemMap[paramsHash].clientMap[packetId] = msgId;
+					log_debug("[HTTP] Adding new client id msgId=%s clientId=%s", qPrintable(msgId), packetId.data());
+					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+				}
+			}
+			else
+			{
+				log_debug("[HTTP-REQ] not found in cache");
+			}
+
+			QString uriPath = packet.uri.toString();
+			int backendNo = -1;
+			for (int i = 0; i < gHttpBackendUrlList.count(); i++)
+			{
+				if (uriPath == gHttpBackendUrlList[i])
+				{
+					backendNo = i;
+					break;
+				}				
+			}
+
+			// Register new cache item
+			registerHttpCacheItem(packet, packetId, msgId, msgMethod, paramsHash, backendNo);
+			log_debug("[HTTP-REQ] Registered New Cache Item for id=%d method=\"%s\" backend=%d", msgId, qPrintable(msgMethod), backendNo);
+		}
+
+		return -1;
+	}
+
+	static void replace_idField(QByteArray &body, QString oldId, int newId)
+	{
+		// new pattern
+		char newPattern[64];
+		qsnprintf(newPattern, 64, "\"id\":%d", newId);
+
+		// find pattern
+		for (int i = 0; i < 20; i++)
+		{
+			QString iSpace = "";
+			QString jSpace = "";
+			for (int k = 0; k < i; k++)
+			{
+				iSpace += " ";
+			}
+			for (int j = 0; j < 20; j++)
+			{
+				for (int k = 0; k < j; k++)
+				{
+					jSpace += " ";
+				}
+				QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + oldId;
+				int idx = body.indexOf(oldPattern);
+				if (idx >= 0)
+				{
+					body.replace(idx, oldPattern.length(), newPattern);
+					return;
+				}
+			}
+		}
+	}
+
+	static void replace_idField(QByteArray &body, int oldId, QString newId)
+	{
+		// new pattern
+		char newPattern[64];
+		qsnprintf(newPattern, 64, "\"id\":%s", qPrintable(newId));
+
+		// find pattern
+		for (int i = 0; i < 20; i++)
+		{
+			QString iSpace = "";
+			QString jSpace = "";
+			for (int k = 0; k < i; k++)
+			{
+				iSpace += " ";
+			}
+			for (int j = 0; j < 20; j++)
+			{
+				for (int k = 0; k < j; k++)
+				{
+					jSpace += " ";
+				}
+				QString oldPattern = QString("\"id\"") + iSpace + QString(":") + jSpace + QString::number(oldId);
+				int idx = body.indexOf(oldPattern);
+				if (idx >= 0)
+				{
+					body.replace(idx, oldPattern.length(), newPattern);
+					return;
+				}
+			}
+		}
+	}
+
+	static void replace_resultField(QByteArray &body, QString oldResult, QString newResult)
+	{
+		if (oldResult == newResult)
+		{
+			return;
+		}
+
+		QString oldPattern0 = "\"result\":\"" + oldResult + "\"";
+		QString oldPattern1 = "\"result\": \"" + oldResult + "\"";
+
+		char newPattern0[64], newPattern1[64];
+		qsnprintf(newPattern0, 64, "\"result\":\"%s\"", qPrintable(newResult));
+		qsnprintf(newPattern1, 64, "\"result\": \"%s\"", qPrintable(newResult));
+
+		int idx = body.indexOf(oldPattern0);
+		if (idx >= 0)
+		{
+			body.replace(idx, oldPattern0.length(), newPattern0);
+			return;
+		}
+
+		idx = body.indexOf(oldPattern1);
+		if (idx >= 0)
+		{
+			body.replace(idx, oldPattern1.length(), newPattern1);
+		}
+	}
+
+	static void replace_subscriptionField(QByteArray &body, QString oldSubscription, QString newSubscription)
+	{
+		if (oldSubscription == newSubscription)
+		{
+			return;
+		}
+
+		QString oldPattern0 = "\"subscription\":\"" + oldSubscription + "\"";
+		QString oldPattern1 = "\"subscription\": \"" + oldSubscription + "\"";
+
+		char newPattern0[64], newPattern1[64];
+		qsnprintf(newPattern0, 64, "\"subscription\":\"%s\"", qPrintable(newSubscription));
+		qsnprintf(newPattern1, 64, "\"subscription\": \"%s\"", qPrintable(newSubscription));
+
+		int idx = body.indexOf(oldPattern0);
+		if (idx >= 0)
+		{
+			body.replace(idx, oldPattern0.length(), newPattern0);
+			return;
+		}
+
+		idx = body.indexOf(oldPattern1);
+		if (idx >= 0)
+		{
+			body.replace(idx, oldPattern1.length(), newPattern1);
+		}
+	}
+
+	QByteArray calculate_responseHashVal(QByteArray &responseBody, int idVal)
+	{
+		QByteArray out = responseBody;
+		// replace id str in response
+		replace_idField(out, idVal, 0);
+
+		return QCryptographicHash::hash(out,QCryptographicHash::Sha1);
+	}
+
+	int process_http_response(const QByteArray &receiver, const ZhttpResponsePacket &response)
+	{
+		ZhttpResponsePacket p = response;
+		QVariantMap jsonMap;
+		QByteArray pId = p.ids[0].id;
+
+		// parse json body
+		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[HTTP] failed to parse JSON msg");
+			return 0;
+		}
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
+
+		// read msgIdAttr (id)
+		int msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : 0;
+		if(msgIdAttr < 0)
+		{
+			log_debug("[HTTP] invalid id in response, skipping");
+			return 0;
+		}
+
+		// result
+		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
+
+		foreach(QByteArray itemId, gCacheItemMap.keys())
+		{
+			log_debug("[HTTP] %d, %s, %d", gCacheItemMap[itemId].proto, gCacheItemMap[itemId].requestPacket.ids[0].id.data(), gCacheItemMap[itemId].newMsgId);
+			if ((gCacheItemMap[itemId].proto == Scheme::http) && (gCacheItemMap[itemId].requestPacket.ids[0].id == pId) && 
+				(msgIdAttr == 0 || gCacheItemMap[itemId].newMsgId == -1))
+			{
+				gCacheItemMap[itemId].responsePacket = p;
+				gCacheItemMap[itemId].responseHashVal = calculate_responseHashVal(p.body, msgIdAttr);
+				log_debug("[HTTP] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
+				gCacheItemMap[itemId].msgId = msgIdAttr;
+				gCacheItemMap[itemId].newMsgId = msgIdAttr;
+				gCacheItemMap[itemId].receiver = receiver;
+				gCacheItemMap[itemId].from = p.from;
+
+				gCacheItemMap[itemId].cachedFlag = true;
+				log_debug("[HTTP] Added Cache content for method id=%d", msgIdAttr);
+
+				// set random last refresh time
+				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+				int nextTimeMSeconds = (clock() % 10) * 1000;;
+				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
+				log_debug("[HTTP] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
+
+				// send response to all clients
+				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+				{
+					// update seq
+					int seqNum = 0;
+					if (gHttpClientMap.contains(cliId))
+					{
+						seqNum = gHttpClientMap[cliId].responseSeq + 1;
+						// delete original item
+						gHttpClientMap.remove(cliId);
+					}
+
+					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum);
+					log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
+				}
+				gCacheItemMap[itemId].clientMap.clear();
+
+				return -1;
+			}
 		}
 
 		return 0;
