@@ -60,6 +60,8 @@ HEADERS += \
 	$$PWD/readwrite.h \
 	$$PWD/tcplistener.h \
 	$$PWD/tcpstream.h \
+	$$PWD/unixlistener.h \
+	$$PWD/unixstream.h \
 	$$PWD/logutil.h \
 	$$PWD/uuidutil.h \
 	$$PWD/zutil.h \
@@ -88,6 +90,8 @@ SOURCES += \
 	$$PWD/eventloop.cpp \
 	$$PWD/tcplistener.cpp \
 	$$PWD/tcpstream.cpp \
+	$$PWD/unixlistener.cpp \
+	$$PWD/unixstream.cpp \
 	$$PWD/logutil.cpp \
 	$$PWD/uuidutil.cpp \
 	$$PWD/zutil.cpp \
