@@ -36,6 +36,9 @@
 #include <QJsonArray>
 #include <QCoreApplication>
 #include <QMap>
+#include <QRegularExpression>
+#include <QString>
+#include <QDebug>
 #include <QCryptographicHash>
 #include <QThread>
 
