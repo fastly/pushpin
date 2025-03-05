@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2015-2022 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -40,7 +41,6 @@ class SimpleHttpRequest : public QObject
 	Q_OBJECT
 
 public:
-	SimpleHttpRequest(int maxHeadersSize, int maxBodySize, QObject* parent = 0);
 	~SimpleHttpRequest();
 
 	QString requestMethod() const;
@@ -59,7 +59,7 @@ private:
 	friend class SimpleHttpServerPrivate;
 	Private *d;
 
-	SimpleHttpRequest(QObject *parent = 0);
+	SimpleHttpRequest(int maxHeadersSize, int maxBodySize);
 };
 
 class SimpleHttpServer : public QObject
