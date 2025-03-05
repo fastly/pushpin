@@ -2051,13 +2051,13 @@ void ZhttpManager::setCacheParameters(
 		// create processes for cache client
 		for (int i = 0; i < gWsBackendUrlList.count(); i++)
 		{
-			int ret = cacheclient_create_child_process(gWsBackendUrlList[i], i);
-			if (ret == 0)
+			pid_t processId = cacheclient_create_child_process(gWsBackendUrlList[i], i);
+			if (processId > 0)
 			{
 				CacheClientItem cacheClientItem;
 				cacheClientItem.initFlag = false;
 				cacheClientItem.processId = processId;
-				cacheClientItem.connectPath = connectPath;
+				cacheClientItem.connectPath = gWsBackendUrlList[i];
 				cacheClientItem.lastDataReceivedTime = time(NULL);
 
 				gWsCacheClientList.append(cacheClientItem);

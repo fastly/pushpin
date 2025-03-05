@@ -33,6 +33,6 @@
 #include "packet/httpresponsedata.h"
 
 int cacheclient_get_no(ZhttpRequestPacket &p);
-int cacheclient_create_child_process(QString connectPath, int _no);
+pid_t cacheclient_create_child_process(QString connectPath, int _no);
 
 #endif

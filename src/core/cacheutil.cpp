@@ -46,7 +46,7 @@
 #include "tnetstring.h"
 #include "log.h"
 
-int cacheclient_get_number(ZhttpRequestPacket &p)
+int cacheclient_get_no(ZhttpRequestPacket &p)
 {
 	QByteArray pId = p.ids.first().id;
 
@@ -73,10 +73,10 @@ int cacheclient_get_number(ZhttpRequestPacket &p)
 	return -1;
 }
 
-int cacheclient_create_child_process(QString connectPath)
+pid_t cacheclient_create_child_process(QString connectPath, int _no)
 {
 	char socketHeaderStr[64];
-	sprintf(socketHeaderStr, "Socket-Owner:Cache_Client%d", i);
+	sprintf(socketHeaderStr, "Socket-Owner:Cache_Client%d", _no);
 
 	pid_t processId = fork();
 	if (processId == -1)
@@ -107,5 +107,5 @@ int cacheclient_create_child_process(QString connectPath)
 	// parent process
 	log_debug("[WS] created new cache client%d parent=%d processId=%d", i, getpid(), processId);
 
-	return 0;
+	return processId;
 }
