@@ -21,8 +21,8 @@
  * $FANOUT_END_LICENSE$
  */
 
-#ifndef CACHE_H
-#define CACHE_H
+#ifndef CACHEUTIL_H
+#define CACHEUTIL_H
 
 #include <QHostAddress>
 #include <QObject>
@@ -32,6 +32,6 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 
-bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket &p);
+int cacheclient_get_number(ZhttpRequestPacket &p);
 
 #endif

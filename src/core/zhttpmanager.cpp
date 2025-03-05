@@ -40,6 +40,7 @@
 #include "zutil.h"
 #include "logutil.h"
 #include "timer.h"
+#include "cacheutil.h"
 
 #define OUT_HWM 100
 #define IN_HWM 100
@@ -824,6 +825,12 @@ public:
 				log_warning("zws server: received message for existing request id, canceling");
 				tryRespondCancel(WebSocketSession, id.id, p);
 				return;
+			}
+
+			int cacheClientNumber = cacheclient_get_number(p);
+			if (cacheClientNumber >= 0 && cacheClientNumber > gWsCacheClientList.count())
+			{
+				
 			}
 
 			sock = new ZWebSocket;

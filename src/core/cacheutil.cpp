@@ -21,7 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "cache.h"
+#include "cacheutil.h"
 
 #include <stdio.h>
 #include <assert.h>
@@ -46,7 +46,7 @@
 #include "tnetstring.h"
 #include "log.h"
 
-bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket &p)
+int cacheclient_get_number(ZhttpRequestPacket &p)
 {
 	QByteArray pId = p.ids.first().id;
 
@@ -65,21 +65,10 @@ bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket &p)
 		{
 			QString numberStr = match.captured(1);
 			int number = numberStr.toInt(); // Convert to integer
-			if (number < gWsCacheClientList.count())
-			{
-				gWsCacheClientList[number].msgIdCount = 1;
-				gWsCacheClientList[number].requestSeqCount = 1;
-				gWsCacheClientList[number].responseSeqCount = 1;
-				gWsCacheClientList[number].clientId = pId;
-				log_debug("[CACHE_CLIENT] %s", gWsCacheClientList[number].clientId.data());
 
-				// remove Socket-Owner header
-				p.headers.removeAll("Socket-Owner");
-
-				return true;
-			}				
+			return number;
 		}
 	}
 
-	return false;
+	return -1;
 }
