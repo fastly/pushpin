@@ -14,37 +14,29 @@
  * limitations under the License.
  */
 
-#ifndef TCPSTREAM_H
-#define TCPSTREAM_H
+#ifndef READWRITE_H
+#define READWRITE_H
 
-#include <memory>
 #include <QByteArray>
 #include <boost/signals2.hpp>
-#include "rust/bindings.h"
-#include "readwrite.h"
 
-class SocketNotifier;
-
-class TcpStream : public ReadWrite
+class ReadWrite
 {
 public:
-	~TcpStream();
+	virtual ~ReadWrite() = default;
 
-	// reimplemented
-	virtual QByteArray read(int size = -1);
-	virtual int write(const QByteArray &buf);
-	virtual int errorCondition() const { return errorCondition_; }
+	// size < 0 means default read size
+	// returns buffer of bytes read. null buffer means error. empty means end
+	virtual QByteArray read(int size = -1) = 0;
 
-private:
-	friend class TcpListener;
+	// returns amount accepted, or -1 for error
+	virtual int write(const QByteArray &buf) = 0;
 
-	ffi::TcpStream *inner_;
-	std::unique_ptr<SocketNotifier> snRead_, snWrite_;
-	int errorCondition_;
+	// returns errno of latest operation
+	virtual int errorCondition() const = 0;
 
-	TcpStream(ffi::TcpStream *inner);
-	void snRead_activated();
-	void snWrite_activated();
+	boost::signals2::signal<void()> readReady;
+	boost::signals2::signal<void()> writeReady;
 };
 
 #endif

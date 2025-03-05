@@ -57,6 +57,7 @@ HEADERS += \
 	$$PWD/defercall.h \
 	$$PWD/socketnotifier.h \
 	$$PWD/eventloop.h \
+	$$PWD/readwrite.h \
 	$$PWD/tcplistener.h \
 	$$PWD/tcpstream.h \
 	$$PWD/logutil.h \
