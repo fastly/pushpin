@@ -21,7 +21,7 @@
  * $FANOUT_END_LICENSE$
  */
 
-#include "logutil.h"
+#include "cache.h"
 
 #include <assert.h>
 #include <stdarg.h>
