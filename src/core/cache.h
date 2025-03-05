@@ -32,9 +32,6 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 
-class ZhttpRequestPacket;
-class ZhttpResponsePacket;
-
-bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket p);
+bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket &p);
 
 #endif

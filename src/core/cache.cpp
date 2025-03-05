@@ -23,13 +23,28 @@
 
 #include "cache.h"
 
+#include <stdio.h>
 #include <assert.h>
-#include <stdarg.h>
+#include <signal.h>
+#include <unistd.h>
+#include <QHash>
+#include <QUuid>
+#include <QSettings>
+#include <QHostAddress>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QCoreApplication>
+#include <QtConcurrent>
+#include <QMap>
+#include <QCryptographicHash>
+#include <QThread>
+
 #include "qtcompat.h"
 #include "tnetstring.h"
 #include "log.h"
 
-bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket p)
+bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket &p)
 {
 	QByteArray pId = p.ids.first().id;
 
