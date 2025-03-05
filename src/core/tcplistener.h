@@ -18,7 +18,6 @@
 #define TCPLISTENER_H
 
 #include <memory>
-#include <QtGlobal>
 #include <QHostAddress>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
@@ -32,9 +31,10 @@ public:
 	TcpListener();
 	~TcpListener();
 
-	bool bind(const QHostAddress &addr, quint16 port);
-	std::tuple<QHostAddress, quint16> localAddress() const;
+	bool bind(const QHostAddress &addr, uint16_t port);
+	std::tuple<QHostAddress, uint16_t> localAddress() const;
 	std::unique_ptr<TcpStream> accept();
+	int errorCondition() const { return errorCondition_; }
 
 	boost::signals2::signal<void()> streamsReady;
 
@@ -43,6 +43,7 @@ private:
 	void sn_activated();
 
 	ffi::TcpListener *inner_;
+	int errorCondition_;
 	std::unique_ptr<SocketNotifier> sn_;
 };
 
