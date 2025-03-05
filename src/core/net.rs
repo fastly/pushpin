@@ -1127,10 +1127,66 @@ mod ffi {
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
+    pub unsafe extern "C" fn unix_stream_connect(
+        path: *const c_char,
+        out_errno: *mut c_int,
+    ) -> *mut UnixStream {
+        assert!(!out_errno.is_null());
+
+        let path = unsafe { CStr::from_ptr(path) };
+
+        let path = Path::new(OsStr::from_bytes(path.to_bytes()));
+
+        // use mio to ensure socket begins in non-blocking mode
+        let s = match mio::net::UnixStream::connect(path) {
+            Ok(s) => s,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return ptr::null_mut();
+            }
+        };
+
+        // SAFETY: converting from valid object
+        let s = unsafe { std::os::unix::net::UnixStream::from_raw_fd(s.into_raw_fd()) };
+
+        Box::into_raw(Box::new(UnixStream(s)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
     pub unsafe extern "C" fn unix_stream_destroy(s: *mut UnixStream) {
         if !s.is_null() {
             drop(Box::from_raw(s));
         }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_stream_check_connected(
+        s: *const UnixStream,
+        out_errno: *mut c_int,
+    ) -> c_int {
+        let s = s.as_ref().unwrap();
+        assert!(!out_errno.is_null());
+
+        // mio documentation says to use take_error() and peer_addr() to
+        // check for connected
+
+        if let Ok(Some(e)) | Err(e) = s.0.take_error() {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return -1;
+        }
+
+        // returns libc::ENOTCONN if not yet connected
+        if let Err(e) = s.0.peer_addr() {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return -1;
+        }
+
+        0
     }
 
     #[allow(clippy::missing_safety_doc)]
