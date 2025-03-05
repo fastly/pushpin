@@ -59,7 +59,6 @@
 #include "logutil.h"
 
 #define DEFAULT_HWM 1000
-#define ZROUTES_MAX 100
 
 class Engine::Private : public QObject
 {
