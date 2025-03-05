@@ -18,6 +18,7 @@
 #define TCPSTREAM_H
 
 #include <memory>
+#include <variant>
 #include <QByteArray>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
@@ -39,12 +40,12 @@ private:
 	friend class TcpListener;
 
 	ffi::TcpStream *inner_;
-	std::unique_ptr<SocketNotifier> snRead_, snWrite_;
+	std::unique_ptr<SocketNotifier> sn_;
 	int errorCondition_;
+	std::shared_ptr<std::monostate> alive_;
 
 	TcpStream(ffi::TcpStream *inner);
-	void snRead_activated();
-	void snWrite_activated();
+	void sn_activated(int socket, uint8_t readiness);
 };
 
 #endif

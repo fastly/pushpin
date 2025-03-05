@@ -16,82 +16,121 @@
 
 #include "socketnotifier.h"
 
+#include <assert.h>
 #include "defercall.h"
 #include "eventloop.h"
 
-SocketNotifier::SocketNotifier(int socket, Type type) :
+SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 	socket_(socket),
-	type_(type),
-	enabled_(true),
-	inner_(nullptr),
+	interest_(interest),
+	readEnabled_(true),
+	writeEnabled_(true),
+	readInner_(nullptr),
+	writeInner_(nullptr),
 	loop_(EventLoop::instance()),
 	regId_(-1)
 {
+	assert((interest & SocketNotifier::Read) || (interest & SocketNotifier::Write));
+
 	if(loop_)
 	{
 		// if the rust-based eventloop is available, use it
 
-		unsigned char interest = 0;
-		switch(type_)
-		{
-			case SocketNotifier::Read:
-				interest = EventLoop::Readable;
-				break;
-			case SocketNotifier::Write:
-				interest = EventLoop::Writable;
-				break;
-		}
+		uint8_t einterest = 0;
 
-		regId_ = loop_->registerFd(socket_, interest, SocketNotifier::cb_fd_activated, this);
+		if(interest & SocketNotifier::Read)
+			einterest |= EventLoop::Readable;
+
+		if(interest & SocketNotifier::Write)
+			einterest |= EventLoop::Writable;
+
+		regId_ = loop_->registerFd(socket_, einterest, SocketNotifier::cb_fd_activated, this);
+		assert(regId_ >= 0);
 	}
 	else
 	{
 		// else fall back to qt eventloop
 
-		QSocketNotifier::Type qType = type == Read ? QSocketNotifier::Read : QSocketNotifier::Write;
+		if(interest & SocketNotifier::Read)
+		{
+			readInner_ = new QSocketNotifier(socket, QSocketNotifier::Read);
+			connect(readInner_, &QSocketNotifier::activated, this, &SocketNotifier::innerReadActivated);
+		}
 
-		inner_ = new QSocketNotifier(socket, qType);
-		connect(inner_, &QSocketNotifier::activated, this, &SocketNotifier::innerActivated);
+		if(interest & SocketNotifier::Write)
+		{
+			writeInner_ = new QSocketNotifier(socket, QSocketNotifier::Write);
+			connect(writeInner_, &QSocketNotifier::activated, this, &SocketNotifier::innerWriteActivated);
+		}
 	}
 }
 
 SocketNotifier::~SocketNotifier()
 {
-	if(inner_)
+	if(readInner_)
 	{
-		inner_->setEnabled(false);
+		readInner_->setEnabled(false);
 
-		inner_->disconnect(this);
-		inner_->setParent(0);
-		DeferCall::deleteLater(inner_);
+		readInner_->disconnect(this);
+		readInner_->setParent(0);
+		DeferCall::deleteLater(readInner_);
+	}
+
+	if(writeInner_)
+	{
+		writeInner_->setEnabled(false);
+
+		writeInner_->disconnect(this);
+		writeInner_->setParent(0);
+		DeferCall::deleteLater(writeInner_);
 	}
 
 	if(regId_ >= 0)
 		loop_->deregister(regId_);
 }
 
-void SocketNotifier::setEnabled(bool enable)
+void SocketNotifier::setReadEnabled(bool enable)
 {
-	enabled_ = enable;
+	readEnabled_ = enable;
 
-	if(inner_)
-		inner_->setEnabled(enabled_);
+	if(readInner_)
+		readInner_->setEnabled(readEnabled_);
 }
 
-void SocketNotifier::innerActivated(int socket)
+void SocketNotifier::setWriteEnabled(bool enable)
 {
-	activated(socket);
+	writeEnabled_ = enable;
+
+	if(writeInner_)
+		writeInner_->setEnabled(writeEnabled_);
 }
 
-void SocketNotifier::cb_fd_activated(void *ctx)
+void SocketNotifier::innerReadActivated(int socket)
+{
+	activated(socket, SocketNotifier::Read);
+}
+
+void SocketNotifier::innerWriteActivated(int socket)
+{
+	activated(socket, SocketNotifier::Write);
+}
+
+void SocketNotifier::cb_fd_activated(void *ctx, uint8_t readiness)
 {
 	SocketNotifier *self = (SocketNotifier *)ctx;
 
-	self->fd_activated();
+	self->fd_activated(readiness);
 }
 
-void SocketNotifier::fd_activated()
+void SocketNotifier::fd_activated(uint8_t ereadiness)
 {
-	if(enabled_)
-		activated(socket_);
+	uint8_t readiness = 0;
+
+	if(readEnabled_ && (ereadiness & EventLoop::Readable))
+		readiness |= SocketNotifier::Read;
+	if(writeEnabled_ && (ereadiness & EventLoop::Writable))
+		readiness |= SocketNotifier::Write;
+
+	if(readiness)
+		activated(socket_, readiness);
 }

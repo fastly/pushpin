@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::core::event::ReadinessExt;
 use crate::core::list;
 use crate::core::reactor;
 use crate::core::waker;
@@ -30,20 +31,20 @@ pub const READABLE: u8 = 0x01;
 pub const WRITABLE: u8 = 0x02;
 
 pub trait Callback {
-    fn call(&mut self);
+    fn call(&mut self, readiness: u8);
 }
 
 impl Callback for Box<dyn Callback> {
-    fn call(&mut self) {
-        (**self).call();
+    fn call(&mut self, readiness: u8) {
+        (**self).call(readiness);
     }
 }
 
 pub struct FnCallback<T>(T);
 
-impl<T: FnMut()> Callback for FnCallback<T> {
-    fn call(&mut self) {
-        self.0();
+impl<T: FnMut(u8)> Callback for FnCallback<T> {
+    fn call(&mut self, readiness: u8) {
+        self.0(readiness);
     }
 }
 
@@ -177,7 +178,7 @@ impl<C: Callback> Registrations<C> {
         // release borrows before each call. this way, callbacks can access
         // the eventloop, for example to add registrations
         loop {
-            let (nkey, mut callback) = {
+            let (nkey, mut callback, readiness) = {
                 let data = &mut *self.data.borrow_mut();
 
                 let nkey = match activated.pop_front(&mut data.nodes) {
@@ -191,6 +192,22 @@ impl<C: Callback> Registrations<C> {
                     .callback
                     .take()
                     .expect("registration should have a callback");
+
+                let readiness = {
+                    let readiness = reg.evented.registration().readiness();
+
+                    let mut r = 0;
+
+                    if readiness.contains_any(mio::Interest::READABLE) {
+                        r |= READABLE;
+                    }
+
+                    if readiness.contains_any(mio::Interest::WRITABLE) {
+                        r |= WRITABLE;
+                    }
+
+                    r
+                };
 
                 let nkey = if let Evented::Timer(_) = &reg.evented {
                     // remove timer registrations after activation
@@ -206,10 +223,10 @@ impl<C: Callback> Registrations<C> {
                     Some(nkey)
                 };
 
-                (nkey, callback)
+                (nkey, callback, readiness)
             };
 
-            callback.call();
+            callback.call(readiness);
 
             if let Some(nkey) = nkey {
                 let data = &mut *self.data.borrow_mut();
@@ -407,7 +424,7 @@ mod ffi {
 
     pub struct RawCallback {
         // SAFETY: must be called with the associated ctx value
-        f: unsafe extern "C" fn(*mut libc::c_void),
+        f: unsafe extern "C" fn(*mut libc::c_void, u8),
 
         ctx: *mut libc::c_void,
     }
@@ -416,7 +433,7 @@ mod ffi {
         // SAFETY: caller must ensure f is safe to call for the lifetime
         // of the registration
         pub unsafe fn new(
-            f: unsafe extern "C" fn(*mut libc::c_void),
+            f: unsafe extern "C" fn(*mut libc::c_void, u8),
             ctx: *mut libc::c_void,
         ) -> Self {
             Self { f, ctx }
@@ -424,10 +441,10 @@ mod ffi {
     }
 
     impl Callback for RawCallback {
-        fn call(&mut self) {
+        fn call(&mut self, readiness: u8) {
             // SAFETY: we are passing the ctx value that was provided
             unsafe {
-                (self.f)(self.ctx);
+                (self.f)(self.ctx, readiness);
             }
         }
     }
@@ -496,8 +513,8 @@ mod ffi {
     pub unsafe extern "C" fn event_loop_register_fd(
         l: *mut EventLoopRaw,
         fd: std::os::raw::c_int,
-        interest: libc::c_uchar,
-        cb: unsafe extern "C" fn(*mut libc::c_void),
+        interest: u8,
+        cb: unsafe extern "C" fn(*mut libc::c_void, u8),
         ctx: *mut libc::c_void,
         out_id: *mut libc::size_t,
     ) -> libc::c_int {
@@ -522,7 +539,7 @@ mod ffi {
     pub unsafe extern "C" fn event_loop_register_timer(
         l: *mut EventLoopRaw,
         timeout: u64,
-        cb: unsafe extern "C" fn(*mut libc::c_void),
+        cb: unsafe extern "C" fn(*mut libc::c_void, u8),
         ctx: *mut libc::c_void,
         out_id: *mut libc::size_t,
     ) -> libc::c_int {
@@ -572,7 +589,7 @@ mod tests {
     struct NoopCallback;
 
     impl Callback for NoopCallback {
-        fn call(&mut self) {}
+        fn call(&mut self, _readiness: u8) {}
     }
 
     #[test]
@@ -609,7 +626,9 @@ mod tests {
             let listener = Rc::clone(&listener);
             let count = Rc::clone(&count);
 
-            Box::new(FnCallback(move || {
+            Box::new(FnCallback(move |readiness| {
+                assert_eq!(readiness, READABLE);
+
                 let _stream = listener.accept().unwrap();
 
                 let e = listener.accept().unwrap_err();
@@ -656,7 +675,11 @@ mod tests {
         let cb = {
             let l = Rc::clone(&l);
 
-            Box::new(FnCallback(move || l.exit(0)))
+            Box::new(FnCallback(move |readiness| {
+                assert_eq!(readiness, READABLE);
+
+                l.exit(0);
+            }))
         };
 
         let id = l.register_timer(Duration::from_millis(0), cb).unwrap();
@@ -697,7 +720,9 @@ mod tests {
                     let l = Rc::clone(&l);
                     let listener = Rc::clone(&listener);
 
-                    Box::new(FnCallback(move || {
+                    Box::new(FnCallback(move |readiness| {
+                        assert_eq!(readiness, READABLE);
+
                         let _stream = listener.accept().unwrap();
                         l.exit(0);
                     }))

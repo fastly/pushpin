@@ -58,7 +58,7 @@ void EventLoop::exit(int code)
 	ffi::event_loop_exit(inner_, code);
 }
 
-int EventLoop::registerFd(int fd, unsigned char interest, void (*cb)(void *), void *ctx)
+int EventLoop::registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx)
 {
 	size_t id;
 
@@ -68,7 +68,7 @@ int EventLoop::registerFd(int fd, unsigned char interest, void (*cb)(void *), vo
 	return (int)id;
 }
 
-int EventLoop::registerTimer(int timeout, void (*cb)(void *), void *ctx)
+int EventLoop::registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx)
 {
 	size_t id;
 

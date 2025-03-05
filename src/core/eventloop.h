@@ -36,8 +36,8 @@ public:
 	int exec();
 	void exit(int code);
 
-	int registerFd(int fd, unsigned char interest, void (*cb)(void *), void *ctx);
-	int registerTimer(int timeout, void (*cb)(void *), void *ctx);
+	int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
+	int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
 	void deregister(int id);
 
 	static EventLoop *instance();

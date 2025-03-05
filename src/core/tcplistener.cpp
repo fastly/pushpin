@@ -43,7 +43,7 @@ bool TcpListener::bind(const QHostAddress &addr, quint16 port)
 
 	sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read);
 	sn_->activated.connect(boost::bind(&TcpListener::sn_activated, this));
-	sn_->setEnabled(true);
+	sn_->setReadEnabled(true);
 
 	return true;
 }

@@ -43,8 +43,10 @@ private slots:
 		SocketNotifier *sn = new SocketNotifier(fds[0], SocketNotifier::Read);
 
 		int activatedFd = -1;
-		sn->activated.connect([&](int fd) {
+		uint8_t activatedReadiness = -1;
+		sn->activated.connect([&](int fd, uint8_t readiness) {
 			activatedFd = fd;
+			activatedReadiness = readiness;
 			loop.exit(123);
 		});
 
@@ -53,6 +55,7 @@ private slots:
 
 		QCOMPARE(loop.exec(), 123);
 		QCOMPARE(activatedFd, fds[0]);
+		QCOMPARE(activatedReadiness, SocketNotifier::Read);
 
 		delete sn;
 		close(fds[1]);
