@@ -2089,11 +2089,14 @@ void ZhttpManager::setCacheParameters(
 	log_debug("%s", qPrintable(gMsgMethodAttrName));
 	log_debug("%s", qPrintable(gMsgParamsAttrName));
 
-	int ret = create_wsCacheClientProcesses();
-	if (ret < 0)
+	if (gCacheEnable == true)
 	{
-		log_error("[ERROR] failed to init ws cache clients");
-		exit(-1);
+		int ret = create_wsCacheClientProcesses();
+		if (ret < 0)
+		{
+			log_error("[ERROR] failed to init ws cache clients");
+			exit(-1);
+		}
 	}
 }
 
