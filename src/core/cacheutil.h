@@ -34,5 +34,7 @@
 
 int cacheclient_get_no(ZhttpRequestPacket &p);
 pid_t cacheclient_create_child_process(QString connectPath, int _no);
+void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
+int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
 
 #endif

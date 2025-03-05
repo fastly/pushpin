@@ -1101,139 +1101,6 @@ public:
 			currentSessionRefreshBucket = 0;
 	}
 
-	void parse_jsonMap(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap)
-	{
-		for(QVariantMap::const_iterator item = jsonData.begin(); item != jsonData.end(); ++item) 
-		{
-			QString itemKey = item.key();
-			QVariant itemVal = item.value();
-			// if has the same key, skip
-			if (jsonMap.contains(itemKey))
-				continue;
-
-			itemKey = keyName.isNull() ? itemKey : keyName+">>"+itemKey;
-
-			// add exception for id field
-			if (itemKey == "id")
-			{
-				if (itemVal.type() == QVariant::String)
-				{
-					QString strVal = "\"";
-					strVal += itemVal.toString();
-					strVal += "\"";
-					jsonMap[itemKey] = strVal;
-				}
-				else if (itemVal.canConvert<QString>())
-				{
-					jsonMap[itemKey] = itemVal.toString();
-				}
-			}
-			else if (itemVal.canConvert<QString>())
-			{
-				jsonMap[itemKey] = itemVal.toString();
-			}
-			else if (itemVal.type() == QVariant::Map)
-			{
-				QVariantMap mapData = itemVal.toMap();
-				parse_jsonMap(mapData, itemKey, jsonMap);
-			}
-			else if (itemVal.type() == QVariant::List)
-			{
-				QString tmpStr = "";
-				int i = 0;
-				for (QVariant m : itemVal.toList())
-				{
-					if (m.canConvert<QString>())
-					{
-						tmpStr += m.toString() + "+";
-					}
-					else if (m.type() == QVariant::List)
-					{
-						for (QVariant n : m.toList())
-						{
-							if (n.canConvert<QString>())
-							{
-								QString s = n.toString();
-								if (s.length() == 0)
-								{
-									tmpStr += "null";
-									tmpStr += "+";
-								}
-								else
-								{
-									tmpStr += n.toString() + "+";
-								}
-							}
-							else
-							{
-								log_debug("[WS] invalid type=%s", n.typeName());
-							}
-						}
-						// remove '+', '/' at the end
-						while (tmpStr.endsWith("+") || tmpStr.endsWith("/"))
-						{
-							tmpStr.remove(tmpStr.length()-1, 1);
-						}
-						tmpStr += "/";
-					}
-					else if (m.type() == QVariant::Map)
-					{
-						QVariantMap mapData = m.toMap();
-						parse_jsonMap(mapData, itemKey+">>"+QString::number(i), jsonMap);
-					}
-					i++;
-				}
-
-				// remove '+', '/' at the end
-				while (tmpStr.endsWith("+") || tmpStr.endsWith("/"))
-				{
-					tmpStr.remove(tmpStr.length()-1, 1);
-				}
-				
-				jsonMap[itemKey] = (tmpStr.length() > 0) ? tmpStr : "[LIST]";
-			}
-			else
-			{
-				log_debug("[WS] unknown parse json type=%s", itemVal.typeName());
-			}
-		}
-	}
-
-	int parse_jsonMsg(QVariant jsonMsg, QVariantMap& jsonMap)
-	{
-		// parse body as JSON string
-		QJsonParseError error;
-		QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonMsg.toByteArray(), &error);
-
-		if(error.error != QJsonParseError::NoError)
-			return -1;
-		
-		if(jsonDoc.isObject())
-		{
-			QVariantMap jsonData = jsonDoc.object().toVariantMap();
-			parse_jsonMap(jsonData, NULL, jsonMap);
-		}
-		else if(jsonDoc.isArray())
-		{
-			QVariantList jsonData = jsonDoc.array().toVariantList();
-			for(const QVariant& item : jsonData) 
-			{
-				if (item.type() == QVariant::Map)
-				{
-					QVariantMap mapData = item.toMap();
-					parse_jsonMap(mapData, NULL, jsonMap);
-					break;
-				}
-			}
-		}
-		else
-		{
-			return -1;
-		}
-
-		return 0;
-	}
-
 	QByteArray buildHashKey(QVariantMap &jsonMap, QString startingStr)
 	{
 		QString hashKeyStr = startingStr;
@@ -1427,7 +1294,7 @@ public:
 
 		// parse json body
 		QVariantMap jsonMap;
-		if (parse_jsonMsg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
+		if (parse_json_msg(packet.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[WS] failed to parse JSON msg");
 			// make invalid
@@ -1635,7 +1502,7 @@ public:
 		QByteArray pId = p.ids[0].id;
 
 		// parse json body
-		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
+		if (parse_json_msg(p.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[HTTP] failed to parse JSON msg");
 			return -1;
