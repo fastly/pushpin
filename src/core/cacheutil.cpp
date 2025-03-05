@@ -72,3 +72,40 @@ int cacheclient_get_number(ZhttpRequestPacket &p)
 
 	return -1;
 }
+
+int cacheclient_create_child_process(QString connectPath)
+{
+	char socketHeaderStr[64];
+	sprintf(socketHeaderStr, "Socket-Owner:Cache_Client%d", i);
+
+	pid_t processId = fork();
+	if (processId == -1)
+	{
+		// processId == -1 means error occurred
+		log_debug("can't fork to start wscat");
+		return -1;
+	}
+	else if (processId == 0) // child process
+	{
+		char *bin = (char*)"/usr/bin/wscat";
+		
+		// create wscat
+		char * argv_list[] = {
+			bin, 
+			(char*)"-H", socketHeaderStr, 
+			(char*)"-c", (char*)qPrintable(connectPath), 
+			NULL
+		};
+		execve(bin, argv_list, NULL);
+		
+		//set_debugLogLevel(true);
+		log_debug("failed to start wscat error=%d", errno);
+
+		exit(0);
+	}
+
+	// parent process
+	log_debug("[WS] created new cache client%d parent=%d processId=%d", i, getpid(), processId);
+
+	return 0;
+}
