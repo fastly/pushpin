@@ -35,7 +35,6 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QCoreApplication>
-#include <QtConcurrent>
 #include <QMap>
 #include <QCryptographicHash>
 #include <QThread>
