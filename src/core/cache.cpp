@@ -29,7 +29,7 @@
 #include "tnetstring.h"
 #include "log.h"
 
-bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket &p)
+bool is_wsInitRequestFromCacheClient(ZhttpRequestPacket p)
 {
 	QByteArray pId = p.ids.first().id;
 
