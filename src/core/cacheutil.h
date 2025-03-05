@@ -36,5 +36,10 @@ int cacheclient_get_no(ZhttpRequestPacket &p);
 pid_t cacheclient_create_child_process(QString connectPath, int _no);
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
+void replace_id_field(QByteArray &body, QString oldId, int newId);
+void replace_id_field(QByteArray &body, int oldId, QString newId);
+void replace_result_field(QByteArray &body, QString oldResult, QString newResult);
+void replace_subscription_field(QByteArray &body, QString oldSubscription, QString newSubscription);
+QByteArray calculate_response_hash_val(QByteArray &responseBody, int idVal);
 
 #endif
