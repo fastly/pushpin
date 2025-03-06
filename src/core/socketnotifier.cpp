@@ -145,7 +145,7 @@ void SocketNotifier::apply(uint8_t readiness)
 	// calculate which bits went from 0->1
 	uint8_t changes = readiness & ~readiness_;
 
-	readiness_ = readiness;
+	readiness_ |= readiness;
 
 	if((readEnabled_ && (changes & Read)) || (writeEnabled_ && (changes & Write)))
 		activated(socket_, changes);
