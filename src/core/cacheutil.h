@@ -52,6 +52,7 @@ struct CacheClientItem {
 	QByteArray clientId;
 };
 
+bool is_cache_method(QString methodStr);
 bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList);
 int get_cacheclient_no_from_response(QByteArray packetId, QList<CacheClientItem> &cacheClientList);
 int get_cacheclient_no_from_init_request(ZhttpRequestPacket &p);
