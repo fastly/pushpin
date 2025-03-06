@@ -46,8 +46,32 @@
 #include "tnetstring.h"
 #include "log.h"
 
+extern QStringList gCacheMethodList;
+extern QMap<QString, QString> gSubscribeMethodMap;
+
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+bool is_cache_method(QString methodStr)
+{
+	if (gCacheMethodList.contains(methodStr, Qt::CaseInsensitive))
+	{
+		return true;
+	}
+	else if (gCacheMethodList.contains("*") && 
+		!gSubscribeMethodMap.contains(methodStr))
+	{
+		foreach(QString subKey, gSubscribeMethodMap.keys())
+		{
+			if (gSubscribeMethodMap[subKey].toLower() == methodStr)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+	return false;
+}
 
 bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList)
 {

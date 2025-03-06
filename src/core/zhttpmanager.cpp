@@ -87,8 +87,8 @@ static QString gMsgParamsAttrName = "";
 static QString gResultAttrName = "result";
 
 
-static QStringList gCacheMethodList = {"*"};
-static QMap<QString, QString> gSubscribeMethodMap;
+QStringList gCacheMethodList = {"*"};
+QMap<QString, QString> gSubscribeMethodMap;
 
 // cache struct 
 struct ClientItem {
@@ -1233,27 +1233,6 @@ public:
 		return;
 	}
 
-	bool isCacheMethod(QString methodStr)
-	{
-		if (gCacheMethodList.contains(methodStr, Qt::CaseInsensitive))
-		{
-			return true;
-		}
-		else if (gCacheMethodList.contains("*") && 
-			!gSubscribeMethodMap.contains(methodStr))
-		{
-			foreach(QString subKey, gSubscribeMethodMap.keys())
-			{
-				if (gSubscribeMethodMap[subKey].toLower() == methodStr)
-				{
-					return false;
-				}
-			}
-			return true;
-		}
-		return false;
-	}
-
 	void registerHttpCacheItem(
 		const ZhttpRequestPacket &clientPacket, 
 		QByteArray clientId, 
@@ -1381,7 +1360,7 @@ public:
 		// Params hash val
 		QByteArray paramsHash = buildHashKey(jsonMap, "HTTP+");
 
-		if (isCacheMethod(msgMethod))
+		if (is_cache_method(msgMethod))
 		{
 			if (gCacheItemMap.contains(paramsHash))
 			{
