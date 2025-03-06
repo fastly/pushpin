@@ -429,12 +429,14 @@ public:
 		return best;
 	}
 
-	void tryResponseWsInitRequest(SessionType type, const QByteArray &newPacketId, const ZhttpRequestPacket &packet)
+	void tryResponseWsInitRequest(SessionType type, const QByteArray &newPacketId, const QByteArray &responseKey, const ZhttpRequestPacket &packet)
 	{
 		//// Send cached response
 		ZhttpResponsePacket out = gWsInitResponsePacket;
 
 		out.ids[0].id = newPacketId.data();
+		out.headers.removeAll("Sec-WebSocket-Key");
+		out.headers += HttpHeader("Sec-WebSocket-Key", responseKey);
 		
 		write(type, out, packet.from);
 	}
@@ -1502,7 +1504,7 @@ public:
 
 		int cacheClientNo = select_main_cacheclient(gWsCacheClientList);
 		registerWsClient(packetId);
-		tryResponseWsInitRequest(WebSocketSession, packetId, p);
+		tryResponseWsInitRequest(WebSocketSession, packetId, responseKey, p);
 
 		return 0;
 	}
