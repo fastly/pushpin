@@ -520,7 +520,7 @@ public:
 					gWsCacheClientList[ret].initFlag = true;
 					gWsCacheClientList[ret].lastDataReceivedTime = time(NULL);
 					gWsCacheClientList[ret].from = packet.from;
-					log_debug("[WS] Initialized Cache client%d", ret);
+					log_debug("[WS] Initialized Cache client%d, %s", ret, gWsCacheClientList[ret].clientId.data());
 					gWsInitResponsePacket = packet;
 				}
 				else
