@@ -53,7 +53,7 @@ bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList)
 {
 	for (int i = 0; i < cacheClientList.count(); i++)
 	{
-		if (gWsCacheClientList[i].initFlag == true)
+		if (cacheClientList[i].initFlag == true)
 		{
 			return true;
 		}			
@@ -61,12 +61,12 @@ bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList)
 	return false;
 }
 
-int get_cacheclient_no_from_response(ZhttpResponsePacket &p, QList<CacheClientItem> &cacheClientList)
+int get_cacheclient_no_from_response(const ZhttpResponsePacket &p, QList<CacheClientItem> &cacheClientList)
 {
-	QByteArray packetId = gWsInitResponsePacket.ids[0].id;
+	QByteArray packetId = p.ids[0].id;
 	for (int i = 0; i < cacheClientList.count(); i++)
 	{
-		if (gWsCacheClientList[i].clientId == packetId)
+		if (cacheClientList[i].clientId == packetId)
 		{
 			return i;
 		}			
@@ -421,7 +421,7 @@ QByteArray calculate_sec_ws_response_key_from_init_request(ZhttpRequestPacket &p
 
 		log_debug("[WS] get ws response key for init request requestKey=%s responseKey=%s", requestKey.data(), responseKey.data());
 
-		return respondKey;
+		return responseKey;
 	}
 	return NULL;
 }

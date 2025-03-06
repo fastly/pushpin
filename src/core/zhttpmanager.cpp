@@ -429,12 +429,12 @@ public:
 		return best;
 	}
 
-	void tryResponseWsInitRequest(SessionType type, const QByteArray &newPacketId)
+	void tryResponseWsInitRequest(SessionType type, const QByteArray &newPacketId, const ZhttpRequestPacket &packet)
 	{
 		//// Send cached response
-		ZhttpResponsePacket responsePacket = gWsInitResponsePacket;
+		ZhttpResponsePacket out = gWsInitResponsePacket;
 
-		responsePacket.ids[0].id = newPacketId.data();
+		out.ids[0].id = newPacketId.data();
 		
 		write(type, out, packet.from);
 	}
@@ -515,13 +515,17 @@ public:
 				int ret = get_cacheclient_no_from_response(packet, gWsCacheClientList);
 				if (ret >= 0)
 				{
+					// cache client
 					gWsCacheClientList[ret].initFlag = true;
-					gWsCacheClientList[ret].totalCredit = gWsInitResponsePacket.credits;
+					gWsCacheClientList[ret].totalCredit = packet.credits;
 					gWsCacheClientList[ret].lastDataReceivedTime = time(NULL);
-					gWsCacheClientList[ret].receiver = receiver;
-					gWsCacheClientList[ret].from = gWsInitResponsePacket.from;
-					log_debug("[WS] Initialized Cache client%d receiver=%s", i, receiver.data());
+					gWsCacheClientList[ret].from = packet.from;
+					log_debug("[WS] Initialized Cache client%d receiver=%s", ret, receiver.data());
 					gWsInitResponsePacket = packet;
+				}
+				else
+				{
+					// real client
 				}
 			}
 			else
@@ -837,23 +841,20 @@ public:
 				return;
 			}
 
-			if (p.type == InInit)
+			// if requests from cache client
+			int cacheClientNumber = get_cacheclient_no_from_init_request(p);
+			if (cacheClientNumber >= 0 && cacheClientNumber < gWsCacheClientList.count())
 			{
-				// if requests from cache client
-				int cacheClientNumber = get_cacheclient_no_from_init_request(p);
-				if (cacheClientNumber >= 0 && cacheClientNumber < gWsCacheClientList.count())
+				log_debug("[WS] passing the requests from cache client");
+			}
+			else // if request from real client
+			{
+				log_debug("[WS] received init request from real client");
+				if (is_cacheclient_inited(gWsCacheClientList) == false)
 				{
-					log_debug("[WS] passing the requests from cache client");
-				}
-				else // if request from real client
-				{
-					log_debug("[WS] received init request from real client");
-					if (is_cacheclient_inited(gWsCacheClientList) == false)
-					{
-						log_warning("[WS] not initialized cache client, ignore");
-						tryRespondCancel(WebSocketSession, id.id, p);
-						return;
-					}
+					log_warning("[WS] not initialized cache client, ignore");
+					tryRespondCancel(WebSocketSession, id.id, p);
+					return;
 				}
 			}
 
@@ -1204,7 +1205,7 @@ public:
 
 		struct ClientItem clientItem;
 		clientItem.requestSeq = 0;
-		clientItem.responseSeq = response.ids[0].seq;
+		clientItem.responseSeq = 0;
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastPingResponseTime = time(NULL);
 		gWsClientMap[packetId] = clientItem;
@@ -1492,9 +1493,9 @@ public:
 			return -1;
 		}
 
-		int cacheClientNo = select_mainCacheClient();
+		int cacheClientNo = select_main_cacheclient();
 		registerWsClient(packetId);
-		tryResponseWsInitRequest(SessionType type, const QByteArray &newPacketId)
+		tryResponseWsInitRequest(WebSocketSession, packetId, p)
 	}
 };
 

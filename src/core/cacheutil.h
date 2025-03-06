@@ -56,7 +56,7 @@ bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList);
 int get_cacheclient_no_from_response(ZhttpResponsePacket &p, QList<CacheClientItem> &cacheClientList);
 int get_cacheclient_no_from_init_request(ZhttpRequestPacket &p);
 pid_t create_process_for_cacheclient(QString connectPath, int _no);
-int select_main_cacheclient(QList<CacheClientItem> &cacheClientList)
+int select_main_cacheclient(QList<CacheClientItem> &cacheClientList);
 
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
