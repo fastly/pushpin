@@ -231,9 +231,19 @@ impl<C: Callback> Registrations<C> {
             if let Some(nkey) = nkey {
                 let data = &mut *self.data.borrow_mut();
 
-                let reg = &mut data.nodes[nkey].value;
+                // if the registration still exists, restore its callback
+                if let Some(n) = &mut data.nodes.get_mut(nkey) {
+                    let reg = &mut n.value;
 
-                reg.callback = Some(callback);
+                    // only set the callback field on the registration if
+                    // it's the same registration we took the callback from
+                    // and not a new registration that happened to reuse the
+                    // same slot. if the callback field is none, then it's
+                    // the same registration.
+                    if reg.callback.is_none() {
+                        reg.callback = Some(callback);
+                    }
+                }
             }
         }
     }
@@ -699,6 +709,46 @@ mod tests {
             .unwrap();
 
         l.deregister(id).unwrap();
+    }
+
+    #[test]
+    fn deregister_within_callback() {
+        let l = Rc::new(EventLoop::<Box<dyn Callback>>::new(1));
+
+        let listener = Rc::new(std::net::TcpListener::bind("127.0.0.1:0").unwrap());
+        listener.set_nonblocking(true).unwrap();
+
+        let addr = listener.local_addr().unwrap();
+        let fd = listener.as_raw_fd();
+
+        let id = Rc::new(Cell::new(None));
+
+        let cb = {
+            let l = Rc::clone(&l);
+            let listener = Rc::clone(&listener);
+            let id = Rc::clone(&id);
+
+            Box::new(FnCallback(move |readiness| {
+                assert_eq!(readiness, READABLE);
+
+                let _stream = listener.accept().unwrap();
+
+                let e = listener.accept().unwrap_err();
+                assert_eq!(e.kind(), io::ErrorKind::WouldBlock);
+
+                // this is allowed
+                l.deregister(id.get().unwrap()).unwrap();
+
+                l.exit(0);
+            }))
+        };
+
+        id.set(Some(l.register_fd(fd, READABLE, cb).unwrap()));
+
+        // non-blocking connect attempt to trigger listener
+        let _stream = mio::net::TcpStream::connect(addr);
+
+        assert_eq!(l.exec(), 0);
     }
 
     #[test]
