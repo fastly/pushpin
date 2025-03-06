@@ -16,10 +16,12 @@
 
 #include "tcplistener.h"
 
+#include <assert.h>
 #include "socketnotifier.h"
 
 TcpListener::TcpListener() :
-	inner_(nullptr)
+	inner_(nullptr),
+	errorCondition_(0)
 {
 }
 
@@ -33,11 +35,15 @@ bool TcpListener::bind(const QHostAddress &addr, quint16 port)
 	reset();
 
 	QByteArray ip = addr.toString().toUtf8();
+	errorCondition_ = 0;
 
 	int e;
 	inner_ = ffi::tcp_listener_bind(ip.data(), port, &e);
 	if(!inner_)
+	{
+		errorCondition_ = e;
 		return false;
+	}
 
 	int fd = ffi::tcp_listener_as_raw_fd(inner_);
 
@@ -50,6 +56,8 @@ bool TcpListener::bind(const QHostAddress &addr, quint16 port)
 
 std::tuple<QHostAddress, quint16> TcpListener::localAddress() const
 {
+	assert(inner_);
+
 	QByteArray ip(256, 0);
 	size_t ip_size = ip.size();
 	quint16 port;
@@ -64,10 +72,17 @@ std::tuple<QHostAddress, quint16> TcpListener::localAddress() const
 
 std::unique_ptr<TcpStream> TcpListener::accept()
 {
+	assert(inner_);
+
+	errorCondition_ = 0;
+
 	int e;
 	ffi::TcpStream *s_inner = ffi::tcp_listener_accept(inner_, &e);
 	if(!s_inner)
+	{
+		errorCondition_ = e;
 		return std::unique_ptr<TcpStream>(); // null
+	}
 
 	TcpStream *s = new TcpStream(s_inner);
 
@@ -78,8 +93,11 @@ void TcpListener::reset()
 {
 	sn_.reset();
 
-	ffi::tcp_listener_destroy(inner_);
-	inner_ = nullptr;
+	if(inner_)
+	{
+		ffi::tcp_listener_destroy(inner_);
+		inner_ = nullptr;
+	}
 }
 
 void TcpListener::sn_activated()

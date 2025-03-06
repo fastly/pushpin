@@ -754,7 +754,7 @@ mod ffi {
     use std::convert::TryInto;
     use std::ffi::{CStr, OsStr};
     use std::io::{Read, Write};
-    use std::os::fd::AsRawFd;
+    use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
     use std::os::raw::{c_char, c_int};
     use std::os::unix::ffi::OsStrExt;
     use std::path::Path;
@@ -939,10 +939,83 @@ mod ffi {
 
     #[allow(clippy::missing_safety_doc)]
     #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_connect(
+        ip: *const c_char,
+        port: u16,
+        out_errno: *mut c_int,
+    ) -> *mut TcpStream {
+        assert!(!out_errno.is_null());
+
+        let ip = unsafe { CStr::from_ptr(ip) };
+
+        let ip = match ip.to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                unsafe { out_errno.write(libc::EINVAL) };
+                return ptr::null_mut();
+            }
+        };
+
+        let ip: std::net::IpAddr = match ip.parse() {
+            Ok(ip) => ip,
+            Err(_) => {
+                unsafe { out_errno.write(libc::EINVAL) };
+                return ptr::null_mut();
+            }
+        };
+
+        let addr = std::net::SocketAddr::new(ip, port);
+
+        // use mio to ensure socket begins in non-blocking mode
+        let s = match mio::net::TcpStream::connect(addr) {
+            Ok(s) => s,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return ptr::null_mut();
+            }
+        };
+
+        // SAFETY: converting from valid object
+        let s = unsafe { std::net::TcpStream::from_raw_fd(s.into_raw_fd()) };
+
+        Box::into_raw(Box::new(TcpStream(s)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
     pub unsafe extern "C" fn tcp_stream_destroy(s: *mut TcpStream) {
         if !s.is_null() {
             drop(Box::from_raw(s));
         }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_check_connected(
+        s: *const TcpStream,
+        out_errno: *mut c_int,
+    ) -> c_int {
+        let s = s.as_ref().unwrap();
+        assert!(!out_errno.is_null());
+
+        // mio documentation says to use take_error() and peer_addr() to
+        // check for connected
+
+        if let Ok(Some(e)) | Err(e) = s.0.take_error() {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return -1;
+        }
+
+        // returns libc::ENOTCONN if not yet connected
+        if let Err(e) = s.0.peer_addr() {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return -1;
+        }
+
+        0
     }
 
     #[allow(clippy::missing_safety_doc)]

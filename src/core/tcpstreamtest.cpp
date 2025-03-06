@@ -22,9 +22,9 @@
 
 #include <QtTest/QtTest>
 #include <QHostAddress>
-#include <QTcpSocket>
 #include "timer.h"
 #include "defercall.h"
+#include "eventloop.h"
 #include "tcplistener.h"
 #include "tcpstream.h"
 
@@ -32,68 +32,95 @@ class TcpStreamTest : public QObject
 {
 	Q_OBJECT
 
-private slots:
-	void initTestCase()
-	{
-		Timer::init(100);
-	}
-
-	void cleanupTestCase()
-	{
-		DeferCall::cleanup();
-		Timer::deinit();
-	}
-
-	void accept()
+private:
+	void runAccept(std::function<void ()> loop_wait)
 	{
 		TcpListener l;
 		QVERIFY(l.bind(QHostAddress("127.0.0.1"), 0));
 
 		auto [addr, port] = l.localAddress();
 
-		bool streamsReady = false;
+		// start by assuming operations are possible
+		bool streamsReady = true;
+
 		l.streamsReady.connect([&] {
 			streamsReady = true;
 		});
 
 		std::unique_ptr<TcpStream> s = l.accept();
 		QVERIFY(!s);
+		QCOMPARE(l.errorCondition(), EAGAIN);
+		streamsReady = false;
 
-		QTcpSocket client;
-		client.connectToHost(addr, port);
+		TcpStream client;
+		QVERIFY(client.connect(addr, port));
+
+		// start by assuming operations are possible
+		bool clientWriteReady = true;
+
+		client.writeReady.connect([&] {
+			clientWriteReady = true;
+		});
 
 		while(!streamsReady)
-			QTest::qWait(10);
+			loop_wait();
 
 		s = l.accept();
 		QVERIFY(s);
 
-		client.waitForConnected(-1);
+		while(!client.checkConnected())
+		{
+			QCOMPARE(client.errorCondition(), ENOTCONN);
+
+			clientWriteReady = false;
+			while(!clientWriteReady)
+				loop_wait();
+		}
 	}
 
-	void io()
+	void runIo(std::function<void ()> loop_wait)
 	{
 		TcpListener l;
 		QVERIFY(l.bind(QHostAddress("127.0.0.1"), 0));
 
 		auto [addr, port] = l.localAddress();
 
-		bool streamsReady = false;
+		// start by assuming operations are possible
+		bool streamsReady = true;
+
 		l.streamsReady.connect([&] {
 			streamsReady = true;
 		});
 
-		std::unique_ptr<TcpStream> s = l.accept();
-		QVERIFY(!s);
+		TcpStream client;
+		QVERIFY(client.connect(addr, port));
 
-		QTcpSocket client;
-		client.connectToHost(addr, port);
+		// start by assuming operations are possible
+		bool clientReadReady = true;
+		bool clientWriteReady = true;
 
-		while(!streamsReady)
-			QTest::qWait(10);
+		client.readReady.connect([&] {
+			clientReadReady = true;
+		});
 
-		s = l.accept();
-		QVERIFY(s);
+		client.writeReady.connect([&] {
+			clientWriteReady = true;
+		});
+
+		std::unique_ptr<TcpStream> s;
+		while(!s)
+		{
+			s = l.accept();
+
+			if(!s)
+			{
+				QCOMPARE(l.errorCondition(), EAGAIN);
+
+				streamsReady = false;
+				while(!streamsReady)
+					loop_wait();
+			}
+		}
 
 		// start by assuming operations are possible
 		bool readReady = true;
@@ -107,9 +134,20 @@ private slots:
 			writeReady = true;
 		});
 
-		client.waitForConnected(-1);
+		while(!client.checkConnected())
+		{
+			QCOMPARE(client.errorCondition(), ENOTCONN);
 
-		client.write("hello\n");
+			clientWriteReady = false;
+			while(!clientWriteReady)
+				loop_wait();
+		}
+
+		QVERIFY(s->read().isNull());
+		QCOMPARE(s->errorCondition(), EAGAIN);
+		readReady = false;
+
+		QCOMPARE(client.write("hello\n"), 6);
 
 		QByteArray received;
 		while(!received.contains('\n'))
@@ -122,7 +160,7 @@ private slots:
 
 				readReady = false;
 				while(!readReady)
-					QTest::qWait(10);
+					loop_wait();
 
 				continue;
 			}
@@ -137,8 +175,7 @@ private slots:
 		QByteArray written;
 		received.clear();
 
-		// without running the event loop, write until we fill the system
-		// buffer
+		// write until we fill the system buffer
 		while(true)
 		{
 			QByteArray chunk(100000, 'a');
@@ -154,14 +191,36 @@ private slots:
 			written += chunk.mid(0, ret);
 		}
 
-		// read some on the client side
+		// wait for some bytes on the client side
 		while(received.isEmpty())
 		{
 			QByteArray buf = client.read(100000);
-			if(buf.isEmpty())
+
+			if(buf.isNull())
 			{
-				QTest::qWait(10);
+				QCOMPARE(client.errorCondition(), EAGAIN);
+
+				clientReadReady = false;
+				while(!clientReadReady)
+					loop_wait();
+
 				continue;
+			}
+
+			received += buf;
+		}
+
+		// now read as much as possible on the client side. this helps the
+		// server side gain writability sooner
+		while(true)
+		{
+			QByteArray buf = client.read(100000);
+
+			if(buf.isNull())
+			{
+				QCOMPARE(client.errorCondition(), EAGAIN);
+				clientReadReady = false;
+				break;
 			}
 
 			received += buf;
@@ -169,7 +228,7 @@ private slots:
 
 		// wait for writability
 		while(!writeReady)
-			QTest::qWait(10);
+			loop_wait();
 
 		// write more
 		{
@@ -186,16 +245,71 @@ private slots:
 		// read until closed on the client side
 		while(true)
 		{
-			while(client.bytesAvailable())
-				received += client.read(100000);
+			QByteArray buf = client.read(100000);
 
-			if(client.state() != QTcpSocket::ConnectedState)
+			if(buf.isNull())
+			{
+				QCOMPARE(client.errorCondition(), EAGAIN);
+
+				clientReadReady = false;
+				while(!clientReadReady)
+					loop_wait();
+
+				continue;
+			}
+
+			if(buf.isEmpty())
 				break;
 
-			QTest::qWait(10);
+			received += buf;
 		}
 
 		QCOMPARE(received, written);
+	}
+
+private slots:
+	void accept()
+	{
+		EventLoop loop(100);
+
+		runAccept([&] {
+			QThread::msleep(10);
+			loop.step();
+		});
+
+		DeferCall::cleanup();
+	}
+
+	void acceptQt()
+	{
+		Timer::init(100);
+
+		runAccept([] { QTest::qWait(10); });
+
+		DeferCall::cleanup();
+		Timer::deinit();
+	}
+
+	void io()
+	{
+		EventLoop loop(100);
+
+		runIo([&] {
+			QThread::msleep(10);
+			loop.step();
+		});
+
+		DeferCall::cleanup();
+	}
+
+	void ioQt()
+	{
+		Timer::init(100);
+
+		runIo([] { QTest::qWait(10); });
+
+		DeferCall::cleanup();
+		Timer::deinit();
 	}
 };
 

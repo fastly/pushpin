@@ -24,12 +24,22 @@
 #include "rust/bindings.h"
 #include "readwrite.h"
 
+class QHostAddress;
+
 class SocketNotifier;
 
 class TcpStream : public ReadWrite
 {
 public:
+	TcpStream();
 	~TcpStream();
+
+	// returns true if connection starting, false on error
+	bool connect(const QHostAddress &addr, uint16_t port);
+
+	// returns true if connected, false on error. if errorCondition() returns
+	// ENOTCONN, then it is not fatal and the socket is still connecting
+	bool checkConnected();
 
 	// reimplemented
 	virtual QByteArray read(int size = -1);
@@ -45,6 +55,8 @@ private:
 	std::shared_ptr<std::monostate> alive_;
 
 	TcpStream(ffi::TcpStream *inner);
+	void reset();
+	void setupNotifier();
 	void sn_activated(int socket, uint8_t readiness);
 };
 
