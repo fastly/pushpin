@@ -996,6 +996,8 @@ mod ffi {
         s: *const TcpStream,
         out_errno: *mut c_int,
     ) -> c_int {
+        assert!(!out_errno.is_null());
+        
         let s = s.as_ref().unwrap();
 
         // mio documentation says to use take_error() and peer_addr() to
