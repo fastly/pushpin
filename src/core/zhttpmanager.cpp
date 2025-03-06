@@ -526,6 +526,7 @@ public:
 				else
 				{
 					// real client
+					log_debug("[WS] Initialized real client=%s", packetId.data());
 				}
 			}
 			else
