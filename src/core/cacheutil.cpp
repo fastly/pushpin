@@ -46,7 +46,35 @@
 #include "tnetstring.h"
 #include "log.h"
 
-int cacheclient_get_no(ZhttpRequestPacket &p)
+// definitions for cache
+#define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList)
+{
+	for (int i = 0; i < cacheClientList.count(); i++)
+	{
+		if (gWsCacheClientList[i].initFlag == true)
+		{
+			return true;
+		}			
+	}
+	return false;
+}
+
+int get_cacheclient_no_from_response(ZhttpResponsePacket &p, QList<CacheClientItem> &cacheClientList)
+{
+	QByteArray packetId = gWsInitResponsePacket.ids[0].id;
+	for (int i = 0; i < cacheClientList.count(); i++)
+	{
+		if (gWsCacheClientList[i].clientId == packetId)
+		{
+			return i;
+		}			
+	}
+	return -1;
+}
+
+int get_cacheclient_no_from_init_request(ZhttpRequestPacket &p)
 {
 	QByteArray pId = p.ids.first().id;
 
@@ -73,7 +101,7 @@ int cacheclient_get_no(ZhttpRequestPacket &p)
 	return -1;
 }
 
-pid_t cacheclient_create_child_process(QString connectPath, int _no)
+pid_t create_process_for_cacheclient(QString connectPath, int _no)
 {
 	char socketHeaderStr[64];
 	sprintf(socketHeaderStr, "Socket-Owner:Cache_Client%d", _no);
@@ -108,6 +136,16 @@ pid_t cacheclient_create_child_process(QString connectPath, int _no)
 	log_debug("[WS] created new cache client%d parent=%d processId=%d", _no, getpid(), processId);
 
 	return processId;
+}
+
+int select_main_cacheclient(QList<CacheClientItem> &cacheClientList)
+{
+	for (int i=0; i<cacheClientList.count(); i++)
+	{
+		if (cacheClientList[i].initFlag == true)
+			return i;
+	}
+	return -1;
 }
 
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap)
@@ -370,4 +408,20 @@ QByteArray calculate_response_hash_val(QByteArray &responseBody, int idVal)
 	replace_id_field(out, idVal, 0);
 
 	return QCryptographicHash::hash(out,QCryptographicHash::Sha1);
+}
+
+QByteArray calculate_sec_ws_response_key_from_init_request(ZhttpRequestPacket &p)
+{
+	// parse request packet header
+	HttpHeaders requestHeaders = p.headers;
+	if (requestHeaders.contains("Sec-WebSocket-Key"))
+	{
+		QByteArray requestKey = requestHeaders.get("Sec-WebSocket-Key");
+		QByteArray responseKey = QCryptographicHash::hash((requestKey + MAGIC_STRING), QCryptographicHash::Sha1).toBase64();
+
+		log_debug("[WS] get ws response key for init request requestKey=%s responseKey=%s", requestKey.data(), responseKey.data());
+
+		return respondKey;
+	}
+	return NULL;
 }

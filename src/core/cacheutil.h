@@ -32,14 +32,41 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 
-int cacheclient_get_no(ZhttpRequestPacket &p);
-pid_t cacheclient_create_child_process(QString connectPath, int _no);
+enum Scheme {
+	none,
+	http,
+	websocket
+};
+
+// cache client params
+struct CacheClientItem {
+	QString connectPath;
+	pid_t processId;
+	bool initFlag;
+	int msgIdCount;
+	int requestSeqCount;
+	int responseSeqCount;
+	time_t lastDataReceivedTime;
+	QByteArray receiver;
+	QByteArray from;
+	QByteArray clientId;
+};
+
+bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList);
+int get_cacheclient_no_from_response(ZhttpResponsePacket &p, QList<CacheClientItem> &cacheClientList);
+int get_cacheclient_no_from_init_request(ZhttpRequestPacket &p);
+pid_t create_process_for_cacheclient(QString connectPath, int _no);
+int select_main_cacheclient(QList<CacheClientItem> &cacheClientList)
+
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);
+
 void replace_id_field(QByteArray &body, QString oldId, int newId);
 void replace_id_field(QByteArray &body, int oldId, QString newId);
 void replace_result_field(QByteArray &body, QString oldResult, QString newResult);
 void replace_subscription_field(QByteArray &body, QString oldSubscription, QString newSubscription);
+
 QByteArray calculate_response_hash_val(QByteArray &responseBody, int idVal);
+QByteArray calculate_sec_ws_response_key_from_init_request(ZhttpRequestPacket &p);
 
 #endif

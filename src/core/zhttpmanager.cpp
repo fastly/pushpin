@@ -62,15 +62,13 @@
 
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
-enum Scheme {
-	none,
-	http,
-	websocket
-};
 
 static bool gCacheEnable = false;
 static QStringList gHttpBackendUrlList;
 static QStringList gWsBackendUrlList;
+
+QList<CacheClientItem> gWsCacheClientList;
+ZhttpResponsePacket gWsInitResponsePacket;
 
 // Cache key item
 enum ItemFlag {
@@ -91,21 +89,6 @@ static QString gResultAttrName = "result";
 
 static QStringList gCacheMethodList = {"*"};
 static QMap<QString, QString> gSubscribeMethodMap;
-
-// cache client params
-struct CacheClientItem {
-	QString connectPath;
-	pid_t processId;
-	bool initFlag;
-	int msgIdCount;
-	int requestSeqCount;
-	int responseSeqCount;
-	time_t lastDataReceivedTime;
-	QByteArray receiver;
-	QByteArray from;
-	QByteArray clientId;
-};
-QList<CacheClientItem> gWsCacheClientList;
 
 // cache struct 
 struct ClientItem {
@@ -446,6 +429,16 @@ public:
 		return best;
 	}
 
+	void tryResponseWsInitRequest(SessionType type, const QByteArray &newPacketId)
+	{
+		//// Send cached response
+		ZhttpResponsePacket responsePacket = gWsInitResponsePacket;
+
+		responsePacket.ids[0].id = newPacketId.data();
+		
+		write(type, out, packet.from);
+	}
+
 	void tryRespondCancel(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
 	{
 		assert(!packet.from.isEmpty());
@@ -517,13 +510,30 @@ public:
 		// cache process
 		if (gCacheEnable == true)
 		{
-			QByteArray packetId = packet.ids.first().id;
-			if (gHttpClientMap.contains(packetId))
+			if (packet.code == 101) // ws client init response code
 			{
-				int ret = process_http_response(packet);
-				if (ret == 0)
-					return;
-				gHttpClientMap[packetId].responseSeq = packet.ids.first().seq;
+				int ret = get_cacheclient_no_from_response(packet, gWsCacheClientList);
+				if (ret >= 0)
+				{
+					gWsCacheClientList[ret].initFlag = true;
+					gWsCacheClientList[ret].totalCredit = gWsInitResponsePacket.credits;
+					gWsCacheClientList[ret].lastDataReceivedTime = time(NULL);
+					gWsCacheClientList[ret].receiver = receiver;
+					gWsCacheClientList[ret].from = gWsInitResponsePacket.from;
+					log_debug("[WS] Initialized Cache client%d receiver=%s", i, receiver.data());
+					gWsInitResponsePacket = packet;
+				}
+			}
+			else
+			{
+				QByteArray packetId = packet.ids.first().id;
+				if (gHttpClientMap.contains(packetId))
+				{
+					int ret = process_http_response(packet);
+					if (ret == 0)
+						return;
+					gHttpClientMap[packetId].responseSeq = packet.ids.first().seq;
+				}
 			}
 		}
 
@@ -827,10 +837,24 @@ public:
 				return;
 			}
 
-			int cacheClientNumber = cacheclient_get_no(p);
-			if (cacheClientNumber >= 0 && cacheClientNumber > gWsCacheClientList.count())
+			if (p.type == InInit)
 			{
-
+				// if requests from cache client
+				int cacheClientNumber = get_cacheclient_no_from_init_request(p);
+				if (cacheClientNumber >= 0 && cacheClientNumber < gWsCacheClientList.count())
+				{
+					log_debug("[WS] passing the requests from cache client");
+				}
+				else // if request from real client
+				{
+					log_debug("[WS] received init request from real client");
+					if (is_cacheclient_inited(gWsCacheClientList) == false)
+					{
+						log_warning("[WS] not initialized cache client, ignore");
+						tryRespondCancel(WebSocketSession, id.id, p);
+						return;
+					}
+				}
 			}
 
 			sock = new ZWebSocket;
@@ -1170,6 +1194,25 @@ public:
 		return;
 	}
 
+	void registerWsClient(QByteArray packetId)
+	{
+		if (gWsClientMap.contains(packetId))
+		{
+			log_debug("[HTTP] already exists http client id=%s", packetId.data());
+			return;
+		}
+
+		struct ClientItem clientItem;
+		clientItem.requestSeq = 0;
+		clientItem.responseSeq = response.ids[0].seq;
+		clientItem.lastRequestTime = time(NULL);
+		clientItem.lastPingResponseTime = time(NULL);
+		gWsClientMap[packetId] = clientItem;
+		log_debug("[WS] added ws client id=%s", packetId.data());
+
+		return;
+	}
+
 	bool isCacheMethod(QString methodStr)
 	{
 		if (gCacheMethodList.contains(methodStr, Qt::CaseInsensitive))
@@ -1437,6 +1480,21 @@ public:
 		}
 
 		return -1;
+	}
+
+	int process_ws_init_request(ZhttpRequestPacket &p)
+	{
+		QByteArray packetId = p.ids[0].id;
+		QByteArray responseKey = calculate_sec_ws_response_key_from_init_request(p);
+		if (responseKey == NULL)
+		{
+			log_warning("[WS] failed to get ws response key from init request");
+			return -1;
+		}
+
+		int cacheClientNo = select_mainCacheClient();
+		registerWsClient(packetId);
+		tryResponseWsInitRequest(SessionType type, const QByteArray &newPacketId)
 	}
 };
 
@@ -1789,7 +1847,7 @@ void ZhttpManager::setCacheParameters(
 		// create processes for cache client
 		for (int i = 0; i < gWsBackendUrlList.count(); i++)
 		{
-			pid_t processId = cacheclient_create_child_process(gWsBackendUrlList[i], i);
+			pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[i], i);
 			if (processId > 0)
 			{
 				CacheClientItem cacheClientItem;
