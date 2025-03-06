@@ -409,7 +409,7 @@ QByteArray calculate_response_hash_val(QByteArray &responseBody, int idVal)
 	return QCryptographicHash::hash(out,QCryptographicHash::Sha1);
 }
 
-QByteArray calculate_sec_ws_response_key_from_init_request(ZhttpRequestPacket &p)
+QByteArray calculate_response_seckey_from_init_request(ZhttpRequestPacket &p)
 {
 	// parse request packet header
 	HttpHeaders requestHeaders = p.headers;

@@ -67,6 +67,6 @@ void replace_result_field(QByteArray &body, QString oldResult, QString newResult
 void replace_subscription_field(QByteArray &body, QString oldSubscription, QString newSubscription);
 
 QByteArray calculate_response_hash_val(QByteArray &responseBody, int idVal);
-QByteArray calculate_sec_ws_response_key_from_init_request(ZhttpRequestPacket &p);
+QByteArray calculate_response_seckey_from_init_request(ZhttpRequestPacket &p);
 
 #endif

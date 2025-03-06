@@ -843,28 +843,31 @@ public:
 				return;
 			}
 
-			// if requests from cache client
-			int cacheClientNumber = get_cacheclient_no_from_init_request(p);
-			if (cacheClientNumber >= 0 && cacheClientNumber < gWsCacheClientList.count())
+			if (gCacheEnable == true)
 			{
-				gWsCacheClientList[cacheClientNumber].initFlag = false;
-				gWsCacheClientList[cacheClientNumber].clientId = id.id;
-				gWsCacheClientList[cacheClientNumber].lastDataReceivedTime = time(NULL);
-				log_debug("[WS] passing the requests from cache client=%s", id.id.data());
-			}
-			else // if request from real client
-			{
-				log_debug("[WS] received init request from real client");
-				if (is_cacheclient_inited(gWsCacheClientList) == false)
+				// if requests from cache client
+				int cacheClientNumber = get_cacheclient_no_from_init_request(p);
+				if (cacheClientNumber >= 0 && cacheClientNumber < gWsCacheClientList.count())
 				{
-					log_warning("[WS] not initialized cache client, ignore");
-					tryRespondCancel(WebSocketSession, id.id, p);
-					return;
+					gWsCacheClientList[cacheClientNumber].initFlag = false;
+					gWsCacheClientList[cacheClientNumber].clientId = id.id;
+					gWsCacheClientList[cacheClientNumber].lastDataReceivedTime = time(NULL);
+					log_debug("[WS] passing the requests from cache client=%s", id.id.data());
 				}
-				//
-				int ret = process_ws_init_request(p);
-				if (ret == 0)
-					return;
+				else // if request from real client
+				{
+					log_debug("[WS] received init request from real client");
+					if (is_cacheclient_inited(gWsCacheClientList) == false)
+					{
+						log_warning("[WS] not initialized cache client, ignore");
+						tryRespondCancel(WebSocketSession, id.id, p);
+						return;
+					}
+					//
+					int ret = process_ws_init_request(p);
+					if (ret == 0)
+						return;
+				}
 			}
 
 			sock = new ZWebSocket;
@@ -958,6 +961,21 @@ public:
 
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
+			// cache process
+			if (gCacheEnable == true)
+			{
+				if (gHttpClientMap.contains(id.id))
+				{
+					int ret = processHttpRequestForCache(id.id, p);
+					if (ret == 0)
+						continue;
+				}
+				else if (gWsClientMap.contains(id.id))
+				{
+					log_debug("[WS] received ws request from real client=%s", id.id.data());
+				}
+			}
+
 			// is this for a websocket?
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
 			if(sock)
@@ -973,14 +991,6 @@ public:
 			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
 			if(req)
 			{
-				// cache process
-				if (gCacheEnable == true)
-				{
- 					int ret = processHttpInitRequestForCache(id.id, p);
-					if (ret == 0)
-						continue;
-				}
-
 				req->handle(id.id, id.seq, p);
 				if(self.expired())
 					return;
@@ -1341,7 +1351,7 @@ public:
 		write(HttpSession, responsePacket, orgFrom);
 	}
 
-	int processHttpInitRequestForCache(QByteArray id, const ZhttpRequestPacket &packet)
+	int processHttpRequestForCache(QByteArray id, const ZhttpRequestPacket &packet)
 	{
 		QByteArray packetId = id;
 
@@ -1495,7 +1505,7 @@ public:
 	int process_ws_init_request(ZhttpRequestPacket &p)
 	{
 		QByteArray packetId = p.ids[0].id;
-		QByteArray responseKey = calculate_sec_ws_response_key_from_init_request(p);
+		QByteArray responseKey = calculate_response_seckey_from_init_request(p);
 		if (responseKey == NULL)
 		{
 			log_warning("[WS] failed to get ws response key from init request");
