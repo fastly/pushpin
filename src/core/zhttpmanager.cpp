@@ -435,8 +435,8 @@ public:
 		ZhttpResponsePacket out = gWsInitResponsePacket;
 
 		out.ids[0].id = newPacketId.data();
-		out.headers.removeAll("Sec-WebSocket-Key");
-		out.headers += HttpHeader("Sec-WebSocket-Key", responseKey);
+		out.headers.removeAll("sec-websocket-accept");
+		out.headers += HttpHeader("sec-websocket-accept", responseKey);
 		
 		write(type, out, packet.from);
 	}
