@@ -845,7 +845,10 @@ public:
 			int cacheClientNumber = get_cacheclient_no_from_init_request(p);
 			if (cacheClientNumber >= 0 && cacheClientNumber < gWsCacheClientList.count())
 			{
-				log_debug("[WS] passing the requests from cache client");
+				gWsCacheClientList[cacheClientNumber].initFlag = false;
+				gWsCacheClientList[cacheClientNumber].clientId = id.id;
+				gWsCacheClientList[cacheClientNumber].lastDataReceivedTime = time(NULL);
+				log_debug("[WS] passing the requests from cache client=%s", id.id.data());
 			}
 			else // if request from real client
 			{
