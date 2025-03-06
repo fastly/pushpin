@@ -288,6 +288,9 @@ public:
 		// will unlock during exec
 		m.lock();
 
+		// enough timers for sessions and zroutes, plus an extra 100 for misc
+		Timer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
+
 		worker = new EngineWorker(config, domainMap);
 		Connection startedConnection = worker->started.connect(boost::bind(&EngineThread::worker_started, this));
 		Connection stoppedConnection = worker->stopped.connect(boost::bind(&EngineThread::worker_stopped, this));
