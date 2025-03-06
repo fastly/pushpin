@@ -859,6 +859,10 @@ public:
 					tryRespondCancel(WebSocketSession, id.id, p);
 					return;
 				}
+				//
+				int ret = process_ws_init_request(p);
+				if (ret == 0)
+					return;
 			}
 
 			sock = new ZWebSocket;
@@ -1499,6 +1503,8 @@ public:
 		int cacheClientNo = select_main_cacheclient(gWsCacheClientList);
 		registerWsClient(packetId);
 		tryResponseWsInitRequest(WebSocketSession, packetId, p);
+
+		return 0;
 	}
 };
 
