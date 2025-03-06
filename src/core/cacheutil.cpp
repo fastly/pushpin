@@ -61,9 +61,8 @@ bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList)
 	return false;
 }
 
-int get_cacheclient_no_from_response(const ZhttpResponsePacket &p, QList<CacheClientItem> &cacheClientList)
+int get_cacheclient_no_from_response(QByteArray packetId, QList<CacheClientItem> &cacheClientList)
 {
-	QByteArray packetId = p.ids[0].id;
 	for (int i = 0; i < cacheClientList.count(); i++)
 	{
 		if (cacheClientList[i].clientId == packetId)

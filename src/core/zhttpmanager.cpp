@@ -510,17 +510,17 @@ public:
 		// cache process
 		if (gCacheEnable == true)
 		{
+			QByteArray packetId = packet.ids.first().id;
 			if (packet.code == 101) // ws client init response code
 			{
-				int ret = get_cacheclient_no_from_response(packet, gWsCacheClientList);
+				int ret = get_cacheclient_no_from_response(packetId, gWsCacheClientList);
 				if (ret >= 0)
 				{
 					// cache client
 					gWsCacheClientList[ret].initFlag = true;
-					gWsCacheClientList[ret].totalCredit = packet.credits;
 					gWsCacheClientList[ret].lastDataReceivedTime = time(NULL);
 					gWsCacheClientList[ret].from = packet.from;
-					log_debug("[WS] Initialized Cache client%d receiver=%s", ret, receiver.data());
+					log_debug("[WS] Initialized Cache client%d", ret);
 					gWsInitResponsePacket = packet;
 				}
 				else
@@ -530,7 +530,6 @@ public:
 			}
 			else
 			{
-				QByteArray packetId = packet.ids.first().id;
 				if (gHttpClientMap.contains(packetId))
 				{
 					int ret = process_http_response(packet);
@@ -1493,9 +1492,9 @@ public:
 			return -1;
 		}
 
-		int cacheClientNo = select_main_cacheclient();
+		int cacheClientNo = select_main_cacheclient(gWsCacheClientList);
 		registerWsClient(packetId);
-		tryResponseWsInitRequest(WebSocketSession, packetId, p)
+		tryResponseWsInitRequest(WebSocketSession, packetId, p);
 	}
 };
 
