@@ -14,37 +14,48 @@
  * limitations under the License.
  */
 
-#ifndef TCPLISTENER_H
-#define TCPLISTENER_H
+#ifndef UNIXSTREAM_H
+#define UNIXSTREAM_H
 
 #include <memory>
-#include <QHostAddress>
+#include <variant>
+#include <QByteArray>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
-#include "tcpstream.h"
+#include "readwrite.h"
 
 class SocketNotifier;
 
-class TcpListener
+class UnixStream : public ReadWrite
 {
 public:
-	TcpListener();
-	~TcpListener();
+	UnixStream();
+	~UnixStream();
 
-	bool bind(const QHostAddress &addr, uint16_t port);
-	std::tuple<QHostAddress, uint16_t> localAddress() const;
-	std::unique_ptr<TcpStream> accept();
-	int errorCondition() const { return errorCondition_; }
+	// returns true if connection starting, false on error
+	bool connect(const QString &path);
 
-	boost::signals2::signal<void()> streamsReady;
+	// returns true if connected, false on error. if errorCondition() returns
+	// ENOTCONN, then it is not fatal and the socket is still connecting
+	bool checkConnected();
+
+	// reimplemented
+	virtual QByteArray read(int size = -1);
+	virtual int write(const QByteArray &buf);
+	virtual int errorCondition() const { return errorCondition_; }
 
 private:
-	ffi::TcpListener *inner_;
+	friend class UnixListener;
+
+	ffi::UnixStream *inner_;
 	std::unique_ptr<SocketNotifier> sn_;
 	int errorCondition_;
+	std::shared_ptr<std::monostate> alive_;
 
+	UnixStream(ffi::UnixStream *inner);
 	void reset();
-	void sn_activated();
+	void setupNotifier();
+	void sn_activated(int socket, uint8_t readiness);
 };
 
 #endif
