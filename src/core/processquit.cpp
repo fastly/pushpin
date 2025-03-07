@@ -90,6 +90,7 @@ public:
 
 		sig_notifier = std::make_unique<SocketNotifier>(sig_pipe[0], SocketNotifier::Read);
 		activatedConnection = sig_notifier->activated.connect(boost::bind(&Private::sig_activated, this, boost::placeholders::_1));
+		sig_notifier->clearReadiness(SocketNotifier::Read);
 		unixWatchAdd(SIGINT);
 		unixWatchAdd(SIGHUP);
 		unixWatchAdd(SIGTERM);

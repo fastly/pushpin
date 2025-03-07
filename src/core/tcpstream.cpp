@@ -89,14 +89,13 @@ QByteArray TcpStream::read(int size)
 
 	int ret = ffi::tcp_stream_read(inner_, (uint8_t *)buf.data(), buf.size(), &errorCondition_);
 
-	// re-enable the notifier. we always do this regardless of the outcome of
-	// the read, in case the notifier is edge-triggered. if the notifier is
-	// level-triggered and there are still bytes to read, this re-enabling
-	// will cause readability to be signaled again, but only once
-	sn_->setReadEnabled(true);
-
 	if(ret < 0)
+	{
+		if(errorCondition_ == EAGAIN)
+			sn_->clearReadiness(SocketNotifier::Read);
+
 		return QByteArray();
+	}
 
 	buf.resize(ret);
 
@@ -111,14 +110,13 @@ int TcpStream::write(const QByteArray &buf)
 
 	int ret = ffi::tcp_stream_write(inner_, (const uint8_t *)buf.constData(), buf.size(), &errorCondition_);
 
-	// re-enable the notifier. we always do this regardless of the outcome of
-	// the write, in case the notifier is edge-triggered. if the notifier is
-	// level-triggered and the socket is able to accept more bytes, this
-	// re-enabling will cause writability to be signaled again, but only once
-	sn_->setWriteEnabled(true);
-
 	if(ret < 0)
+	{
+		if(errorCondition_ == EAGAIN)
+			sn_->clearReadiness(SocketNotifier::Write);
+
 		return -1;
+	}
 
 	return ret;
 }
@@ -147,16 +145,6 @@ void TcpStream::setupNotifier()
 void TcpStream::sn_activated(int socket, uint8_t readiness)
 {
 	Q_UNUSED(socket);
-
-	// in case notifier is level-triggered, disable in order to avoid
-	// repeated signaling. will turn it back on after a read is attempted
-	if(readiness & SocketNotifier::Read)
-		sn_->setReadEnabled(false);
-
-	// in case notifier is level-triggered, disable in order to avoid
-	// repeated signaling. will turn it back on after a write is attempted
-	if(readiness & SocketNotifier::Write)
-		sn_->setWriteEnabled(false);
 
 	std::weak_ptr<std::monostate> self = alive_;
 
