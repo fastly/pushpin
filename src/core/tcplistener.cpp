@@ -37,13 +37,9 @@ bool TcpListener::bind(const QHostAddress &addr, quint16 port)
 	QByteArray ip = addr.toString().toUtf8();
 	errorCondition_ = 0;
 
-	int e;
-	inner_ = ffi::tcp_listener_bind(ip.data(), port, &e);
+	inner_ = ffi::tcp_listener_bind(ip.data(), port, &errorCondition_);
 	if(!inner_)
-	{
-		errorCondition_ = e;
 		return false;
-	}
 
 	int fd = ffi::tcp_listener_as_raw_fd(inner_);
 
@@ -76,11 +72,12 @@ std::unique_ptr<TcpStream> TcpListener::accept()
 
 	errorCondition_ = 0;
 
-	int e;
-	ffi::TcpStream *s_inner = ffi::tcp_listener_accept(inner_, &e);
+	ffi::TcpStream *s_inner = ffi::tcp_listener_accept(inner_, &errorCondition_);
 	if(!s_inner)
 	{
-		errorCondition_ = e;
+		if(errorCondition_ == EAGAIN)
+			sn_->clearReadiness(SocketNotifier::Read);
+
 		return std::unique_ptr<TcpStream>(); // null
 	}
 

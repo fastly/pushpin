@@ -14,21 +14,19 @@
  * limitations under the License.
  */
 
-#include "tcpstream.h"
+#include "unixstream.h"
 
-#include <assert.h>
-#include <QHostAddress>
 #include "socketnotifier.h"
 
 #define DEFAULT_READ_SIZE 16384
 
-TcpStream::TcpStream() :
+UnixStream::UnixStream() :
 	inner_(nullptr),
 	errorCondition_(0)
 {
 }
 
-TcpStream::TcpStream(ffi::TcpStream *inner) :
+UnixStream::UnixStream(ffi::UnixStream *inner) :
 	inner_(inner),
 	errorCondition_(0),
 	alive_(std::make_shared<std::monostate>(std::monostate{}))
@@ -36,19 +34,19 @@ TcpStream::TcpStream(ffi::TcpStream *inner) :
 	setupNotifier();
 }
 
-TcpStream::~TcpStream()
+UnixStream::~UnixStream()
 {
 	reset();
 }
 
-bool TcpStream::connect(const QHostAddress &addr, quint16 port)
+bool UnixStream::connect(const QString &path)
 {
 	reset();
 
-	QByteArray ip = addr.toString().toUtf8();
+	QByteArray p = path.toUtf8();
 	errorCondition_ = 0;
 
-	inner_ = ffi::tcp_stream_connect(ip.data(), port, &errorCondition_);
+	inner_ = ffi::unix_stream_connect(p.data(), &errorCondition_);
 	if(!inner_)
 		return false;
 
@@ -57,19 +55,19 @@ bool TcpStream::connect(const QHostAddress &addr, quint16 port)
 	return true;
 }
 
-bool TcpStream::checkConnected()
+bool UnixStream::checkConnected()
 {
 	assert(inner_);
 
 	errorCondition_ = 0;
 
-	if(ffi::tcp_stream_check_connected(inner_, &errorCondition_) != 0)
+	if(ffi::unix_stream_check_connected(inner_, &errorCondition_) != 0)
 		return false;
 
 	return true;
 }
 
-QByteArray TcpStream::read(int size)
+QByteArray UnixStream::read(int size)
 {
 	assert(inner_);
 
@@ -79,7 +77,7 @@ QByteArray TcpStream::read(int size)
 	QByteArray buf(size, 0);
 	errorCondition_ = 0;
 
-	int ret = ffi::tcp_stream_read(inner_, (uint8_t *)buf.data(), buf.size(), &errorCondition_);
+	int ret = ffi::unix_stream_read(inner_, (uint8_t *)buf.data(), buf.size(), &errorCondition_);
 
 	if(ret < 0)
 	{
@@ -94,13 +92,13 @@ QByteArray TcpStream::read(int size)
 	return buf;
 }
 
-int TcpStream::write(const QByteArray &buf)
+int UnixStream::write(const QByteArray &buf)
 {
 	assert(inner_);
 
 	errorCondition_ = 0;
 
-	int ret = ffi::tcp_stream_write(inner_, (const uint8_t *)buf.constData(), buf.size(), &errorCondition_);
+	int ret = ffi::unix_stream_write(inner_, (const uint8_t *)buf.constData(), buf.size(), &errorCondition_);
 
 	if(ret < 0)
 	{
@@ -113,28 +111,28 @@ int TcpStream::write(const QByteArray &buf)
 	return ret;
 }
 
-void TcpStream::reset()
+void UnixStream::reset()
 {
 	sn_.reset();
 
 	if(inner_)
 	{
-		ffi::tcp_stream_destroy(inner_);
+		ffi::unix_stream_destroy(inner_);
 		inner_ = nullptr;
 	}
 }
 
-void TcpStream::setupNotifier()
+void UnixStream::setupNotifier()
 {
-	int fd = ffi::tcp_stream_as_raw_fd(inner_);
+	int fd = ffi::unix_stream_as_raw_fd(inner_);
 
 	sn_ = std::make_unique<SocketNotifier>(fd, SocketNotifier::Read | SocketNotifier::Write);
-	sn_->activated.connect(boost::bind(&TcpStream::sn_activated, this, boost::placeholders::_1, boost::placeholders::_2));
+	sn_->activated.connect(boost::bind(&UnixStream::sn_activated, this, boost::placeholders::_1, boost::placeholders::_2));
 	sn_->setReadEnabled(true);
 	sn_->setWriteEnabled(true);
 }
 
-void TcpStream::sn_activated(int socket, uint8_t readiness)
+void UnixStream::sn_activated(int socket, uint8_t readiness)
 {
 	Q_UNUSED(socket);
 
