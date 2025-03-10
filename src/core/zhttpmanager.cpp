@@ -123,8 +123,30 @@ struct CacheItem {
 };
 QMap<QByteArray, CacheItem> gCacheItemMap;
 
+// Subscription Item
+struct SubscriptionItem {
+	QString orgMsgId;
+	int msgId;
+	int newMsgId;
+	qint64 lastRequestTime;
+	qint64 lastRefreshTime;
+	bool cachedFlag;
+	int retryCount;
+	QByteArray cacheClientId;
+	ZhttpRequestPacket requestPacket;
+	ZhttpResponsePacket responsePacket;
+	QString subscriptionMethodName;
+	QString originSubscriptionStr;
+	QString subscriptionStr;
+	ZhttpResponsePacket subscriptionPacket;
+	QMap<QString, QString> paramsMap;
+	QMap<QByteArray, QString> clientMap;	// <ClienId, MsgId>
+};
+QMap<QByteArray, SubscriptionItem> gSubscriptionItemMap;
+
 // health client list
 bool gHealthCheckExcludeFlag = true;
+QList<QByteArray> gHealthClientList;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
