@@ -70,16 +70,6 @@ static QStringList gWsBackendUrlList;
 QList<CacheClientItem> gWsCacheClientList;
 ZhttpResponsePacket gWsInitResponsePacket;
 
-// Cache key item
-enum ItemFlag {
-	JSON_VALUE,
-	JSON_PAIR,
-	RAW_VALUE
-};
-struct CacheKeyItem {
-	QString keyName;
-	ItemFlag flag;
-};
 QList<CacheKeyItem> gCacheKeyItemList;
 static QString gMsgIdAttrName = "id";
 static QString gMsgMethodAttrName = "method";
@@ -974,6 +964,12 @@ public:
 				else if (gWsClientMap.contains(id.id))
 				{
 					log_debug("[WS] received ws request from real client=%s", id.id.data());
+
+					// update seq
+					p.ids[0].seq = gWsClientMap[pId].requestSeq;
+					gWsClientMap[pId].requestSeq++;
+
+					
 					continue;
 				}
 				else
@@ -1151,54 +1147,34 @@ public:
 			currentSessionRefreshBucket = 0;
 	}
 
-	QByteArray buildHashKey(QVariantMap &jsonMap, QString startingStr)
+	void delete_clientInList(QByteArray clientId)
 	{
-		QString hashKeyStr = startingStr;
-		for (int i = 0; i < gCacheKeyItemList.count(); i++)
+		if (gHttpClientMap.contains(clientId))
 		{
-			CacheKeyItem keyItem = gCacheKeyItemList[i];
-			QString keyVal = "";
-			if (keyItem.flag == RAW_VALUE)
-			{
-				keyVal += keyItem.keyName;
-			}
-			else
-			{
-				if (keyItem.flag == JSON_PAIR)
-				{
-					keyVal += keyItem.keyName + ":";
-				}
-
-				for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item)
-				{
-					QString iKey = item.key();
-					QString iValue = item.value().toString();
-
-					if (!iKey.compare(keyItem.keyName, Qt::CaseInsensitive))
-					{
-						if (jsonMap[keyItem.keyName].toString().length() > 0)
-							keyVal += jsonMap[keyItem.keyName].toString();
-						else
-							keyVal += " ";
-					}
-					else if (iKey.indexOf(keyItem.keyName+">>", 0, Qt::CaseInsensitive) == 0)
-					{
-						keyVal += iKey.toLower() + "->" + iValue;
-					}
-				}
-			}
-			if (keyVal.length() > 0)
-			{
-				hashKeyStr += keyVal;
-				if ((i+1) < gCacheKeyItemList.count())
-				{
-					hashKeyStr += "+";
-				}
-			}
+			// delete client from gHttpClientMap
+			gHttpClientMap.remove(clientId);
+			log_debug("[HTTP] Deleted one client in gHttpClientMap, current count=%d", gHttpClientMap.size());
 		}
-		log_debug("[HASH] Hash-Key-Str = %s", qPrintable(hashKeyStr.mid(0,128)));
+		else
+		{
+			// cache lookup
+			foreach(QByteArray itemId, gSubscriptionItemMap.keys())
+			{
+				if (gSubscriptionItemMap[itemId].clientMap.contains(clientId))
+				{
+					gSubscriptionItemMap[itemId].clientMap.remove(clientId);
+					log_debug("[WS] Deleted cached client clientId=%s, msgId=%d, subscriptionStr=%s", clientId.data(), gSubscriptionItemMap[itemId].msgId, qPrintable(gSubscriptionItemMap[itemId].subscriptionStr.left(16)));
+				}
+			}
 
-		return QCryptographicHash::hash(hashKeyStr.toUtf8(),QCryptographicHash::Sha1);
+			// delete client from gWsClientMap
+			gWsClientMap.remove(clientId);
+			log_debug("[WS] Deleted one client in gWsClientMap, current count=%d", gWsClientMap.size());
+		}
+
+		// delete from health client list
+		if (gHealthClientList.contains(clientId))
+			gHealthClientList.removeAll(clientId);
 	}
 
 	void registerHttpClient(QByteArray packetId)
@@ -1364,7 +1340,7 @@ public:
 		log_debug("[HTTP-REQ] new req msgId=\"%s\" method=\"%s\"", qPrintable(msgId), qPrintable(msgMethod));
 
 		// Params hash val
-		QByteArray paramsHash = buildHashKey(jsonMap, "HTTP+");
+		QByteArray paramsHash = build_hash_key(jsonMap, "HTTP+");
 
 		if (is_cache_method(msgMethod))
 		{
@@ -1500,6 +1476,362 @@ public:
 		int cacheClientNo = select_main_cacheclient(gWsCacheClientList);
 		registerWsClient(packetId);
 		tryResponseWsInitRequest(WebSocketSession, packetId, responseKey, p);
+
+		return 0;
+	}
+
+	int process_ws_stream_request(ZhttpRequestPacket &p)
+	{
+		QByteArray packetId = p.ids[0].id;
+
+		// if cancel/close request, remove client from the subscription client list
+		switch (p.type)
+		{
+		case ZhttpRequestPacket::Cancel:
+			delete_clientInList(pId);
+			//send_wsCloseResponse(pId);
+			worker_finished_byid(pId);
+			return -1;
+		case ZhttpRequestPacket::Close:
+			send_wsCloseResponse(pId);
+			delete_clientInList(pId);
+			worker_finished_byid(pId);
+			return -1;
+		case ZhttpRequestPacket::KeepAlive:
+			log_debug("[WS] received KeepAlive, ignoring");
+			//send_pingResponse(pId);
+			return -1;
+		case ZhttpRequestPacket::Pong:
+			send_creditResponse(pId, 0);
+			return -1;
+		case ZhttpRequestPacket::Ping:
+			send_pongResponse(pId);
+			return -1;
+		case ZhttpRequestPacket::Credit:
+			return -1;
+		case ZhttpRequestPacket::Data:
+			break;
+		default:
+			return -1;
+		}
+
+		// Send new credit packet
+		send_creditResponse(pId, static_cast<int>(p.body.size()));
+
+		// Check if multi-parts request
+		if (gWsMultiPartRequestItemMap.contains(pId))
+		{
+			// this is middle packet of multi-request
+			if (p.more == true)
+			{
+				log_debug("[WS] Detected middle of multi-parts request");
+				gWsMultiPartRequestItemMap[pId].body.append(p.body);
+
+				return -1;
+			}
+			else // this is end packet of multi-request
+			{
+				log_debug("[WS] Detected end of multi-parts request");
+				gWsMultiPartRequestItemMap[pId].body.append(p.body);
+				p.body = gWsMultiPartRequestItemMap[pId].body;
+
+				gWsMultiPartRequestItemMap.remove(pId);
+			}
+		}
+		else
+		{
+			// this is first packet of multi-request
+			if (p.more == true)
+			{
+				log_debug("[WS] Detected start of multi-parts request");
+
+				if (!gHealthClientList.contains(pId))
+				{
+					// add ws Cache multi-part request
+					numRequestMultiPart++;
+				}
+
+				// register new multi-request item
+				gWsMultiPartRequestItemMap[pId] = p;
+				
+				return -1;
+			}
+		}
+		
+		// Parse json message
+		QVariantMap jsonMap;
+		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[WS] failed to parse json");
+			return 0;
+		}
+
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
+
+		// read msgIdAttr (id) and cacheMethodAttr (method)
+		QString msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toString() : "";
+		QString cacheMethodAttr = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		if (msgIdAttr.isEmpty() || cacheMethodAttr.isEmpty())
+		{
+			log_debug("[WS] failed to get gMsgIdAttrName and gMsgMethodAttrName");
+			return 0;
+		}
+
+		// get method string			
+		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr));
+
+		// check special requests
+		QString paramsStr = jsonMap.contains("params") ? jsonMap["params"].toString() : "";
+		// check whether auto-refresh control request, only when it`s enabled in config file
+		if (is_controlRequest(p, format, cacheMethodAttr, paramsStr) == true)
+		{
+			return -1;
+		}
+
+		// check whether auto-refresh request
+		if (cacheMethodAttr == "curie_hash")
+		{
+			log_debug("[WS] processing Curie Hash request");
+			process_wsCurieHashRequest(jsonMap, pId, msgIdAttr);
+			return -1;
+		}
+
+		// Check params are empty or not
+		bool neverTimeoutMethodFlag = false;
+		if (config.cacheConfig.neverTimeoutMethodList.contains(cacheMethodAttr, Qt::CaseInsensitive))
+		{
+			if (jsonMap.contains(gMsgParamsAttrName) && 
+				(QString::compare(jsonMap[gMsgParamsAttrName].toString(), "[LIST]", Qt::CaseInsensitive) != 0))
+			{
+				neverTimeoutMethodFlag = true;
+				log_debug("[WS] found ws_never_timeout_methods_with_params");
+				//log_debug("[WS] found ws_never_timeout_methods_with_params value=%s", qPrintable(jsonMap[gMsgParamsAttrName].toString()));
+			}
+		}
+
+		if (!gHealthClientList.contains(pId))
+		{
+			// update the counter for prometheus
+			gCacheMethodCountList.append(cacheMethodAttr);
+		}
+
+		// Params hash val
+		QByteArray paramsHash = build_hashKey(jsonMap, "WS+");
+
+		if (is_cacheMethod(cacheMethodAttr))
+		{
+			if (gCacheItemMap.contains(paramsHash))
+			{
+				// if method name is in cache config list
+				if (gCacheItemMap[paramsHash].proto == Scheme::websocket)
+				{
+					// add ws Cache hit
+					numCacheHit++;
+					gCacheItemMap[paramsHash].accessCount = 2;
+
+					if (gCacheItemMap[paramsHash].cachedFlag == true)
+					{
+						int cacheClientNumber = get_wsCacheClientNumber(gCacheItemMap[paramsHash].cacheClientId);
+						if (cacheClientNumber < 0 || gWsCacheClientList[cacheClientNumber].initFlag == false)
+						{
+							cacheClientNumber = select_mainCacheClient();
+						}
+						QByteArray receiver = gWsCacheClientList[cacheClientNumber].receiver;
+						QByteArray from = gWsCacheClientList[cacheClientNumber].from;
+						reply_wsCachedContent(paramsHash, msgIdAttr, pId, receiver, from);
+						log_debug("[WS] Replied with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
+					}
+					else
+					{
+						log_debug("[WS] Already cache registered, but not added content \"%s\"", qPrintable(cacheMethodAttr));
+						// add client to list
+						gCacheItemMap[paramsHash].clientMap[pId] = msgIdAttr;
+						log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdAttr), pId.data());
+						gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+					}
+
+					return -1;
+				}
+			}
+			else if (gNeverTimeoutCacheItemMap.contains(paramsHash))
+			{
+				// if method name is in cache config list
+				if (gNeverTimeoutCacheItemMap[paramsHash].proto == Scheme::websocket)
+				{
+					if (!gHealthClientList.contains(pId))
+					{
+						// add ws Cache hit
+						numNeverTimeoutCacheHit++;
+					}
+					gNeverTimeoutIdMap.remove(gNeverTimeoutCacheItemMap[paramsHash].lastAccessNTime);
+
+					int randNum = rand() % 35000;
+					qint64 newNeverTimeoutId = (QDateTime::currentMSecsSinceEpoch()<<16)+randNum;
+					while (gNeverTimeoutIdMap.contains(newNeverTimeoutId))
+					{
+						newNeverTimeoutId++;
+						log_info("[WS] update increasing id = %ld", newNeverTimeoutId);
+					}		
+					gNeverTimeoutIdMap[newNeverTimeoutId] = paramsHash;
+					gNeverTimeoutCacheItemMap[paramsHash].lastAccessNTime = newNeverTimeoutId;
+
+					if (gNeverTimeoutCacheItemMap[paramsHash].cachedFlag == true)
+					{
+						int cacheClientNumber = get_wsCacheClientNumber(gNeverTimeoutCacheItemMap[paramsHash].cacheClientId);
+						if (cacheClientNumber < 0 || gWsCacheClientList[cacheClientNumber].initFlag == false)
+						{
+							cacheClientNumber = select_mainCacheClient();
+						}
+						QByteArray receiver = gWsCacheClientList[cacheClientNumber].receiver;
+						QByteArray from = gWsCacheClientList[cacheClientNumber].from;
+						reply_wsNeverTimeoutCachedContent(paramsHash, msgIdAttr, pId, receiver, from);
+						log_debug("[WS] Replied with Never Timeout Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
+					}
+					else
+					{
+						log_debug("[WS] Already cache registered, but not added content \"%s\"", qPrintable(cacheMethodAttr));
+						// add client to list
+						gNeverTimeoutCacheItemMap[paramsHash].clientMap[pId] = msgIdAttr;
+						log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdAttr), pId.data());
+					}
+
+					return -1;
+				}
+			}
+
+			if (neverTimeoutMethodFlag == false)
+			{
+				if (!gHealthClientList.contains(pId))
+				{
+					// add ws Cache insert
+					numCacheInsert++;
+				}
+				// Register new cache item
+				int cacheClientNumber = register_wsCacheItem(p, pId, msgIdAttr, cacheMethodAttr, paramsHash, Scheme::websocket);
+				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr));
+				
+				// Send new client cache request packet
+				gCacheItemMap[paramsHash].newMsgId = send_newWsCacheClientRequest(p, msgIdAttr, cacheClientNumber);
+				gCacheItemMap[paramsHash].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+			}
+			else
+			{
+				if (!gHealthClientList.contains(pId))
+				{
+					// add ws Cache insert
+					numNeverTimeoutCacheInsert++;
+				}
+				// Register new never timeout cache item
+				int cacheClientNumber = register_wsNeverTimeoutCacheItem(p, pId, msgIdAttr, paramsHash, Scheme::websocket);
+				log_debug("[WS] Registered New Never Timeout Cache Item for id=%s method=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr));
+
+				// Send new client cache request packet
+				gNeverTimeoutCacheItemMap[paramsHash].newMsgId = send_newWsCacheClientRequest(p, msgIdAttr, cacheClientNumber);
+				gNeverTimeoutCacheItemMap[paramsHash].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
+			}
+			
+			return -1;
+		}
+
+		// subscription request lookup
+		if (config.cacheConfig.subscribeMethodMap.contains(cacheMethodAttr))
+		{
+			if (gSubscriptionItemMap.contains(paramsHash))
+			{
+				if (!gHealthClientList.contains(pId))
+				{
+					// add ws Subscription Cache hit
+					numSubscriptionHit++;
+				}
+
+				if (gSubscriptionItemMap[paramsHash].cachedFlag == true)
+				{
+					reply_subscriptionContentFromCacheItem(paramsHash, msgIdAttr, pId);
+					log_debug("[WS] Replied with subscription cache content for method \"%s\"", qPrintable(cacheMethodAttr));
+				}
+				else
+				{
+					log_debug("[WS] Already subscription registered, but not added content \"%s\"", qPrintable(cacheMethodAttr));
+				}
+
+				// add client to list
+				gSubscriptionItemMap[paramsHash].clientMap[pId] = msgIdAttr;
+				log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdAttr), pId.data());
+
+				return -1;
+			}
+
+			// Register new cache item
+			int cacheClientNumber = register_subscriptionItem(p, pId, msgIdAttr, cacheMethodAttr, paramsHash);
+			if (!gHealthClientList.contains(pId))
+			{
+				// add ws Subscription insert
+				numSubscriptionInsert++;
+			}
+			log_debug("[WS] Registered New Subscription Item for id=%s method=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr));
+
+			if (cacheMethodAttr.toLower() == "state_subscribestorageeeee")
+			{
+				// check validity of params
+				QString paramsStr = jsonMap["params"].toString().toLower();
+				if (!paramsStr.isEmpty() && !gLastBlockStr.isEmpty())
+				{
+					QStringList paramsList = paramsStr.split("+");
+					if (reply_subscriptionFromParams(paramsHash, msgIdAttr, pId, paramsList) == true)
+					{
+						if (!gHealthClientList.contains(pId))
+						{
+							// add ws Subscription Cache hit
+							numSubscriptionHit++;
+						}
+						return -1;
+					}
+				}
+			}
+
+			// Send new client cache request packet
+			gSubscriptionItemMap[paramsHash].newMsgId = send_newWsCacheClientRequest(p, msgIdAttr, cacheClientNumber);
+
+			return -1;
+		}
+
+		// unsubscribe methods
+		bool unsubscribeMethodFlag = false;
+		foreach(QString subKey, config.cacheConfig.subscribeMethodMap.keys())
+		{
+			if (config.cacheConfig.subscribeMethodMap[subKey].toLower() == cacheMethodAttr)
+			{
+				unsubscribeMethodFlag = true;
+				break;
+			}
+			
+		}
+		if ((unsubscribeMethodFlag == true) && (jsonMap.contains("params")))
+		{
+			// check validity of params
+			QString paramsStr = jsonMap["params"].toString();
+
+			foreach(QByteArray itemId, gSubscriptionItemMap.keys())
+			{
+				if (gSubscriptionItemMap[itemId].originSubscriptionStr == paramsStr)
+				{
+					if (gSubscriptionItemMap[itemId].clientMap.contains(pId))
+					{
+						log_debug("[WS] deleting client in subscription list %s", qPrintable(paramsStr));
+						gSubscriptionItemMap[itemId].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
+						gSubscriptionItemMap[itemId].clientMap.remove(pId);
+					}
+				}
+			}
+			
+			return -1;
+		}
+
+		// log unhitted method
+		log_debug("[CACHE ITME] not hit method = %s", qPrintable(cacheMethodAttr));
 
 		return 0;
 	}

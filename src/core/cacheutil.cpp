@@ -48,6 +48,7 @@
 
 extern QStringList gCacheMethodList;
 extern QMap<QString, QString> gSubscribeMethodMap;
+extern QList<CacheKeyItem> gCacheKeyItemList;
 
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -447,4 +448,54 @@ QByteArray calculate_response_seckey_from_init_request(ZhttpRequestPacket &p)
 		return responseKey;
 	}
 	return NULL;
+}
+
+QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr)
+{
+	QString hashKeyStr = startingStr;
+	for (int i = 0; i < gCacheKeyItemList.count(); i++)
+	{
+		CacheKeyItem keyItem = gCacheKeyItemList[i];
+		QString keyVal = "";
+		if (keyItem.flag == RAW_VALUE)
+		{
+			keyVal += keyItem.keyName;
+		}
+		else
+		{
+			if (keyItem.flag == JSON_PAIR)
+			{
+				keyVal += keyItem.keyName + ":";
+			}
+
+			for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item)
+			{
+				QString iKey = item.key();
+				QString iValue = item.value().toString();
+
+				if (!iKey.compare(keyItem.keyName, Qt::CaseInsensitive))
+				{
+					if (jsonMap[keyItem.keyName].toString().length() > 0)
+						keyVal += jsonMap[keyItem.keyName].toString();
+					else
+						keyVal += " ";
+				}
+				else if (iKey.indexOf(keyItem.keyName+">>", 0, Qt::CaseInsensitive) == 0)
+				{
+					keyVal += iKey.toLower() + "->" + iValue;
+				}
+			}
+		}
+		if (keyVal.length() > 0)
+		{
+			hashKeyStr += keyVal;
+			if ((i+1) < gCacheKeyItemList.count())
+			{
+				hashKeyStr += "+";
+			}
+		}
+	}
+	log_debug("[HASH] Hash-Key-Str = %s", qPrintable(hashKeyStr.mid(0,128)));
+
+	return QCryptographicHash::hash(hashKeyStr.toUtf8(),QCryptographicHash::Sha1);
 }

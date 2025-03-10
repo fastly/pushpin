@@ -52,6 +52,17 @@ struct CacheClientItem {
 	QByteArray clientId;
 };
 
+// Cache key item
+enum ItemFlag {
+	JSON_VALUE,
+	JSON_PAIR,
+	RAW_VALUE
+};
+struct CacheKeyItem {
+	QString keyName;
+	ItemFlag flag;
+};
+
 bool is_cache_method(QString methodStr);
 bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList);
 int get_cacheclient_no_from_response(QByteArray packetId, QList<CacheClientItem> &cacheClientList);
@@ -69,5 +80,7 @@ void replace_subscription_field(QByteArray &body, QString oldSubscription, QStri
 
 QByteArray calculate_response_hash_val(QByteArray &responseBody, int idVal);
 QByteArray calculate_response_seckey_from_init_request(ZhttpRequestPacket &p);
+
+QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr);
 
 #endif
