@@ -148,6 +148,11 @@ QMap<QByteArray, SubscriptionItem> gSubscriptionItemMap;
 bool gHealthCheckExcludeFlag = true;
 QList<QByteArray> gHealthClientList;
 
+// multi packets params
+ZhttpResponsePacket gHttpMultiPartResponsePacket;
+QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
+ZhttpResponsePacket gWsMultiPartResponsePacket;
+
 /////////////////////////////////////////////////////////////////////////////////////
 
 class ZhttpManager::Private : public QObject
@@ -464,6 +469,52 @@ public:
 			out.from = instanceId;
 			out.ids += ZhttpResponsePacket::Id(id);
 			out.type = ZhttpResponsePacket::Cancel;
+			write(type, out, packet.from);
+		}
+	}
+
+	void tryRespondClose(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
+	{
+		assert(!packet.from.isEmpty());
+
+		// if this was not an error packet, send cancel
+		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+		{
+			ZhttpResponsePacket out;
+			out.from = instanceId;
+			out.ids += ZhttpResponsePacket::Id(id);
+			out.type = ZhttpResponsePacket::Close;
+			write(type, out, packet.from);
+		}
+	}
+
+	void tryRespondCredit(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet, int credits)
+	{
+		assert(!packet.from.isEmpty());
+
+		// if this was not an error packet, send cancel
+		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+		{
+			ZhttpResponsePacket out;
+			out.from = instanceId;
+			out.ids += ZhttpResponsePacket::Id(id);
+			out.type = ZhttpResponsePacket::Credit;
+			out.credits = credits;
+			write(type, out, packet.from);
+		}
+	}
+
+	void tryRespondPong(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
+	{
+		assert(!packet.from.isEmpty());
+
+		// if this was not an error packet, send cancel
+		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+		{
+			ZhttpResponsePacket out;
+			out.from = instanceId;
+			out.ids += ZhttpResponsePacket::Id(id);
+			out.type = ZhttpResponsePacket::Pong;
 			write(type, out, packet.from);
 		}
 	}
@@ -1501,7 +1552,7 @@ public:
 
 		return 0;
 	}
-/*
+
 	int process_ws_stream_request(ZhttpRequestPacket &p)
 	{
 		QByteArray packetId = p.ids[0].id;
@@ -1510,24 +1561,22 @@ public:
 		switch (p.type)
 		{
 		case ZhttpRequestPacket::Cancel:
-			delete_clientInList(pId);
-			//send_wsCloseResponse(pId);
-			worker_finished_byid(pId);
+			delete_clientInList(packetId);
+			//send_wsCloseResponse(packetId);
 			return -1;
 		case ZhttpRequestPacket::Close:
-			send_wsCloseResponse(pId);
-			delete_clientInList(pId);
-			worker_finished_byid(pId);
+			tryRespondClose(WebSocketSession, packetId, p);
+			delete_clientInList(packetId);
 			return -1;
 		case ZhttpRequestPacket::KeepAlive:
 			log_debug("[WS] received KeepAlive, ignoring");
-			//send_pingResponse(pId);
+			//send_pingResponse(packetId);
 			return -1;
 		case ZhttpRequestPacket::Pong:
-			send_creditResponse(pId, 0);
+			tryRespondCredit(WebSocketSession, packetId, p, 0);
 			return -1;
 		case ZhttpRequestPacket::Ping:
-			send_pongResponse(pId);
+			tryRespondPong(WebSocketSession, packetId, p);
 			return -1;
 		case ZhttpRequestPacket::Credit:
 			return -1;
@@ -1538,51 +1587,15 @@ public:
 		}
 
 		// Send new credit packet
-		send_creditResponse(pId, static_cast<int>(p.body.size()));
+		send_creditResponse(WebSocketSession, packetId, p, static_cast<int>(p.body.size()));
 
-		// Check if multi-parts request
-		if (gWsMultiPartRequestItemMap.contains(pId))
-		{
-			// this is middle packet of multi-request
-			if (p.more == true)
-			{
-				log_debug("[WS] Detected middle of multi-parts request");
-				gWsMultiPartRequestItemMap[pId].body.append(p.body);
-
-				return -1;
-			}
-			else // this is end packet of multi-request
-			{
-				log_debug("[WS] Detected end of multi-parts request");
-				gWsMultiPartRequestItemMap[pId].body.append(p.body);
-				p.body = gWsMultiPartRequestItemMap[pId].body;
-
-				gWsMultiPartRequestItemMap.remove(pId);
-			}
-		}
-		else
-		{
-			// this is first packet of multi-request
-			if (p.more == true)
-			{
-				log_debug("[WS] Detected start of multi-parts request");
-
-				if (!gHealthClientList.contains(pId))
-				{
-					// add ws Cache multi-part request
-					numRequestMultiPart++;
-				}
-
-				// register new multi-request item
-				gWsMultiPartRequestItemMap[pId] = p;
-				
-				return -1;
-			}
-		}
+		int ret = check_multi_packets_for_ws_request(p);
+		if (ret < 0)
+			return -1;
 		
 		// Parse json message
 		QVariantMap jsonMap;
-		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
+		if (parse_json_map(p.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[WS] failed to parse json");
 			return 0;
@@ -1604,7 +1617,7 @@ public:
 
 		// get method string			
 		log_debug("[WS] Cache entry msgId=\"%s\" method=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr));
-
+/*
 		// check special requests
 		QString paramsStr = jsonMap.contains("params") ? jsonMap["params"].toString() : "";
 		// check whether auto-refresh control request, only when it`s enabled in config file
@@ -1854,10 +1867,9 @@ public:
 
 		// log unhitted method
 		log_debug("[CACHE ITME] not hit method = %s", qPrintable(cacheMethodAttr));
-
+*/
 		return 0;
 	}
-*/
 };
 
 ZhttpManager::ZhttpManager(QObject *parent) :

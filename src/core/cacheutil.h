@@ -83,4 +83,6 @@ QByteArray calculate_response_seckey_from_init_request(ZhttpRequestPacket &p);
 
 QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr);
 
+int check_multi_packets_for_ws_request(ZhttpRequestPacket &p);
+
 #endif

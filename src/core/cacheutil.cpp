@@ -50,6 +50,11 @@ extern QStringList gCacheMethodList;
 extern QMap<QString, QString> gSubscribeMethodMap;
 extern QList<CacheKeyItem> gCacheKeyItemList;
 
+// multi packets params
+extern ZhttpResponsePacket gHttpMultiPartResponsePacket;
+extern QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
+extern ZhttpResponsePacket gWsMultiPartResponsePacket;
+
 // definitions for cache
 #define MAGIC_STRING "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -498,4 +503,49 @@ QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr)
 	log_debug("[HASH] Hash-Key-Str = %s", qPrintable(hashKeyStr.mid(0,128)));
 
 	return QCryptographicHash::hash(hashKeyStr.toUtf8(),QCryptographicHash::Sha1);
+}
+
+int check_multi_packets_for_ws_request(ZhttpRequestPacket &p)
+{
+	// Check if multi-parts request
+	if (gWsMultiPartRequestItemMap.contains(pId))
+	{
+		// this is middle packet of multi-request
+		if (p.more == true)
+		{
+			log_debug("[WS] Detected middle of multi-parts request");
+			gWsMultiPartRequestItemMap[pId].body.append(p.body);
+
+			return -1;
+		}
+		else // this is end packet of multi-request
+		{
+			log_debug("[WS] Detected end of multi-parts request");
+			gWsMultiPartRequestItemMap[pId].body.append(p.body);
+			p.body = gWsMultiPartRequestItemMap[pId].body;
+
+			gWsMultiPartRequestItemMap.remove(pId);
+		}
+	}
+	else
+	{
+		// this is first packet of multi-request
+		if (p.more == true)
+		{
+			log_debug("[WS] Detected start of multi-parts request");
+
+			if (!gHealthClientList.contains(pId))
+			{
+				// add ws Cache multi-part request
+				numRequestMultiPart++;
+			}
+
+			// register new multi-request item
+			gWsMultiPartRequestItemMap[pId] = p;
+			
+			return -1;
+		}
+	}
+
+	return 0;
 }
