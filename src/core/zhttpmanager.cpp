@@ -966,8 +966,8 @@ public:
 					log_debug("[WS] received ws request from real client=%s", id.id.data());
 
 					// update seq
-					p.ids[0].seq = gWsClientMap[pId].requestSeq;
-					gWsClientMap[pId].requestSeq++;
+					p.ids[0].seq = gWsClientMap[id.id].requestSeq;
+					gWsClientMap[id.id].requestSeq++;
 
 					
 					continue;
@@ -1479,7 +1479,7 @@ public:
 
 		return 0;
 	}
-
+/*
 	int process_ws_stream_request(ZhttpRequestPacket &p)
 	{
 		QByteArray packetId = p.ids[0].id;
@@ -1835,6 +1835,7 @@ public:
 
 		return 0;
 	}
+*/
 };
 
 ZhttpManager::ZhttpManager(QObject *parent) :
