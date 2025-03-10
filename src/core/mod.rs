@@ -130,6 +130,11 @@ mod tests {
         unsafe { call_c_main(ffi::tcpstream_test, args) as u8 }
     }
 
+    fn unixstream_test(args: &[&OsStr]) -> u8 {
+        // SAFETY: safe to call
+        unsafe { call_c_main(ffi::unixstream_test, args) as u8 }
+    }
+
     fn eventloop_test(args: &[&OsStr]) -> u8 {
         // SAFETY: safe to call
         unsafe { call_c_main(ffi::eventloop_test, args) as u8 }
@@ -158,6 +163,11 @@ mod tests {
     #[test]
     fn tcpstream() {
         assert!(qtest::run(tcpstream_test));
+    }
+
+    #[test]
+    fn unixstream() {
+        assert!(qtest::run(unixstream_test));
     }
 
     #[test]

@@ -14,32 +14,31 @@
  * limitations under the License.
  */
 
-#ifndef TCPLISTENER_H
-#define TCPLISTENER_H
+#ifndef UNIXLISTENER_H
+#define UNIXLISTENER_H
 
 #include <memory>
 #include <QHostAddress>
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
-#include "tcpstream.h"
+#include "unixstream.h"
 
 class SocketNotifier;
 
-class TcpListener
+class UnixListener
 {
 public:
-	TcpListener();
-	~TcpListener();
+	UnixListener();
+	~UnixListener();
 
-	bool bind(const QHostAddress &addr, uint16_t port);
-	std::tuple<QHostAddress, uint16_t> localAddress() const;
-	std::unique_ptr<TcpStream> accept();
+	bool bind(const QString &path);
+	std::unique_ptr<UnixStream> accept();
 	int errorCondition() const { return errorCondition_; }
 
 	boost::signals2::signal<void()> streamsReady;
 
 private:
-	ffi::TcpListener *inner_;
+	ffi::UnixListener *inner_;
 	std::unique_ptr<SocketNotifier> sn_;
 	int errorCondition_;
 
