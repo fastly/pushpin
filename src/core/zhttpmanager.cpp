@@ -1042,7 +1042,10 @@ public:
 					p.ids[0].seq = gWsClientMap[id.id].requestSeq;
 					gWsClientMap[id.id].requestSeq++;
 
-					
+					int ret = process_ws_stream_request(id.id, p);
+					if (ret < 0)
+						continue;
+
 					continue;
 				}
 				else
@@ -1553,10 +1556,8 @@ public:
 		return 0;
 	}
 
-	int process_ws_stream_request(ZhttpRequestPacket &p)
+	int process_ws_stream_request(const QByteArray packetId, ZhttpRequestPacket &p)
 	{
-		QByteArray packetId = p.ids[0].id;
-
 		// if cancel/close request, remove client from the subscription client list
 		switch (p.type)
 		{
