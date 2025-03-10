@@ -974,6 +974,7 @@ public:
 				else if (gWsClientMap.contains(id.id))
 				{
 					log_debug("[WS] received ws request from real client=%s", id.id.data());
+					continue;
 				}
 				else
 				{
