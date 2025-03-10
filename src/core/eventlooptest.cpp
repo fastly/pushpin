@@ -41,6 +41,7 @@ private slots:
 		QCOMPARE(pipe(fds), 0);
 
 		SocketNotifier *sn = new SocketNotifier(fds[0], SocketNotifier::Read);
+		sn->clearReadiness(SocketNotifier::Read);
 
 		int activatedFd = -1;
 		uint8_t activatedReadiness = -1;
