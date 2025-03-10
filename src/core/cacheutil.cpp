@@ -507,6 +507,7 @@ QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr)
 
 int check_multi_packets_for_ws_request(ZhttpRequestPacket &p)
 {
+	QByteArray pId = p.ids.first().id;
 	// Check if multi-parts request
 	if (gWsMultiPartRequestItemMap.contains(pId))
 	{

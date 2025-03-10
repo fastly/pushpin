@@ -1587,7 +1587,7 @@ public:
 		}
 
 		// Send new credit packet
-		send_creditResponse(WebSocketSession, packetId, p, static_cast<int>(p.body.size()));
+		tryRespondCredit(WebSocketSession, packetId, p, static_cast<int>(p.body.size()));
 
 		int ret = check_multi_packets_for_ws_request(p);
 		if (ret < 0)
@@ -1595,7 +1595,7 @@ public:
 		
 		// Parse json message
 		QVariantMap jsonMap;
-		if (parse_json_map(p.toVariant().toHash().value("body"), jsonMap) < 0)
+		if (parse_json_msg(p.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[WS] failed to parse json");
 			return 0;
