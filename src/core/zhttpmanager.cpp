@@ -964,6 +964,7 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
+				// if request from cache client, skip
 				if (gHttpClientMap.contains(id.id))
 				{
 					int ret = processHttpRequestForCache(id.id, p);
@@ -973,6 +974,10 @@ public:
 				else if (gWsClientMap.contains(id.id))
 				{
 					log_debug("[WS] received ws request from real client=%s", id.id.data());
+				}
+				else
+				{
+					log_debug("[WS] received request from unknown client=%s", id.id.data());
 				}
 			}
 
