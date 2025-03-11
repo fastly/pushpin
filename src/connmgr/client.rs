@@ -2345,12 +2345,14 @@ impl TestClient {
                     }
                 }
 
-                let seq = seq.unwrap() + 1;
+                let seq = seq.unwrap();
 
                 debug!(
                     "received stream message from_router={} id={} seq={}",
                     from_router, id, seq
                 );
+
+                let out_seq = seq + 1;
 
                 // as a hack to make the test server stateless, respond to every message
                 // using the received sequence number. for messages we don't care about,
@@ -2376,9 +2378,15 @@ impl TestClient {
                                 assert!(!more);
                             }
 
-                            let msg =
-                                Self::respond_msg(id.as_bytes(), seq, "keep-alive", "", b"", None)
-                                    .unwrap();
+                            let msg = Self::respond_msg(
+                                id.as_bytes(),
+                                out_seq,
+                                "keep-alive",
+                                "",
+                                b"",
+                                None,
+                            )
+                            .unwrap();
                             out_stream_sock
                                 .send_multipart(
                                     [
@@ -2389,6 +2397,7 @@ impl TestClient {
                                     0,
                                 )
                                 .unwrap();
+                            out_stream_events = out_stream_sock.get_events().unwrap();
                         } else {
                             // http body
 
@@ -2405,9 +2414,15 @@ impl TestClient {
                         }
 
                         // echo
-                        let msg =
-                            Self::respond_msg(id.as_bytes(), seq, ptype, content_type, body, code)
-                                .unwrap();
+                        let msg = Self::respond_msg(
+                            id.as_bytes(),
+                            out_seq,
+                            ptype,
+                            content_type,
+                            body,
+                            code,
+                        )
+                        .unwrap();
                         out_stream_sock
                             .send_multipart(
                                 [
@@ -2418,6 +2433,7 @@ impl TestClient {
                                 0,
                             )
                             .unwrap();
+                        out_stream_events = out_stream_sock.get_events().unwrap();
 
                         if ptype == "close" {
                             status.send(StatusMessage::StreamFinished).unwrap();
@@ -2425,7 +2441,8 @@ impl TestClient {
                     }
                 } else {
                     let msg =
-                        Self::respond_msg(id.as_bytes(), seq, "keep-alive", "", b"", None).unwrap();
+                        Self::respond_msg(id.as_bytes(), out_seq, "keep-alive", "", b"", None)
+                            .unwrap();
                     out_stream_sock
                         .send_multipart(
                             [
@@ -2436,6 +2453,7 @@ impl TestClient {
                             0,
                         )
                         .unwrap();
+                    out_stream_events = out_stream_sock.get_events().unwrap();
                 }
             }
 
