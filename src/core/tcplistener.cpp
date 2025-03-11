@@ -34,7 +34,11 @@ bool TcpListener::bind(const QHostAddress &addr, quint16 port)
 {
 	reset();
 
-	QByteArray ip = addr.toString().toUtf8();
+	QHostAddress a = addr;
+	if(a.isNull())
+		a = QHostAddress::Any;
+
+	QByteArray ip = a.toString().toUtf8();
 	errorCondition_ = 0;
 
 	inner_ = ffi::tcp_listener_bind(ip.data(), port, &errorCondition_);
