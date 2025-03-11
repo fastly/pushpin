@@ -581,7 +581,7 @@ public:
 			QByteArray packetId = packet.ids.first().id;
 			if (packet.code == 101) // ws client init response code
 			{
-				int ret = get_cacheclient_no_from_response(packetId, gWsCacheClientList);
+				int ret = get_cacheclient_no_from_packet(packetId, gWsCacheClientList);
 				if (ret >= 0)
 				{
 					// cache client
@@ -912,12 +912,15 @@ public:
 			if (gCacheEnable == true)
 			{
 				// if requests from cache client
-				int cacheClientNumber = get_cacheclient_no_from_init_request(p);
-				if (cacheClientNumber >= 0 && cacheClientNumber < gWsCacheClientList.count())
+				int cc_no = get_cc_no_from_init_request(p);
+				if (cc_no >= 0 && cc_no < gWsCacheClientList.count())
 				{
-					gWsCacheClientList[cacheClientNumber].initFlag = false;
-					gWsCacheClientList[cacheClientNumber].clientId = id.id;
-					gWsCacheClientList[cacheClientNumber].lastDataReceivedTime = time(NULL);
+					gWsCacheClientList[cc_no].initFlag = false;
+					gWsCacheClientList[cc_no].clientId = id.id;
+					gWsCacheClientList[cc_no].msgIdCount = 0;
+					gWsCacheClientList[cc_no].requestSeqCount = id.seq;
+					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
+
 					log_debug("[WS] passing the requests from cache client=%s", id.id.data());
 				}
 				else // if request from real client
@@ -1053,7 +1056,16 @@ public:
 				}
 				else
 				{
-					log_debug("[WS] received request from unknown client=%s", id.id.data());
+					int cc_no = get_cacheclient_no_from_packet(id.id, gWsCacheClientList);
+					if (cc_no >= 0)
+					{
+						id.seq = gWsBackendUrlList[cc_no].requestSeqCount;
+						gWsBackendUrlList[cc_no].requestSeqCount++;
+					}
+					else
+					{
+						log_debug("[WS] received request from unknown client=%s", id.id.data());
+					}
 				}
 			}
 
@@ -1599,7 +1611,7 @@ public:
 			{
 				logStr = vrespStr;
 			}
-			log_debug("[WS] send_request_over_cacheclient: %s", qPrintable(logStr));
+			log_debug("[WS] send_ws_request_over_cacheclient: %s", qPrintable(logStr));
 		}
 
 		std::weak_ptr<Private> self = q->d;
@@ -1712,7 +1724,7 @@ public:
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
-					int cacheClientNo = get_cacheclient_no_from_response(gCacheItemMap[paramsHash].cacheClientId, gWsCacheClientList);
+					int cacheClientNo = get_cacheclient_no_from_packet(gCacheItemMap[paramsHash].cacheClientId, gWsCacheClientList);
 					if (cacheClientNo < 0 || gWsCacheClientList[cacheClientNo].initFlag == false)
 					{
 						cacheClientNo = select_main_cacheclient(gWsCacheClientList);

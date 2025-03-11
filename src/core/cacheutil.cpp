@@ -95,7 +95,7 @@ bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList)
 	return false;
 }
 
-int get_cacheclient_no_from_response(QByteArray packetId, QList<CacheClientItem> &cacheClientList)
+int get_cacheclient_no_from_packet(QByteArray packetId, QList<CacheClientItem> &cacheClientList)
 {
 	for (int i = 0; i < cacheClientList.count(); i++)
 	{
@@ -107,7 +107,7 @@ int get_cacheclient_no_from_response(QByteArray packetId, QList<CacheClientItem>
 	return -1;
 }
 
-int get_cacheclient_no_from_init_request(ZhttpRequestPacket &p)
+int get_cc_no_from_init_request(ZhttpRequestPacket &p)
 {
 	QByteArray pId = p.ids.first().id;
 
