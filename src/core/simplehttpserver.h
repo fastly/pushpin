@@ -28,6 +28,8 @@
 #include <boost/signals2.hpp>
 #include <map>
 
+#define SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST 1
+
 using std::map;
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
@@ -59,7 +61,7 @@ private:
 	friend class SimpleHttpServerPrivate;
 	Private *d;
 
-	SimpleHttpRequest(int maxHeadersSize, int maxBodySize);
+	SimpleHttpRequest(int headersSizeMax, int bodySizeMax);
 };
 
 class SimpleHttpServer : public QObject
@@ -67,7 +69,7 @@ class SimpleHttpServer : public QObject
 	Q_OBJECT
 
 public:
-	SimpleHttpServer(int maxHeadersSize, int maxBodySize, QObject *parent = 0);
+	SimpleHttpServer(int connectionsMax, int headersSizeMax, int bodySizeMax, QObject *parent = 0);
 	~SimpleHttpServer();
 
 	bool listen(const QHostAddress &addr, int port);
