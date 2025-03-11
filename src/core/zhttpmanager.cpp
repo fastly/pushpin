@@ -1030,6 +1030,7 @@ public:
 
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
+			int seqNum = id.seq;
 			// cache process
 			if (gCacheEnable == true)
 			{
@@ -1046,6 +1047,7 @@ public:
 
 					// update seq
 					p.ids[0].seq = gWsClientMap[id.id].requestSeq;
+					seqNum = p.ids[0].seq;
 					gWsClientMap[id.id].requestSeq++;
 
 					int ret = process_ws_stream_request(id.id, p);
@@ -1059,7 +1061,8 @@ public:
 					int cc_no = get_cacheclient_no_from_packet(id.id, gWsCacheClientList);
 					if (cc_no >= 0)
 					{
-						id.seq = gWsCacheClientList[cc_no].requestSeqCount;
+						p.ids[0].seq = gWsCacheClientList[cc_no].requestSeqCount;
+						seqNum = p.ids[0].seq;
 						gWsCacheClientList[cc_no].requestSeqCount++;
 					}
 					else
@@ -1073,7 +1076,7 @@ public:
 			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
 			if(sock)
 			{
-				sock->handle(id.id, id.seq, p);
+				sock->handle(id.id, seqNum, p);
 				if(self.expired())
 					return;
 
@@ -1084,7 +1087,7 @@ public:
 			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
 			if(req)
 			{
-				req->handle(id.id, id.seq, p);
+				req->handle(id.id, seqNum, p);
 				if(self.expired())
 					return;
 
