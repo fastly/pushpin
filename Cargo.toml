@@ -7,6 +7,7 @@ repository = "https://github.com/fastly/pushpin"
 readme = "README.md"
 license = "Apache-2.0"
 edition = "2018"
+rust-version = "1.75"
 default-run = "pushpin"
 
 [profile.dev]
