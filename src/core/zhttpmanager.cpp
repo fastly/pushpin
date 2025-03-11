@@ -917,7 +917,7 @@ public:
 				{
 					gWsCacheClientList[cc_no].initFlag = false;
 					gWsCacheClientList[cc_no].clientId = id.id;
-					gWsCacheClientList[cc_no].msgIdCount = 0;
+					gWsCacheClientList[cc_no].msgIdCount = -1;
 					gWsCacheClientList[cc_no].requestSeqCount = id.seq;
 					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
 
@@ -1062,8 +1062,8 @@ public:
 					if (cc_no >= 0)
 					{
 						p.ids[0].seq = gWsCacheClientList[cc_no].requestSeqCount;
-						seqNum = p.ids[0].seq;
-						gWsCacheClientList[cc_no].requestSeqCount++;
+						seqNum = p.ids[0].seq + 1;
+						gWsCacheClientList[cc_no].requestSeqCount = seqNum;
 					}
 					else
 					{
@@ -1594,12 +1594,12 @@ public:
 		// Create new packet by cache client
 		ZhttpRequestPacket p = packet;
 		CacheClientItem *cacheClient = &gWsCacheClientList[cacheClientNo];
-		int msgId = cacheClient->msgIdCount;
+		int msgId = cacheClient->msgIdCount + 1;
 		p.ids[0].id = cacheClient->clientId; // id
-		p.ids[0].seq = cacheClient->requestSeqCount; // seq
-		cacheClient->requestSeqCount++;
+		p.ids[0].seq = cacheClient->requestSeqCount + 1; // seq
+		cacheClient->requestSeqCount = p.ids[0].seq;
 		replace_id_field(p.body, orgMsgId, msgId);
-		cacheClient->msgIdCount++;
+		cacheClient->msgIdCount = msgId;
 
 		// log
 		if(log_outputLevel() >= LOG_LEVEL_DEBUG)
