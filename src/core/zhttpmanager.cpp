@@ -60,6 +60,9 @@
 // needs to match the peer
 #define ZHTTP_IDS_MAX 128
 
+// max length of one packet in log
+#define DEBUG_LOG_MAX_LENGTH	1024
+
 /////////////////////////////////////////////////////////////////////////////////////
 // cache data structure
 
@@ -1334,7 +1337,7 @@ public:
 		// create new cache item
 		struct CacheItem cacheItem;
 
-		int cacheClientNo = select_main_cacheclient();
+		int cacheClientNo = select_main_cacheclient(gWsCacheClientList);
 		cacheItem.msgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.newMsgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -1345,7 +1348,8 @@ public:
 		// save the request packet with new id
 		cacheItem.orgMsgId = orgMsgId;
 		cacheItem.requestPacket = clientPacket;
-		cacheItem.clientMap[clientId] = orgMsgId;
+		cacheItem.clientMap[clientId].msgId = orgMsgId;
+		cacheItem.clientMap[clientId].from = clientPacket.from;
 		cacheItem.proto = Scheme::websocket;
 		cacheItem.retryCount = 0;
 		cacheItem.cacheClientId = gWsCacheClientList[cacheClientNo].clientId;
@@ -1598,6 +1602,8 @@ public:
 			log_debug("[WS] send_request_over_cacheclient: %s", qPrintable(logStr));
 		}
 
+		std::weak_ptr<Private> self = q->d;
+
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
 			// is this for a websocket?
@@ -1702,8 +1708,6 @@ public:
 		{
 			if (gCacheItemMap.contains(paramsHash) && gCacheItemMap[paramsHash].proto == Scheme::websocket)
 			{
-				// add ws Cache hit
-				numCacheHit++;
 				gCacheItemMap[paramsHash].accessCount = 2;
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
@@ -1713,15 +1717,15 @@ public:
 					{
 						cacheClientNo = select_main_cacheclient(gWsCacheClientList);
 					}
-					reply_wsCachedContent(paramsHash, msgIdAttr, pId, receiver, from);
+					//reply_wsCachedContent(paramsHash, msgIdAttr, packetId, receiver, from);
 					log_debug("[WS] Replied with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
 				}
 				else
 				{
 					log_debug("[WS] Already cache registered, but not added content \"%s\"", qPrintable(cacheMethodAttr));
 					// add client to list
-					gCacheItemMap[paramsHash].clientMap[pId] = msgIdAttr;
-					log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdAttr), pId.data());
+					gCacheItemMap[paramsHash].clientMap[packetId] = msgIdAttr;
+					log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdAttr), packetId.data());
 					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
 
@@ -1734,7 +1738,7 @@ public:
 				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr));
 				
 				// Send new client cache request packet
-				gCacheItemMap[paramsHash].newMsgId = send_ws_request_over_cacheclient(p, msgIdAttr, cacheClientNumber);
+				gCacheItemMap[paramsHash].newMsgId = send_ws_request_over_cacheclient(p, msgIdAttr, cacheClientNo);
 				gCacheItemMap[paramsHash].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 			}
 			
