@@ -1059,8 +1059,8 @@ public:
 					int cc_no = get_cacheclient_no_from_packet(id.id, gWsCacheClientList);
 					if (cc_no >= 0)
 					{
-						id.seq = gWsBackendUrlList[cc_no].requestSeqCount;
-						gWsBackendUrlList[cc_no].requestSeqCount++;
+						id.seq = gWsCacheClientList[cc_no].requestSeqCount;
+						gWsCacheClientList[cc_no].requestSeqCount++;
 					}
 					else
 					{
