@@ -1612,7 +1612,7 @@ public:
 			{
 				sock->handle(id.id, id.seq, p);
 				if(self.expired())
-					return;
+					return -1;
 
 				continue;
 			}
@@ -1724,7 +1724,8 @@ public:
 				{
 					log_debug("[WS] Already cache registered, but not added content \"%s\"", qPrintable(cacheMethodAttr));
 					// add client to list
-					gCacheItemMap[paramsHash].clientMap[packetId] = msgIdAttr;
+					gCacheItemMap[paramsHash].clientMap[packetId].msgId = msgIdAttr;
+					gCacheItemMap[paramsHash].clientMap[packetId].from = p.from;
 					log_debug("[WS] Adding new client id msgId=%s clientId=%s", qPrintable(msgIdAttr), packetId.data());
 					gCacheItemMap[paramsHash].lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
 				}
