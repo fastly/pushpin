@@ -531,7 +531,7 @@ public:
 		assert(!packet.from.isEmpty());
 
 		// if this was not an error packet, send cancel
-		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
 		{
 			ZhttpResponsePacket out;
 			out.from = instanceId;
@@ -1502,7 +1502,7 @@ public:
 		// replace messageid
 		if (gCacheItemMap.contains(cacheItemId))
 		{
-			replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
+			replace_id_field(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
 		}
 		else
 		{
@@ -1510,8 +1510,8 @@ public:
 			return;
 		}
 		
-		clientPacket.ids[0].id = newCliId;
-		clientPacket.ids[0].seq = seqNum;
+		responsePacket.ids[0].id = newCliId;
+		responsePacket.ids[0].seq = seqNum;
 
 		write(WebSocketSession, responsePacket, orgFrom);
 	}
@@ -1727,12 +1727,12 @@ public:
 		send_creditRequest(creditSize, cacheClientNumber);
 
 		// check multi-part response
-		int ret = check_multi_packets_for_ws_request(p);
+		int ret = check_multi_packets_for_ws_response(p);
 		if (ret < 0)
 			return -1;
 
 		// parse json body
-		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
+		if (parse_json_msg(p.toVariant().toHash().value("body"), jsonMap) < 0)
 		{
 			log_debug("[WS] failed to parse JSON msg");
 			// make invalid
@@ -1800,7 +1800,7 @@ public:
 					}
 
 					log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
-					send_ws_response_to_client(receiver, gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum);
+					send_ws_response_to_client(gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum);
 				}
 			
 				// make invalid
