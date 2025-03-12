@@ -526,7 +526,7 @@ public:
 		}
 	}
 
-	void tryRespondEtc(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
+	void tryRespondEtc(SessionType type, const QByteArray &id, const ZhttpResponsePacket &packet)
 	{
 		assert(!packet.from.isEmpty());
 
@@ -540,8 +540,8 @@ public:
 			write(type, out, packet.from);
 		}
 	}
-
-	void tryRequestCredit(const ZhttpResponsePacket &packet, int credits)
+/*
+	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &id, int credits)
 	{
 		std::weak_ptr<Private> self = q->d;
 
@@ -555,10 +555,10 @@ public:
 			out.credits = credits;
 			
 			// is this for a websocket?
-			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
+			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(packet.from, id.id));
 			if(sock)
 			{
-				sock->handle(id.id, seqNum, p);
+				sock->handle(id.id, seqNum, packet);
 				if(self.expired())
 					return;
 
@@ -566,7 +566,7 @@ public:
 			}
 		}
 	}
-
+*/
 	void write(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		assert(client_out_sock || client_req_sock);
@@ -1667,7 +1667,7 @@ public:
 		return -1;
 	}
 
-	int process_ws_cacheclient_response(onst ZhttpResponsePacket &response, int cacheClientNumber)
+	int process_ws_cacheclient_response(const ZhttpResponsePacket &response, int cacheClientNumber)
 	{
 		ZhttpResponsePacket p = response;
 		QVariantMap jsonMap;
