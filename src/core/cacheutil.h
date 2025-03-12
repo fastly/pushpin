@@ -27,6 +27,7 @@
 #include <QHostAddress>
 #include <QObject>
 #include "zhttprequestpacket.h"
+#include "zhttpresponsepacket.h"
 #include "zwebsocket.h"
 #include "log.h"
 #include "packet/httprequestdata.h"
