@@ -1535,7 +1535,7 @@ public:
 			log_debug("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 		}
 
-		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, this);
+		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, PROMETHEUS_CONNECTIONS_MAX, this);
 		connectionsRefreshedConnection = stats->connectionsRefreshed.connect(boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
 		unsubscribedConnection = stats->unsubscribed.connect(boost::bind(&Private::stats_unsubscribed, this, boost::placeholders::_1, boost::placeholders::_2));
 		reportedConnection = stats->reported.connect(boost::bind(&Private::stats_reported, this, boost::placeholders::_1));
@@ -1620,7 +1620,7 @@ public:
 
 		if(config.pushInHttpPort != -1)
 		{
-			controlHttpServer = new SimpleHttpServer(config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize, this);
+			controlHttpServer = new SimpleHttpServer(CONTROL_CONNECTIONS_MAX, config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize, this);
 			controlServerConnection = controlHttpServer->requestReady.connect(boost::bind(&Private::controlHttpServer_requestReady, this));
 			controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
 

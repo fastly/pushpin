@@ -58,17 +58,17 @@ public:
 	HttpHeaders reqHeaders;
 	QByteArray reqBody;
 	int contentLength;
-	int maxHeadersSize;
-	int maxBodySize;
+	int headersSizeMax;
+	int bodySizeMax;
 	DeferCall deferCall;
 
-	Private(SimpleHttpRequest *_q, int maxHeadersSize, int maxBodySize) :
+	Private(SimpleHttpRequest *_q, int headersSizeMax, int bodySizeMax) :
 		q(_q),
 		state(ReadHeader),
 		version1dot0(false),
 		contentLength(0),
-		maxHeadersSize(maxHeadersSize),
-		maxBodySize(maxBodySize)
+		headersSizeMax(headersSizeMax),
+		bodySizeMax(bodySizeMax)
 	{
 	}
 
@@ -234,7 +234,7 @@ private:
 	{
 		if(state == ReadHeader)
 		{
-			QByteArray buf = stream->read(maxHeadersSize - inBuf.size());
+			QByteArray buf = stream->read(headersSizeMax - inBuf.size());
 
 			if(buf.isNull())
 			{
@@ -302,7 +302,7 @@ private:
 						return true;
 					}
 
-					if(contentLength > maxBodySize)
+					if(contentLength > bodySizeMax)
 					{
 						respondBadRequest("Request body too large.");
 						return true;
@@ -329,7 +329,7 @@ private:
 					ready();
 				}
 			}
-			else if(inBuf.size() >= maxHeadersSize)
+			else if(inBuf.size() >= headersSizeMax)
 			{
 				inBuf.clear();
 				respondBadRequest("Request header too large.");
@@ -359,7 +359,7 @@ private:
 
 			if(reqBody.size() < contentLength)
 			{
-				QByteArray buf = stream->read(maxBodySize - reqBody.size() + 1);
+				QByteArray buf = stream->read(bodySizeMax - reqBody.size() + 1);
 
 				if(buf.isNull())
 				{
@@ -440,9 +440,9 @@ private:
 	}
 };
 
-SimpleHttpRequest::SimpleHttpRequest(int maxHeadersSize, int maxBodySize)
+SimpleHttpRequest::SimpleHttpRequest(int headersSizeMax, int bodySizeMax)
 {
-	d = new Private(this, maxHeadersSize, maxBodySize);
+	d = new Private(this, headersSizeMax, bodySizeMax);
 }
 
 SimpleHttpRequest::~SimpleHttpRequest()
@@ -488,18 +488,21 @@ public:
 	bool local;
 	QSet<SimpleHttpRequest*> accepting;
 	QList<SimpleHttpRequest*> pending;
-	int maxHeadersSize;
-	int maxBodySize;
+	QSet<SimpleHttpRequest*> active;
+	int connectionsMax;
+	int headersSizeMax;
+	int bodySizeMax;
 	map<SimpleHttpRequest*, Connection> finishedConnections;
 	map<SimpleHttpRequest*, Connection> readyConnections;
 	DeferCall deferCall;
 
-	SimpleHttpServerPrivate(int maxHeadersSize, int maxBodySize, SimpleHttpServer *_q) :
+	SimpleHttpServerPrivate(int connectionsMax, int headersSizeMax, int bodySizeMax, SimpleHttpServer *_q) :
 		q(_q),
 		listener(nullptr),
 		local(false),
-		maxHeadersSize(maxHeadersSize),
-		maxBodySize(maxBodySize)
+		connectionsMax(connectionsMax),
+		headersSizeMax(headersSizeMax),
+		bodySizeMax(bodySizeMax)
 	{
 	}
 
@@ -515,6 +518,11 @@ public:
 			else
 				delete ((TcpListener *)listener);
 		}
+	}
+
+	bool canAccept() const
+	{
+		return (accepting.count() + pending.count() + active.count() < connectionsMax);
 	}
 
 	bool listen(const QHostAddress &addr, int port)
@@ -566,7 +574,7 @@ public:
 
 	void listener_streamsReady()
 	{
-		while(true)
+		while(canAccept())
 		{
 			std::unique_ptr<ReadWrite> s;
 
@@ -587,7 +595,7 @@ public:
 
 			if(s)
 			{
-				SimpleHttpRequest *req = new SimpleHttpRequest(maxHeadersSize, maxBodySize);
+				SimpleHttpRequest *req = new SimpleHttpRequest(headersSizeMax, bodySizeMax);
 				readyConnections[req] = req->d->ready.connect(boost::bind(&SimpleHttpServerPrivate::req_ready, this, req->d->q));
 				finishedConnections[req] = req->finished.connect(boost::bind(&SimpleHttpServerPrivate::req_finished, this, req));
 				accepting += req;
@@ -600,21 +608,40 @@ public:
 	{
 		accepting.remove(req);
 		pending += req;
+
 		q->requestReady();
 	}
 
 	void req_finished(SimpleHttpRequest *req)
 	{
-		accepting.remove(req);
-		pending.removeAll(req);
-		delete req;
+		bool del = false;
+
+		if(active.contains(req))
+		{
+			active.remove(req);
+		}
+		else
+		{
+			pending.removeAll(req);
+			accepting.remove(req);
+			del = true;
+		}
+
+		readyConnections.erase(req);
+		finishedConnections.erase(req);
+
+		if(del)
+			delete req;
+
+		// try to accept more
+		listener_streamsReady();
 	}
 };
 
-SimpleHttpServer::SimpleHttpServer(int maxHeadersSize, int maxBodySize, QObject *parent) :
+SimpleHttpServer::SimpleHttpServer(int connectionsMax, int headersSizeMax, int bodySizeMax, QObject *parent) :
 	QObject(parent)
 {
-	d = new SimpleHttpServerPrivate(maxHeadersSize, maxBodySize, this);
+	d = new SimpleHttpServerPrivate(connectionsMax, headersSizeMax, bodySizeMax, this);
 }
 
 SimpleHttpServer::~SimpleHttpServer()
@@ -637,8 +664,8 @@ SimpleHttpRequest *SimpleHttpServer::takeNext()
 	if(!d->pending.isEmpty())
 	{
 		SimpleHttpRequest *req = d->pending.takeFirst();
-		d->finishedConnections.erase(req);
-		
+		d->active += req;
+
 		return req;
 	}
 	else

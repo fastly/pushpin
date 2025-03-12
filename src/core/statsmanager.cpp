@@ -405,6 +405,7 @@ public:
 	int reportInterval;
 	std::unique_ptr<QZmq::Socket> sock;
 	SimpleHttpServer *prometheusServer;
+	int prometheusConnectionsMax;
 	QString prometheusPrefix;
 	QList<PrometheusMetric> prometheusMetrics;
 	QHash<QByteArray, quint32> routeActivity;
@@ -435,7 +436,7 @@ public:
 	Connection externalConnectionsMaxTimerConnection;
 	Connection promServerConnection;
 
-	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
+	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax, int _prometheusConnectionsMax) :
 		QObject(_q),
 		q(_q),
 		connectionsMax(_connectionsMax),
@@ -451,6 +452,7 @@ public:
 		subscriptionLinger(60 * 1000),
 		reportInterval(10 * 1000),
 		prometheusServer(0),
+		prometheusConnectionsMax(_prometheusConnectionsMax),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
 		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax))
@@ -519,7 +521,9 @@ public:
 
 	bool setPrometheusPort(const QString &portStr)
 	{
-		prometheusServer = new SimpleHttpServer(8192, 8192, this);
+		assert(!prometheusServer);
+
+		prometheusServer = new SimpleHttpServer(prometheusConnectionsMax, 8192, 8192, this);
 		promServerConnection = prometheusServer->requestReady.connect(boost::bind(&Private::prometheus_requestReady, this));
 
 		if(portStr.startsWith("ipc://"))
@@ -1567,10 +1571,10 @@ private:
 	}
 };
 
-StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent) :
+StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, int prometheusConnectionsMax, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, connectionsMax, subscriptionsMax);
+	d = new Private(this, connectionsMax, subscriptionsMax, prometheusConnectionsMax);
 }
 
 StatsManager::~StatsManager()

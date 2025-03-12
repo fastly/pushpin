@@ -34,6 +34,7 @@
 #include "eventloop.h"
 #include "processquit.h"
 #include "log.h"
+#include "simplehttpserver.h"
 #include "httpsession.h"
 #include "wssession.h"
 #include "httpsessionupdatemanager.h"
@@ -407,10 +408,9 @@ private:
 		{
 			log_debug("using new event loop");
 
-			// enough for lots of internal http api requests, prometheus
-			// requests, and zmq route targets. client sessions don't use
-			// socket notifiers
-			int socketNotifiersMax = 1000;
+			// enough for control requests and prometheus requests. client
+			// sessions don't use socket notifiers
+			int socketNotifiersMax = SOCKETNOTIFIERS_PER_SIMPLEHTTPREQUEST * (CONTROL_CONNECTIONS_MAX + PROMETHEUS_CONNECTIONS_MAX);
 
 			int registrationsMax = timersMax + socketNotifiersMax;
 			loop = std::make_unique<EventLoop>(registrationsMax);
