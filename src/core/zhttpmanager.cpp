@@ -1805,7 +1805,7 @@ public:
 					if (gWsClientMap.contains(cliId))
 					{
 						seqNum = gWsClientMap[cliId].responseSeq + 1;
-						gWsClientMap[cliId].responseSeq + seqNum;
+						gWsClientMap[cliId].responseSeq = seqNum;
 					}
 
 					log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
@@ -1970,9 +1970,11 @@ public:
 					if (gWsClientMap.contains(packetId))
 					{
 						seqNum = gWsClientMap[packetId].responseSeq + 1;
+						gWsClientMap[packetId].responseSeq = seqNum;
 					}
+
+					log_debug("[WS] Repling with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
 					send_ws_response_to_client(paramsHash, packetId, seqNum);
-					log_debug("[WS] Replied with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
 				}
 				else
 				{
