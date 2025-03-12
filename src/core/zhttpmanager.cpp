@@ -1473,7 +1473,7 @@ public:
 
 	void send_http_response_to_client(const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
 	{
-		ZhttpResponsePacket responsePacket = gCacheItemMap[itemId].responsePacket;
+		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
 
 		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[newCliId].msgId;
 		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[newCliId].from;
@@ -1960,7 +1960,7 @@ public:
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
 					int cc_no = get_cc_no_from_packet(gCacheItemMap[paramsHash].cacheClientId, gWsCacheClientList);
-					if (cacheClientNo < 0 || gWsCacheClientList[cc_no].initFlag == false)
+					if (cc_no < 0 || gWsCacheClientList[cc_no].initFlag == false)
 					{
 						cc_no = select_main_cacheclient(gWsCacheClientList);
 					}
