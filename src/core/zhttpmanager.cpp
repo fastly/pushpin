@@ -541,11 +541,11 @@ public:
 		}
 	}
 
-	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &from, int credits)
+	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &from, int credits, int seqNum)
 	{
 		std::weak_ptr<Private> self = q->d;
 
-		const ZhttpRequestPacket::Id &id = packet.ids.first();
+		const ZhttpResponsePacket::Id &id = packet.ids.first();
 
 		// if this was not an error packet, send cancel
 		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
@@ -654,7 +654,9 @@ public:
 
 					// increase credit
 					int creditSize = static_cast<int>(p.body.size());
-					tryRequestCredit(packet, gWsCacheClientList[cc_no].from, creditSize);
+					int seqNum = gWsCacheClientList[cc_no].responseSeqCount + 1;
+					gWsCacheClientList[cc_no].responseSeqCount = seqNum;
+					tryRequestCredit(packet, gWsCacheClientList[cc_no].from, creditSize, seqNum);
 
 					int ret = process_ws_cacheclient_response(packet, cc_no);
 					if (ret == 0)
