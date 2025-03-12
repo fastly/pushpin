@@ -551,8 +551,11 @@ public:
 		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
 		{
 			ZhttpRequestPacket out;
-			out.from = instanceId;
-			out.ids += ZhttpRequestPacket::Id(id);
+			out.from = from;
+			ZhttpRequestPacket::Id tempId;
+			tempId.id = id.id; // id
+			tempId.seq = seqNum; // seq
+			out.ids += tempId;
 			out.type = ZhttpRequestPacket::Credit;
 			out.credits = credits;
 			
