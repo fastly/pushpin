@@ -1731,8 +1731,8 @@ public:
 			gWsCacheClientList[cacheClientNumber].responseSeqCount = p.ids[0].seq;
 			gWsCacheClientList[cacheClientNumber].lastDataReceivedTime = time(NULL);
 
-			tryRespondEtc(WebSocketSession, pId, p);
-			return 0;
+			//tryRespondEtc(WebSocketSession, pId, p);
+			return -1;
 		}
 
 		// check multi-part response
