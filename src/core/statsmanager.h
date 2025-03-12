@@ -48,7 +48,7 @@ public:
 		JsonFormat
 	};
 
-	StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent = 0);
+	StatsManager(int connectionsMax, int subscriptionsMax, int prometheusConnectionsMax, QObject *parent = 0);
 	~StatsManager();
 
 	bool connectionSendEnabled() const;

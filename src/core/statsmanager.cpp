@@ -36,7 +36,7 @@
 #include "httpheaders.h"
 #include "simplehttpserver.h"
 #include "zutil.h"
-#include "rtimer.h"
+#include "timer.h"
 
 // make this somewhat big since PUB is lossy
 #define OUT_HWM 200000
@@ -434,6 +434,7 @@ public:
 	int reportInterval;
 	std::unique_ptr<QZmq::Socket> sock;
 	SimpleHttpServer *prometheusServer;
+	int prometheusConnectionsMax;
 	QString prometheusPrefix;
 	QList<PrometheusMetric> prometheusMetrics;
 	QHash<QByteArray, quint32> routeActivity;
@@ -454,17 +455,17 @@ public:
 	QHash<QByteArray, Report*> reports;
 	Counts combinedCounts;
 	Report combinedReport;
-	std::unique_ptr<RTimer> activityTimer;
-	std::unique_ptr<RTimer> reportTimer;
-	std::unique_ptr<RTimer> refreshTimer;
-	std::unique_ptr<RTimer> externalConnectionsMaxTimer;
+	std::unique_ptr<Timer> activityTimer;
+	std::unique_ptr<Timer> reportTimer;
+	std::unique_ptr<Timer> refreshTimer;
+	std::unique_ptr<Timer> externalConnectionsMaxTimer;
 	Connection activityTimerConnection;
 	Connection reportTimerConnection;
 	Connection refreshTimerConnection;
 	Connection externalConnectionsMaxTimerConnection;
 	Connection promServerConnection;
 
-	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax) :
+	Private(StatsManager *_q, int _connectionsMax, int _subscriptionsMax, int _prometheusConnectionsMax) :
 		QObject(_q),
 		q(_q),
 		connectionsMax(_connectionsMax),
@@ -480,19 +481,20 @@ public:
 		subscriptionLinger(60 * 1000),
 		reportInterval(10 * 1000),
 		prometheusServer(0),
+		prometheusConnectionsMax(_prometheusConnectionsMax),
 		currentConnectionInfoRefreshBucket(0),
 		currentSubscriptionRefreshBucket(0),
 		wheel(TimerWheel((_connectionsMax * 2) + _subscriptionsMax))
 	{
-		activityTimer = std::make_unique<RTimer>();
+		activityTimer = std::make_unique<Timer>();
 		activityTimerConnection = activityTimer->timeout.connect(boost::bind(&Private::activity_timeout, this));
 		activityTimer->setSingleShot(true);
 
-		refreshTimer = std::make_unique<RTimer>();
+		refreshTimer = std::make_unique<Timer>();
 		refreshTimerConnection = refreshTimer->timeout.connect(boost::bind(&Private::refresh_timeout, this));
 		refreshTimer->start(REFRESH_INTERVAL);
 
-		externalConnectionsMaxTimer = std::make_unique<RTimer>();
+		externalConnectionsMaxTimer = std::make_unique<Timer>();
 		externalConnectionsMaxTimerConnection = externalConnectionsMaxTimer->timeout.connect(boost::bind(&Private::externalConnectionsMax_timeout, this));
 		externalConnectionsMaxTimer->start(EXTERNAL_CONNECTIONS_MAX_INTERVAL);
 
@@ -551,7 +553,9 @@ public:
 
 	bool setPrometheusPort(const QString &portStr)
 	{
-		prometheusServer = new SimpleHttpServer(8192, 8192, this);
+		assert(!prometheusServer);
+
+		prometheusServer = new SimpleHttpServer(prometheusConnectionsMax, 8192, 8192, this);
 		promServerConnection = prometheusServer->requestReady.connect(boost::bind(&Private::prometheus_requestReady, this));
 
 		if(portStr.startsWith("ipc://"))
@@ -638,7 +642,7 @@ public:
 	{
 		if(reportInterval > 0 && !reportTimer)
 		{
-			reportTimer = std::make_unique<RTimer>();
+			reportTimer = std::make_unique<Timer>();
 			reportTimerConnection = reportTimer->timeout.connect(boost::bind(&Private::report_timeout, this));
 			reportTimer->start(reportInterval);
 		}
@@ -1668,10 +1672,10 @@ private:
 	}
 };
 
-StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, QObject *parent) :
+StatsManager::StatsManager(int connectionsMax, int subscriptionsMax, int prometheusConnectionsMax, QObject *parent) :
 	QObject(parent)
 {
-	d = new Private(this, connectionsMax, subscriptionsMax);
+	d = new Private(this, connectionsMax, subscriptionsMax, prometheusConnectionsMax);
 }
 
 StatsManager::~StatsManager()

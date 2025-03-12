@@ -29,7 +29,7 @@
 #include <QJsonArray>
 #include <QRandomGenerator>
 #include "qtcompat.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "log.h"
 #include "bufferlist.h"
@@ -164,8 +164,8 @@ public:
 	Instruct instruct;
 	int logLevel;
 	QHash<QString, Instruct::Channel> channels;
-	RTimer *timer;
-	RTimer *retryTimer;
+	Timer *timer;
+	Timer *retryTimer;
 	StatsManager *stats;
 	ZhttpManager *outZhttp;
 	std::unique_ptr<ZhttpRequest> outReq; // for fetching links
@@ -236,10 +236,10 @@ public:
 		writeBytesChangedConnection = req->writeBytesChanged.connect(boost::bind(&Private::req_writeBytesChanged, this));
 		errorConnection = req->error.connect(boost::bind(&Private::req_error, this));
 
-		timer = new RTimer;
+		timer = new Timer;
 		timerConnection = timer->timeout.connect(boost::bind(&Private::timer_timeout, this));
 
-		retryTimer = new RTimer;
+		retryTimer = new Timer;
 		retryTimerConnection = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 

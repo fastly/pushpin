@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Fanout, Inc.
+ * Copyright (C) 2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -24,6 +25,8 @@
 #define HTTPSESSIONUPDATEMANAGER_H
 
 #include <QObject>
+
+#define TIMERS_PER_UNIQUE_UPDATE_REGISTRATION 1
 
 class QUrl;
 class HttpSession;

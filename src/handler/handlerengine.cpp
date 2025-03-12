@@ -25,7 +25,6 @@
 
 #include <assert.h>
 #include <algorithm>
-#include <QTimer>
 #include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -37,7 +36,7 @@
 #include "qzmqreqmessage.h"
 #include "qtcompat.h"
 #include "tnetstring.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "encrypt.h"
 #include "log.h"
@@ -874,8 +873,9 @@ public:
 
 	QList<std::shared_ptr<HttpSession>> takeSessions()
 	{
-		QList<std::shared_ptr<HttpSession>> out = sessions;
-		sessions.clear();
+		// swap instead of std::move since sessions is a member and should have a known state
+		QList<std::shared_ptr<HttpSession>> out;
+		out.swap(sessions);
 
 		foreach(const std::shared_ptr<HttpSession> &hs, out)
 			hs->setParent(0);
@@ -1232,8 +1232,8 @@ public:
 
 	void start()
 	{
-		timer_ = new QTimer(this);
-		connect(timer_, &QTimer::timeout, this, &Subscription::timer_timeout);
+		timer_ = new Timer;
+		timer_->timeout.connect(boost::bind(&Subscription::timer_timeout, this));
 		timer_->setSingleShot(true);
 		timer_->start(SUBSCRIBED_DELAY);
 	}
@@ -1242,9 +1242,8 @@ public:
 
 private:
 	QString channel_;
-	QTimer *timer_;
+	Timer *timer_;
 
-private slots:
 	void timer_timeout()
 	{
 		subscribed();
@@ -1385,11 +1384,6 @@ public:
 	bool start(const Configuration &_config)
 	{
 		config = _config;
-
-		int timersPerSession = qMax(TIMERS_PER_HTTPSESSION, TIMERS_PER_WSSESSION);
-
-		// enough timers for sessions, plus an extra 100 for misc
-		RTimer::init((config.connectionsMax * timersPerSession) + 100);
 
 		publishLimiter->setRate(config.messageRate);
 		publishLimiter->setHwm(config.messageHwm);
@@ -1588,7 +1582,7 @@ public:
 			log_debug("ws control stream: %s", qPrintable(config.wsControlStreamSpecs.join(", ")));
 		}
 
-		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, this);
+		stats = new StatsManager(config.connectionsMax, config.connectionsMax * config.connectionSubscriptionMax, PROMETHEUS_CONNECTIONS_MAX, this);
 		connectionsRefreshedConnection = stats->connectionsRefreshed.connect(boost::bind(&Private::stats_connectionsRefreshed, this, boost::placeholders::_1));
 		unsubscribedConnection = stats->unsubscribed.connect(boost::bind(&Private::stats_unsubscribed, this, boost::placeholders::_1, boost::placeholders::_2));
 		reportedConnection = stats->reported.connect(boost::bind(&Private::stats_reported, this, boost::placeholders::_1));
@@ -1673,7 +1667,7 @@ public:
 
 		if(config.pushInHttpPort != -1)
 		{
-			controlHttpServer = new SimpleHttpServer(config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize, this);
+			controlHttpServer = new SimpleHttpServer(CONTROL_CONNECTIONS_MAX, config.pushInHttpMaxHeadersSize, config.pushInHttpMaxBodySize, this);
 			controlServerConnection = controlHttpServer->requestReady.connect(boost::bind(&Private::controlHttpServer_requestReady, this));
 			controlHttpServer->listen(config.pushInHttpAddr, config.pushInHttpPort);
 
@@ -3165,7 +3159,6 @@ private:
 		}
 	}
 
-private slots:
 	void hs_subscribe(HttpSession *hs, const QString &channel)
 	{
 		Instruct::HoldMode mode = hs->holdMode();

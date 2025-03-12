@@ -31,7 +31,7 @@
 #include <boost/signals2.hpp>
 #include "rust/bindings.h"
 #include "qzmqcontext.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "socketnotifier.h"
 
 using Connection = boost::signals2::scoped_connection;
@@ -372,7 +372,7 @@ public:
 	bool canWrite, canRead;
 	QList< QList<QByteArray> > pendingWrites;
 	int pendingWritten;
-	std::unique_ptr<RTimer> updateTimer;
+	std::unique_ptr<Timer> updateTimer;
 	Connection updateTimerConnection;
 	bool pendingUpdate;
 	int shutdownWaitTime;
@@ -419,11 +419,18 @@ public:
 
 		sn_read = std::make_unique<SocketNotifier>(get_fd(sock), SocketNotifier::Read);
 		sn_read->activated.connect(boost::bind(&Private::sn_read_activated, this));
-		sn_read->setEnabled(true);
+		sn_read->setReadEnabled(true);
 
-		updateTimer = std::make_unique<RTimer>();
+		updateTimer = std::make_unique<Timer>();
 		updateTimerConnection = updateTimer->timeout.connect(boost::bind(&Private::update_timeout, this));
 		updateTimer->setSingleShot(true);
+
+		// socket notifier starts out ready. attempt to read events
+		if(processEvents())
+		{
+			// if there are events, queue them for processing
+			update();
+		}
 	}
 
 	~Private()
@@ -527,6 +534,8 @@ public:
 	bool processEvents()
 	{
 		int flags = get_events(sock);
+
+		sn_read->clearReadiness(SocketNotifier::Read);
 
 		bool canWriteOld = canWrite;
 		bool canReadOld = canRead;

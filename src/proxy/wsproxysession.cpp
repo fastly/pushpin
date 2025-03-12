@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2023 Fanout, Inc.
- * Copyright (C) 2024 Fastly, Inc.
+ * Copyright (C) 2024-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,7 +33,7 @@
 #include "packet/httprequestdata.h"
 #include "log.h"
 #include "logutil.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "jwt.h"
 #include "zhttpmanager.h"
@@ -304,7 +304,7 @@ public:
 	bool detached;
 	QDateTime activityTime;
 	QByteArray publicCid;
-	RTimer *keepAliveTimer;
+	Timer *keepAliveTimer;
 	WsControl::KeepAliveMode keepAliveMode;
 	int keepAliveTimeout;
 	QList<QueuedFrame> queuedInFrames; // frames to deliver after out read finishes
@@ -828,7 +828,6 @@ public:
 			statsManager->incCounter(route.statsRoute(), c, count, inSock ? inSock->requestUri().host() : QString());
 	}
 
-private slots:
 	void in_readyRead()
 	{
 		if((outSock && outSock->state() == WebSocket::Connected) || detached)
@@ -1133,7 +1132,7 @@ private:
 
 			if(!keepAliveTimer)
 			{
-				keepAliveTimer = new RTimer;
+				keepAliveTimer = new Timer;
 				keepAliveConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 				keepAliveTimer->setSingleShot(true);
 			}

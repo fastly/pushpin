@@ -16,82 +16,158 @@
 
 #include "socketnotifier.h"
 
+#include <assert.h>
 #include "defercall.h"
 #include "eventloop.h"
 
-SocketNotifier::SocketNotifier(int socket, Type type) :
+SocketNotifier::SocketNotifier(int socket, uint8_t interest) :
 	socket_(socket),
-	type_(type),
-	enabled_(true),
-	inner_(nullptr),
+	interest_(interest),
+	readEnabled_(true),
+	writeEnabled_(true),
+	readInner_(nullptr),
+	writeInner_(nullptr),
+	readiness_(0),
 	loop_(EventLoop::instance()),
 	regId_(-1)
 {
+	assert((interest & Read) || (interest & Write));
+
+	// start by assuming ready
+	readiness_ = interest;
+
 	if(loop_)
 	{
 		// if the rust-based eventloop is available, use it
 
-		unsigned char interest = 0;
-		switch(type_)
-		{
-			case SocketNotifier::Read:
-				interest = EventLoop::Readable;
-				break;
-			case SocketNotifier::Write:
-				interest = EventLoop::Writable;
-				break;
-		}
+		uint8_t einterest = 0;
 
-		regId_ = loop_->registerFd(socket_, interest, SocketNotifier::cb_fd_activated, this);
+		if(interest & Read)
+			einterest |= EventLoop::Readable;
+
+		if(interest & Write)
+			einterest |= EventLoop::Writable;
+
+		regId_ = loop_->registerFd(socket_, einterest, SocketNotifier::cb_fd_activated, this);
+		assert(regId_ >= 0);
 	}
 	else
 	{
 		// else fall back to qt eventloop
 
-		QSocketNotifier::Type qType = type == Read ? QSocketNotifier::Read : QSocketNotifier::Write;
+		if(interest & Read)
+		{
+			readInner_ = new QSocketNotifier(socket, QSocketNotifier::Read);
+			connect(readInner_, &QSocketNotifier::activated, this, &SocketNotifier::innerReadActivated);
 
-		inner_ = new QSocketNotifier(socket, qType);
-		connect(inner_, &QSocketNotifier::activated, this, &SocketNotifier::innerActivated);
+			// start out disabled. will enable when initial readiness cleared
+			readInner_->setEnabled(false);
+		}
+
+		if(interest & Write)
+		{
+			writeInner_ = new QSocketNotifier(socket, QSocketNotifier::Write);
+			connect(writeInner_, &QSocketNotifier::activated, this, &SocketNotifier::innerWriteActivated);
+
+			// start out disabled. will enable when initial readiness cleared
+			writeInner_->setEnabled(false);
+		}
 	}
 }
 
 SocketNotifier::~SocketNotifier()
 {
-	if(inner_)
+	if(readInner_)
 	{
-		inner_->setEnabled(false);
+		readInner_->setEnabled(false);
 
-		inner_->disconnect(this);
-		inner_->setParent(0);
-		DeferCall::deleteLater(inner_);
+		readInner_->disconnect(this);
+		readInner_->setParent(0);
+		DeferCall::deleteLater(readInner_);
+	}
+
+	if(writeInner_)
+	{
+		writeInner_->setEnabled(false);
+
+		writeInner_->disconnect(this);
+		writeInner_->setParent(0);
+		DeferCall::deleteLater(writeInner_);
 	}
 
 	if(regId_ >= 0)
 		loop_->deregister(regId_);
 }
 
-void SocketNotifier::setEnabled(bool enable)
+void SocketNotifier::setReadEnabled(bool enable)
 {
-	enabled_ = enable;
-
-	if(inner_)
-		inner_->setEnabled(enabled_);
+	readEnabled_ = enable;
 }
 
-void SocketNotifier::innerActivated(int socket)
+void SocketNotifier::setWriteEnabled(bool enable)
 {
-	activated(socket);
+	writeEnabled_ = enable;
 }
 
-void SocketNotifier::cb_fd_activated(void *ctx)
+void SocketNotifier::clearReadiness(uint8_t readiness)
+{
+	readiness_ &= ~readiness;
+
+	if(readInner_ && !(readiness_ & Read))
+		readInner_->setEnabled(true);
+
+	if(writeInner_ && !(readiness_ & Write))
+		writeInner_->setEnabled(true);
+}
+
+void SocketNotifier::innerReadActivated(int socket)
+{
+	Q_UNUSED(socket);
+
+	// QSocketNotifier is level-triggered. disable until readiness cleared
+	readInner_->setEnabled(false);
+
+	apply(Read);
+}
+
+void SocketNotifier::innerWriteActivated(int socket)
+{
+	Q_UNUSED(socket);
+
+	// QSocketNotifier is level-triggered. disable until readiness cleared
+	writeInner_->setEnabled(false);
+
+	apply(Write);
+}
+
+void SocketNotifier::apply(uint8_t readiness)
+{
+	// calculate which bits went from 0->1
+	uint8_t changes = readiness & ~readiness_;
+
+	readiness_ |= readiness;
+
+	if((readEnabled_ && (changes & Read)) || (writeEnabled_ && (changes & Write)))
+		activated(socket_, changes);
+}
+
+void SocketNotifier::cb_fd_activated(void *ctx, uint8_t ereadiness)
 {
 	SocketNotifier *self = (SocketNotifier *)ctx;
 
-	self->fd_activated();
+	self->fd_activated(ereadiness);
 }
 
-void SocketNotifier::fd_activated()
+void SocketNotifier::fd_activated(uint8_t ereadiness)
 {
-	if(enabled_)
-		activated(socket_);
+	uint8_t readiness = 0;
+
+	if(ereadiness & EventLoop::Readable)
+		readiness |= Read;
+
+	if(ereadiness & EventLoop::Writable)
+		readiness |= Write;
+
+	if(readiness)
+		apply(readiness);
 }

@@ -41,7 +41,7 @@
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;
 
-class RTimer;
+class Timer;
 class ZhttpManager;
 class PublishItem;
 
@@ -71,9 +71,9 @@ public:
 	QByteArray delayedType;
 	QByteArray delayedMessage;
 	QHash<int, qint64> pendingRequests;
-	RTimer *expireTimer;
-	RTimer *delayedTimer;
-	RTimer *requestTimer;
+	Timer *expireTimer;
+	Timer *delayedTimer;
+	Timer *requestTimer;
 	QList<PublishItem> publishQueue;
 	ZhttpManager *zhttpOut;
 	std::shared_ptr<RateLimiter> filterLimiter;

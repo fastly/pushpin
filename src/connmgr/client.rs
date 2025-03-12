@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2023 Fanout, Inc.
- * Copyright (C) 2023 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2084,9 +2084,12 @@ impl TestClient {
         let (status_s, status_r) = channel::channel(1000);
         let (control_s, control_r) = channel::channel(1000);
 
-        let thread = thread::spawn(move || {
-            Self::run(status_s, control_r, zmq_context);
-        });
+        let thread = thread::Builder::new()
+            .name("test-client".to_string())
+            .spawn(move || {
+                Self::run(status_s, control_r, zmq_context);
+            })
+            .unwrap();
 
         // wait for handler thread to start
         assert_eq!(status_r.recv().unwrap(), StatusMessage::Started);
@@ -2535,12 +2538,14 @@ impl TestClient {
                     }
                 }
 
-                let seq = seq.unwrap() + 1;
+                let seq = seq.unwrap();
 
                 debug!(
                     "received stream message from_router={} id={} seq={}",
                     from_router, id, seq
                 );
+
+                let out_seq = seq + 1;
 
                 // as a hack to make the test server stateless, respond to every message
                 // using the received sequence number. for messages we don't care about,
@@ -2566,9 +2571,15 @@ impl TestClient {
                                 assert!(!more);
                             }
 
-                            let msg =
-                                Self::respond_msg(id.as_bytes(), seq, "keep-alive", "", b"", None)
-                                    .unwrap();
+                            let msg = Self::respond_msg(
+                                id.as_bytes(),
+                                out_seq,
+                                "keep-alive",
+                                "",
+                                b"",
+                                None,
+                            )
+                            .unwrap();
                             out_stream_sock
                                 .send_multipart(
                                     [
@@ -2579,6 +2590,7 @@ impl TestClient {
                                     0,
                                 )
                                 .unwrap();
+                            out_stream_events = out_stream_sock.get_events().unwrap();
                         } else {
                             // http body
 
@@ -2595,9 +2607,15 @@ impl TestClient {
                         }
 
                         // echo
-                        let msg =
-                            Self::respond_msg(id.as_bytes(), seq, ptype, content_type, body, code)
-                                .unwrap();
+                        let msg = Self::respond_msg(
+                            id.as_bytes(),
+                            out_seq,
+                            ptype,
+                            content_type,
+                            body,
+                            code,
+                        )
+                        .unwrap();
                         out_stream_sock
                             .send_multipart(
                                 [
@@ -2608,6 +2626,7 @@ impl TestClient {
                                 0,
                             )
                             .unwrap();
+                        out_stream_events = out_stream_sock.get_events().unwrap();
 
                         if ptype == "close" {
                             status.send(StatusMessage::StreamFinished).unwrap();
@@ -2615,7 +2634,8 @@ impl TestClient {
                     }
                 } else {
                     let msg =
-                        Self::respond_msg(id.as_bytes(), seq, "keep-alive", "", b"", None).unwrap();
+                        Self::respond_msg(id.as_bytes(), out_seq, "keep-alive", "", b"", None)
+                            .unwrap();
                     out_stream_sock
                         .send_multipart(
                             [
@@ -2626,6 +2646,7 @@ impl TestClient {
                             0,
                         )
                         .unwrap();
+                    out_stream_events = out_stream_sock.get_events().unwrap();
                 }
             }
 

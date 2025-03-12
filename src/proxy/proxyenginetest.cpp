@@ -38,7 +38,7 @@
 #include "packet/httprequestdata.h"
 #include "packet/httpresponsedata.h"
 #include "packet/statspacket.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "zhttpmanager.h"
 #include "statsmanager.h"
@@ -597,6 +597,8 @@ private slots:
 		QDir outDir(qgetenv("OUT_DIR"));
 		QDir workDir(QDir::current().relativeFilePath(outDir.filePath("test-work")));
 
+		Timer::init(100);
+
 		wrapper = new Wrapper(this, workDir);
 		wrapper->startHttp();
 
@@ -639,8 +641,8 @@ private slots:
 		// ensure deferred deletes are processed
 		QCoreApplication::instance()->sendPostedEvents();
 
-		RTimer::deinit();
 		DeferCall::cleanup();
+		Timer::deinit();
 	}
 
 	void passthrough()

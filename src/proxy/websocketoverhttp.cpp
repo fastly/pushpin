@@ -32,7 +32,7 @@
 #include "zhttprequest.h"
 #include "zhttpmanager.h"
 #include "uuidutil.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 
 #define BUFFER_SIZE 200000
@@ -233,8 +233,8 @@ public:
 	bool disconnecting;
 	bool disconnectSent;
 	bool updateQueued;
-	std::unique_ptr<RTimer> keepAliveTimer;
-	std::unique_ptr<RTimer> retryTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
+	std::unique_ptr<Timer> retryTimer;
 	int retries;
 	int maxEvents;
 	ReqConnections reqConnections;
@@ -272,11 +272,11 @@ public:
 		if(!g_disconnectManager)
 			g_disconnectManager = new DisconnectManager;
 
-		keepAliveTimer = std::make_unique<RTimer>();
+		keepAliveTimer = std::make_unique<Timer>();
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 		keepAliveTimer->setSingleShot(true);
 
-		retryTimer = std::make_unique<RTimer>();
+		retryTimer = std::make_unique<Timer>();
 		retryTimerConnection = retryTimer->timeout.connect(boost::bind(&Private::retryTimer_timeout, this));
 		retryTimer->setSingleShot(true);
 	}

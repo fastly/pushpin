@@ -37,6 +37,17 @@ EventLoop::~EventLoop()
 	g_instance = nullptr;
 }
 
+std::optional<int> EventLoop::step()
+{
+	std::optional<int> code;
+
+	int x;
+	if(ffi::event_loop_step(inner_, &x) == 0)
+		code = x;
+
+	return code;
+}
+
 int EventLoop::exec()
 {
 	return ffi::event_loop_exec(inner_);
@@ -47,7 +58,7 @@ void EventLoop::exit(int code)
 	ffi::event_loop_exit(inner_, code);
 }
 
-int EventLoop::registerFd(int fd, unsigned char interest, void (*cb)(void *), void *ctx)
+int EventLoop::registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx)
 {
 	size_t id;
 
@@ -57,7 +68,7 @@ int EventLoop::registerFd(int fd, unsigned char interest, void (*cb)(void *), vo
 	return (int)id;
 }
 
-int EventLoop::registerTimer(int timeout, void (*cb)(void *), void *ctx)
+int EventLoop::registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx)
 {
 	size_t id;
 
@@ -69,7 +80,7 @@ int EventLoop::registerTimer(int timeout, void (*cb)(void *), void *ctx)
 
 void EventLoop::deregister(int id)
 {
-	ffi::event_loop_deregister(inner_, id);
+	assert(ffi::event_loop_deregister(inner_, id) == 0);
 }
 
 EventLoop *EventLoop::instance()
