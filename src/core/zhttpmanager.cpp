@@ -566,8 +566,6 @@ public:
 				sock->handle(id.id, seqNum, out);
 				if(self.expired())
 					return;
-
-				continue;
 			}
 		}
 	}
@@ -656,7 +654,7 @@ public:
 					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
 
 					// increase credit
-					int creditSize = static_cast<int>(p.body.size());
+					int creditSize = static_cast<int>(packet.body.size());
 					int seqNum = gWsCacheClientList[cc_no].responseSeqCount + 1;
 					gWsCacheClientList[cc_no].responseSeqCount = seqNum;
 					tryRequestCredit(packet, gWsCacheClientList[cc_no].from, creditSize, seqNum);
