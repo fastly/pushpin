@@ -2,6 +2,7 @@
 
 #include <QString>
 #include <QDir>
+#include "rust/bindings.h"
 
 namespace Encrypt {
 
@@ -37,8 +38,8 @@ QByteArray decryptMessage(const QByteArray &data, const QByteArray &key, Error *
         return QByteArray();
     }
 
-    EncryptBuffer buf;
-    int ret = encrypt_decrypt_message((const quint8 *)data.constData(), data.size(), (const quint8 *)key.constData(), &buf);
+    ffi::EncryptBuffer buf;
+    int ret = ffi::encrypt_decrypt_message((const quint8 *)data.constData(), data.size(), (const quint8 *)key.constData(), &buf);
 
     if(ret != 0)
     {
@@ -59,7 +60,7 @@ QByteArray decryptMessage(const QByteArray &data, const QByteArray &key, Error *
     }
 
     QByteArray out((const char *)buf.data, buf.len);
-    encrypt_buffer_deinit(&buf);
+    ffi::encrypt_buffer_deinit(&buf);
 
     return out;
 }

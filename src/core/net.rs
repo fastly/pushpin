@@ -750,6 +750,480 @@ impl AsyncWrite for AsyncUnixStream {
     }
 }
 
+mod ffi {
+    use std::convert::TryInto;
+    use std::ffi::{CStr, OsStr};
+    use std::io::{Read, Write};
+    use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
+    use std::os::raw::{c_char, c_int};
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+    use std::ptr;
+    use std::slice;
+
+    pub struct TcpListener(std::net::TcpListener);
+    pub struct TcpStream(std::net::TcpStream);
+    pub struct UnixListener(std::os::unix::net::UnixListener);
+    pub struct UnixStream(std::os::unix::net::UnixStream);
+
+    #[allow(clippy::missing_safety_doc)]
+    unsafe fn io_read<R: Read>(
+        r: &mut R,
+        buf: *mut u8,
+        size: libc::size_t,
+        out_errno: *mut c_int,
+    ) -> libc::ssize_t {
+        assert!(!buf.is_null());
+        let buf = slice::from_raw_parts_mut(buf, size);
+
+        assert!(!out_errno.is_null());
+
+        let size = match r.read(buf) {
+            Ok(size) => size,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return -1;
+            }
+        };
+
+        size.try_into().expect("read size should fit in a ssize_t")
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    unsafe fn io_write<W: Write>(
+        w: &mut W,
+        buf: *const u8,
+        size: libc::size_t,
+        out_errno: *mut c_int,
+    ) -> libc::ssize_t {
+        assert!(!buf.is_null());
+        let buf = slice::from_raw_parts(buf, size);
+
+        assert!(!out_errno.is_null());
+
+        let size = match w.write(buf) {
+            Ok(size) => size,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return -1;
+            }
+        };
+
+        size.try_into().expect("write size should fit in a ssize_t")
+    }
+
+    #[no_mangle]
+    pub extern "C" fn tcp_listener_bind(
+        ip: *const c_char,
+        port: u16,
+        out_errno: *mut c_int,
+    ) -> *mut TcpListener {
+        assert!(!out_errno.is_null());
+
+        let ip = unsafe { CStr::from_ptr(ip) };
+
+        let ip = match ip.to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                unsafe { out_errno.write(libc::EINVAL) };
+                return ptr::null_mut();
+            }
+        };
+
+        let ip: std::net::IpAddr = match ip.parse() {
+            Ok(ip) => ip,
+            Err(_) => {
+                unsafe { out_errno.write(libc::EINVAL) };
+                return ptr::null_mut();
+            }
+        };
+
+        let addr = std::net::SocketAddr::new(ip, port);
+
+        let l = match std::net::TcpListener::bind(addr) {
+            Ok(l) => l,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return ptr::null_mut();
+            }
+        };
+
+        if let Err(e) = l.set_nonblocking(true) {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return ptr::null_mut();
+        }
+
+        Box::into_raw(Box::new(TcpListener(l)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_destroy(l: *mut TcpListener) {
+        if !l.is_null() {
+            drop(Box::from_raw(l));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_local_addr(
+        l: *const TcpListener,
+        out_ip: *mut c_char,
+        out_ip_size: *mut libc::size_t,
+        out_port: *mut u16,
+    ) -> c_int {
+        let l = l.as_ref().unwrap();
+        let out_ip_size = out_ip_size.as_mut().unwrap();
+        assert!(!out_port.is_null());
+
+        let addr = match l.0.local_addr() {
+            Ok(addr) => addr,
+            Err(_) => return -1,
+        };
+
+        let ip = addr.ip().to_string();
+
+        if ip.len() > *out_ip_size {
+            // if value doesn't fit, return success with empty value
+            *out_ip_size = 0;
+            return 0;
+        }
+
+        ptr::copy(ip.as_bytes().as_ptr() as *const c_char, out_ip, ip.len());
+        *out_ip_size = ip.len();
+
+        out_port.write(addr.port());
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_as_raw_fd(l: *const TcpListener) -> c_int {
+        let l = l.as_ref().unwrap();
+
+        l.0.as_raw_fd()
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_listener_accept(
+        l: *const TcpListener,
+        out_errno: *mut c_int,
+    ) -> *mut TcpStream {
+        let l = l.as_ref().unwrap();
+
+        assert!(!out_errno.is_null());
+
+        let s = match l.0.accept() {
+            Ok((s, _)) => s,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                out_errno.write(code);
+                return ptr::null_mut();
+            }
+        };
+
+        if let Err(e) = s.set_nonblocking(true) {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return ptr::null_mut();
+        }
+
+        Box::into_raw(Box::new(TcpStream(s)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_connect(
+        ip: *const c_char,
+        port: u16,
+        out_errno: *mut c_int,
+    ) -> *mut TcpStream {
+        assert!(!out_errno.is_null());
+
+        let ip = unsafe { CStr::from_ptr(ip) };
+
+        let ip = match ip.to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                unsafe { out_errno.write(libc::EINVAL) };
+                return ptr::null_mut();
+            }
+        };
+
+        let ip: std::net::IpAddr = match ip.parse() {
+            Ok(ip) => ip,
+            Err(_) => {
+                unsafe { out_errno.write(libc::EINVAL) };
+                return ptr::null_mut();
+            }
+        };
+
+        let addr = std::net::SocketAddr::new(ip, port);
+
+        // use mio to ensure socket begins in non-blocking mode
+        let s = match mio::net::TcpStream::connect(addr) {
+            Ok(s) => s,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return ptr::null_mut();
+            }
+        };
+
+        // SAFETY: converting from valid object
+        let s = unsafe { std::net::TcpStream::from_raw_fd(s.into_raw_fd()) };
+
+        Box::into_raw(Box::new(TcpStream(s)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_destroy(s: *mut TcpStream) {
+        if !s.is_null() {
+            drop(Box::from_raw(s));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_check_connected(
+        s: *const TcpStream,
+        out_errno: *mut c_int,
+    ) -> c_int {
+        let s = s.as_ref().unwrap();
+        assert!(!out_errno.is_null());
+
+        // mio documentation says to use take_error() and peer_addr() to
+        // check for connected
+
+        if let Ok(Some(e)) | Err(e) = s.0.take_error() {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return -1;
+        }
+
+        // returns libc::ENOTCONN if not yet connected
+        if let Err(e) = s.0.peer_addr() {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return -1;
+        }
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_as_raw_fd(s: *const TcpStream) -> c_int {
+        let s = s.as_ref().unwrap();
+
+        s.0.as_raw_fd()
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_read(
+        s: *mut TcpStream,
+        buf: *mut u8,
+        size: libc::size_t,
+        out_errno: *mut c_int,
+    ) -> libc::ssize_t {
+        let s = s.as_mut().unwrap();
+
+        io_read(&mut s.0, buf, size, out_errno)
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn tcp_stream_write(
+        s: *mut TcpStream,
+        buf: *const u8,
+        size: libc::size_t,
+        out_errno: *mut c_int,
+    ) -> libc::ssize_t {
+        let s = s.as_mut().unwrap();
+
+        io_write(&mut s.0, buf, size, out_errno)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn unix_listener_bind(
+        path: *const c_char,
+        out_errno: *mut c_int,
+    ) -> *mut UnixListener {
+        assert!(!out_errno.is_null());
+
+        let path = unsafe { CStr::from_ptr(path) };
+
+        let path = Path::new(OsStr::from_bytes(path.to_bytes()));
+
+        let l = match std::os::unix::net::UnixListener::bind(path) {
+            Ok(l) => l,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return ptr::null_mut();
+            }
+        };
+
+        if let Err(e) = l.set_nonblocking(true) {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return ptr::null_mut();
+        }
+
+        Box::into_raw(Box::new(UnixListener(l)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_listener_destroy(l: *mut UnixListener) {
+        if !l.is_null() {
+            drop(Box::from_raw(l));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_listener_as_raw_fd(l: *const UnixListener) -> c_int {
+        let l = l.as_ref().unwrap();
+
+        l.0.as_raw_fd()
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_listener_accept(
+        l: *const UnixListener,
+        out_errno: *mut c_int,
+    ) -> *mut UnixStream {
+        let l = l.as_ref().unwrap();
+
+        assert!(!out_errno.is_null());
+
+        let s = match l.0.accept() {
+            Ok((s, _)) => s,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                out_errno.write(code);
+                return ptr::null_mut();
+            }
+        };
+
+        if let Err(e) = s.set_nonblocking(true) {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return ptr::null_mut();
+        }
+
+        Box::into_raw(Box::new(UnixStream(s)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_stream_connect(
+        path: *const c_char,
+        out_errno: *mut c_int,
+    ) -> *mut UnixStream {
+        assert!(!out_errno.is_null());
+
+        let path = unsafe { CStr::from_ptr(path) };
+
+        let path = Path::new(OsStr::from_bytes(path.to_bytes()));
+
+        // use mio to ensure socket begins in non-blocking mode
+        let s = match mio::net::UnixStream::connect(path) {
+            Ok(s) => s,
+            Err(e) => {
+                let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+                unsafe { out_errno.write(code) };
+                return ptr::null_mut();
+            }
+        };
+
+        // SAFETY: converting from valid object
+        let s = unsafe { std::os::unix::net::UnixStream::from_raw_fd(s.into_raw_fd()) };
+
+        Box::into_raw(Box::new(UnixStream(s)))
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_stream_destroy(s: *mut UnixStream) {
+        if !s.is_null() {
+            drop(Box::from_raw(s));
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_stream_check_connected(
+        s: *const UnixStream,
+        out_errno: *mut c_int,
+    ) -> c_int {
+        let s = s.as_ref().unwrap();
+        assert!(!out_errno.is_null());
+
+        // mio documentation says to use take_error() and peer_addr() to
+        // check for connected
+
+        if let Ok(Some(e)) | Err(e) = s.0.take_error() {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return -1;
+        }
+
+        // returns libc::ENOTCONN if not yet connected
+        if let Err(e) = s.0.peer_addr() {
+            let code = e.raw_os_error().unwrap_or(libc::EINVAL);
+            unsafe { out_errno.write(code) };
+            return -1;
+        }
+
+        0
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_stream_as_raw_fd(s: *const UnixStream) -> c_int {
+        let s = s.as_ref().unwrap();
+
+        s.0.as_raw_fd()
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_stream_read(
+        s: *mut UnixStream,
+        buf: *mut u8,
+        size: libc::size_t,
+        out_errno: *mut c_int,
+    ) -> libc::ssize_t {
+        let s = s.as_mut().unwrap();
+
+        io_read(&mut s.0, buf, size, out_errno)
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    #[no_mangle]
+    pub unsafe extern "C" fn unix_stream_write(
+        s: *mut UnixStream,
+        buf: *const u8,
+        size: libc::size_t,
+        out_errno: *mut c_int,
+    ) -> libc::ssize_t {
+        let s = s.as_mut().unwrap();
+
+        io_write(&mut s.0, buf, size, out_errno)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

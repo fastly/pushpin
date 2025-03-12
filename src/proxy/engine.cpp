@@ -33,7 +33,7 @@
 #include "packet/statspacket.h"
 #include "packet/zrpcrequestpacket.h"
 #include "qtcompat.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "log.h"
 #include "inspectdata.h"
@@ -59,18 +59,6 @@
 #include "logutil.h"
 
 #define DEFAULT_HWM 1000
-#define ZROUTES_MAX 100
-
-// each session can have a bunch of timers:
-// 2 per incoming zhttprequest/zwebsocket
-// 2 per outgoing zhttprequest/zwebsocket
-// 1 per wsproxysession
-// 2 per websocketoverhttp
-// 1 per inspect/accept request
-#define TIMERS_PER_SESSION 10
-
-// each zroute has a zhttpmanager, which has up to 8 timers
-#define TIMERS_PER_ZROUTE 10
 
 class Engine::Private : public QObject
 {
@@ -217,9 +205,6 @@ public:
 	{
 		config = _config;
 
-		// enough timers for sessions and zroutes, plus an extra 100 for misc
-		RTimer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
-
 		logConfig.fromAddress = config.logFrom;
 		logConfig.userAgent = config.logUserAgent;
 
@@ -331,7 +316,7 @@ public:
 
 		if(!config.statsSpec.isEmpty() || !config.prometheusPort.isEmpty())
 		{
-			stats = new StatsManager(config.sessionsMax, 0, this);
+			stats = new StatsManager(config.sessionsMax, 0, PROMETHEUS_CONNECTIONS_MAX, this);
 
 			connMaxConnection = stats->connMax.connect(boost::bind(&Private::stats_connMax, this, boost::placeholders::_1));
 

@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2012-2022 Fanout, Inc.
- * Copyright (C) 2023-2024 Fastly, Inc.
+ * Copyright (C) 2023-2025 Fastly, Inc.
  *
  * This file is part of Pushpin.
  *
@@ -33,7 +33,7 @@
 #include "rust/security.h"
 #include "rust/backtrace.h"
 #include "processquit.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "log.h"
 #include "settings.h"
@@ -291,6 +291,9 @@ public:
 		// will unlock during exec
 		m.lock();
 
+		// enough timers for sessions and zroutes, plus an extra 100 for misc
+		Timer::init((config.sessionsMax * TIMERS_PER_SESSION) + (ZROUTES_MAX * TIMERS_PER_ZROUTE) + 100);
+
 		worker = new EngineWorker(config, domainMap);
 		Connection startedConnection = worker->started.connect(boost::bind(&EngineThread::worker_started, this));
 		Connection stoppedConnection = worker->stopped.connect(boost::bind(&EngineThread::worker_stopped, this));
@@ -302,8 +305,8 @@ public:
 		QCoreApplication::instance()->sendPostedEvents();
 
 		// deinit here, after all event loop activity has completed
-		RTimer::deinit();
 		DeferCall::cleanup();
+		Timer::deinit();
 	}
 
 private:
@@ -677,6 +680,13 @@ public:
 		log_info("started");
 	}
 
+private:
+	void domainMap_changed()
+	{
+		for(EngineThread *t : threads)
+			t->routesChanged();
+	}
+
 private slots:
 	void reload()
 	{
@@ -684,12 +694,6 @@ private slots:
 		log_rotate();
 
 		domainMap->reload();
-	}
-
-	void domainMap_changed()
-	{
-		for(EngineThread *t : threads)
-			t->routesChanged();
 	}
 
 	void doQuit()

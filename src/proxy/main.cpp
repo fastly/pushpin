@@ -24,6 +24,7 @@
 #include <QCoreApplication>
 #include "rust/log.h"
 #include "app.h"
+#include "timer.h"
 #include "defercall.h"
 
 class AppMain
@@ -55,6 +56,9 @@ int proxy_main(int argc, char **argv)
 
 	QCoreApplication qapp(argc, argv);
 
+	// plenty for the main thread
+	Timer::init(100);
+
 	AppMain appMain;
 	DeferCall deferCall;
 	deferCall.defer([&] { appMain.start(); });
@@ -65,6 +69,7 @@ int proxy_main(int argc, char **argv)
 
 	// deinit here, after all event loop activity has completed
 	DeferCall::cleanup();
+	Timer::deinit();
 
 	return ret;
 }

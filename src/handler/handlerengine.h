@@ -31,6 +31,11 @@
 #include <boost/signals2.hpp>
 #include <map>
 
+#define TIMERS_PER_SUBSCRIPTION 1
+
+#define CONTROL_CONNECTIONS_MAX 128
+#define PROMETHEUS_CONNECTIONS_MAX 16
+
 using std::map;
 using Signal = boost::signals2::signal<void()>;
 using Connection = boost::signals2::scoped_connection;

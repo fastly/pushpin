@@ -14,36 +14,36 @@
  * limitations under the License.
  */
 
-#ifndef EVENTLOOP_H
-#define EVENTLOOP_H
+#ifndef UNIXLISTENER_H
+#define UNIXLISTENER_H
 
-#include <optional>
+#include <memory>
+#include <QHostAddress>
+#include <boost/signals2.hpp>
 #include "rust/bindings.h"
+#include "unixstream.h"
 
-class EventLoop
+class SocketNotifier;
+
+class UnixListener
 {
 public:
-	enum Interest
-	{
-		Readable = ffi::READABLE,
-		Writable = ffi::WRITABLE,
-	};
+	UnixListener();
+	~UnixListener();
 
-	EventLoop(int capacity);
-	~EventLoop();
+	bool bind(const QString &path);
+	std::unique_ptr<UnixStream> accept();
+	int errorCondition() const { return errorCondition_; }
 
-	std::optional<int> step();
-	int exec();
-	void exit(int code);
-
-	int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
-	int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
-	void deregister(int id);
-
-	static EventLoop *instance();
+	boost::signals2::signal<void()> streamsReady;
 
 private:
-	ffi::EventLoopRaw *inner_;
+	ffi::UnixListener *inner_;
+	std::unique_ptr<SocketNotifier> sn_;
+	int errorCondition_;
+
+	void reset();
+	void sn_activated();
 };
 
 #endif

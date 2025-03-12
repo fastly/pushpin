@@ -32,7 +32,7 @@
 #include "log.h"
 #include "bufferlist.h"
 #include "packet/httprequestdata.h"
-#include "rtimer.h"
+#include "timer.h"
 #include "defercall.h"
 #include "zhttprequest.h"
 #include "zwebsocket.h"
@@ -155,7 +155,7 @@ public:
 	int pendingWrittenBytes;
 	QList<WriteItem> pendingWrites;
 	QHash<ZhttpRequest*, RequestItem*> requests;
-	std::unique_ptr<RTimer> keepAliveTimer;
+	std::unique_ptr<Timer> keepAliveTimer;
 	int closeCode;
 	QString closeReason;
 	bool closeSent;
@@ -188,7 +188,7 @@ public:
 		peerCloseCode(-1),
 		updating(false)
 	{
-		keepAliveTimer = std::make_unique<RTimer>();
+		keepAliveTimer = std::make_unique<Timer>();
 		keepAliveTimerConnection = keepAliveTimer->timeout.connect(boost::bind(&Private::keepAliveTimer_timeout, this));
 	}
 

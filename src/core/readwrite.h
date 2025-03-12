@@ -14,36 +14,29 @@
  * limitations under the License.
  */
 
-#ifndef EVENTLOOP_H
-#define EVENTLOOP_H
+#ifndef READWRITE_H
+#define READWRITE_H
 
-#include <optional>
-#include "rust/bindings.h"
+#include <QByteArray>
+#include <boost/signals2.hpp>
 
-class EventLoop
+class ReadWrite
 {
 public:
-	enum Interest
-	{
-		Readable = ffi::READABLE,
-		Writable = ffi::WRITABLE,
-	};
+	virtual ~ReadWrite() = default;
 
-	EventLoop(int capacity);
-	~EventLoop();
+	// size < 0 means default read size
+	// returns buffer of bytes read. null buffer means error. empty means end
+	virtual QByteArray read(int size = -1) = 0;
 
-	std::optional<int> step();
-	int exec();
-	void exit(int code);
+	// returns amount accepted, or -1 for error
+	virtual int write(const QByteArray &buf) = 0;
 
-	int registerFd(int fd, uint8_t interest, void (*cb)(void *, uint8_t), void *ctx);
-	int registerTimer(int timeout, void (*cb)(void *, uint8_t), void *ctx);
-	void deregister(int id);
+	// returns errno of latest operation
+	virtual int errorCondition() const = 0;
 
-	static EventLoop *instance();
-
-private:
-	ffi::EventLoopRaw *inner_;
+	boost::signals2::signal<void()> readReady;
+	boost::signals2::signal<void()> writeReady;
 };
 
 #endif

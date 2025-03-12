@@ -23,13 +23,13 @@
 #ifndef DEFERCALL_H
 #define DEFERCALL_H
 
-#include <QObject>
+#include <functional>
+#include <memory>
+#include <list>
 
 // queues calls to be run after returning to the event loop
-class DeferCall : public QObject
+class DeferCall
 {
-	Q_OBJECT
-
 public:
 	DeferCall();
 	~DeferCall();
@@ -51,9 +51,6 @@ public:
 		global()->defer([=] { delete p; });
 	}
 
-private slots:
-	void callNext();
-
 private:
 	class Call
 	{
@@ -61,7 +58,13 @@ private:
 		std::function<void ()> handler;
 	};
 
-	std::list<Call> deferredCalls_;
+	class Manager;
+	friend class Manager;
+
+	std::list<std::shared_ptr<Call>> deferredCalls_;
+
+	static thread_local Manager *manager;
+	static thread_local DeferCall *instance;
 };
 
 #endif

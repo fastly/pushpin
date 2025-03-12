@@ -7,6 +7,7 @@ repository = "https://github.com/fastly/pushpin"
 readme = "README.md"
 license = "Apache-2.0"
 edition = "2018"
+rust-version = "1.75"
 default-run = "pushpin"
 
 [profile.dev]
@@ -28,7 +29,7 @@ clap = { version = "=4.3.24", features = ["cargo", "string", "wrap_help", "deriv
 config = "0.14"
 httparse = "1.7"
 ipnet = "2"
-jsonwebtoken = "8"
+jsonwebtoken = "9"
 libc = "0.2"
 log = "0.4"
 miniz_oxide = "0.6"
