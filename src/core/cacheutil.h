@@ -65,7 +65,7 @@ struct CacheKeyItem {
 
 bool is_cache_method(QString methodStr);
 bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList);
-int get_cacheclient_no_from_packet(QByteArray packetId, QList<CacheClientItem> &cacheClientList);
+int get_cc_no_from_packet(QByteArray packetId, QList<CacheClientItem> &cacheClientList);
 int get_cc_no_from_init_request(ZhttpRequestPacket &p);
 pid_t create_process_for_cacheclient(QString connectPath, int _no);
 int select_main_cacheclient(QList<CacheClientItem> &cacheClientList);
@@ -84,5 +84,6 @@ QByteArray calculate_response_seckey_from_init_request(ZhttpRequestPacket &p);
 QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr);
 
 int check_multi_packets_for_ws_request(ZhttpRequestPacket &p);
+int check_multi_packets_for_ws_response(ZhttpResponsePacket &p);
 
 #endif

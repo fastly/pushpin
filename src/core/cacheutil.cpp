@@ -55,7 +55,7 @@ extern QList<CacheKeyItem> gCacheKeyItemList;
 // multi packets params
 extern ZhttpResponsePacket gHttpMultiPartResponsePacket;
 extern QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
-extern ZhttpResponsePacket gWsMultiPartResponsePacket;
+extern QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 extern QList<QByteArray> gHealthClientList;
 
@@ -95,7 +95,7 @@ bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList)
 	return false;
 }
 
-int get_cacheclient_no_from_packet(QByteArray packetId, QList<CacheClientItem> &cacheClientList)
+int get_cc_no_from_packet(QByteArray packetId, QList<CacheClientItem> &cacheClientList)
 {
 	for (int i = 0; i < cacheClientList.count(); i++)
 	{
@@ -547,6 +547,52 @@ int check_multi_packets_for_ws_request(ZhttpRequestPacket &p)
 
 			// register new multi-request item
 			gWsMultiPartRequestItemMap[pId] = p;
+			
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int check_multi_packets_for_ws_response(ZhttpResponsePacket &p)
+{
+	QByteArray pId = p.ids.first().id;
+	// Check if multi-parts response
+	if (gWsMultiPartResponseItemMap.contains(pId))
+	{
+		// this is middle packet of multi-response
+		if (p.more == true)
+		{
+			log_debug("[WS] Detected middle of multi-parts response");
+			gWsMultiPartResponseItemMap[pId].body.append(p.body);
+
+			return -1;
+		}
+		else // this is end packet of multi-response
+		{
+			log_debug("[WS] Detected end of multi-parts response");
+			gWsMultiPartResponseItemMap[pId].body.append(p.body);
+			p.body = gWsMultiPartResponseItemMap[pId].body;
+
+			gWsMultiPartResponseItemMap.remove(pId);
+		}
+	}
+	else
+	{
+		// this is first packet of multi-response
+		if (p.more == true)
+		{
+			log_debug("[WS] Detected start of multi-parts response");
+
+			if (!gHealthClientList.contains(pId))
+			{
+				// add ws Cache multi-part response
+				numRequestMultiPart++;
+			}
+
+			// register new multi-response item
+			gWsMultiPartResponseItemMap[pId] = p;
 			
 			return -1;
 		}

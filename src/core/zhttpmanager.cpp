@@ -79,6 +79,10 @@ static QString gMsgMethodAttrName = "method";
 static QString gMsgParamsAttrName = "";
 static QString gResultAttrName = "result";
 
+static gAutoRefreshShorterTimeoutSeconds	5
+static gAutoRefreshLongerTimeoutSeconds	10
+static gAutoRefreshCacheTimeoutSeconds	15
+
 
 QStringList gCacheMethodList = {"*"};
 QMap<QString, QString> gSubscribeMethodMap;
@@ -154,7 +158,7 @@ QList<QByteArray> gHealthClientList;
 // multi packets params
 ZhttpResponsePacket gHttpMultiPartResponsePacket;
 QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
-ZhttpResponsePacket gWsMultiPartResponsePacket;
+QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -522,6 +526,47 @@ public:
 		}
 	}
 
+	void tryRespondEtc(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
+	{
+		assert(!packet.from.isEmpty());
+
+		// if this was not an error packet, send cancel
+		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+		{
+			ZhttpResponsePacket out;
+			out.from = instanceId;
+			out.ids += ZhttpResponsePacket::Id(id);
+			out.type = packet.type;
+			write(type, out, packet.from);
+		}
+	}
+
+	void tryRequestCredit(const ZhttpResponsePacket &packet, int credits)
+	{
+		std::weak_ptr<Private> self = q->d;
+
+		// if this was not an error packet, send cancel
+		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
+		{
+			ZhttpRequestPacket out;
+			out.from = instanceId;
+			out.ids += ZhttpRequestPacket::Id(id);
+			out.type = ZhttpRequestPacket::Credit;
+			out.credits = credits;
+			
+			// is this for a websocket?
+			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
+			if(sock)
+			{
+				sock->handle(id.id, seqNum, p);
+				if(self.expired())
+					return;
+
+				continue;
+			}
+		}
+	}
+
 	void write(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		assert(client_out_sock || client_req_sock);
@@ -579,16 +624,17 @@ public:
 		if (gCacheEnable == true)
 		{
 			QByteArray packetId = packet.ids.first().id;
+			int cc_no = get_cc_no_from_packet(packetId, gWsCacheClientList);
 			if (packet.code == 101) // ws client init response code
 			{
-				int ret = get_cacheclient_no_from_packet(packetId, gWsCacheClientList);
-				if (ret >= 0)
+				if (cc_no >= 0)
 				{
 					// cache client
-					gWsCacheClientList[ret].initFlag = true;
-					gWsCacheClientList[ret].lastDataReceivedTime = time(NULL);
-					gWsCacheClientList[ret].from = packet.from;
-					log_debug("[WS] Initialized Cache client%d, %s", ret, gWsCacheClientList[ret].clientId.data());
+					gWsCacheClientList[cc_no].initFlag = true;
+					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
+					gWsCacheClientList[cc_no].responseSeqCount = packet.ids.first().seq;
+					gWsCacheClientList[cc_no].from = packet.from;
+					log_debug("[WS] Initialized Cache client%d, %s", cc_no, gWsCacheClientList[cc_no].clientId.data());
 					gWsInitResponsePacket = packet;
 				}
 				else
@@ -599,12 +645,20 @@ public:
 			}
 			else
 			{
-				if (gHttpClientMap.contains(packetId))
+				if (cc_no >= 0)
 				{
-					int ret = process_http_response(packet);
-					if (ret == 0)
-						return;
-					gHttpClientMap[packetId].responseSeq = packet.ids.first().seq;
+					// update data receive time
+					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
+				}
+				else
+				{
+					if (gHttpClientMap.contains(packetId))
+					{
+						int ret = process_http_response(packet);
+						if (ret == 0)
+							return;
+						gHttpClientMap[packetId].responseSeq = packet.ids.first().seq;
+					}
 				}
 			}
 		}
@@ -1058,7 +1112,7 @@ public:
 				}
 				else
 				{
-					int cc_no = get_cacheclient_no_from_packet(id.id, gWsCacheClientList);
+					int cc_no = get_cc_no_from_packet(id.id, gWsCacheClientList);
 					if (cc_no >= 0)
 					{
 						p.ids[0].seq = gWsCacheClientList[cc_no].requestSeqCount;
@@ -1438,6 +1492,30 @@ public:
 		write(HttpSession, responsePacket, orgFrom);
 	}
 
+	void send_ws_response_to_client(ZhttpResponsePacket &p, const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
+	{
+		ZhttpResponsePacket responsePacket = p;
+
+		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[newCliId].msgId;
+		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[newCliId].from;
+
+		// replace messageid
+		if (gCacheItemMap.contains(cacheItemId))
+		{
+			replace_idField(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
+		}
+		else
+		{
+			log_debug("[WS] Unknown error for cache item");
+			return;
+		}
+		
+		clientPacket.ids[0].id = newCliId;
+		clientPacket.ids[0].seq = seqNum;
+
+		write(WebSocketSession, responsePacket, orgFrom);
+	}
+
 	int processHttpRequestForCache(QByteArray id, const ZhttpRequestPacket &packet)
 	{
 		QByteArray packetId = id;
@@ -1589,6 +1667,151 @@ public:
 		return -1;
 	}
 
+	int process_ws_cacheclient_response(onst ZhttpResponsePacket &response, int cacheClientNumber)
+	{
+		ZhttpResponsePacket p = response;
+		QVariantMap jsonMap;
+		QByteArray pId = response.ids[0].id;
+		switch (p.type)
+		{
+		case ZhttpResponsePacket::Cancel:
+		case ZhttpResponsePacket::Close:
+		case ZhttpResponsePacket::Error:
+			{
+				// set log level to debug
+				//set_debugLogLevel(true);
+
+				log_debug("[WS] switching client of error, condition=%s", p.condition.data());
+
+				// get error type
+				QString conditionStr = QString(p.condition);
+				if (conditionStr.compare("remote-connection-failed", Qt::CaseInsensitive) == 0 ||
+					conditionStr.compare("connection-timeout", Qt::CaseInsensitive) == 0)
+				{
+					log_debug("[WS] Sleeping for 10 seconds");
+					sleep(10);
+				}
+
+				// if cache client0 is ON, start cache client1
+				//switch_cacheClient(pId, false);
+			}
+			return -1;
+		case ZhttpResponsePacket::Credit:
+			log_debug("[WS] skipping credit response");
+			if (p.credits > 0)
+			{
+				return -1;
+			}
+			break;
+		case ZhttpResponsePacket::Ping:
+			log_debug("[WS] received ping response");
+			break;
+		default:
+			break;
+		}
+
+		if (p.type != ZhttpResponsePacket::Data)
+		{
+			log_debug("[WS] passed cache client response");
+
+			p.ids[0].seq = gWsCacheClientList[cacheClientNumber].responseSeqCount + 1; // seq
+			gWsCacheClientList[cacheClientNumber].responseSeqCount = p.ids[0].seq;
+			gWsCacheClientList[cacheClientNumber].lastDataReceivedTime = time(NULL);
+
+			tryRespondEtc(WebSocketSession, pId, p);
+			return 0;
+		}
+
+		// increase credit
+		int creditSize = static_cast<int>(p.body.size());
+		send_creditRequest(creditSize, cacheClientNumber);
+
+		// check multi-part response
+		int ret = check_multi_packets_for_ws_request(p);
+		if (ret < 0)
+			return -1;
+
+		// parse json body
+		if (parse_jsonMsg(p.toVariant().toHash().value("body"), jsonMap) < 0)
+		{
+			log_debug("[WS] failed to parse JSON msg");
+			// make invalid
+			return -1;
+		}
+		for(QVariantMap::const_iterator item = jsonMap.begin(); item != jsonMap.end(); ++item) 
+		{
+			log_debug("key = %s, value = %s", qPrintable(item.key()), qPrintable(item.value().toString().mid(0,128)));
+		}
+
+		// id
+		int msgIdAttr = jsonMap.contains(gMsgIdAttrName) ? jsonMap[gMsgIdAttrName].toInt() : -1;
+		if(msgIdAttr < 0)
+		{
+			// make invalild
+			log_debug("[WS] detected response without id");
+			return -1;
+		}
+
+		// result
+		QString msgResultStr = jsonMap.contains(gResultAttrName) ? jsonMap[gResultAttrName].toString() : NULL;
+
+		// if it is curie response without change, ignore			
+		QString cacheMethodAttr = jsonMap.contains(gMsgMethodAttrName) ? jsonMap[gMsgMethodAttrName].toString().toLower() : NULL;
+		if (cacheMethodAttr == "curie_hash")
+		{
+			log_debug("[WS] detected curie_hash response, skipping");
+			return -1;
+		}
+
+		foreach(QByteArray itemId, gCacheItemMap.keys())
+		{
+			if ((gCacheItemMap[itemId].proto == Scheme::websocket) && 
+				(gCacheItemMap[itemId].newMsgId == msgIdAttr) &&
+				(gCacheItemMap[itemId].cacheClientId == pId))
+			{
+				gCacheItemMap[itemId].responsePacket = p;
+				gCacheItemMap[itemId].responseHashVal = calculate_response_hash_val(p.body, msgIdAttr);
+				log_debug("[WS] responseHashVal=%s", gCacheItemMap[itemId].responseHashVal.toHex().data());
+				gCacheItemMap[itemId].msgId = msgIdAttr;
+				gCacheItemMap[itemId].cachedFlag = true;
+				log_debug("[WS] Added Cache content for method id=%d", msgIdAttr);
+
+				// set random last refresh time
+				qint64 currMTime = QDateTime::currentMSecsSinceEpoch();
+				int nextTimeMSeconds = 0;
+				if (gCacheItemMap[itemId].arShorterTimeoutFlag == true)
+					nextTimeMSeconds = (clock() % gAutoRefreshShorterTimeoutSeconds) * 1000;
+				else if (gCacheItemMap[itemId].arLongerTimeoutFlag == true)
+					nextTimeMSeconds = (clock() % gAutoRefreshLongerTimeoutSeconds) * 1000;
+				else
+					nextTimeMSeconds = (clock() % gAutoRefreshCacheTimeoutSeconds) * 1000;
+				gCacheItemMap[itemId].lastRefreshTime = currMTime + nextTimeMSeconds;
+				log_debug("[WS] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
+
+				// send response to all clients
+				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+				{
+					// update seq
+					int seqNum = 0;
+					if (gWsClientMap.contains(cliId))
+					{
+						seqNum = gWsClientMap[cliId].responseSeq + 1;
+						gWsClientMap[cliId].responseSeq + seqNum;
+					}
+
+					log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
+					send_ws_response_to_client(receiver, gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum);
+				}
+			
+				// make invalid
+				//config.cacheConfig.cacheMethodList.clear();
+				return -1;
+			}
+		}
+
+		return 0;
+	}
+
 	int send_ws_request_over_cacheclient(const ZhttpRequestPacket &packet, QString orgMsgId, int cacheClientNo)
 	{
 		// Create new packet by cache client
@@ -1727,7 +1950,7 @@ public:
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
-					int cacheClientNo = get_cacheclient_no_from_packet(gCacheItemMap[paramsHash].cacheClientId, gWsCacheClientList);
+					int cacheClientNo = get_cc_no_from_packet(gCacheItemMap[paramsHash].cacheClientId, gWsCacheClientList);
 					if (cacheClientNo < 0 || gWsCacheClientList[cacheClientNo].initFlag == false)
 					{
 						cacheClientNo = select_main_cacheclient(gWsCacheClientList);
