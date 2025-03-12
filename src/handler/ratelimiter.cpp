@@ -74,7 +74,7 @@ public:
 	bool batchWaitEnabled;
 	QMap<QString, Bucket> buckets;
 	QString lastKey;
-	Timer *timer;
+	std::unique_ptr<Timer> timer;
 	bool firstPass;
 	int batchInterval;
 	int batchSize;
@@ -90,15 +90,8 @@ public:
 		batchSize(-1),
 		lastBatchEmpty(false)
 	{
-		timer = new Timer;
+		timer = std::make_unique<Timer>();
 		timer->timeout.connect(boost::bind(&Private::timeout, this));
-	}
-
-	~Private()
-	{
-		timer->disconnect(this);
-		timer->setParent(0);
-		DeferCall::deleteLater(timer);
 	}
 
 	void setRate(int actionsPerSecond)
