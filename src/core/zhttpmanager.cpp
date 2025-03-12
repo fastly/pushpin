@@ -79,9 +79,9 @@ static QString gMsgMethodAttrName = "method";
 static QString gMsgParamsAttrName = "";
 static QString gResultAttrName = "result";
 
-static gAutoRefreshShorterTimeoutSeconds	5
-static gAutoRefreshLongerTimeoutSeconds	10
-static gAutoRefreshCacheTimeoutSeconds	15
+static int gAutoRefreshShorterTimeoutSeconds = 5;
+static int gAutoRefreshLongerTimeoutSeconds = 10;
+static int gAutoRefreshCacheTimeoutSeconds = 15;
 
 
 QStringList gCacheMethodList = {"*"};
