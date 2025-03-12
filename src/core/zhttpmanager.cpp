@@ -540,10 +540,12 @@ public:
 			write(type, out, packet.from);
 		}
 	}
-/*
-	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &id, int credits)
+
+	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &from, int credits)
 	{
 		std::weak_ptr<Private> self = q->d;
+
+		const ZhttpRequestPacket::Id &id = packet.ids.first();
 
 		// if this was not an error packet, send cancel
 		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
@@ -555,10 +557,10 @@ public:
 			out.credits = credits;
 			
 			// is this for a websocket?
-			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(packet.from, id.id));
+			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(from, id.id));
 			if(sock)
 			{
-				sock->handle(id.id, seqNum, packet);
+				sock->handle(id.id, seqNum, out);
 				if(self.expired())
 					return;
 
@@ -566,7 +568,7 @@ public:
 			}
 		}
 	}
-*/
+
 	void write(SessionType type, const ZhttpRequestPacket &packet)
 	{
 		assert(client_out_sock || client_req_sock);
@@ -649,6 +651,14 @@ public:
 				{
 					// update data receive time
 					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
+
+					// increase credit
+					int creditSize = static_cast<int>(p.body.size());
+					tryRequestCredit(packet, gWsCacheClientList[cc_no].from, creditSize);
+
+					int ret = process_ws_cacheclient_response(packet, cc_no);
+					if (ret == 0)
+						return;
 				}
 				else
 				{
@@ -1721,10 +1731,6 @@ public:
 			tryRespondEtc(WebSocketSession, pId, p);
 			return 0;
 		}
-
-		// increase credit
-		int creditSize = static_cast<int>(p.body.size());
-		send_creditRequest(creditSize, cacheClientNumber);
 
 		// check multi-part response
 		int ret = check_multi_packets_for_ws_response(p);
