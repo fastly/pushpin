@@ -1471,9 +1471,9 @@ public:
 		write(HttpSession, responsePacket, from);
 	}
 
-	void send_http_response_to_client(ZhttpResponsePacket &p, const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
+	void send_http_response_to_client(const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
 	{
-		ZhttpResponsePacket responsePacket = p;
+		ZhttpResponsePacket responsePacket = gCacheItemMap[itemId].responsePacket;
 
 		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[newCliId].msgId;
 		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[newCliId].from;
@@ -1505,9 +1505,9 @@ public:
 		write(HttpSession, responsePacket, orgFrom);
 	}
 
-	void send_ws_response_to_client(ZhttpResponsePacket &p, const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
+	void send_ws_response_to_client(const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
 	{
-		ZhttpResponsePacket responsePacket = p;
+		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
 
 		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[newCliId].msgId;
 		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[newCliId].from;
@@ -1668,7 +1668,7 @@ public:
 						gHttpClientMap.remove(cliId);
 					}
 
-					send_http_response_to_client(gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum);
+					send_http_response_to_client(itemId, cliId, seqNum);
 					log_debug("[HTTP] Sent Cache content to client id=%s seq=%d", cliId.data(), seqNum);
 				}
 				gCacheItemMap[itemId].clientMap.clear();
@@ -1809,7 +1809,7 @@ public:
 					}
 
 					log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
-					send_ws_response_to_client(gCacheItemMap[itemId].responsePacket, itemId, cliId, seqNum);
+					send_ws_response_to_client(itemId, cliId, seqNum);
 				}
 			
 				// make invalid
@@ -1959,12 +1959,19 @@ public:
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
-					int cacheClientNo = get_cc_no_from_packet(gCacheItemMap[paramsHash].cacheClientId, gWsCacheClientList);
-					if (cacheClientNo < 0 || gWsCacheClientList[cacheClientNo].initFlag == false)
+					int cc_no = get_cc_no_from_packet(gCacheItemMap[paramsHash].cacheClientId, gWsCacheClientList);
+					if (cacheClientNo < 0 || gWsCacheClientList[cc_no].initFlag == false)
 					{
-						cacheClientNo = select_main_cacheclient(gWsCacheClientList);
+						cc_no = select_main_cacheclient(gWsCacheClientList);
 					}
 					//reply_wsCachedContent(paramsHash, msgIdAttr, packetId, receiver, from);
+					// update seq
+					int seqNum = 0;
+					if (gWsClientMap.contains(packetId))
+					{
+						seqNum = gWsClientMap[packetId].responseSeq + 1;
+					}
+					send_ws_response_to_client(paramsHash, packetId, seqNum);
 					log_debug("[WS] Replied with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
 				}
 				else
