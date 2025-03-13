@@ -450,7 +450,7 @@ public:
 		const QByteArray &from,
 		int credits = 0,
 		const QByteArray &cacheItemId = NULL,
-		const ZhttpResponsePacket &responsePacket = NULL,
+		ZhttpResponsePacket *responsePacket = NULL,
 		const QByteArray &responseKey = NULL)
 	{
 		assert(!from.isEmpty());
@@ -476,7 +476,7 @@ public:
 			}
 			else if (responsePacket != NULL)
 			{
-				out = responsePacket;
+				out = *responsePacket;
 				out.ids[0].id = clientId;
 				out.ids[0].seq = newSeq;
 				out.headers.removeAll("sec-websocket-accept");
@@ -970,7 +970,7 @@ public:
 						// register ws client
 						register_ws_client(id.id);
 						// respond with cached init packet
-						send_response_to_client(WebSocketSession, id.id, ZhttpResponsePacket::Data, p.from, 0, NULL, gWsInitResponsePacket, responseKey);
+						send_response_to_client(WebSocketSession, id.id, ZhttpResponsePacket::Data, p.from, 0, NULL, &gWsInitResponsePacket, responseKey);
 						return;
 					}
 				}
