@@ -89,7 +89,7 @@ QMap<QString, QString> gSubscribeMethodMap;
 
 // cache struct 
 struct ClientItem {
-	int msgId;
+	//int msgId;
 	QString resultStr;
 	int requestSeq;
 	int responseSeq;	// -1: init value
