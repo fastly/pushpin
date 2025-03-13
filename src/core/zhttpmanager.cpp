@@ -89,15 +89,6 @@ static int gAutoRefreshCacheTimeoutSeconds = 15;
 QStringList gCacheMethodList = {"*"};
 QMap<QString, QString> gSubscribeMethodMap;
 
-// cache struct 
-struct ClientItem {
-	QString resultStr;
-	int requestSeq;
-	int responseSeq;	// -1: init value
-	time_t lastRequestTime;
-	time_t lastPingResponseTime;
-};
-
 // Cache Item
 struct CacheItem {
 	QString orgMsgId;
