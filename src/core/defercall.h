@@ -42,6 +42,8 @@ public:
 	// guaranteed to live long enough.
 	void defer(std::function<void ()> handler);
 
+	int pendingCount() const { return deferredCalls_->size(); }
+
 	static DeferCall *global();
 	static void cleanup();
 
@@ -56,12 +58,14 @@ private:
 	{
 	public:
 		std::function<void ()> handler;
+		std::weak_ptr<std::list<std::shared_ptr<Call>>> source;
+		std::list<std::shared_ptr<Call>>::iterator sourceElement;
 	};
 
 	class Manager;
 	friend class Manager;
 
-	std::list<std::shared_ptr<Call>> deferredCalls_;
+	std::shared_ptr<std::list<std::shared_ptr<Call>>> deferredCalls_;
 
 	static thread_local Manager *manager;
 	static thread_local DeferCall *instance;
