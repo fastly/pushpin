@@ -70,7 +70,7 @@ bool is_cache_method(QString methodStr);
 int get_cc_index_from_packet(QByteArray packetId);
 int get_cc_no_from_init_request(ZhttpRequestPacket &p);
 pid_t create_process_for_cacheclient(QString connectPath, int _no);
-int get_main_cc_no();
+int get_main_cc_index();
 
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);

@@ -163,7 +163,7 @@ pid_t create_process_for_cacheclient(QString connectPath, int _no)
 	return processId;
 }
 
-int get_main_cc_no()
+int get_main_cc_index()
 {
 	for (int i=0; i<gWsCacheClientList.count(); i++)
 	{

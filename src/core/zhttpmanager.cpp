@@ -957,7 +957,7 @@ public:
 				else // if request from real client
 				{
 					log_debug("[WS] received init request from real client");
-					if (get_main_cc_no() < 0)
+					if (get_main_cc_index() < 0)
 					{
 						log_warning("[WS] not initialized cache client, ignore");
 						if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
@@ -1418,7 +1418,7 @@ public:
 		// create new cache item
 		struct CacheItem cacheItem;
 
-		int cacheClientNo = get_main_cc_no();
+		int cacheClientNo = get_main_cc_index();
 		cacheItem.msgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.newMsgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -1502,30 +1502,6 @@ public:
 		responsePacket.ids[0].seq = seqNum;
 
 		write(HttpSession, responsePacket, orgFrom);
-	}
-
-	void send_ws_response_to_client(const QByteArray &cacheItemId, const QByteArray &newCliId, int seqNum)
-	{
-		ZhttpResponsePacket responsePacket = gCacheItemMap[cacheItemId].responsePacket;
-
-		QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[newCliId].msgId;
-		QByteArray orgFrom = gCacheItemMap[cacheItemId].clientMap[newCliId].from;
-
-		// replace messageid
-		if (gCacheItemMap.contains(cacheItemId))
-		{
-			replace_id_field(responsePacket.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
-		}
-		else
-		{
-			log_debug("[WS] Unknown error for cache item");
-			return;
-		}
-		
-		responsePacket.ids[0].id = newCliId;
-		responsePacket.ids[0].seq = seqNum;
-
-		write(WebSocketSession, responsePacket, orgFrom);
 	}
 
 	int process_http_request(QByteArray id, const ZhttpRequestPacket &packet)
@@ -1799,16 +1775,9 @@ public:
 				// send response to all clients
 				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
 				{
-					// update seq
-					int seqNum = 0;
-					if (gWsClientMap.contains(cliId))
-					{
-						seqNum = gWsClientMap[cliId].lastResponseSeq + 1;
-						gWsClientMap[cliId].lastResponseSeq = seqNum;
-					}
-
 					log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
-					send_ws_response_to_client(itemId, cliId, seqNum);
+					QByteArray from = gCacheItemMap[cacheItemId].clientMap[clientId].from;
+					send_response_to_client(WebSocketSession, cliId, ZhttpResponsePacket::Data, from, 0, itemId);
 				}
 			
 				// make invalid
@@ -1912,19 +1881,11 @@ public:
 					int ccIndex = get_cc_index_from_packet(gCacheItemMap[paramsHash].cacheClientId);
 					if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 					{
-						ccIndex = get_main_cc_no();
-					}
-					//reply_wsCachedContent(paramsHash, msgIdAttr, packetId, receiver, from);
-					// update seq
-					int seqNum = 0;
-					if (gWsClientMap.contains(packetId))
-					{
-						seqNum = gWsClientMap[packetId].lastResponseSeq + 1;
-						gWsClientMap[packetId].lastResponseSeq = seqNum;
+						ccIndex = get_main_cc_index();
 					}
 
 					log_debug("[WS] Repling with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
-					send_ws_response_to_client(paramsHash, packetId, seqNum);
+					send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Data, p.from, 0, paramsHash);
 				}
 				else
 				{
