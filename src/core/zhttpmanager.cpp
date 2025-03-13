@@ -1006,7 +1006,7 @@ public:
 						// register ws client
 						register_ws_client(id.id);
 						// respond with cached init packet
-						tryResponseWsInitRequest(gWsInitResponsePacket, id.id, responseKey, p);
+						tryResponseWsInitRequest(gWsInitResponsePacket, id.id, responseKey, p.from);
 						return;
 					}
 				}
