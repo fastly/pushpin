@@ -1773,11 +1773,11 @@ public:
 				log_debug("[WS] Updated last refresh time with nextTimeMSeconds=%d", nextTimeMSeconds);
 
 				// send response to all clients
-				foreach(QByteArray cliId, gCacheItemMap[itemId].clientMap.keys())
+				foreach(QByteArray clientId, gCacheItemMap[itemId].clientMap.keys())
 				{
-					log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
-					QByteArray from = gCacheItemMap[cacheItemId].clientMap[clientId].from;
-					send_response_to_client(WebSocketSession, cliId, ZhttpResponsePacket::Data, from, 0, itemId);
+					log_debug("[WS] Sending Cache content to client id=%s", clientId.data());
+					QByteArray from = gCacheItemMap[itemId].clientMap[clientId].from;
+					send_response_to_client(WebSocketSession, clientId, ZhttpResponsePacket::Data, from, 0, itemId);
 				}
 			
 				// make invalid
