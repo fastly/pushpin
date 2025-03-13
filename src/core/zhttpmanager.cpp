@@ -460,6 +460,7 @@ public:
 		ZhttpResponsePacket::Id tempId;
 
 		int newSeq = update_response_seq(clientId);
+		QByteArray newFrom = from;
 
 		switch (packetType)
 		{
@@ -467,7 +468,7 @@ public:
 			if (cacheItemId != NULL)
 			{
 				QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[clientId].msgId;
-				from = gCacheItemMap[cacheItemId].clientMap[clientId].from;
+				newFrom = gCacheItemMap[cacheItemId].clientMap[clientId].from;
 				out = gCacheItemMap[cacheItemId].responsePacket;
 				replace_id_field(out.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
 				out.ids[0].id = clientId;
@@ -500,7 +501,7 @@ public:
 		}
 
 		out.from = instanceId;
-		write(sessionType, out, from);
+		write(sessionType, out, newFrom);
 	}
 
 	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &from, int credits, int seqNum)
@@ -1068,7 +1069,6 @@ public:
 		std::weak_ptr<Private> self = q->d;
 
 		for	(int i=0; i<p.ids.count(); i++)
-		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
 			QByteArray packetId = p.ids[i].id;
 			int seqNum = p.ids[i].seq;
@@ -1115,8 +1115,7 @@ public:
 						continue;
 					case ZhttpRequestPacket::Data:
 						// Send new credit packet
-						int credits = static_cast<int>(p.body.size());
-						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Credit, p.from, credits);
+						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Credit, p.from, static_cast<int>(p.body.size()));
 						if (process_ws_stream_request(packetId, p) < 0)
 							continue;
 						break;
