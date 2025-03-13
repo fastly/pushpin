@@ -1004,9 +1004,9 @@ public:
 						// get resp key
 						QByteArray responseKey = calculate_response_seckey_from_init_request(p);
 						// register ws client
-						register_ws_client(packetId);
+						register_ws_client(id.id);
 						// respond with cached init packet
-						tryResponseWsInitRequest(gWsInitResponsePacket, packetId, responseKey, p);
+						tryResponseWsInitRequest(gWsInitResponsePacket, id.id, responseKey, p);
 						return;
 					}
 				}
