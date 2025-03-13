@@ -1789,15 +1789,19 @@ public:
 		return 0;
 	}
 
-	int send_ws_request_over_cacheclient(const ZhttpRequestPacket &packet, QString orgMsgId, int cacheClientNo)
+	int send_ws_request_over_cacheclient(const ZhttpRequestPacket &packet, QString orgMsgId, int ccIndex)
 	{
 		// Create new packet by cache client
 		ZhttpRequestPacket p = packet;
-		ClientItem *cacheClient = &gWsCacheClientList[cacheClientNo];
+		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
 		int msgId = cacheClient->msgIdCount + 1;
-		p.ids[0].id = cacheClient->clientId; // id
-		p.ids[0].seq = cacheClient->lastRequestSeq + 1; // seq
-		cacheClient->lastRequestSeq = p.ids[0].seq;
+
+		ZhttpResponsePacket::Id tempId;
+		tempId.id = cacheClient->clientId; // id
+		tempId.seq = update_request_seq(cacheClient->clientId);
+		p.ids.clear();
+		p.ids += tempId;
+		
 		replace_id_field(p.body, orgMsgId, msgId);
 		cacheClient->msgIdCount = msgId;
 
@@ -1902,11 +1906,11 @@ public:
 			else
 			{
 				// Register new cache item
-				int cacheClientNo = registerWsCacheItem(p, packetId, msgIdAttr, cacheMethodAttr, paramsHash);
+				int ccIndex = registerWsCacheItem(p, packetId, msgIdAttr, cacheMethodAttr, paramsHash);
 				log_debug("[WS] Registered New Cache Item for id=%s method=\"%s\"", qPrintable(msgIdAttr), qPrintable(cacheMethodAttr));
 				
 				// Send new client cache request packet
-				gCacheItemMap[paramsHash].newMsgId = send_ws_request_over_cacheclient(p, msgIdAttr, cacheClientNo);
+				gCacheItemMap[paramsHash].newMsgId = send_ws_request_over_cacheclient(p, msgIdAttr, ccIndex);
 				gCacheItemMap[paramsHash].lastRequestTime = QDateTime::currentMSecsSinceEpoch();
 			}
 			
