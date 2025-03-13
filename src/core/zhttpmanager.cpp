@@ -1796,12 +1796,12 @@ public:
 		ClientItem *cacheClient = &gWsCacheClientList[ccIndex];
 		int msgId = cacheClient->msgIdCount + 1;
 
-		ZhttpResponsePacket::Id tempId;
+		ZhttpRequestPacket::Id tempId;
 		tempId.id = cacheClient->clientId; // id
 		tempId.seq = update_request_seq(cacheClient->clientId);
 		p.ids.clear();
 		p.ids += tempId;
-		
+
 		replace_id_field(p.body, orgMsgId, msgId);
 		cacheClient->msgIdCount = msgId;
 
