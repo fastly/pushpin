@@ -453,16 +453,16 @@ public:
 		return best;
 	}
 
-	void tryResponseWsInitRequest(SessionType type, const QByteArray &newPacketId, const QByteArray &responseKey, const ZhttpRequestPacket &packet)
+	void tryResponseWsInitRequest(const ZhttpResponsePacket &packet, const QByteArray &newPacketId, const QByteArray &responseKey, const QByteArray &from)
 	{
 		//// Send cached response
-		ZhttpResponsePacket out = gWsInitResponsePacket;
+		ZhttpResponsePacket out = packet;
 
 		out.ids[0].id = newPacketId.data();
 		out.headers.removeAll("sec-websocket-accept");
 		out.headers += HttpHeader("sec-websocket-accept", responseKey);
 		
-		write(type, out, packet.from);
+		write(WebSocketSession, out, from);
 	}
 
 	void tryRespondCancel(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
@@ -993,16 +993,22 @@ public:
 				else // if request from real client
 				{
 					log_debug("[WS] received init request from real client");
-					if (is_cacheclient_inited(gWsCacheClientList) == false)
+					if (is_cc_inited(gWsCacheClientList) == false)
 					{
 						log_warning("[WS] not initialized cache client, ignore");
 						tryRespondCancel(WebSocketSession, id.id, p);
 						return;
 					}
-					//
-					int ret = process_ws_init_request(p);
-					if (ret == 0)
+					else
+					{
+						// get resp key
+						QByteArray responseKey = calculate_response_seckey_from_init_request(p);
+						// register ws client
+						register_ws_client(packetId);
+						// respond with cached init packet
+						tryResponseWsInitRequest(gWsInitResponsePacket, packetId, responseKey, p);
 						return;
+					}
 				}
 			}
 
@@ -1036,7 +1042,7 @@ public:
 			// cache process
 			if (gCacheEnable == true)
 			{
-				registerHttpClient(id.id);
+				register_http_client(id.id);
 			}
 
 			req = new ZhttpRequest;
@@ -1104,7 +1110,7 @@ public:
 				// if request from cache client, skip
 				if (gHttpClientMap.contains(id.id))
 				{
-					int ret = processHttpRequestForCache(id.id, p);
+					int ret = process_http_request(id.id, p);
 					if (ret == 0)
 						continue;
 				}
@@ -1338,7 +1344,7 @@ public:
 			gHealthClientList.removeAll(clientId);
 	}
 
-	void registerHttpClient(QByteArray packetId)
+	void register_http_client(QByteArray packetId)
 	{
 		if (gHttpClientMap.contains(packetId))
 		{
@@ -1357,11 +1363,11 @@ public:
 		return;
 	}
 
-	void registerWsClient(QByteArray packetId)
+	void register_ws_client(QByteArray packetId)
 	{
 		if (gWsClientMap.contains(packetId))
 		{
-			log_debug("[HTTP] already exists http client id=%s", packetId.data());
+			log_debug("[WS] already exists http client id=%s", packetId.data());
 			return;
 		}
 
@@ -1529,7 +1535,7 @@ public:
 		write(WebSocketSession, responsePacket, orgFrom);
 	}
 
-	int processHttpRequestForCache(QByteArray id, const ZhttpRequestPacket &packet)
+	int process_http_request(QByteArray id, const ZhttpRequestPacket &packet)
 	{
 		QByteArray packetId = id;
 
@@ -1865,23 +1871,6 @@ public:
 			}
 		}
 		return msgId;
-	}
-
-	int process_ws_init_request(ZhttpRequestPacket &p)
-	{
-		QByteArray packetId = p.ids[0].id;
-		QByteArray responseKey = calculate_response_seckey_from_init_request(p);
-		if (responseKey == NULL)
-		{
-			log_warning("[WS] failed to get ws response key from init request");
-			return -1;
-		}
-
-		int cacheClientNo = select_main_cacheclient(gWsCacheClientList);
-		registerWsClient(packetId);
-		tryResponseWsInitRequest(WebSocketSession, packetId, responseKey, p);
-
-		return 0;
 	}
 
 	int process_ws_stream_request(const QByteArray packetId, ZhttpRequestPacket &p)

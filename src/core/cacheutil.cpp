@@ -83,7 +83,7 @@ bool is_cache_method(QString methodStr)
 	return false;
 }
 
-bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList)
+bool is_cc_inited(QList<CacheClientItem> &cacheClientList)
 {
 	for (int i = 0; i < cacheClientList.count(); i++)
 	{
@@ -456,7 +456,7 @@ QByteArray calculate_response_seckey_from_init_request(ZhttpRequestPacket &p)
 
 		return responseKey;
 	}
-	return NULL;
+	return QByteArray("");
 }
 
 QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr)

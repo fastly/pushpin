@@ -65,7 +65,7 @@ struct CacheKeyItem {
 };
 
 bool is_cache_method(QString methodStr);
-bool is_cacheclient_inited(QList<CacheClientItem> &cacheClientList);
+bool is_cc_inited(QList<CacheClientItem> &cacheClientList);
 int get_cc_no_from_packet(QByteArray packetId, QList<CacheClientItem> &cacheClientList);
 int get_cc_no_from_init_request(ZhttpRequestPacket &p);
 pid_t create_process_for_cacheclient(QString connectPath, int _no);
