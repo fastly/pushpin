@@ -660,7 +660,7 @@ public:
 						int ret = process_http_response(packet);
 						if (ret == 0)
 							return;
-						gHttpClientMap[packetId].responseSeq = packet.ids.first().seq;
+						gHttpClientMap[packetId].lastResponseSeq = packet.ids.first().seq;
 					}
 				}
 			}
@@ -1109,9 +1109,9 @@ public:
 					log_debug("[WS] received ws request from real client=%s", id.id.data());
 
 					// update seq
-					p.ids[0].seq = gWsClientMap[id.id].requestSeq;
+					p.ids[0].seq = gWsClientMap[id.id].lastRequestSeq;
 					seqNum = p.ids[0].seq;
-					gWsClientMap[id.id].requestSeq++;
+					gWsClientMap[id.id].lastRequestSeq++;
 
 					int ret = process_ws_stream_request(id.id, p);
 					if (ret < 0)
@@ -1343,8 +1343,8 @@ public:
 		}
 
 		struct ClientItem clientItem;
-		clientItem.requestSeq = 0;
-		clientItem.responseSeq = -1;
+		clientItem.lastRequestSeq = 0;
+		clientItem.lastResponseSeq = -1;
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastResponseTime = time(NULL);
 		gHttpClientMap[packetId] = clientItem;
@@ -1362,8 +1362,8 @@ public:
 		}
 
 		struct ClientItem clientItem;
-		clientItem.requestSeq = 0;
-		clientItem.responseSeq = 0;
+		clientItem.lastRequestSeq = 0;
+		clientItem.lastResponseSeq = 0;
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastResponseTime = time(NULL);
 		gWsClientMap[packetId] = clientItem;
@@ -1458,7 +1458,7 @@ public:
 		// update seq
 		if (gHttpClientMap.contains(newPacketId))
 		{
-			seqNum = gHttpClientMap[newPacketId].responseSeq + 1;
+			seqNum = gHttpClientMap[newPacketId].lastResponseSeq + 1;
 		}
 		responsePacket.ids[0].id = newPacketId.data();
 		responsePacket.ids[0].seq = seqNum;
@@ -1659,7 +1659,7 @@ public:
 					int seqNum = 0;
 					if (gHttpClientMap.contains(cliId))
 					{
-						seqNum = gHttpClientMap[cliId].responseSeq + 1;
+						seqNum = gHttpClientMap[cliId].lastResponseSeq + 1;
 						// delete original item
 						gHttpClientMap.remove(cliId);
 					}
@@ -1800,8 +1800,8 @@ public:
 					int seqNum = 0;
 					if (gWsClientMap.contains(cliId))
 					{
-						seqNum = gWsClientMap[cliId].responseSeq + 1;
-						gWsClientMap[cliId].responseSeq = seqNum;
+						seqNum = gWsClientMap[cliId].lastResponseSeq + 1;
+						gWsClientMap[cliId].lastResponseSeq = seqNum;
 					}
 
 					log_debug("[WS] Sending Cache content to client id=%s", cliId.data());
@@ -1948,8 +1948,8 @@ public:
 					int seqNum = 0;
 					if (gWsClientMap.contains(packetId))
 					{
-						seqNum = gWsClientMap[packetId].responseSeq + 1;
-						gWsClientMap[packetId].responseSeq = seqNum;
+						seqNum = gWsClientMap[packetId].lastResponseSeq + 1;
+						gWsClientMap[packetId].lastResponseSeq = seqNum;
 					}
 
 					log_debug("[WS] Repling with Cache content for method \"%s\"", qPrintable(cacheMethodAttr));
