@@ -32,21 +32,22 @@ class DeferCallTest : public QObject
 private:
 	// loop_advance should process enough events to cause the calls to run,
 	// without sleeping, in order to prove the calls are run immediately
-	int runDeferCall(std::function<void ()> loop_advance)
+	std::tuple<int, int> runDeferCall(std::function<void ()> loop_advance)
 	{
+		DeferCall deferCall;
 		int count = 0;
 
-		DeferCall::global()->defer([&] {
+		deferCall.defer([&] {
 			++count;
 
-			DeferCall::global()->defer([&] {
+			deferCall.defer([&] {
 				++count;
 			});
 		});
 
 		loop_advance();
 
-		return count;
+		return {deferCall.pendingCount(), count};
 	}
 
 private slots:
@@ -54,7 +55,7 @@ private slots:
 	{
 		EventLoop loop(1);
 
-		int count = runDeferCall([&] {
+		auto [pendingCount, count] = runDeferCall([&] {
 			// run the first call and queue the second
 			loop.step();
 
@@ -62,6 +63,7 @@ private slots:
 			loop.step();
 		});
 
+		QCOMPARE(pendingCount, 0);
 		QCOMPARE(count, 2);
 
 		DeferCall::cleanup();
@@ -71,7 +73,7 @@ private slots:
 	{
 		Timer::init(1);
 
-		int count = runDeferCall([] {
+		auto [pendingCount, count] = runDeferCall([&] {
 			// the underlying timer's qt-based implementation will process
 			// both timeouts during a single timer processing pass.
 			// therefore, both calls should run within a single event loop
@@ -79,6 +81,7 @@ private slots:
 			QCoreApplication::processEvents(QEventLoop::AllEvents);
 		});
 
+		QCOMPARE(pendingCount, 0);
 		QCOMPARE(count, 2);
 
 		DeferCall::cleanup();

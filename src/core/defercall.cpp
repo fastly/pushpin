@@ -61,7 +61,16 @@ private:
 		for(auto c : ready)
 		{
 			if(auto p = c.lock())
+			{
+				auto source = p->source.lock();
+
+				// if call is valid then its source will be too
+				assert(source);
+
+				source->erase(p->sourceElement);
+
 				p->handler();
+			}
 		}
 	}
 
@@ -74,7 +83,10 @@ private:
 	}
 };
 
-DeferCall::DeferCall() = default;
+DeferCall::DeferCall() :
+	deferredCalls_(std::make_shared<std::list<std::shared_ptr<Call>>>())
+{
+}
 
 DeferCall::~DeferCall() = default;
 
@@ -83,7 +95,14 @@ void DeferCall::defer(std::function<void ()> handler)
 	std::shared_ptr<Call> c = std::make_shared<Call>();
 	c->handler = handler;
 
-	deferredCalls_.push_back(c);
+	deferredCalls_->push_back(c);
+
+	// get an iterator to the element that was pushed
+	auto it = deferredCalls_->end();
+	--it;
+
+	c->source = deferredCalls_;
+	c->sourceElement = it;
 
 	if(!manager)
 		manager = new Manager;
