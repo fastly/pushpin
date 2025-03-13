@@ -40,14 +40,16 @@ enum Scheme {
 };
 
 // cache client params
-struct CacheClientItem {
+struct ClientItem {
 	QString connectPath;
 	pid_t processId;
 	bool initFlag;
+	QString resultStr;
 	int msgIdCount;
-	int requestSeqCount;
-	int responseSeqCount;
-	time_t lastDataReceivedTime;
+	int lastRequestSeq;
+	int lastResponseSeq;
+	time_t lastRequestTime;
+	time_t lastResponseTime;
 	QByteArray receiver;
 	QByteArray from;
 	QByteArray clientId;
@@ -65,11 +67,10 @@ struct CacheKeyItem {
 };
 
 bool is_cache_method(QString methodStr);
-bool is_cc_inited(QList<CacheClientItem> &cacheClientList);
-int get_cc_no_from_packet(QByteArray packetId, QList<CacheClientItem> &cacheClientList);
+int get_cc_no_from_packet(QByteArray packetId);
 int get_cc_no_from_init_request(ZhttpRequestPacket &p);
 pid_t create_process_for_cacheclient(QString connectPath, int _no);
-int select_main_cacheclient(QList<CacheClientItem> &cacheClientList);
+int get_main_cc_no();
 
 void parse_json_map(QVariantMap& jsonData, QString keyName, QVariantMap& jsonMap);
 int parse_json_msg(QVariant jsonMsg, QVariantMap& jsonMap);

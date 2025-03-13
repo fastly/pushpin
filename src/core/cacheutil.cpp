@@ -57,6 +57,10 @@ extern ZhttpResponsePacket gHttpMultiPartResponsePacket;
 extern QMap<QByteArray, ZhttpRequestPacket> gWsMultiPartRequestItemMap;
 extern QMap<QByteArray, ZhttpResponsePacket> gWsMultiPartResponseItemMap;
 
+extern QList<ClientItem> gWsCacheClientList;
+extern QMap<QByteArray, ClientItem> gWsClientMap;
+extern QMap<QByteArray, ClientItem> gHttpClientMap;
+
 extern QList<QByteArray> gHealthClientList;
 
 // definitions for cache
@@ -83,23 +87,11 @@ bool is_cache_method(QString methodStr)
 	return false;
 }
 
-bool is_cc_inited(QList<CacheClientItem> &cacheClientList)
+int get_cc_no_from_packet(QByteArray packetId)
 {
-	for (int i = 0; i < cacheClientList.count(); i++)
+	for (int i = 0; i < gWsCacheClientList.count(); i++)
 	{
-		if (cacheClientList[i].initFlag == true)
-		{
-			return true;
-		}			
-	}
-	return false;
-}
-
-int get_cc_no_from_packet(QByteArray packetId, QList<CacheClientItem> &cacheClientList)
-{
-	for (int i = 0; i < cacheClientList.count(); i++)
-	{
-		if (cacheClientList[i].clientId == packetId)
+		if (gWsCacheClientList[i].clientId == packetId)
 		{
 			return i;
 		}			
@@ -171,11 +163,11 @@ pid_t create_process_for_cacheclient(QString connectPath, int _no)
 	return processId;
 }
 
-int select_main_cacheclient(QList<CacheClientItem> &cacheClientList)
+int get_main_cc_no()
 {
-	for (int i=0; i<cacheClientList.count(); i++)
+	for (int i=0; i<gWsCacheClientList.count(); i++)
 	{
-		if (cacheClientList[i].initFlag == true)
+		if (gWsCacheClientList[i].initFlag == true)
 			return i;
 	}
 	return -1;

@@ -70,8 +70,10 @@ static bool gCacheEnable = false;
 static QStringList gHttpBackendUrlList;
 static QStringList gWsBackendUrlList;
 
-QList<CacheClientItem> gWsCacheClientList;
+QList<ClientItem> gWsCacheClientList;
 ZhttpResponsePacket gWsInitResponsePacket;
+QMap<QByteArray, ClientItem> gWsClientMap;
+QMap<QByteArray, ClientItem> gHttpClientMap;
 
 QList<CacheKeyItem> gCacheKeyItemList;
 static QString gMsgIdAttrName = "id";
@@ -89,15 +91,12 @@ QMap<QString, QString> gSubscribeMethodMap;
 
 // cache struct 
 struct ClientItem {
-	//int msgId;
 	QString resultStr;
 	int requestSeq;
 	int responseSeq;	// -1: init value
 	time_t lastRequestTime;
 	time_t lastPingResponseTime;
 };
-QMap<QByteArray, ClientItem> gWsClientMap;
-QMap<QByteArray, ClientItem> gHttpClientMap;
 
 // Cache Item
 struct CacheItem {
@@ -627,15 +626,15 @@ public:
 		if (gCacheEnable == true)
 		{
 			QByteArray packetId = packet.ids.first().id;
-			int cc_no = get_cc_no_from_packet(packetId, gWsCacheClientList);
+			int cc_no = get_cc_no_from_packet(packetId);
 			if (packet.code == 101) // ws client init response code
 			{
 				if (cc_no >= 0)
 				{
 					// cache client
 					gWsCacheClientList[cc_no].initFlag = true;
-					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
-					gWsCacheClientList[cc_no].responseSeqCount = packet.ids.first().seq;
+					gWsCacheClientList[cc_no].lastResponseTime = time(NULL);
+					gWsCacheClientList[cc_no].lastResponseSeq = packet.ids.first().seq;
 					gWsCacheClientList[cc_no].from = packet.from;
 					log_debug("[WS] Initialized Cache client%d, %s", cc_no, gWsCacheClientList[cc_no].clientId.data());
 					gWsInitResponsePacket = packet;
@@ -651,12 +650,12 @@ public:
 				if (cc_no >= 0)
 				{
 					// update data receive time
-					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
+					gWsCacheClientList[cc_no].lastResponseTime = time(NULL);
 
 					// increase credit
 					int creditSize = static_cast<int>(packet.body.size());
-					int seqNum = gWsCacheClientList[cc_no].responseSeqCount + 1;
-					gWsCacheClientList[cc_no].responseSeqCount = seqNum;
+					int seqNum = gWsCacheClientList[cc_no].lastResponseSeq + 1;
+					gWsCacheClientList[cc_no].lastResponseSeq = seqNum;
 					tryRequestCredit(packet, gWsCacheClientList[cc_no].from, creditSize, seqNum);
 
 					int ret = process_ws_cacheclient_response(packet, cc_no);
@@ -985,15 +984,15 @@ public:
 					gWsCacheClientList[cc_no].initFlag = false;
 					gWsCacheClientList[cc_no].clientId = id.id;
 					gWsCacheClientList[cc_no].msgIdCount = -1;
-					gWsCacheClientList[cc_no].requestSeqCount = id.seq;
-					gWsCacheClientList[cc_no].lastDataReceivedTime = time(NULL);
+					gWsCacheClientList[cc_no].lastRequestSeq = id.seq;
+					gWsCacheClientList[cc_no].lastRequestTime = time(NULL);
 
 					log_debug("[WS] passing the requests from cache client=%s", id.id.data());
 				}
 				else // if request from real client
 				{
 					log_debug("[WS] received init request from real client");
-					if (is_cc_inited(gWsCacheClientList) == false)
+					if (get_main_cc_no() < 0)
 					{
 						log_warning("[WS] not initialized cache client, ignore");
 						tryRespondCancel(WebSocketSession, id.id, p);
@@ -1131,12 +1130,12 @@ public:
 				}
 				else
 				{
-					int cc_no = get_cc_no_from_packet(id.id, gWsCacheClientList);
+					int cc_no = get_cc_no_from_packet(id.id);
 					if (cc_no >= 0)
 					{
-						p.ids[0].seq = gWsCacheClientList[cc_no].requestSeqCount;
+						p.ids[0].seq = gWsCacheClientList[cc_no].lastRequestSeq;
 						seqNum = p.ids[0].seq + 1;
-						gWsCacheClientList[cc_no].requestSeqCount = seqNum;
+						gWsCacheClientList[cc_no].lastRequestSeq = seqNum;
 					}
 					else
 					{
@@ -1356,7 +1355,7 @@ public:
 		clientItem.requestSeq = 0;
 		clientItem.responseSeq = -1;
 		clientItem.lastRequestTime = time(NULL);
-		clientItem.lastPingResponseTime = time(NULL);
+		clientItem.lastResponseTime = time(NULL);
 		gHttpClientMap[packetId] = clientItem;
 		log_debug("[HTTP] added http client id=%s", packetId.data());
 
@@ -1375,7 +1374,7 @@ public:
 		clientItem.requestSeq = 0;
 		clientItem.responseSeq = 0;
 		clientItem.lastRequestTime = time(NULL);
-		clientItem.lastPingResponseTime = time(NULL);
+		clientItem.lastResponseTime = time(NULL);
 		gWsClientMap[packetId] = clientItem;
 		log_debug("[WS] added ws client id=%s", packetId.data());
 
@@ -1425,7 +1424,7 @@ public:
 		// create new cache item
 		struct CacheItem cacheItem;
 
-		int cacheClientNo = select_main_cacheclient(gWsCacheClientList);
+		int cacheClientNo = get_main_cc_no();
 		cacheItem.msgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.newMsgId = gWsCacheClientList[cacheClientNo].msgIdCount;
 		cacheItem.lastRefreshTime = QDateTime::currentMSecsSinceEpoch();
@@ -1733,9 +1732,9 @@ public:
 		{
 			log_debug("[WS] passed cache client response");
 
-			p.ids[0].seq = gWsCacheClientList[cacheClientNumber].responseSeqCount + 1; // seq
-			gWsCacheClientList[cacheClientNumber].responseSeqCount = p.ids[0].seq;
-			gWsCacheClientList[cacheClientNumber].lastDataReceivedTime = time(NULL);
+			p.ids[0].seq = gWsCacheClientList[cacheClientNumber].lastResponseSeq + 1; // seq
+			gWsCacheClientList[cacheClientNumber].lastResponseSeq = p.ids[0].seq;
+			gWsCacheClientList[cacheClientNumber].lastResponseTime = time(NULL);
 
 			//tryRespondEtc(WebSocketSession, pId, p);
 			return -1;
@@ -1831,11 +1830,11 @@ public:
 	{
 		// Create new packet by cache client
 		ZhttpRequestPacket p = packet;
-		CacheClientItem *cacheClient = &gWsCacheClientList[cacheClientNo];
+		ClientItem *cacheClient = &gWsCacheClientList[cacheClientNo];
 		int msgId = cacheClient->msgIdCount + 1;
 		p.ids[0].id = cacheClient->clientId; // id
-		p.ids[0].seq = cacheClient->requestSeqCount + 1; // seq
-		cacheClient->requestSeqCount = p.ids[0].seq;
+		p.ids[0].seq = cacheClient->lastRequestSeq + 1; // seq
+		cacheClient->lastRequestSeq = p.ids[0].seq;
 		replace_id_field(p.body, orgMsgId, msgId);
 		cacheClient->msgIdCount = msgId;
 
@@ -1948,10 +1947,10 @@ public:
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
-					int cc_no = get_cc_no_from_packet(gCacheItemMap[paramsHash].cacheClientId, gWsCacheClientList);
+					int cc_no = get_cc_no_from_packet(gCacheItemMap[paramsHash].cacheClientId);
 					if (cc_no < 0 || gWsCacheClientList[cc_no].initFlag == false)
 					{
-						cc_no = select_main_cacheclient(gWsCacheClientList);
+						cc_no = get_main_cc_no();
 					}
 					//reply_wsCachedContent(paramsHash, msgIdAttr, packetId, receiver, from);
 					// update seq
@@ -2350,13 +2349,13 @@ void ZhttpManager::setCacheParameters(
 			pid_t processId = create_process_for_cacheclient(gWsBackendUrlList[i], i);
 			if (processId > 0)
 			{
-				CacheClientItem cacheClientItem;
-				cacheClientItem.initFlag = false;
-				cacheClientItem.processId = processId;
-				cacheClientItem.connectPath = gWsBackendUrlList[i];
-				cacheClientItem.lastDataReceivedTime = time(NULL);
+				ClientItem cacheClient;
+				cacheClient.initFlag = false;
+				cacheClient.processId = processId;
+				cacheClient.connectPath = gWsBackendUrlList[i];
+				cacheClient.lastResponseTime = time(NULL);
 
-				gWsCacheClientList.append(cacheClientItem);
+				gWsCacheClientList.append(cacheClient);
 			}
 		}
 	}
