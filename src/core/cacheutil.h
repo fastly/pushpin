@@ -88,4 +88,7 @@ QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr);
 int check_multi_packets_for_ws_request(ZhttpRequestPacket &p);
 int check_multi_packets_for_ws_response(ZhttpResponsePacket &p);
 
+int update_request_seq(int cc_no);
+int update_request_seq(const QByteArray &clientId);
+
 #endif

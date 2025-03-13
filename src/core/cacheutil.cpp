@@ -592,3 +592,27 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p)
 
 	return 0;
 }
+
+int update_request_seq(int cc_no)
+{
+	gWsCacheClientList[cc_no].lastRequestSeq += 1;
+
+	return gWsCacheClientList[cc_no].lastRequestSeq;
+}
+
+int update_request_seq(const QByteArray &clientId)
+{
+	int ret = -1;
+	if (gWsClientMap.contains(clientId)) 
+	{
+		gWsClientMap[clientId].lastRequestSeq += 1;
+		ret = gWsClientMap[clientId].lastRequestSeq;
+	}
+	else if (gHttpClientMap.contains(clientId)) 
+	{
+        gHttpClientMap[clientId].lastRequestSeq += 1;
+		ret = gHttpClientMap[clientId].lastRequestSeq;
+    }
+	
+	return ret;
+}

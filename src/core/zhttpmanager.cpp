@@ -1091,29 +1091,30 @@ public:
 
 		std::weak_ptr<Private> self = q->d;
 
+		for	(int i=0; i<p.ids.count(); i++)
 		foreach(const ZhttpRequestPacket::Id &id, p.ids)
 		{
-			int seqNum = id.seq;
+			QByteArray packetId = p.ids[i].id;
+			int seqNum = p.ids[i].seq;
 			// cache process
 			if (gCacheEnable == true)
 			{
 				// if request from cache client, skip
-				if (gHttpClientMap.contains(id.id))
+				if (gHttpClientMap.contains(packetId))
 				{
-					int ret = process_http_request(id.id, p);
+					int ret = process_http_request(packetId, p);
 					if (ret == 0)
 						continue;
 				}
-				else if (gWsClientMap.contains(id.id))
+				else if (gWsClientMap.contains(packetId))
 				{
-					log_debug("[WS] received ws request from real client=%s", id.id.data());
+					log_debug("[WS] received ws request from real client=%s", packetId.data());
 
 					// update seq
-					p.ids[0].seq = gWsClientMap[id.id].lastRequestSeq;
-					seqNum = p.ids[0].seq;
-					gWsClientMap[id.id].lastRequestSeq++;
+					p.ids[i].seq = update_request_seq(packetId);
+					seqNum = p.ids[i].seq;
 
-					int ret = process_ws_stream_request(id.id, p);
+					int ret = process_ws_stream_request(packetId, p);
 					if (ret < 0)
 						continue;
 
@@ -1121,25 +1122,24 @@ public:
 				}
 				else
 				{
-					int cc_no = get_cc_no_from_packet(id.id);
+					int cc_no = get_cc_no_from_packet(packetId);
 					if (cc_no >= 0)
 					{
-						p.ids[0].seq = gWsCacheClientList[cc_no].lastRequestSeq;
-						seqNum = p.ids[0].seq + 1;
-						gWsCacheClientList[cc_no].lastRequestSeq = seqNum;
+						p.ids[i].seq = update_request_seq(cc_no);
+						seqNum = p.ids[i].seq;
 					}
 					else
 					{
-						log_debug("[WS] received request from unknown client=%s", id.id.data());
+						log_debug("[WS] received request from unknown client=%s", packetId.data());
 					}
 				}
 			}
 
 			// is this for a websocket?
-			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, id.id));
+			ZWebSocket *sock = serverSocksByRid.value(ZWebSocket::Rid(p.from, packetId));
 			if(sock)
 			{
-				sock->handle(id.id, seqNum, p);
+				sock->handle(packetId, seqNum, p);
 				if(self.expired())
 					return;
 
@@ -1147,10 +1147,10 @@ public:
 			}
 
 			// is this for an http request?
-			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, id.id));
+			ZhttpRequest *req = serverReqsByRid.value(ZhttpRequest::Rid(p.from, packetId));
 			if(req)
 			{
-				req->handle(id.id, seqNum, p);
+				req->handle(packetId, seqNum, p);
 				if(self.expired())
 					return;
 
