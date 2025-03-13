@@ -1335,7 +1335,10 @@ public:
 
 			Report &r = report->externalReports[packet.from];
 
-			r.connectionsMinutes += qMax(packet.connectionsMinutes, 0);
+			int mins = qMax(packet.connectionsMinutes, 0);
+
+			r.connectionsMinutes += mins;
+			combinedReport.addConnectionsMinutes(mins, now);
 		}
 	}
 
