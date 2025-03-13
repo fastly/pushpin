@@ -443,92 +443,64 @@ public:
 		return best;
 	}
 
-	void tryResponseWsInitRequest(const ZhttpResponsePacket &packet, const QByteArray &newPacketId, const QByteArray &responseKey, const QByteArray &from)
+	void send_response_to_client(
+		SessionType sessionType, 
+		const QByteArray &clientId, 
+		ZhttpResponsePacket::Type packetType,
+		const QByteArray &from,
+		int credits = 0,
+		const QByteArray &cacheItemId = NULL,
+		const ZhttpResponsePacket &responsePacket = NULL,
+		const QByteArray &responseKey = NULL)
 	{
-		//// Send cached response
-		ZhttpResponsePacket out = packet;
+		assert(!from.isEmpty());
 
-		out.ids[0].id = newPacketId.data();
-		out.headers.removeAll("sec-websocket-accept");
-		out.headers += HttpHeader("sec-websocket-accept", responseKey);
-		
-		write(WebSocketSession, out, from);
-	}
+		ZhttpResponsePacket out;
 
-	void tryRespondCancel(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
-	{
-		assert(!packet.from.isEmpty());
+		ZhttpResponsePacket::Id tempId;
 
-		// if this was not an error packet, send cancel
-		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
+		int newSeq = update_response_seq(clientId);
+
+		switch (packetType)
 		{
-			ZhttpResponsePacket out;
-			out.from = instanceId;
-			out.ids += ZhttpResponsePacket::Id(id);
-			out.type = ZhttpResponsePacket::Cancel;
-			write(type, out, packet.from);
-		}
-	}
-
-	void tryRespondClose(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
-	{
-		assert(!packet.from.isEmpty());
-
-		// if this was not an error packet, send cancel
-		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
-		{
-			ZhttpResponsePacket out;
-			out.from = instanceId;
-			out.ids += ZhttpResponsePacket::Id(id);
-			out.type = ZhttpResponsePacket::Close;
-			write(type, out, packet.from);
-		}
-	}
-
-	void tryRespondCredit(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet, int credits)
-	{
-		assert(!packet.from.isEmpty());
-
-		// if this was not an error packet, send cancel
-		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
-		{
-			ZhttpResponsePacket out;
-			out.from = instanceId;
-			out.ids += ZhttpResponsePacket::Id(id);
-			out.type = ZhttpResponsePacket::Credit;
+		case ZhttpResponsePacket::Data:
+			if (cacheItemId != NULL)
+			{
+				QString orgMsgId = gCacheItemMap[cacheItemId].clientMap[clientId].msgId;
+				from = gCacheItemMap[cacheItemId].clientMap[clientId].from;
+				out = gCacheItemMap[cacheItemId].responsePacket;
+				replace_id_field(out.body, gCacheItemMap[cacheItemId].msgId, orgMsgId);
+				out.ids[0].id = clientId;
+				out.ids[0].seq = newSeq;
+				break;
+			}
+			else if (responsePacket != NULL)
+			{
+				out = responsePacket;
+				out.ids[0].id = clientId;
+				out.ids[0].seq = newSeq;
+				out.headers.removeAll("sec-websocket-accept");
+				out.headers += HttpHeader("sec-websocket-accept", responseKey);
+				break;
+			}
+			return;
+		case ZhttpResponsePacket::Credit:
+			tempId.id = clientId;
+			tempId.seq = newSeq;
+			out.ids += tempId;
+			out.type = packetType;
 			out.credits = credits;
-			write(type, out, packet.from);
+			break;
+		default:
+			tempId.id = clientId;
+			tempId.seq = newSeq;
+			out.ids += tempId;
+			out.type = packetType;
+			break;
 		}
-	}
 
-	void tryRespondPong(SessionType type, const QByteArray &id, const ZhttpRequestPacket &packet)
-	{
-		assert(!packet.from.isEmpty());
-
-		// if this was not an error packet, send cancel
-		if(packet.type != ZhttpRequestPacket::Error && packet.type != ZhttpRequestPacket::Cancel)
-		{
-			ZhttpResponsePacket out;
-			out.from = instanceId;
-			out.ids += ZhttpResponsePacket::Id(id);
-			out.type = ZhttpResponsePacket::Pong;
-			write(type, out, packet.from);
-		}
-	}
-
-	void tryRespondEtc(SessionType type, const QByteArray &id, const ZhttpResponsePacket &packet)
-	{
-		assert(!packet.from.isEmpty());
-
-		// if this was not an error packet, send cancel
-		if(packet.type != ZhttpResponsePacket::Error && packet.type != ZhttpResponsePacket::Cancel)
-		{
-			ZhttpResponsePacket out;
-			out.from = instanceId;
-			out.ids += ZhttpResponsePacket::Id(id);
-			out.type = packet.type;
-			write(type, out, packet.from);
-		}
+		out.from = instanceId;
+		write(sessionType, out, from);
 	}
 
 	void tryRequestCredit(const ZhttpResponsePacket &packet, const QByteArray &from, int credits, int seqNum)
@@ -617,17 +589,17 @@ public:
 		if (gCacheEnable == true)
 		{
 			QByteArray packetId = packet.ids.first().id;
-			int cc_no = get_cc_no_from_packet(packetId);
+			int ccIndex = get_cc_index_from_packet(packetId);
 			if (packet.code == 101) // ws client init response code
 			{
-				if (cc_no >= 0)
+				if (ccIndex >= 0)
 				{
 					// cache client
-					gWsCacheClientList[cc_no].initFlag = true;
-					gWsCacheClientList[cc_no].lastResponseTime = time(NULL);
-					gWsCacheClientList[cc_no].lastResponseSeq = packet.ids.first().seq;
-					gWsCacheClientList[cc_no].from = packet.from;
-					log_debug("[WS] Initialized Cache client%d, %s", cc_no, gWsCacheClientList[cc_no].clientId.data());
+					gWsCacheClientList[ccIndex].initFlag = true;
+					gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
+					gWsCacheClientList[ccIndex].lastResponseSeq = packet.ids.first().seq;
+					gWsCacheClientList[ccIndex].from = packet.from;
+					log_debug("[WS] Initialized Cache client%d, %s", ccIndex, gWsCacheClientList[ccIndex].clientId.data());
 					gWsInitResponsePacket = packet;
 				}
 				else
@@ -638,18 +610,18 @@ public:
 			}
 			else
 			{
-				if (cc_no >= 0)
+				if (ccIndex >= 0)
 				{
 					// update data receive time
-					gWsCacheClientList[cc_no].lastResponseTime = time(NULL);
+					gWsCacheClientList[ccIndex].lastResponseTime = time(NULL);
 
 					// increase credit
 					int creditSize = static_cast<int>(packet.body.size());
-					int seqNum = gWsCacheClientList[cc_no].lastResponseSeq + 1;
-					gWsCacheClientList[cc_no].lastResponseSeq = seqNum;
-					tryRequestCredit(packet, gWsCacheClientList[cc_no].from, creditSize, seqNum);
+					int seqNum = gWsCacheClientList[ccIndex].lastResponseSeq + 1;
+					gWsCacheClientList[ccIndex].lastResponseSeq = seqNum;
+					tryRequestCredit(packet, gWsCacheClientList[ccIndex].from, creditSize, seqNum);
 
-					int ret = process_ws_cacheclient_response(packet, cc_no);
+					int ret = process_ws_cacheclient_response(packet, ccIndex);
 					if (ret == 0)
 						return;
 				}
@@ -962,21 +934,22 @@ public:
 			if(sock)
 			{
 				log_warning("zws server: received message for existing request id, canceling");
-				tryRespondCancel(WebSocketSession, id.id, p);
+				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
+					send_response_to_client(WebSocketSession, id.id, ZhttpResponsePacket::Cancel, p.from);
 				return;
 			}
 
 			if (gCacheEnable == true)
 			{
 				// if requests from cache client
-				int cc_no = get_cc_no_from_init_request(p);
-				if (cc_no >= 0 && cc_no < gWsCacheClientList.count())
+				int ccIndex = get_cc_no_from_init_request(p);
+				if (ccIndex >= 0 && ccIndex < gWsCacheClientList.count())
 				{
-					gWsCacheClientList[cc_no].initFlag = false;
-					gWsCacheClientList[cc_no].clientId = id.id;
-					gWsCacheClientList[cc_no].msgIdCount = -1;
-					gWsCacheClientList[cc_no].lastRequestSeq = id.seq;
-					gWsCacheClientList[cc_no].lastRequestTime = time(NULL);
+					gWsCacheClientList[ccIndex].initFlag = false;
+					gWsCacheClientList[ccIndex].clientId = id.id;
+					gWsCacheClientList[ccIndex].msgIdCount = -1;
+					gWsCacheClientList[ccIndex].lastRequestSeq = id.seq;
+					gWsCacheClientList[ccIndex].lastRequestTime = time(NULL);
 
 					log_debug("[WS] passing the requests from cache client=%s", id.id.data());
 				}
@@ -986,7 +959,8 @@ public:
 					if (get_main_cc_no() < 0)
 					{
 						log_warning("[WS] not initialized cache client, ignore");
-						tryRespondCancel(WebSocketSession, id.id, p);
+						if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
+							send_response_to_client(WebSocketSession, id.id, ZhttpResponsePacket::Cancel, p.from);
 						return;
 					}
 					else
@@ -996,7 +970,7 @@ public:
 						// register ws client
 						register_ws_client(id.id);
 						// respond with cached init packet
-						tryResponseWsInitRequest(gWsInitResponsePacket, id.id, responseKey, p.from);
+						send_response_to_client(WebSocketSession, id.id, ZhttpResponsePacket::Data, p.from, 0, NULL, gWsInitResponsePacket, responseKey);
 						return;
 					}
 				}
@@ -1025,7 +999,8 @@ public:
 			if(req)
 			{
 				log_warning("zhttp server: received message for existing request id, canceling");
-				tryRespondCancel(HttpSession, id.id, p);
+				if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
+					send_response_to_client(HttpSession, id.id, ZhttpResponsePacket::Cancel, p.from);
 				return;
 			}
 
@@ -1053,7 +1028,8 @@ public:
 		else
 		{
 			log_debug("zhttp/zws server: rejecting unsupported scheme: %s", qPrintable(p.uri.scheme()));
-			tryRespondCancel(UnknownSession, id.id, p);
+			if(p.type != ZhttpRequestPacket::Error && p.type != ZhttpRequestPacket::Cancel)
+				send_response_to_client(UnknownSession, id.id, ZhttpResponsePacket::Cancel, p.from);
 			return;
 		}
 	}
@@ -1114,18 +1090,46 @@ public:
 					p.ids[i].seq = update_request_seq(packetId);
 					seqNum = p.ids[i].seq;
 
-					int ret = process_ws_stream_request(packetId, p);
-					if (ret < 0)
+					// if cancel/close request, remove client from the subscription client list
+					switch (p.type)
+					{
+					case ZhttpRequestPacket::Cancel:
+						unregister_client(packetId);
+						//send_wsCloseResponse(packetId);
 						continue;
-
-					continue;
+					case ZhttpRequestPacket::Close:
+						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Close, p.from);
+						unregister_client(packetId);
+						continue;
+					case ZhttpRequestPacket::KeepAlive:
+						log_debug("[WS] received KeepAlive, ignoring");
+						//send_pingResponse(packetId);
+						continue;
+					case ZhttpRequestPacket::Pong:
+						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Credit, p.from, 0);
+						continue;
+					case ZhttpRequestPacket::Ping:
+						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Pong, p.from);
+						continue;
+					case ZhttpRequestPacket::Credit:
+						continue;
+					case ZhttpRequestPacket::Data:
+						// Send new credit packet
+						int credits = static_cast<int>(p.body.size());
+						send_response_to_client(WebSocketSession, packetId, ZhttpResponsePacket::Credit, p.from, credits);
+						if (process_ws_stream_request(packetId, p) < 0)
+							continue;
+						break;
+					default:
+						break;
+					}
 				}
 				else
 				{
-					int cc_no = get_cc_no_from_packet(packetId);
-					if (cc_no >= 0)
+					int ccIndex = get_cc_index_from_packet(packetId);
+					if (ccIndex >= 0)
 					{
-						p.ids[i].seq = update_request_seq(cc_no);
+						p.ids[i].seq = update_request_seq(packetId);
 						seqNum = p.ids[i].seq;
 					}
 					else
@@ -1304,7 +1308,7 @@ public:
 			currentSessionRefreshBucket = 0;
 	}
 
-	void delete_clientInList(QByteArray clientId)
+	void unregister_client(const QByteArray& clientId)
 	{
 		if (gHttpClientMap.contains(clientId))
 		{
@@ -1363,7 +1367,7 @@ public:
 
 		struct ClientItem clientItem;
 		clientItem.lastRequestSeq = 0;
-		clientItem.lastResponseSeq = 0;
+		clientItem.lastResponseSeq = -1;
 		clientItem.lastRequestTime = time(NULL);
 		clientItem.lastResponseTime = time(NULL);
 		gWsClientMap[packetId] = clientItem;
@@ -1865,38 +1869,6 @@ public:
 
 	int process_ws_stream_request(const QByteArray packetId, ZhttpRequestPacket &p)
 	{
-		// if cancel/close request, remove client from the subscription client list
-		switch (p.type)
-		{
-		case ZhttpRequestPacket::Cancel:
-			delete_clientInList(packetId);
-			//send_wsCloseResponse(packetId);
-			return -1;
-		case ZhttpRequestPacket::Close:
-			tryRespondClose(WebSocketSession, packetId, p);
-			delete_clientInList(packetId);
-			return -1;
-		case ZhttpRequestPacket::KeepAlive:
-			log_debug("[WS] received KeepAlive, ignoring");
-			//send_pingResponse(packetId);
-			return -1;
-		case ZhttpRequestPacket::Pong:
-			tryRespondCredit(WebSocketSession, packetId, p, 0);
-			return -1;
-		case ZhttpRequestPacket::Ping:
-			tryRespondPong(WebSocketSession, packetId, p);
-			return -1;
-		case ZhttpRequestPacket::Credit:
-			return -1;
-		case ZhttpRequestPacket::Data:
-			break;
-		default:
-			return -1;
-		}
-
-		// Send new credit packet
-		tryRespondCredit(WebSocketSession, packetId, p, static_cast<int>(p.body.size()));
-
 		int ret = check_multi_packets_for_ws_request(p);
 		if (ret < 0)
 			return -1;
@@ -1938,10 +1910,10 @@ public:
 
 				if (gCacheItemMap[paramsHash].cachedFlag == true)
 				{
-					int cc_no = get_cc_no_from_packet(gCacheItemMap[paramsHash].cacheClientId);
-					if (cc_no < 0 || gWsCacheClientList[cc_no].initFlag == false)
+					int ccIndex = get_cc_index_from_packet(gCacheItemMap[paramsHash].cacheClientId);
+					if (ccIndex < 0 || gWsCacheClientList[ccIndex].initFlag == false)
 					{
-						cc_no = get_main_cc_no();
+						ccIndex = get_main_cc_no();
 					}
 					//reply_wsCachedContent(paramsHash, msgIdAttr, packetId, receiver, from);
 					// update seq

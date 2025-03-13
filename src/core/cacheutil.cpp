@@ -87,7 +87,7 @@ bool is_cache_method(QString methodStr)
 	return false;
 }
 
-int get_cc_no_from_packet(QByteArray packetId)
+int get_cc_index_from_packet(QByteArray packetId)
 {
 	for (int i = 0; i < gWsCacheClientList.count(); i++)
 	{
@@ -593,13 +593,6 @@ int check_multi_packets_for_ws_response(ZhttpResponsePacket &p)
 	return 0;
 }
 
-int update_request_seq(int cc_no)
-{
-	gWsCacheClientList[cc_no].lastRequestSeq += 1;
-
-	return gWsCacheClientList[cc_no].lastRequestSeq;
-}
-
 int update_request_seq(const QByteArray &clientId)
 {
 	int ret = -1;
@@ -610,9 +603,38 @@ int update_request_seq(const QByteArray &clientId)
 	}
 	else if (gHttpClientMap.contains(clientId)) 
 	{
-        gHttpClientMap[clientId].lastRequestSeq += 1;
+		gHttpClientMap[clientId].lastRequestSeq += 1;
 		ret = gHttpClientMap[clientId].lastRequestSeq;
-    }
+	}
+	else // cache client
+	{
+		int ccIndex = get_cc_index_from_packet(clientId);
+		gWsCacheClientList[ccIndex].lastRequestSeq += 1;
+		ret = gWsCacheClientList[ccIndex].lastRequestSeq;
+	}
+	
+	return ret;
+}
+
+int update_response_seq(const QByteArray &clientId)
+{
+	int ret = -1;
+	if (gWsClientMap.contains(clientId)) 
+	{
+		gWsClientMap[clientId].lastResponseSeq += 1;
+		ret = gWsClientMap[clientId].lastResponseSeq;
+	}
+	else if (gHttpClientMap.contains(clientId)) 
+	{
+		gHttpClientMap[clientId].lastResponseSeq += 1;
+		ret = gHttpClientMap[clientId].lastResponseSeq;
+	}
+	else // cache client
+	{
+		int ccIndex = get_cc_index_from_packet(clientId);
+		gWsCacheClientList[ccIndex].lastResponseSeq += 1;
+		ret = gWsCacheClientList[ccIndex].lastResponseSeq;
+	}
 	
 	return ret;
 }

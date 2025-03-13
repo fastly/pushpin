@@ -67,7 +67,7 @@ struct CacheKeyItem {
 };
 
 bool is_cache_method(QString methodStr);
-int get_cc_no_from_packet(QByteArray packetId);
+int get_cc_index_from_packet(QByteArray packetId);
 int get_cc_no_from_init_request(ZhttpRequestPacket &p);
 pid_t create_process_for_cacheclient(QString connectPath, int _no);
 int get_main_cc_no();
@@ -88,7 +88,7 @@ QByteArray build_hash_key(QVariantMap &jsonMap, QString startingStr);
 int check_multi_packets_for_ws_request(ZhttpRequestPacket &p);
 int check_multi_packets_for_ws_response(ZhttpResponsePacket &p);
 
-int update_request_seq(int cc_no);
 int update_request_seq(const QByteArray &clientId);
+int update_response_seq(const QByteArray &clientId);
 
 #endif
