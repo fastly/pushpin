@@ -490,12 +490,14 @@ def make_routes(service, backend, sig_keys_dir):
     else:
         cond_opts = 'no_grip'
 
+        share_key = backend.get('share_key') or service_id
+
         if service.log_level is not None:
             cond_opts += f",log_level={service.log_level}"
 
         routes.append('id="ws:{}:{}",{} {}'.format(service_id, escape_route_param(backend_name), cond_opts, target))
-        routes.append('id=ws:{}:{}--{},{} {}'.format(service_id, service_id, vclify_backend(backend_name), cond_opts, target))
-        routes.append('id=ws:{}:{}--F_{},{} {}'.format(service_id, service_id, vclify_backend(backend_name), cond_opts, target))
+        routes.append('id=ws:{}:{}--{},{} {}'.format(service_id, share_key, vclify_backend(backend_name), cond_opts, target))
+        routes.append('id=ws:{}:{}--F_{},{} {}'.format(service_id, share_key, vclify_backend(backend_name), cond_opts, target))
 
     return routes
 
